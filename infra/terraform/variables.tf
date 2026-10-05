@@ -119,6 +119,18 @@ variable "github_repo" {
   default     = "FFD-Connect"
 }
 
+variable "github_org_id" {
+  description = "Numeric GitHub org ID, part of the immutable OIDC subject (gh api orgs/<org> -q .id)"
+  type        = string
+  default     = "266684440"
+}
+
+variable "github_repo_id" {
+  description = "Numeric GitHub repo ID, part of the immutable OIDC subject (gh api repos/<org>/<repo> -q .id) — changes if the repo is recreated"
+  type        = string
+  default     = "1405722043"
+}
+
 # ── AI services (OCR / TTS) ─────────────────
 
 variable "backend_managed_identity_principal_ids" {

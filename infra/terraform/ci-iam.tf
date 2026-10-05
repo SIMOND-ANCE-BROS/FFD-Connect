@@ -33,6 +33,15 @@ resource "azuread_service_principal" "ci" {
 # One credential per branch that is allowed to deploy.
 # GitHub Actions presents a token with a subject claim
 # matching the repo + branch — Azure validates it.
+#
+# Repositories created since 2026 get the IMMUTABLE subject format, which
+# GitHub does not let you opt out of: `repo:<org>@<org_id>/<repo>@<repo_id>:…`.
+# The numeric IDs pin the trust to this exact repository, so a repo that
+# later takes the same name cannot assume the CI identity. Read the prefix
+# with: gh api repos/<org>/<repo>/actions/oidc/customization/sub -q .sub_claim_prefix
+locals {
+  github_oidc_subject_prefix = "repo:${var.github_org}@${var.github_org_id}/${var.github_repo}@${var.github_repo_id}"
+}
 
 resource "azuread_application_federated_identity_credential" "staging" {
   application_id = azuread_application.ci.id
@@ -41,7 +50,7 @@ resource "azuread_application_federated_identity_credential" "staging" {
 
   audiences = ["api://AzureADTokenExchange"]
   issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "repo:${var.github_org}/${var.github_repo}:ref:refs/heads/staging"
+  subject   = "${local.github_oidc_subject_prefix}:ref:refs/heads/staging"
 }
 
 resource "azuread_application_federated_identity_credential" "master" {
@@ -51,7 +60,7 @@ resource "azuread_application_federated_identity_credential" "master" {
 
   audiences = ["api://AzureADTokenExchange"]
   issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "repo:${var.github_org}/${var.github_repo}:ref:refs/heads/master"
+  subject   = "${local.github_oidc_subject_prefix}:ref:refs/heads/master"
 }
 
 # `workflow_run` triggers (deploy-backend.yml) execute with the OIDC subject
@@ -65,7 +74,7 @@ resource "azuread_application_federated_identity_credential" "develop" {
 
   audiences = ["api://AzureADTokenExchange"]
   issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "repo:${var.github_org}/${var.github_repo}:ref:refs/heads/develop"
+  subject   = "${local.github_oidc_subject_prefix}:ref:refs/heads/develop"
 }
 
 # A job bound to a GitHub Environment presents a DIFFERENT subject: the
@@ -83,7 +92,7 @@ resource "azuread_application_federated_identity_credential" "env_staging" {
 
   audiences = ["api://AzureADTokenExchange"]
   issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "repo:${var.github_org}/${var.github_repo}:environment:staging"
+  subject   = "${local.github_oidc_subject_prefix}:environment:staging"
 }
 
 resource "azuread_application_federated_identity_credential" "env_production" {
@@ -93,7 +102,7 @@ resource "azuread_application_federated_identity_credential" "env_production" {
 
   audiences = ["api://AzureADTokenExchange"]
   issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "repo:${var.github_org}/${var.github_repo}:environment:production"
+  subject   = "${local.github_oidc_subject_prefix}:environment:production"
 }
 
 # ── Role Assignments ───────────────────────
