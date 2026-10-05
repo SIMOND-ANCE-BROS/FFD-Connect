@@ -306,7 +306,15 @@ module.exports = {
       // googleServicesFile is missing, which would break every non-prod build
       // until the per-variant files are downloaded from the Firebase Console.
       ...(FIREBASE_ENABLED
-        ? ["@react-native-firebase/app", "@react-native-firebase/messaging"]
+        ? [
+            "@react-native-firebase/app",
+            "@react-native-firebase/messaging",
+            // Seeds `isHeadless` in the root's initial props so a data-only
+            // push that launches the app in the background does not mount the
+            // whole React tree (#40). Must stay inside this branch: it emits a
+            // reference to RNFBMessaging, which a Firebase-less build lacks.
+            "./plugins/withFirebaseHeadlessLaunch.js",
+          ]
         : []),
       // Sentry - crash reports & stack traces (SENTRY_AUTH_TOKEN dans EAS pour l'upload)
       [
