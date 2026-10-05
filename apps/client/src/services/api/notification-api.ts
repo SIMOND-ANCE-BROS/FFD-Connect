@@ -1,20 +1,19 @@
 import { BACKEND_URL } from "../../config";
 import { ERROR_MESSAGES } from "../../constants/errorMessages";
-import { getAccessToken } from "../../api/tokenStore";
+import {
+  notificationsControllerGetMyPreferences,
+  notificationsControllerUpdateMyPreference,
+  type UpdateNotificationPreferenceDto,
+} from "../../api/generated";
 import { httpGet, httpPost, httpRequest } from "../../utils/httpInterceptor";
-
-/** Même source de token que l'intercepteur du client généré (SecureStore). */
-async function authHeader(): Promise<Record<string, string>> {
-  const token = await getAccessToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /**
  * Une entrée du catalogue de notifications, telle que le serveur la décrit.
  *
- * `type` est opaque pour le client : il ne fait jamais de branchement dessus,
- * il l'utilise comme clé. Libellé et description viennent du serveur, de sorte
- * qu'un type ajouté côté backend devienne réglable sans livrer de client.
+ * `type` est volontairement typé `string` et NON par l'union littérale du SDK
+ * généré : le client ne fait jamais de branchement dessus, et un type ajouté
+ * côté backend doit continuer de s'afficher sans régénérer ni livrer de client.
+ * Libellé et description viennent du serveur pour la même raison.
  */
 export interface NotificationPreference {
   type: string;
@@ -41,27 +40,27 @@ export const NotificationApi = {
     });
   },
 
-  // TODO(#37) : basculer ces deux méthodes sur le SDK généré
-  // (`notificationsControllerGetPreferences` / `...UpdatePreference`) dès que le
-  // backend aura livré les routes et que `pnpm api:sync` les aura exposées.
-  // La signature est déjà celle du SDK — sans token — donc le basculement ne
-  // touchera que ce fichier.
   async getPreferences(): Promise<NotificationPreference[]> {
-    return httpGet(`${BACKEND_URL}/notifications/preferences`, {
-      headers: await authHeader(),
-      errorMessage: ERROR_MESSAGES.LOADING_FAILED,
-      logErrors: true,
-    });
+    const { data, error } = await notificationsControllerGetMyPreferences();
+    if (error || !data) {
+      throw new Error(ERROR_MESSAGES.LOADING_FAILED);
+    }
+    return data;
   },
 
-  async updatePreference(type: string, enabled: boolean) {
-    return httpRequest(`${BACKEND_URL}/notifications/preferences/${type}`, {
-      method: "PATCH",
-      body: JSON.stringify({ enabled }),
-      headers: { ...(await authHeader()), "Content-Type": "application/json" },
-      errorMessage: ERROR_MESSAGES.OPERATION_FAILED,
-      logErrors: true,
+  async updatePreference(
+    type: string,
+    enabled: boolean,
+  ): Promise<NotificationPreference> {
+    const { data, error } = await notificationsControllerUpdateMyPreference({
+      // Le serveur publie une union littérale ; le client la traite comme une
+      // clé opaque, d'où la conversion au seul point de contact.
+      body: { type: type as UpdateNotificationPreferenceDto["type"], enabled },
     });
+    if (error || !data) {
+      throw new Error(ERROR_MESSAGES.OPERATION_FAILED);
+    }
+    return data;
   },
 
   async markAllNotificationsAsRead(token: string) {
