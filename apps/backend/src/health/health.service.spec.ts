@@ -3,7 +3,18 @@ import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
+import { resolveMemoryLimit } from "./container-memory.util";
 import { HealthService } from "./health.service";
+
+// Only the cgroup-reading seam is faked; the percentage arithmetic stays real.
+jest.mock("./container-memory.util", () => ({
+  ...jest.requireActual<typeof import("./container-memory.util")>(
+    "./container-memory.util",
+  ),
+  resolveMemoryLimit: jest.fn(),
+}));
+
+const GIBIBYTE = 1024 ** 3;
 
 describe("HealthService", () => {
   let service: HealthService;
@@ -46,6 +57,9 @@ describe("HealthService", () => {
 
     service = module.get<HealthService>(HealthService);
     jest.clearAllMocks();
+    jest
+      .mocked(resolveMemoryLimit)
+      .mockReturnValue({ bytes: GIBIBYTE, source: "cgroup" });
     mockPrisma.$queryRaw.mockResolvedValue([{ "?column?": 1 }]);
     mockRedisClient.ping.mockResolvedValue("PONG");
     mockRedisService.isAvailable.mockReturnValue(true);
@@ -173,6 +187,87 @@ describe("HealthService", () => {
       expect(result.queues["ffd-sync"].status).toBe("error");
       expect(result.queues["ffd-sync"]).toHaveProperty("error");
       expect(result.status).toBe("degraded");
+    });
+  });
+
+  /**
+   * Regression guard for #44: `/health` used to publish
+   * `heapUsed / heapTotal` under the name `percentage`. That is the V8 heap
+   * fill ratio — normally high — and it read as container saturation: 94 % on
+   * a healthy backend sized at 1 Gi, which misled a deployment check.
+   */
+  describe("memory", () => {
+    /** The exact figures from the issue: ~79 MB of heap inside a 1 Gi app. */
+    const USAGE: NodeJS.MemoryUsage = {
+      rss: 82_837_504,
+      heapTotal: 84_381_696,
+      heapUsed: 78_993_784,
+      external: 2_000_000,
+      arrayBuffers: 100_000,
+    };
+
+    beforeEach(() => {
+      jest.spyOn(process, "memoryUsage").mockReturnValue(USAGE);
+    });
+
+    afterEach(() => {
+      jest.mocked(process.memoryUsage).mockRestore();
+    });
+
+    it("reports rss against the container limit, not the heap ratio", async () => {
+      const { memory } = await service.check();
+
+      expect(memory.rss).toBe(USAGE.rss);
+      expect(memory.limit).toBe(GIBIBYTE);
+      expect(memory.limitSource).toBe("cgroup");
+      // ~79 MB of 1 Gi — the real situation the issue describes, not 94 %.
+      expect(memory.rssPercentOfLimit).toBeCloseTo(7.7, 1);
+    });
+
+    it("never publishes a bare `percentage` that reads as saturation", async () => {
+      const { memory } = await service.check();
+
+      expect(memory).not.toHaveProperty("percentage");
+      expect(memory).not.toHaveProperty("used");
+      expect(memory).not.toHaveProperty("total");
+      expect(
+        Object.values(memory).filter(
+          (value) => typeof value === "number" && value > 90 && value <= 100,
+        ),
+      ).toEqual([
+        // The only value in that range is the heap ratio, and it is named
+        // after what it divides by.
+        memory.heapUsedPercentOfHeapTotal,
+      ]);
+    });
+
+    it("keeps the heap ratio under an unambiguous name", async () => {
+      const { memory } = await service.check();
+
+      expect(memory.heapUsed).toBe(USAGE.heapUsed);
+      expect(memory.heapTotal).toBe(USAGE.heapTotal);
+      expect(memory.heapUsedPercentOfHeapTotal).toBeCloseTo(93.6, 1);
+    });
+
+    it("falls back to the host RAM when no cgroup limit exists (dev machine)", async () => {
+      jest
+        .mocked(resolveMemoryLimit)
+        .mockReturnValue({ bytes: 64 * GIBIBYTE, source: "os" });
+
+      const { memory } = await service.check();
+
+      expect(memory.limitSource).toBe("os");
+      expect(memory.limit).toBe(64 * GIBIBYTE);
+      // One decimal, so a small share does not collapse to a flat 0.
+      expect(memory.rssPercentOfLimit).toBeCloseTo(0.1, 1);
+    });
+
+    it("resolves the limit once — /health must not read the cgroup per probe", async () => {
+      await service.check();
+      await service.check();
+      await service.check();
+
+      expect(resolveMemoryLimit).toHaveBeenCalledTimes(1);
     });
   });
 
