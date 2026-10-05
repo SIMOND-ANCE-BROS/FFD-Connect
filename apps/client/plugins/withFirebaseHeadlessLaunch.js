@@ -62,31 +62,41 @@ const PATCHED_CALL = `factory.startReactNative(
       initialProperties: ${SEED_CALL},
       launchOptions: launchOptions)`;
 
+/**
+ * The whole decision, as a pure function so it can be tested without driving a
+ * prebuild. Returns the patched AppDelegate source, or the input unchanged when
+ * the patch is already present.
+ */
+function patchAppDelegate(contents, language) {
+  if (language !== "swift") {
+    // Fail loudly: silently skipping would ship a build where headless
+    // launches still mount the whole tree, with nothing to show for it.
+    throw new Error(
+      `[withFirebaseHeadlessLaunch] expected a Swift AppDelegate, got "${language}". ` +
+        "The Expo template changed; update this plugin rather than ignoring it.",
+    );
+  }
+
+  if (contents.includes("addCustomProps(toUserProps:")) {
+    return contents; // idempotent — prebuild may run repeatedly
+  }
+
+  if (!contents.includes(TARGET_CALL)) {
+    throw new Error(
+      "[withFirebaseHeadlessLaunch] could not find the startReactNative call to patch. " +
+        "The Expo AppDelegate template changed; re-derive TARGET_CALL from a fresh prebuild.",
+    );
+  }
+
+  return contents.replace(TARGET_CALL, PATCHED_CALL);
+}
+
 function withAppDelegatePatch(config) {
   return withAppDelegate(config, (cfg) => {
-    const { contents, language } = cfg.modResults;
-
-    if (language !== "swift") {
-      // Fail loudly: silently skipping would ship a build where headless
-      // launches still mount the whole tree, with nothing to show for it.
-      throw new Error(
-        `[withFirebaseHeadlessLaunch] expected a Swift AppDelegate, got "${language}". ` +
-          "The Expo template changed; update this plugin rather than ignoring it.",
-      );
-    }
-
-    if (contents.includes("addCustomProps(toUserProps:")) {
-      return cfg; // idempotent — prebuild may run repeatedly
-    }
-
-    if (!contents.includes(TARGET_CALL)) {
-      throw new Error(
-        "[withFirebaseHeadlessLaunch] could not find the startReactNative call to patch. " +
-          "The Expo AppDelegate template changed; re-derive TARGET_CALL from a fresh prebuild.",
-      );
-    }
-
-    cfg.modResults.contents = contents.replace(TARGET_CALL, PATCHED_CALL);
+    cfg.modResults.contents = patchAppDelegate(
+      cfg.modResults.contents,
+      cfg.modResults.language,
+    );
     return cfg;
   });
 }
@@ -130,3 +140,7 @@ function withBridgingHeaderImport(config) {
 module.exports = function withFirebaseHeadlessLaunch(config) {
   return withBridgingHeaderImport(withAppDelegatePatch(config));
 };
+
+// Exported for the unit test; not part of the plugin contract.
+module.exports.patchAppDelegate = patchAppDelegate;
+module.exports.TARGET_CALL = TARGET_CALL;
