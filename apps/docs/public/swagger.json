@@ -15280,6 +15280,10 @@
                       "type": "string",
                       "example": "ok"
                     },
+                    "version": {
+                      "type": "string",
+                      "example": "a1b2c3d"
+                    },
                     "timestamp": {
                       "type": "string",
                       "example": "2026-02-11T12:00:00.000Z"
@@ -15294,8 +15298,48 @@
                     "redis": {
                       "type": "object"
                     },
-                    "memory": {
+                    "queues": {
                       "type": "object"
+                    },
+                    "memory": {
+                      "type": "object",
+                      "description": "Chaque champ est nommé d'après ce à quoi il est rapporté. Le seul indicateur de saturation est rssPercentOfLimit ; le ratio du tas V8 est élevé en fonctionnement normal.",
+                      "properties": {
+                        "rss": {
+                          "type": "number",
+                          "description": "Resident set size du process, en octets",
+                          "example": 82837504
+                        },
+                        "limit": {
+                          "type": "number",
+                          "description": "Plafond auquel rss est rapporté, en octets (limite du conteneur, ou RAM de l'hôte à défaut)",
+                          "example": 1073741824
+                        },
+                        "limitSource": {
+                          "type": "string",
+                          "enum": ["cgroup", "os"],
+                          "description": "cgroup = limite réelle du conteneur ; os = aucune limite trouvée, RAM de l'hôte utilisée",
+                          "example": "cgroup"
+                        },
+                        "rssPercentOfLimit": {
+                          "type": "number",
+                          "description": "rss / limit, en pourcentage",
+                          "example": 7.7
+                        },
+                        "heapUsed": {
+                          "type": "number",
+                          "example": 78993784
+                        },
+                        "heapTotal": {
+                          "type": "number",
+                          "example": 84381696
+                        },
+                        "heapUsedPercentOfHeapTotal": {
+                          "type": "number",
+                          "description": "Taux de remplissage du tas V8 — détail de debug, PAS une pression mémoire",
+                          "example": 93.6
+                        }
+                      }
                     }
                   }
                 }

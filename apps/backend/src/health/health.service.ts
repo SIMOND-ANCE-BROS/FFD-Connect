@@ -4,54 +4,18 @@ import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
-
-interface QueueHealth {
-  status: "ok" | "degraded" | "error";
-  waiting: number;
-  active: number;
-  failed: number;
-  error?: string;
-}
-
-interface HealthStatus {
-  status: "ok" | "degraded" | "down";
-  version: string;
-  timestamp: string;
-  uptime: number;
-  database: {
-    status: "ok" | "error";
-    responseTime?: number;
-    error?: string;
-  };
-  redis: {
-    status: "ok" | "error";
-    responseTime?: number;
-    error?: string;
-  };
-  queues: Record<string, QueueHealth>;
-  memory: {
-    used: number;
-    total: number;
-    percentage: number;
-  };
-}
-
-interface Metrics {
-  uptime: number;
-  memory: {
-    heapUsed: number;
-    heapTotal: number;
-    external: number;
-    rss: number;
-  };
-  cpu: {
-    usage: number;
-  };
-  requests: {
-    total: number;
-    errors: number;
-  };
-}
+import {
+  type MemoryLimit,
+  resolveMemoryLimit,
+  toPercent,
+} from "./container-memory.util";
+import type {
+  DependencyHealth,
+  HealthStatus,
+  MemoryHealth,
+  Metrics,
+  QueueHealth,
+} from "./health.types";
 
 // Seuil pour détecter une queue en mauvaise santé.
 // Le nombre de jobs `failed` n'est PAS un signal d'infra : c'est cumulatif
@@ -66,6 +30,11 @@ export class HealthService {
   private readonly startTime = Date.now();
   private requestCount = 0;
   private errorCount = 0;
+  /**
+   * Resolved once: a container's cgroup limit cannot change while it runs, and
+   * `/health` must not do a filesystem read per probe.
+   */
+  private memoryLimit?: MemoryLimit;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -84,14 +53,7 @@ export class HealthService {
       this.checkQueues(),
     ]);
 
-    const memoryUsage = process.memoryUsage();
-    const memory = {
-      used: memoryUsage.heapUsed,
-      total: memoryUsage.heapTotal,
-      percentage: Math.round(
-        (memoryUsage.heapUsed / memoryUsage.heapTotal) * 100,
-      ),
-    };
+    const memory = this.getMemoryHealth();
 
     const queuesDegraded = Object.values(queuesCheck).some(
       (q) => q.status !== "ok",
@@ -121,11 +83,30 @@ export class HealthService {
     };
   }
 
-  private async checkDatabase(): Promise<{
-    status: "ok" | "error";
-    responseTime?: number;
-    error?: string;
-  }> {
+  /**
+   * Memory as `/health` publishes it.
+   *
+   * The headline figure is `rss` against the container's memory limit, because
+   * that is what the platform kills the process over. The V8 heap ratio is kept
+   * alongside it — it is useful when debugging a leak — but under a name that
+   * says what it divides by, so it can no longer be read as saturation (#44).
+   */
+  private getMemoryHealth(): MemoryHealth {
+    this.memoryLimit ??= resolveMemoryLimit();
+    const usage = process.memoryUsage();
+
+    return {
+      rss: usage.rss,
+      limit: this.memoryLimit.bytes,
+      limitSource: this.memoryLimit.source,
+      rssPercentOfLimit: toPercent(usage.rss, this.memoryLimit.bytes),
+      heapUsed: usage.heapUsed,
+      heapTotal: usage.heapTotal,
+      heapUsedPercentOfHeapTotal: toPercent(usage.heapUsed, usage.heapTotal),
+    };
+  }
+
+  private async checkDatabase(): Promise<DependencyHealth> {
     const startTime = Date.now();
     try {
       await this.prisma.$queryRaw`SELECT 1`;
@@ -138,11 +119,7 @@ export class HealthService {
     }
   }
 
-  private async checkRedis(): Promise<{
-    status: "ok" | "error";
-    responseTime?: number;
-    error?: string;
-  }> {
+  private async checkRedis(): Promise<DependencyHealth> {
     const startTime = Date.now();
     try {
       if (!this.redis.isAvailable()) {
