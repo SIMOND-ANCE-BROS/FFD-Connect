@@ -118,12 +118,46 @@ describe("HealthController (e2e)", () => {
         .get("/health")
         .expect(200)
         .expect((res) => {
-          expect(res.body.memory).toHaveProperty("used");
-          expect(res.body.memory).toHaveProperty("total");
-          expect(res.body.memory).toHaveProperty("percentage");
-          expect(typeof res.body.memory.used).toBe("number");
-          expect(typeof res.body.memory.total).toBe("number");
-          expect(typeof res.body.memory.percentage).toBe("number");
+          expect(typeof res.body.memory.rss).toBe("number");
+          expect(typeof res.body.memory.limit).toBe("number");
+          expect(["cgroup", "os"]).toContain(res.body.memory.limitSource);
+          expect(typeof res.body.memory.rssPercentOfLimit).toBe("number");
+          expect(typeof res.body.memory.heapUsed).toBe("number");
+          expect(typeof res.body.memory.heapTotal).toBe("number");
+          expect(typeof res.body.memory.heapUsedPercentOfHeapTotal).toBe(
+            "number",
+          );
+        });
+    });
+
+    // #44: the old payload published heapUsed/heapTotal as `percentage`, which
+    // sat in the 90s on a healthy process and was read as container saturation.
+    it("should not publish a percentage that reads as container saturation", () => {
+      return request(app.getHttpServer() as Parameters<typeof request>[0])
+        .get("/health")
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.memory).not.toHaveProperty("percentage");
+          // The test process is not capped by a cgroup, so this is rss over
+          // the host RAM — a genuinely small share, never a 90-something.
+          expect(res.body.memory.rssPercentOfLimit).toBeLessThan(90);
+        });
+    });
+
+    // #43: /health must stay at the root. The deployment smoke test polls it
+    // and rolls back when `version` does not match the SHA it deployed.
+    it("should not be reachable under the api/v1 prefix", () => {
+      return request(app.getHttpServer() as Parameters<typeof request>[0])
+        .get("/api/v1/health")
+        .expect(404);
+    });
+
+    it("should serve /health/live at the root", () => {
+      return request(app.getHttpServer() as Parameters<typeof request>[0])
+        .get("/health/live")
+        .expect(200)
+        .expect((res) => {
+          expect(res.body).toEqual({ status: "ok" });
         });
     });
 
