@@ -46,8 +46,15 @@ gh issue list -R "$SRC" --state open --limit 500 \
     args=(-R "$DEST" --title "$title" --body "$body")
     [ -n "$labels" ] && args+=(--label "$labels")
     [ -n "$milestone" ] && args+=(--milestone "$milestone")
-    url=$(gh issue create "${args[@]}")
-    echo "  #$num → $url"
+    # Une erreur (limite de débit secondaire de GitHub sur les créations en
+    # rafale, vécue le 2026-10-05) ne doit pas interrompre le lot : on la
+    # signale, on continue, et on espace les créations.
+    if url=$(gh issue create "${args[@]}" 2>&1); then
+      echo "  #$num → $url"
+    else
+      echo "  ✗ #$num NON créée (à relancer) : $url" >&2
+    fi
+    sleep 2
   done
 
 [ "$APPLY" = "--apply" ] || echo "Dry-run : rien n'a été créé. Relancer avec --apply."
