@@ -11,6 +11,7 @@ import { JwtService } from "@nestjs/jwt";
 import { Prisma } from "@prisma/client";
 import { User } from "@prisma/client";
 import * as bcrypt from "bcrypt";
+import { extractBirthDateFromLicenseNumber } from "../common/birth-date/license-birth-date.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { licenseIdSelect } from "../utils/prisma-selects";
 import { AuthTokenService } from "./auth-token.service";
@@ -244,6 +245,12 @@ export class AuthService {
     // 7. Hash password
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
+    // 7b. Derive the birth date from the federal licence number (#60). The
+    // number is the authoritative source — it comes from the FFD, not from the
+    // registrant. When it does not encode a usable date the column stays null,
+    // which means "unknown" and must never be read as "of age" (see #61 / #23).
+    const birthDate = extractBirthDateFromLicenseNumber(license.number);
+
     // 8. Create user + link license in a transaction
     const user = await this.prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
@@ -255,6 +262,7 @@ export class AuthService {
           role: "LICENSEE",
           clubName: license.clubName,
           category: license.category,
+          birthDate,
         },
         select: {
           id: true,
@@ -314,7 +322,13 @@ export class AuthService {
     }
 
     this.logger.log(
-      { userId: user.id, licenseNumber: license.number },
+      // The date itself is personal data and the number already encodes it;
+      // only whether it could be derived is logged.
+      {
+        userId: user.id,
+        licenseNumber: license.number,
+        birthDateResolved: birthDate !== null,
+      },
       "New user registered via license verification",
     );
 
