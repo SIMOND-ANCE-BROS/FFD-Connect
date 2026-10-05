@@ -1,6 +1,6 @@
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { AlertTriangle, LogIn, LogOut, UserCog } from "lucide-react-native";
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Animated,
@@ -21,6 +21,7 @@ import {
 import { ImpersonationModal } from "../components/ImpersonationModal";
 import { NotificationBell } from "../../../components/NotificationBell";
 import { useClubLogo } from "../../../stores/club.store";
+import { useNotificationPreferencesStore } from "../../../stores";
 import { RootStackParamList } from "../../../navigation/types";
 import * as ImagePicker from "expo-image-picker";
 import { ReportModal } from "../../competitions/components/ReportModal";
@@ -35,6 +36,7 @@ import { styles } from "../components/settings.styles";
 import { SettingsClubSection } from "../components/SettingsClubSection";
 import { SettingsFiltersSection } from "../components/SettingsFiltersSection";
 import { SettingsInterfaceSection } from "../components/SettingsInterfaceSection";
+import { SettingsNotificationsSection } from "../components/SettingsNotificationsSection";
 import { SettingsProfileSection } from "../components/SettingsProfileSection";
 import { SettingsSecuritySection } from "../components/SettingsSecuritySection";
 import { SettingsTechnicalSection } from "../components/SettingsTechnicalSection";
@@ -128,6 +130,31 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
 
   const isFaceId = biometryType === BiometryTypes.FaceID;
   const isGuest = role === "GUEST";
+
+  // --- Préférences de notification (#37) ---
+  const notificationPreferences = useNotificationPreferencesStore(
+    (s) => s.preferences,
+  );
+  const notificationPreferencesLoading = useNotificationPreferencesStore(
+    (s) => s.loading,
+  );
+  const notificationPreferencesPending = useNotificationPreferencesStore(
+    (s) => s.pending,
+  );
+  const notificationPreferencesError = useNotificationPreferencesStore(
+    (s) => s.error,
+  );
+  const loadNotificationPreferences = useNotificationPreferencesStore(
+    (s) => s.load,
+  );
+  const setNotificationPreference = useNotificationPreferencesStore(
+    (s) => s.setPreference,
+  );
+
+  useEffect(() => {
+    if (isGuest) return;
+    void loadNotificationPreferences();
+  }, [isGuest, loadNotificationPreferences]);
   const scrollY = useRef(new Animated.Value(0)).current;
 
   // --- Confidentialité et données (#424, RGPD) ---
@@ -337,6 +364,20 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
           animationsEnabled={animationsEnabled}
           handleToggleAnimations={handleToggleAnimations}
         />
+
+        {/* Les préférences supposent un compte : rien à régler pour un invité. */}
+        {!isGuest && (
+          <SettingsNotificationsSection
+            theme={currentTheme}
+            preferences={notificationPreferences}
+            loading={notificationPreferencesLoading}
+            pending={notificationPreferencesPending}
+            error={notificationPreferencesError}
+            onToggle={(type, enabled) => {
+              void setNotificationPreference(type, enabled);
+            }}
+          />
+        )}
 
         <SettingsPrivacySection
           theme={currentTheme}

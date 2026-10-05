@@ -3,6 +3,8 @@
 
 export { useAuthStore } from "./auth.store";
 
+export { useNotificationPreferencesStore } from "./notificationPreferences.store";
+
 export {
   useClubStore,
   useClubRepository,
