@@ -193,3 +193,31 @@ export const deviceTokenExportSelect = {
   createdAt: true,
   lastSeenAt: true,
 } as const;
+
+/**
+ * Sélecteur pour la résolution d'une préférence de notification : seul l'état
+ * compte, la ligne est déjà identifiée par la contrainte unique (userId, type).
+ */
+export const notificationPreferenceEnabledSelect = {
+  enabled: true,
+} as const;
+
+/**
+ * Sélecteur pour la lecture du catalogue d'un utilisateur : les choix
+ * explicites qu'il a enregistrés, que l'API complète par les défauts du
+ * catalogue pour les types restants.
+ */
+export const notificationPreferenceStateSelect = {
+  type: true,
+  enabled: true,
+} as const;
+
+/**
+ * Sélecteur pour l'export RGPD (art. 15/20) des préférences de notification :
+ * le choix de l'utilisateur et sa date, sans identifiant technique.
+ */
+export const notificationPreferenceExportSelect = {
+  type: true,
+  enabled: true,
+  updatedAt: true,
+} as const;

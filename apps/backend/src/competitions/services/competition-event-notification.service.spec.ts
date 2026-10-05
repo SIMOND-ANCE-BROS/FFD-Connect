@@ -1,5 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { PrismaClient, UserRole } from "@prisma/client";
+import { NotificationType, PrismaClient, UserRole } from "@prisma/client";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -68,9 +68,10 @@ describe("CompetitionEventNotificationService", () => {
       );
 
       expect(notifications.createManyForUsers).toHaveBeenCalledTimes(1);
-      const [userIds, title, body, data] =
+      const [userIds, type, title, body, data] =
         notifications.createManyForUsers.mock.calls[0];
       expect(userIds).toEqual(["u1"]);
+      expect(type).toBe(NotificationType.NEW_COMPETITION);
       expect(title).toBe("Nouvelle compétition");
       expect(body).toContain("«Open de Paris» est ouverte.");
       expect(data).toEqual({
@@ -222,9 +223,10 @@ describe("CompetitionEventNotificationService", () => {
       await service.notifyResultsPublished("comp-1");
 
       expect(notifications.createManyForUsers).toHaveBeenCalledTimes(1);
-      const [userIds, title, body, data] =
+      const [userIds, type, title, body, data] =
         notifications.createManyForUsers.mock.calls[0];
       expect([...userIds].sort()).toEqual(["u1", "u2"]);
+      expect(type).toBe(NotificationType.COMPETITION_RESULTS);
       expect(title).toBe("Résultats disponibles");
       expect(body).toContain(
         "Les résultats de «Open de Paris» sont disponibles.",

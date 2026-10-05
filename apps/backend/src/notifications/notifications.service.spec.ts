@@ -1,10 +1,12 @@
 import { Logger, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
+import { NotificationType } from "@prisma/client";
 import { cert, initializeApp, type App } from "firebase-admin/app";
 import { getMessaging, type Message } from "firebase-admin/messaging";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { NotificationPreferencesQueryService } from "./notification-preferences.query-service";
 import { NotificationsService } from "./notifications.service";
 
 jest.mock("firebase-admin/app", () => ({
@@ -53,6 +55,14 @@ describe("NotificationsService", () => {
     fire: jest.fn(),
   };
 
+  /**
+   * Résolution des préférences. Par défaut « push autorisée » : les tests
+   * historiques décrivent la livraison, pas le filtrage, qui a ses propres cas.
+   */
+  const mockPreferences = {
+    isPushEnabled: jest.fn(),
+  };
+
   const sendMock = () => getMessaging().send as jest.Mock;
 
   /** Simule un Firebase initialisé (mode envoi réel). */
@@ -73,6 +83,10 @@ describe("NotificationsService", () => {
         { provide: ConfigService, useValue: mockConfig },
         { provide: PrismaService, useValue: mockPrisma },
         { provide: CircuitBreakerService, useValue: mockCircuitBreaker },
+        {
+          provide: NotificationPreferencesQueryService,
+          useValue: mockPreferences,
+        },
       ],
     }).compile();
 
@@ -86,6 +100,7 @@ describe("NotificationsService", () => {
     mockCircuitBreaker.fire.mockImplementation(
       (_key: string, fn: () => Promise<unknown>) => fn(),
     );
+    mockPreferences.isPushEnabled.mockResolvedValue(true);
     sendMock().mockReset();
     sendMock().mockResolvedValue("mock-response");
   });
@@ -363,36 +378,80 @@ describe("NotificationsService", () => {
 
   describe("createForUser", () => {
     it("crée une notification en base pour un utilisateur", async () => {
-      await service.createForUser("u1", "Titre", "Corps", { k: "v" });
+      await service.createForUser(
+        "u1",
+        NotificationType.REGISTRATION_STATUS,
+        "Titre",
+        "Corps",
+        { k: "v" },
+      );
       expect(mockPrisma.notification.create).toHaveBeenCalledWith({
-        data: { userId: "u1", title: "Titre", body: "Corps", data: { k: "v" } },
+        data: {
+          userId: "u1",
+          type: NotificationType.REGISTRATION_STATUS,
+          title: "Titre",
+          body: "Corps",
+          data: { k: "v" },
+        },
       });
     });
 
     it("data par défaut = {} quand non fourni", async () => {
-      await service.createForUser("u1", "Titre", "Corps");
+      await service.createForUser(
+        "u1",
+        NotificationType.REGISTRATION_STATUS,
+        "Titre",
+        "Corps",
+      );
       expect(mockPrisma.notification.create).toHaveBeenCalledWith({
-        data: { userId: "u1", title: "Titre", body: "Corps", data: {} },
+        data: {
+          userId: "u1",
+          type: NotificationType.REGISTRATION_STATUS,
+          title: "Titre",
+          body: "Corps",
+          data: {},
+        },
       });
     });
   });
 
   describe("createManyForUsers", () => {
     it("no-op (count 0) sur une liste vide, sans requête", async () => {
-      const res = await service.createManyForUsers([], "T", "B");
+      const res = await service.createManyForUsers(
+        [],
+        NotificationType.NEW_COMPETITION,
+        "T",
+        "B",
+      );
       expect(res).toEqual({ count: 0 });
       expect(mockPrisma.notification.createMany).not.toHaveBeenCalled();
     });
 
     it("crée une notification par utilisateur en une requête (createMany)", async () => {
       mockPrisma.notification.createMany.mockResolvedValue({ count: 2 });
-      const res = await service.createManyForUsers(["u1", "u2"], "T", "B", {
-        k: "v",
-      });
+      const res = await service.createManyForUsers(
+        ["u1", "u2"],
+        NotificationType.NEW_COMPETITION,
+        "T",
+        "B",
+        { k: "v" },
+      );
       expect(mockPrisma.notification.createMany).toHaveBeenCalledWith({
         data: [
-          { userId: "u1", title: "T", body: "B", data: { k: "v" } },
-          { userId: "u2", title: "T", body: "B", data: { k: "v" } },
+          {
+            userId: "u1",
+            type: NotificationType.NEW_COMPETITION,
+            title: "T",
+            body: "B",
+            data: { k: "v" },
+          },
+          {
+            userId: "u2",
+            type: NotificationType.NEW_COMPETITION,
+            title: "T",
+            body: "B",
+            data: { k: "v" },
+          },
         ],
       });
       expect(res).toEqual({ count: 2 });
@@ -616,10 +675,21 @@ describe("NotificationsService", () => {
       withFirebaseApp();
       mockPrisma.deviceToken.findMany.mockResolvedValue([]);
 
-      const result = await service.sendToUser("u1", "Titre", "Corps");
+      const result = await service.sendToUser(
+        "u1",
+        NotificationType.REGISTRATION_STATUS,
+        "Titre",
+        "Corps",
+      );
 
       expect(mockPrisma.notification.create).toHaveBeenCalledWith({
-        data: { userId: "u1", title: "Titre", body: "Corps", data: {} },
+        data: {
+          userId: "u1",
+          type: NotificationType.REGISTRATION_STATUS,
+          title: "Titre",
+          body: "Corps",
+          data: {},
+        },
       });
       expect(sendMock()).not.toHaveBeenCalled();
       expect(result).toEqual({ sent: 0, failed: 0, pruned: 0 });
@@ -629,7 +699,12 @@ describe("NotificationsService", () => {
       withFirebaseApp();
       mockPrisma.deviceToken.findMany.mockResolvedValue([{ token: "t1" }]);
 
-      await service.sendToUser("u1", "Titre", "Corps");
+      await service.sendToUser(
+        "u1",
+        NotificationType.REGISTRATION_STATUS,
+        "Titre",
+        "Corps",
+      );
 
       expect(mockPrisma.deviceToken.findMany).toHaveBeenCalledWith({
         where: { userId: "u1" },
@@ -646,9 +721,13 @@ describe("NotificationsService", () => {
         { token: "t2" },
       ]);
 
-      const result = await service.sendToUser("u1", "Titre", "Corps", {
-        k: "v",
-      });
+      const result = await service.sendToUser(
+        "u1",
+        NotificationType.REGISTRATION_STATUS,
+        "Titre",
+        "Corps",
+        { k: "v" },
+      );
 
       expect(sendMock()).toHaveBeenCalledTimes(2);
       expect(sendMock()).toHaveBeenCalledWith({
@@ -664,7 +743,12 @@ describe("NotificationsService", () => {
       (service as unknown as { firebaseApp: App | null }).firebaseApp = null;
       mockPrisma.deviceToken.findMany.mockResolvedValue([{ token: "t1" }]);
 
-      const result = await service.sendToUser("u1", "Titre", "Corps");
+      const result = await service.sendToUser(
+        "u1",
+        NotificationType.REGISTRATION_STATUS,
+        "Titre",
+        "Corps",
+      );
 
       expect(sendMock()).not.toHaveBeenCalled();
       expect(result).toEqual({ sent: 0, failed: 0, pruned: 0 });
@@ -697,7 +781,12 @@ describe("NotificationsService", () => {
       });
       mockPrisma.deviceToken.deleteMany.mockResolvedValue({ count: 2 });
 
-      const result = await service.sendToUser("u1", "Titre", "Corps");
+      const result = await service.sendToUser(
+        "u1",
+        NotificationType.REGISTRATION_STATUS,
+        "Titre",
+        "Corps",
+      );
 
       expect(mockPrisma.deviceToken.deleteMany).toHaveBeenCalledWith({
         where: { token: { in: ["uninstalled", "revoked"] } },
@@ -710,7 +799,12 @@ describe("NotificationsService", () => {
       mockPrisma.deviceToken.findMany.mockResolvedValue([{ token: "t1" }]);
       sendMock().mockRejectedValue("boom");
 
-      const result = await service.sendToUser("u1", "Titre", "Corps");
+      const result = await service.sendToUser(
+        "u1",
+        NotificationType.REGISTRATION_STATUS,
+        "Titre",
+        "Corps",
+      );
 
       expect(result).toEqual({ sent: 0, failed: 1, pruned: 0 });
       expect(mockPrisma.deviceToken.deleteMany).not.toHaveBeenCalled();
@@ -727,7 +821,12 @@ describe("NotificationsService", () => {
         ),
       );
 
-      const result = await service.sendToUser("u1", "Titre", "Corps");
+      const result = await service.sendToUser(
+        "u1",
+        NotificationType.REGISTRATION_STATUS,
+        "Titre",
+        "Corps",
+      );
 
       expect(result).toEqual({ sent: 0, failed: 1, pruned: 0 });
       // Le feed in-app reste alimenté : c'est la partie qui compte.
@@ -742,7 +841,12 @@ describe("NotificationsService", () => {
       // suspendue sur autant d'appels sortants qu'il y a d'appareils.
       sendMock().mockReturnValue(new Promise(() => undefined));
 
-      const pending = service.sendToUser("u1", "Titre", "Corps");
+      const pending = service.sendToUser(
+        "u1",
+        NotificationType.REGISTRATION_STATUS,
+        "Titre",
+        "Corps",
+      );
       await jest.advanceTimersByTimeAsync(5_000);
 
       await expect(pending).resolves.toEqual({
@@ -760,9 +864,14 @@ describe("NotificationsService", () => {
         new Error("Can't reach database server"),
       );
 
-      await expect(service.sendToUser("u1", "Titre", "Corps")).resolves.toEqual(
-        { sent: 0, failed: 0, pruned: 0 },
-      );
+      await expect(
+        service.sendToUser(
+          "u1",
+          NotificationType.REGISTRATION_STATUS,
+          "Titre",
+          "Corps",
+        ),
+      ).resolves.toEqual({ sent: 0, failed: 0, pruned: 0 });
       expect(mockPrisma.notification.create).toHaveBeenCalled();
     });
 
@@ -773,9 +882,135 @@ describe("NotificationsService", () => {
         new Error("Can't reach database server"),
       );
 
-      await expect(service.sendToUser("u1", "Titre", "Corps")).rejects.toThrow(
-        "Can't reach database server",
-      );
+      await expect(
+        service.sendToUser(
+          "u1",
+          NotificationType.REGISTRATION_STATUS,
+          "Titre",
+          "Corps",
+        ),
+      ).rejects.toThrow("Can't reach database server");
+    });
+
+    // ── Préférences par type (issue #37) ─────────────────────────────────────
+
+    describe("filtrage par préférence", () => {
+      beforeEach(() => {
+        withFirebaseApp();
+        mockPrisma.deviceToken.findMany.mockResolvedValue([{ token: "t1" }]);
+      });
+
+      it("coupe la push du type refusé MAIS écrit le feed in-app", async () => {
+        // Critère d'acceptation central de l'issue #37 : couper un type rend le
+        // téléphone silencieux, jamais la cloche. L'historique ne doit pas
+        // dépendre d'un réglage d'envoi.
+        mockPreferences.isPushEnabled.mockResolvedValue(false);
+
+        const result = await service.sendToUser(
+          "u1",
+          NotificationType.REGISTRATION_STATUS,
+          "Titre",
+          "Corps",
+          { k: "v" },
+        );
+
+        expect(mockPrisma.notification.create).toHaveBeenCalledWith({
+          data: {
+            userId: "u1",
+            type: NotificationType.REGISTRATION_STATUS,
+            title: "Titre",
+            body: "Corps",
+            data: { k: "v" },
+          },
+        });
+        expect(sendMock()).not.toHaveBeenCalled();
+        expect(result).toEqual({ sent: 0, failed: 0, pruned: 0 });
+      });
+
+      it("ne lit même pas les appareils d'un type refusé", async () => {
+        mockPreferences.isPushEnabled.mockResolvedValue(false);
+
+        await service.sendToUser(
+          "u1",
+          NotificationType.NEW_COMPETITION,
+          "Titre",
+          "Corps",
+        );
+
+        expect(mockPrisma.deviceToken.findMany).not.toHaveBeenCalled();
+      });
+
+      it("envoie la push quand le type est accepté", async () => {
+        mockPreferences.isPushEnabled.mockResolvedValue(true);
+
+        const result = await service.sendToUser(
+          "u1",
+          NotificationType.REGISTRATION_STATUS,
+          "Titre",
+          "Corps",
+        );
+
+        expect(sendMock()).toHaveBeenCalledTimes(1);
+        expect(result).toEqual({ sent: 1, failed: 0, pruned: 0 });
+      });
+
+      it("confronte la préférence du bon destinataire et du bon type", async () => {
+        mockPreferences.isPushEnabled.mockResolvedValue(true);
+
+        await service.sendToUser(
+          "u42",
+          NotificationType.CLUB_PARTNERSHIP,
+          "Titre",
+          "Corps",
+        );
+
+        expect(mockPreferences.isPushEnabled).toHaveBeenCalledWith(
+          "u42",
+          NotificationType.CLUB_PARTNERSHIP,
+        );
+      });
+
+      it("consulte la préférence APRÈS avoir écrit le feed", async () => {
+        // L'ordre est le cœur du critère d'acceptation : si la lecture passait
+        // d'abord et levait, le feed serait perdu.
+        const order: string[] = [];
+        mockPrisma.notification.create.mockImplementation(() => {
+          order.push("feed");
+          return Promise.resolve({});
+        });
+        mockPreferences.isPushEnabled.mockImplementation(() => {
+          order.push("preference");
+          return Promise.resolve(false);
+        });
+
+        await service.sendToUser(
+          "u1",
+          NotificationType.REGISTRATION_STATUS,
+          "Titre",
+          "Corps",
+        );
+
+        expect(order).toEqual(["feed", "preference"]);
+      });
+
+      it("échoue fermé : une préférence illisible n'envoie pas, et ne lève pas", async () => {
+        // Envoyer sans avoir pu vérifier le consentement coûterait plus cher
+        // qu'une push perdue — le contenu reste dans la cloche.
+        mockPreferences.isPushEnabled.mockRejectedValue(
+          new Error("Can't reach database server"),
+        );
+
+        const result = await service.sendToUser(
+          "u1",
+          NotificationType.REGISTRATION_STATUS,
+          "Titre",
+          "Corps",
+        );
+
+        expect(sendMock()).not.toHaveBeenCalled();
+        expect(result).toEqual({ sent: 0, failed: 0, pruned: 0 });
+        expect(mockPrisma.notification.create).toHaveBeenCalled();
+      });
     });
   });
 });

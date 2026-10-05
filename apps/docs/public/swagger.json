@@ -13248,6 +13248,411 @@
         "tags": ["Notifications"]
       }
     },
+    "/notifications/preferences": {
+      "get": {
+        "description": "Un élément par type réglable CONCERNANT LE RÔLE de l'appelant, dans l'ordre d'affichage : un licencié ne se voit pas proposer les notifications réservées aux gestionnaires de club ou à la modération. `enabled` vaut le choix enregistré s'il existe, le défaut documenté sinon — un compte qui n'a jamais ouvert ses réglages n'a aucune ligne en base. Les réglages d'un type devenu hors périmètre sont conservés et réapparaissent si le rôle le redevient.",
+        "operationId": "NotificationsController_getMyPreferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Catalogue des préférences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NotificationPreferenceDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Catalogue des préférences de notification de l'utilisateur",
+        "tags": ["Notifications"]
+      },
+      "patch": {
+        "description": "Idempotent. N'affecte que les notifications push : le feed in-app (la cloche) continue d'être alimenté pour tous les types. Un type non réglable est refusé (400), un type qui ne concerne pas le rôle de l'appelant également (403).",
+        "operationId": "NotificationsController_updateMyPreference",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNotificationPreferenceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Préférence enregistrée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationPreferenceDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Règle la réception des push d'un type de notification",
+        "tags": ["Notifications"]
+      }
+    },
     "/notifications/device-token": {
       "post": {
         "description": "Appelé par le client à l'ouverture de session et au renouvellement du token FCM. Idempotent : l'upsert se fait sur le token, qui est ré-attribué à l'utilisateur authentifié s'il était lié à un autre compte (appareil partagé ou revendu). Limité à 5 appels par minute et par utilisateur ; au-delà de 20 appareils, les plus anciens (lastSeenAt) sont supprimés.",
@@ -15923,6 +16328,66 @@
           }
         },
         "required": ["password"]
+      },
+      "NotificationPreferenceDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "REGISTRATION_STATUS",
+              "COMPETITION_RESULTS",
+              "NEW_COMPETITION",
+              "CLUB_MEMBER_REGISTRATION",
+              "CLUB_PARTNERSHIP",
+              "TRACK_REPORT",
+              "DIAGNOSTIC_TEST"
+            ],
+            "description": "Type d'événement",
+            "example": "REGISTRATION_STATUS"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "État effectif : le choix enregistré s'il existe, le défaut documenté sinon",
+            "example": true
+          },
+          "label": {
+            "type": "string",
+            "description": "Libellé court de l'interrupteur",
+            "example": "Mes inscriptions"
+          },
+          "description": {
+            "type": "string",
+            "description": "Quand cette notification arrive, du point de vue utilisateur",
+            "example": "Quand votre inscription à une épreuve est enregistrée, validée, refusée ou annulée par votre club."
+          }
+        },
+        "required": ["type", "enabled", "label", "description"]
+      },
+      "UpdateNotificationPreferenceDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "REGISTRATION_STATUS",
+              "COMPETITION_RESULTS",
+              "NEW_COMPETITION",
+              "CLUB_MEMBER_REGISTRATION",
+              "CLUB_PARTNERSHIP",
+              "TRACK_REPORT",
+              "DIAGNOSTIC_TEST"
+            ],
+            "description": "Type d'événement à régler, tel que renvoyé par GET /notifications/preferences",
+            "example": "NEW_COMPETITION"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "true pour recevoir les notifications push de ce type",
+            "example": false
+          }
+        },
+        "required": ["type", "enabled"]
       },
       "RegisterDeviceTokenDto": {
         "type": "object",

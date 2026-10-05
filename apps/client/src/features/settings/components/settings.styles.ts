@@ -117,6 +117,11 @@ export const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
+  // Libellé + sous-titre empilés à droite de l'icône. `flexShrink` est requis :
+  // sans lui une description longue pousse l'interrupteur hors de l'écran.
+  rowTextContent: {
+    flexShrink: 1,
+  },
   rowRight: {
     flexDirection: "row",
     alignItems: "center",
