@@ -1,6 +1,6 @@
 import { HttpException, NotFoundException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
-import { TrackStatus } from "@prisma/client";
+import { NotificationType, TrackStatus } from "@prisma/client";
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -378,12 +378,14 @@ describe("TracksService", () => {
       expect(mockNotifications.createForUser).toHaveBeenCalledTimes(2);
       expect(mockNotifications.createForUser).toHaveBeenCalledWith(
         "admin-1",
+        NotificationType.TRACK_REPORT,
         "Signalement musique",
         "«My Song» — MPM signalé",
         { trackId: "track-1", reason: "MPM", reporterId: "reporter-9" },
       );
       expect(mockNotifications.createForUser).toHaveBeenCalledWith(
         "admin-2",
+        NotificationType.TRACK_REPORT,
         "Signalement musique",
         "«My Song» — MPM signalé",
         expect.objectContaining({ trackId: "track-1" }),
@@ -409,6 +411,7 @@ describe("TracksService", () => {
 
       expect(mockNotifications.createForUser).toHaveBeenCalledWith(
         "admin-1",
+        NotificationType.TRACK_REPORT,
         "Signalement musique",
         "«My Song» — Clash paso doble signalé : appel décalé",
         expect.any(Object),

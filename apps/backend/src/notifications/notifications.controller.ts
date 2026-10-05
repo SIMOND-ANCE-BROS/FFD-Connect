@@ -17,29 +17,33 @@ import {
   ApiOperation,
   ApiResponse,
 } from "@nestjs/swagger";
+import { NotificationType } from "@prisma/client";
 import { Throttle } from "@nestjs/throttler";
-import { Request as ExpressRequest } from "express";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
+import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import {
   RegisterDeviceTokenDto,
   UnregisterDeviceTokenDto,
 } from "./dto/device-token.dto";
+import {
+  NotificationPreferenceDto,
+  UpdateNotificationPreferenceDto,
+} from "./dto/notification-preference.dto";
+import { NotificationPreferencesQueryService } from "./notification-preferences.query-service";
+import { NotificationPreferencesService } from "./notification-preferences.service";
 import { NotificationsService } from "./notifications.service";
-
-interface RequestWithUser extends ExpressRequest {
-  user: {
-    userId: string;
-    email: string;
-  };
-}
 
 @ApiCommonErrorResponses()
 @Controller("notifications")
 @UseGuards(JwtAuthGuard)
 export class NotificationsController {
-  constructor(private readonly notificationsService: NotificationsService) {}
+  constructor(
+    private readonly notificationsService: NotificationsService,
+    private readonly preferencesQueryService: NotificationPreferencesQueryService,
+    private readonly preferencesService: NotificationPreferencesService,
+  ) {}
 
   @Get()
   async getMyNotifications(@Request() req: RequestWithUser) {
@@ -92,9 +96,77 @@ export class NotificationsController {
   async sendTestNotification(@Request() req: RequestWithUser) {
     return this.notificationsService.sendToUser(
       req.user.userId,
+      NotificationType.DIAGNOSTIC_TEST,
       "Test de notification",
       "Si vous voyez ceci, les notifications push fonctionnent sur cet appareil.",
       { type: "test" },
+    );
+  }
+
+  // ─── Préférences de notification ───────────────────────────────────────────
+
+  /**
+   * Catalogue des types réglables qui concernent l'appelant, avec l'état
+   * effectif de chacun et sa copie en français.
+   *
+   * Libellés ET périmètre de rôle sont résolus ici, pour que l'écran de
+   * réglages se contente de dérouler la réponse : il ne connaît ni l'enum ni
+   * les rôles. Un type ajouté plus tard, ou un périmètre modifié, s'applique
+   * sans publier de nouvelle version de l'application mobile.
+   */
+  @Get("preferences")
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Catalogue des préférences de notification de l'utilisateur",
+    description:
+      "Un élément par type réglable CONCERNANT LE RÔLE de l'appelant, dans l'ordre d'affichage : un licencié ne se voit pas proposer les notifications réservées aux gestionnaires de club ou à la modération. `enabled` vaut le choix enregistré s'il existe, le défaut documenté sinon — un compte qui n'a jamais ouvert ses réglages n'a aucune ligne en base. Les réglages d'un type devenu hors périmètre sont conservés et réapparaissent si le rôle le redevient.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Catalogue des préférences",
+    type: [NotificationPreferenceDto],
+  })
+  async getMyPreferences(
+    @Request() req: RequestWithUser,
+  ): Promise<NotificationPreferenceDto[]> {
+    return this.preferencesQueryService.getCatalogForUser(
+      req.user.userId,
+      req.user.role,
+    );
+  }
+
+  /**
+   * Bascule un interrupteur de l'écran de réglages.
+   *
+   * Limité à 30 appels par minute et par utilisateur : largement au-dessus
+   * d'un passage sur l'écran de réglages (un appel par interrupteur basculé),
+   * mais le point d'écriture mérite une borne propre — le throttle global
+   * (100 req/min) couvre toute l'API, pas ce seul endpoint.
+   */
+  @Patch("preferences")
+  @UseGuards(JwtAuthGuard, ThrottlerUserGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Règle la réception des push d'un type de notification",
+    description:
+      "Idempotent. N'affecte que les notifications push : le feed in-app (la cloche) continue d'être alimenté pour tous les types. Un type non réglable est refusé (400), un type qui ne concerne pas le rôle de l'appelant également (403).",
+  })
+  @ApiBody({ type: UpdateNotificationPreferenceDto })
+  @ApiResponse({
+    status: 200,
+    description: "Préférence enregistrée",
+    type: NotificationPreferenceDto,
+  })
+  async updateMyPreference(
+    @Body() dto: UpdateNotificationPreferenceDto,
+    @Request() req: RequestWithUser,
+  ): Promise<NotificationPreferenceDto> {
+    return this.preferencesService.setPreference(
+      req.user.userId,
+      req.user.role,
+      dto.type,
+      dto.enabled,
     );
   }
 

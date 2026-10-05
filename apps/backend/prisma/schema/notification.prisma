@@ -1,8 +1,90 @@
+/// Catalogue des événements notifiables.
+///
+/// Une valeur = une décision que l'utilisateur peut prendre dans ses réglages,
+/// pas un libellé de notification : plusieurs messages d'un même producteur
+/// partagent le même type dès qu'ils se règlent ensemble (le cycle de vie d'une
+/// inscription, par exemple, n'a aucun sens découpé en six interrupteurs).
+///
+/// L'ORDRE DE DÉCLARATION EST L'ORDRE D'AFFICHAGE côté client : l'endpoint
+/// GET /notifications/preferences renvoie le catalogue dans cet ordre, l'écran
+/// de réglages se contente de le dérouler (cf. `notification-catalog.ts`).
+enum NotificationType {
+  /// Le cycle de vie de MA propre inscription à une épreuve : inscrit par le
+  /// club, en attente, confirmée automatiquement, validée ou refusée par le
+  /// club, désinscrit par le club.
+  REGISTRATION_STATUS
+
+  /// Les résultats d'une compétition À LAQUELLE JE SUIS INSCRIT sont publiés.
+  COMPETITION_RESULTS
+
+  /// Une nouvelle compétition correspondant à mon profil est ouverte.
+  /// Diffusion : un même message part vers tous les licenciés éligibles.
+  NEW_COMPETITION
+
+  /// Un licencié de MON club s'inscrit, voit son inscription passer en attente
+  /// ou se désinscrit. Destiné aux gestionnaires de club.
+  CLUB_MEMBER_REGISTRATION
+
+  /// Cycle de vie d'un couple inter-club impliquant MON club : demande à
+  /// valider, acceptation, refus, clôture. Destiné aux gestionnaires de club.
+  CLUB_PARTNERSHIP
+
+  /// Un utilisateur signale une musique. Destiné aux administrateurs.
+  TRACK_REPORT
+
+  /// Notification de diagnostic déclenchée par l'utilisateur lui-même
+  /// (POST /notifications/test). NON RÉGLABLE : la couper rendrait le
+  /// diagnostic menteur — il renverrait `sent: 0`, le symptôme exact qu'il sert
+  /// à distinguer. Absente du catalogue renvoyé par l'API.
+  DIAGNOSTIC_TEST
+}
+
+/// Préférence explicite d'un utilisateur pour un type de notification.
+///
+/// L'ABSENCE DE LIGNE EST LE CAS NORMAL, pas une anomalie : elle signifie
+/// « défaut du catalogue » (`notification-catalog.ts`). Aucune ligne n'est
+/// créée à l'inscription, et la migration qui a introduit cette table n'en a
+/// rétro-créé aucune — un compte existant se comporte donc exactement comme un
+/// compte neuf, sans migration de données.
+///
+/// Une ligne n'apparaît qu'au premier basculement d'interrupteur, et porte
+/// alors un choix explicite : `enabled` n'a volontairement pas de valeur par
+/// défaut en base.
+model NotificationPreference {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  /// Choix explicite de l'utilisateur. Sans défaut : une ligne sans décision
+  /// n'aurait pas de raison d'exister.
+  enabled   Boolean
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Porte à la fois l'unicité (une seule décision par type et par utilisateur,
+  // sur laquelle s'appuie l'upsert) et la lecture du catalogue d'un
+  // utilisateur : l'index b-tree composite sert aussi les requêtes préfixées
+  // par `userId`, un `@@index([userId])` séparé ne ferait que doubler l'écriture.
+  @@unique([userId, type])
+}
+
 model Notification {
   id        String   @id @default(uuid())
   userId    String?
   title     String
   body      String
+  /// Type d'événement, source de vérité du filtrage des push.
+  ///
+  /// NULLABLE PAR NÉCESSITÉ, pas par négligence : la colonne a été ajoutée à
+  /// une table déjà peuplée et la migration doit rester additive (ADR-0017 —
+  /// déploiement single-revision avec rollback automatique). Les notifications
+  /// antérieures n'ont réellement pas de type ; leur en inventer un par
+  /// `@default` réécrirait l'historique. Tous les producteurs en passent un.
+  ///
+  /// Ne pas confondre avec la clé `type` du payload `data`, qui reste plus fine
+  /// (elle distingue par exemple « inscription validée » de « refusée ») et
+  /// sert au routage du deep-link côté client.
+  type      NotificationType?
   data      Json?
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
