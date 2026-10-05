@@ -77,9 +77,18 @@ jobs:
               echo "PR: $PR_URL"
               gh pr merge --auto --merge "$PR_URL" 2>/dev/null || echo "Auto-merge already enabled or not available"
             else
-              echo "::warning::Could not find or create PR for $SOURCE → $TARGET"
+              # A warning let the job exit 0: the workflow reported itself
+              # healthy while producing nothing, and the drift ran for three
+              # months unnoticed — 17 promotion merges never came back down to
+              # develop (#45). A merge-back that produces no PR is a failure.
+              echo "::error::Could not find or create PR for $SOURCE -> $TARGET"
+              echo "::error::Most likely cause: the organisation forbids GitHub Actions from creating pull requests (org Settings -> Actions -> General -> Workflow permissions). A repository-level override is refused with HTTP 409."
+              echo "::error::Until then, cascade by hand: gh pr create --base $TARGET --head $SOURCE"
+              FAILED=1
             fi
           }
+
+          FAILED=0
 
           case "$BRANCH" in
             master)
@@ -90,3 +99,7 @@ jobs:
               create_merge_pr "staging" "develop"
               ;;
           esac
+
+          if [ "$FAILED" -ne 0 ]; then
+            exit 1
+          fi
