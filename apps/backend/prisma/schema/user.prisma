@@ -41,6 +41,7 @@ model User {
   license              License?
   licenseRenewalRequests LicenseRenewalRequest[]
   notifications        Notification[]
+  notificationPrefs    NotificationPreference[]
   deviceTokens         DeviceToken[]
   refreshTokens        RefreshToken[]
   registrations        Registration[]

@@ -520,6 +520,30 @@ describe("UsersService", () => {
       expect(deviceTokens.take).toBe(50);
     });
 
+    it("exporte les préférences de notification réellement enregistrées", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+
+      await service.exportMyData("u1");
+
+      const select = prisma.user.findUnique.mock.calls[0][0]?.select as Record<
+        string,
+        unknown
+      >;
+      const prefs = select.notificationPrefs as {
+        select: Record<string, unknown>;
+        take: number;
+      };
+      // Un réglage de notification est une donnée personnelle (art. 15). Seuls
+      // les choix explicites existent en base : l'absence de ligne signifie
+      // « défaut du catalogue », l'export n'a donc rien à inventer.
+      expect(prefs.select).toEqual({
+        type: true,
+        enabled: true,
+        updatedAt: true,
+      });
+      expect(prefs.take).toBe(50);
+    });
+
     it("rejette en NotFound si l'utilisateur n'existe pas", async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 

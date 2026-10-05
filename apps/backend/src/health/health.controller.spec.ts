@@ -45,7 +45,15 @@ describe("HealthController", () => {
         uptime: 3600,
         database: { status: "ok" as const, responseTime: 1 },
         redis: { status: "ok" as const, responseTime: 2 },
-        memory: { used: 50e6, total: 128e6, percentage: 39 },
+        memory: {
+          rss: 82837504,
+          limit: 1073741824,
+          limitSource: "cgroup" as const,
+          rssPercentOfLimit: 7.7,
+          heapUsed: 78993784,
+          heapTotal: 84381696,
+          heapUsedPercentOfHeapTotal: 93.6,
+        },
       };
       mockHealthService.check.mockResolvedValue(mockStatus);
       const res = makeRes();
@@ -64,7 +72,15 @@ describe("HealthController", () => {
         uptime: 3600,
         database: { status: "error" as const, error: "connection refused" },
         redis: { status: "error" as const, error: "connection refused" },
-        memory: { used: 50e6, total: 128e6, percentage: 39 },
+        memory: {
+          rss: 82837504,
+          limit: 1073741824,
+          limitSource: "cgroup" as const,
+          rssPercentOfLimit: 7.7,
+          heapUsed: 78993784,
+          heapTotal: 84381696,
+          heapUsedPercentOfHeapTotal: 93.6,
+        },
       };
       mockHealthService.check.mockResolvedValue(mockStatus);
       const res = makeRes();
@@ -82,7 +98,15 @@ describe("HealthController", () => {
         uptime: 3600,
         database: { status: "ok" as const, responseTime: 1 },
         redis: { status: "error" as const, error: "connection refused" },
-        memory: { used: 50e6, total: 128e6, percentage: 39 },
+        memory: {
+          rss: 82837504,
+          limit: 1073741824,
+          limitSource: "cgroup" as const,
+          rssPercentOfLimit: 7.7,
+          heapUsed: 78993784,
+          heapTotal: 84381696,
+          heapUsedPercentOfHeapTotal: 93.6,
+        },
       };
       mockHealthService.check.mockResolvedValue(mockStatus);
       const res = makeRes();

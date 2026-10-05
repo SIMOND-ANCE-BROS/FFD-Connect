@@ -5,6 +5,7 @@
 
 // Polyfills first — must execute before react-native/expo imports.
 import "./polyfills";
+import React from "react";
 import { registerRootComponent } from "expo";
 import { Platform } from "react-native";
 import * as Sentry from "@sentry/react-native";
@@ -156,4 +157,17 @@ const Root =
   sentryDsn && !sentryDisabled && Platform.OS !== "web"
     ? Sentry.wrap(App)
     : App;
-registerRootComponent(Root);
+
+// iOS may launch the app in the background to deliver a data-only
+// (content-available) push. That launch loads the JS bundle so the background
+// handler registered above can run — but it has no reason to mount the whole
+// React tree out of the user's sight. `isHeadless` is seeded into the initial
+// props by plugins/withFirebaseHeadlessLaunch.js; it is simply absent on every
+// other platform and on normal launches, so this returns <Root /> as before.
+// No JSX here: index.js is plain .js and deliberately stays transform-agnostic.
+function HeadlessAwareRoot(props) {
+  if (props && props.isHeadless) return null;
+  return React.createElement(Root, props);
+}
+
+registerRootComponent(HeadlessAwareRoot);

@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { RegistrationStatus, UserRole } from "@prisma/client";
+import { NotificationType, RegistrationStatus, UserRole } from "@prisma/client";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
 
@@ -58,6 +58,7 @@ export class RegistrationNotificationService {
     if (byOrganizer) {
       await this.notificationsService.createForUser(
         registration.userId,
+        NotificationType.REGISTRATION_STATUS,
         "Inscription par le club",
         `Le club vous a inscrit à "${compTitle}" - ${eventLabel}.`,
         {
@@ -78,6 +79,7 @@ export class RegistrationNotificationService {
     if (initialStatus === RegistrationStatus.CONFIRMED) {
       await this.notificationsService.createForUser(
         registration.userId,
+        NotificationType.REGISTRATION_STATUS,
         "Inscription validée",
         `Votre inscription à "${compTitle}" - ${eventLabel} est confirmée.`,
         {
@@ -101,6 +103,7 @@ export class RegistrationNotificationService {
     } else {
       await this.notificationsService.createForUser(
         registration.userId,
+        NotificationType.REGISTRATION_STATUS,
         "Inscription en attente",
         `Votre inscription à "${compTitle}" - ${eventLabel} est en attente de validation par votre club.`,
         {
@@ -141,6 +144,7 @@ export class RegistrationNotificationService {
       const wasPending = registration.status === RegistrationStatus.PENDING;
       await this.notificationsService.createForUser(
         registration.userId,
+        NotificationType.REGISTRATION_STATUS,
         wasPending
           ? "Inscription refusée par le club"
           : "Désinscription par le club",
@@ -197,6 +201,7 @@ export class RegistrationNotificationService {
 
     await this.notificationsService.sendToUser(
       registration.userId,
+      NotificationType.REGISTRATION_STATUS,
       "Inscription validée par le club",
       `Votre inscription à "${compTitle}" - ${eventLabel} a été validée par le club.`,
       {
@@ -243,6 +248,7 @@ export class RegistrationNotificationService {
       organizers.map((o) =>
         this.notificationsService.createForUser(
           o.id,
+          NotificationType.CLUB_MEMBER_REGISTRATION,
           notification.title,
           notification.body,
           data,

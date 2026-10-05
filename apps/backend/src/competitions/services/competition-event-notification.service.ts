@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { UserRole } from "@prisma/client";
+import { NotificationType, UserRole } from "@prisma/client";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { getErrorMessage, getErrorStack } from "../../utils/error.utils";
@@ -115,6 +115,7 @@ export class CompetitionEventNotificationService {
 
       await this.notificationsService.createManyForUsers(
         eligibleIds,
+        NotificationType.NEW_COMPETITION,
         title,
         body,
         {
@@ -164,6 +165,7 @@ export class CompetitionEventNotificationService {
 
       await this.notificationsService.createManyForUsers(
         participantIds,
+        NotificationType.COMPETITION_RESULTS,
         title,
         body,
         {

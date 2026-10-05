@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 # Nightly dependency security audit.
 #
 # Why this exists: dependabot.yml `ignore` rules suppress SECURITY update PRs

@@ -5,7 +5,12 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma, TrackStatus, UserRole } from "@prisma/client";
+import {
+  NotificationType,
+  Prisma,
+  TrackStatus,
+  UserRole,
+} from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
@@ -103,6 +108,7 @@ export class TracksService {
       admins.map((admin) =>
         this.notificationsService.createForUser(
           admin.id,
+          NotificationType.TRACK_REPORT,
           "Signalement musique",
           body,
           { trackId, reason, reporterId },

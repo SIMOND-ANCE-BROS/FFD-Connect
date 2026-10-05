@@ -78,6 +78,11 @@ updates:
       # LIFT THIS with the '@babel/core' floor, once babel-jest supports Babel 8.
       - dependency-name: '@stryker-mutator/*'
         update-types: ['version-update:semver-major']
+      # jest is locked to 29 by jest-expo (packages/jest-config serves backend
+      # AND client); @types/jest 30 desyncs the types. Same rule as the client
+      # block. LIFT THIS with Expo SDK 58 (FFD-Connect-archive#750).
+      - dependency-name: '@types/jest'
+        update-types: ['version-update:semver-major']
     # Group families so peers move together (avoids partial NestJS/Sentry bumps).
     groups:
       # @nestjs/bullmq bumps here while bullmq itself flows to the catch-all —
@@ -305,6 +310,11 @@ updates:
     commit-message:
       prefix: 'chore(landing)'
       include: 'scope'
+    # TypeScript 7 (native compiler) is a deliberate monorepo-wide migration,
+    # not a per-package bump — see the NestJS 12 note in the backend block.
+    ignore:
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
     # One weekly PR for all minor/patch bumps; majors stay individual on purpose.
     groups:
       landing-minor-patch:
@@ -328,6 +338,11 @@ updates:
     commit-message:
       prefix: 'chore(shared)'
       include: 'scope'
+    # Shared types are compiled by backend and client: a TypeScript major here
+    # must move with the whole monorepo (see the landing block).
+    ignore:
+      - dependency-name: 'typescript'
+        update-types: ['version-update:semver-major']
     groups:
       shared-minor-patch:
         patterns: ['*']
