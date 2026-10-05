@@ -50,6 +50,14 @@ module.exports = {
       lines: 85,
       statements: 85,
     },
+    // Pure, safety-critical helpers behind the minor/adult decision (#60):
+    // an uncovered branch here is a wrong answer about someone's age.
+    [srcDir("common", "birth-date")]: {
+      statements: 100,
+      branches: 100,
+      functions: 100,
+      lines: 100,
+    },
     [srcDir("common", "filters")]: {
       statements: 96,
       branches: 78,
