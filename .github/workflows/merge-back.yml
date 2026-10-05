@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: Merge Back
 
 # After a release lands on master (or a hotfix merges to staging/master),

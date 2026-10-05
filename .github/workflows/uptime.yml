@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: Uptime
 
 # External uptime probe for the backend /health endpoint.
