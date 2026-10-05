@@ -1,5 +1,24 @@
-# Other apps - not needed for client build
-apps/backend/
+# Other apps - not needed for client build.
+#
+# apps/backend is excluded DIRECTORY BY DIRECTORY so that its top-level files
+# stay in the archive — swagger.json above all. The client's postinstall
+# generates src/api/generated/ from that spec, and without it Metro fails with
+# "Unable to resolve module ../../../api/generated". Before #51 the generated
+# files were committed and travelled here; they no longer do, which is what
+# broke builds 83 and 16.
+#
+# Do NOT collapse this to `apps/backend/`, and do not try `apps/backend/*` with
+# a `!apps/backend/swagger.json` negation: measured with
+# `eas build:inspect --stage archive`, EAS does not implement gitignore
+# semantics — `/*` excludes files but not subdirectories, and the negation is
+# ignored outright.
+apps/backend/src/
+apps/backend/test/
+apps/backend/prisma/
+apps/backend/docs/
+apps/backend/scripts/
+apps/backend/dist/
+apps/backend/coverage/
 apps/landing/
 apps/docs/
 
