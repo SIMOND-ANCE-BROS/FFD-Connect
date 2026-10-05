@@ -97,7 +97,7 @@
     "@types/compression": "^1.7.5",
     "@types/express": "^5.0.0",
     "@types/fluent-ffmpeg": "^2.1.28",
-    "@types/jest": "^29.5.14",
+    "@types/jest": "^30.0.0",
     "@types/multer": "^2.2.0",
     "@types/node": "^26.6.3",
     "@types/opossum": "^8.1.9",
