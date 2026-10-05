@@ -215,6 +215,94 @@ describe("AuthService.register", () => {
       expect.objectContaining({ where: { email: "upper@example.com" } }),
     );
   });
+  describe("birthDate derived from the licence number (#60)", () => {
+    const createdUser = {
+      id: "user-1",
+      email: "new@example.com",
+      firstName: "",
+      lastName: "Dupont",
+      role: "LICENSEE",
+      clubId: null,
+      clubName: "Club Paris Danse",
+      category: "Latin",
+      ageGroup: null,
+      passportLevelLatin: null,
+      passportLevelStandard: null,
+    };
+
+    /** Registers against `number` and returns the `tx.user.create` mock. */
+    const registerWithLicenseNumber = async (number: string) => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.license.findUnique.mockResolvedValue({ ...validLicense, number });
+      const createMock = jest.fn().mockResolvedValue(createdUser);
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) =>
+          fn({
+            user: { create: createMock },
+            license: { update: jest.fn().mockResolvedValue({}) },
+          }),
+      );
+
+      await authService.register(
+        "new@example.com",
+        "MonPass1!abc",
+        number,
+        "Dupont",
+      );
+      return createMock;
+    };
+
+    const birthDateOf = (createMock: jest.Mock): unknown =>
+      createMock.mock.calls[0][0].data.birthDate;
+
+    it("stores the date encoded in a conforming number", async () => {
+      const createMock = await registerWithLicenseNumber("20051203-dup-ga42");
+
+      expect(birthDateOf(createMock)).toEqual(
+        new Date("2005-12-03T00:00:00.000Z"),
+      );
+    });
+
+    // Regression guard for #60: a number that does not carry a date must leave
+    // birthDate null. null means "we do not know" — never "adult" (see #61/#23).
+    it.each([
+      ["the test fixture number", "TEST-LICENSEE-001"],
+      ["a legacy-grammar number", "FFD-2025-001"],
+      ["an impossible encoded date", "20250231-dup-ga42"],
+    ])("leaves birthDate null for %s", async (_label, number) => {
+      const createMock = await registerWithLicenseNumber(number);
+
+      expect(birthDateOf(createMock)).toBe(null);
+    });
+
+    it("derives the date from the stored licence, not from user input", async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.license.findUnique.mockResolvedValue({
+        ...validLicense,
+        number: "20051203-dup-ga42",
+      });
+      const createMock = jest.fn().mockResolvedValue(createdUser);
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) =>
+          fn({
+            user: { create: createMock },
+            license: { update: jest.fn().mockResolvedValue({}) },
+          }),
+      );
+
+      await authService.register(
+        "new@example.com",
+        "MonPass1!abc",
+        "  20051203-DUP-GA42  ",
+        "Dupont",
+      );
+
+      expect(birthDateOf(createMock)).toEqual(
+        new Date("2005-12-03T00:00:00.000Z"),
+      );
+    });
+  });
+
   describe("BETA_AUTO_LICENSE (staging only)", () => {
     const createdUser = {
       id: "user-beta",
