@@ -4,7 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { PartnershipManagementMode, PartnershipStatus } from "@prisma/client";
+import {
+  NotificationType,
+  PartnershipManagementMode,
+  PartnershipStatus,
+} from "@prisma/client";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ClubsService } from "./clubs.service";
@@ -377,6 +381,7 @@ export class PartnershipService {
       organizers.map((o) =>
         this.notificationsService.createForUser(
           o.id,
+          NotificationType.CLUB_PARTNERSHIP,
           notification.title,
           notification.body,
           data,

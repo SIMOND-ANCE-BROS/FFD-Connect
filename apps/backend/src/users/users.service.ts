@@ -9,7 +9,10 @@ import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
-import { deviceTokenExportSelect } from "../utils/prisma-selects";
+import {
+  deviceTokenExportSelect,
+  notificationPreferenceExportSelect,
+} from "../utils/prisma-selects";
 
 /** Champs de base récupérés pour tout utilisateur. */
 const USER_BASE_SELECT = {
@@ -383,6 +386,15 @@ export class UsersService {
           orderBy: { lastSeenAt: "desc" },
           take: 50,
         },
+        // Réglages de notification explicitement enregistrés. L'absence de
+        // ligne n'est pas une donnée manquante : elle signifie « défaut du
+        // catalogue » (cf. notification-catalog.ts), ce que l'export reflète
+        // honnêtement en ne listant que les choix réellement exprimés.
+        notificationPrefs: {
+          select: notificationPreferenceExportSelect,
+          orderBy: { updatedAt: "desc" },
+          take: 50,
+        },
       },
     });
     if (!user) {
@@ -401,7 +413,8 @@ export class UsersService {
    * suffit pas), puis tout est supprimé en transaction.
    *
    * Cascades Prisma (schéma) : refreshTokens, passwordResetTokens,
-   * deviceTokens, partnerships, soloTeamMemberships, licenseRenewalRequests.
+   * deviceTokens, notificationPrefs, partnerships, soloTeamMemberships,
+   * licenseRenewalRequests.
    * SetNull : licence (reste propriété fédération), tracks soumis,
    * inscriptions en tant que partenaire.
    * Suppressions explicites (FK sans onDelete → RESTRICT) : registrations,

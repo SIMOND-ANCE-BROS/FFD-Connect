@@ -1,9 +1,16 @@
-import { NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { ThrottlerModule } from "@nestjs/throttler";
+import { NotificationType, UserRole } from "@prisma/client";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
+import { NotificationPreferencesQueryService } from "./notification-preferences.query-service";
+import { NotificationPreferencesService } from "./notification-preferences.service";
 import { NotificationsController } from "./notifications.controller";
 import { NotificationsService } from "./notifications.service";
 
@@ -19,11 +26,23 @@ describe("NotificationsController", () => {
     sendToUser: jest.fn(),
   };
 
+  const mockPreferencesQueryService = {
+    getCatalogForUser: jest.fn(),
+    isPushEnabled: jest.fn(),
+  };
+
+  const mockPreferencesService = {
+    setPreference: jest.fn(),
+  };
+
   const mockJwtAuthGuard = { canActivate: jest.fn().mockReturnValue(true) };
 
-  const makeRequest = (userId = "user-123"): RequestWithUser =>
+  const makeRequest = (
+    userId = "user-123",
+    role: string = UserRole.LICENSEE,
+  ): RequestWithUser =>
     ({
-      user: { userId, email: "user@test.com", role: "USER" },
+      user: { userId, email: "user@test.com", role },
     }) as RequestWithUser;
 
   beforeEach(async () => {
@@ -36,6 +55,14 @@ describe("NotificationsController", () => {
       controllers: [NotificationsController],
       providers: [
         { provide: NotificationsService, useValue: mockNotificationsService },
+        {
+          provide: NotificationPreferencesQueryService,
+          useValue: mockPreferencesQueryService,
+        },
+        {
+          provide: NotificationPreferencesService,
+          useValue: mockPreferencesService,
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -345,9 +372,10 @@ describe("NotificationsController", () => {
 
       expect(result).toEqual({ sent: 2, failed: 0, pruned: 0 });
       expect(mockNotificationsService.sendToUser).toHaveBeenCalledTimes(1);
-      const [userId, title, body, data] =
+      const [userId, type, title, body, data] =
         mockNotificationsService.sendToUser.mock.calls[0];
       expect(userId).toBe("user-abc");
+      expect(type).toBe(NotificationType.DIAGNOSTIC_TEST);
       expect(typeof title).toBe("string");
       expect(typeof body).toBe("string");
       expect(data).toEqual({ type: "test" });
@@ -371,6 +399,146 @@ describe("NotificationsController", () => {
       const result = await controller.sendTestNotification(makeRequest());
 
       expect(result).toEqual({ sent: 0, failed: 0, pruned: 0 });
+    });
+  });
+  // ─── Préférences de notification (issue #37) ─────────────────────────────────
+
+  describe("getMyPreferences", () => {
+    const catalog = [
+      {
+        type: NotificationType.REGISTRATION_STATUS,
+        enabled: true,
+        label: "Mes inscriptions",
+        description: "Quand votre inscription est validée.",
+      },
+    ];
+
+    it("renvoie le catalogue de l'utilisateur authentifié", async () => {
+      mockPreferencesQueryService.getCatalogForUser.mockResolvedValue(catalog);
+
+      const result = await controller.getMyPreferences(
+        makeRequest("user-77", UserRole.CLUB),
+      );
+
+      expect(result).toEqual(catalog);
+      // Le rôle vient du JWT, jamais d'un paramètre : c'est lui qui décide du
+      // périmètre renvoyé.
+      expect(
+        mockPreferencesQueryService.getCatalogForUser,
+      ).toHaveBeenCalledWith("user-77", UserRole.CLUB);
+    });
+
+    it("ne prend aucun paramètre de destinataire", () => {
+      // Les préférences sont des données personnelles : seule l'identité du JWT
+      // les désigne. Si un paramètre apparaît un jour, ce test force à y penser.
+      expect(controller.getMyPreferences.length).toBe(1);
+    });
+
+    it("renvoie libellés et descriptions, pour un écran piloté par le serveur", async () => {
+      mockPreferencesQueryService.getCatalogForUser.mockResolvedValue(catalog);
+
+      const [entry] = await controller.getMyPreferences(makeRequest());
+
+      expect(entry.label).toBe("Mes inscriptions");
+      expect(entry.description).toBe("Quand votre inscription est validée.");
+    });
+
+    it("propage les erreurs du service", async () => {
+      mockPreferencesQueryService.getCatalogForUser.mockRejectedValue(
+        new Error("db down"),
+      );
+
+      await expect(controller.getMyPreferences(makeRequest())).rejects.toThrow(
+        "db down",
+      );
+    });
+  });
+
+  describe("updateMyPreference", () => {
+    it("enregistre le choix pour l'utilisateur authentifié, jamais un userId du corps", async () => {
+      const updated = {
+        type: NotificationType.NEW_COMPETITION,
+        enabled: true,
+        label: "Nouvelles compétitions",
+        description: "Quand une compétition est ouverte.",
+      };
+      mockPreferencesService.setPreference.mockResolvedValue(updated);
+
+      const result = await controller.updateMyPreference(
+        { type: NotificationType.NEW_COMPETITION, enabled: true },
+        makeRequest("user-99", UserRole.LICENSEE),
+      );
+
+      expect(result).toEqual(updated);
+      expect(mockPreferencesService.setPreference).toHaveBeenCalledWith(
+        "user-99",
+        UserRole.LICENSEE,
+        NotificationType.NEW_COMPETITION,
+        true,
+      );
+    });
+
+    it("est limité à 30 appels par minute et par utilisateur", () => {
+      // Point d'écriture : le throttle global (100/min) couvre toute l'API, pas
+      // cet endpoint en particulier.
+      const handler = NotificationsController.prototype.updateMyPreference;
+
+      expect(Reflect.getMetadata("THROTTLER:LIMITdefault", handler)).toBe(30);
+      expect(Reflect.getMetadata("THROTTLER:TTLdefault", handler)).toBe(60_000);
+      // Comme pour device-token : la limite doit être comptée par utilisateur,
+      // pas par IP — plusieurs comptes partagent un réseau mobile.
+      const guards = Reflect.getMetadata("__guards__", handler) as unknown[];
+      expect(guards).toContain(ThrottlerUserGuard);
+    });
+
+    it("propage le refus d'un type non réglable", async () => {
+      mockPreferencesService.setPreference.mockRejectedValue(
+        new BadRequestException("non réglable"),
+      );
+
+      await expect(
+        controller.updateMyPreference(
+          { type: NotificationType.DIAGNOSTIC_TEST, enabled: false },
+          makeRequest(),
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("transmet le rôle du JWT, pas celui que le corps pourrait prétendre", async () => {
+      mockPreferencesService.setPreference.mockResolvedValue({
+        type: NotificationType.TRACK_REPORT,
+        enabled: true,
+        label: "Signalements de musique",
+        description: "Quand un utilisateur signale une musique.",
+      });
+
+      // Le DTO ne porte pas de `role` — et la ValidationPipe globale
+      // (forbidNonWhitelisted) rejetterait le champ s'il était envoyé. Le rôle
+      // transmis au service ne peut donc venir que du JWT.
+      await controller.updateMyPreference(
+        { type: NotificationType.TRACK_REPORT, enabled: true },
+        makeRequest("user-1", UserRole.ADMIN),
+      );
+
+      expect(mockPreferencesService.setPreference).toHaveBeenCalledWith(
+        "user-1",
+        UserRole.ADMIN,
+        NotificationType.TRACK_REPORT,
+        true,
+      );
+    });
+
+    it("propage le refus d'un type hors du périmètre du rôle", async () => {
+      mockPreferencesService.setPreference.mockRejectedValue(
+        new ForbiddenException("ne concerne pas votre profil"),
+      );
+
+      await expect(
+        controller.updateMyPreference(
+          { type: NotificationType.TRACK_REPORT, enabled: true },
+          makeRequest("user-1", UserRole.LICENSEE),
+        ),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

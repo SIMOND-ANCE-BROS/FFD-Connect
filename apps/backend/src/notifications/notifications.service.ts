@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import type { DevicePlatform } from "@prisma/client";
+import type { DevicePlatform, NotificationType } from "@prisma/client";
 import {
   cert,
   initializeApp,
@@ -21,6 +21,7 @@ import {
   deviceTokenPushSelect,
 } from "../utils/prisma-selects";
 import { withTimeout } from "../utils/timeout.utils";
+import { NotificationPreferencesQueryService } from "./notification-preferences.query-service";
 
 /**
  * Codes d'erreur FCM qui signifient « ce token est mort » (app désinstallée,
@@ -77,6 +78,7 @@ export class NotificationsService implements OnModuleInit {
     private configService: ConfigService,
     private prisma: PrismaService,
     private readonly circuitBreakerService: CircuitBreakerService,
+    private readonly preferences: NotificationPreferencesQueryService,
   ) {}
 
   /**
@@ -393,9 +395,19 @@ export class NotificationsService implements OnModuleInit {
   /**
    * Crée une notification pour un utilisateur (stockée en base, visible dans l'app).
    * Utilisé pour les notifications métier (inscriptions, validations, etc.).
+   *
+   * Le feed in-app n'est JAMAIS filtré par les préférences : `type` n'est ici
+   * qu'une étiquette, elle ne conditionne que la push (cf. `sendToUser`).
+   *
+   * @param userId - Destinataire
+   * @param type - Type d'événement du catalogue
+   * @param title - Titre affiché
+   * @param body - Corps du message
+   * @param data - Données additionnelles (routage du deep-link côté client)
    */
   async createForUser(
     userId: string,
+    type: NotificationType,
     title: string,
     body: string,
     data?: Record<string, string>,
@@ -403,6 +415,7 @@ export class NotificationsService implements OnModuleInit {
     return this.prisma.notification.create({
       data: {
         userId,
+        type,
         title,
         body,
         data: data ?? {},
@@ -417,6 +430,7 @@ export class NotificationsService implements OnModuleInit {
    */
   async createManyForUsers(
     userIds: string[],
+    type: NotificationType,
     title: string,
     body: string,
     data?: Record<string, string>,
@@ -425,6 +439,7 @@ export class NotificationsService implements OnModuleInit {
     return this.prisma.notification.createMany({
       data: userIds.map((userId) => ({
         userId,
+        type,
         title,
         body,
         data: data ?? {},
@@ -667,7 +682,12 @@ export class NotificationsService implements OnModuleInit {
    * in-app peut faire échouer l'appel — c'est la substitution exacte de
    * `createForUser`, que les producteurs métier appelaient jusqu'ici.
    *
+   * La préférence de l'utilisateur pour `type` n'arbitre QUE la push. Le feed
+   * in-app est écrit avant d'être consultée : couper un type réduit au silence
+   * le téléphone, jamais la cloche (critère d'acceptation de l'issue #37).
+   *
    * @param userId - Utilisateur destinataire
+   * @param type - Type d'événement du catalogue, confronté aux préférences
    * @param title - Titre de la notification
    * @param body - Corps du message
    * @param data - Données additionnelles optionnelles
@@ -677,6 +697,7 @@ export class NotificationsService implements OnModuleInit {
    * ```typescript
    * await notificationsService.sendToUser(
    *   'user-123',
+   *   NotificationType.REGISTRATION_STATUS,
    *   'Inscription confirmée',
    *   'Votre inscription à la compétition est validée',
    *   { competitionId: 'comp-123' },
@@ -685,22 +706,35 @@ export class NotificationsService implements OnModuleInit {
    */
   async sendToUser(
     userId: string,
+    type: NotificationType,
     title: string,
     body: string,
     data?: Record<string, string>,
   ): Promise<{ sent: number; failed: number; pruned: number }> {
-    // Le feed in-app est alimenté même sans appareil enregistré. C'est la partie
-    // qui compte : son échec remonte à l'appelant, comme celui de
-    // `createForUser` qu'elle remplace chez les producteurs.
-    await this.createForUser(userId, title, body, data);
+    // Le feed in-app est alimenté même sans appareil enregistré, et AVANT toute
+    // consultation des préférences. C'est la partie qui compte : son échec
+    // remonte à l'appelant, comme celui de `createForUser` qu'elle remplace
+    // chez les producteurs.
+    await this.createForUser(userId, type, title, body, data);
 
     try {
+      if (!(await this.preferences.isPushEnabled(userId, type))) {
+        this.logger.debug(
+          `Push suppressed for user ${userId} (${type} disabled); in-app feed written`,
+        );
+        return { sent: 0, failed: 0, pruned: 0 };
+      }
+
       return await this.pushToUserDevices(userId, title, body, data);
     } catch (error: unknown) {
       // Best-effort : l'envoi push ne doit JAMAIS faire échouer l'opération
       // métier qui l'a déclenchée (validation d'inscription, etc.). Les échecs
       // FCM unitaires sont déjà absorbés par `deliverToToken` ; ce filet couvre
-      // le reste (lecture des appareils, nettoyage).
+      // le reste (lecture des préférences, lecture des appareils, nettoyage).
+      //
+      // Une lecture de préférence en échec ne part donc PAS quand même : on
+      // échoue fermé. Envoyer sans avoir pu vérifier le consentement coûterait
+      // plus cher qu'une push perdue, dont le contenu reste dans la cloche.
       this.logger.error(
         `Push delivery failed for user ${userId}: ${getErrorMessage(error)}`,
         getErrorStack(error),
