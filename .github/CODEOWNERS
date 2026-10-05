@@ -1,17 +1,28 @@
-# Global owner — all files
-* @GabinSMD
+# Code owners — DELIBERATELY NOT a global rule.
+#
+# `* @GabinSMD` used to sit at the top. With a single maintainer and no branch
+# requiring reviews (develop, staging and master all have
+# required_pull_request_reviews disabled), it honoured nothing and requested a
+# review on every pull request — 26 of 50 unread notifications at the time this
+# was narrowed, Dependabot included.
+#
+# What remains covers the paths where an unreviewed change actually hurts, so
+# the file is ready the day required code-owner reviews are switched on — which
+# the public repository makes plausible once outside contributions arrive.
+# Until then these requests stay rare, because these paths rarely move.
 
-# Security-critical paths require explicit review
+# Security-critical
 apps/backend/src/auth/          @GabinSMD
 apps/backend/src/payment/       @GabinSMD
 apps/backend/src/main.ts        @GabinSMD
 
-# Infrastructure & CI
-.github/                        @GabinSMD
-docker-compose*.yml             @GabinSMD
-prisma/                         @GabinSMD
-infra/                          @GabinSMD
+# Data model: migrations run on container start and deploys roll back on failure
+apps/backend/prisma/            @GabinSMD
 
-# Mobile app config (native changes trigger full builds)
-apps/client/app.config.*        @GabinSMD
+# Infrastructure & secrets
+infra/                          @GabinSMD
+.github/workflows/              @GabinSMD
+
+# Mobile release identity: a mistake here ships to the stores
+apps/client/app.config.js       @GabinSMD
 apps/client/eas.json            @GabinSMD
