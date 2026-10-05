@@ -51,6 +51,11 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'package.json'
               - '.dockerignore'
+              # The backend image copies every workspace manifest to resolve the
+              # graph, so a change here can break its build — as apps/client's
+              # postinstall did. Without this line that PR skipped the check.
+              - 'apps/client/package.json'
+              - 'apps/landing/package.json'
             client:
               - 'apps/client/**'
               - 'packages/shared/**'
