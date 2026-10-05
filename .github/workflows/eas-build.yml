@@ -103,7 +103,13 @@ jobs:
 
           # Check if native files changed (require full build)
           NATIVE="false"
-          NATIVE_PATTERNS="^(apps/client/app\.config|apps/client/app\.json|apps/client/eas\.json|apps/client/package\.json|apps/client/(ios|android|plugins|modules)/|patches/|pnpm-lock\.yaml)"
+          # .easignore is not "native", but it decides WHAT REACHES EAS, so a
+          # change to it can break a build that an OTA would never exercise.
+          # It did on 2026-10-05: excluding apps/backend/ dropped swagger.json,
+          # the client SDK was never generated and Metro failed to resolve it.
+          # The fix then shipped with no native build to prove it, because this
+          # very list did not mention the file.
+          NATIVE_PATTERNS="^(apps/client/app\.config|apps/client/app\.json|apps/client/eas\.json|apps/client/package\.json|apps/client/\.easignore|apps/client/openapi-ts\.config|apps/client/(ios|android|plugins|modules)/|patches/|pnpm-lock\.yaml)"
           if echo "$CHANGED_FILES" | grep -qE "$NATIVE_PATTERNS"; then
             NATIVE="true"
           fi
