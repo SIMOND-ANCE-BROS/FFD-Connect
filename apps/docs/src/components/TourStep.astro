@@ -1,0 +1,103 @@
+---
+interface Props {
+  step: number;
+  title: string;
+  platform?: "mobile" | "web" | "both";
+}
+
+const { step, title, platform = "both" } = Astro.props;
+
+const platformLabel: Record<string, string> = {
+  mobile: "📱 Mobile",
+  web: "💻 Web",
+  both: "📱💻 Mobile & Web",
+};
+---
+
+<div class="tour-step">
+  <div class="tour-step-header">
+    <div class="tour-step-number">{step}</div>
+    <div class="tour-step-meta">
+      <h3 class="tour-step-title">{title}</h3>
+      {
+        platform !== "both" && (
+          <span class="tour-step-platform">{platformLabel[platform]}</span>
+        )
+      }
+    </div>
+  </div>
+  <div class="tour-step-content">
+    <slot />
+  </div>
+</div>
+
+<style>
+  .tour-step {
+    position: relative;
+    margin: 1.5rem 0;
+    border-radius: 12px;
+    border: 1px solid var(--sl-color-gray-5);
+    overflow: hidden;
+    background: var(--sl-color-bg);
+  }
+
+  .tour-step-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 20px;
+    background: var(--sl-color-bg-sidebar);
+    border-bottom: 1px solid var(--sl-color-gray-5);
+  }
+
+  .tour-step-number {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--sl-color-accent);
+    color: white;
+    font-weight: 800;
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+
+  .tour-step-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .tour-step-title {
+    margin: 0 !important;
+    font-size: 1rem !important;
+    font-weight: 700;
+    border: none !important;
+    padding: 0 !important;
+    color: var(--sl-color-text-accent) !important;
+  }
+
+  .tour-step-platform {
+    font-size: 0.72rem;
+    color: var(--sl-color-gray-3);
+    font-weight: 500;
+  }
+
+  .tour-step-content {
+    padding: 16px 20px;
+  }
+
+  .tour-step-content :global(img) {
+    border-radius: 8px;
+    border: 1px solid var(--sl-color-gray-5);
+    margin-top: 12px;
+    width: 100%;
+    max-width: 380px;
+  }
+
+  .tour-step-content :global(p:last-child) {
+    margin-bottom: 0;
+  }
+</style>

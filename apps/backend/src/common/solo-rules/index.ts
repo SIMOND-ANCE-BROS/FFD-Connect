@@ -1,0 +1,17 @@
+export {
+  SOLO_AGE_REGROUPEMENTS,
+  SOLO_LEVELS,
+  DANCE_COUNT_BY_SOLO_LEVEL,
+  SOLO_LATINES_DANCES_BY_LEVEL,
+  SOLO_STANDARDS_DANCES_BY_LEVEL,
+  MIN_LICENCE_FOR_SOLO_LEVEL,
+  MIN_PASSPORT_FOR_SOLO_LEVEL,
+  getSoloRegroupementFromAgeGroup,
+  computeSoloAgeRegroupement,
+  soloMeetsPassportForLevel,
+  meetsPassportForSoloConfirmé,
+  meetsPassportForSoloExperimente,
+  getSoloDancesForLevelAndCategory,
+  type SoloAgeRegroupement,
+  type SoloLevel,
+} from "./solo-rules.util";

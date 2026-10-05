@@ -1,0 +1,177 @@
+/* Legal documents: long-form reading, deliberately plainer than the landing page. */
+
+.legal {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.legal__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem clamp(1rem, 5vw, 3rem);
+  border-bottom: 1px solid var(--line);
+}
+
+.legal__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.legal__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  font-size: 0.9rem;
+}
+
+.legal__nav a {
+  color: var(--fg-muted);
+  text-decoration: none;
+  padding-bottom: 2px;
+  border-bottom: 1px solid transparent;
+}
+
+.legal__nav a:hover {
+  color: var(--fg);
+}
+
+.legal__nav a[aria-current='page'] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.legal__body {
+  flex: 1;
+  width: 100%;
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: clamp(2rem, 6vw, 4rem) clamp(1rem, 5vw, 2rem);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.legal__body h1 {
+  font-family: var(--font-display);
+  font-size: clamp(1.9rem, 5vw, 2.6rem);
+  line-height: 1.15;
+  margin: 0 0 1.5rem;
+}
+
+.legal__body h2 {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  margin: 2.5rem 0 0.75rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.legal__body h3 {
+  font-size: 1.05rem;
+  margin: 1.75rem 0 0.5rem;
+}
+
+.legal__body p,
+.legal__body li {
+  color: var(--fg-muted);
+}
+
+.legal__body strong {
+  color: var(--fg);
+}
+
+.legal__body a {
+  color: var(--accent);
+}
+
+.legal__body ul,
+.legal__body ol {
+  padding-left: 1.25rem;
+}
+
+.legal__body li {
+  margin: 0.35rem 0;
+}
+
+.legal__body blockquote {
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  border-left: 3px solid var(--ffd-red);
+  background: var(--bg-elevated);
+  border-radius: 0 6px 6px 0;
+}
+
+.legal__body blockquote p {
+  margin: 0;
+  color: var(--fg);
+}
+
+.legal__body code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--bg-elevated);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+}
+
+/* Tables carry the substance in these documents (data categories, processors,
+   legal bases), so they must stay readable on a phone. */
+.legal__body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  font-size: 0.9rem;
+  display: block;
+  overflow-x: auto;
+}
+
+.legal__body th,
+.legal__body td {
+  border: 1px solid var(--line);
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+  color: var(--fg-muted);
+}
+
+.legal__body th {
+  background: var(--bg-elevated);
+  color: var(--fg);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.legal__body hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 2rem 0;
+}
+
+.legal__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.5rem clamp(1rem, 5vw, 3rem);
+  border-top: 1px solid var(--line);
+  font-size: 0.85rem;
+  color: var(--fg-dim);
+}
+
+.legal__footer a {
+  color: var(--fg-muted);
+}

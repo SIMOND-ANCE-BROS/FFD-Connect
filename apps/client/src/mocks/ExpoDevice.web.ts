@@ -1,0 +1,14 @@
+export const isDevice = true;
+export const osVersion = "Web";
+export const osBuildId = "1.0.0";
+export const brand = "Browser";
+export const modelName = "Browser";
+export const modelId = "browser";
+export const designName = "browser";
+export const productName = "browser";
+export const deviceYearClass = 2024;
+export const totalMemory = 8000000000;
+export const supportedCpuArchitectures = ["x86_64"];
+export const osName = "Web";
+export const osInternalBuildId = "1";
+export const deviceName = "Browser";

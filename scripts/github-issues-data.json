@@ -1,0 +1,251 @@
+{
+  "labels": [
+    { "name": "epic", "color": "5319e7", "description": "Epic / thème fonctionnel" },
+    { "name": "backend", "color": "0e8a16", "description": "Module ou ticket backend" },
+    { "name": "client", "color": "fbca04", "description": "Module ou ticket client (Expo)" },
+    { "name": "auth", "color": "c5def5", "description": "Authentification" },
+    { "name": "competitions", "color": "bfd4f2", "description": "Compétitions" },
+    { "name": "license", "color": "bfd4f2", "description": "Licences FFD" },
+    { "name": "club", "color": "d4c5f9", "description": "Club organisateur" },
+    { "name": "player", "color": "d4c5f9", "description": "Bibliothèque / lecteur" },
+    { "name": "testing", "color": "e99695", "description": "Tests, QA" },
+    { "name": "infra", "color": "fef2c0", "description": "Infrastructure" }
+  ],
+  "epics": [
+    {
+      "epicNum": 1,
+      "title": "EPIC-1 : Authentification et sécurité",
+      "labels": ["epic", "backend", "auth"],
+      "body": "**Objectif** : Gérer l'identité, les sessions et la récupération de mot de passe.\n\n**Module** : `auth`\n\n**Fonctionnalités transverses** : JWT Guard, JWT Strategy, bcrypt, rate limiting sur login."
+    },
+    {
+      "epicNum": 2,
+      "title": "EPIC-2 : Utilisateurs et profil",
+      "labels": ["epic", "backend"],
+      "body": "**Objectif** : Profil utilisateur et gestion des membres de club (organisateurs).\n\n**Module** : `users`"
+    },
+    {
+      "epicNum": 3,
+      "title": "EPIC-3 : Licences FFD",
+      "labels": ["epic", "backend", "license"],
+      "body": "**Objectif** : Gérer la licence FFD de l'utilisateur (consultation, renouvellement par certificat).\n\n**Module** : `licenses`"
+    },
+    {
+      "epicNum": 4,
+      "title": "EPIC-4 : Compétitions et événements",
+      "labels": ["epic", "backend", "competitions"],
+      "body": "**Objectif** : Catalogue de compétitions (sync FFD), inscriptions, check-in, résultats.\n\n**Module** : `competitions`"
+    },
+    {
+      "epicNum": 5,
+      "title": "EPIC-5 : Bibliothèque musicale (tracks)",
+      "labels": ["epic", "backend", "player"],
+      "body": "**Objectif** : Musiques pour danses (liste, traitement par URL, téléchargement).\n\n**Module** : `tracks`"
+    },
+    {
+      "epicNum": 6,
+      "title": "EPIC-6 : Rapports et signalements",
+      "labels": ["epic", "backend"],
+      "body": "**Objectif** : Remonter bugs et idées de fonctionnalités vers GitHub.\n\n**Module** : `reports`"
+    },
+    {
+      "epicNum": 7,
+      "title": "EPIC-7 : Notifications",
+      "labels": ["epic", "backend"],
+      "body": "**Objectif** : Notifications in-app (liste, marquer lu).\n\n**Module** : `notifications`"
+    },
+    {
+      "epicNum": 8,
+      "title": "EPIC-8 : Text-to-Speech (TTS)",
+      "labels": ["epic", "backend"],
+      "body": "**Objectif** : Annonces vocales (ex. numéros de passage).\n\n**Module** : `tts`"
+    },
+    {
+      "epicNum": 9,
+      "title": "EPIC-9 : Intégration WDSF",
+      "labels": ["epic", "backend"],
+      "body": "**Objectif** : Récupérer les infos athlète WDSF par MIN.\n\n**Module** : `wdsf`"
+    },
+    {
+      "epicNum": 10,
+      "title": "EPIC-10 : Santé et métriques",
+      "labels": ["epic", "backend", "infra"],
+      "body": "**Objectif** : Probes et métriques pour déploiement et monitoring.\n\n**Module** : `health`"
+    },
+    {
+      "epicNum": 11,
+      "title": "EPIC-11 : Infrastructure et transversal",
+      "labels": ["epic", "backend", "infra"],
+      "body": "**Objectif** : Prisma, Redis, config, logging, sécurité globale."
+    },
+    {
+      "epicNum": 12,
+      "title": "EPIC-12 : Authentification client",
+      "labels": ["epic", "client", "auth"],
+      "body": "**Objectif** : Connexion, déconnexion, mot de passe oublié / réinitialisation.\n\n**Feature** : `auth`"
+    },
+    {
+      "epicNum": 13,
+      "title": "EPIC-13 : Licence (client)",
+      "labels": ["epic", "client", "license"],
+      "body": "**Objectif** : Affichage licence, renouvellement par certificat, QR code pour check-in.\n\n**Feature** : `license`"
+    },
+    {
+      "epicNum": 14,
+      "title": "EPIC-14 : Compétitions (client)",
+      "labels": ["epic", "client", "competitions"],
+      "body": "**Objectif** : Liste, détail, inscriptions, résultats live, synchronisation.\n\n**Feature** : `competitions`"
+    },
+    {
+      "epicNum": 15,
+      "title": "EPIC-15 : Club (organisateur)",
+      "labels": ["epic", "client", "club"],
+      "body": "**Objectif** : Dashboard club, membres, compétitions club, inscriptions.\n\n**Feature** : `club`"
+    },
+    {
+      "epicNum": 16,
+      "title": "EPIC-16 : Bibliothèque musicale et lecteur (client)",
+      "labels": ["epic", "client", "player"],
+      "body": "**Objectif** : Bibliothèque, ajout par URL, lecture audio, mini lecteur.\n\n**Feature** : `player`"
+    },
+    {
+      "epicNum": 17,
+      "title": "EPIC-17 : Performance (client)",
+      "labels": ["epic", "client", "player"],
+      "body": "**Objectif** : Mode performance avec annonces TTS et lecture de musiques.\n\n**Feature** : `performance`"
+    },
+    {
+      "epicNum": 18,
+      "title": "EPIC-18 : Paramètres et notifications (client)",
+      "labels": ["epic", "client"],
+      "body": "**Objectif** : Paramètres compte, notifications, thème.\n\n**Feature** : `settings`"
+    },
+    {
+      "epicNum": 19,
+      "title": "EPIC-19 : Navigation et UX client",
+      "labels": ["epic", "client"],
+      "body": "**Objectif** : Structure de navigation, onglets, stack, accessibilité."
+    },
+    {
+      "epicNum": 20,
+      "title": "EPIC-20 : Qualité et DevOps",
+      "labels": ["epic", "testing", "infra"],
+      "body": "**Objectif** : Tests, CI, couverture, lint, format."
+    },
+    {
+      "epicNum": 21,
+      "title": "EPIC-21 : Module Carrière",
+      "labels": ["epic", "backend"],
+      "body": "**Objectif** : Palmarès, suivi de progression (points, montée de niveau, qualif CF), règlements intelligents (recherche full-text par catégorie).\n\n**Module** : `career`"
+    },
+    {
+      "epicNum": 22,
+      "title": "EPIC-22 : Module Communautaire",
+      "labels": ["epic", "backend"],
+      "body": "**Objectif** : Bourse aux partenaires (matching niveau, taille, géo), covoiturage événementiel, vide-dressing (revente matériel d'occasion certifié).\n\n**Module** : `community`"
+    },
+    {
+      "epicNum": 23,
+      "title": "EPIC-23 : Portail Admin Web (Back-Office Fédéral)",
+      "labels": ["epic", "backend"],
+      "body": "**Objectif** : Offrir à la FFD un outil de pilotage et de communication directe (dashboard, notifications ciblées, modération des certificats).\n\n**Module** : `admin-web`"
+    }
+  ],
+  "issues": [
+    { "id": "AUTH-1", "title": "Login (email/username + mot de passe)", "epic": 1, "labels": ["backend", "auth"], "description": "POST /auth/login — Validation des identifiants, retour access_token, refresh_token et profil utilisateur.", "acceptance": "Réponse 200 avec tokens et user ; 401 si identifiants invalides ; doc Swagger à jour." },
+    { "id": "AUTH-2", "title": "Refresh token et rotation", "epic": 1, "labels": ["backend", "auth"], "description": "POST /auth/refresh — Renouvellement de l'access token via refresh token, avec rotation (révocation de l'ancien).", "acceptance": "Nouveaux tokens retournés ; ancien refresh token révoqué." },
+    { "id": "AUTH-3", "title": "Logout (révocation refresh token)", "epic": 1, "labels": ["backend", "auth"], "description": "POST /auth/logout — Révoquer le refresh token fourni.", "acceptance": "200 + message ; 401 si token invalide." },
+    { "id": "AUTH-4", "title": "Mot de passe oublié", "epic": 1, "labels": ["backend", "auth"], "description": "POST /auth/forgot-password — Envoi d'un email avec lien de réinitialisation (ne pas révéler si l'email existe).", "acceptance": "200 toujours ; email envoyé si compte existant." },
+    { "id": "AUTH-5", "title": "Réinitialisation mot de passe (token)", "epic": 1, "labels": ["backend", "auth"], "description": "POST /auth/reset-password — Réinitialisation avec token reçu par email (expiration 1h).", "acceptance": "200 si token valide et mot de passe conforme ; 400 si token invalide/expiré/utilisé." },
+    { "id": "AUTH-6", "title": "Changement de mot de passe (utilisateur connecté)", "epic": 1, "labels": ["backend", "auth"], "description": "POST /auth/change-password (JWT) — Changement avec mot de passe actuel + nouveau.", "acceptance": "200 si mot de passe actuel correct ; 401 si incorrect ; 400 si politique non respectée." },
+    { "id": "USERS-1", "title": "Profil utilisateur connecté", "epic": 2, "labels": ["backend"], "description": "GET /users/me (JWT) — Retourne id, email, firstName, lastName, role, clubName, licenseNumber, dates.", "acceptance": "200 avec profil ; 401 si non authentifié." },
+    { "id": "USERS-2", "title": "Liste des membres du club", "epic": 2, "labels": ["backend"], "description": "GET /users/members (JWT, rôle ORGANIZER) — Liste paginée des membres du club de l'organisateur.", "acceptance": "200 avec tableau paginé ; 403 si pas ORGANIZER ; 404 si club non trouvé." },
+    { "id": "LIC-1", "title": "Récupérer ma licence", "epic": 3, "labels": ["backend", "license"], "description": "GET /licenses/my (JWT) — Retourne la licence de l'utilisateur.", "acceptance": "200 avec licence ; 404 si pas de licence." },
+    { "id": "LIC-2", "title": "Renouvellement par certificat (OCR)", "epic": 3, "labels": ["backend", "license"], "description": "POST /licenses/renew (JWT, multipart certificate) — Upload image certificat, extraction OCR, création/mise à jour licence.", "acceptance": "200 avec licence mise à jour ; 400 si certificat invalide ou OCR échoué." },
+    { "id": "COMP-1", "title": "Liste des compétitions (paginée)", "epic": 4, "labels": ["backend", "competitions"], "description": "GET /competitions (JWT) — Liste paginée filtrée selon les permissions.", "acceptance": "200 avec data + meta (total, skip, take, hasMore)." },
+    { "id": "COMP-2", "title": "Compétition active du jour", "epic": 4, "labels": ["backend", "competitions"], "description": "GET /competitions/active — Compétition dont la date correspond au jour.", "acceptance": "200 avec compétition ou 404." },
+    { "id": "COMP-3", "title": "Détail d'une compétition", "epic": 4, "labels": ["backend", "competitions"], "description": "GET /competitions/:id — Détail + événements + inscriptions.", "acceptance": "200 avec compétition complète ; 404 si non trouvée." },
+    { "id": "COMP-4", "title": "Synchronisation depuis l'API FFD", "epic": 4, "labels": ["backend", "competitions"], "description": "POST /competitions/sync (JWT, ORGANIZER, throttle 2/min) — Récupération et mise à jour des compétitions depuis l'API FFD.", "acceptance": "200 avec success, competitionsAdded, competitionsUpdated ; 400 si API FFD inaccessible." },
+    { "id": "COMP-5", "title": "Inscription à un événement", "epic": 4, "labels": ["backend", "competitions"], "description": "POST /competitions/:id/register (JWT, body: eventId, partnerName?) — Inscription de l'utilisateur à un événement.", "acceptance": "201 avec inscription ; 400 si déjà inscrit ; 404 si événement inconnu." },
+    { "id": "COMP-6", "title": "Désinscription d'un événement", "epic": 4, "labels": ["backend", "competitions"], "description": "POST /competitions/:id/unregister (JWT, body: eventId).", "acceptance": "200 ; 404 si inscription non trouvée." },
+    { "id": "COMP-7", "title": "Résultats d'une compétition", "epic": 4, "labels": ["backend", "competitions"], "description": "GET /competitions/:id/results — Résultats et classements par événement.", "acceptance": "200 avec structure competitionId + results ; 404 si compétition inconnue." },
+    { "id": "COMP-8", "title": "Inscriptions d'un événement (organisateur)", "epic": 4, "labels": ["backend", "competitions"], "description": "GET /competitions/event/:eventId/registrations (JWT) — Liste des inscrits.", "acceptance": "200 avec tableau ; 403 si pas organisateur ; 404 si événement inconnu." },
+    { "id": "COMP-9", "title": "Inscriptions de l'utilisateur connecté", "epic": 4, "labels": ["backend", "competitions"], "description": "GET /competitions/user/registrations (JWT) — Toutes les inscriptions de l'utilisateur.", "acceptance": "200 avec tableau (eventId, eventName, competitionId, competitionName, partnerName, status, registeredAt)." },
+    { "id": "COMP-10", "title": "Check-in participant (scan QR)", "epic": 4, "labels": ["backend", "competitions"], "description": "POST /competitions/:id/checkin (JWT, body: qrData, throttle 30/min) — Check-in d'un participant via données QR.", "acceptance": "200 avec registration ; 400 si QR invalide ; 404 si inscription non trouvée." },
+    { "id": "TRACKS-1", "title": "Liste des musiques (paginée)", "epic": 5, "labels": ["backend", "player"], "description": "GET /tracks — Liste avec filtres optionnels (ex. style).", "acceptance": "200 avec tableau paginé." },
+    { "id": "TRACKS-2", "title": "Traitement d'une URL (YouTube, etc.)", "epic": 5, "labels": ["backend", "player"], "description": "POST /tracks/process (body: url, style?) — Téléchargement et traitement, extraction métadonnées (BPM, style).", "acceptance": "200 avec track + downloadToken ; 400 si URL invalide ; 500 si erreur traitement." },
+    { "id": "TRACKS-3", "title": "Téléchargement fichier audio", "epic": 5, "labels": ["backend", "player"], "description": "GET /tracks/download/:token — Stream du fichier audio via token (sécurisé).", "acceptance": "200 avec Content-Type audio/mpeg ; 404 si fichier absent." },
+    { "id": "REPORTS-1", "title": "Création rapport (bug ou feature)", "epic": 6, "labels": ["backend"], "description": "POST /reports (multipart: type, title, description, stackTrace?, deviceInfo?, image?) — Enregistrement en base + création d'une issue GitHub.", "acceptance": "201 avec rapport ; 400 si données invalides ; 413 si image > 5MB." },
+    { "id": "NOTIF-1", "title": "Liste des notifications utilisateur", "epic": 7, "labels": ["backend"], "description": "GET /notifications (JWT) — Toutes les notifications de l'utilisateur.", "acceptance": "200 avec tableau (id, title, body, data, isRead, createdAt)." },
+    { "id": "NOTIF-2", "title": "Marquer une notification comme lue", "epic": 7, "labels": ["backend"], "description": "PATCH /notifications/:id/read (JWT).", "acceptance": "200 ; 404 si non trouvée ou pas propriétaire." },
+    { "id": "NOTIF-3", "title": "Marquer toutes comme lues", "epic": 7, "labels": ["backend"], "description": "POST /notifications/read-all (JWT).", "acceptance": "200." },
+    { "id": "TTS-1", "title": "Génération audio à partir de texte", "epic": 8, "labels": ["backend"], "description": "POST /tts (body: text, max 500 caractères) — Synthèse vocale, cache des fichiers générés.", "acceptance": "200 avec stream audio/mpeg ; 400 si texte manquant ; 500 si erreur TTS." },
+    { "id": "WDSF-1", "title": "Récupérer un athlète par MIN", "epic": 9, "labels": ["backend"], "description": "GET /wdsf/athlete/:min (JWT) — Informations athlète WDSF (Member Identification Number).", "acceptance": "200 avec données athlète ; 401 si non authentifié ; 404 si non trouvé." },
+    { "id": "HEALTH-1", "title": "Liveness probe", "epic": 10, "labels": ["backend", "infra"], "description": "GET /health/live — Vérifie que le process tourne (ex. Kubernetes).", "acceptance": "200 { status: 'ok' }." },
+    { "id": "HEALTH-2", "title": "Health check (DB + Redis)", "epic": 10, "labels": ["backend", "infra"], "description": "GET /health — Statut global, DB, Redis, mémoire.", "acceptance": "200 avec status, timestamp, uptime, database, redis, memory." },
+    { "id": "HEALTH-3", "title": "Métriques application", "epic": 10, "labels": ["backend", "infra"], "description": "GET /health/metrics — Uptime, mémoire, CPU, compteurs requêtes/erreurs.", "acceptance": "200 avec objet metrics." },
+    { "id": "INFRA-1", "title": "Module Prisma", "epic": 11, "labels": ["backend", "infra"], "description": "Connexion PostgreSQL, migrations, seed.", "acceptance": "Schema à jour, migrations réversibles." },
+    { "id": "INFRA-2", "title": "Module Redis", "epic": 11, "labels": ["backend", "infra"], "description": "Cache (ex. compétitions, TTS).", "acceptance": "Connexion configurée, TTL cohérents." },
+    { "id": "INFRA-3", "title": "Configuration et validation env", "epic": 11, "labels": ["backend", "infra"], "description": "ConfigModule, validate (env validation).", "acceptance": "Démarrage refusé si variables requises manquantes." },
+    { "id": "INFRA-4", "title": "Rate limiting (Throttler)", "epic": 11, "labels": ["backend", "infra"], "description": "100 req/min global ; limites spécifiques (sync, register, checkin).", "acceptance": "429 quand limite dépassée." },
+    { "id": "INFRA-5", "title": "Logger structuré (Pino)", "epic": 11, "labels": ["backend", "infra"], "description": "LoggerModule, logs structurés.", "acceptance": "Logs JSON en prod, niveaux configurables." },
+    { "id": "INFRA-6", "title": "Métriques (APM)", "epic": 11, "labels": ["backend", "infra"], "description": "MetricsModule, interceptors.", "acceptance": "Métriques exposées ou envoyées à un APM." },
+    { "id": "INFRA-7", "title": "Middleware IP blacklist", "epic": 11, "labels": ["backend", "infra"], "description": "Optionnel (ENABLE_IP_BLACKLIST).", "acceptance": "Blocage des IP listées." },
+    { "id": "INFRA-8", "title": "Fichiers statiques (uploads)", "epic": 11, "labels": ["backend", "infra"], "description": "ServeStaticModule pour /uploads.", "acceptance": "Fichiers servis sous /uploads." },
+    { "id": "INFRA-9", "title": "Documentation Swagger", "epic": 11, "labels": ["backend", "infra"], "description": "OpenAPI sur /api.", "acceptance": "Endpoints documentés, schémas et exemples." },
+    { "id": "INFRA-10", "title": "Gestion d'erreurs globales", "epic": 11, "labels": ["backend", "infra"], "description": "ExceptionFilter, réponses standardisées.", "acceptance": "Format d'erreur cohérent (statusCode, message, timestamp, path)." },
+    { "id": "CL-AUTH-1", "title": "Écran de connexion", "epic": 12, "labels": ["client", "auth"], "description": "LoginScreen — Champs email/username + mot de passe, appel AuthService.login, stockage tokens + user.", "acceptance": "Redirection vers Main si succès ; message d'erreur si 401." },
+    { "id": "CL-AUTH-2", "title": "Mot de passe oublié", "epic": 12, "labels": ["client", "auth"], "description": "ForgotPasswordScreen — Saisie email, appel forgot-password.", "acceptance": "Message de confirmation (sans révéler si email existant)." },
+    { "id": "CL-AUTH-3", "title": "Réinitialisation mot de passe", "epic": 12, "labels": ["client", "auth"], "description": "ResetPasswordScreen — Token dans l'URL/params, formulaire nouveau mot de passe, appel reset-password.", "acceptance": "Redirection vers Login si succès." },
+    { "id": "CL-AUTH-4", "title": "Gestion refresh token", "epic": 12, "labels": ["client", "auth"], "description": "AuthService — Détection token expiré, appel /auth/refresh, retry des requêtes.", "acceptance": "Connexion maintenue sans redemander le login tant que refresh valide." },
+    { "id": "CL-AUTH-5", "title": "Déconnexion", "epic": 12, "labels": ["client", "auth"], "description": "Logout — Révocation refresh token + clear stockage local.", "acceptance": "Retour à l'écran Login." },
+    { "id": "CL-LIC-1", "title": "Écran Ma licence", "epic": 13, "labels": ["client", "license"], "description": "LicenseScreen — Appel GET /licenses/my, affichage carte (numéro, validité, catégorie, club).", "acceptance": "Données à jour ; message si pas de licence." },
+    { "id": "CL-LIC-2", "title": "Renouvellement par certificat", "epic": 13, "labels": ["client", "license"], "description": "Upload image certificat, appel POST /licenses/renew.", "acceptance": "Succès ou message d'erreur OCR/validation." },
+    { "id": "CL-LIC-3", "title": "QR code de la licence", "epic": 13, "labels": ["client", "license"], "description": "Génération QR (signature ou données licence) pour scan check-in.", "acceptance": "QR scannable par l'app organisateur." },
+    { "id": "CL-LIC-4", "title": "Scanner (check-in)", "epic": 13, "labels": ["client", "license"], "description": "ScannerScreen — Scan QR participant, appel POST competitions/:id/checkin.", "acceptance": "Feedback succès/erreur ; accessible ORGANIZER/STAFF." },
+    { "id": "CL-COMP-1", "title": "Liste des compétitions", "epic": 14, "labels": ["client", "competitions"], "description": "CompetitionsScreen — Filtres (date, statut), pagination, appel GET /competitions.", "acceptance": "Liste à jour, filtres et pagination fonctionnels." },
+    { "id": "CL-COMP-2", "title": "Détail compétition", "epic": 14, "labels": ["client", "competitions"], "description": "CompetitionDetailScreen — Événements, boutons s'inscrire / se désinscrire.", "acceptance": "Inscription/désinscription avec feedback." },
+    { "id": "CL-COMP-3", "title": "Mes inscriptions", "epic": 14, "labels": ["client", "competitions"], "description": "Affichage des inscriptions (GET /competitions/user/registrations).", "acceptance": "Liste avec événement, compétition, partenaire, statut." },
+    { "id": "CL-COMP-4", "title": "Résultats live", "epic": 14, "labels": ["client", "competitions"], "description": "LiveResultsScreen — GET /competitions/:id/results, affichage classements.", "acceptance": "Données rafraîchies (pull ou refresh)." },
+    { "id": "CL-COMP-5", "title": "Sync compétitions (organisateur)", "epic": 14, "labels": ["client", "competitions"], "description": "Bouton sync, POST /competitions/sync, throttle affiché si 429.", "acceptance": "Message succès ou erreur API FFD." },
+    { "id": "CL-COMP-6", "title": "Inscriptions par événement (staff)", "epic": 14, "labels": ["client", "competitions"], "description": "EventRegistrantsScreen — GET event/:eventId/registrations, liste des inscrits.", "acceptance": "Liste avec check-in, statut." },
+    { "id": "CL-COMP-7", "title": "Signalement (bug/feature)", "epic": 14, "labels": ["client", "competitions"], "description": "ReportModal — Formulaire type, titre, description, screenshot, appel POST /reports.", "acceptance": "201 géré ; message succès/erreur." },
+    { "id": "CL-CLUB-1", "title": "Dashboard club", "epic": 15, "labels": ["client", "club"], "description": "ClubDashboardScreen — Résumé (membres, prochaines compétitions, actions rapides).", "acceptance": "Visible ORGANIZER ; liens vers membres / compétitions." },
+    { "id": "CL-CLUB-2", "title": "Liste des membres", "epic": 15, "labels": ["client", "club"], "description": "ClubMembersScreen — GET /users/members, liste paginée.", "acceptance": "CRUD ou navigation vers édition membre." },
+    { "id": "CL-CLUB-3", "title": "Édition membre", "epic": 15, "labels": ["client", "club"], "description": "ClubMemberEditorScreen — Création/édition d'un membre du club.", "acceptance": "Données sauvegardées côté backend ou local." },
+    { "id": "CL-CLUB-4", "title": "Compétitions du club", "epic": 15, "labels": ["client", "club"], "description": "ClubCompetitionsScreen — Liste des compétitions gérées par le club.", "acceptance": "Navigation vers détail / formulaire." },
+    { "id": "CL-CLUB-5", "title": "Formulaire compétition / événement", "epic": 15, "labels": ["client", "club"], "description": "ClubCompetitionFormScreen — Création/édition compétition ou événement club.", "acceptance": "Données cohérentes avec le backend." },
+    { "id": "CL-CLUB-6", "title": "Inscriptions (gestion)", "epic": 15, "labels": ["client", "club"], "description": "ClubRegistrationsScreen — Gestion des inscriptions (liste, statuts).", "acceptance": "Filtres et actions (ex. confirmer, annuler)." },
+    { "id": "CL-CLUB-7", "title": "Modal inscription événement club", "epic": 15, "labels": ["client", "club"], "description": "ClubEventRegistrationModal — Inscription d'un membre à un événement.", "acceptance": "Inscription enregistrée." },
+    { "id": "CL-PLAY-1", "title": "Écran bibliothèque", "epic": 16, "labels": ["client", "player"], "description": "LibraryScreen — GET /tracks, liste avec filtres (style, BPM).", "acceptance": "Liste et filtres opérationnels." },
+    { "id": "CL-PLAY-2", "title": "Ajout piste par URL", "epic": 16, "labels": ["client", "player"], "description": "AddTrackModal — Saisie URL + style, POST /tracks/process, puis téléchargement si besoin.", "acceptance": "Nouvelle piste visible dans la liste." },
+    { "id": "CL-PLAY-3", "title": "Lecteur audio plein écran", "epic": 16, "labels": ["client", "player"], "description": "AudioPlayerScreen — Lecture, progression, pause/play, sélection piste.", "acceptance": "Lecture fluide, état synchronisé avec MiniPlayer." },
+    { "id": "CL-PLAY-4", "title": "Mini lecteur (barre fixe)", "epic": 16, "labels": ["client", "player"], "description": "MiniPlayer — Affiche piste en cours, play/pause, ouvrir lecteur plein écran.", "acceptance": "Visible sur les écrans principaux quand une piste est en lecture." },
+    { "id": "CL-PLAY-5", "title": "Téléchargement et cache local", "epic": 16, "labels": ["client", "player"], "description": "Téléchargement via GET /tracks/download/:token, stockage local (ex. pour offline).", "acceptance": "Fichiers disponibles hors ligne si implémenté." },
+    { "id": "CL-PERF-1", "title": "Configuration performance", "epic": 17, "labels": ["client", "player"], "description": "PerformanceSetupScreen — Choix des pistes, ordre de passage, paramètres TTS.", "acceptance": "Données prêtes pour l'écran lecteur." },
+    { "id": "CL-PERF-2", "title": "Lecteur performance", "epic": 17, "labels": ["client", "player"], "description": "PerformancePlayerScreen — Lecture des pistes + annonces TTS (POST /tts).", "acceptance": "Enchaînement annonces + musiques correct." },
+    { "id": "CL-SET-1", "title": "Écran Paramètres", "epic": 18, "labels": ["client"], "description": "SettingsScreen — Profil, changement mot de passe, notifications, thème, signaler un bug, déconnexion.", "acceptance": "Liens et actions fonctionnels." },
+    { "id": "CL-SET-2", "title": "Changement mot de passe", "epic": 18, "labels": ["client"], "description": "ChangePasswordModal — Formulaire mot de passe actuel + nouveau, POST /auth/change-password.", "acceptance": "Succès ou message d'erreur." },
+    { "id": "CL-SET-3", "title": "Préférences notifications", "epic": 18, "labels": ["client"], "description": "NotificationsScreen — GET /notifications, marquer lu / tout marquer lu.", "acceptance": "Liste à jour, PATCH et POST read-all utilisés." },
+    { "id": "CL-SET-4", "title": "Thème (clair/sombre)", "epic": 18, "labels": ["client"], "description": "ThemeContext, persistance préférence.", "acceptance": "Application du thème sur toute l'app." },
+    { "id": "CL-NAV-1", "title": "Stack racine", "epic": 19, "labels": ["client"], "description": "Login, ForgotPassword, ResetPassword, Main (tabs), écrans modaux/stack.", "acceptance": "Routes définies dans types (RootStackParamList, TabParamList)." },
+    { "id": "CL-NAV-2", "title": "Onglets principaux", "epic": 19, "labels": ["client"], "description": "ClubDashboard, License, Library, ScannerTab (placeholder), Competitions, Settings. CurvedTabBar.", "acceptance": "Onglets visibles et états actifs corrects." },
+    { "id": "CL-NAV-3", "title": "Transitions onglets", "epic": 19, "labels": ["client"], "description": "TabScreenTransition, direction (gauche/droite).", "acceptance": "Transition fluide entre onglets." },
+    { "id": "CL-NAV-4", "title": "MiniPlayer au-dessus des tabs", "epic": 19, "labels": ["client"], "description": "MiniPlayer affiché quand une piste est en lecture.", "acceptance": "Pas de recouvrement gênant des contenus." },
+    { "id": "QA-1", "title": "Tests unitaires backend", "epic": 20, "labels": ["testing"], "description": "Jest, services et controllers (auth, users, competitions, tracks, etc.).", "acceptance": "Couverture cible respectée (ex. 90% statements)." },
+    { "id": "QA-2", "title": "Tests e2e backend", "epic": 20, "labels": ["testing"], "description": "Tests avec base de test (Prisma).", "acceptance": "Scénarios critiques (auth, compétitions, inscriptions) passent." },
+    { "id": "QA-3", "title": "Tests unitaires client", "epic": 20, "labels": ["testing"], "description": "Jest + React Testing Library (écrans, hooks, contextes).", "acceptance": "Couverture cible (ex. 80%)." },
+    { "id": "QA-4", "title": "E2E client (Maestro)", "epic": 20, "labels": ["testing"], "description": "Scénarios login, navigation, licence, compétitions.", "acceptance": "Pipeline CI vert." },
+    { "id": "QA-5", "title": "Lint et format", "epic": 20, "labels": ["testing", "infra"], "description": "ESLint, Prettier, pre-commit (lint-staged), pre-push (tests).", "acceptance": "Pas de régression lint/format." },
+    { "id": "QA-6", "title": "CI (GitHub Actions)", "epic": 20, "labels": ["testing", "infra"], "description": "Build backend + client, tests, coverage.", "acceptance": "Branches protégées avec CI obligatoire." },
+    { "id": "CAR-1", "title": "Palmarès (historique compétitions, classements, points)", "epic": 21, "labels": ["backend"], "description": "API et stockage : historique complet des compétitions, classements et points acquis du licencié. PostgreSQL partitionné.", "acceptance": "API exposant l'historique par utilisateur ; Données cohérentes avec les résultats compétitions." },
+    { "id": "CAR-2", "title": "Suivi de progression (points, montée de niveau, qualif CF)", "epic": 21, "labels": ["backend"], "description": "Jauge visuelle des points restants pour la montée de niveau ou la qualification aux Championnats de France. Calcul et exposition API.", "acceptance": "Règles de points et niveaux définies ; Endpoint ou données pour affichage jauge." },
+    { "id": "CAR-3", "title": "Règlements intelligents (recherche full-text par catégorie)", "epic": 21, "labels": ["backend"], "description": "Moteur de recherche filtrant les règles par catégorie (ex: tenues autorisées Junior I). Full-Text Search (TSVECTOR) sur règlements tagués.", "acceptance": "Indexation règlements tagués ; API recherche par catégorie / mot-clé." },
+    { "id": "COM-1", "title": "Bourse aux partenaires (matching niveau, taille, géo)", "epic": 22, "labels": ["backend"], "description": "Matching sécurisé réservé aux licenciés par niveau, taille et géographie. PostGIS + Geohashing (privacy).", "acceptance": "API critères de matching ; Respect vie privée (géohash)." },
+    { "id": "COM-2", "title": "Covoiturage événementiel", "epic": 22, "labels": ["backend"], "description": "Mise en relation des danseurs d'une même région se rendant à la même compétition.", "acceptance": "Modèle données covoiturage / événement ; API proposition et réservation." },
+    { "id": "COM-3", "title": "Vide-Dressing (revente matériel d'occasion certifié)", "epic": 22, "labels": ["backend"], "description": "Espace de revente de matériel d'occasion certifié (licenciés).", "acceptance": "Modèle annonces / catégories ; API CRUD annonces (authentifié)." },
+    { "id": "ADMIN-1", "title": "Dashboard analytique (carte chaleur, statistiques usage)", "epic": 23, "labels": ["backend"], "description": "Carte de chaleur et statistiques d'usage pour le pilotage FFD. Back-office web.", "acceptance": "Agrégations métier exposées (API ou intégrées) ; Visualisation carte / stats." },
+    { "id": "ADMIN-2", "title": "Centre de notification (Push ciblés région / discipline)", "epic": 23, "labels": ["backend"], "description": "Envoi de Push ciblés par région ou discipline. Intégration FCM / centre de notification.", "acceptance": "API ou interface d'envoi ciblé ; Ciblage région / discipline." },
+    { "id": "ADMIN-3", "title": "Modération (validation manuelle certificats rejetés IA)", "epic": 23, "labels": ["backend"], "description": "Validation manuelle des certificats rejetés par l'IA. Interface de modération pour les équipes FFD.", "acceptance": "Liste des certificats en attente / rejetés ; Action de validation / rejet manuel." }
+  ]
+}

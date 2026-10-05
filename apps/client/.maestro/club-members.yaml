@@ -1,0 +1,34 @@
+appId: fr.ffdanse.connect
+tags:
+  - club
+  - e2e
+---
+# CLUB · Members: list, search, open the add-member editor.
+# Fast preamble: reuse the logged-in session when it already matches this role
+# (plain relaunch = fresh navigation, no reinstall/CGU/login). Falls back to the
+# full clearState + login path otherwise. Retried in-flow because the iOS 26 sim
+# intermittently drops taps after accumulated cold boots.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow: ensure-club.yaml
+# The dashboard widgets push members-row down until its center sits INSIDE the
+# tab-bar overlay (tapping it hits the Scanner tab!). Plain scrollUntilVisible
+# does NOT scroll — the row is geometrically in the viewport, the tab bar is an
+# overlay Maestro can't see through. centerElement forces a real scroll that
+# brings the row to mid-screen, clear of the tab bar.
+- scrollUntilVisible:
+    {
+      element: { id: "club-dashboard-members-row" },
+      direction: DOWN,
+      timeout: 15000,
+      centerElement: true,
+    }
+- tapOn: { id: "club-dashboard-members-row" }
+# The SearchBar sits in an animated PinnedHeader that Maestro 2.7's hierarchy no
+# longer exposes (same as club-solo-teams). Assert a member row instead — the id
+# is a regex, so this also proves the list rendered actual data.
+- extendedWaitUntil: { visible: { id: "club-member-.*" }, timeout: 20000 }
+- tapOn: { id: "club-members-add-button", optional: true }
+- back
+- back

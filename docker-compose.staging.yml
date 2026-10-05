@@ -1,0 +1,33 @@
+# Staging environment overlay
+# Usage: docker compose -f docker-compose.yml -f docker-compose.staging.yml --profile full up -d
+#
+# Requires: .env.staging with all backend env vars
+# Database: ffd_connect_staging (isolated from prod)
+
+services:
+  db:
+    environment:
+      POSTGRES_DB: ffd_connect_staging
+    ports:
+      - "5433:5432"
+
+  redis:
+    ports:
+      - "6380:6379"
+
+  backend:
+    env_file: apps/backend/.env.staging
+    environment:
+      DATABASE_URL: postgres://ffd:ffdpassword@db:5432/ffd_connect_staging
+      NODE_ENV: production
+      REDIS_HOST: redis
+      PORT: 3000
+    ports:
+      - "3001:3000"
+
+  frontend:
+    build:
+      args:
+        - FRONTEND_DOMAIN=${STAGING_DOMAIN:-staging.ffd-connect.fr}
+    ports:
+      - "8081:80"

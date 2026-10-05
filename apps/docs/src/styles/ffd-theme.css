@@ -1,0 +1,103 @@
+/**
+ * FFD-Connect theme for documentation
+ * Aligné sur apps/client/src/theme/index.ts (palette + light/dark)
+ */
+
+/* ---------------------------------------------------------------------------
+   Palette FFD (variables réutilisables partout)
+   --------------------------------------------------------------------------- */
+:root {
+  /* Brand */
+  --ffd-blue: #004481;
+  --ffd-cyan: #0088ce;
+  --ffd-red: #e30613;
+
+  /* Slate neutrals */
+  --ffd-slate-50: #f8fafc;
+  --ffd-slate-100: #f1f5f9;
+  --ffd-slate-200: #e2e8f0;
+  --ffd-slate-300: #cbd5e1;
+  --ffd-slate-400: #94a3b8;
+  --ffd-slate-500: #64748b;
+  --ffd-slate-600: #475569;
+  --ffd-slate-700: #334155;
+  --ffd-slate-800: #1e293b;
+  --ffd-slate-900: #0f172a;
+  --ffd-slate-950: #020617;
+
+  /* Semantic */
+  --ffd-success: #10b981;
+  --ffd-warning: #f59e0b;
+  --ffd-error: #ef4444;
+
+  /* Radius (comme app) */
+  --ffd-radius-s: 6px;
+  --ffd-radius-m: 12px;
+  --ffd-radius-l: 20px;
+}
+
+/* ---------------------------------------------------------------------------
+   Thème clair FFD → override Starlight (aligné sur data-theme de Starlight)
+   --------------------------------------------------------------------------- */
+:root[data-theme='light'],
+.sl-theme-light {
+  --sl-color-white: #ffffff;
+  --sl-color-black: var(--ffd-slate-950);
+
+  --sl-color-text: var(--ffd-slate-900);
+  --sl-color-text-accent: var(--ffd-blue);
+  --sl-color-bg: var(--ffd-slate-50);
+  --sl-color-bg-rgb: 248, 250, 252;
+  --sl-color-bg-sidebar: var(--ffd-slate-100);
+  --sl-color-bg-sidebar-rgb: 241, 245, 249;
+
+  --sl-color-accent: var(--ffd-cyan);
+  --sl-color-accent-high: var(--ffd-cyan);
+  --sl-color-accent-low: rgba(0, 136, 206, 0.12);
+
+  --sl-color-hairline: var(--ffd-slate-200);
+  --sl-color-hairline-shade: var(--ffd-slate-200);
+
+  --sl-color-gray-1: var(--ffd-slate-900);
+  --sl-color-gray-2: var(--ffd-slate-600);
+  --sl-color-gray-3: var(--ffd-slate-500);
+  --sl-color-gray-4: var(--ffd-slate-400);
+  --sl-color-gray-5: var(--ffd-slate-300);
+  --sl-color-gray-6: var(--ffd-slate-200);
+}
+
+/* ---------------------------------------------------------------------------
+   Thème sombre FFD → override Starlight
+   --------------------------------------------------------------------------- */
+:root[data-theme='dark'],
+.sl-theme-dark {
+  --sl-color-white: #ffffff;
+  --sl-color-black: var(--ffd-slate-950);
+
+  --sl-color-text: var(--ffd-slate-50);
+  --sl-color-text-accent: var(--ffd-cyan);
+  --sl-color-bg: var(--ffd-slate-950);
+  --sl-color-bg-rgb: 2, 6, 23;
+  --sl-color-bg-sidebar: var(--ffd-slate-900);
+  --sl-color-bg-sidebar-rgb: 15, 23, 42;
+
+  --sl-color-accent: var(--ffd-cyan);
+  --sl-color-accent-high: var(--ffd-cyan);
+  --sl-color-accent-low: rgba(0, 136, 206, 0.18);
+
+  --sl-color-hairline: var(--ffd-slate-800);
+  --sl-color-hairline-shade: var(--ffd-slate-800);
+
+  --sl-color-gray-1: var(--ffd-slate-50);
+  --sl-color-gray-2: var(--ffd-slate-400);
+  --sl-color-gray-3: var(--ffd-slate-500);
+  --sl-color-gray-4: var(--ffd-slate-600);
+  --sl-color-gray-5: var(--ffd-slate-700);
+  --sl-color-gray-6: var(--ffd-slate-800);
+}
+
+/* Typo proche de l’app (DM Sans si dispo, sinon system) */
+:root {
+  --sl-font: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --sl-font-system: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+}

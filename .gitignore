@@ -1,0 +1,110 @@
+node_modules
+dist
+build
+.env
+.DS_Store
+coverage
+.jest-cache/
+*.log
+*_log.txt
+backups/
+*.sql
+# Prisma 7 (multi-file schema) keeps migrations under prisma/schema/migrations.
+!apps/backend/prisma/schema/migrations/**/*.sql
+
+# Expo
+.expo/
+.expo-shared/
+expo-env.d.ts
+web-build/
+dist/
+
+# iOS (root) - ignore entire ios when using Prebuild/CNG
+/ios
+ios/Pods/
+ios/build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata/
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+project.xcworkspace/
+
+# Expo client native folders (prebuild-generated)
+apps/client/ios/
+apps/client/android/
+
+# Android
+android/app/build/
+android/.gradle/
+android/local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+out/
+.gradle/
+local.properties
+proguard/
+*.iml
+.idea/
+*.hprof
+.cxx/
+.externalNativeBuild/
+.navigation/
+captures/
+output.json
+lint-results.json
+lint-results-fresh.json
+coverage-report.json
+# .claude racine : état local ignoré, seuls les sous-agents du projet sont versionnés.
+# Règles ANCRÉES (/) pour ne s'appliquer qu'à la racine — sinon le `!.../agents/`
+# non ancré dé-ignorait aussi les .claude imbriqués (ex. apps/backend/.claude).
+/.claude/*
+!/.claude/agents/
+# Tout .claude imbriqué dans un workspace est de l'état local → ignoré en entier.
+apps/**/.claude/
+packages/**/.claude/
+tools/**/.claude/
+.cursor/
+.worktrees/
+
+# Caddyfile is provisioned by Terraform with real domain names — not from repo
+Caddyfile
+DEPENDENCY_AUDIT.md
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+crash.log
+
+# TypeScript incremental build cache (never commit — dirties the tree, blocks eas build)
+*.tsbuildinfo
+
+# EAS beta changelog — generated per build by eas-build.yml (Generate beta
+# changelog step). Untracked files at the repo root make the working tree dirty,
+# and `eas build` aborts on a dirty tree. Same rationale as *.tsbuildinfo above.
+/beta-notes.md
+/beta-notes.txt
+
+# graphify knowledge-graph output (local tooling)
+graphify-out/
+
+# Liste locale des personnes réelles traquées par scripts/public-repo/scan-pii.sh
+scripts/public-repo/.pii-denylist

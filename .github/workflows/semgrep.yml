@@ -1,0 +1,62 @@
+name: SAST (Semgrep)
+
+# Static analysis for security bugs: injection, broken authz, hardcoded secrets,
+# unsafe patterns in TS/React/Node, Dockerfiles and GitHub Actions.
+#
+# Why Semgrep and not CodeQL: CodeQL is the GitHub-native option but its results
+# require Advanced Security (GHAS) code scanning, which is a paid add-on on
+# PRIVATE repos and is off here. Semgrep OSS runs the whole scan inside CI for
+# free — no data leaves the runner (no SEMGREP_APP_TOKEN, metrics off).
+#
+# Report-only for now (continue-on-error): findings print to the job log without
+# blocking. To enforce, remove continue-on-error and add `--error`.
+
+on:
+  pull_request:
+    branches: [develop]
+  # No push on develop: every develop commit lands via a PR that was already
+  # scanned, so the push run re-scanned identical code (~half of Semgrep's
+  # Actions minutes). master is kept — promotions there don't go through a
+  # develop-targeted PR.
+  push:
+    branches: [master]
+  schedule:
+    - cron: '0 3 * * 1' # Mondays 03:00 UTC
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: semgrep-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semgrep:
+    name: Scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      # python3 + pip are preinstalled on ubuntu-24.04. Pin the exact version
+      # for reproducible scans (bump deliberately).
+      - name: Install Semgrep
+        run: pip install --quiet semgrep==1.168.0
+
+      - name: Semgrep scan
+        continue-on-error: true # report-only; drop this + add --error to enforce
+        run: |
+          semgrep scan \
+            --config p/default \
+            --config p/typescript \
+            --config p/react \
+            --config p/nodejs \
+            --config p/secrets \
+            --config p/dockerfile \
+            --config p/github-actions \
+            --exclude apps/client/src/api/generated \
+            --exclude '**/*.test.ts' \
+            --exclude '**/*.spec.ts' \
+            --metrics off

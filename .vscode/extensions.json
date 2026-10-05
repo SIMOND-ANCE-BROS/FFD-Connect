@@ -1,0 +1,21 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "msjsdiag.vscode-react-native",
+    "ms-vscode.vscode-typescript-next",
+    "usernamehw.errorlens",
+    "orta.vscode-jest",
+    "yoavbls.pretty-ts-errors",
+    "dsznajder.es7-react-js-snippets",
+    "wix.vscode-import-cost",
+    "prisma.prisma",
+    "eamodio.gitlens",
+    "wayou.vscode-todo-highlight"
+  ],
+  "unwantedRecommendations": [
+    "bradlc.vscode-tailwindcss",
+    "styled-components.vscode-styled-components",
+    "formulahendry.auto-rename-tag"
+  ]
+}

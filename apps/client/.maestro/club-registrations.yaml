@@ -1,0 +1,28 @@
+appId: fr.ffdanse.connect
+tags:
+  - club
+  - e2e
+---
+# CLUB · Registrations list.
+# Fast preamble: reuse the logged-in session when it already matches this role
+# (plain relaunch = fresh navigation, no reinstall/CGU/login). Falls back to the
+# full clearState + login path otherwise. Retried in-flow because the iOS 26 sim
+# intermittently drops taps after accumulated cold boots.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow: ensure-club.yaml
+# The registrations row is the last dashboard row — scroll it into view first.
+- scrollUntilVisible:
+    {
+      element: { id: "club-dashboard-registrations-row" },
+      direction: DOWN,
+      timeout: 20000,
+    }
+- tapOn: { id: "club-dashboard-registrations-row" }
+- extendedWaitUntil:
+    { visible: { id: "club-registrations-search" }, timeout: 20000 }
+# Real pending registration seeded for the E2E club (screen rewired off the mock
+# data onto /competitions/club/pending-registrations). Assert the seeded dancer.
+- assertVisible: { text: ".*Eelef Testeur.*" }
+- back

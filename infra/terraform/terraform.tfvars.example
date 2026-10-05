@@ -1,0 +1,37 @@
+# ============================================
+# FFD-Connect — Terraform Variables (Azure)
+# ============================================
+# Copy this file to terraform.tfvars and fill in the values.
+# NEVER commit terraform.tfvars to git (it's in .gitignore).
+# ============================================
+
+environment  = "production" # or "staging"
+azure_region = "francecentral" # Paris
+
+# ── Compute ──────────────────────────────────
+vm_size      = "Standard_B2s" # 2 vCPU, 4 GB — ~30$/mo
+os_disk_size = 50              # GB
+admin_username = "azureuser"   # SSH key auth only
+
+# ── DNS (REQUIRED — one of the two must be set) ──
+domain_name            = "ffd-connect.fr"
+api_subdomain          = "api"   # api.ffd-connect.fr (prod) or api-staging (staging)
+create_dns_zone        = true    # set true to create a new Azure DNS zone
+existing_dns_zone_name = ""      # OR provide an existing zone name (then set create_dns_zone = false)
+existing_dns_zone_rg   = ""      # resource group of the existing zone
+
+# ── TLS (Caddy auto-provisions Let's Encrypt) ──
+acme_email = "your-email@example.com" # Let's Encrypt cert expiry notifications
+
+# ── Monitoring ───────────────────────────────
+budget_monthly_limit_eur = 30 # EUR (billing currency) — subscription budget, alerts at 50/80/100% actual + 100% forecast
+budget_alert_email   = "your-email@example.com"
+
+# ── Tags ─────────────────────────────────────
+tags = {
+  Team = "FFD-Connect"
+}
+
+# CI/CD (required for immutable deploy)
+github_org  = "your-github-org"
+github_repo = "FFD-Connect"

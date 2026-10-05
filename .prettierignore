@@ -1,0 +1,39 @@
+# Dependencies & build output
+node_modules
+**/dist
+**/build
+packages/*/dist
+pnpm-lock.yaml
+package-lock.json
+
+# Generated code
+**/generated
+**/*.generated.*
+**/.astro
+
+# Coverage & cache
+coverage
+.jest-cache
+.expo
+.expo-shared
+web-build
+
+# Lock files & binaries
+*.lock
+*.sql
+backups/
+
+# Mobile native (prebuild output)
+apps/client/ios
+apps/client/android
+
+# Backend upload artifacts (runtime media + .info.json sidecars, gitignored)
+**/uploads/
+
+# Vendored Ruby gems (iOS build tooling — gitignored, never format-checked)
+apps/client/vendor/
+
+# Stryker output (gitignored via apps/backend/.gitignore; the incremental JSON is
+# machine-written, so `pnpm test:mutation` followed by `pnpm preflight` used to
+# fail format:check on a generated file)
+**/reports/mutation/

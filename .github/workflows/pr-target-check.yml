@@ -1,0 +1,77 @@
+name: PR Target Check
+
+# Whitelist-based branch targeting enforcement.
+# Every PR is checked — branches that don't match any allowed
+# pattern are rejected. No unnamed branch can sneak through.
+#
+# Allowed flows:
+#   feature/*, fix/*, refactor/*, test/*, docs/*, chore/* → develop
+#   dependabot/*, claude/*                                → develop
+#   hotfix/*                                              → master or staging
+#   develop                                               → staging
+#   staging                                               → master
+#   merge-back auto PRs (github-actions bot)              → any (passthrough)
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: read-all
+
+jobs:
+  check-target:
+    name: Validate PR target branch
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check branch targeting rules
+        env:
+          HEAD: ${{ github.head_ref }}
+          BASE: ${{ github.base_ref }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          echo "PR: $HEAD → $BASE (actor: $ACTOR)"
+
+          # Allow merge-back bot PRs (created by merge-back workflow on conflict)
+          if [ "$ACTOR" = "github-actions[bot]" ]; then
+            echo "Bot PR — allowed"
+            exit 0
+          fi
+
+          # ── master: only staging or hotfix/* ──
+          if [ "$BASE" = "master" ]; then
+            if [ "$HEAD" = "staging" ] || echo "$HEAD" | grep -qE "^hotfix/"; then
+              echo "Valid: $HEAD → master"
+              exit 0
+            fi
+            echo "::error::Only 'staging' or 'hotfix/*' can target 'master'. Got '$HEAD'."
+            echo "Flow: feature → develop → staging → master"
+            exit 1
+          fi
+
+          # ── staging: only develop or hotfix/* ──
+          if [ "$BASE" = "staging" ]; then
+            if [ "$HEAD" = "develop" ] || echo "$HEAD" | grep -qE "^hotfix/"; then
+              echo "Valid: $HEAD → staging"
+              exit 0
+            fi
+            echo "::error::Only 'develop' or 'hotfix/*' can target 'staging'. Got '$HEAD'."
+            echo "Flow: feature → develop → staging → master"
+            exit 1
+          fi
+
+          # ── develop: only allowed prefixes ──
+          if [ "$BASE" = "develop" ]; then
+            ALLOWED="^(feature|fix|refactor|test|docs|chore|dependabot|hotfix|claude)/"
+            if echo "$HEAD" | grep -qE "$ALLOWED"; then
+              echo "Valid: $HEAD → develop"
+              exit 0
+            fi
+            echo "::error::Branch '$HEAD' cannot target 'develop'."
+            echo "Allowed prefixes: feature/, fix/, refactor/, test/, docs/, chore/, dependabot/, hotfix/"
+            echo "Rename your branch: git branch -m $HEAD feature/$(echo $HEAD | sed 's|.*/||')"
+            exit 1
+          fi
+
+          # ── Other base branches: no restrictions ──
+          echo "Valid: $HEAD → $BASE (no rules for this base branch)"

@@ -1,0 +1,185 @@
+/// Type de compétition (Article 8) : proximité, nationale, majeure, internationale.
+enum CompetitionType {
+  PROXIMITE      // Compétitions de proximité (aire géographique)
+  NATIONALE      // Compétitions nationales
+  MAJEURE        // Majeures (championnat régional, coupe de France, championnat de France)
+  INTERNATIONALE // WDSF, plusieurs pays
+}
+
+/// Nature de l'épreuve pour les règles de participation (Article 9).
+enum EventKind {
+  CLASSIFICATRICE // Épreuve classificatrice (classe d'âge + niveau imposés)
+  OPEN           // Open (regroupe classes/niveaux)
+  MAJEURE        // Épreuve majeure (tous niveaux, une épreuve par spécialité)
+  SOLO_TEAM      // Solo Danse Team
+  SHOW_DANSE     // Show danse
+}
+
+/// Type d'épreuve : SOLO = inscription seule ; COUPLE = inscription avec partenaire obligatoire.
+enum EventType {
+  SOLO
+  COUPLE
+}
+
+enum CompetitionStatus {
+  UPCOMING
+  LIVE
+  PAST
+  CANCELLED
+}
+
+enum RegistrationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+}
+
+model Competition {
+  id              String            @id @default(uuid())
+  title           String
+  date            DateTime
+  location        String
+  status          CompetitionStatus  @default(UPCOMING)
+  delayMinutes    Int                @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  ffdId           String?           @unique
+  address         String?
+  circularUrl     String?
+  city            String?
+  description     String?
+  imageUrl        String?
+  latitude        Float?
+  longitude       Float?
+  organizer       String?
+  registrationUrl String?
+  endDate         DateTime?         // FFD endAt (fin de la compétition)
+  eventsDescription String?         // FFD danceEventDescription : programme des épreuves (texte libre)
+  programUrl      String?           // FFD fileEvents : PDF du programme des épreuves
+  type            String?           // Libellé libre (affichage)
+  competitionType CompetitionType?  // Article 8 : PROXIMITE | NATIONALE | MAJEURE | INTERNATIONALE
+  majorSubType    String?           // Si MAJEURE : CHAMPIONNAT_REGIONAL | CHAMPIONNAT_FRANCE_LATINES | ...
+  zipCode         String?
+  events          Event[]
+  schedule        ScheduleItem[]
+  volunteerTokens VolunteerToken[]
+  ticketingUrl           String?
+  layout                 Json?            @default("[]")
+  registrationDeadline   DateTime?        // Date limite d'inscription (pour countdown)
+  seatBookings           SeatBooking[]
+
+  @@index([date])
+  @@index([status])
+  @@index([ffdId])
+  @@index([city])
+  @@index([competitionType])
+  @@index([status, date])
+}
+
+model Event {
+  id            String         @id @default(uuid())
+  competitionId String
+  category      String         // Spécialité : Latin, Standard, Ten Dance
+  ageGroup      String         // Classe d'âge de l'épreuve
+  eventType     EventType      @default(COUPLE) // SOLO | COUPLE
+  level         String?        // Niveau épreuve classificatrice : International, Avancé, Intermédiaire, Débutant
+  eventKind     EventKind?     // Article 9 : CLASSIFICATRICE | OPEN | MAJEURE | SOLO_TEAM | SHOW_DANSE
+  competition   Competition    @relation(fields: [competitionId], references: [id])
+  registrations Registration[]
+  results       Result[]
+  scheduleItems ScheduleItem[]
+
+  @@index([competitionId])
+  @@index([category])
+  @@index([ageGroup])
+  @@index([eventType])
+  @@index([eventKind])
+  @@index([competitionId, eventType]) // épreuves SOLO/COUPLE d'une compétition
+}
+
+model Registration {
+  id                     String             @id @default(uuid())
+  eventId                String
+  userId                 String
+  partnerName            String?
+  partnerUserId          String?            // Partenaire licencié (pour calcul auto classe d'âge couple)
+  status                 RegistrationStatus  @default(PENDING)
+  bibNumber              Int?
+  checkedIn              Boolean             @default(false)
+  checkInTime            DateTime?
+  feePaid                Boolean             @default(false)
+  createdAt              DateTime            @default(now())
+  // Profil couple/solo : classe d'âge (calculée si birthDate(s) connus, sinon fournie)
+  coupleAgeGroup         String?
+  coupleDisciplineLatin  Boolean             @default(false)
+  coupleDisciplineStandard Boolean           @default(false)
+  event                  Event               @relation(fields: [eventId], references: [id])
+  user                   User                @relation(fields: [userId], references: [id])
+  partnerUser            User?               @relation("RegistrationPartner", fields: [partnerUserId], references: [id], onDelete: SetNull)
+
+  @@index([eventId])
+  @@index([userId])
+  @@index([partnerUserId])
+  @@index([status])
+  @@index([checkedIn])
+  @@index([eventId, userId])
+  @@index([userId, status])
+  @@index([eventId, status]) // inscriptions actives par épreuve
+  @@index([eventId, status, userId]) // inscriptions actives d'un user à une épreuve
+}
+
+model Result {
+  id        String   @id @default(uuid())
+  eventId   String
+  userId    String
+  round     String
+  ranking   Int
+  details   Json?
+  createdAt DateTime @default(now())
+  event     Event    @relation(fields: [eventId], references: [id])
+
+  @@index([userId, createdAt]) // résultats d'un user triés par date
+  @@index([eventId])           // lookup résultats par épreuve (career-query)
+}
+
+model ScheduleItem {
+  id            String      @id @default(uuid())
+  competitionId String
+  startTime     DateTime
+  title         String
+  type          String
+  eventId       String?
+  createdAt     DateTime    @default(now())
+  competition   Competition @relation(fields: [competitionId], references: [id])
+  event         Event?      @relation(fields: [eventId], references: [id])
+
+  @@index([competitionId])            // lookup items par compétition
+  @@index([competitionId, startTime]) // items triés par heure de début
+  @@index([eventId])                  // lookup items liés à une épreuve
+}
+
+model SeatBooking {
+  id            String          @id @default(uuid())
+  competitionId String
+  competition   Competition     @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User            @relation(fields: [userId], references: [id])
+  itemId        String          // ID within the layout JSON
+  seatLabel     String?         // e.g. "Rang A, Place 5"
+  status        BookingStatus   @default(PENDING)
+  paymentId     String?         // External ID (HelloAsso)
+  expiresAt     DateTime?       // For temporary holds
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([competitionId])
+  @@index([userId])
+  @@index([competitionId, itemId, seatLabel])
+}

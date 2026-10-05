@@ -1,0 +1,411 @@
+name: EAS Build & Update
+
+on:
+  # Triggered after CI passes (not directly on push).
+  # NOTE: Manual CI re-runs also trigger this workflow. The gate job
+  # checks client_changed via git diff, so a re-run of CI without new
+  # client changes will skip all EAS jobs. Verified safe.
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [master, staging, develop]
+  # Manual promotion of the current staging code to the TestFlight beta
+  # channel, once validated on the personal ad-hoc preview channel.
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Promote staging → TestFlight beta'
+        required: true
+        type: choice
+        options:
+          - ota
+          - build
+      releaseNotes:
+        description: >-
+          Notes testeurs (relecture). Laisser VIDE = génération auto depuis les
+          commits conventionnels depuis le dernier tag beta-*.
+        required: false
+        type: string
+
+permissions: read-all
+
+concurrency:
+  group: eas-${{ github.event.workflow_run.head_branch || 'manual-beta' }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================
+  # GATE — Only proceed if CI passed and client code changed
+  # ============================================================
+  gate:
+    name: Check CI result & changes
+    runs-on: ubuntu-24.04
+    # Only a PUSH to this repository may deploy. workflow_run's `branches` filter
+    # matches the head branch NAME only: on a public repo a fork PR from a branch
+    # named `staging` would otherwise run here with secrets + Azure OIDC on the
+    # fork's code (head_sha). Also stops promotion PRs (head = staging) re-deploying.
+    if: >-
+      github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_repository.full_name == github.repository
+    outputs:
+      native: ${{ steps.check.outputs.native }}
+      client_changed: ${{ steps.check.outputs.client_changed }}
+      branch: ${{ github.event.workflow_run.head_branch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Detect change type
+        id: check
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          # Cascade pushes (develop -> staging -> master) are merge commits: the
+          # first parent is the branch's previous tip, so HEAD^1..HEAD is exactly
+          # the cumulative promoted change. A native EAS build costs ~2 $, so only
+          # force one when that diff cannot be trusted (fast-forward or direct
+          # push = no merge commit).
+          if [ "$BRANCH" = "staging" ] || [ "$BRANCH" = "master" ]; then
+            if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" -lt 3 ]; then
+              echo "Cascade push to $BRANCH without a merge commit - forcing full build"
+              echo "client_changed=true" >> "$GITHUB_OUTPUT"
+              echo "native=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            COMPARE_SHA=$(git rev-parse HEAD^1)
+          else
+            # Develop: compare against the previous push (last 2 commits)
+            COMPARE_SHA=$(git log --first-parent -2 --format='%H' HEAD | tail -1)
+          fi
+
+          if [ -z "$COMPARE_SHA" ]; then
+            echo "No comparison base found - assuming everything changed"
+            echo "client_changed=true" >> "$GITHUB_OUTPUT"
+            echo "native=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED_FILES=$(git diff --name-only "$COMPARE_SHA" HEAD)
+          echo "Comparing $COMPARE_SHA..HEAD (branch: $BRANCH)"
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Check if any client-related files changed
+          CLIENT_CHANGED="false"
+          if echo "$CHANGED_FILES" | grep -qE "^(apps/client/|packages/shared/|pnpm-lock\.yaml)"; then
+            CLIENT_CHANGED="true"
+          fi
+          echo "client_changed=$CLIENT_CHANGED" >> "$GITHUB_OUTPUT"
+
+          # Check if native files changed (require full build)
+          NATIVE="false"
+          NATIVE_PATTERNS="^(apps/client/app\.config|apps/client/app\.json|apps/client/eas\.json|apps/client/package\.json|apps/client/(ios|android|plugins|modules)/|patches/|pnpm-lock\.yaml)"
+          if echo "$CHANGED_FILES" | grep -qE "$NATIVE_PATTERNS"; then
+            NATIVE="true"
+          fi
+          echo "native=$NATIVE" >> "$GITHUB_OUTPUT"
+          echo "Result: client_changed=$CLIENT_CHANGED native=$NATIVE"
+
+  # ============================================================
+  # DEVELOP — OTA only (devs rebuild dev client manually for
+  # native changes)
+  # ============================================================
+  ota-development:
+    name: OTA Update (development)
+    needs: [gate]
+    if: needs.gate.outputs.branch == 'develop' && needs.gate.outputs.client_changed == 'true'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Setup EAS CLI
+        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Publish OTA update
+        working-directory: apps/client
+        env:
+          COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}
+        # --environment injecte les vars EAS server (EXPO_PUBLIC_API_URL…) dans
+        # le bundle. Sans lui, l'URL API est vide → "Network Error" au login.
+        run: eas update --branch development --environment development --message "$COMMIT_MSG"
+
+  # ============================================================
+  # STAGING — Full build only if native changes, OTA always
+  # ============================================================
+  build-staging:
+    name: EAS Build (preview)
+    needs: [gate]
+    if: |
+      needs.gate.outputs.branch == 'staging'
+      && needs.gate.outputs.client_changed == 'true'
+      && needs.gate.outputs.native == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Setup EAS CLI
+        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build preview (iOS only — Android disabled during MVP beta)
+        working-directory: apps/client
+        run: eas build --profile preview --platform ios --non-interactive
+
+  ota-staging:
+    name: OTA Update (preview)
+    needs: [gate]
+    if: needs.gate.outputs.branch == 'staging' && needs.gate.outputs.client_changed == 'true'
+    runs-on: ubuntu-24.04
+    # Record only, no reviewer — this is the internal preview channel.
+    environment:
+      name: preview
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Setup EAS CLI
+        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Publish OTA update
+        working-directory: apps/client
+        env:
+          COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}
+        # --environment preview : sans lui l'URL API n'est pas embarquée dans le
+        # bundle OTA (les env de eas.json ne valent que pour `eas build`), d'où
+        # "Network Error" au login sur la preview après une promotion.
+        run: eas update --branch preview --environment preview --message "$COMMIT_MSG"
+
+  # ============================================================
+  # PROMOTION MANUELLE — staging → TestFlight beta
+  # beta = variante distincte (FFD Connect Beta, bundle .beta, API staging),
+  # distribuée via TestFlight. Bundle id propre → coexiste avec l'app ad-hoc
+  # preview (.staging) et la prod sur un même appareil ; même code/API que
+  # preview, seule la distribution (store) et l'identité de l'app diffèrent.
+  # Déclenché à la main (workflow_dispatch) une fois la version
+  # validée sur le canal preview :
+  #   - ota   → publie le JS courant de staging sur le canal beta
+  #   - build → déclenche l'EAS Workflow apps/client/.eas/workflows/
+  #             beta-testflight.yml (build natif beta + groupe TestFlight
+  #             EXTERNE « Beta FFD » + soumission Beta App Review). Le job
+  #             GitHub ne fait que lancer le run (pas d'attente) : le build
+  #             (~20-30 min) tourne côté EAS, pas en minutes Actions.
+  #             Nécessite une clé API App Store Connect dans les credentials EAS.
+  # ============================================================
+  promote-beta:
+    name: Promote staging → TestFlight beta (${{ inputs.action }})
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    # No reviewer: workflow_dispatch already requires a human to press the
+    # button. The environment is here for the deployment record — what went to
+    # TestFlight, when, from which SHA.
+    environment:
+      name: testflight-beta
+    # Nécessaire pour créer la GitHub Release (changelog testeurs).
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: staging
+          # Historique complet + tags : le générateur remonte au dernier tag beta-*.
+          fetch-depth: 0
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Setup EAS CLI
+        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # Changelog testeurs : notes fournies (relecture) OU génération auto depuis
+      # les commits conventionnels depuis le dernier tag beta-*.
+      - name: Generate beta changelog
+        id: changelog
+        # Notes passées via env (pas d'interpolation dans le shell → pas
+        # d'injection de commande depuis le champ du formulaire).
+        env:
+          RELEASE_NOTES: ${{ inputs.releaseNotes }}
+        run: |
+          set -euo pipefail
+          if [ -n "$RELEASE_NOTES" ]; then
+            printf '%s\n' "$RELEASE_NOTES" > beta-notes.md
+            cp beta-notes.md beta-notes.txt
+          else
+            node scripts/generate-changelog.mjs --format markdown > beta-notes.md
+            node scripts/generate-changelog.mjs --format testflight > beta-notes.txt
+          fi
+          {
+            echo '## 📝 Notes testeurs (TestFlight « What to Test »)'
+            echo '```'
+            cat beta-notes.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: beta-changelog
+          path: |
+            beta-notes.md
+            beta-notes.txt
+
+      # `eas submit --groups` ne gère que les groupes INTERNES : la distribution
+      # au groupe EXTERNE (+ Beta App Review) passe par le job `testflight` d'un
+      # EAS Workflow. `eas workflow:run` n'attend PAS la fin du run par défaut
+      # (--wait est false) : on lance et on rend la main, pour ne pas payer
+      # ~30 min de minutes Actions à regarder un build EAS.
+      # Les notes passent en JSON sur stdin (multi-lignes sûres, EOF garanti),
+      # tronquées à 4000 caractères (limite « What to Test » d'App Store Connect).
+      # Elles remplacent l'ancienne étape set-testflight-notes.mjs, qui ne peut
+      # plus tourner ici : le build n'existe pas encore quand ce job se termine.
+      - name: Trigger EAS Workflow beta → TestFlight external (iOS only)
+        if: inputs.action == 'build'
+        working-directory: apps/client
+        run: |
+          set -euo pipefail
+          # Notes vides → `{}` : l'input garde sa valeur par défaut (texte FR).
+          # Sortie JSON hors de l'arbre (RUNNER_TEMP) : rien d'ajouté à l'archive
+          # projet que la CLI envoie à EAS.
+          jq -n --rawfile c ../../beta-notes.txt \
+            'if ($c | test("\\S")) then {changelog: ($c | rtrimstr("\n") | .[0:4000])} else {} end' \
+            | eas workflow:run .eas/workflows/beta-testflight.yml --non-interactive --json \
+            > "$RUNNER_TEMP/eas-run.json"
+          RUN_URL=$(jq -r '.url' "$RUNNER_TEMP/eas-run.json")
+          echo "EAS workflow run: $RUN_URL"
+          {
+            echo '## 🚀 EAS Workflow beta → TestFlight (externe)'
+            echo ''
+            echo "Run : $RUN_URL"
+            echo ''
+            echo 'Build + upload + Beta App Review tournent côté EAS ; suivre le run ci-dessus.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Published, not drafted. A draft release does NOT create its tag: the
+      # three drafts sitting in this repo since July reference tags
+      # (beta-20260720-9fcffc8 and friends) that do not exist, so `git tag` is
+      # empty and there is no way to check out what a given TestFlight build
+      # actually contained. The tag is the whole point during a beta — publish
+      # it. `--prerelease` still keeps these out of "latest release".
+      - name: Create GitHub Release (beta, prerelease)
+        if: inputs.action == 'build'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="beta-$(date +%Y%m%d)-$(git rev-parse --short HEAD)"
+          gh release create "$TAG" \
+            --title "Beta $TAG" \
+            --notes-file beta-notes.md \
+            --prerelease \
+            --target "$(git rev-parse HEAD)"
+
+      - name: Publish OTA update (beta)
+        if: inputs.action == 'ota'
+        working-directory: apps/client
+        # Beta partage l'API + les clés de l'environnement `preview` (mêmes Google
+        # Maps/Places, Sentry, WAKE_KEY) mais garde APP_ENV=beta (identité + pas de
+        # features preview-only). `--environment preview` charge ces vars server EAS
+        # dans le bundle OTA — SANS lui, les clés Google étaient absentes → carte et
+        # recherche d'adresse cassées sur beta. L'override EXPO_PUBLIC_APP_ENV=beta
+        # ci-dessous vise à repasser l'identité en beta.
+        # ATTENTION (à valider au 1er OTA beta réel) : si `--environment` l'emporte
+        # sur l'env inline, APP_ENV resterait "preview" (→ outils preview-only
+        # visibles en beta). Le fix pleinement robuste = un environnement EAS "beta"
+        # dédié (côté Expo). En attendant, `action: build` reste la voie validée.
+        env:
+          EXPO_PUBLIC_APP_ENV: beta
+        run: eas update --branch beta --environment preview --message "promote staging @ $(git rev-parse --short HEAD)"
+
+  # ============================================================
+  # MASTER — Production (réservé au lancement App Store public).
+  # Full build only if native changes, OTA always.
+  # ============================================================
+  build-production:
+    name: EAS Build (production)
+    needs: [gate]
+    if: |
+      needs.gate.outputs.branch == 'master'
+      && needs.gate.outputs.client_changed == 'true'
+      && needs.gate.outputs.native == 'true'
+    runs-on: ubuntu-24.04
+    # Same gate as ota-production, and a native build also costs ~2 USD each.
+    environment:
+      name: app-production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Setup EAS CLI
+        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build production (iOS only — Android disabled during MVP beta)
+        working-directory: apps/client
+        run: eas build --profile production --platform ios --non-interactive
+
+  ota-production:
+    name: OTA Update (production)
+    needs: [gate]
+    if: needs.gate.outputs.branch == 'master' && needs.gate.outputs.client_changed == 'true'
+    runs-on: ubuntu-24.04
+    # Sharpest automatic path in the repo: this ships JavaScript straight to
+    # production app users on any master push that touches the client, with no
+    # store review in between. `app-production` carries a required reviewer.
+    environment:
+      name: app-production
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Setup EAS CLI
+        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Publish OTA update
+        working-directory: apps/client
+        env:
+          COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}
+        # --environment production : embarque l'URL API prod dans le bundle OTA.
+        run: eas update --branch production --environment production --message "$COMMIT_MSG"

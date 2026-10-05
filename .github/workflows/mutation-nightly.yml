@@ -1,0 +1,79 @@
+name: Mutation Nightly
+
+on:
+  schedule:
+    # Weekly, Sundays 02:00 UTC (04:00 Paris). Was nightly: a full Stryker run
+    # bills ~36 min, i.e. ~1100 min/month — a third of the Actions quota for an
+    # informational signal. Weekly is ~150 min/month; trade-off: a mutation
+    # regression surfaces within a week instead of a day. Use workflow_dispatch
+    # for an on-demand run (e.g. after touching auth/payment).
+    - cron: '0 2 * * 0'
+  workflow_dispatch: # Allow manual trigger
+
+permissions: read-all
+
+concurrency:
+  group: mutation-nightly
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================
+  # FULL MUTATION TESTING — non-sharded, all critical modules
+  # Safety net for --since optimization in CI (which skips unchanged shards).
+  # Catches regressions in files not modified by recent PRs.
+  # ============================================================
+  mutation-full:
+    name: Full Mutation Testing
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: develop
+          persist-credentials: false
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Setup Prisma
+        uses: ./.github/actions/setup-prisma
+
+      - name: Restore Stryker incremental cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apps/backend/reports/mutation/stryker-incremental.json
+          key: stryker-nightly-${{ hashFiles('apps/backend/src/**/*.ts') }}
+          restore-keys: |
+            stryker-nightly-
+          save-always: true
+
+      - name: Run full mutation tests
+        working-directory: apps/backend
+        env:
+          DATABASE_URL: postgresql://localhost/dummy
+          JWT_SECRET: test-secret-key-for-mutation-testing-only
+        run: pnpm exec stryker run
+
+      - name: Upload mutation report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: stryker-nightly-report
+          path: apps/backend/reports/mutation/
+          retention-days: 30
+
+      - name: Notify nightly failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          echo "::error::Nightly mutation testing failed — mutation score may have regressed"
+          echo "Run: $RUN_URL"
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\":\":warning: *Nightly mutation testing failed*\nMutation score may have regressed.\nRun: <${RUN_URL}|View logs>\"}" \
+              || echo "Slack notification failed (non-blocking)"
+          fi

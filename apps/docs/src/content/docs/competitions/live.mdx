@@ -1,0 +1,35 @@
+---
+title: Résultats en direct (Live)
+description: Suivre le déroulement d'une compétition en temps réel depuis ton mobile.
+---
+
+import ProfileBadge from '../../../components/ProfileBadge.astro';
+import TourStep from '../../../components/TourStep.astro';
+
+<ProfileBadge profiles={["Membre", "Staff"]} />
+
+# Résultats en direct (Live)
+
+Ne manque rien de la compétition grâce au mode **Live**. Tu peux voir en temps réel quels couples sont qualifiés pour le tour suivant.
+
+## Comment ça marche
+
+<TourStep step={1} title="Accède au Live">
+  Si une compétition est en cours, un bandeau **LIVE** clignotant apparaît sur sa fiche. Appuie dessus.
+
+![Bandeau Live clignotant](/screenshots/placeholder.png)
+</TourStep>
+
+<TourStep step={2} title="Séries en cours">
+  L'écran affiche la série actuellement sur la piste. Tu peux voir les dossards des danseurs en train de passer.
+
+![Vue série en cours](/screenshots/placeholder.png)
+</TourStep>
+
+<TourStep step={3} title="Qualifiés (Recalls)">
+  Dès que les juges ont rendu leur verdict pour un tour, la liste des **Qualifiés** s'affiche. Tu sais instantanément si tu passes au tour suivant !
+
+![Liste des qualifiés](/screenshots/placeholder.png)
+</TourStep>
+
+> **📱 Mobile uniquement** : Cette fonctionnalité est optimisée pour l'application mobile afin de garantir une réactivité maximale sur place.

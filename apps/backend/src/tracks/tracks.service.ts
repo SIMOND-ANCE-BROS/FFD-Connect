@@ -1,0 +1,291 @@
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
+import { Prisma, TrackStatus, UserRole } from "@prisma/client";
+import * as fs from "fs";
+import * as path from "path";
+import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
+import { createPaginatedResponse } from "../common/utils/pagination.util";
+import { NotificationsService } from "../notifications/notifications.service";
+import { PrismaService } from "../prisma/prisma.service";
+import { BlobStorageService } from "../storage/blob-storage.service";
+import { BpmService } from "./bpm.service";
+import { ReportTrackReason } from "./dto/report-track.dto";
+import { UpdateTrackDto } from "./dto/update-track.dto";
+
+/** Champs de base récupérés pour toute piste audio. Ne pas exposer status/jobId dans les listes. */
+const TRACK_BASE_SELECT = {
+  id: true,
+  title: true,
+  artist: true,
+  filename: true,
+  artwork: true,
+  style: true,
+  bpm: true,
+  // Raw detected tempo (BPM) — lets the client preview the dance-aware MPM
+  // live before saving. submittedById drives the edit permission (owner/admin).
+  rawBpm: true,
+  submittedById: true,
+  // Modération : renvoyés au client. titleMasked pilote l'affichage du libellé
+  // neutre côté non-admin ; blacklisted permet à l'admin d'afficher un indicateur.
+  titleMasked: true,
+  blacklisted: true,
+  // Paso doble : timecodes des appels affichés sur le lecteur (#paso-clashes).
+  clashTimecodes: true,
+  createdAt: true,
+} satisfies Prisma.TrackSelect;
+
+/** Libellé neutre affiché à la place du titre réel d'une piste masquée. */
+const MASKED_TITLE_LABEL = "Titre masqué";
+
+type TrackBase = Prisma.TrackGetPayload<{ select: typeof TRACK_BASE_SELECT }>;
+
+@Injectable()
+export class TracksService {
+  private readonly logger = new Logger(TracksService.name);
+
+  /** Libellés FR des motifs de signalement, affichés dans la notification admin. */
+  private static readonly REPORT_REASON_LABELS: Record<
+    ReportTrackReason,
+    string
+  > = {
+    [ReportTrackReason.TITLE]: "Titre",
+    [ReportTrackReason.ARTIST]: "Artiste",
+    [ReportTrackReason.DANCE]: "Danse (catégorie)",
+    [ReportTrackReason.MPM]: "MPM",
+    [ReportTrackReason.PASO_CLASH]: "Clash paso doble",
+    [ReportTrackReason.OTHER]: "Autre",
+  };
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly bpmService: BpmService,
+    private readonly blobStorage: BlobStorageService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
+
+  /**
+   * Signale un problème sur une piste (titre/artiste/danse/MPM/paso/autre).
+   * Ouvert à tout utilisateur authentifié : crée une notification pour chaque
+   * administrateur avec le motif et, si fourni, un message libre. Ne stocke pas
+   * de nouvelle entité — réutilise le modèle Notification.
+   */
+  async reportTrack(
+    trackId: string,
+    reason: ReportTrackReason,
+    message: string | undefined,
+    reporterId: string,
+  ): Promise<void> {
+    const track = await this.prisma.track.findUnique({
+      where: { id: trackId },
+      select: { title: true },
+    });
+    if (!track) {
+      throw new NotFoundException(`Track ${trackId} not found`);
+    }
+
+    const admins = await this.prisma.user.findMany({
+      where: { role: UserRole.ADMIN },
+      select: { id: true },
+    });
+
+    const reasonLabel = TracksService.REPORT_REASON_LABELS[reason];
+    const trimmed = message?.trim();
+    const body =
+      `«${track.title}» — ${reasonLabel} signalé` +
+      (trimmed ? ` : ${trimmed}` : "");
+
+    await Promise.all(
+      admins.map((admin) =>
+        this.notificationsService.createForUser(
+          admin.id,
+          "Signalement musique",
+          body,
+          { trackId, reason, reporterId },
+        ),
+      ),
+    );
+
+    this.logger.log(
+      `Track ${trackId} reported (${reason}) by ${reporterId} → notified ${admins.length} admin(s)`,
+    );
+  }
+
+  /**
+   * Filtre Prisma : exclut Ambiance, les tracks en cours de traitement
+   * (PENDING/ERROR) et les pistes blacklistées par un admin.
+   */
+  private static readonly LIBRARY_WHERE: Prisma.TrackWhereInput = {
+    AND: [
+      { artist: { not: { equals: "Ambiance" }, mode: "insensitive" } },
+      {
+        OR: [
+          { style: { not: { equals: "Ambiance" }, mode: "insensitive" } },
+          { style: null },
+        ],
+      },
+      { status: TrackStatus.READY },
+      { blacklisted: false },
+    ],
+  };
+
+  /**
+   * Applique le masquage du titre en fonction du rôle du demandeur.
+   * Les admins voient toujours le titre réel (+ le flag titleMasked pour
+   * afficher un indicateur). Les non-admins reçoivent un libellé neutre
+   * lorsque la piste est marquée titleMasked.
+   */
+  private static maskTitle<T extends TrackBase>(track: T, isAdmin: boolean): T {
+    if (track.titleMasked && !isAdmin) {
+      return { ...track, title: MASKED_TITLE_LABEL };
+    }
+    return track;
+  }
+
+  /**
+   * Récupère toutes les pistes audio READY avec pagination.
+   * Exclut Ambiance et les tracks en cours de traitement.
+   */
+  async findAll(
+    pagination: PaginationParamsDto = new PaginationParamsDto(),
+    isAdmin = false,
+  ) {
+    const { skip, take } = pagination;
+    const where = TracksService.LIBRARY_WHERE;
+
+    const [total, tracks] = await Promise.all([
+      this.prisma.track.count({ where }),
+      this.prisma.track.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+        select: TRACK_BASE_SELECT,
+      }),
+    ]);
+
+    const masked = tracks.map((t) => TracksService.maskTitle(t, isAdmin));
+    return createPaginatedResponse(masked, total, skip ?? 0, take ?? 10);
+  }
+
+  /**
+   * Récupère une piste audio par son ID.
+   */
+  async findOne(id: string, isAdmin = false) {
+    const track = await this.prisma.track.findUnique({
+      where: { id },
+      select: TRACK_BASE_SELECT,
+    });
+    if (!track) throw new NotFoundException(`Track ${id} not found`);
+    return TracksService.maskTitle(track, isAdmin);
+  }
+
+  /**
+   * Met à jour les champs éditables d'une track (titre, artiste, style, bpm).
+   * Seul le submitter ou un admin peut éditer. Les champs non fournis sont préservés.
+   */
+  async updateTrack(
+    id: string,
+    userId: string,
+    isAdmin: boolean,
+    patch: UpdateTrackDto,
+  ): Promise<void> {
+    const existing = await this.prisma.track.findUnique({
+      where: { id },
+      select: { submittedById: true, rawBpm: true },
+    });
+    if (!existing) {
+      throw new NotFoundException(`Track ${id} not found`);
+    }
+    if (
+      !isAdmin &&
+      existing.submittedById &&
+      existing.submittedById !== userId
+    ) {
+      throw new HttpException(
+        "Vous ne pouvez modifier que les musiques que vous avez ajoutées.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    const data: Prisma.TrackUpdateInput = {};
+    if (patch.title !== undefined) data.title = patch.title;
+    if (patch.artist !== undefined) data.artist = patch.artist;
+    if (patch.style !== undefined) data.style = patch.style || null;
+    // Champs de modération : réservés aux admins. Ignorés silencieusement pour
+    // un non-admin (le contrôleur PATCH est déjà ADMIN-only, ceci est une
+    // défense en profondeur).
+    if (isAdmin && patch.titleMasked !== undefined) {
+      data.titleMasked = patch.titleMasked;
+    }
+    if (isAdmin && patch.blacklisted !== undefined) {
+      data.blacklisted = patch.blacklisted;
+    }
+    // Appels paso doble : données de compétition autoritaires → ADMIN only.
+    // Triés croissants et dédupliqués pour un affichage stable sur le lecteur.
+    if (isAdmin && patch.clashTimecodes !== undefined) {
+      data.clashTimecodes = [...new Set(patch.clashTimecodes)].sort(
+        (a, b) => a - b,
+      );
+    }
+    if (patch.bpm !== undefined) {
+      // Explicit manual tempo override from the user.
+      data.bpm = patch.bpm;
+    } else if (patch.style && existing.rawBpm > 0) {
+      // No manual tempo: derive the dance-aware MPM from the raw detected BPM
+      // for the newly chosen dance (in dance we speak in MPM, not BPM).
+      const mpm = this.bpmService.calculateMpm(existing.rawBpm, patch.style);
+      if (mpm > 0) data.bpm = mpm;
+    }
+    if (Object.keys(data).length === 0) return;
+    await this.prisma.track.update({ where: { id }, data });
+    this.logger.log(
+      `Updated track ${id} (fields: ${Object.keys(data).join(",")})`,
+    );
+  }
+
+  /**
+   * Supprime définitivement une piste (modération admin). Retire la ligne DB
+   * et, si possible, le fichier audio associé (blob ou disque local). L'échec
+   * de suppression du fichier n'empêche pas la suppression de la ligne.
+   */
+  async deleteTrack(id: string): Promise<void> {
+    const track = await this.prisma.track.findUnique({
+      where: { id },
+      select: { filename: true },
+    });
+    if (!track) {
+      throw new NotFoundException(`Track ${id} not found`);
+    }
+
+    await this.prisma.track.delete({ where: { id } });
+
+    if (track.filename) {
+      await this.deleteAudioFile(track.filename);
+    }
+    this.logger.log(`Deleted track ${id}`);
+  }
+
+  /** Best-effort suppression du fichier audio (blob Azure ou disque local). */
+  private async deleteAudioFile(filename: string): Promise<void> {
+    const safeName = path.basename(filename);
+    try {
+      if (this.blobStorage.isEnabled()) {
+        await this.blobStorage.deleteFile(safeName);
+        return;
+      }
+      const filePath = path.join(__dirname, "../../uploads", safeName);
+      await fs.promises.rm(filePath, { force: true });
+    } catch (error) {
+      // Non-fatal : la ligne DB est déjà supprimée, on ne bloque pas la modération.
+      this.logger.warn(
+        `Failed to delete audio file ${safeName}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+}

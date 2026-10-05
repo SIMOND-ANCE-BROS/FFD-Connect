@@ -1,0 +1,6 @@
+appId: fr.ffdanse.connect
+---
+# Full reset path: wipe state, then run the canonical licensee login (handles the
+# CGU gate). Used by ensure-licensee.yaml when the current session doesn't match.
+- launchApp: { clearState: true }
+- runFlow: login-licensee.yaml

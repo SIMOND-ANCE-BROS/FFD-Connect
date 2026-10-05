@@ -1,0 +1,27 @@
+appId: fr.ffdanse.connect
+tags:
+  - auth
+  - e2e
+---
+# Guest entry: "Continuer en tant qu'invité" → lands on Competitions (2-tab nav).
+# Boot + CGU gate + login screen is the flaky preamble on the iOS 26 sim —
+# retry it in-flow (relaunch is cheap; the second boot is faster).
+- retry:
+    maxRetries: 2
+    commands:
+      - launchApp: { clearState: true }
+      # On a cleared state the CGU gate covers the login screen — accept it and wait
+      # for the login screen (cold boot can take a while) before tapping guest.
+      - extendedWaitUntil:
+          visible: { id: "cgu-accept-button" }
+          timeout: 60000
+          optional: true
+      - tapOn: { id: "cgu-accept-button", optional: true }
+      - extendedWaitUntil:
+          visible: { id: "login-guest-button" }
+          timeout: 30000
+- tapOn: { id: "login-guest-button" }
+- extendedWaitUntil:
+    visible: { id: "tab-competitions" }
+    timeout: 20000
+- assertVisible: { id: "tab-settings" }

@@ -1,0 +1,174 @@
+/* Thème FFD-Connect (aligné sur l’app mobile/web) */
+@import './ffd-theme.css';
+
+/* Force l'affichage du header personnalisé sur toutes les pages */
+.custom-header,
+.header-wrapper {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 1000 !important;
+  width: 100% !important;
+}
+
+.custom-header .header-container {
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* Masque tout autre header (Starlight par défaut) */
+header:not(.custom-header),
+.header:not(.custom-header) {
+  display: none !important;
+}
+
+/* Styles page Changelog */
+.changelog-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+  margin-top: 2rem;
+}
+
+.changelog-entry {
+  padding: 2rem;
+  background: var(--sl-color-bg-sidebar);
+  border-radius: var(--ffd-radius-m);
+  border: 1px solid var(--sl-color-hairline);
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
+}
+
+.changelog-entry:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.entry-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.version-badge {
+  padding: 0.375rem 0.75rem;
+  background: var(--sl-color-accent-low);
+  color: var(--sl-color-accent);
+  border-radius: var(--ffd-radius-s);
+  font-weight: 700;
+  font-size: 0.875rem;
+  letter-spacing: 0.5px;
+}
+
+.entry-date {
+  color: var(--sl-color-gray-3);
+  font-size: 0.9rem;
+}
+
+.entry-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0 0 1.5rem 0;
+  color: var(--sl-color-text);
+}
+
+.changelog-entry .entry-content h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 1.5rem 0 0.75rem 0;
+  color: var(--sl-color-text);
+}
+
+.changelog-entry .entry-content ul {
+  margin: 0.5rem 0 1rem 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.changelog-entry .entry-content li {
+  padding: 0.5rem 0;
+  color: var(--sl-color-gray-2);
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.changelog-entry .entry-content li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--sl-color-accent);
+  font-weight: bold;
+}
+
+.changelog-entry .entry-content p {
+  color: var(--sl-color-gray-2);
+  line-height: 1.6;
+}
+
+@media (max-width: 768px) {
+  .changelog-entry {
+    padding: 1.5rem;
+  }
+}
+
+/* ----- Page d’accueil (splash) ----- */
+.accueil-content {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 4rem;
+}
+
+.accueil-content > p:first-of-type {
+  font-size: 1.125rem;
+  line-height: 1.7;
+  color: var(--sl-color-gray-2);
+  margin-bottom: 2.5rem;
+}
+
+.accueil-content h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--sl-color-text);
+  margin: 2.5rem 0 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.accueil-content h2:first-of-type {
+  margin-top: 0;
+}
+
+.accueil-content ul {
+  margin: 0.75rem 0 0 1.5rem;
+  padding: 0;
+  color: var(--sl-color-gray-2);
+  line-height: 1.6;
+}
+
+/* Hero splash : renforcement visuel FFD */
+:global(.hero) {
+  padding-bottom: 2.5rem;
+}
+
+:global(.hero h1) {
+  background: linear-gradient(135deg, var(--ffd-blue) 0%, var(--ffd-cyan) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+:global(.hero .tagline) {
+  color: var(--sl-color-gray-2);
+  font-size: 1.125rem;
+  line-height: 1.6;
+  max-width: 40rem;
+  margin-left: auto;
+  margin-right: auto;
+}

@@ -1,0 +1,10 @@
+{
+  "id": "pay-abc123",
+  "status": "Authorized",
+  "amount": 3500,
+  "currency": "EUR",
+  "order": {
+    "id": "order-xyz789",
+    "formSlug": "competition-2026"
+  }
+}

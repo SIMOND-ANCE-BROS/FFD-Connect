@@ -1,0 +1,22 @@
+name: Setup pnpm & Node
+description: Install pnpm, Node.js, and project dependencies
+
+runs:
+  using: composite
+  steps:
+    - name: Install pnpm
+      uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      with:
+        version: 10.30.0
+
+    - name: Setup Node.js
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version-file: '.nvmrc'
+        cache: 'pnpm'
+
+    - name: Install dependencies
+      shell: bash
+      env:
+        YOUTUBE_DL_SKIP_DOWNLOAD: 'true'
+      run: pnpm install --frozen-lockfile --prefer-offline

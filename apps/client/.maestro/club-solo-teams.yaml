@@ -1,0 +1,26 @@
+appId: fr.ffdanse.connect
+tags:
+  - club
+  - e2e
+---
+# CLUB · Solo Teams management.
+# Fast preamble: reuse the logged-in session when it already matches this role
+# (plain relaunch = fresh navigation, no reinstall/CGU/login). Falls back to the
+# full clearState + login path otherwise. Retried in-flow because the iOS 26 sim
+# intermittently drops taps after accumulated cold boots.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow: ensure-club.yaml
+# The solo-teams row sits below the fold — scroll it into view first.
+- scrollUntilVisible:
+    {
+      element: { id: "club-dashboard-soloteams-row" },
+      direction: DOWN,
+      timeout: 20000,
+    }
+- tapOn: { id: "club-dashboard-soloteams-row" }
+# The search bar lives in an animated PinnedHeader (not reliably exposed to iOS
+# a11y); assert the "Créer une équipe" FAB instead to confirm the screen loaded.
+- extendedWaitUntil: { visible: "Créer une équipe", timeout: 20000 }
+- back

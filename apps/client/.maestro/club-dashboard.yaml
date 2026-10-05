@@ -1,0 +1,36 @@
+appId: fr.ffdanse.connect
+tags:
+  - club
+  - e2e
+---
+# CLUB · Dashboard overview + navigate each management row.
+# Fast preamble: reuse the logged-in session when it already matches this role
+# (plain relaunch = fresh navigation, no reinstall/CGU/login). Falls back to the
+# full clearState + login path otherwise. Retried in-flow because the iOS 26 sim
+# intermittently drops taps after accumulated cold boots.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow: ensure-club.yaml
+- extendedWaitUntil:
+    { visible: { id: "club-dashboard-members-row" }, timeout: 60000 }
+- assertVisible: { id: "club-dashboard-competitions-row" }
+# Lower rows sit below the fold — scroll each into view before asserting.
+- scrollUntilVisible:
+    {
+      element: { id: "club-dashboard-couples-row" },
+      direction: DOWN,
+      timeout: 15000,
+    }
+- scrollUntilVisible:
+    {
+      element: { id: "club-dashboard-soloteams-row" },
+      direction: DOWN,
+      timeout: 15000,
+    }
+- scrollUntilVisible:
+    {
+      element: { id: "club-dashboard-registrations-row" },
+      direction: DOWN,
+      timeout: 15000,
+    }

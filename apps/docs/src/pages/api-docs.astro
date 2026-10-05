@@ -1,0 +1,334 @@
+---
+// Page dédiée à la référence API via Scalar (chargé côté client pour sync thème navbar)
+import Header from "../components/Header.astro";
+import { ClientRouter } from "astro:transitions";
+import "../styles/ffd-theme.css";
+
+// Couleurs FFD + conteneur + masquer "Powered by Scalar"
+const SCALAR_FFD_THEME = `
+  html, body, #app {
+    width: 100%;
+    min-height: 100%;
+    margin: 0;
+    box-sizing: border-box;
+  }
+  #app {
+    display: flex;
+    flex-direction: column;
+  }
+  /* Masquer le branding "Powered by Scalar" */
+  a[href*="scalar.com"] { display: none !important; }
+  /* Sidebar verticale : plus large + sticky au scroll */
+  .t-doc__sidebar,
+  .references-sidebar {
+    position: sticky !important;
+    top: 0 !important;
+    align-self: flex-start !important;
+    max-height: 100vh !important;
+    overflow-y: auto !important;
+    min-width: 320px !important;
+  }
+  .sidebar {
+    position: sticky !important;
+    top: 0 !important;
+    align-self: flex-start !important;
+    max-height: 100vh !important;
+    overflow-y: auto !important;
+  }
+  .dark-mode {
+    --scalar-color-1: #f8fafc;
+    --scalar-color-2: #94a3b8;
+    --scalar-color-3: #64748b;
+    --scalar-color-accent: #0088CE;
+    --scalar-background-1: #020617;
+    --scalar-background-2: #0f172a;
+    --scalar-background-3: #1e293b;
+    --scalar-background-accent: rgba(0, 136, 206, 0.18);
+    --scalar-color-border: #1e293b;
+    /* Sidebar plus large pour une nav lisible */
+    --scalar-sidebar-width: 320px;
+    --scalar-sidebar-background-1: #0f172a;
+    --scalar-sidebar-background-2: #0f172a;
+    --scalar-sidebar-border-color: #1e293b;
+    --scalar-sidebar-color-1: #f8fafc;
+    --scalar-sidebar-color-2: #94a3b8;
+    --scalar-sidebar-color-active: #0088CE;
+    --scalar-sidebar-item-hover-background: rgba(15, 23, 42, 0.8);
+    --scalar-sidebar-item-active-background: rgba(0, 136, 206, 0.18);
+  }
+  .light-mode {
+    --scalar-color-1: #0f172a;
+    --scalar-color-2: #475569;
+    --scalar-color-3: #64748b;
+    --scalar-color-accent: #0088CE;
+    --scalar-background-1: #f8fafc;
+    --scalar-background-2: #f1f5f9;
+    --scalar-background-3: #e2e8f0;
+    --scalar-background-accent: rgba(0, 136, 206, 0.12);
+    --scalar-color-border: #e2e8f0;
+    /* Sidebar plus large pour une nav lisible */
+    --scalar-sidebar-width: 320px;
+    --scalar-sidebar-background-1: #f1f5f9;
+    --scalar-sidebar-background-2: #f1f5f9;
+    --scalar-sidebar-border-color: #e2e8f0;
+    --scalar-sidebar-color-1: #0f172a;
+    --scalar-sidebar-color-2: #475569;
+    --scalar-sidebar-color-active: #0088CE;
+    --scalar-sidebar-item-hover-background: rgba(241, 245, 249, 0.9);
+    --scalar-sidebar-item-active-background: rgba(0, 136, 206, 0.12);
+  }
+`;
+---
+
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>API Reference – FFD-Connect</title>
+    <ClientRouter />
+    <script is:inline>
+      (function () {
+        try {
+          var stored = localStorage.getItem('starlight-theme');
+          document.documentElement.setAttribute('data-theme', stored === 'light' ? 'light' : 'dark');
+        } catch (_) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      })();
+    </script>
+    <style is:global>
+      :root {
+        --sl-nav-height: 64px;
+        --sl-z-index-navbar: 100;
+      }
+      body {
+        margin: 0;
+        background: var(--sl-color-bg);
+        color: var(--sl-color-text);
+        font-family: var(--sl-font-system);
+      }
+      .api-docs-header-wrapper {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 1000;
+        width: 100%;
+      }
+      .api-docs-below {
+        margin-top: var(--sl-nav-height);
+        min-height: calc(100vh - var(--sl-nav-height));
+        width: 100%;
+      }
+      .api-docs-content {
+        flex: 1;
+        min-width: 0;
+        min-height: calc(100vh - var(--sl-nav-height));
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      /* Une seule barre de scroll : le conteneur parent ne défile pas, seul le contenu Scalar défile */
+      .api-docs-content :global(> div),
+      .api-docs-content :global(#scalar-mount) {
+        width: 100%;
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .api-docs-content :global(#scalar-mount) {
+        min-height: calc(100vh - var(--sl-nav-height));
+      }
+      .api-docs-content :global(#app) {
+        width: 100%;
+        min-height: 100%;
+        flex: 1;
+      }
+      .api-docs-content :global(iframe) {
+        width: 100%;
+        min-height: calc(100vh - var(--sl-nav-height));
+        border: none;
+        display: block;
+      }
+      /* Scalar : couleurs FFD (héritées si le widget les utilise) */
+      :root[data-theme="light"] {
+        --scalar-color-accent: var(--ffd-cyan);
+      }
+      :root[data-theme="dark"] {
+        --scalar-color-accent: var(--ffd-cyan);
+      }
+      /* Sidebar API doc : plus large + sticky au scroll */
+      #scalar-mount .t-doc__sidebar,
+      #scalar-mount .references-sidebar {
+        position: sticky !important;
+        top: 0 !important;
+        align-self: flex-start !important;
+        max-height: calc(100vh - var(--sl-nav-height, 64px)) !important;
+        overflow-y: auto !important;
+        width: 320px !important;
+        min-width: 320px !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="api-docs-header-wrapper">
+      <Header />
+    </div>
+    <div class="api-docs-below">
+      <div class="api-docs-content">
+        <div id="scalar-mount"></div>
+      </div>
+    </div>
+    <script define:vars={{ SCALAR_FFD_THEME }}>
+      (function () {
+        function getTheme() {
+          var t = (document.documentElement.getAttribute('data-theme') || '').toLowerCase().trim();
+          return t === 'light' ? 'light' : 'dark';
+        }
+        function mountScalar(darkMode) {
+          const el = document.getElementById('scalar-mount');
+          if (!el || typeof window.Scalar === 'undefined') return;
+          el.innerHTML = '';
+          var isDark = darkMode !== undefined ? darkMode : getTheme() === 'dark';
+          /* Config Scalar comme la doc + HelloAsso : darkMode true = thème sombre, forceDarkModeState force l’état affiché */
+          window.Scalar.createApiReference('#scalar-mount', {
+            url: '/swagger.json',
+            theme: 'default',
+            darkMode: isDark,
+            forceDarkModeState: isDark ? 'dark' : 'light',
+            hideDarkModeToggle: true,
+            customCss: SCALAR_FFD_THEME,
+          });
+          lastAppliedTheme = isDark ? 'dark' : 'light';
+          initialMountDone = true;
+        }
+        function loadAndMount() {
+          function doMount() {
+            var isDark = getTheme() === 'dark';
+            if (window.Scalar && window.Scalar.createApiReference) {
+              mountScalar(isDark);
+              return;
+            }
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.32.10';
+            s.async = true;
+            s.onload = function () {
+              requestAnimationFrame(function () {
+                var theme = pendingThemeFromEvent != null
+                  ? (String(pendingThemeFromEvent).toLowerCase().trim() === 'light' ? 'light' : 'dark')
+                  : getTheme();
+                pendingThemeFromEvent = null;
+                mountScalar(theme === 'dark');
+              });
+            };
+            document.head.appendChild(s);
+          }
+          requestAnimationFrame(function () {
+            requestAnimationFrame(doMount);
+          });
+        }
+        var lastAppliedTheme = null;
+        var applyThemeTimeout = null;
+        var pendingThemeFromEvent = null;
+        var initialMountDone = false;
+        function applyThemeToScalar() {
+          const el = document.getElementById('scalar-mount');
+          if (!el) return;
+          if (!window.Scalar || !window.Scalar.createApiReference) return;
+          if (!initialMountDone) return;
+          var current = pendingThemeFromEvent !== null && pendingThemeFromEvent !== undefined
+            ? (String(pendingThemeFromEvent).toLowerCase().trim() === 'light' ? 'light' : 'dark')
+            : getTheme();
+          pendingThemeFromEvent = null;
+          if (lastAppliedTheme === current) return;
+          var parent = el.parentNode;
+          if (parent) {
+            var newEl = document.createElement('div');
+            newEl.id = 'scalar-mount';
+            parent.replaceChild(newEl, el);
+          }
+          requestAnimationFrame(() => {
+            mountScalar(current === 'dark');
+          });
+        }
+        function debouncedApplyTheme(themeFromEvent) {
+          if (themeFromEvent !== undefined && themeFromEvent !== null) {
+            pendingThemeFromEvent = themeFromEvent;
+          }
+          if (applyThemeTimeout) clearTimeout(applyThemeTimeout);
+          applyThemeTimeout = setTimeout(applyThemeToScalar, 150);
+        }
+        function syncThemeIfChanged() {
+          if (!initialMountDone) return;
+          const el = document.getElementById('scalar-mount');
+          if (!el || !window.Scalar) return;
+          var current = getTheme();
+          if (lastAppliedTheme !== null && lastAppliedTheme !== current) {
+            debouncedApplyTheme();
+          }
+        }
+        function applyThemeInstant(themeValue) {
+          var isDark = String(themeValue).toLowerCase().trim() === 'dark';
+          var nextTheme = isDark ? 'dark' : 'light';
+          if (lastAppliedTheme === nextTheme) return;
+          var el = document.getElementById('scalar-mount');
+          if (!el || !window.Scalar || !window.Scalar.createApiReference) return;
+          lastAppliedTheme = nextTheme;
+          el.style.transition = 'opacity 0.12s ease';
+          el.style.opacity = '0';
+          var parent = el.parentNode;
+          if (parent) {
+            var newEl = document.createElement('div');
+            newEl.id = 'scalar-mount';
+            newEl.style.opacity = '0';
+            newEl.style.transition = 'opacity 0.15s ease';
+            parent.replaceChild(newEl, el);
+            requestAnimationFrame(function () {
+              mountScalar(isDark);
+              requestAnimationFrame(function () {
+                var container = document.getElementById('scalar-mount');
+                if (container) container.style.opacity = '1';
+              });
+            });
+          }
+        }
+        window.__applyApiDocsTheme = function (themeFromEvent) {
+          if (themeFromEvent !== undefined && themeFromEvent !== null) {
+            if (initialMountDone) {
+              applyThemeInstant(themeFromEvent);
+            } else {
+              pendingThemeFromEvent = themeFromEvent;
+            }
+            return;
+          }
+          if (!initialMountDone && themeFromEvent != null) {
+            pendingThemeFromEvent = themeFromEvent;
+          }
+          debouncedApplyTheme(themeFromEvent);
+        };
+        const observer = new MutationObserver(function () {
+          if (initialMountDone) debouncedApplyTheme();
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+        window.addEventListener('starlight-theme-change', function (e) {
+          if (e && e.detail && e.detail.theme != null) {
+            debouncedApplyTheme(e.detail.theme);
+          } else if (initialMountDone) {
+            debouncedApplyTheme();
+          }
+        });
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', loadAndMount);
+        } else {
+          loadAndMount();
+        }
+        setTimeout(function () {
+          setInterval(syncThemeIfChanged, 400);
+        }, 800);
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,48 @@
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String?
+  title     String
+  body      String
+  data      Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+  @@index([userId, isRead])    // notifications non lues d'un user
+}
+
+/// Plateforme de l'appareil enregistré pour les notifications push.
+enum DevicePlatform {
+  IOS
+  ANDROID
+}
+
+/// Token FCM d'un appareil, enregistré par le client à l'ouverture de session
+/// (POST /notifications/device-token) et retiré à la déconnexion.
+///
+/// Le token est stocké EN CLAIR, contrairement aux tokens d'authentification du
+/// projet (RefreshToken / PasswordResetToken) qui sont hashés en SHA-256 : ce
+/// n'est pas un secret d'authentification mais l'adresse de livraison de la
+/// notification. Firebase exige la valeur exacte à chaque envoi, donc un hash la
+/// rendrait inutilisable. Ce n'est pas un oubli.
+///
+/// C'est en revanche une donnée personnelle (identifiant d'appareil) : d'où le
+/// `onDelete: Cascade`, qui garantit sa disparition avec le compte (RGPD art. 17,
+/// cf. UsersService.deleteMyAccount).
+model DeviceToken {
+  id         String         @id @default(uuid())
+  userId     String
+  /// Token de registration FCM. Unique : un appareil = une ligne, ré-attribuée
+  /// au dernier utilisateur connecté dessus (appareil partagé ou revendu).
+  token      String         @unique
+  platform   DevicePlatform
+  createdAt  DateTime       @default(now())
+  /// Rafraîchi à chaque enregistrement du token par le client.
+  lastSeenAt DateTime       @updatedAt
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

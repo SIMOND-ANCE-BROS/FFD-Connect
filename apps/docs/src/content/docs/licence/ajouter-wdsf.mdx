@@ -1,0 +1,81 @@
+---
+title: Ajouter une licence WDSF
+description: Comment lier ta licence WDSF à ton profil FFD-Connect pour les compétitions internationales.
+---
+
+import ProfileBadge from "../../../components/ProfileBadge.astro";
+import InteractiveGuide from "../../../components/InteractiveGuide";
+
+<ProfileBadge profiles={["Membre"]} />
+
+# Ajouter une licence WDSF
+
+Si tu participes à des compétitions **internationales**, tu dois posséder une licence **WDSF** (_World Dance Sport Federation_) en complément de ta licence FFD. Voici comment la lier à ton profil.
+
+> **Pré-requis** : Tu dois déjà posséder un numéro de licence WDSF. Pour en obtenir une, contacte directement la [FFD](https://www.ffd.fr).
+
+## Guide interactif
+
+<InteractiveGuide
+  client:load
+  steps={[
+    {
+      title: "Ouvre l'onglet Profil",
+      content: "Dans l'application, appuie sur ton profil en bas à droite.",
+      images: {
+        mobile: "/screenshots/placeholder.png",
+        web: "/screenshots/placeholder.png",
+      },
+      platforms: ["mobile", "web"],
+      roles: ["Membre"],
+    },
+    {
+      title: "Appuie sur « Ma Licence »",
+      content: "Repère la section **Ma Licence**.",
+      images: {
+        mobile: "/screenshots/placeholder.png",
+        web: "/screenshots/placeholder.png",
+      },
+      platforms: ["mobile", "web"],
+      roles: ["Membre"],
+    },
+    {
+      title: "Bouton « Ajouter une licence WDSF »",
+      content:
+        "Tout en bas de l'écran, appuie sur le bouton pour lier ton compte WDSF.",
+      images: { mobile: "/screenshots/placeholder.png" },
+      platforms: ["mobile"],
+      roles: ["Membre"],
+    },
+    {
+      title: "Saisis ton numéro WDSF",
+      content:
+        "Rentre ton numéro de licence WDSF et valide. L'application synchronisera tes informations automatiquement.",
+      images: {
+        mobile: "/screenshots/placeholder.png",
+        web: "/screenshots/placeholder.png",
+      },
+      platforms: ["mobile", "web"],
+      roles: ["Membre"],
+    },
+    {
+      title: "Confirme l'ajout",
+      content:
+        "Vérifie que les informations affichées (nom, prénom, catégorie) correspondent bien à ton profil, puis appuie sur **Confirmer**.",
+      images: {
+        mobile: "/screenshots/placeholder.png",
+        web: "/screenshots/placeholder.png",
+      },
+      platforms: ["mobile", "web"],
+      roles: ["Membre"],
+    },
+  ]}
+/>
+
+## En cas de problème
+
+| Problème           | Solution                           |
+| :----------------- | :--------------------------------- |
+| Numéro non reconnu | Vérifie le numéro auprès de la FFD |
+| Licence déjà liée  | Contacte le support FFD-Connect    |
+| Erreur réseau      | Vérifie ta connexion et réessaie   |

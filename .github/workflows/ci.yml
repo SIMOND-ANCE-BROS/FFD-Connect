@@ -1,0 +1,753 @@
+name: CI
+
+on:
+  push:
+    branches: [master, develop, staging, 'hotfix/**']
+  pull_request:
+    branches: [master, develop, staging]
+  merge_group:
+    types: [checks_requested]
+
+permissions: read-all
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.merge_group.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================
+  # JOB CLASSIFICATION (see docs/exploitation/ci-cd-minimal.md)
+  #   BLOCKING:       typecheck, lint-format, backend-test, backend-build, client, audit-dependencies, docs-build, build-image
+  #   INFORMATIONAL:  playwright-e2e (failure warns but does not block merge)
+  #   Mutation testing runs in mutation-nightly.yml (weekly, full coverage) — not per-PR.
+  # ============================================================
+
+  # ============================================================
+  # CHANGE DETECTION — skip irrelevant jobs on PRs
+  # ============================================================
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-24.04
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      client: ${{ steps.filter.outputs.client }}
+      landing: ${{ steps.filter.outputs.landing }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        # persist-credentials left on (default: true) so paths-filter can git fetch base branch
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v3
+        id: filter
+        with:
+          # Note: apps/backend/** already covers apps/backend/prisma/**, but we list
+          # prisma paths explicitly so the intent is visible in code review.
+          filters: |
+            backend:
+              - 'apps/backend/**'
+              - 'apps/backend/prisma/schema/**'
+              - 'packages/shared/**'
+              - 'packages/jest-config/**'
+              - 'packages/eslint-config/**'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - '.dockerignore'
+            client:
+              - 'apps/client/**'
+              - 'packages/shared/**'
+              - 'packages/jest-config/**'
+              - 'packages/eslint-config/**'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+            landing:
+              - 'apps/landing/**'
+              - 'packages/shared/**'
+              - 'packages/eslint-config/**'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - '.dockerignore'
+              # The legal pages are rendered from these at build time.
+              - 'docs/legal/**'
+            # pnpm-workspace.yaml is in here on purpose: the way apps/docs
+            # breaks is a dependency move, not a docs edit. Raising the astro
+            # floor in overrides was enough to break `astro build` while every
+            # file under apps/docs stayed untouched.
+            docs:
+              - 'apps/docs/**'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'package.json'
+
+  # ============================================================
+  # BACKEND TESTS — unit + integration + e2e (heavy, needs DB)  [BLOCKING]
+  # ============================================================
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    needs: [changes]
+    if: >-
+      github.event_name == 'push'
+      || github.event_name == 'merge_group'
+      || needs.changes.outputs.backend == 'true'
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/test
+      JWT_SECRET: test-secret-key-for-ci-min-32-chars!!
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Setup Prisma
+        uses: ./.github/actions/setup-prisma
+
+      - name: Push schema to test database
+        # --accept-data-loss is safe here: this is an ephemeral CI database (postgres:15 service container).
+        # Do NOT use this flag against staging/production. For real deployments, use `prisma migrate deploy`.
+        working-directory: apps/backend
+        run: pnpm exec prisma db push --accept-data-loss
+
+      - name: Run backend unit tests with coverage
+        working-directory: apps/backend
+        run: pnpm test:cov
+
+      - name: Run backend integration tests
+        working-directory: apps/backend
+        run: pnpm test:integration --verbose 2>&1 | tee /tmp/integration-output.txt; exit ${PIPESTATUS[0]}
+
+      - name: Upload integration test output on failure
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: failure()
+        with:
+          name: integration-test-output
+          path: /tmp/integration-output.txt
+          retention-days: 3
+
+      - name: Run backend e2e tests
+        working-directory: apps/backend
+        run: pnpm test:e2e
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        # Informational only — Codecov outage must not block CI
+        continue-on-error: true
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: apps/backend/coverage/lcov.info
+          flags: backend
+          name: backend-coverage
+          fail_ci_if_error: true
+
+  # ============================================================
+  # BACKEND BUILD — compile + swagger check (parallel with tests)  [BLOCKING]
+  # ============================================================
+  backend-build:
+    name: Backend Build & Swagger
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    needs: [changes]
+    if: >-
+      github.event_name == 'push'
+      || github.event_name == 'merge_group'
+      || needs.changes.outputs.backend == 'true'
+
+    env:
+      # Swagger export initialises the NestJS app (no real DB needed, but env vars must exist)
+      DATABASE_URL: postgresql://localhost/dummy
+      JWT_SECRET: test-secret-key-for-swagger-export-only
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Setup Prisma
+        uses: ./.github/actions/setup-prisma
+
+      - name: Build backend
+        working-directory: apps/backend
+        run: pnpm build
+
+      - name: Export swagger
+        working-directory: apps/backend
+        # Use the source script (writes to apps/backend/swagger.json) and copy to
+        # the docs public dir — the SAME path as `pnpm docs:export`. The compiled
+        # dist/scripts variant resolved __dirname to dist/scripts and wrote to
+        # dist/swagger.json, so the freshness diff below never saw a change and
+        # always passed (the check was a silent no-op).
+        run: |
+          node scripts/export-swagger.js
+          cp swagger.json ../docs/public/swagger.json
+          # The export writes raw JSON.stringify; the committed spec is
+          # prettier-formatted (and format:check enforces it). Format here too so
+          # the freshness diff below compares like-for-like.
+          npx prettier --write swagger.json ../docs/public/swagger.json
+
+      - name: Check swagger.json is up to date
+        run: |
+          if ! git diff --exit-code apps/backend/swagger.json apps/docs/public/swagger.json; then
+            echo ""
+            echo "::error::swagger.json is out of date."
+            echo "::error::Fix: run 'pnpm api:sync' locally, then commit the updated swagger files."
+            exit 1
+          fi
+
+  # ============================================================
+  # FRONTEND — unit + MSW integration tests, lint
+  # ============================================================
+  client:
+    name: Client Tests & Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    needs: [changes]
+    if: >-
+      github.event_name == 'push'
+      || github.event_name == 'merge_group'
+      || needs.changes.outputs.client == 'true'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Expo doctor (version alignment check)
+        id: expo-doctor
+        working-directory: apps/client
+        run: pnpm dlx expo-doctor
+        continue-on-error: true
+
+      - name: Warn on Expo doctor failure
+        if: steps.expo-doctor.outcome == 'failure'
+        run: echo "::warning::expo-doctor detected version mismatches — run 'npx expo-doctor' locally to review"
+
+      - name: Lint client
+        working-directory: apps/client
+        run: pnpm lint
+
+      - name: Run client tests with coverage
+        working-directory: apps/client
+        run: pnpm test:cov
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        # Informational only — Codecov outage must not block CI
+        continue-on-error: true
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: apps/client/coverage/lcov.info
+          flags: client
+          name: client-coverage
+          fail_ci_if_error: true
+
+  # ============================================================
+  # PLAYWRIGHT — E2E web (Expo web build + mocked API via page.route)  [INFORMATIONAL]
+  # ============================================================
+  playwright-e2e:
+    name: Playwright Web E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    needs: [client]
+    # Web is OUT OF SCOPE for the MVP — focus is mobile (iOS/Android).
+    # The Playwright tests + Expo web export are kept in the repo and will be
+    # reactivated when web rejoins the roadmap. To re-enable, change this to:
+    #   if: github.event_name == 'push' && needs.client.result == 'success'
+    if: false
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('apps/client/package.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        working-directory: apps/client
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: apps/client
+        run: npx playwright install-deps chromium
+
+      - name: Cache Expo web build
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: expo-web-cache
+        with:
+          path: apps/client/dist
+          key: expo-web-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'apps/client/src/**', 'apps/client/assets/**', 'apps/client/app.config.js', 'apps/client/babel.config.js', 'apps/client/metro.config.js', 'apps/client/tsconfig.json') }}
+
+      - name: Export Expo web build
+        if: steps.expo-web-cache.outputs.cache-hit != 'true'
+        working-directory: apps/client
+        run: npx expo export --platform web --output-dir dist
+        env:
+          EXPO_PUBLIC_API_URL: http://localhost:3000
+          NODE_ENV: production
+
+      - name: Serve Expo web build
+        working-directory: apps/client
+        run: |
+          npx serve dist --listen 8081 &
+          npx wait-on http://localhost:8081 --timeout 30000
+
+      - name: Run Playwright tests (shard ${{ matrix.shard }}/3)
+        working-directory: apps/client
+        run: npx playwright test --project=chromium --shard=${{ matrix.shard }}/3
+        env:
+          CI: true
+          PLAYWRIGHT_BASE_URL: http://localhost:8081
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: playwright-report-shard-${{ matrix.shard }}
+          path: apps/client/playwright-report/
+          retention-days: 14
+
+  # ============================================================
+  # QUALITY — formatting, types, security audit                 [BLOCKING]
+  # ============================================================
+  audit-dependencies:
+    name: Audit Dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # Skip on develop/staging push — already validated by the PR that was just merged
+    if: >-
+      github.event_name == 'pull_request'
+      || github.event_name == 'merge_group'
+      || github.ref == 'refs/heads/master'
+      || startsWith(github.ref, 'refs/heads/hotfix/')
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      # osv-scanner (Google) matches pnpm-lock.yaml against the OSV database. It
+      # does NOT call npm's audit endpoint — which npm retired (HTTP 410), breaking
+      # `pnpm audit` on every pnpm 10.x/11.x (the pnpm-side fix ships only in the
+      # v11 major, deliberately not adopted here). Pinned to v2.3.8 by version AND
+      # SHA-256 (fail-closed on checksum mismatch). We install the binary rather
+      # than use google/osv-scanner-action so that scripts/audit-dependencies.ts
+      # stays the SOLE gate: it alone decides high/critical, whereas the action
+      # would fail the job on the moderate advisories we intentionally tolerate.
+      - name: Install osv-scanner (pinned v2.3.8, checksum-verified)
+        env:
+          OSV_SCANNER_VERSION: v2.3.8
+          OSV_SCANNER_SHA256: bc98e15319ed0d515e3f9235287ba53cdc5535d576d24fd573978ecfe9ab92dc
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.osv-bin"
+          url="https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          curl --fail --silent --show-error --location --retry 3 "$url" -o "$HOME/.osv-bin/osv-scanner"
+          echo "${OSV_SCANNER_SHA256}  $HOME/.osv-bin/osv-scanner" | sha256sum -c -
+          chmod +x "$HOME/.osv-bin/osv-scanner"
+          echo "$HOME/.osv-bin" >> "$GITHUB_PATH"
+          "$HOME/.osv-bin/osv-scanner" --version
+
+      # SOLE security gate. scripts/audit-dependencies.ts runs osv-scanner and
+      # exits 1 on high/critical OR if the scanner itself fails to run (fail-closed
+      # — never a silent "0 vulnerabilities"). medium/low are reported, not blocking.
+      - name: Run dependency audit (osv-scanner gate)
+        run: pnpm audit:dependencies
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: dependency-audit-report
+          path: DEPENDENCY_AUDIT.md
+          retention-days: 30
+
+  # ============================================================
+  # LINT & FORMAT — fast checks, no dependencies                [BLOCKING]
+  # ============================================================
+  lint-format:
+    name: Lint & Format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    needs: [changes]
+    # Runs on all events — merge-back and bot pushes to develop/staging
+    # must still pass formatting and lint to prevent drift.
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Setup Prisma
+        uses: ./.github/actions/setup-prisma
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Run code quality audit
+        run: pnpm audit:quality
+
+      - name: Lint backend
+        # Skip on PRs where backend was not modified
+        if: github.event_name != 'pull_request' || needs.changes.outputs.backend == 'true'
+        working-directory: apps/backend
+        run: pnpm lint
+
+      - name: Lint landing
+        # Skip on PRs where landing was not modified
+        if: github.event_name != 'pull_request' || needs.changes.outputs.landing == 'true'
+        working-directory: apps/landing
+        run: pnpm lint
+
+  # ============================================================
+  # DOCS BUILD — apps/docs had no gate at all                   [BLOCKING]
+  #
+  # Added 2026-09-10. apps/docs was the one app nothing verified, and it bit:
+  # astro >=7.2 imports named ESM exports (parseCookie, stringifySetCookie)
+  # from cookie@^2, but .npmrc sets node-linker=hoisted, so a single root
+  # cookie (0.7.2, CJS, held by express 5 and engine.io) is what resolution
+  # from apps/docs finds. `astro build` died with "Named export 'parseCookie'
+  # not found" and nothing in CI noticed. Building the site is the only check
+  # that catches that class of break.
+  #
+  # Cost: ~1-2 min, and only when apps/docs or the dependency manifests move.
+  # ============================================================
+  docs-build:
+    name: Docs Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    needs: [changes]
+    if: >-
+      github.event_name == 'push'
+      || github.event_name == 'merge_group'
+      || needs.changes.outputs.docs == 'true'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Build docs
+        run: pnpm --filter docs build
+
+  # ============================================================
+  # TYPECHECK — decoupled from backend (only needs prisma generate) [BLOCKING]
+  # ============================================================
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    needs: [changes]
+    # Runs on all push events (including develop/staging for merge-back safety).
+    # On PRs, skip if neither app changed.
+    if: >-
+      github.event_name == 'push'
+      || github.event_name == 'merge_group'
+      || (github.event_name == 'pull_request'
+          && (needs.changes.outputs.backend == 'true'
+              || needs.changes.outputs.client == 'true'))
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Setup Prisma
+        uses: ./.github/actions/setup-prisma
+
+      - name: Typecheck (backend + client)
+        run: pnpm typecheck
+
+  # ============================================================
+  # DOCKER IMAGE — build + push to ACR (staging/master push only) [BLOCKING]
+  # Matrix: 2 images build in parallel (backend / landing). The Expo web image
+  # (apps/client/Dockerfile.web → ffd-connect-webapp) is no longer built: no
+  # Azure resource runs it and web is out of scope for the MVP (#681). The
+  # Playwright job exports the web bundle itself and never used this image.
+  # Buildx with registry cache: pulls layers from :latest tag, dramatically
+  # speeds up cascade rebuilds when source hasn't changed.
+  # ============================================================
+  # ============================================================
+  # Build the images on PRs — WITHOUT pushing.
+  # build-image below only runs on push to staging/master and logs into ACR,
+  # so a broken Dockerfile reached staging unnoticed and failed the whole
+  # cascade (issue #841). Caught for real: the landing renders docs/legal/*.md
+  # at build time, and `docs` + `*.md` were excluded from the build context, so
+  # PR CI stayed green while the staging image build died on ENOENT.
+  # No Azure login and no push: nothing lands in ACR from a PR.
+  # ============================================================
+  docker-build-check:
+    name: Docker Build Check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: [changes]
+    if: >-
+      github.event_name == 'pull_request'
+      && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.landing == 'true')
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: backend
+            dockerfile: apps/backend/Dockerfile
+            filter: backend
+          - name: landing
+            dockerfile: apps/landing/Dockerfile
+            filter: landing
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build ${{ matrix.image.name }} (no push)
+        if: needs.changes.outputs[matrix.image.filter] == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v6
+        with:
+          context: .
+          file: ${{ matrix.image.dockerfile }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
+
+  build-image:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: [changes, backend-test, backend-build, client]
+    # Always build on staging/master push — paths-filter returns false on
+    # fast-forward cascade merges (no diff vs the previous commit), so the
+    # upstream test jobs skip. The PR CI already validated the same code
+    # before merge, so we accept `success` OR `skipped` here, but block on
+    # any actual `failure`. Without `!cancelled()` the implicit success()
+    # default would skip this job whenever an upstream is `skipped`, which
+    # is exactly what happens on cascade merges — leaving deploy-backend to
+    # try to pull a non-existent SHA tag from ACR.
+    if: >-
+      !cancelled()
+      && github.event_name == 'push'
+      && (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')
+      && needs.changes.result == 'success'
+      && (needs.backend-test.result == 'success' || needs.backend-test.result == 'skipped')
+      && (needs.backend-build.result == 'success' || needs.backend-build.result == 'skipped')
+      && (needs.client.result == 'success' || needs.client.result == 'skipped')
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: backend
+            dockerfile: apps/backend/Dockerfile
+          - name: landing
+            dockerfile: apps/landing/Dockerfile
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to Azure Container Registry
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+        run: az acr login --name "$ACR_NAME"
+
+      - name: Build and push ${{ matrix.image.name }} image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+        with:
+          context: .
+          file: ${{ matrix.image.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-${{ matrix.image.name }}:${{ github.sha }}
+            ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-${{ matrix.image.name }}:latest
+          # Full-layer registry cache (mode=max caches ALL intermediate layers,
+          # not just the final image like inline does). A dedicated :buildcache
+          # tag keeps cache manifests out of the runtime :latest tag. On
+          # unchanged source this turns a multi-minute build into a near-instant
+          # cache hit. Fall back to :latest for the very first run.
+          cache-from: |
+            type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-${{ matrix.image.name }}:buildcache
+            type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-${{ matrix.image.name }}:latest
+          cache-to: type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-${{ matrix.image.name }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+
+      # Scan the pushed image for OS/base-image CVEs (Trivy). pnpm audit only
+      # covers npm deps, not the Alpine layer. Report-only (exit-code 0): results
+      # print to the job log, the deploy is never blocked. SARIF → Security tab is
+      # not used because it needs GHAS code scanning (off on this private repo).
+      # To make CRITICALs blocking once the baseline is triaged: set exit-code '1'
+      # + ignore-unfixed true.
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+        with:
+          image-ref: ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-${{ matrix.image.name }}:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '0'
+
+  # ============================================================
+  # CI GATE — single required check for branch protection
+  # Skipped jobs (path filtering) count as success, not failure.
+  # Set "CI Success" as the only required status check in branch protection.
+  # ============================================================
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-24.04
+    if: always()
+    needs:
+      - backend-test
+      - backend-build
+      - client
+      - typecheck
+      - lint-format
+      - audit-dependencies
+      - docs-build
+      - playwright-e2e
+      - build-image
+      - docker-build-check
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: |
+            backend-test=${{ needs.backend-test.result }}
+            backend-build=${{ needs.backend-build.result }}
+            client=${{ needs.client.result }}
+            typecheck=${{ needs.typecheck.result }}
+            lint-format=${{ needs.lint-format.result }}
+            audit-dependencies=${{ needs.audit-dependencies.result }}
+            docs-build=${{ needs.docs-build.result }}
+            playwright-e2e=${{ needs.playwright-e2e.result }}
+            build-image=${{ needs.build-image.result }}
+            docker-build-check=${{ needs.docker-build-check.result }}
+        run: |
+          echo "$RESULTS"
+          echo ""
+
+          # Informational jobs — failure is logged as warning, does not block merge
+          INFORMATIONAL="playwright-e2e"
+          blocking_failed=""
+
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            job=$(echo "$line" | cut -d= -f1 | xargs)
+            result=$(echo "$line" | cut -d= -f2 | xargs)
+
+            # Skip successful or path-filtered jobs
+            [ "$result" = "success" ] || [ "$result" = "skipped" ] && continue
+
+            if echo "$INFORMATIONAL" | grep -qw "$job"; then
+              echo "::warning::$job $result (informational — non-blocking)"
+              continue
+            fi
+
+            blocking_failed="$blocking_failed $job=$result"
+          done <<< "$RESULTS"
+
+          if [ -n "$blocking_failed" ]; then
+            echo "::error::Blocking CI jobs failed:$blocking_failed"
+            exit 1
+          fi
+
+          echo "All blocking CI jobs passed (informational: playwright-e2e)"
+
+      # Notify on failure for protected branches (master, hotfix)
+      - name: Notify CI failure on protected branch
+        if: failure() && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/heads/hotfix/'))
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          echo "::error::CI failed on protected branch $BRANCH ($SHA)"
+          echo "Run: $RUN_URL"
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\":\":x: *CI failed* on \`${BRANCH}\`\nSHA: \`${SHA:0:7}\`\nRun: <${RUN_URL}|View logs>\"}" \
+              || echo "Slack notification failed (non-blocking)"
+          fi

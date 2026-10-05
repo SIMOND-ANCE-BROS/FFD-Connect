@@ -1,0 +1,49 @@
+# Other apps - not needed for client build
+apps/backend/
+apps/landing/
+apps/docs/
+
+# Native folders - EAS rebuilds them
+apps/client/ios/
+apps/client/android/
+
+# Large uploads
+apps/backend/uploads/
+
+# Cache and artifacts
+**/.expo/
+**/.expo-shared/
+**/node_modules/
+**/coverage/
+**/.jest-cache/
+**/*.log
+
+# Dev/CI files
+docs/
+scripts/
+.github/
+.husky/
+.changeset/
+
+# Dev artifacts in apps/client (logs, coverage, lint results)
+apps/client/coverage/
+apps/client/coverage-report.json
+apps/client/coverage_*.txt
+apps/client/lint-results*.json
+apps/client/test_results*.log
+apps/client/tsc_errors*.log
+apps/client/vendor/
+apps/client/docs/
+apps/client/public/
+
+# Misc
+.DS_Store
+**/.DS_Store
+*.sql
+backups/
+.env
+.env.*
+!.env.example
+**/__tests__/**/*.mp3
+**/__tests__/**/*.png
+**/__mocks__/**/*.mp3

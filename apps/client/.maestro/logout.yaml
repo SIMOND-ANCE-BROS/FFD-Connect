@@ -1,0 +1,8 @@
+appId: fr.ffdanse.connect
+---
+# Log out from any authenticated screen. CLUB shows a confirmation modal;
+# the point tap confirms it (harmless no-op for roles that log out directly).
+- tapOn: { id: "tab-settings" }
+- tapOn: { id: "settings-logout-button" }
+- tapOn: { point: "50%,54%" }
+- waitForAnimationToEnd

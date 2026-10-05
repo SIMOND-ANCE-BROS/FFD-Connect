@@ -1,0 +1,6 @@
+# Type check (rapide, bloquant)
+pnpm typecheck
+
+# Tests unitaires uniquement (e2e et couverture complète = CI)
+pnpm --filter backend test --passWithNoTests
+pnpm --filter client test --passWithNoTests

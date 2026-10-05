@@ -1,0 +1,39 @@
+appId: fr.ffdanse.connect
+tags:
+  - licensee
+  - e2e
+---
+# LICENSEE · RGPD: data export + delete-account modal (open then cancel).
+# Fast preamble: reuse the logged-in session when it already matches this role
+# (plain relaunch = fresh navigation, no reinstall/CGU/login). Falls back to the
+# full clearState + login path otherwise. Retried in-flow because the iOS 26 sim
+# intermittently drops taps after accumulated cold boots.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow: ensure-licensee.yaml
+- tapOn: { id: "tab-settings" }
+# Export + delete-account buttons sit low in the settings list — scroll to each.
+- scrollUntilVisible:
+    {
+      element: { id: "settings-export-data-button" },
+      direction: DOWN,
+      timeout: 20000,
+    }
+- tapOn: { id: "settings-export-data-button", optional: true }
+- tapOn: { text: "Annuler", optional: true }
+- tapOn: { text: "OK", optional: true }
+- scrollUntilVisible:
+    {
+      element: { id: "settings-delete-account-button" },
+      direction: DOWN,
+      timeout: 15000,
+    }
+- tapOn: { id: "settings-delete-account-button" }
+# Native "Supprimer mon compte ?" alert gates the modal — confirm with "Continuer".
+- tapOn: { text: "Continuer", optional: true }
+# The modal's cancel button is now exposed as an individual iOS a11y element
+# (backdrop Pressable marked accessible={false}), so we can assert + tap it.
+- extendedWaitUntil:
+    { visible: { id: "delete-account-cancel-button" }, timeout: 10000 }
+- tapOn: { id: "delete-account-cancel-button" }

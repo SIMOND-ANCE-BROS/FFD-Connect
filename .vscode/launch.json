@@ -1,0 +1,71 @@
+{
+  "version": "0.2.0",
+  "compounds": [
+    {
+      "name": "Full Stack Dev (Backend + Android)",
+      "configurations": ["Debug Backend", "Debug Android"]
+    },
+    {
+      "name": "Full Stack Dev (Backend + iOS)",
+      "configurations": ["Debug Backend", "Debug iOS"]
+    }
+  ],
+  "configurations": [
+    {
+      "name": "Debug Android",
+      "cwd": "${workspaceFolder}/apps/client",
+      "type": "reactnative",
+      "request": "launch",
+      "platform": "android"
+    },
+    {
+      "name": "Debug iOS",
+      "cwd": "${workspaceFolder}/apps/client",
+      "type": "reactnative",
+      "request": "launch",
+      "platform": "ios"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Backend",
+      "skipFiles": ["<node_internals>/**"],
+      "program": "${workspaceFolder}/apps/backend/src/main.ts",
+      "outFiles": ["${workspaceFolder}/apps/backend/dist/**/*.js"],
+      "runtimeArgs": [
+        "-r",
+        "ts-node/register",
+        "-r",
+        "tsconfig-paths/register"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/apps/backend",
+      "env": {
+        "NODE_ENV": "development"
+      },
+      "sourceMaps": true,
+      "smartStep": true,
+      "internalConsoleOptions": "openOnSessionStart"
+    },
+    {
+      "name": "Debug Backend Tests (Current File)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/backend/node_modules/.bin/jest",
+      "args": ["${fileBasenameNoExtension}", "--verbose", "--runInBand"],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "cwd": "${workspaceFolder}/apps/backend"
+    },
+    {
+      "name": "Debug Client Tests (Current File)",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/client/node_modules/.bin/jest",
+      "args": ["${fileBasenameNoExtension}", "--verbose", "--runInBand"],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "cwd": "${workspaceFolder}/apps/client"
+    }
+  ]
+}

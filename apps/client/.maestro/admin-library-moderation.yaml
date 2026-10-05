@@ -1,0 +1,21 @@
+appId: fr.ffdanse.connect
+tags:
+  - admin
+  - e2e
+---
+# ADMIN · Library moderation: library tab + add-track editor fields.
+# Fast preamble: reuse the logged-in session when it already matches this role
+# (plain relaunch = fresh navigation, no reinstall/CGU/login). Falls back to the
+# full clearState + login path otherwise. Retried in-flow because the iOS 26 sim
+# intermittently drops taps after accumulated cold boots.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow: ensure-admin.yaml
+- tapOn: { id: "tab-library" }
+- extendedWaitUntil: { visible: { id: "library-search" }, timeout: 20000 }
+- tapOn: { id: "add-track-title-input", optional: true }
+- inputText: "E2E track"
+- hideKeyboard:
+    optional: true
+- back

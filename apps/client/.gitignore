@@ -1,0 +1,112 @@
+# OSX
+#
+.DS_Store
+
+# Xcode
+#
+build/
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+*.xccheckout
+*.moved-aside
+DerivedData
+*.hmap
+*.ipa
+*.xcuserstate
+**/.xcode.env.local
+
+# Android/IntelliJ
+#
+build/
+.idea
+.gradle
+local.properties
+*.iml
+*.hprof
+.cxx/
+*.keystore
+!debug.keystore
+.kotlin/
+
+# node.js
+#
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# fastlane
+#
+# It is recommended to not store the screenshots in the git repo. Instead, use fastlane to re-generate the
+# screenshots whenever they are needed.
+# For more information about the recommended setup visit:
+# https://docs.fastlane.tools/best-practices/source-control/
+
+**/fastlane/report.xml
+**/fastlane/Preview.html
+**/fastlane/screenshots
+**/fastlane/test_output
+
+# Credentials — NEVER commit. Provide via EAS secrets / env instead.
+# (GCP service-account key ffd-connect-sdb-*.json was leaked here — removed,
+#  see secret-scanning remediation.)
+ffd-connect-sdb-*.json
+*-serviceaccount.json
+*service-account*.json
+*.serviceaccount.json
+
+# Config Firebase par variante (dev / preview / beta) — téléchargée depuis la
+# Firebase Console et déposée à la main. Jamais committée : ces fichiers ont
+# déjà déclenché 4 alertes secret-scanning en juillet. Voir firebase/README.md.
+# (Les fichiers de PROD restent volontairement versionnés à la racine du
+#  package : GoogleService-Info.plist / google-services.json.)
+/firebase/*
+!/firebase/README.md
+
+# Meme chose deposee a la racine du package : c'est l'ANCIENNE convention, celle
+# qui a produit les 4 alertes secret-scanning de juillet. Un fichier de variante
+# depose ici par habitude ne doit pas pouvoir partir au commit. Les deux fichiers
+# de PROD restent explicitement versionnes.
+GoogleService-Info*.plist
+!/GoogleService-Info.plist
+google-services*.json
+!/google-services.json
+
+# Bundle artifact
+*.jsbundle
+
+# Ruby / CocoaPods
+**/Pods/
+/vendor/bundle/
+
+# Temporary files created by Metro to check the health of the file watcher
+.metro-health-check*
+
+# testing
+/coverage
+
+# Yarn
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+.env.local
+
+.env.local
+
+# Local backup files (e.g. .env.bak / .env.bak2 from manual edits)
+*.bak*
+
+# Playwright
+test-results/
+playwright-report/
+src/api/generated/

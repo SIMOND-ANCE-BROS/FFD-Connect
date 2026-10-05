@@ -1,0 +1,449 @@
+# NOTE: no `reviewers:` keys — GitHub retired that option (May 2025);
+# review requests come from .github/CODEOWNERS (* @GabinSMD).
+version: 2
+updates:
+  # Backend dependencies
+  - package-ecosystem: 'npm'
+    directory: '/apps/backend'
+    target-branch: 'develop'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+    # Let releases bake 7 days before opening a PR — dodges day-zero malicious
+    # releases and same-week broken publishes.
+    cooldown:
+      default-days: 7
+    # 11 groups can all be non-empty the same Monday, plus individual majors —
+    # 5 slots would recreate the rotating backlog the catch-all mitigates.
+    open-pull-requests-limit: 10
+    labels:
+      - 'dependencies'
+      - 'backend'
+    commit-message:
+      prefix: 'chore(backend)'
+      include: 'scope'
+    # prettier is pinned EXACTLY in apps/backend (eslint-plugin-prettier resolves
+    # it as a peer; any skew vs the root prettier CLI makes `lint` and
+    # `format:check` contradict each other on union-type wrapping). Root has no
+    # dependabot entry, so bumping only the backend pin would recreate the skew.
+    # Formatter upgrades are manual and atomic: bump root + backend pin +
+    # reformat repo-wide in one PR.
+    ignore:
+      - dependency-name: 'prettier'
+      # NestJS majors are held until the ecosystem catches up (issue #753).
+      # The `nestjs` group below matches '@nestjs/*' with no update-types
+      # filter, so a whole-framework major arrives as one 16-package PR — the
+      # exact case the group's own comment says should stay individually
+      # reviewable. Measured on #746 against Nest 12:
+      #  - '@nestjs/throttler' (latest 6.5.0) and '@sentry/nestjs'
+      #    (latest 10.73.0) have NO release accepting ^12. Both are
+      #    load-bearing (auth rate limiting; prod error monitoring that
+      #    patches Nest internals).
+      #  - Nest 12 core is '"type": "module"' with no require condition, and
+      #    apps/backend is CommonJS with ts-jest in CJS -> 72 of 88 suites
+      #    fail to load.
+      #  - '@nestjs/cli@12' carries typescript ~6.0.2 directly and
+      #    '@nestjs/schematics@12' peers typescript >=6, i.e. a TS 7 migration
+      #    monorepo-wide (TS 6.0.0 never shipped stable; latest is 7.x).
+      # Minor/patch keeps flowing through the group. LIFT THIS once throttler
+      # and @sentry/nestjs accept ^12 — see #753 for the sequencing.
+      #
+      # On security updates: audit-nightly.yml's header says `ignore` also
+      # suppresses security PRs, while the root '/' entry note (2026-08-29,
+      # measured from the job definitions) says security jobs run with
+      # `ignore-conditions: []`. The two disagree and it is not settled here.
+      # It does not matter for this rule, because it is scoped to MAJORS: a
+      # security fix for the 11.x line is a patch/minor and still flows. Only
+      # a CVE whose sole fix is Nest 12 would be hidden — and that is already
+      # unreachable while throttler and @sentry/nestjs cap at 11, so it would
+      # be a manual job either way. The nightly osv-scanner gate keeps
+      # detecting it within 24h regardless, and the remedy is a
+      # pnpm.overrides floor, per that workflow's own instructions.
+      - dependency-name: '@nestjs/*'
+        update-types: ['version-update:semver-major']
+      # Stryker majors are held: @stryker-mutator/instrumenter@10 is built on
+      # Babel 8 (@babel/core/parser/generator/traverse at ~8.0.x), and this
+      # workspace is pinned to the Babel 7 line because babel-jest still calls
+      # loadPartialConfig synchronously (see the '@babel/core' floor in
+      # pnpm-workspace.yaml and #769). Measured, all three combinations fail:
+      #   Babel 7 pin only          -> Stryker 10 crashes in @babel/generator
+      #                                ("Cannot read properties of undefined")
+      #   + scoped Babel 8 for it   -> Babel 8 re-enters the tree, babel-jest's
+      #                                PEER slot grabs it, 123/123 client suites
+      #                                die (overrides do not govern peer choice)
+      #   no Babel pin at all       -> same 123/123 client failure
+      # The three Stryker packages also peer '@stryker-mutator/core' EXACTLY,
+      # so they can only ever move as one unit. Supersedes #763, #764, #766.
+      # LIFT THIS with the '@babel/core' floor, once babel-jest supports Babel 8.
+      - dependency-name: '@stryker-mutator/*'
+        update-types: ['version-update:semver-major']
+    # Group families so peers move together (avoids partial NestJS/Sentry bumps).
+    groups:
+      # @nestjs/bullmq bumps here while bullmq itself flows to the catch-all —
+      # its ^5 peer range is wide; a coordinated bullmq major is handled manually.
+      nestjs:
+        patterns: ['@nestjs/*']
+      sentry:
+        patterns: ['@sentry/*']
+      # prisma CLI and @prisma/client must stay on the same version — bumping
+      # one without the other desyncs generate/runtime.
+      prisma:
+        patterns: ['prisma', '@prisma/*']
+      # nestjs-pino does NOT match '@nestjs/*'; it peer-depends on pino +
+      # pino-http, and pino-pretty must parse pino's wire format — the family
+      # moves atomically, majors included.
+      pino:
+        patterns: ['nestjs-pino', 'pino', 'pino-*']
+      # passport-jwt tracks passport's Strategy API — review as one unit
+      # (touches src/auth). @nestjs/passport stays in the nestjs group.
+      passport:
+        patterns: ['passport', 'passport-*']
+      # Vendor families sharing transitives (@azure/core-*, google-gax).
+      # @google/genai is deliberately NOT here — unrelated SDK, own cadence.
+      azure:
+        patterns: ['@azure/*']
+      google-cloud:
+        patterns: ['@google-cloud/*']
+      # Both 0.x (any minor is potentially breaking) and consumed together by
+      # ValidationPipe on every DTO boundary, incl. HelloAsso webhooks.
+      validation:
+        patterns: ['class-validator', 'class-transformer']
+      # 0.x runtime deps: under semver any 0.x minor may break; keep them out
+      # of the batch PR so each arrives individually reviewable.
+      zero-x:
+        patterns: ['reflect-metadata', 'iconv-lite']
+      backend-types:
+        dependency-type: 'development'
+        patterns: ['@types/*']
+        update-types: ['minor', 'patch']
+      backend-dev-tooling:
+        dependency-type: 'development'
+        patterns: ['@typescript-eslint/*', 'typescript-eslint', 'eslint*', '@stryker-mutator/*']
+        update-types: ['minor', 'patch']
+      # Catch-all LAST: remaining minor/patch bumps in one weekly PR — reduces
+      # (not eliminates) the backlog behind the PR limit; majors stay individual.
+      # The CI merge gate (typecheck, lint, tests against a real DB, audit) is
+      # what makes batching safe. exclude-patterns mirror the named groups above
+      # so assignment does not depend on group ORDER (documented rule is
+      # first-match, but dependabot-core#9765 shows it being violated).
+      backend-minor-patch:
+        patterns: ['*']
+        exclude-patterns:
+          - '@nestjs/*'
+          - '@sentry/*'
+          - 'prisma'
+          - '@prisma/*'
+          - 'nestjs-pino'
+          - 'pino'
+          - 'pino-*'
+          - 'passport'
+          - 'passport-*'
+          - '@azure/*'
+          - '@google-cloud/*'
+          - 'class-validator'
+          - 'class-transformer'
+          - 'reflect-metadata'
+          - 'iconv-lite'
+          - '@types/*'
+          - '@typescript-eslint/*'
+          - 'typescript-eslint'
+          - 'eslint*'
+          - '@stryker-mutator/*'
+        update-types: ['minor', 'patch']
+
+  # Client (Expo/React Native) dependencies
+  - package-ecosystem: 'npm'
+    directory: '/apps/client'
+    target-branch: 'develop'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'client'
+    commit-message:
+      prefix: 'chore(client)'
+      include: 'scope'
+    # Expo + React Native native modules are pinned to the Expo SDK. Upgrade them
+    # via `npx expo install` / SDK bumps, not dependabot — auto-bumping to "latest"
+    # breaks SDK alignment (cf. vision-camera 5, async-storage 3). Dependabot still
+    # bumps pure-JS/tooling client deps.
+    # Group related packages so a whole family bumps TOGETHER in one PR.
+    # Bumping a single family member in isolation crashed the app at boot this
+    # cycle: @react-navigation/bottom-tabs 7.18 without native ^7.3.8, and
+    # @tanstack/react-query-persist-client without a matching query-core.
+    groups:
+      react-navigation:
+        patterns: ['@react-navigation/*']
+      tanstack:
+        patterns: ['@tanstack/*']
+      hey-api:
+        patterns: ['@hey-api/*']
+      client-dev-tooling:
+        dependency-type: 'development'
+        patterns:
+          - '@typescript-eslint/*'
+          - 'typescript-eslint'
+          - '@eslint/*'
+          - 'eslint*'
+          - '@testing-library/*'
+          - 'wait-on'
+        update-types: ['minor', 'patch']
+      # Dev-only catch-all: devDeps never ship in the bundle, safe to batch.
+      # Runtime deps deliberately stay INDIVIDUAL PRs — after a bad OTA a
+      # one-dep PR keeps bisection trivial (cf. the bottom-tabs boot crash).
+      client-dev-minor-patch:
+        dependency-type: 'development'
+        patterns: ['*']
+        exclude-patterns:
+          - '@typescript-eslint/*'
+          - 'typescript-eslint'
+          - '@eslint/*'
+          - 'eslint*'
+          - '@testing-library/*'
+          - 'wait-on'
+        update-types: ['minor', 'patch']
+    # Policy: only surface ACTIONABLE bumps. Everything version-locked to the
+    # Expo SDK / RN toolchain / React is upgraded via `npx expo install` on an
+    # SDK bump, NEVER by Dependabot — so we silence it rather than get PRs that
+    # can't be merged (they'd desync the SDK or break metro/jest).
+    # NOTE: name-level ignores (no update-types) also suppress Dependabot
+    # SECURITY PRs for these packages (documented GitHub behavior). Accepted:
+    # bumps outside the SDK pin are unmergeable anyway. Detection still comes
+    # from the blocking audit CI job + audit-nightly.yml; fix path for a CVE in
+    # an SDK-pinned package = pnpm.overrides in the root package.json (ships
+    # via OTA) — do NOT wait for an Expo SDK bump.
+    ignore:
+      # Expo SDK + React Native native modules (SDK-pinned)
+      - dependency-name: 'expo'
+      - dependency-name: 'expo-*'
+      - dependency-name: '@expo/*'
+      - dependency-name: 'react-native'
+      - dependency-name: 'react-native-*'
+      - dependency-name: '@react-native*'
+      # React is pinned to the version RN 0.86 bundles — moving it alone desyncs.
+      - dependency-name: 'react'
+      - dependency-name: 'react-dom'
+      - dependency-name: '@types/react'
+        update-types: ['version-update:semver-major']
+      # Build/test toolchain locked to the SDK (metro/jest/babel presets).
+      - dependency-name: 'babel-preset-expo'
+      - dependency-name: 'jest-expo'
+      # babel 8 breaks the RN/Expo toolchain (metro/babel-jest call
+      # loadPartialConfig synchronously). Bump only when a future Expo SDK ships
+      # babel-8-compatible presets.
+      - dependency-name: '@babel/core'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@babel/runtime'
+        update-types: ['version-update:semver-major']
+      # Native module, SDK-pinned to ~7.11.0 in bundledNativeModules — majors AND
+      # minors desync; patches stay inside the tilde range. Upgrade with a native
+      # build (runtimeVersion bump + EAS build).
+      - dependency-name: '@sentry/react-native'
+        update-types:
+          - 'version-update:semver-major'
+          - 'version-update:semver-minor'
+      # SDK-pinned exact (2.0.2) in bundledNativeModules; the @shopify scope
+      # dodges the react-native-* glob. Upgrade via `npx expo install`.
+      - dependency-name: '@shopify/flash-list'
+      # Must match the RN-pinned react version exactly (react is ignored above).
+      - dependency-name: 'react-test-renderer'
+      - dependency-name: '@types/react-test-renderer'
+        update-types: ['version-update:semver-major']
+      # jest is locked to 29 by jest-expo; @types/jest 30 desyncs.
+      - dependency-name: '@types/jest'
+        update-types: ['version-update:semver-major']
+
+  # iOS build tooling (Ruby/Bundler): CocoaPods + xcodeproj + their Ruby deps.
+  # Added 2026-07 after concurrent-ruby (GHSA-h8w8-99g7-qmvj) and addressable
+  # (GHSA-h27x-rffw-24p4) shipped as unmonitored HIGH CVEs in Gemfile.lock.
+  - package-ecosystem: 'bundler'
+    directory: '/apps/client'
+    target-branch: 'develop'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    labels:
+      - 'dependencies'
+      - 'client'
+    commit-message:
+      prefix: 'chore(client)'
+      include: 'scope'
+    groups:
+      # CocoaPods, its plugins, and the Ruby deps they share (activesupport,
+      # xcodeproj) move as one unit — partial bumps desync the resolver.
+      cocoapods:
+        patterns: ['cocoapods', 'cocoapods-*', 'xcodeproj', 'activesupport']
+      ios-tooling-minor-patch:
+        patterns: ['*']
+        exclude-patterns: ['cocoapods', 'cocoapods-*', 'xcodeproj', 'activesupport']
+        update-types: ['minor', 'patch']
+
+  # Landing dependencies
+  - package-ecosystem: 'npm'
+    directory: '/apps/landing'
+    target-branch: 'develop'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels:
+      - 'dependencies'
+      - 'landing'
+    commit-message:
+      prefix: 'chore(landing)'
+      include: 'scope'
+    # One weekly PR for all minor/patch bumps; majors stay individual on purpose.
+    groups:
+      landing-minor-patch:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+
+  # Packages (shared, jest-config)
+  - package-ecosystem: 'npm'
+    directory: '/packages/shared'
+    target-branch: 'develop'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    labels:
+      - 'dependencies'
+      - 'packages'
+    commit-message:
+      prefix: 'chore(shared)'
+      include: 'scope'
+    groups:
+      shared-minor-patch:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: 'npm'
+    directory: '/packages/jest-config'
+    target-branch: 'develop'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    labels:
+      - 'dependencies'
+      - 'packages'
+    commit-message:
+      prefix: 'chore(jest-config)'
+      include: 'scope'
+    # jest is held on the 29 line — see issue #750. This package is consumed by
+    # BOTH apps/backend and apps/client, and its react-native.js preset is
+    # `preset: 'jest-expo'`. jest-expo@57.x (the whole line, latest 57.0.5) is
+    # built on jest 29 internals: babel-jest / jest-snapshot /
+    # jest-environment-jsdom at ^29.2.1, plus jest-watch-typeahead pinned to
+    # 2.2.1 whose jest peer is ^27 || ^28 || ^29. Measured on jest 30 the entire
+    # client suite dies before running a single test — 123 suites, 0 tests,
+    # `TypeError: this._moduleMocker.clearMocksOnScope is not a function`
+    # (jest 30 runtime against jest 29 jest-mock).
+    #
+    # jest-expo is pinned to the Expo SDK, so it cannot move independently:
+    # jest-expo 58 exists only as canaries for the unreleased SDK 58. LIFT THIS
+    # together with the SDK 58 upgrade, and align the root manifest in the same
+    # PR — backend already passes on either major (ts-jest 29.4.x peers
+    # ^29 || ^30), so the client is the only thing pinning the workspace.
+    ignore:
+      - dependency-name: 'jest'
+        update-types: ['version-update:semver-major']
+    groups:
+      jest-config-minor-patch:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+
+  # Docs (Astro/Starlight)
+  - package-ecosystem: 'npm'
+    directory: '/apps/docs'
+    target-branch: 'develop'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    labels:
+      - 'dependencies'
+      - 'docs'
+    commit-message:
+      prefix: 'chore(docs)'
+      include: 'scope'
+    groups:
+      # Astro + integrations track astro's majors — move as one unit.
+      astro:
+        patterns: ['astro', '@astrojs/*']
+      docs-minor-patch:
+        patterns: ['*']
+        exclude-patterns: ['astro', '@astrojs/*']
+        update-types: ['minor', 'patch']
+
+  # Racine. En workspace pnpm, Dependabot traite le repertoire racine comme le
+  # lockfile entier et ouvre des PR contre les manifestes apps/*, en contournant
+  # tous les groupes et `ignore` par application ci-dessus (il a rouvert la
+  # majeure @babel/runtime 8 que le bloc client ignore explicitement).
+  # `open-pull-requests-limit: 0` coupe donc les PR de mise a jour de VERSION a
+  # la racine ; ses 11 devDeps d'outillage (husky, prettier, lint-staged...) se
+  # bumpent a la main, et la porte nightly les couvre cote securite.
+  #
+  # CE BLOC NE PEUT PAS TAIRE UNE MISE A JOUR DE SECURITE, et il ne faut pas
+  # reessayer. Mesure du 2026-08-29 sur les jobs rouges `npm_and_yarn in /.` :
+  # la definition du job porte `"security-updates-only": true` avec
+  # `"ignore-conditions": []`, config racine chargee. La reference Dependabot
+  # classe `ignore` en « version updates » uniquement. Une regle `ignore` posee
+  # ici n'a donc aucun effet sur un `security_update_not_possible` : le seul
+  # remede est de rendre le correctif atteignable, par `pnpm.overrides` dans
+  # pnpm-workspace.yaml.
+  - package-ecosystem: 'npm'
+    directory: '/'
+    target-branch: 'develop'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
+    open-pull-requests-limit: 0
+    labels:
+      - 'dependencies'
+    commit-message:
+      prefix: 'chore'
+      include: 'scope'
+
+  # GitHub Actions
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    target-branch: 'develop'
+    schedule:
+      interval: 'monthly'
+    # Same bake period as npm — supply-chain attacks on actions are a real
+    # precedent (tj-actions/changed-files).
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels:
+      - 'dependencies'
+      - 'ci'
+    # All action bumps in one monthly PR (majors included — actions majors are
+    # usually a one-line version tag change).
+    groups:
+      gh-actions:
+        patterns: ['*']

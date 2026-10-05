@@ -1,0 +1,20 @@
+appId: fr.ffdanse.connect
+---
+# Session-reuse preamble (CLUB). See ensure-licensee.yaml for the rationale.
+# tab-club is unique to CLUB.
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: { id: "tab-club" }
+    timeout: 12000
+    optional: true
+- runFlow:
+    when:
+      notVisible: { id: "tab-club" }
+    file: reset-login-club.yaml
+- extendedWaitUntil:
+    visible: { id: "tab-club" }
+    timeout: 30000
+# Normalize the screen: background tab screens stay mounted in RN navigators
+# (the hierarchy can expose them while another tab is active) — land on home.
+- tapOn: { id: "tab-club" }

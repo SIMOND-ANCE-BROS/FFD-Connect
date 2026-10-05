@@ -1,0 +1,55 @@
+model License {
+  id              String   @id @default(uuid())
+  number          String   @unique
+  validUntil      DateTime
+  category        String
+  clubName        String
+  userId          String?  @unique
+  qrCodeSignature String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User?    @relation(fields: [userId], references: [id])
+
+  @@index([number])
+  @@index([userId])
+}
+
+/// Statut d'une demande de renouvellement de licence.
+enum LicenseRenewalStatus {
+  DRAFT    // Brouillon : documents en cours d'ajout
+  PENDING  // Soumise : en attente de validation
+  APPROVED // Validée : licence renouvelée
+  REJECTED // Refusée
+}
+
+/// Type de document requis pour le renouvellement (OCR dédié par type).
+enum LicenseRenewalDocumentType {
+  MEDICAL_CERTIFICATE  // Certificat médical (apte à la pratique)
+  LICENSE_CERTIFICATE  // Certificat / attestation de licence
+}
+
+model LicenseRenewalRequest {
+  id        String                @id @default(uuid())
+  userId    String
+  status    LicenseRenewalStatus   @default(DRAFT)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents LicenseRenewalDocument[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model LicenseRenewalDocument {
+  id         String                     @id @default(uuid())
+  requestId  String
+  type       LicenseRenewalDocumentType
+  filePath   String
+  ocrData    Json?                      // Résultat OCR (données extraites)
+  createdAt  DateTime                   @default(now())
+  request   LicenseRenewalRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
+  @@index([type])
+}

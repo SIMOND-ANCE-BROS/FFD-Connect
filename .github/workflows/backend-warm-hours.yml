@@ -1,0 +1,122 @@
+# =============================================================================
+# Backend Warm Hours — no cold start while dancers are awake
+# =============================================================================
+#
+# backend-prod runs with minReplicas=0 (scale-to-zero, ADR-0019): great for
+# cost, but the first user of the day eats a ~90s cold start. This workflow
+# keeps ONE replica warm (min 1) or parks the app back at zero (min 0).
+#
+# SCHEDULE REMOVED (issue #681) — manual workflow_dispatch only.
+# backend-prod serves no users during the beta (testers hit backend-staging),
+# and the warm replica is NOT cheap. The old comment claimed "idle rates,
+# 2-5 €/month"; the Cost Management data says otherwise: a warm 1 vCPU / 2 GiB
+# replica is billed at the ACTIVE rate, ≈ 2.2 EUR per 24h, i.e. ≈ 1.5 EUR/day
+# for the 05:00→21:00 UTC window ≈ 45 EUR/month — about twice the whole beta
+# infra envelope (~20-25 EUR/month).
+#
+# It comes back at public launch, as an explicitly budgeted line (≈ 45
+# EUR/month for 16h/day; consider shrinking the replica to 0.5 vCPU / 1 GiB,
+# which roughly halves it). To re-enable, restore the two crons:
+#   - cron: '0 5 * * *'   # warm  (≈ 07:00 Paris summer / 06:00 winter)
+#   - cron: '0 21 * * *'  # sleep (≈ 23:00 Paris summer / 22:00 winter)
+# ("Determine target mode" below still maps them: 05:00 → warm, else sleep).
+#
+# Notes:
+# - Changing scale settings creates a new revision (single-revision mode), so
+#   a warm run IS a boot: it pulls the image currently set on the app. If that
+#   tag was purged from ACR the revision sits in ImagePullBackOff while still
+#   being billed (what happened from 2026-09-10) — check the image exists first.
+# - The OIDC subject for a manual run is the branch it is dispatched from; the
+#   federated credentials cover develop/staging/master (ci-iam.tf).
+# - Leaving the app parked: run with mode=sleep (min 0). The last value set
+#   sticks — nothing resets it automatically any more.
+#
+# =============================================================================
+
+name: Backend Warm Hours
+
+on:
+  # No schedule during the beta — see the header (≈ 45 EUR/month when warm).
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Force warm (min 1) or sleep (min 0)'
+        required: true
+        type: choice
+        options: [warm, sleep]
+
+permissions:
+  contents: read
+  id-token: write # Azure OIDC federated credentials
+
+concurrency:
+  group: backend-warm-hours
+  cancel-in-progress: false
+
+jobs:
+  set-min-replicas:
+    name: Set backend-prod min replicas
+    runs-on: ubuntu-24.04
+
+    env:
+      CONTAINER_APP: backend-prod
+      RESOURCE_GROUP: ${{ secrets.PROD_RESOURCE_GROUP }}
+
+    steps:
+      - name: Determine target mode
+        id: mode
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            MODE="$INPUT_MODE"
+          elif [ "$SCHEDULE" = "0 5 * * *" ]; then
+            MODE="warm"
+          else
+            MODE="sleep"
+          fi
+          case "$MODE" in
+            warm) MIN=1 ;;
+            sleep) MIN=0 ;;
+            *) echo "::error::Unknown mode '$MODE'" && exit 1 ;;
+          esac
+          echo "Mode: $MODE (minReplicas=$MIN)"
+          echo "min=$MIN" >> "$GITHUB_OUTPUT"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Update min replicas
+        env:
+          MIN: ${{ steps.mode.outputs.min }}
+        run: |
+          set -euo pipefail
+          az containerapp update \
+            --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --min-replicas "$MIN"
+          echo "minReplicas set to $MIN on $CONTAINER_APP"
+
+      - name: Notify failure (Slack)
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          MODE: ${{ steps.mode.outputs.mode }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Non-fatal degradation: warm failed → users get cold starts;
+          # sleep failed → one replica keeps idling (a few €/month).
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\":\":warning: *Backend warm-hours* failed (mode: ${MODE:-unknown})\nRun: <${RUN_URL}|View logs>\"}" \
+              || echo "Slack notification failed (non-blocking)"
+          fi

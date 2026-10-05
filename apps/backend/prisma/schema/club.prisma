@@ -1,0 +1,91 @@
+/// Mode d'inscription : CLUB_AND_MEMBERS_PENDING = licenciés en attente ; CLUB_ONLY = seul le club inscrit ; MEMBERS_AUTO_CONFIRM = validation auto.
+enum ClubRegistrationMode {
+  CLUB_AND_MEMBERS_PENDING
+  CLUB_ONLY
+  MEMBERS_AUTO_CONFIRM
+}
+
+/// Qui peut gérer le couple inter-club : club initiateur, autre club, ou les deux.
+enum PartnershipManagementMode {
+  PRIMARY_ONLY   // seul le club qui a créé le couple
+  SECONDARY_ONLY // seul l'autre club
+  BOTH           // les deux clubs peuvent agir
+}
+
+/// Statut du couple (inter-club : en attente de validation par le second club).
+enum PartnershipStatus {
+  PENDING_SECOND_CLUB // en attente validation par le second club
+  ACTIVE              // validé (ou couple mono-club)
+  REJECTED            // refusé par le second club
+}
+
+/// Club = entité par nom de club. Permet à chaque club de connecter son compte HelloAsso et de gérer les inscriptions.
+model Club {
+  id                    String   @id @default(uuid())
+  name                  String   @unique // même valeur que User.clubName / Competition.organizer
+  helloAssoClientId     String?
+  helloAssoClientSecret String?
+  helloAssoOrgSlug      String?
+  registrationMode      ClubRegistrationMode @default(MEMBERS_AUTO_CONFIRM)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  members                    User[]
+  partnerships               Partnership[]              @relation("PartnershipPrimaryClub")
+  partnershipsAsSecondary    Partnership[]              @relation("PartnershipSecondaryClub")
+  soloTeams                  SoloTeam[]
+
+  @@index([name])
+}
+
+/// Partenariat (couple) : deux licenciés. clubId = club initiateur ; secondaryClubId = autre club si inter-club.
+model Partnership {
+  id               String                     @id @default(uuid())
+  clubId           String                     // club qui a créé le couple (primaire)
+  secondaryClubId  String?                    // autre club si couple inter-club
+  user1Id          String
+  user2Id          String
+  startDate        DateTime                  @default(now())
+  endDate          DateTime?                 // null = actif ; renseigné = historique
+  status           PartnershipStatus         @default(ACTIVE)
+  managementMode   PartnershipManagementMode @default(PRIMARY_ONLY)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  club             Club                      @relation("PartnershipPrimaryClub", fields: [clubId], references: [id], onDelete: Cascade)
+  secondaryClub    Club?                     @relation("PartnershipSecondaryClub", fields: [secondaryClubId], references: [id], onDelete: SetNull)
+  user1            User                      @relation("PartnershipUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2            User                      @relation("PartnershipUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+
+  @@index([clubId])
+  @@index([secondaryClubId])
+  @@index([user1Id])
+  @@index([user2Id])
+  @@index([endDate])
+  @@index([status])
+}
+
+/// Solo Danse Team : équipe du club. Niveau calculé automatiquement à partir des membres (Débutant / Intermédiaire).
+model SoloTeam {
+  id        String   @id @default(uuid())
+  clubId    String
+  name      String
+  level     String   // Débutant | Intermédiaire (calculé ou défini par le responsable)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  members   SoloTeamMember[]
+
+  @@index([clubId])
+}
+
+model SoloTeamMember {
+  id        String   @id @default(uuid())
+  teamId    String
+  userId    String
+  createdAt DateTime @default(now())
+  team      SoloTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+}

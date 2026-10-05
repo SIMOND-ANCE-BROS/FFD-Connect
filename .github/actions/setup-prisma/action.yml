@@ -1,0 +1,17 @@
+name: Setup Prisma
+description: Cache Prisma engines and generate Prisma client
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Prisma engines
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      with:
+        path: ~/.cache/prisma
+        key: prisma-engines-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'apps/backend/prisma/schema/**') }}
+        restore-keys: prisma-engines-${{ runner.os }}-
+
+    - name: Generate Prisma client
+      shell: bash
+      working-directory: apps/backend
+      run: pnpm exec prisma generate

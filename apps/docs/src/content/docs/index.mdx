@@ -1,0 +1,41 @@
+---
+title: Documentation FFD-Connect
+description: Documentation officielle — licences, compétitions, club et API.
+template: splash
+hero:
+  tagline: La plateforme officielle de la Fédération Française de Danse. Gère tes licences, suis les compétitions et organise les événements de ton club.
+  actions:
+    - text: Commencer
+      link: /guide/introduction/
+      icon: right-arrow
+      variant: primary
+    - text: Référence API
+      link: /api-docs/
+      icon: external
+      variant: secondary
+---
+
+import { CardGrid, LinkCard } from "@astrojs/starlight/components";
+
+<div class="accueil-content">
+
+Bienvenue sur la **documentation FFD-Connect**. Tu y trouveras des guides pas à pas, les procédures licence et compétitions, et la référence complète de l’API.
+
+## Par où commencer ?
+
+<CardGrid stagger>
+  <LinkCard title="Introduction" description="Découvre l’app et les profils (membre, staff, club)." href="/guide/introduction/" />
+  <LinkCard title="Licence" description="Consulter, renouveler ou ajouter une licence WDSF." href="/licence/" />
+  <LinkCard title="Compétitions" description="Parcourir les événements, participants et résultats." href="/competitions/" />
+  <LinkCard title="Référence API" description="Documentation interactive (Swagger / OpenAPI)." href="/api-docs/" />
+  <LinkCard title="Changelog" description="Historique des mises à jour de la plateforme." href="/changelog/" />
+</CardGrid>
+
+## Disponible sur mobile et web
+
+- **Application mobile** — iOS et Android (stores)
+- **Version web** — Navigateur
+
+La doc indique, quand c’est le cas, si une fonctionnalité est réservée au mobile (ex. scan de fichiers audio).
+
+</div>

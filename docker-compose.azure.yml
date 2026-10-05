@@ -1,0 +1,34 @@
+# Azure environment overlay — Caddy reverse proxy for automatic HTTPS
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    profiles: ['full']
+    restart: always
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  backend:
+    ports: []
+    environment:
+      # SHA déployé (= IMAGE_TAG), exposé par /health pour que le smoke test
+      # vérifie que le bon build tourne vraiment.
+      APP_VERSION: ${IMAGE_TAG:-unknown}
+
+  frontend:
+    # On Azure, frontend image is pulled from ACR (built+pushed by CI).
+    image: ${ECR_REGISTRY:-local}/ffd-connect-landing:${IMAGE_TAG:-latest}
+    ports: []
+
+volumes:
+  caddy_data:
+  caddy_config:

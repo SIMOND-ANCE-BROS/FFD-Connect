@@ -1,0 +1,35 @@
+{
+  "$comment": "Exceptions DATEES a la porte d'audit high/critical. Contrat et validation dans scripts/audit-exceptions.ts. Une exception coupe la porte, jamais la detection : l'avis reste liste dans DEPENDENCY_AUDIT.md. Toute entree perime ; a l'echeance l'avis redevient bloquant.",
+  "exceptions": [
+    {
+      "id": "GHSA-5p2g-fcmc-qvqq",
+      "package": "image-size",
+      "expires": "2026-11-27",
+      "reason": "Deni de service par boucle infinie dans les parseurs JXL et HEIF. Correctif publie en 2.0.3 (2026-09) mais UNIQUEMENT dans la ligne 2.x : image-size est tire par metro, qui declare ^1.x, et aucune 1.x corrigee n'existe. Forcer la 2.x casserait metro (API differente). Outil de build local (lit des images du depot), pas expose a des entrees non fiables. A reexaminer au plus tard le 2026-11-27 ou au passage a un metro compatible 2.x."
+    },
+    {
+      "id": "GHSA-w3rx-r6r6-pgpr",
+      "package": "image-size",
+      "expires": "2026-11-27",
+      "reason": "Deni de service par boucle infinie dans le parseur ICNS. Correctif publie en 2.0.3 (2026-09) mais UNIQUEMENT dans la ligne 2.x : image-size est tire par metro, qui declare ^1.x, et aucune 1.x corrigee n'existe. Forcer la 2.x casserait metro (API differente). Outil de build local (lit des images du depot), pas expose a des entrees non fiables. A reexaminer au plus tard le 2026-11-27 ou au passage a un metro compatible 2.x."
+    },
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "expires": "2027-01-05",
+      "reason": "Deni de service par epuisement de pile via des motifs profondement imbriques (CVSS 7.5, publie le 2026-09-18). Aucun correctif amont : l'avis couvre <= 3.0.3, qui est la derniere version publiee. Transitif via micromatch@4.0.8, lui-meme tire par l'outillage de build (jest, metro) pour le filtrage de chemins : les motifs proviennent de la configuration du depot, jamais d'une entree non fiable. Non embarque dans le bundle applicatif. A reexaminer au plus tard le 2027-01-05 ou des qu'une 3.0.4 parait."
+    },
+    {
+      "id": "GHSA-ch52-4w7c-c8xp",
+      "package": "http-cache-semantics",
+      "expires": "2027-01-05",
+      "reason": "La gestion de max-stale peut divulguer des reponses en cache d'un utilisateur a un autre (CVSS 7.5, publie le 2026-09-18). Aucun correctif amont : l'avis couvre <= 4.2.0, derniere version publiee. Transitif via astro, donc present uniquement pour la construction du site apps/docs. Les docs sont generees statiquement en CI ; il n'existe aucun cache HTTP partage entre utilisateurs dans ce chemin, ce qui retire la condition d'exploitation. A reexaminer au plus tard le 2027-01-05."
+    },
+    {
+      "id": "GHSA-86w9-cpqp-85rv",
+      "package": "node-forge",
+      "expires": "2027-01-05",
+      "reason": "La verification de signature RSA PKCS#1 v1.5 accepte des elements DigestAlgorithm imbriques supplementaires (CVSS 7.5, publie le 2026-09-03). Aucun correctif amont : l'avis couvre <= 1.4.0, derniere version publiee, et le plancher pnpm est deja sur cette version. Transitif via @expo/cli et @expo/code-signing-certificates, tires par le paquet expo : outillage de build et de signature des mises a jour, que Metro n'inclut pas dans le bundle. Le code applicatif ne verifie aucune signature RSA avec node-forge a l'execution. A reexaminer au plus tard le 2027-01-05."
+    }
+  ]
+}

@@ -1,0 +1,134 @@
+# Nightly dependency security audit.
+#
+# Why this exists: dependabot.yml `ignore` rules suppress SECURITY update PRs
+# too (GitHub docs, options reference) — by design we ignore all Expo-SDK-pinned
+# packages, so no PR will ever announce a CVE in them. The blocking
+# audit-dependencies job in ci.yml only runs on PRs, so detection latency for a
+# new CVE is "whenever the next PR happens". This job bounds it to 24h.
+#
+# CVE in an SDK-pinned ignored package → add pnpm.overrides in the root
+# package.json (forces the patched transitive version, ships via OTA) — do NOT
+# wait for an Expo SDK bump.
+
+# After merging: run once via workflow_dispatch to confirm the Dependabot
+# alerts step passes — `vulnerability-alerts` is a recent permissions key
+# (April 2026); if it 403s, the step degrades to a warning, never a red run.
+
+name: Nightly Audit
+
+on:
+  schedule:
+    - cron: '0 7 * * *' # 07:00 UTC daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  vulnerability-alerts: read
+
+concurrency:
+  group: audit-nightly
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Nightly dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      # osv-scanner (Google) matches pnpm-lock.yaml against the OSV database. It
+      # does NOT call npm's audit endpoint — which npm retired (HTTP 410), breaking
+      # `pnpm audit` on every pnpm 10.x/11.x. Pinned to v2.3.8 by version AND
+      # SHA-256 (fail-closed on checksum mismatch). Same block as the
+      # audit-dependencies job in ci.yml so both gates share one source of truth.
+      - name: Install osv-scanner (pinned v2.3.8, checksum-verified)
+        env:
+          OSV_SCANNER_VERSION: v2.3.8
+          OSV_SCANNER_SHA256: bc98e15319ed0d515e3f9235287ba53cdc5535d576d24fd573978ecfe9ab92dc
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.osv-bin"
+          url="https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          curl --fail --silent --show-error --location --retry 3 "$url" -o "$HOME/.osv-bin/osv-scanner"
+          echo "${OSV_SCANNER_SHA256}  $HOME/.osv-bin/osv-scanner" | sha256sum -c -
+          chmod +x "$HOME/.osv-bin/osv-scanner"
+          echo "$HOME/.osv-bin" >> "$GITHUB_PATH"
+          "$HOME/.osv-bin/osv-scanner" --version
+
+      # Blocking gate: high/critical only, via scripts/audit-dependencies.ts (the
+      # same script ci.yml uses). It prints the FULL report — including moderate
+      # advisories — to the job log before exiting, so it also provides the
+      # moderate visibility the retired `pnpm audit --audit-level=moderate` gave.
+      # Avant d'accorder la moindre exception, prouver que le mecanisme qui les
+      # accorde fonctionne. Un bug ici relacherait la porte en silence.
+      - name: Test du mecanisme d'exceptions
+        run: pnpm audit:exceptions:test
+
+      - name: Audit high/critical (osv-scanner gate)
+        run: pnpm audit:dependencies
+
+      - name: Check open Dependabot alerts (high/critical)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # API failure (403/5xx) is a permission problem, not a vulnerability:
+          # warn and pass — the osv-scanner gate above is the primary gate.
+          # Cette porte honore le MEME audit-exceptions.json que la porte
+          # osv-scanner ci-dessus. Sans ca, un avis sans correctif amont
+          # rendrait le job rouge meme apres exception : la moitie de la porte
+          # resterait insatisfiable, et un job qui ne peut pas passer au vert
+          # cesse d'informer.
+          #
+          # Comparaison de dates en ISO YYYY-MM-DD : l'ordre lexicographique est
+          # l'ordre chronologique, pas besoin de date(1).
+          TODAY=$(date -u +%F)
+          if [ -f audit-exceptions.json ]; then
+            if ! EXCEPTED=$(jq -c --arg today "$TODAY" \
+                 '[.exceptions[]? | select(.expires >= $today) | .id]' audit-exceptions.json); then
+              echo "::error::audit-exceptions.json illisible — refus de relacher la porte sur un fichier douteux."
+              exit 1
+            fi
+          else
+            EXCEPTED='[]'
+          fi
+          echo "Exceptions actives: $EXCEPTED"
+
+          if ! ALERTS=$(gh api "repos/$REPO/dependabot/alerts?state=open&severity=critical,high&per_page=100"); then
+            echo "::warning::Could not query the Dependabot alerts API (token/permission issue, NOT a vulnerability)."
+            exit 0
+          fi
+
+          # Les avis exceptes restent LISTES, seul le compte bloquant les exclut.
+          echo "$ALERTS" | jq -r --argjson excepted "$EXCEPTED" \
+            '.[] | select(.security_advisory.ghsa_id as $id | $excepted | index($id)) |
+             "  (exception active) \(.dependency.package.name) — \(.security_advisory.ghsa_id)"'
+
+          COUNT=$(echo "$ALERTS" | jq --argjson excepted "$EXCEPTED" \
+            '[.[] | select(.security_advisory.ghsa_id as $id | ($excepted | index($id)) | not)] | length')
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::error::$COUNT open high/critical Dependabot alert(s) without an active exception — see the Security tab."
+            echo "::error::These packages may be Dependabot-ignored (SDK-pinned): no PR will fix them automatically."
+            echo "::error::If an advisory has no upstream fix, declare a dated exception in audit-exceptions.json."
+            exit 1
+          fi
+
+      - name: Notify Slack on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\":\":rotating_light: *Nightly audit failed* — high/critical vulnerability or open Dependabot alert\nRun: <${RUN_URL}|View logs>\"}" \
+              || echo "Slack notification failed (non-blocking)"
+          fi

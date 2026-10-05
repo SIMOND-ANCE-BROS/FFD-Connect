@@ -1,0 +1,32 @@
+appId: fr.ffdanse.connect
+---
+# Log in as club (club.e2e@ffd.com). Requires the seed:e2e profiles (pnpm --filter backend seed:e2e).
+# On a cleared state the app shows a splash then the CGU gate before login — wait for
+# it and accept it (id cgu-accept-button). eraseText clears any iOS-autofilled value.
+- extendedWaitUntil:
+    visible: { id: "cgu-accept-button" }
+    timeout: 60000
+    optional: true
+- tapOn: { id: "cgu-accept-button", optional: true }
+- extendedWaitUntil:
+    visible: { id: "login-email-input" }
+    timeout: 30000
+- tapOn: { id: "login-email-input" }
+- eraseText
+- inputText: "club.e2e@ffd.com"
+- tapOn: { id: "login-password-input" }
+- eraseText
+- inputText: "TestE2e123!"
+# Dismiss the one-time iOS bilingual-keyboard system popup if it appears (fresh sim).
+- tapOn: { text: "Continue", optional: true }
+# Submit via the keyboard "done" key: the password field's onSubmitEditing fires
+# onLogin. Deterministic, and avoids the submit button slipping under the keyboard
+# (which yields a false "login-submit-button not found").
+- pressKey: Enter
+# Fallback: if Enter didn't submit, the keyboard is now dismissed so the button is tappable.
+- tapOn: { id: "login-submit-button", optional: true }
+# Dismiss the iOS "Enregistrer le mot de passe ?" system dialog that follows a login.
+- tapOn: { text: "Plus tard", optional: true }
+- extendedWaitUntil:
+    visible: { id: "tab-club" }
+    timeout: 30000

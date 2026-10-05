@@ -1,0 +1,24 @@
+appId: fr.ffdanse.connect
+tags:
+  - licensee
+  - e2e
+---
+# LICENSEE · Notifications: open from the header bell.
+# Fast preamble: reuse the logged-in session when it already matches this role
+# (plain relaunch = fresh navigation, no reinstall/CGU/login). Falls back to the
+# full clearState + login path otherwise. Retried in-flow because the iOS 26 sim
+# intermittently drops taps after accumulated cold boots.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow: ensure-licensee.yaml
+- tapOn: { id: "tab-career" }
+- waitForAnimationToEnd
+- tapOn:
+    id: "notification-bell"
+    optional: true
+- tapOn:
+    point: "92%,10%"
+- extendedWaitUntil:
+    { visible: { id: "notifications-header" }, timeout: 15000, optional: true }
+- back

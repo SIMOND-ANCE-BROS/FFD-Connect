@@ -1,0 +1,91 @@
+name: Merge Back
+
+# After a release lands on master (or a hotfix merges to staging/master),
+# automatically cascade changes downward to keep branches in sync:
+# master → staging → develop
+#
+# PREREQUISITE: Branch protection on develop, staging, and master MUST
+# require the "CI Success" status check. Without it, auto-merge PRs
+# created here can land without CI validation — defeating the purpose
+# of using PRs instead of direct pushes.
+
+on:
+  push:
+    branches: [master, staging]
+
+permissions: read-all
+
+jobs:
+  merge-back:
+    name: Cascade merge to child branches
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # Always create a PR (never push directly) so CI runs before merge.
+      # Even clean merges go through PR to maintain the same validation rigor.
+      - name: Merge back via PR
+        env:
+          BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          create_merge_pr() {
+            local SOURCE="$1"
+            local TARGET="$2"
+
+            git fetch origin "$TARGET"
+
+            if git merge-base --is-ancestor "origin/$SOURCE" "origin/$TARGET" 2>/dev/null; then
+              echo "$SOURCE is already merged into $TARGET — nothing to do"
+              return 0
+            fi
+
+            echo "Creating merge-back PR: $SOURCE → $TARGET"
+
+            # Capture PR URL from create output, or find existing PR with explicit --head/--base
+            PR_URL=$(gh pr create \
+              --base "$TARGET" \
+              --head "$SOURCE" \
+              --title "chore: merge-back $SOURCE → $TARGET" \
+              --body "Automatic merge-back from \`$SOURCE\` to \`$TARGET\`. CI must pass before merge." \
+              2>&1) || PR_URL=""
+
+            # If create failed (PR already exists), look it up with explicit filters
+            if [ -z "$PR_URL" ] || ! echo "$PR_URL" | grep -q "^https://"; then
+              echo "PR create returned: $PR_URL"
+              PR_URL=$(gh pr list --head "$SOURCE" --base "$TARGET" --state open --json url -q '.[0].url' 2>/dev/null || true)
+            fi
+
+            # Enable auto-merge so clean PRs land without manual intervention.
+            # Uses --merge (not --squash) to preserve the full commit history
+            # from the source branch. This keeps git merge-base accurate for
+            # future merge-back diffs and avoids phantom conflicts.
+            if [ -n "$PR_URL" ]; then
+              echo "PR: $PR_URL"
+              gh pr merge --auto --merge "$PR_URL" 2>/dev/null || echo "Auto-merge already enabled or not available"
+            else
+              echo "::warning::Could not find or create PR for $SOURCE → $TARGET"
+            fi
+          }
+
+          case "$BRANCH" in
+            master)
+              create_merge_pr "master" "staging"
+              create_merge_pr "master" "develop"
+              ;;
+            staging)
+              create_merge_pr "staging" "develop"
+              ;;
+          esac

@@ -1,0 +1,21 @@
+appId: fr.ffdanse.connect
+tags:
+  - club
+  - e2e
+---
+# CLUB · Couples management.
+# Fast preamble: reuse the logged-in session when it already matches this role
+# (plain relaunch = fresh navigation, no reinstall/CGU/login). Falls back to the
+# full clearState + login path otherwise. Retried in-flow because the iOS 26 sim
+# intermittently drops taps after accumulated cold boots.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow: ensure-club.yaml
+- tapOn: { id: "club-dashboard-couples-row" }
+- extendedWaitUntil: { visible: { id: "club-couples-search" }, timeout: 20000 }
+- tapOn: { id: "club-couples-search" }
+- inputText: "a"
+- hideKeyboard:
+    optional: true
+- back

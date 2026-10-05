@@ -1,0 +1,24 @@
+{
+  "folders": [
+    {
+      "path": "apps/backend",
+      "name": "Backend",
+    },
+    {
+      "path": "apps/client",
+      "name": "Client",
+    },
+    {
+      "path": ".",
+      "name": "Root",
+    },
+  ],
+  "settings": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.eslint": "explicit",
+    },
+    "eslint.workingDirectories": ["./apps/client", "./apps/backend"],
+  },
+}

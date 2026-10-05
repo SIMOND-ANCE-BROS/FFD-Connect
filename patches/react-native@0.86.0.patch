@@ -1,0 +1,37 @@
+diff --git a/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+index a1111f9c856511942486f12690c27fd9f1ec9c0f..1bcbb92a42fa1df6a2be2777bce13696c4d6b1e5 100644
+--- a/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
++++ b/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+@@ -400,7 +400,16 @@ id convertJSIValueToObjCObject(
+         // See https://github.com/reactwg/react-native-new-architecture/discussions/276#discussioncomment-12567155
+         throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
+       } else {
+-        @throw exception;
++        // PATCH (iOS 26 TurboModule NSException crash workaround):
++        // On iOS 26 an NSException re-thrown from an async TurboModule method
++        // running on a background GCD queue is uncatchable and aborts the app
++        // (SIGABRT via _objc_terminate). This is the root cause of the
++        // expo-local-authentication FaceID crash (canEvaluatePolicy throws).
++        // RN 0.86 still @throws here (unchanged from 0.83). Until an upstream
++        // fix lands, log and return so the app survives.
++        // See: https://github.com/facebook/react-native/issues/54859
++        //      https://github.com/expo/expo/issues/44680
++        RCTLogError(@"[TurboModule iOS26 patch] NSException in %s.%s: %@", moduleName, methodNameStr.c_str(), exception);
+       }
+     } @finally {
+       [retainedObjectsForInvocation removeAllObjects];
+@@ -460,9 +469,11 @@ TraceSection s(
+     @try {
+       [inv invokeWithTarget:strongModule];
+     } @catch (NSException *exception) {
+-      // Void methods are always async, re-throw instead of converting to
+-      // JSError, same as the async branch in performMethodInvocation.
+-      @throw exception;
++      // PATCH (iOS 26 TurboModule NSException crash workaround): see the async
++      // branch of performMethodInvocation above. Void methods are always async;
++      // re-throwing an NSException here on iOS 26 aborts the app. Log and
++      // return instead of re-throwing so the app survives.
++      RCTLogError(@"[TurboModule iOS26 patch] NSException in void %s.%s: %@", moduleName, methodNameStr.c_str(), exception);
+     } @finally {
+       [retainedObjectsForInvocation removeAllObjects];
+     }

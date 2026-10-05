@@ -1,0 +1,15 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".*(\\.integration-spec\\.ts|-integration\\.e2e-spec\\.ts|-db\\.e2e-spec\\.ts)$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^newrelic$": "<rootDir>/setup/newrelic-mock.ts"
+  },
+  "testTimeout": 60000,
+  "globalSetup": "./setup/global-setup.ts",
+  "globalTeardown": "./setup/global-teardown.ts"
+}

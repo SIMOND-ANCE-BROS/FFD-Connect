@@ -1,0 +1,7 @@
+{
+  "id": "pay-failed",
+  "status": "Refused",
+  "amount": 3500,
+  "currency": "EUR",
+  "error": "InsufficientFunds"
+}

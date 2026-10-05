@@ -1,0 +1,54 @@
+name: Dependabot pnpm lockfile
+
+# Dependabot updates package.json but doesn't refresh pnpm-lock.yaml in monorepos.
+# This workflow runs `pnpm install` and commits the updated lockfile back to the PR.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-lockfile:
+    name: Update pnpm-lock.yaml
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    if: github.actor == 'dependabot[bot]'
+
+    env:
+      HEAD_REF: ${{ github.head_ref }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ env.HEAD_REF }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 10.30.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Update lockfile
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
+
+      - name: Commit and push if changed
+        run: |
+          if git diff --quiet pnpm-lock.yaml; then
+            echo "Lockfile already up to date — nothing to commit"
+            exit 0
+          fi
+          git config user.name "dependabot[bot]"
+          git config user.email "49699333+dependabot[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          git commit -m "chore: update pnpm-lock.yaml"
+          git push

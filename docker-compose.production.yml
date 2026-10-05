@@ -1,0 +1,33 @@
+# Production environment overlay
+# Usage: docker compose -f docker-compose.yml -f docker-compose.production.yml --profile full up -d
+#
+# Requires: .env.production with all backend env vars
+# Database: ffd_connect_prod (isolated from staging)
+#
+# In production, prefer managed services (RDS, ElastiCache) over
+# local containers for db and redis. Override DATABASE_URL and
+# REDIS_HOST in .env.production to point to managed instances.
+
+services:
+  db:
+    environment:
+      POSTGRES_DB: ffd_connect_prod
+    restart: always
+
+  redis:
+    restart: always
+
+  backend:
+    env_file: apps/backend/.env.production
+    environment:
+      DATABASE_URL: postgres://ffd:ffdpassword@db:5432/ffd_connect_prod
+      NODE_ENV: production
+      REDIS_HOST: redis
+      PORT: 3000
+    restart: always
+
+  frontend:
+    build:
+      args:
+        - FRONTEND_DOMAIN=${PRODUCTION_DOMAIN:-ffd-connect.fr}
+    restart: always

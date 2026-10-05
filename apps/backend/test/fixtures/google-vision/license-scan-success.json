@@ -1,0 +1,15 @@
+{
+  "responses": [
+    {
+      "textAnnotations": [
+        {
+          "description": "LICENCE FFD\nNuméro: 123456\nNom: DUPONT Jean\nValide jusqu'au: 31/08/2026",
+          "boundingPoly": { "vertices": [] }
+        }
+      ],
+      "fullTextAnnotation": {
+        "text": "LICENCE FFD\nNuméro: 123456\nNom: DUPONT Jean\nValide jusqu'au: 31/08/2026"
+      }
+    }
+  ]
+}

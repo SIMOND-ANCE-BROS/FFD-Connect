@@ -1,0 +1,27 @@
+appId: fr.ffdanse.connect
+tags:
+  - licensee
+  - e2e
+---
+# LICENSEE · Competitions filter sheet: open, toggle style/discipline, custom distance.
+# Fast preamble: reuse the logged-in session when it already matches this role
+# (plain relaunch = fresh navigation, no reinstall/CGU/login). Falls back to the
+# full clearState + login path otherwise. Retried in-flow because the iOS 26 sim
+# intermittently drops taps after accumulated cold boots.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow: ensure-licensee.yaml
+- tapOn: { id: "tab-competitions" }
+- extendedWaitUntil:
+    { visible: { id: "competitions-filter-button" }, timeout: 20000 }
+- tapOn: { id: "competitions-filter-button" }
+- tapOn: { text: "Latine", optional: true }
+- tapOn: { text: "Couple", optional: true }
+- tapOn: { id: "competitions-filter-distance-custom", optional: true }
+- inputText: "50"
+- hideKeyboard:
+    optional: true
+- tapOn: { text: "Appliquer", optional: true }
+- tapOn: { text: "Réinitialiser", optional: true }
+- back

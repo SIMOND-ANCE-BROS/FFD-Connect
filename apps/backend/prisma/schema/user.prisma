@@ -1,0 +1,133 @@
+/// Niveaux du Passeport Danse (couleurs). Jaune/Orange = commun Latine+Standard ; à partir de Vert = par discipline.
+enum PassportLevel {
+  BLANC
+  BEIGE
+  JAUNE
+  ORANGE
+  VERT
+  VIOLET
+  BLEU
+  ROUGE
+  NOIR
+}
+
+model User {
+  id                   String         @id @default(uuid())
+  email                String         @unique
+  password             String
+  firstName            String
+  lastName             String
+  role                 UserRole       @default(LICENSEE)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  ageGroup             String?        // 1 seule classe d'âge par licencié
+  category             String?        // discipline(s) : Latin, Standard, Ten Dance
+  clubId               String?
+  clubName             String?        // Affichage / rétrocompatibilité ; préférer clubId pour le lien
+  birthDate            DateTime?
+  nationalRanking      Int?
+  passportLevelLatin   PassportLevel? // Niveau Passeport Danse en Latine (à partir de Vert évalué séparément)
+  passportLevelStandard PassportLevel? // Niveau Passeport Danse en Standard
+  competitionLevel     String?        // Niveau compétition : Débutant, Intermédiaire, Avancé, International (pour éligibilité / calcul niveau Solo Team)
+  wdsfMin              String?        // Numéro MIN WDSF (Member Identification Number) si licence WDSF liée
+  wdsfNationality      String?
+  wdsfLicenseType     String?
+  wdsfAgeGroup        String?
+  wdsfExpiresOn       DateTime?
+  club                 Club?          @relation(fields: [clubId], references: [id], onDelete: SetNull)
+  partnershipsAsUser1  Partnership[]  @relation("PartnershipUser1")
+  partnershipsAsUser2  Partnership[]  @relation("PartnershipUser2")
+  soloTeamMemberships  SoloTeamMember[]
+  license              License?
+  licenseRenewalRequests LicenseRenewalRequest[]
+  notifications        Notification[]
+  deviceTokens         DeviceToken[]
+  refreshTokens        RefreshToken[]
+  registrations        Registration[]
+  registrationsAsPartner Registration[] @relation("RegistrationPartner")
+  passwordResetTokens  PasswordResetToken[]
+  seatBookings         SeatBooking[]
+  submittedTracks      Track[]        @relation("TrackSubmissions")
+
+  @@index([email])
+  @@index([role])
+  @@index([clubName])
+  @@index([clubId])
+  @@index([clubId, role]) // membres d'un club filtrés par rôle
+}
+
+enum UserRole {
+  LICENSEE // Licencié — pratiquant avec licence FFD
+  CLUB    // Structure (Club) — représentant du club
+  STAFF   // Staff FFD — organisateur d'événement, scanner, etc.
+  ADMIN   // Administration plateforme
+}
+
+/// Journal d'audit des impersonations (« se connecter en tant que », #545).
+/// Une ligne par session d'impersonation : qui, cible, quand, pourquoi.
+/// Obligatoire pour la traçabilité RGPD (accès à des données de tiers).
+model ImpersonationLog {
+  id             String    @id @default(uuid())
+  /// Auteur de l'impersonation (admin ou staff).
+  actorId        String
+  actorRole      UserRole
+  /// Compte cible dont on prend l'identité.
+  targetUserId   String
+  targetRole     UserRole
+  /// Raison (obligatoire pour le staff ; facultative pour l'admin).
+  reason         String?
+  ip             String?
+  startedAt      DateTime  @default(now())
+  /// Renseigné à l'arrêt de l'impersonation.
+  endedAt        DateTime?
+
+  @@index([actorId])
+  @@index([targetUserId])
+  @@index([startedAt])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean   @default(false)
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  // Index composite pour lookup token valide : WHERE userId = ? AND revoked = false
+  @@index([userId, revoked])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([used])
+}
+
+model VolunteerToken {
+  id            String      @id @default(uuid())
+  token         String      @unique
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  expiresAt     DateTime
+  name          String      @default("Bénévole")
+  createdAt     DateTime    @default(now())
+
+  @@index([token])
+  @@index([competitionId])
+}

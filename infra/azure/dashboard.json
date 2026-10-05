@@ -1,0 +1,937 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {},
+  "resources": [
+    {
+      "type": "Microsoft.Portal/dashboards",
+      "apiVersion": "2020-09-01-preview",
+      "name": "ffd-connect-beta",
+      "location": "northeurope",
+      "tags": {
+        "hidden-title": "FFD-Connect — Beta"
+      },
+      "properties": {
+        "lenses": [
+          {
+            "order": 0,
+            "parts": [
+              {
+                "position": {
+                  "x": 0,
+                  "y": 0,
+                  "colSpan": 7,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "inputs": [
+                    {
+                      "name": "scope",
+                      "value": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg",
+                      "isOptional": true
+                    },
+                    {
+                      "name": "scopeName",
+                      "value": "ffd-connect-production-rg",
+                      "isOptional": true
+                    }
+                  ],
+                  "type": "Extension/Microsoft_Azure_CostManagement/PartType/CostAnalysisPinPart",
+                  "settings": {
+                    "content": {
+                      "view": {
+                        "currency": "EUR",
+                        "dateRange": "ThisMonth",
+                        "query": {
+                          "type": "ActualCost",
+                          "dataSet": {
+                            "granularity": "Daily",
+                            "aggregation": {
+                              "totalCost": {
+                                "name": "Cost",
+                                "function": "Sum"
+                              }
+                            }
+                          },
+                          "timeframe": "MonthToDate"
+                        },
+                        "chart": "Area",
+                        "accumulated": "true",
+                        "pivots": [
+                          {
+                            "type": "Dimension",
+                            "name": "ServiceName"
+                          }
+                        ],
+                        "kpis": [
+                          {
+                            "type": "Forecast",
+                            "id": "",
+                            "enabled": true
+                          },
+                          {
+                            "type": "Budget",
+                            "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/providers/Microsoft.Consumption/budgets/ffd-connect-production-monthly",
+                            "enabled": true,
+                            "extendedProperties": {
+                              "name": "ffd-connect-production-monthly"
+                            }
+                          }
+                        ],
+                        "scope": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg",
+                        "displayName": "Coût cumulé vs budget (30 €)"
+                      },
+                      "scope": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg"
+                    }
+                  },
+                  "partHeader": {
+                    "title": "Coût cumulé vs budget (30 €)",
+                    "subtitle": "ce mois-ci"
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 7,
+                  "y": 0,
+                  "colSpan": 5,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "inputs": [
+                    {
+                      "name": "scope",
+                      "value": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg",
+                      "isOptional": true
+                    },
+                    {
+                      "name": "scopeName",
+                      "value": "ffd-connect-production-rg",
+                      "isOptional": true
+                    }
+                  ],
+                  "type": "Extension/Microsoft_Azure_CostManagement/PartType/CostAnalysisPinPart",
+                  "settings": {
+                    "content": {
+                      "view": {
+                        "currency": "EUR",
+                        "dateRange": "ThisMonth",
+                        "query": {
+                          "type": "ActualCost",
+                          "dataSet": {
+                            "granularity": "None",
+                            "aggregation": {
+                              "totalCost": {
+                                "name": "Cost",
+                                "function": "Sum"
+                              }
+                            },
+                            "grouping": [
+                              {
+                                "type": "Dimension",
+                                "name": "ServiceName"
+                              }
+                            ]
+                          },
+                          "timeframe": "MonthToDate"
+                        },
+                        "chart": "Donut",
+                        "accumulated": "false",
+                        "pivots": [
+                          {
+                            "type": "Dimension",
+                            "name": "ServiceName"
+                          }
+                        ],
+                        "kpis": [],
+                        "scope": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg",
+                        "displayName": "Coût par service"
+                      },
+                      "scope": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg"
+                    }
+                  },
+                  "partHeader": {
+                    "title": "Coût par service",
+                    "subtitle": "ce mois-ci"
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 0,
+                  "y": 4,
+                  "colSpan": 12,
+                  "rowSpan": 2
+                },
+                "metadata": {
+                  "inputs": [],
+                  "type": "Extension/HubsExtension/PartType/MarkdownPart",
+                  "settings": {
+                    "content": {
+                      "settings": {
+                        "content": "### ℹ️ FFD-Connect — Beta   ·   Budget **30 €/mois**  ·  Enveloppe **2000 €**\n**Beta → staging** (`api-staging`)  ·  **Prod endormie** (`min=0`)  ·  Postgres `ffd-connect-pg` **partagé** prod+staging  ·  toutes les Container Apps `min=0` (réveil HTTP à la demande)  ·  _ADR-0019 (stratégie prod/staging)_",
+                        "title": "",
+                        "subtitle": "",
+                        "markdownSource": 1
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 0,
+                  "y": 6,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "inputs": [
+                    {
+                      "name": "options",
+                      "isOptional": true
+                    },
+                    {
+                      "name": "sharedTimeRange",
+                      "isOptional": true
+                    }
+                  ],
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "options": {
+                        "chart": {
+                          "metrics": [
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/backend-prod"
+                              },
+                              "name": "CpuPercentage",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "backend-prod"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/backend-staging"
+                              },
+                              "name": "CpuPercentage",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "backend-staging"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/landing"
+                              },
+                              "name": "CpuPercentage",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "landing"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/ffd-redis-prod"
+                              },
+                              "name": "CpuPercentage",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "ffd-redis-prod"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/ffd-redis-staging"
+                              },
+                              "name": "CpuPercentage",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "ffd-redis-staging"
+                              }
+                            }
+                          ],
+                          "title": "Container Apps — CPU %",
+                          "titleKind": 1,
+                          "visualization": {
+                            "chartType": 2,
+                            "legendVisualization": {
+                              "isVisible": true,
+                              "position": 2,
+                              "hideSubtitle": false
+                            },
+                            "axisVisualization": {
+                              "x": {
+                                "isVisible": true,
+                                "axisType": 2
+                              },
+                              "y": {
+                                "isVisible": true,
+                                "axisType": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 6,
+                  "y": 6,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "inputs": [
+                    {
+                      "name": "options",
+                      "isOptional": true
+                    },
+                    {
+                      "name": "sharedTimeRange",
+                      "isOptional": true
+                    }
+                  ],
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "options": {
+                        "chart": {
+                          "metrics": [
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/backend-prod"
+                              },
+                              "name": "MemoryPercentage",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "backend-prod"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/backend-staging"
+                              },
+                              "name": "MemoryPercentage",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "backend-staging"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/landing"
+                              },
+                              "name": "MemoryPercentage",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "landing"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/ffd-redis-prod"
+                              },
+                              "name": "MemoryPercentage",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "ffd-redis-prod"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/ffd-redis-staging"
+                              },
+                              "name": "MemoryPercentage",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "ffd-redis-staging"
+                              }
+                            }
+                          ],
+                          "title": "Container Apps — Mémoire %",
+                          "titleKind": 1,
+                          "visualization": {
+                            "chartType": 2,
+                            "legendVisualization": {
+                              "isVisible": true,
+                              "position": 2,
+                              "hideSubtitle": false
+                            },
+                            "axisVisualization": {
+                              "x": {
+                                "isVisible": true,
+                                "axisType": 2
+                              },
+                              "y": {
+                                "isVisible": true,
+                                "axisType": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 0,
+                  "y": 10,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "inputs": [
+                    {
+                      "name": "options",
+                      "isOptional": true
+                    },
+                    {
+                      "name": "sharedTimeRange",
+                      "isOptional": true
+                    }
+                  ],
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "options": {
+                        "chart": {
+                          "metrics": [
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/backend-prod"
+                              },
+                              "name": "Replicas",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "backend-prod"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/backend-staging"
+                              },
+                              "name": "Replicas",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "backend-staging"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/landing"
+                              },
+                              "name": "Replicas",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "landing"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/ffd-redis-prod"
+                              },
+                              "name": "Replicas",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "ffd-redis-prod"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/ffd-redis-staging"
+                              },
+                              "name": "Replicas",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "ffd-redis-staging"
+                              }
+                            }
+                          ],
+                          "title": "Container Apps — Replicas (éveil/veille)",
+                          "titleKind": 1,
+                          "visualization": {
+                            "chartType": 2,
+                            "legendVisualization": {
+                              "isVisible": true,
+                              "position": 2,
+                              "hideSubtitle": false
+                            },
+                            "axisVisualization": {
+                              "x": {
+                                "isVisible": true,
+                                "axisType": 2
+                              },
+                              "y": {
+                                "isVisible": true,
+                                "axisType": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 6,
+                  "y": 10,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "inputs": [
+                    {
+                      "name": "options",
+                      "isOptional": true
+                    },
+                    {
+                      "name": "sharedTimeRange",
+                      "isOptional": true
+                    }
+                  ],
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "options": {
+                        "chart": {
+                          "metrics": [
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/backend-prod"
+                              },
+                              "name": "Requests",
+                              "aggregationType": 1,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "backend-prod"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/backend-staging"
+                              },
+                              "name": "Requests",
+                              "aggregationType": 1,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "backend-staging"
+                              }
+                            }
+                          ],
+                          "title": "Backends — Requêtes (Total)",
+                          "titleKind": 1,
+                          "visualization": {
+                            "chartType": 2,
+                            "legendVisualization": {
+                              "isVisible": true,
+                              "position": 2,
+                              "hideSubtitle": false
+                            },
+                            "axisVisualization": {
+                              "x": {
+                                "isVisible": true,
+                                "axisType": 2
+                              },
+                              "y": {
+                                "isVisible": true,
+                                "axisType": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 0,
+                  "y": 14,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "inputs": [
+                    {
+                      "name": "options",
+                      "isOptional": true
+                    },
+                    {
+                      "name": "sharedTimeRange",
+                      "isOptional": true
+                    }
+                  ],
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "options": {
+                        "chart": {
+                          "metrics": [
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/backend-prod"
+                              },
+                              "name": "ResponseTime",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "backend-prod"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/backend-staging"
+                              },
+                              "name": "ResponseTime",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "backend-staging"
+                              }
+                            }
+                          ],
+                          "title": "Backends — Temps de réponse (ms)",
+                          "titleKind": 1,
+                          "visualization": {
+                            "chartType": 2,
+                            "legendVisualization": {
+                              "isVisible": true,
+                              "position": 2,
+                              "hideSubtitle": false
+                            },
+                            "axisVisualization": {
+                              "x": {
+                                "isVisible": true,
+                                "axisType": 2
+                              },
+                              "y": {
+                                "isVisible": true,
+                                "axisType": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 6,
+                  "y": 14,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "inputs": [
+                    {
+                      "name": "options",
+                      "isOptional": true
+                    },
+                    {
+                      "name": "sharedTimeRange",
+                      "isOptional": true
+                    }
+                  ],
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "options": {
+                        "chart": {
+                          "metrics": [
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/backend-prod"
+                              },
+                              "name": "RestartCount",
+                              "aggregationType": 1,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "backend-prod"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/backend-staging"
+                              },
+                              "name": "RestartCount",
+                              "aggregationType": 1,
+                              "namespace": "microsoft.app/containerapps",
+                              "metricVisualization": {
+                                "displayName": "backend-staging"
+                              }
+                            }
+                          ],
+                          "title": "Container Apps — Redémarrages",
+                          "titleKind": 1,
+                          "visualization": {
+                            "chartType": 2,
+                            "legendVisualization": {
+                              "isVisible": true,
+                              "position": 2,
+                              "hideSubtitle": false
+                            },
+                            "axisVisualization": {
+                              "x": {
+                                "isVisible": true,
+                                "axisType": 2
+                              },
+                              "y": {
+                                "isVisible": true,
+                                "axisType": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 0,
+                  "y": 18,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "inputs": [
+                    {
+                      "name": "options",
+                      "isOptional": true
+                    },
+                    {
+                      "name": "sharedTimeRange",
+                      "isOptional": true
+                    }
+                  ],
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "options": {
+                        "chart": {
+                          "metrics": [
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.DBforPostgreSQL/flexibleServers/ffd-connect-pg"
+                              },
+                              "name": "cpu_percent",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.dbforpostgresql/flexibleservers",
+                              "metricVisualization": {
+                                "displayName": "CPU %"
+                              }
+                            },
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.DBforPostgreSQL/flexibleServers/ffd-connect-pg"
+                              },
+                              "name": "memory_percent",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.dbforpostgresql/flexibleservers",
+                              "metricVisualization": {
+                                "displayName": "Mémoire %"
+                              }
+                            }
+                          ],
+                          "title": "PostgreSQL — CPU % / Mémoire %",
+                          "titleKind": 1,
+                          "visualization": {
+                            "chartType": 2,
+                            "legendVisualization": {
+                              "isVisible": true,
+                              "position": 2,
+                              "hideSubtitle": false
+                            },
+                            "axisVisualization": {
+                              "x": {
+                                "isVisible": true,
+                                "axisType": 2
+                              },
+                              "y": {
+                                "isVisible": true,
+                                "axisType": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 6,
+                  "y": 18,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "inputs": [
+                    {
+                      "name": "options",
+                      "isOptional": true
+                    },
+                    {
+                      "name": "sharedTimeRange",
+                      "isOptional": true
+                    }
+                  ],
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "options": {
+                        "chart": {
+                          "metrics": [
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.DBforPostgreSQL/flexibleServers/ffd-connect-pg"
+                              },
+                              "name": "storage_percent",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.dbforpostgresql/flexibleservers",
+                              "metricVisualization": {
+                                "displayName": "Stockage %"
+                              }
+                            }
+                          ],
+                          "title": "PostgreSQL — Stockage %",
+                          "titleKind": 1,
+                          "visualization": {
+                            "chartType": 2,
+                            "legendVisualization": {
+                              "isVisible": true,
+                              "position": 2,
+                              "hideSubtitle": false
+                            },
+                            "axisVisualization": {
+                              "x": {
+                                "isVisible": true,
+                                "axisType": 2
+                              },
+                              "y": {
+                                "isVisible": true,
+                                "axisType": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "position": {
+                  "x": 0,
+                  "y": 22,
+                  "colSpan": 6,
+                  "rowSpan": 4
+                },
+                "metadata": {
+                  "inputs": [
+                    {
+                      "name": "options",
+                      "isOptional": true
+                    },
+                    {
+                      "name": "sharedTimeRange",
+                      "isOptional": true
+                    }
+                  ],
+                  "type": "Extension/HubsExtension/PartType/MonitorChartPart",
+                  "settings": {
+                    "content": {
+                      "options": {
+                        "chart": {
+                          "metrics": [
+                            {
+                              "resourceMetadata": {
+                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.DBforPostgreSQL/flexibleServers/ffd-connect-pg"
+                              },
+                              "name": "active_connections",
+                              "aggregationType": 4,
+                              "namespace": "microsoft.dbforpostgresql/flexibleservers",
+                              "metricVisualization": {
+                                "displayName": "Connexions actives"
+                              }
+                            }
+                          ],
+                          "title": "PostgreSQL — Connexions actives",
+                          "titleKind": 1,
+                          "visualization": {
+                            "chartType": 2,
+                            "legendVisualization": {
+                              "isVisible": true,
+                              "position": 2,
+                              "hideSubtitle": false
+                            },
+                            "axisVisualization": {
+                              "x": {
+                                "isVisible": true,
+                                "axisType": 2
+                              },
+                              "y": {
+                                "isVisible": true,
+                                "axisType": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "metadata": {
+          "model": {
+            "timeRange": {
+              "value": {
+                "relative": {
+                  "duration": 24,
+                  "timeUnit": 1
+                }
+              },
+              "type": "MsPortalFx.Composition.Configuration.ValueTypes.TimeRange"
+            },
+            "filterLocale": {
+              "value": "fr-fr"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

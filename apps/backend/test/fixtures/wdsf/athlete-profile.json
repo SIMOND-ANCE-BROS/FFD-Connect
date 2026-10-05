@@ -1,0 +1,8 @@
+{
+  "id": 123456,
+  "firstName": "Jean",
+  "lastName": "Dupont",
+  "country": "FRA",
+  "discipline": "LAT",
+  "ranking": 42
+}

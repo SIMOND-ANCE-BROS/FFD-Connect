@@ -1,0 +1,17 @@
+# Global owner — all files
+* @GabinSMD
+
+# Security-critical paths require explicit review
+apps/backend/src/auth/          @GabinSMD
+apps/backend/src/payment/       @GabinSMD
+apps/backend/src/main.ts        @GabinSMD
+
+# Infrastructure & CI
+.github/                        @GabinSMD
+docker-compose*.yml             @GabinSMD
+prisma/                         @GabinSMD
+infra/                          @GabinSMD
+
+# Mobile app config (native changes trigger full builds)
+apps/client/app.config.*        @GabinSMD
+apps/client/eas.json            @GabinSMD

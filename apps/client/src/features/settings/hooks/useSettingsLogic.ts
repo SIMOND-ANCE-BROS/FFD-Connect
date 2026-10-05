@@ -1,0 +1,393 @@
+import { useFocusEffect } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useCallback, useState } from "react";
+import { Alert, Platform } from "react-native";
+import rnBiometrics, { BiometryTypes } from "../../../utils/biometrics-adapter";
+import * as Device from "expo-device";
+import * as ImagePicker from "expo-image-picker";
+import * as Updates from "expo-updates";
+import {
+  APP_BUILD,
+  APP_ENV_LABEL,
+  APP_RUNTIME_VERSION,
+  APP_VERSION,
+  envLabel,
+  STATIC_BASE_URL,
+} from "../../../config";
+import { ThemePreference, useTheme } from "../../../context/ThemeContext";
+import { useBackendHealth } from "../../../hooks/useBackendHealth";
+import { RootStackParamList } from "../../../navigation/types";
+import { useAuthStore } from "../../../stores/auth.store";
+import { createLogger } from "../../../utils/logger";
+import { useAuthRepository } from "../../auth/context/AuthContext";
+import { UserRole } from "../../auth/services/AuthService";
+import type { HelloAssoStatus } from "../../club/services/ClubService";
+import { ClubService } from "../../club/services/ClubService";
+
+const logger = createLogger("useSettingsLogic");
+
+interface UseSettingsLogicProps {
+  navigation: NativeStackNavigationProp<RootStackParamList, "Settings">;
+}
+
+export const useSettingsLogic = ({
+  navigation: _navigation,
+}: UseSettingsLogicProps) => {
+  const auth = useAuthRepository();
+  const refreshAuth = useAuthStore((s) => s.refreshAuth);
+  const backendHealth = useBackendHealth();
+  const {
+    theme: currentTheme,
+    preference,
+    setPreference,
+    isDark,
+    animationsEnabled,
+    toggleAnimations,
+  } = useTheme();
+
+  const [biometricsEnabled, setBiometricsEnabled] = useState(false);
+  const [biometryType, setBiometryType] = useState<string | undefined>(
+    undefined,
+  );
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [defaultFilter, setDefaultFilter] = useState<
+    "default" | "style" | "likes"
+  >("default");
+  const [defaultCompetitionScope, setDefaultCompetitionScope] = useState<
+    "all" | "registrant"
+  >("all");
+  const [defaultCompetitionStatus, setDefaultCompetitionStatus] = useState<
+    "UPCOMING" | "LIVE" | "PAST" | "ALL"
+  >("UPCOMING");
+  const [role, setRole] = useState<UserRole>("LICENSEE");
+  const [registrationPolicy, setRegistrationPolicy] = useState<
+    "CLUB_ONLY" | "MEMBER_VALIDATION" | "MEMBER_AUTO"
+  >("MEMBER_VALIDATION");
+  const [helloAssoStatus, setHelloAssoStatus] =
+    useState<HelloAssoStatus | null>(null);
+  const [helloAssoModalVisible, setHelloAssoModalVisible] = useState(false);
+
+  // License expiry warning (days until license expires, null if not applicable)
+  const [licenseExpiryDays, setLicenseExpiryDays] = useState<number | null>(
+    null,
+  );
+
+  // UI State
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [changePasswordModalVisible, setChangePasswordModalVisible] =
+    useState(false);
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const config = await auth.getAuthConfig();
+      setBiometricsEnabled(config.biometricsEnabled ?? false);
+      setPhotoUri(config.licensePhotoUri ?? null);
+      setDefaultFilter(config.defaultLibraryFilter ?? "default");
+      setDefaultCompetitionScope(config.defaultCompetitionScope ?? "all");
+      setDefaultCompetitionStatus(
+        config.defaultCompetitionStatus ?? "UPCOMING",
+      );
+      setRole(config.role);
+      if (config.registrationPolicy) {
+        setRegistrationPolicy(config.registrationPolicy);
+      }
+      if (config.role === "CLUB" || config.role === "ADMIN") {
+        try {
+          const status = await ClubService.getHelloAssoStatus();
+          setHelloAssoStatus(status);
+          if (status.registrationMode) {
+            const map: Record<
+              string,
+              "CLUB_ONLY" | "MEMBER_VALIDATION" | "MEMBER_AUTO"
+            > = {
+              CLUB_AND_MEMBERS_PENDING: "MEMBER_VALIDATION",
+              CLUB_ONLY: "CLUB_ONLY",
+              MEMBERS_AUTO_CONFIRM: "MEMBER_AUTO",
+            };
+            setRegistrationPolicy(
+              map[status.registrationMode] ?? "MEMBER_VALIDATION",
+            );
+          }
+        } catch {
+          setHelloAssoStatus(null);
+        }
+      } else {
+        setHelloAssoStatus(null);
+      }
+
+      // Check license expiry
+      try {
+        const profile = await auth.getProfile();
+        if (profile.license?.validUntil) {
+          const now = new Date();
+          const expiry = new Date(profile.license.validUntil);
+          const diffMs = expiry.getTime() - now.getTime();
+          const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+          setLicenseExpiryDays(days > 0 && days <= 30 ? days : null);
+        } else {
+          setLicenseExpiryDays(null);
+        }
+      } catch {
+        setLicenseExpiryDays(null);
+      }
+    } catch (error) {
+      logger.error("[Settings] Error loading settings:", error);
+    }
+  }, [auth]);
+
+  const checkBiometryAvailability = useCallback(async () => {
+    const { available, biometryType: bioType } =
+      await rnBiometrics.isSensorAvailable();
+    if (available && bioType) {
+      setBiometryType(bioType);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSettings().catch(() => {});
+      checkBiometryAvailability().catch(() => {});
+    }, [loadSettings, checkBiometryAvailability]),
+  );
+
+  const toggleBiometrics = async (value: boolean) => {
+    if (value) {
+      try {
+        const { success } = await rnBiometrics.simplePrompt({
+          promptMessage: "Confirmer l'activation",
+        });
+
+        if (success) {
+          setBiometricsEnabled(true);
+          await auth.setBiometricsEnabled(true);
+        } else {
+          setBiometricsEnabled(false);
+          Alert.alert("Erreur", "Authentification échouée.");
+        }
+      } catch (error) {
+        logger.error("[Settings] Biometrics error:", error);
+        setBiometricsEnabled(false);
+      }
+    } else {
+      setBiometricsEnabled(false);
+      await auth.setBiometricsEnabled(false);
+    }
+  };
+
+  /** Déconnexion immédiate, sans confirmation (ex. après suppression de compte). */
+  const performLogout = () => {
+    (async () => {
+      await auth.logout();
+      await refreshAuth();
+    })().catch(() => {});
+  };
+
+  const handleLogout = () => {
+    Alert.alert("Déconnexion", "Voulez-vous vraiment vous déconnecter ?", [
+      { text: "Annuler", style: "cancel" },
+      {
+        text: "Se déconnecter",
+        style: "destructive",
+        onPress: performLogout,
+      },
+    ]);
+  };
+
+  // Guest → "Se connecter": end the guest session so the app returns to the
+  // Login screen (no destructive confirm — they're just leaving guest mode).
+  const handleGuestSignIn = () => {
+    (async () => {
+      await auth.logout();
+      await refreshAuth();
+    })().catch(() => {});
+  };
+
+  const handleSelectPhoto = async () => {
+    try {
+      // Request permissions
+
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission requise",
+          "Accès à la galerie photo nécessaire.",
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
+        selectionLimit: 1,
+      });
+
+      if (
+        !result.canceled &&
+        result.assets.length > 0 &&
+        result.assets[0].uri
+      ) {
+        const newUri = result.assets[0].uri;
+        await auth.setLicensePhoto(newUri);
+        setPhotoUri(newUri);
+        Alert.alert("Succès", "Photo mise à jour.");
+      }
+    } catch (error) {
+      logger.error("[Settings] Photo selection error:", error);
+    }
+  };
+
+  const handleShowTechInfo = async () => {
+    let isOnline = false;
+    try {
+      isOnline = await backendHealth.checkHealth();
+    } catch {
+      isOnline = false;
+    }
+    const statusText = isOnline ? "En ligne 🟢" : "Hors ligne 🔴";
+
+    // Infos réellement utiles au support/debug. La source de vérité runtime est
+    // expo-updates (canal + bundle OTA réellement en cours), PAS les variables
+    // build-time qui divergent entre binaire et OTA (cf. bug env « Développement »).
+    const appLine = `FFD Connect v${APP_VERSION}${APP_BUILD ? ` (build ${APP_BUILD})` : ""}`;
+
+    // Environnement : canal OTA runtime en priorité, fallback build-time.
+    const env = Updates.channel ? envLabel(Updates.channel) : APP_ENV_LABEL;
+    const runtime = Updates.runtimeVersion || APP_RUNTIME_VERSION || "?";
+
+    // Quel bundle JS tourne réellement (crucial pour « es-tu sur la dernière OTA ? »).
+    let bundleLine: string;
+    if (!Updates.isEnabled) {
+      bundleLine = "Bundle : dev (Metro, pas d'OTA)";
+    } else if (Updates.isEmbeddedLaunch || !Updates.updateId) {
+      bundleLine = "Bundle : intégré au build (aucune OTA appliquée)";
+    } else {
+      const shortId = Updates.updateId.slice(0, 8);
+      const published = Updates.createdAt
+        ? Updates.createdAt.toLocaleString("fr-FR")
+        : "?";
+      bundleLine = `OTA : ${shortId} (publiée le ${published})`;
+    }
+
+    const osVersion = Device.osVersion ?? "?";
+    const deviceName = Device.modelName ?? "Appareil inconnu";
+    const osLabel =
+      Platform.OS === "ios"
+        ? "iOS"
+        : Platform.OS === "android"
+          ? "Android"
+          : Platform.OS;
+    const host = STATIC_BASE_URL
+      ? STATIC_BASE_URL.replace(/^https?:\/\//, "")
+      : "(non configuré)";
+
+    const lines = [
+      appLine,
+      `Environnement : ${env}`,
+      `Runtime : ${runtime}`,
+      bundleLine,
+      `Système : ${osLabel} ${osVersion}`,
+      `Appareil : ${deviceName}`,
+      `Backend : ${statusText}`,
+      `Serveur : ${host}`,
+    ];
+
+    Alert.alert("Informations techniques", lines.join("\n"), [{ text: "OK" }]);
+  };
+
+  const handleSetTheme = async (pref: ThemePreference) => {
+    await setPreference(pref);
+  };
+
+  const handleToggleAnimations = async () => {
+    try {
+      await toggleAnimations();
+    } catch (error) {
+      logger.error("[Settings] Toggle animations error:", error);
+    }
+  };
+
+  const handleSetLibraryFilter = async (val: string) => {
+    const mode = val as "default" | "style" | "likes";
+    setDefaultFilter(mode);
+    await auth.setDefaultLibraryFilter(mode);
+  };
+
+  const handleSetCompetitionScope = async (val: string) => {
+    const scope = val as "all" | "registrant";
+    setDefaultCompetitionScope(scope);
+    await auth.setDefaultCompetitionScope(scope);
+  };
+
+  const handleSetCompetitionStatus = async (val: string) => {
+    const status = val as "UPCOMING" | "LIVE" | "PAST" | "ALL";
+    setDefaultCompetitionStatus(status);
+    await auth.setDefaultCompetitionStatus(status);
+  };
+
+  const handleSetRegistrationPolicy = async (val: string) => {
+    const policy = val as "CLUB_ONLY" | "MEMBER_VALIDATION" | "MEMBER_AUTO";
+    setRegistrationPolicy(policy);
+    const backendMode = {
+      MEMBER_VALIDATION: "CLUB_AND_MEMBERS_PENDING" as const,
+      CLUB_ONLY: "CLUB_ONLY" as const,
+      MEMBER_AUTO: "MEMBERS_AUTO_CONFIRM" as const,
+    }[policy];
+    try {
+      await ClubService.setRegistrationMode(backendMode);
+      if (helloAssoStatus) {
+        setHelloAssoStatus({
+          ...helloAssoStatus,
+          registrationMode: backendMode,
+        });
+      }
+    } catch (e) {
+      logger.error("[Settings] setRegistrationMode failed", e);
+      Alert.alert("Erreur", "Impossible de modifier le mode d’inscription.");
+    }
+    await auth.setRegistrationPolicy(policy);
+  };
+
+  return {
+    state: {
+      currentTheme,
+      preference,
+      isDark,
+      animationsEnabled,
+      biometricsEnabled,
+      biometryType,
+      photoUri,
+      defaultFilter,
+      defaultCompetitionScope,
+      defaultCompetitionStatus,
+      role,
+      registrationPolicy,
+      helloAssoStatus,
+      helloAssoModalVisible,
+      reportModalVisible,
+      changePasswordModalVisible,
+      BiometryTypes,
+      licenseExpiryDays,
+    },
+    actions: {
+      setReportModalVisible,
+      setChangePasswordModalVisible,
+      setHelloAssoModalVisible,
+      loadSettings,
+      toggleBiometrics,
+      handleLogout,
+      performLogout,
+      handleGuestSignIn,
+      handleSelectPhoto,
+      handleShowTechInfo,
+      handleSetTheme,
+      handleToggleAnimations,
+      handleSetLibraryFilter,
+      handleSetCompetitionScope,
+      handleSetCompetitionStatus,
+      handleSetRegistrationPolicy,
+    },
+  };
+};

@@ -1,0 +1,39 @@
+appId: fr.ffdanse.connect
+tags:
+  - staff
+  - e2e
+---
+# STAFF · Live results search (reached from a competition in progress).
+# Fast preamble: reuse the logged-in session when it already matches this role
+# (plain relaunch = fresh navigation, no reinstall/CGU/login). Falls back to the
+# full clearState + login path otherwise. Retried in-flow because the iOS 26 sim
+# intermittently drops taps after accumulated cold boots.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow: ensure-staff.yaml
+- tapOn: { id: "tab-competitions" }
+- extendedWaitUntil: { visible: { id: "competitions-search" }, timeout: 20000 }
+- tapOn: "En cours"
+# Seeded LIVE competition (seed-e2e.ts). The card exposes the label "Détails de
+# la compétition <title>", so target it with a substring regex (there may be
+# other LIVE comps on this tab), then open its detail.
+- scrollUntilVisible:
+    {
+      element: { text: ".*Championnat National E2E.*" },
+      direction: DOWN,
+      timeout: 15000,
+    }
+- tapOn: { text: ".*Championnat National E2E.*" }
+- extendedWaitUntil:
+    { visible: { id: "competition-detail-scroll-view" }, timeout: 15000 }
+# The "Résultats" button now renders for LIVE competitions (gating fix), not just
+# PAST. Scroll it into view and open the live results.
+- scrollUntilVisible:
+    { element: { text: "Résultats" }, direction: DOWN, timeout: 10000 }
+- tapOn: { text: "Résultats" }
+- extendedWaitUntil: { visible: { id: "live-results-search" }, timeout: 10000 }
+# Seeded Finale result for this competition (participant "Eelef Testeur").
+- assertVisible: { text: ".*Eelef Testeur.*" }
+- back
+- back

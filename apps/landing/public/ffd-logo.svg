@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!-- Badge FFD - couleurs officielles -->
+  <circle cx="24" cy="24" r="22" fill="#004481"/>
+  <circle cx="24" cy="24" r="18" fill="none" stroke="#0088CE" stroke-width="2"/>
+  <text x="24" y="30" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="white">FFD</text>
+</svg>

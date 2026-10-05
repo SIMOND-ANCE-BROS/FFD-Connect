@@ -1,0 +1,145 @@
+name: Uptime
+
+# External uptime probe for the backend /health endpoint.
+#
+# Why this exists: Sentry only tells us when the app *errors*. It cannot tell us
+# the API is down, the cert expired, or DNS broke — in those cases the app never
+# reaches Sentry at all. This job runs on GitHub (independent of our Azure stack)
+# and pings /health on a schedule, so a prod outage is caught within the hour
+# instead of by a user complaint.
+#
+# Cadence — designed around scale-to-zero (ADR-0019):
+# - The backend runs on Container Apps with minReplicas=0 outside warm hours.
+#   An HTTP probe IS a wake call: probing every 5 minutes kept both apps warm
+#   around the clock (paying near always-on prices), burned ~8 600 Actions
+#   minutes/month, and raced the ~90s cold start with a 45s retry window
+#   (false DOWN pages).
+# - Prod is probed hourly during warm hours only (05:00–20:00 UTC,
+#   ≈ 07:00–22:00 Paris l'été), while backend-warm-hours.yml keeps
+#   minReplicas=1 — so probes are cheap and never trigger a wake. At night the
+#   app is *intentionally* asleep: probing it would wake it every hour just
+#   to check that it can wake. A night outage is therefore caught at the 05:00
+#   probe — acceptable for a beta with no night traffic.
+# - Hourly, not every 30 min: the probe takes ~4s but Actions bills each job
+#   rounded UP to a whole minute, so cadence is billed per *run*, not per
+#   second. 2/h × 16h = 32 runs/day ≈ 960 min/month; 1/h = 16/day ≈ 480. That
+#   is ~480 min/month — a sixth of the plan allowance — bought nothing beyond
+#   the "within the hour" objective stated above, which hourly meets exactly
+#   (worst-case detection 59 min instead of 29). Azure Monitor already covers
+#   the night window, so this is not the only signal.
+# - Staging is NOT probed on a schedule (each probe woke it for nothing, and
+#   every deploy already smoke-tests it). Use "Run workflow" to probe both
+#   environments on demand.
+#
+# Alerting: a DOWN prod target fails the job (GitHub emails the repo owner) AND
+# posts to Slack. Staging is informational (Slack warning only, never pages).
+
+on:
+  # SCHEDULE DISABLED (2026-09-09) — backend-prod has no serving revision, so
+  # this probe monitored nothing. No Deploy Backend run has ever targeted
+  # staging or master (master is frozen at 50e99a7, 2026-07-02), and the prod
+  # URL below answers nothing: every scheduled probe spent the full ~4.5 min
+  # retry budget before paging — 25+ consecutive failures. At 16 runs/day that
+  # is ~2 400 Actions minutes/month, most of the 3 000 min plan allowance,
+  # burned to re-discover that an environment does not exist yet.
+  #
+  # RE-ENABLE the day master actually ships to backend-prod: uncomment the cron
+  # below, and the warm cron in backend-warm-hours.yml that this window depends
+  # on. Against a warm target a probe answers in ~4s and costs the 1-minute
+  # billing minimum → ~480 min/month.
+  #
+  # Until then, use "Run workflow" to probe prod and staging on demand.
+  # schedule:
+  #   - cron: '0 5-20 * * *'
+  workflow_dispatch: # Manual trigger — also probes staging
+
+permissions: read-all
+
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: Probe /health
+    runs-on: ubuntu-24.04
+    # Hang guard: the retry loop below budgets ~4.5 min; anything past 6 min is
+    # a stuck runner, not a slow cold start. Caps the worst-case bill.
+    timeout-minutes: 6
+    strategy:
+      fail-fast: false
+      matrix:
+        # Staging only joins on manual runs — a scheduled probe would wake it
+        # from scale-to-zero every time for a target nobody pages on.
+        include: ${{ github.event_name == 'workflow_dispatch' && fromJSON('[{"name":"prod","url":"https://api.ffd.gabin-simond.fr/health","page":"true"},{"name":"staging","url":"https://api-staging.ffd.gabin-simond.fr/health","page":"false"}]') || fromJSON('[{"name":"prod","url":"https://api.ffd.gabin-simond.fr/health","page":"true"}]') }}
+    steps:
+      - name: Probe ${{ matrix.name }}
+        env:
+          NAME: ${{ matrix.name }}
+          HEALTH_URL: ${{ matrix.url }}
+          PAGE: ${{ matrix.page }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+
+          notify() {
+            # $1 = emoji, $2 = message. Slack is best-effort; never blocks.
+            echo "$2"
+            if [ -n "${SLACK_WEBHOOK_URL:-}" ]; then
+              curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+                -H 'Content-Type: application/json' \
+                -d "{\"text\":\"$1 *${NAME} /health* ${2}\nRun: <${RUN_URL}|View logs>\"}" \
+                || echo "Slack notification failed (non-blocking)"
+            fi
+          }
+
+          # Cold-start-aware retries: if the app is asleep (scale-to-zero),
+          # this very probe triggers the wake, and the container needs
+          # ~60-120s (image pull + migrations + NestJS boot) before /health
+          # answers. Retry for up to ~4.5 min so a routine wake is never
+          # reported as an outage — only a genuinely dead target pages.
+          BODY=""
+          for attempt in 1 2 3 4 5 6 7 8; do
+            BODY=$(curl -sf --max-time 20 "$HEALTH_URL" 2>/dev/null || echo "")
+            if [ -n "$BODY" ]; then
+              STATUS=$(echo "$BODY" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
+              if [ "$STATUS" != "down" ]; then
+                break
+              fi
+            fi
+            echo "Attempt $attempt/8 failed (cold start in progress, or down) — retrying in 15s..."
+            [ "$attempt" -lt 8 ] && sleep 15
+          done
+
+          # 1. No response at all after retries = hard down (DNS/cert/host/network).
+          if [ -z "$BODY" ]; then
+            notify ":x:" "is UNREACHABLE (no response after 8 attempts / ~4.5 min)"
+            [ "$PAGE" = "true" ] && exit 1 || exit 0
+          fi
+
+          echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
+
+          # 2. Overall status down = DB and Redis both unreachable.
+          STATUS=$(echo "$BODY" | jq -r '.status // "unknown"')
+          if [ "$STATUS" = "down" ]; then
+            notify ":x:" "reports status=DOWN (DB and Redis both failed)"
+            [ "$PAGE" = "true" ] && exit 1 || exit 0
+          fi
+
+          # 3. Database is the hard dependency — degraded DB is a page-worthy incident.
+          DB_STATUS=$(echo "$BODY" | jq -r '.database.status // "unknown"')
+          if [ "$DB_STATUS" != "ok" ]; then
+            DB_ERR=$(echo "$BODY" | jq -r '.database.error // "unknown"')
+            notify ":x:" "database check FAILED ($DB_ERR)"
+            [ "$PAGE" = "true" ] && exit 1 || exit 0
+          fi
+
+          # 4. Redis is best-effort (graceful degradation) — warn, never page.
+          REDIS_STATUS=$(echo "$BODY" | jq -r '.redis.status // "unknown"')
+          if [ "$REDIS_STATUS" != "ok" ]; then
+            REDIS_ERR=$(echo "$BODY" | jq -r '.redis.error // "unknown"')
+            echo "::warning::${NAME} Redis degraded (non-blocking): $REDIS_ERR"
+          fi
+
+          echo "OK: ${NAME} status=$STATUS db=$DB_STATUS redis=$REDIS_STATUS"

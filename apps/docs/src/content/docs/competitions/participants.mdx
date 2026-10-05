@@ -1,0 +1,41 @@
+---
+title: Voir les participants
+description: Comment consulter la liste des couples ou danseurs inscrits à un événement.
+---
+
+import ProfileBadge from '../../../components/ProfileBadge.astro';
+import TourStep from '../../../components/TourStep.astro';
+
+<ProfileBadge profiles={["Membre", "Staff"]} />
+
+# Voir les participants
+
+Tu peux consulter la liste des inscrits pour chaque catégorie d'une compétition. C'est idéal pour connaître tes concurrents ou suivre tes amis !
+
+## Étapes
+
+<TourStep step={1} title="Sélectionne une compétition">
+  Choisis une compétition dans la liste pour ouvrir ses détails.
+
+![Détail compétition](/screenshots/placeholder.png)
+</TourStep>
+
+<TourStep step={2} title="Va sur l'onglet « Participants »">
+  Dans la fiche de la compétition, appuie sur l'onglet ou le bouton **Participants**.
+
+![Bouton Participants](/screenshots/placeholder.png)
+</TourStep>
+
+<TourStep step={3} title="Choisis une catégorie">
+  Les participants sont regroupés par catégorie (ex: Junior Standard, Senior II Latines). Sélectionne la catégorie qui t'intéresse.
+
+![Liste des catégories](/screenshots/placeholder.png)
+</TourStep>
+
+<TourStep step={4} title="Consulte la liste">
+  Tu vois maintenant la liste des couples ou danseurs inscrits, avec leur numéro de dossard s'il est déjà attribué.
+
+![Liste des inscrits](/screenshots/placeholder.png)
+</TourStep>
+
+> **Note** : Certaines listes de participants ne sont visibles qu'une fois les inscriptions clôturées par l'organisateur.

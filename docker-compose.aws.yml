@@ -1,0 +1,38 @@
+# AWS environment overlay — Caddy reverse proxy for automatic HTTPS
+#
+# This file is written to the EC2 instance by Terraform user-data at boot,
+# ensuring TLS works before the first git clone. The repo copy here serves
+# as the source of truth; git pull overwrites the instance copy on deploy.
+#
+# Usage (always via wrapper): ./compose-up.sh up -d --build
+#
+# Caddy auto-provisions Let's Encrypt TLS certificates (zero cost).
+# Caddyfile is also provisioned by user-data with actual domain names.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["full"]
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Caddy handles all external traffic — no host port exposure
+  backend:
+    ports: []
+
+  frontend:
+    ports: []
+
+volumes:
+  caddy_data:
+  caddy_config:

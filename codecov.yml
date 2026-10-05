@@ -1,0 +1,69 @@
+coverage:
+  # Overall project coverage thresholds
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 2% # allow 2% drop before failing
+        informational: true # never block CI on coverage drift
+        if_ci_failed: ignore
+    # New code added in a PR must be at least 80% covered
+    patch:
+      default:
+        target: 80%
+        threshold: 5% # allow 5% wiggle for small PRs
+        informational: true # never block CI on patch coverage
+        if_ci_failed: ignore
+
+# Flag-specific thresholds (backend is held to a higher standard)
+flag_management:
+  default_rules:
+    carryforward: true
+    statuses:
+      - type: project
+        target: 80%
+      - type: patch
+        target: 80%
+
+flags:
+  backend:
+    carryforward: true
+    paths:
+      - apps/backend/src/
+    statuses:
+      - type: project
+        target: 90%
+        threshold: 2%
+      - type: patch
+        target: 85%
+        threshold: 5%
+  client:
+    carryforward: true
+    paths:
+      - apps/client/src/
+    statuses:
+      - type: project
+        target: 80%
+        threshold: 2%
+      - type: patch
+        target: 80%
+        threshold: 5%
+
+# Don't fail CI on coverage drops in these paths
+ignore:
+  - 'apps/backend/src/**/*.module.ts'
+  - 'apps/backend/src/**/*.dto.ts'
+  - 'apps/backend/src/main.ts'
+  - 'apps/backend/prisma/**'
+  - 'apps/backend/scripts/**'
+  - 'apps/client/src/mocks/**'
+  - 'apps/client/src/navigation/types.ts'
+  - '**/__tests__/**'
+  - '**/*.spec.ts'
+  - '**/*.test.ts'
+  - '**/*.test.tsx'
+
+comment:
+  layout: 'reach,diff,flags,tree'
+  behavior: default
+  require_changes: true # only comment if coverage changed

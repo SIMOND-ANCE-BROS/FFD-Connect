@@ -1,0 +1,29 @@
+appId: fr.ffdanse.connect
+---
+# Session-reuse preamble (ADMIN). See ensure-licensee.yaml for the rationale.
+# No single tab is unique to ADMIN (LICENSEE also has tab-library, STAFF also
+# has tab-scanner) — ADMIN is the only role with BOTH, so two conditional
+# resets emulate the OR of "either marker missing":
+#   - no tab-scanner → logged out / guest / licensee / club
+#   - no tab-library → STAFF (scanner without library)
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: { id: "tab-scanner" }
+    timeout: 12000
+    optional: true
+- runFlow:
+    when:
+      notVisible: { id: "tab-scanner" }
+    file: reset-login-admin.yaml
+- runFlow:
+    when:
+      notVisible: { id: "tab-library" }
+    file: reset-login-admin.yaml
+- extendedWaitUntil:
+    visible: { id: "tab-scanner" }
+    timeout: 30000
+- assertVisible: { id: "tab-library" }
+# Normalize the screen: background tab screens stay mounted in RN navigators
+# (the hierarchy can expose them while another tab is active) — land on home.
+- tapOn: { id: "tab-library" }

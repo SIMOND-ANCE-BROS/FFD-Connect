@@ -1,0 +1,25 @@
+appId: fr.ffdanse.connect
+tags:
+  - staff
+  - e2e
+---
+# STAFF · Competitions: sees all (no scope tabs); open a detail + live results.
+# Fast preamble: reuse the logged-in session when it already matches this role
+# (plain relaunch = fresh navigation, no reinstall/CGU/login). Falls back to the
+# full clearState + login path otherwise. Retried in-flow because the iOS 26 sim
+# intermittently drops taps after accumulated cold boots.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow: ensure-staff.yaml
+- tapOn: { id: "tab-competitions" }
+- extendedWaitUntil: { visible: { id: "competitions-search" }, timeout: 20000 }
+- tapOn: "Tout"
+- tapOn: { id: "competition-card-.*", optional: true }
+- extendedWaitUntil:
+    {
+      visible: { id: "competition-detail-scroll-view" },
+      timeout: 15000,
+      optional: true,
+    }
+- back

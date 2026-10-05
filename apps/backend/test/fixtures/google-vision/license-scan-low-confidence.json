@@ -1,0 +1,15 @@
+{
+  "responses": [
+    {
+      "textAnnotations": [
+        {
+          "description": "????",
+          "boundingPoly": { "vertices": [] }
+        }
+      ],
+      "fullTextAnnotation": {
+        "text": ""
+      }
+    }
+  ]
+}

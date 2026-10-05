@@ -1,0 +1,30 @@
+appId: fr.ffdanse.connect
+tags:
+  - auth
+  - e2e
+---
+# Register path: navigate to the form and verify its fields render (no submit,
+# to avoid claiming a license). Needs the RegisterScreen a11y fix (input wrappers
+# marked accessible={false}) so the fields are exposed as individual iOS elements.
+# Boot + CGU gate + login screen is the flaky preamble on the iOS 26 sim —
+# retry it in-flow (relaunch is cheap; the second boot is faster).
+- retry:
+    maxRetries: 2
+    commands:
+      - launchApp: { clearState: true }
+      # Accept the CGU gate (covers the login screen on a cleared state) and wait for login.
+      - extendedWaitUntil:
+          visible: { id: "cgu-accept-button" }
+          timeout: 60000
+          optional: true
+      - tapOn: { id: "cgu-accept-button", optional: true }
+      - extendedWaitUntil:
+          visible: { id: "login-register-link" }
+          timeout: 30000
+- tapOn: { id: "login-register-link" }
+- extendedWaitUntil:
+    visible: { id: "register-license-input" }
+    timeout: 30000
+- assertVisible: { id: "register-email-input" }
+- assertVisible: { id: "register-cgu-checkbox" }
+- assertVisible: { id: "register-submit-button" }

@@ -1,0 +1,63 @@
+# === Build artifacts & caches ===
+node_modules
+dist
+build
+coverage
+.jest-cache
+.stryker-tmp
+reports
+
+# === Environment & secrets ===
+.env
+.env.*
+!.env.production.example
+!.env.staging.example
+
+# === Git & CI ===
+.git
+.github
+.husky
+.changeset
+
+# === IDE & tooling ===
+.DS_Store
+.vscode
+.idea
+.claude
+.cursor
+.worktrees
+
+# === Docs & tests (not needed in container) ===
+apps/docs
+docs
+*.md
+!apps/backend/docker-entrypoint.sh
+# apps/landing/legal-plugin.ts renders these into /confidentialite/, /cgu/ and
+# /mentions-legales/ at build time, so they must reach the build context. Both
+# `docs` and `*.md` exclude them above; these two negations must stay after.
+!docs/legal
+!docs/legal/*.md
+
+# === Test files ===
+**/__tests__
+**/*.spec.ts
+**/*.test.ts
+**/*.test.tsx
+apps/backend/test
+.maestro
+playwright-report
+playwright.config.ts
+
+# === Logs & data ===
+*.log
+*_log.txt
+backups
+uploads
+*.sql
+# Keep Prisma migrations so `migrate deploy` works in the runtime image.
+# Prisma 7 (multi-file schema) resolves migrations under prisma/schema/migrations.
+# Migrations live one dir deep (<name>/migration.sql); the `*/*` form is honored
+# by both the classic builder and BuildKit, whereas `**` is BuildKit-only
+# (ACR's builder dropped it → empty migrations dir → no schema).
+!apps/backend/prisma/schema/migrations/*/*.sql
+!apps/backend/prisma/schema/migrations/**/*.sql

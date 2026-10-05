@@ -1,0 +1,8 @@
+model BugReport {
+  id         String   @id @default(uuid())
+  userId     String?
+  message    String
+  stackTrace String?
+  deviceInfo String?
+  createdAt  DateTime @default(now())
+}

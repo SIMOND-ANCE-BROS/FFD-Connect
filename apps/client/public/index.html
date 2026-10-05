@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
+    <title>FFD Connect</title>
+    <!-- favicon inline pour éviter 404 ; remplacer par /assets/favicon.png si l'asset existe -->
+    <link
+      rel="icon"
+      type="image/png"
+      href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMElEQVQ4T2NkYGD4z0ABYBwVBjIwMPxnYGD4z0gBZhjPwMDA8J+BgYEBDQMRGgYAOhQEAUX3nXgAAAAASUVORK5CYII="
+    />
+    <style id="expo-reset">
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        overflow: hidden;
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+    <script>
+      window.onerror = function (message, source, lineno, colno, error) {
+        console.error('GLOBAL ERROR CAUGHT:', message);
+        const errDiv = document.createElement('div');
+        errDiv.style.color = 'red';
+        errDiv.style.padding = '20px';
+        errDiv.style.zIndex = '9999';
+        errDiv.style.position = 'absolute';
+        errDiv.style.top = '0';
+        errDiv.style.left = '0';
+        errDiv.style.backgroundColor = 'white';
+        errDiv.style.whiteSpace = 'pre-wrap';
+        errDiv.innerText =
+          'RUNTIME ERROR:\n' +
+          message +
+          '\nAt: ' +
+          source +
+          ':' +
+          lineno +
+          ':' +
+          colno;
+        document.body.appendChild(errDiv);
+      };
+    </script>
+  </head>
+  <body>
+    <noscript
+      >Vous devez activer JavaScript pour utiliser cette application.</noscript
+    >
+    <div id="root"></div>
+    <!-- Charge l'entrée virtuelle qui résout vers index.web.js -->
+    <!-- Charge l'entrée standard index.bundle, qui sera résolue vers index.web.js par metro.config.js -->
+    <script
+      src="/index.bundle?platform=web&dev=true&minify=false&modulesOnly=false&runModule=true&hot=false"
+      defer
+    ></script>
+  </body>
+</html>

@@ -1,0 +1,33 @@
+appId: fr.ffdanse.connect
+tags:
+  - auth
+  - e2e
+---
+# Wrong password → auth error surfaced.
+# Boot + CGU gate + login screen is the flaky preamble on the iOS 26 sim —
+# retry it in-flow (relaunch is cheap; the second boot is faster).
+- retry:
+    maxRetries: 2
+    commands:
+      - launchApp: { clearState: true }
+      # Accept the CGU gate (covers the login screen on a cleared state) and wait for login.
+      - extendedWaitUntil:
+          visible: { id: "cgu-accept-button" }
+          timeout: 60000
+          optional: true
+      - tapOn: { id: "cgu-accept-button", optional: true }
+      - extendedWaitUntil:
+          visible: { id: "login-email-input" }
+          timeout: 30000
+- tapOn: { id: "login-email-input" }
+- eraseText
+- inputText: "test.e2e@ffd.com"
+- tapOn: { id: "login-password-input" }
+- eraseText
+- inputText: "wrongpassword"
+- tapOn: { text: "Continue", optional: true }
+# Submit via the keyboard (onSubmitEditing → onLogin); button may sit under the keyboard.
+- pressKey: Enter
+- tapOn: { id: "login-submit-button", optional: true }
+- assertVisible: "Échec"
+- tapOn: { text: "OK", optional: true }

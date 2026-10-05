@@ -1,0 +1,565 @@
+# =============================================================================
+# Deploy Backend — Azure Container Apps
+# =============================================================================
+#
+# Prod & staging backends run on Azure Container Apps (the old single VM is
+# being decommissioned). A deploy is `az containerapp update --image ...`, which
+# (in single-revision mode) replaces the active revision and shifts 100% traffic
+# to it. On smoke-test failure we roll back by re-deploying the previous image.
+#
+# Required GitHub secrets:
+#
+#   AZURE_CLIENT_ID        — Service principal client ID (OIDC federated)
+#   AZURE_TENANT_ID        — Azure AD tenant ID
+#   AZURE_SUBSCRIPTION_ID  — Azure subscription ID
+#   ACR_NAME               — Azure Container Registry name (ffdconnectproductionacr)
+#   STAGING_RESOURCE_GROUP — Resource group of the Container Apps env (FFD-CONNECT-PRODUCTION-RG)
+#   PROD_RESOURCE_GROUP    — Resource group of the Container Apps env (FFD-CONNECT-PRODUCTION-RG)
+#   SLACK_WEBHOOK_URL      — Slack incoming webhook for deploy failure alerts
+#
+# Fixed infrastructure (provisioned out-of-band, not created here):
+#   ACR image repo         — ffd-connect-backend (tagged by commit SHA)
+#   Container Apps env      — ffd-connect-cae
+#   Container apps          — backend-prod (production), backend-staging (staging)
+#   Public URLs             — https://api.ffd.gabin-simond.fr (prod)
+#                             https://api-staging.ffd.gabin-simond.fr (staging)
+#
+# =============================================================================
+
+name: Deploy Backend
+
+on:
+  # Triggered after CI passes (same gate pattern as EAS builds)
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [staging, master]
+
+permissions:
+  contents: read
+  id-token: write # Required for Azure OIDC federated credentials
+
+concurrency:
+  # GLOBAL group (not per-branch): staging (backend-staging) and prod
+  # (backend-prod) live in the same Container Apps environment. A global group
+  # serializes all backend deploys so a staging+master promotion in quick
+  # succession queues instead of racing to update the shared environment.
+  group: deploy-backend
+  cancel-in-progress: false # never cancel a running deploy — queue instead
+
+jobs:
+  # ============================================================
+  # GATE — Only proceed if CI passed and backend code changed
+  # ============================================================
+  gate:
+    name: Check CI result & backend changes
+    runs-on: ubuntu-24.04
+    # Only a PUSH to this repository may deploy. workflow_run's `branches` filter
+    # matches the head branch NAME only: on a public repo a fork PR from a branch
+    # named `staging` would otherwise run here with secrets + Azure OIDC on the
+    # fork's code (head_sha). Also stops promotion PRs (head = staging) re-deploying.
+    if: >-
+      github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_repository.full_name == github.repository
+    outputs:
+      backend_changed: ${{ steps.check.outputs.backend_changed }}
+      environment: ${{ steps.env.outputs.environment }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Detect backend changes
+        id: check
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          # Always deploy on cascade pushes — the previous-branch diff is empty
+          # on fast-forward merges, but the cumulative changes still need to ship.
+          echo "backend_changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Determine environment
+        id: env
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          case "$BRANCH" in
+            master)  echo "environment=production" >> "$GITHUB_OUTPUT" ;;
+            staging) echo "environment=staging" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  # ============================================================
+  # DEPLOY STAGING
+  # ============================================================
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [gate]
+    if: needs.gate.outputs.backend_changed == 'true' && needs.gate.outputs.environment == 'staging'
+    runs-on: ubuntu-24.04
+    # Binds the job to the GitHub Environment: records a deployment, surfaces
+    # what is live in the Environments panel, and scopes this job's secrets.
+    # No reviewer here on purpose — staging is the beta path and must stay fluid.
+    environment:
+      name: staging
+      url: https://api-staging.ffd.gabin-simond.fr
+
+    env:
+      CONTAINER_APP: backend-staging
+      RESOURCE_GROUP: ${{ secrets.STAGING_RESOURCE_GROUP }}
+      HEALTH_URL: https://api-staging.ffd.gabin-simond.fr/health
+
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current image (for rollback)
+        id: prev
+        run: |
+          set -euo pipefail
+          # The app runs in single-revision mode: `containerapp update --image`
+          # replaces the revision and shifts 100% traffic to the new one, so the
+          # smoke test exercises the new code. Roll back by re-deploying the
+          # image that was running before this update.
+          PREV_IMAGE=$(
+            az containerapp show \
+              --name "$CONTAINER_APP" \
+              --resource-group "$RESOURCE_GROUP" \
+              --query "properties.template.containers[0].image" \
+              --output tsv 2>/dev/null || echo ""
+          )
+          # Also capture the APP_VERSION that /health currently reports, so a
+          # rollback can restore it — otherwise /health would keep advertising
+          # the failed SHA while the previous image actually runs.
+          PREV_VERSION=$(
+            az containerapp show \
+              --name "$CONTAINER_APP" \
+              --resource-group "$RESOURCE_GROUP" \
+              --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" \
+              --output tsv 2>/dev/null || echo ""
+          )
+          # Fallback: images are tagged by commit SHA, so the tag is the version.
+          if [ -z "$PREV_VERSION" ] || [ "$PREV_VERSION" = "None" ]; then
+            PREV_VERSION="${PREV_IMAGE##*:}"
+          fi
+          echo "Previous image: ${PREV_IMAGE:-<none>} (version: ${PREV_VERSION:-<none>})"
+          echo "image=$PREV_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "version=$PREV_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Container Apps
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+        run: |
+          set -euo pipefail
+          IMAGE="${ACR_NAME}.azurecr.io/ffd-connect-backend:${DEPLOY_SHA}"
+          echo "Deploying image: $IMAGE"
+          # Also stamp APP_VERSION so /health reports the deployed SHA — the
+          # smoke test below verifies version == DEPLOY_SHA.
+          az containerapp update \
+            --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$IMAGE" \
+            --set-env-vars "APP_VERSION=${DEPLOY_SHA}"
+          echo "Container app updated — new revision created"
+
+      - name: Smoke test (health + DB + Redis + functional)
+        id: health
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # 1. Wait for the new revision to become responsive (max 120s — a
+          # cold Container Apps revision can take longer to warm up than a VM).
+          echo "Waiting for the new revision (version=$DEPLOY_SHA) to take traffic..."
+          # In single-revision mode the OLD revision keeps answering 200 while
+          # the new one warms up. Poll until /health reports the version we just
+          # deployed — waiting for any 200 would read the old revision and fail
+          # the version check below (a false-negative rollback). Max ~180s.
+          for i in $(seq 1 36); do
+            _BODY=$(curl -sf "$HEALTH_URL" 2>/dev/null || echo "")
+            _VER=$(echo "$_BODY" | jq -r '.version // empty' 2>/dev/null || echo "")
+            if [ "$_VER" = "$DEPLOY_SHA" ]; then
+              echo "New revision serving after ~$((i * 5))s (version=$_VER)"
+              break
+            fi
+            if [ "$i" -eq 36 ]; then
+              echo "::error::New revision did not take traffic within 180s — serving '${_VER:-<none>}', expected '$DEPLOY_SHA'"
+              exit 1
+            fi
+            echo "  attempt $i/36 — serving '${_VER:-<none>}', want '$DEPLOY_SHA' — retrying in 5s..."
+            sleep 5
+          done
+
+          # 2. Functional health check
+          BODY=$(curl -sf "$HEALTH_URL" 2>/dev/null || echo "")
+
+          if [ -z "$BODY" ]; then
+            echo "Health endpoint returned empty body"
+            exit 1
+          fi
+
+          echo "$BODY" | jq .
+
+          # 2. Check overall status is not "down"
+          STATUS=$(echo "$BODY" | jq -r '.status')
+          if [ "$STATUS" = "down" ]; then
+            echo "::error::Service is DOWN (both DB and Redis failed)"
+            exit 1
+          fi
+
+          # 3. Verify DB is connected
+          DB_STATUS=$(echo "$BODY" | jq -r '.database.status')
+          if [ "$DB_STATUS" != "ok" ]; then
+            echo "::error::Database health check failed: $(echo "$BODY" | jq -r '.database.error // "unknown"')"
+            exit 1
+          fi
+
+          # 4. Verify Redis is connected
+          REDIS_STATUS=$(echo "$BODY" | jq -r '.redis.status')
+          if [ "$REDIS_STATUS" != "ok" ]; then
+            echo "::warning::Redis health check failed (non-blocking): $(echo "$BODY" | jq -r '.redis.error // "unknown"')"
+          fi
+
+          # Verify the running build IS the one we just deployed. Catches a
+          # deploy that silently didn't switch (traffic still on the old
+          # revision, or the new revision failed to become ready) — the blind
+          # spot that let a prod deploy report success while an old build ran.
+          VERSION=$(echo "$BODY" | jq -r '.version')
+          if [ "$VERSION" != "$DEPLOY_SHA" ]; then
+            echo "::error::Deployed build mismatch — serving '$VERSION', expected '$DEPLOY_SHA'"
+            exit 1
+          fi
+          echo "Smoke test passed: status=$STATUS db=$DB_STATUS redis=$REDIS_STATUS version=$VERSION"
+
+      - name: Post-deploy log check
+        if: success()
+        run: |
+          # Container Apps system + console logs for the current revision.
+          LOGS=$(
+            az containerapp logs show \
+              --name "$CONTAINER_APP" \
+              --resource-group "$RESOURCE_GROUP" \
+              --tail 30 \
+              --format text 2>&1 || true
+          )
+          echo "$LOGS"
+          if echo "$LOGS" | grep -iE "(FATAL|unhandled|ECONNREFUSED|ExitCode|OOMKilled)" > /dev/null 2>&1; then
+            echo "::warning::Suspicious patterns found in post-deploy logs"
+          else
+            echo "Post-deploy logs look clean"
+          fi
+
+      # ACR Basic has no retention policy (see infra/terraform/acr.tf), so we
+      # prune here — but NEVER blindly (incident #681: a "keep newest 15" purge
+      # deleted prod's image, and every backend-prod revision then sat in
+      # ImagePullBackOff while its replicas were billed). The script keeps
+      # every image referenced by any revision (active or inactive) of any
+      # Container App, the image just deployed, all non-SHA tags (latest,
+      # buildcache) and the 15 newest SHA tags, plus every child of a kept
+      # index; then drops stale tags and orphaned untagged manifests. If the
+      # inventory query fails it deletes nothing. ~30-40 s in steady state.
+      # Requires AcrDelete + Reader (infra/terraform/ci-iam.tf).
+      - name: Checkout purge script
+        if: success()
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          sparse-checkout: .github/scripts/acr-purge.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Purge ACR (keep live images + newest 15)
+        if: success()
+        continue-on-error: true
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -eu
+          LOGIN_SERVER=$(printf '%s.azurecr.io' "$ACR_NAME" | tr '[:upper:]' '[:lower:]')
+          REQUIRE_IMAGE="${LOGIN_SERVER}/ffd-connect-backend:${DEPLOY_SHA}" \
+          KEEP_TAGS="$DEPLOY_SHA" \
+            sh .github/scripts/acr-purge.sh "$ACR_NAME" 15 \
+              ffd-connect-backend ffd-connect-landing
+
+      # NOTE: Migrations run inside docker-entrypoint.sh (not as a separate step).
+      # If a migration ran before the health check failed, the DB schema is now
+      # ahead of the rolled-back revision. All migrations MUST be backwards-compatible
+      # (additive only: add columns/tables, never remove) to ensure rollback safety.
+      - name: Auto-rollback on health check failure
+        if: failure() && steps.health.outcome == 'failure'
+        env:
+          PREV_IMAGE: ${{ steps.prev.outputs.image }}
+          PREV_VERSION: ${{ steps.prev.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PREV_IMAGE" ] || [ "$PREV_IMAGE" = "None" ]; then
+            echo "::error::No previous image captured — cannot roll back"
+            exit 1
+          fi
+          echo "Rolling back: re-deploying previous image $PREV_IMAGE (version=$PREV_VERSION)"
+          # Restore APP_VERSION alongside the image so /health reports the build
+          # that is actually running after the rollback (not the failed SHA).
+          az containerapp update \
+            --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$PREV_IMAGE" \
+            --set-env-vars "APP_VERSION=${PREV_VERSION}"
+          echo "Rollback succeeded — redeployed $PREV_IMAGE"
+
+      - name: Notify deploy failure (Slack)
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\":\":rotating_light: *Deploy failed* on \`staging\`\nSHA: \`${DEPLOY_SHA:0:7}\`\nRun: <${RUN_URL}|View logs>\nAuto-rollback attempted.\"}" \
+              || echo "Slack notification failed (non-blocking)"
+          fi
+
+  # ============================================================
+  # DEPLOY PRODUCTION
+  # ============================================================
+  deploy-production:
+    name: Deploy to Production
+    needs: [gate]
+    if: needs.gate.outputs.backend_changed == 'true' && needs.gate.outputs.environment == 'production'
+    runs-on: ubuntu-24.04
+    # CLAUDE.md: "Promotion to master [...] always require explicit user
+    # approval". That rule was enforced by convention only — this job fires
+    # automatically on a master push. The `production` environment carries a
+    # required reviewer, so the deployment now waits for a human.
+    environment:
+      name: production
+      url: https://api.ffd.gabin-simond.fr
+
+    env:
+      CONTAINER_APP: backend-prod
+      RESOURCE_GROUP: ${{ secrets.PROD_RESOURCE_GROUP }}
+      HEALTH_URL: https://api.ffd.gabin-simond.fr/health
+
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Capture current image (for rollback)
+        id: prev
+        run: |
+          set -euo pipefail
+          # The app runs in single-revision mode: `containerapp update --image`
+          # replaces the revision and shifts 100% traffic to the new one, so the
+          # smoke test exercises the new code. Roll back by re-deploying the
+          # image that was running before this update.
+          PREV_IMAGE=$(
+            az containerapp show \
+              --name "$CONTAINER_APP" \
+              --resource-group "$RESOURCE_GROUP" \
+              --query "properties.template.containers[0].image" \
+              --output tsv 2>/dev/null || echo ""
+          )
+          # Also capture the APP_VERSION that /health currently reports, so a
+          # rollback can restore it — otherwise /health would keep advertising
+          # the failed SHA while the previous image actually runs.
+          PREV_VERSION=$(
+            az containerapp show \
+              --name "$CONTAINER_APP" \
+              --resource-group "$RESOURCE_GROUP" \
+              --query "properties.template.containers[0].env[?name=='APP_VERSION'].value | [0]" \
+              --output tsv 2>/dev/null || echo ""
+          )
+          # Fallback: images are tagged by commit SHA, so the tag is the version.
+          if [ -z "$PREV_VERSION" ] || [ "$PREV_VERSION" = "None" ]; then
+            PREV_VERSION="${PREV_IMAGE##*:}"
+          fi
+          echo "Previous image: ${PREV_IMAGE:-<none>} (version: ${PREV_VERSION:-<none>})"
+          echo "image=$PREV_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "version=$PREV_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Container Apps
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+        run: |
+          set -euo pipefail
+          IMAGE="${ACR_NAME}.azurecr.io/ffd-connect-backend:${DEPLOY_SHA}"
+          echo "Deploying image: $IMAGE"
+          # Also stamp APP_VERSION so /health reports the deployed SHA — the
+          # smoke test below verifies version == DEPLOY_SHA.
+          az containerapp update \
+            --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$IMAGE" \
+            --set-env-vars "APP_VERSION=${DEPLOY_SHA}"
+          echo "Container app updated — new revision created"
+
+      - name: Smoke test (health + DB + Redis + functional)
+        id: health
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # 1. Wait for the new revision to become responsive (max 120s — a
+          # cold Container Apps revision can take longer to warm up than a VM).
+          echo "Waiting for the new revision (version=$DEPLOY_SHA) to take traffic..."
+          # In single-revision mode the OLD revision keeps answering 200 while
+          # the new one warms up. Poll until /health reports the version we just
+          # deployed — waiting for any 200 would read the old revision and fail
+          # the version check below (a false-negative rollback). Max ~180s.
+          for i in $(seq 1 36); do
+            _BODY=$(curl -sf "$HEALTH_URL" 2>/dev/null || echo "")
+            _VER=$(echo "$_BODY" | jq -r '.version // empty' 2>/dev/null || echo "")
+            if [ "$_VER" = "$DEPLOY_SHA" ]; then
+              echo "New revision serving after ~$((i * 5))s (version=$_VER)"
+              break
+            fi
+            if [ "$i" -eq 36 ]; then
+              echo "::error::New revision did not take traffic within 180s — serving '${_VER:-<none>}', expected '$DEPLOY_SHA'"
+              exit 1
+            fi
+            echo "  attempt $i/36 — serving '${_VER:-<none>}', want '$DEPLOY_SHA' — retrying in 5s..."
+            sleep 5
+          done
+
+          # 2. Functional health check
+          BODY=$(curl -sf "$HEALTH_URL" 2>/dev/null || echo "")
+
+          if [ -z "$BODY" ]; then
+            echo "Health endpoint returned empty body"
+            exit 1
+          fi
+
+          echo "$BODY" | jq .
+
+          # 2. Check overall status is not "down"
+          STATUS=$(echo "$BODY" | jq -r '.status')
+          if [ "$STATUS" = "down" ]; then
+            echo "::error::Service is DOWN (both DB and Redis failed)"
+            exit 1
+          fi
+
+          # 3. Verify DB is connected
+          DB_STATUS=$(echo "$BODY" | jq -r '.database.status')
+          if [ "$DB_STATUS" != "ok" ]; then
+            echo "::error::Database health check failed: $(echo "$BODY" | jq -r '.database.error // "unknown"')"
+            exit 1
+          fi
+
+          # 4. Verify Redis is connected
+          # HARD FAIL in production — Redis down disables IpBlacklistMiddleware,
+          # allowing blacklisted IPs through (security risk).
+          REDIS_STATUS=$(echo "$BODY" | jq -r '.redis.status')
+          if [ "$REDIS_STATUS" != "ok" ]; then
+            echo "::error::Redis is DOWN — IP blacklist middleware disabled (security risk)"
+            exit 1
+          fi
+
+          # Verify the running build IS the one we just deployed. Catches a
+          # deploy that silently didn't switch (traffic still on the old
+          # revision, or the new revision failed to become ready) — the blind
+          # spot that let a prod deploy report success while an old build ran.
+          VERSION=$(echo "$BODY" | jq -r '.version')
+          if [ "$VERSION" != "$DEPLOY_SHA" ]; then
+            echo "::error::Deployed build mismatch — serving '$VERSION', expected '$DEPLOY_SHA'"
+            exit 1
+          fi
+          echo "Smoke test passed: status=$STATUS db=$DB_STATUS redis=$REDIS_STATUS version=$VERSION"
+
+      - name: Post-deploy log check
+        if: success()
+        run: |
+          # Container Apps system + console logs for the current revision.
+          LOGS=$(
+            az containerapp logs show \
+              --name "$CONTAINER_APP" \
+              --resource-group "$RESOURCE_GROUP" \
+              --tail 30 \
+              --format text 2>&1 || true
+          )
+          echo "$LOGS"
+          if echo "$LOGS" | grep -iE "(FATAL|unhandled|ECONNREFUSED|ExitCode|OOMKilled)" > /dev/null 2>&1; then
+            echo "::warning::Suspicious patterns found in post-deploy logs"
+          else
+            echo "Post-deploy logs look clean"
+          fi
+
+      # ACR Basic has no retention policy (see infra/terraform/acr.tf), so we
+      # prune here — but NEVER blindly (incident #681: a "keep newest 15" purge
+      # deleted prod's image, and every backend-prod revision then sat in
+      # ImagePullBackOff while its replicas were billed). The script keeps
+      # every image referenced by any revision (active or inactive) of any
+      # Container App, the image just deployed, all non-SHA tags (latest,
+      # buildcache) and the 15 newest SHA tags, plus every child of a kept
+      # index; then drops stale tags and orphaned untagged manifests. If the
+      # inventory query fails it deletes nothing. ~30-40 s in steady state.
+      # Requires AcrDelete + Reader (infra/terraform/ci-iam.tf).
+      - name: Checkout purge script
+        if: success()
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          sparse-checkout: .github/scripts/acr-purge.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Purge ACR (keep live images + newest 15)
+        if: success()
+        continue-on-error: true
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -eu
+          LOGIN_SERVER=$(printf '%s.azurecr.io' "$ACR_NAME" | tr '[:upper:]' '[:lower:]')
+          REQUIRE_IMAGE="${LOGIN_SERVER}/ffd-connect-backend:${DEPLOY_SHA}" \
+          KEEP_TAGS="$DEPLOY_SHA" \
+            sh .github/scripts/acr-purge.sh "$ACR_NAME" 15 \
+              ffd-connect-backend ffd-connect-landing
+
+      # NOTE: Migrations run inside docker-entrypoint.sh (not as a separate step).
+      # If a migration ran before the health check failed, the DB schema is now
+      # ahead of the rolled-back revision. All migrations MUST be backwards-compatible
+      # (additive only: add columns/tables, never remove) to ensure rollback safety.
+      - name: Auto-rollback on health check failure
+        if: failure() && steps.health.outcome == 'failure'
+        env:
+          PREV_IMAGE: ${{ steps.prev.outputs.image }}
+          PREV_VERSION: ${{ steps.prev.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PREV_IMAGE" ] || [ "$PREV_IMAGE" = "None" ]; then
+            echo "::error::No previous image captured — cannot roll back"
+            exit 1
+          fi
+          echo "Rolling back: re-deploying previous image $PREV_IMAGE (version=$PREV_VERSION)"
+          # Restore APP_VERSION alongside the image so /health reports the build
+          # that is actually running after the rollback (not the failed SHA).
+          az containerapp update \
+            --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --image "$PREV_IMAGE" \
+            --set-env-vars "APP_VERSION=${PREV_VERSION}"
+          echo "Rollback succeeded — redeployed $PREV_IMAGE"
+
+      - name: Notify deploy failure (Slack)
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+              -H 'Content-Type: application/json' \
+              -d "{\"text\":\":rotating_light: *Deploy failed* on \`production\`\nSHA: \`${DEPLOY_SHA:0:7}\`\nRun: <${RUN_URL}|View logs>\nAuto-rollback attempted.\"}" \
+              || echo "Slack notification failed (non-blocking)"
+          fi

@@ -1,0 +1,77 @@
+---
+title: Consulter ma licence
+description: Comment voir le statut de ta licence FFD dans l'application FFD-Connect.
+---
+
+import ProfileBadge from "../../../components/ProfileBadge.astro";
+import InteractiveGuide from "../../../components/InteractiveGuide";
+
+<ProfileBadge profiles={["Membre"]} />
+
+# Consulter le statut de ma licence
+
+Depuis l'application, tu peux vérifier à tout moment si ta licence est **active**, **expirée**, ou en attente de renouvellement.
+
+## Guide interactif
+
+<InteractiveGuide
+  client:load
+  steps={[
+    {
+      title: "Ouvre l'onglet Profil",
+      content:
+        "Depuis l'écran d'accueil, appuie sur l'icône **Profil** (en bas à droite du mobile ou dans la barre latérale web).",
+      images: {
+        mobile: "/screenshots/placeholder.png",
+        web: "/screenshots/placeholder.png",
+      },
+      platforms: ["mobile", "web"],
+      roles: ["Membre", "Staff", "Club"],
+    },
+    {
+      title: "Accède à « Ma Licence »",
+      content:
+        "Dans ton profil, repère la section **Ma Licence** et clique dessus.",
+      images: {
+        mobile: "/screenshots/placeholder.png",
+        web: "/screenshots/placeholder.png",
+      },
+      platforms: ["mobile", "web"],
+      roles: ["Membre"],
+    },
+    {
+      title: "Dashboard Club",
+      content:
+        "En tant que club, vous avez une vue globale sur les licences actives de vos membres.",
+      images: {
+        web: "/screenshots/placeholder.png",
+      },
+      platforms: ["web"],
+      roles: ["Club"],
+    },
+    {
+      title: "Vérifie le statut",
+      content:
+        "Le statut (Active, Expirée, etc.) s'affiche avec la date d'échéance.",
+      images: {
+        mobile: "/screenshots/placeholder.png",
+        web: "/screenshots/placeholder.png",
+      },
+      platforms: ["mobile", "web"],
+      roles: ["Membre", "Staff"],
+    },
+  ]}
+/>
+
+## Ce que tu vois sur cet écran
+
+| Information           | Description                                       |
+| --------------------- | ------------------------------------------------- |
+| **Statut**            | Active ✅ / Expirée ❌ / En attente ⏳            |
+| **Date d'expiration** | Date jusqu'à laquelle ta licence est valide       |
+| **Numéro de licence** | Ton identifiant unique FFD                        |
+| **Licence WDSF**      | Indique si tu possèdes une licence internationale |
+
+## Licence expirée ?
+
+Si ta licence est expirée, consulte la page [Renouveler ma licence](/licence/renouveler/) pour connaître la procédure.

@@ -1,0 +1,74 @@
+# EAS Workflow: native iOS `beta` build -> EXTERNAL TestFlight group, with
+# automatic Beta App Review submission.
+#
+# Why an EAS Workflow and not `eas build --auto-submit`: `eas submit --groups`
+# only handles INTERNAL TestFlight groups. The prepackaged `testflight` job can
+# add the build to EXTERNAL groups and submit it for Beta App Review.
+#
+# Location: `.eas/` must sit next to the app's eas.json (apps/client), not at
+# the monorepo root.
+#
+# Triggered by .github/workflows/eas-build.yml (promote-beta, action=build) via
+#   eas workflow:run .eas/workflows/beta-testflight.yml   (fire-and-forget)
+# or by hand from apps/client:
+#   eas workflow:run .eas/workflows/beta-testflight.yml -F changelog="..."
+#
+# ⚠️ REQUIRES A PAID EAS PLAN. Verified the hard way on 2026-10-05: on the free
+# plan this workflow fails at the testflight job with
+#   "TestFlight jobs that submit an EAS build (build_id) require a paid plan.
+#    On the free plan, use asc_build_id to submit an App Store Connect build."
+# The build job itself succeeds — only the delivery is refused, so the failure
+# looks like a credentials problem until you read the message.
+#
+# Free-plan path (two steps, no subscription):
+#   1. eas submit --platform ios --profile beta --id <build_id>
+#      Uploads to App Store Connect. Works on the free plan.
+#   2. In App Store Connect, add the processed build to the external group and
+#      submit it for Beta App Review by hand.
+#      Not replaceable by `eas submit --groups`: that flag only reaches
+#      INTERNAL groups, which is the very reason this workflow exists.
+#   Internal testers need step 1 only — no Apple review.
+#
+# Prerequisites (one-time, App Store Connect): the external group below must
+# exist with EXACTLY this name, Test Information filled in (incl. a staging demo
+# account for Apple review), and an ASC API key in the EAS credentials (same key
+# `--auto-submit` already used). See docs/exploitation/changelog-beta.md.
+
+name: Beta -> TestFlight (external)
+
+on:
+  workflow_dispatch:
+    inputs:
+      changelog:
+        type: string
+        required: false
+        description: 'TestFlight "What to Test" notes'
+        default: |
+          Nouvelle version beta de FFD Connect.
+          Merci de tester les parcours principaux (connexion, compétitions,
+          licence, musique) et de remonter tout problème via « Signaler un bug ».
+
+jobs:
+  build_ios:
+    name: Build iOS (beta)
+    type: build
+    params:
+      platform: ios
+      profile: beta
+
+  testflight:
+    name: TestFlight (external + Beta App Review)
+    type: testflight
+    needs: [build_ios]
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
+      # Submit profile in eas.json (ascAppId / appleTeamId). Defaults to
+      # `production` otherwise, which has no ASC app configured.
+      profile: beta
+      # Single source of truth for the external group name. Must match the
+      # group created in App Store Connect character for character.
+      external_groups: ["Beta FFD"]
+      # Defaults to true with external_groups; explicit so it is not lost if
+      # the default changes upstream.
+      submit_beta_review: true
+      changelog: ${{ inputs.changelog }}

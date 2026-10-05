@@ -1,0 +1,40 @@
+enum TrackStatus {
+  PENDING
+  READY
+  ERROR
+}
+
+model Track {
+  id            String      @id @default(uuid())
+  title         String
+  artist        String
+  filename      String
+  artwork       String?
+  style         String?
+  /// Tempo in MPM (mesures par minute) — the dance-aware value shown in the UI.
+  bpm           Float       @default(0)
+  /// Raw detected tempo in BPM (beats per minute) before the dance-specific
+  /// MPM conversion. Kept so MPM can be recomputed when the dance changes.
+  rawBpm        Float       @default(0)
+  status        TrackStatus @default(PENDING)
+  /// Paso doble uniquement : timecodes (secondes) des appels/coups (« clashs »)
+  /// affichés sur le lecteur. Édités par un admin ; par défaut estimés côté
+  /// client depuis le tempo + la structure standard España Cañí.
+  clashTimecodes Float[]    @default([])
+  /// Modération admin — masque le titre réel côté clients non-admin
+  /// (remplacé par un libellé neutre). Les admins voient toujours le vrai titre.
+  titleMasked   Boolean     @default(false)
+  /// Modération admin — retire la piste de la bibliothèque partagée
+  /// (exclue de LIBRARY_WHERE, invisible pour tous).
+  blacklisted   Boolean     @default(false)
+  jobId         String?
+  /// Normalized provider+id key (e.g. "youtube:dQw4w9WgXcQ") used to dedup
+  /// repeated submissions of the same source. Null for legacy/manual entries.
+  sourceKey     String?     @unique
+  submittedById String?
+  submittedBy   User?       @relation("TrackSubmissions", fields: [submittedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime    @default(now())
+
+  @@index([submittedById])
+  @@index([sourceKey, status])
+}

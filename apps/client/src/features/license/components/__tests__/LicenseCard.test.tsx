@@ -1,0 +1,72 @@
+import { render } from "@testing-library/react-native";
+import React from "react";
+import { ThemeContext } from "../../../../context/ThemeContext";
+import { LicenseCard, LicenseUser } from "../LicenseCard";
+
+const themeMock = {
+  theme: {
+    surface: "#ffffff",
+    text: "#000000",
+    textSecondary: "#666666",
+    border: "#eeeeee",
+    colors: { ffdBlue: "#004fe3" },
+    typography: {
+      fontFamily: "System",
+      h1: { fontSize: 32, fontFamily: "System" },
+      h2: { fontSize: 24, fontFamily: "System" },
+      h3: { fontSize: 18, fontFamily: "System" },
+      body: { fontSize: 14, fontFamily: "System" },
+      caption: { fontSize: 12, fontFamily: "System" },
+    },
+  },
+  dark: false,
+  toggleTheme: jest.fn(),
+  isDark: false,
+};
+
+describe("LicenseCard", () => {
+  const mockUser: LicenseUser = {
+    firstName: "John",
+    lastName: "Doe",
+    birthDate: "1990-01-01",
+    licenseNumber: "12345678",
+    validUntil: "2026-08-31",
+    type: "LICENCE D",
+    status: "Active",
+  };
+
+  const mockOnShowQr = jest.fn();
+
+  it("renders correctly for FFD", async () => {
+    const { getByText, getAllByText } = await render(
+      <ThemeContext.Provider value={themeMock as never}>
+        <LicenseCard
+          type="FFD"
+          user={mockUser}
+          photoUri={null}
+          onShowQr={mockOnShowQr}
+        />
+      </ThemeContext.Provider>,
+    );
+
+    expect(getByText("John Doe")).toBeTruthy();
+    // Using getAllByText because it might appear twice (info and barcode/QR label)
+    expect(getAllByText("12345678").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders correctly for WDSF", async () => {
+    const { getByText, getAllByText } = await render(
+      <ThemeContext.Provider value={themeMock as never}>
+        <LicenseCard
+          type="WDSF"
+          user={mockUser}
+          photoUri={null}
+          onShowQr={mockOnShowQr}
+        />
+      </ThemeContext.Provider>,
+    );
+
+    expect(getByText("John Doe")).toBeTruthy();
+    expect(getAllByText("12345678").length).toBeGreaterThanOrEqual(1);
+  });
+});

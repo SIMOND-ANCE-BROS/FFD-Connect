@@ -1,0 +1,33 @@
+appId: fr.ffdanse.connect
+tags:
+  - licensee
+  - e2e
+---
+# LICENSEE · Competitions: status tabs, scope, search, open a detail.
+# Fast preamble: reuse the logged-in session when it already matches this role
+# (plain relaunch = fresh navigation, no reinstall/CGU/login). Falls back to the
+# full clearState + login path otherwise. Retried in-flow because the iOS 26 sim
+# intermittently drops taps after accumulated cold boots.
+- retry:
+    maxRetries: 2
+    commands:
+      - runFlow: ensure-licensee.yaml
+- tapOn: { id: "tab-competitions" }
+- extendedWaitUntil: { visible: { id: "competitions-search" }, timeout: 20000 }
+- tapOn: "Passées"
+- tapOn: "Tout"
+- tapOn: { text: "Pour moi", optional: true }
+- tapOn: { text: "Toutes", optional: true }
+- tapOn: { id: "competitions-search" }
+- inputText: "Gala Latin E2E"
+- hideKeyboard:
+    optional: true
+# Seeded UPCOMING competition (seed-e2e.ts). The card is an accessible element
+# whose label is "Détails de la compétition <title>", so the bare title is not a
+# matchable text node on iOS — match the card by its testID instead (the search
+# above has narrowed the list to this single seeded comp), then open its detail.
+- assertVisible: { id: "competition-card-.*" }
+- tapOn: { id: "competition-card-.*" }
+- extendedWaitUntil:
+    { visible: { id: "competition-detail-scroll-view" }, timeout: 15000 }
+- back

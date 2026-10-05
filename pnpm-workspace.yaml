@@ -1,0 +1,216 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+  - 'tools/*'
+
+overrides:
+  typescript: '^5.6.0'
+  ansi-styles: '4.3.0'
+  react: '19.2.3'
+  react-dom: '19.2.3'
+  '@types/react': '~19.2.0'
+  '@types/react-dom': '~19.2.0'
+  hermes-parser: '0.36.0'
+  hermes-estree: '0.36.0'
+  babel-plugin-syntax-hermes-parser: '0.36.0'
+  msw: '2.12.14'
+  multer: '^2.4.0'
+  serialize-javascript: '>=7.0.3'
+  rollup: '>=4.59.0'
+  'hono@<4.12.34': '4.12.34'
+  fast-xml-parser: '>=5.10.1'
+  svgo: '>=4.0.2'
+  '@hono/node-server@<1.19.15': '1.19.15'
+  '@hono/node-server@>=2.0.0 <=2.0.9': '2.0.10'
+  flatted: '>=3.4.2'
+  # effect : ligne 3.x UNIQUEMENT. @prisma/config utilise Either, supprime de
+  # la 4.0.0 -> `defineConfig` jette "Cannot read properties of undefined
+  # (reading 'right')". Invisible dans le workspace (qui resout 3.x), mais
+  # `pnpm deploy --prod` du Dockerfile RE-RESOUT l'arbre et prenait la 4.0.0,
+  # cassant le build de l'image backend puis `prisma migrate deploy` au boot.
+  effect: '^3.22.2'
+  socket.io-parser: '>=4.2.7'
+  h3: '>=1.15.6'
+  handlebars: '>=4.7.9'
+  node-forge: '>=1.4.0'
+  picomatch: '>=4.0.4'
+  path-to-regexp: '>=8.4.0'
+  lodash: '>=4.18.0'
+  protobufjs: '>=8.6.6'
+  vite: '>=8.0.16'
+  '@xmldom/xmldom': '0.8.15'
+  axios: '^1.20.0'
+  fast-xml-builder: '>=1.1.7'
+  fast-uri: '^4.1.4'
+  astro: '^7.2.8'
+  shell-quote: '>=1.8.4'
+  devalue: '^5.9.2'
+  form-data: '>=4.0.6'
+  '@grpc/grpc-js': '^1.14.5'
+  ws: '>=8.21.0'
+  # Planchers de sécurité Dependabot (2026-07) — deps transitives/dev.
+  # Volontairement absents (le correctif casse plus qu'il ne répare) :
+  #  - ajv (<6.14.0) : 6.14.0 n'existe pas dans la ligne v6 (fix en v8, majeur cassant)
+  #  - (js-yaml : exclusion levée le 2026-08-29, voir plus bas)
+  #  - uuid (<11.1.1) : le fix v11 shippe un dist-node ESM que Jest (CJS, via
+  #    @azure/identity) ne parse pas → casse la suite backend. Non rentable (1 medium transitive).
+  qs: '^6.16.0'
+  esbuild: '>=0.28.1'
+  '@tootallnate/once': '>=2.0.1'
+  joi: '^18.2.5'
+  launch-editor: '>=2.14.1'
+  smol-toml: '^1.7.1'
+  yaml: '>=2.8.3'
+  # websocket-driver GHSA-xv26-6w52-cph6 (CRITICAL, 2026) — transitive via
+  # faye-websocket <- @firebase/database (firebase-admin + @react-native-firebase).
+  # 0.7.5 (2026-06) is the patched release and satisfies faye-websocket's >=0.5.1 range.
+  websocket-driver: '>=0.7.5'
+
+  # Planchers de sécurité ajoutés le 2026-08-29 — tous transitifs, tous avec un
+  # correctif publié en amont. Ce qui reste non couvert (`image-size`, aucun
+  # correctif amont) vit dans audit-exceptions.json, pas ici.
+  #
+  # js-yaml : l'exclusion de juillet disait « fix v3 non publié ». Il l'est
+  # depuis : 3.15.1 pour la ligne v3, 4.3.1 pour la v4. On plancherise donc
+  # CHAQUE ligne separement, ce qui repond exactement a l'objection d'alors —
+  # aucun consommateur v3 n'est pousse vers v4.
+  'js-yaml@>=3.0.0 <3.15.2': '3.15.2'
+  'js-yaml@>=4.0.0 <4.3.2': '4.3.2'
+  'js-yaml@>=5.0.0 <5.4.1': '5.4.1'
+
+  # brace-expansion : trois lignes majeures coexistent dans l'arbre, chacune
+  # avec son propre correctif. Un plancher unique forcerait un saut de majeure.
+  # Forme « plage vulnérable -> version corrigée » : les selecteurs par majeure
+  # seule (`@1`, `@>=4`) ne mordaient pas sur toutes les declarations.
+  'brace-expansion@<1.1.21': '1.1.21'
+  'brace-expansion@>=2.0.0 <2.1.7': '2.1.7'
+  'brace-expansion@>=4.0.0 <5.0.12': '5.0.12'
+
+  # Forme « plage vulnérable -> version corrigée » ici aussi, et PAS un simple
+  # plancher `>=`. Un `>=` sans borne haute autorise un saut de majeure : posé
+  # sur nanoid, il a fait resoudre la 5.x, qui est ESM-only, et 23 suites Jest
+  # (CJS) ont cesse de se charger sur `nanoid/non-secure/index.js`. La faille
+  # etait dans la ligne 3.x et corrigee dans la ligne 3.x — sortir de cette
+  # ligne ne corrigeait rien et cassait la suite. Meme classe de piege que
+  # l'exclusion `uuid` documentee plus haut.
+  'deepmerge-ts@<8.0.0': '8.0.0'
+  'engine.io@>=4.1.0 <6.6.10': '6.6.10'
+  'nanoid@<3.3.18': '3.3.18'
+  'postcss@<=8.5.22': '8.5.23'
+  'sharp@<0.35.4': '0.35.4'
+  'valibot@<=1.4.1': '1.4.2'
+  'body-parser@>=2.0.0 <2.3.0': '2.3.0'
+
+  # Planchers ajoutes le 2026-09-07 — les 3 avis high qui bloquaient la porte
+  # d'audit sur develop. Les deux paquets concernes sont transitifs et ont chacun
+  # un correctif amont dans leur ligne majeure.
+  #
+  # browserslist : GHSA-73wf-gq98-2v4g (ecriture de prototype via un
+  # browserslist-stats.json non fiable) et GHSA-c83g-rgw3-j3cx (cache sans
+  # eviction -> OOM). Corriges en 4.28.7, dans la meme ligne majeure ; la forme
+  # « plage vulnerable -> version corrigee » evite tout saut de majeure.
+  'browserslist@<=4.28.6': '4.28.7'
+
+  # mysql2 : GHSA-3f6p-5ww8-9rcr (downgrade de plugin d'auth vers
+  # mysql_clear_password -> fuite du mot de passe en clair). Transitif via
+  # prisma (@prisma/dev), jamais utilise a l'execution — on ne parle a Postgres
+  # que par le client Prisma. Corrige en 3.22.0, meme ligne majeure.
+  'mysql2@<3.23.1': '3.23.1'
+
+  # @babel/core est verrouille sur la ligne 7 (2026-09-07). Rien dans le
+  # workspace ne le declare a part apps/client (^7.29.6), qui ne gouverne que
+  # SON slot : le peer `@babel/core` de babel-jest / ts-jest est resolu
+  # automatiquement par pnpm, qui prend la version la plus haute satisfaisante.
+  # babel-jest@30 accepte `^7.11.0 || ^8.0.0-0`, et 8.0.1 est desormais le
+  # `latest` npm -> la moindre re-resolution le fait entrer.
+  #
+  # Or Babel 8 a rendu `loadPartialConfig` asynchrone, et babel-jest l'appelle
+  # encore en synchrone :
+  #   "Starting from Babel 8.0.0, the 'loadPartialConfig' function expects a
+  #    callback. If you need to call it synchronously, please use
+  #    'loadPartialConfigSync'."
+  # Mesure : 123 suites client sur 123 tombent, 0 test execute.
+  #
+  # Piege insidieux car il ne se declenche pas sur une edition d'`overrides`
+  # (verifie : diff d'une ligne) mais sur tout changement de manifeste qui
+  # libere le slot peer — decouvert en bumpant Stryker 10. Il se serait
+  # presente comme "le client est casse" sur une PR sans rapport.
+  # Lever ce plancher quand babel-jest supportera Babel 8.
+  '@babel/core': '^7.29.6'
+
+  # Planchers mis a jour le 2026-09-30 (issue #679) — 38 alertes Dependabot
+  # ouvertes, toutes transitives et toutes avec un correctif amont dans la ligne
+  # majeure deja resolue. Les anciens `>=` nus de ces paquets (multer, fast-uri,
+  # astro, devalue, qs, joi, smol-toml) deviennent des `^` : meme resolution
+  # qu'aujourd'hui (l'arbre etait deja entierement sur ces majeures), mais sans
+  # la porte ouverte a un saut de majeure (cf. piege nanoid plus haut).
+  #
+  # astro ^7.2.8 (critique GHSA-26w7-cxv4-gfx2) tire cookie ^2, mais l'entree
+  # de prerendu generee sous apps/docs/dist resout `cookie` depuis apps/docs, donc
+  # vers le cookie@0.7.2 hisse a la racine (node-linker=hoisted, via NestJS) ->
+  # "Named export 'parseCookie' not found". apps/docs declare donc cookie ^2 en
+  # dependance directe pour avoir sa propre copie. A retirer si astro cesse d'en
+  # dependre ou si le hoisting change.
+  'postcss-selector-parser@>=6.1.0 <6.1.3': '6.1.3'
+  '@humanfs/node@<0.16.8': '0.16.8'
+  # Volontairement absent : decode-uri-component (<=0.4.2, GHSA-vcc3-ghjq-m6fr,
+  # medium). Le correctif 0.5.0 est ESM-only ("type": "module") alors que son
+  # seul consommateur, query-string@7 (via @react-navigation/core), le charge en
+  # CJS -> meme classe de casse que nanoid/uuid. A lever quand React Navigation
+  # passera a query-string 8+.
+
+  # Planchers mis a jour le 2026-10-04 — 13 avis high publies APRES la
+  # redaction de #817 (@fastify/busboy et axios le 30/09-02/10). La porte
+  # d'audit est une cible mouvante : une PR de planchers verte a l'ecriture
+  # peut etre rouge quelques jours plus tard sans qu'elle ait change.
+  #
+  # axios : les manifestes de apps/backend et apps/client declarent deja
+  # ^1.20.0, mais l'override `>=1.16.0` (un `>=` nu) prenait le pas sur eux et
+  # figeait la resolution a 1.18.1 — d'ou 7 avis high sur un paquet pourtant
+  # deja bumpe cote manifeste. Illustration directe de la regle posee plus haut
+  # (cf. piege nanoid) : un override fixe une DEPENDANCE, il ne se contente pas
+  # de poser une borne basse. Forme `^` pour rester dans la ligne majeure.
+  #
+  # @grpc/grpc-js : le plancher `>=1.14.4` etait pose exactement sur la version
+  # vulnerable (GHSA-m9gg-hp2v-232j couvre >=1.14.0 <1.14.5). Corrige en 1.14.5.
+  '@fastify/busboy@<3.2.1': '3.2.1'
+  #
+  # Planchers remontes d'un cran le 2026-10-04 : GHSA-q2hr-2g5m-vwhr
+  # (brace-expansion, les trois lignes majeures) et GHSA-r3ph-w7gj-g6xm
+  # (js-yaml) ont ete publies le 2026-09-29, soit le lendemain de la redaction
+  # des planchers ci-dessus — ils visaient donc des versions deja redevenues
+  # vulnerables. Mediums : non bloquants pour la porte, remontes avant qu'une
+  # reevaluation de severite ne les y amene.
+  #
+  # js-yaml : une ligne 5.x est apparue dans l'arbre depuis, et les deux
+  # planchers ci-dessus ne couvrent que les lignes 3.x et 4.x. Un plancher par
+  # ligne majeure, comme pour brace-expansion — un plancher unique forcerait un
+  # saut de majeure.
+  #
+  # Volontairement absents, sans correctif amont au 2026-10-04 — ils vivent
+  # dans audit-exceptions.json, pas ici : braces (GHSA-vfj7-8cjw-p6xm),
+  # http-cache-semantics (GHSA-ch52-4w7c-c8xp), node-forge
+  # (GHSA-86w9-cpqp-85rv). Le plancher node-forge `>=1.4.0` ci-dessus est deja
+  # sur la derniere version publiee ; il est conserve pour empecher une
+  # regression vers plus ancien.
+
+# youtube-dl-exec is deliberately NOT allowed to build: its postinstall
+# downloads the yt-dlp binary from the network and hard-fails installs in
+# restricted environments (CI/remote). It is only used by tools/track-prep —
+# fetch the binary on demand with `pnpm rebuild youtube-dl-exec`.
+onlyBuiltDependencies:
+  - '@firebase/util'
+  - '@nestjs/core'
+  - '@prisma/engines'
+  - '@scarf/scarf'
+  - 'bcrypt'
+  - 'esbuild'
+  - 'prisma'
+  - 'protobufjs'
+  - 'unrs-resolver'
+  - '@sentry/profiling-node'
+  - '@sentry-internal/node-cpu-profiler'
+  - '@sentry/cli'
+
+patchedDependencies:
+  react-native@0.86.0: 'patches/react-native@0.86.0.patch'

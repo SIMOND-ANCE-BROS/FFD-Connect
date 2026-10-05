@@ -1,0 +1,33 @@
+{
+  "name": "@ffd-connect/track-prep",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CLI local : télécharge des titres depuis des liens Spotify/YouTube (titre ou playlist), détecte le tempo et prépare les fichiers (nommage fédération + MPM) pour FFD-Connect",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/mpm.test.ts test/naming.test.ts test/sources.test.ts test/sync.test.ts test/dedupe.test.ts test/style-detect.test.ts"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.13.1",
+    "@azure/storage-blob": "^12.31.0",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "dotenv": "^17.4.2",
+    "fluent-ffmpeg": "^2.1.3",
+    "music-tempo": "^1.0.3",
+    "pg": "^8.17.2",
+    "wav-decoder": "^1.3.0",
+    "youtube-dl-exec": "^3.1.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@types/pg": "^8.16.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "UNLICENSED"
+}
