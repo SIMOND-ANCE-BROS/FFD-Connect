@@ -23,7 +23,6 @@ COPY apps/docs/package.json ./apps/docs/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/eslint-config/package.json ./packages/eslint-config/
 COPY packages/jest-config/package.json ./packages/jest-config/
-COPY tools/track-prep/package.json ./tools/track-prep/
 RUN pnpm install --frozen-lockfile --filter landing --filter docs
 
 COPY . .

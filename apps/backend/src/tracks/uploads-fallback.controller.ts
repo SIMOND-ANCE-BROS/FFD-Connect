@@ -38,7 +38,7 @@ export const UPLOADS_FALLBACK_PREFIX_EXCLUDE: RouteInfo = {
 };
 
 const BLOB_CALL_TIMEOUT_MS = 8_000;
-// Track files are written once by tools/track-prep and keep their name; a day
+// Track files are written once by the import tool and keep their name; a day
 // of client caching saves wake-ups and blob reads without pinning a bad file.
 const CACHE_CONTROL = "public, max-age=86400";
 

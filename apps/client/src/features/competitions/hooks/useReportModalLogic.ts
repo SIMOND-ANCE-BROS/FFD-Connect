@@ -1,9 +1,8 @@
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
 import { Alert } from "react-native";
+import { formatAppIdentityInline } from "../../../utils/appIdentity";
 import { ReportService } from "../services/ReportService";
-
-const APP_VERSION = "0.0.1";
 
 interface UseReportModalLogicProps {
   onClose: () => void;
@@ -87,7 +86,8 @@ export const useReportModalLogic = ({ onClose }: UseReportModalLogicProps) => {
         description,
         module,
         severity,
-        appVersion: APP_VERSION,
+        // Version + build, variante, SHA git et OTA : de quoi retrouver le code exact.
+        appVersion: formatAppIdentityInline(),
         steps: type === "BUG" ? steps : undefined,
         image: image
           ? {

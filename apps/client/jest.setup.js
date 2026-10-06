@@ -389,6 +389,13 @@ jest.mock("expo-constants", () => ({
   },
 }));
 
+jest.mock("expo-application", () => ({
+  __esModule: true,
+  applicationId: "fr.ffdanse.connect.dev",
+  nativeApplicationVersion: "1.0.0",
+  nativeBuildVersion: "85",
+}));
+
 jest.mock("expo-updates", () => ({
   __esModule: true,
   isEnabled: false,

@@ -1,6 +1,6 @@
 {
   "name": "client",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
   "main": "index",
   "browser": "index.web.js",
@@ -50,6 +50,7 @@
     "@tanstack/react-query-persist-client": "^5.104.0",
     "axios": "^1.20.0",
     "expo": "~57.0.4",
+    "expo-application": "~57.0.0",
     "expo-audio": "~57.0.0",
     "expo-blur": "~57.0.0",
     "expo-calendar": "~57.0.0",

@@ -9,6 +9,7 @@ import React from "react";
 import { registerRootComponent } from "expo";
 import { Platform } from "react-native";
 import * as Sentry from "@sentry/react-native";
+import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 import App from "./App";
 import { registerBackgroundMessageHandler } from "./src/features/settings/services/backgroundMessaging";
@@ -72,19 +73,29 @@ const sentryDsn =
     : undefined;
 const sentryDisabled = process.env?.EXPO_PUBLIC_DISABLE_SENTRY === "1";
 
-// Release Health : rattache le crash-free sessions rate à une version + un OTA.
-// - release  = runtimeVersion (contrat natif/JS, bumpé à chaque build natif).
-// - dist     = updateId de l'OTA en cours (null si on tourne le bundle embarqué
-//   du build → "embedded"). Deux OTA différentes sous la même release =
-//   deux dist → on voit qu'une OTA précise régresse avant qu'elle se répande.
+// Release Health : rattache le crash-free sessions rate à une version + un OTA,
+// avec les identifiants de TestFlight / Play et des tags beta-<version>-<build>
+// (cf. src/utils/appIdentity).
+// - release  = « <bundle id>@<version>+<build> » (ex. fr.ffdanse.connect.beta@1.0.0+85) :
+//   le format Sentry des apps mobiles, celui que le plugin Sentry utilise pour
+//   les source maps du build natif. Le bundle id sépare preview et beta, qui
+//   comptent leurs builds chacune de leur côté. La runtimeVersion n'y est plus :
+//   c'est une empreinte (hash), gardée en tag `ota_runtime`.
+// - dist     = numéro de build sur le bundle embarqué (là encore, comme les
+//   source maps du build), updateId sous OTA. Deux OTA différentes sous la même
+//   release = deux dist → on voit qu'une OTA précise régresse avant qu'elle se
+//   répande.
+const nativeBuild = Application.nativeBuildVersion ?? "0";
 const releaseVersion =
-  typeof Updates.runtimeVersion === "string" && Updates.runtimeVersion
-    ? Updates.runtimeVersion
-    : "unknown";
+  Application.applicationId && Application.nativeApplicationVersion
+    ? `${Application.applicationId}@${Application.nativeApplicationVersion}+${nativeBuild}`
+    : "ffd-client@unknown";
 const updateDist =
-  typeof Updates.updateId === "string" && Updates.updateId
+  typeof Updates.updateId === "string" &&
+  Updates.updateId &&
+  !Updates.isEmbeddedLaunch
     ? Updates.updateId
-    : "embedded";
+    : nativeBuild;
 
 if (sentryDsn && !sentryDisabled && Platform.OS !== "web") {
   Sentry.init({
@@ -94,7 +105,7 @@ if (sentryDsn && !sentryDisabled && Platform.OS !== "web") {
       typeof __DEV__ !== "undefined" && __DEV__
         ? "development"
         : process.env.EXPO_PUBLIC_APP_ENV || "production",
-    release: `ffd-client@${releaseVersion}`,
+    release: releaseVersion,
     dist: updateDist,
     tracesSampleRate: 0.1,
     attachScreenshot: true,
@@ -113,6 +124,14 @@ if (sentryDsn && !sentryDisabled && Platform.OS !== "web") {
           i.name !== "ReactNativeReplay",
       ),
   });
+  // Le SHA git relie un crash au code exact (tags/releases GitHub).
+  Sentry.setTag("git_sha", process.env.EXPO_PUBLIC_GIT_SHA || "unknown");
+  Sentry.setTag(
+    "ota_runtime",
+    typeof Updates.runtimeVersion === "string" && Updates.runtimeVersion
+      ? Updates.runtimeVersion.slice(0, 7)
+      : "unknown",
+  );
 }
 
 // Barre native clavier iOS (^ v ✓) — désactivé sur iOS 26+ : la lib hook le

@@ -1,7 +1,6 @@
 packages:
   - 'apps/*'
   - 'packages/*'
-  - 'tools/*'
 
 overrides:
   typescript: '^5.6.0'
@@ -200,10 +199,6 @@ overrides:
   # sur la derniere version publiee ; il est conserve pour empecher une
   # regression vers plus ancien.
 
-# youtube-dl-exec is deliberately NOT allowed to build: its postinstall
-# downloads the yt-dlp binary from the network and hard-fails installs in
-# restricted environments (CI/remote). It is only used by tools/track-prep —
-# fetch the binary on demand with `pnpm rebuild youtube-dl-exec`.
 onlyBuiltDependencies:
   - '@firebase/util'
   - '@nestjs/core'
