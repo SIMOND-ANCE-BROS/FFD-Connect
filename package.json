@@ -23,7 +23,6 @@
     "stop:dev": "pnpm exec tsx scripts/stop-dev.ts",
     "shared:dev": "pnpm --filter @ffd-connect/shared dev",
     "backup-database": "pnpm exec tsx scripts/backup-database.ts",
-    "track-prep": "pnpm --filter @ffd-connect/track-prep start",
     "preflight": "./scripts/preflight.sh",
     "audit:quality": "tsx scripts/audit-quality.ts",
     "audit:dependencies": "tsx scripts/audit-dependencies.ts",

@@ -25,9 +25,7 @@ n'exécute `preflight` complet que si on te le demande ou si le diff est large.
 ## Pièges d'environnement connus (à corriger avant de conclure)
 
 - `node_modules` absent : `pnpm install --frozen-lockfile` suffit (le
-  postinstall backend génère le client Prisma ; le binaire youtube-dl est
-  opt-in via `pnpm rebuild youtube-dl-exec`, seul tools/track-prep en a
-  besoin).
+  postinstall backend génère le client Prisma).
 - Erreurs TS `Property 'x' does not exist on type 'PrismaService'` malgré
   l'install : régénérer avec
   `pnpm --filter backend exec prisma generate --schema=./prisma/schema`.
