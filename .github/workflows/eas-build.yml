@@ -80,6 +80,8 @@ jobs:
               echo "Cascade push to $BRANCH without a merge commit - forcing full build"
               echo "client_changed=true" >> "$GITHUB_OUTPUT"
               echo "native=true" >> "$GITHUB_OUTPUT"
+              # Unknown diff: also stop the fingerprint step from picking OTA-only.
+              echo "eas_config=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             COMPARE_SHA=$(git rev-parse HEAD^1)
@@ -92,6 +94,7 @@ jobs:
             echo "No comparison base found - assuming everything changed"
             echo "client_changed=true" >> "$GITHUB_OUTPUT"
             echo "native=true" >> "$GITHUB_OUTPUT"
+            echo "eas_config=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 

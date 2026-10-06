@@ -112,6 +112,8 @@ jobs:
           BRANCH: ${{ github.ref_name }}
         run: |
           set -uo pipefail
+          # deploy-backend.yml here only forces a rebuild + redeploy: workflow_run
+          # always runs develop's copy of it, whatever this commit contains.
           PATTERNS='^(apps/backend/|packages/shared/|packages/jest-config/|patches/|scripts/|apps/client/package\.json$|apps/landing/package\.json$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.npmrc$|\.dockerignore$|\.github/workflows/deploy-backend\.yml$)'
           build() {
             echo "$1 - building the backend image (fail-safe)"
@@ -125,7 +127,7 @@ jobs:
 
           # Recent deploy runs for this branch, newest first: "<run id> <sha>".
           CANDIDATES=$(gh api "repos/$REPO/actions/workflows/deploy-backend.yml/runs?per_page=50" \
-            --jq ".workflow_runs[] | select(.status == \"completed\")
+            --jq ".workflow_runs | sort_by(.run_started_at) | reverse | .[] | select(.status == \"completed\")
                   | (.display_title | capture(\" $BRANCH @ (?<sha>[0-9a-f]{40})\$\")?) as \$m
                   | select(\$m != null) | \"\(.id) \(\$m.sha)\"") \
             || build "Could not list deploy-backend runs"
