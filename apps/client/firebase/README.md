@@ -61,3 +61,20 @@ partagent l'environnement EAS `preview` avec deux bundle ids différents) :
 
 EAS écrit le fichier sur le disque du builder et la variable contient son chemin,
 que `app.config.js` résout en priorité.
+
+## Changer un fichier (rotation)
+
+Le contenu de ces fichiers est **hors empreinte** (`fingerprint.config.js`) :
+après une mise à jour de la variable EAS, ni la CI ni l'empreinte ne déclenchent
+de build natif, et les OTA continuent de cibler les binaires construits avec
+l'ancien fichier. Il faut donc :
+
+1. mettre à jour la variable EAS `file` de la variante (environnement EAS
+   `preview` pour `preview` et `beta`, `production` pour `production`) ;
+2. lancer **à la main** un build natif pour chaque profil et chaque plateforme
+   concernés ;
+3. distribuer ce binaire : seuls les appareils qui l'installent utilisent la
+   nouvelle config.
+
+Procédure détaillée (commandes, déclenchement par profil) :
+`docs/exploitation/ci-cd.md`, section « Rotation de la config Firebase ».
