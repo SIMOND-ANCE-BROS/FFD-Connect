@@ -32,6 +32,7 @@ describe("NotificationsService", () => {
       createMany: jest.fn(),
       findMany: jest.fn(),
       updateMany: jest.fn(),
+      deleteMany: jest.fn(),
     },
     deviceToken: {
       upsert: jest.fn(),
@@ -475,6 +476,55 @@ describe("NotificationsService", () => {
         where: { userId: "u1", isRead: false },
         data: { isRead: true },
       });
+    });
+  });
+
+  describe("deleteForUser", () => {
+    it("filtre sur le destinataire DANS la requête, sans lecture préalable", async () => {
+      mockPrisma.notification.deleteMany.mockResolvedValue({ count: 1 });
+
+      const res = await service.deleteForUser("n1", "u1");
+
+      expect(mockPrisma.notification.deleteMany).toHaveBeenCalledWith({
+        where: { id: "n1", userId: "u1" },
+      });
+      // Pas de findUnique/findFirst de contrôle : aucune fenêtre entre la
+      // vérification de propriété et l'effacement.
+      expect(res).toEqual({ count: 1 });
+    });
+
+    it("ne supprime rien et ne lève rien sur une notification d'autrui", async () => {
+      mockPrisma.notification.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.deleteForUser("n1", "u2")).resolves.toEqual({
+        count: 0,
+      });
+    });
+
+    it("laisse intacte une annonce globale, qui n'appartient à personne", async () => {
+      mockPrisma.notification.deleteMany.mockResolvedValue({ count: 0 });
+
+      await service.deleteForUser("globale", "u1");
+
+      // `userId` reste dans le filtre : une ligne à userId null n'y répond pas.
+      const [args] = mockPrisma.notification.deleteMany.mock.calls.at(-1) as [
+        { where: Record<string, unknown> },
+      ];
+      expect(args.where).toHaveProperty("userId", "u1");
+    });
+  });
+
+  describe("deleteAllForUser", () => {
+    it("vide le feed personnel, lues comme non lues", async () => {
+      mockPrisma.notification.deleteMany.mockResolvedValue({ count: 12 });
+
+      const res = await service.deleteAllForUser("u1");
+
+      expect(mockPrisma.notification.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "u1" },
+      });
+      // Surtout pas de `isRead` dans le filtre : « tout effacer » efface tout.
+      expect(res).toEqual({ count: 12 });
     });
   });
 
