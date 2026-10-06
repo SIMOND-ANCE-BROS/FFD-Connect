@@ -49,6 +49,14 @@ const mockTts = { speak: jest.fn(), getOrCreateCachedAudio: jest.fn() };
 
 const mockNotifications = {
   createForUser: jest.fn().mockResolvedValue(undefined),
+  // Les producteurs envoient désormais de vraies push (#38) : sans ces
+  // doublures, le service réel manquerait à l'appel et l'inscription
+  // échouerait — ce que seules les suites sur base réelle ont montré.
+  createManyForUsers: jest.fn().mockResolvedValue({ count: 0 }),
+  sendToUser: jest.fn().mockResolvedValue({ sent: 0, failed: 0, pruned: 0 }),
+  sendToUsers: jest
+    .fn()
+    .mockResolvedValue({ recipients: 0, sent: 0, failed: 0, pruned: 0 }),
   sendToDevice: jest.fn().mockResolvedValue(undefined),
   sendToTopic: jest.fn().mockResolvedValue(undefined),
 };
