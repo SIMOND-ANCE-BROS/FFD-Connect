@@ -136,6 +136,25 @@ describe("TracksService", () => {
   });
 
   describe("updateTrack", () => {
+    it("reads and writes through the given transaction client", async () => {
+      const tx = createMockPrismaService();
+      tx.track.findUnique.mockResolvedValue(
+        // @ts-expect-error - testing partial return
+        { submittedById: null, rawBpm: 0 },
+      );
+      // @ts-expect-error - testing partial return
+      tx.track.update.mockResolvedValue({});
+
+      await service.updateTrack("t1", "admin", true, { title: "New" }, tx);
+
+      expect(tx.track.update).toHaveBeenCalledWith({
+        where: { id: "t1" },
+        data: { title: "New" },
+      });
+      expect(prisma.track.findUnique).not.toHaveBeenCalled();
+      expect(prisma.track.update).not.toHaveBeenCalled();
+    });
+
     it("throws NotFoundException when the track is missing", async () => {
       prisma.track.findUnique.mockResolvedValue(null);
 
@@ -290,6 +309,26 @@ describe("TracksService", () => {
       });
 
       expect(prisma.track.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("bpmForPatch", () => {
+    it("returns an explicit tempo as-is", () => {
+      expect(service.bpmForPatch(120, { bpm: 30, style: "Rumba" })).toBe(30);
+      expect(mockBpm.calculateMpm).not.toHaveBeenCalled();
+    });
+
+    it("recomputes the MPM from the raw BPM when only the dance changes", () => {
+      mockBpm.calculateMpm.mockReturnValueOnce(25);
+      expect(service.bpmForPatch(100, { style: "Rumba" })).toBe(25);
+      expect(mockBpm.calculateMpm).toHaveBeenCalledWith(100, "Rumba");
+    });
+
+    it("leaves the tempo untouched without raw BPM, dance, or a usable MPM", () => {
+      expect(service.bpmForPatch(0, { style: "Rumba" })).toBeUndefined();
+      expect(service.bpmForPatch(100, {})).toBeUndefined();
+      mockBpm.calculateMpm.mockReturnValueOnce(0);
+      expect(service.bpmForPatch(100, { style: "Rumba" })).toBeUndefined();
     });
   });
 

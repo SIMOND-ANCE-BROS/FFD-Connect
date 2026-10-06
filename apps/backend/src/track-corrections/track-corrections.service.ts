@@ -51,6 +51,20 @@ import { TrackCorrectionsQueryService } from "./track-corrections.query-service"
  */
 export const MAX_PENDING_CORRECTIONS_PER_USER_PER_TRACK = 3;
 
+/**
+ * Plafond GLOBAL de propositions en attente par utilisateur, toutes pistes
+ * confondues : borne ce qu'un seul compte peut déverser dans la file.
+ */
+export const MAX_PENDING_CORRECTIONS_PER_USER = 20;
+
+/**
+ * Tentatives d'une insertion plafonnée en isolation SERIALIZABLE. Deux
+ * propositions concurrentes du même utilisateur font échouer l'une d'elles
+ * (P2034, conflit de sérialisation) : on la rejoue, elle relit alors le
+ * compteur à jour.
+ */
+export const MAX_SERIALIZABLE_ATTEMPTS = 3;
+
 /** Borne de la lecture des administrateurs à notifier. */
 export const MAX_ADMINS_NOTIFIED = 100;
 
@@ -74,6 +88,11 @@ interface ProposedValues {
   proposesClashes: boolean;
   proposedClashTimecodes: number[];
 }
+
+/** Plafond atteint par une insertion (cf. createWithinCaps). */
+type PendingCap = "per-track" | "global";
+
+type CappedInsert<T> = { created: T } | { capped: PendingCap };
 
 /** Chaîne nettoyée ; vide ou absente → undefined (pas de valeur). */
 const normalizeText = (value: string | undefined): string | undefined => {
@@ -121,23 +140,27 @@ export class TrackCorrectionsService {
         "Aucune correction proposée : indiquez une valeur différente de l'actuelle ou un message.",
       );
     }
-    if (await this.isPendingCapReached(userId, dto.trackId)) {
+    const result = await this.createWithinCaps(userId, dto.trackId, (tx) =>
+      tx.trackCorrection.create({
+        data: {
+          trackId: dto.trackId,
+          proposedById: userId,
+          reason: dto.reason,
+          message: message ?? null,
+          ...proposed,
+        },
+        select: trackCorrectionMineSelect,
+      }),
+    );
+    if ("capped" in result) {
       throw new HttpException(
-        `Vous avez déjà ${MAX_PENDING_CORRECTIONS_PER_USER_PER_TRACK} propositions en attente sur cette musique. Attendez la décision d'un administrateur.`,
+        result.capped === "per-track"
+          ? `Vous avez déjà ${MAX_PENDING_CORRECTIONS_PER_USER_PER_TRACK} propositions en attente sur cette musique. Attendez la décision d'un administrateur.`
+          : `Vous avez déjà ${MAX_PENDING_CORRECTIONS_PER_USER} propositions en attente. Attendez la décision d'un administrateur.`,
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
-
-    const row = await this.prisma.trackCorrection.create({
-      data: {
-        trackId: dto.trackId,
-        proposedById: userId,
-        reason: dto.reason,
-        message: message ?? null,
-        ...proposed,
-      },
-      select: trackCorrectionMineSelect,
-    });
+    const row = result.created;
 
     await this.notifyAdmins(
       row.id,
@@ -145,7 +168,6 @@ export class TrackCorrectionsService {
       track.title,
       dto.reason,
       proposed,
-      message,
     );
     this.logger.log(
       `Track correction ${row.id} on track ${dto.trackId} proposed by ${userId}`,
@@ -168,29 +190,30 @@ export class TrackCorrectionsService {
     userId: string,
   ): Promise<void> {
     const track = await this.findTarget(trackId);
-    if (await this.isPendingCapReached(userId, trackId)) {
+    const trimmed = normalizeText(message);
+    const result = await this.createWithinCaps(userId, trackId, (tx) =>
+      tx.trackCorrection.create({
+        data: {
+          trackId,
+          proposedById: userId,
+          reason,
+          message: trimmed ?? null,
+        },
+        select: idOnlySelect,
+      }),
+    );
+    if ("capped" in result) {
       this.logger.log(
-        `Legacy track report on ${trackId} by ${userId} ignored: pending cap reached`,
+        `Legacy track report on ${trackId} by ${userId} ignored: ${result.capped} pending cap reached`,
       );
       return;
     }
-    const trimmed = normalizeText(message);
-    const row = await this.prisma.trackCorrection.create({
-      data: {
-        trackId,
-        proposedById: userId,
-        reason,
-        message: trimmed ?? null,
-      },
-      select: idOnlySelect,
-    });
     await this.notifyAdmins(
-      row.id,
+      result.created.id,
       trackId,
       track.title,
       reason,
       TrackCorrectionsService.EMPTY_PROPOSAL,
-      trimmed,
     );
   }
 
@@ -200,8 +223,9 @@ export class TrackCorrectionsService {
    * recalculé au changement de danse, clashs dédupliqués et triés). Les
    * valeurs du corps remplacent celles de la proposition.
    *
-   * Le passage PENDING → APPROVED et la mise à jour de la piste partagent une
-   * transaction : si l'application échoue, la proposition reste en attente.
+   * Le passage PENDING → APPROVED et la mise à jour de la piste partagent la
+   * MÊME transaction (updateTrack reçoit `tx`) : si l'application échoue, la
+   * proposition reste en attente, et inversement.
    * La garde `updateMany … status: PENDING` refuse une double décision (409).
    */
   async approve(
@@ -226,6 +250,7 @@ export class TrackCorrectionsService {
         adminId,
         true,
         patch,
+        tx,
       );
     });
 
@@ -289,18 +314,55 @@ export class TrackCorrectionsService {
     return track;
   }
 
-  private async isPendingCapReached(
+  /**
+   * Insère une proposition si l'utilisateur est sous ses deux plafonds de
+   * propositions en attente (par piste et global).
+   *
+   * Compter puis insérer n'est sûr que si les deux lectures et l'écriture sont
+   * sérialisées : en READ COMMITTED, deux requêtes simultanées liraient le même
+   * compteur et passeraient toutes deux. La transaction est donc SERIALIZABLE ;
+   * PostgreSQL fait échouer l'une des deux (P2034), qui est rejouée et voit
+   * alors le compteur à jour.
+   */
+  private async createWithinCaps<T>(
     userId: string,
     trackId: string,
-  ): Promise<boolean> {
-    const pending = await this.prisma.trackCorrection.count({
-      where: {
-        proposedById: userId,
-        trackId,
-        status: TrackCorrectionStatus.PENDING,
-      },
-    });
-    return pending >= MAX_PENDING_CORRECTIONS_PER_USER_PER_TRACK;
+    insert: (tx: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<CappedInsert<T>> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.prisma.$transaction(
+          async (tx): Promise<CappedInsert<T>> => {
+            const pending = {
+              proposedById: userId,
+              status: TrackCorrectionStatus.PENDING,
+            };
+            const onTrack = await tx.trackCorrection.count({
+              where: { ...pending, trackId },
+            });
+            if (onTrack >= MAX_PENDING_CORRECTIONS_PER_USER_PER_TRACK) {
+              return { capped: "per-track" };
+            }
+            const total = await tx.trackCorrection.count({ where: pending });
+            if (total >= MAX_PENDING_CORRECTIONS_PER_USER) {
+              return { capped: "global" };
+            }
+            return { created: await insert(tx) };
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        );
+      } catch (error) {
+        const serializationFailure =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2034";
+        if (!serializationFailure) throw error;
+        if (attempt >= MAX_SERIALIZABLE_ATTEMPTS) {
+          throw new ConflictException(
+            "Trop de propositions simultanées, réessayez dans un instant.",
+          );
+        }
+      }
+    }
   }
 
   /** Ne garde que les valeurs qui diffèrent réellement de la piste. */
@@ -466,7 +528,6 @@ export class TrackCorrectionsService {
     trackTitle: string,
     reason: TrackCorrectionReason,
     values: ProposedValues,
-    message: string | undefined,
   ): Promise<void> {
     try {
       const admins = await this.prisma.user.findMany({
@@ -474,9 +535,10 @@ export class TrackCorrectionsService {
         select: idOnlySelect,
         take: MAX_ADMINS_NOTIFIED,
       });
-      const body =
-        `«${trackTitle}» — ${TrackCorrectionsService.summarize(reason, values)}` +
-        (message ? ` : ${message}` : "");
+      // Le commentaire libre de l'auteur n'est PAS recopié ici : une
+      // notification n'est pas effacée avec le compte de l'auteur (RGPD) ;
+      // l'admin le lit dans la file, d'où il disparaît à la suppression.
+      const body = `«${trackTitle}» — ${TrackCorrectionsService.summarize(reason, values)}`;
       const data = { type: "TRACK_CORRECTION", correctionId, trackId };
       const results = await Promise.allSettled(
         admins.map((admin) =>

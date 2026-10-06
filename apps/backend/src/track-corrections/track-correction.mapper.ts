@@ -63,8 +63,13 @@ export const toProposal = (
   clashTimecodes: row.proposesClashes ? row.proposedClashTimecodes : null,
 });
 
+/**
+ * Vue administrateur. `resultingBpm` est calculé par l'appelant (règle de
+ * TracksService.bpmForPatch) ; `rawBpm` n'est pas renvoyé.
+ */
 export const toAdminDto = (
   row: TrackCorrectionAdminRow,
+  resultingBpm: number,
 ): TrackCorrectionAdminDto => ({
   id: row.id,
   trackId: row.trackId,
@@ -75,7 +80,17 @@ export const toAdminDto = (
   reviewComment: row.reviewComment,
   reviewedAt: row.reviewedAt,
   createdAt: row.createdAt,
-  track: row.track,
+  track: {
+    id: row.track.id,
+    title: row.track.title,
+    artist: row.track.artist,
+    style: row.track.style,
+    bpm: row.track.bpm,
+    clashTimecodes: row.track.clashTimecodes,
+    titleMasked: row.track.titleMasked,
+    blacklisted: row.track.blacklisted,
+  },
+  resultingBpm,
   proposer: toUser(row.proposedBy),
   reviewer: toUser(row.reviewedBy),
 });

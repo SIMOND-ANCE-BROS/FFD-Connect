@@ -3,6 +3,7 @@ import { Prisma, TrackCorrectionStatus } from "@prisma/client";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
+import { TracksService } from "../tracks/tracks.service";
 import {
   trackCorrectionAdminSelect,
   trackCorrectionMineSelect,
@@ -13,7 +14,11 @@ import {
   TrackCorrectionAdminPageDto,
 } from "./dto/track-correction-response.dto";
 import { ListTrackCorrectionsQueryDto } from "./dto/track-correction.dto";
-import { toAdminDto, toMineDto } from "./track-correction.mapper";
+import {
+  toAdminDto,
+  toMineDto,
+  TrackCorrectionAdminRow,
+} from "./track-correction.mapper";
 
 const DEFAULT_SKIP = 0;
 const DEFAULT_TAKE = 10;
@@ -24,7 +29,23 @@ const DEFAULT_TAKE = 10;
  */
 @Injectable()
 export class TrackCorrectionsQueryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tracksService: TracksService,
+  ) {}
+
+  /**
+   * Vue admin d'une ligne, avec le MPM qui résultera d'une validation telle
+   * quelle — même règle que TracksService.updateTrack, pour que l'admin voie
+   * le recalcul silencieux d'un changement de danse seul.
+   */
+  private toAdmin(row: TrackCorrectionAdminRow): TrackCorrectionAdminDto {
+    const bpm = this.tracksService.bpmForPatch(row.track.rawBpm, {
+      bpm: row.proposedBpm ?? undefined,
+      style: row.proposedStyle ?? undefined,
+    });
+    return toAdminDto(row, bpm ?? row.track.bpm);
+  }
 
   /**
    * File de modération. Les propositions EN ATTENTE sont servies de la plus
@@ -55,7 +76,12 @@ export class TrackCorrectionsQueryService {
       }),
     ]);
 
-    return createPaginatedResponse(rows.map(toAdminDto), total, skip, take);
+    return createPaginatedResponse(
+      rows.map((row) => this.toAdmin(row)),
+      total,
+      skip,
+      take,
+    );
   }
 
   /** Une proposition, vue administrateur (réponse de approve/reject). */
@@ -67,7 +93,7 @@ export class TrackCorrectionsQueryService {
     if (!row) {
       throw new NotFoundException(`Track correction ${id} not found`);
     }
-    return toAdminDto(row);
+    return this.toAdmin(row);
   }
 
   /** Les propositions de l'appelant, de la plus récente à la plus ancienne. */

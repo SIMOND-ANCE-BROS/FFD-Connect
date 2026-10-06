@@ -6,6 +6,7 @@ import {
   MockPrismaService,
 } from "../../test/mocks/prisma.mock";
 import { PrismaService } from "../prisma/prisma.service";
+import { TracksService } from "../tracks/tracks.service";
 import {
   trackCorrectionAdminSelect,
   trackCorrectionMineSelect,
@@ -38,6 +39,7 @@ const adminRow = {
     artist: "Orchestre",
     style: "Paso Doble",
     bpm: 60,
+    rawBpm: 120,
     clashTimecodes: [10],
     titleMasked: false,
     blacklisted: false,
@@ -49,14 +51,23 @@ const adminRow = {
 describe("TrackCorrectionsQueryService", () => {
   let service: TrackCorrectionsQueryService;
   let prisma: MockPrismaService;
+  let tracks: { bpmForPatch: jest.Mock };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     prisma = createMockPrismaService();
+    // Règle de TracksService.bpmForPatch reproduite (MPM = BPM brut / 2 ici).
+    tracks = {
+      bpmForPatch: jest.fn(
+        (rawBpm: number, patch: { bpm?: number; style?: string }) =>
+          patch.bpm ?? (patch.style && rawBpm > 0 ? rawBpm / 2 : undefined),
+      ),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TrackCorrectionsQueryService,
         { provide: PrismaService, useValue: prisma },
+        { provide: TracksService, useValue: tracks },
       ],
     }).compile();
     service = module.get(TrackCorrectionsQueryService);
@@ -102,7 +113,19 @@ describe("TrackCorrectionsQueryService", () => {
           bpm: null,
           clashTimecodes: [12.5],
         },
-        track: adminRow.track,
+        // rawBpm sert au calcul mais n'est pas renvoyé.
+        track: {
+          id: "t1",
+          title: "España Cañí",
+          artist: "Orchestre",
+          style: "Paso Doble",
+          bpm: 60,
+          clashTimecodes: [10],
+          titleMasked: false,
+          blacklisted: false,
+        },
+        // Rien ne touche au tempo : le MPM actuel est conservé.
+        resultingBpm: 60,
         proposer: { id: "u1", name: "Jeanne Martin" },
         reviewer: null,
       });
@@ -143,6 +166,40 @@ describe("TrackCorrectionsQueryService", () => {
       expect(page.data[0].proposed.clashTimecodes).toBeNull();
       expect(page.data[0].proposer).toBeNull();
       expect(page.data[0].reviewer).toEqual({ id: "a1", name: "Admin" });
+    });
+  });
+
+  describe("resultingBpm", () => {
+    const listOne = async (overrides: Record<string, unknown>) => {
+      prisma.trackCorrection.count.mockResolvedValue(1);
+      prisma.trackCorrection.findMany.mockResolvedValue([
+        { ...adminRow, ...overrides },
+      ] as never);
+      return (await service.listForAdmin({})).data[0];
+    };
+
+    it("danse seule : MPM recalculé depuis le BPM brut (recalcul visible pour l'admin)", async () => {
+      const dto = await listOne({ proposedStyle: "Rumba" });
+      expect(tracks.bpmForPatch).toHaveBeenCalledWith(120, {
+        bpm: undefined,
+        style: "Rumba",
+      });
+      expect(dto.resultingBpm).toBe(60);
+      expect(dto.track.bpm).toBe(60);
+    });
+
+    it("danse seule avec un autre BPM brut : le MPM résultant diffère de l'actuel", async () => {
+      const dto = await listOne({
+        proposedStyle: "Rumba",
+        track: { ...adminRow.track, rawBpm: 100 },
+      });
+      expect(dto.resultingBpm).toBe(50);
+      expect(dto.track.bpm).toBe(60);
+    });
+
+    it("tempo proposé : il prime sur le recalcul", async () => {
+      const dto = await listOne({ proposedStyle: "Rumba", proposedBpm: 27 });
+      expect(dto.resultingBpm).toBe(27);
     });
   });
 

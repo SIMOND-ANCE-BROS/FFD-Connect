@@ -1,4 +1,6 @@
 import { NotFoundException } from "@nestjs/common";
+import { GUARDS_METADATA } from "@nestjs/common/constants";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import {
   TrackCorrectionReason,
   TrackCorrectionStatus,
@@ -108,6 +110,20 @@ describe("TrackReportController (POST /tracks/:id/report, historique)", () => {
   );
 
   beforeEach(() => jest.clearAllMocks());
+
+  it.each([
+    ["TrackReportController.report", TrackReportController.prototype.report],
+    [
+      "TrackCorrectionsController.create",
+      TrackCorrectionsController.prototype.create,
+    ],
+  ])("%s est limité par utilisateur (10/min)", (_name, handler) => {
+    const guards = Reflect.getMetadata(GUARDS_METADATA, handler) as unknown[];
+    expect(guards).toContain(ThrottlerUserGuard);
+    // @nestjs/throttler stocke la limite sous `THROTTLER:LIMIT<nom>`.
+    expect(Reflect.getMetadata("THROTTLER:LIMITdefault", handler)).toBe(10);
+    expect(Reflect.getMetadata("THROTTLER:TTLdefault", handler)).toBe(60_000);
+  });
 
   it("crée une proposition à partir du signalement", async () => {
     service.createFromLegacyReport.mockResolvedValue(undefined);

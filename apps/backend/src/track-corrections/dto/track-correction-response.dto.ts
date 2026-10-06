@@ -108,6 +108,13 @@ class TrackCorrectionCommonDto {
 
 /** Proposition vue par un administrateur (file de modération). */
 export class TrackCorrectionAdminDto extends TrackCorrectionCommonDto {
+  @ApiProperty({
+    description:
+      "MPM qu'aura la musique si la proposition est validée telle quelle (sans `bpm` dans le corps de approve). Diffère de `track.bpm` notamment quand seule la danse change : le MPM est alors recalculé depuis le tempo brut détecté. Passer `bpm` à approve pour imposer une autre valeur (par exemple garder `track.bpm`). Calculé sur l'état ACTUEL de la musique, donc surtout pertinent pour une proposition en attente.",
+    example: 50,
+  })
+  resultingBpm!: number;
+
   @ApiProperty({ type: TrackCorrectionTrackSnapshotDto })
   track!: TrackCorrectionTrackSnapshotDto;
 

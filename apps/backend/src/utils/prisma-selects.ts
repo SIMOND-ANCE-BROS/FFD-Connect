@@ -256,6 +256,9 @@ export const trackCorrectionTrackSnapshotSelect = {
   artist: true,
   style: true,
   bpm: true,
+  // Tempo brut détecté : sert à calculer le MPM qui résultera d'une
+  // validation (changement de danse seul → MPM recalculé). Non renvoyé tel quel.
+  rawBpm: true,
   clashTimecodes: true,
   titleMasked: true,
   blacklisted: true,

@@ -16,9 +16,11 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
+import { Throttle } from "@nestjs/throttler";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { ReportTrackDto } from "../tracks/dto/report-track.dto";
 import { TrackCorrectionsService } from "./track-corrections.service";
 
@@ -38,8 +40,14 @@ import { TrackCorrectionsService } from "./track-corrections.service";
 export class TrackReportController {
   constructor(private readonly service: TrackCorrectionsService) {}
 
+  /**
+   * Même borne que POST /track-corrections : 10 par minute et par
+   * utilisateur. Le plafond métier (propositions en attente) reste silencieux
+   * ici (204) pour ne pas imposer un nouveau code d'échec aux anciens clients.
+   */
   @Post(":id/report")
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ThrottlerUserGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
