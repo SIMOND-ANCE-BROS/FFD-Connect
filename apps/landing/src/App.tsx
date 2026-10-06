@@ -311,6 +311,7 @@ function SiteFooter({ appUrl, docsUrl }: { appUrl: string; docsUrl: string }) {
           <a href={`${import.meta.env.BASE_URL}confidentialite/`}>Confidentialité</a>
           <a href={`${import.meta.env.BASE_URL}cgu/`}>CGU</a>
           <a href={`${import.meta.env.BASE_URL}mentions-legales/`}>Mentions légales</a>
+          <a href={`${import.meta.env.BASE_URL}suppression-compte/`}>Supprimer son compte</a>
         </nav>
         <p className="site-footer__legal">
           Projet indépendant — non affilié à la Fédération Française de Danse
