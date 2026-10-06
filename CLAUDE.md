@@ -39,8 +39,7 @@ docker compose --profile infra up -d  # Start Postgres + Redis
 pnpm api:sync               # Export Swagger + regenerate client types
 
 # Fresh environment: a plain install just works — the backend generates its
-# Prisma client via postinstall, and the youtube-dl binary download is opt-in
-# (only tools/track-prep needs it: pnpm rebuild youtube-dl-exec)
+# Prisma client via postinstall
 pnpm install --frozen-lockfile
 ```
 
