@@ -179,18 +179,15 @@ module.exports = {
       backgroundColor: "#ffffff",
     },
     assetBundlePatterns: ["**/*"],
-    // EAS Update (OTA) - runtimeVersion doit être aligné avec le binaire
-    //
-    // Volontairement PAS bumpé en rallumant Firebase. Le réflexe serait de le
-    // faire (l'AppDelegate gagne [FIRApp configure] quand les plugins
-    // s'appliquent), mais les plugins sont gatés sur la présence d'un fichier
-    // de config : aucune variante non-prod n'en a encore, donc leur binaire ne
-    // change pas. Bumper aurait seulement coupé toutes les OTA vers le build
-    // TestFlight 2.5.0, en échange d'un build natif payant, sans rien protéger.
-    // Le vrai garde-fou est loadHandler() au runtime, qui rend pushRegistration
-    // inerte quand le module natif est absent. À bumper le jour où les fichiers
-    // par variante atterrissent et changent réellement le binaire.
-    runtimeVersion: "2.5.0",
+    // EAS Update (OTA) : une OTA n'atteint que les binaires de même
+    // runtimeVersion. `fingerprint` la calcule à partir de tout ce qui façonne
+    // le binaire (modules natifs, plugins, config) : elle change d'elle-même
+    // quand un build natif devient nécessaire, plus de bump manuel à décider.
+    // Les numéros de version sont exclus du calcul (fingerprint.config.js).
+    // Piège : l'empreinte dépend d'EXPO_PUBLIC_APP_ENV (bundle id, icône). Une
+    // OTA calculée avec la mauvaise variante n'atteint aucun appareil, sans
+    // erreur — d'où scripts/check-ota-reach.sh après chaque `eas update` en CI.
+    runtimeVersion: { policy: "fingerprint" },
     updates: {
       url: "https://u.expo.dev/1138b975-113e-4fac-a7c8-f82fd5eef296",
     },

@@ -1,5 +1,6 @@
 const path = require("path");
 const fs = require("fs");
+const { execFileSync } = require("child_process");
 const { getDefaultConfig } = require("expo/metro-config");
 const { getSentryExpoConfig } = require("@sentry/react-native/metro");
 const {
@@ -19,6 +20,30 @@ const babelRuntimeRoot = path.resolve(
   "@babel",
   "runtime",
 );
+
+/**
+ * SHA git du JS embarqué, affiché dans Réglages → Informations techniques et
+ * joint aux retours : c'est lui qui relie l'app aux tags et releases GitHub.
+ * Exposé en EXPO_PUBLIC_* AVANT le chargement des workers de transformation,
+ * qui l'inlinent dans le bundle. EAS Build fournit EAS_BUILD_GIT_COMMIT_HASH
+ * (l'archive envoyée au builder n'a pas de .git) ; ailleurs — `eas update` en
+ * CI, deploy-dev, dev local — git est disponible.
+ */
+if (!process.env.EXPO_PUBLIC_GIT_SHA) {
+  let sha = process.env.EAS_BUILD_GIT_COMMIT_HASH;
+  if (!sha) {
+    try {
+      sha = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: __dirname,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }).trim();
+    } catch {
+      sha = "";
+    }
+  }
+  if (sha) process.env.EXPO_PUBLIC_GIT_SHA = sha.slice(0, 7);
+}
 
 const expoConfig = getDefaultConfig(__dirname);
 const sentryConfig = getSentryExpoConfig(__dirname);

@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import * as Device from "expo-device";
+import * as Application from "expo-application";
 import Constants from "expo-constants";
 
 const LOCAL_IP: string =
@@ -16,35 +17,38 @@ export const IS_PROD = APP_ENV === "production";
 export const IS_PREVIEW = APP_ENV === "preview";
 
 /**
- * Vraies infos de version, lues depuis le binaire natif via expo-constants
- * (version-matchée au SDK par Expo). `version` = version marketing (app.config),
- * `build` = numéro de build natif (incrémenté par EAS), `runtime` = runtimeVersion
- * (canal OTA). Affichées dans Réglages → Informations techniques.
+ * Identité du binaire, au format des stores et des tags `beta-<version>-<build>` :
+ * version marketing + numéro de build NATIFS, ceux que TestFlight et Play
+ * affichent. Pas `expoConfig` : sous OTA il vient du manifeste de la mise à
+ * jour, et `android.versionCode` y vaut 1 en dur.
  */
-export const APP_VERSION: string = Constants.expoConfig?.version ?? "1.0.0";
-const buildRaw: unknown =
-  Platform.OS === "ios"
-    ? Constants.expoConfig?.ios?.buildNumber
-    : Constants.expoConfig?.android?.versionCode;
-export const APP_BUILD: string =
-  typeof buildRaw === "string"
-    ? buildRaw
-    : typeof buildRaw === "number"
-      ? String(buildRaw)
-      : typeof Constants.nativeBuildVersion === "string"
-        ? Constants.nativeBuildVersion
-        : "";
+export const APP_VERSION: string =
+  Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "";
+export const APP_BUILD: string = Application.nativeBuildVersion ?? "";
+/** « 1.0.0 (85) » : le libellé de TestFlight et de Play. */
+export const APP_VERSION_LABEL: string = APP_BUILD
+  ? `${APP_VERSION} (${APP_BUILD})`
+  : APP_VERSION;
+/** SHA git (7 caractères) du JS qui tourne, celui des tags et releases. Posé par metro.config.js. */
+export const APP_GIT_SHA: string =
+  (process.env.EXPO_PUBLIC_GIT_SHA as string | undefined) ?? "";
 const rawRuntime = Constants.expoConfig?.runtimeVersion;
 export const APP_RUNTIME_VERSION: string =
   typeof rawRuntime === "string" ? rawRuntime : "";
-/** Libellé lisible de l'environnement (beta / production / dev). */
-export function envLabel(env: string): string {
+/**
+ * Libellé de la variante, une par canal EAS : preview et beta sont deux apps
+ * distinctes (bundle ids, canaux, distribution), elles ne partagent pas de nom.
+ */
+export function envLabel(env: string, os: string = Platform.OS): string {
   switch (env) {
     case "production":
       return "Production";
-    case "preview":
     case "beta":
-      return "Bêta";
+      return os === "android"
+        ? "Bêta (Google Play, test fermé)"
+        : "Bêta (TestFlight)";
+    case "preview":
+      return "Preview (staging)";
     default:
       return "Développement";
   }

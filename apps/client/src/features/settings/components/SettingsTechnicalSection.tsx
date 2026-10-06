@@ -1,7 +1,7 @@
 import { ChevronRight, Info, MessageSquare } from "lucide-react-native";
 import React from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import { APP_BUILD, APP_VERSION } from "../../../config";
+import { APP_VERSION_LABEL } from "../../../config";
 import { AppTheme } from "../../../context/ThemeContext";
 import { styles } from "./settings.styles";
 
@@ -70,8 +70,7 @@ export const SettingsTechnicalSection: React.FC<
     {/* Version Info Footer */}
     <View style={styles.footer}>
       <Text style={[styles.versionText, { color: theme.textSecondary }]}>
-        FFD Connect v{APP_VERSION}
-        {APP_BUILD ? ` (${APP_BUILD})` : ""}
+        FFD Connect {APP_VERSION_LABEL}
       </Text>
     </View>
   </>

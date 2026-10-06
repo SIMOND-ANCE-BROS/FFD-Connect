@@ -191,8 +191,12 @@ describe("useSettingsLogic", () => {
       expect(body).toContain("iOS 18.0");
       expect(body).not.toContain("Browser");
       expect(body).not.toContain("iOS Web");
-      // Bundle : en test isEnabled=false → libellé dev explicite
-      expect(body).toContain("Bundle : dev");
+      // Mêmes identifiants que TestFlight / Play (cf. utils/appIdentity)
+      expect(body).toContain("FFD Connect 1.0.0 (85)");
+      expect(body).toContain("Code : ");
+      expect(body).toContain("Compatibilité OTA : ");
+      // En test isEnabled=false → libellé dev explicite
+      expect(body).toContain("Mise à jour : dev");
       expect(body).toContain("Backend : En ligne 🟢");
     });
 

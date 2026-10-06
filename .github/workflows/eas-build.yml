@@ -109,7 +109,7 @@ jobs:
           # the client SDK was never generated and Metro failed to resolve it.
           # The fix then shipped with no native build to prove it, because this
           # very list did not mention the file.
-          NATIVE_PATTERNS="^(apps/client/app\.config|apps/client/app\.json|apps/client/eas\.json|apps/client/package\.json|apps/client/\.easignore|apps/client/openapi-ts\.config|apps/client/(ios|android|plugins|modules)/|patches/|pnpm-lock\.yaml)"
+          NATIVE_PATTERNS="^(apps/client/app\.config|apps/client/app\.json|apps/client/eas\.json|apps/client/package\.json|apps/client/\.easignore|apps/client/fingerprint\.config\.js|apps/client/openapi-ts\.config|apps/client/(ios|android|plugins|modules)/|patches/|pnpm-lock\.yaml)"
           if echo "$CHANGED_FILES" | grep -qE "$NATIVE_PATTERNS"; then
             NATIVE="true"
           fi
@@ -146,6 +146,8 @@ jobs:
           COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}
         # --environment injecte les vars EAS server (EXPO_PUBLIC_API_URL…) dans
         # le bundle. Sans lui, l'URL API est vide → "Network Error" au login.
+        # Pas de check-ota-reach : les profils dev client n'ont pas de canal dans
+        # eas.json et se rebuildent à la main, le contrôle avertirait toujours.
         run: eas update --branch development --environment development --message "$COMMIT_MSG"
 
   # ============================================================
@@ -207,7 +209,12 @@ jobs:
         # --environment preview : sans lui l'URL API n'est pas embarquée dans le
         # bundle OTA (les env de eas.json ne valent que pour `eas build`), d'où
         # "Network Error" au login sur la preview après une promotion.
-        run: eas update --branch preview --environment preview --message "$COMMIT_MSG"
+        run: |
+          set -euo pipefail
+          eas update --branch preview --environment preview --message "$COMMIT_MSG" \
+            --json --non-interactive > "$RUNNER_TEMP/eas-update.json"
+          # Avertit seulement : build-staging tourne peut-être en parallèle.
+          ../../scripts/check-ota-reach.sh preview "$RUNNER_TEMP/eas-update.json"
 
   # ============================================================
   # PROMOTION MANUELLE — staging → TestFlight beta
@@ -327,19 +334,33 @@ jobs:
         id: ota
         if: inputs.action == 'ota'
         working-directory: apps/client
-        # Beta partage l'API + les clés de l'environnement `preview` (mêmes Google
-        # Maps/Places, Sentry, WAKE_KEY) mais garde APP_ENV=beta (identité + pas de
-        # features preview-only). `--environment preview` charge ces vars server EAS
-        # dans le bundle OTA — SANS lui, les clés Google étaient absentes → carte et
-        # recherche d'adresse cassées sur beta. L'override EXPO_PUBLIC_APP_ENV=beta
-        # ci-dessous vise à repasser l'identité en beta.
-        # ATTENTION (à valider au 1er OTA beta réel) : si `--environment` l'emporte
-        # sur l'env inline, APP_ENV resterait "preview" (→ outils preview-only
-        # visibles en beta). Le fix pleinement robuste = un environnement EAS "beta"
-        # dédié (côté Expo). En attendant, `action: build` reste la voie validée.
+        # Beta partage l'API + les clés de l'environnement EAS `preview` (Google
+        # Maps/Places, Sentry, WAKE_KEY) mais reste la variante beta. Pas de
+        # `--environment preview` : il impose aussi EXPO_PUBLIC_APP_ENV=preview,
+        # qui l'emporte sur la valeur passée ici (vérifié). L'OTA était alors
+        # calculée pour la variante preview : identité fausse, et avec la
+        # runtimeVersion `fingerprint`, une empreinte qu'aucun build beta n'a —
+        # l'OTA n'aurait atteint personne. On récupère donc les variables dans
+        # .env.local (chargé par le bundler, qui ne surcharge jamais une variable
+        # déjà posée), sans EXPO_PUBLIC_APP_ENV, et on pose beta nous-mêmes.
         env:
           EXPO_PUBLIC_APP_ENV: beta
-        run: eas update --branch beta --environment preview --message "promote staging @ $(git rev-parse --short HEAD)"
+        run: |
+          set -euo pipefail
+          eas env:pull --environment preview --non-interactive --path .env.local
+          sed -i '/^EXPO_PUBLIC_APP_ENV=/d' .env.local
+          # Bloquant, et AVANT de publier : rien ne build en parallèle ici, une
+          # OTA sans build beta compatible est forcément une erreur.
+          for p in ios android; do
+            RUNTIME=$(eas fingerprint:generate --platform "$p" --json --non-interactive \
+              | sed -n '/^{/,$p' | jq -r .hash)
+            echo "{\"platform\":\"$p\",\"runtimeVersion\":\"$RUNTIME\"}"
+          done | jq -s . > "$RUNNER_TEMP/beta-runtime.json"
+          ../../scripts/check-ota-reach.sh beta "$RUNNER_TEMP/beta-runtime.json" --strict
+          eas update --branch beta --message "promote staging @ $(git rev-parse --short HEAD)" \
+            --json --non-interactive > "$RUNNER_TEMP/eas-update.json"
+          # Contrôle après coup : l'empreinte publiée est-elle bien celle vérifiée ?
+          ../../scripts/check-ota-reach.sh beta "$RUNNER_TEMP/eas-update.json" --strict
 
       # Published, not drafted: a draft release does NOT create its tag, and the
       # tag is how we check out what a beta actually contained. `--prerelease`
@@ -462,4 +483,9 @@ jobs:
         env:
           COMMIT_MSG: ${{ github.event.workflow_run.head_commit.message }}
         # --environment production : embarque l'URL API prod dans le bundle OTA.
-        run: eas update --branch production --environment production --message "$COMMIT_MSG"
+        run: |
+          set -euo pipefail
+          eas update --branch production --environment production --message "$COMMIT_MSG" \
+            --json --non-interactive > "$RUNNER_TEMP/eas-update.json"
+          # Avertit seulement : build-production tourne peut-être en parallèle.
+          ../../scripts/check-ota-reach.sh production "$RUNNER_TEMP/eas-update.json"
