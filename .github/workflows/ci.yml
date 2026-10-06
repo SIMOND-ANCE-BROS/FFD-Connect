@@ -17,7 +17,7 @@ concurrency:
 jobs:
   # ============================================================
   # JOB CLASSIFICATION (see docs/exploitation/ci-cd-minimal.md)
-  #   BLOCKING:       typecheck, lint-format, backend-test, backend-build, client, audit-dependencies, docs-build, build-image
+  #   BLOCKING:       typecheck, lint-format, backend-test, backend-build, client, audit-dependencies, docs-build, build-image, build-landing-image
   #   INFORMATIONAL:  playwright-e2e (failure warns but does not block merge)
   #   Mutation testing runs in mutation-nightly.yml (weekly, full coverage) — not per-PR.
   # ============================================================
@@ -28,14 +28,19 @@ jobs:
   changes:
     name: Detect Changes
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       client: ${{ steps.filter.outputs.client }}
       landing: ${{ steps.filter.outputs.landing }}
       docs: ${{ steps.filter.outputs.docs }}
+      backend_image: ${{ steps.backend-image.outputs.build }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         # persist-credentials left on (default: true) so paths-filter can git fetch base branch
+        with:
+          # HEAD plus its parents: enough for the HEAD^1..HEAD diff below.
+          fetch-depth: 2
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v3
         id: filter
         with:
@@ -81,6 +86,45 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'package.json'
+
+      # Should this staging/master push build (and then deploy) the backend
+      # image? Same rule as the EAS gate (eas-build.yml): cascade pushes are
+      # merge commits whose first parent is the branch's previous tip, so
+      # HEAD^1..HEAD is exactly what the promotion brings. An explicit diff
+      # rather than paths-filter so the rule is the EAS gate's, and fails
+      # safe: not a merge commit, or no diff, means build.
+      # deploy-backend.yml deploys iff this run's build-image job succeeded, so
+      # this output is the single source of truth for both workflows.
+      # Paths = everything the backend Dockerfile copies, plus the deploy
+      # workflow itself (a change there must be exercised).
+      - name: Backend image needed?
+        id: backend-image
+        if: >-
+          github.event_name == 'push'
+          && (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')
+        run: |
+          set -uo pipefail
+          PATTERNS='^(apps/backend/|packages/shared/|packages/jest-config/|patches/|scripts/|apps/client/package\.json$|apps/landing/package\.json$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.npmrc$|\.dockerignore$|\.github/workflows/deploy-backend\.yml$)'
+          if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" -lt 3 ]; then
+            echo "Not a merge commit - building the backend image (fail-safe)"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! CHANGED=$(git diff --name-only HEAD^1 HEAD); then
+            echo "::warning::HEAD^1..HEAD diff failed - building the backend image (fail-safe)"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          MATCHED=$(echo "$CHANGED" | grep -E "$PATTERNS" || true)
+          if [ -n "$MATCHED" ]; then
+            echo "Backend-relevant changes in HEAD^1..HEAD:"
+            echo "$MATCHED"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No backend-relevant change in HEAD^1..HEAD: no image, no deploy" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # ============================================================
   # BACKEND TESTS — unit + integration + e2e (heavy, needs DB)  [BLOCKING]
@@ -523,18 +567,25 @@ jobs:
         run: pnpm typecheck
 
   # ============================================================
-  # DOCKER IMAGE — build + push to ACR (staging/master push only) [BLOCKING]
-  # Matrix: 2 images build in parallel (backend / landing). The Expo web image
-  # (apps/client/Dockerfile.web → ffd-connect-webapp) is no longer built: no
-  # Azure resource runs it and web is out of scope for the MVP (#681). The
-  # Playwright job exports the web bundle itself and never used this image.
-  # Buildx with registry cache: pulls layers from :latest tag, dramatically
-  # speeds up cascade rebuilds when source hasn't changed.
+  # DOCKER IMAGES — build + push to ACR (staging/master push only) [BLOCKING]
+  # Two separate jobs (backend / landing), each built only when the promoted
+  # change touches it. Not a matrix: deploy-backend.yml looks up the backend
+  # job by name in the triggering run, and a matrix job skipped as a whole
+  # loses its "(backend, …)" suffix.
+  # The landing image is not deployed by any workflow, but the Azure `landing`
+  # Container App (custom domain ffd.gabin-simond.fr, scale-to-zero) runs
+  # `ffd-connect-landing:latest`, which a new replica pulls on cold start: so
+  # pushing :latest IS how that site gets updated. The same site is also
+  # published to GitHub Pages by deploy-landing.yml.
+  # The Expo web image (apps/client/Dockerfile.web → ffd-connect-webapp) is not
+  # built: no Azure resource runs it and web is out of scope for the MVP (#681).
+  # Buildx with registry cache: pulls layers from :buildcache/:latest,
+  # dramatically speeds up cascade rebuilds when source hasn't changed.
   # ============================================================
   # ============================================================
   # Build the images on PRs — WITHOUT pushing.
-  # build-image below only runs on push to staging/master and logs into ACR,
-  # so a broken Dockerfile reached staging unnoticed and failed the whole
+  # The build-*-image jobs only run on push to staging/master and log into
+  # ACR, so a broken Dockerfile reached staging unnoticed and failed the whole
   # cascade (issue #841). Caught for real: the landing renders docs/legal/*.md
   # at build time, and `docs` + `*.md` were excluded from the build context, so
   # PR CI stayed green while the staging image build died on ENOENT.
@@ -581,36 +632,20 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
 
-  build-image:
-    name: Build & Push Docker Image
+  # Landing image: only when the push touches the landing (paths-filter
+  # `landing`; on a push it diffs against `before`, i.e. the previous tip).
+  # Skipping it leaves :latest — and so ffd.gabin-simond.fr — unchanged.
+  build-landing-image:
+    name: Build & Push Landing Image
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    needs: [changes, backend-test, backend-build, client]
-    # Always build on staging/master push — paths-filter returns false on
-    # fast-forward cascade merges (no diff vs the previous commit), so the
-    # upstream test jobs skip. The PR CI already validated the same code
-    # before merge, so we accept `success` OR `skipped` here, but block on
-    # any actual `failure`. Without `!cancelled()` the implicit success()
-    # default would skip this job whenever an upstream is `skipped`, which
-    # is exactly what happens on cascade merges — leaving deploy-backend to
-    # try to pull a non-existent SHA tag from ACR.
+    # lint-format covers the landing (it has no tests): a cold start pulls
+    # :latest straight onto the public site, so only push a linted build.
+    needs: [changes, lint-format]
     if: >-
-      !cancelled()
-      && github.event_name == 'push'
+      github.event_name == 'push'
       && (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')
-      && needs.changes.result == 'success'
-      && (needs.backend-test.result == 'success' || needs.backend-test.result == 'skipped')
-      && (needs.backend-build.result == 'success' || needs.backend-build.result == 'skipped')
-      && (needs.client.result == 'success' || needs.client.result == 'skipped')
-
-    strategy:
-      fail-fast: false
-      matrix:
-        image:
-          - name: backend
-            dockerfile: apps/backend/Dockerfile
-          - name: landing
-            dockerfile: apps/landing/Dockerfile
+      && needs.changes.outputs.landing == 'true'
 
     permissions:
       id-token: write
@@ -636,26 +671,105 @@ jobs:
           ACR_NAME: ${{ secrets.ACR_NAME }}
         run: az acr login --name "$ACR_NAME"
 
-      - name: Build and push ${{ matrix.image.name }} image
+      - name: Build and push landing image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         env:
           ACR_NAME: ${{ secrets.ACR_NAME }}
         with:
           context: .
-          file: ${{ matrix.image.dockerfile }}
+          file: apps/landing/Dockerfile
           push: true
           tags: |
-            ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-${{ matrix.image.name }}:${{ github.sha }}
-            ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-${{ matrix.image.name }}:latest
+            ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-landing:${{ github.sha }}
+            ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-landing:latest
+          cache-from: |
+            type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-landing:buildcache
+            type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-landing:latest
+          cache-to: type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-landing:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+        with:
+          image-ref: ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-landing:${{ github.sha }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '0'
+
+  build-image:
+    # The name must keep "Backend": deploy-backend.yml finds this job by name
+    # in the triggering run, including when it is skipped.
+    name: Build & Push Backend Image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: [changes, backend-test, backend-build, client]
+    # Build on a staging/master push only when it changes the backend
+    # (changes.outputs.backend_image, fail-safe true). Skipping is safe:
+    # deploy-backend.yml deploys only when this job succeeded, so a skipped
+    # build never leaves a deploy waiting on a tag that does not exist.
+    # paths-filter returns false on fast-forward cascade merges (no diff vs
+    # the previous commit), so the upstream test jobs skip. The PR CI already
+    # validated the same code before merge, so we accept `success` OR
+    # `skipped` here, but block on any actual `failure`. Without
+    # `!cancelled()` the implicit success() default would skip this job
+    # whenever an upstream is `skipped`, which is exactly what happens on
+    # cascade merges.
+    if: >-
+      !cancelled()
+      && github.event_name == 'push'
+      && (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')
+      && needs.changes.result == 'success'
+      && needs.changes.outputs.backend_image != 'false'
+      && (needs.backend-test.result == 'success' || needs.backend-test.result == 'skipped')
+      && (needs.backend-build.result == 'success' || needs.backend-build.result == 'skipped')
+      && (needs.client.result == 'success' || needs.client.result == 'skipped')
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to Azure Container Registry
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+        run: az acr login --name "$ACR_NAME"
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        env:
+          ACR_NAME: ${{ secrets.ACR_NAME }}
+        with:
+          context: .
+          file: apps/backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-backend:${{ github.sha }}
+            ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-backend:latest
           # Full-layer registry cache (mode=max caches ALL intermediate layers,
           # not just the final image like inline does). A dedicated :buildcache
           # tag keeps cache manifests out of the runtime :latest tag. On
           # unchanged source this turns a multi-minute build into a near-instant
           # cache hit. Fall back to :latest for the very first run.
           cache-from: |
-            type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-${{ matrix.image.name }}:buildcache
-            type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-${{ matrix.image.name }}:latest
-          cache-to: type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-${{ matrix.image.name }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+            type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-backend:buildcache
+            type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-backend:latest
+          cache-to: type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-backend:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
 
       # Scan the pushed image for OS/base-image CVEs (Trivy). pnpm audit only
       # covers npm deps, not the Alpine layer. Report-only (exit-code 0): results
@@ -668,7 +782,7 @@ jobs:
         env:
           ACR_NAME: ${{ secrets.ACR_NAME }}
         with:
-          image-ref: ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-${{ matrix.image.name }}:${{ github.sha }}
+          image-ref: ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-backend:${{ github.sha }}
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
@@ -682,6 +796,7 @@ jobs:
   ci-success:
     name: CI Success
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     if: always()
     needs:
       - backend-test
@@ -694,6 +809,7 @@ jobs:
       - playwright-e2e
       - build-image
       - docker-build-check
+      - build-landing-image
     steps:
       - name: Check job results
         env:
@@ -708,6 +824,7 @@ jobs:
             playwright-e2e=${{ needs.playwright-e2e.result }}
             build-image=${{ needs.build-image.result }}
             docker-build-check=${{ needs.docker-build-check.result }}
+            build-landing-image=${{ needs.build-landing-image.result }}
         run: |
           echo "$RESULTS"
           echo ""

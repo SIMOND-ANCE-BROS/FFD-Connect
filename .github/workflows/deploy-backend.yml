@@ -63,23 +63,54 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
       && github.event.workflow_run.event == 'push'
       && github.event.workflow_run.head_repository.full_name == github.repository
+    timeout-minutes: 15
+    # Reads the triggering CI run's jobs; nothing else.
+    permissions:
+      actions: read
     outputs:
       backend_changed: ${{ steps.check.outputs.backend_changed }}
       environment: ${{ steps.env.outputs.environment }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-          fetch-depth: 0
-
-      - name: Detect backend changes
+      # The decision "does this push change the backend?" is made ONCE, in
+      # ci.yml (`changes` job, output `backend_image`): for a merge commit it
+      # diffs HEAD^1..HEAD on the paths that shape the image, and fails safe
+      # (build) on anything else. build-image only builds and pushes the
+      # <sha> tag when that is true. Here we deploy iff the triggering CI run
+      # actually built that image, so we can never deploy a tag that does not
+      # exist, and the two workflows cannot disagree. Every skipped deploy is
+      # also a cold wake of the scale-to-zero app avoided.
+      - name: Detect whether CI built the backend image
         id: check
         env:
-          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
-          # Always deploy on cascade pushes — the previous-branch diff is empty
-          # on fast-forward merges, but the cumulative changes still need to ship.
-          echo "backend_changed=true" >> "$GITHUB_OUTPUT"
+          set -uo pipefail
+          # Latest attempt only (the API default), so a CI re-run is read as is.
+          # Name match is loose on purpose: older ci.yml revisions named the
+          # job "Build & Push Docker Image (backend, …)" through a matrix.
+          if ! RESULT=$(gh api "repos/$REPO/actions/runs/$RUN_ID/jobs?per_page=100" \
+            --jq '[.jobs[] | select((.name | startswith("Build & Push")) and (.name | test("backend"; "i")))
+                   | .conclusion] | first // "missing"'); then
+            echo "::warning::Could not read the CI run's jobs - deploying (fail-safe)"
+            echo "backend_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Backend image job in CI run $RUN_ID: $RESULT"
+          case "$RESULT" in
+            success)
+              echo "backend_changed=true" >> "$GITHUB_OUTPUT" ;;
+            skipped)
+              echo "No backend change in this push: image not built, nothing to deploy." \
+                | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "backend_changed=false" >> "$GITHUB_OUTPUT" ;;
+            *)
+              # Not found or any other state: keep the historic behaviour
+              # (deploy). A missing tag fails the smoke test and rolls back.
+              echo "::warning::Unexpected backend image job state '$RESULT' - deploying (fail-safe)"
+              echo "backend_changed=true" >> "$GITHUB_OUTPUT" ;;
+          esac
 
       - name: Determine environment
         id: env
@@ -99,6 +130,8 @@ jobs:
     needs: [gate]
     if: needs.gate.outputs.backend_changed == 'true' && needs.gate.outputs.environment == 'staging'
     runs-on: ubuntu-24.04
+    # update + up to 180 s of smoke test + log check + ACR purge + rollback.
+    timeout-minutes: 15
     # Binds the job to the GitHub Environment: records a deployment, surfaces
     # what is live in the Environments panel, and scopes this job's secrets.
     # No reviewer here on purpose — staging is the beta path and must stay fluid.
@@ -334,6 +367,9 @@ jobs:
     needs: [gate]
     if: needs.gate.outputs.backend_changed == 'true' && needs.gate.outputs.environment == 'production'
     runs-on: ubuntu-24.04
+    # update + up to 180 s of smoke test + log check + ACR purge + rollback
+    # (the reviewer wait on the `production` environment is not counted).
+    timeout-minutes: 15
     # CLAUDE.md: "Promotion to master [...] always require explicit user
     # approval". That rule was enforced by convention only — this job fires
     # automatically on a master push. The `production` environment carries a
