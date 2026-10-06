@@ -315,12 +315,73 @@ jobs:
       # development et la CLI cherche les credentials de fr.ffdanse.connect.dev
       # (cf. scripts/submit-beta.ts).
       - name: Submit to App Store Connect
+        id: submit
         if: inputs.action == 'build'
         working-directory: apps/client
         env:
           EXPO_PUBLIC_APP_ENV: beta
           BUILD_ID: ${{ steps.build.outputs.id }}
         run: eas submit --platform ios --profile beta --id "$BUILD_ID" --non-interactive --wait
+
+      - name: Publish OTA update (beta)
+        id: ota
+        if: inputs.action == 'ota'
+        working-directory: apps/client
+        # Beta partage l'API + les clés de l'environnement `preview` (mêmes Google
+        # Maps/Places, Sentry, WAKE_KEY) mais garde APP_ENV=beta (identité + pas de
+        # features preview-only). `--environment preview` charge ces vars server EAS
+        # dans le bundle OTA — SANS lui, les clés Google étaient absentes → carte et
+        # recherche d'adresse cassées sur beta. L'override EXPO_PUBLIC_APP_ENV=beta
+        # ci-dessous vise à repasser l'identité en beta.
+        # ATTENTION (à valider au 1er OTA beta réel) : si `--environment` l'emporte
+        # sur l'env inline, APP_ENV resterait "preview" (→ outils preview-only
+        # visibles en beta). Le fix pleinement robuste = un environnement EAS "beta"
+        # dédié (côté Expo). En attendant, `action: build` reste la voie validée.
+        env:
+          EXPO_PUBLIC_APP_ENV: beta
+        run: eas update --branch beta --environment preview --message "promote staging @ $(git rev-parse --short HEAD)"
+
+      # Published, not drafted: a draft release does NOT create its tag, and the
+      # tag is how we check out what a beta actually contained. `--prerelease`
+      # keeps these out of "latest release". Runs right after the binary reaches
+      # Apple (or the OTA is live), BEFORE the external distribution: a failed
+      # distribution must not leave a build in TestFlight with no tag.
+      #
+      # Tag = what testers see. A build is `beta-<version>-<build number>`, the
+      # pair TestFlight displays ("1.0.0 (85)"). An OTA is tagged too: without
+      # it the next changelog (built from the last `beta-*` tag) would announce
+      # changes testers already received.
+      - name: Tag & GitHub Release (beta, prerelease)
+        if: steps.submit.outcome == 'success' || steps.ota.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTION: ${{ inputs.action }}
+          BUILD_NUMBER: ${{ steps.build.outputs.number }}
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          VERSION=$(sed -nE 's/.*version: "([^"]+)", \/\/ x-release-please-version.*/\1/p' apps/client/app.config.js)
+          if [ -z "$VERSION" ]; then
+            echo "::error::version introuvable dans apps/client/app.config.js (annotation x-release-please-version)"
+            exit 1
+          fi
+          if [ "$ACTION" = "build" ]; then
+            TAG="beta-$VERSION-$BUILD_NUMBER"
+            TITLE="Beta $VERSION ($BUILD_NUMBER)"
+          else
+            TAG="beta-$VERSION-ota-$(date +%Y%m%d)-${SHA:0:7}"
+            TITLE="Beta $VERSION — OTA ${SHA:0:7}"
+          fi
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::notice::Release $TAG déjà présente (relance) — rien à faire."
+          else
+            gh release create "$TAG" \
+              --title "$TITLE" \
+              --notes-file beta-notes.md \
+              --prerelease \
+              --target "$SHA"
+          fi
+          echo "🏷️ Tag \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
 
       # `eas submit --groups` ne vise que les groupes INTERNES : le groupe
       # EXTERNE et la Beta App Review passent par l'API App Store Connect.
@@ -337,42 +398,6 @@ jobs:
           pnpm testflight:distribute --build-number "$BUILD_NUMBER" --notes-file beta-notes.txt
           echo "✅ Build $BUILD_NUMBER ajouté au groupe « Beta FFD » et soumis à la Beta App Review" \
             >> "$GITHUB_STEP_SUMMARY"
-
-      # Published, not drafted. A draft release does NOT create its tag: the
-      # three drafts sitting in this repo since July reference tags
-      # (beta-20260720-9fcffc8 and friends) that do not exist, so `git tag` is
-      # empty and there is no way to check out what a given TestFlight build
-      # actually contained. The tag is the whole point during a beta — publish
-      # it. `--prerelease` still keeps these out of "latest release".
-      - name: Create GitHub Release (beta, prerelease)
-        if: inputs.action == 'build'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          TAG="beta-$(date +%Y%m%d)-$(git rev-parse --short HEAD)"
-          gh release create "$TAG" \
-            --title "Beta $TAG" \
-            --notes-file beta-notes.md \
-            --prerelease \
-            --target "$(git rev-parse HEAD)"
-
-      - name: Publish OTA update (beta)
-        if: inputs.action == 'ota'
-        working-directory: apps/client
-        # Beta partage l'API + les clés de l'environnement `preview` (mêmes Google
-        # Maps/Places, Sentry, WAKE_KEY) mais garde APP_ENV=beta (identité + pas de
-        # features preview-only). `--environment preview` charge ces vars server EAS
-        # dans le bundle OTA — SANS lui, les clés Google étaient absentes → carte et
-        # recherche d'adresse cassées sur beta. L'override EXPO_PUBLIC_APP_ENV=beta
-        # ci-dessous vise à repasser l'identité en beta.
-        # ATTENTION (à valider au 1er OTA beta réel) : si `--environment` l'emporte
-        # sur l'env inline, APP_ENV resterait "preview" (→ outils preview-only
-        # visibles en beta). Le fix pleinement robuste = un environnement EAS "beta"
-        # dédié (côté Expo). En attendant, `action: build` reste la voie validée.
-        env:
-          EXPO_PUBLIC_APP_ENV: beta
-        run: eas update --branch beta --environment preview --message "promote staging @ $(git rev-parse --short HEAD)"
 
   # ============================================================
   # MASTER — Production (réservé au lancement App Store public).

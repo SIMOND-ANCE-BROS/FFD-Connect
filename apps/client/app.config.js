@@ -168,7 +168,8 @@ module.exports = {
     name: APP_NAME,
     slug: "ffd-connect",
     scheme: "ffdconnect",
-    version: "1.0.0",
+    // Version marketing (TestFlight / App Store), bumpée par release-please.
+    version: "1.0.0", // x-release-please-version
     orientation: "portrait",
     icon: APP_ICON,
     userInterfaceStyle: "automatic",
