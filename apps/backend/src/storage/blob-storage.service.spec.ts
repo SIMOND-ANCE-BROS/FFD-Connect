@@ -1,6 +1,8 @@
 import { ConfigService } from "@nestjs/config";
+import { ServiceUnavailableException } from "@nestjs/common";
 import { BlobServiceClient } from "@azure/storage-blob";
 import { Readable } from "stream";
+import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
 import { BlobStorageService } from "./blob-storage.service";
 
 jest.mock("@azure/storage-blob", () => ({
@@ -12,6 +14,7 @@ describe("BlobStorageService (read helpers)", () => {
   const blockBlob = {
     getProperties: jest.fn(),
     download: jest.fn(),
+    deleteIfExists: jest.fn(),
   };
   const containerClient = {
     containerName: "tracks",
@@ -21,15 +24,20 @@ describe("BlobStorageService (read helpers)", () => {
     getContainerClient: jest.fn().mockReturnValue(containerClient),
   };
 
+  /** Disjoncteur passant : enregistre la clé puis exécute l'opération. */
+  const fire = jest.fn(<T>(_key: string, fn: () => Promise<T>) => fn());
+  const circuitBreaker = { fire } as unknown as CircuitBreakerService;
+
   function makeService(env: Record<string, string | undefined>) {
     const config = {
       get: jest.fn((key: string) => env[key]),
     } as unknown as ConfigService;
-    return new BlobStorageService(config);
+    return new BlobStorageService(config, circuitBreaker);
   }
 
   beforeEach(() => {
     jest.clearAllMocks();
+    fire.mockImplementation((_key, fn) => fn());
     (BlobServiceClient.fromConnectionString as jest.Mock).mockReturnValue(
       serviceClient,
     );
@@ -118,6 +126,90 @@ describe("BlobStorageService (read helpers)", () => {
       await expect(svc.downloadRange("a.mp3", 0, 1)).rejects.toThrow(
         "has no readable stream",
       );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // deleteFile (#79) — primitive d'effacement RGPD : service externe, donc
+  // circuit breaker + timeout (CLAUDE.md « External services » / ADR-0009).
+  // -------------------------------------------------------------------------
+
+  describe("deleteFile", () => {
+    it("deletes the blob from the requested container", async () => {
+      blockBlob.deleteIfExists.mockResolvedValue({ succeeded: true });
+      const svc = makeService({ AZURE_STORAGE_CONNECTION_STRING: "x" });
+
+      await expect(svc.deleteFile("doc-1.pdf", "uploads")).resolves.toBe(true);
+      expect(serviceClient.getContainerClient).toHaveBeenCalledWith("uploads");
+      expect(containerClient.getBlockBlobClient).toHaveBeenCalledWith(
+        "doc-1.pdf",
+      );
+      expect(blockBlob.deleteIfExists).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports false when the blob was already gone", async () => {
+      blockBlob.deleteIfExists.mockResolvedValue({ succeeded: false });
+      const svc = makeService({ AZURE_STORAGE_CONNECTION_STRING: "x" });
+
+      await expect(svc.deleteFile("ghost.pdf", "uploads")).resolves.toBe(false);
+    });
+
+    it("falls back to the default container", async () => {
+      blockBlob.deleteIfExists.mockResolvedValue({ succeeded: true });
+      const svc = makeService({ AZURE_STORAGE_CONNECTION_STRING: "x" });
+
+      await svc.deleteFile("a.mp3");
+      expect(serviceClient.getContainerClient).toHaveBeenCalledWith("tracks");
+    });
+
+    it("runs the Azure call through the azure-blob circuit breaker", async () => {
+      blockBlob.deleteIfExists.mockResolvedValue({ succeeded: true });
+      const svc = makeService({ AZURE_STORAGE_CONNECTION_STRING: "x" });
+
+      await svc.deleteFile("doc-1.pdf", "uploads");
+
+      expect(fire).toHaveBeenCalledTimes(1);
+      expect(fire).toHaveBeenCalledWith("azure-blob", expect.any(Function));
+    });
+
+    it("propagates an open circuit without calling Azure", async () => {
+      fire.mockRejectedValue(
+        new ServiceUnavailableException("azure-blob open"),
+      );
+      const svc = makeService({ AZURE_STORAGE_CONNECTION_STRING: "x" });
+
+      await expect(svc.deleteFile("doc-1.pdf", "uploads")).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+      expect(blockBlob.deleteIfExists).not.toHaveBeenCalled();
+    });
+
+    it("rejects instead of hanging when Azure never answers", async () => {
+      jest.useFakeTimers();
+      try {
+        // Azure ne répond jamais : sans `withTimeout`, l'effacement RGPD
+        // resterait suspendu sur la requête HTTP de l'utilisateur.
+        blockBlob.deleteIfExists.mockReturnValue(new Promise(() => {}));
+        const svc = makeService({ AZURE_STORAGE_CONNECTION_STRING: "x" });
+
+        const pending = svc.deleteFile("doc-1.pdf", "uploads");
+        const assertion = expect(pending).rejects.toThrow(/timed out/);
+        await jest.advanceTimersByTimeAsync(8_000);
+        await assertion;
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("does not open the circuit when storage is simply unconfigured", async () => {
+      const svc = makeService({});
+
+      await expect(svc.deleteFile("doc-1.pdf", "uploads")).rejects.toThrow(
+        "Blob storage not configured",
+      );
+      // Une erreur de configuration locale ne doit pas compter comme une
+      // panne Azure dans le taux d'échec du disjoncteur.
+      expect(fire).not.toHaveBeenCalled();
     });
   });
 });

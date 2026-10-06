@@ -3,6 +3,15 @@ import { ConfigService } from "@nestjs/config";
 import { BlobServiceClient, ContainerClient } from "@azure/storage-blob";
 import { DefaultAzureCredential } from "@azure/identity";
 import { Readable } from "stream";
+import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
+import { withTimeout } from "../utils/timeout.utils";
+
+/**
+ * Borne du seul appel réseau de `deleteFile`. Plus court que le timeout du
+ * disjoncteur `azure-blob` (10 s) : une suppression est une requête unitaire
+ * sans corps, pas un transfert.
+ */
+const BLOB_DELETE_TIMEOUT_MS = 8_000;
 
 export interface BlobFileProperties {
   size: number;
@@ -27,7 +36,10 @@ export class BlobStorageService {
   private readonly defaultContainer: string;
   private readonly uploadsContainer: string;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    private readonly circuitBreaker: CircuitBreakerService,
+  ) {
     const connectionString = this.config.get<string>(
       "AZURE_STORAGE_CONNECTION_STRING",
     );
@@ -172,11 +184,34 @@ export class BlobStorageService {
   /**
    * Supprime un blob s'il existe. No-op silencieux si le blob est absent.
    * Retourne true si un blob a bien été supprimé.
+   *
+   * Seule méthode de ce service à porter sa propre protection (circuit breaker
+   * opossum `azure-blob` + `withTimeout`, convention projet / ADR-0009), parce
+   * qu'elle est la primitive d'effacement partagée : l'oubli RGPD (art. 17,
+   * #79) l'appelle depuis un chemin HTTP et la purge programmée (#62) la
+   * réutilisera. La protéger ici évite que chaque appelant ait à la ré-emballer
+   * — et à oublier de le faire. Les méthodes de lecture, elles, restent de
+   * simples adaptateurs : leur seul appelant exposé (`uploads-fallback`) les
+   * enveloppe déjà sur la même clé, et les emballer ici imbriquerait deux
+   * disjoncteurs sur le même circuit.
+   *
+   * `getContainer` est appelé HORS du disjoncteur : une absence de
+   * configuration est une erreur locale, pas une panne Azure, et ne doit pas
+   * compter dans le taux d'échec du circuit.
+   *
+   * @throws ServiceUnavailableException si le circuit est ouvert, et toute
+   * erreur Azure ou de timeout sinon. L'appelant décide de la dégradation.
    */
   async deleteFile(blobName: string, container?: string): Promise<boolean> {
     const containerClient = this.getContainer(container);
     const blockBlob = containerClient.getBlockBlobClient(blobName);
-    const response = await blockBlob.deleteIfExists();
+    const response = await this.circuitBreaker.fire("azure-blob", () =>
+      withTimeout(
+        blockBlob.deleteIfExists(),
+        BLOB_DELETE_TIMEOUT_MS,
+        `blob delete ${blobName}`,
+      ),
+    );
     if (response.succeeded) {
       this.logger.log(
         `Deleted ${blobName} from ${containerClient.containerName}`,
