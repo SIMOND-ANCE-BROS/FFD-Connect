@@ -53,7 +53,14 @@ describe("TrackCorrectionsController", () => {
     await expect(
       controller.create(dto, req("u1", "LICENSEE")),
     ).resolves.toEqual({ id: "c1" });
-    expect(service.create).toHaveBeenCalledWith("u1", dto);
+    expect(service.create).toHaveBeenCalledWith("u1", dto, false);
+  });
+
+  it("create transmet le statut admin (accès à toute piste)", async () => {
+    service.create.mockResolvedValue({ id: "c1" });
+    const dto = { trackId: "t1", reason: TrackCorrectionReason.MPM, bpm: 62 };
+    await controller.create(dto, req("a1", "ADMIN"));
+    expect(service.create).toHaveBeenCalledWith("a1", dto, true);
   });
 
   it("list délègue la requête filtrée", async () => {
@@ -137,6 +144,23 @@ describe("TrackReportController (POST /tracks/:id/report, historique)", () => {
       ReportTrackReason.TITLE,
       "typo",
       "u1",
+      false,
+    );
+  });
+
+  it("transmet le statut admin (accès à toute piste)", async () => {
+    service.createFromLegacyReport.mockResolvedValue(undefined);
+    await controller.report(
+      "t1",
+      { reason: ReportTrackReason.OTHER },
+      req("a1", "ADMIN"),
+    );
+    expect(service.createFromLegacyReport).toHaveBeenCalledWith(
+      "t1",
+      ReportTrackReason.OTHER,
+      undefined,
+      "a1",
+      true,
     );
   });
 

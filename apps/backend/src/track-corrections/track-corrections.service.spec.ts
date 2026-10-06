@@ -11,11 +11,17 @@ import {
   Prisma,
   TrackCorrectionReason,
   TrackCorrectionStatus,
+  TrackStatus,
 } from "@prisma/client";
 import {
   createMockPrismaService,
   MockPrismaService,
 } from "../../test/mocks/prisma.mock";
+import {
+  HIDDEN_TRACK_CASES,
+  TrackRow,
+  useTrackTable,
+} from "../../test/mocks/track-where.mock";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { TracksService } from "../tracks/tracks.service";
@@ -36,6 +42,13 @@ const TRACK = {
   clashTimecodes: [40, 12.5],
   titleMasked: false,
   blacklisted: false,
+};
+
+/** TRACK as an in-memory library row (READY, not Ambiance, not blacklisted). */
+const LIBRARY_ROW: TrackRow = {
+  ...TRACK,
+  id: "t1",
+  status: TrackStatus.READY,
 };
 
 const createdRow = (overrides: Record<string, unknown> = {}) => ({
@@ -120,7 +133,7 @@ describe("TrackCorrectionsService", () => {
   });
 
   const givenTrack = (track: typeof TRACK | null = TRACK) =>
-    prisma.track.findUnique.mockResolvedValue(track as never);
+    prisma.track.findFirst.mockResolvedValue(track as never);
   const givenAdmins = (ids: string[]) =>
     prisma.user.findMany.mockResolvedValue(ids.map((id) => ({ id })) as never);
   const createData = () =>
@@ -148,16 +161,37 @@ describe("TrackCorrectionsService", () => {
       expect(tx.trackCorrection.create).not.toHaveBeenCalled();
     });
 
-    it("404 si la piste est blacklistée", async () => {
-      givenTrack({ ...TRACK, blacklisted: true });
-      await expect(
-        service.create("u1", {
-          trackId: "t1",
-          reason: TrackCorrectionReason.MPM,
-          bpm: 62,
-        }),
-      ).rejects.toThrow(NotFoundException);
+    const dto = {
+      trackId: "t1",
+      reason: TrackCorrectionReason.MPM,
+      bpm: 62,
+    };
+
+    it.each(HIDDEN_TRACK_CASES)(
+      "non-admin : piste %s → même 404 qu'une piste absente",
+      async (_label, override) => {
+        useTrackTable(prisma, [{ ...LIBRARY_ROW, ...override }]);
+        await expect(service.create("u1", dto)).rejects.toThrow(
+          new NotFoundException("Track t1 not found"),
+        );
+        expect(tx.trackCorrection.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it("non-admin : piste de la bibliothèque acceptée", async () => {
+      useTrackTable(prisma, [LIBRARY_ROW]);
+      await service.create("u1", dto, false);
+      expect(tx.trackCorrection.create).toHaveBeenCalled();
     });
+
+    it.each(HIDDEN_TRACK_CASES)(
+      "admin : piste %s toujours atteignable",
+      async (_label, override) => {
+        useTrackTable(prisma, [{ ...LIBRARY_ROW, ...override }]);
+        await service.create("admin-1", dto, true);
+        expect(tx.trackCorrection.create).toHaveBeenCalled();
+      },
+    );
 
     it("400 sans valeur différente ni message", async () => {
       await expect(
@@ -525,6 +559,35 @@ describe("TrackCorrectionsService", () => {
           "u1",
         ),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it.each(HIDDEN_TRACK_CASES)(
+      "non-admin : piste %s → même 404 qu'une piste absente",
+      async (_label, override) => {
+        useTrackTable(prisma, [{ ...LIBRARY_ROW, ...override }]);
+        await expect(
+          service.createFromLegacyReport(
+            "t1",
+            TrackCorrectionReason.OTHER,
+            undefined,
+            "u1",
+          ),
+        ).rejects.toThrow(new NotFoundException("Track t1 not found"));
+        expect(tx.trackCorrection.create).not.toHaveBeenCalled();
+        expect(notifications.createForUser).not.toHaveBeenCalled();
+      },
+    );
+
+    it("admin : peut signaler une piste hors bibliothèque", async () => {
+      useTrackTable(prisma, [{ ...LIBRARY_ROW, status: TrackStatus.PENDING }]);
+      await service.createFromLegacyReport(
+        "t1",
+        TrackCorrectionReason.OTHER,
+        undefined,
+        "admin-1",
+        true,
+      );
+      expect(tx.trackCorrection.create).toHaveBeenCalled();
     });
 
     it.each([

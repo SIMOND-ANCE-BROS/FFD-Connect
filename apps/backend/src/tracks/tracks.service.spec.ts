@@ -5,6 +5,11 @@ import {
   createMockPrismaService,
   MockPrismaService,
 } from "../../test/mocks/prisma.mock";
+import {
+  HIDDEN_TRACK_CASES,
+  TrackRow,
+  useTrackTable,
+} from "../../test/mocks/track-where.mock";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { BpmService } from "./bpm.service";
@@ -104,33 +109,91 @@ describe("TracksService", () => {
   });
 
   describe("findOne", () => {
-    it("returns track when found", async () => {
-      const mockTrack = {
-        id: "track-1",
-        title: "Test",
-        artist: "Artist",
-        bpm: 120,
-        filename: "test.mp3",
-        artwork: null,
-        style: null,
-        createdAt: new Date(),
-      };
-      // @ts-expect-error - testing partial return
-      prisma.track.findUnique.mockResolvedValue(mockTrack);
+    const visibleTrack: TrackRow = {
+      id: "track-1",
+      title: "Test",
+      artist: "Artist",
+      style: "Rumba",
+      status: TrackStatus.READY,
+      blacklisted: false,
+      titleMasked: false,
+    };
 
-      const result = await service.findOne("track-1");
+    it("returns a library track to a non-admin", async () => {
+      useTrackTable(prisma, [visibleTrack]);
 
-      expect(result).toBe(mockTrack);
-      expect(prisma.track.findUnique).toHaveBeenCalledWith(
+      await expect(service.findOne("track-1", false)).resolves.toEqual(
+        visibleTrack,
+      );
+    });
+
+    it("returns a library track whose style is null", async () => {
+      const noStyle = { ...visibleTrack, style: null };
+      useTrackTable(prisma, [noStyle]);
+
+      await expect(service.findOne("track-1", false)).resolves.toEqual(noStyle);
+    });
+
+    it("throws NotFoundException when not found", async () => {
+      useTrackTable(prisma, []);
+
+      await expect(service.findOne("nonexistent")).rejects.toThrow(
+        new NotFoundException("Track nonexistent not found"),
+      );
+    });
+
+    it.each(HIDDEN_TRACK_CASES)(
+      "gives a non-admin the missing-track 404 for a %s track",
+      async (_label, override) => {
+        useTrackTable(prisma, [{ ...visibleTrack, ...override }]);
+
+        await expect(service.findOne("track-1", false)).rejects.toThrow(
+          new NotFoundException("Track track-1 not found"),
+        );
+      },
+    );
+
+    it("defaults to the non-admin rules when the role is not given", async () => {
+      useTrackTable(prisma, [{ ...visibleTrack, blacklisted: true }]);
+
+      await expect(service.findOne("track-1")).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it.each(HIDDEN_TRACK_CASES)(
+      "still returns a %s track to an admin",
+      async (_label, override) => {
+        const track = { ...visibleTrack, ...override };
+        useTrackTable(prisma, [track]);
+
+        await expect(service.findOne("track-1", true)).resolves.toEqual(track);
+      },
+    );
+
+    it("queries by id only for an admin", async () => {
+      useTrackTable(prisma, [visibleTrack]);
+
+      await service.findOne("track-1", true);
+
+      expect(prisma.track.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: "track-1" } }),
       );
     });
 
-    it("throws NotFoundException when not found", async () => {
-      prisma.track.findUnique.mockResolvedValue(null);
+    it("masks the title of a visible masked track for a non-admin", async () => {
+      useTrackTable(prisma, [{ ...visibleTrack, titleMasked: true }]);
 
-      await expect(service.findOne("nonexistent")).rejects.toThrow(
-        new NotFoundException("Track nonexistent not found"),
+      await expect(service.findOne("track-1", false)).resolves.toEqual(
+        expect.objectContaining({ title: "Titre masqué", titleMasked: true }),
+      );
+    });
+
+    it("keeps the real title of a masked track for an admin", async () => {
+      useTrackTable(prisma, [{ ...visibleTrack, titleMasked: true }]);
+
+      await expect(service.findOne("track-1", true)).resolves.toEqual(
+        expect.objectContaining({ title: "Test", titleMasked: true }),
       );
     });
   });
