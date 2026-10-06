@@ -1,10 +1,15 @@
-import { NotFoundException, UnauthorizedException } from "@nestjs/common";
+import {
+  Logger,
+  NotFoundException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaClient, RegistrationStatus, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { mockDeep, MockProxy } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
-import { UsersService } from "./users.service";
+import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
+import { MAX_RENEWAL_DOCUMENTS_TO_PURGE, UsersService } from "./users.service";
 
 jest.mock("bcrypt", () => ({
   compare: jest.fn(),
@@ -52,12 +57,23 @@ function makeUser(overrides: Record<string, unknown> = {}) {
 describe("UsersService", () => {
   let service: UsersService;
   let prisma: MockProxy<PrismaClient>;
+  let renewalDocumentFiles: { deleteFiles: jest.Mock };
 
   beforeEach(async () => {
     prisma = mockDeep<PrismaClient>();
+    renewalDocumentFiles = {
+      deleteFiles: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [UsersService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        UsersService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: RenewalDocumentFileCleaner,
+          useValue: renewalDocumentFiles,
+        },
+      ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
@@ -567,7 +583,18 @@ describe("UsersService", () => {
         password: "$2b$12$hash",
       });
       prisma.$transaction.mockResolvedValue([] as never);
+      prisma.licenseRenewalDocument.findMany.mockResolvedValue([]);
     });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    function withDocuments(...filePaths: string[]) {
+      prisma.licenseRenewalDocument.findMany.mockResolvedValue(
+        filePaths.map((filePath) => ({ filePath })),
+      );
+    }
 
     it("supprime le compte et les données à FK restrictive en transaction", async () => {
       compare.mockResolvedValue(true);
@@ -590,6 +617,131 @@ describe("UsersService", () => {
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     });
 
+    it("anonymise les inscriptions d'autrui où l'utilisateur est partenaire (id ET nom copié)", async () => {
+      compare.mockResolvedValue(true);
+
+      await service.deleteMyAccount("u1", "correct-password");
+
+      expect(prisma.registration.updateMany).toHaveBeenCalledWith({
+        where: { partnerUserId: "u1" },
+        data: { partnerUserId: null, partnerName: null },
+      });
+    });
+
+    it("supprime les bug reports de l'utilisateur (userId sans FK)", async () => {
+      compare.mockResolvedValue(true);
+
+      await service.deleteMyAccount("u1", "correct-password");
+
+      expect(prisma.bugReport.deleteMany).toHaveBeenCalledWith({
+        where: { userId: "u1" },
+      });
+    });
+
+    it("toutes les écritures sont dans la même transaction, suppression du user en dernier", async () => {
+      compare.mockResolvedValue(true);
+      const marker = (name: string) => ({ op: name }) as never;
+      prisma.notification.deleteMany.mockReturnValue(marker("notifications"));
+      prisma.seatBooking.deleteMany.mockReturnValue(marker("seatBookings"));
+      prisma.registration.deleteMany.mockReturnValue(marker("registrations"));
+      prisma.registration.updateMany.mockReturnValue(marker("partnerAnon"));
+      prisma.bugReport.deleteMany.mockReturnValue(marker("bugReports"));
+      prisma.user.delete.mockReturnValue(marker("user"));
+
+      await service.deleteMyAccount("u1", "correct-password");
+
+      const ops = (
+        prisma.$transaction.mock.calls[0][0] as unknown as Array<{
+          op: string;
+        }>
+      ).map((o) => o.op);
+      expect(ops).toEqual([
+        "notifications",
+        "seatBookings",
+        "registrations",
+        "partnerAnon",
+        "bugReports",
+        "user",
+      ]);
+    });
+
+    it("lit les références des documents de renouvellement avant la transaction (select partagé, borné)", async () => {
+      compare.mockResolvedValue(true);
+
+      await service.deleteMyAccount("u1", "correct-password");
+
+      expect(prisma.licenseRenewalDocument.findMany).toHaveBeenCalledWith({
+        where: { request: { userId: "u1" } },
+        select: { filePath: true },
+        take: MAX_RENEWAL_DOCUMENTS_TO_PURGE,
+      });
+      const readOrder =
+        prisma.licenseRenewalDocument.findMany.mock.invocationCallOrder[0];
+      const txOrder = prisma.$transaction.mock.invocationCallOrder[0];
+      expect(readOrder).toBeLessThan(txOrder);
+    });
+
+    it("délègue la suppression des fichiers APRÈS la transaction", async () => {
+      compare.mockResolvedValue(true);
+      withDocuments("document-1.jpg", "document-2.pdf");
+
+      await service.deleteMyAccount("u1", "correct-password");
+
+      expect(renewalDocumentFiles.deleteFiles).toHaveBeenCalledWith(
+        ["document-1.jpg", "document-2.pdf"],
+        "account-deletion",
+      );
+      const txOrder = prisma.$transaction.mock.invocationCallOrder[0];
+      const cleanOrder =
+        renewalDocumentFiles.deleteFiles.mock.invocationCallOrder[0];
+      expect(txOrder).toBeLessThan(cleanOrder);
+    });
+
+    it("ne supprime aucun fichier si la transaction échoue", async () => {
+      compare.mockResolvedValue(true);
+      withDocuments("document-1.jpg");
+      prisma.$transaction.mockRejectedValue(new Error("tx failed"));
+
+      await expect(
+        service.deleteMyAccount("u1", "correct-password"),
+      ).rejects.toThrow("tx failed");
+
+      expect(renewalDocumentFiles.deleteFiles).not.toHaveBeenCalled();
+    });
+
+    it("warning (sans identifiant utilisateur) si la lecture des documents atteint le plafond", async () => {
+      compare.mockResolvedValue(true);
+      withDocuments(
+        ...Array.from(
+          { length: MAX_RENEWAL_DOCUMENTS_TO_PURGE },
+          (_, i) => `document-${i}.jpg`,
+        ),
+      );
+      const warn = jest
+        .spyOn(Logger.prototype, "warn")
+        .mockImplementation(() => undefined);
+
+      await service.deleteMyAccount("u1", "correct-password");
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = String(warn.mock.calls[0][0]);
+      expect(message).toContain(String(MAX_RENEWAL_DOCUMENTS_TO_PURGE));
+      expect(message).not.toContain("u1");
+      expect(renewalDocumentFiles.deleteFiles).toHaveBeenCalledTimes(1);
+    });
+
+    it("pas de warning sous le plafond", async () => {
+      compare.mockResolvedValue(true);
+      withDocuments("document-1.jpg");
+      const warn = jest
+        .spyOn(Logger.prototype, "warn")
+        .mockImplementation(() => undefined);
+
+      await service.deleteMyAccount("u1", "correct-password");
+
+      expect(warn).not.toHaveBeenCalled();
+    });
+
     it("rejette en Unauthorized si le mot de passe est incorrect, sans rien supprimer", async () => {
       compare.mockResolvedValue(false);
 
@@ -599,6 +751,8 @@ describe("UsersService", () => {
 
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(prisma.user.delete).not.toHaveBeenCalled();
+      expect(prisma.licenseRenewalDocument.findMany).not.toHaveBeenCalled();
+      expect(renewalDocumentFiles.deleteFiles).not.toHaveBeenCalled();
     });
 
     it("rejette en NotFound si l'utilisateur n'existe pas", async () => {

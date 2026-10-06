@@ -6,6 +6,7 @@ import {
 import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
+import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { OcrService } from "../utils/ocr.service";
 import { LicenseRenewalService } from "./license-renewal.service";
 
@@ -18,6 +19,7 @@ describe("LicenseRenewalService", () => {
   let service: LicenseRenewalService;
 
   interface MockPrisma {
+    $transaction: jest.Mock;
     license: {
       findUnique: jest.Mock;
       upsert: jest.Mock;
@@ -44,6 +46,7 @@ describe("LicenseRenewalService", () => {
   }
 
   const mockPrisma: MockPrisma = {
+    $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     license: {
       findUnique: jest.fn(),
       upsert: jest.fn(),
@@ -83,6 +86,8 @@ describe("LicenseRenewalService", () => {
     getUploadsContainer: jest.fn().mockReturnValue("uploads"),
   };
 
+  const mockCleaner = { deleteFiles: jest.fn() };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -90,6 +95,7 @@ describe("LicenseRenewalService", () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: OcrService, useValue: mockOcr },
         { provide: BlobStorageService, useValue: mockBlob },
+        { provide: RenewalDocumentFileCleaner, useValue: mockCleaner },
       ],
     }).compile();
 
@@ -97,6 +103,10 @@ describe("LicenseRenewalService", () => {
     jest.clearAllMocks();
     mockBlob.isEnabled.mockReturnValue(true);
     mockBlob.getUploadsContainer.mockReturnValue("uploads");
+    mockPrisma.$transaction.mockImplementation((ops: Promise<unknown>[]) =>
+      Promise.all(ops),
+    );
+    mockCleaner.deleteFiles.mockResolvedValue(undefined);
   });
 
   describe("startRenewalRequest", () => {
@@ -346,6 +356,139 @@ describe("LicenseRenewalService", () => {
           data: expect.objectContaining({ filePath: BLOB_NAME }),
         }),
       );
+    });
+  });
+
+  describe("uploadRenewalDocument — fichiers remplacés / rollback (RGPD art. 9)", () => {
+    const OLD_MEDICAL = "document-old-medical.jpg";
+    const OTHER_LICENSE = "document-license.pdf";
+
+    function draftWithDocuments() {
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+        id: "req-1",
+        userId: "user-1",
+        status: LicenseRenewalStatus.DRAFT,
+        documents: [
+          {
+            id: "doc-old",
+            type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+            filePath: OLD_MEDICAL,
+          },
+          {
+            id: "doc-license",
+            type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
+            filePath: OTHER_LICENSE,
+          },
+        ],
+      });
+      mockOcr.extractMedicalCertificateInfo.mockResolvedValue({
+        isApte: true,
+        date: new Date().toISOString().slice(0, 10),
+      });
+      mockPrisma.licenseRenewalDocument.deleteMany.mockResolvedValue({});
+      mockPrisma.licenseRenewalRequest.findUniqueOrThrow.mockResolvedValue({
+        id: "req-1",
+      });
+    }
+
+    function upload() {
+      return service.uploadRenewalDocument(
+        "user-1",
+        "req-1",
+        LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+        FILE_BUFFER,
+        BLOB_NAME,
+      );
+    }
+
+    it("supprime le fichier du document remplacé (même type uniquement) après l'enregistrement du nouveau", async () => {
+      draftWithDocuments();
+      mockPrisma.licenseRenewalDocument.create.mockResolvedValue({});
+
+      await upload();
+
+      expect(mockCleaner.deleteFiles).toHaveBeenCalledTimes(1);
+      expect(mockCleaner.deleteFiles).toHaveBeenCalledWith(
+        [OLD_MEDICAL],
+        "document-replaced",
+      );
+      const createOrder =
+        mockPrisma.licenseRenewalDocument.create.mock.invocationCallOrder[0];
+      const txOrder = mockPrisma.$transaction.mock.invocationCallOrder[0];
+      const cleanOrder = mockCleaner.deleteFiles.mock.invocationCallOrder[0];
+      expect(createOrder).toBeLessThan(cleanOrder);
+      expect(txOrder).toBeLessThan(cleanOrder);
+    });
+
+    it("remplacement atomique : deleteMany + create dans une même transaction", async () => {
+      draftWithDocuments();
+      mockPrisma.licenseRenewalDocument.create.mockResolvedValue({});
+
+      await upload();
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.licenseRenewalDocument.deleteMany).toHaveBeenCalledWith(
+        {
+          where: {
+            requestId: "req-1",
+            type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+          },
+        },
+      );
+    });
+
+    it("aucun document précédent : aucun fichier à supprimer", async () => {
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+        id: "req-1",
+        userId: "user-1",
+        status: LicenseRenewalStatus.DRAFT,
+        documents: [],
+      });
+      mockOcr.extractMedicalCertificateInfo.mockResolvedValue({
+        isApte: true,
+      });
+      mockPrisma.licenseRenewalDocument.deleteMany.mockResolvedValue({});
+      mockPrisma.licenseRenewalDocument.create.mockResolvedValue({});
+      mockPrisma.licenseRenewalRequest.findUniqueOrThrow.mockResolvedValue({
+        id: "req-1",
+      });
+
+      await upload();
+
+      expect(mockCleaner.deleteFiles).toHaveBeenCalledWith(
+        [],
+        "document-replaced",
+      );
+    });
+
+    it("échec de l'enregistrement : supprime le blob tout juste archivé, conserve l'ancien, et propage l'erreur", async () => {
+      draftWithDocuments();
+      const dbError = new Error("db down");
+      mockPrisma.licenseRenewalDocument.create.mockRejectedValue(dbError);
+
+      await expect(upload()).rejects.toBe(dbError);
+
+      expect(mockBlob.uploadBuffer).toHaveBeenCalled();
+      expect(mockCleaner.deleteFiles).toHaveBeenCalledTimes(1);
+      expect(mockCleaner.deleteFiles).toHaveBeenCalledWith(
+        [BLOB_NAME],
+        "upload-rollback",
+      );
+      expect(
+        mockPrisma.licenseRenewalRequest.findUniqueOrThrow,
+      ).not.toHaveBeenCalled();
+    });
+
+    it("échec de l'OCR/validation : rien n'est archivé ni supprimé", async () => {
+      draftWithDocuments();
+      mockOcr.extractMedicalCertificateInfo.mockResolvedValue({
+        isApte: false,
+      });
+
+      await expect(upload()).rejects.toThrow(BadRequestException);
+
+      expect(mockBlob.uploadBuffer).not.toHaveBeenCalled();
+      expect(mockCleaner.deleteFiles).not.toHaveBeenCalled();
     });
   });
 

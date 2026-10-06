@@ -104,7 +104,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
       },
       {
         heading: "Durées de conservation",
-        body: "• Compte : jusqu'à suppression, et au plus tard 3 ans après la dernière connexion\n• Certificat médical : au plus tard 12 mois après la fin de sa validité\n• Jetons de session : 30 jours maximum\n• Jeton de notification de l'appareil : 90 jours sans réutilisation\n• Logs techniques : 12 mois",
+        body: "• Compte : jusqu'à suppression, et au plus tard 3 ans après la dernière connexion\n• Certificat médical : au plus tard 12 mois après la fin de sa validité\n• Jetons de session : 30 jours maximum\n• Jeton de notification de l'appareil : 90 jours sans réutilisation\n• Logs techniques : 12 mois\n• Sauvegardes de la base de données : 7 jours glissants",
       },
       {
         heading: "Vos droits (RGPD)",

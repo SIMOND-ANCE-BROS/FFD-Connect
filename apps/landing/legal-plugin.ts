@@ -21,6 +21,7 @@ const DOCS = {
   confidentialite: { file: 'politique-confidentialite.md', label: 'Confidentialité' },
   cgu: { file: 'cgu.md', label: 'CGU' },
   'mentions-legales': { file: 'mentions-legales.md', label: 'Mentions légales' },
+  'suppression-compte': { file: 'suppression-compte.md', label: 'Suppression du compte' },
 } as const;
 
 type Slug = keyof typeof DOCS;
@@ -35,7 +36,8 @@ function renderPage(slug: Slug, base: string): string {
     .parse(markdown, { async: false })
     .replace(/href="\.\/politique-confidentialite\.md"/g, `href="${base}confidentialite/"`)
     .replace(/href="\.\/cgu\.md"/g, `href="${base}cgu/"`)
-    .replace(/href="\.\/mentions-legales\.md"/g, `href="${base}mentions-legales/"`);
+    .replace(/href="\.\/mentions-legales\.md"/g, `href="${base}mentions-legales/"`)
+    .replace(/href="\.\/suppression-compte\.md"/g, `href="${base}suppression-compte/"`);
 
   const nav = (Object.keys(DOCS) as Slug[])
     .map((key) => {

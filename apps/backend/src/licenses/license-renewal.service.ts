@@ -9,6 +9,7 @@ import {
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
+import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { OcrService } from "../utils/ocr.service";
 
 /** Âge maximum du certificat médical en mois (règle fédération : certificat récent). */
@@ -20,6 +21,7 @@ export class LicenseRenewalService {
     private prisma: PrismaService,
     private ocrService: OcrService,
     private blobStorage: BlobStorageService,
+    private renewalDocumentFiles: RenewalDocumentFileCleaner,
   ) {}
 
   /** Crée ou récupère une demande de renouvellement en brouillon pour l'utilisateur. */
@@ -100,18 +102,43 @@ export class LicenseRenewalService {
     // simplement le nom de blob comme référence — aucune écriture disque.
     const storedReference = await this.persistDocument(blobName, fileBuffer);
 
-    await this.prisma.licenseRenewalDocument.deleteMany({
-      where: { requestId, type },
-    });
+    // Fichiers du document remplacé (même type) : lus avant le remplacement,
+    // supprimés une fois la nouvelle ligne enregistrée — sinon le certificat
+    // médical précédent (RGPD art. 9) resterait orphelin dans Blob.
+    const replacedReferences = request.documents
+      .filter((d) => d.type === type && d.filePath !== storedReference)
+      .map((d) => d.filePath);
 
-    await this.prisma.licenseRenewalDocument.create({
-      data: {
-        requestId,
-        type,
-        filePath: storedReference,
-        ocrData: (ocrData as unknown) ?? undefined,
-      },
-    });
+    try {
+      // Remplacement atomique : si la création échoue, l'ancien document reste
+      // en base (et son fichier est conservé).
+      await this.prisma.$transaction([
+        this.prisma.licenseRenewalDocument.deleteMany({
+          where: { requestId, type },
+        }),
+        this.prisma.licenseRenewalDocument.create({
+          data: {
+            requestId,
+            type,
+            filePath: storedReference,
+            ocrData: (ocrData as unknown) ?? undefined,
+          },
+        }),
+      ]);
+    } catch (error) {
+      // Le blob tout juste archivé n'est référencé par aucune ligne : on le
+      // supprime (best-effort) avant de propager l'erreur.
+      await this.renewalDocumentFiles.deleteFiles(
+        [storedReference],
+        "upload-rollback",
+      );
+      throw error;
+    }
+
+    await this.renewalDocumentFiles.deleteFiles(
+      replacedReferences,
+      "document-replaced",
+    );
 
     return this.prisma.licenseRenewalRequest.findUniqueOrThrow({
       where: { id: requestId },
