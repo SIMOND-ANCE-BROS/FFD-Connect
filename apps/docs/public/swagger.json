@@ -1993,6 +1993,206 @@
         "tags": ["tracks"]
       }
     },
+    "/tracks/ambiance": {
+      "get": {
+        "description": "Musiques de pause du mode compétition : pistes READY non blacklistées dont le style ou l'artiste vaut « Ambiance » (insensible à la casse). Exclues de GET /tracks. Au plus 50 pistes, plus récentes d'abord.",
+        "operationId": "TracksController_findAmbiance",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Liste des musiques d'ambiance",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TrackResponseDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Récupère les musiques d'ambiance",
+        "tags": ["tracks"]
+      }
+    },
     "/tracks/download/{token}": {
       "get": {
         "operationId": "TracksController_download",
@@ -17414,6 +17614,81 @@
             "description": "Raison de l'impersonation (obligatoire pour le staff, journalisée)."
           }
         }
+      },
+      "TrackResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "UUID de la piste"
+          },
+          "title": {
+            "type": "string",
+            "description": "Titre (masqué pour un non-admin si titleMasked)"
+          },
+          "artist": {
+            "type": "string",
+            "description": "Artiste",
+            "example": "Ambiance"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Nom du fichier audio — à passer à GET /tracks/download/{token}"
+          },
+          "artwork": {
+            "type": "string",
+            "nullable": true
+          },
+          "style": {
+            "type": "string",
+            "nullable": true,
+            "description": "Danse / style",
+            "example": "Ambiance"
+          },
+          "bpm": {
+            "type": "number",
+            "description": "Tempo en MPM (mesures par minute)"
+          },
+          "rawBpm": {
+            "type": "number",
+            "description": "Tempo brut détecté (BPM)"
+          },
+          "submittedById": {
+            "type": "string",
+            "nullable": true
+          },
+          "titleMasked": {
+            "type": "boolean",
+            "description": "Titre masqué côté non-admin"
+          },
+          "blacklisted": {
+            "type": "boolean",
+            "description": "Piste retirée de la bibliothèque (admin)"
+          },
+          "clashTimecodes": {
+            "description": "Paso doble : timecodes (secondes) des appels",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "artist",
+          "filename",
+          "bpm",
+          "rawBpm",
+          "titleMasked",
+          "blacklisted",
+          "clashTimecodes",
+          "createdAt"
+        ]
       },
       "UpdateTrackDto": {
         "type": "object",

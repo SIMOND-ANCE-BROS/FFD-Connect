@@ -33,9 +33,12 @@ export type {
 export { usePerformanceStore } from "./performance.store";
 export type {
   Category,
+  LoadingProgress,
   Mode,
   PerformanceConfig,
   PlaylistItem,
+  RoundConfig,
+  RoundType,
 } from "./performance.store";
 
 export {

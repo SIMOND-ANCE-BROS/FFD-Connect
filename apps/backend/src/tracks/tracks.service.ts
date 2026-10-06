@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, TrackStatus } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
@@ -54,6 +54,27 @@ export class TracksService {
     private readonly blobStorage: BlobStorageService,
   ) {}
 
+  /** Nombre maximal de pistes d'ambiance renvoyées (requête bornée). */
+  static readonly AMBIANCE_TAKE = 50;
+
+  /**
+   * Filtre Prisma des pistes d'ambiance (musique de pause du mode compétition) :
+   * style OU artiste « Ambiance » (insensible à la casse), READY, non blacklistées.
+   * Exactement les pistes d'ambiance que LIBRARY_TRACK_WHERE exclut de la bibliothèque.
+   */
+  private static readonly AMBIANCE_WHERE: Prisma.TrackWhereInput = {
+    AND: [
+      {
+        OR: [
+          { style: { equals: "Ambiance", mode: "insensitive" } },
+          { artist: { equals: "Ambiance", mode: "insensitive" } },
+        ],
+      },
+      { status: TrackStatus.READY },
+      { blacklisted: false },
+    ],
+  };
+
   /**
    * Applique le masquage du titre en fonction du rôle du demandeur.
    * Les admins voient toujours le titre réel (+ le flag titleMasked pour
@@ -91,6 +112,21 @@ export class TracksService {
 
     const masked = tracks.map((t) => TracksService.maskTitle(t, isAdmin));
     return createPaginatedResponse(masked, total, skip ?? 0, take ?? 10);
+  }
+
+  /**
+   * Récupère les pistes d'ambiance (musique de pause du mode compétition),
+   * exclues de la bibliothèque par LIBRARY_TRACK_WHERE. Même forme et même masquage
+   * de titre que `findAll`, pour que le client les mappe à l'identique.
+   */
+  async findAmbiance(isAdmin = false): Promise<TrackBase[]> {
+    const tracks = await this.prisma.track.findMany({
+      where: TracksService.AMBIANCE_WHERE,
+      orderBy: { createdAt: "desc" },
+      take: TracksService.AMBIANCE_TAKE,
+      select: TRACK_BASE_SELECT,
+    });
+    return tracks.map((t) => TracksService.maskTitle(t, isAdmin));
   }
 
   /**

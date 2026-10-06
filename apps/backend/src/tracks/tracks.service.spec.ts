@@ -108,6 +108,85 @@ describe("TracksService", () => {
     });
   });
 
+  describe("findAmbiance", () => {
+    it("queries READY, non-blacklisted tracks whose style OR artist is Ambiance (case-insensitive), bounded by take", async () => {
+      // @ts-expect-error - testing partial return
+      prisma.track.findMany.mockResolvedValue([]);
+
+      await service.findAmbiance();
+
+      expect(prisma.track.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            AND: [
+              {
+                OR: [
+                  { style: { equals: "Ambiance", mode: "insensitive" } },
+                  { artist: { equals: "Ambiance", mode: "insensitive" } },
+                ],
+              },
+              { status: TrackStatus.READY },
+              { blacklisted: false },
+            ],
+          },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+          select: expect.objectContaining({
+            id: true,
+            title: true,
+            artist: true,
+            filename: true,
+            style: true,
+            bpm: true,
+            titleMasked: true,
+          }),
+        }),
+      );
+      expect(TracksService.AMBIANCE_TAKE).toBe(50);
+    });
+
+    it("does not select internal fields (status/jobId)", async () => {
+      // @ts-expect-error - testing partial return
+      prisma.track.findMany.mockResolvedValue([]);
+
+      await service.findAmbiance();
+
+      const { select } = prisma.track.findMany.mock.calls[0][0] as {
+        select: Record<string, boolean>;
+      };
+      expect(select.status).toBeUndefined();
+      expect(select.jobId).toBeUndefined();
+    });
+
+    it("returns the tracks and masks titles for non-admins", async () => {
+      const tracks = [
+        { id: "a1", title: "Lounge", artist: "Ambiance", titleMasked: false },
+        { id: "a2", title: "Secret", style: "ambiance", titleMasked: true },
+      ];
+      // @ts-expect-error - testing partial return
+      prisma.track.findMany.mockResolvedValue(tracks);
+
+      const result = await service.findAmbiance(false);
+
+      expect(result).toEqual([
+        expect.objectContaining({ id: "a1", title: "Lounge" }),
+        expect.objectContaining({ id: "a2", title: "Titre masqué" }),
+      ]);
+    });
+
+    it("keeps real titles for admins", async () => {
+      const tracks = [{ id: "a2", title: "Secret", titleMasked: true }];
+      // @ts-expect-error - testing partial return
+      prisma.track.findMany.mockResolvedValue(tracks);
+
+      const result = await service.findAmbiance(true);
+
+      expect(result[0]).toEqual(
+        expect.objectContaining({ title: "Secret", titleMasked: true }),
+      );
+    });
+  });
+
   describe("findOne", () => {
     const visibleTrack: TrackRow = {
       id: "track-1",

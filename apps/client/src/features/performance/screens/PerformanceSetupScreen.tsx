@@ -1,7 +1,7 @@
 import { useNavigation } from "@react-navigation/native";
-import React, { useState } from "react";
+import { Plus } from "lucide-react-native";
+import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -18,55 +18,87 @@ import { BackButton } from "../../../components/BackButton";
 import { PinnedHeader } from "../../../components/PinnedHeader";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import { useTheme } from "../../../context/ThemeContext";
-import { Category, Mode } from "../context/PerformanceContext";
+import { RoundCard } from "../components/RoundCard";
 import { usePerformanceEngine } from "../hooks/usePerformanceEngine";
-
-const DANCES = {
-  Standard: ["Valse Lente", "Tango", "Vienne", "Slow Fox", "Quickstep"],
-  Latin: ["Samba", "Cha-Cha-Cha", "Rumba", "Paso Doble", "Jive"],
-};
+import { usePerformanceStore } from "../../../stores/performance.store";
+import {
+  addRound,
+  isPasoDoble,
+  removeRound,
+  setRoundCategory,
+  setRoundType,
+  stepRoundHeats,
+  toggleRoundDance,
+} from "../utils/competitionProgram";
 
 export const PerformanceSetupScreen = () => {
   const { theme: currentTheme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [headerH, setHeaderH] = useState(insets.top + 56);
-  const { config, setConfig, startPerformance } = usePerformanceEngine();
+  const {
+    config,
+    setConfig,
+    startPerformance,
+    stopPerformance,
+    status,
+    loadingProgress,
+  } = usePerformanceEngine();
   const navigation = useNavigation<{
     navigate: (screen: string) => void;
     goBack: () => void;
+    isFocused?: () => boolean;
   }>();
+  const isLoading = status === "loading";
 
-  const updateConfig = <K extends keyof typeof config>(
+  // Leaving the setup screen while the competition is loading cancels it
+  // (the engine is a singleton: it would otherwise start on another screen).
+  const stopRef = useRef(stopPerformance);
+  stopRef.current = stopPerformance;
+  useEffect(
+    () => () => {
+      if (usePerformanceStore.getState().status === "loading") {
+        stopRef.current();
+      }
+    },
+    [],
+  );
+
+  const updateConfig = <K extends "duration" | "pauseDuration" | "pasoClashes">(
     key: K,
     value: (typeof config)[K],
   ) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
   };
 
-  const toggleDance = (dance: string) => {
-    setConfig((prev) => {
-      const current = prev.selectedDances;
-      if (current.includes(dance)) {
-        return { ...prev, selectedDances: current.filter((d) => d !== dance) };
-      } else {
-        return { ...prev, selectedDances: [...current, dance] };
-      }
-    });
+  const hasPaso = config.rounds.some(
+    (r) => r.category === "Latin" && r.selectedDances.some(isPasoDoble),
+  );
+
+  // Validation (≥ 1 dance per round, tracks available for every dance) is
+  // done by the engine once the full catalogue is loaded, with a French Alert.
+  const handleStart = async () => {
+    if (isLoading) return;
+    const started = await startPerformance();
+    // Only if this session is still the running one (not cancelled with
+    // « Annuler ») and the user is still on this screen.
+    const runningStatus = usePerformanceStore.getState().status;
+    const stillRunning =
+      runningStatus === "break" ||
+      runningStatus === "playing" ||
+      runningStatus === "paused";
+    const focused = navigation.isFocused?.() ?? true;
+    if (started && stillRunning && focused) {
+      navigation.navigate("PerformancePlayer");
+    } else if (started && stillRunning) {
+      stopPerformance();
+    }
   };
 
-  const handleStart = async () => {
-    if (config.mode === "Round" && (config.numberOfHeats || 0) < 2) {
-      Alert.alert(
-        "Configuration invalide",
-        "Le mode Passage nécessite au moins 2 passages.",
-      );
-      return;
-    }
-    const started = await startPerformance();
-    if (started) {
-      navigation.navigate("PerformancePlayer");
-    }
-  };
+  const startTitle = isLoading
+    ? loadingProgress && loadingProgress.total > 0
+      ? `CHARGEMENT… ${loadingProgress.done}/${loadingProgress.total}`
+      : "PRÉPARATION…"
+    : "DÉMARRER";
 
   return (
     <SafeAreaView
@@ -79,7 +111,7 @@ export const PerformanceSetupScreen = () => {
           paddingTop: headerH + 8,
         }}
       >
-        {/* Mode Selector */}
+        {/* Programme de tours */}
         <View style={styles.section}>
           <AppText
             variant="caption"
@@ -87,48 +119,43 @@ export const PerformanceSetupScreen = () => {
             color={currentTheme.textSecondary}
             style={styles.sectionLabel}
           >
-            Mode
+            Programme
           </AppText>
-          <FluidSegmentedTab
-            testID="performance-setup-mode-tab"
-            activeValue={config.mode}
-            onChange={(val) => {
-              const mode = val as Mode;
-              updateConfig("mode", mode);
-              if (mode === "Round" && (config.numberOfHeats || 0) < 2) {
-                updateConfig("numberOfHeats", 2);
+          {config.rounds.map((round, index) => (
+            <RoundCard
+              key={round.id}
+              round={round}
+              index={index}
+              canDelete={config.rounds.length > 1}
+              onCategoryChange={(category) =>
+                setConfig(setRoundCategory(round.id, category))
               }
-            }}
-            options={[
-              { label: "Passage", value: "Round" },
-              { label: "Finale", value: "Final" },
+              onTypeChange={(type) => setConfig(setRoundType(round.id, type))}
+              onHeatsStep={(delta) =>
+                setConfig(stepRoundHeats(round.id, delta))
+              }
+              onToggleDance={(dance) =>
+                setConfig(toggleRoundDance(round.id, dance))
+              }
+              onDelete={() => setConfig(removeRound(round.id))}
+            />
+          ))}
+          <TouchableOpacity
+            onPress={() => setConfig(addRound)}
+            style={[
+              styles.addRoundButton,
+              { borderColor: currentTheme.primary },
             ]}
-          />
-        </View>
-
-        {/* Category Selector */}
-        <View style={styles.section}>
-          <AppText
-            variant="caption"
-            weight="600"
-            color={currentTheme.textSecondary}
-            style={styles.sectionLabel}
+            testID="performance-add-round-button"
+            accessibilityRole="button"
+            accessibilityLabel="Ajouter un tour"
+            accessibilityHint="Ajoute un tour au programme de la compétition"
           >
-            Catégorie
-          </AppText>
-          <FluidSegmentedTab
-            testID="performance-setup-category-tab"
-            activeValue={config.category}
-            onChange={(val) => {
-              const cat = val as Category;
-              updateConfig("category", cat);
-              updateConfig("selectedDances", DANCES[cat]);
-            }}
-            options={[
-              { label: "Latines", value: "Latin" },
-              { label: "Standards", value: "Standard" },
-            ]}
-          />
+            <Plus color={currentTheme.primary} size={18} />
+            <AppText variant="body" weight="600" color={currentTheme.primary}>
+              Ajouter un tour
+            </AppText>
+          </TouchableOpacity>
         </View>
 
         {/* Durations */}
@@ -142,45 +169,6 @@ export const PerformanceSetupScreen = () => {
             Temps
           </AppText>
           <View style={styles.inputRow}>
-            {config.mode === "Round" && (
-              <View style={styles.inputGroup}>
-                <AppText
-                  variant="caption"
-                  style={styles.inputLabel}
-                  color={currentTheme.textSecondary}
-                >
-                  Passages
-                </AppText>
-                <TextInput
-                  testID="performance-setup-heats-input"
-                  accessibilityLabel="Nombre de passages"
-                  accessibilityHint="Saisissez le nombre de passages pour la compétition"
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: currentTheme.surface,
-                      color: currentTheme.text,
-                      borderColor: currentTheme.border,
-                    },
-                  ]}
-                  keyboardType="numeric"
-                  value={
-                    config.numberOfHeats ? config.numberOfHeats.toString() : ""
-                  }
-                  onChangeText={(t) =>
-                    updateConfig(
-                      "numberOfHeats",
-                      t === "" ? 0 : parseInt(t, 10),
-                    )
-                  }
-                  onEndEditing={() => {
-                    if ((config.numberOfHeats || 0) < 2) {
-                      updateConfig("numberOfHeats", 2);
-                    }
-                  }}
-                />
-              </View>
-            )}
             <View style={styles.inputGroup}>
               <AppText
                 variant="caption"
@@ -240,8 +228,8 @@ export const PerformanceSetupScreen = () => {
           </View>
         </View>
 
-        {/* Paso Settings (Only Latin) */}
-        {config.category === "Latin" && (
+        {/* Paso Settings (Latin rounds containing the Paso Doble) */}
+        {hasPaso && (
           <View style={styles.section}>
             <AppText
               variant="caption"
@@ -265,65 +253,40 @@ export const PerformanceSetupScreen = () => {
           </View>
         )}
 
-        {/* Dances Selector */}
-        <View style={styles.section}>
-          <AppText
-            variant="caption"
-            weight="600"
-            color={currentTheme.textSecondary}
-            style={styles.sectionLabel}
-          >
-            Danses
-          </AppText>
-          <View style={styles.dancesGrid}>
-            {DANCES[config.category].map((dance) => {
-              const isActive = config.selectedDances.includes(dance);
-              return (
-                <TouchableOpacity
-                  testID={`performance-setup-dance-${dance
-                    .replace(/\s+/g, "-")
-                    .toLowerCase()}`}
-                  accessibilityLabel={`Toggle dance ${dance}`}
-                  accessibilityHint="Active ou désactive cette danse pour la compétition"
-                  key={dance}
-                  onPress={() => toggleDance(dance)}
-                  style={[
-                    styles.danceChip,
-                    isActive
-                      ? {
-                          borderColor: currentTheme.primary,
-                          backgroundColor: currentTheme.primary,
-                        }
-                      : {
-                          borderColor: currentTheme.border,
-                        },
-                  ]}
-                >
-                  <AppText
-                    variant="caption"
-                    weight="600"
-                    color={isActive ? "#FFF" : currentTheme.text}
-                  >
-                    {dance}
-                  </AppText>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
         <View style={styles.footer}>
           <AppButton
-            title="DÉMARRER"
+            title={startTitle}
             onPress={() => {
               handleStart().catch(() => {});
             }}
+            disabled={isLoading}
             variant="primary"
             textStyle={styles.startButtonText}
             testID="performance-setup-start-button"
             accessibilityLabel="Démarrer la compétition"
             accessibilityHint="Lance la session avec les paramètres configurés"
           />
+          {isLoading && (
+            <AppButton
+              title="Annuler"
+              onPress={stopPerformance}
+              variant="secondary"
+              style={styles.cancelButton}
+              testID="performance-setup-cancel-button"
+              accessibilityLabel="Annuler le chargement"
+              accessibilityHint="Arrête la préparation de la compétition"
+            />
+          )}
+          {isLoading && (
+            <AppText
+              variant="caption"
+              color={currentTheme.textSecondary}
+              style={styles.loadingHint}
+              testID="performance-setup-loading-hint"
+            >
+              Téléchargement des musiques et des annonces avant le départ…
+            </AppText>
+          )}
         </View>
       </ScrollView>
 
@@ -372,17 +335,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     borderWidth: 1,
   },
-  dancesGrid: {
+  addRoundButton: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  danceChip: {
-    marginBottom: 8,
-    borderRadius: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
     borderWidth: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    borderStyle: "dashed",
+    borderRadius: 14,
+    paddingVertical: 14,
   },
   sectionLabel: {
     marginBottom: 10,
@@ -399,6 +360,13 @@ const styles = StyleSheet.create({
   },
   footer: {
     marginTop: 20,
+  },
+  cancelButton: {
+    marginTop: 12,
+  },
+  loadingHint: {
+    marginTop: 10,
+    textAlign: "center",
   },
   startButtonText: {
     letterSpacing: 1,

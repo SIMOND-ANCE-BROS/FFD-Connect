@@ -2,10 +2,11 @@ import { ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
 import axios from "axios";
+import * as crypto from "crypto";
 import * as fs from "fs";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
 import { RedisService } from "../redis/redis.service";
-import { TtsService } from "./tts.service";
+import { buildSsml, TtsService } from "./tts.service";
 
 // axios est mocké pour tester le vrai `synthesize` (appel REST Speech) sans réseau.
 jest.mock("axios", () => ({
@@ -17,17 +18,6 @@ jest.mock("axios", () => ({
       e !== null &&
       (e as { isAxiosError?: boolean }).isAxiosError === true,
   },
-}));
-
-// Gemini (réécriture) est conservé → on garde son mock.
-jest.mock("@google/genai", () => ({
-  GoogleGenAI: jest.fn().mockImplementation(() => ({
-    models: {
-      generateContent: jest.fn().mockResolvedValue({
-        candidates: [{ content: { parts: [{ text: "Rewritten Text!" }] } }],
-      }),
-    },
-  })),
 }));
 
 jest.mock("fs", () => {
@@ -43,10 +33,9 @@ jest.mock("fs", () => {
 });
 
 // On mocke le seam `synthesize` (texte → MP3) : les tests ne touchent pas au
-// réseau Azure ; ils valident le cache, le fallback Gemini et le circuit breaker.
+// réseau Azure ; ils valident le cache, le texte verbatim et le circuit breaker.
 type TtsInternals = {
   synthesize: jest.Mock;
-  genAI?: { models: { generateContent: jest.Mock } };
   speechEndpoint?: string;
   speechResourceId?: string;
   buildAuthValues: (aadToken: string) => string[];
@@ -67,7 +56,6 @@ describe("TtsService", () => {
     overrides: Record<string, string | undefined> = {},
   ): { get: jest.Mock } => {
     const base: Record<string, string | undefined> = {
-      GOOGLE_API_KEY: "mock-api-key",
       AZURE_SPEECH_ENDPOINT:
         "https://speech.example.cognitiveservices.azure.com",
       AZURE_SPEECH_VOICE: "fr-FR-DeniseNeural",
@@ -90,16 +78,7 @@ describe("TtsService", () => {
     }).compile();
 
     service = module.get<TtsService>(TtsService);
-    await service.onModuleInit();
-
-    // Le `await import("@google/genai")` du service n'applique pas le mock de
-    // façon fiable sous ts-jest → fallback manuel (comme l'ancien spec).
-    if (!(service as unknown as TtsInternals).genAI) {
-      const { GoogleGenAI } = require("@google/genai");
-      (service as unknown as TtsInternals).genAI = new GoogleGenAI({
-        apiKey: "mock-api-key",
-      });
-    }
+    service.onModuleInit();
 
     mockSynthesize = jest.fn().mockResolvedValue(Buffer.from("mock-audio"));
     (service as unknown as TtsInternals).synthesize = mockSynthesize;
@@ -119,11 +98,11 @@ describe("TtsService", () => {
           ),
       };
       const svc = new TtsService(
-        configFor({ GOOGLE_API_KEY: undefined }) as never,
+        configFor() as never,
         { get: jest.fn(), set: jest.fn() } as never,
         mockCircuitBreaker as never,
       );
-      await svc.onModuleInit();
+      svc.onModuleInit();
       (fs.existsSync as jest.Mock).mockReturnValue(false);
       mockRedisService.get.mockResolvedValue(null);
       await expect(svc.getTtsAudio("test")).rejects.toThrow(
@@ -168,14 +147,54 @@ describe("TtsService", () => {
       expect(mockRedisService.set).toHaveBeenCalled();
     });
 
-    it("should fall back gracefully when Gemini is not configured", async () => {
-      const moduleNoGenAI = await Test.createTestingModule({
+    it("synthesizes the text VERBATIM (no LLM rewrite) with the configured voice", async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      mockRedisService.get.mockResolvedValue(null);
+      const announcement = "Premier tour… Cha-cha-cha !";
+
+      await service.getTtsAudio(announcement);
+
+      expect(mockSynthesize).toHaveBeenCalledTimes(1);
+      expect(mockSynthesize).toHaveBeenCalledWith(
+        announcement,
+        "fr-FR-DeniseNeural",
+      );
+      // Seul l'appel Azure passe par le circuit breaker (plus de Gemini).
+      expect(mockCircuitBreakerService.fire).toHaveBeenCalledTimes(1);
+      expect(mockCircuitBreakerService.fire).toHaveBeenCalledWith(
+        "azure-tts",
+        expect.any(Function),
+      );
+    });
+
+    it("uses a cache key salted with azure-v2 so old rewritten audio is not served", async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      mockRedisService.get.mockResolvedValue(null);
+      const text = "Finale, valse lente";
+      const v2 = crypto
+        .createHash("md5")
+        .update(text + "fr-FR-DeniseNeural" + "azure-v2")
+        .digest("hex");
+      const v1 = crypto
+        .createHash("md5")
+        .update(text + "fr-FR-DeniseNeural" + "azure-v1")
+        .digest("hex");
+
+      const result = await service.getTtsAudio(text);
+
+      expect(result).toContain(`${v2}.mp3`);
+      expect(result).not.toContain(v1);
+      expect(mockRedisService.get).toHaveBeenCalledWith(`tts:${v2}`);
+    });
+
+    it("uses the voice from AZURE_SPEECH_VOICE when configured", async () => {
+      const mod = await Test.createTestingModule({
         providers: [
           TtsService,
           { provide: RedisService, useValue: mockRedisService },
           {
             provide: ConfigService,
-            useValue: configFor({ GOOGLE_API_KEY: undefined }),
+            useValue: configFor({ AZURE_SPEECH_VOICE: "fr-FR-HenriNeural" }),
           },
           {
             provide: CircuitBreakerService,
@@ -183,21 +202,16 @@ describe("TtsService", () => {
           },
         ],
       }).compile();
-
-      const serviceNoGenAI = moduleNoGenAI.get<TtsService>(TtsService);
-      await serviceNoGenAI.onModuleInit();
-      (serviceNoGenAI as unknown as TtsInternals).synthesize = jest
-        .fn()
-        .mockResolvedValue(Buffer.from("mock-audio"));
-
+      const svc = mod.get<TtsService>(TtsService);
+      svc.onModuleInit();
+      const synth = jest.fn().mockResolvedValue(Buffer.from("mock-audio"));
+      (svc as unknown as TtsInternals).synthesize = synth;
       (fs.existsSync as jest.Mock).mockReturnValue(false);
       mockRedisService.get.mockResolvedValue(null);
 
-      const result = await serviceNoGenAI.getTtsAudio("Gemini Failure Case");
+      await svc.getTtsAudio("Bonjour");
 
-      expect(result).toContain("tts_cache");
-      expect(fs.promises.writeFile).toHaveBeenCalled();
-      expect(mockRedisService.set).toHaveBeenCalled();
+      expect(synth).toHaveBeenCalledWith("Bonjour", "fr-FR-HenriNeural");
     });
 
     it("should throw when synthesis returns no audio", async () => {
@@ -208,34 +222,6 @@ describe("TtsService", () => {
       await expect(service.getTtsAudio("No Audio Content")).rejects.toThrow(
         "No audio content received from Azure TTS",
       );
-    });
-
-    it("should fall back to original text if Gemini rewrite is empty", async () => {
-      (fs.existsSync as jest.Mock).mockReturnValue(false);
-      mockRedisService.get.mockResolvedValue(null);
-
-      const genAI = (service as unknown as TtsInternals).genAI!;
-      jest.spyOn(genAI.models, "generateContent").mockResolvedValueOnce({
-        candidates: [{ content: { parts: [{ text: "" }] } }],
-      });
-
-      const result = await service.getTtsAudio("Empty Rewrite");
-      expect(result).toContain("tts_cache");
-      expect(fs.promises.writeFile).toHaveBeenCalled();
-    });
-
-    it("should handle Gemini API errors gracefully", async () => {
-      (fs.existsSync as jest.Mock).mockReturnValue(false);
-      mockRedisService.get.mockResolvedValue(null);
-
-      const genAI = (service as unknown as TtsInternals).genAI!;
-      jest
-        .spyOn(genAI.models, "generateContent")
-        .mockRejectedValueOnce(new Error("Gemini Down"));
-
-      const result = await service.getTtsAudio("Gemini Error");
-      expect(result).toContain("tts_cache");
-      expect(fs.promises.writeFile).toHaveBeenCalled();
     });
 
     it("should reject with timeout error when synthesis hangs", async () => {
@@ -254,34 +240,6 @@ describe("TtsService", () => {
       expect((result as Error).message).toMatch(/timed out/i);
     }, 15000);
 
-    it("falls back to the original text when Gemini rewrite hangs (timeout)", async () => {
-      // Miroir du test de hang Azure ci-dessus, mais l'appel Gemini est
-      // désormais borné par circuit breaker + withTimeout ET protégé par le
-      // try/catch : un hang doit produire un repli propre sur le texte original,
-      // PAS un rejet de getTtsAudio.
-      (fs.existsSync as jest.Mock).mockReturnValue(false);
-      mockRedisService.get.mockResolvedValue(null);
-
-      const genAI = (service as unknown as TtsInternals).genAI!;
-      const hangingRewrite = new Promise<never>(() => {});
-      jest
-        .spyOn(genAI.models, "generateContent")
-        .mockReturnValueOnce(hangingRewrite);
-
-      jest.useFakeTimers();
-      const resultPromise = service.getTtsAudio("Gemini Hang");
-      await jest.runAllTimersAsync();
-
-      const result = await resultPromise;
-      // Repli gracieux : audio synthétisé à partir du texte ORIGINAL.
-      expect(result).toContain("tts_cache");
-      expect(mockSynthesize).toHaveBeenCalledWith(
-        "Gemini Hang",
-        "fr-FR-DeniseNeural",
-      );
-      expect(fs.promises.writeFile).toHaveBeenCalled();
-    }, 15000);
-
     it("should use default voice if not configured", async () => {
       const moduleDefault = await Test.createTestingModule({
         providers: [
@@ -298,11 +256,15 @@ describe("TtsService", () => {
         ],
       }).compile();
       const svc = moduleDefault.get<TtsService>(TtsService);
-      await svc.onModuleInit();
-      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      svc.onModuleInit();
+      const synth = jest.fn().mockResolvedValue(Buffer.from("mock-audio"));
+      (svc as unknown as TtsInternals).synthesize = synth;
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      mockRedisService.get.mockResolvedValue(null);
 
       const result = await svc.getTtsAudio("test");
       expect(result).toBeDefined();
+      expect(synth).toHaveBeenCalledWith("test", "fr-FR-DeniseNeural");
     });
   });
 
@@ -326,7 +288,7 @@ describe("TtsService", () => {
         ],
       }).compile();
       const svc = mod.get<TtsService>(TtsService);
-      await svc.onModuleInit();
+      svc.onModuleInit();
 
       const values = (svc as unknown as TtsInternals).buildAuthValues("TOK");
       // Speech exige la forme encapsulée (spécificité vs autres services Cognitive).
@@ -373,7 +335,7 @@ describe("TtsService", () => {
         ],
       }).compile();
       const svc = mod.get<TtsService>(TtsService);
-      await svc.onModuleInit();
+      svc.onModuleInit();
       // On remplace le credential pour éviter toute acquisition de token réelle.
       (svc as unknown as SpeechInternals).credential = {
         getToken: jest.fn().mockResolvedValue({ token: "TOK" }),
@@ -403,6 +365,8 @@ describe("TtsService", () => {
       expect(body).toContain("<speak");
       expect(body).toContain("&amp;"); // escapeXml a bien tourné sur "&"
       expect(body).toContain("&lt;dansez&gt;");
+      expect(body).toContain("xmlns:mstts='https://www.w3.org/2001/mstts'");
+      expect(body).toContain("<prosody rate='-5%'>");
       expect(cfg.headers.Authorization).toBe(`Bearer aad#${RESOURCE_ID}#TOK`);
       expect(cfg.headers["X-Microsoft-OutputFormat"]).toBe(
         "audio-24khz-48kbitrate-mono-mp3",
@@ -466,6 +430,47 @@ describe("TtsService", () => {
     });
   });
 
+  describe("buildSsml", () => {
+    it("wraps the text in speak/voice/prosody with the mstts namespace", () => {
+      const ssml = buildSsml(
+        "Premier tour, valse lente.",
+        "fr-FR-DeniseNeural",
+      );
+      expect(ssml).toBe(
+        "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' " +
+          "xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='fr-FR'>" +
+          "<voice name='fr-FR-DeniseNeural'>" +
+          "<prosody rate='-5%'>Premier tour, valse lente.</prosody>" +
+          "</voice></speak>",
+      );
+    });
+
+    it("keeps ellipses and punctuation intact (only XML chars are escaped)", () => {
+      const ssml = buildSsml(
+        "Mesdames et messieurs… place à la finale ! Prêts ? Rock & roll",
+        "fr-FR-DeniseNeural",
+      );
+      expect(ssml).toContain(
+        "Mesdames et messieurs… place à la finale ! Prêts ? Rock &amp; roll",
+      );
+    });
+
+    it("escapes quotes so the text cannot break out of the SSML", () => {
+      const ssml = buildSsml(`L'"annonce" <b>`, "fr-FR-DeniseNeural");
+      expect(ssml).toContain("L&apos;&quot;annonce&quot; &lt;b&gt;");
+      expect(ssml).not.toContain("<b>");
+    });
+
+    it("derives xml:lang from the voice name", () => {
+      expect(buildSsml("Hi", "en-GB-SoniaNeural")).toContain(
+        "xml:lang='en-GB'",
+      );
+      expect(buildSsml("Hi", "en-GB-SoniaNeural")).toContain(
+        "<voice name='en-GB-SoniaNeural'>",
+      );
+    });
+  });
+
   describe("onModuleInit", () => {
     it("sets the Speech endpoint when AZURE_SPEECH_ENDPOINT is set", () => {
       expect((service as unknown as TtsInternals).speechEndpoint).toBeTruthy();
@@ -487,7 +492,7 @@ describe("TtsService", () => {
         ],
       }).compile();
       const svc = moduleNoSpeech.get<TtsService>(TtsService);
-      await svc.onModuleInit();
+      svc.onModuleInit();
       expect((svc as unknown as TtsInternals).speechEndpoint).toBeUndefined();
     });
   });
