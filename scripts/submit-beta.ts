@@ -18,9 +18,9 @@
  *    n'a pas d'`ascAppId` configure.
  *
  * Il ne fait QUE l'envoi vers App Store Connect, qui fonctionne en plan EAS
- * gratuit. L'ajout au groupe TestFlight externe et la Beta App Review restent
- * manuels (cf. docs/exploitation/changelog-beta.md) : le job `testflight` d'EAS
- * qui les automatise exige un plan payant.
+ * gratuit. L'ajout au groupe TestFlight externe et la Beta App Review passent
+ * par `scripts/testflight-distribute.ts` (API App Store Connect) : le job
+ * `testflight` d'EAS qui les automatise exige un plan payant.
  */
 
 import { execFileSync, spawnSync } from 'child_process';
@@ -232,8 +232,9 @@ async function main(): Promise<void> {
       'Envoye a App Store Connect. Apple traite la version en 5-10 min.',
       '',
       'Testeurs INTERNES : rien de plus a faire.',
-      'Testeurs EXTERNES : ajouter la version au groupe dans App Store Connect',
-      'et la soumettre a la Beta App Review (cf. docs/exploitation/changelog-beta.md).',
+      'Testeurs EXTERNES : `pnpm testflight:distribute --build-number <n>` ajoute',
+      'la version au groupe et la soumet a la Beta App Review (cle ASC requise,',
+      'cf. docs/exploitation/changelog-beta.md).',
     ].join('\n'),
   );
 }
