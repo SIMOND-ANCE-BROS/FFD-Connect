@@ -1,3 +1,34 @@
+import { Prisma, TrackStatus } from "@prisma/client";
+
+/**
+ * Pistes de la bibliothèque visibles par un non-admin : exclut Ambiance, les
+ * pistes en cours de traitement (PENDING/ERROR) et les pistes blacklistées.
+ */
+export const LIBRARY_TRACK_WHERE: Prisma.TrackWhereInput = {
+  AND: [
+    { artist: { not: { equals: "Ambiance" }, mode: "insensitive" } },
+    {
+      OR: [
+        { style: { not: { equals: "Ambiance" }, mode: "insensitive" } },
+        { style: null },
+      ],
+    },
+    { status: TrackStatus.READY },
+    { blacklisted: false },
+  ],
+};
+
+/**
+ * Filtre de résolution d'une piste par ID. Un admin atteint toute piste ; un
+ * non-admin uniquement celles de la bibliothèque, de sorte qu'une piste hors
+ * bibliothèque soit indiscernable d'une piste inexistante (même 404).
+ */
+export const trackByIdWhere = (
+  id: string,
+  isAdmin: boolean,
+): Prisma.TrackWhereInput =>
+  isAdmin ? { id } : { AND: [{ id }, LIBRARY_TRACK_WHERE] };
+
 /** Libellé neutre affiché à la place du titre réel d'une piste masquée. */
 export const MASKED_TITLE_LABEL = "Titre masqué";
 

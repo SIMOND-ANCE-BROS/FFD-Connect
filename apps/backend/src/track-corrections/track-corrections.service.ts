@@ -19,6 +19,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { UpdateTrackDto } from "../tracks/dto/update-track.dto";
 import {
   publicTrackName,
+  trackByIdWhere,
   TrackVisibilityFields,
 } from "../tracks/track-visibility.util";
 import { TracksService } from "../tracks/tracks.service";
@@ -130,8 +131,9 @@ export class TrackCorrectionsService {
   async create(
     userId: string,
     dto: CreateTrackCorrectionDto,
+    isAdmin = false,
   ): Promise<MyTrackCorrectionDto> {
-    const track = await this.findTarget(dto.trackId);
+    const track = await this.findTarget(dto.trackId, isAdmin);
     const proposed = TrackCorrectionsService.diff(dto, track);
     const message = normalizeText(dto.message);
 
@@ -188,8 +190,9 @@ export class TrackCorrectionsService {
     reason: TrackCorrectionReason,
     message: string | undefined,
     userId: string,
+    isAdmin = false,
   ): Promise<void> {
-    const track = await this.findTarget(trackId);
+    const track = await this.findTarget(trackId, isAdmin);
     const trimmed = normalizeText(message);
     const result = await this.createWithinCaps(userId, trackId, (tx) =>
       tx.trackCorrection.create({
@@ -302,13 +305,20 @@ export class TrackCorrectionsService {
     proposedClashTimecodes: [],
   };
 
-  /** Piste visée : 404 si absente ou retirée de la bibliothèque. */
-  private async findTarget(trackId: string): Promise<CorrectionTarget> {
-    const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
+  /**
+   * Piste visée. Pour un non-admin : 404 si absente ou hors bibliothèque
+   * (blacklistée, non READY, Ambiance), sans distinction possible. Un admin
+   * atteint toute piste existante.
+   */
+  private async findTarget(
+    trackId: string,
+    isAdmin: boolean,
+  ): Promise<CorrectionTarget> {
+    const track = await this.prisma.track.findFirst({
+      where: trackByIdWhere(trackId, isAdmin),
       select: trackCorrectionTargetSelect,
     });
-    if (!track || track.blacklisted) {
+    if (!track) {
       throw new NotFoundException(`Track ${trackId} not found`);
     }
     return track;

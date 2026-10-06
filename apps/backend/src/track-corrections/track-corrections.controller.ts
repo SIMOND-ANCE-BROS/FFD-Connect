@@ -85,7 +85,11 @@ export class TrackCorrectionsController {
     @Body() dto: CreateTrackCorrectionDto,
     @Req() req: RequestWithUser,
   ): Promise<MyTrackCorrectionDto> {
-    return this.service.create(req.user.userId, dto);
+    return this.service.create(
+      req.user.userId,
+      dto,
+      req.user.role === UserRole.ADMIN,
+    );
   }
 
   @Get()

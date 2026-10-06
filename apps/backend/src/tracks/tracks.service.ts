@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma, TrackStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
@@ -14,7 +14,11 @@ import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { BpmService } from "./bpm.service";
 import { UpdateTrackDto } from "./dto/update-track.dto";
-import { MASKED_TITLE_LABEL } from "./track-visibility.util";
+import {
+  LIBRARY_TRACK_WHERE,
+  MASKED_TITLE_LABEL,
+  trackByIdWhere,
+} from "./track-visibility.util";
 
 /** Champs de base récupérés pour toute piste audio. Ne pas exposer status/jobId dans les listes. */
 const TRACK_BASE_SELECT = {
@@ -51,24 +55,6 @@ export class TracksService {
   ) {}
 
   /**
-   * Filtre Prisma : exclut Ambiance, les tracks en cours de traitement
-   * (PENDING/ERROR) et les pistes blacklistées par un admin.
-   */
-  private static readonly LIBRARY_WHERE: Prisma.TrackWhereInput = {
-    AND: [
-      { artist: { not: { equals: "Ambiance" }, mode: "insensitive" } },
-      {
-        OR: [
-          { style: { not: { equals: "Ambiance" }, mode: "insensitive" } },
-          { style: null },
-        ],
-      },
-      { status: TrackStatus.READY },
-      { blacklisted: false },
-    ],
-  };
-
-  /**
    * Applique le masquage du titre en fonction du rôle du demandeur.
    * Les admins voient toujours le titre réel (+ le flag titleMasked pour
    * afficher un indicateur). Les non-admins reçoivent un libellé neutre
@@ -90,7 +76,7 @@ export class TracksService {
     isAdmin = false,
   ) {
     const { skip, take } = pagination;
-    const where = TracksService.LIBRARY_WHERE;
+    const where = LIBRARY_TRACK_WHERE;
 
     const [total, tracks] = await Promise.all([
       this.prisma.track.count({ where }),
@@ -108,11 +94,13 @@ export class TracksService {
   }
 
   /**
-   * Récupère une piste audio par son ID.
+   * Récupère une piste audio par son ID. Pour un non-admin, une piste hors
+   * bibliothèque (blacklistée, non READY, Ambiance) renvoie le même 404
+   * qu'une piste inexistante.
    */
   async findOne(id: string, isAdmin = false) {
-    const track = await this.prisma.track.findUnique({
-      where: { id },
+    const track = await this.prisma.track.findFirst({
+      where: trackByIdWhere(id, isAdmin),
       select: TRACK_BASE_SELECT,
     });
     if (!track) throw new NotFoundException(`Track ${id} not found`);
