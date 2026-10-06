@@ -42,8 +42,9 @@ env:
   # target, space-separated (ios, android). Single source of truth: the gate
   # checks a fingerprint per platform listed here and the build jobs build from
   # the same list, so the two cannot drift. Android is not built automatically
-  # yet (the manual Play promotion lives in promote-beta*): enabling it on
-  # preview/production is `ios android` here and nothing else.
+  # yet (once #102 is merged, the manual Play promotion builds it through
+  # promote-beta-android): enabling it on preview/production is `ios android`
+  # here and nothing else.
   AUTO_BUILD_PLATFORMS: ios
 
 jobs:
@@ -203,7 +204,16 @@ jobs:
         run: |
           set -uo pipefail
           summary="$GITHUB_STEP_SUMMARY"
+          # Once a platform is PROVEN to lack a build (missing non-empty), a
+          # later failure must not downgrade that to the path-based guess, which
+          # may say false: native=true, native_platforms unset = build them all.
+          missing=""
           fallback() {
+            if [ -n "$missing" ]; then
+              echo "::warning::$1 - but${missing} already lacks a build: native build of every platform"
+              echo "native=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "::warning::$1 - falling back to the path-based decision (native=$PATH_NATIVE)"
             echo "native=$PATH_NATIVE" >> "$GITHUB_OUTPUT"
             exit 0
@@ -233,13 +243,15 @@ jobs:
           # platform the build jobs build gets its own check. native=true as soon
           # as ONE of them has no build carrying its hash, and only the missing
           # ones are listed in native_platforms.
+          # Validate the whole list before computing any fingerprint.
           [ -n "${AUTO_BUILD_PLATFORMS// /}" ] || fallback "AUTO_BUILD_PLATFORMS is empty"
-          missing=""
           for platform in $AUTO_BUILD_PLATFORMS; do
             case "$platform" in
               ios | android) ;;
               *) fallback "unknown platform '$platform' in AUTO_BUILD_PLATFORMS" ;;
             esac
+          done
+          for platform in $AUTO_BUILD_PLATFORMS; do
 
             # --build-profile applies the profile's env (EXPO_PUBLIC_APP_ENV…),
             # which the fingerprint depends on: same hash `eas build` computes.
@@ -277,8 +289,10 @@ jobs:
             fi
           done
 
-          # Written last and together: a crash above leaves both outputs unset,
-          # so the job falls back to the path-based decision for every platform.
+          # Written last and together. Every early exit above goes through
+          # fallback(), which writes `native` only (native_platforms stays unset
+          # = build every platform); an unexpected crash writes nothing, and the
+          # job output then falls back to the path-based decision.
           missing="${missing# }"
           if [ -n "$missing" ]; then
             echo "native_platforms=$missing" >> "$GITHUB_OUTPUT"
@@ -358,10 +372,25 @@ jobs:
           NATIVE_PLATFORMS: ${{ needs.gate.outputs.native_platforms }}
         run: |
           set -euo pipefail
-          # Unquoted on purpose: split the space-separated list into "$@".
+          # Unquoted on purpose (word splitting, globbing off): list -> "$@".
+          set -f
           # shellcheck disable=SC2086
           set -- ${NATIVE_PLATFORMS:-$AUTO_BUILD_PLATFORMS}
-          if [ "$#" -gt 1 ]; then PLATFORM=all; else PLATFORM="$1"; fi
+          ios=false
+          android=false
+          for p in "$@"; do
+            case "$p" in
+              ios) ios=true ;;
+              android) android=true ;;
+              *) echo "::error::unknown platform '$p'"; exit 1 ;;
+            esac
+          done
+          # `all` only when BOTH are listed: duplicates must not add Android.
+          if [ "$ios" = true ] && [ "$android" = true ]; then PLATFORM=all
+          elif [ "$ios" = true ]; then PLATFORM=ios
+          elif [ "$android" = true ]; then PLATFORM=android
+          else echo "::error::no platform to build"; exit 1
+          fi
           echo "Building preview for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
           eas build --profile preview --platform "$PLATFORM" --non-interactive
 
@@ -648,10 +677,25 @@ jobs:
           NATIVE_PLATFORMS: ${{ needs.gate.outputs.native_platforms }}
         run: |
           set -euo pipefail
-          # Unquoted on purpose: split the space-separated list into "$@".
+          # Unquoted on purpose (word splitting, globbing off): list -> "$@".
+          set -f
           # shellcheck disable=SC2086
           set -- ${NATIVE_PLATFORMS:-$AUTO_BUILD_PLATFORMS}
-          if [ "$#" -gt 1 ]; then PLATFORM=all; else PLATFORM="$1"; fi
+          ios=false
+          android=false
+          for p in "$@"; do
+            case "$p" in
+              ios) ios=true ;;
+              android) android=true ;;
+              *) echo "::error::unknown platform '$p'"; exit 1 ;;
+            esac
+          done
+          # `all` only when BOTH are listed: duplicates must not add Android.
+          if [ "$ios" = true ] && [ "$android" = true ]; then PLATFORM=all
+          elif [ "$ios" = true ]; then PLATFORM=ios
+          elif [ "$android" = true ]; then PLATFORM=android
+          else echo "::error::no platform to build"; exit 1
+          fi
           echo "Building production for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
           eas build --profile production --platform "$PLATFORM" --non-interactive
 
