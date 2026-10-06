@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Installer la bêta — FFD Connect</title>
+    <meta
+      name="description"
+      content="Installer la version bêta de FFD Connect sur iPhone (TestFlight) ou Android (Google Play)."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" src="/src/beta.ts"></script>
+  </head>
+  <body>
+    <!--
+      Static on purpose: the page must work without JavaScript. src/beta.ts only
+      highlights the visitor's platform.
+
+      Links: while a store link does not exist yet, its button is a
+      <span class="btn btn--disabled">. Once available, replace it with
+        <a class="btn btn--inverse" href="…">…</a>
+      - iOS: TestFlight public link of the external group « Beta FFD »
+        (https://testflight.apple.com/join/XXXXXXXX)
+      - Android: Google Group of the closed test, then the Play opt-in page.
+    -->
+    <div class="legal beta">
+      <header class="legal__header">
+        <a class="legal__brand" href="../">
+          <img src="/ffd-logo.svg" alt="" width="28" height="28" />
+          <span>FFD Connect</span>
+        </a>
+        <nav class="legal__nav" aria-label="Navigation">
+          <a href="../">Accueil</a>
+          <a href="../confidentialite/">Confidentialité</a>
+        </nav>
+      </header>
+
+      <main class="beta__body">
+        <p class="beta__kicker">Version bêta</p>
+        <h1 class="beta__title">Installer FFD Connect</h1>
+        <p class="beta__intro">
+          Merci de tester l'application avant sa sortie. La bêta s'installe sous le
+          nom <strong>FFD Connect Beta</strong>. C'est une version de test : elle peut
+          contenir des bugs. Signalez-les depuis l'application : onglet
+          <strong>Réglages</strong>, puis <strong>Faire un retour</strong>.
+        </p>
+
+        <p class="beta__desktop-hint" data-desktop-hint hidden>
+          Vous êtes sur un ordinateur : ouvrez cette page sur votre téléphone pour
+          installer l'application.
+        </p>
+
+        <div class="beta__platforms">
+          <section class="beta__card" data-platform="ios" aria-labelledby="beta-ios">
+            <p class="beta__badge" data-badge hidden>Votre appareil</p>
+            <h2 id="beta-ios" class="beta__card-title">iPhone et iPad</h2>
+            <p class="beta__card-sub">Via TestFlight, l'application de test d'Apple.</p>
+            <ol class="beta__steps">
+              <li>
+                Installez
+                <a href="https://apps.apple.com/app/testflight/id899247664"
+                  >TestFlight</a
+                >
+                depuis l'App Store.
+              </li>
+              <li>
+                Ouvrez le lien d'invitation ci-dessous sur votre iPhone, puis touchez
+                <strong>Accepter</strong>.
+              </li>
+              <li>Touchez <strong>Installer</strong> dans TestFlight.</li>
+            </ol>
+            <span class="btn btn--disabled" aria-disabled="true"
+              >Lien bientôt disponible</span
+            >
+          </section>
+
+          <section
+            class="beta__card"
+            data-platform="android"
+            aria-labelledby="beta-android"
+          >
+            <p class="beta__badge" data-badge hidden>Votre appareil</p>
+            <h2 id="beta-android" class="beta__card-title">Android</h2>
+            <p class="beta__card-sub">Via le test fermé de Google Play.</p>
+            <ol class="beta__steps">
+              <li>
+                Rejoignez le groupe des testeurs avec le
+                <strong>compte Google de votre Play Store</strong>.
+              </li>
+              <li>
+                Ouvrez la page du test et touchez
+                <strong>Devenir testeur</strong>.
+              </li>
+              <li>
+                Installez <strong>FFD Connect Beta</strong> depuis le Play Store (le
+                lien apparaît sur la page du test).
+              </li>
+            </ol>
+            <div class="beta__actions">
+              <span class="btn btn--disabled" aria-disabled="true"
+                >1. Groupe des testeurs — bientôt</span
+              >
+              <span class="btn btn--disabled" aria-disabled="true"
+                >2. Page du test — bientôt</span
+              >
+            </div>
+          </section>
+        </div>
+
+        <section class="beta__faq" aria-labelledby="beta-faq">
+          <h2 id="beta-faq" class="beta__faq-title">Bon à savoir</h2>
+          <ul>
+            <li>
+              La bêta s'installe à côté d'une éventuelle autre version de
+              l'application, sans la remplacer.
+            </li>
+            <li>
+              Les mises à jour arrivent automatiquement, par TestFlight ou par le Play
+              Store.
+            </li>
+            <li>
+              Au premier lancement, le serveur de test peut mettre jusqu'à deux minutes
+              à démarrer.
+            </li>
+            <li>
+              Vos données sont traitées selon la
+              <a href="../confidentialite/">politique de confidentialité</a>. Vous
+              pouvez
+              <a href="../suppression-compte/">supprimer votre compte</a> à tout
+              moment.
+            </li>
+          </ul>
+        </section>
+      </main>
+
+      <footer class="legal__footer">
+        <p>Projet indépendant — non affilié à la Fédération Française de Danse</p>
+        <a href="../">Retour à l'accueil</a>
+      </footer>
+    </div>
+  </body>
+</html>

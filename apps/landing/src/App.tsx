@@ -308,6 +308,7 @@ function SiteFooter({ appUrl, docsUrl }: { appUrl: string; docsUrl: string }) {
           <a href="#roadmap">Roadmap</a>
           <a href={docsUrl}>Documentation</a>
           <a href={appUrl}>Web</a>
+          <a href={`${import.meta.env.BASE_URL}beta/`}>Installer la bêta</a>
           <a href={`${import.meta.env.BASE_URL}confidentialite/`}>Confidentialité</a>
           <a href={`${import.meta.env.BASE_URL}cgu/`}>CGU</a>
           <a href={`${import.meta.env.BASE_URL}mentions-legales/`}>Mentions légales</a>
