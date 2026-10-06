@@ -26,6 +26,7 @@ export default defineConfig({
         cgu: resolve(__dirname, 'cgu/index.html'),
         mentions: resolve(__dirname, 'mentions-legales/index.html'),
         suppression: resolve(__dirname, 'suppression-compte/index.html'),
+        beta: resolve(__dirname, 'beta/index.html'),
       },
     },
   },
