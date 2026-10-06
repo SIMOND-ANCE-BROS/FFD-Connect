@@ -70,7 +70,7 @@ jobs:
         # assert the rendered output really carries its text.
         run: |
           set -euo pipefail
-          for page in confidentialite cgu mentions-legales; do
+          for page in confidentialite cgu mentions-legales suppression-compte; do
             file="apps/landing/dist/$page/index.html"
             test -f "$file" || { echo "::error::$file missing"; exit 1; }
             bytes=$(wc -c < "$file")

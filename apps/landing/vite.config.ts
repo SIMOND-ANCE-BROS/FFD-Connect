@@ -25,6 +25,7 @@ export default defineConfig({
         confidentialite: resolve(__dirname, 'confidentialite/index.html'),
         cgu: resolve(__dirname, 'cgu/index.html'),
         mentions: resolve(__dirname, 'mentions-legales/index.html'),
+        suppression: resolve(__dirname, 'suppression-compte/index.html'),
       },
     },
   },

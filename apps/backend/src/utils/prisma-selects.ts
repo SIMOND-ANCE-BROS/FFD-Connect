@@ -221,3 +221,12 @@ export const notificationPreferenceExportSelect = {
   enabled: true,
   updatedAt: true,
 } as const;
+
+/**
+ * Sélecteur pour la purge des documents de renouvellement de licence à la
+ * suppression de compte (RGPD art. 17) : seule la référence du fichier
+ * (nom de blob, ou chemin disque historique) est lue.
+ */
+export const licenseRenewalDocumentFileSelect = {
+  filePath: true,
+} as const;

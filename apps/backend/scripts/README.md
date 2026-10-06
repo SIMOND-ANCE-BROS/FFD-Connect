@@ -89,6 +89,19 @@ Détecte l'IP locale et met à jour la configuration client (apps/client/src/con
 
 **Usage:** Automatiquement exécuté via `pnpm start:dev`
 
+### `list-orphan-renewal-blobs.ts`
+
+**Inventaire des documents de renouvellement orphelins (lecture seule)**
+
+Liste les blobs du conteneur `uploads` nommés comme des documents de renouvellement
+(`document-<horodatage>-<aléa>.<ext>`, certificats médicaux — donnée de santé, RGPD art. 9 —
+et certificats de licence) qu'aucune ligne `LicenseRenewalDocument.filePath` ne référence.
+Affiche nom + `lastModified` puis le total. **Ne supprime rien** : la suppression se fait à la
+main après revue. À lancer après une alerte Sentry `rgpd: file-deletion-failed`.
+
+**Usage :** `pnpm exec tsx scripts/list-orphan-renewal-blobs.ts` (env : `DATABASE_URL`,
+`AZURE_STORAGE_CONNECTION_STRING` ou `AZURE_STORAGE_ACCOUNT_NAME`, `AZURE_STORAGE_UPLOADS_CONTAINER`)
+
 ---
 
 ## Scripts à la racine du projet
