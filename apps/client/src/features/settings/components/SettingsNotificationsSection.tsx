@@ -67,7 +67,7 @@ export const SettingsNotificationsSection: React.FC<
             { borderTopColor: theme.border },
           ]}
         >
-          <View style={styles.rowLeft}>
+          <View style={[styles.rowLeft, styles.rowLeftFlexible]}>
             <View style={[styles.iconBox, { backgroundColor: "#9747FF20" }]}>
               <BellRing size={18} color="#9747FF" />
             </View>
