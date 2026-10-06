@@ -560,6 +560,27 @@ describe("UsersService", () => {
       expect(prefs.take).toBe(50);
     });
 
+    it("exporte les propositions de correction, sans l'identité du relecteur", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+
+      await service.exportMyData("u1");
+
+      const select = prisma.user.findUnique.mock.calls[0][0]?.select as Record<
+        string,
+        unknown
+      >;
+      const corrections = select.trackCorrectionsProposed as {
+        select: Record<string, unknown>;
+        take: number;
+      };
+      expect(corrections.select).toEqual(
+        expect.objectContaining({ message: true, status: true }),
+      );
+      expect(corrections.select.reviewedBy).toBeUndefined();
+      expect(corrections.select.reviewedById).toBeUndefined();
+      expect(corrections.take).toBe(500);
+    });
+
     it("rejette en NotFound si l'utilisateur n'existe pas", async () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
@@ -628,6 +649,17 @@ describe("UsersService", () => {
       });
     });
 
+    it("efface le commentaire libre de ses propositions de correction (le SetNull ne suffit pas)", async () => {
+      compare.mockResolvedValue(true);
+
+      await service.deleteMyAccount("u1", "correct-password");
+
+      expect(prisma.trackCorrection.updateMany).toHaveBeenCalledWith({
+        where: { proposedById: "u1" },
+        data: { message: null },
+      });
+    });
+
     it("supprime les bug reports de l'utilisateur (userId sans FK)", async () => {
       compare.mockResolvedValue(true);
 
@@ -645,6 +677,9 @@ describe("UsersService", () => {
       prisma.seatBooking.deleteMany.mockReturnValue(marker("seatBookings"));
       prisma.registration.deleteMany.mockReturnValue(marker("registrations"));
       prisma.registration.updateMany.mockReturnValue(marker("partnerAnon"));
+      prisma.trackCorrection.updateMany.mockReturnValue(
+        marker("trackCorrectionAnon"),
+      );
       prisma.bugReport.deleteMany.mockReturnValue(marker("bugReports"));
       prisma.user.delete.mockReturnValue(marker("user"));
 
@@ -660,6 +695,7 @@ describe("UsersService", () => {
         "seatBookings",
         "registrations",
         "partnerAnon",
+        "trackCorrectionAnon",
         "bugReports",
         "user",
       ]);

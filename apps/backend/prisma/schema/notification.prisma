@@ -29,8 +29,13 @@ enum NotificationType {
   /// valider, acceptation, refus, clôture. Destiné aux gestionnaires de club.
   CLUB_PARTNERSHIP
 
-  /// Un utilisateur signale une musique. Destiné aux administrateurs.
+  /// Un utilisateur signale une musique ou propose une correction de ses
+  /// métadonnées. Destiné aux administrateurs.
   TRACK_REPORT
+
+  /// La décision d'un administrateur (validée ou refusée) sur une proposition
+  /// de correction de musique QUE J'AI SOUMISE. Pour tous les rôles.
+  TRACK_CORRECTION_DECISION
 
   /// Notification de diagnostic déclenchée par l'utilisateur lui-même
   /// (POST /notifications/test). NON RÉGLABLE : la couper rendrait le

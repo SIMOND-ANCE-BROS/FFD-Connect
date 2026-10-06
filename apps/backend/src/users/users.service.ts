@@ -15,6 +15,7 @@ import {
   deviceTokenExportSelect,
   licenseRenewalDocumentFileSelect,
   notificationPreferenceExportSelect,
+  trackCorrectionExportSelect,
 } from "../utils/prisma-selects";
 
 /**
@@ -409,6 +410,13 @@ export class UsersService {
           orderBy: { updatedAt: "desc" },
           take: 50,
         },
+        // Propositions de correction de musiques : le contenu soumis (valeurs,
+        // commentaire) et la décision, sans l'identité de l'administrateur.
+        trackCorrectionsProposed: {
+          select: trackCorrectionExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 500,
+        },
       },
     });
     if (!user) {
@@ -429,7 +437,11 @@ export class UsersService {
    * Cascades Prisma (schéma) : refreshTokens, passwordResetTokens,
    * deviceTokens, notificationPrefs, partnerships, soloTeamMemberships,
    * licenseRenewalRequests (et leurs licenseRenewalDocuments).
-   * SetNull : licence (reste propriété fédération), tracks soumis.
+   * SetNull : licence (reste propriété fédération), tracks soumis,
+   * propositions de correction de musiques (auteur ET relecteur).
+   * Propositions de correction de l'utilisateur : commentaire libre effacé
+   * explicitement (texte potentiellement identifiant) ; les valeurs proposées
+   * (titre, MPM…) portent sur la musique, pas sur la personne, et restent.
    * Inscriptions d'autrui en tant que partenaire : anonymisées explicitement
    * (partnerUserId ET partnerName, copie du nom complet → null ; null est
    * déjà géré partout à l'affichage).
@@ -478,6 +490,12 @@ export class UsersService {
       this.prisma.registration.updateMany({
         where: { partnerUserId: userId },
         data: { partnerUserId: null, partnerName: null },
+      }),
+      // Le SetNull de proposedById laisserait le commentaire libre, qui peut
+      // identifier son auteur : il est effacé avant la suppression du compte.
+      this.prisma.trackCorrection.updateMany({
+        where: { proposedById: userId },
+        data: { message: null },
       }),
       // BugReport.userId n'a pas de FK (report.prisma) : suppression explicite.
       this.prisma.bugReport.deleteMany({ where: { userId } }),

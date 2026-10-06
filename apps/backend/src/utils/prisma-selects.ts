@@ -230,3 +230,126 @@ export const notificationPreferenceExportSelect = {
 export const licenseRenewalDocumentFileSelect = {
   filePath: true,
 } as const;
+
+/** Sélecteur minimal : identifiant seul (destinataires d'une notification…). */
+export const idOnlySelect = {
+  id: true,
+} as const;
+
+/**
+ * Sélecteur pour l'affichage du nom d'un utilisateur (auteur, relecteur…) :
+ * identifiant et nom, jamais l'e-mail.
+ */
+export const userNameSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+} as const;
+
+/**
+ * Valeurs ACTUELLES d'une piste, affichées à côté d'une proposition de
+ * correction pour que l'administrateur voie le diff avant de trancher.
+ */
+export const trackCorrectionTrackSnapshotSelect = {
+  id: true,
+  title: true,
+  artist: true,
+  style: true,
+  bpm: true,
+  clashTimecodes: true,
+  titleMasked: true,
+  blacklisted: true,
+} as const;
+
+/**
+ * Piste visée par une NOUVELLE proposition : de quoi refuser une piste
+ * blacklistée et ne garder que les valeurs qui diffèrent réellement.
+ */
+export const trackCorrectionTargetSelect = {
+  title: true,
+  artist: true,
+  style: true,
+  bpm: true,
+  clashTimecodes: true,
+  blacklisted: true,
+} as const;
+
+/** Champs propres à une proposition de correction (sans relation). */
+export const trackCorrectionBaseSelect = {
+  id: true,
+  trackId: true,
+  reason: true,
+  proposedTitle: true,
+  proposedArtist: true,
+  proposedStyle: true,
+  proposedBpm: true,
+  proposesClashes: true,
+  proposedClashTimecodes: true,
+  message: true,
+  status: true,
+  reviewComment: true,
+  reviewedAt: true,
+  createdAt: true,
+} as const;
+
+/**
+ * File de modération (ADMIN) : la proposition, les valeurs courantes de la
+ * piste et le nom de l'auteur et du relecteur.
+ */
+export const trackCorrectionAdminSelect = {
+  ...trackCorrectionBaseSelect,
+  track: { select: trackCorrectionTrackSnapshotSelect },
+  proposedBy: { select: userNameSelect },
+  reviewedBy: { select: userNameSelect },
+} as const;
+
+/**
+ * « Mes propositions » : la proposition et de quoi nommer la piste (le titre
+ * réel est masqué côté non-admin si la piste est modérée).
+ */
+export const trackCorrectionMineSelect = {
+  ...trackCorrectionBaseSelect,
+  track: {
+    select: { id: true, title: true, artist: true, titleMasked: true },
+  },
+} as const;
+
+/**
+ * Décision d'un administrateur : l'état (garde contre la double décision),
+ * les valeurs proposées à appliquer, l'auteur à notifier et le titre de la
+ * piste pour le message.
+ */
+export const trackCorrectionDecisionSelect = {
+  id: true,
+  trackId: true,
+  status: true,
+  proposedById: true,
+  proposedTitle: true,
+  proposedArtist: true,
+  proposedStyle: true,
+  proposedBpm: true,
+  proposesClashes: true,
+  proposedClashTimecodes: true,
+  track: { select: { title: true, titleMasked: true } },
+} as const;
+
+/**
+ * Export RGPD (art. 15/20) des propositions de correction : le contenu soumis
+ * par l'utilisateur et la décision, sans l'identité de l'administrateur
+ * (donnée d'un tiers).
+ */
+export const trackCorrectionExportSelect = {
+  reason: true,
+  proposedTitle: true,
+  proposedArtist: true,
+  proposedStyle: true,
+  proposedBpm: true,
+  proposesClashes: true,
+  proposedClashTimecodes: true,
+  message: true,
+  status: true,
+  reviewComment: true,
+  reviewedAt: true,
+  createdAt: true,
+  track: { select: { title: true, artist: true } },
+} as const;

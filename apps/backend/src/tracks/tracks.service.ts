@@ -5,21 +5,14 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import {
-  NotificationType,
-  Prisma,
-  TrackStatus,
-  UserRole,
-} from "@prisma/client";
+import { Prisma, TrackStatus } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
-import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { BpmService } from "./bpm.service";
-import { ReportTrackReason } from "./dto/report-track.dto";
 import { UpdateTrackDto } from "./dto/update-track.dto";
 
 /** Champs de base récupérés pour toute piste audio. Ne pas exposer status/jobId dans les listes. */
@@ -45,7 +38,7 @@ const TRACK_BASE_SELECT = {
 } satisfies Prisma.TrackSelect;
 
 /** Libellé neutre affiché à la place du titre réel d'une piste masquée. */
-const MASKED_TITLE_LABEL = "Titre masqué";
+export const MASKED_TITLE_LABEL = "Titre masqué";
 
 type TrackBase = Prisma.TrackGetPayload<{ select: typeof TRACK_BASE_SELECT }>;
 
@@ -53,73 +46,11 @@ type TrackBase = Prisma.TrackGetPayload<{ select: typeof TRACK_BASE_SELECT }>;
 export class TracksService {
   private readonly logger = new Logger(TracksService.name);
 
-  /** Libellés FR des motifs de signalement, affichés dans la notification admin. */
-  private static readonly REPORT_REASON_LABELS: Record<
-    ReportTrackReason,
-    string
-  > = {
-    [ReportTrackReason.TITLE]: "Titre",
-    [ReportTrackReason.ARTIST]: "Artiste",
-    [ReportTrackReason.DANCE]: "Danse (catégorie)",
-    [ReportTrackReason.MPM]: "MPM",
-    [ReportTrackReason.PASO_CLASH]: "Clash paso doble",
-    [ReportTrackReason.OTHER]: "Autre",
-  };
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly bpmService: BpmService,
     private readonly blobStorage: BlobStorageService,
-    private readonly notificationsService: NotificationsService,
   ) {}
-
-  /**
-   * Signale un problème sur une piste (titre/artiste/danse/MPM/paso/autre).
-   * Ouvert à tout utilisateur authentifié : crée une notification pour chaque
-   * administrateur avec le motif et, si fourni, un message libre. Ne stocke pas
-   * de nouvelle entité — réutilise le modèle Notification.
-   */
-  async reportTrack(
-    trackId: string,
-    reason: ReportTrackReason,
-    message: string | undefined,
-    reporterId: string,
-  ): Promise<void> {
-    const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
-      select: { title: true },
-    });
-    if (!track) {
-      throw new NotFoundException(`Track ${trackId} not found`);
-    }
-
-    const admins = await this.prisma.user.findMany({
-      where: { role: UserRole.ADMIN },
-      select: { id: true },
-    });
-
-    const reasonLabel = TracksService.REPORT_REASON_LABELS[reason];
-    const trimmed = message?.trim();
-    const body =
-      `«${track.title}» — ${reasonLabel} signalé` +
-      (trimmed ? ` : ${trimmed}` : "");
-
-    await Promise.all(
-      admins.map((admin) =>
-        this.notificationsService.createForUser(
-          admin.id,
-          NotificationType.TRACK_REPORT,
-          "Signalement musique",
-          body,
-          { trackId, reason, reporterId },
-        ),
-      ),
-    );
-
-    this.logger.log(
-      `Track ${trackId} reported (${reason}) by ${reporterId} → notified ${admins.length} admin(s)`,
-    );
-  }
 
   /**
    * Filtre Prisma : exclut Ambiance, les tracks en cours de traitement

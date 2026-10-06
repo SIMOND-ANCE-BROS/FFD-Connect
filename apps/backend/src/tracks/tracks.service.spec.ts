@@ -1,15 +1,13 @@
 import { HttpException, NotFoundException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
-import { NotificationType, TrackStatus } from "@prisma/client";
+import { TrackStatus } from "@prisma/client";
 import {
   createMockPrismaService,
   MockPrismaService,
 } from "../../test/mocks/prisma.mock";
-import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { BpmService } from "./bpm.service";
-import { ReportTrackReason } from "./dto/report-track.dto";
 import { TracksService } from "./tracks.service";
 
 describe("TracksService", () => {
@@ -17,7 +15,6 @@ describe("TracksService", () => {
   let prisma: MockPrismaService;
   let mockBpm: { calculateMpm: jest.Mock };
   let mockBlob: { isEnabled: jest.Mock; deleteFile: jest.Mock };
-  let mockNotifications: { createForUser: jest.Mock };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -29,9 +26,6 @@ describe("TracksService", () => {
       isEnabled: jest.fn().mockReturnValue(false),
       deleteFile: jest.fn().mockResolvedValue(true),
     };
-    mockNotifications = {
-      createForUser: jest.fn().mockResolvedValue(undefined),
-    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -39,7 +33,6 @@ describe("TracksService", () => {
         { provide: PrismaService, useValue: prisma },
         { provide: BpmService, useValue: mockBpm },
         { provide: BlobStorageService, useValue: mockBlob },
-        { provide: NotificationsService, useValue: mockNotifications },
       ],
     }).compile();
 
@@ -337,103 +330,6 @@ describe("TracksService", () => {
 
       expect(prisma.track.delete).toHaveBeenCalledWith({ where: { id: "t1" } });
       expect(mockBlob.deleteFile).toHaveBeenCalledWith("song.mp3");
-    });
-  });
-
-  describe("reportTrack", () => {
-    it("throws NotFoundException when the track does not exist", async () => {
-      prisma.track.findUnique.mockResolvedValue(null);
-
-      await expect(
-        service.reportTrack(
-          "missing",
-          ReportTrackReason.TITLE,
-          undefined,
-          "u1",
-        ),
-      ).rejects.toThrow(NotFoundException);
-      expect(mockNotifications.createForUser).not.toHaveBeenCalled();
-    });
-
-    it("notifies every admin with the FR reason label and data payload", async () => {
-      prisma.track.findUnique.mockResolvedValue(
-        // @ts-expect-error - testing partial return
-        { title: "My Song" },
-      );
-      prisma.user.findMany.mockResolvedValue(
-        // @ts-expect-error - testing partial return
-        [{ id: "admin-1" }, { id: "admin-2" }],
-      );
-
-      await service.reportTrack(
-        "track-1",
-        ReportTrackReason.MPM,
-        undefined,
-        "reporter-9",
-      );
-
-      expect(prisma.user.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { role: "ADMIN" } }),
-      );
-      expect(mockNotifications.createForUser).toHaveBeenCalledTimes(2);
-      expect(mockNotifications.createForUser).toHaveBeenCalledWith(
-        "admin-1",
-        NotificationType.TRACK_REPORT,
-        "Signalement musique",
-        "«My Song» — MPM signalé",
-        { trackId: "track-1", reason: "MPM", reporterId: "reporter-9" },
-      );
-      expect(mockNotifications.createForUser).toHaveBeenCalledWith(
-        "admin-2",
-        NotificationType.TRACK_REPORT,
-        "Signalement musique",
-        "«My Song» — MPM signalé",
-        expect.objectContaining({ trackId: "track-1" }),
-      );
-    });
-
-    it("appends the optional message to the notification body", async () => {
-      prisma.track.findUnique.mockResolvedValue(
-        // @ts-expect-error - testing partial return
-        { title: "My Song" },
-      );
-      prisma.user.findMany.mockResolvedValue(
-        // @ts-expect-error - testing partial return
-        [{ id: "admin-1" }],
-      );
-
-      await service.reportTrack(
-        "track-1",
-        ReportTrackReason.PASO_CLASH,
-        "  appel décalé  ",
-        "reporter-9",
-      );
-
-      expect(mockNotifications.createForUser).toHaveBeenCalledWith(
-        "admin-1",
-        NotificationType.TRACK_REPORT,
-        "Signalement musique",
-        "«My Song» — Clash paso doble signalé : appel décalé",
-        expect.any(Object),
-      );
-    });
-
-    it("does not throw when there is no admin to notify", async () => {
-      prisma.track.findUnique.mockResolvedValue(
-        // @ts-expect-error - testing partial return
-        { title: "My Song" },
-      );
-      prisma.user.findMany.mockResolvedValue([]);
-
-      await expect(
-        service.reportTrack(
-          "track-1",
-          ReportTrackReason.OTHER,
-          undefined,
-          "u1",
-        ),
-      ).resolves.toBeUndefined();
-      expect(mockNotifications.createForUser).not.toHaveBeenCalled();
     });
   });
 });

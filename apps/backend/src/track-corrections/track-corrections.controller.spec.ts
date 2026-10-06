@@ -1,0 +1,189 @@
+import { NotFoundException } from "@nestjs/common";
+import {
+  TrackCorrectionReason,
+  TrackCorrectionStatus,
+  UserRole,
+} from "@prisma/client";
+import { plainToInstance } from "class-transformer";
+import { validate } from "class-validator";
+import { ROLES_KEY } from "../auth/decorators/roles.decorator";
+import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
+import { ReportTrackReason } from "../tracks/dto/report-track.dto";
+import {
+  ApproveTrackCorrectionDto,
+  CreateTrackCorrectionDto,
+  ListTrackCorrectionsQueryDto,
+} from "./dto/track-correction.dto";
+import { TrackCorrectionsController } from "./track-corrections.controller";
+import { TrackCorrectionsQueryService } from "./track-corrections.query-service";
+import { TrackCorrectionsService } from "./track-corrections.service";
+import { TrackReportController } from "./track-report.controller";
+
+const req = (userId: string, role: string) =>
+  ({ user: { userId, email: "x@y.z", role } }) as RequestWithUser;
+
+describe("TrackCorrectionsController", () => {
+  const service = {
+    create: jest.fn(),
+    approve: jest.fn(),
+    reject: jest.fn(),
+    createFromLegacyReport: jest.fn(),
+  };
+  const queryService = {
+    listForAdmin: jest.fn(),
+    listMine: jest.fn(),
+    countPending: jest.fn(),
+  };
+  const controller = new TrackCorrectionsController(
+    service as unknown as TrackCorrectionsService,
+    queryService as unknown as TrackCorrectionsQueryService,
+  );
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("create délègue avec l'id de l'appelant", async () => {
+    service.create.mockResolvedValue({ id: "c1" });
+    const dto = {
+      trackId: "t1",
+      reason: TrackCorrectionReason.MPM,
+      bpm: 62,
+    };
+    await expect(
+      controller.create(dto, req("u1", "LICENSEE")),
+    ).resolves.toEqual({ id: "c1" });
+    expect(service.create).toHaveBeenCalledWith("u1", dto);
+  });
+
+  it("list délègue la requête filtrée", async () => {
+    queryService.listForAdmin.mockResolvedValue({ data: [], meta: {} });
+    const query = { status: TrackCorrectionStatus.PENDING, skip: 0, take: 10 };
+    await controller.list(query);
+    expect(queryService.listForAdmin).toHaveBeenCalledWith(query);
+  });
+
+  it("listMine lit les propositions de l'appelant", async () => {
+    queryService.listMine.mockResolvedValue({ data: [], meta: {} });
+    await controller.listMine({ skip: 0, take: 5 }, req("u1", "LICENSEE"));
+    expect(queryService.listMine).toHaveBeenCalledWith("u1", {
+      skip: 0,
+      take: 5,
+    });
+  });
+
+  it("pendingCount renvoie un objet typé", async () => {
+    queryService.countPending.mockResolvedValue(3);
+    await expect(controller.pendingCount()).resolves.toEqual({ count: 3 });
+  });
+
+  it("approve / reject délèguent avec l'id de l'admin", async () => {
+    service.approve.mockResolvedValue({ id: "c1" });
+    service.reject.mockResolvedValue({ id: "c1" });
+    await controller.approve("c1", { comment: "ok" }, req("a1", "ADMIN"));
+    await controller.reject("c1", {}, req("a1", "ADMIN"));
+    expect(service.approve).toHaveBeenCalledWith("c1", "a1", { comment: "ok" });
+    expect(service.reject).toHaveBeenCalledWith("c1", "a1", {});
+  });
+
+  it.each(["list", "pendingCount", "approve", "reject"] as const)(
+    "%s est réservé aux administrateurs",
+    (method) => {
+      const handler = TrackCorrectionsController.prototype[method];
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([UserRole.ADMIN]);
+    },
+  );
+
+  it.each(["create", "listMine"] as const)(
+    "%s est ouvert à tout utilisateur authentifié",
+    (method) => {
+      const handler = TrackCorrectionsController.prototype[method];
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toBeUndefined();
+    },
+  );
+});
+
+describe("TrackReportController (POST /tracks/:id/report, historique)", () => {
+  const service = { createFromLegacyReport: jest.fn() };
+  const controller = new TrackReportController(
+    service as unknown as TrackCorrectionsService,
+  );
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("crée une proposition à partir du signalement", async () => {
+    service.createFromLegacyReport.mockResolvedValue(undefined);
+    await controller.report(
+      "t1",
+      { reason: ReportTrackReason.TITLE, message: "typo" },
+      req("u1", "LICENSEE"),
+    );
+    expect(service.createFromLegacyReport).toHaveBeenCalledWith(
+      "t1",
+      ReportTrackReason.TITLE,
+      "typo",
+      "u1",
+    );
+  });
+
+  it("propage le 404", async () => {
+    service.createFromLegacyReport.mockRejectedValue(new NotFoundException());
+    await expect(
+      controller.report(
+        "t1",
+        { reason: ReportTrackReason.OTHER },
+        req("u1", "LICENSEE"),
+      ),
+    ).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe("DTO de proposition", () => {
+  const errorsOf = async <T extends object>(
+    cls: new () => T,
+    plain: Record<string, unknown>,
+  ) => (await validate(plainToInstance(cls, plain))).map((e) => e.property);
+
+  const valid = {
+    trackId: "4f1c2a8e-1b2c-4d5e-8f90-123456789abc",
+    reason: "MPM",
+  };
+
+  it("accepte une proposition complète", async () => {
+    await expect(
+      errorsOf(CreateTrackCorrectionDto, {
+        ...valid,
+        title: "T",
+        artist: "A",
+        style: "Rumba",
+        bpm: 25.5,
+        clashTimecodes: [0, 12.5],
+        message: "m",
+      }),
+    ).resolves.toEqual([]);
+  });
+
+  it.each([
+    ["trackId", { trackId: "pas-un-uuid" }],
+    ["reason", { reason: "NOPE" }],
+    ["bpm", { bpm: 0 }],
+    ["bpm", { bpm: 401 }],
+    ["clashTimecodes", { clashTimecodes: [-1] }],
+    ["clashTimecodes", { clashTimecodes: Array.from({ length: 11 }, () => 1) }],
+    ["message", { message: "x".repeat(501) }],
+  ])("refuse un %s invalide", async (property, override) => {
+    await expect(
+      errorsOf(CreateTrackCorrectionDto, { ...valid, ...override }),
+    ).resolves.toContain(property);
+  });
+
+  it("borne le commentaire de validation", async () => {
+    await expect(
+      errorsOf(ApproveTrackCorrectionDto, { comment: "x".repeat(501) }),
+    ).resolves.toContain("comment");
+  });
+
+  it("valide le filtre de statut", async () => {
+    await expect(
+      errorsOf(ListTrackCorrectionsQueryDto, { status: "DONE" }),
+    ).resolves.toContain("status");
+  });
+});

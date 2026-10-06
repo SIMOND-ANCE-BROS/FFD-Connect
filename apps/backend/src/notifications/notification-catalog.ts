@@ -125,11 +125,23 @@ export const NOTIFICATION_CATALOG: Readonly<
   [NotificationType.TRACK_REPORT]: {
     defaultEnabled: true,
     configurable: true,
-    // TracksService.reportTrack interroge `where: { role: ADMIN }`.
+    // TrackCorrectionsService.notifyAdmins interroge `where: { role: ADMIN }`.
     roles: [UserRole.ADMIN],
     label: "Signalements de musique",
     description:
-      "Quand un utilisateur signale une musique de la bibliothèque (réservé aux administrateurs).",
+      "Quand un utilisateur signale une musique ou propose une correction de ses informations (réservé aux administrateurs).",
+  },
+
+  // ── Concerne directement l'utilisateur → activé par défaut (opt-out) ───────
+  [NotificationType.TRACK_CORRECTION_DECISION]: {
+    defaultEnabled: true,
+    configurable: true,
+    // Destinataire = `correction.proposedById`, sans filtre de rôle : tout
+    // utilisateur authentifié peut proposer une correction.
+    roles: ALL_ROLES,
+    label: "Mes propositions de correction",
+    description:
+      "Quand un administrateur valide ou refuse une correction de musique que vous avez proposée.",
   },
 
   // ── Déclenchée par l'utilisateur lui-même → non réglable ───────────────────

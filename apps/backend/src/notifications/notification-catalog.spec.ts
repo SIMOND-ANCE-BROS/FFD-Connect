@@ -28,6 +28,7 @@ describe("catalogue des notifications", () => {
       [NotificationType.CLUB_MEMBER_REGISTRATION]: false,
       [NotificationType.CLUB_PARTNERSHIP]: true,
       [NotificationType.TRACK_REPORT]: true,
+      [NotificationType.TRACK_CORRECTION_DECISION]: true,
       [NotificationType.DIAGNOSTIC_TEST]: true,
     };
 
@@ -90,6 +91,7 @@ describe("catalogue des notifications", () => {
         NotificationType.CLUB_MEMBER_REGISTRATION,
         NotificationType.CLUB_PARTNERSHIP,
         NotificationType.TRACK_REPORT,
+        NotificationType.TRACK_CORRECTION_DECISION,
       ]);
     });
   });
@@ -121,6 +123,13 @@ describe("catalogue des notifications", () => {
       [NotificationType.CLUB_PARTNERSHIP]: [UserRole.CLUB],
       // reportTrack : where { role: ADMIN }
       [NotificationType.TRACK_REPORT]: [UserRole.ADMIN],
+      // Destinataire = correction.proposedById, aucun filtre de rôle.
+      [NotificationType.TRACK_CORRECTION_DECISION]: [
+        UserRole.LICENSEE,
+        UserRole.CLUB,
+        UserRole.STAFF,
+        UserRole.ADMIN,
+      ],
       // Chacun déclenche son propre diagnostic (type non réglable de toute façon).
       [NotificationType.DIAGNOSTIC_TEST]: [
         UserRole.LICENSEE,
@@ -160,6 +169,7 @@ describe("catalogue des notifications", () => {
         NotificationType.REGISTRATION_STATUS,
         NotificationType.COMPETITION_RESULTS,
         NotificationType.NEW_COMPETITION,
+        NotificationType.TRACK_CORRECTION_DECISION,
       ]);
       // Sous-suite de l'ordre global, jamais une réorganisation.
       expect(forLicensee).toEqual(
