@@ -1,8 +1,8 @@
 # --- Stage 1: Build base with dependencies (pnpm workspace) ---
 # Builds the combined static site (landing at /, docs at /docs) served by nginx.
 # Used by the docker-compose `frontend` service (profile: full) for a local
-# full-stack preview. NOT part of CI/prod deploy — landing and the web app have
-# their own Dockerfiles (apps/landing/Dockerfile, apps/client/Dockerfile.web).
+# full-stack preview. NOT part of CI/prod deploy — the landing is published to
+# GitHub Pages (deploy-landing.yml), the web app has apps/client/Dockerfile.web.
 FROM node:22-alpine AS builder
 ARG FRONTEND_DOMAIN
 ENV FRONTEND_DOMAIN=$FRONTEND_DOMAIN

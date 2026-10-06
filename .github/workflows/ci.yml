@@ -17,7 +17,7 @@ concurrency:
 jobs:
   # ============================================================
   # JOB CLASSIFICATION (see docs/exploitation/ci-cd-minimal.md)
-  #   BLOCKING:       typecheck, lint-format, backend-test, backend-build, client, audit-dependencies, docs-build, build-image, build-landing-image
+  #   BLOCKING:       typecheck, lint-format, backend-test, backend-build, client, audit-dependencies, docs-build, build-image
   #   INFORMATIONAL:  playwright-e2e (failure warns but does not block merge)
   #   Mutation testing runs in mutation-nightly.yml (weekly, full coverage) — not per-PR.
   # ============================================================
@@ -71,7 +71,6 @@ jobs:
               - 'packages/eslint-config/**'
               - 'pnpm-lock.yaml'
               - 'package.json'
-              - '.dockerignore'
               # The legal pages are rendered from these at build time.
               - 'docs/legal/**'
             # pnpm-workspace.yaml is in here on purpose: the way apps/docs
@@ -501,7 +500,8 @@ jobs:
   lint-format:
     name: Lint & Format
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    # 7, not 5: also builds the landing (vite, < 1 min) when it changed.
+    timeout-minutes: 7
     needs: [changes]
     # Runs on all events — merge-back and bot pushes to develop/staging
     # must still pass formatting and lint to prevent drift.
@@ -534,6 +534,15 @@ jobs:
         if: github.event_name != 'pull_request' || needs.changes.outputs.landing == 'true'
         working-directory: apps/landing
         run: pnpm lint
+
+      # The landing is served by GitHub Pages (deploy-landing.yml, on staging
+      # pushes), which publishes whatever `vite build` emits. Build it here so
+      # a broken site (e.g. legal pages rendered from docs/legal/*.md) is
+      # caught on the PR, not when Pages deploys. Same gate as the lint above.
+      - name: Build landing
+        if: github.event_name != 'pull_request' || needs.changes.outputs.landing == 'true'
+        timeout-minutes: 5
+        run: pnpm --filter landing build
 
   # ============================================================
   # DOCS BUILD — apps/docs had no gate at all                   [BLOCKING]
@@ -601,29 +610,24 @@ jobs:
         run: pnpm typecheck
 
   # ============================================================
-  # DOCKER IMAGES — build + push to ACR (staging/master push only) [BLOCKING]
-  # Two separate jobs (backend / landing), each built only when the promoted
-  # change touches it. Not a matrix: deploy-backend.yml looks up the backend
-  # job by name in the triggering run, and a matrix job skipped as a whole
-  # loses its "(backend, …)" suffix.
-  # The landing image is not deployed by any workflow, but the Azure `landing`
-  # Container App (custom domain ffd.gabin-simond.fr, scale-to-zero) runs
-  # `ffd-connect-landing:latest`, which a new replica pulls on cold start: so
-  # pushing :latest IS how that site gets updated. The same site is also
-  # published to GitHub Pages by deploy-landing.yml.
+  # DOCKER IMAGE — build + push the backend to ACR (staging/master push only)
+  #                                                              [BLOCKING]
+  # Built only when the promoted change touches the backend. Not a matrix:
+  # deploy-backend.yml looks up the backend job by name in the triggering run,
+  # and a matrix job skipped as a whole loses its "(backend, …)" suffix.
+  # No landing image: ffd.gabin-simond.fr is served by GitHub Pages
+  # (deploy-landing.yml); the PR-time landing check is `Build landing` in
+  # lint-format.
   # The Expo web image (apps/client/Dockerfile.web → ffd-connect-webapp) is not
   # built: no Azure resource runs it and web is out of scope for the MVP (#681).
   # Buildx with registry cache: pulls layers from :buildcache/:latest,
   # dramatically speeds up cascade rebuilds when source hasn't changed.
   # ============================================================
   # ============================================================
-  # Build the images on PRs — WITHOUT pushing.
-  # The build-*-image jobs only run on push to staging/master and log into
-  # ACR, so a broken Dockerfile reached staging unnoticed and failed the whole
-  # cascade (issue #841). Caught for real: the landing renders docs/legal/*.md
-  # at build time, and `docs` + `*.md` were excluded from the build context, so
-  # PR CI stayed green while the staging image build died on ENOENT.
-  # No Azure login and no push: nothing lands in ACR from a PR.
+  # Build the backend image on PRs — WITHOUT pushing.
+  # build-image only runs on push to staging/master and logs into ACR, so a
+  # broken Dockerfile reached staging unnoticed and failed the whole cascade
+  # (issue #841). No Azure login and no push: nothing lands in ACR from a PR.
   # ============================================================
   docker-build-check:
     name: Docker Build Check
@@ -632,18 +636,7 @@ jobs:
     needs: [changes]
     if: >-
       github.event_name == 'pull_request'
-      && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.landing == 'true')
-
-    strategy:
-      fail-fast: false
-      matrix:
-        image:
-          - name: backend
-            dockerfile: apps/backend/Dockerfile
-            filter: backend
-          - name: landing
-            dockerfile: apps/landing/Dockerfile
-            filter: landing
+      && needs.changes.outputs.backend == 'true'
 
     permissions:
       contents: read
@@ -656,81 +649,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-      - name: Build ${{ matrix.image.name }} (no push)
-        if: needs.changes.outputs[matrix.image.filter] == 'true'
+      - name: Build backend (no push)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v6
         with:
           context: .
-          file: ${{ matrix.image.dockerfile }}
+          file: apps/backend/Dockerfile
           push: false
-          cache-from: type=gha,scope=${{ matrix.image.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
-
-  # Landing image: only when the push touches the landing (paths-filter
-  # `landing`; on a push it diffs against `before`, i.e. the previous tip).
-  # Skipping it leaves :latest — and so ffd.gabin-simond.fr — unchanged.
-  build-landing-image:
-    name: Build & Push Landing Image
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    # lint-format covers the landing (it has no tests): a cold start pulls
-    # :latest straight onto the public site, so only push a linted build.
-    needs: [changes, lint-format]
-    if: >-
-      github.event_name == 'push'
-      && (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')
-      && needs.changes.outputs.landing == 'true'
-
-    permissions:
-      id-token: write
-      contents: read
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
-        with:
-          persist-credentials: false
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      - name: Azure login (OIDC)
-        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Login to Azure Container Registry
-        env:
-          ACR_NAME: ${{ secrets.ACR_NAME }}
-        run: az acr login --name "$ACR_NAME"
-
-      - name: Build and push landing image
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        env:
-          ACR_NAME: ${{ secrets.ACR_NAME }}
-        with:
-          context: .
-          file: apps/landing/Dockerfile
-          push: true
-          tags: |
-            ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-landing:${{ github.sha }}
-            ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-landing:latest
-          cache-from: |
-            type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-landing:buildcache
-            type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-landing:latest
-          cache-to: type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-landing:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
-
-      - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        env:
-          ACR_NAME: ${{ secrets.ACR_NAME }}
-        with:
-          image-ref: ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-landing:${{ github.sha }}
-          format: table
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '0'
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
 
   build-image:
     # The name must keep "Backend": deploy-backend.yml finds this job by name
@@ -843,7 +769,6 @@ jobs:
       - playwright-e2e
       - build-image
       - docker-build-check
-      - build-landing-image
     steps:
       - name: Check job results
         env:
@@ -858,7 +783,6 @@ jobs:
             playwright-e2e=${{ needs.playwright-e2e.result }}
             build-image=${{ needs.build-image.result }}
             docker-build-check=${{ needs.docker-build-check.result }}
-            build-landing-image=${{ needs.build-landing-image.result }}
         run: |
           echo "$RESULTS"
           echo ""
