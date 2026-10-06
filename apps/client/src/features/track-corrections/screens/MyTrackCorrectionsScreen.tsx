@@ -48,8 +48,17 @@ export const MyTrackCorrectionsScreen = ({ navigation }: Props) => {
   const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [headerH, setHeaderH] = useState(insets.top + 56);
-  const { data, isLoading, isError, isRefetching, refetch } =
-    useMyTrackCorrections();
+  const {
+    data,
+    isLoading,
+    isError,
+    isRefetching,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useMyTrackCorrections();
+  const items = data?.pages.flatMap((p) => p.data) ?? [];
 
   const renderItem = ({ item }: { item: MyTrackCorrectionDto }) => (
     <View
@@ -135,9 +144,23 @@ export const MyTrackCorrectionsScreen = ({ navigation }: Props) => {
   } else {
     body = (
       <FlatList
-        data={data?.data ?? []}
+        testID="my-corrections-list"
+        data={items}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
+        onEndReached={() => {
+          if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+        }}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator
+              color={theme.primary}
+              style={styles.footer}
+              testID="my-corrections-loading-more"
+            />
+          ) : null
+        }
         contentContainerStyle={[
           styles.list,
           { paddingTop: headerH + 8, paddingBottom: insets.bottom + 40 },
@@ -205,4 +228,5 @@ const styles = StyleSheet.create({
   quote: { marginTop: 10, paddingLeft: 10, borderLeftWidth: 3 },
   empty: { alignItems: "center", paddingTop: 60, paddingHorizontal: 24 },
   emptyText: { marginTop: 12 },
+  footer: { paddingVertical: 16 },
 });

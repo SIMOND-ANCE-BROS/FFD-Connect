@@ -77,12 +77,13 @@ const correction = (
   },
   proposer: { id: "u1", name: "Eva Martin" },
   reviewer: null,
+  resultingBpm: 62,
   ...overrides,
 });
 
 const page = (data: TrackCorrectionAdminDto[]) => ({
   data,
-  meta: { total: data.length, skip: 0, take: 50, hasMore: false },
+  meta: { total: data.length, skip: 0, take: 20, hasMore: false },
 });
 
 /** Simule un tap sur le bouton `text` de la boîte de confirmation. */
@@ -136,7 +137,11 @@ describe("TrackCorrectionsReviewScreen", () => {
     const { findByText, getByText } = await renderScreen();
 
     expect(await findByText("España Cañí")).toBeTruthy();
-    expect(api.list).toHaveBeenCalledWith({ status: "PENDING", take: 50 });
+    expect(api.list).toHaveBeenCalledWith({
+      status: "PENDING",
+      skip: 0,
+      take: 20,
+    });
     expect(getByText("60")).toBeTruthy();
     expect(getByText("62")).toBeTruthy();
     expect(getByText("Compté au métronome")).toBeTruthy();
@@ -277,5 +282,152 @@ describe("TrackCorrectionsReviewScreen", () => {
     const { findByTestId } = await renderScreen();
     await fireEvent.press(await findByTestId("corrections-retry"));
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+  });
+
+  describe("revue des correctifs", () => {
+    const pasoClash = correction({
+      reason: "PASO_CLASH",
+      proposed: {
+        title: null,
+        artist: null,
+        style: null,
+        bpm: null,
+        clashTimecodes: [45.5, 90.3],
+      },
+      resultingBpm: 60,
+    });
+
+    it("pré-remplit les clashs en m:ss.d et ne les renvoie pas s'ils sont inchangés", async () => {
+      confirmWith("Valider");
+      api.list.mockResolvedValue(page([pasoClash]));
+      const { findByTestId, getByTestId } = await renderScreen();
+
+      await fireEvent.press(await findByTestId("correction-adjust-c1"));
+      expect(getByTestId("correction-edit-clashes-c1").props.value).toBe(
+        "0:45.5, 1:30.3",
+      );
+      await fireEvent.press(getByTestId("correction-approve-c1"));
+      await waitFor(() => expect(api.approve).toHaveBeenCalledWith("c1", {}));
+    });
+
+    it("renvoie les clashs, avec leurs dixièmes, quand l'admin les modifie", async () => {
+      confirmWith("Valider");
+      api.list.mockResolvedValue(page([pasoClash]));
+      const { findByTestId, getByTestId } = await renderScreen();
+
+      await fireEvent.press(await findByTestId("correction-adjust-c1"));
+      await fireEvent.changeText(
+        getByTestId("correction-edit-clashes-c1"),
+        "0:45.5, 1:31.2",
+      );
+      await fireEvent.press(getByTestId("correction-approve-c1"));
+      await waitFor(() =>
+        expect(api.approve).toHaveBeenCalledWith("c1", {
+          clashTimecodes: [45.5, 91.2],
+        }),
+      );
+    });
+
+    const danceOnly = correction({
+      reason: "DANCE",
+      proposed: {
+        title: null,
+        artist: null,
+        style: "Samba",
+        bpm: null,
+        clashTimecodes: null,
+      },
+      resultingBpm: 50,
+    });
+
+    it("changement de danse seul : affiche le MPM recalculé", async () => {
+      api.list.mockResolvedValue(page([danceOnly]));
+      const { findByText, getByText } = await renderScreen();
+      expect(await findByText("MPM recalculé")).toBeTruthy();
+      expect(getByText("50")).toBeTruthy();
+    });
+
+    it("« Garder le MPM actuel » envoie bpm: track.bpm", async () => {
+      confirmWith("Valider");
+      api.list.mockResolvedValue(page([danceOnly]));
+      const { findByTestId, getByTestId } = await renderScreen();
+
+      await fireEvent(
+        await findByTestId("correction-keep-bpm-c1"),
+        "onValueChange",
+        true,
+      );
+      await fireEvent.press(getByTestId("correction-approve-c1"));
+      await waitFor(() =>
+        expect(api.approve).toHaveBeenCalledWith("c1", { bpm: 60 }),
+      );
+    });
+
+    it("sans la bascule, laisse le backend recalculer (pas de bpm)", async () => {
+      confirmWith("Valider");
+      api.list.mockResolvedValue(page([danceOnly]));
+      const { findByTestId } = await renderScreen();
+      await fireEvent.press(await findByTestId("correction-approve-c1"));
+      await waitFor(() => expect(api.approve).toHaveBeenCalledWith("c1", {}));
+    });
+
+    it("pas de bascule quand un MPM est proposé", async () => {
+      const { findByTestId, queryByTestId } = await renderScreen();
+      await findByTestId("correction-card-c1");
+      expect(queryByTestId("correction-keep-bpm-c1")).toBeNull();
+    });
+  });
+
+  describe("pagination et proposition ciblée", () => {
+    it("charge la page suivante en fin de liste", async () => {
+      api.list.mockImplementation(({ skip }: { skip: number }) =>
+        Promise.resolve({
+          data: [correction({ id: `c-${skip}` })],
+          meta: { total: 21, skip, take: 20, hasMore: skip === 0 },
+        }),
+      );
+      const { findByTestId, getByTestId } = await renderScreen();
+      await findByTestId("correction-card-c-0");
+
+      await fireEvent(getByTestId("corrections-list"), "onEndReached");
+
+      expect(await findByTestId("correction-card-c-20")).toBeTruthy();
+      expect(api.list).toHaveBeenLastCalledWith({
+        status: "PENDING",
+        skip: 20,
+        take: 20,
+      });
+      // Plus rien à charger : un nouveau bout de liste n'appelle plus l'API.
+      await fireEvent(getByTestId("corrections-list"), "onEndReached");
+      expect(api.list).toHaveBeenCalledTimes(2);
+    });
+
+    it("va chercher dans les autres statuts la proposition absente de la file", async () => {
+      api.list.mockImplementation(
+        ({ status, take }: { status: string; take: number }) =>
+          Promise.resolve(
+            page(
+              status === "REJECTED" && take === 100
+                ? [correction({ id: "c-old", status: "REJECTED" })]
+                : status === "PENDING" && take === 20
+                  ? [correction({ id: "c1" })]
+                  : [],
+            ),
+          ),
+      );
+      const { findByTestId, getAllByTestId } = await renderScreen("c-old");
+
+      expect(await findByTestId("correction-card-c-old")).toBeTruthy();
+      const cards = getAllByTestId(/^correction-card-/);
+      expect(cards[0].props.testID).toBe("correction-card-c-old");
+      expect(api.list).toHaveBeenCalledWith({ status: "APPROVED", take: 100 });
+      expect(api.list).toHaveBeenCalledWith({ status: "REJECTED", take: 100 });
+    });
+
+    it("ne cherche pas ailleurs quand la proposition est déjà affichée", async () => {
+      const { findByTestId } = await renderScreen("c1");
+      await findByTestId("correction-card-c1");
+      expect(api.list).toHaveBeenCalledTimes(1);
+    });
   });
 });

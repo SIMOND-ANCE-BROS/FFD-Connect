@@ -26,7 +26,9 @@ import {
   MESSAGE_MAX_LENGTH,
   MPM_MAX,
   MPM_MIN,
+  canonicalDance,
   parseMpm,
+  sameDance,
 } from "../utils/trackCorrections";
 
 /** Valeurs actuelles de la piste, pour pré-remplir le formulaire. */
@@ -94,8 +96,8 @@ export const TrackCorrectionModal = ({
     setReason(initialReason ?? null);
     setTitle(track?.title ?? "");
     setArtist(track?.artist ?? "");
-    setStyle(track?.style ?? null);
-    setMpm(track?.bpm ? String(track.bpm) : "");
+    setStyle(canonicalDance(track?.style));
+    setMpm(track?.bpm ? String(Math.round(track.bpm)) : "");
     setMessage("");
     setSending(false);
     Animated.parallel([
@@ -126,13 +128,16 @@ export const TrackCorrectionModal = ({
       const a = artist.trim();
       if (a && a !== (track.artist ?? "")) body.artist = a;
     } else if (reason === "DANCE") {
-      if (style && style !== (track.style ?? null)) body.style = style;
+      // Comparaison insensible à la casse, comme le backend.
+      if (style && !sameDance(style, track.style)) body.style = style;
     } else if (reason === "MPM" && mpm.trim()) {
       const value = parseMpm(mpm);
       if (value === null) {
         return `Le MPM doit être un nombre entier entre ${MPM_MIN} et ${MPM_MAX}.`;
       }
-      if (value !== track.bpm) body.bpm = value;
+      if (track.bpm === undefined || value !== Math.round(track.bpm)) {
+        body.bpm = value;
+      }
     }
 
     const hasValue =
@@ -240,7 +245,7 @@ export const TrackCorrectionModal = ({
               <Text
                 style={[styles.hint, { color: currentTheme.textSecondary }]}
               >
-                Valeur actuelle : {track.bpm} MPM
+                Valeur actuelle : {Math.round(track.bpm)} MPM
               </Text>
             ) : null}
           </>

@@ -2,12 +2,18 @@ import type { TrackCorrectionAdminDto } from "../../../../services/api/track-cor
 import { trackCorrectionTargetOf } from "../notificationTarget";
 import {
   buildCorrectionDiff,
+  canonicalDance,
   formatClashList,
+  formatClashListForEdit,
   formatClashTime,
+  formatClashTimePrecise,
   formatCorrectionDate,
+  isDanceOnlyChange,
   parseClashList,
   parseMpm,
   reasonLabel,
+  sameClashes,
+  sameDance,
 } from "../trackCorrections";
 
 const track: TrackCorrectionAdminDto["track"] = {
@@ -56,6 +62,51 @@ describe("formatage des clashs", () => {
   });
 });
 
+describe("édition des clashs sans perte des dixièmes", () => {
+  it("formate m:ss.d seulement quand il y a des dixièmes", () => {
+    expect(formatClashTimePrecise(83.5)).toBe("1:23.5");
+    expect(formatClashTimePrecise(83)).toBe("1:23");
+    expect(formatClashTimePrecise(59.96)).toBe("1:00");
+  });
+
+  it("aller-retour format → lecture sans perte", () => {
+    const clashes = [90.3, 12, 45.5];
+    const text = formatClashListForEdit(clashes);
+    expect(text).toBe("0:12, 0:45.5, 1:30.3");
+    expect(sameClashes(parseClashList(text) ?? [], clashes)).toBe(true);
+    expect(formatClashListForEdit([])).toBe("");
+  });
+
+  it("compare deux listes au dixième près, ordre indifférent", () => {
+    expect(sameClashes([45.5, 12], [12, 45.5])).toBe(true);
+    expect(sameClashes([45], [45.5])).toBe(false);
+    expect(sameClashes([45], [45, 90])).toBe(false);
+  });
+});
+
+describe("danses", () => {
+  it("compare sans tenir compte de la casse ni des espaces", () => {
+    expect(sameDance("rumba ", "Rumba")).toBe(true);
+    expect(sameDance("Rumba", null)).toBe(false);
+    expect(sameDance(undefined, null)).toBe(true);
+  });
+
+  it("ramène au libellé canonique", () => {
+    expect(canonicalDance("paso doble")).toBe("Paso Doble");
+    expect(canonicalDance("Bachata")).toBe("Bachata");
+    expect(canonicalDance(null)).toBeNull();
+  });
+
+  it("détecte un changement de danse seul", () => {
+    expect(
+      isDanceOnlyChange({ proposed: { ...noChange, style: "Jive" } }),
+    ).toBe(true);
+    expect(
+      isDanceOnlyChange({ proposed: { ...noChange, style: "Jive", bpm: 44 } }),
+    ).toBe(false);
+  });
+});
+
 describe("parseMpm", () => {
   it("accepte un entier dans [1, 400]", () => {
     expect(parseMpm(" 52 ")).toBe(52);
@@ -72,6 +123,7 @@ describe("buildCorrectionDiff", () => {
     const diff = buildCorrectionDiff({
       track,
       proposed: { ...noChange, bpm: 62, clashTimecodes: [30, 75, 120] },
+      resultingBpm: 62,
     });
     expect(diff).toEqual([
       { field: "bpm", label: "MPM", current: "60", proposed: "62" },
@@ -88,13 +140,26 @@ describe("buildCorrectionDiff", () => {
     const diff = buildCorrectionDiff({
       track: { ...track, style: null },
       proposed: { ...noChange, title: "A", artist: "B", style: "Rumba" },
+      resultingBpm: 26,
     });
-    expect(diff.map((l) => l.field)).toEqual(["title", "artist", "style"]);
+    expect(diff.map((l) => l.field)).toEqual([
+      "title",
+      "artist",
+      "style",
+      "resultingBpm",
+    ]);
+    expect(diff[3]).toMatchObject({
+      label: "MPM recalculé",
+      current: "60",
+      proposed: "26",
+    });
     expect(diff[2].current).toBe("—");
   });
 
   it("vide pour une proposition « commentaire seul »", () => {
-    expect(buildCorrectionDiff({ track, proposed: noChange })).toEqual([]);
+    expect(
+      buildCorrectionDiff({ track, proposed: noChange, resultingBpm: 60 }),
+    ).toEqual([]);
   });
 });
 

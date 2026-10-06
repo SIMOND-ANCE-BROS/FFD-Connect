@@ -1,3 +1,4 @@
+import { DANCE_GROUPS } from "../../player/utils/danceTempo";
 import type {
   TrackCorrectionAdminDto,
   TrackCorrectionReason,
@@ -40,6 +41,58 @@ export function formatClashTime(seconds: number): string {
   const mins = Math.floor(total / 60);
   const secs = total % 60;
   return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+}
+
+/**
+ * 83.5 → « 1:23.5 », 83 → « 1:23 » : format d'édition, sans perte des
+ * dixièmes (relu tel quel par `parseClashList`).
+ */
+export function formatClashTimePrecise(seconds: number): string {
+  const tenths = Math.round(Math.max(0, seconds) * 10);
+  const whole = Math.floor(tenths / 10);
+  const rest = tenths % 10;
+  return rest === 0
+    ? formatClashTime(whole)
+    : `${formatClashTime(whole)}.${rest}`;
+}
+
+/** Liste éditable « 0:12, 1:23.5 » (chaîne vide si aucun appel). */
+export function formatClashListForEdit(clashes: readonly number[]): string {
+  return [...clashes]
+    .sort((a, b) => a - b)
+    .map(formatClashTimePrecise)
+    .join(", ");
+}
+
+/** Deux listes de clashs identiques au dixième près (ordre indifférent). */
+export function sameClashes(
+  a: readonly number[],
+  b: readonly number[],
+): boolean {
+  if (a.length !== b.length) return false;
+  const norm = (l: readonly number[]) =>
+    [...l].map((v) => Math.round(v * 10)).sort((x, y) => x - y);
+  const nb = norm(b);
+  return norm(a).every((v, i) => v === nb[i]);
+}
+
+/** Même danse, sans tenir compte de la casse ni des espaces (comme le backend). */
+export function sameDance(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  return (a ?? "").trim().toLowerCase() === (b ?? "").trim().toLowerCase();
+}
+
+/** Libellé canonique de la liste des danses (« rumba » → « Rumba »). */
+export function canonicalDance(
+  style: string | null | undefined,
+): string | null {
+  if (!style) return null;
+  const match = DANCE_GROUPS.flatMap((g) => g.dances).find((d) =>
+    sameDance(d, style),
+  );
+  return match ?? style;
 }
 
 /** [12, 83.5] → « 0:12, 1:23 » ; liste vide → « aucun ». */
@@ -89,7 +142,13 @@ export function parseMpm(input: string): number | null {
   return n >= MPM_MIN && n <= MPM_MAX ? n : null;
 }
 
-export type CorrectionField = "title" | "artist" | "style" | "bpm" | "clash";
+export type CorrectionField =
+  | "title"
+  | "artist"
+  | "style"
+  | "bpm"
+  | "resultingBpm"
+  | "clash";
 
 export interface CorrectionDiffLine {
   field: CorrectionField;
@@ -98,12 +157,21 @@ export interface CorrectionDiffLine {
   proposed: string;
 }
 
+/** Vrai si la proposition change la danse sans proposer de MPM. */
+export function isDanceOnlyChange(
+  item: Pick<TrackCorrectionAdminDto, "proposed">,
+): boolean {
+  return item.proposed.style !== null && item.proposed.bpm === null;
+}
+
 /**
  * Lignes « actuel → proposé » d'une proposition. Seuls les champs proposés
- * (non nuls) apparaissent : le backend ne retient que ce qui diffère.
+ * (non nuls) apparaissent : le backend ne retient que ce qui diffère. Un
+ * changement de danse seul recalcule le MPM : on affiche alors le MPM qui
+ * résultera de la validation (`resultingBpm`, calculé par le backend).
  */
 export function buildCorrectionDiff(
-  item: Pick<TrackCorrectionAdminDto, "proposed" | "track">,
+  item: Pick<TrackCorrectionAdminDto, "proposed" | "track" | "resultingBpm">,
 ): CorrectionDiffLine[] {
   const { proposed, track } = item;
   const lines: CorrectionDiffLine[] = [];
@@ -131,11 +199,19 @@ export function buildCorrectionDiff(
       proposed: proposed.style,
     });
   }
+  if (isDanceOnlyChange(item)) {
+    lines.push({
+      field: "resultingBpm",
+      label: "MPM recalculé",
+      current: String(Math.round(track.bpm)),
+      proposed: String(Math.round(item.resultingBpm)),
+    });
+  }
   if (proposed.bpm !== null) {
     lines.push({
       field: "bpm",
       label: "MPM",
-      current: String(track.bpm),
+      current: String(Math.round(track.bpm)),
       proposed: String(proposed.bpm),
     });
   }

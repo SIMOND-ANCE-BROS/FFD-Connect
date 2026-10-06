@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import {
   Alert,
   StyleSheet,
+  Switch,
   TextInput,
   TouchableOpacity,
   View,
@@ -18,14 +19,17 @@ import {
 import { useReviewTrackCorrection } from "../hooks/useTrackCorrections";
 import {
   buildCorrectionDiff,
-  formatClashList,
+  formatClashListForEdit,
   formatCorrectionDate,
+  isDanceOnlyChange,
   MESSAGE_MAX_LENGTH,
   MPM_MAX,
   MPM_MIN,
   parseClashList,
   parseMpm,
   reasonLabel,
+  sameClashes,
+  sameDance,
 } from "../utils/trackCorrections";
 import { DanceChips, StatusBadge } from "./CorrectionChips";
 
@@ -48,23 +52,31 @@ const draftOf = (item: TrackCorrectionAdminDto): Draft => ({
   artist: item.proposed.artist ?? "",
   style: item.proposed.style,
   bpm: item.proposed.bpm !== null ? String(item.proposed.bpm) : "",
+  // m:ss.d : les dixièmes ne doivent pas être perdus à l'édition.
   clashes:
     item.proposed.clashTimecodes !== null
-      ? formatClashList(item.proposed.clashTimecodes).replace(/^aucun$/, "")
+      ? formatClashListForEdit(item.proposed.clashTimecodes)
       : "",
 });
 
 /**
  * Ajustements de l'admin : uniquement les champs proposés qu'il a modifiés.
  * Renvoie un message d'erreur si une saisie est invalide.
+ *
+ * `keepCurrentBpm` : sur un changement de danse seul, le backend recalcule le
+ * MPM ; l'admin peut au contraire conserver le MPM actuel de la piste.
  */
 export function buildApproveOverrides(
   item: TrackCorrectionAdminDto,
   draft: Draft,
+  keepCurrentBpm = false,
 ): Omit<ApproveTrackCorrectionDto, "comment"> | string {
   const initial = draftOf(item);
   const body: Omit<ApproveTrackCorrectionDto, "comment"> = {};
   const { proposed } = item;
+  if (keepCurrentBpm && isDanceOnlyChange(item)) {
+    body.bpm = item.track.bpm;
+  }
   if (proposed.title !== null && draft.title !== initial.title) {
     const t = draft.title.trim();
     if (!t) return "Le titre ne peut pas être vide.";
@@ -75,7 +87,11 @@ export function buildApproveOverrides(
     if (!a) return "L'artiste ne peut pas être vide.";
     body.artist = a;
   }
-  if (proposed.style !== null && draft.style !== initial.style && draft.style) {
+  if (
+    proposed.style !== null &&
+    draft.style &&
+    !sameDance(draft.style, initial.style)
+  ) {
     body.style = draft.style;
   }
   if (proposed.bpm !== null && draft.bpm !== initial.bpm) {
@@ -85,15 +101,15 @@ export function buildApproveOverrides(
     }
     body.bpm = n;
   }
-  if (
-    proposed.clashTimecodes !== null &&
-    draft.clashes.trim() !== initial.clashes
-  ) {
+  if (proposed.clashTimecodes !== null) {
     const clashes = parseClashList(draft.clashes);
     if (clashes === null) {
       return "Clashs illisibles : saisissez des temps « m:ss » séparés par des virgules (10 au plus).";
     }
-    body.clashTimecodes = clashes;
+    // N'envoyer que si la liste diffère réellement de la proposition.
+    if (!sameClashes(clashes, proposed.clashTimecodes)) {
+      body.clashTimecodes = clashes;
+    }
   }
   return body;
 }
@@ -113,10 +129,12 @@ export const CorrectionReviewCard = ({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => draftOf(item));
   const [comment, setComment] = useState("");
+  const [keepCurrentBpm, setKeepCurrentBpm] = useState(false);
 
   const isPending = item.status === "PENDING";
   const diff = buildCorrectionDiff(item);
-  const hasEditable = diff.length > 0;
+  const hasEditable = diff.some((line) => line.field !== "resultingBpm");
+  const danceOnly = isDanceOnlyChange(item);
   const busy = review.isPending;
 
   const handleError = (error: unknown) => {
@@ -146,7 +164,11 @@ export const CorrectionReviewCard = ({
         .catch(handleError);
       return;
     }
-    const overrides = editing ? buildApproveOverrides(item, draft) : {};
+    const overrides = buildApproveOverrides(
+      item,
+      editing ? draft : draftOf(item),
+      keepCurrentBpm,
+    );
     if (typeof overrides === "string") {
       Alert.alert("Valeurs invalides", overrides);
       return;
@@ -354,6 +376,21 @@ export const CorrectionReviewCard = ({
             </View>
           )}
 
+          {danceOnly && (
+            <View style={styles.toggleRow}>
+              <AppText variant="caption" color={theme.text} style={styles.flex}>
+                Garder le MPM actuel ({Math.round(item.track.bpm)})
+              </AppText>
+              <Switch
+                accessibilityLabel="Garder le MPM actuel"
+                accessibilityHint="Conserve le MPM de la musique au lieu de le recalculer pour la nouvelle danse"
+                testID={`correction-keep-bpm-${item.id}`}
+                value={keepCurrentBpm}
+                onValueChange={setKeepCurrentBpm}
+              />
+            </View>
+          )}
+
           <TextInput
             accessibilityLabel="Commentaire pour l'auteur"
             accessibilityHint="Message transmis à l'auteur avec la décision (facultatif)"
@@ -433,6 +470,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   editor: { marginTop: 8, gap: 8 },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+  },
   input: {
     borderWidth: 1,
     borderRadius: 8,

@@ -135,6 +135,23 @@ describe("MyTrackCorrectionsScreen", () => {
     await waitFor(() => expect(listMine).toHaveBeenCalledTimes(2));
   });
 
+  it("charge la page suivante en fin de liste", async () => {
+    listMine.mockImplementation(({ skip }: { skip: number }) =>
+      Promise.resolve({
+        data: [mine({ id: `c-${skip}`, trackTitle: `Piste ${skip}` })],
+        meta: { total: 21, skip, take: 20, hasMore: skip === 0 },
+      }),
+    );
+    const { findByTestId, getByTestId } = await renderScreen();
+    await findByTestId("my-correction-c-0");
+    expect(listMine).toHaveBeenCalledWith({ skip: 0, take: 20 });
+
+    await fireEvent(getByTestId("my-corrections-list"), "onEndReached");
+
+    expect(await findByTestId("my-correction-c-20")).toBeTruthy();
+    expect(listMine).toHaveBeenLastCalledWith({ skip: 20, take: 20 });
+  });
+
   it("résume toutes les valeurs proposées", () => {
     expect(
       proposedSummary(

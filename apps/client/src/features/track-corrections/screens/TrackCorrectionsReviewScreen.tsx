@@ -25,7 +25,10 @@ import type {
 import { useAuthStore } from "../../../stores/auth.store";
 import { ChoiceChip, chipStyles } from "../components/CorrectionChips";
 import { CorrectionReviewCard } from "../components/CorrectionReviewCard";
-import { useAdminTrackCorrections } from "../hooks/useTrackCorrections";
+import {
+  useAdminTrackCorrections,
+  useFocusedTrackCorrection,
+} from "../hooks/useTrackCorrections";
 
 type Props = NativeStackScreenProps<
   RootStackParamList,
@@ -58,17 +61,40 @@ export const TrackCorrectionsReviewScreen = ({ navigation, route }: Props) => {
   const focusedId = route.params?.correctionId;
   const [status, setStatus] = useState<TrackCorrectionStatus>("PENDING");
 
-  const { data, isLoading, isError, isRefetching, refetch } =
-    useAdminTrackCorrections(status, isAdmin);
+  const {
+    data,
+    isLoading,
+    isError,
+    isRefetching,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useAdminTrackCorrections(status, isAdmin);
+
+  const loaded = useMemo<TrackCorrectionAdminDto[]>(
+    () => data?.pages.flatMap((p) => p.data) ?? [],
+    [data],
+  );
+  const focusedInList = focusedId
+    ? loaded.find((c) => c.id === focusedId)
+    : undefined;
+  // Proposition visée par la notification mais absente de la page chargée
+  // (file longue, ou déjà traitée) : on va la chercher dans tous les statuts.
+  const { data: focusedFallback } = useFocusedTrackCorrection(
+    focusedId,
+    isAdmin && !isLoading && data !== undefined && !focusedInList,
+  );
 
   const items = useMemo<TrackCorrectionAdminDto[]>(() => {
-    const list = data?.data ?? [];
-    if (!focusedId) return list;
-    const focused = list.find((c) => c.id === focusedId);
-    return focused
-      ? [focused, ...list.filter((c) => c.id !== focusedId)]
-      : list;
-  }, [data, focusedId]);
+    const focused = focusedInList ?? focusedFallback ?? undefined;
+    if (!focused) return loaded;
+    return [focused, ...loaded.filter((c) => c.id !== focused.id)];
+  }, [loaded, focusedInList, focusedFallback]);
+
+  const loadMore = () => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  };
 
   const header = (
     <PinnedHeader
@@ -134,6 +160,7 @@ export const TrackCorrectionsReviewScreen = ({ navigation, route }: Props) => {
   } else {
     body = (
       <FlatList
+        testID="corrections-list"
         data={items}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
@@ -144,6 +171,17 @@ export const TrackCorrectionsReviewScreen = ({ navigation, route }: Props) => {
           { paddingTop: headerH + 8, paddingBottom: insets.bottom + 40 },
         ]}
         keyboardShouldPersistTaps="handled"
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <ActivityIndicator
+              color={theme.primary}
+              style={styles.footer}
+              testID="corrections-loading-more"
+            />
+          ) : null
+        }
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
@@ -190,4 +228,5 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 16 },
   empty: { alignItems: "center", paddingTop: 60 },
   emptyText: { marginTop: 12 },
+  footer: { paddingVertical: 16 },
 });

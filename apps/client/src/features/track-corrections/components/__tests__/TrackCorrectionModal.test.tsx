@@ -170,6 +170,41 @@ describe("TrackCorrectionModal", () => {
     );
   });
 
+  it("arrondit le MPM pré-rempli et n'envoie pas une valeur inchangée", async () => {
+    const { getByTestId, getByText } = await renderModal({
+      track: { ...track, bpm: 25.4 },
+    });
+    await fireEvent.press(getByTestId("correction-reason-MPM"));
+    expect(getByTestId("correction-mpm-input").props.value).toBe("25");
+    expect(getByText("Valeur actuelle : 25 MPM")).toBeTruthy();
+    await fireEvent.press(getByTestId("correction-submit-button"));
+
+    expect(createMock).not.toHaveBeenCalled();
+    expect(Alert.alert).toHaveBeenCalledWith(
+      "Proposition incomplète",
+      "Modifiez la valeur proposée ou ajoutez un commentaire.",
+    );
+  });
+
+  it("compare la danse sans tenir compte de la casse, comme le backend", async () => {
+    const { getByTestId } = await renderModal({
+      track: { ...track, style: "rumba" },
+    });
+    await fireEvent.press(getByTestId("correction-reason-DANCE"));
+    // « rumba » est reconnue comme la puce « Rumba » déjà sélectionnée.
+    expect(
+      getByTestId("correction-dance-Rumba").props.accessibilityState,
+    ).toEqual(expect.objectContaining({ selected: true }));
+    await fireEvent.press(getByTestId("correction-dance-Rumba"));
+    await fireEvent.press(getByTestId("correction-submit-button"));
+
+    expect(createMock).not.toHaveBeenCalled();
+    expect(Alert.alert).toHaveBeenCalledWith(
+      "Proposition incomplète",
+      "Modifiez la valeur proposée ou ajoutez un commentaire.",
+    );
+  });
+
   it("refuse un MPM invalide sans appeler l'API", async () => {
     const { getByTestId } = await renderModal();
     await fireEvent.press(getByTestId("correction-reason-MPM"));
