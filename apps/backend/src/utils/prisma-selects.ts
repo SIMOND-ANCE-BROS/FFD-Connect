@@ -221,3 +221,14 @@ export const notificationPreferenceExportSelect = {
   enabled: true,
   updatedAt: true,
 } as const;
+
+/**
+ * Sélecteur pour l'effacement RGPD (art. 17) des documents de renouvellement :
+ * seule la référence de stockage compte. `filePath` porte le `blobName` du
+ * document dans le conteneur « uploads » (cf. `LicenseRenewalService`), pas un
+ * chemin disque. Ce sont des données de santé (certificat médical, art. 9) :
+ * on ne lit ni `ocrData` ni rien d'autre, uniquement de quoi supprimer le blob.
+ */
+export const licenseRenewalDocumentBlobSelect = {
+  filePath: true,
+} as const;

@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -9,10 +10,21 @@ import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
+import { BlobStorageService } from "../storage/blob-storage.service";
+import { getErrorMessage } from "../utils/error.utils";
 import {
   deviceTokenExportSelect,
+  licenseRenewalDocumentBlobSelect,
   notificationPreferenceExportSelect,
 } from "../utils/prisma-selects";
+
+/**
+ * Borne du balayage des documents à effacer. Un compte réaliste en compte une
+ * poignée (2 types × quelques demandes), mais `findMany` ne doit jamais être
+ * non borné (CLAUDE.md). Atteindre ce plafond est anormal et journalisé : un
+ * effacement RGPD tronqué en silence serait exactement le défaut corrigé ici.
+ */
+const MAX_DOCUMENTS_TO_ERASE = 500;
 
 /** Champs de base récupérés pour tout utilisateur. */
 const USER_BASE_SELECT = {
@@ -92,7 +104,12 @@ function buildWdsfFromUser(user: {
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(UsersService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private readonly blobStorage: BlobStorageService,
+  ) {}
 
   /**
    * Récupère tous les membres d'un club pour un organisateur
@@ -419,6 +436,29 @@ export class UsersService {
    * inscriptions en tant que partenaire.
    * Suppressions explicites (FK sans onDelete → RESTRICT) : registrations,
    * seatBookings, notifications.
+   *
+   * Les documents de renouvellement (certificat médical = donnée de santé,
+   * RGPD art. 9) vivent dans Azure Blob Storage ; la base n'en garde que le
+   * `blobName`, dans `LicenseRenewalDocument.filePath`. L'ordre est donc
+   * imposé (#79) :
+   *
+   *   1. authentifier (rien de destructif avant) ;
+   *   2. COLLECTER les `filePath` — après la cascade, plus rien ne relie le
+   *      blob à personne : il devient introuvable, donc ineffaçable, même
+   *      manuellement ;
+   *   3. effacer les blobs, au mieux (voir ci-dessous) ;
+   *   4. effacer la base en transaction.
+   *
+   * Effacer le stockage AVANT la base, et non l'inverse : si l'étape 4 échoue,
+   * on a supprimé des données de santé d'un compte qui subsiste — état
+   * réparable, le nouvel essai étant idempotent (`deleteIfExists`). Dans l'ordre
+   * inverse, un échec du stockage laisserait l'orphelin définitif que cette
+   * correction supprime.
+   *
+   * Une panne de stockage ne bloque jamais l'étape 4 : suspendre un droit à
+   * l'effacement sur une indisponibilité d'infrastructure serait pire que le
+   * défaut. L'échec est journalisé avec le nom du blob et le conteneur — de
+   * quoi le reprendre à la main — jamais avalé.
    */
   async deleteMyAccount(userId: string, password: string): Promise<void> {
     const user = await this.prisma.user.findUnique({
@@ -432,12 +472,61 @@ export class UsersService {
     if (!passwordValid) {
       throw new UnauthorizedException("Mot de passe incorrect");
     }
+
+    const blobNames = await this.collectRenewalDocumentBlobs(userId);
+    await this.eraseRenewalDocumentBlobs(blobNames);
+
     await this.prisma.$transaction([
       this.prisma.notification.deleteMany({ where: { userId } }),
       this.prisma.seatBooking.deleteMany({ where: { userId } }),
       this.prisma.registration.deleteMany({ where: { userId } }),
       this.prisma.user.delete({ where: { id: userId } }),
     ]);
+  }
+
+  /**
+   * Références de stockage des documents de renouvellement d'un utilisateur,
+   * lues tant que les lignes existent encore. Ne lit que `filePath` : le
+   * contenu OCR n'a pas à transiter par le chemin d'effacement.
+   */
+  private async collectRenewalDocumentBlobs(userId: string): Promise<string[]> {
+    const documents = await this.prisma.licenseRenewalDocument.findMany({
+      where: { request: { userId } },
+      select: licenseRenewalDocumentBlobSelect,
+      take: MAX_DOCUMENTS_TO_ERASE,
+    });
+    if (documents.length === MAX_DOCUMENTS_TO_ERASE) {
+      this.logger.warn(
+        `[RGPD] Plafond de ${MAX_DOCUMENTS_TO_ERASE} documents atteint à l'effacement d'un compte : des blobs peuvent subsister.`,
+      );
+    }
+    return documents.map((document) => document.filePath);
+  }
+
+  /**
+   * Efface les blobs au mieux : chaque échec est journalisé puis enjambé, pour
+   * qu'un blob inaccessible n'en bloque ni un autre ni la suppression du
+   * compte. Séquentiel à dessein — le disjoncteur `azure-blob` doit pouvoir
+   * s'ouvrir sur les premiers échecs plutôt que subir toute la rafale.
+   *
+   * Journalise le nom du blob et le conteneur, jamais le contenu ni l'OCR : ce
+   * sont des données de santé, et seul l'identifiant technique sert à reprendre
+   * l'effacement.
+   */
+  private async eraseRenewalDocumentBlobs(blobNames: string[]): Promise<void> {
+    if (blobNames.length === 0 || !this.blobStorage.isEnabled()) {
+      return;
+    }
+    const container = this.blobStorage.getUploadsContainer();
+    for (const blobName of blobNames) {
+      try {
+        await this.blobStorage.deleteFile(blobName, container);
+      } catch (error: unknown) {
+        this.logger.error(
+          `[RGPD] Blob non supprimé lors d'un effacement de compte — à reprendre à la main : blob="${blobName}" conteneur="${container}" raison="${getErrorMessage(error)}"`,
+        );
+      }
+    }
   }
 
   /**

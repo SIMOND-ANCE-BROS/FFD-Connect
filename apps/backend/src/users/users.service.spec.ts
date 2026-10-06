@@ -1,9 +1,15 @@
-import { NotFoundException, UnauthorizedException } from "@nestjs/common";
+import {
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaClient, RegistrationStatus, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { mockDeep, MockProxy } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
+import { BlobStorageService } from "../storage/blob-storage.service";
 import { UsersService } from "./users.service";
 
 jest.mock("bcrypt", () => ({
@@ -52,12 +58,21 @@ function makeUser(overrides: Record<string, unknown> = {}) {
 describe("UsersService", () => {
   let service: UsersService;
   let prisma: MockProxy<PrismaClient>;
+  let blobStorage: MockProxy<BlobStorageService>;
 
   beforeEach(async () => {
     prisma = mockDeep<PrismaClient>();
+    blobStorage = mockDeep<BlobStorageService>();
+    blobStorage.isEnabled.mockReturnValue(true);
+    blobStorage.getUploadsContainer.mockReturnValue("uploads");
+    blobStorage.deleteFile.mockResolvedValue(true);
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [UsersService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        UsersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: BlobStorageService, useValue: blobStorage },
+      ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
@@ -566,6 +581,7 @@ describe("UsersService", () => {
         id: "u1",
         password: "$2b$12$hash",
       });
+      prisma.licenseRenewalDocument.findMany.mockResolvedValue([]);
       prisma.$transaction.mockResolvedValue([] as never);
     });
 
@@ -610,6 +626,195 @@ describe("UsersService", () => {
 
       expect(compare).not.toHaveBeenCalled();
       expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    // -----------------------------------------------------------------------
+    // Effacement du stockage (#79) — le certificat médical est une donnée de
+    // santé (RGPD art. 9) : la ligne supprimée emportait l'unique référence au
+    // blob, qui devenait introuvable donc ineffaçable.
+    // -----------------------------------------------------------------------
+
+    describe("effacement des documents dans le stockage", () => {
+      /** Un document de renouvellement tel que le voit le sélecteur d'effacement. */
+      function doc(filePath: string) {
+        return { filePath } as never;
+      }
+
+      beforeEach(() => {
+        compare.mockResolvedValue(true);
+      });
+
+      it("supprime chaque blob du compte dans le conteneur des uploads", async () => {
+        prisma.licenseRenewalDocument.findMany.mockResolvedValue([
+          doc("document-1-11.pdf"),
+          doc("document-2-22.jpg"),
+        ]);
+
+        await service.deleteMyAccount("u1", "correct-password");
+
+        expect(blobStorage.deleteFile).toHaveBeenCalledTimes(2);
+        expect(blobStorage.deleteFile).toHaveBeenCalledWith(
+          "document-1-11.pdf",
+          "uploads",
+        );
+        expect(blobStorage.deleteFile).toHaveBeenCalledWith(
+          "document-2-22.jpg",
+          "uploads",
+        );
+      });
+
+      it("ne lit que les documents de cet utilisateur, bornés, et sans l'OCR", async () => {
+        await service.deleteMyAccount("u1", "correct-password");
+
+        expect(prisma.licenseRenewalDocument.findMany).toHaveBeenCalledWith({
+          where: { request: { userId: "u1" } },
+          select: { filePath: true },
+          take: 500,
+        });
+      });
+
+      it("collecte les filePath AVANT de supprimer quoi que ce soit", async () => {
+        prisma.licenseRenewalDocument.findMany.mockResolvedValue([
+          doc("document-1-11.pdf"),
+        ]);
+
+        await service.deleteMyAccount("u1", "correct-password");
+
+        // Lire après la transaction serait trop tard : la cascade a déjà
+        // emporté la ligne, et avec elle le seul lien vers le blob.
+        const collected =
+          prisma.licenseRenewalDocument.findMany.mock.invocationCallOrder[0];
+        const erased = blobStorage.deleteFile.mock.invocationCallOrder[0];
+        const committed = prisma.$transaction.mock.invocationCallOrder[0];
+
+        expect(collected).toBeLessThan(erased);
+        expect(erased).toBeLessThan(committed);
+      });
+
+      it("n'appelle pas le stockage quand le compte n'a aucun document", async () => {
+        prisma.licenseRenewalDocument.findMany.mockResolvedValue([]);
+
+        await service.deleteMyAccount("u1", "correct-password");
+
+        expect(blobStorage.deleteFile).not.toHaveBeenCalled();
+        expect(prisma.user.delete).toHaveBeenCalledWith({
+          where: { id: "u1" },
+        });
+      });
+
+      it("n'appelle pas le stockage quand il n'est pas configuré", async () => {
+        blobStorage.isEnabled.mockReturnValue(false);
+        prisma.licenseRenewalDocument.findMany.mockResolvedValue([
+          doc("document-1-11.pdf"),
+        ]);
+
+        await service.deleteMyAccount("u1", "correct-password");
+
+        expect(blobStorage.deleteFile).not.toHaveBeenCalled();
+        expect(prisma.user.delete).toHaveBeenCalledWith({
+          where: { id: "u1" },
+        });
+      });
+
+      it("supprime le compte malgré une panne de stockage, en journalisant le blob à reprendre", async () => {
+        const logError = jest
+          .spyOn(Logger.prototype, "error")
+          .mockImplementation(() => undefined);
+        prisma.licenseRenewalDocument.findMany.mockResolvedValue([
+          doc("document-1-11.pdf"),
+        ]);
+        blobStorage.deleteFile.mockRejectedValue(
+          new ServiceUnavailableException("azure-blob open"),
+        );
+
+        // Suspendre un droit à l'effacement sur une panne d'infrastructure
+        // serait pire que le défaut corrigé.
+        await expect(
+          service.deleteMyAccount("u1", "correct-password"),
+        ).resolves.toBeUndefined();
+
+        expect(prisma.user.delete).toHaveBeenCalledWith({
+          where: { id: "u1" },
+        });
+
+        // L'échec est exploitable : on sait quel blob reprendre, et pourquoi.
+        expect(logError).toHaveBeenCalledTimes(1);
+        const message = String(logError.mock.calls[0][0]);
+        expect(message).toContain("document-1-11.pdf");
+        expect(message).toContain("uploads");
+        expect(message).toContain("azure-blob open");
+        logError.mockRestore();
+      });
+
+      it("poursuit l'effacement des blobs suivants après un échec", async () => {
+        const logError = jest
+          .spyOn(Logger.prototype, "error")
+          .mockImplementation(() => undefined);
+        prisma.licenseRenewalDocument.findMany.mockResolvedValue([
+          doc("document-1-11.pdf"),
+          doc("document-2-22.jpg"),
+        ]);
+        blobStorage.deleteFile
+          .mockRejectedValueOnce(new Error("boom"))
+          .mockResolvedValueOnce(true);
+
+        await service.deleteMyAccount("u1", "correct-password");
+
+        expect(blobStorage.deleteFile).toHaveBeenCalledWith(
+          "document-2-22.jpg",
+          "uploads",
+        );
+        expect(logError).toHaveBeenCalledTimes(1);
+        logError.mockRestore();
+      });
+
+      it("ne journalise jamais le contenu du document, seulement son identifiant", async () => {
+        const logError = jest
+          .spyOn(Logger.prototype, "error")
+          .mockImplementation(() => undefined);
+        prisma.licenseRenewalDocument.findMany.mockResolvedValue([
+          doc("document-1-11.pdf"),
+        ]);
+        blobStorage.deleteFile.mockRejectedValue(new Error("boom"));
+
+        await service.deleteMyAccount("u1", "correct-password");
+
+        // Le sélecteur ne doit rapporter que `filePath` : rien d'autre ne peut
+        // donc fuir dans les journaux.
+        const [[call]] = prisma.licenseRenewalDocument.findMany.mock.calls;
+        expect(call?.select).toEqual({ filePath: true });
+        expect(String(logError.mock.calls[0][0])).not.toContain("ocr");
+        logError.mockRestore();
+      });
+
+      it("signale un effacement potentiellement tronqué quand le plafond est atteint", async () => {
+        const logWarn = jest
+          .spyOn(Logger.prototype, "warn")
+          .mockImplementation(() => undefined);
+        prisma.licenseRenewalDocument.findMany.mockResolvedValue(
+          Array.from({ length: 500 }, (_, i) => doc(`document-${i}.pdf`)),
+        );
+
+        await service.deleteMyAccount("u1", "correct-password");
+
+        expect(logWarn).toHaveBeenCalledTimes(1);
+        expect(String(logWarn.mock.calls[0][0])).toContain("500");
+        logWarn.mockRestore();
+      });
+
+      it("ne touche pas au stockage si le mot de passe est incorrect", async () => {
+        compare.mockResolvedValue(false);
+        prisma.licenseRenewalDocument.findMany.mockResolvedValue([
+          doc("document-1-11.pdf"),
+        ]);
+
+        await expect(
+          service.deleteMyAccount("u1", "wrong-password"),
+        ).rejects.toThrow(UnauthorizedException);
+
+        expect(prisma.licenseRenewalDocument.findMany).not.toHaveBeenCalled();
+        expect(blobStorage.deleteFile).not.toHaveBeenCalled();
+      });
     });
   });
 
