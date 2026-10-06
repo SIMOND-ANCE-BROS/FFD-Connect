@@ -32,7 +32,7 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       client: ${{ steps.filter.outputs.client }}
-      landing: ${{ steps.filter.outputs.landing }}
+      landing: ${{ steps.landing.outputs.changed }}
       docs: ${{ steps.filter.outputs.docs }}
       backend_image: ${{ steps.backend-image.outputs.build }}
     steps:
@@ -41,6 +41,18 @@ jobs:
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v3
         id: filter
         with:
+          # Base of the diff. pull_request: ignored (paths-filter lists the PR
+          # files through the API). push: the previous tip of the pushed branch
+          # (`github.event.before`). Left empty, paths-filter diffs a push to a
+          # non-default branch against the DEFAULT branch (develop), and after a
+          # promotion staging/master == develop, so `landing` was always false
+          # ("Changes will be detected between develop and staging. Detected 0
+          # changed files") and the landing image was never rebuilt.
+          # A zero/missing `before` (new branch) falls back to '' here and is
+          # forced to "changed" by the `landing` step below. merge_group keeps
+          # the default-branch base. The `before` commit is fetched on demand
+          # (persist-credentials above), so fetch-depth 1 is enough.
+          base: ${{ github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000' && github.event.before || '' }}
           # Note: apps/backend/** already covers apps/backend/prisma/**, but we list
           # prisma paths explicitly so the intent is visible in code review.
           filters: |
@@ -83,6 +95,28 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'package.json'
+
+      # Only `landing` is read on push events (build-landing-image); the other
+      # filter outputs gate jobs on pull_request only. Fail-safe: a push with no
+      # usable `before` (new branch, missing payload) counts as a landing change.
+      # Residual risk: CI cancels in-progress runs (concurrency group), so if a
+      # push run touching the landing is cancelled by the next push, that next
+      # run diffs against its own `before` and does not catch the change up.
+      # Re-run the cancelled run, or push a landing change again.
+      - name: Landing changed?
+        id: landing
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          FILTERED: ${{ steps.filter.outputs.landing }}
+        run: |
+          set -u
+          if [ "$EVENT" = "push" ] && { [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; }; then
+            echo "No previous tip for this push - treating the landing as changed (fail-safe)"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=${FILTERED:-false}" >> "$GITHUB_OUTPUT"
+          fi
 
       # Should this staging/master push build (and then deploy) the backend
       # image? Diff against the SHA that is ACTUALLY deployed to the target
@@ -666,8 +700,9 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
 
-  # Landing image: only when the push touches the landing (paths-filter
-  # `landing`; on a push it diffs against `before`, i.e. the previous tip).
+  # Landing image: only when the push touches the landing (changes output
+  # `landing`: paths-filter with `base: before`, i.e. the previous tip of the
+  # pushed branch; fail-safe true when there is none, see the changes job).
   # Skipping it leaves :latest — and so ffd.gabin-simond.fr — unchanged.
   build-landing-image:
     name: Build & Push Landing Image
