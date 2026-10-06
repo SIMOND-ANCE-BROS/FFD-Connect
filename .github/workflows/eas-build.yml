@@ -218,17 +218,22 @@ jobs:
   # Déclenché à la main (workflow_dispatch) une fois la version
   # validée sur le canal preview :
   #   - ota   → publie le JS courant de staging sur le canal beta
-  #   - build → déclenche l'EAS Workflow apps/client/.eas/workflows/
-  #             beta-testflight.yml (build natif beta + groupe TestFlight
-  #             EXTERNE « Beta FFD » + soumission Beta App Review). Le job
-  #             GitHub ne fait que lancer le run (pas d'attente) : le build
-  #             (~20-30 min) tourne côté EAS, pas en minutes Actions.
-  #             Nécessite une clé API App Store Connect dans les credentials EAS.
+  #   - build → build natif iOS `beta` (attendu), `eas submit` vers App Store
+  #             Connect, puis scripts/testflight-distribute.ts : groupe
+  #             TestFlight EXTERNE « Beta FFD » + « What to Test » + soumission
+  #             Beta App Review, via l'API App Store Connect. Fonctionne en plan
+  #             EAS gratuit (le job `testflight` des EAS Workflows exige un plan
+  #             payant). Le job attend ~1 h (build + traitement Apple) : minutes
+  #             Actions gratuites, le repo est public.
+  #             Secrets requis : ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (clé API
+  #             App Store Connect, rôle App Manager).
   # ============================================================
   promote-beta:
     name: Promote staging → TestFlight beta (${{ inputs.action }})
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
+    # Build EAS (~20-30 min) + traitement Apple (jusqu'à 30 min) + marge.
+    timeout-minutes: 120
     # No reviewer: workflow_dispatch already requires a human to press the
     # button. The environment is here for the deployment record — what went to
     # TestFlight, when, from which SHA.
@@ -285,36 +290,49 @@ jobs:
             beta-notes.md
             beta-notes.txt
 
-      # `eas submit --groups` ne gère que les groupes INTERNES : la distribution
-      # au groupe EXTERNE (+ Beta App Review) passe par le job `testflight` d'un
-      # EAS Workflow. `eas workflow:run` n'attend PAS la fin du run par défaut
-      # (--wait est false) : on lance et on rend la main, pour ne pas payer
-      # ~30 min de minutes Actions à regarder un build EAS.
-      # Les notes passent en JSON sur stdin (multi-lignes sûres, EOF garanti),
-      # tronquées à 4000 caractères (limite « What to Test » d'App Store Connect).
-      # Elles remplacent l'ancienne étape set-testflight-notes.mjs, qui ne peut
-      # plus tourner ici : le build n'existe pas encore quand ce job se termine.
-      - name: Trigger EAS Workflow beta → TestFlight external (iOS only)
+      # Build natif iOS `beta`, en attendant la fin : le numéro de build est
+      # nécessaire pour retrouver le binaire côté App Store Connect. Sortie JSON
+      # hors de l'arbre (RUNNER_TEMP) : rien d'ajouté à l'archive envoyée à EAS.
+      - name: Build iOS beta
+        id: build
         if: inputs.action == 'build'
         working-directory: apps/client
         run: |
           set -euo pipefail
-          # Notes vides → `{}` : l'input garde sa valeur par défaut (texte FR).
-          # Sortie JSON hors de l'arbre (RUNNER_TEMP) : rien d'ajouté à l'archive
-          # projet que la CLI envoie à EAS.
-          jq -n --rawfile c ../../beta-notes.txt \
-            'if ($c | test("\\S")) then {changelog: ($c | rtrimstr("\n") | .[0:4000])} else {} end' \
-            | eas workflow:run .eas/workflows/beta-testflight.yml --non-interactive --json \
-            > "$RUNNER_TEMP/eas-run.json"
-          RUN_URL=$(jq -r '.url' "$RUNNER_TEMP/eas-run.json")
-          echo "EAS workflow run: $RUN_URL"
-          {
-            echo '## 🚀 EAS Workflow beta → TestFlight (externe)'
-            echo ''
-            echo "Run : $RUN_URL"
-            echo ''
-            echo 'Build + upload + Beta App Review tournent côté EAS ; suivre le run ci-dessus.'
-          } >> "$GITHUB_STEP_SUMMARY"
+          eas build --platform ios --profile beta --non-interactive --wait --json \
+            > "$RUNNER_TEMP/eas-build.json"
+          BUILD_ID=$(jq -r '.[0].id' "$RUNNER_TEMP/eas-build.json")
+          BUILD_NUMBER=$(jq -r '.[0].appBuildVersion' "$RUNNER_TEMP/eas-build.json")
+          echo "id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+          echo "number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "## 🍏 Build iOS beta $BUILD_NUMBER ($BUILD_ID)" >> "$GITHUB_STEP_SUMMARY"
+
+      # EXPO_PUBLIC_APP_ENV=beta : sans lui, app.config.js retombe sur la variante
+      # development et la CLI cherche les credentials de fr.ffdanse.connect.dev
+      # (cf. scripts/submit-beta.ts).
+      - name: Submit to App Store Connect
+        if: inputs.action == 'build'
+        working-directory: apps/client
+        env:
+          EXPO_PUBLIC_APP_ENV: beta
+          BUILD_ID: ${{ steps.build.outputs.id }}
+        run: eas submit --platform ios --profile beta --id "$BUILD_ID" --non-interactive --wait
+
+      # `eas submit --groups` ne vise que les groupes INTERNES : le groupe
+      # EXTERNE et la Beta App Review passent par l'API App Store Connect.
+      - name: Distribute to external TestFlight group + Beta App Review
+        if: inputs.action == 'build'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_APP_ID: '6787383066'
+          BUILD_NUMBER: ${{ steps.build.outputs.number }}
+        run: |
+          set -euo pipefail
+          pnpm testflight:distribute --build-number "$BUILD_NUMBER" --notes-file beta-notes.txt
+          echo "✅ Build $BUILD_NUMBER ajouté au groupe « Beta FFD » et soumis à la Beta App Review" \
+            >> "$GITHUB_STEP_SUMMARY"
 
       # Published, not drafted. A draft release does NOT create its tag: the
       # three drafts sitting in this repo since July reference tags

@@ -41,7 +41,9 @@
     "build:beta:ios": "pnpm --filter client run build:beta:ios",
     "build:prod": "pnpm --filter client run build:prod",
     "submit:beta": "pnpm exec tsx scripts/submit-beta.ts",
-    "submit:beta:test": "pnpm exec tsx scripts/submit-beta.test.ts"
+    "submit:beta:test": "pnpm exec tsx scripts/submit-beta.test.ts",
+    "testflight:distribute": "pnpm exec tsx scripts/testflight-distribute.ts",
+    "testflight:distribute:test": "pnpm exec tsx scripts/testflight-distribute.test.ts"
   },
   "engines": {
     "node": ">=22",
