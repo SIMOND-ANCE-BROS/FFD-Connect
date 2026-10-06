@@ -153,6 +153,10 @@ jobs:
           (github.event.workflow_run.head_branch == 'staging'
           || github.event.workflow_run.head_branch == 'master')
           && steps.check.outputs.client_changed == 'true'
+        # Best effort: a failure here leaves `eas` unusable, and the next step
+        # falls back to the path-based decision instead of failing the gate
+        # (which would skip every OTA and build job).
+        continue-on-error: true
         uses: ./.github/actions/setup-pnpm
 
       - name: Setup EAS CLI (fingerprint)
@@ -160,6 +164,7 @@ jobs:
           (github.event.workflow_run.head_branch == 'staging'
           || github.event.workflow_run.head_branch == 'master')
           && steps.check.outputs.client_changed == 'true'
+        continue-on-error: true # see above
         uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
         with:
           eas-version: latest
@@ -167,6 +172,9 @@ jobs:
 
       - name: Decide native build by fingerprint
         id: fingerprint
+        # An unexpected crash must not fail the gate either: the job output
+        # then falls back to steps.check.outputs.native.
+        continue-on-error: true
         if: >-
           (github.event.workflow_run.head_branch == 'staging'
           || github.event.workflow_run.head_branch == 'master')
