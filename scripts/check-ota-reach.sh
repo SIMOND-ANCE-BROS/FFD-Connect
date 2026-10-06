@@ -46,7 +46,9 @@ fi
 builds() {
   local args=(--channel "$CHANNEL" --platform "$1" --status finished --limit 1 --json --non-interactive)
   [ -n "${2:-}" ] && args+=(--runtime-version "$2")
-  eas build:list "${args[@]}" < /dev/null 2> /dev/null | sed -n '/^[[{]/,$p' | jq 'length' 2> /dev/null
+  # Only an array is an answer: `length` of an error object counts its keys.
+  eas build:list "${args[@]}" < /dev/null 2> /dev/null | sed -n '/^[[{]/,$p' \
+    | jq 'if type == "array" then length else error("not an array") end' 2> /dev/null
 }
 
 missed=0
