@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -9,10 +10,18 @@ import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
+import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import {
   deviceTokenExportSelect,
+  licenseRenewalDocumentFileSelect,
   notificationPreferenceExportSelect,
 } from "../utils/prisma-selects";
+
+/**
+ * Borne de la lecture des documents de renouvellement à purger : un brouillon
+ * porte au plus un document par type, quelques demandes par saison.
+ */
+export const MAX_RENEWAL_DOCUMENTS_TO_PURGE = 200;
 
 /** Champs de base récupérés pour tout utilisateur. */
 const USER_BASE_SELECT = {
@@ -92,7 +101,12 @@ function buildWdsfFromUser(user: {
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(UsersService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private renewalDocumentFiles: RenewalDocumentFileCleaner,
+  ) {}
 
   /**
    * Récupère tous les membres d'un club pour un organisateur
@@ -414,11 +428,22 @@ export class UsersService {
    *
    * Cascades Prisma (schéma) : refreshTokens, passwordResetTokens,
    * deviceTokens, notificationPrefs, partnerships, soloTeamMemberships,
-   * licenseRenewalRequests.
-   * SetNull : licence (reste propriété fédération), tracks soumis,
-   * inscriptions en tant que partenaire.
+   * licenseRenewalRequests (et leurs licenseRenewalDocuments).
+   * SetNull : licence (reste propriété fédération), tracks soumis.
+   * Inscriptions d'autrui en tant que partenaire : anonymisées explicitement
+   * (partnerUserId ET partnerName, copie du nom complet → null ; null est
+   * déjà géré partout à l'affichage).
    * Suppressions explicites (FK sans onDelete → RESTRICT) : registrations,
-   * seatBookings, notifications.
+   * seatBookings, notifications ; bugReports (userId sans FK).
+   * ImpersonationLog est conservé (piste d'audit).
+   *
+   * Fichiers des documents de renouvellement (certificat médical — donnée de
+   * santé, RGPD art. 9 — et certificat de licence) : leurs références sont
+   * lues AVANT la transaction (la cascade efface les lignes), puis les
+   * fichiers sont supprimés APRÈS son succès (en parallèle). Cette purge est
+   * best-effort : un échec n'annule pas la suppression du compte (déjà
+   * effective en base) ; il est remonté en erreur + Sentry (référence du
+   * fichier uniquement) pour nettoyage manuel (RenewalDocumentFileCleaner).
    */
   async deleteMyAccount(userId: string, password: string): Promise<void> {
     const user = await this.prisma.user.findUnique({
@@ -432,12 +457,36 @@ export class UsersService {
     if (!passwordValid) {
       throw new UnauthorizedException("Mot de passe incorrect");
     }
+    const documents = await this.prisma.licenseRenewalDocument.findMany({
+      where: { request: { userId } },
+      select: licenseRenewalDocumentFileSelect,
+      take: MAX_RENEWAL_DOCUMENTS_TO_PURGE,
+    });
+    if (documents.length === MAX_RENEWAL_DOCUMENTS_TO_PURGE) {
+      // Plafond atteint : des fichiers au-delà resteraient orphelins en
+      // stockage. Pas d'identifiant utilisateur dans le log.
+      this.logger.warn(
+        `Account deletion: renewal document read hit the ${MAX_RENEWAL_DOCUMENTS_TO_PURGE} cap — remaining files may be orphaned, run scripts/list-orphan-renewal-blobs.ts`,
+      );
+    }
     await this.prisma.$transaction([
       this.prisma.notification.deleteMany({ where: { userId } }),
       this.prisma.seatBooking.deleteMany({ where: { userId } }),
       this.prisma.registration.deleteMany({ where: { userId } }),
+      // Inscriptions d'autrui où l'utilisateur est partenaire : la FK passerait
+      // en SetNull, mais partnerName garde une copie de son nom complet.
+      this.prisma.registration.updateMany({
+        where: { partnerUserId: userId },
+        data: { partnerUserId: null, partnerName: null },
+      }),
+      // BugReport.userId n'a pas de FK (report.prisma) : suppression explicite.
+      this.prisma.bugReport.deleteMany({ where: { userId } }),
       this.prisma.user.delete({ where: { id: userId } }),
     ]);
+    await this.renewalDocumentFiles.deleteFiles(
+      documents.map((d) => d.filePath),
+      "account-deletion",
+    );
   }
 
   /**
