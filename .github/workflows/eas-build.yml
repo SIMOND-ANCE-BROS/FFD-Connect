@@ -125,6 +125,15 @@ jobs:
           echo "native=$NATIVE" >> "$GITHUB_OUTPUT"
           echo "Result: client_changed=$CLIENT_CHANGED native(paths)=$NATIVE"
 
+          # .easignore and eas.json shape the build but are NOT part of the
+          # fingerprint: a change to them forces a build even when a binary with
+          # the same fingerprint exists (see the 2026-10-05 note above).
+          EAS_CONFIG="false"
+          if echo "$CHANGED_FILES" | grep -qE '^apps/client/(\.easignore|eas\.json)$'; then
+            EAS_CONFIG="true"
+          fi
+          echo "eas_config=$EAS_CONFIG" >> "$GITHUB_OUTPUT"
+
       # ------------------------------------------------------------------
       # Native build decision by fingerprint (staging/master only).
       # runtimeVersion is { policy: "fingerprint" } (app.config.js): an OTA
@@ -166,6 +175,7 @@ jobs:
         env:
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           PATH_NATIVE: ${{ steps.check.outputs.native }}
+          EAS_CONFIG: ${{ steps.check.outputs.eas_config }}
         run: |
           set -uo pipefail
           summary="$GITHUB_STEP_SUMMARY"
@@ -174,6 +184,12 @@ jobs:
             echo "native=$PATH_NATIVE" >> "$GITHUB_OUTPUT"
             exit 0
           }
+
+          if [ "$EAS_CONFIG" = "true" ]; then
+            echo "native=true" >> "$GITHUB_OUTPUT"
+            echo ".easignore / eas.json changed (outside the fingerprint): native build." | tee -a "$summary"
+            exit 0
+          fi
 
           # Before { policy: "fingerprint" } (static runtimeVersion "2.5.0"),
           # runtimeVersion is not the fingerprint and this check means nothing.
@@ -198,11 +214,20 @@ jobs:
 
           # A build already queued or running for the same fingerprint (a
           # previous push) counts too: do not pay twice for the same binary.
+          # Caveat: if that pending build later errors, this push's OTA reaches
+          # nobody until a new build (ota-staging's check-ota-reach warns).
+          # Only a JSON ARRAY is an answer: `length` of an error object would
+          # count its keys and wrongly skip the build. Any error → build.
           for status in finished in-progress in-queue new; do
             count=$(eas build:list --channel "$PROFILE" --build-profile "$PROFILE" --platform ios \
               --status "$status" --runtime-version "$HASH" --limit 1 --json --non-interactive \
-              < /dev/null 2> /dev/null | sed -n '/^[[{]/,$p' | jq 'length' 2> /dev/null)
-            [ -n "$count" ] || fallback "could not list EAS builds"
+              < /dev/null 2> /dev/null | sed -n '/^[[{]/,$p' \
+              | jq 'if type == "array" then length else error("not an array") end' 2> /dev/null)
+            if [ -z "$count" ]; then
+              echo "::warning::could not list EAS builds - native build (fail-safe)"
+              echo "native=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             if [ "$count" -gt 0 ]; then
               echo "native=false" >> "$GITHUB_OUTPUT"
               echo "A $status \`$PROFILE\` build already has runtime ${HASH:0:7}: OTA only, no native build." | tee -a "$summary"

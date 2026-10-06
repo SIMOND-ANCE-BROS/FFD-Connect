@@ -38,9 +38,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         # persist-credentials left on (default: true) so paths-filter can git fetch base branch
-        with:
-          # HEAD plus its parents: enough for the HEAD^1..HEAD diff below.
-          fetch-depth: 2
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v3
         id: filter
         with:
@@ -88,13 +85,20 @@ jobs:
               - 'package.json'
 
       # Should this staging/master push build (and then deploy) the backend
-      # image? Same rule as the EAS gate (eas-build.yml): cascade pushes are
-      # merge commits whose first parent is the branch's previous tip, so
-      # HEAD^1..HEAD is exactly what the promotion brings. An explicit diff
-      # rather than paths-filter so the rule is the EAS gate's, and fails
-      # safe: not a merge commit, or no diff, means build.
-      # deploy-backend.yml deploys iff this run's build-image job succeeded, so
-      # this output is the single source of truth for both workflows.
+      # image? Diff against the SHA that is ACTUALLY deployed to the target
+      # environment, not against HEAD^1: CI on these branches can be cancelled
+      # by the next push, fail without a re-run, or a deploy can roll back, and
+      # a HEAD^1 base would then never ship that earlier backend change.
+      # The deployed SHA is read from the Actions API (free, never wakes the
+      # app — /health is NOT used): the most recent deploy-backend.yml run
+      # whose "Deploy to Staging|Production" job concluded `success`. A
+      # rolled-back deploy fails that job, so it is not counted. The SHA comes
+      # from the run title (`run-name` in deploy-backend.yml): workflow_run runs
+      # carry the default branch's head_sha, and the Deployments API records
+      # that same develop SHA, so neither gives the deployed commit.
+      # Anything missing (no such run yet, fetch or diff failure) → build
+      # (fail-safe). deploy-backend.yml deploys iff this run's build-image job
+      # succeeded, so this output is the single source of truth for both.
       # Paths = everything the backend Dockerfile copies, plus the deploy
       # workflow itself (a change there must be exercised).
       - name: Backend image needed?
@@ -102,26 +106,54 @@ jobs:
         if: >-
           github.event_name == 'push'
           && (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/master')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
         run: |
           set -uo pipefail
           PATTERNS='^(apps/backend/|packages/shared/|packages/jest-config/|patches/|scripts/|apps/client/package\.json$|apps/landing/package\.json$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.npmrc$|\.dockerignore$|\.github/workflows/deploy-backend\.yml$)'
-          if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" -lt 3 ]; then
-            echo "Not a merge commit - building the backend image (fail-safe)"
+          build() {
+            echo "$1 - building the backend image (fail-safe)"
             echo "build=true" >> "$GITHUB_OUTPUT"
             exit 0
-          fi
-          if ! CHANGED=$(git diff --name-only HEAD^1 HEAD); then
-            echo "::warning::HEAD^1..HEAD diff failed - building the backend image (fail-safe)"
-            echo "build=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+          }
+          case "$BRANCH" in
+            staging) JOB="Deploy to Staging" ;;
+            master) JOB="Deploy to Production" ;;
+          esac
+
+          # Recent deploy runs for this branch, newest first: "<run id> <sha>".
+          CANDIDATES=$(gh api "repos/$REPO/actions/workflows/deploy-backend.yml/runs?per_page=50" \
+            --jq ".workflow_runs[] | select(.status == \"completed\")
+                  | (.display_title | capture(\" $BRANCH @ (?<sha>[0-9a-f]{40})\$\")?) as \$m
+                  | select(\$m != null) | \"\(.id) \(\$m.sha)\"") \
+            || build "Could not list deploy-backend runs"
+          DEPLOYED=""
+          while read -r RUN SHA; do
+            [ -n "$RUN" ] || continue
+            RESULT=$(gh api "repos/$REPO/actions/runs/$RUN/jobs?per_page=100" \
+              --jq "[.jobs[] | select(.name == \"$JOB\") | .conclusion] | first // \"none\"") \
+              || build "Could not read the jobs of deploy run $RUN"
+            if [ "$RESULT" = "success" ]; then
+              DEPLOYED="$SHA"
+              echo "Deployed on $BRANCH: $SHA (deploy run $RUN)"
+              break
+            fi
+          done <<< "$CANDIDATES"
+          [ -n "$DEPLOYED" ] || build "No successful $JOB found in recent deploy runs"
+
+          git fetch --no-tags --depth=1 origin "$DEPLOYED" > /dev/null 2>&1 \
+            || build "Could not fetch the deployed commit $DEPLOYED"
+          CHANGED=$(git diff --name-only "$DEPLOYED" HEAD) \
+            || build "$DEPLOYED..HEAD diff failed"
           MATCHED=$(echo "$CHANGED" | grep -E "$PATTERNS" || true)
           if [ -n "$MATCHED" ]; then
-            echo "Backend-relevant changes in HEAD^1..HEAD:"
+            echo "Backend-relevant changes since the deployed ${DEPLOYED:0:7}:"
             echo "$MATCHED"
             echo "build=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No backend-relevant change in HEAD^1..HEAD: no image, no deploy" \
+            echo "No backend-relevant change since the deployed ${DEPLOYED:0:7}: no image, no deploy" \
               | tee -a "$GITHUB_STEP_SUMMARY"
             echo "build=false" >> "$GITHUB_OUTPUT"
           fi

@@ -28,6 +28,12 @@
 # =============================================================================
 
 name: Deploy Backend
+# The deployed branch and SHA in the run title. Not cosmetic: ci.yml (`changes`
+# → "Backend image needed?") reads it back to find the commit currently
+# deployed, because a workflow_run run's head_sha (and the deployment record
+# GitHub creates for `environment:`) is the default branch's, not the deployed
+# one. Keep the " <branch> @ <40-hex sha>" suffix.
+run-name: Deploy Backend · ${{ github.event.workflow_run.head_branch }} @ ${{ github.event.workflow_run.head_sha }}
 
 on:
   # Triggered after CI passes (same gate pattern as EAS builds)
