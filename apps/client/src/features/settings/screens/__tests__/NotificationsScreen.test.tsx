@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
+import { Alert } from "react-native";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useAuthRepository } from "../../../../features/auth/context/AuthContext";
+import { NotificationApi } from "../../../../services/api/notification-api";
 import { BackendService } from "../../../../services/BackendService";
 import { NotificationsScreen } from "../NotificationsScreen";
 
@@ -20,6 +22,12 @@ jest.mock("../../../../services/BackendService", () => ({
     markNotificationAsRead: jest.fn(),
   },
 }));
+jest.mock("../../../../services/api/notification-api", () => ({
+  NotificationApi: {
+    deleteNotification: jest.fn(),
+    deleteAllNotifications: jest.fn(),
+  },
+}));
 
 describe("NotificationsScreen", () => {
   const mockTheme = {
@@ -29,6 +37,7 @@ describe("NotificationsScreen", () => {
     textSecondary: "#666",
     primary: "#3b82f6",
     border: "#e5e7eb",
+    danger: "#ef4444",
   };
 
   const navigation = { goBack: jest.fn(), navigate: jest.fn() };
@@ -48,6 +57,10 @@ describe("NotificationsScreen", () => {
         isRead: false,
       },
     ]);
+    (NotificationApi.deleteNotification as jest.Mock).mockResolvedValue(
+      undefined,
+    );
+    (NotificationApi.deleteAllNotifications as jest.Mock).mockResolvedValue(1);
   });
 
   it("renders notifications and marks all as read", async () => {
@@ -145,5 +158,96 @@ describe("NotificationsScreen", () => {
     await fireEvent.press(getByText("Type inconnu"));
 
     expect(navigation.navigate).not.toHaveBeenCalled();
+  });
+
+  // Le dépôt renvoyait un objet littéral neuf à chaque rendu : `loadNotifications`
+  // en dépendait, l'effet se redéclenchait donc à chaque rendu, et chaque
+  // réponse provoquait le rendu suivant. L'écran rechargeait le feed en boucle
+  // — invisible à l'œil, mais c'est une requête par rendu sur une API qui se
+  // réveille à la demande.
+  it("loads the feed once, instead of refetching on every render", async () => {
+    const { getByText } = await renderScreen();
+    await waitFor(() =>
+      expect(getByText("Nouvelle notification")).toBeTruthy(),
+    );
+
+    expect(BackendService.getNotifications).toHaveBeenCalledTimes(1);
+  });
+
+  // ─── Suppression (#84 : « les notifications ne sont pas supprimables ») ────
+
+  it("deletes a notification from its own button, without opening it", async () => {
+    const { getByTestId, queryByText } = await renderScreen();
+    await waitFor(() =>
+      expect(getByTestId("notifications-delete-n1")).toBeTruthy(),
+    );
+
+    await fireEvent.press(getByTestId("notifications-delete-n1"));
+
+    await waitFor(() =>
+      expect(NotificationApi.deleteNotification).toHaveBeenCalledWith("n1"),
+    );
+    // La corbeille est un frère de la zone d'ouverture, pas un enfant : appuyer
+    // dessus ne doit ni marquer comme lu ni naviguer.
+    expect(navigation.navigate).not.toHaveBeenCalled();
+    expect(BackendService.markNotificationAsRead).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(queryByText("Nouvelle notification")).toBeNull(),
+    );
+  });
+
+  it("asks for confirmation before clearing everything", async () => {
+    const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+
+    const { getByTestId } = await renderScreen();
+    await waitFor(() =>
+      expect(getByTestId("notifications-clear-all-button")).toBeTruthy(),
+    );
+
+    await fireEvent.press(getByTestId("notifications-clear-all-button"));
+
+    expect(alert).toHaveBeenCalled();
+    // Rien n'est parti tant que l'utilisateur n'a pas confirmé.
+    expect(NotificationApi.deleteAllNotifications).not.toHaveBeenCalled();
+
+    alert.mockRestore();
+  });
+
+  it("clears the feed once the destructive choice is confirmed", async () => {
+    let confirm: (() => void) | undefined;
+    const alert = jest
+      .spyOn(Alert, "alert")
+      .mockImplementation((_title, _message, buttons) => {
+        confirm = buttons?.find((b) => b.style === "destructive")?.onPress;
+      });
+
+    const { getByTestId, queryByText } = await renderScreen();
+    await waitFor(() =>
+      expect(getByTestId("notifications-clear-all-button")).toBeTruthy(),
+    );
+
+    await fireEvent.press(getByTestId("notifications-clear-all-button"));
+    expect(confirm).toBeDefined();
+    confirm?.();
+
+    await waitFor(() =>
+      expect(NotificationApi.deleteAllNotifications).toHaveBeenCalled(),
+    );
+    await waitFor(() =>
+      expect(queryByText("Nouvelle notification")).toBeNull(),
+    );
+
+    alert.mockRestore();
+  });
+
+  it("offers no clear-all action on an empty feed", async () => {
+    (BackendService.getNotifications as jest.Mock).mockResolvedValue([]);
+
+    const { getByTestId, queryByTestId } = await renderScreen();
+    await waitFor(() =>
+      expect(getByTestId("notifications-empty-state")).toBeTruthy(),
+    );
+
+    expect(queryByTestId("notifications-clear-all-button")).toBeNull();
   });
 });

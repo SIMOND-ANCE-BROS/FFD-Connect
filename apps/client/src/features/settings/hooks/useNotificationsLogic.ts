@@ -66,6 +66,38 @@ export const useNotificationsLogic = () => {
     }
   };
 
+  /**
+   * Suppression optimiste : la ligne disparaît avant l'aller-retour réseau, et
+   * la liste d'avant est restaurée si le serveur refuse.
+   *
+   * L'instantané est pris sur le rendu courant — celui dans lequel
+   * l'utilisateur a appuyé — donc il décrit bien l'écran qu'il faut rétablir.
+   */
+  const handleDelete = async (id: string) => {
+    const previous = notifications;
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    try {
+      await notificationsRepo.deleteNotification(id);
+      // Une notification non lue qui disparaît change le compte de la cloche.
+      refreshUnreadBadge();
+    } catch (error) {
+      logger.error("[useNotificationsLogic] Delete failed", error);
+      setNotifications(previous);
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    const previous = notifications;
+    setNotifications([]);
+    try {
+      await notificationsRepo.deleteAllNotifications();
+      refreshUnreadBadge();
+    } catch (error) {
+      logger.error("[useNotificationsLogic] Delete all failed", error);
+      setNotifications(previous);
+    }
+  };
+
   const onRefresh = () => {
     setRefreshing(true);
     loadNotifications().catch(() => {});
@@ -81,6 +113,8 @@ export const useNotificationsLogic = () => {
       onRefresh,
       onMarkAsRead: handleMarkAsRead,
       onReadAll: handleReadAll,
+      onDelete: handleDelete,
+      onDeleteAll: handleDeleteAll,
     },
   };
 };

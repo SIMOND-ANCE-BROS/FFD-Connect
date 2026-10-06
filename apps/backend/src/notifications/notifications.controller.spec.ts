@@ -24,6 +24,8 @@ describe("NotificationsController", () => {
     registerDeviceToken: jest.fn(),
     unregisterDeviceToken: jest.fn(),
     sendToUser: jest.fn(),
+    deleteForUser: jest.fn(),
+    deleteAllForUser: jest.fn(),
   };
 
   const mockPreferencesQueryService = {
@@ -237,6 +239,74 @@ describe("NotificationsController", () => {
   });
 
   // ─── registerDeviceToken ─────────────────────────────────────────────────────
+
+  // ─── Suppression ─────────────────────────────────────────────────────────────
+
+  describe("deleteMyNotification", () => {
+    it("transmet l'id et le userId du JWT, jamais un userId du corps", async () => {
+      mockNotificationsService.deleteForUser.mockResolvedValue({ count: 1 });
+
+      await controller.deleteMyNotification("notif-1", makeRequest("user-123"));
+
+      expect(mockNotificationsService.deleteForUser).toHaveBeenCalledWith(
+        "notif-1",
+        "user-123",
+      );
+    });
+
+    it("ne renvoie rien : le code de retour ne révèle pas si la ligne existait", async () => {
+      mockNotificationsService.deleteForUser.mockResolvedValue({ count: 0 });
+
+      await expect(
+        controller.deleteMyNotification("inconnue", makeRequest()),
+      ).resolves.toBeUndefined();
+    });
+
+    it("propagates service errors to the caller", async () => {
+      mockNotificationsService.deleteForUser.mockRejectedValue(
+        new Error("DB down"),
+      );
+
+      await expect(
+        controller.deleteMyNotification("notif-1", makeRequest()),
+      ).rejects.toThrow("DB down");
+    });
+  });
+
+  describe("deleteAllMyNotifications", () => {
+    it("renvoie le nombre supprimé pour l'utilisateur authentifié", async () => {
+      mockNotificationsService.deleteAllForUser.mockResolvedValue({
+        count: 12,
+      });
+
+      const res = await controller.deleteAllMyNotifications(
+        makeRequest("user-123"),
+      );
+
+      expect(mockNotificationsService.deleteAllForUser).toHaveBeenCalledWith(
+        "user-123",
+      );
+      expect(res).toEqual({ count: 12 });
+    });
+
+    it("renvoie count: 0 sur un feed déjà vide", async () => {
+      mockNotificationsService.deleteAllForUser.mockResolvedValue({ count: 0 });
+
+      await expect(
+        controller.deleteAllMyNotifications(makeRequest()),
+      ).resolves.toEqual({ count: 0 });
+    });
+
+    it("propagates service errors to the caller", async () => {
+      mockNotificationsService.deleteAllForUser.mockRejectedValue(
+        new Error("DB down"),
+      );
+
+      await expect(
+        controller.deleteAllMyNotifications(makeRequest()),
+      ).rejects.toThrow("DB down");
+    });
+  });
 
   describe("registerDeviceToken", () => {
     it("est limité à 5 appels par minute et par utilisateur", () => {

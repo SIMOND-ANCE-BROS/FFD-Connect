@@ -526,6 +526,53 @@ export class NotificationsService implements OnModuleInit {
     });
   }
 
+  /**
+   * Retire une notification du feed de son destinataire.
+   *
+   * Le `userId` est un critère du filtre, pas une vérification préalable :
+   * aucune fenêtre ne s'ouvre entre un contrôle de propriété et l'effacement, et
+   * l'identifiant d'un tiers ne supprime rien plutôt que de lever une erreur qui
+   * confirmerait son existence.
+   *
+   * Une annonce globale (`userId: null`) survit volontairement à l'appel : elle
+   * n'appartient à personne, et l'effacer la retirerait du feed de tous les
+   * comptes. Elle ressort donc au rafraîchissement suivant — comportement
+   * assumé, auquel l'écran s'adapte en n'offrant la suppression que sur ce qui
+   * lui appartient.
+   *
+   * @param notificationId - Identifiant de la notification à supprimer
+   * @param userId - Identifiant du destinataire authentifié
+   * @returns Le nombre de lignes supprimées (0 ou 1)
+   *
+   * @example
+   * ```typescript
+   * const { count } = await notificationsService.deleteForUser('notif-123', 'user-456');
+   * ```
+   */
+  async deleteForUser(notificationId: string, userId: string) {
+    return this.prisma.notification.deleteMany({
+      where: { id: notificationId, userId },
+    });
+  }
+
+  /**
+   * Vide le feed personnel d'un utilisateur, lues comme non lues.
+   *
+   * Les annonces globales n'en font pas partie, pour la raison exposée sur
+   * {@link deleteForUser}.
+   *
+   * @param userId - Identifiant du destinataire authentifié
+   * @returns Le nombre de notifications supprimées
+   *
+   * @example
+   * ```typescript
+   * const { count } = await notificationsService.deleteAllForUser('user-123');
+   * ```
+   */
+  async deleteAllForUser(userId: string) {
+    return this.prisma.notification.deleteMany({ where: { userId } });
+  }
+
   // ─── Tokens d'appareil (FCM) ───────────────────────────────────────────────
 
   /**

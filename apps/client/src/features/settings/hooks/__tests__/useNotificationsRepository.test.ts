@@ -1,6 +1,7 @@
 import { renderHook } from "@testing-library/react-native";
 import { useAuthRepository } from "../../../auth/context/AuthContext";
 import { BackendService } from "../../../../services/BackendService";
+import { NotificationApi } from "../../../../services/api/notification-api";
 import { useNotificationsRepository } from "../useNotificationsRepository";
 
 jest.mock("../../../auth/context/AuthContext", () => ({
@@ -11,6 +12,12 @@ jest.mock("../../../../services/BackendService", () => ({
     getNotifications: jest.fn(),
     markNotificationAsRead: jest.fn(),
     markAllNotificationsAsRead: jest.fn(),
+  },
+}));
+jest.mock("../../../../services/api/notification-api", () => ({
+  NotificationApi: {
+    deleteNotification: jest.fn(),
+    deleteAllNotifications: jest.fn(),
   },
 }));
 
@@ -91,5 +98,30 @@ describe("useNotificationsRepository", () => {
     await expect(result.current.markAllAsRead()).rejects.toThrow(
       "No auth token available",
     );
+  });
+
+  // Les suppressions passent par le module de domaine et le client généré, qui
+  // porte lui-même l'authentification : elles ne réclament donc pas de jeton,
+  // contrairement aux appels historiques voisins.
+  it("deleteNotification goes through NotificationApi, without a token", async () => {
+    (NotificationApi.deleteNotification as jest.Mock).mockResolvedValue(
+      undefined,
+    );
+
+    const { result } = await renderHook(() => useNotificationsRepository());
+
+    await result.current.deleteNotification("n1");
+
+    expect(NotificationApi.deleteNotification).toHaveBeenCalledWith("n1");
+    expect(mockGetAuthConfig).not.toHaveBeenCalled();
+  });
+
+  it("deleteAllNotifications goes through NotificationApi", async () => {
+    (NotificationApi.deleteAllNotifications as jest.Mock).mockResolvedValue(12);
+
+    const { result } = await renderHook(() => useNotificationsRepository());
+
+    await expect(result.current.deleteAllNotifications()).resolves.toBe(12);
+    expect(NotificationApi.deleteAllNotifications).toHaveBeenCalled();
   });
 });

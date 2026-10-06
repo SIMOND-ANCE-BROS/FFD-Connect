@@ -32,6 +32,8 @@ const mockStableRepo = {
   getNotifications: jest.fn(),
   markAsRead: jest.fn(),
   markAllAsRead: jest.fn(),
+  deleteNotification: jest.fn(),
+  deleteAllNotifications: jest.fn(),
 };
 
 jest.mock("../useNotificationsRepository", () => ({
@@ -43,6 +45,8 @@ describe("useNotificationsLogic", () => {
     jest.clearAllMocks();
     mockStableRepo.markAsRead.mockResolvedValue(undefined);
     mockStableRepo.markAllAsRead.mockResolvedValue(undefined);
+    mockStableRepo.deleteNotification.mockResolvedValue(undefined);
+    mockStableRepo.deleteAllNotifications.mockResolvedValue(1);
     mockStableRepo.getNotifications.mockResolvedValue([
       {
         id: "n1",
@@ -259,6 +263,131 @@ describe("useNotificationsLogic", () => {
 
     await act(async () => {
       await result.current.actions.onReadAll();
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["notifications", "unread-count"],
+    });
+  });
+
+  // ─── Suppression ───────────────────────────────────────────────────────────
+
+  it("onDelete removes only the targeted notification", async () => {
+    mockStableRepo.getNotifications.mockResolvedValue([
+      {
+        id: "n1",
+        title: "First",
+        body: "",
+        isRead: true,
+        createdAt: "2024-01-01",
+      },
+      {
+        id: "n2",
+        title: "Second",
+        body: "",
+        isRead: true,
+        createdAt: "2024-01-02",
+      },
+    ]);
+
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper: withQueryClient(),
+    });
+    await waitFor(() =>
+      expect(result.current.state.notifications).toHaveLength(2),
+    );
+
+    await act(async () => {
+      await result.current.actions.onDelete("n1");
+    });
+
+    expect(mockStableRepo.deleteNotification).toHaveBeenCalledWith("n1");
+    expect(result.current.state.notifications).toHaveLength(1);
+    expect(result.current.state.notifications[0].id).toBe("n2");
+  });
+
+  // L'optimisme n'a de valeur que s'il se rétracte : sinon un échec réseau
+  // laisse l'écran affirmer une suppression qui n'a pas eu lieu, et la ligne
+  // revient au prochain rafraîchissement sans explication.
+  it("onDelete puts the notification back when the server refuses", async () => {
+    mockStableRepo.deleteNotification.mockRejectedValue(new Error("API error"));
+
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper: withQueryClient(),
+    });
+    await waitFor(() =>
+      expect(result.current.state.notifications).toHaveLength(1),
+    );
+
+    await act(async () => {
+      await result.current.actions.onDelete("n1");
+    });
+
+    expect(result.current.state.notifications).toHaveLength(1);
+    expect(result.current.state.notifications[0].id).toBe("n1");
+  });
+
+  it("onDeleteAll empties the list", async () => {
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper: withQueryClient(),
+    });
+    await waitFor(() =>
+      expect(result.current.state.notifications).toHaveLength(1),
+    );
+
+    await act(async () => {
+      await result.current.actions.onDeleteAll();
+    });
+
+    expect(mockStableRepo.deleteAllNotifications).toHaveBeenCalled();
+    expect(result.current.state.notifications).toHaveLength(0);
+  });
+
+  it("onDeleteAll restores the whole list when the server refuses", async () => {
+    mockStableRepo.deleteAllNotifications.mockRejectedValue(
+      new Error("API error"),
+    );
+
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper: withQueryClient(),
+    });
+    await waitFor(() =>
+      expect(result.current.state.notifications).toHaveLength(1),
+    );
+
+    await act(async () => {
+      await result.current.actions.onDeleteAll();
+    });
+
+    expect(result.current.state.notifications).toHaveLength(1);
+  });
+
+  // Supprimer une non-lue change le compte de la cloche autant que la lire.
+  it("invalidates the unread badge after a deletion", async () => {
+    const { wrapper, invalidate } = withSpyableQueryClient();
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.state.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.actions.onDelete("n1");
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["notifications", "unread-count"],
+    });
+  });
+
+  it("invalidates the unread badge after clearing the feed", async () => {
+    const { wrapper, invalidate } = withSpyableQueryClient();
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.state.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.actions.onDeleteAll();
     });
 
     expect(invalidate).toHaveBeenCalledWith({

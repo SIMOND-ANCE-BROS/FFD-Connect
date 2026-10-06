@@ -1,8 +1,9 @@
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { Bell, CheckCheck, Inbox } from "lucide-react-native";
+import { Bell, CheckCheck, Inbox, Trash2 } from "lucide-react-native";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
@@ -53,56 +54,100 @@ export const NotificationsScreen = ({ navigation }: Props) => {
   const [headerH, setHeaderH] = useState(insets.top + 56);
   const { state, actions } = useNotificationsLogic();
   const { notifications, loading, refreshing } = state;
-  const { onRefresh, onMarkAsRead, onReadAll } = actions;
+  const { onRefresh, onMarkAsRead, onReadAll, onDelete, onDeleteAll } = actions;
 
+  /**
+   * « Tout effacer » demande confirmation : c'est la seule action de l'écran
+   * qui détruise quelque chose d'irrécupérable, et elle est à un doigt de la
+   * liste. La suppression unitaire, elle, n'en demande pas — le geste est
+   * délibéré et ne coûte qu'une ligne.
+   */
+  const confirmDeleteAll = useCallback(() => {
+    Alert.alert(
+      "Tout effacer",
+      "Supprimer toutes vos notifications ? Cette action est définitive.",
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Tout effacer",
+          style: "destructive",
+          onPress: () => {
+            onDeleteAll().catch(() => {});
+          },
+        },
+      ],
+    );
+  }, [onDeleteAll]);
+
+  // La carte n'est plus elle-même cliquable : zone d'ouverture et corbeille
+  // sont deux frères sous un conteneur inerte. Imbriquer la corbeille dans un
+  // TouchableOpacity la rendrait invisible aux lecteurs d'écran, qui fusionnent
+  // un élément accessible et ses enfants en un seul.
   const renderItem = ({ item }: { item: Notification }) => (
-    <TouchableOpacity
-      accessibilityRole="button"
+    <View
       style={[
         styles.card,
         { backgroundColor: theme.surface },
         item.isRead ? styles.readBorder : { borderColor: theme.primary },
         !item.isRead && styles.unreadCard,
       ]}
-      onPress={() => {
-        if (!item.isRead) onMarkAsRead(item.id).catch(() => {});
-        openTarget(item);
-      }}
-      activeOpacity={0.7}
-      testID={`notifications-card-${item.id}`}
     >
-      <View
-        style={[
-          styles.iconBox,
-          {
-            backgroundColor: item.isRead
-              ? theme.background
-              : `${theme.primary}20`,
-          },
-        ]}
+      <TouchableOpacity
+        accessibilityRole="button"
+        style={styles.cardMain}
+        onPress={() => {
+          if (!item.isRead) onMarkAsRead(item.id).catch(() => {});
+          openTarget(item);
+        }}
+        activeOpacity={0.7}
+        testID={`notifications-card-${item.id}`}
       >
-        <Bell
-          size={20}
-          color={item.isRead ? theme.textSecondary : theme.primary}
-        />
-      </View>
-      <View style={styles.content}>
-        <View style={styles.headerRow}>
-          <AppText variant="body" weight="bold" style={{ color: theme.text }}>
-            {item.title}
-          </AppText>
-          <AppText variant="caption" style={{ color: theme.textSecondary }}>
-            {new Date(item.createdAt).toLocaleDateString("fr-FR", {
-              day: "numeric",
-              month: "short",
-            })}
+        <View
+          style={[
+            styles.iconBox,
+            {
+              backgroundColor: item.isRead
+                ? theme.background
+                : `${theme.primary}20`,
+            },
+          ]}
+        >
+          <Bell
+            size={20}
+            color={item.isRead ? theme.textSecondary : theme.primary}
+          />
+        </View>
+        <View style={styles.content}>
+          <View style={styles.headerRow}>
+            <AppText variant="body" weight="bold" style={{ color: theme.text }}>
+              {item.title}
+            </AppText>
+            <AppText variant="caption" style={{ color: theme.textSecondary }}>
+              {new Date(item.createdAt).toLocaleDateString("fr-FR", {
+                day: "numeric",
+                month: "short",
+              })}
+            </AppText>
+          </View>
+          <AppText variant="body" style={styles.bodyText}>
+            {item.body}
           </AppText>
         </View>
-        <AppText variant="body" style={styles.bodyText}>
-          {item.body}
-        </AppText>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel={`Supprimer la notification ${item.title}`}
+        accessibilityHint="Retire définitivement cette notification de la liste"
+        onPress={() => {
+          onDelete(item.id).catch(() => {});
+        }}
+        style={styles.deleteButton}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        testID={`notifications-delete-${item.id}`}
+      >
+        <Trash2 size={18} color={theme.textSecondary} />
+      </TouchableOpacity>
+    </View>
   );
 
   const renderHeader = () => (
@@ -156,6 +201,29 @@ export const NotificationsScreen = ({ navigation }: Props) => {
             />
           }
           contentContainerStyle={{ ...styles.list, paddingTop: headerH + 8 }}
+          ListFooterComponent={
+            // En pied de liste, et non dans l'en-tête à côté de « Tout lire » :
+            // une action destructive n'a pas à être à portée de pouce
+            // permanente, et l'en-tête n'a pas la place pour un second libellé
+            // sans repousser le titre hors de l'écran.
+            notifications.length > 0 ? (
+              <TouchableOpacity
+                accessibilityRole="button"
+                onPress={confirmDeleteAll}
+                style={styles.clearAllButton}
+                testID="notifications-clear-all-button"
+              >
+                <Trash2 size={16} color={theme.danger} />
+                <AppText
+                  variant="caption"
+                  weight="bold"
+                  style={[styles.clearAllText, { color: theme.danger }]}
+                >
+                  Tout effacer
+                </AppText>
+              </TouchableOpacity>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.empty} testID="notifications-empty-state">
               <Inbox
@@ -203,11 +271,27 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
+    paddingLeft: 16,
+    paddingRight: 8,
+    paddingVertical: 16,
     borderRadius: 12,
     borderWidth: 2,
     marginBottom: 12,
   },
+  // `flex: 1` et non `flexShrink` : la zone d'ouverture doit prendre la place
+  // restante pour que la corbeille reste collée au bord droit, quelle que soit
+  // la longueur du titre.
+  cardMain: { flex: 1, flexDirection: "row", alignItems: "center" },
+  deleteButton: { padding: 8, marginLeft: 4 },
+  clearAllButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  clearAllText: { marginLeft: 6 },
   readBorder: {
     borderColor: "transparent",
   },
