@@ -380,8 +380,8 @@ jobs:
   # natif Android `beta` puis `eas submit` sur la piste `alpha` (test fermé),
   # selon submit.beta.android d'eas.json. Fonctionne en plan EAS gratuit.
   # Prérequis : clé du compte de service Google « Play Store Submissions »
-  # stockée dans les credentials EAS (fr.ffdanse.connect.beta). Tant que
-  # releaseStatus vaut `draft`, la release reste à publier dans Play Console.
+  # stockée dans les credentials EAS (fr.ffdanse.connect.beta). releaseStatus
+  # `completed` : publiée directement sur la piste (après revue Google).
   # Coût : un build Android EAS de plus par promotion (~2 $ ou 1 unité du quota).
   # ============================================================
   promote-beta-android:
