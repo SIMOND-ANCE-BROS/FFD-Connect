@@ -19,6 +19,21 @@ apps/backend/docs/
 apps/backend/scripts/
 apps/backend/dist/
 apps/backend/coverage/
+# Its manifest must stay out too: present, pnpm treats the backend as a
+# workspace member and runs its postinstall, which is `prisma generate` — and
+# the schema lives in the excluded prisma/ directory. Measured: the install
+# dies on "You don't have any datasource defined in your schema.prisma".
+# Everything else here is inert, but shipping it is pointless.
+apps/backend/package.json
+apps/backend/Dockerfile
+apps/backend/docker-entrypoint.sh
+apps/backend/prisma.config.ts
+apps/backend/nest-cli.json
+apps/backend/tsconfig*.json
+apps/backend/jest.*.js
+apps/backend/eslint.config.js
+apps/backend/stryker.config.js
+apps/backend/README.md
 apps/landing/
 apps/docs/
 
