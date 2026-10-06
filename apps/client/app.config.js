@@ -192,7 +192,15 @@ if (!FIREBASE_ENABLED) {
   // Hors builder, un fichier manquant pour une variante distribuée est la
   // norme (le secret n'existe que sur le builder) : on ne prévient que là où
   // il compte, ou pour development avec une seule plateforme configurée.
-  const missing = ["ios", "android"]
+  // Sur le builder, EAS_BUILD_PLATFORM désigne la seule plateforme construite :
+  // un build iOS n'a que faire du json Android (et inversement). N'influe que
+  // sur ce message, jamais sur la config évaluée (donc pas sur l'empreinte).
+  const EAS_BUILD_PLATFORM = process.env.EAS_BUILD_PLATFORM;
+  const builtPlatforms =
+    EAS_BUILD_PLATFORM === "ios" || EAS_BUILD_PLATFORM === "android"
+      ? [EAS_BUILD_PLATFORM]
+      : ["ios", "android"];
+  const missing = builtPlatforms
     .filter((platform) => !resolveFirebaseFile(platform))
     .map((platform) => FIREBASE_FILES[platform]);
   if (missing.length > 0) {

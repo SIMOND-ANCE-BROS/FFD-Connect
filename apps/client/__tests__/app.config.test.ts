@@ -27,6 +27,7 @@ const ENV_KEYS = [
   "EXPO_PUBLIC_APP_ENV",
   "EAS_BUILD",
   "EAS_BUILD_PROFILE",
+  "EAS_BUILD_PLATFORM",
   "GOOGLE_SERVICE_INFO_PLIST_PREVIEW",
   "GOOGLE_SERVICES_JSON_PREVIEW",
   "GOOGLE_SERVICE_INFO_PLIST_BETA",
@@ -200,6 +201,88 @@ describe("app.config.js — fingerprint determinism", () => {
     expect(expo.ios.entitlements).toEqual({
       "aps-environment": "development",
     });
+  });
+});
+
+describe("app.config.js — missing Firebase file warning", () => {
+  let secretsDir: string;
+  let warn: jest.SpyInstance;
+
+  beforeAll(() => {
+    secretsDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eas-environment-secrets-"),
+    );
+    fs.writeFileSync(path.join(secretsDir, "plist"), "<plist/>");
+  });
+
+  beforeEach(() => {
+    // jest.setup already replaces console.warn with a jest.fn, which spyOn
+    // returns as is: clear the calls earlier tests left on it.
+    warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    warn.mockClear();
+  });
+
+  afterEach(() => {
+    warn.mockRestore();
+  });
+
+  afterAll(() => {
+    fs.rmSync(secretsDir, { recursive: true, force: true });
+  });
+
+  // The Android beta file is the one left missing below.
+  const hasLocalBetaAndroidFirebase = fs.existsSync(
+    path.join(__dirname, "..", "firebase", "google-services.beta.json"),
+  );
+
+  /** A beta build on the EAS builder with only the iOS secret provided. */
+  const betaBuilderWithIosSecretOnly = (platform?: "ios" | "android") => ({
+    EXPO_PUBLIC_APP_ENV: "beta",
+    EAS_BUILD: "true",
+    EAS_BUILD_PROFILE: "beta",
+    GOOGLE_SERVICE_INFO_PLIST_BETA: path.join(secretsDir, "plist"),
+    ...(platform ? { EAS_BUILD_PLATFORM: platform } : {}),
+  });
+
+  const firebaseWarnings = () =>
+    warn.mock.calls
+      .map((args: unknown[]) => String(args[0]))
+      .filter((message) => message.includes("Config Firebase manquante"));
+
+  it("does not warn about the Android file on an iOS build", () => {
+    loadConfig(betaBuilderWithIosSecretOnly("ios"));
+
+    expect(firebaseWarnings()).toEqual([]);
+  });
+
+  (hasLocalBetaAndroidFirebase ? it.skip : it)(
+    "warns about the Android file on an Android build",
+    () => {
+      loadConfig(betaBuilderWithIosSecretOnly("android"));
+
+      const warnings = firebaseWarnings();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("google-services.beta.json");
+      expect(warnings[0]).not.toContain("GoogleService-Info");
+    },
+  );
+
+  (hasLocalBetaAndroidFirebase ? it.skip : it)(
+    "checks both platforms when the build platform is unknown",
+    () => {
+      loadConfig(betaBuilderWithIosSecretOnly());
+
+      expect(firebaseWarnings()).toEqual([
+        expect.stringContaining("google-services.beta.json"),
+      ]);
+    },
+  );
+
+  it("evaluates the same config whatever the build platform", () => {
+    const ios = loadConfig(betaBuilderWithIosSecretOnly("ios"));
+    const android = loadConfig(betaBuilderWithIosSecretOnly("android"));
+
+    expect(android).toEqual(ios);
   });
 });
 
