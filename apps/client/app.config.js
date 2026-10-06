@@ -85,11 +85,9 @@ const FIREBASE_FILES = {
 };
 
 /**
- * Retourne le chemin de la config Firebase de la variante courante, ou null si
- * aucun fichier n'existe. On ne renvoie QUE des chemins réellement présents sur
- * disque : le plugin @react-native-firebase/app lève une erreur au prebuild dès
- * que googleServicesFile est absent OU pointe sur un fichier manquant
- * (plugin/build/ios/googleServicesPlist.js, android/copyGoogleServices.js).
+ * Retourne le chemin de la config Firebase de la variante courante s'il existe
+ * sur disque (env EAS de type "file" d'abord, puis firebase/<variante>), sinon
+ * null.
  *
  * @param {"ios" | "android"} platform
  * @returns {string | null}
@@ -105,14 +103,49 @@ function resolveFirebaseFile(platform) {
   );
 }
 
-const FIREBASE_IOS_FILE = resolveFirebaseFile("ios");
-const FIREBASE_ANDROID_FILE = resolveFirebaseFile("android");
-// Les plugins Firebase ne sont chargés que si au moins une plateforme est
-// configurée : sans fichier, ils feraient échouer `expo prebuild` (cf. supra).
-// Résultat : le build marche aujourd'hui sans les fichiers des variantes (push
-// simplement inactives), et les push s'activent d'elles-mêmes le jour où le
-// fichier est déposé — sans retoucher cette config.
-const FIREBASE_ENABLED = Boolean(FIREBASE_IOS_FILE || FIREBASE_ANDROID_FILE);
+// Variantes distribuées (OTA par channel, runtimeVersion = empreinte native) :
+// Firebase y est TOUJOURS actif, que le fichier soit présent ou non.
+//
+// Pourquoi ne pas se fier à la présence du fichier, comme avant : le fichier
+// n'existe que sur le builder EAS (variable d'environnement EAS de type "file",
+// secrète, illisible ailleurs). L'empreinte calculée sur le runner GitHub ou
+// sur un poste de dev voyait donc une config SANS Firebase (plugins, entitlement
+// APNs, UIBackgroundModes en moins) et celle du builder une config AVEC : deux
+// runtimeVersion différentes pour le même commit. EAS refuse alors le build
+// ("Runtime version mismatch" en phase Configure expo-updates) et aucune OTA
+// n'atteint plus aucun binaire. La config doit être une fonction du commit et
+// de la variante, jamais de la présence d'un secret.
+//
+// Corollaire : le contenu du fichier est exclu de l'empreinte
+// (fingerprint.config.js), et un prebuild local d'une de ces variantes exige le
+// fichier dans firebase/ — le plugin RNFB échoue sinon, ce qui vaut mieux qu'un
+// binaire distribué sans push.
+const FIREBASE_REQUIRED_VARIANTS = new Set(["preview", "beta", "production"]);
+const FIREBASE_REQUIRED = FIREBASE_REQUIRED_VARIANTS.has(APP_ENV);
+
+/**
+ * Chemin à poser dans googleServicesFile. Pour une variante distribuée, on pose
+ * le chemin attendu même s'il manque, pour que le plugin RNFB échoue au
+ * prebuild avec un message qui nomme le fichier. Ce champ n'entre pas dans
+ * l'empreinte (@expo/fingerprint le retire de expoConfig).
+ *
+ * @param {"ios" | "android"} platform
+ * @returns {string | null}
+ */
+function firebaseFileFor(platform) {
+  const resolved = resolveFirebaseFile(platform);
+  if (resolved || !FIREBASE_REQUIRED) return resolved;
+  const { envVar, variant } = FIREBASE_FILES[platform];
+  return process.env[envVar] || variant;
+}
+
+const FIREBASE_IOS_FILE = firebaseFileFor("ios");
+const FIREBASE_ANDROID_FILE = firebaseFileFor("android");
+// development : plugins chargés seulement si un fichier est déposé (le dev
+// client n'a pas de channel OTA, son empreinte n'a pas à être stable), pour que
+// `expo run:ios` marche sans config Firebase.
+const FIREBASE_ENABLED =
+  FIREBASE_REQUIRED || Boolean(FIREBASE_IOS_FILE || FIREBASE_ANDROID_FILE);
 
 // Entitlement APNs. Sans lui, iOS n'enregistre jamais l'app auprès d'APNs :
 // messaging().getToken() échoue, aucun token n'est produit, donc aucune
@@ -130,8 +163,12 @@ const FIREBASE_ENABLED = Boolean(FIREBASE_IOS_FILE || FIREBASE_ANDROID_FILE);
 // distribution avec "development" ne reçoit aucune push de production.
 //   - profil de développement (dev client, `expo run:ios` local) → development
 //   - toute distribution, ad hoc « internal » ou store            → production
-// EAS_BUILD_PROFILE est posé par EAS Build ; son absence signifie qu'on est en
-// build local signé avec un profil de développement.
+// Les variantes distribuées (preview ad hoc, beta TestFlight, production)
+// sont toujours signées en distribution → production, sans dépendre
+// d'EAS_BUILD_PROFILE : selon la commande qui évalue la config, il peut manquer
+// hors builder, et l'empreinte doit rester identique partout. Pour
+// development, EAS_BUILD_PROFILE est posé par EAS Build ; son absence signifie
+// qu'on est en build local signé avec un profil de développement.
 const DEV_CLIENT_BUILD_PROFILES = new Set([
   "development-ios-device",
   "development-ios-simulator",
@@ -139,8 +176,9 @@ const DEV_CLIENT_BUILD_PROFILES = new Set([
 ]);
 const EAS_BUILD_PROFILE = process.env.EAS_BUILD_PROFILE;
 const APS_ENVIRONMENT =
-  EAS_BUILD_PROFILE === undefined ||
-  DEV_CLIENT_BUILD_PROFILES.has(EAS_BUILD_PROFILE)
+  !FIREBASE_REQUIRED &&
+  (EAS_BUILD_PROFILE === undefined ||
+    DEV_CLIENT_BUILD_PROFILES.has(EAS_BUILD_PROFILE))
     ? "development"
     : "production";
 
@@ -151,16 +189,21 @@ if (!FIREBASE_ENABLED) {
       `${FIREBASE_FILES.ios.variant} (iOS) et/ou ${FIREBASE_FILES.android.variant} ` +
       "(Android) — voir apps/client/firebase/README.md.",
   );
-} else if (!FIREBASE_IOS_FILE || !FIREBASE_ANDROID_FILE) {
-  const missing = FIREBASE_IOS_FILE
-    ? `Android (${FIREBASE_FILES.android.variant})`
-    : `iOS (${FIREBASE_FILES.ios.variant})`;
-  console.warn(
-    `[app.config] Config Firebase PARTIELLE pour "${APP_ENV}" : fichier ${missing} ` +
-      "manquant. Les plugins Firebase sont actifs (l'autre plateforme est " +
-      "configurée), donc un prebuild/build de cette plateforme échouera tant que " +
-      "le fichier n'est pas déposé.",
-  );
+} else if (process.env.EAS_BUILD === "true" || !FIREBASE_REQUIRED) {
+  // Hors builder, un fichier manquant pour une variante distribuée est la
+  // norme (le secret n'existe que sur le builder) : on ne prévient que là où
+  // il compte, ou pour development avec une seule plateforme configurée.
+  const missing = ["ios", "android"]
+    .filter((platform) => !resolveFirebaseFile(platform))
+    .map((platform) => FIREBASE_FILES[platform]);
+  if (missing.length > 0) {
+    console.warn(
+      `[app.config] Config Firebase manquante pour "${APP_ENV}" : ` +
+        missing.map((f) => `${f.variant} (ou env ${f.envVar})`).join(", ") +
+        ". Les plugins Firebase sont actifs, donc le prebuild de cette " +
+        "plateforme échouera tant que le fichier n'est pas fourni.",
+    );
+  }
 }
 
 module.exports = {
@@ -217,8 +260,9 @@ module.exports = {
           : {}),
       },
       // Config Firebase iOS de la variante courante (résolue par
-      // resolveFirebaseFile : env EAS > firebase/<env>).
-      // Absente = clé non posée + plugins Firebase désactivés (cf. supra).
+      // firebaseFileFor : env EAS > firebase/<env>). Toujours posée pour une
+      // variante distribuée ; pour development, absente = clé non posée +
+      // plugins Firebase désactivés (cf. supra).
       ...(FIREBASE_IOS_FILE ? { googleServicesFile: FIREBASE_IOS_FILE } : {}),
       // Gaté sur FIREBASE_ENABLED comme UIBackgroundModes : déclarer
       // aps-environment sans Firebase exigerait la capability Push
@@ -299,10 +343,11 @@ module.exports = {
       // RN 0.84.1/0.85 and shipped in RN 0.86), plus a missing
       // NSFaceIDUsageDescription — now set explicitly in ios.infoPlist above.
       // Firebase was never re-enabled after that, so push has been dead since.
-      // Loaded only when a Firebase config file exists for this variant: the
-      // @react-native-firebase/app plugin throws during prebuild when
-      // googleServicesFile is missing, which would break every non-prod build
-      // until the per-variant files are downloaded from the Firebase Console.
+      // Always loaded for the distributed variants (preview, beta, production)
+      // so the native fingerprint does not depend on whether the EAS file
+      // secret is present (see FIREBASE_REQUIRED). For development, loaded only
+      // when a config file exists: the @react-native-firebase/app plugin throws
+      // during prebuild when googleServicesFile is missing.
       ...(FIREBASE_ENABLED
         ? [
             "@react-native-firebase/app",
