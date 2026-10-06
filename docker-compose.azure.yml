@@ -24,11 +24,6 @@ services:
       # vérifie que le bon build tourne vraiment.
       APP_VERSION: ${IMAGE_TAG:-unknown}
 
-  frontend:
-    # On Azure, frontend image is pulled from ACR (built+pushed by CI).
-    image: ${ECR_REGISTRY:-local}/ffd-connect-landing:${IMAGE_TAG:-latest}
-    ports: []
-
 volumes:
   caddy_data:
   caddy_config:

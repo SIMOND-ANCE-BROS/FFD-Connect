@@ -11,9 +11,18 @@ import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { OcrService } from "../utils/ocr.service";
+import {
+  MEDICAL_CERTIFICATE_VALIDITY_MONTHS,
+  medicalCertificatePurgeDueAt,
+} from "./medical-certificate-retention.util";
 
-/** Âge maximum du certificat médical en mois (règle fédération : certificat récent). */
-const MEDICAL_CERTIFICATE_MAX_AGE_MONTHS = 12;
+/**
+ * Âge maximum du certificat médical en mois (règle fédération : certificat
+ * récent). Importé plutôt que redéclaré : refuser un certificat parce qu'il est
+ * trop vieux et calculer la date de sa purge (#62) reposent sur la MÊME notion
+ * de validité, et deux constantes finiraient par diverger.
+ */
+const MEDICAL_CERTIFICATE_MAX_AGE_MONTHS = MEDICAL_CERTIFICATE_VALIDITY_MONTHS;
 
 @Injectable()
 export class LicenseRenewalService {
@@ -122,6 +131,19 @@ export class LicenseRenewalService {
             type,
             filePath: storedReference,
             ocrData: (ocrData as unknown) ?? undefined,
+            // Échéance de purge posée À L'ÉCRITURE (#62) : elle se déduit de la
+            // date d'émission enfouie dans `ocrData`, que le SQL ne sait pas
+            // lire. La stocker permet à la purge de filtrer exactement, au lieu
+            // de ramener un lot approximatif et de trancher en mémoire.
+            // Seuls les certificats médicaux sont concernés : le certificat de
+            // licence relève d'une autre durée de conservation.
+            purgeDueAt:
+              type === LicenseRenewalDocumentType.MEDICAL_CERTIFICATE
+                ? medicalCertificatePurgeDueAt({
+                    createdAt: new Date(),
+                    ocrData,
+                  })
+                : null,
           },
         }),
       ]);
