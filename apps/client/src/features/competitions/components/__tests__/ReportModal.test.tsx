@@ -7,6 +7,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import React from "react";
 import { Alert } from "react-native";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
 import { ReportService } from "../../services/ReportService";
 import { ReportModal } from "../ReportModal";
@@ -30,6 +31,10 @@ jest.mock("expo-image-picker", () => ({
 const mockUseTheme = useTheme as jest.MockedFunction<typeof useTheme>;
 
 describe("ReportModal", () => {
+  // Modal and ScrollView have heavy one-time mocks: load them outside the first
+  // test's timeout (flaky under full-suite load otherwise).
+  preloadReactNative("Modal", "ScrollView");
+
   beforeEach(() => {
     jest.clearAllMocks();
     (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({
