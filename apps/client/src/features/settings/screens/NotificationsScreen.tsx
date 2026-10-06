@@ -1,6 +1,6 @@
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Bell, CheckCheck, Inbox } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -25,9 +25,31 @@ import {
 
 type Props = NativeStackScreenProps<RootStackParamList, "Notifications">;
 
+/**
+ * Destination d'une notification, déduite de sa charge utile.
+ *
+ * Volontairement tolérant : `data` est un `Json?` rempli par le producteur, et
+ * un type ajouté côté serveur ne doit pas provoquer de crash sur un client plus
+ * ancien. Ce qu'on ne reconnaît pas ne mène nulle part, silencieusement — ce
+ * qui reste préférable à une navigation vers un écran inexistant.
+ */
+const competitionIdOf = (data: Notification["data"]): string | null => {
+  const raw = data?.competitionId;
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+};
+
 export const NotificationsScreen = ({ navigation }: Props) => {
   const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+
+  const openTarget = useCallback(
+    (item: Notification) => {
+      const competitionId = competitionIdOf(item.data);
+      if (competitionId)
+        navigation.navigate("CompetitionDetail", { competitionId });
+    },
+    [navigation],
+  );
   const [headerH, setHeaderH] = useState(insets.top + 56);
   const { state, actions } = useNotificationsLogic();
   const { notifications, loading, refreshing } = state;
@@ -44,6 +66,7 @@ export const NotificationsScreen = ({ navigation }: Props) => {
       ]}
       onPress={() => {
         if (!item.isRead) onMarkAsRead(item.id).catch(() => {});
+        openTarget(item);
       }}
       activeOpacity={0.7}
       testID={`notifications-card-${item.id}`}

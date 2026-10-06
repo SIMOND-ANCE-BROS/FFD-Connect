@@ -8,6 +8,13 @@ export interface Notification {
   body: string;
   isRead: boolean;
   createdAt: string;
+  /**
+   * Charge utile du producteur, destinée au lien profond. Colonne `Json?` côté
+   * serveur, donc de forme libre et potentiellement inconnue du client : un
+   * producteur ajouté plus tard ne doit pas exiger une nouvelle version de
+   * l'app. L'écran y pioche ce qu'il reconnaît et ignore le reste.
+   */
+  data?: Record<string, unknown> | null;
 }
 
 /**

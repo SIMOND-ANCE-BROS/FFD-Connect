@@ -1,5 +1,31 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
+import React from "react";
 import { useNotificationsLogic } from "../useNotificationsLogic";
+
+/**
+ * Le hook invalide la requête du compteur de non-lues après chaque lecture,
+ * il lui faut donc un client. `retry: false` pour qu'un échec simulé ne soit
+ * pas rejoué et ne ralentisse pas la suite.
+ */
+const withSpyableQueryClient = () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const invalidate = jest.spyOn(client, "invalidateQueries");
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client }, children);
+  return { wrapper, invalidate };
+};
+
+const withQueryClient = () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client }, children);
+  return wrapper;
+};
 
 // Stable object reference — prevents useCallback/useEffect re-trigger loop
 const mockStableRepo = {
@@ -29,7 +55,9 @@ describe("useNotificationsLogic", () => {
   });
 
   it("loads notifications on mount", async () => {
-    const { result } = await renderHook(() => useNotificationsLogic());
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper: withQueryClient(),
+    });
 
     await waitFor(() => {
       expect(result.current.state.loading).toBe(false);
@@ -45,7 +73,9 @@ describe("useNotificationsLogic", () => {
       new Error("Network error"),
     );
 
-    const { result } = await renderHook(() => useNotificationsLogic());
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper: withQueryClient(),
+    });
 
     await waitFor(() => {
       expect(result.current.state.loading).toBe(false);
@@ -55,7 +85,9 @@ describe("useNotificationsLogic", () => {
   });
 
   it("onMarkAsRead calls repo", async () => {
-    const { result } = await renderHook(() => useNotificationsLogic());
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper: withQueryClient(),
+    });
 
     await waitFor(() => {
       expect(result.current.state.notifications).toHaveLength(1);
@@ -86,7 +118,9 @@ describe("useNotificationsLogic", () => {
       },
     ]);
 
-    const { result } = await renderHook(() => useNotificationsLogic());
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper: withQueryClient(),
+    });
 
     await waitFor(() => {
       expect(result.current.state.notifications).toHaveLength(2);
@@ -103,7 +137,9 @@ describe("useNotificationsLogic", () => {
   it("onMarkAsRead handles error - does not throw", async () => {
     mockStableRepo.markAsRead.mockRejectedValue(new Error("API error"));
 
-    const { result } = await renderHook(() => useNotificationsLogic());
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper: withQueryClient(),
+    });
 
     await waitFor(() => {
       expect(result.current.state.notifications).toHaveLength(1);
@@ -117,7 +153,9 @@ describe("useNotificationsLogic", () => {
   });
 
   it("onReadAll calls repo", async () => {
-    const { result } = await renderHook(() => useNotificationsLogic());
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper: withQueryClient(),
+    });
 
     await waitFor(() => {
       expect(result.current.state.notifications).toHaveLength(1);
@@ -133,7 +171,9 @@ describe("useNotificationsLogic", () => {
   it("onReadAll handles error - does not throw", async () => {
     mockStableRepo.markAllAsRead.mockRejectedValue(new Error("API error"));
 
-    const { result } = await renderHook(() => useNotificationsLogic());
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper: withQueryClient(),
+    });
 
     await waitFor(() => {
       expect(result.current.state.notifications).toHaveLength(1);
@@ -147,7 +187,9 @@ describe("useNotificationsLogic", () => {
   });
 
   it("onRefresh reloads notifications", async () => {
-    const { result } = await renderHook(() => useNotificationsLogic());
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper: withQueryClient(),
+    });
 
     await waitFor(() => {
       expect(result.current.state.loading).toBe(false);
@@ -186,6 +228,41 @@ describe("useNotificationsLogic", () => {
     await waitFor(() => {
       expect(result.current.state.refreshing).toBe(false);
       expect(result.current.state.notifications[0].title).toBe("Refreshed");
+    });
+  });
+
+  // La pastille de la cloche lit une requête React Query distincte tandis que
+  // les lectures passent par des appels manuels. Sans invalidation elle gardait
+  // son ancienne valeur jusqu'à une minute — le défaut signalé depuis l'appareil.
+  it("invalidates the unread badge after marking one as read", async () => {
+    const { wrapper, invalidate } = withSpyableQueryClient();
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.state.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.actions.onMarkAsRead("notif-1");
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["notifications", "unread-count"],
+    });
+  });
+
+  it("invalidates the unread badge after marking all as read", async () => {
+    const { wrapper, invalidate } = withSpyableQueryClient();
+    const { result } = await renderHook(() => useNotificationsLogic(), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.state.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.actions.onReadAll();
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["notifications", "unread-count"],
     });
   });
 });
