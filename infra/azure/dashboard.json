@@ -226,17 +226,6 @@
                             },
                             {
                               "resourceMetadata": {
-                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/landing"
-                              },
-                              "name": "CpuPercentage",
-                              "aggregationType": 4,
-                              "namespace": "microsoft.app/containerapps",
-                              "metricVisualization": {
-                                "displayName": "landing"
-                              }
-                            },
-                            {
-                              "resourceMetadata": {
                                 "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/ffd-redis-prod"
                               },
                               "name": "CpuPercentage",
@@ -332,17 +321,6 @@
                             },
                             {
                               "resourceMetadata": {
-                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/landing"
-                              },
-                              "name": "MemoryPercentage",
-                              "aggregationType": 4,
-                              "namespace": "microsoft.app/containerapps",
-                              "metricVisualization": {
-                                "displayName": "landing"
-                              }
-                            },
-                            {
-                              "resourceMetadata": {
                                 "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/ffd-redis-prod"
                               },
                               "name": "MemoryPercentage",
@@ -434,17 +412,6 @@
                               "namespace": "microsoft.app/containerapps",
                               "metricVisualization": {
                                 "displayName": "backend-staging"
-                              }
-                            },
-                            {
-                              "resourceMetadata": {
-                                "id": "/subscriptions/57d71dab-df99-43e0-bdd5-8ba55699ef15/resourceGroups/ffd-connect-production-rg/providers/Microsoft.App/containerApps/landing"
-                              },
-                              "name": "Replicas",
-                              "aggregationType": 4,
-                              "namespace": "microsoft.app/containerapps",
-                              "metricVisualization": {
-                                "displayName": "landing"
                               }
                             },
                             {
