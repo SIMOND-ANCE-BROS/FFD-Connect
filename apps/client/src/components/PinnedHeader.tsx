@@ -22,7 +22,11 @@ interface PinnedHeaderProps {
   /** Contenu épinglé sous le titre (recherche, filtres…) — toujours visible,
    *  sur le verre ; la liste défile dessous. */
   children?: React.ReactNode;
-  /** Remonte la hauteur mesurée du contenu pour caler le paddingTop de la liste. */
+  /**
+   * Remonte la hauteur SOUS LAQUELLE la liste peut commencer : le contenu mesuré
+   * PLUS le fondu qui déborde dessous. C'est la hauteur visuelle de l'en-tête,
+   * pas celle de sa boîte — les deux diffèrent de `FADE_TAIL`.
+   */
   onHeightChange?: (height: number) => void;
 }
 
@@ -105,10 +109,16 @@ export const PinnedHeader = ({
       {/* Contenu opaque au-dessus du flou (non masqué). */}
       <View
         style={{ paddingTop: insets.top }}
+        testID="pinned-header-content"
         onLayout={(e) => {
           const h = e.nativeEvent.layout.height;
           setContentH(h);
-          onHeightChange?.(h);
+          // `h` est la hauteur du contenu ; le flou, lui, déborde de FADE_TAIL
+          // en dessous (`bottom: -FADE_TAIL` plus haut). Remonter `h` seul
+          // faisait commencer les listes DANS le fondu, à 20 px sous leur
+          // premier élément — le défaut visible sur les dix-huit écrans qui
+          // s'en servent. C'est bien la hauteur visuelle qu'on publie.
+          onHeightChange?.(h + FADE_TAIL);
         }}
       >
         <View style={styles.bar}>
