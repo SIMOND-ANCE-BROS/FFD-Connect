@@ -171,7 +171,13 @@ describe("TrackCorrectionsQueryService", () => {
       prisma.trackCorrection.findMany.mockResolvedValue([
         {
           ...base,
-          track: { id: "t1", title: "Vrai", artist: "A", titleMasked: true },
+          track: {
+            id: "t1",
+            title: "Vrai",
+            artist: "A",
+            titleMasked: true,
+            blacklisted: false,
+          },
         },
       ] as never);
 
@@ -198,7 +204,13 @@ describe("TrackCorrectionsQueryService", () => {
       prisma.trackCorrection.findMany.mockResolvedValue([
         {
           ...base,
-          track: { id: "t1", title: "Vrai", artist: "A", titleMasked: false },
+          track: {
+            id: "t1",
+            title: "Vrai",
+            artist: "A",
+            titleMasked: false,
+            blacklisted: false,
+          },
         },
       ] as never);
 
@@ -207,6 +219,33 @@ describe("TrackCorrectionsQueryService", () => {
       expect(page.data[0].trackTitle).toBe("Vrai");
       expect(page.meta).toMatchObject({ skip: 0, take: 10 });
     });
+  });
+
+  it("listMine ne divulgue ni le titre ni l'artiste d'une piste blacklistée", async () => {
+    prisma.trackCorrection.count.mockResolvedValue(1);
+    prisma.trackCorrection.findMany.mockResolvedValue([
+      {
+        ...base,
+        track: {
+          id: "t1",
+          title: "Secret",
+          artist: "Artiste secret",
+          titleMasked: false,
+          blacklisted: true,
+        },
+      },
+    ] as never);
+
+    const page = await service.listMine("u1", {});
+
+    expect(page.data[0]).toMatchObject({
+      trackTitle: "Musique retirée",
+      trackArtist: "",
+    });
+    expect(JSON.stringify(page)).not.toContain("Secret");
+    // Aucun champ « track » brut ni identité de relecteur côté auteur.
+    expect(page.data[0]).not.toHaveProperty("track");
+    expect(page.data[0]).not.toHaveProperty("reviewer");
   });
 
   it("countPending compte les propositions en attente", async () => {

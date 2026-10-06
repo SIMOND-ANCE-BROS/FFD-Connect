@@ -14,6 +14,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { BpmService } from "./bpm.service";
 import { UpdateTrackDto } from "./dto/update-track.dto";
+import { MASKED_TITLE_LABEL } from "./track-visibility.util";
 
 /** Champs de base récupérés pour toute piste audio. Ne pas exposer status/jobId dans les listes. */
 const TRACK_BASE_SELECT = {
@@ -36,9 +37,6 @@ const TRACK_BASE_SELECT = {
   clashTimecodes: true,
   createdAt: true,
 } satisfies Prisma.TrackSelect;
-
-/** Libellé neutre affiché à la place du titre réel d'une piste masquée. */
-export const MASKED_TITLE_LABEL = "Titre masqué";
 
 type TrackBase = Prisma.TrackGetPayload<{ select: typeof TRACK_BASE_SELECT }>;
 

@@ -483,6 +483,7 @@ describe("UsersService", () => {
         partnershipsAsUser1: [],
         partnershipsAsUser2: [],
         notifications: [],
+        trackCorrectionsProposed: [],
       });
       prisma.user.findUnique.mockResolvedValue(exported);
 
@@ -494,7 +495,9 @@ describe("UsersService", () => {
     });
 
     it("ne sélectionne jamais le mot de passe ni les tokens", async () => {
-      prisma.user.findUnique.mockResolvedValue(makeUser());
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ trackCorrectionsProposed: [] }),
+      );
 
       await service.exportMyData("u1");
 
@@ -511,7 +514,9 @@ describe("UsersService", () => {
     });
 
     it("exporte les appareils push en métadonnées, jamais la valeur du token", async () => {
-      prisma.user.findUnique.mockResolvedValue(makeUser());
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ trackCorrectionsProposed: [] }),
+      );
 
       await service.exportMyData("u1");
 
@@ -537,7 +542,9 @@ describe("UsersService", () => {
     });
 
     it("exporte les préférences de notification réellement enregistrées", async () => {
-      prisma.user.findUnique.mockResolvedValue(makeUser());
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ trackCorrectionsProposed: [] }),
+      );
 
       await service.exportMyData("u1");
 
@@ -561,7 +568,9 @@ describe("UsersService", () => {
     });
 
     it("exporte les propositions de correction, sans l'identité du relecteur", async () => {
-      prisma.user.findUnique.mockResolvedValue(makeUser());
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ trackCorrectionsProposed: [] }),
+      );
 
       await service.exportMyData("u1");
 
@@ -579,6 +588,52 @@ describe("UsersService", () => {
       expect(corrections.select.reviewedBy).toBeUndefined();
       expect(corrections.select.reviewedById).toBeUndefined();
       expect(corrections.take).toBe(500);
+    });
+
+    it("masque le nom des pistes modérées visées par ses propositions", async () => {
+      const correction = (track: Record<string, unknown>) => ({
+        reason: "TITLE",
+        message: null,
+        status: "PENDING",
+        track,
+      });
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({
+          trackCorrectionsProposed: [
+            correction({
+              title: "Vrai titre",
+              artist: "Artiste",
+              titleMasked: true,
+              blacklisted: false,
+            }),
+            correction({
+              title: "Retirée",
+              artist: "Secret",
+              titleMasked: false,
+              blacklisted: true,
+            }),
+            correction({
+              title: "Public",
+              artist: "Artiste",
+              titleMasked: false,
+              blacklisted: false,
+            }),
+          ],
+        }),
+      );
+
+      const result = await service.exportMyData("u1");
+
+      const tracks = (
+        result.data.trackCorrectionsProposed as Array<{ track: unknown }>
+      ).map((c) => c.track);
+      expect(tracks).toEqual([
+        { title: "Titre masqué", artist: "Artiste" },
+        { title: "Musique retirée", artist: "" },
+        { title: "Public", artist: "Artiste" },
+      ]);
+      expect(JSON.stringify(result)).not.toContain("Vrai titre");
+      expect(JSON.stringify(result)).not.toContain("Secret");
     });
 
     it("rejette en NotFound si l'utilisateur n'existe pas", async () => {

@@ -17,7 +17,11 @@ import {
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UpdateTrackDto } from "../tracks/dto/update-track.dto";
-import { MASKED_TITLE_LABEL, TracksService } from "../tracks/tracks.service";
+import {
+  publicTrackName,
+  TrackVisibilityFields,
+} from "../tracks/track-visibility.util";
+import { TracksService } from "../tracks/tracks.service";
 import {
   idOnlySelect,
   trackCorrectionDecisionSelect,
@@ -229,7 +233,7 @@ export class TrackCorrectionsService {
       correction,
       TrackCorrectionStatus.APPROVED,
       comment,
-      patch.title ?? correction.track.title,
+      { ...correction.track, title: patch.title ?? correction.track.title },
     );
     this.logger.log(`Track correction ${id} approved by ${adminId}`);
     return this.queryService.findOneForAdmin(id);
@@ -256,7 +260,7 @@ export class TrackCorrectionsService {
       correction,
       TrackCorrectionStatus.REJECTED,
       comment,
-      correction.track.title,
+      correction.track,
     );
     this.logger.log(`Track correction ${id} rejected by ${adminId}`);
     return this.queryService.findOneForAdmin(id);
@@ -316,8 +320,13 @@ export class TrackCorrectionsService {
       !sameNumbers(clashes, normalizeClashes(track.clashTimecodes));
 
     return {
+      // Titre masqué : jamais comparé au titre réel. Sinon la réponse (400
+      // « aucune correction » ou valeur ignorée) servirait d'oracle à un
+      // non-admin pour deviner le titre que la modération lui cache.
       proposedTitle:
-        title !== undefined && title !== track.title ? title : null,
+        title !== undefined && (track.titleMasked || title !== track.title)
+          ? title
+          : null,
       proposedArtist:
         artist !== undefined && artist !== track.artist ? artist : null,
       // La danse est un texte libre : « rumba » et « Rumba » sont la même.
@@ -503,14 +512,13 @@ export class TrackCorrectionsService {
     correction: CorrectionForDecision,
     status: TrackCorrectionStatus,
     comment: string | null,
-    trackTitle: string,
+    track: TrackVisibilityFields,
   ): Promise<void> {
     if (!correction.proposedById) return;
     const approved = status === TrackCorrectionStatus.APPROVED;
-    // L'auteur peut ne pas être admin : titre masqué → libellé neutre.
-    const title = correction.track.titleMasked
-      ? MASKED_TITLE_LABEL
-      : trackTitle;
+    // L'auteur peut ne pas être admin : même filtrage que partout côté
+    // non-admin (titre masqué → libellé neutre, piste blacklistée → retirée).
+    const { title } = publicTrackName(track);
     const body =
       `«${title}» : votre proposition de correction a été ${approved ? "validée" : "refusée"}.` +
       (comment ? ` Commentaire : ${comment}` : "");

@@ -11,6 +11,7 @@ import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
+import { publicTrackName } from "../tracks/track-visibility.util";
 import {
   deviceTokenExportSelect,
   licenseRenewalDocumentFileSelect,
@@ -422,10 +423,22 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException("Utilisateur introuvable");
     }
+    // Nom des pistes visées par les propositions : filtré comme partout côté
+    // non-admin. L'export ne doit pas démasquer une piste modérée (titre
+    // masqué ou piste blacklistée) que l'utilisateur a pu cibler.
+    const { trackCorrectionsProposed, ...rest } = user;
     return {
       format: "ffd-connect-export-v1",
       exportedAt: new Date().toISOString(),
-      data: user,
+      data: {
+        ...rest,
+        trackCorrectionsProposed: trackCorrectionsProposed.map(
+          ({ track, ...correction }) => ({
+            ...correction,
+            track: publicTrackName(track),
+          }),
+        ),
+      },
     };
   }
 

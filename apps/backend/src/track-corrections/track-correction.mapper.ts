@@ -1,5 +1,5 @@
 import { Prisma, TrackCorrectionReason } from "@prisma/client";
-import { MASKED_TITLE_LABEL } from "../tracks/tracks.service";
+import { publicTrackName } from "../tracks/track-visibility.util";
 import {
   trackCorrectionAdminSelect,
   trackCorrectionMineSelect,
@@ -81,8 +81,8 @@ export const toAdminDto = (
 });
 
 /**
- * Vue de l'auteur. Le titre réel d'une piste masquée par la modération est
- * remplacé par le libellé neutre, comme partout côté non-admin.
+ * Vue de l'auteur (non-admin). Nom de la piste filtré par publicTrackName :
+ * libellé neutre si le titre est masqué, rien si la piste est blacklistée.
  */
 export const toMineDto = (
   row: TrackCorrectionMineRow,
@@ -96,6 +96,6 @@ export const toMineDto = (
   reviewComment: row.reviewComment,
   reviewedAt: row.reviewedAt,
   createdAt: row.createdAt,
-  trackTitle: row.track.titleMasked ? MASKED_TITLE_LABEL : row.track.title,
-  trackArtist: row.track.artist,
+  trackTitle: publicTrackName(row.track).title,
+  trackArtist: publicTrackName(row.track).artist,
 });

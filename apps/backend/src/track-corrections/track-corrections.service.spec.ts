@@ -31,6 +31,7 @@ const TRACK = {
   style: "Paso Doble",
   bpm: 60,
   clashTimecodes: [40, 12.5],
+  titleMasked: false,
   blacklisted: false,
 };
 
@@ -69,7 +70,12 @@ const decisionRow = (overrides: Record<string, unknown> = {}) => ({
   proposedBpm: 62,
   proposesClashes: false,
   proposedClashTimecodes: [],
-  track: { title: "España Cañí", titleMasked: false },
+  track: {
+    title: "España Cañí",
+    artist: "Orchestre",
+    titleMasked: false,
+    blacklisted: false,
+  },
   ...overrides,
 });
 
@@ -241,6 +247,41 @@ describe("TrackCorrectionsService", () => {
         "«España Cañí» — Aucun clash",
         expect.any(Object),
       );
+    });
+
+    it("titre masqué : la réponse ne sert pas d'oracle sur le titre réel", async () => {
+      givenTrack({ ...TRACK, titleMasked: true });
+      // Le non-admin devine le vrai titre : la proposition est enregistrée
+      // telle quelle, ni 400 ni valeur ignorée.
+      const result = await service.create("u1", {
+        trackId: "t1",
+        reason: TrackCorrectionReason.TITLE,
+        title: "España Cañí",
+      });
+      expect(createData()).toMatchObject({ proposedTitle: "España Cañí" });
+      expect(result).toBeDefined();
+    });
+
+    it("titre masqué : la réponse renvoie le libellé neutre, pas le titre réel", async () => {
+      givenTrack({ ...TRACK, titleMasked: true });
+      prisma.trackCorrection.create.mockResolvedValue(
+        createdRow({
+          track: {
+            id: "t1",
+            title: "España Cañí",
+            artist: "Orchestre",
+            titleMasked: true,
+            blacklisted: false,
+          },
+        }) as never,
+      );
+      const result = await service.create("u1", {
+        trackId: "t1",
+        reason: TrackCorrectionReason.MPM,
+        bpm: 62,
+      });
+      expect(result.trackTitle).toBe("Titre masqué");
+      expect(JSON.stringify(result)).not.toContain("España Cañí");
     });
 
     it("429 au-delà du plafond de propositions en attente", async () => {
@@ -539,7 +580,14 @@ describe("TrackCorrectionsService", () => {
 
     it("masque le titre d'une piste modérée dans la notification à l'auteur", async () => {
       prisma.trackCorrection.findUnique.mockResolvedValue(
-        decisionRow({ track: { title: "Vrai", titleMasked: true } }) as never,
+        decisionRow({
+          track: {
+            title: "Vrai",
+            artist: "A",
+            titleMasked: true,
+            blacklisted: false,
+          },
+        }) as never,
       );
       await service.approve("c1", "admin-1", {});
       expect(notifications.createForUser).toHaveBeenCalledWith(
@@ -549,6 +597,46 @@ describe("TrackCorrectionsService", () => {
         "«Titre masqué» : votre proposition de correction a été validée.",
         expect.any(Object),
       );
+    });
+
+    it("piste blacklistée entre-temps : ni titre ni artiste dans la notification", async () => {
+      prisma.trackCorrection.findUnique.mockResolvedValue(
+        decisionRow({
+          proposedTitle: null,
+          track: {
+            title: "Secret",
+            artist: "A",
+            titleMasked: false,
+            blacklisted: true,
+          },
+        }) as never,
+      );
+      await service.reject("c1", "admin-1", {});
+      expect(notifications.createForUser).toHaveBeenCalledWith(
+        "u1",
+        NotificationType.TRACK_CORRECTION_DECISION,
+        "Proposition refusée",
+        "«Musique retirée» : votre proposition de correction a été refusée.",
+        expect.any(Object),
+      );
+    });
+
+    it("titre masqué + nouveau titre validé : le libellé neutre reste appliqué", async () => {
+      prisma.trackCorrection.findUnique.mockResolvedValue(
+        decisionRow({
+          track: {
+            title: "Vrai",
+            artist: "A",
+            titleMasked: true,
+            blacklisted: false,
+          },
+        }) as never,
+      );
+      await service.approve("c1", "admin-1", { title: "Autre vrai titre" });
+      const body = notifications.createForUser.mock.calls[0][3] as string;
+      expect(body).toContain("Titre masqué");
+      expect(body).not.toContain("Autre vrai titre");
+      expect(body).not.toContain("Vrai");
     });
 
     it("un échec de notification n'annule pas la décision", async () => {
