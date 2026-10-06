@@ -54,6 +54,8 @@ import { LegalScreen } from "../features/legal/LegalScreen";
 // --- Profile screen ---
 import { ProfileScreen } from "../features/profile/screens/ProfileScreen";
 import { NotificationsScreen } from "../features/settings/screens/NotificationsScreen";
+import { MyTrackCorrectionsScreen } from "../features/track-corrections/screens/MyTrackCorrectionsScreen";
+import { TrackCorrectionsReviewScreen } from "../features/track-corrections/screens/TrackCorrectionsReviewScreen";
 
 // --- Components ---
 import { MiniPlayer } from "../features/player/components/MiniPlayer";
@@ -258,6 +260,14 @@ export const AppNavigator = () => {
             />
             <Stack.Screen name="ViewCareer" component={ViewCareerScreen} />
             <Stack.Screen name="Profile" component={ProfileScreen} />
+            <Stack.Screen
+              name="TrackCorrectionsReview"
+              component={TrackCorrectionsReviewScreen}
+            />
+            <Stack.Screen
+              name="MyTrackCorrections"
+              component={MyTrackCorrectionsScreen}
+            />
           </>
         ) : (
           <>

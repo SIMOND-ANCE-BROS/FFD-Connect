@@ -33,7 +33,10 @@ import { SearchBar } from "../../../components/SearchBar";
 import { FilterSheet } from "../../../components/FilterSheet";
 import { FilterChip } from "../../../components/FilterChip";
 import { AddTrackModal, type EditableTrack } from "../components/AddTrackModal";
-import { ReportTrackModal } from "../components/ReportTrackModal";
+import {
+  TrackCorrectionModal,
+  type CorrectableTrack,
+} from "../../track-corrections/components/TrackCorrectionModal";
 import { DANCE_GROUPS } from "../utils/danceTempo";
 import {
   LibraryEmptyState,
@@ -55,11 +58,8 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
   const { role, isGuest } = useAuthStore();
   const isAdmin = role === "ADMIN";
   const [editTrack, setEditTrack] = useState<EditableTrack | null>(null);
-  // Signalement (non-admins) : piste ciblée + visibilité de la modale.
-  const [reportTrack, setReportTrack] = useState<{
-    id: string;
-    title: string;
-  } | null>(null);
+  // Proposition de correction (non-admins) : piste ciblée + visibilité.
+  const [reportTrack, setReportTrack] = useState<CorrectableTrack | null>(null);
   const [reportVisible, setReportVisible] = useState(false);
   const { state, actions } = useLibraryLogic({ navigation });
 
@@ -142,11 +142,19 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
   // Long-press behaviour depends on the role:
   //  • Admins edit the track's metadata (dance, MPM…). Fetches the full track
   //    (rawBpm, filename) before opening the edit modal.
-  //  • Everyone else reports a problem on the track (→ notifies the admins).
+  //  • Other signed-in users propose a correction (→ reviewed by an admin).
+  //  • Guests have no account to propose with: nothing happens.
   const handleTrackLongPress = useCallback(
     async (item: TrackData) => {
       if (!isAdmin) {
-        setReportTrack({ id: item.id, title: item.title });
+        if (isGuest || role === "GUEST") return;
+        setReportTrack({
+          id: item.id,
+          title: item.title,
+          artist: item.artist,
+          style: item.style,
+          bpm: item.baseBpm,
+        });
         setReportVisible(true);
         return;
       }
@@ -166,7 +174,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
         logger.warn("[Library] Failed to load track for edit", error);
       }
     },
-    [isAdmin, setModalVisible],
+    [isAdmin, isGuest, role, setModalVisible],
   );
 
   const bar1 = useRef(new Animated.Value(8)).current;
@@ -459,7 +467,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
         editTrack={editTrack}
       />
 
-      <ReportTrackModal
+      <TrackCorrectionModal
         visible={reportVisible}
         onClose={() => {
           setReportVisible(false);

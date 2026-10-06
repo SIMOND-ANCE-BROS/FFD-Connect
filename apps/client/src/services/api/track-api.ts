@@ -1,21 +1,7 @@
 import { getAccessToken } from "../../api/tokenStore";
 import { BACKEND_URL } from "../../config";
 import { ERROR_MESSAGES } from "../../constants/errorMessages";
-import {
-  httpDelete,
-  httpGet,
-  httpPatch,
-  httpPost,
-} from "../../utils/httpInterceptor";
-
-/** Motifs de signalement d'un problème sur une piste (miroir du backend). */
-export type ReportTrackReason =
-  | "TITLE"
-  | "ARTIST"
-  | "DANCE"
-  | "MPM"
-  | "PASO_CLASH"
-  | "OTHER";
+import { httpDelete, httpGet, httpPatch } from "../../utils/httpInterceptor";
 
 async function authHeaders(): Promise<Record<string, string>> {
   try {
@@ -72,25 +58,5 @@ export const TrackApi = {
       errorMessage: ERROR_MESSAGES.OPERATION_FAILED,
       logErrors: true,
     });
-  },
-
-  /**
-   * Signale un problème sur une piste (tout utilisateur authentifié).
-   * Le backend notifie chaque administrateur.
-   */
-  async reportTrack(
-    trackId: string,
-    reason: ReportTrackReason,
-    message?: string,
-  ): Promise<void> {
-    await httpPost(
-      `${BACKEND_URL}/tracks/${trackId}/report`,
-      { reason, message },
-      {
-        headers: await authHeaders(),
-        errorMessage: ERROR_MESSAGES.OPERATION_FAILED,
-        logErrors: true,
-      },
-    );
   },
 };

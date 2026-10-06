@@ -151,6 +151,38 @@ jest.mock("../../../../components/FluidSegmentedTab", () => {
   };
 });
 
+// The section queries React Query (admin badge); its own suite covers that.
+jest.mock(
+  "../../../track-corrections/components/TrackCorrectionsSettingsSection",
+  () => {
+    const { Text, TouchableOpacity } = require("react-native");
+    const ReactMock = require("react");
+    return {
+      TrackCorrectionsSettingsSection: ({
+        onOpenMine,
+        onOpenReview,
+      }: {
+        onOpenMine: () => void;
+        onOpenReview: () => void;
+      }) =>
+        ReactMock.createElement(
+          ReactMock.Fragment,
+          null,
+          ReactMock.createElement(
+            TouchableOpacity,
+            { testID: "mock-open-mine", onPress: onOpenMine },
+            ReactMock.createElement(Text, null, "mine"),
+          ),
+          ReactMock.createElement(
+            TouchableOpacity,
+            { testID: "mock-open-review", onPress: onOpenReview },
+            ReactMock.createElement(Text, null, "review"),
+          ),
+        ),
+    };
+  },
+);
+
 jest.mock("../../../competitions/components/ReportModal", () => {
   const { View } = require("react-native");
   return {
@@ -309,6 +341,22 @@ describe("SettingsScreen", () => {
       expect(getByText("Réglages")).toBeTruthy();
       expect(mockAuthStore.current.getAuthConfig).toHaveBeenCalled();
     });
+  });
+
+  it("opens the track correction screens from the Musiques section", async () => {
+    const props = createTestProps();
+    const { findByTestId, getByTestId } = await render(
+      <SettingsScreen {...props} />,
+    );
+
+    await fireEvent.press(await findByTestId("mock-open-mine"));
+    expect(props.navigation.navigate).toHaveBeenCalledWith(
+      "MyTrackCorrections",
+    );
+    await fireEvent.press(getByTestId("mock-open-review"));
+    expect(props.navigation.navigate).toHaveBeenCalledWith(
+      "TrackCorrectionsReview",
+    );
   });
 
   it("handles logout flow", async () => {

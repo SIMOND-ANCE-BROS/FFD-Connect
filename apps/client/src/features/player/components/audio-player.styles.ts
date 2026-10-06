@@ -150,6 +150,12 @@ export const audioPlayerStyles = StyleSheet.create({
     marginBottom: 10,
   },
   // Bouton admin d'édition des appels paso doble (#paso-clashes)
+  playerActionsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 4,
+  },
   clashEditButton: {
     flexDirection: "row",
     alignItems: "center",

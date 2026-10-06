@@ -28,7 +28,6 @@ export type {
   LicenseRenewalRequest,
   LicenseRenewalStatus,
 } from "./api/license-api";
-export type { ReportTrackReason } from "./api/track-api";
 
 // Arrow-function wrappers to avoid unbound-method ESLint errors
 export const BackendService = {
@@ -39,8 +38,6 @@ export const BackendService = {
     TrackApi.updateTrack(...args),
   deleteTrack: (...args: Parameters<typeof TrackApi.deleteTrack>) =>
     TrackApi.deleteTrack(...args),
-  reportTrack: (...args: Parameters<typeof TrackApi.reportTrack>) =>
-    TrackApi.reportTrack(...args),
 
   // Health
   checkHealth: () => HealthApi.checkHealth(),
