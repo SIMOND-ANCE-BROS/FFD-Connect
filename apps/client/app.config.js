@@ -117,30 +117,29 @@ function resolveFirebaseFile(platform) {
 // de la variante, jamais de la présence d'un secret.
 //
 // Corollaire : le contenu du fichier est exclu de l'empreinte
-// (fingerprint.config.js), et un prebuild local d'une de ces variantes exige le
-// fichier dans firebase/ — le plugin RNFB échoue sinon, ce qui vaut mieux qu'un
-// binaire distribué sans push.
+// (fingerprint.config.js), et un prebuild d'une de ces variantes exige le
+// fichier (secret EAS sur le builder, firebase/ en local) — le plugin RNFB
+// échoue sinon, ce qui vaut mieux qu'un binaire distribué sans push.
 const FIREBASE_REQUIRED_VARIANTS = new Set(["preview", "beta", "production"]);
 const FIREBASE_REQUIRED = FIREBASE_REQUIRED_VARIANTS.has(APP_ENV);
 
-/**
- * Chemin à poser dans googleServicesFile. Pour une variante distribuée, on pose
- * le chemin attendu même s'il manque, pour que le plugin RNFB échoue au
- * prebuild avec un message qui nomme le fichier. Ce champ n'entre pas dans
- * l'empreinte (@expo/fingerprint le retire de expoConfig).
- *
- * @param {"ios" | "android"} platform
- * @returns {string | null}
- */
-function firebaseFileFor(platform) {
-  const resolved = resolveFirebaseFile(platform);
-  if (resolved || !FIREBASE_REQUIRED) return resolved;
-  const { envVar, variant } = FIREBASE_FILES[platform];
-  return process.env[envVar] || variant;
-}
-
-const FIREBASE_IOS_FILE = firebaseFileFor("ios");
-const FIREBASE_ANDROID_FILE = firebaseFileFor("android");
+// googleServicesFile n'est posé QUE si le fichier existe, y compris pour une
+// variante distribuée. Le poser vers un chemin absent casse `eas build` avant
+// même l'envoi au builder : eas-cli résout les entitlements iOS côté client en
+// jouant les mods en mode introspection, et le mod infoPlist d'Expo
+// (Google.js, setGoogleSignInReversedClientId) lit ce fichier → ENOENT sur le
+// runner GitHub comme sur un poste de dev, qui n'ont jamais le secret.
+//
+// Ce n'est pas un binaire sans push en silence : les plugins RNFB restent
+// chargés (FIREBASE_REQUIRED), et au prebuild du builder (mods complets, pas
+// d'introspection) @react-native-firebase/app lève "Path to
+// GoogleService-Info.plist is not defined" (mod Xcode) / "Path to
+// google-services.json is not defined" (mod Android) si le fichier manque.
+// Ce champ n'entre pas dans l'empreinte (@expo/fingerprint le retire de
+// expoConfig, et le contenu du fichier est ignoré par fingerprint.config.js) :
+// sa présence ou son absence ne change pas la runtimeVersion.
+const FIREBASE_IOS_FILE = resolveFirebaseFile("ios");
+const FIREBASE_ANDROID_FILE = resolveFirebaseFile("android");
 // development : plugins chargés seulement si un fichier est déposé (le dev
 // client n'a pas de channel OTA, son empreinte n'a pas à être stable), pour que
 // `expo run:ios` marche sans config Firebase.
@@ -260,9 +259,10 @@ module.exports = {
           : {}),
       },
       // Config Firebase iOS de la variante courante (résolue par
-      // firebaseFileFor : env EAS > firebase/<env>). Toujours posée pour une
-      // variante distribuée ; pour development, absente = clé non posée +
-      // plugins Firebase désactivés (cf. supra).
+      // resolveFirebaseFile : env EAS > firebase/<env>), posée seulement si le
+      // fichier existe (cf. FIREBASE_IOS_FILE). Variante distribuée sans
+      // fichier : plugins actifs, le prebuild échoue ; development sans
+      // fichier : plugins Firebase désactivés.
       ...(FIREBASE_IOS_FILE ? { googleServicesFile: FIREBASE_IOS_FILE } : {}),
       // Gaté sur FIREBASE_ENABLED comme UIBackgroundModes : déclarer
       // aps-environment sans Firebase exigerait la capability Push

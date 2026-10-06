@@ -29,6 +29,10 @@ const ENV_KEYS = [
   "EAS_BUILD_PROFILE",
   "GOOGLE_SERVICE_INFO_PLIST_PREVIEW",
   "GOOGLE_SERVICES_JSON_PREVIEW",
+  "GOOGLE_SERVICE_INFO_PLIST_BETA",
+  "GOOGLE_SERVICES_JSON_BETA",
+  "GOOGLE_SERVICE_INFO_PLIST_PRODUCTION",
+  "GOOGLE_SERVICES_JSON_PRODUCTION",
   "GOOGLE_SERVICE_INFO_PLIST_DEVELOPMENT",
   "GOOGLE_SERVICES_JSON_DEVELOPMENT",
 ] as const;
@@ -101,22 +105,59 @@ describe("app.config.js — fingerprint determinism", () => {
     expect(fingerprintedShape(runner)).toEqual(fingerprintedShape(builder));
   });
 
-  it("keeps Firebase (plugins, APNs entitlement, background mode) on for distributed variants", () => {
-    for (const appEnv of ["preview", "beta", "production"]) {
-      const expo = loadConfig({ EXPO_PUBLIC_APP_ENV: appEnv });
+  const DISTRIBUTED_VARIANTS = ["preview", "beta", "production"] as const;
 
-      expect(pluginNames(expo)).toEqual(
-        expect.arrayContaining(FIREBASE_PLUGINS),
-      );
-      expect(expo.ios.entitlements).toEqual({
-        "aps-environment": "production",
+  // A developer may have dropped a distributed variant's file locally.
+  const hasLocalDistributedFirebase = DISTRIBUTED_VARIANTS.some((appEnv) =>
+    [
+      `GoogleService-Info.${appEnv}.plist`,
+      `google-services.${appEnv}.json`,
+    ].some((f) => fs.existsSync(path.join(__dirname, "..", "firebase", f))),
+  );
+
+  function expectFirebaseOn(expo: EvaluatedConfig["expo"]) {
+    expect(pluginNames(expo)).toEqual(expect.arrayContaining(FIREBASE_PLUGINS));
+    expect(expo.ios.entitlements).toEqual({
+      "aps-environment": "production",
+    });
+    expect(expo.ios.infoPlist.UIBackgroundModes).toEqual([
+      "remote-notification",
+    ]);
+  }
+
+  // `eas build` resolves the iOS entitlements client-side (runner, dev
+  // machine) by running the mods in introspection mode, and Expo's infoPlist
+  // mod reads googleServicesFile: pointing it at an absent file aborts the
+  // build with ENOENT before it reaches EAS. Firebase must stay on regardless,
+  // so the builder's prebuild still fails loudly (RNFB plugin) without it.
+  (hasLocalDistributedFirebase ? it.skip : it)(
+    "keeps Firebase on but leaves googleServicesFile unset for distributed variants without the file",
+    () => {
+      for (const appEnv of DISTRIBUTED_VARIANTS) {
+        const expo = loadConfig({ EXPO_PUBLIC_APP_ENV: appEnv });
+
+        expectFirebaseOn(expo);
+        expect(expo.ios.googleServicesFile).toBeUndefined();
+        expect(expo.android.googleServicesFile).toBeUndefined();
+      }
+    },
+  );
+
+  it("keeps Firebase on and sets googleServicesFile for distributed variants with the file", () => {
+    for (const appEnv of DISTRIBUTED_VARIANTS) {
+      const suffix = appEnv.toUpperCase();
+      const expo = loadConfig({
+        EXPO_PUBLIC_APP_ENV: appEnv,
+        EAS_BUILD: "true",
+        EAS_BUILD_PROFILE: appEnv,
+        [`GOOGLE_SERVICE_INFO_PLIST_${suffix}`]: path.join(secretsDir, "plist"),
+        [`GOOGLE_SERVICES_JSON_${suffix}`]: path.join(secretsDir, "json"),
       });
-      expect(expo.ios.infoPlist.UIBackgroundModes).toEqual([
-        "remote-notification",
-      ]);
-      // Set even when absent, so the RNFB plugin names the missing file.
-      expect(expo.ios.googleServicesFile).toBe(
-        `./firebase/GoogleService-Info.${appEnv}.plist`,
+
+      expectFirebaseOn(expo);
+      expect(expo.ios.googleServicesFile).toBe(path.join(secretsDir, "plist"));
+      expect(expo.android.googleServicesFile).toBe(
+        path.join(secretsDir, "json"),
       );
     }
   });
@@ -159,5 +200,38 @@ describe("app.config.js — fingerprint determinism", () => {
     expect(expo.ios.entitlements).toEqual({
       "aps-environment": "development",
     });
+  });
+});
+
+describe("fingerprint.config.js — ignored paths", () => {
+  // Resolved through expo, which owns @expo/fingerprint.
+  const { isIgnoredPath } = require(
+    require.resolve("@expo/fingerprint/build/utils/Path", {
+      paths: [path.dirname(require.resolve("expo/package.json"))],
+    }),
+  ) as {
+    isIgnoredPath: (filePath: string, ignorePaths: string[]) => boolean;
+  };
+  const { ignorePaths } = require("../fingerprint.config.js") as {
+    ignorePaths: string[];
+  };
+
+  it.each([
+    "../../../eas-environment-secrets/x",
+    "firebase/GoogleService-Info.preview.plist",
+    "firebase/google-services.preview.json",
+    "ios/Podfile",
+    "android/app/build.gradle",
+  ])("ignores %s", (filePath) => {
+    expect(isIgnoredPath(filePath, ignorePaths)).toBe(true);
+  });
+
+  it("keeps the local native module sources in the fingerprint", () => {
+    expect(
+      isIgnoredPath(
+        "modules/lockscreen-transport/ios/LockscreenTransportModule.swift",
+        ignorePaths,
+      ),
+    ).toBe(false);
   });
 });
