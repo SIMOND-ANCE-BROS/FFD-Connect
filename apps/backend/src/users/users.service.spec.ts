@@ -62,7 +62,7 @@ describe("UsersService", () => {
   beforeEach(async () => {
     prisma = mockDeep<PrismaClient>();
     renewalDocumentFiles = {
-      deleteFiles: jest.fn().mockResolvedValue(undefined),
+      deleteFiles: jest.fn().mockResolvedValue(new Set()),
     };
 
     const module: TestingModule = await Test.createTestingModule({

@@ -47,9 +47,29 @@ model LicenseRenewalDocument {
   type       LicenseRenewalDocumentType
   filePath   String
   ocrData    Json?                      // Résultat OCR (données extraites)
+  /// Date à laquelle ce document DOIT avoir disparu (RGPD, #62).
+  ///
+  /// Calculée à l'écriture par `medicalCertificatePurgeDueAt`, et STOCKÉE plutôt
+  /// que recalculée : l'échéance dépend de la date d'émission enfouie dans
+  /// `ocrData`, que le SQL ne sait pas lire. Tant qu'elle n'était pas une
+  /// colonne, la purge ramenait un lot « assez vieux » puis tranchait en
+  /// mémoire — or l'échéance N'EST PAS MONOTONE en `createdAt` (un certificat
+  /// daté vit 24 mois, un non daté 12), si bien que des documents non échus
+  /// occupaient le lot devant des documents échus, jusqu'à ne plus rien purger
+  /// du tout, en silence. Ici le filtre est exact.
+  ///
+  /// NULLABLE par nécessité : colonne ajoutée à une table déjà peuplée, la
+  /// migration doit rester additive (ADR-0017). Les lignes antérieures sont
+  /// datées au fil de l'eau par la purge elle-même.
+  purgeDueAt DateTime?
   createdAt  DateTime                   @default(now())
   request   LicenseRenewalRequest       @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   @@index([requestId])
   @@index([type])
+  // Sert les deux requêtes de la purge (#62) : les documents échus
+  // (`purgeDueAt <= now`, triés par échéance) et ceux restant à dater
+  // (`purgeDueAt IS NULL`). `@@index([type])` est conservé — le retirer serait
+  // un DROP, et les migrations restent strictement additives (ADR-0017).
+  @@index([type, purgeDueAt])
 }

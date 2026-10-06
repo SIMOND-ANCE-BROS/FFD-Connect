@@ -58,6 +58,21 @@ module.exports = {
       functions: 100,
       lines: 100,
     },
+    // Same reasoning for the health-data retention rule (#62): this file turns
+    // a PUBLISHED promise ("deleted at most 12 months after the certificate
+    // expires") into a date. An uncovered branch is either a broken public
+    // commitment or a document destroyed while still needed.
+    [path.join(
+      __dirname,
+      "src",
+      "licenses",
+      "medical-certificate-retention.util.ts",
+    )]: {
+      statements: 100,
+      branches: 100,
+      functions: 100,
+      lines: 100,
+    },
     [srcDir("common", "filters")]: {
       statements: 96,
       branches: 78,
