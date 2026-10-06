@@ -2,9 +2,36 @@ import messaging, {
   type RemoteMessage,
 } from "@react-native-firebase/messaging";
 import { Alert } from "react-native";
+import { useAuthStore } from "../../../stores/auth.store";
 import { createLogger } from "../../../utils/logger";
+import { notificationTargetOf } from "./notificationTarget";
 
 const logger = createLogger("NotificationHandler");
+
+/**
+ * Oriente l'application après un tap sur une push système.
+ *
+ * Les deux gestionnaires étaient VIDES : l'application s'abonnait aux
+ * événements et n'en faisait rien, si bien qu'un tap rouvrait l'écran courant
+ * et rien d'autre. Signalé depuis l'appareil (#84).
+ *
+ * La destination n'est pas appliquée ici mais déposée dans le store : au moment
+ * du tap, l'arbre React peut ne pas être monté (ouverture depuis l'app fermée)
+ * et l'utilisateur peut ne pas encore être connecté. `AppNavigator` l'applique
+ * dès que les deux conditions sont réunies.
+ *
+ * Une charge utile sans destination reconnue ouvre le CENTRE DE NOTIFICATIONS,
+ * et non rien : l'utilisateur a tapé, il doit arriver quelque part — ne
+ * serait-ce que là où la notification est lisible en entier.
+ */
+const openFromPush = (remoteMessage: RemoteMessage): void => {
+  const target = notificationTargetOf(remoteMessage.data);
+  useAuthStore
+    .getState()
+    .setPendingDeepLink(
+      target ?? { screen: "Notifications", params: undefined },
+    );
+};
 
 /**
  * Body of the background handler: the single place where a message received
@@ -75,15 +102,17 @@ class NotificationHandler {
       }
     });
 
-    // Handle user interaction when app is in background
-    messaging().onNotificationOpenedApp((_remoteMessage) => {});
+    // Tap sur la push alors que l'application tourne en arrière-plan.
+    messaging().onNotificationOpenedApp((remoteMessage) => {
+      openFromPush(remoteMessage);
+    });
 
-    // Check if app was opened from a quit state
+    // Tap sur la push alors que l'application était fermée : le message n'est
+    // lisible qu'au lancement qu'il a provoqué, d'où cette lecture unique.
     messaging()
       .getInitialNotification()
-      .then((_remoteMessage) => {
-        if (_remoteMessage) {
-        }
+      .then((remoteMessage) => {
+        if (remoteMessage) openFromPush(remoteMessage);
       })
       .catch(() => {});
 

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { NotificationTarget } from "../features/settings/services/notificationTarget";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type AuthRole = "LICENSEE" | "ADMIN" | "GUEST" | "CLUB" | "STAFF";
@@ -12,9 +13,17 @@ interface AuthState {
   /** Session d'impersonation en cours (#545). */
   impersonating: boolean;
   impersonatedName: string | null;
-  pendingDeepLink: string | null;
+  /**
+   * Destination à ouvrir dès que l'utilisateur est connecté (#84).
+   *
+   * Portait un simple nom d'écran, donc sans paramètres — impossible d'ouvrir
+   * une compétition précise. Et surtout : RIEN ne l'alimentait, le seul écrit
+   * du dépôt le remettait à `null`. Le tap sur une push système ouvrait donc
+   * l'application sans aller nulle part.
+   */
+  pendingDeepLink: NotificationTarget | null;
   refreshAuth: () => Promise<void>;
-  setPendingDeepLink: (link: string | null) => void;
+  setPendingDeepLink: (link: NotificationTarget | null) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
