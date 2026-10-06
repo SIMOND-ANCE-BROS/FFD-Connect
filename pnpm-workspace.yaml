@@ -153,6 +153,12 @@ overrides:
   # dependre ou si le hoisting change.
   'postcss-selector-parser@>=6.1.0 <6.1.3': '6.1.3'
   '@humanfs/node@<0.16.8': '0.16.8'
+  # Avis publiés le 2026-10-05, détectés par la porte osv-scanner.
+  # Forme ciblée `paquet@<version` : elle borne le remplacement au seul
+  # intervalle vulnérable, là où un `>=` nu autoriserait un saut de majeure.
+  'compression@<1.8.2': '1.8.2'
+  'proxy-addr@<2.0.8': '2.0.8'
+  'source-map-js@<1.2.2': '1.2.2'
   # Volontairement absent : decode-uri-component (<=0.4.2, GHSA-vcc3-ghjq-m6fr,
   # medium). Le correctif 0.5.0 est ESM-only ("type": "module") alors que son
   # seul consommateur, query-string@7 (via @react-navigation/core), le charge en
