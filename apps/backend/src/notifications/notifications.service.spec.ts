@@ -62,6 +62,7 @@ describe("NotificationsService", () => {
    */
   const mockPreferences = {
     isPushEnabled: jest.fn(),
+    filterPushEnabled: jest.fn(),
   };
 
   const sendMock = () => getMessaging().send as jest.Mock;
@@ -102,6 +103,9 @@ describe("NotificationsService", () => {
       (_key: string, fn: () => Promise<unknown>) => fn(),
     );
     mockPreferences.isPushEnabled.mockResolvedValue(true);
+    mockPreferences.filterPushEnabled.mockImplementation(
+      (userIds: readonly string[]) => Promise.resolve([...userIds]),
+    );
     sendMock().mockReset();
     sendMock().mockResolvedValue("mock-response");
   });
@@ -717,6 +721,135 @@ describe("NotificationsService", () => {
         where: { token: "victim-token", userId: "attacker" },
       });
       expect(count).toBe(0);
+    });
+  });
+
+  describe("sendToUsers", () => {
+    it("n'écrit rien et n'envoie rien sans destinataire", async () => {
+      const result = await service.sendToUsers(
+        [],
+        NotificationType.NEW_COMPETITION,
+        "Titre",
+        "Corps",
+      );
+
+      expect(mockPrisma.notification.createMany).not.toHaveBeenCalled();
+      expect(mockPreferences.filterPushEnabled).not.toHaveBeenCalled();
+      expect(result).toEqual({ recipients: 0, sent: 0, failed: 0, pruned: 0 });
+    });
+
+    // L'intérêt du lot : UNE écriture pour tout le monde, pas une par
+    // destinataire. Une nouvelle compétition peut concerner des centaines de
+    // licenciés.
+    it("écrit le feed de tous en une seule requête", async () => {
+      withFirebaseApp();
+      mockPrisma.notification.createMany.mockResolvedValue({ count: 3 });
+      mockPrisma.deviceToken.findMany.mockResolvedValue([]);
+
+      await service.sendToUsers(
+        ["u1", "u2", "u3"],
+        NotificationType.NEW_COMPETITION,
+        "Nouvelle compétition",
+        "Corps",
+        { competitionId: "c1" },
+      );
+
+      expect(mockPrisma.notification.createMany).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.notification.create).not.toHaveBeenCalled();
+    });
+
+    it("n'envoie la push qu'à ceux qui l'acceptent", async () => {
+      withFirebaseApp();
+      mockPrisma.notification.createMany.mockResolvedValue({ count: 2 });
+      mockPreferences.filterPushEnabled.mockResolvedValue(["u2"]);
+      mockPrisma.deviceToken.findMany.mockResolvedValue([]);
+
+      const result = await service.sendToUsers(
+        ["u1", "u2"],
+        NotificationType.NEW_COMPETITION,
+        "Titre",
+        "Corps",
+      );
+
+      expect(mockPreferences.filterPushEnabled).toHaveBeenCalledWith(
+        ["u1", "u2"],
+        NotificationType.NEW_COMPETITION,
+      );
+      expect(result.recipients).toBe(1);
+      // Le refus coupe la push, jamais la cloche : le feed est écrit pour tous.
+      expect(mockPrisma.notification.createMany).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.deviceToken.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("n'interroge aucun appareil quand personne n'accepte", async () => {
+      withFirebaseApp();
+      mockPrisma.notification.createMany.mockResolvedValue({ count: 2 });
+      mockPreferences.filterPushEnabled.mockResolvedValue([]);
+
+      const result = await service.sendToUsers(
+        ["u1", "u2"],
+        NotificationType.NEW_COMPETITION,
+        "Titre",
+        "Corps",
+      );
+
+      expect(mockPrisma.deviceToken.findMany).not.toHaveBeenCalled();
+      expect(result.recipients).toBe(0);
+    });
+
+    // Sans borne, un seul événement métier lancerait des milliers d'appels FCM
+    // d'un coup : au-delà d'un paquet, les envois s'enchaînent.
+    it("traite plus d'un paquet de destinataires sans en perdre", async () => {
+      withFirebaseApp();
+      const many = Array.from({ length: 45 }, (_, index) => `u${index}`);
+      mockPrisma.notification.createMany.mockResolvedValue({ count: 45 });
+      mockPrisma.deviceToken.findMany.mockResolvedValue([]);
+
+      const result = await service.sendToUsers(
+        many,
+        NotificationType.COMPETITION_RESULTS,
+        "Titre",
+        "Corps",
+      );
+
+      expect(result.recipients).toBe(45);
+      expect(mockPrisma.deviceToken.findMany).toHaveBeenCalledTimes(45);
+      expect(mockPrisma.notification.createMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("laisse remonter l'échec d'écriture du feed", async () => {
+      mockPrisma.notification.createMany.mockRejectedValue(
+        new Error("DB down"),
+      );
+
+      await expect(
+        service.sendToUsers(
+          ["u1"],
+          NotificationType.NEW_COMPETITION,
+          "Titre",
+          "Corps",
+        ),
+      ).rejects.toThrow("DB down");
+    });
+
+    // Échec fermé : envoyer sans avoir pu vérifier le consentement coûterait
+    // plus cher qu'une push perdue, dont le contenu reste dans la cloche.
+    it("n'envoie pas quand les préférences sont illisibles, et ne lève pas", async () => {
+      withFirebaseApp();
+      mockPrisma.notification.createMany.mockResolvedValue({ count: 1 });
+      mockPreferences.filterPushEnabled.mockRejectedValue(
+        new Error("prefs down"),
+      );
+
+      const result = await service.sendToUsers(
+        ["u1"],
+        NotificationType.NEW_COMPETITION,
+        "Titre",
+        "Corps",
+      );
+
+      expect(mockPrisma.deviceToken.findMany).not.toHaveBeenCalled();
+      expect(result).toEqual({ recipients: 0, sent: 0, failed: 0, pruned: 0 });
     });
   });
 

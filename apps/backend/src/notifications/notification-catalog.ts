@@ -86,9 +86,20 @@ export const NOTIFICATION_CATALOG: Readonly<
       "Quand les résultats d'une compétition à laquelle vous êtes inscrit sont publiés.",
   },
 
-  // ── Diffusion : envoyée à une population éligible → désactivé (opt-in) ─────
+  // ── Ciblée : l'éligibilité est calculée AVANT l'envoi → activé par défaut ──
+  //
+  // Longtemps à `false` parce qu'on la prenait pour une diffusion générale.
+  // Elle n'en est pas une : `notifyNewCompetition` ne retient que les licenciés
+  // dont la discipline, le niveau ET la classe d'âge correspondent à au moins
+  // une épreuve (`matchesEvent`). C'est donc une notification personnelle et
+  // pertinente, pas du bruit — la laisser en opt-in revenait à la rendre
+  // invisible à ceux qu'elle concerne.
+  //
+  // RÉSERVE CONNUE : le filtre est permissif, un profil dont la discipline, le
+  // niveau et la classe d'âge sont tous vides correspond à TOUTES les épreuves.
+  // Pour ces comptes-là, et eux seuls, l'envoi redevient général.
   [NotificationType.NEW_COMPETITION]: {
-    defaultEnabled: false,
+    defaultEnabled: true,
     configurable: true,
     // CompetitionEventNotificationService.notifyNewCompetition interroge
     // `where: { role: LICENSEE }` : aucun autre rôle ne peut la recevoir.

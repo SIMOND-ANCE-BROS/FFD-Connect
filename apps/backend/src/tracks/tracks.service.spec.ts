@@ -31,6 +31,8 @@ describe("TracksService", () => {
     };
     mockNotifications = {
       createForUser: jest.fn().mockResolvedValue(undefined),
+      sendToUser: jest.fn(),
+      sendToUsers: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -352,7 +354,7 @@ describe("TracksService", () => {
           "u1",
         ),
       ).rejects.toThrow(NotFoundException);
-      expect(mockNotifications.createForUser).not.toHaveBeenCalled();
+      expect(mockNotifications.sendToUsers).not.toHaveBeenCalled();
     });
 
     it("notifies every admin with the FR reason label and data payload", async () => {
@@ -375,20 +377,16 @@ describe("TracksService", () => {
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { role: "ADMIN" } }),
       );
-      expect(mockNotifications.createForUser).toHaveBeenCalledTimes(2);
-      expect(mockNotifications.createForUser).toHaveBeenCalledWith(
-        "admin-1",
+      // UN SEUL appel pour tous les administrateurs (#38) : le fil in-app est
+      // écrit en une requête et les push partent par paquets bornés, au lieu
+      // d'un aller-retour en base par destinataire.
+      expect(mockNotifications.sendToUsers).toHaveBeenCalledTimes(1);
+      expect(mockNotifications.sendToUsers).toHaveBeenCalledWith(
+        ["admin-1", "admin-2"],
         NotificationType.TRACK_REPORT,
         "Signalement musique",
         "«My Song» — MPM signalé",
         { trackId: "track-1", reason: "MPM", reporterId: "reporter-9" },
-      );
-      expect(mockNotifications.createForUser).toHaveBeenCalledWith(
-        "admin-2",
-        NotificationType.TRACK_REPORT,
-        "Signalement musique",
-        "«My Song» — MPM signalé",
-        expect.objectContaining({ trackId: "track-1" }),
       );
     });
 
@@ -409,8 +407,8 @@ describe("TracksService", () => {
         "reporter-9",
       );
 
-      expect(mockNotifications.createForUser).toHaveBeenCalledWith(
-        "admin-1",
+      expect(mockNotifications.sendToUsers).toHaveBeenCalledWith(
+        expect.arrayContaining(["admin-1"]),
         NotificationType.TRACK_REPORT,
         "Signalement musique",
         "«My Song» — Clash paso doble signalé : appel décalé",
@@ -433,7 +431,7 @@ describe("TracksService", () => {
           "u1",
         ),
       ).resolves.toBeUndefined();
-      expect(mockNotifications.createForUser).not.toHaveBeenCalled();
+      expect(mockNotifications.sendToUsers).not.toHaveBeenCalled();
     });
   });
 });

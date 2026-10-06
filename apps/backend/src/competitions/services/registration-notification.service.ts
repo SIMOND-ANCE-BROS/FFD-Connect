@@ -56,7 +56,8 @@ export class RegistrationNotificationService {
     const { byOrganizer, initialStatus } = options;
 
     if (byOrganizer) {
-      await this.notificationsService.createForUser(
+      // Push : le licencié apprend qu'on l'a inscrit sans qu'il l'ait demandé.
+      await this.notificationsService.sendToUser(
         registration.userId,
         NotificationType.REGISTRATION_STATUS,
         "Inscription par le club",
@@ -77,7 +78,8 @@ export class RegistrationNotificationService {
         : "Un licencié";
 
     if (initialStatus === RegistrationStatus.CONFIRMED) {
-      await this.notificationsService.createForUser(
+      // Push : décision prise par le club sur son inscription.
+      await this.notificationsService.sendToUser(
         registration.userId,
         NotificationType.REGISTRATION_STATUS,
         "Inscription validée",
@@ -142,7 +144,9 @@ export class RegistrationNotificationService {
       options.organizerUserId !== registration.userId
     ) {
       const wasPending = registration.status === RegistrationStatus.PENDING;
-      await this.notificationsService.createForUser(
+      // Push : c'est LA notification à ne pas manquer — un refus ou une
+      // désinscription peut faire rater la compétition.
+      await this.notificationsService.sendToUser(
         registration.userId,
         NotificationType.REGISTRATION_STATUS,
         wasPending
@@ -244,16 +248,15 @@ export class RegistrationNotificationService {
       registrationId,
     };
 
-    await Promise.all(
-      organizers.map((o) =>
-        this.notificationsService.createForUser(
-          o.id,
-          NotificationType.CLUB_MEMBER_REGISTRATION,
-          notification.title,
-          notification.body,
-          data,
-        ),
-      ),
+    // Push, mais le type reste à OFF par défaut dans le catalogue : elle se
+    // déclenche sur l'activité d'AUTRUI, donc en rafale. Un gestionnaire qui la
+    // veut l'active ; sinon la cloche suffit.
+    await this.notificationsService.sendToUsers(
+      organizers.map((organizer) => organizer.id),
+      NotificationType.CLUB_MEMBER_REGISTRATION,
+      notification.title,
+      notification.body,
+      data,
     );
   }
 }

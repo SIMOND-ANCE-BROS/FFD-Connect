@@ -8,6 +8,7 @@ import { RegistrationNotificationService } from "./registration-notification.ser
 const mockPrismaService = createMockPrismaService();
 const mockNotificationsService = {
   createForUser: jest.fn().mockResolvedValue(undefined),
+  sendToUsers: jest.fn(),
   sendToUser: jest.fn().mockResolvedValue({ sent: 0, failed: 0, pruned: 0 }),
 };
 
@@ -50,7 +51,7 @@ describe("RegistrationNotificationService", () => {
         { byOrganizer: true, initialStatus: RegistrationStatus.CONFIRMED },
       );
 
-      expect(mockNotificationsService.createForUser).toHaveBeenCalledWith(
+      expect(mockNotificationsService.sendToUser).toHaveBeenCalledWith(
         "u1",
         NotificationType.REGISTRATION_STATUS,
         "Inscription par le club",
@@ -80,15 +81,15 @@ describe("RegistrationNotificationService", () => {
         { byOrganizer: false, initialStatus: RegistrationStatus.CONFIRMED },
       );
 
-      expect(mockNotificationsService.createForUser).toHaveBeenCalledWith(
+      expect(mockNotificationsService.sendToUser).toHaveBeenCalledWith(
         "u1",
         NotificationType.REGISTRATION_STATUS,
         "Inscription validée",
         expect.any(String),
         expect.objectContaining({ type: "registration_auto_confirmed" }),
       );
-      expect(mockNotificationsService.createForUser).toHaveBeenCalledWith(
-        "org-1",
+      expect(mockNotificationsService.sendToUsers).toHaveBeenCalledWith(
+        expect.arrayContaining(["org-1"]),
         NotificationType.CLUB_MEMBER_REGISTRATION,
         expect.any(String),
         expect.any(String),
@@ -124,8 +125,8 @@ describe("RegistrationNotificationService", () => {
         expect.any(String),
         expect.objectContaining({ type: "registration_pending" }),
       );
-      expect(mockNotificationsService.createForUser).toHaveBeenCalledWith(
-        "org-2",
+      expect(mockNotificationsService.sendToUsers).toHaveBeenCalledWith(
+        expect.arrayContaining(["org-2"]),
         NotificationType.CLUB_MEMBER_REGISTRATION,
         expect.any(String),
         expect.any(String),
@@ -149,7 +150,7 @@ describe("RegistrationNotificationService", () => {
         { byOrganizer: true, organizerUserId: "org-1" },
       );
 
-      expect(mockNotificationsService.createForUser).toHaveBeenCalledWith(
+      expect(mockNotificationsService.sendToUser).toHaveBeenCalledWith(
         "u1",
         NotificationType.REGISTRATION_STATUS,
         "Inscription refusée par le club",
@@ -172,7 +173,7 @@ describe("RegistrationNotificationService", () => {
         { byOrganizer: true, organizerUserId: "org-1" },
       );
 
-      expect(mockNotificationsService.createForUser).toHaveBeenCalledWith(
+      expect(mockNotificationsService.sendToUser).toHaveBeenCalledWith(
         "u1",
         NotificationType.REGISTRATION_STATUS,
         "Désinscription par le club",
@@ -202,8 +203,8 @@ describe("RegistrationNotificationService", () => {
         { byOrganizer: false },
       );
 
-      expect(mockNotificationsService.createForUser).toHaveBeenCalledWith(
-        "org-1",
+      expect(mockNotificationsService.sendToUsers).toHaveBeenCalledWith(
+        expect.arrayContaining(["org-1"]),
         NotificationType.CLUB_MEMBER_REGISTRATION,
         expect.any(String),
         expect.any(String),

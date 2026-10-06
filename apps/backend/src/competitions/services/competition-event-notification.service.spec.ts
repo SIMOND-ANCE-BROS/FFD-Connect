@@ -32,6 +32,8 @@ describe("CompetitionEventNotificationService", () => {
 
     notifications = {
       createManyForUsers: jest.fn().mockResolvedValue({ count: 0 }),
+      sendToUser: jest.fn(),
+      sendToUsers: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -67,9 +69,9 @@ describe("CompetitionEventNotificationService", () => {
         ]),
       );
 
-      expect(notifications.createManyForUsers).toHaveBeenCalledTimes(1);
+      expect(notifications.sendToUsers).toHaveBeenCalledTimes(1);
       const [userIds, type, title, body, data] =
-        notifications.createManyForUsers.mock.calls[0];
+        notifications.sendToUsers.mock.calls[0];
       expect(userIds).toEqual(["u1"]);
       expect(type).toBe(NotificationType.NEW_COMPETITION);
       expect(title).toBe("Nouvelle compétition");
@@ -91,7 +93,7 @@ describe("CompetitionEventNotificationService", () => {
         ]),
       );
 
-      const [userIds] = notifications.createManyForUsers.mock.calls[0];
+      const [userIds] = notifications.sendToUsers.mock.calls[0];
       expect(userIds).toEqual(["wild"]);
     });
 
@@ -104,7 +106,7 @@ describe("CompetitionEventNotificationService", () => {
         competition([{ category: "Latin", level: null, ageGroup: "adult" }]),
       );
 
-      expect(notifications.createManyForUsers).toHaveBeenCalledTimes(1);
+      expect(notifications.sendToUsers).toHaveBeenCalledTimes(1);
     });
 
     it("excludes a licensee whose category does not match any event", async () => {
@@ -116,7 +118,7 @@ describe("CompetitionEventNotificationService", () => {
         competition([{ category: "Latin", level: null, ageGroup: "Adult" }]),
       );
 
-      expect(notifications.createManyForUsers).not.toHaveBeenCalled();
+      expect(notifications.sendToUsers).not.toHaveBeenCalled();
     });
 
     it("matches if ANY of several events fits the profile", async () => {
@@ -131,7 +133,7 @@ describe("CompetitionEventNotificationService", () => {
         ]),
       );
 
-      expect(notifications.createManyForUsers).toHaveBeenCalledTimes(1);
+      expect(notifications.sendToUsers).toHaveBeenCalledTimes(1);
     });
 
     it("only queries users with the LICENSEE role", async () => {
@@ -151,7 +153,7 @@ describe("CompetitionEventNotificationService", () => {
     it("skips competitions with no events", async () => {
       await service.notifyNewCompetition(competition([]));
       expect(prisma.user.findMany).not.toHaveBeenCalled();
-      expect(notifications.createManyForUsers).not.toHaveBeenCalled();
+      expect(notifications.sendToUsers).not.toHaveBeenCalled();
     });
 
     it("does not insert when no licensee is eligible", async () => {
@@ -163,7 +165,7 @@ describe("CompetitionEventNotificationService", () => {
         competition([{ category: "Latin", level: null, ageGroup: "Adult" }]),
       );
 
-      expect(notifications.createManyForUsers).not.toHaveBeenCalled();
+      expect(notifications.sendToUsers).not.toHaveBeenCalled();
     });
   });
 
@@ -176,7 +178,7 @@ describe("CompetitionEventNotificationService", () => {
       );
 
       expect(prisma.user.findMany).not.toHaveBeenCalled();
-      expect(notifications.createManyForUsers).not.toHaveBeenCalled();
+      expect(notifications.sendToUsers).not.toHaveBeenCalled();
     });
 
     it("guards on the competitionId + kind pair", async () => {
@@ -222,9 +224,9 @@ describe("CompetitionEventNotificationService", () => {
 
       await service.notifyResultsPublished("comp-1");
 
-      expect(notifications.createManyForUsers).toHaveBeenCalledTimes(1);
+      expect(notifications.sendToUsers).toHaveBeenCalledTimes(1);
       const [userIds, type, title, body, data] =
-        notifications.createManyForUsers.mock.calls[0];
+        notifications.sendToUsers.mock.calls[0];
       expect([...userIds].sort()).toEqual(["u1", "u2"]);
       expect(type).toBe(NotificationType.COMPETITION_RESULTS);
       expect(title).toBe("Résultats disponibles");
@@ -259,7 +261,7 @@ describe("CompetitionEventNotificationService", () => {
 
       await service.notifyResultsPublished("comp-1");
 
-      expect(notifications.createManyForUsers).not.toHaveBeenCalled();
+      expect(notifications.sendToUsers).not.toHaveBeenCalled();
     });
 
     it("does nothing when the competition does not exist", async () => {
@@ -268,7 +270,7 @@ describe("CompetitionEventNotificationService", () => {
       await service.notifyResultsPublished("comp-1");
 
       expect(prisma.registration.findMany).not.toHaveBeenCalled();
-      expect(notifications.createManyForUsers).not.toHaveBeenCalled();
+      expect(notifications.sendToUsers).not.toHaveBeenCalled();
     });
 
     it("is idempotent — skips when a RESULTS notification already exists", async () => {
@@ -277,7 +279,7 @@ describe("CompetitionEventNotificationService", () => {
       await service.notifyResultsPublished("comp-1");
 
       expect(prisma.competition.findUnique).not.toHaveBeenCalled();
-      expect(notifications.createManyForUsers).not.toHaveBeenCalled();
+      expect(notifications.sendToUsers).not.toHaveBeenCalled();
     });
 
     it("does not throw when a prisma call fails", async () => {

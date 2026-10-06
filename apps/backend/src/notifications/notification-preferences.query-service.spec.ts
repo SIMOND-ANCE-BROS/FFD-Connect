@@ -190,13 +190,102 @@ describe("NotificationPreferencesQueryService", () => {
     });
   });
 
+  describe("filterPushEnabled", () => {
+    it("ne touche pas la base sans destinataire", async () => {
+      await expect(
+        service.filterPushEnabled([], NotificationType.NEW_COMPETITION),
+      ).resolves.toEqual([]);
+      expect(mockPrisma.notificationPreference.findMany).not.toHaveBeenCalled();
+    });
+
+    // Un type non réglable n'a pas d'interrupteur : personne ne peut l'avoir
+    // refusé, inutile d'interroger la base.
+    it("laisse passer tout le monde sur un type non réglable", async () => {
+      await expect(
+        service.filterPushEnabled(
+          ["u1", "u2"],
+          NotificationType.DIAGNOSTIC_TEST,
+        ),
+      ).resolves.toEqual(["u1", "u2"]);
+      expect(mockPrisma.notificationPreference.findMany).not.toHaveBeenCalled();
+    });
+
+    /**
+     * LA raison d'être de cette méthode : les producteurs de masse s'adressent à
+     * des centaines de licenciés. Une requête par destinataire avant même
+     * d'avoir envoyé quoi que ce soit serait absurde.
+     */
+    it("lit toutes les décisions en UNE requête", async () => {
+      mockPrisma.notificationPreference.findMany.mockResolvedValue([]);
+
+      await service.filterPushEnabled(
+        ["u1", "u2", "u3"],
+        NotificationType.NEW_COMPETITION,
+      );
+
+      expect(mockPrisma.notificationPreference.findMany).toHaveBeenCalledTimes(
+        1,
+      );
+      const [args] = mockPrisma.notificationPreference.findMany.mock
+        .calls[0] as [{ where: { type: unknown; userId: { in: string[] } } }];
+      expect(args.where.type).toBe(NotificationType.NEW_COMPETITION);
+      expect(args.where.userId.in).toEqual(["u1", "u2", "u3"]);
+    });
+
+    it("respecte la décision enregistrée et le défaut du catalogue", async () => {
+      // NEW_COMPETITION est activé par défaut : u3, qui n'a jamais réglé, passe.
+      mockPrisma.notificationPreference.findMany.mockResolvedValue([
+        { userId: "u1", enabled: false },
+        { userId: "u2", enabled: true },
+      ]);
+
+      await expect(
+        service.filterPushEnabled(
+          ["u1", "u2", "u3"],
+          NotificationType.NEW_COMPETITION,
+        ),
+      ).resolves.toEqual(["u2", "u3"]);
+    });
+
+    // L'absence de ligne signifie « jamais réglé », pas « refusé ».
+    it("applique le défaut OFF d'un type opt-in à qui n'a rien réglé", async () => {
+      mockPrisma.notificationPreference.findMany.mockResolvedValue([
+        { userId: "u1", enabled: true },
+      ]);
+
+      await expect(
+        service.filterPushEnabled(
+          ["u1", "u2"],
+          NotificationType.CLUB_MEMBER_REGISTRATION,
+        ),
+      ).resolves.toEqual(["u1"]);
+    });
+
+    it("dédoublonne la requête mais préserve l'ordre d'entrée", async () => {
+      mockPrisma.notificationPreference.findMany.mockResolvedValue([]);
+
+      const result = await service.filterPushEnabled(
+        ["u2", "u1", "u2"],
+        NotificationType.NEW_COMPETITION,
+      );
+
+      const [args] = mockPrisma.notificationPreference.findMany.mock
+        .calls[0] as [{ where: { userId: { in: string[] } } }];
+      expect(args.where.userId.in).toEqual(["u2", "u1"]);
+      expect(result).toEqual(["u2", "u1", "u2"]);
+    });
+  });
+
   describe("isPushEnabled", () => {
     it("applique le défaut documenté quand aucune ligne n'existe", async () => {
       await expect(
         service.isPushEnabled("u1", NotificationType.REGISTRATION_STATUS),
       ).resolves.toBe(true);
+      // Type encore en opt-in : il se déclenche sur l'activité d'autrui, donc
+      // en rafale. NEW_COMPETITION ne sert plus d'exemple ici — son éligibilité
+      // étant calculée avant l'envoi, son défaut est passé à ON.
       await expect(
-        service.isPushEnabled("u1", NotificationType.NEW_COMPETITION),
+        service.isPushEnabled("u1", NotificationType.CLUB_MEMBER_REGISTRATION),
       ).resolves.toBe(false);
     });
 

@@ -97,6 +97,10 @@ export class TracksService {
       where: { role: UserRole.ADMIN },
       select: { id: true },
     });
+    // Sans administrateur, rien à notifier : on sort avant d'appeler le service,
+    // qui ne ferait rien de toute façon. Le `Promise.all` d'avant n'émettait
+    // déjà aucun appel dans ce cas, le comportement observable est identique.
+    if (admins.length === 0) return;
 
     const reasonLabel = TracksService.REPORT_REASON_LABELS[reason];
     const trimmed = message?.trim();
@@ -104,16 +108,13 @@ export class TracksService {
       `«${track.title}» — ${reasonLabel} signalé` +
       (trimmed ? ` : ${trimmed}` : "");
 
-    await Promise.all(
-      admins.map((admin) =>
-        this.notificationsService.createForUser(
-          admin.id,
-          NotificationType.TRACK_REPORT,
-          "Signalement musique",
-          body,
-          { trackId, reason, reporterId },
-        ),
-      ),
+    // Push : un signalement appelle une décision de modération.
+    await this.notificationsService.sendToUsers(
+      admins.map((admin) => admin.id),
+      NotificationType.TRACK_REPORT,
+      "Signalement musique",
+      body,
+      { trackId, reason, reporterId },
     );
 
     this.logger.log(

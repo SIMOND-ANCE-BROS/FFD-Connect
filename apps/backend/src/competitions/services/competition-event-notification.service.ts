@@ -113,7 +113,10 @@ export class CompetitionEventNotificationService {
       }
       const body = parts.join(" — ");
 
-      await this.notificationsService.createManyForUsers(
+      // Push : l'éligibilité a DÉJÀ été calculée ci-dessus (discipline, niveau,
+      // classe d'âge). Ce n'est donc pas une diffusion générale mais une
+      // notification personnelle — d'où le défaut passé à ON dans le catalogue.
+      await this.notificationsService.sendToUsers(
         eligibleIds,
         NotificationType.NEW_COMPETITION,
         title,
@@ -163,7 +166,8 @@ export class CompetitionEventNotificationService {
       const title = "Résultats disponibles";
       const body = `Les résultats de «${competition.title}» sont disponibles.`;
 
-      await this.notificationsService.createManyForUsers(
+      // Push : ne touche que ceux qui ont dansé, et c'est ce qu'ils attendent.
+      await this.notificationsService.sendToUsers(
         participantIds,
         NotificationType.COMPETITION_RESULTS,
         title,
