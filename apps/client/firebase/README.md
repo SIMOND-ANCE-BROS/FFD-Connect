@@ -27,19 +27,25 @@ rien à déposer ici pour elle.
 
 ## Comportement si un fichier manque
 
-`app.config.js` ne pose `googleServicesFile` que si le fichier existe vraiment
-sur disque, et ne charge les plugins `@react-native-firebase/*` que si au moins
-une plateforme est configurée. Conséquences :
+Il dépend de la variante :
 
-- fichier absent → build OK, **push inactives** sur cette variante, avertissement
-  au moment de l'évaluation de la config ;
-- fichier déposé → push actives au prochain build natif, **sans toucher à la
-  config**.
+- **`preview`, `beta`, `production`** (variantes distribuées) : les plugins
+  `@react-native-firebase/*`, l'entitlement APNs et `UIBackgroundModes` sont
+  **toujours** actifs, que le fichier soit présent ou non. Un prebuild/build sans
+  le fichier **échoue** (le plugin RNFB exige son fichier) — mieux qu'un binaire
+  distribué sans push. Hors builder EAS c'est la norme (le secret n'existe que
+  là-bas) : pour un prebuild local d'une de ces variantes, déposer le fichier ici.
+- **`development`** : `googleServicesFile` n'est posé et les plugins ne sont
+  chargés que si un fichier existe (push inactives sinon), pour que
+  `expo run:ios` marche sans config Firebase.
 
-Attention au cas mixte : si une seule des deux plateformes est configurée, les
-plugins Firebase sont actifs et un `prebuild`/build de l'autre plateforme
-**échouera** (le plugin RNFB exige son fichier). Un avertissement explicite le
-signale. Pour builder les deux plateformes, déposer les deux fichiers.
+Pourquoi pas « actif seulement si le fichier existe » partout : la
+`runtimeVersion` est une empreinte de la config évaluée. Le fichier n'existant
+que sur le builder EAS, l'empreinte du runner GitHub (sans Firebase) et celle
+du builder (avec) divergeaient, et EAS refusait le build (« Runtime version
+mismatch »). Le contenu du fichier est aussi exclu de l'empreinte
+(`fingerprint.config.js`) : **changer ce fichier exige un build natif lancé à la
+main**, aucune empreinte ne le détectera.
 
 ## Builds EAS / CI
 
