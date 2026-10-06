@@ -116,6 +116,8 @@ describe("useReportModalLogic", () => {
       expect.objectContaining({
         title: "Bug title",
         description: "Bug description",
+        // Plus de "0.0.1" en dur : version + build, variante, SHA, OTA.
+        appVersion: expect.stringMatching(/^1\.0\.0 \(85\) · /),
       }),
     );
   });

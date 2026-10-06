@@ -248,7 +248,7 @@ updates:
         update-types: ['version-update:semver-major']
       # Native module, SDK-pinned to ~7.11.0 in bundledNativeModules — majors AND
       # minors desync; patches stay inside the tilde range. Upgrade with a native
-      # build (runtimeVersion bump + EAS build).
+      # build (the fingerprint runtimeVersion changes by itself).
       - dependency-name: '@sentry/react-native'
         update-types:
           - 'version-update:semver-major'
