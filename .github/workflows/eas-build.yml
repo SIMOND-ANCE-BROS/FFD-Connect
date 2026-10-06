@@ -375,6 +375,63 @@ jobs:
         run: eas update --branch beta --environment preview --message "promote staging @ $(git rev-parse --short HEAD)"
 
   # ============================================================
+  # PROMOTION MANUELLE — staging → Google Play, test fermé (Android)
+  # Même bouton que promote-beta (action: build), en parallèle d'iOS : build
+  # natif Android `beta` puis `eas submit` sur la piste `alpha` (test fermé),
+  # selon submit.beta.android d'eas.json. Fonctionne en plan EAS gratuit.
+  # Prérequis : clé du compte de service Google « Play Store Submissions »
+  # stockée dans les credentials EAS (fr.ffdanse.connect.beta). Tant que
+  # releaseStatus vaut `draft`, la release reste à publier dans Play Console.
+  # Coût : un build Android EAS de plus par promotion (~2 $ ou 1 unité du quota).
+  # ============================================================
+  promote-beta-android:
+    name: Promote staging → Play closed test (Android)
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'build'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment:
+      name: testflight-beta
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: staging
+          # Pas de token dans .git/config : `eas build` archive le projet.
+          persist-credentials: false
+
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Setup EAS CLI
+        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Build Android beta
+        id: build
+        working-directory: apps/client
+        run: |
+          set -euo pipefail
+          eas build --platform android --profile beta --non-interactive --wait --json \
+            > "$RUNNER_TEMP/eas-build.json"
+          BUILD_ID=$(jq -r '.[0].id' "$RUNNER_TEMP/eas-build.json")
+          VERSION_CODE=$(jq -r '.[0].appBuildVersion' "$RUNNER_TEMP/eas-build.json")
+          echo "id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+          echo "## 🤖 Build Android beta $VERSION_CODE ($BUILD_ID)" >> "$GITHUB_STEP_SUMMARY"
+
+      # EXPO_PUBLIC_APP_ENV=beta : sans lui, app.config.js retombe sur la variante
+      # development et la CLI cherche la clé de fr.ffdanse.connect.dev.
+      - name: Submit to Google Play (closed test)
+        working-directory: apps/client
+        env:
+          EXPO_PUBLIC_APP_ENV: beta
+          BUILD_ID: ${{ steps.build.outputs.id }}
+        run: |
+          set -euo pipefail
+          eas submit --platform android --profile beta --id "$BUILD_ID" --non-interactive --wait
+          echo "✅ Envoyé sur la piste de test fermé Google Play" >> "$GITHUB_STEP_SUMMARY"
+
+  # ============================================================
   # MASTER — Production (réservé au lancement App Store public).
   # Full build only if native changes, OTA always.
   # ============================================================
