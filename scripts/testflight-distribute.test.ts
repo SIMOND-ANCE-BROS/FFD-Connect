@@ -13,6 +13,7 @@ import assert from 'assert';
 
 import {
   addToGroupBody,
+  describeAscError,
   findBuild,
   findGroupId,
   normalizeNotes,
@@ -139,6 +140,15 @@ test('corps JSON:API envoyes a App Store Connect', () => {
       relationships: { build: { data: { type: 'builds', id: 'b1' } } },
     },
   });
+});
+
+test('describeAscError : extrait errors[] et borne la longueur', () => {
+  const body = JSON.stringify({
+    errors: [{ code: 'ENTITY_ERROR', title: 'Conflit', detail: 'Deja soumis' }],
+  });
+  assert.strictEqual(describeAscError(body), 'ENTITY_ERROR — Conflit — Deja soumis');
+  assert.strictEqual(describeAscError('pas du json'), 'pas du json');
+  assert.strictEqual(describeAscError('x'.repeat(900)).length, 500);
 });
 
 console.log(failures === 0 ? '\n✓ tous les tests passent\n' : `\n✗ ${failures} test(s) en echec\n`);

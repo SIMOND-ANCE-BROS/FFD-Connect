@@ -225,8 +225,10 @@ jobs:
   #             EAS gratuit (le job `testflight` des EAS Workflows exige un plan
   #             payant). Le job attend ~1 h (build + traitement Apple) : minutes
   #             Actions gratuites, le repo est public.
-  #             Secrets requis : ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (clé API
-  #             App Store Connect, rôle App Manager).
+  #             Secrets requis, dans l'environnement `testflight-beta` (pas au
+  #             niveau du repo : relecteur obligatoire + branches restreintes) :
+  #             ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (clé API App Store Connect,
+  #             rôle App Manager).
   # ============================================================
   promote-beta:
     name: Promote staging → TestFlight beta (${{ inputs.action }})
@@ -234,9 +236,8 @@ jobs:
     runs-on: ubuntu-24.04
     # Build EAS (~20-30 min) + traitement Apple (jusqu'à 30 min) + marge.
     timeout-minutes: 120
-    # No reviewer: workflow_dispatch already requires a human to press the
-    # button. The environment is here for the deployment record — what went to
-    # TestFlight, when, from which SHA.
+    # The environment carries the deployment record (what went to TestFlight,
+    # when, from which SHA), a required reviewer, and the ASC_* secrets.
     environment:
       name: testflight-beta
     # Nécessaire pour créer la GitHub Release (changelog testeurs).
@@ -248,6 +249,9 @@ jobs:
           ref: staging
           # Historique complet + tags : le générateur remonte au dernier tag beta-*.
           fetch-depth: 0
+          # Pas de token dans .git/config : `eas build` archive le projet, et
+          # l'étape GitHub Release passe GH_TOKEN explicitement.
+          persist-credentials: false
 
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm

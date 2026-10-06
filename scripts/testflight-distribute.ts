@@ -131,6 +131,24 @@ export function reviewSubmissionBody(buildId: string) {
   };
 }
 
+/** Message d'erreur App Store Connect lisible et borne (errors[].title/detail). */
+export function describeAscError(body: string): string {
+  try {
+    const errors = (
+      JSON.parse(body) as { errors?: { code?: string; title?: string; detail?: string }[] }
+    ).errors;
+    if (Array.isArray(errors) && errors.length > 0) {
+      return errors
+        .map((e) => [e.code, e.title, e.detail].filter(Boolean).join(' — '))
+        .join(' | ')
+        .slice(0, 500);
+    }
+  } catch {
+    // corps non JSON : on retombe sur le texte brut
+  }
+  return body.slice(0, 500);
+}
+
 /** JWT ES256 signe avec la cle .p8. ieee-p1363 = format JOSE (r||s). */
 function makeToken(keyId: string, issuerId: string, p8: string): string {
   const now = Math.floor(Date.now() / 1000);
@@ -165,7 +183,7 @@ function client() {
     });
     if (!res.ok) {
       throw new Error(
-        `ASC ${init.method ?? 'GET'} ${pathname} → ${res.status}: ${await res.text()}`,
+        `ASC ${init.method ?? 'GET'} ${pathname} → ${res.status}: ${describeAscError(await res.text())}`,
       );
     }
     return res.status === 204 ? null : ((await res.json()) as unknown);
