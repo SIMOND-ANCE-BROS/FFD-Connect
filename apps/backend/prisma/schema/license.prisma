@@ -52,4 +52,9 @@ model LicenseRenewalDocument {
 
   @@index([requestId])
   @@index([type])
+  // Sert la purge de rétention (#62) : filtre sur le type ET tri/borne sur
+  // `createdAt`, en un seul parcours. `@@index([type])` seul obligeait à trier
+  // après coup. Il est conservé — le retirer serait un DROP, et les migrations
+  // restent strictement additives (ADR-0017).
+  @@index([type, createdAt])
 }

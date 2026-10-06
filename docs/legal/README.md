@@ -35,5 +35,17 @@ lancement grand public :
 - **Données de santé** (certificat médical, art. 9 RGPD) : le chiffrement applicatif
   renforcé est encore une cible, pas un acquis (#418).
 
+**Rétention des données de santé — désormais appliquée par le code** (#62). La durée
+annoncée au §5 de la politique n'était tenue par aucun mécanisme : rien ne supprimait
+jamais le fichier archivé ni les données extraites par OCR. Une purge s'exécute
+maintenant toutes les heures, et à chaque démarrage — le backend dort à
+`minReplicas=0`, et le démarrage est le seul instant dont on soit certain.
+
+L'échéance est calculée à partir de la date d'émission lue sur le certificat. **Quand
+l'OCR ne l'a pas trouvée**, elle est calculée depuis la date de dépôt sans compter la
+durée de validité : le document peut alors être supprimé jusqu'à un an plus tôt que
+nécessaire. C'est délibéré — la politique promet « au plus tard », donc supprimer en
+avance la respecte, tandis que supposer une émission tardive risquerait de la violer.
+
 Les traitements décrits reflètent le code au moment de la rédaction ; à tenir à jour
 à chaque évolution des données collectées ou des sous-traitants.

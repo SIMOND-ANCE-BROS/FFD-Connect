@@ -14,7 +14,8 @@ export const RENEWAL_BLOB_DELETE_TIMEOUT_MS = 8_000;
 export type RenewalDocumentCleanupContext =
   | "account-deletion"
   | "document-replaced"
-  | "upload-rollback";
+  | "upload-rollback"
+  | "retention-purge";
 
 /**
  * Best-effort deletion of license renewal document files (medical
@@ -43,20 +44,35 @@ export class RenewalDocumentFileCleaner {
     private readonly circuitBreaker: CircuitBreakerService,
   ) {}
 
-  /** Deletes all given files in parallel; resolves once every attempt settled. */
+  /**
+   * Deletes all given files in parallel; resolves once every attempt settled.
+   *
+   * Returns the references that are known to be gone. Callers that merely
+   * cleaned up after a committed DB change can ignore it — the retention purge
+   * (#62) uses it to drop only the rows whose file really went away, so a
+   * failed delete is retried on the next pass instead of leaving an orphan
+   * blob nothing points to any more.
+   *
+   * A reference whose storage is not configured counts as deleted: nothing was
+   * ever persisted for it.
+   */
   async deleteFiles(
     references: readonly string[],
     context: RenewalDocumentCleanupContext,
-  ): Promise<void> {
-    if (references.length === 0) return;
+  ): Promise<ReadonlySet<string>> {
+    const deleted = new Set<string>();
+    if (references.length === 0) return deleted;
     const results = await Promise.allSettled(
       references.map((reference) => this.deleteOne(reference)),
     );
     results.forEach((result, index) => {
       if (result.status === "rejected") {
         this.reportFailure(references[index], context, result.reason);
+        return;
       }
+      deleted.add(references[index]);
     });
+    return deleted;
   }
 
   private async deleteOne(reference: string): Promise<void> {

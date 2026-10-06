@@ -11,9 +11,15 @@ import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { OcrService } from "../utils/ocr.service";
+import { MEDICAL_CERTIFICATE_VALIDITY_MONTHS } from "./medical-certificate-retention.util";
 
-/** Âge maximum du certificat médical en mois (règle fédération : certificat récent). */
-const MEDICAL_CERTIFICATE_MAX_AGE_MONTHS = 12;
+/**
+ * Âge maximum du certificat médical en mois (règle fédération : certificat
+ * récent). Importé plutôt que redéclaré : refuser un certificat parce qu'il est
+ * trop vieux et calculer la date de sa purge (#62) reposent sur la MÊME notion
+ * de validité, et deux constantes finiraient par diverger.
+ */
+const MEDICAL_CERTIFICATE_MAX_AGE_MONTHS = MEDICAL_CERTIFICATE_VALIDITY_MONTHS;
 
 @Injectable()
 export class LicenseRenewalService {

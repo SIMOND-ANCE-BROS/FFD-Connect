@@ -98,7 +98,9 @@ describe("RenewalDocumentFileCleaner", () => {
     expect(blobStorage.deleteFile).toHaveBeenCalledTimes(3);
 
     pending.forEach((resolve) => resolve(true));
-    await expect(done).resolves.toBeUndefined();
+    await expect(done).resolves.toEqual(
+      new Set(["document-1.jpg", "document-2.jpg", "document-3.jpg"]),
+    );
   });
 
   it("applique un timeout sur l'appel blob", async () => {
@@ -122,12 +124,15 @@ describe("RenewalDocumentFileCleaner", () => {
       .mockRejectedValueOnce(new Error("network down"))
       .mockResolvedValueOnce(true);
 
+    // Seul le fichier réellement parti est rapporté : la purge de rétention
+    // (#62) s'en sert pour ne PAS effacer la ligne qui pointe encore vers un
+    // blob survivant, et le retenter au passage suivant.
     await expect(
       cleaner.deleteFiles(
         ["document-1.jpg", "document-2.jpg"],
         "document-replaced",
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual(new Set(["document-2.jpg"]));
 
     expect(blobStorage.deleteFile).toHaveBeenCalledTimes(2);
     expect(errorLog).toHaveBeenCalledTimes(1);
@@ -155,7 +160,7 @@ describe("RenewalDocumentFileCleaner", () => {
 
     await expect(
       cleaner.deleteFiles(["document-1.jpg"], "upload-rollback"),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual(new Set());
 
     expect(captureMessage).toHaveBeenCalledWith(
       "Renewal document file deletion failed",
@@ -206,7 +211,7 @@ describe("RenewalDocumentFileCleaner", () => {
 
     await expect(
       cleaner.deleteFiles(["../etc/passwd"], "account-deletion"),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual(new Set());
 
     expect(rm).not.toHaveBeenCalled();
     expect(errorLog).toHaveBeenCalledTimes(1);
