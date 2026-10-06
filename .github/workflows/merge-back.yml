@@ -20,6 +20,7 @@ jobs:
   merge-back:
     name: Cascade merge to child branches
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     permissions:
       contents: write
       pull-requests: write
@@ -50,6 +51,22 @@ jobs:
 
             if git merge-base --is-ancestor "origin/$SOURCE" "origin/$TARGET" 2>/dev/null; then
               echo "$SOURCE is already merged into $TARGET — nothing to do"
+              return 0
+            fi
+
+            # After a normal promotion (develop -> staging), staging is ahead of
+            # develop only by the promotion's merge commit: no content to bring
+            # back. Opening a PR for it costs a full CI run, then a develop push
+            # that re-runs CI and the EAS gate, for nothing. Exact test: merge
+            # SOURCE into TARGET in memory (git >= 2.38, ubuntu-24.04 ships
+            # newer) and skip only if the result is TARGET's tree, unchanged.
+            # That also catches content carried by a merge commit alone (a
+            # conflict resolution), which `git log --no-merges` would miss. A
+            # conflict (exit 1) or any error falls through to opening the PR.
+            # The ancestor check above stays first: it is the #45 safeguard.
+            if MERGED=$(git merge-tree --write-tree "origin/$TARGET" "origin/$SOURCE" 2>/dev/null) \
+              && [ "$(echo "$MERGED" | head -1)" = "$(git rev-parse "origin/$TARGET^{tree}")" ]; then
+              echo "Merging $SOURCE would not change $TARGET's tree — nothing to bring back"
               return 0
             fi
 

@@ -5,19 +5,12 @@ import { Alert, Platform } from "react-native";
 import rnBiometrics, { BiometryTypes } from "../../../utils/biometrics-adapter";
 import * as Device from "expo-device";
 import * as ImagePicker from "expo-image-picker";
-import * as Updates from "expo-updates";
-import {
-  APP_BUILD,
-  APP_ENV_LABEL,
-  APP_RUNTIME_VERSION,
-  APP_VERSION,
-  envLabel,
-  STATIC_BASE_URL,
-} from "../../../config";
+import { STATIC_BASE_URL } from "../../../config";
 import { ThemePreference, useTheme } from "../../../context/ThemeContext";
 import { useBackendHealth } from "../../../hooks/useBackendHealth";
 import { RootStackParamList } from "../../../navigation/types";
 import { useAuthStore } from "../../../stores/auth.store";
+import { getAppIdentity } from "../../../utils/appIdentity";
 import { createLogger } from "../../../utils/logger";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 import { UserRole } from "../../auth/services/AuthService";
@@ -248,28 +241,10 @@ export const useSettingsLogic = ({
     }
     const statusText = isOnline ? "En ligne 🟢" : "Hors ligne 🔴";
 
-    // Infos réellement utiles au support/debug. La source de vérité runtime est
-    // expo-updates (canal + bundle OTA réellement en cours), PAS les variables
-    // build-time qui divergent entre binaire et OTA (cf. bug env « Développement »).
-    const appLine = `FFD Connect v${APP_VERSION}${APP_BUILD ? ` (build ${APP_BUILD})` : ""}`;
-
-    // Environnement : canal OTA runtime en priorité, fallback build-time.
-    const env = Updates.channel ? envLabel(Updates.channel) : APP_ENV_LABEL;
-    const runtime = Updates.runtimeVersion || APP_RUNTIME_VERSION || "?";
-
-    // Quel bundle JS tourne réellement (crucial pour « es-tu sur la dernière OTA ? »).
-    let bundleLine: string;
-    if (!Updates.isEnabled) {
-      bundleLine = "Bundle : dev (Metro, pas d'OTA)";
-    } else if (Updates.isEmbeddedLaunch || !Updates.updateId) {
-      bundleLine = "Bundle : intégré au build (aucune OTA appliquée)";
-    } else {
-      const shortId = Updates.updateId.slice(0, 8);
-      const published = Updates.createdAt
-        ? Updates.createdAt.toLocaleString("fr-FR")
-        : "?";
-      bundleLine = `OTA : ${shortId} (publiée le ${published})`;
-    }
+    // Mêmes identifiants que TestFlight / Play, les tags GitHub et EAS : voir
+    // utils/appIdentity. Lus au runtime (canal + bundle OTA réellement en
+    // cours), pas sur les variables build-time qui divergent sous OTA.
+    const id = getAppIdentity();
 
     const osVersion = Device.osVersion ?? "?";
     const deviceName = Device.modelName ?? "Appareil inconnu";
@@ -284,10 +259,11 @@ export const useSettingsLogic = ({
       : "(non configuré)";
 
     const lines = [
-      appLine,
-      `Environnement : ${env}`,
-      `Runtime : ${runtime}`,
-      bundleLine,
+      `FFD Connect ${id.version}`,
+      `Environnement : ${id.environment}`,
+      `Code : ${id.code}`,
+      `Mise à jour : ${id.update}`,
+      `Compatibilité OTA : ${id.otaCompatibility}`,
       `Système : ${osLabel} ${osVersion}`,
       `Appareil : ${deviceName}`,
       `Backend : ${statusText}`,

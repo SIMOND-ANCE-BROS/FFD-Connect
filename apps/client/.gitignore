@@ -110,3 +110,9 @@ google-services*.json
 test-results/
 playwright-report/
 src/api/generated/
+
+# Dossiers natifs générés (CNG / prebuild). Ignorés pour que l'empreinte
+# runtimeVersion (fingerprint) ne les compte pas : un ios/ resté d'un build
+# local donnerait une empreinte différente de celle d'EAS.
+/ios
+/android
