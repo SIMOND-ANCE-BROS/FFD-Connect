@@ -37,6 +37,15 @@ concurrency:
   # already paid for (~2 USD) and would leave it without submit/tag/distribution.
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
+env:
+  # Platforms the AUTOMATIC native builds (build-staging, build-production)
+  # target, space-separated (ios, android). Single source of truth: the gate
+  # checks a fingerprint per platform listed here and the build jobs build from
+  # the same list, so the two cannot drift. Android is not built automatically
+  # yet (the manual Play promotion lives in promote-beta*): enabling it on
+  # preview/production is `ios android` here and nothing else.
+  AUTO_BUILD_PLATFORMS: ios
+
 jobs:
   # ============================================================
   # GATE — Only proceed if CI passed and client code changed
@@ -57,6 +66,10 @@ jobs:
     outputs:
       # The fingerprint decision when it could be made, else the path-based one.
       native: ${{ steps.fingerprint.outputs.native || steps.check.outputs.native }}
+      # Space-separated subset of AUTO_BUILD_PLATFORMS still lacking a build of
+      # the current fingerprint. Set only when the fingerprint step decided
+      # native=true per platform; empty = build every platform (fallbacks).
+      native_platforms: ${{ steps.fingerprint.outputs.native_platforms }}
       client_changed: ${{ steps.check.outputs.client_changed }}
       branch: ${{ github.event.workflow_run.head_branch }}
     steps:
@@ -208,45 +221,71 @@ jobs:
             fallback "runtimeVersion is not fingerprint-based on this commit"
           fi
 
-          # Profile == channel for both (eas.json). iOS only: Android builds are
-          # disabled during the MVP beta (see build-staging / build-production).
+          # Profile == channel for both (eas.json).
           case "$BRANCH" in
             staging) PROFILE=preview ;;
             master) PROFILE=production ;;
             *) fallback "no build profile for branch $BRANCH" ;;
           esac
 
-          # --build-profile applies the profile's env (EXPO_PUBLIC_APP_ENV…),
-          # which the fingerprint depends on: same hash `eas build` computes.
-          HASH=$(eas fingerprint:generate --build-profile "$PROFILE" --platform ios --json --non-interactive \
-            < /dev/null 2> /dev/null | sed -n '/^{/,$p' | jq -r '.hash // empty' 2> /dev/null)
-          [ -n "$HASH" ] || fallback "could not compute the $PROFILE fingerprint"
-          echo "Fingerprint ($PROFILE, ios): $HASH"
+          # The fingerprint differs per platform (native dirs, plugins, config):
+          # an Android-only native change leaves the iOS hash untouched, so each
+          # platform the build jobs build gets its own check. native=true as soon
+          # as ONE of them has no build carrying its hash, and only the missing
+          # ones are listed in native_platforms.
+          [ -n "${AUTO_BUILD_PLATFORMS// /}" ] || fallback "AUTO_BUILD_PLATFORMS is empty"
+          missing=""
+          for platform in $AUTO_BUILD_PLATFORMS; do
+            case "$platform" in
+              ios | android) ;;
+              *) fallback "unknown platform '$platform' in AUTO_BUILD_PLATFORMS" ;;
+            esac
 
-          # A build already queued or running for the same fingerprint (a
-          # previous push) counts too: do not pay twice for the same binary.
-          # Caveat: if that pending build later errors, this push's OTA reaches
-          # nobody until a new build (ota-staging's check-ota-reach warns).
-          # Only a JSON ARRAY is an answer: `length` of an error object would
-          # count its keys and wrongly skip the build. Any error → build.
-          for status in finished in-progress in-queue new; do
-            count=$(eas build:list --channel "$PROFILE" --build-profile "$PROFILE" --platform ios \
-              --status "$status" --runtime-version "$HASH" --limit 1 --json --non-interactive \
-              < /dev/null 2> /dev/null | sed -n '/^[[{]/,$p' \
-              | jq 'if type == "array" then length else error("not an array") end' 2> /dev/null)
-            if [ -z "$count" ]; then
-              echo "::warning::could not list EAS builds - native build (fail-safe)"
-              echo "native=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            if [ "$count" -gt 0 ]; then
-              echo "native=false" >> "$GITHUB_OUTPUT"
-              echo "A $status \`$PROFILE\` build already has runtime ${HASH:0:7}: OTA only, no native build." | tee -a "$summary"
-              exit 0
+            # --build-profile applies the profile's env (EXPO_PUBLIC_APP_ENV…),
+            # which the fingerprint depends on: same hash `eas build` computes.
+            HASH=$(eas fingerprint:generate --build-profile "$PROFILE" --platform "$platform" --json --non-interactive \
+              < /dev/null 2> /dev/null | sed -n '/^{/,$p' | jq -r '.hash // empty' 2> /dev/null)
+            [ -n "$HASH" ] || fallback "could not compute the $PROFILE $platform fingerprint"
+            echo "Fingerprint ($PROFILE, $platform): $HASH"
+
+            # A build already queued or running for the same fingerprint (a
+            # previous push) counts too: do not pay twice for the same binary.
+            # Caveat: if that pending build later errors, this push's OTA reaches
+            # nobody until a new build (ota-staging's check-ota-reach warns).
+            # Only a JSON ARRAY is an answer: `length` of an error object would
+            # count its keys and wrongly skip the build. Any error → build.
+            found=""
+            for status in finished in-progress in-queue new; do
+              count=$(eas build:list --channel "$PROFILE" --build-profile "$PROFILE" --platform "$platform" \
+                --status "$status" --runtime-version "$HASH" --limit 1 --json --non-interactive \
+                < /dev/null 2> /dev/null | sed -n '/^[[{]/,$p' \
+                | jq 'if type == "array" then length else error("not an array") end' 2> /dev/null)
+              if [ -z "$count" ]; then
+                echo "::warning::could not list EAS $platform builds - native $platform build (fail-safe)"
+                break
+              fi
+              if [ "$count" -gt 0 ]; then
+                found="$status"
+                break
+              fi
+            done
+            if [ -n "$found" ]; then
+              echo "$platform: a $found \`$PROFILE\` build already has runtime ${HASH:0:7}, OTA is enough." | tee -a "$summary"
+            else
+              missing="$missing $platform"
+              echo "$platform: no \`$PROFILE\` build has runtime ${HASH:0:7}, native build needed (~2 USD)." | tee -a "$summary"
             fi
           done
-          echo "native=true" >> "$GITHUB_OUTPUT"
-          echo "No \`$PROFILE\` build has runtime ${HASH:0:7}: native build needed (~2 USD)." | tee -a "$summary"
+
+          # Written last and together: a crash above leaves both outputs unset,
+          # so the job falls back to the path-based decision for every platform.
+          missing="${missing# }"
+          if [ -n "$missing" ]; then
+            echo "native_platforms=$missing" >> "$GITHUB_OUTPUT"
+            echo "native=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "native=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # ============================================================
   # DEVELOP — OTA only (devs rebuild dev client manually for
@@ -311,9 +350,20 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Build preview (iOS only — Android disabled during MVP beta)
+      # Only the platforms the gate found without a build of the current
+      # fingerprint; every AUTO_BUILD_PLATFORMS entry when it fell back.
+      - name: Build preview
         working-directory: apps/client
-        run: eas build --profile preview --platform ios --non-interactive
+        env:
+          NATIVE_PLATFORMS: ${{ needs.gate.outputs.native_platforms }}
+        run: |
+          set -euo pipefail
+          # Unquoted on purpose: split the space-separated list into "$@".
+          # shellcheck disable=SC2086
+          set -- ${NATIVE_PLATFORMS:-$AUTO_BUILD_PLATFORMS}
+          if [ "$#" -gt 1 ]; then PLATFORM=all; else PLATFORM="$1"; fi
+          echo "Building preview for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
+          eas build --profile preview --platform "$PLATFORM" --non-interactive
 
   ota-staging:
     name: OTA Update (preview)
@@ -590,9 +640,20 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Build production (iOS only — Android disabled during MVP beta)
+      # Only the platforms the gate found without a build of the current
+      # fingerprint; every AUTO_BUILD_PLATFORMS entry when it fell back.
+      - name: Build production
         working-directory: apps/client
-        run: eas build --profile production --platform ios --non-interactive
+        env:
+          NATIVE_PLATFORMS: ${{ needs.gate.outputs.native_platforms }}
+        run: |
+          set -euo pipefail
+          # Unquoted on purpose: split the space-separated list into "$@".
+          # shellcheck disable=SC2086
+          set -- ${NATIVE_PLATFORMS:-$AUTO_BUILD_PLATFORMS}
+          if [ "$#" -gt 1 ]; then PLATFORM=all; else PLATFORM="$1"; fi
+          echo "Building production for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
+          eas build --profile production --platform "$PLATFORM" --non-interactive
 
   ota-production:
     name: OTA Update (production)
