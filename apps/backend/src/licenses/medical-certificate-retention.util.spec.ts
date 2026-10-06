@@ -1,9 +1,7 @@
 import {
   HEALTH_DATA_RETENTION_MONTHS,
   MEDICAL_CERTIFICATE_VALIDITY_MONTHS,
-  isMedicalCertificateDue,
   medicalCertificatePurgeDueAt,
-  purgeCandidateCutoff,
 } from "./medical-certificate-retention.util";
 
 const at = (iso: string) => new Date(iso);
@@ -62,87 +60,85 @@ describe("medical certificate retention", () => {
       expect(due.toISOString().slice(0, 10)).toBe("2027-03-10");
     });
 
-    // Sans bornage, `setMonth` ferait déborder le 31 sur le mois suivant et on
-    // conserverait la donnée quelques jours de plus que promis.
-    it("borne le jour au dernier jour du mois d'arrivée plutôt que de déborder", () => {
-      const due = medicalCertificatePurgeDueAt({
-        createdAt: at("2026-08-31T00:00:00Z"),
-        ocrData: null,
+    /**
+     * Les décalages valent toujours 12 ou 24 mois, donc le mois d'arrivée a la
+     * même longueur que celui de départ — sauf au 29 février. Le bornage ne
+     * sert QUE là ; les cas « 31 du mois » ci-dessous vérifient justement qu'il
+     * ne se déclenche pas à tort.
+     */
+    /**
+     * `ocrData` vient de l'OCR d'un document FOURNI PAR L'UTILISATEUR : il en
+     * contrôle le contenu. Sans plafond, une date future rendrait la donnée de
+     * santé impurgeable — l'engagement publié contourné par la seule partie qui
+     * y a intérêt. Et ce n'est pas qu'une attaque : la regex retient la
+     * PREMIÈRE date du document, donc un « valable jusqu'au 31/12/2027 » suffit
+     * à produire spontanément une date d'émission future.
+     */
+    describe("date d'émission postérieure au dépôt (falsifiée ou mal lue)", () => {
+      it.each([
+        ["un an plus tard", "2027-10-06T00:00:00Z"],
+        ["un siècle plus tard", "2099-01-01T00:00:00Z"],
+        ["absurde", "9999-01-01T00:00:00Z"],
+      ])("la ramène au dépôt — %s", (_label, hostileDate) => {
+        const due = medicalCertificatePurgeDueAt({
+          createdAt: at("2026-10-06T00:00:00Z"),
+          ocrData: { date: hostileDate },
+        });
+
+        // Plafond : dépôt + validité + rétention, et jamais au-delà.
+        expect(due.toISOString().slice(0, 10)).toBe("2028-10-06");
       });
 
-      // 31 août + 12 mois → 31 août, mois qui existe : pas de bornage ici.
-      expect(due.toISOString().slice(0, 10)).toBe("2027-08-31");
+      it("laisse intacte une date antérieure au dépôt, cas normal", () => {
+        const due = medicalCertificatePurgeDueAt({
+          createdAt: at("2026-10-06T00:00:00Z"),
+          ocrData: { date: "2026-09-01T00:00:00Z" },
+        });
 
-      const dueFromLongMonth = medicalCertificatePurgeDueAt({
-        createdAt: at("2026-12-31T00:00:00Z"),
-        ocrData: { date: "2024-08-31T00:00:00Z" },
+        expect(due.toISOString().slice(0, 10)).toBe("2028-09-01");
       });
-
-      // 31 août 2024 + 24 mois → 31 août 2026, et surtout pas le 1er septembre.
-      expect(dueFromLongMonth.toISOString().slice(0, 10)).toBe("2026-08-31");
     });
 
-    it("gère le 29 février en ramenant au 28", () => {
-      const due = medicalCertificatePurgeDueAt({
-        createdAt: at("2028-02-29T00:00:00Z"),
-        ocrData: null,
-      });
-
-      expect(due.toISOString().slice(0, 10)).toBe("2029-02-28");
-    });
-  });
-
-  describe("isMedicalCertificateDue", () => {
-    const document = {
-      createdAt: at("2026-03-10T00:00:00Z"),
-      ocrData: null,
-    };
-
-    it("n'est pas dû la veille de l'échéance", () => {
+    it("conserve le 31 quand le mois d'arrivée le permet", () => {
       expect(
-        isMedicalCertificateDue(document, at("2027-03-09T23:59:59Z")),
-      ).toBe(false);
-    });
-
-    it("est dû à l'instant exact de l'échéance", () => {
-      expect(
-        isMedicalCertificateDue(document, at("2027-03-10T00:00:00Z")),
-      ).toBe(true);
-    });
-
-    it("reste dû bien après", () => {
-      expect(
-        isMedicalCertificateDue(document, at("2030-01-01T00:00:00Z")),
-      ).toBe(true);
-    });
-  });
-
-  describe("purgeCandidateCutoff", () => {
-    // La requête SQL ne sait pas lire `ocrData` : elle ne peut filtrer que sur
-    // `createdAt`. Ce seuil doit donc être assez large pour ne rater AUCUN
-    // document dû, quelle que soit sa date d'émission.
-    it("remonte exactement de la rétention", () => {
-      expect(
-        purgeCandidateCutoff(at("2027-03-10T00:00:00Z"))
+        medicalCertificatePurgeDueAt({
+          createdAt: at("2026-08-31T00:00:00Z"),
+          ocrData: null,
+        })
           .toISOString()
           .slice(0, 10),
-      ).toBe("2026-03-10");
+      ).toBe("2027-08-31");
+
+      expect(
+        medicalCertificatePurgeDueAt({
+          createdAt: at("2026-12-31T00:00:00Z"),
+          ocrData: { date: "2024-08-31T00:00:00Z" },
+        })
+          .toISOString()
+          .slice(0, 10),
+      ).toBe("2026-08-31");
     });
 
-    it("ne rate aucun document dû, émission connue ou non", () => {
-      const now = at("2027-06-01T00:00:00Z");
-      const cutoff = purgeCandidateCutoff(now);
+    // LE seul cas où `Math.min(day, lastDayOfTargetMonth)` mord réellement.
+    it("ramène le 29 février au 28 d'une année non bissextile", () => {
+      expect(
+        medicalCertificatePurgeDueAt({
+          createdAt: at("2028-02-29T00:00:00Z"),
+          ocrData: null,
+        })
+          .toISOString()
+          .slice(0, 10),
+      ).toBe("2029-02-28");
 
-      // Un document dû a forcément été déposé avant le seuil : on le vérifie
-      // sur le cas le plus défavorable, une émission aussi tardive que possible.
-      const latestPossibleIssue = {
-        createdAt: at("2026-05-31T00:00:00Z"),
-        ocrData: { date: "2026-05-31T00:00:00Z" },
-      };
-      expect(isMedicalCertificateDue(latestPossibleIssue, now)).toBe(false);
-      expect(latestPossibleIssue.createdAt.getTime()).toBeLessThan(
-        cutoff.getTime(),
-      );
+      // Même bornage sur la branche « date connue » (+24 mois).
+      expect(
+        medicalCertificatePurgeDueAt({
+          createdAt: at("2032-06-01T00:00:00Z"),
+          ocrData: { date: "2032-02-29T00:00:00Z" },
+        })
+          .toISOString()
+          .slice(0, 10),
+      ).toBe("2034-02-28");
     });
   });
 

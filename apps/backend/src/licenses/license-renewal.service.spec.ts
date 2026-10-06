@@ -106,7 +106,7 @@ describe("LicenseRenewalService", () => {
     mockPrisma.$transaction.mockImplementation((ops: Promise<unknown>[]) =>
       Promise.all(ops),
     );
-    mockCleaner.deleteFiles.mockResolvedValue(undefined);
+    mockCleaner.deleteFiles.mockResolvedValue(new Set());
   });
 
   describe("startRenewalRequest", () => {

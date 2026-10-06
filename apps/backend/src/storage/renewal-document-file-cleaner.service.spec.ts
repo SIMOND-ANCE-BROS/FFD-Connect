@@ -119,7 +119,7 @@ describe("RenewalDocumentFileCleaner", () => {
     }
   });
 
-  it("échec : ne lève pas, error log + Sentry avec la seule référence du fichier ; les autres sont tentés", async () => {
+  it("échec : ne lève pas, error log + un SEUL Sentry agrégé ; les autres sont tentés", async () => {
     blobStorage.deleteFile
       .mockRejectedValueOnce(new Error("network down"))
       .mockResolvedValueOnce(true);
@@ -150,7 +150,11 @@ describe("RenewalDocumentFileCleaner", () => {
           rgpd: "file-deletion-failed",
           cleanup_context: "document-replaced",
         },
-        extra: { fileReference: "document-1.jpg", error: "network down" },
+        extra: {
+          failureCount: 1,
+          fileReferences: ["document-1.jpg"],
+          errors: ["network down"],
+        },
       },
     );
   });
@@ -182,13 +186,24 @@ describe("RenewalDocumentFileCleaner", () => {
     expect(captureMessage).not.toHaveBeenCalled();
   });
 
-  it("stockage blob non configuré : rien n'a été persisté, aucun appel", async () => {
+  /**
+   * Un rollback d'upload tourne dans la MÊME configuration que l'upload : « pas
+   * de stockage » y signifie bien « rien n'a été persisté ». La purge de
+   * rétention, elle, tourne un an plus tard — ça peut tout aussi bien signifier
+   * « la variable d'environnement a disparu ». Compter ce cas comme une
+   * suppression ferait effacer la ligne et abandonner le certificat dans le
+   * conteneur, sans plus aucun pointeur. D'où un échec, pas un succès.
+   */
+  it("stockage blob non configuré : échec remonté, surtout pas un succès silencieux", async () => {
     blobStorage.isEnabled.mockReturnValue(false);
 
-    await cleaner.deleteFiles(["document-1.jpg"], "account-deletion");
+    await expect(
+      cleaner.deleteFiles(["document-1.jpg"], "retention-purge"),
+    ).resolves.toEqual(new Set());
 
     expect(circuitBreaker.fire).not.toHaveBeenCalled();
     expect(blobStorage.deleteFile).not.toHaveBeenCalled();
+    expect(captureMessage).toHaveBeenCalledTimes(1);
   });
 
   it("référence historique (chemin disque) : suppression locale confinée à uploads/", async () => {

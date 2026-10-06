@@ -54,13 +54,26 @@ function addMonths(from: Date, months: number): Date {
   return result;
 }
 
-/** Date d'émission lue dans l'OCR, ou `null` si absente ou illisible. */
-function issuedAtOf(ocrData: unknown): Date | null {
+/**
+ * Date d'émission lue dans l'OCR, ou `null` si absente ou illisible.
+ *
+ * **PLAFONNÉE À LA DATE DE DÉPÔT, ET C'EST ESSENTIEL.** Cette valeur vient de
+ * l'OCR d'un document fourni par l'utilisateur : il en contrôle donc le contenu.
+ * Sans plafond, un certificat portant une date future — falsifiée, ou simplement
+ * mal lue (« 01/01/2099 ») — repousserait l'échéance d'autant, et la donnée de
+ * santé ne serait JAMAIS purgée. Soit exactement l'inverse de l'engagement
+ * publié, déclenché par la seule partie qui a intérêt à le contourner.
+ *
+ * Un certificat ne peut pas avoir été émis après avoir été déposé. Une date
+ * postérieure est donc du bruit, et on retient le dépôt.
+ */
+function issuedAtOf(ocrData: unknown, uploadedAt: Date): Date | null {
   if (typeof ocrData !== "object" || ocrData === null) return null;
   const raw = (ocrData as { date?: unknown }).date;
   if (typeof raw !== "string" || raw.length === 0) return null;
   const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.getTime() > uploadedAt.getTime() ? uploadedAt : parsed;
 }
 
 /**
@@ -70,6 +83,11 @@ function issuedAtOf(ocrData: unknown): Date | null {
  *
  * - **Date d'émission connue** → `émission + validité + rétention`. On tient le
  *   document exactement aussi longtemps que l'engagement l'autorise.
+ *
+ * - **Date postérieure au dépôt** (impossible, donc falsifiée ou mal lue) → elle
+ *   est ramenée au dépôt, ce qui plafonne l'échéance à `dépôt + validité +
+ *   rétention`. Voir {@link issuedAtOf} : sans ce plafond, la purge serait
+ *   contournable par celui-là même qu'elle protège.
  *
  * - **Date absente ou illisible** (l'OCR échoue, et le code d'upload accepte ce
  *   cas) → `dépôt + rétention`, sans compter la validité. Un certificat est
@@ -84,7 +102,7 @@ function issuedAtOf(ocrData: unknown): Date | null {
 export function medicalCertificatePurgeDueAt(
   document: RetainableMedicalDocument,
 ): Date {
-  const issuedAt = issuedAtOf(document.ocrData);
+  const issuedAt = issuedAtOf(document.ocrData, document.createdAt);
   if (issuedAt === null) {
     return addMonths(document.createdAt, HEALTH_DATA_RETENTION_MONTHS);
   }
@@ -92,27 +110,4 @@ export function medicalCertificatePurgeDueAt(
     issuedAt,
     MEDICAL_CERTIFICATE_VALIDITY_MONTHS + HEALTH_DATA_RETENTION_MONTHS,
   );
-}
-
-/** `true` si le document a dépassé son échéance à l'instant `now`. */
-export function isMedicalCertificateDue(
-  document: RetainableMedicalDocument,
-  now: Date,
-): boolean {
-  return medicalCertificatePurgeDueAt(document).getTime() <= now.getTime();
-}
-
-/**
- * Âge minimal, en mois, qu'un document doit avoir pour être ne serait-ce que
- * CANDIDAT à la purge — sert à borner la requête SQL.
- *
- * C'est la plus petite échéance possible, celle du cas « date illisible ».
- * Filtrer sur `createdAt` plus récent que ça serait charger des lignes qui ne
- * peuvent pas être dues ; filtrer plus large ne raterait rien de plus.
- */
-export const MIN_AGE_BEFORE_PURGE_MONTHS = HEALTH_DATA_RETENTION_MONTHS;
-
-/** Borne `createdAt` au-delà de laquelle un document ne peut pas être dû. */
-export function purgeCandidateCutoff(now: Date): Date {
-  return addMonths(now, -MIN_AGE_BEFORE_PURGE_MONTHS);
 }

@@ -65,13 +65,18 @@ export class RenewalDocumentFileCleaner {
     const results = await Promise.allSettled(
       references.map((reference) => this.deleteOne(reference)),
     );
+    const failures: Array<{ reference: string; error: string }> = [];
     results.forEach((result, index) => {
       if (result.status === "rejected") {
-        this.reportFailure(references[index], context, result.reason);
+        failures.push({
+          reference: references[index],
+          error: getErrorMessage(result.reason),
+        });
         return;
       }
       deleted.add(references[index]);
     });
+    if (failures.length > 0) this.reportFailures(failures, context);
     return deleted;
   }
 
@@ -80,7 +85,15 @@ export class RenewalDocumentFileCleaner {
       await this.deleteLegacyLocalFile(reference);
       return;
     }
-    if (!this.blobStorage.isEnabled()) return;
+    if (!this.blobStorage.isEnabled()) {
+      // Volontairement une ERREUR, pas un succès silencieux. Pour un rollback
+      // d'upload, « stockage non configuré » veut bien dire « rien n'a été
+      // persisté ». Pour la purge de rétention, qui s'exécute un an plus tard,
+      // ça peut aussi vouloir dire « la variable d'environnement a disparu » —
+      // et traiter ce cas comme un succès ferait effacer la ligne en laissant
+      // le certificat médical dans le conteneur, sans plus aucun pointeur.
+      throw new Error("blob storage not configured — nothing deleted");
+    }
     await this.circuitBreaker.fire("azure-blob", () =>
       withTimeout(
         this.blobStorage.deleteFile(
@@ -101,19 +114,36 @@ export class RenewalDocumentFileCleaner {
     await fsp.rm(absolute, { force: true });
   }
 
-  private reportFailure(
-    reference: string,
+  /**
+   * UN SEUL évènement Sentry par appel, quel que soit le nombre d'échecs.
+   *
+   * La purge de rétention traite jusqu'à 200 fichiers d'un coup : une panne de
+   * stockage produisait un évènement par fichier, à chaque passage horaire ET à
+   * chaque démarrage à froid — et le backend se réveille à la moindre requête.
+   * Le quota Sentry y passait en une après-midi, pour une seule et même panne.
+   *
+   * Le journal, lui, garde une ligne par fichier : c'est là qu'on va chercher
+   * les références à nettoyer à la main.
+   */
+  private reportFailures(
+    failures: ReadonlyArray<{ reference: string; error: string }>,
     context: RenewalDocumentCleanupContext,
-    reason: unknown,
   ): void {
-    const errorMessage = getErrorMessage(reason);
-    this.logger.error(
-      `Renewal document file deletion failed (${context}) for "${reference}" — manual cleanup required: ${errorMessage}`,
-    );
+    failures.forEach(({ reference, error }) => {
+      this.logger.error(
+        `Renewal document file deletion failed (${context}) for "${reference}" — manual cleanup required: ${error}`,
+      );
+    });
     Sentry.captureMessage("Renewal document file deletion failed", {
       level: "error",
       tags: { rgpd: "file-deletion-failed", cleanup_context: context },
-      extra: { fileReference: reference, error: errorMessage },
+      extra: {
+        failureCount: failures.length,
+        // Les références sont des noms de blob opaques : aucune donnée
+        // personnelle, de quoi retrouver les orphelins.
+        fileReferences: failures.map((failure) => failure.reference),
+        errors: [...new Set(failures.map((failure) => failure.error))],
+      },
     });
   }
 }
