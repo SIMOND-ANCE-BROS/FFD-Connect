@@ -122,6 +122,13 @@ export const styles = StyleSheet.create({
   rowTextContent: {
     flexShrink: 1,
   },
+  // `rowLeft` se dimensionne sur son contenu : un libellé long pousse alors le
+  // contrôle de droite hors de l'écran. `flex: 1` le fait occuper l'espace
+  // restant et force le texte à passer à la ligne à l'intérieur.
+  // Style distinct plutôt qu'un ajout à `rowLeft`, que huit sections partagent.
+  rowLeftFlexible: {
+    flex: 1,
+  },
   rowRight: {
     flexDirection: "row",
     alignItems: "center",
