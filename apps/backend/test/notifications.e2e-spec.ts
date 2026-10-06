@@ -24,6 +24,9 @@ describe("NotificationsController (e2e)", () => {
       getAllForUser: jest.fn(),
       markAsRead: jest.fn(),
       markAllAsRead: jest.fn(),
+      deleteForUser: jest.fn(),
+      deleteAllForUser: jest.fn(),
+      unregisterDeviceToken: jest.fn(),
     };
 
     const moduleFixture: TestingModule = await applyE2EOverrides(
@@ -100,6 +103,70 @@ describe("NotificationsController (e2e)", () => {
       .expect(201)
       .expect((res) => {
         expect(res.body.count).toBe(3);
+      });
+  });
+
+  it("/api/v1/notifications/:id (DELETE) should delete one of my notifications", () => {
+    (notificationsService.deleteForUser as jest.Mock).mockResolvedValue({
+      count: 1,
+    });
+
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .delete("/api/v1/notifications/notif-1")
+      .expect(204)
+      .expect(() => {
+        expect(notificationsService.deleteForUser).toHaveBeenCalledWith(
+          "notif-1",
+          "user-id",
+        );
+      });
+  });
+
+  it("/api/v1/notifications/:id (DELETE) stays 204 on an unknown id", () => {
+    (notificationsService.deleteForUser as jest.Mock).mockResolvedValue({
+      count: 0,
+    });
+
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .delete("/api/v1/notifications/inconnue")
+      .expect(204);
+  });
+
+  it("/api/v1/notifications (DELETE) should clear my feed", () => {
+    (notificationsService.deleteAllForUser as jest.Mock).mockResolvedValue({
+      count: 12,
+    });
+
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .delete("/api/v1/notifications")
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.count).toBe(12);
+        expect(notificationsService.deleteAllForUser).toHaveBeenCalledWith(
+          "user-id",
+        );
+      });
+  });
+
+  // Nest résout les routes dans l'ordre de déclaration : un `@Delete(":id")`
+  // déclaré avant `@Delete("device-token")` capterait la déconnexion avec
+  // id="device-token", silencieusement. Ni le typage ni les tests du contrôleur
+  // ne le verraient — seule une vraie résolution de route le voit.
+  it("/api/v1/notifications/device-token (DELETE) is not swallowed by :id", () => {
+    (notificationsService.unregisterDeviceToken as jest.Mock).mockResolvedValue(
+      undefined,
+    );
+
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .delete("/api/v1/notifications/device-token")
+      .send({ token: "fcm-token" })
+      .expect(204)
+      .expect(() => {
+        expect(notificationsService.unregisterDeviceToken).toHaveBeenCalledWith(
+          "user-id",
+          "fcm-token",
+        );
+        expect(notificationsService.deleteForUser).not.toHaveBeenCalled();
       });
   });
 });

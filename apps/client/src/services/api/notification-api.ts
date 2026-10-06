@@ -1,6 +1,8 @@
 import { BACKEND_URL } from "../../config";
 import { ERROR_MESSAGES } from "../../constants/errorMessages";
 import {
+  notificationsControllerDeleteAllMyNotifications,
+  notificationsControllerDeleteMyNotification,
   notificationsControllerGetMyPreferences,
   notificationsControllerUpdateMyPreference,
   type UpdateNotificationPreferenceDto,
@@ -61,6 +63,32 @@ export const NotificationApi = {
       throw new Error(ERROR_MESSAGES.OPERATION_FAILED);
     }
     return data;
+  },
+
+  /**
+   * Supprime une notification du feed.
+   *
+   * Passe par le client généré, et non par un `httpRequest` manuel comme les
+   * appels historiques voisins : le contrat vient alors de swagger.json, et une
+   * route renommée casse à la compilation plutôt qu'à l'exécution.
+   */
+  async deleteNotification(id: string): Promise<void> {
+    const { error } = await notificationsControllerDeleteMyNotification({
+      path: { id },
+    });
+    if (error) {
+      throw new Error(ERROR_MESSAGES.OPERATION_FAILED);
+    }
+  },
+
+  /** Vide le feed. Renvoie le nombre de notifications réellement supprimées. */
+  async deleteAllNotifications(): Promise<number> {
+    const { data, error } =
+      await notificationsControllerDeleteAllMyNotifications();
+    if (error) {
+      throw new Error(ERROR_MESSAGES.OPERATION_FAILED);
+    }
+    return data.count;
   },
 
   async markAllNotificationsAsRead(token: string) {

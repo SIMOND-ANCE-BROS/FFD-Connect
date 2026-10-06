@@ -27,6 +27,7 @@ import {
   RegisterDeviceTokenDto,
   UnregisterDeviceTokenDto,
 } from "./dto/device-token.dto";
+import { DeletedCountDto } from "./dto/deleted-count.dto";
 import {
   NotificationPreferenceDto,
   UpdateNotificationPreferenceDto,
@@ -215,5 +216,64 @@ export class NotificationsController {
       req.user.userId,
       dto.token,
     );
+  }
+
+  // ─── Suppression du feed ───────────────────────────────────────────────────
+  //
+  // DÉCLARÉES EN DERNIER, APRÈS `@Delete("device-token")`, ET PAS AILLEURS :
+  // Nest résout les routes dans l'ordre de déclaration, donc un `@Delete(":id")`
+  // placé plus haut capterait `DELETE /notifications/device-token` avec
+  // id="device-token" et casserait la déconnexion sans rien casser de visible
+  // à la compilation ni aux tests unitaires du contrôleur.
+
+  /**
+   * Vide le feed personnel de l'appelant.
+   *
+   * Sur la collection, donc sans `:id` : n'entre pas en concurrence avec les
+   * routes nommées ci-dessus.
+   */
+  @Delete()
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Supprime toutes ses notifications",
+    description:
+      "Efface le feed personnel de l'appelant, lues comme non lues. Les annonces globales, qui n'appartiennent à aucun compte, ne sont pas concernées. Idempotent : un feed déjà vide renvoie `count: 0`.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Nombre de notifications supprimées",
+    type: DeletedCountDto,
+  })
+  async deleteAllMyNotifications(
+    @Request() req: RequestWithUser,
+  ): Promise<DeletedCountDto> {
+    return this.notificationsService.deleteAllForUser(req.user.userId);
+  }
+
+  /**
+   * Supprime une notification de son propre feed.
+   *
+   * 204 quoi qu'il arrive, y compris sur un identifiant inconnu ou appartenant
+   * à quelqu'un d'autre : le code de retour ne renseigne pas sur l'existence
+   * d'une notification tierce, et un double appui n'a pas à produire une erreur
+   * pour une suppression qui a bien eu lieu.
+   */
+  @Delete(":id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Supprime une de ses notifications",
+    description:
+      "Ne supprime que si la notification appartient à l'appelant. Idempotent : 204 même si elle est déjà supprimée, inconnue, ou appartient à un autre compte.",
+  })
+  @ApiResponse({
+    status: 204,
+    description: "Notification supprimée (ou déjà absente)",
+  })
+  async deleteMyNotification(
+    @Param("id") id: string,
+    @Request() req: RequestWithUser,
+  ): Promise<void> {
+    await this.notificationsService.deleteForUser(id, req.user.userId);
   }
 }
