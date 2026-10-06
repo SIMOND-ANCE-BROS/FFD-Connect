@@ -1,0 +1,153 @@
+/* Beta install page: reuses the legal shell (header/footer) and the landing buttons. */
+
+.beta__body {
+  flex: 1;
+  width: 100%;
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: clamp(2rem, 6vw, 4rem) clamp(1rem, 5vw, 2rem);
+}
+
+.beta__kicker {
+  margin: 0 0 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ffd-red);
+}
+
+.beta__title {
+  margin: 0 0 1rem;
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 7vw, 3.4rem);
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.beta__intro {
+  max-width: 40rem;
+  margin: 0 0 2rem;
+  color: var(--fg-muted);
+}
+
+.beta__intro strong {
+  color: var(--fg);
+}
+
+.beta__desktop-hint {
+  margin: 0 0 2rem;
+  padding: 0.9rem 1.1rem;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
+.beta__platforms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 1.25rem;
+}
+
+.beta__card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+/* The visitor's platform comes first and stands out. */
+[data-platform='ios'] .beta__card[data-platform='ios'],
+[data-platform='android'] .beta__card[data-platform='android'] {
+  order: -1;
+  border-color: var(--accent);
+}
+
+.beta__badge {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0.15rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.beta__card-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  text-transform: uppercase;
+}
+
+.beta__card-sub {
+  margin: 0;
+  color: var(--fg-muted);
+}
+
+.beta__steps {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--fg-muted);
+  flex: 1;
+}
+
+.beta__steps li {
+  margin: 0.4rem 0;
+}
+
+.beta__steps strong {
+  color: var(--fg);
+}
+
+.beta__steps a,
+.beta__faq a {
+  color: var(--accent);
+}
+
+.beta__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.beta__card .btn {
+  width: 100%;
+  text-align: center;
+}
+
+.btn--disabled {
+  background: transparent;
+  color: var(--fg-dim);
+  border-color: var(--line);
+  border-style: dashed;
+  cursor: default;
+}
+
+.beta__faq {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+.beta__faq-title {
+  margin: 0 0 0.75rem;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+}
+
+.beta__faq ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--fg-muted);
+}
+
+.beta__faq li {
+  margin: 0.4rem 0;
+}
