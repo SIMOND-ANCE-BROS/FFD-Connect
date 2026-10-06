@@ -19,6 +19,7 @@ import { BackButton } from "../../../components/BackButton";
 import { PinnedHeader } from "../../../components/PinnedHeader";
 import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
+import { trackCorrectionTargetOf } from "../../track-corrections/utils/notificationTarget";
 import {
   Notification,
   useNotificationsLogic,
@@ -52,6 +53,19 @@ export const NotificationsScreen = ({ navigation }: Props) => {
   const { state, actions } = useNotificationsLogic();
   const { notifications, loading, refreshing } = state;
   const { onRefresh, onMarkAsRead, onReadAll, onDelete, onDeleteAll } = actions;
+
+  // Propositions de correction de musique : file admin ou « Mes propositions ».
+  const openTrackCorrection = useCallback(
+    (item: Notification) => {
+      const target = trackCorrectionTargetOf(item.data);
+      if (target?.screen === "TrackCorrectionsReview") {
+        navigation.navigate("TrackCorrectionsReview", target.params);
+      } else if (target?.screen === "MyTrackCorrections") {
+        navigation.navigate("MyTrackCorrections");
+      }
+    },
+    [navigation],
+  );
 
   /**
    * « Tout effacer » demande confirmation : c'est la seule action de l'écran
@@ -95,6 +109,7 @@ export const NotificationsScreen = ({ navigation }: Props) => {
         onPress={() => {
           if (!item.isRead) onMarkAsRead(item.id).catch(() => {});
           openTarget(item);
+          openTrackCorrection(item);
         }}
         activeOpacity={0.7}
         testID={`notifications-card-${item.id}`}

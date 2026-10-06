@@ -61,34 +61,6 @@ describe("BackendService", () => {
     });
   });
 
-  // ─── reportTrack ─────────────────────────────────────────────────────────────
-
-  describe("reportTrack", () => {
-    it("calls httpPost /tracks/:id/report with reason and message", async () => {
-      mockHttpPost.mockResolvedValue(undefined);
-
-      await BackendService.reportTrack("track-1", "MPM", "wrong tempo");
-
-      expect(mockHttpPost).toHaveBeenCalledWith(
-        "http://localhost:3000/tracks/track-1/report",
-        { reason: "MPM", message: "wrong tempo" },
-        expect.any(Object),
-      );
-    });
-
-    it("passes an undefined message when omitted", async () => {
-      mockHttpPost.mockResolvedValue(undefined);
-
-      await BackendService.reportTrack("track-1", "OTHER");
-
-      expect(mockHttpPost).toHaveBeenCalledWith(
-        "http://localhost:3000/tracks/track-1/report",
-        { reason: "OTHER", message: undefined },
-        expect.any(Object),
-      );
-    });
-  });
-
   // ─── checkHealth ────────────────────────────────────────────────────────────
 
   describe("checkHealth", () => {

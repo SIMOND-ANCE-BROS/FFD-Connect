@@ -5,22 +5,16 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import {
-  NotificationType,
-  Prisma,
-  TrackStatus,
-  UserRole,
-} from "@prisma/client";
+import { Prisma, TrackStatus } from "@prisma/client";
 import * as fs from "fs";
 import * as path from "path";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
-import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { BpmService } from "./bpm.service";
-import { ReportTrackReason } from "./dto/report-track.dto";
 import { UpdateTrackDto } from "./dto/update-track.dto";
+import { MASKED_TITLE_LABEL } from "./track-visibility.util";
 
 /** Champs de base récupérés pour toute piste audio. Ne pas exposer status/jobId dans les listes. */
 const TRACK_BASE_SELECT = {
@@ -44,82 +38,17 @@ const TRACK_BASE_SELECT = {
   createdAt: true,
 } satisfies Prisma.TrackSelect;
 
-/** Libellé neutre affiché à la place du titre réel d'une piste masquée. */
-const MASKED_TITLE_LABEL = "Titre masqué";
-
 type TrackBase = Prisma.TrackGetPayload<{ select: typeof TRACK_BASE_SELECT }>;
 
 @Injectable()
 export class TracksService {
   private readonly logger = new Logger(TracksService.name);
 
-  /** Libellés FR des motifs de signalement, affichés dans la notification admin. */
-  private static readonly REPORT_REASON_LABELS: Record<
-    ReportTrackReason,
-    string
-  > = {
-    [ReportTrackReason.TITLE]: "Titre",
-    [ReportTrackReason.ARTIST]: "Artiste",
-    [ReportTrackReason.DANCE]: "Danse (catégorie)",
-    [ReportTrackReason.MPM]: "MPM",
-    [ReportTrackReason.PASO_CLASH]: "Clash paso doble",
-    [ReportTrackReason.OTHER]: "Autre",
-  };
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly bpmService: BpmService,
     private readonly blobStorage: BlobStorageService,
-    private readonly notificationsService: NotificationsService,
   ) {}
-
-  /**
-   * Signale un problème sur une piste (titre/artiste/danse/MPM/paso/autre).
-   * Ouvert à tout utilisateur authentifié : crée une notification pour chaque
-   * administrateur avec le motif et, si fourni, un message libre. Ne stocke pas
-   * de nouvelle entité — réutilise le modèle Notification.
-   */
-  async reportTrack(
-    trackId: string,
-    reason: ReportTrackReason,
-    message: string | undefined,
-    reporterId: string,
-  ): Promise<void> {
-    const track = await this.prisma.track.findUnique({
-      where: { id: trackId },
-      select: { title: true },
-    });
-    if (!track) {
-      throw new NotFoundException(`Track ${trackId} not found`);
-    }
-
-    const admins = await this.prisma.user.findMany({
-      where: { role: UserRole.ADMIN },
-      select: { id: true },
-    });
-
-    const reasonLabel = TracksService.REPORT_REASON_LABELS[reason];
-    const trimmed = message?.trim();
-    const body =
-      `«${track.title}» — ${reasonLabel} signalé` +
-      (trimmed ? ` : ${trimmed}` : "");
-
-    await Promise.all(
-      admins.map((admin) =>
-        this.notificationsService.createForUser(
-          admin.id,
-          NotificationType.TRACK_REPORT,
-          "Signalement musique",
-          body,
-          { trackId, reason, reporterId },
-        ),
-      ),
-    );
-
-    this.logger.log(
-      `Track ${trackId} reported (${reason}) by ${reporterId} → notified ${admins.length} admin(s)`,
-    );
-  }
 
   /**
    * Filtre Prisma : exclut Ambiance, les tracks en cours de traitement
@@ -199,8 +128,14 @@ export class TracksService {
     userId: string,
     isAdmin: boolean,
     patch: UpdateTrackDto,
+    /**
+     * Client Prisma à utiliser : celui d'une transaction interactive quand la
+     * mise à jour doit être atomique avec d'autres écritures (validation d'une
+     * proposition de correction), le client par défaut sinon.
+     */
+    client: Prisma.TransactionClient = this.prisma,
   ): Promise<void> {
-    const existing = await this.prisma.track.findUnique({
+    const existing = await client.track.findUnique({
       where: { id },
       select: { submittedById: true, rawBpm: true },
     });
@@ -237,20 +172,33 @@ export class TracksService {
         (a, b) => a - b,
       );
     }
-    if (patch.bpm !== undefined) {
-      // Explicit manual tempo override from the user.
-      data.bpm = patch.bpm;
-    } else if (patch.style && existing.rawBpm > 0) {
-      // No manual tempo: derive the dance-aware MPM from the raw detected BPM
-      // for the newly chosen dance (in dance we speak in MPM, not BPM).
-      const mpm = this.bpmService.calculateMpm(existing.rawBpm, patch.style);
-      if (mpm > 0) data.bpm = mpm;
-    }
+    const bpm = this.bpmForPatch(existing.rawBpm, patch);
+    if (bpm !== undefined) data.bpm = bpm;
     if (Object.keys(data).length === 0) return;
-    await this.prisma.track.update({ where: { id }, data });
+    await client.track.update({ where: { id }, data });
     this.logger.log(
       `Updated track ${id} (fields: ${Object.keys(data).join(",")})`,
     );
+  }
+
+  /**
+   * Tempo (MPM) qu'un patch écrira sur la piste, ou undefined s'il n'y touche
+   * pas. Source unique de la règle appliquée par updateTrack, exposée pour que
+   * la file de modération affiche le MPM qui RÉSULTERA d'une validation :
+   * - tempo explicite → il est appliqué tel quel ;
+   * - sinon, changement de danse avec un tempo brut détecté → MPM recalculé
+   *   depuis le BPM brut pour la nouvelle danse (en danse on parle en MPM).
+   */
+  bpmForPatch(
+    rawBpm: number,
+    patch: Pick<UpdateTrackDto, "bpm" | "style">,
+  ): number | undefined {
+    if (patch.bpm !== undefined) return patch.bpm;
+    if (patch.style && rawBpm > 0) {
+      const mpm = this.bpmService.calculateMpm(rawBpm, patch.style);
+      if (mpm > 0) return mpm;
+    }
+    return undefined;
   }
 
   /**

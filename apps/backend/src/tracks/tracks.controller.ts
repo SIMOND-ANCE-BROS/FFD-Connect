@@ -8,7 +8,6 @@ import {
   NotFoundException,
   Param,
   Patch,
-  Post,
   Query,
   Req,
   Res,
@@ -35,7 +34,6 @@ import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { BlobStorageService } from "../storage/blob-storage.service";
-import { ReportTrackDto } from "./dto/report-track.dto";
 import {
   buildContentDisposition,
   contentTypeForFilename,
@@ -145,32 +143,6 @@ export class TracksController {
       dto,
     );
     return this.tracksService.findOne(id, req.user.role === "ADMIN");
-  }
-
-  @Post(":id/report")
-  @UseGuards(JwtAuthGuard)
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiBearerAuth("JWT-auth")
-  @ApiOperation({
-    summary: "Signale un problème sur une musique",
-    description:
-      "Ouvert à tout utilisateur authentifié. Notifie chaque administrateur du motif (titre, artiste, danse, MPM, clash paso doble, autre) et d'un éventuel message.",
-  })
-  @ApiParam({ name: "id", description: "UUID de la musique" })
-  @ApiBody({ type: ReportTrackDto })
-  @ApiResponse({ status: 204, description: "Signalement envoyé" })
-  @ApiResponse({ status: 404, description: "Musique non trouvée" })
-  async report(
-    @Param("id") id: string,
-    @Body() dto: ReportTrackDto,
-    @Req() req: RequestWithUser,
-  ): Promise<void> {
-    await this.tracksService.reportTrack(
-      id,
-      dto.reason,
-      dto.message,
-      req.user.userId,
-    );
   }
 
   @Delete(":id")

@@ -110,6 +110,7 @@ describe("NotificationPreferencesQueryService", () => {
         NotificationType.REGISTRATION_STATUS,
         NotificationType.COMPETITION_RESULTS,
         NotificationType.NEW_COMPETITION,
+        NotificationType.TRACK_CORRECTION_DECISION,
       ]);
     });
 

@@ -139,6 +139,46 @@ describe("NotificationsScreen", () => {
     });
   });
 
+  it.each([
+    [
+      "an admin to the correction review queue",
+      { type: "TRACK_CORRECTION", correctionId: "c1", trackId: "t1" },
+      ["TrackCorrectionsReview", { correctionId: "c1" }],
+    ],
+    [
+      "the proposer to their proposals",
+      {
+        type: "TRACK_CORRECTION_DECISION",
+        correctionId: "c1",
+        trackId: "t1",
+        status: "APPROVED",
+      },
+      ["MyTrackCorrections"],
+    ],
+  ])(
+    "routes a track correction notification for %s",
+    async (_l, data, call) => {
+      (BackendService.getNotifications as jest.Mock).mockResolvedValue([
+        {
+          id: "n1",
+          title: "Correction de musique",
+          body: "Test",
+          createdAt: new Date().toISOString(),
+          isRead: true,
+          data,
+        },
+      ]);
+      const { getByText } = await renderScreen();
+      await waitFor(() =>
+        expect(getByText("Correction de musique")).toBeTruthy(),
+      );
+
+      await fireEvent.press(getByText("Correction de musique"));
+
+      expect(navigation.navigate).toHaveBeenCalledWith(...call);
+    },
+  );
+
   // Un type ajouté côté serveur ne doit pas faire planter un client plus ancien :
   // ce qu'on ne reconnaît pas ne mène nulle part, silencieusement.
   it("does nothing when the payload carries no known destination", async () => {

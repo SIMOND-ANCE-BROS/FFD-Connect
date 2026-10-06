@@ -107,6 +107,26 @@ jest.mock("../../features/settings/screens/NotificationsScreen", () => ({
     return <Text testID="screen-Notifications">Notifications</Text>;
   },
 }));
+jest.mock(
+  "../../features/track-corrections/screens/TrackCorrectionsReviewScreen",
+  () => ({
+    TrackCorrectionsReviewScreen: () => {
+      const { Text } = require("react-native");
+      return (
+        <Text testID="screen-TrackCorrectionsReview">TrackCorrections</Text>
+      );
+    },
+  }),
+);
+jest.mock(
+  "../../features/track-corrections/screens/MyTrackCorrectionsScreen",
+  () => ({
+    MyTrackCorrectionsScreen: () => {
+      const { Text } = require("react-native");
+      return <Text testID="screen-MyTrackCorrections">MyTrackCorrections</Text>;
+    },
+  }),
+);
 jest.mock("../../features/performance/screens/PerformanceSetupScreen", () => ({
   PerformanceSetupScreen: () => {
     const { Text } = require("react-native");

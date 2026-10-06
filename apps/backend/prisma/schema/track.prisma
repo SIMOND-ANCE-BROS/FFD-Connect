@@ -33,8 +33,84 @@ model Track {
   sourceKey     String?     @unique
   submittedById String?
   submittedBy   User?       @relation("TrackSubmissions", fields: [submittedById], references: [id], onDelete: SetNull)
+  /// Propositions de correction des métadonnées soumises par les utilisateurs.
+  corrections   TrackCorrection[]
   createdAt     DateTime    @default(now())
 
   @@index([submittedById])
   @@index([sourceKey, status])
+}
+
+/// Motif d'une proposition de correction : la métadonnée que l'utilisateur
+/// estime incorrecte. Mêmes valeurs que `ReportTrackReason` (DTO historique
+/// de POST /tracks/:id/report), pour que les anciens signalements atterrissent
+/// dans la même file de modération.
+enum TrackCorrectionReason {
+  TITLE
+  ARTIST
+  DANCE
+  MPM
+  PASO_CLASH
+  OTHER
+}
+
+/// Cycle de vie d'une proposition de correction : en attente de décision d'un
+/// administrateur, puis validée (appliquée à la piste) ou refusée. Une décision
+/// est définitive.
+enum TrackCorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Proposition de correction des métadonnées d'une piste, soumise par un
+/// utilisateur et arbitrée par un administrateur.
+///
+/// Les valeurs proposées sont nullables : null = « pas de proposition sur ce
+/// champ ». Seules les valeurs qui diffèrent réellement de la piste au moment
+/// de la proposition sont stockées. Les timecodes de clash utilisent un drapeau
+/// séparé (`proposesClashes`) parce qu'une liste vide est une proposition
+/// légitime (« aucun clash »), indiscernable sinon de l'absence de proposition.
+///
+/// RGPD : `proposedById` passe à null à la suppression du compte, et le
+/// commentaire libre (`message`, potentiellement identifiant) est effacé par
+/// UsersService.deleteMyAccount. Les propositions figurent dans l'export
+/// (UsersService.exportMyData).
+model TrackCorrection {
+  id                     String                @id @default(uuid())
+  trackId                String
+  track                  Track                 @relation(fields: [trackId], references: [id], onDelete: Cascade)
+  /// Auteur de la proposition. Null après suppression de son compte.
+  proposedById           String?
+  proposedBy             User?                 @relation("TrackCorrectionsProposed", fields: [proposedById], references: [id], onDelete: SetNull)
+  reason                 TrackCorrectionReason
+  proposedTitle          String?
+  proposedArtist         String?
+  /// Danse proposée (texte libre, même format que Track.style).
+  proposedStyle          String?
+  /// Tempo proposé en MPM.
+  proposedBpm            Float?
+  /// Vrai si la proposition porte sur les timecodes de clash paso doble
+  /// (y compris une liste vide = « aucun clash »).
+  proposesClashes        Boolean               @default(false)
+  /// Timecodes (secondes) proposés, triés et dédupliqués.
+  proposedClashTimecodes Float[]               @default([])
+  /// Commentaire libre de l'auteur de la proposition.
+  message                String?
+  status                 TrackCorrectionStatus @default(PENDING)
+  /// Administrateur ayant tranché. Null tant que PENDING ou après suppression
+  /// de son compte.
+  reviewedById           String?
+  reviewedBy             User?                 @relation("TrackCorrectionsReviewed", fields: [reviewedById], references: [id], onDelete: SetNull)
+  /// Commentaire de l'administrateur, renvoyé à l'auteur avec la décision.
+  reviewComment          String?
+  reviewedAt             DateTime?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+
+  // File de modération : GET /track-corrections?status=PENDING trié par date.
+  @@index([status, createdAt])
+  @@index([trackId])
+  // « Mes propositions » + purge RGPD à la suppression du compte.
+  @@index([proposedById])
 }

@@ -40,6 +40,7 @@ import { SettingsNotificationsSection } from "../components/SettingsNotification
 import { SettingsProfileSection } from "../components/SettingsProfileSection";
 import { SettingsSecuritySection } from "../components/SettingsSecuritySection";
 import { SettingsTechnicalSection } from "../components/SettingsTechnicalSection";
+import { TrackCorrectionsSettingsSection } from "../../track-corrections/components/TrackCorrectionsSettingsSection";
 
 type SettingsScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -376,6 +377,17 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
             onToggle={(type, enabled) => {
               void setNotificationPreference(type, enabled);
             }}
+          />
+        )}
+
+        {/* Propositions de correction des musiques : suivi pour tout compte,
+            file de validation pour l'admin. */}
+        {!isGuest && (
+          <TrackCorrectionsSettingsSection
+            theme={currentTheme}
+            isAdmin={role === "ADMIN"}
+            onOpenMine={() => navigation.navigate("MyTrackCorrections")}
+            onOpenReview={() => navigation.navigate("TrackCorrectionsReview")}
           />
         )}
 

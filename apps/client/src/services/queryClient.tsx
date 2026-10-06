@@ -1,6 +1,11 @@
 import NetInfo from "@react-native-community/netinfo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { QueryClient, onlineManager } from "@tanstack/react-query";
+import {
+  QueryClient,
+  defaultShouldDehydrateQuery,
+  onlineManager,
+  type Query,
+} from "@tanstack/react-query";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import React from "react";
@@ -12,6 +17,7 @@ import {
 } from "../features/competitions/services/registrationQueue";
 import { dispatchMutation, useOfflineQueue } from "../hooks/useOfflineQueue";
 import { isNetStateOnline } from "../utils/connectivity";
+import { onSessionEnd } from "./sessionCleanup";
 
 /**
  * React Query ne sait PAS qu'on est hors ligne tant qu'on ne le lui dit pas :
@@ -46,11 +52,42 @@ export const queryClient = new QueryClient({
   },
 });
 
+/** Clé AsyncStorage du cache React Query persisté. */
+export const QUERY_CACHE_KEY = "FFD_CONNECT_QUERY_CACHE";
+
 const asyncStoragePersister = createAsyncStoragePersister({
   storage: AsyncStorage,
-  key: "FFD_CONNECT_QUERY_CACHE",
+  key: QUERY_CACHE_KEY,
   throttleTime: 1000,
 });
+
+/**
+ * Familles de requêtes jamais écrites sur le disque. Les propositions de
+ * correction exposent des données d'autres utilisateurs (noms des auteurs,
+ * commentaires) côté admin : inutile de les laisser 24 h dans AsyncStorage.
+ */
+const NON_PERSISTED_QUERY_ROOTS: readonly string[] = ["track-corrections"];
+
+/** Filtre de persistance : le défaut de React Query, moins les exclusions. */
+export function shouldPersistQuery(query: Query): boolean {
+  const root = query.queryKey[0];
+  if (typeof root === "string" && NON_PERSISTED_QUERY_ROOTS.includes(root)) {
+    return false;
+  }
+  return defaultShouldDehydrateQuery(query);
+}
+
+/**
+ * Purge à la déconnexion : cache mémoire ET copie persistée, pour que le
+ * compte suivant (ou une personne qui récupère l'appareil) ne retrouve rien
+ * de la session précédente.
+ */
+export async function clearQueryCache(): Promise<void> {
+  queryClient.clear();
+  await AsyncStorage.removeItem(QUERY_CACHE_KEY);
+}
+
+onSessionEnd(clearQueryCache);
 
 interface Props {
   children: React.ReactNode;
@@ -80,7 +117,10 @@ export const PersistedQueryClientProvider = ({ children }: Props) => {
   return (
     <PersistQueryClientProvider
       client={queryClient}
-      persistOptions={{ persister: asyncStoragePersister }}
+      persistOptions={{
+        persister: asyncStoragePersister,
+        dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
+      }}
     >
       <OfflineQueueRunner />
       {children}
