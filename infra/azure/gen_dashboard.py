@@ -14,7 +14,7 @@ def ca_id(name):
     return f"/subscriptions/{SUB}/resourceGroups/{RG}/providers/Microsoft.App/containerApps/{name}"
 PG_ID = f"/subscriptions/{SUB}/resourceGroups/{RG}/providers/Microsoft.DBforPostgreSQL/flexibleServers/ffd-connect-pg"
 
-APPS = ["backend-prod", "backend-staging", "landing", "ffd-redis-prod", "ffd-redis-staging"]
+APPS = ["backend-prod", "backend-staging", "ffd-redis-prod", "ffd-redis-staging"]
 BACKENDS = ["backend-prod", "backend-staging"]
 
 # aggregationType enum: 1=Total, 2=Min, 3=Max, 4=Average, 7=Count
