@@ -23,12 +23,13 @@ echo "Migrations applied successfully."
 # échec de seed ne bloque JAMAIS le démarrage (log + on continue).
 if [ "$SEED_TEST_TRACKS" = "true" ]; then
   (
-    # Seed de pistes de TEST (métronomes ffmpeg royalty-free).
-    echo "[seed] Seeding test tracks (SEED_TEST_TRACKS=true)..."
-    if node dist/scripts/seed-test-tracks.js; then
-      echo "[seed] Test tracks seed completed."
+    # Purge des anciennes pistes métronome "FFD Test" (la bibliothèque est
+    # désormais alimentée par track-prep). No-op une fois la purge faite.
+    echo "[seed] Purging metronome test tracks..."
+    if node dist/scripts/purge-test-tracks.js; then
+      echo "[seed] Test tracks purge completed."
     else
-      echo "[seed] WARNING: test tracks seed failed (non-fatal)."
+      echo "[seed] WARNING: test tracks purge failed (non-fatal)."
     fi
 
     # Seed de licences bêta-testeurs. Le register exige une licence

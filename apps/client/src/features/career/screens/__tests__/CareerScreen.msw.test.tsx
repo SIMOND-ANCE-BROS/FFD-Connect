@@ -10,6 +10,7 @@
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import { http, HttpResponse } from "msw";
 import React from "react";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 import { server } from "../../../../mocks/msw/server";
 import { mockCareer } from "../../../../mocks/msw/handlers";
 import { createMockScreenProps } from "../../../../utils/testUtils";
@@ -111,6 +112,10 @@ const props = createMockScreenProps<"Career">({} as never);
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("CareerScreen (MSW)", () => {
+  // ScrollView has a heavy one-time mock: load it outside the first test's
+  // timeout (flaky under full-suite load otherwise).
+  preloadReactNative("ScrollView");
+
   it("affiche les données de carrière quand l'API répond avec succès", async () => {
     useCareerLogic.mockReturnValue(makeCareerState());
 

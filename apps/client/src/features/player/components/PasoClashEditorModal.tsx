@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -14,6 +15,15 @@ import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
 import { BackendService } from "../../../services/BackendService";
 import { createLogger } from "../../../utils/logger";
+import {
+  CORRECTION_SENT_MESSAGE,
+  CORRECTION_SENT_TITLE,
+} from "../../track-corrections/components/TrackCorrectionModal";
+import { useCreateTrackCorrection } from "../../track-corrections/hooks/useTrackCorrections";
+import {
+  CLASH_MAX_COUNT,
+  MESSAGE_MAX_LENGTH,
+} from "../../track-corrections/utils/trackCorrections";
 import { formatTime } from "./audio-player.styles";
 import {
   computeDefaultPasoClashes,
@@ -22,8 +32,16 @@ import {
 
 const logger = createLogger("PasoClashEditor");
 
+/**
+ * `edit` : un admin enregistre directement les appels sur la piste.
+ * `propose` : tout utilisateur connecté soumet sa proposition aux admins.
+ */
+export type PasoClashEditorMode = "edit" | "propose";
+
 interface PasoClashEditorModalProps {
   visible: boolean;
+  /** `edit` par défaut. */
+  mode?: PasoClashEditorMode;
   trackId: string;
   style?: string;
   clashTimecodes?: number[];
@@ -34,17 +52,19 @@ interface PasoClashEditorModalProps {
   onTogglePlay: () => void;
   onSeek: (seconds: number) => void;
   onClose: () => void;
-  /** Appelé après sauvegarde réussie avec la nouvelle liste (pour rafraîchir les marqueurs). */
-  onSaved: (clashes: number[]) => void;
+  /** Mode `edit` : appelé après sauvegarde avec la nouvelle liste (pour rafraîchir les marqueurs). */
+  onSaved?: (clashes: number[]) => void;
 }
 
 /**
- * Éditeur admin des appels/coups paso doble (#paso-clashes).
+ * Éditeur des appels/coups paso doble (#paso-clashes).
  * On écoute la piste en cours et on « pose un point » à la position voulue ;
- * bouton calcul auto (estimation depuis la durée), suppression, sauvegarde.
+ * bouton calcul auto (estimation depuis la durée), suppression, puis
+ * sauvegarde (admin) ou proposition aux administrateurs (autres utilisateurs).
  */
 export const PasoClashEditorModal = ({
   visible,
+  mode = "edit",
   trackId,
   style,
   clashTimecodes,
@@ -61,6 +81,9 @@ export const PasoClashEditorModal = ({
     getEffectiveClashes(style, clashTimecodes, duration),
   );
   const [saving, setSaving] = useState(false);
+  const [comment, setComment] = useState("");
+  const createCorrection = useCreateTrackCorrection();
+  const isPropose = mode === "propose";
 
   const addPoint = () => {
     const t = Math.round(position * 10) / 10;
@@ -81,11 +104,39 @@ export const PasoClashEditorModal = ({
     setSaving(true);
     try {
       await BackendService.updateTrack(trackId, { clashTimecodes: points });
-      onSaved(points);
+      onSaved?.(points);
       onClose();
     } catch (e) {
       logger.error("Failed to save paso clashes", e);
       Alert.alert("Erreur", "La sauvegarde des appels a échoué.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePropose = async () => {
+    if (points.length > CLASH_MAX_COUNT) {
+      Alert.alert(
+        "Trop d'appels",
+        `Proposez au plus ${CLASH_MAX_COUNT} appels.`,
+      );
+      return;
+    }
+    setSaving(true);
+    try {
+      const message = comment.trim();
+      await createCorrection.mutateAsync({
+        trackId,
+        reason: "PASO_CLASH",
+        clashTimecodes: points,
+        ...(message ? { message } : {}),
+      });
+      Alert.alert(CORRECTION_SENT_TITLE, CORRECTION_SENT_MESSAGE);
+      onClose();
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "L'envoi de la proposition a échoué.";
+      Alert.alert("Envoi impossible", msg);
     } finally {
       setSaving(false);
     }
@@ -111,11 +162,14 @@ export const PasoClashEditorModal = ({
           accessibilityRole="none"
         >
           <AppText variant="h3" color={theme.text} style={styles.title}>
-            Appels du paso doble
+            {isPropose ? "Proposer les appels" : "Appels du paso doble"}
           </AppText>
           <AppText variant="caption" color={theme.textSecondary}>
-            Écoute le morceau et pose un point à chaque appel. Position actuelle
-            : {formatTime(position)} / {formatTime(duration)}
+            Écoute le morceau et pose un point à chaque appel.
+            {isPropose
+              ? " Ta proposition sera validée par un administrateur."
+              : ""}{" "}
+            Position actuelle : {formatTime(position)} / {formatTime(duration)}
           </AppText>
 
           {/* Transport minimal */}
@@ -226,6 +280,24 @@ export const PasoClashEditorModal = ({
             </AppText>
           </TouchableOpacity>
 
+          {isPropose && (
+            <TextInput
+              accessibilityLabel="Commentaire pour les administrateurs"
+              accessibilityHint="Ajoute des précisions à ta proposition (facultatif)"
+              testID="paso-propose-comment"
+              value={comment}
+              onChangeText={setComment}
+              multiline
+              maxLength={MESSAGE_MAX_LENGTH}
+              placeholder="Commentaire (facultatif)"
+              placeholderTextColor={theme.textSecondary}
+              style={[
+                styles.comment,
+                { color: theme.text, borderColor: theme.border },
+              ]}
+            />
+          )}
+
           <View style={styles.actions}>
             <AppButton
               title="Annuler"
@@ -234,14 +306,27 @@ export const PasoClashEditorModal = ({
               disabled={saving}
             />
             <View style={styles.spacer} />
-            <AppButton
-              title={saving ? "Sauvegarde…" : "Enregistrer"}
-              onPress={() => {
-                handleSave().catch(() => {});
-              }}
-              disabled={saving}
-              testID="paso-save"
-            />
+            {isPropose ? (
+              <AppButton
+                title={saving ? "Envoi…" : "Proposer"}
+                onPress={() => {
+                  handlePropose().catch(() => {});
+                }}
+                disabled={saving}
+                testID="paso-propose"
+                accessibilityLabel="Envoyer la proposition d'appels"
+                accessibilityHint="Envoie les appels placés aux administrateurs pour validation"
+              />
+            ) : (
+              <AppButton
+                title={saving ? "Sauvegarde…" : "Enregistrer"}
+                onPress={() => {
+                  handleSave().catch(() => {});
+                }}
+                disabled={saving}
+                testID="paso-save"
+              />
+            )}
           </View>
         </Pressable>
       </Pressable>
@@ -307,6 +392,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
     paddingVertical: 12,
+  },
+  comment: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    minHeight: 56,
+    textAlignVertical: "top",
+    marginBottom: 4,
   },
   actions: { flexDirection: "row", marginTop: 8 },
   spacer: { width: 12 },

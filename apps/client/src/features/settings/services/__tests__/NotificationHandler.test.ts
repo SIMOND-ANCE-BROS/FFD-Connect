@@ -7,8 +7,19 @@ import {
 
 let onMessageHandler: ((message: MockNotificationMessage) => void) | null =
   null;
+let mockOnOpenedHandler: ((message: MockNotificationMessage) => void) | null =
+  null;
+let mockInitialNotification: Promise<MockNotificationMessage | null> =
+  Promise.resolve(null);
 
 let mockMessaging: jest.Mock;
+
+const mockSetPendingDeepLink = jest.fn();
+jest.mock("../../../../stores/auth.store", () => ({
+  useAuthStore: {
+    getState: () => ({ setPendingDeepLink: mockSetPendingDeepLink }),
+  },
+}));
 
 jest.mock("@react-native-firebase/messaging", () => {
   mockMessaging = jest.fn(() => ({
@@ -21,8 +32,13 @@ jest.mock("@react-native-firebase/messaging", () => {
         return jest.fn();
       },
     ),
-    onNotificationOpenedApp: jest.fn(),
-    getInitialNotification: jest.fn().mockResolvedValue(null),
+    onNotificationOpenedApp: jest.fn(
+      (handler: (message: MockNotificationMessage) => void) => {
+        mockOnOpenedHandler = handler;
+        return jest.fn();
+      },
+    ),
+    getInitialNotification: jest.fn(() => mockInitialNotification),
     subscribeToTopic: jest.fn(),
     unsubscribeFromTopic: jest.fn(),
   }));
@@ -43,6 +59,62 @@ describe("NotificationHandler", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     onMessageHandler = null;
+  });
+
+  /**
+   * Les deux gestionnaires étaient VIDES (#84) : l'application s'abonnait aux
+   * événements et n'en faisait rien, si bien qu'un tap sur la push rouvrait
+   * l'écran courant et rien d'autre.
+   */
+  describe("tap sur une push système", () => {
+    it("dépose la compétition visée, app en arrière-plan", () => {
+      notificationHandler.setupNotificationListeners();
+
+      mockOnOpenedHandler?.({ data: { competitionId: "comp-42" } });
+
+      expect(mockSetPendingDeepLink).toHaveBeenCalledWith({
+        screen: "CompetitionDetail",
+        params: { competitionId: "comp-42" },
+      });
+    });
+
+    it("dépose la compétition visée, app lancée depuis l'état fermé", async () => {
+      mockInitialNotification = Promise.resolve({
+        data: { competitionId: "comp-7" },
+      } as MockNotificationMessage);
+
+      notificationHandler.setupNotificationListeners();
+      await mockInitialNotification;
+      await Promise.resolve();
+
+      expect(mockSetPendingDeepLink).toHaveBeenCalledWith({
+        screen: "CompetitionDetail",
+        params: { competitionId: "comp-7" },
+      });
+    });
+
+    // L'utilisateur a tapé : il doit arriver quelque part, ne serait-ce que là
+    // où la notification est lisible en entier.
+    it("ouvre le centre de notifications quand la charge utile ne désigne rien", () => {
+      notificationHandler.setupNotificationListeners();
+
+      mockOnOpenedHandler?.({ data: { type: "test" } });
+
+      expect(mockSetPendingDeepLink).toHaveBeenCalledWith({
+        screen: "Notifications",
+        params: undefined,
+      });
+    });
+
+    it("ne dépose rien si l'application n'a pas été lancée par une push", async () => {
+      mockInitialNotification = Promise.resolve(null);
+
+      notificationHandler.setupNotificationListeners();
+      await mockInitialNotification;
+      await Promise.resolve();
+
+      expect(mockSetPendingDeepLink).not.toHaveBeenCalled();
+    });
   });
 
   it("requests permission and returns token when enabled", async () => {

@@ -43,6 +43,10 @@ export type RootStackParamList = {
   ViewCareer: { userId: string; userName?: string };
   // Param optionnel : deep link nu → CGU par défaut (voir LegalScreen)
   Legal: { doc: "cgu" | "privacy" | "mentions" } | undefined;
+  // Propositions de correction des musiques : file admin (centrée sur une
+  // proposition depuis une notification) et suivi par leur auteur.
+  TrackCorrectionsReview: { correctionId?: string } | undefined;
+  MyTrackCorrections: undefined;
 };
 export type TabParamList = {
   ScannerTab: undefined;

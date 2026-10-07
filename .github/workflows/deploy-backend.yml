@@ -323,8 +323,7 @@ jobs:
           LOGIN_SERVER=$(printf '%s.azurecr.io' "$ACR_NAME" | tr '[:upper:]' '[:lower:]')
           REQUIRE_IMAGE="${LOGIN_SERVER}/ffd-connect-backend:${DEPLOY_SHA}" \
           KEEP_TAGS="$DEPLOY_SHA" \
-            sh .github/scripts/acr-purge.sh "$ACR_NAME" 15 \
-              ffd-connect-backend ffd-connect-landing
+            sh .github/scripts/acr-purge.sh "$ACR_NAME" 15 ffd-connect-backend
 
       # NOTE: Migrations run inside docker-entrypoint.sh (not as a separate step).
       # If a migration ran before the health check failed, the DB schema is now
@@ -565,8 +564,7 @@ jobs:
           LOGIN_SERVER=$(printf '%s.azurecr.io' "$ACR_NAME" | tr '[:upper:]' '[:lower:]')
           REQUIRE_IMAGE="${LOGIN_SERVER}/ffd-connect-backend:${DEPLOY_SHA}" \
           KEEP_TAGS="$DEPLOY_SHA" \
-            sh .github/scripts/acr-purge.sh "$ACR_NAME" 15 \
-              ffd-connect-backend ffd-connect-landing
+            sh .github/scripts/acr-purge.sh "$ACR_NAME" 15 ffd-connect-backend
 
       # NOTE: Migrations run inside docker-entrypoint.sh (not as a separate step).
       # If a migration ran before the health check failed, the DB schema is now

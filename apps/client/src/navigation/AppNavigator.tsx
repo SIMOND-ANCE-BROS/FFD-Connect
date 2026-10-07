@@ -1,4 +1,5 @@
 import {
+  CommonActions,
   DarkTheme,
   DefaultTheme,
   NavigationContainer,
@@ -54,6 +55,8 @@ import { LegalScreen } from "../features/legal/LegalScreen";
 // --- Profile screen ---
 import { ProfileScreen } from "../features/profile/screens/ProfileScreen";
 import { NotificationsScreen } from "../features/settings/screens/NotificationsScreen";
+import { MyTrackCorrectionsScreen } from "../features/track-corrections/screens/MyTrackCorrectionsScreen";
+import { TrackCorrectionsReviewScreen } from "../features/track-corrections/screens/TrackCorrectionsReviewScreen";
 
 // --- Components ---
 import { MiniPlayer } from "../features/player/components/MiniPlayer";
@@ -83,7 +86,19 @@ export const AppNavigator = () => {
     if (isLoggedIn && pendingDeepLink && navigationRef.current) {
       const state = navigationRef.current.getState() as unknown;
       if (state != null) {
-        navigationRef.current.navigate(pendingDeepLink as never);
+        // Avec ses paramètres : sans eux, « ouvrir la compétition » se réduisait
+        // à « ouvrir un écran », ce qui ne veut rien dire pour CompetitionDetail.
+        //
+        // `dispatch(CommonActions.navigate(...))` plutôt que `navigate(a, b)` :
+        // l'écran est une union de clés, et le typage de React Navigation ne
+        // sait pas corréler la clé avec ses paramètres dans ce cas. L'action
+        // explicite évite un double `as never` qui ne compile pas.
+        navigationRef.current.dispatch(
+          CommonActions.navigate({
+            name: pendingDeepLink.screen,
+            params: pendingDeepLink.params,
+          }),
+        );
         setPendingDeepLink(null);
       }
     }
@@ -258,6 +273,14 @@ export const AppNavigator = () => {
             />
             <Stack.Screen name="ViewCareer" component={ViewCareerScreen} />
             <Stack.Screen name="Profile" component={ProfileScreen} />
+            <Stack.Screen
+              name="TrackCorrectionsReview"
+              component={TrackCorrectionsReviewScreen}
+            />
+            <Stack.Screen
+              name="MyTrackCorrections"
+              component={MyTrackCorrectionsScreen}
+            />
           </>
         ) : (
           <>

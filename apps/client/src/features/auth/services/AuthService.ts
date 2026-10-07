@@ -3,6 +3,7 @@ import axios from "axios";
 import api from "../../../services/api";
 import { clearTokens, getTokens, setTokens } from "../../../api/tokenStore";
 import { clearLicenseSnapshot } from "../../license/utils/licenseSnapshot";
+import { runSessionEndCleanups } from "../../../services/sessionCleanup";
 import {
   registerDeviceTokenForPush,
   unregisterDeviceTokenForPush,
@@ -449,6 +450,9 @@ export const AuthService = {
         // déverrouillage.
       }
       await AuthService.saveAuthConfig(newConfig);
+      // Cache serveur (mémoire + AsyncStorage) : vidé à chaque déconnexion,
+      // biométrie comprise — il se recharge au déverrouillage.
+      await runSessionEndCleanups();
       logger.info(
         `User logged out (tokens ${keepTokensForBiometrics ? "kept for biometrics" : "cleared"})`,
       );

@@ -483,6 +483,7 @@ describe("UsersService", () => {
         partnershipsAsUser1: [],
         partnershipsAsUser2: [],
         notifications: [],
+        trackCorrectionsProposed: [],
       });
       prisma.user.findUnique.mockResolvedValue(exported);
 
@@ -494,7 +495,9 @@ describe("UsersService", () => {
     });
 
     it("ne sélectionne jamais le mot de passe ni les tokens", async () => {
-      prisma.user.findUnique.mockResolvedValue(makeUser());
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ trackCorrectionsProposed: [] }),
+      );
 
       await service.exportMyData("u1");
 
@@ -511,7 +514,9 @@ describe("UsersService", () => {
     });
 
     it("exporte les appareils push en métadonnées, jamais la valeur du token", async () => {
-      prisma.user.findUnique.mockResolvedValue(makeUser());
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ trackCorrectionsProposed: [] }),
+      );
 
       await service.exportMyData("u1");
 
@@ -537,7 +542,9 @@ describe("UsersService", () => {
     });
 
     it("exporte les préférences de notification réellement enregistrées", async () => {
-      prisma.user.findUnique.mockResolvedValue(makeUser());
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ trackCorrectionsProposed: [] }),
+      );
 
       await service.exportMyData("u1");
 
@@ -558,6 +565,75 @@ describe("UsersService", () => {
         updatedAt: true,
       });
       expect(prefs.take).toBe(50);
+    });
+
+    it("exporte les propositions de correction, sans l'identité du relecteur", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ trackCorrectionsProposed: [] }),
+      );
+
+      await service.exportMyData("u1");
+
+      const select = prisma.user.findUnique.mock.calls[0][0]?.select as Record<
+        string,
+        unknown
+      >;
+      const corrections = select.trackCorrectionsProposed as {
+        select: Record<string, unknown>;
+        take: number;
+      };
+      expect(corrections.select).toEqual(
+        expect.objectContaining({ message: true, status: true }),
+      );
+      expect(corrections.select.reviewedBy).toBeUndefined();
+      expect(corrections.select.reviewedById).toBeUndefined();
+      expect(corrections.take).toBe(500);
+    });
+
+    it("masque le nom des pistes modérées visées par ses propositions", async () => {
+      const correction = (track: Record<string, unknown>) => ({
+        reason: "TITLE",
+        message: null,
+        status: "PENDING",
+        track,
+      });
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({
+          trackCorrectionsProposed: [
+            correction({
+              title: "Vrai titre",
+              artist: "Artiste",
+              titleMasked: true,
+              blacklisted: false,
+            }),
+            correction({
+              title: "Retirée",
+              artist: "Secret",
+              titleMasked: false,
+              blacklisted: true,
+            }),
+            correction({
+              title: "Public",
+              artist: "Artiste",
+              titleMasked: false,
+              blacklisted: false,
+            }),
+          ],
+        }),
+      );
+
+      const result = await service.exportMyData("u1");
+
+      const tracks = (
+        result.data.trackCorrectionsProposed as Array<{ track: unknown }>
+      ).map((c) => c.track);
+      expect(tracks).toEqual([
+        { title: "Titre masqué", artist: "Artiste" },
+        { title: "Musique retirée", artist: "" },
+        { title: "Public", artist: "Artiste" },
+      ]);
+      expect(JSON.stringify(result)).not.toContain("Vrai titre");
+      expect(JSON.stringify(result)).not.toContain("Secret");
     });
 
     it("rejette en NotFound si l'utilisateur n'existe pas", async () => {
@@ -628,6 +704,17 @@ describe("UsersService", () => {
       });
     });
 
+    it("efface le commentaire libre de ses propositions de correction (le SetNull ne suffit pas)", async () => {
+      compare.mockResolvedValue(true);
+
+      await service.deleteMyAccount("u1", "correct-password");
+
+      expect(prisma.trackCorrection.updateMany).toHaveBeenCalledWith({
+        where: { proposedById: "u1" },
+        data: { message: null },
+      });
+    });
+
     it("supprime les bug reports de l'utilisateur (userId sans FK)", async () => {
       compare.mockResolvedValue(true);
 
@@ -645,6 +732,9 @@ describe("UsersService", () => {
       prisma.seatBooking.deleteMany.mockReturnValue(marker("seatBookings"));
       prisma.registration.deleteMany.mockReturnValue(marker("registrations"));
       prisma.registration.updateMany.mockReturnValue(marker("partnerAnon"));
+      prisma.trackCorrection.updateMany.mockReturnValue(
+        marker("trackCorrectionAnon"),
+      );
       prisma.bugReport.deleteMany.mockReturnValue(marker("bugReports"));
       prisma.user.delete.mockReturnValue(marker("user"));
 
@@ -660,6 +750,7 @@ describe("UsersService", () => {
         "seatBookings",
         "registrations",
         "partnerAnon",
+        "trackCorrectionAnon",
         "bugReports",
         "user",
       ]);

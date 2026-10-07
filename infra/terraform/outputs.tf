@@ -20,7 +20,7 @@ output "api_url" {
 }
 
 output "landing_url" {
-  description = "Landing site URL"
+  description = "Landing site URL (GitHub Pages)"
   value       = "https://ffd.gabin-simond.fr"
 }
 

@@ -1,5 +1,7 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import { useTheme } from "../../../../context/ThemeContext";
+import { useAuthStore } from "../../../../stores/auth.store";
 import {
   fireEvent,
   render,
@@ -154,6 +156,93 @@ describe("AudioPlayerScreen", () => {
       await fireEvent.press(getByTestId("audio-player-retry-button"));
 
       expect(mockActions.togglePlayback).toHaveBeenCalled();
+    });
+  });
+
+  describe("Propositions de correction", () => {
+    const renderWithQuery = (ui: React.ReactElement) =>
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          {ui}
+        </QueryClientProvider>,
+      );
+
+    const withTrack = (style?: string) =>
+      (useAudioPlayerLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...baseState,
+          currentTrack: { ...baseState.currentTrack, style },
+        },
+        actions: mockActions,
+      });
+
+    afterEach(() => {
+      useAuthStore.setState({ role: null, isGuest: false });
+    });
+
+    it("un licencié voit « Signaler / proposer une correction » et ouvre le formulaire pré-rempli", async () => {
+      useAuthStore.setState({ role: "LICENSEE", isGuest: false });
+      withTrack("Rumba");
+      const { getByTestId, queryByTestId, getByText } = await renderWithQuery(
+        <AudioPlayerScreen {...createTestProps()} />,
+      );
+
+      expect(queryByTestId("paso-propose-clashes-button")).toBeNull();
+      await fireEvent.press(getByTestId("player-propose-correction-button"));
+      expect(getByText("Proposer une correction")).toBeTruthy();
+      await fireEvent.press(getByTestId("correction-reason-MPM"));
+      expect(getByTestId("correction-mpm-input").props.value).toBe("120");
+    });
+
+    it("un invité ne voit aucune action de correction", async () => {
+      useAuthStore.setState({ role: "GUEST", isGuest: true });
+      withTrack("Paso Doble");
+      const { queryByTestId } = await renderWithQuery(
+        <AudioPlayerScreen {...createTestProps()} />,
+      );
+      expect(queryByTestId("player-propose-correction-button")).toBeNull();
+      expect(queryByTestId("paso-propose-clashes-button")).toBeNull();
+      expect(queryByTestId("paso-edit-clashes-button")).toBeNull();
+    });
+
+    it("sur un paso, un licencié propose les clashs (éditeur en mode proposition)", async () => {
+      useAuthStore.setState({ role: "LICENSEE", isGuest: false });
+      withTrack("Paso Doble");
+      const { getByTestId, queryByTestId, getByText } = await renderWithQuery(
+        <AudioPlayerScreen {...createTestProps()} />,
+      );
+
+      expect(queryByTestId("paso-edit-clashes-button")).toBeNull();
+      await fireEvent.press(getByTestId("paso-propose-clashes-button"));
+      expect(getByText("Proposer les appels")).toBeTruthy();
+      expect(getByTestId("paso-propose")).toBeTruthy();
+    });
+
+    it("depuis le formulaire, « Clashs paso doble » ouvre l'éditeur sur un paso", async () => {
+      useAuthStore.setState({ role: "LICENSEE", isGuest: false });
+      withTrack("Paso Doble");
+      const { getByTestId, getByText } = await renderWithQuery(
+        <AudioPlayerScreen {...createTestProps()} />,
+      );
+
+      await fireEvent.press(getByTestId("player-propose-correction-button"));
+      await fireEvent.press(getByTestId("correction-reason-PASO_CLASH"));
+      await fireEvent.press(getByTestId("correction-open-clash-editor"));
+      expect(getByText("Proposer les appels")).toBeTruthy();
+    });
+
+    it("un admin garde « Éditer les appels » et a aussi le raccourci de correction", async () => {
+      useAuthStore.setState({ role: "ADMIN", isGuest: false });
+      withTrack("Paso Doble");
+      const { getByTestId, queryByTestId, getByText } = await renderWithQuery(
+        <AudioPlayerScreen {...createTestProps()} />,
+      );
+
+      expect(queryByTestId("paso-propose-clashes-button")).toBeNull();
+      expect(getByTestId("player-propose-correction-button")).toBeTruthy();
+      await fireEvent.press(getByTestId("paso-edit-clashes-button"));
+      expect(getByText("Appels du paso doble")).toBeTruthy();
+      expect(getByTestId("paso-save")).toBeTruthy();
     });
   });
 });

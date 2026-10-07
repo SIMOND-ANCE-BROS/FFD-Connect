@@ -8,7 +8,7 @@
 
 Après le retrait du stack mono-VM (voir [ADR-0017](0017-migration-azure-container-apps.md)) et le nettoyage des ressources Azure obsolètes (juillet 2026), l'infrastructure tient dans **deux resource groups** :
 
-- `ffd-connect-production-rg` : tout le runtime applicatif (Container Apps `backend-prod`/`backend-staging`/`landing` + `ffd-redis-prod`/`ffd-redis-staging`, Container Apps Environment `ffd-connect-cae`, PostgreSQL Flexible `ffd-connect-pg`, ACR, Key Vault, storage uploads, monitoring) ;
+- `ffd-connect-production-rg` : tout le runtime applicatif (Container Apps `backend-prod`/`backend-staging` + `ffd-redis-prod`/`ffd-redis-staging`, Container Apps Environment `ffd-connect-cae`, PostgreSQL Flexible `ffd-connect-pg`, ACR, Key Vault, storage uploads, monitoring) ;
 - `ffd-connect-tfstate` : le storage account de l'état Terraform distant.
 
 Le RG s'appelle « production » mais héberge en réalité **prod ET staging**, qui **partagent la même infrastructure physique** :
@@ -58,6 +58,12 @@ Pour maîtriser les coûts pendant la beta, toutes les Container Apps sont en `m
 - Un incident sur une ressource partagée (serveur Postgres, CAE) impacte **les deux** environnements.
 - Le nommage `ffd-connect-production-rg` est trompeur (il contient aussi staging) — assumé et documenté ici.
 - Pas de budget/RBAC séparé par environnement.
+
+### Mise à jour 2026-10-06 : site vitrine sur GitHub Pages
+
+Le site vitrine (`ffd.gabin-simond.fr`, `apps/landing`) est désormais publié par GitHub Pages (workflow `deploy-landing.yml`, sur push `staging`) et non plus par une Container App. La CI ne construit plus d'image landing (PR #124) ; la Container App `landing`, son certificat managé et le dépôt ACR `ffd-connect-landing` ont été supprimés le 2026-10-06. Le resource group ne contient plus que les Container Apps `backend-prod`/`backend-staging` et `ffd-redis-prod`/`ffd-redis-staging`.
+
+Impact coût : une Container App de moins (en `minReplicas = 0`, son coût d'exécution était déjà quasi nul hors réveils par les visites du site, désormais servies gratuitement par Pages) et le stockage ACR des images landing libéré (l'ACR Basic inclut 10 Go : gain de marge sous ce quota plutôt que sur la facture). Aucun coût GitHub supplémentaire : Pages est inclus dans le plan.
 
 ### Risks
 

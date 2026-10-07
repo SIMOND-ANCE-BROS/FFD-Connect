@@ -19,35 +19,33 @@ import { BackButton } from "../../../components/BackButton";
 import { PinnedHeader } from "../../../components/PinnedHeader";
 import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
+import { trackCorrectionTargetOf } from "../../track-corrections/utils/notificationTarget";
 import {
   Notification,
   useNotificationsLogic,
 } from "../hooks/useNotificationsLogic";
+import { notificationTargetOf } from "../services/notificationTarget";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Notifications">;
-
-/**
- * Destination d'une notification, déduite de sa charge utile.
- *
- * Volontairement tolérant : `data` est un `Json?` rempli par le producteur, et
- * un type ajouté côté serveur ne doit pas provoquer de crash sur un client plus
- * ancien. Ce qu'on ne reconnaît pas ne mène nulle part, silencieusement — ce
- * qui reste préférable à une navigation vers un écran inexistant.
- */
-const competitionIdOf = (data: Notification["data"]): string | null => {
-  const raw = data?.competitionId;
-  return typeof raw === "string" && raw.length > 0 ? raw : null;
-};
 
 export const NotificationsScreen = ({ navigation }: Props) => {
   const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
 
+  /**
+   * La charge utile est lue par `notificationTargetOf`, PARTAGÉ avec le tap sur
+   * la push système. Deux lectures séparées avaient déjà divergé : l'une
+   * naviguait, l'autre ne faisait rien.
+   *
+   * Ici une destination inconnue ne fait rien — on est déjà dans le centre de
+   * notifications, il n'y a nulle part de plus pertinent où aller.
+   */
   const openTarget = useCallback(
     (item: Notification) => {
-      const competitionId = competitionIdOf(item.data);
-      if (competitionId)
-        navigation.navigate("CompetitionDetail", { competitionId });
+      const target = notificationTargetOf(item.data);
+      if (target?.screen === "CompetitionDetail") {
+        navigation.navigate("CompetitionDetail", target.params);
+      }
     },
     [navigation],
   );
@@ -55,6 +53,19 @@ export const NotificationsScreen = ({ navigation }: Props) => {
   const { state, actions } = useNotificationsLogic();
   const { notifications, loading, refreshing } = state;
   const { onRefresh, onMarkAsRead, onReadAll, onDelete, onDeleteAll } = actions;
+
+  // Propositions de correction de musique : file admin ou « Mes propositions ».
+  const openTrackCorrection = useCallback(
+    (item: Notification) => {
+      const target = trackCorrectionTargetOf(item.data);
+      if (target?.screen === "TrackCorrectionsReview") {
+        navigation.navigate("TrackCorrectionsReview", target.params);
+      } else if (target?.screen === "MyTrackCorrections") {
+        navigation.navigate("MyTrackCorrections");
+      }
+    },
+    [navigation],
+  );
 
   /**
    * « Tout effacer » demande confirmation : c'est la seule action de l'écran
@@ -98,6 +109,7 @@ export const NotificationsScreen = ({ navigation }: Props) => {
         onPress={() => {
           if (!item.isRead) onMarkAsRead(item.id).catch(() => {});
           openTarget(item);
+          openTrackCorrection(item);
         }}
         activeOpacity={0.7}
         testID={`notifications-card-${item.id}`}

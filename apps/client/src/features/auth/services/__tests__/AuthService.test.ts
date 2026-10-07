@@ -21,6 +21,11 @@ jest.mock("../../../settings/services/pushRegistration", () => ({
   unregisterDeviceTokenForPush: () => mockUnregisterPush() as unknown,
 }));
 
+const mockRunSessionEndCleanups = jest.fn();
+jest.mock("../../../../services/sessionCleanup", () => ({
+  runSessionEndCleanups: () => mockRunSessionEndCleanups() as unknown,
+}));
+
 const mockClearOfflineQueue = jest.fn();
 jest.mock("../../../../services/offlineQueueStorage", () => ({
   clearOfflineQueue: () => mockClearOfflineQueue() as unknown,
@@ -731,6 +736,20 @@ describe("AuthService — câblage des notifications push", () => {
 
     expect(order).toEqual(["unregister", "clearTokens"]);
   });
+
+  it.each([false, true])(
+    "purge le cache serveur à la déconnexion (biométrie : %s)",
+    async (biometricsEnabled) => {
+      mockRunSessionEndCleanups.mockClear();
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify({ ...DEFAULT_CONFIG, biometricsEnabled }),
+      );
+
+      await AuthService.logout();
+
+      expect(mockRunSessionEndCleanups).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("ne désenregistre PAS sur le verrouillage biométrique", async () => {
     // Le chemin biométrique ne fait que verrouiller l'app pour le MÊME

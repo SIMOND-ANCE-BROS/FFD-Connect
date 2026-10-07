@@ -4,7 +4,7 @@
 # Terraform now manages only the shared foundation:
 # resource group, Azure Container Registry, CI/CD
 # OIDC identity, and monitoring (action group + budget).
-# The runtime (backend/landing/redis Container Apps,
+# The runtime (backend/redis Container Apps,
 # Postgres, Key Vault, uploads storage) is provisioned
 # outside Terraform. The legacy single-VM stack was
 # retired in 2026-07 (migrated to Azure Container Apps).

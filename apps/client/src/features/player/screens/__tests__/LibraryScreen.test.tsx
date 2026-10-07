@@ -33,11 +33,11 @@ jest.mock("@react-navigation/native", () => ({
 jest.mock("../../components/AddTrackModal", () => ({
   AddTrackModal: () => null,
 }));
-jest.mock("../../components/ReportTrackModal", () => {
+jest.mock("../../../track-corrections/components/TrackCorrectionModal", () => {
   const ReactMock = require("react");
   const { Text } = require("react-native");
   return {
-    ReportTrackModal: ({
+    TrackCorrectionModal: ({
       visible,
       track,
     }: {
@@ -243,6 +243,28 @@ describe("LibraryScreen", () => {
 
     expect(getByTestId("report-modal")).toBeTruthy();
     expect(getByTestId("report-modal").props.children).toBe("Track 1");
+  });
+
+  it("does not open the correction modal on long-press for a guest", async () => {
+    mockAuthState.role = "GUEST";
+    mockAuthState.isGuest = true;
+    (useLibraryLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...defaultState,
+        displayData: [
+          { id: "t1", title: "Track 1", artist: "Artist 1", baseBpm: 120 },
+        ],
+      },
+      actions: defaultActions,
+    });
+
+    const { getByTestId, queryByTestId } = await render(
+      <LibraryScreen {...createTestProps()} />,
+    );
+
+    await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+
+    expect(queryByTestId("report-modal")).toBeNull();
   });
 
   it("does not open the report modal on long-press for an admin", async () => {
