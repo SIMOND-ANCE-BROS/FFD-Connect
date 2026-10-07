@@ -21,17 +21,19 @@ import { USER_CATEGORIES } from "../../common/user-categories";
 
 const AGE_GROUPS = [...COUPLE_AGE_GROUPS, ...SOLO_AGE_GROUPS];
 /** `null` clears the field; an absent key leaves it unchanged. */
+/** Required columns: absent = unchanged, but `null` is a 400. */
+const notUndefined = (_: object, v: unknown) => v !== undefined;
 const notNull = (_: object, v: unknown) => v !== null;
 
 export class UpdateAdminUserDto {
   @ApiPropertyOptional()
-  @IsOptional()
+  @ValidateIf(notUndefined)
   @IsString()
   @Length(1, 100)
   firstName?: string;
 
   @ApiPropertyOptional()
-  @IsOptional()
+  @ValidateIf(notUndefined)
   @IsString()
   @Length(1, 100)
   lastName?: string;
@@ -89,7 +91,7 @@ export class UpdateAdminUserDto {
   nationalRanking?: number | null;
 
   @ApiPropertyOptional({ enum: UserRole, enumName: "UserRole" })
-  @IsOptional()
+  @ValidateIf(notUndefined)
   @IsEnum(UserRole)
   role?: UserRole;
 }

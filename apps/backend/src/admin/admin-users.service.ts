@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { AuthTokenService } from "../auth/auth-token.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   adminClubOptionSelect,
@@ -22,6 +23,7 @@ export class AdminUsersService {
     private readonly prisma: PrismaService,
     private readonly audit: AdminAuditService,
     private readonly query: AdminUsersQueryService,
+    private readonly tokens: AuthTokenService,
   ) {}
 
   async update(
@@ -35,6 +37,7 @@ export class AdminUsersService {
       );
     }
 
+    let roleChanged = false;
     await this.prisma.$transaction(async (tx) => {
       const current = await tx.user.findUnique({
         where: { id: userId },
@@ -68,6 +71,7 @@ export class AdminUsersService {
         data: diff.after,
         select: { id: true },
       });
+      roleChanged = "role" in diff.after;
       await this.audit.record(tx, {
         actorId,
         action: "USER_UPDATE",
@@ -77,6 +81,10 @@ export class AdminUsersService {
         after: diff.after,
       });
     });
+
+    // Revoke refresh tokens after commit so the stale role cannot be renewed.
+    // The current access token stays valid until it expires (60 min max).
+    if (roleChanged) await this.tokens.revokeAllUserTokens(userId);
 
     return this.query.detail(userId);
   }

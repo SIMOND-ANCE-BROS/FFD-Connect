@@ -19,4 +19,15 @@ describe("UpdateAdminUserDto", () => {
       await errorsOf({ category: "Latine", ageGroup: "Vieux", role: "ROOT" }),
     ).toEqual(["category", "ageGroup", "role"]);
   });
+
+  it.each(["firstName", "lastName", "role"])(
+    "rejects null on required field %s",
+    async (field) => {
+      expect(await errorsOf({ [field]: null })).toEqual([field]);
+    },
+  );
+
+  it("accepts an empty body", async () => {
+    expect(await errorsOf({})).toEqual([]);
+  });
 });

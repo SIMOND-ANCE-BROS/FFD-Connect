@@ -9,6 +9,7 @@ import {
   createMockPrismaService,
   MockPrismaService,
 } from "../../test/mocks/prisma.mock";
+import { AuthTokenService } from "../auth/auth-token.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AdminAuditService } from "./admin-audit.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
@@ -34,6 +35,7 @@ describe("AdminUsersService.update", () => {
   let prisma: MockPrismaService;
   let audit: { record: jest.Mock };
   let query: { detail: jest.Mock };
+  let tokens: { revokeAllUserTokens: jest.Mock };
 
   beforeEach(async () => {
     prisma = createMockPrismaService();
@@ -43,12 +45,14 @@ describe("AdminUsersService.update", () => {
     prisma.user.update.mockResolvedValue({} as never);
     audit = { record: jest.fn() };
     query = { detail: jest.fn().mockResolvedValue({ id: "u1" }) };
+    tokens = { revokeAllUserTokens: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         AdminUsersService,
         { provide: PrismaService, useValue: prisma },
         { provide: AdminAuditService, useValue: audit },
         { provide: AdminUsersQueryService, useValue: query },
+        { provide: AuthTokenService, useValue: tokens },
       ],
     }).compile();
     service = moduleRef.get(AdminUsersService);
@@ -131,5 +135,20 @@ describe("AdminUsersService.update", () => {
     expect(prisma.user.update).not.toHaveBeenCalled();
     expect(audit.record).not.toHaveBeenCalled();
     expect(query.detail).toHaveBeenCalledWith("u1");
+  });
+
+  it("revokes the target's refresh tokens when the role changes", async () => {
+    await service.update("admin-1", "u1", { role: UserRole.STAFF });
+    expect(tokens.revokeAllUserTokens).toHaveBeenCalledWith("u1");
+  });
+
+  it("does not revoke tokens when the role is unchanged", async () => {
+    await service.update("admin-1", "u1", { role: UserRole.LICENSEE });
+    expect(tokens.revokeAllUserTokens).not.toHaveBeenCalled();
+  });
+
+  it("does not revoke tokens when the role is absent", async () => {
+    await service.update("admin-1", "u1", { lastName: "Durand" });
+    expect(tokens.revokeAllUserTokens).not.toHaveBeenCalled();
   });
 });
