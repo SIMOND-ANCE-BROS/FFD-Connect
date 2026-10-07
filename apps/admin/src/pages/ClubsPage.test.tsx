@@ -86,6 +86,28 @@ describe('ClubsPage', () => {
       error: { message: 'x' },
     } as never);
     renderPage();
-    expect(await screen.findByText(/impossible de charger les clubs/i)).toBeInTheDocument();
+    expect(await screen.findByText('x')).toBeInTheDocument();
+    expect(screen.queryByText(/\d+ clubs?$/)).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('goes back to the first page when the status filter changes', async () => {
+    const big = {
+      ...page,
+      data: { ...page.data, meta: { total: 120, skip: 0, take: 50, hasMore: true } },
+    };
+    const spy = vi.spyOn(sdk, 'adminControllerListClubs').mockResolvedValue(big as never);
+    renderPage();
+    await screen.findByRole('link', { name: 'Club A' });
+    await userEvent.click(screen.getByRole('button', { name: '2' }));
+    await waitFor(() =>
+      expect(spy).toHaveBeenLastCalledWith({ query: expect.objectContaining({ skip: 50 }) }),
+    );
+    await userEvent.click(screen.getByText('Désactivés'));
+    await waitFor(() =>
+      expect(spy).toHaveBeenLastCalledWith({
+        query: expect.objectContaining({ status: 'disabled', skip: 0 }),
+      }),
+    );
   });
 });

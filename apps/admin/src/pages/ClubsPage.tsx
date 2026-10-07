@@ -17,6 +17,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { apiErrorMessage } from '../lib/apiError';
 import { clubsQuery, type ClubsFilter } from '../api/queries';
 import { REGISTRATION_MODE_LABELS, STATUS_FILTER_OPTIONS, type StatusChoice } from '../lib/labels';
 
@@ -61,8 +62,11 @@ export function ClubsPage() {
           onChange={(v) => setStatus(v as StatusChoice)}
         />
       </Group>
-      {clubs.isError && <Alert color="red">Impossible de charger les clubs.</Alert>}
-      {clubs.isPending ? (
+      {clubs.isError ? (
+        <Alert color="red">
+          {apiErrorMessage(clubs.error, 'Impossible de charger les clubs.')}
+        </Alert>
+      ) : clubs.isPending ? (
         <Loader />
       ) : (
         <>

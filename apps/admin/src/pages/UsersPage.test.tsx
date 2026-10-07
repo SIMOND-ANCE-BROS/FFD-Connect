@@ -110,7 +110,9 @@ describe('UsersPage', () => {
       error: { message: 'x' },
     } as never);
     renderPage();
-    expect(await screen.findByText(/impossible de charger/i)).toBeInTheDocument();
+    expect(await screen.findByText('x')).toBeInTheDocument();
+    expect(screen.queryByText(/\d+ utilisateurs?$/)).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
   });
 
   it('flags a disabled user with a red badge', async () => {

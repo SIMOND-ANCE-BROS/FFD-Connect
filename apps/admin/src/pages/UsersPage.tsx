@@ -20,6 +20,7 @@ import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { UserRole } from '../api/generated/types.gen';
+import { apiErrorMessage } from '../lib/apiError';
 import { ROLE_LABELS, STATUS_FILTER_OPTIONS, type StatusChoice } from '../lib/labels';
 import { clubOptionsQuery, referenceQuery, usersQuery, type UsersFilter } from '../api/queries';
 
@@ -120,8 +121,11 @@ export function UsersPage() {
         value={status}
         onChange={(v) => setStatus(v as StatusChoice)}
       />
-      {users.isError && <Alert color="red">Impossible de charger les utilisateurs.</Alert>}
-      {users.isPending ? (
+      {users.isError ? (
+        <Alert color="red">
+          {apiErrorMessage(users.error, 'Impossible de charger les utilisateurs.')}
+        </Alert>
+      ) : users.isPending ? (
         <Loader />
       ) : (
         <>
