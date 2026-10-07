@@ -555,6 +555,11 @@ jobs:
         working-directory: apps/landing
         run: pnpm lint
 
+      - name: Test landing
+        # Unit tests of the reset-password page logic. Same gate as the lint above.
+        if: github.event_name != 'pull_request' || needs.changes.outputs.landing == 'true'
+        run: pnpm --filter landing test
+
       # The landing is served by GitHub Pages (deploy-landing.yml, on staging
       # pushes), which publishes whatever `vite build` emits. Build it here so
       # a broken site (e.g. legal pages rendered from docs/legal/*.md) is

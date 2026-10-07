@@ -30,12 +30,12 @@ environnement, jamais commitée.
 
 ## Serveur
 
-| Variable       | Défaut        | Rôle                                                                         |
-| -------------- | ------------- | ---------------------------------------------------------------------------- |
-| `NODE_ENV`     | `development` | `development` \| `production` \| `test`.                                     |
-| `PORT`         | `3000`        | Port d'écoute HTTP.                                                          |
-| `APP_URL`      | —             | URL publique de l'app (liens dans les emails + callbacks HelloAsso).         |
-| `FRONTEND_URL` | —             | URL du frontend (liens dans les emails de réinitialisation de mot de passe). |
+| Variable       | Défaut        | Rôle                                                                                                                                                                             |
+| -------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`     | `development` | `development` \| `production` \| `test`.                                                                                                                                         |
+| `PORT`         | `3000`        | Port d'écoute HTTP.                                                                                                                                                              |
+| `APP_URL`      | —             | URL publique de l'app (liens dans les emails + callbacks HelloAsso).                                                                                                             |
+| `FRONTEND_URL` | —             | URL du site web servant `/reset-password` (liens des emails de réinitialisation de mot de passe et d'invitation). Voir `docs/exploitation/reinitialisation-mot-de-passe-web.md`. |
 
 ## CORS
 

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Définir un mot de passe — FFD Connect</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <!-- The URL carries a one-time token: never leak it through the Referer header. -->
+    <meta name="referrer" content="no-referrer" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" src="/src/reset-password.ts"></script>
+  </head>
+  <body>
+    <div class="legal reset">
+      <header class="legal__header">
+        <a class="legal__brand" href="../">
+          <img src="/ffd-logo.svg" alt="" width="28" height="28" />
+          <span>FFD Connect</span>
+        </a>
+      </header>
+
+      <main class="reset__body">
+        <p class="reset__kicker">Compte FFD Connect</p>
+        <h1 class="reset__title">Définir votre mot de passe</h1>
+
+        <div class="reset__messages" data-messages role="alert" hidden></div>
+
+        <form class="reset__form" data-form novalidate hidden>
+          <label class="reset__label" for="reset-password">Nouveau mot de passe</label>
+          <input
+            class="reset__input"
+            id="reset-password"
+            name="newPassword"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            required
+          />
+          <p class="reset__hint">
+            8 caractères minimum, avec une majuscule, une minuscule, un chiffre et un caractère
+            spécial.
+          </p>
+          <label class="reset__label" for="reset-confirm">Confirmer le mot de passe</label>
+          <input
+            class="reset__input"
+            id="reset-confirm"
+            name="confirm"
+            type="password"
+            autocomplete="new-password"
+            required
+          />
+          <button class="btn btn--primary reset__submit" type="submit" data-submit>
+            Enregistrer le mot de passe
+          </button>
+          <p class="reset__status" data-status role="status" hidden></p>
+        </form>
+
+        <p class="reset__app" data-app hidden>
+          Vous avez l'application ?
+          <a data-app-link href="ffdconnect://reset-password">Ouvrir dans l'application</a>
+        </p>
+      </main>
+
+      <footer class="legal__footer">
+        <p>Projet indépendant — non affilié à la Fédération Française de Danse</p>
+        <a href="../">Retour à l'accueil</a>
+      </footer>
+    </div>
+  </body>
+</html>
