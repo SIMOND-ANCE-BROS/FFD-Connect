@@ -67,7 +67,8 @@ export class AdminUsersQueryService {
       this.prisma.user.count({ where }),
       this.prisma.user.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        // id breaks createdAt ties so offset pages never overlap or skip rows.
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip,
         take,
         select: adminUserListSelect,
