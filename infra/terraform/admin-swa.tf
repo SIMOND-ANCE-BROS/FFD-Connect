@@ -7,8 +7,11 @@
 # at run time through a custom role assigned on this SWA only. No token is
 # stored in GitHub.
 #
-# Static Web Apps is not offered in francecentral; westeurope is the closest
-# region. Only the static content lives there — the API stays on the CAE.
+# Static Web Apps is not offered in francecentral, and westeurope refused new
+# Free sites (RequestDisallowedByAzure, "region not accepting new customers",
+# 2026-10-07). eastus2 hosts only the static SPA files, which are served from
+# the global edge anyway; no personal data is stored there — the API stays on
+# the CAE.
 #
 # The custom domain needs the Cloudflare CNAME (admin.ffd.gabin-simond.fr →
 # admin_swa_hostname output, DNS-only) to exist BEFORE apply, otherwise the
@@ -17,7 +20,7 @@
 resource "azurerm_static_web_app" "admin" {
   name                = "swa-ffd-admin"
   resource_group_name = azurerm_resource_group.main.name
-  location            = "westeurope"
+  location            = "eastus2"
   sku_tier            = "Free"
   sku_size            = "Free"
 
