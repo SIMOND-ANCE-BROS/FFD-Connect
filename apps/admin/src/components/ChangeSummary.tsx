@@ -32,13 +32,16 @@ export function ChangeSummary({
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
-        {Object.keys(after).map((k) => (
-          <Table.Tr key={k}>
-            <Table.Td>{LABELS[k] ?? k}</Table.Td>
-            <Table.Td>{String(before[k] ?? '—')}</Table.Td>
-            <Table.Td>{String(after[k] ?? '—')}</Table.Td>
-          </Table.Tr>
-        ))}
+        {Object.keys(after)
+          // Audit rows carry both clubId and clubName: show the name only.
+          .filter((k) => !(k === 'clubId' && 'clubName' in after))
+          .map((k) => (
+            <Table.Tr key={k}>
+              <Table.Td>{LABELS[k] ?? k}</Table.Td>
+              <Table.Td>{String(before[k] ?? '—')}</Table.Td>
+              <Table.Td>{String(after[k] ?? '—')}</Table.Td>
+            </Table.Tr>
+          ))}
       </Table.Tbody>
     </Table>
   );

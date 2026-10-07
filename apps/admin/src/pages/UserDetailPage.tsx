@@ -81,6 +81,11 @@ export function UserDetailPage() {
       nationalRanking: null,
       role: '',
     },
+    // The backend rejects null names; block the save instead of a 400.
+    validate: {
+      firstName: (v) => (v.trim() ? null : 'Obligatoire'),
+      lastName: (v) => (v.trim() ? null : 'Obligatoire'),
+    },
   });
   const { setValues } = form;
   useEffect(() => {
@@ -160,8 +165,8 @@ export function UserDetailPage() {
       </Card>
       <form onSubmit={onSubmit}>
         <SimpleGrid cols={2}>
-          <TextInput label="Prénom" {...form.getInputProps('firstName')} />
-          <TextInput label="Nom" {...form.getInputProps('lastName')} />
+          <TextInput label="Prénom" withAsterisk {...form.getInputProps('firstName')} />
+          <TextInput label="Nom" withAsterisk {...form.getInputProps('lastName')} />
           <Select
             label="Club"
             clearable

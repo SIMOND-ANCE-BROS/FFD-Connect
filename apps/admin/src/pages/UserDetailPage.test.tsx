@@ -95,7 +95,7 @@ describe('UserDetailPage', () => {
       error: undefined,
     } as never);
     renderPage();
-    const lastName = await screen.findByLabelText('Nom');
+    const lastName = await screen.findByLabelText(/^Nom/);
     await userEvent.clear(lastName);
     await userEvent.type(lastName, 'Durand');
     await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
@@ -107,6 +107,16 @@ describe('UserDetailPage', () => {
       path: { id: 'u1' },
       body: { lastName: 'Durand' },
     });
+  });
+
+  it('blocks the save when a required name is cleared', async () => {
+    const patch = vi.spyOn(sdk, 'adminControllerUpdateUser');
+    renderPage();
+    await userEvent.clear(await screen.findByLabelText(/^Nom/));
+    await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+    expect(await screen.findByText('Obligatoire')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(patch).not.toHaveBeenCalled();
   });
 
   it("disables the role select on the admin's own account", async () => {
