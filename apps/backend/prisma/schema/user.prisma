@@ -20,6 +20,7 @@ model User {
   role                 UserRole       @default(LICENSEE)
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
+  lastLoginAt          DateTime?      // Dernière connexion réussie (back-office : « renvoyer l'invitation » tant que null)
   ageGroup             String?        // 1 seule classe d'âge par licencié
   category             String?        // discipline(s) : Latin, Standard, Ten Dance
   clubId               String?
@@ -51,6 +52,7 @@ model User {
   submittedTracks      Track[]        @relation("TrackSubmissions")
   trackCorrectionsProposed TrackCorrection[] @relation("TrackCorrectionsProposed")
   trackCorrectionsReviewed TrackCorrection[] @relation("TrackCorrectionsReviewed")
+  adminAuditActions    AdminAuditLog[] @relation("AdminAuditActor")
 
   @@index([email])
   @@index([role])

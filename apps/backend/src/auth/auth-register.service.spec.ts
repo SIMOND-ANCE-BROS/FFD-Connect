@@ -15,7 +15,7 @@ import { AuthTokenService } from "./auth-token.service";
 describe("AuthService.register", () => {
   let authService: AuthService;
   let prisma: {
-    user: { findUnique: jest.Mock; create: jest.Mock };
+    user: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
     license: { findUnique: jest.Mock; update: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -24,7 +24,11 @@ describe("AuthService.register", () => {
 
   beforeEach(async () => {
     prisma = {
-      user: { findUnique: jest.fn(), create: jest.fn() },
+      user: {
+        findUnique: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn().mockResolvedValue({}),
+      },
       license: { findUnique: jest.fn(), update: jest.fn() },
       $transaction: jest.fn(),
     };
