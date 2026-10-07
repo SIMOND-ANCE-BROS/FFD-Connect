@@ -1,9 +1,10 @@
 # ============================================
 # Admin back-office (apps/admin) — static SPA, Free tier (0 EUR).
 # ============================================
-# Deployed by .github/workflows/deploy-admin.yml with the SWA deployment token
-# (GitHub environment `admin`, secret AZURE_STATIC_WEB_APPS_API_TOKEN_ADMIN):
-# no Azure RBAC role is granted to CI for this resource.
+# Deployed by .github/workflows/deploy-admin.yml: the job logs in via OIDC
+# (federated credential env_admin, GitHub environment `admin`) and reads the
+# SWA deployment token at run time through a custom role scoped to this SWA
+# only (ci_swa_admin_deployer in ci-iam.tf). No token is stored in GitHub.
 #
 # Static Web Apps is not offered in francecentral; westeurope is the closest
 # region. Only the static content lives there — the API stays on the CAE.

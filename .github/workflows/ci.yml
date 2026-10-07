@@ -632,14 +632,14 @@ jobs:
     timeout-minutes: 6
     needs: [changes]
     # Runs on all push events (including develop/staging for merge-back safety).
-    # On PRs, skip if no typechecked app changed.
+    # On PRs, skip if neither app changed. Admin-only PRs are typechecked by
+    # the admin step of lint-format, not here: no extra billed job for them.
     if: >-
       github.event_name == 'push'
       || github.event_name == 'merge_group'
       || (github.event_name == 'pull_request'
           && (needs.changes.outputs.backend == 'true'
-              || needs.changes.outputs.client == 'true'
-              || needs.changes.outputs.admin == 'true'))
+              || needs.changes.outputs.client == 'true'))
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6

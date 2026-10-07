@@ -106,6 +106,19 @@ resource "azuread_application_federated_identity_credential" "env_production" {
   subject   = "${local.github_oidc_subject_prefix}:environment:production"
 }
 
+# deploy-admin.yml binds its job to the `admin` environment: it logs in with
+# this credential to fetch the Static Web App deployment token at run time,
+# so no long-lived token is stored in GitHub (see ci_swa_admin_deployer below).
+resource "azuread_application_federated_identity_credential" "env_admin" {
+  application_id = azuread_application.ci.id
+  display_name   = "${local.name_prefix}-github-env-admin"
+  description    = "GitHub Actions OIDC — admin ENVIRONMENT (deploy-admin.yml)"
+
+  audiences = ["api://AzureADTokenExchange"]
+  issuer    = "https://token.actions.githubusercontent.com"
+  subject   = "${local.github_oidc_subject_prefix}:environment:admin"
+}
+
 # ── Role Assignments ───────────────────────
 # Principle of least privilege: CI can push images,
 # read resource metadata, and invoke Run Command on the VM.
@@ -138,3 +151,32 @@ resource "azurerm_role_assignment" "ci_reader" {
 # ACR push + `az containerapp update`; AcrPush + Reader above cover CI's needs.
 # If CI must update Container Apps directly, add a scoped Contributor/custom role
 # assignment here.
+
+# Admin back-office (admin-swa.tf) — deploy-admin.yml reads the Static Web
+# App deployment token at run time (`az staticwebapp secrets list`) instead of
+# storing it as a GitHub secret. No built-in role grants listSecrets without
+# also granting writes (Website Contributor / Contributor can modify or delete
+# the site), so a two-action custom role, assignable to this SWA only.
+# Blast radius: the token lets the holder replace the admin SPA's content —
+# nothing else in the subscription.
+resource "azurerm_role_definition" "swa_admin_deployer" {
+  name        = "${local.name_prefix}-swa-admin-deployer"
+  scope       = azurerm_resource_group.main.id
+  description = "Read the admin Static Web App and list its deployment token (deploy-admin.yml)."
+
+  permissions {
+    actions = [
+      "Microsoft.Web/staticSites/read",
+      "Microsoft.Web/staticSites/listSecrets/action",
+    ]
+    not_actions = []
+  }
+
+  assignable_scopes = [azurerm_static_web_app.admin.id]
+}
+
+resource "azurerm_role_assignment" "ci_swa_admin_deployer" {
+  scope              = azurerm_static_web_app.admin.id
+  role_definition_id = azurerm_role_definition.swa_admin_deployer.role_definition_resource_id
+  principal_id       = azuread_service_principal.ci.object_id
+}

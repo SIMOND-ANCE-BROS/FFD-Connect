@@ -9,9 +9,11 @@ name: Deploy admin (Static Web App)
 # baked in at build time through VITE_API_URL). When backend-prod restarts, one
 # PR switches the trigger to `master` and the URL to api.ffd.gabin-simond.fr.
 #
-# Auth: the SWA deployment token (secret AZURE_STATIC_WEB_APPS_API_TOKEN_ADMIN,
-# scoped to the GitHub environment `admin`). It can only upload content to
-# this one Static Web App — no Azure RBAC role is granted to CI for it.
+# Auth: OIDC only. The job (GitHub environment `admin`) logs in with the CI
+# identity's federated credential `env_admin` and reads the SWA deployment
+# token at run time, through a custom role that can only read this one Static
+# Web App and list its secrets (infra/terraform/ci-iam.tf). The token is
+# masked and never stored in GitHub.
 #
 # Cost: ~2 min of Actions per run, only on staging pushes touching apps/admin.
 # SWA Free tier hosting is 0 EUR.
@@ -24,6 +26,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write # Azure OIDC federated credential
 
 # A newer push supersedes an in-flight upload: the last build is the one that
 # must end up online, and a SWA upload is atomic (no half-published site).
@@ -51,12 +54,38 @@ jobs:
           VITE_API_URL: https://api-staging.ffd.gabin-simond.fr/api/v1
         run: pnpm --filter admin build
 
+      # Same identity and (non-secret) IDs as deploy-backend.yml.
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # The SWA lives in the shared resource group (same as backend-staging).
+      - name: Fetch SWA deployment token
+        id: swa-token
+        env:
+          RESOURCE_GROUP: ${{ secrets.STAGING_RESOURCE_GROUP }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(az staticwebapp secrets list \
+            --name swa-ffd-admin \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.apiKey -o tsv)
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Empty deployment token for swa-ffd-admin"
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
       # Pinned to the head of the action's `v1` branch: the `v1` tag still
       # points at a 2021 commit that predates the `skip_api_build` input.
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ADMIN }}
+          azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.token }}
           action: upload
           app_location: apps/admin/dist
           skip_app_build: true
