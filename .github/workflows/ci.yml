@@ -527,6 +527,18 @@ jobs:
           pnpm testflight:distribute:test
           pnpm play:distribute:test
           pnpm tester-notes:test
+          # distribute-beta (eas-build.yml) runs both scripts with plain `node`
+          # (native type stripping, no tsx, no pnpm install): keep them
+          # strippable — builtins only, no enum / parameter properties. Without
+          # arguments each one must reach its own usage error.
+          for s in testflight-distribute play-distribute; do
+            out=$(node "scripts/$s.ts" 2>&1 || true)
+            if ! grep -q 'est obligatoire' <<< "$out"; then
+              printf '%s\n' "$out"
+              echo "::error::scripts/$s.ts does not run under plain node (type stripping)"
+              exit 1
+            fi
+          done
 
       - name: Run code quality audit
         run: pnpm audit:quality
