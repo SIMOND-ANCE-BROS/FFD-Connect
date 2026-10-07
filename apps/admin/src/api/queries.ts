@@ -3,15 +3,18 @@ import {
   adminControllerAuditLog,
   adminControllerClubOptions,
   adminControllerGetUser,
+  adminControllerListClubs,
   adminControllerListUsers,
   adminControllerReferenceData,
 } from './generated/sdk.gen';
 import type {
   AdminControllerAuditLogData,
+  AdminControllerListClubsData,
   AdminControllerListUsersData,
 } from './generated/types.gen';
 
 export type UsersFilter = NonNullable<AdminControllerListUsersData['query']>;
+export type ClubsFilter = NonNullable<AdminControllerListClubsData['query']>;
 export type AuditFilter = NonNullable<AdminControllerAuditLogData['query']>;
 
 /** Throws so React Query surfaces the error state (the generated client never throws). */
@@ -65,3 +68,9 @@ export async function ensureOk(
     throw error ?? new Error('Requête refusée');
   }
 }
+
+export const clubsQuery = (q: ClubsFilter) =>
+  queryOptions({
+    queryKey: ['admin', 'clubs', 'list', q],
+    queryFn: () => unwrap(adminControllerListClubs({ query: q })),
+  });
