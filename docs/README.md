@@ -30,6 +30,7 @@ voir le [README racine](../README.md).
 - [Déploiement Azure Container Apps](exploitation/deploiement-azure.md) — flux, smoke test, rollback
 - [Changelog beta automatique](exploitation/changelog-beta.md)
 - [Isolation des secrets DB](exploitation/isolation-secrets-db.md) — users par env, Key Vault
+- [Clés de distribution](exploitation/rotation-cles-distribution.md) — inventaire, Key Vault, rotation (ASC, APNs, Play, EXPO_TOKEN)
 
 ## 🧪 Tests
 

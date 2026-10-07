@@ -80,3 +80,20 @@ output "azure_speech_resource_id" {
   description = "Azure AI Speech ARM resource id — set as AZURE_SPEECH_RESOURCE_ID on the backend (Speech's Entra auth needs the aad#{resourceId}#{token} form)"
   value       = azurerm_cognitive_account.speech.id
 }
+
+# ── Release keys (beta promotion, ADR-0020) ──
+
+output "release_keys_vault_name" {
+  description = "Key Vault holding the app-distribution keys — target of `az keyvault secret set --vault-name` (runbook rotation-cles-distribution.md)"
+  value       = azurerm_key_vault.release_keys.name
+}
+
+output "ci_release_client_id" {
+  description = "Client ID of the beta-promotion identity — set as variable AZURE_RELEASE_KEYS_CLIENT_ID on the testflight-beta GitHub environment (not a secret)"
+  value       = azuread_application.ci_release.client_id
+}
+
+output "release_keys_audit_workspace_id" {
+  description = "Workspace (customer) ID receiving the release-keys vault AuditEvent logs — null while release_keys_audit_enabled = false. Query: AzureDiagnostics | where OperationName == \"SecretGet\""
+  value       = var.release_keys_audit_enabled ? azurerm_log_analytics_workspace.release_keys_audit[0].workspace_id : null
+}
