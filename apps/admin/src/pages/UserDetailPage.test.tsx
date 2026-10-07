@@ -1,6 +1,6 @@
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { vi } from 'vitest';
@@ -213,6 +213,7 @@ describe('UserDetailPage', () => {
       within(await screen.findByRole('dialog')).getByRole('button', { name: 'Réactiver' }),
     );
     expect(setStatus).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { active: true } });
+    await waitFor(() => expect(screen.queryByText('Compte désactivé')).toBeNull());
   });
 
   it('explains that a CLUB account of a disabled club cannot log in', async () => {
@@ -273,5 +274,49 @@ describe('UserDetailPage', () => {
     expect(await screen.findByText(/Dernière connexion/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Désactiver' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Supprimer le compte' })).toBeNull();
+  });
+
+  it('shows a French unavailable message on a network failure during deletion', async () => {
+    vi.spyOn(sdk, 'adminControllerDeleteUser').mockResolvedValue({
+      data: undefined,
+      error: new TypeError('Failed to fetch'),
+      response: undefined,
+    } as never);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
+    expect(
+      await within(dialog).findByText('Serveur injoignable, réessayez dans un instant.'),
+    ).toBeInTheDocument();
+  });
+
+  it('invalidates the users list after a deletion and after a status change', async () => {
+    const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    vi.spyOn(sdk, 'adminControllerSetUserStatus').mockResolvedValue({
+      data: { ...detail, disabledAt: '2026-10-07T10:00:00.000Z' },
+      error: undefined,
+    } as never);
+    vi.spyOn(sdk, 'adminControllerDeleteUser').mockResolvedValue({
+      data: undefined,
+      error: undefined,
+      response: new Response(null, { status: 204 }),
+    } as never);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Désactiver' }));
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Désactiver' }),
+    );
+    await screen.findByText('Compte désactivé');
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin', 'users'] });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    invalidate.mockClear();
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer le compte' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
+    await screen.findByText('users list');
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin', 'users'] });
   });
 });

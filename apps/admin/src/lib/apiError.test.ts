@@ -10,6 +10,10 @@ describe('apiErrorMessage', () => {
   it('falls back on anything else', () => {
     expect(apiErrorMessage(null, 'Création impossible')).toBe('Création impossible');
     expect(apiErrorMessage({ message: '' }, 'fallback')).toBe('fallback');
-    expect(apiErrorMessage(new TypeError('Failed to fetch'), 'fallback')).toBe('Failed to fetch');
+  });
+  it('translates a network failure (TypeError) into French', () => {
+    expect(apiErrorMessage(new TypeError('Failed to fetch'), 'fallback')).toBe(
+      'Serveur injoignable, réessayez dans un instant.',
+    );
   });
 });

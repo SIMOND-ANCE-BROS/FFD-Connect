@@ -172,7 +172,7 @@ export function UserDetailPage() {
   if (!user.data || !initial || !ref.data) return <Loader />;
   const u = user.data;
   const isSelf = me?.id === u.id;
-  const disabled = u.disabledAt !== null;
+  const disabled = u.disabledAt != null;
   // lastLoginAt is recorded at login and refresh since lot 1; null = never used.
   const canResend = u.role !== 'ADMIN' && u.lastLoginAt === null && !disabled;
   const emailMatches = typedEmail.trim().toLowerCase() === u.email.toLowerCase();
