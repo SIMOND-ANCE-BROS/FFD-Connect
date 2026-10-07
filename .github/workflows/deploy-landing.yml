@@ -63,6 +63,9 @@ jobs:
         env:
           # Project sites are served from /<repo>/, so assets need the prefix.
           BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+          # API used by the reset-password page. The beta runs on backend-staging
+          # and backend-prod is stopped, so the page must target staging.
+          VITE_API_URL: https://api-staging.ffd.gabin-simond.fr/api/v1
         run: pnpm --filter landing build
 
       - name: Fail if the legal pages came out empty
