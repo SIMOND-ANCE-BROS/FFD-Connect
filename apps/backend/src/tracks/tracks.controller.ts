@@ -17,6 +17,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -34,6 +35,7 @@ import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { BlobStorageService } from "../storage/blob-storage.service";
+import { TrackResponseDto } from "./dto/track-response.dto";
 import {
   buildContentDisposition,
   contentTypeForFilename,
@@ -64,6 +66,23 @@ export class TracksController {
     @Req() req: RequestWithUser,
   ) {
     return this.tracksService.findAll(pagination, req.user.role === "ADMIN");
+  }
+
+  // Déclaré AVANT @Get(":id") : sinon "ambiance" serait capturé comme un id.
+  @Get("ambiance")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Récupère les musiques d'ambiance",
+    description:
+      "Musiques de pause du mode compétition : pistes READY non blacklistées dont le style ou l'artiste vaut « Ambiance » (insensible à la casse). Exclues de GET /tracks. Au plus 50 pistes, plus récentes d'abord.",
+  })
+  @ApiOkResponse({
+    description: "Liste des musiques d'ambiance",
+    type: [TrackResponseDto],
+  })
+  async findAmbiance(@Req() req: RequestWithUser): Promise<TrackResponseDto[]> {
+    return this.tracksService.findAmbiance(req.user.role === "ADMIN");
   }
 
   @Get("download/:token")

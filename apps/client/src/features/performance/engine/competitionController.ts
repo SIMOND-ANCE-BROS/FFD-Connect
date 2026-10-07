@@ -1,0 +1,645 @@
+/**
+ * Competition engine (« Mode Compétition ») — module singleton.
+ *
+ * All the session state that must survive re-renders and be shared between
+ * the screens (session token, transition flags, pause music, the 1 s timer)
+ * lives here, and the observable state lives in the Zustand performance
+ * store. The React hook (usePerformanceEngine) is only a binding: mounting it
+ * in several components can no longer start several timers.
+ *
+ * Sequence of a session:
+ *   loading  — fetch the full catalogue + ambiance, build the playlist, then
+ *              download EVERY track, the pause music and every announcement
+ *              to the local cache (progress in store.loadingProgress).
+ *   break    — pause music (looped, faded in) for `pauseDuration` seconds.
+ *   transition (status unchanged, timer held):
+ *              duck the pause music → announcement fully spoken (dedicated
+ *              player, full volume) → fade the pause music out → dance track.
+ *   playing  — the countdown only starts once the track is really playing.
+ *   … repeat, then an optional closing line and status "finished".
+ */
+import { Alert } from "react-native";
+import Tts from "../../../services/TtsService";
+import {
+  usePerformanceStore,
+  type PlaylistItem,
+} from "../../../stores/performance.store";
+import { createLogger } from "../../../utils/logger";
+import TrackPlayer, {
+  Event,
+  RepeatMode,
+  State,
+} from "../../../utils/TrackPlayerWrapper";
+import type { TrackData } from "../../player/context/PlayerContext";
+import type { TrackRepository } from "../../player/services/TrackRepository";
+import {
+  cacheTrack,
+  runWithProgress,
+  TrackDownloadError,
+} from "../services/competitionAudioCache";
+import { loadCompetitionLibrary } from "../services/competitionLibrary";
+import {
+  buildPlaylist,
+  CLOSING_ANNOUNCEMENT,
+  describeValidation,
+  validateProgram,
+} from "../utils/competitionProgram";
+
+const logger = createLogger("competitionController");
+
+/** Pause music level once faded in. */
+export const AMBIANCE_VOLUME = 0.7;
+/** Pause music level under the announcement. */
+export const DUCKED_VOLUME = 0.25;
+/** Max wait for the dance track to report Playing before starting anyway. */
+export const PLAYBACK_START_TIMEOUT_MS = 8000;
+const AMBIANCE_FADE_IN_S = 3;
+const DANCE_FADE_OUT_S = 5;
+const FADE_STEP_MS = 100;
+const DOWNLOAD_CONCURRENCY = 3;
+
+const TTS_UNAVAILABLE_MESSAGE =
+  "Les annonces sont indispensables pour le mode compétition. Vérifiez la connexion au serveur TTS.";
+
+export interface EngineDeps {
+  playTrack: (
+    track: TrackData,
+    playlist?: TrackData[],
+    forceRestart?: boolean,
+  ) => Promise<void>;
+  pause: () => Promise<void>;
+  resume: () => Promise<void>;
+  resetPlayer: () => Promise<void>;
+  ensurePlayerReady?: () => Promise<boolean>;
+  allTracks: TrackData[];
+  trackRepo: Pick<
+    TrackRepository,
+    "getTracksPage" | "getTrackUrl" | "getArtworkUrl"
+  > | null;
+}
+
+// --- Singleton session state -------------------------------------------------
+
+let deps: EngineDeps | null = null;
+let session = 0;
+let transitioning = false;
+/** When true the countdown does not decrement (announcement, track start). */
+let holdTimer = false;
+let ambianceTrack: TrackData | null = null;
+let closingPath: string | null = null;
+let previousStatus: "playing" | "break" | null = null;
+let ttsFailureHandled = false;
+let volume = 1;
+let interval: ReturnType<typeof setInterval> | null = null;
+/** Serialises calls to playTrack so a stale call can never land after a newer one. */
+let playChain: Promise<unknown> = Promise.resolve();
+
+const store = () => usePerformanceStore.getState();
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+export const setEngineDeps = (next: EngineDeps): void => {
+  deps = next;
+};
+
+const requireDeps = (): EngineDeps => {
+  if (!deps) throw new Error("Competition engine used before initialisation");
+  return deps;
+};
+
+/** Test helper: forget every piece of session state. */
+export const resetEngineForTests = (): void => {
+  stopTimer();
+  deps = null;
+  session = 0;
+  transitioning = false;
+  holdTimer = false;
+  ambianceTrack = null;
+  closingPath = null;
+  previousStatus = null;
+  ttsFailureHandled = false;
+  volume = 1;
+  playChain = Promise.resolve();
+};
+
+export const isTransitioning = (): boolean => transitioning;
+
+// --- Audio helpers -----------------------------------------------------------
+
+const alive = (token: number) => token === session;
+
+/**
+ * Session-scoped volume write: a no-op once the session is stale, so a fade
+ * step still in flight can never land after stopPerformance restored 1 on the
+ * SHARED music player (which the library keeps using afterwards).
+ */
+const setVolume = async (v: number, token: number): Promise<void> => {
+  if (!alive(token)) return;
+  volume = Math.max(0, Math.min(1, v));
+  await TrackPlayer.setVolume(volume);
+};
+
+/** Unconditional restore of the shared player (stop / finish). */
+const restoreVolume = async (): Promise<void> => {
+  volume = 1;
+  await TrackPlayer.setVolume(1);
+};
+
+const rampVolume = async (
+  to: number,
+  durationMs: number,
+  token: number,
+): Promise<void> => {
+  const from = volume;
+  const steps = Math.max(1, Math.round(durationMs / FADE_STEP_MS));
+  for (let i = 1; i <= steps; i++) {
+    if (!alive(token)) return;
+    await sleep(FADE_STEP_MS);
+    // Re-checked AFTER the sleep (inside setVolume): Stop may have run meanwhile.
+    await setVolume(from + ((to - from) * i) / steps, token);
+  }
+};
+
+/**
+ * Plays a track on the shared player for session `token`. Calls are
+ * serialised; a call whose session is already stale is skipped, and a call
+ * that completes after Stop is undone (nothing keeps playing on the idle
+ * screen). Resolves true when the session is still alive.
+ */
+const playOnMain = (track: TrackData, token: number): Promise<boolean> => {
+  const run = playChain.then(async () => {
+    if (!alive(token)) return false;
+    const d = requireDeps();
+    await d.playTrack(track, undefined, true);
+    if (alive(token)) return true;
+    // Stopped while the track was loading: undo it.
+    await d.resetPlayer().catch(() => {});
+    const status = store().status;
+    if (status === "idle" || status === "finished") {
+      await TrackPlayer.setRepeatMode(RepeatMode.Off).catch(() => {});
+      await restoreVolume().catch(() => {});
+    }
+    return false;
+  });
+  playChain = run.catch(() => false);
+  return run;
+};
+
+/**
+ * Resolves true on the first Playing state of the freshly loaded track,
+ * false after `timeoutMs` (we then start the countdown anyway).
+ */
+const waitForPlayback = (timeoutMs: number): Promise<boolean> =>
+  new Promise<boolean>((resolve) => {
+    let done = false;
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      sub.remove();
+      resolve(ok);
+    };
+    const sub = TrackPlayer.addEventListener(
+      Event.PlaybackState,
+      (data: { state: State }) => {
+        if (data.state === State.Playing) finish(true);
+      },
+    );
+    const timer = setTimeout(() => {
+      logger.warn("Dance track did not report Playing in time");
+      finish(false);
+    }, timeoutMs);
+    TrackPlayer.getState()
+      .then((s) => {
+        if (s === State.Playing) finish(true);
+      })
+      .catch(() => {});
+  });
+
+// --- Timer -------------------------------------------------------------------
+
+function stopTimer(): void {
+  if (interval) clearInterval(interval);
+  interval = null;
+}
+
+function startTimer(): void {
+  stopTimer();
+  interval = setInterval(tick, 1000);
+}
+
+/** One second of the countdown (fades + completion). Exported for tests. */
+export function tick(): void {
+  const s = store();
+  const token = session;
+  if (holdTimer || transitioning) return;
+  if (s.status !== "playing" && s.status !== "break") return;
+
+  const prev = s.timeRemaining;
+  const next = Math.max(0, prev - 1);
+  s.setTimeRemaining(next);
+
+  if (s.status === "playing" && next < DANCE_FADE_OUT_S) {
+    // Dance fade-out over the last seconds.
+    setVolume(next / DANCE_FADE_OUT_S, token).catch(() => {});
+  }
+  if (s.status === "break" && ambianceTrack) {
+    const elapsed = s.config.pauseDuration - next;
+    if (elapsed <= AMBIANCE_FADE_IN_S) {
+      setVolume(
+        (AMBIANCE_VOLUME * Math.min(elapsed, AMBIANCE_FADE_IN_S)) /
+          AMBIANCE_FADE_IN_S,
+        token,
+      ).catch(() => {});
+    }
+  }
+
+  if (next === 0) handleTimerComplete();
+}
+
+function handleTimerComplete(): void {
+  if (transitioning || holdTimer) return;
+  const s = store();
+  const nextIndex = s.currentDanceIndex + 1;
+  const hasNext = nextIndex < s.playlist.length;
+
+  if (s.status === "playing") {
+    if (!hasNext) {
+      finishPerformance().catch((e) => logger.warn("Finish failed", e));
+    } else if (s.config.pauseDuration > 0) {
+      startBreak().catch((e) => logger.warn("Break failed", e));
+    } else {
+      transitionToDance(nextIndex).catch((e) =>
+        logger.warn("Transition failed", e),
+      );
+    }
+  } else if (s.status === "break") {
+    if (hasNext) {
+      transitionToDance(nextIndex).catch((e) =>
+        logger.warn("Transition failed", e),
+      );
+    } else {
+      finishPerformance().catch((e) => logger.warn("Finish failed", e));
+    }
+  }
+}
+
+// --- Phases ------------------------------------------------------------------
+
+async function playAmbiance(token: number): Promise<void> {
+  const d = requireDeps();
+  if (!ambianceTrack) {
+    await d.pause();
+    return;
+  }
+  await setVolume(0, token);
+  if (!(await playOnMain(ambianceTrack, token))) return;
+  // Loop the pause music for the whole break, whatever the user's repeat mode.
+  await TrackPlayer.setRepeatMode(RepeatMode.Track);
+}
+
+async function startBreak(): Promise<void> {
+  const token = session;
+  const s = store();
+  const pauseDuration = s.config.pauseDuration;
+  s.setStatus("break");
+  s.setActivePhase("break");
+  s.setTimeRemaining(pauseDuration);
+  // While the pause music loads, a play/pause tap must not be overridden by
+  // the track starting afterwards → treat it as a transition.
+  transitioning = true;
+  holdTimer = true;
+  try {
+    if (pauseDuration > 0) {
+      await playAmbiance(token);
+    } else {
+      await requireDeps().pause();
+    }
+  } finally {
+    if (alive(token)) {
+      transitioning = false;
+      holdTimer = false;
+    }
+  }
+  // No break: go straight to the announcement of the next dance.
+  if (alive(token) && pauseDuration <= 0) handleTimerComplete();
+}
+
+async function playDance(index: number, token: number): Promise<void> {
+  if (!alive(token)) return;
+  const item = store().playlist[index] as PlaylistItem | undefined;
+  if (!item) return;
+  const s = store();
+  holdTimer = true;
+  s.setCurrentDanceIndex(index);
+  s.setStatus("playing");
+  s.setActivePhase("dance");
+  s.setTimeRemaining(item.duration);
+  await setVolume(1, token);
+  if (!(await playOnMain(item.track, token))) return;
+  // Never let the user's repeat mode (player.loop) leak into a dance.
+  await TrackPlayer.setRepeatMode(RepeatMode.Off);
+  await waitForPlayback(PLAYBACK_START_TIMEOUT_MS);
+  if (!alive(token)) return;
+  holdTimer = false;
+}
+
+/**
+ * Break (or end of dance) → announcement → dance. Nothing else may touch the
+ * audio meanwhile: the timer is held and play/pause presses are ignored.
+ */
+async function transitionToDance(index: number): Promise<void> {
+  if (transitioning) return;
+  const item = store().playlist[index] as PlaylistItem | undefined;
+  if (!item) {
+    await finishPerformance();
+    return;
+  }
+  const token = session;
+  transitioning = true;
+  holdTimer = true;
+  try {
+    const fromBreak = store().status === "break" && ambianceTrack !== null;
+    store().setIsAnnouncing(true);
+    if (fromBreak) {
+      await rampVolume(DUCKED_VOLUME, 600, token);
+    } else {
+      await requireDeps().pause();
+    }
+    if (!alive(token)) return;
+
+    try {
+      await Tts.speak(item.announcementText, item.announcementPath);
+    } catch (e) {
+      logger.warn("TTS Speak Error", e);
+      await handleTtsFailure(e instanceof Error ? e.message : undefined);
+      return;
+    }
+    if (!alive(token)) return;
+    store().setIsAnnouncing(false);
+
+    if (fromBreak) await rampVolume(0, 1000, token);
+    if (!alive(token)) return;
+    await playDance(index, token);
+  } finally {
+    if (alive(token)) {
+      transitioning = false;
+      store().setIsAnnouncing(false);
+    }
+  }
+}
+
+async function finishPerformance(): Promise<void> {
+  const token = session;
+  const d = requireDeps();
+  transitioning = true;
+  holdTimer = true;
+  try {
+    await rampVolume(0, 800, token);
+    await d.pause();
+    if (!alive(token)) return;
+    if (closingPath) {
+      try {
+        await Tts.speak(CLOSING_ANNOUNCEMENT, closingPath);
+      } catch (e) {
+        logger.warn("Closing announcement failed", e);
+      }
+    }
+    if (!alive(token)) return;
+    stopTimer();
+    store().setStatus("finished");
+    store().setTimeRemaining(0);
+    await d.resetPlayer();
+    await TrackPlayer.setRepeatMode(RepeatMode.Off).catch(() => {});
+    await restoreVolume();
+  } finally {
+    if (alive(token)) {
+      transitioning = false;
+      holdTimer = false;
+    }
+  }
+}
+
+async function handleTtsFailure(message?: string): Promise<void> {
+  if (ttsFailureHandled) return;
+  ttsFailureHandled = true;
+  await stopPerformance();
+  Alert.alert("TTS indisponible", message ?? TTS_UNAVAILABLE_MESSAGE);
+}
+
+// --- Public API ----------------------------------------------------------------
+
+export async function stopPerformance(): Promise<void> {
+  session += 1;
+  transitioning = false;
+  holdTimer = false;
+  previousStatus = null;
+  stopTimer();
+  const s = store();
+  s.setStatus("idle");
+  s.setLoadingProgress(null);
+  s.setIsAnnouncing(false);
+  await Tts.stop().catch(() => {});
+  if (deps) await deps.resetPlayer().catch(() => {});
+  await TrackPlayer.setRepeatMode(RepeatMode.Off).catch(() => {});
+  // Always last: any in-flight fade step is a no-op now (stale token).
+  await restoreVolume();
+}
+
+class MissingAnnouncementError extends Error {}
+
+/**
+ * Prepares everything (catalogue, playlist, downloads) then starts the
+ * initial "get ready" break. Resolves false (with a French Alert) when the
+ * competition cannot start — never starts a half-loaded competition.
+ */
+export async function startPerformance(): Promise<boolean> {
+  const d = requireDeps();
+  // Double start (double tap, or a session already running) is refused.
+  const current = store().status;
+  if (current !== "idle" && current !== "finished") return false;
+  session += 1;
+  const token = session;
+  stopTimer();
+  transitioning = false;
+  holdTimer = false;
+  ttsFailureHandled = false;
+  ambianceTrack = null;
+  closingPath = null;
+  previousStatus = null;
+
+  const s = store();
+  s.setStatus("loading");
+  s.setLoadingProgress({ done: 0, total: 0 });
+
+  const abort = async (title: string, message: string) => {
+    if (!alive(token)) return false;
+    await stopPerformance();
+    Alert.alert(title, message);
+    return false;
+  };
+
+  try {
+    const library = await loadCompetitionLibrary(d.trackRepo, d.allTracks);
+    if (!alive(token)) return false;
+
+    const cfg = store().config;
+    const validation = validateProgram(cfg, library.tracks);
+    const problem = describeValidation(validation);
+    if (problem) {
+      return await abort(
+        validation.emptyRounds.length > 0
+          ? "Programme incomplet"
+          : "Musiques manquantes",
+        problem,
+      );
+    }
+
+    const list = buildPlaylist(cfg, library.tracks);
+    if (list.length === 0) {
+      return await abort(
+        "Erreur",
+        "Aucune musique trouvée pour les danses sélectionnées.",
+      );
+    }
+
+    const ambiance =
+      library.ambiance.length > 0
+        ? library.ambiance[Math.floor(Math.random() * library.ambiance.length)]
+        : null;
+
+    await d.ensurePlayerReady?.();
+
+    // --- Download everything before starting --------------------------------
+    const uniqueTracks = [
+      ...new Map(list.map((i) => [i.track.id, i.track])).values(),
+    ];
+    const texts = [...new Set(list.map((i) => i.announcementText))];
+    const trackUris = new Map<string, string>();
+    const ttsPaths = new Map<string, string>();
+    // Holder object: assigned inside a task closure.
+    const ambianceCache: { uri: string | null } = { uri: null };
+
+    const tasks: (() => Promise<void>)[] = [
+      ...uniqueTracks.map((t) => async () => {
+        trackUris.set(t.id, await cacheTrack(t));
+      }),
+      ...texts.map((text) => async () => {
+        const path = await Tts.preload(text);
+        if (!path) throw new MissingAnnouncementError();
+        ttsPaths.set(text, path);
+      }),
+    ];
+    if (ambiance) {
+      tasks.push(async () => {
+        try {
+          ambianceCache.uri = await cacheTrack(ambiance);
+        } catch (e) {
+          // Pause music is a comfort, not a requirement: silent breaks.
+          logger.warn("Ambiance download failed (silent breaks)", e);
+        }
+      });
+    }
+    tasks.push(async () => {
+      try {
+        closingPath = await Tts.preload(CLOSING_ANNOUNCEMENT);
+      } catch {
+        closingPath = null; // optional closing line
+      }
+    });
+
+    try {
+      await runWithProgress(
+        tasks,
+        (done, total) => {
+          if (alive(token)) store().setLoadingProgress({ done, total });
+        },
+        DOWNLOAD_CONCURRENCY,
+        // Cancelled (Stop / Annuler): stop starting new downloads.
+        () => alive(token),
+      );
+    } catch (e) {
+      if (!alive(token)) return false;
+      if (e instanceof TrackDownloadError) {
+        return await abort(
+          "Chargement impossible",
+          `Impossible de télécharger « ${e.track.title} ». Vérifiez votre connexion puis réessayez.`,
+        );
+      }
+      logger.warn("[Performance] TTS preload failed", e);
+      await handleTtsFailure(
+        e instanceof MissingAnnouncementError || !(e instanceof Error)
+          ? undefined
+          : e.message,
+      );
+      return false;
+    }
+    if (!alive(token)) return false;
+
+    const ready: PlaylistItem[] = list.map((item) => ({
+      ...item,
+      track: { ...item.track, url: trackUris.get(item.track.id) ?? "" },
+      announcementPath: ttsPaths.get(item.announcementText),
+    }));
+    ambianceTrack =
+      ambiance && ambianceCache.uri
+        ? { ...ambiance, url: ambianceCache.uri }
+        : null;
+
+    s.setPlaylist(ready);
+    s.setCurrentDanceIndex(-1);
+    s.setLoadingProgress(null);
+    startTimer();
+    await startBreak();
+    return true;
+  } catch (error) {
+    logger.warn("[Performance] start failed", error);
+    return abort(
+      "Erreur",
+      "Impossible de préparer la compétition. Vérifiez votre connexion puis réessayez.",
+    );
+  }
+}
+
+export async function togglePlayPause(): Promise<void> {
+  // An announcement / track start is in progress: ignore (it would cut it).
+  if (transitioning) return;
+  const d = requireDeps();
+  const s = store();
+  if (s.status === "playing" || s.status === "break") {
+    previousStatus = s.status;
+    s.setStatus("paused");
+    await d.pause();
+  } else if (s.status === "paused") {
+    s.setStatus(previousStatus ?? "playing");
+    await d.resume();
+  } else if (s.status === "idle") {
+    await startPerformance();
+  }
+}
+
+/** Skips to the next dance (announcement first). */
+export async function nextDance(): Promise<void> {
+  if (transitioning) return;
+  const s = store();
+  const nextIndex = s.currentDanceIndex + 1;
+  if (nextIndex < s.playlist.length) {
+    await transitionToDance(nextIndex);
+  } else {
+    await finishPerformance();
+  }
+}
+
+/** Ends the current phase now (with its normal transition). */
+export function fadeNow(): void {
+  handleTimerComplete();
+}
+
+/** Recomputes a preview playlist from the current config (no audio). */
+export function generatePlaylist(): void {
+  const d = requireDeps();
+  const s = store();
+  s.setPlaylist(buildPlaylist(s.config, d.allTracks));
+  s.setCurrentDanceIndex(0);
+  s.setStatus("idle");
+}

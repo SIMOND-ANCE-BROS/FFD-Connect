@@ -12,10 +12,10 @@ import { usePlayerStore } from "../../../stores/player.store";
 import { createLogger } from "../../../utils/logger";
 import {
   getDownloadedSet,
-  localTrackUri,
   syncFavoriteDownloads,
 } from "../services/TrackOfflineService";
 import { Track } from "../services/TrackRepository";
+import { toTrackData } from "../services/trackMapping";
 import { TrackData } from "./PlayerContext";
 import { useTrackRepository } from "./TrackContext";
 
@@ -215,26 +215,11 @@ export const LibraryProvider = ({
     }
     try {
       // Map raw to TrackData first to have a common accessible list (guard against missing fields)
-      const fullList: TrackData[] = rawTracks.map((track) => {
+      const fullList: TrackData[] = rawTracks.map((track) =>
         // Copie locale (favori téléchargé ou import) → lecture hors-ligne ;
         // sinon streaming depuis le serveur (#416).
-        const isDownloaded = downloadedFilenames.has(track.filename);
-        return {
-          id: String(track.id),
-          title: String(track.title),
-          artist: String(track.artist),
-          url: isDownloaded
-            ? localTrackUri(track.filename)
-            : trackRepo.getTrackUrl(track.filename),
-          baseBpm: track.bpm,
-          style: track.style ?? "Importé",
-          artwork: trackRepo.getArtworkUrl(track.artwork),
-          playlist: "Tout",
-          titleMasked: track.titleMasked ?? false,
-          isDownloaded,
-          clashTimecodes: track.clashTimecodes,
-        };
-      });
+        toTrackData(track, trackRepo, downloadedFilenames.has(track.filename)),
+      );
       if (DEBUG_PLAYER && fullList.length > 0) {
         const first = rawTracks[0];
         const built = fullList[0];

@@ -17,6 +17,7 @@ describe("TracksController", () => {
   const mockTracksService = {
     findAll: jest.fn(),
     findOne: jest.fn(),
+    findAmbiance: jest.fn(),
     updateTrack: jest.fn(),
     deleteTrack: jest.fn(),
   };
@@ -51,6 +52,37 @@ describe("TracksController", () => {
     }).compile();
 
     controller = module.get<TracksController>(TracksController);
+  });
+
+  // ─── findAmbiance ────────────────────────────────────────────────────────────
+
+  describe("findAmbiance", () => {
+    it("returns the ambiance tracks from the service", async () => {
+      const tracks = [{ id: "a1", title: "Lounge", artist: "Ambiance" }];
+      mockTracksService.findAmbiance.mockResolvedValue(tracks);
+
+      const result = await controller.findAmbiance(licenseeReq);
+
+      expect(result).toEqual(tracks);
+      expect(mockTracksService.findAmbiance).toHaveBeenCalledWith(false);
+    });
+
+    it("forwards the admin flag to the service", async () => {
+      mockTracksService.findAmbiance.mockResolvedValue([]);
+
+      await controller.findAmbiance(adminReq);
+
+      expect(mockTracksService.findAmbiance).toHaveBeenCalledWith(true);
+    });
+
+    it("is routed before GET /tracks/:id so 'ambiance' is not taken as an id", () => {
+      const proto = TracksController.prototype;
+      const methods = Object.getOwnPropertyNames(proto);
+      expect(methods.indexOf("findAmbiance")).toBeLessThan(
+        methods.indexOf("findOne"),
+      );
+      expect(Reflect.getMetadata("path", proto.findAmbiance)).toBe("ambiance");
+    });
   });
 
   // ─── findAll ─────────────────────────────────────────────────────────────────

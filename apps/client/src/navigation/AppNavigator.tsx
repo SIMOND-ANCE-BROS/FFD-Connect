@@ -237,7 +237,9 @@ export const AppNavigator = () => {
             <Stack.Screen
               name="PerformancePlayer"
               component={PerformancePlayerScreen}
-              options={{ animation: "fade" }}
+              // No iOS swipe-back: leaving goes through the "Arrêter ?"
+              // confirmation (the engine is a singleton that must be stopped).
+              options={{ animation: "fade", gestureEnabled: false }}
             />
             <Stack.Screen
               name="AudioPlayer"

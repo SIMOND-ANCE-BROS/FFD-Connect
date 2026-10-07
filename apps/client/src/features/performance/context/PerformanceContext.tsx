@@ -1,5 +1,5 @@
-// Engine logic (timers, TTS, TrackPlayer) is now in usePerformanceEngine
-// called directly from PerformancePlayerScreen and PerformanceSetupScreen.
+// Engine logic (timers, TTS, TrackPlayer) lives in engine/competitionController,
+// bound to the screens by usePerformanceEngine.
 import React from "react";
 
 export { usePerformanceStore } from "../../../stores/performance.store";
@@ -8,6 +8,9 @@ export type {
   PlaylistItem,
   Category,
   Mode,
+  RoundConfig,
+  RoundType,
+  LoadingProgress,
 } from "../../../stores/performance.store";
 
 // No-op provider kept for backwards compatibility with App.tsx

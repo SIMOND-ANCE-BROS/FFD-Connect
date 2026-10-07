@@ -194,9 +194,9 @@ class EnvironmentVariables {
   @IsOptional()
   AZURE_SPEECH_RESOURCE_ID?: string;
 
-  // Clé API Gemini (Google AI) — réécriture optionnelle et plus concise des
-  // annonces avant la synthèse Azure TTS (tts.service.ts). Absente → réécriture
-  // désactivée, le texte d'origine est synthétisé tel quel.
+  // Clé API Gemini (Google AI). N'est plus lue par le module TTS (la réécriture
+  // d'annonce a été retirée : le texte est synthétisé tel quel). Conservée
+  // optionnelle pour ne pas casser les environnements qui la définissent encore.
   @IsString()
   @IsOptional()
   GOOGLE_API_KEY?: string;

@@ -1,4 +1,3 @@
-import type { GoogleGenAI } from "@google/genai";
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DefaultAzureCredential, type TokenCredential } from "@azure/identity";
@@ -18,6 +17,14 @@ const SPEECH_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
 // ⚠️ c'est bien /tts/cognitiveservices/v1 : sur l'hôte {custom}.cognitiveservices.azure.com,
 // /cognitiveservices/v1 (sans /tts) renvoie 404. Validé par test direct 2026-07-12.
 const SPEECH_SYNTH_PATH = "/tts/cognitiveservices/v1";
+// Léger ralentissement : une annonce de compétition gagne en clarté et sonne
+// moins « débitée » qu'au débit par défaut de la voix neuronale.
+const SPEECH_PROSODY_RATE = "-5%";
+// Sel de la clé de cache : bumpé quand le texte réellement synthétisé change
+// (v2 = plus de réécriture Gemini + SSML prosody), pour ne pas resservir
+// l'ancien audio.
+const CACHE_KEY_SALT = "azure-v2";
+const DEFAULT_VOICE = "fr-FR-DeniseNeural";
 
 function escapeXml(s: string): string {
   return s
@@ -28,9 +35,24 @@ function escapeXml(s: string): string {
     .replace(/'/g, "&apos;");
 }
 
+/**
+ * SSML de synthèse. Le texte est échappé (caractères XML uniquement) : la
+ * ponctuation et les points de suspension « … » sont conservés tels quels, ce
+ * sont eux qui donnent les pauses naturelles de l'annonce.
+ */
+export function buildSsml(text: string, voice: string): string {
+  const lang = voice.split("-").slice(0, 2).join("-") || "fr-FR";
+  return (
+    `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' ` +
+    `xmlns:mstts='https://www.w3.org/2001/mstts' xml:lang='${escapeXml(lang)}'>` +
+    `<voice name='${escapeXml(voice)}'>` +
+    `<prosody rate='${SPEECH_PROSODY_RATE}'>${escapeXml(text)}</prosody>` +
+    `</voice></speak>`
+  );
+}
+
 @Injectable()
 export class TtsService implements OnModuleInit {
-  private genAI?: GoogleGenAI;
   private credential?: TokenCredential;
   private speechEndpoint?: string;
   private speechResourceId?: string;
@@ -48,7 +70,7 @@ export class TtsService implements OnModuleInit {
     }
   }
 
-  async onModuleInit() {
+  onModuleInit(): void {
     // Azure Speech (synthèse) — managed identity, aucune clé téléchargée.
     this.speechEndpoint = this.configService
       .get<string>("AZURE_SPEECH_ENDPOINT")
@@ -65,18 +87,6 @@ export class TtsService implements OnModuleInit {
       this.logger.warn(
         "AZURE_SPEECH_ENDPOINT not set. TTS synthesis will fail until configured.",
       );
-    }
-
-    // Gemini (réécriture d'annonce) — service Google distinct, optionnel.
-    const apiKey = this.configService.get<string>("GOOGLE_API_KEY");
-    if (apiKey) {
-      try {
-        const { GoogleGenAI } = await import("@google/genai");
-        this.genAI = new GoogleGenAI({ apiKey });
-        this.logger.log("Gemini rewrite enabled for TTS announcements");
-      } catch (e) {
-        this.logger.warn("Failed to init Gemini (rewrite disabled)", e);
-      }
     }
   }
 
@@ -106,10 +116,7 @@ export class TtsService implements OnModuleInit {
     const token = await this.credential!.getToken(AZURE_COGNITIVE_SCOPE);
     if (!token) throw new Error("Failed to acquire Azure AD token for Speech");
 
-    const lang = voice.split("-").slice(0, 2).join("-") || "fr-FR";
-    const ssml =
-      `<speak version='1.0' xml:lang='${lang}'>` +
-      `<voice name='${voice}'>${escapeXml(text)}</voice></speak>`;
+    const ssml = buildSsml(text, voice);
 
     const authValues = this.buildAuthValues(token.token);
     let lastErr: unknown;
@@ -148,16 +155,16 @@ export class TtsService implements OnModuleInit {
 
   /**
    * Génère un fichier audio MP3 à partir d'un texte via Azure Speech.
-   * Le texte peut être réécrit par Gemini (plus concis) avant synthèse.
+   * Le texte est prononcé tel quel (annonces rédigées en français naturel côté
+   * client) : plus aucune réécriture LLM avant synthèse.
    * Cache hybride : fichier local (le plus rapide) → Redis (partagé) → génération.
    */
   async getTtsAudio(text: string): Promise<string> {
     const voice =
-      this.configService.get<string>("AZURE_SPEECH_VOICE") ??
-      "fr-FR-DeniseNeural";
+      this.configService.get<string>("AZURE_SPEECH_VOICE") ?? DEFAULT_VOICE;
     const hash = crypto
       .createHash("md5")
-      .update(text + voice + "azure-v1")
+      .update(text + voice + CACHE_KEY_SALT)
       .digest("hex");
     const filePath = path.join(this.cacheDir, `${hash}.mp3`);
 
@@ -175,54 +182,13 @@ export class TtsService implements OnModuleInit {
       return cachedPath;
     }
 
-    this.logger.log(
-      `Generating new Audio (Hybrid Gemini Rewrite + Azure TTS) for: ${text}`,
-    );
-
-    let textToSpeak = text;
-
-    try {
-      if (this.genAI) {
-        const genAI = this.genAI;
-        // External call (project convention): circuit breaker + withTimeout,
-        // mirroring the Azure Speech call below. With the surrounding try/catch,
-        // a hang degrades to the original text instead of stalling the request.
-        const response = await this.circuitBreakerService.fire(
-          "gemini-rewrite",
-          () =>
-            withTimeout(
-              genAI.models.generateContent({
-                model: "gemini-2.0-flash",
-                contents: {
-                  role: "user",
-                  parts: [
-                    {
-                      text: `Rewrite the following ballroom dance announcement to be enthusiastic but VERY CONCISE. Keep only the essential info (Heat + Dance). Do not add "Ladies and gentlemen" or intro words. Just make it punchy with exclamation marks. Example: "First Heat, Cha Cha Cha!". Input: "${text}"`,
-                    },
-                  ],
-                },
-              }),
-              8_000,
-              "Gemini rewrite",
-            ),
-        );
-
-        const rewritten = response.candidates?.[0]?.content?.parts?.[0]?.text;
-
-        if (rewritten) {
-          textToSpeak = rewritten.trim().replace(/^"|"$/g, "");
-          this.logger.log(`🎤 Gemini Rewrote: "${text}" -> "${textToSpeak}"`);
-        }
-      }
-    } catch (e) {
-      this.logger.warn("Gemini Rewrite Failed, using original text", e);
-    }
+    this.logger.log(`Generating new audio (Azure TTS) for: ${text}`);
 
     const audioContent = await this.circuitBreakerService.fire(
       "azure-tts",
       () =>
         withTimeout(
-          this.synthesize(textToSpeak, voice),
+          this.synthesize(text, voice),
           10_000,
           "Azure TTS synthesize",
         ),

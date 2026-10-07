@@ -4,6 +4,7 @@ import {
   documentDirectory,
   downloadAsync,
   getInfoAsync,
+  moveAsync,
 } from "expo-file-system/legacy";
 import { createLogger } from "../../../utils/logger";
 
@@ -62,6 +63,41 @@ export async function getDownloadedSet(
   return found;
 }
 
+/**
+ * Télécharge `remoteUrl` vers `localUri` (expo-file-system downloadAsync).
+ *
+ * Le téléchargement écrit d'abord un fichier temporaire `.part` au nom
+ * unique, déplacé sur `localUri` seulement une fois complet (HTTP 200) : un
+ * fichier présent à `localUri` est donc toujours entier (une coupure réseau
+ * ne laisse jamais de fichier tronqué « en cache »), et deux téléchargements
+ * concurrents du même fichier (arrêt puis relance immédiate) ne s'écrasent
+ * pas. Le `.part` est purgé en cas d'erreur.
+ *
+ * Retourne true si le fichier est en place, false sur une réponse d'erreur.
+ * Lève si le réseau échoue.
+ */
+export async function downloadToFile(
+  remoteUrl: string,
+  localUri: string,
+): Promise<boolean> {
+  const partUri = `${localUri}.${Date.now().toString(36)}${Math.random()
+    .toString(36)
+    .slice(2, 8)}.part`;
+  try {
+    const result = await downloadAsync(remoteUrl, partUri);
+    if (result.status !== 200) {
+      await deleteAsync(partUri, { idempotent: true });
+      return false;
+    }
+    await deleteAsync(localUri, { idempotent: true });
+    await moveAsync({ from: partUri, to: localUri });
+    return true;
+  } catch (e) {
+    await deleteAsync(partUri, { idempotent: true }).catch(() => {});
+    throw e;
+  }
+}
+
 export interface SyncableTrack {
   filename: string;
   remoteUrl: string;
@@ -102,12 +138,8 @@ export async function syncFavoriteDownloads(
     try {
       const info = await getInfoAsync(uri);
       if (!info.exists) {
-        const result = await downloadAsync(track.remoteUrl, uri);
-        if (result.status !== 200) {
-          // Réponse d'erreur écrite sur disque → purge pour retenter plus tard.
-          await deleteAsync(uri, { idempotent: true });
-          continue;
-        }
+        // Réponse d'erreur → purgée par downloadToFile, retentée plus tard.
+        if (!(await downloadToFile(track.remoteUrl, uri))) continue;
         registry.add(track.filename);
       } else if (!registry.has(track.filename)) {
         // Déjà présent (ex. import) — le favori s'appuie dessus sans le

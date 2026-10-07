@@ -1,226 +1,101 @@
 /**
- * Tests for the performance engine logic (formerly PerformanceContext).
- * The engine logic now lives in usePerformanceEngine hook.
+ * usePerformanceEngine is a thin binding between the screens, the Zustand
+ * store and the singleton engine (engine/competitionController, tested on its
+ * own). These tests cover the binding.
  */
-import { act, renderHook, waitFor } from "@testing-library/react-native";
-import React from "react";
-import Tts from "../../../../services/TtsService";
+import { act, renderHook } from "@testing-library/react-native";
+import * as engine from "../../engine/competitionController";
 import { usePerformanceEngine } from "../../hooks/usePerformanceEngine";
+import { usePerformanceStore } from "../../../../stores/performance.store";
 
-// Mock TtsService
-jest.mock("../../../../services/TtsService", () => ({
-  __esModule: true,
-  default: {
-    speak: jest.fn().mockResolvedValue(undefined),
-    stop: jest.fn().mockResolvedValue(undefined),
-    preload: jest.fn().mockResolvedValue("/tmp/announcement.mp3"),
-  },
+jest.mock("../../engine/competitionController", () => ({
+  setEngineDeps: jest.fn(),
+  startPerformance: jest.fn(() => Promise.resolve(true)),
+  stopPerformance: jest.fn(() => Promise.resolve()),
+  nextDance: jest.fn(() => Promise.resolve()),
+  togglePlayPause: jest.fn(() => Promise.resolve()),
+  fadeNow: jest.fn(),
+  generatePlaylist: jest.fn(),
 }));
 
-// Mock dependencies
 const mockTracks = [
   {
     id: "1",
     title: "Samba Track",
     artist: "Artist",
-    url: "file://samba.mp3",
+    url: "https://x/samba.mp3",
     baseBpm: 30,
     style: "Samba",
-    artwork: undefined,
-    playlist: "Tout",
-  },
-  {
-    id: "2",
-    title: "Ambiance Track",
-    artist: "Artist",
-    url: "file://ambiance.mp3",
-    baseBpm: 0,
-    style: "Ambiance",
-    artwork: undefined,
-    playlist: "Tout",
   },
 ];
+const mockRepo = { getTracksPage: jest.fn() };
 
 jest.mock("../../../player/context/LibraryContext", () => ({
-  useLibrary: jest.fn(() => ({
-    allTracks: mockTracks,
-  })),
+  useLibrary: () => ({ allTracks: mockTracks }),
 }));
-
+jest.mock("../../../player/context/TrackContext", () => ({
+  useTrackRepository: () => mockRepo,
+}));
+const mockPlayer = {
+  playTrack: jest.fn(),
+  pause: jest.fn(),
+  resume: jest.fn(),
+  resetPlayer: jest.fn(),
+  ensurePlayerReady: jest.fn(),
+};
 jest.mock("../../../player/context/PlayerContext", () => ({
-  usePlayer: jest.fn(() => ({
-    playTrack: jest.fn().mockResolvedValue(undefined),
-    pause: jest.fn().mockResolvedValue(undefined),
-    resume: jest.fn().mockResolvedValue(undefined),
-    resetPlayer: jest.fn().mockResolvedValue(undefined),
-  })),
+  usePlayer: () => mockPlayer,
 }));
 
-describe("PerformanceContext (usePerformanceEngine)", () => {
+describe("usePerformanceEngine (binding)", () => {
   beforeEach(() => {
-    jest.useFakeTimers();
     jest.clearAllMocks();
-    // Reset zustand store between tests
-    const {
-      usePerformanceStore,
-    } = require("../../../../stores/performance.store");
-    usePerformanceStore.setState({
-      config: {
-        mode: "Round",
-        category: "Latin",
-        selectedDances: ["Samba", "Cha-Cha-Cha", "Rumba", "Paso Doble", "Jive"],
-        duration: 90,
-        pauseDuration: 15,
-        pasoClashes: 2,
-        numberOfHeats: 1,
-      },
-      playlist: [],
-      currentDanceIndex: 0,
-      status: "idle",
-      activePhase: "dance",
-      timeRemaining: 0,
+  });
+
+  it("hands the player, library and repository to the engine", async () => {
+    await renderHook(() => usePerformanceEngine());
+    expect(engine.setEngineDeps).toHaveBeenCalledWith({
+      ...mockPlayer,
+      allTracks: mockTracks,
+      trackRepo: mockRepo,
     });
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it("runs the performance flow from idle to finished and handles faders", async () => {
+  it("exposes the store state, including loading progress", async () => {
     const { result } = await renderHook(() => usePerformanceEngine());
-
     await act(() => {
-      result.current.setConfig({
-        selectedDances: ["Samba"],
-        duration: 90,
-        pauseDuration: 10,
-        mode: "Round",
-        category: "Latin",
-        numberOfHeats: 1,
-        pasoClashes: 2,
-      });
+      usePerformanceStore.getState().setStatus("loading");
+      usePerformanceStore.getState().setLoadingProgress({ done: 1, total: 4 });
     });
-
-    await act(async () => {
-      await result.current.startPerformance();
-    });
-
-    expect(result.current.status).toBe("break");
-
-    // Skip initial break (10s)
-    for (let i = 0; i < 11; i++) {
-      await act(() => {
-        jest.advanceTimersByTime(1000);
-      });
-    }
-    await waitFor(() => {
-      expect(result.current.status).toBe("playing");
-    });
-
-    // Advance 90s of dance -> enter break
-    for (let i = 0; i < 91; i++) {
-      await act(() => {
-        jest.advanceTimersByTime(1000);
-      });
-    }
-    await waitFor(() => {
-      expect(result.current.status).toBe("break");
-    });
-
-    // Finish final break (10s) -> finished
-    for (let i = 0; i < 11; i++) {
-      await act(() => {
-        jest.advanceTimersByTime(1000);
-      });
-    }
-    await waitFor(() => {
-      expect(result.current.status).toBe("finished");
+    expect(result.current.status).toBe("loading");
+    expect(result.current.loadingProgress).toEqual({ done: 1, total: 4 });
+    expect(result.current.config.rounds[0].heats).toBe(2);
+    await act(() => {
+      usePerformanceStore.getState().setStatus("idle");
+      usePerformanceStore.getState().setLoadingProgress(null);
     });
   });
 
-  it("handles heat ordinals and TTS failure", async () => {
+  it("delegates the actions to the engine", async () => {
     const { result } = await renderHook(() => usePerformanceEngine());
-
-    await act(() => {
-      result.current.setConfig((prev) => ({
-        ...prev,
-        selectedDances: ["Samba"],
-        numberOfHeats: 2,
-      }));
-    });
-
-    await act(async () => {
-      await result.current.startPerformance();
-    });
-
-    // Trigger first heat announcement
-    await act(() => {
-      jest.advanceTimersByTime(3000);
-    });
-    expect(Tts.speak).toHaveBeenCalledWith(
-      expect.stringContaining("First Heat"),
-      expect.anything(),
-    );
-
-    // Mock TTS failure for next heat
-    (Tts.speak as jest.Mock).mockRejectedValueOnce(new Error("TTS Dead"));
-
-    // Skip to next break (10s break + 90s dance = 100s)
-    for (let i = 0; i < 101; i++) {
-      await act(() => {
-        jest.advanceTimersByTime(1000);
-      });
-    }
-    await waitFor(() => {
-      expect(result.current.status).toBe("break");
-    });
-
-    // Trigger second heat announcement
-    await act(() => {
-      jest.advanceTimersByTime(3000);
-    });
-    await waitFor(() => {
-      expect(result.current.status).toBe("idle");
-    });
+    await expect(result.current.startPerformance()).resolves.toBe(true);
+    result.current.togglePlayPause();
+    result.current.nextDance();
+    result.current.stopPerformance();
+    result.current.fadeNow();
+    result.current.generatePlaylist();
+    expect(engine.togglePlayPause).toHaveBeenCalled();
+    expect(engine.nextDance).toHaveBeenCalled();
+    expect(engine.stopPerformance).toHaveBeenCalled();
+    expect(engine.fadeNow).toHaveBeenCalled();
+    expect(engine.generatePlaylist).toHaveBeenCalled();
   });
 
-  it("handles empty tracks gracefully", async () => {
-    const { result } = await renderHook(() => usePerformanceEngine());
-
-    await act(() => {
-      result.current.setConfig((prev) => ({
-        ...prev,
-        selectedDances: ["Unknown"],
-      }));
-    });
-
-    await act(async () => {
-      await result.current.startPerformance();
-    });
-
-    expect(result.current.status).toBe("idle");
-  });
-
-  it("handles manual stop and toggle play/pause", async () => {
-    const { result } = await renderHook(() => usePerformanceEngine());
-    await act(async () => {
-      await result.current.startPerformance();
-    });
-
-    await act(() => {
-      result.current.togglePlayPause();
-    });
-    expect(result.current.status).toBe("paused");
-
-    await act(() => {
-      result.current.togglePlayPause();
-    });
-    expect(result.current.status).toBe("break");
-
-    await act(async () => {
-      // eslint-disable-next-line @typescript-eslint/await-thenable
-      await result.current.stopPerformance();
-    });
-    expect(result.current.status).toBe("idle");
+  it("can be mounted twice without duplicating the engine (singleton)", async () => {
+    await renderHook(() => usePerformanceEngine());
+    await renderHook(() => usePerformanceEngine());
+    // Only dependencies are (re)registered; no per-instance timer exists.
+    expect(engine.setEngineDeps).toHaveBeenCalledTimes(2);
+    expect(engine.startPerformance).not.toHaveBeenCalled();
   });
 });
