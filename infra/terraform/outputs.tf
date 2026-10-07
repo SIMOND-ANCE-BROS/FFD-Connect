@@ -36,6 +36,11 @@ output "admin_swa_hostname" {
   value       = azurerm_static_web_app.admin.default_host_name
 }
 
+output "admin_ci_client_id" {
+  description = "Client ID of the dedicated admin deploy identity (OIDC) — set as the GitHub variable AZURE_ADMIN_CLIENT_ID"
+  value       = azuread_application.ci_admin.client_id
+}
+
 output "admin_url" {
   description = "Admin back-office URL"
   value       = "https://admin.ffd.gabin-simond.fr"

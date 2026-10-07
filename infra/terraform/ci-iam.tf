@@ -106,19 +106,6 @@ resource "azuread_application_federated_identity_credential" "env_production" {
   subject   = "${local.github_oidc_subject_prefix}:environment:production"
 }
 
-# deploy-admin.yml binds its job to the `admin` environment: it logs in with
-# this credential to fetch the Static Web App deployment token at run time,
-# so no long-lived token is stored in GitHub (see ci_swa_admin_deployer below).
-resource "azuread_application_federated_identity_credential" "env_admin" {
-  application_id = azuread_application.ci.id
-  display_name   = "${local.name_prefix}-github-env-admin"
-  description    = "GitHub Actions OIDC — admin ENVIRONMENT (deploy-admin.yml)"
-
-  audiences = ["api://AzureADTokenExchange"]
-  issuer    = "https://token.actions.githubusercontent.com"
-  subject   = "${local.github_oidc_subject_prefix}:environment:admin"
-}
-
 # ── Role Assignments ───────────────────────
 # Principle of least privilege: CI can push images,
 # read resource metadata, and invoke Run Command on the VM.
@@ -152,13 +139,48 @@ resource "azurerm_role_assignment" "ci_reader" {
 # If CI must update Container Apps directly, add a scoped Contributor/custom role
 # assignment here.
 
-# Admin back-office (admin-swa.tf) — deploy-admin.yml reads the Static Web
-# App deployment token at run time (`az staticwebapp secrets list`) instead of
-# storing it as a GitHub secret. No built-in role grants listSecrets without
-# also granting writes (Website Contributor / Contributor can modify or delete
-# the site), so a two-action custom role, assignable to this SWA only.
-# Blast radius: the token lets the holder replace the admin SPA's content —
-# nothing else in the subscription.
+# ============================================
+# Admin back-office deploy identity (deploy-admin.yml)
+# ============================================
+# A DEDICATED app registration, not the shared CI identity above: the shared
+# one federates develop/staging/master and the staging/production
+# environments, so any workflow on those refs could otherwise read the admin
+# SWA deployment token. This identity trusts ONE subject — the GitHub
+# environment `admin` (restricted to the `staging` branch) — and holds ONE
+# role: read the admin Static Web App and list its deployment token.
+#
+# No RG Reader needed: deploy-admin.yml passes --resource-group, so
+# `az staticwebapp secrets list` is a single POST .../listSecrets on the SWA.
+# `az login` only needs the subscription to be visible, which any role
+# assignment inside it (here, on the SWA) provides.
+
+resource "azuread_application" "ci_admin" {
+  display_name = "${local.name_prefix}-ci-admin"
+
+  owners = [data.azuread_client_config.current.object_id]
+}
+
+resource "azuread_service_principal" "ci_admin" {
+  client_id = azuread_application.ci_admin.client_id
+
+  owners = [data.azuread_client_config.current.object_id]
+}
+
+resource "azuread_application_federated_identity_credential" "ci_admin_env_admin" {
+  application_id = azuread_application.ci_admin.id
+  display_name   = "${local.name_prefix}-github-env-admin"
+  description    = "GitHub Actions OIDC — admin ENVIRONMENT only (deploy-admin.yml)"
+
+  audiences = ["api://AzureADTokenExchange"]
+  issuer    = "https://token.actions.githubusercontent.com"
+  subject   = "${local.github_oidc_subject_prefix}:environment:admin"
+}
+
+# No built-in role grants listSecrets without also granting writes (Website
+# Contributor / Contributor can modify or delete the site), hence a two-action
+# custom role. Assignable at the RG (ARM may reject resource-level assignable
+# scopes); the ASSIGNMENT below is scoped to the SWA alone.
+# Blast radius of the token: replacing the admin SPA's content, nothing else.
 resource "azurerm_role_definition" "swa_admin_deployer" {
   name        = "${local.name_prefix}-swa-admin-deployer"
   scope       = azurerm_resource_group.main.id
@@ -172,11 +194,11 @@ resource "azurerm_role_definition" "swa_admin_deployer" {
     not_actions = []
   }
 
-  assignable_scopes = [azurerm_static_web_app.admin.id]
+  assignable_scopes = [azurerm_resource_group.main.id]
 }
 
-resource "azurerm_role_assignment" "ci_swa_admin_deployer" {
+resource "azurerm_role_assignment" "ci_admin_swa_deployer" {
   scope              = azurerm_static_web_app.admin.id
   role_definition_id = azurerm_role_definition.swa_admin_deployer.role_definition_resource_id
-  principal_id       = azuread_service_principal.ci.object_id
+  principal_id       = azuread_service_principal.ci_admin.object_id
 }
