@@ -16,6 +16,7 @@ const ADMIN_ROUTES: Array<[method: "get" | "patch" | "post", path: string]> = [
   ["get", "/api/v1/admin/audit-log"],
   ["get", "/api/v1/admin/users"],
   ["get", "/api/v1/admin/users/00000000-0000-4000-8000-000000000000"],
+  ["patch", "/api/v1/admin/users/00000000-0000-4000-8000-000000000000"],
 ];
 
 describe("Admin routes (e2e) — role matrix", () => {

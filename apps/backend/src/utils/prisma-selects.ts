@@ -414,3 +414,19 @@ export const adminUserDetailSelect = {
   lastLoginAt: true,
   updatedAt: true,
 } as const;
+
+/** Back-office: the editable fields of a user, for the audit diff. */
+export const adminUserEditableSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  clubId: true,
+  clubName: true,
+  category: true,
+  ageGroup: true,
+  passportLevelLatin: true,
+  passportLevelStandard: true,
+  competitionLevel: true,
+  nationalRanking: true,
+  role: true,
+} as const;
