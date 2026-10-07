@@ -130,12 +130,38 @@ describe('UserDetailPage', () => {
     expect(await screen.findByLabelText('Rôle', { selector: 'input' })).toBeDisabled();
   });
 
-  it('offers to resend the invitation while lastLoginAt is null', async () => {
+  it('offers to resend the invitation to a CLUB account that never logged in', async () => {
+    vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+      data: { ...detail, role: 'CLUB' },
+      error: undefined,
+    } as never);
     const resend = vi
       .spyOn(sdk, 'adminControllerResendInvitation')
       .mockResolvedValue({ data: { invitationSent: true }, error: undefined } as never);
     renderPage();
     await userEvent.click(await screen.findByRole('button', { name: /renvoyer l'invitation/i }));
     expect(resend).toHaveBeenCalledWith({ path: { id: 'u1' } });
+  });
+
+  it('hides the resend button for a non-CLUB account', async () => {
+    renderPage();
+    expect(await screen.findByText(/Dernière connexion/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /renvoyer l'invitation/i })).toBeNull();
+  });
+
+  it('hides the resend button for a CLUB account that has logged in', async () => {
+    vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+      data: { ...detail, role: 'CLUB', lastLoginAt: '2026-10-01T10:00:00.000Z' },
+      error: undefined,
+    } as never);
+    renderPage();
+    expect(await screen.findByText(/01\/10\/2026/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /renvoyer l'invitation/i })).toBeNull();
+  });
+
+  it('shows an unrecorded last login as "inconnue", not "jamais"', async () => {
+    renderPage();
+    expect(await screen.findByText(/Dernière connexion :\s*inconnue/)).toBeInTheDocument();
+    expect(screen.queryByText(/jamais/)).toBeNull();
   });
 });

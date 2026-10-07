@@ -231,6 +231,21 @@ describe("AdminClubAccountsService", () => {
       expect(res).toEqual({ invitationSent: true });
     });
 
+    it("400s for a non-CLUB account, without auditing or mailing", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...clubUser,
+        role: UserRole.LICENSEE,
+        lastLoginAt: null,
+      } as never);
+      await expect(service.resendInvitation("admin-1", "u1")).rejects.toThrow(
+        new BadRequestException(
+          "Seuls les comptes Club peuvent recevoir une invitation",
+        ),
+      );
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(passwords.issuePasswordToken).not.toHaveBeenCalled();
+    });
+
     it("400s once the user has logged in", async () => {
       prisma.user.findUnique.mockResolvedValue({
         ...clubUser,

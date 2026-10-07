@@ -134,6 +134,11 @@ export class AdminClubAccountsService {
       select: adminInvitationTargetSelect,
     });
     if (!user) throw new NotFoundException("Utilisateur introuvable");
+    if (user.role !== UserRole.CLUB) {
+      throw new BadRequestException(
+        "Seuls les comptes Club peuvent recevoir une invitation",
+      );
+    }
     if (user.lastLoginAt) {
       throw new BadRequestException("Ce compte s'est déjà connecté");
     }

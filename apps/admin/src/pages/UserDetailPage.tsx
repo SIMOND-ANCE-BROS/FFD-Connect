@@ -142,7 +142,9 @@ export function UserDetailPage() {
         <Title order={2}>
           {u.firstName} {u.lastName}
         </Title>
-        {u.lastLoginAt === null && (
+        {/* Pre-existing accounts never had lastLoginAt recorded, so only an
+            admin-created CLUB account is a meaningful invitation target. */}
+        {u.role === 'CLUB' && u.lastLoginAt === null && (
           <Button variant="light" loading={resend.isPending} onClick={() => resend.mutate()}>
             Renvoyer l'invitation
           </Button>
@@ -160,7 +162,7 @@ export function UserDetailPage() {
           <Text size="sm">Inscription : {dayjs(u.createdAt).format('DD/MM/YYYY')}</Text>
           <Text size="sm">
             Dernière connexion :{' '}
-            {u.lastLoginAt ? dayjs(u.lastLoginAt).format('DD/MM/YYYY HH:mm') : 'jamais'}
+            {u.lastLoginAt ? dayjs(u.lastLoginAt).format('DD/MM/YYYY HH:mm') : 'inconnue'}
           </Text>
         </SimpleGrid>
       </Card>
