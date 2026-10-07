@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -31,7 +32,7 @@ import { AdminClubAccountsService } from "./admin-club-accounts.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminReferenceService } from "./admin-reference.service";
-import { SetActiveDto } from "./dto/admin-actions.dto";
+import { DeleteAdminUserDto, SetActiveDto } from "./dto/admin-actions.dto";
 import { AuditLogPageDto, ListAuditLogQueryDto } from "./dto/admin-audit.dto";
 import {
   AdminUserDetailDto,
@@ -130,6 +131,21 @@ export class AdminController {
     @Req() req: RequestWithUser,
   ): Promise<AdminUserDetailDto> {
     return this.users.setStatus(req.user.userId, id, dto.active);
+  }
+
+  @Delete("users/:id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Supprimer définitivement un utilisateur (RGPD)" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 204, description: "Compte supprimé" })
+  @ApiResponse({ status: 400, description: "L'email saisi ne correspond pas" })
+  @ApiResponse({ status: 403, description: "Son propre compte" })
+  deleteUser(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: DeleteAdminUserDto,
+    @Req() req: RequestWithUser,
+  ): Promise<void> {
+    return this.users.delete(req.user.userId, id, dto.confirmEmail);
   }
 
   @Post("club-accounts")

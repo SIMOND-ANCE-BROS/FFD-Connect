@@ -10,7 +10,9 @@ import { createMockPrismaService } from "./mocks/prisma.mock";
 import { applyE2EOverrides, configureTestApp } from "./test-app.factory";
 
 /** Every admin route; extended by later tasks. */
-const ADMIN_ROUTES: Array<[method: "get" | "patch" | "post", path: string]> = [
+const ADMIN_ROUTES: Array<
+  [method: "get" | "patch" | "post" | "delete", path: string]
+> = [
   ["get", "/api/v1/admin/reference-data"],
   ["get", "/api/v1/admin/clubs"],
   ["get", "/api/v1/admin/audit-log"],
@@ -18,6 +20,7 @@ const ADMIN_ROUTES: Array<[method: "get" | "patch" | "post", path: string]> = [
   ["get", "/api/v1/admin/users/00000000-0000-4000-8000-000000000000"],
   ["patch", "/api/v1/admin/users/00000000-0000-4000-8000-000000000000"],
   ["post", "/api/v1/admin/users/00000000-0000-4000-8000-000000000000/status"],
+  ["delete", "/api/v1/admin/users/00000000-0000-4000-8000-000000000000"],
   ["post", "/api/v1/admin/club-accounts"],
   [
     "post",

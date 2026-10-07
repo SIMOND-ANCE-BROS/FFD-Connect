@@ -34,6 +34,19 @@ function toDto(row: AuditRow): AuditLogEntryDto {
   };
 }
 
+function toCreateData(
+  entry: AuditEntry,
+): Prisma.AdminAuditLogUncheckedCreateInput {
+  return {
+    actorId: entry.actorId,
+    action: entry.action,
+    targetType: entry.targetType,
+    targetId: entry.targetId,
+    before: entry.before as Prisma.InputJsonValue | undefined,
+    after: entry.after as Prisma.InputJsonValue | undefined,
+  };
+}
+
 /** Back-office audit trail: written inside each admin write's transaction. */
 @Injectable()
 export class AdminAuditService {
@@ -42,14 +55,15 @@ export class AdminAuditService {
   /** Must be called with the transaction client of the audited write. */
   async record(tx: Prisma.TransactionClient, entry: AuditEntry): Promise<void> {
     await tx.adminAuditLog.create({
-      data: {
-        actorId: entry.actorId,
-        action: entry.action,
-        targetType: entry.targetType,
-        targetId: entry.targetId,
-        before: entry.before as Prisma.InputJsonValue | undefined,
-        after: entry.after as Prisma.InputJsonValue | undefined,
-      },
+      data: toCreateData(entry),
+      select: { id: true },
+    });
+  }
+
+  /** Same row, as an operation for an array-form `$transaction([...])`. */
+  recordOp(entry: AuditEntry): Prisma.PrismaPromise<{ id: string }> {
+    return this.prisma.adminAuditLog.create({
+      data: toCreateData(entry),
       select: { id: true },
     });
   }

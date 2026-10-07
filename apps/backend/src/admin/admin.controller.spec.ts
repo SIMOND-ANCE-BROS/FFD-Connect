@@ -17,7 +17,7 @@ describe("AdminController", () => {
   const audit = { list: jest.fn() };
   const reference = { referenceData: jest.fn(), clubs: jest.fn() };
   const usersQuery = { list: jest.fn(), detail: jest.fn() };
-  const users = { update: jest.fn(), setStatus: jest.fn() };
+  const users = { update: jest.fn(), setStatus: jest.fn(), delete: jest.fn() };
   const clubAccounts = { create: jest.fn(), resendInvitation: jest.fn() };
 
   const controller = new AdminController(
@@ -100,5 +100,11 @@ describe("AdminController", () => {
     clubAccounts.resendInvitation.mockResolvedValue({ sent: true });
     await controller.resendInvitation("u1", req);
     expect(clubAccounts.resendInvitation).toHaveBeenCalledWith("admin-1", "u1");
+  });
+
+  it("passes the acting admin id and the typed email when deleting a user", async () => {
+    users.delete.mockResolvedValue(undefined);
+    await controller.deleteUser("u1", { confirmEmail: "j@x.fr" }, req);
+    expect(users.delete).toHaveBeenCalledWith("admin-1", "u1", "j@x.fr");
   });
 });

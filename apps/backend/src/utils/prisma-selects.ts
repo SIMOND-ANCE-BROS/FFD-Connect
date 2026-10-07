@@ -455,3 +455,10 @@ export const accountStatusSelect = {
   disabledAt: true,
   club: { select: { disabledAt: true } },
 } as const;
+
+/** Back-office deletion: what the confirmation and the audit row need. */
+export const adminUserDeletionTargetSelect = {
+  id: true,
+  email: true,
+  role: true,
+} as const;

@@ -12,6 +12,7 @@ import {
 } from "../../test/mocks/prisma.mock";
 import { AuthTokenService } from "../auth/auth-token.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { AccountDeletionService } from "../users/account-deletion.service";
 import { AdminAuditService } from "./admin-audit.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
@@ -54,6 +55,10 @@ describe("AdminUsersService.update", () => {
         { provide: AdminAuditService, useValue: audit },
         { provide: AdminUsersQueryService, useValue: query },
         { provide: AuthTokenService, useValue: tokens },
+        {
+          provide: AccountDeletionService,
+          useValue: { deleteAccount: jest.fn() },
+        },
       ],
     }).compile();
     service = moduleRef.get(AdminUsersService);
@@ -196,6 +201,10 @@ describe("AdminUsersService.setStatus", () => {
           provide: AuthTokenService,
           useValue: { revokeAllUserTokens: jest.fn() },
         },
+        {
+          provide: AccountDeletionService,
+          useValue: { deleteAccount: jest.fn() },
+        },
       ],
     }).compile();
     service = moduleRef.get(AdminUsersService);
@@ -280,6 +289,80 @@ describe("AdminUsersService.setStatus", () => {
     prisma.user.findUnique.mockResolvedValue(null);
     await expect(
       service.setStatus("admin-1", "nope", false),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe("AdminUsersService.delete", () => {
+  let service: AdminUsersService;
+  let prisma: MockPrismaService;
+  let audit: { record: jest.Mock; recordOp: jest.Mock };
+  let deletion: { deleteAccount: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = createMockPrismaService();
+    prisma.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "jeanne@x.fr",
+      role: UserRole.LICENSEE,
+    } as never);
+    audit = {
+      record: jest.fn(),
+      recordOp: jest.fn().mockReturnValue("audit-op"),
+    };
+    deletion = { deleteAccount: jest.fn().mockResolvedValue(undefined) };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        AdminUsersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AdminAuditService, useValue: audit },
+        { provide: AdminUsersQueryService, useValue: { detail: jest.fn() } },
+        {
+          provide: AuthTokenService,
+          useValue: { revokeAllUserTokens: jest.fn() },
+        },
+        { provide: AccountDeletionService, useValue: deletion },
+      ],
+    }).compile();
+    service = moduleRef.get(AdminUsersService);
+  });
+
+  it("deletes through the shared core, with a role-only audit row in the same transaction", async () => {
+    await service.delete("admin-1", "u1", "jeanne@x.fr");
+
+    expect(audit.recordOp).toHaveBeenCalledWith({
+      actorId: "admin-1",
+      action: "USER_DELETE",
+      targetType: "USER",
+      targetId: "u1",
+      after: { role: UserRole.LICENSEE },
+    });
+    expect(deletion.deleteAccount).toHaveBeenCalledWith("u1", ["audit-op"]);
+  });
+
+  it("accepts the email whatever its case and surrounding spaces", async () => {
+    await service.delete("admin-1", "u1", "  JEANNE@X.fr ");
+    expect(deletion.deleteAccount).toHaveBeenCalled();
+  });
+
+  it("400s when the typed email does not match, deleting nothing", async () => {
+    await expect(service.delete("admin-1", "u1", "paul@x.fr")).rejects.toThrow(
+      new BadRequestException("L'email saisi ne correspond pas au compte"),
+    );
+    expect(deletion.deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it("refuses the admin's own account before reading anything", async () => {
+    await expect(
+      service.delete("u1", "u1", "jeanne@x.fr"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("404s on an unknown user", async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    await expect(
+      service.delete("admin-1", "nope", "a@b.fr"),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

@@ -181,4 +181,35 @@ describe("Admin (integration, real DB)", () => {
       auth.validateUser(target.email, PASSWORD),
     ).resolves.toMatchObject({ id: target.id });
   });
+
+  it("admin deletion goes through the shared core and keeps one role-only audit row", async () => {
+    const admin = await create({ role: UserRole.ADMIN });
+    const target = await create({ lastName: "Martin" });
+    // An earlier audit row about the target: the core must purge it.
+    await service.update(admin.id, target.id, { lastName: "Durand" });
+    await tokens.createRefreshToken(target.id);
+
+    await service.delete(
+      admin.id,
+      target.id,
+      ` ${target.email.toUpperCase()} `,
+    );
+
+    expect(
+      await prisma.user.findUnique({ where: { id: target.id } }),
+    ).toBeNull();
+    expect(
+      await prisma.refreshToken.count({ where: { userId: target.id } }),
+    ).toBe(0);
+    const rows = await prisma.adminAuditLog.findMany({
+      where: { targetId: target.id },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      action: "USER_DELETE",
+      actorId: admin.id,
+      before: null,
+      after: { role: "LICENSEE" },
+    });
+  });
 });

@@ -45,6 +45,31 @@ describe("AdminAuditService", () => {
     });
   });
 
+  it("builds the same row as an operation for array transactions", () => {
+    prisma.adminAuditLog.create.mockReturnValue("create-op" as never);
+
+    const op = service.recordOp({
+      actorId: "admin-1",
+      action: "USER_DELETE",
+      targetType: "USER",
+      targetId: "u1",
+      after: { role: "LICENSEE" },
+    });
+
+    expect(op).toBe("create-op");
+    expect(prisma.adminAuditLog.create).toHaveBeenCalledWith({
+      data: {
+        actorId: "admin-1",
+        action: "USER_DELETE",
+        targetType: "USER",
+        targetId: "u1",
+        before: undefined,
+        after: { role: "LICENSEE" },
+      },
+      select: { id: true },
+    });
+  });
+
   it("lists newest first with filters and maps the author name", async () => {
     prisma.adminAuditLog.count.mockResolvedValue(1);
     prisma.adminAuditLog.findMany.mockResolvedValue([

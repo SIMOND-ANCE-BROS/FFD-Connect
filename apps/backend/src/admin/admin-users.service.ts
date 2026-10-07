@@ -7,8 +7,10 @@ import {
 } from "@nestjs/common";
 import { AuthTokenService } from "../auth/auth-token.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { AccountDeletionService } from "../users/account-deletion.service";
 import {
   adminClubOptionSelect,
+  adminUserDeletionTargetSelect,
   adminUserEditableSelect,
   adminUserStatusSelect,
 } from "../utils/prisma-selects";
@@ -28,6 +30,7 @@ export class AdminUsersService {
     private readonly audit: AdminAuditService,
     private readonly query: AdminUsersQueryService,
     private readonly tokens: AuthTokenService,
+    private readonly deletion: AccountDeletionService,
   ) {}
 
   async update(
@@ -137,6 +140,42 @@ export class AdminUsersService {
       });
     });
     return this.query.detail(userId);
+  }
+
+  /**
+   * Final RGPD deletion, same core as the in-app self-service deletion.
+   * The admin re-types the email; the audit row keeps only the role and is
+   * appended to the core's transaction, after the purge of rows about the user.
+   */
+  async delete(
+    actorId: string,
+    userId: string,
+    confirmEmail: string,
+  ): Promise<void> {
+    if (actorId === userId) {
+      throw new ForbiddenException(
+        "Un administrateur ne peut pas supprimer son propre compte",
+      );
+    }
+    const target = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: adminUserDeletionTargetSelect,
+    });
+    if (!target) throw new NotFoundException("Utilisateur introuvable");
+    if (target.email.toLowerCase() !== confirmEmail.trim().toLowerCase()) {
+      throw new BadRequestException(
+        "L'email saisi ne correspond pas au compte",
+      );
+    }
+    await this.deletion.deleteAccount(userId, [
+      this.audit.recordOp({
+        actorId,
+        action: "USER_DELETE",
+        targetType: "USER",
+        targetId: userId,
+        after: { role: target.role },
+      }),
+    ]);
   }
 
   private async revokeSessions(userId: string): Promise<void> {
