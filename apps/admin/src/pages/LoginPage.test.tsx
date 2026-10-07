@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { API_ORIGIN } from '../config';
 import { useSession } from '../session/sessionStore';
 import { LoginPage } from './LoginPage';
 
@@ -93,6 +94,13 @@ describe('LoginPage', () => {
     await submit();
     expect(await screen.findByText(/serveur indisponible/i)).toBeInTheDocument();
     expect(screen.queryByText(/identifiants incorrects/i)).toBeNull();
+  });
+
+  it('wakes the backend on the origin /health, outside the /api/v1 prefix', async () => {
+    renderLogin();
+    await screen.findByRole('button', { name: /se connecter/i });
+    expect(sdk.healthControllerCheck).toHaveBeenCalledWith({ baseUrl: API_ORIGIN });
+    expect(API_ORIGIN).not.toMatch(/\/api\/v1\/?$/);
   });
 
   it('shows the wake-up state while the server is cold', async () => {

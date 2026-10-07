@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { authControllerLogin, healthControllerCheck } from '../api/generated/sdk.gen';
 import type { AuthControllerLoginResponse } from '../api/generated/types.gen';
+import { API_ORIGIN } from '../config';
 import { type SessionUser, useSession } from '../session/sessionStore';
 
 const UNAVAILABLE = 'Serveur indisponible, réessayez dans un instant.';
@@ -43,9 +44,10 @@ export function LoginPage() {
   const form = useForm({ initialValues: { email: '', password: '' } });
 
   // Scale-to-zero backend: wake it before the user submits (60-120 s worst case).
+  // /health sits outside the global /api/v1 prefix, hence the origin baseUrl.
   useEffect(() => {
     let alive = true;
-    void healthControllerCheck()
+    void healthControllerCheck({ baseUrl: API_ORIGIN })
       .catch(() => undefined)
       .finally(() => {
         if (alive) setAwake(true);
