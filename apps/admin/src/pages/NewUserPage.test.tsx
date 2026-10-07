@@ -148,6 +148,8 @@ describe('NewUserPage', () => {
     renderPage();
     await fillIdentity();
     await submit();
-    expect(await screen.findByText('Serveur injoignable, réessayez dans un instant.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Serveur injoignable, réessayez dans un instant.'),
+    ).toBeInTheDocument();
   });
 });
