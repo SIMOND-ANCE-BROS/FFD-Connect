@@ -21,11 +21,10 @@
       Static on purpose: the page must work without JavaScript. src/beta.ts only
       highlights the visitor's platform.
 
-      Links: while a store link does not exist yet, its button is a
-      <span class="btn btn--disabled">. Once available, replace it with
-        <a class="btn btn--inverse" href="…">…</a>
+      Links (a store link that does not exist yet would be a
+      <span class="btn btn--disabled">, see src/beta.css):
       - iOS: TestFlight public link of the external group « Beta FFD »
-        (https://testflight.apple.com/join/XXXXXXXX)
+        (https://testflight.apple.com/join/PzEt7d3H)
       - Android: Google Group of the closed test, then the Play opt-in page.
     -->
     <div class="legal beta">
@@ -74,9 +73,15 @@
               </li>
               <li>Touchez <strong>Installer</strong> dans TestFlight.</li>
             </ol>
-            <span class="btn btn--disabled" aria-disabled="true"
-              >Lien bientôt disponible</span
-            >
+            <div class="beta__actions">
+              <a
+                class="btn btn--inverse"
+                href="https://testflight.apple.com/join/PzEt7d3H"
+                target="_blank"
+                rel="noopener"
+                >Rejoindre la bêta sur TestFlight</a
+              >
+            </div>
           </section>
 
           <section
