@@ -3,6 +3,7 @@ import { AuthModule } from "../auth/auth.module";
 import { UsersModule } from "../users/users.module";
 import { AdminAuditService } from "./admin-audit.service";
 import { AdminClubsQueryService } from "./admin-clubs.query-service";
+import { AdminClubsService } from "./admin-clubs.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminController } from "./admin.controller";
@@ -15,6 +16,7 @@ import { AdminUserAccountsService } from "./admin-user-accounts.service";
   providers: [
     AdminAuditService,
     AdminClubsQueryService,
+    AdminClubsService,
     AdminReferenceService,
     AdminUserAccountsService,
     AdminUsersQueryService,

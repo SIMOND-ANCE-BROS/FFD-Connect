@@ -482,3 +482,13 @@ export const adminClubMemberSelect = {
   role: true,
   disabledAt: true,
 } as const;
+
+/** Back-office club edit: the editable fields, for the audit diff. */
+export const adminClubEditableSelect = {
+  id: true,
+  name: true,
+  registrationMode: true,
+} as const;
+
+/** Back-office club status toggle: current state only. */
+export const adminClubStatusSelect = { id: true, disabledAt: true } as const;

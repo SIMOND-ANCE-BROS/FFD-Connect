@@ -1,7 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { ClubRegistrationMode, UserRole } from "@prisma/client";
 import { Transform } from "class-transformer";
-import { IsIn, IsOptional, IsString, IsUUID, MaxLength } from "class-validator";
+import {
+  IsEnum,
+  IsIn,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Length,
+  MaxLength,
+  ValidateIf,
+} from "class-validator";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
 import { AdminPageMetaDto } from "./admin-audit.dto";
 import { ACCOUNT_STATUSES, type AccountStatusFilter } from "./admin-users.dto";
@@ -72,4 +81,35 @@ export class AdminClubDetailDto extends AdminClubListItemDto {
     description: "200 premiers membres, triés par nom",
   })
   members!: AdminClubMemberDto[];
+}
+
+/** `null` is a 400 (both columns are required); an absent key is unchanged. */
+const notUndefined = (_: object, v: unknown) => v !== undefined;
+
+export class UpdateAdminClubDto {
+  @ApiPropertyOptional()
+  @ValidateIf(notUndefined)
+  @Transform(trim)
+  @IsString()
+  @Length(2, 120)
+  name?: string;
+
+  @ApiPropertyOptional({
+    enum: ClubRegistrationMode,
+    enumName: "ClubRegistrationMode",
+  })
+  @ValidateIf(notUndefined)
+  @IsEnum(ClubRegistrationMode)
+  registrationMode?: ClubRegistrationMode;
+}
+
+/** 409 body of DELETE /admin/clubs/:id. */
+export class ClubNotEmptyDto {
+  @ApiProperty() statusCode!: number;
+  @ApiProperty() message!: string;
+  @ApiProperty() memberCount!: number;
+  @ApiProperty() clubAccountCount!: number;
+  @ApiProperty() competitionCount!: number;
+  @ApiProperty() partnershipCount!: number;
+  @ApiProperty() soloTeamCount!: number;
 }

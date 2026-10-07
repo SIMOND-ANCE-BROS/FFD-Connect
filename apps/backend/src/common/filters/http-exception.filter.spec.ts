@@ -162,4 +162,40 @@ describe("HttpExceptionFilter", () => {
     expect(Sentry.captureException).not.toHaveBeenCalled();
     expect(mockLogger.error).toHaveBeenCalled();
   });
+
+  it("carries the club-usage counts through a 409, and nothing else", () => {
+    const exception = new HttpException(
+      {
+        message: "Ce club n'est pas vide : désactivez-le plutôt.",
+        memberCount: 2,
+        clubAccountCount: 1,
+        competitionCount: 0,
+        partnershipCount: 0,
+        soloTeamCount: 0,
+        internal: "x",
+      },
+      HttpStatus.CONFLICT,
+    );
+    filter.catch(exception, mockArgumentsHost);
+    const [body] = mockResponse.json.mock.lastCall as [Record<string, unknown>];
+    expect(body).toMatchObject({
+      memberCount: 2,
+      clubAccountCount: 1,
+      competitionCount: 0,
+      partnershipCount: 0,
+      soloTeamCount: 0,
+    });
+    expect(body).not.toHaveProperty("internal");
+  });
+
+  it("does not copy those details on other statuses", () => {
+    const exception = new HttpException(
+      { message: "x", memberCount: 2, existingClubId: "c1" },
+      HttpStatus.BAD_REQUEST,
+    );
+    filter.catch(exception, mockArgumentsHost);
+    const [body] = mockResponse.json.mock.lastCall as [Record<string, unknown>];
+    expect(body).not.toHaveProperty("memberCount");
+    expect(body).not.toHaveProperty("existingClubId");
+  });
 });

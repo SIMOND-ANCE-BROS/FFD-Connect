@@ -29,6 +29,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { AdminAuditService } from "./admin-audit.service";
 import { AdminClubsQueryService } from "./admin-clubs.query-service";
+import { AdminClubsService } from "./admin-clubs.service";
 import { AdminUserAccountsService } from "./admin-user-accounts.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
@@ -36,8 +37,10 @@ import { AdminReferenceService } from "./admin-reference.service";
 import {
   AdminClubDetailDto,
   AdminClubsPageDto,
+  ClubNotEmptyDto,
   ClubOptionsQueryDto,
   ListAdminClubsQueryDto,
+  UpdateAdminClubDto,
 } from "./dto/admin-clubs.dto";
 import { DeleteAdminUserDto, SetActiveDto } from "./dto/admin-actions.dto";
 import { AuditLogPageDto, ListAuditLogQueryDto } from "./dto/admin-audit.dto";
@@ -75,6 +78,7 @@ export class AdminController {
     private readonly users: AdminUsersService,
     private readonly userAccounts: AdminUserAccountsService,
     private readonly clubsQuery: AdminClubsQueryService,
+    private readonly clubs: AdminClubsService,
   ) {}
 
   @Get("reference-data")
@@ -110,6 +114,47 @@ export class AdminController {
   @ApiResponse({ status: 200, type: AdminClubDetailDto })
   getClub(@Param("id", ParseUUIDPipe) id: string): Promise<AdminClubDetailDto> {
     return this.clubsQuery.detail(id);
+  }
+
+  @Patch("clubs/:id")
+  @ApiOperation({
+    summary: "Modifier un club (renommage répercuté partout)",
+  })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, type: AdminClubDetailDto })
+  @ApiResponse({ status: 409, description: "Nom déjà utilisé" })
+  updateClub(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: UpdateAdminClubDto,
+    @Req() req: RequestWithUser,
+  ): Promise<AdminClubDetailDto> {
+    return this.clubs.update(req.user.userId, id, dto);
+  }
+
+  @Post("clubs/:id/status")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Activer ou désactiver un club" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, type: AdminClubDetailDto })
+  setClubStatus(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: SetActiveDto,
+    @Req() req: RequestWithUser,
+  ): Promise<AdminClubDetailDto> {
+    return this.clubs.setStatus(req.user.userId, id, dto.active);
+  }
+
+  @Delete("clubs/:id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Supprimer un club vide" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 204, description: "Club supprimé" })
+  @ApiResponse({ status: 409, type: ClubNotEmptyDto })
+  deleteClub(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() req: RequestWithUser,
+  ): Promise<void> {
+    return this.clubs.delete(req.user.userId, id);
   }
 
   @Get("audit-log")

@@ -20,6 +20,14 @@ import { Request, Response } from "express";
  * `no-unsafe-enum-comparison` (status est un number, pas un HttpStatus). */
 const HTTP_STATUS_SERVICE_UNAVAILABLE = 503;
 const HTTP_STATUS_CONFLICT = 409;
+const CONFLICT_DETAIL_KEYS = [
+  "existingClubId",
+  "memberCount",
+  "clubAccountCount",
+  "competitionCount",
+  "partnershipCount",
+  "soloTeamCount",
+] as const;
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -45,17 +53,24 @@ export class HttpExceptionFilter implements ExceptionFilter {
           ? exception.message
           : "Internal server error";
 
-    // Admin club-account 409 hands the clashing club back so the UI can offer
-    // to attach the account to it instead.
+    // Admin 409s carry details the back-office needs: the clashing club
+    // (create / rename) or what still points at a club (delete). Whitelisted
+    // keys and primitive values only.
     const body =
       exception instanceof HttpException ? exception.getResponse() : null;
-    const existingClubId =
+    const conflictDetails: Record<string, string | number> = {};
+    if (
       status === HTTP_STATUS_CONFLICT &&
       typeof body === "object" &&
-      body !== null &&
-      typeof (body as { existingClubId?: unknown }).existingClubId === "string"
-        ? (body as { existingClubId: string }).existingClubId
-        : undefined;
+      body !== null
+    ) {
+      for (const key of CONFLICT_DETAIL_KEYS) {
+        const value = (body as Record<string, unknown>)[key];
+        if (typeof value === "string" || typeof value === "number") {
+          conflictDetails[key] = value;
+        }
+      }
+    }
 
     // Logging structuré pour le debugging
     const errorResponse = {
@@ -64,7 +79,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       path: request.url,
       method: request.method,
       message,
-      ...(existingClubId ? { existingClubId } : {}),
+      ...conflictDetails,
     };
 
     // Log les erreurs selon leur sévérité avec logging structuré

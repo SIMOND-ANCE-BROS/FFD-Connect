@@ -6,6 +6,7 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { AdminAuditService } from "./admin-audit.service";
 import { AdminClubsQueryService } from "./admin-clubs.query-service";
+import { AdminClubsService } from "./admin-clubs.service";
 import { AdminReferenceService } from "./admin-reference.service";
 import { AdminUserAccountsService } from "./admin-user-accounts.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
@@ -21,6 +22,7 @@ describe("AdminController", () => {
   const users = { update: jest.fn(), setStatus: jest.fn(), delete: jest.fn() };
   const userAccounts = { create: jest.fn(), resendInvitation: jest.fn() };
   const clubsQuery = { list: jest.fn(), options: jest.fn(), detail: jest.fn() };
+  const clubs = { update: jest.fn(), setStatus: jest.fn(), delete: jest.fn() };
 
   const controller = new AdminController(
     audit as unknown as AdminAuditService,
@@ -29,6 +31,7 @@ describe("AdminController", () => {
     users as unknown as AdminUsersService,
     userAccounts as unknown as AdminUserAccountsService,
     clubsQuery as unknown as AdminClubsQueryService,
+    clubs as unknown as AdminClubsService,
   );
 
   const req = {
@@ -70,6 +73,17 @@ describe("AdminController", () => {
   it("delegates the club detail", async () => {
     clubsQuery.detail.mockResolvedValue({ id: "c1" });
     await expect(controller.getClub("c1")).resolves.toEqual({ id: "c1" });
+  });
+
+  it("passes the acting admin id to every club write", async () => {
+    await controller.updateClub("c1", { name: "Club Z" }, req);
+    expect(clubs.update).toHaveBeenCalledWith("admin-1", "c1", {
+      name: "Club Z",
+    });
+    await controller.setClubStatus("c1", { active: false }, req);
+    expect(clubs.setStatus).toHaveBeenCalledWith("admin-1", "c1", false);
+    await controller.deleteClub("c1", req);
+    expect(clubs.delete).toHaveBeenCalledWith("admin-1", "c1");
   });
 
   it("delegates the audit log query", async () => {
