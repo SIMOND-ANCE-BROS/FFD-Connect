@@ -63,6 +63,8 @@ Informational (non-blocking): `playwright-e2e`, `mutation` (Stryker). Weekly `mu
 
 Branches cascade: `develop` (default, target of feature PRs) → `staging` → `master`. Promotions are merges up the cascade — never cherry-picks, never force-pushes.
 
+**A merged remote branch must be deleted.** Merge feature PRs with `gh pr merge <n> --squash --delete-branch`; if a remote branch is found merged but still present, delete it (`git push origin --delete <branch>`) along with its local branch and worktree. Exception: never delete `develop`, `staging` or `master` — they are the head of promotion PRs, so never pass `--delete-branch` when merging a promotion.
+
 | Branch    | Deploys (after CI passes)                                          |
 | --------- | ------------------------------------------------------------------ |
 | `staging` | Container App `backend-staging` — TestFlight beta testers hit this |
