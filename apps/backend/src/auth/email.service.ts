@@ -86,6 +86,53 @@ export class EmailService {
     }
   }
 
+  /** Invitation of a Club account created from the admin back-office. */
+  async sendInvitationEmail(
+    email: string,
+    token: string,
+    firstName: string,
+  ): Promise<void> {
+    const url = `${
+      this.configService.get<string>("FRONTEND_URL") ?? "http://localhost:3000"
+    }/reset-password?token=${token}`;
+
+    if (!this.resend) {
+      this.logger.log(
+        `Invitation email for ${email} (no Resend config, URL not sent)`,
+      );
+      return;
+    }
+
+    const { data, error } = await this.resend.emails.send({
+      from: this.fromEmail,
+      to: email,
+      subject: "Votre accès club FFD Connect",
+      html: this.getInvitationEmailTemplate(url, firstName),
+    });
+    if (error) {
+      this.logger.error(`Failed to send invitation email: ${error.message}`);
+      throw new Error(`Failed to send email: ${error.message}`);
+    }
+    this.logger.log(`Invitation email sent to ${email} (ID: ${data.id})`);
+  }
+
+  private getInvitationEmailTemplate(url: string, firstName: string): string {
+    const safeName = firstName.replace(/[<>&"']/g, "");
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head><meta charset="utf-8"><title>Votre accès club FFD Connect</title></head>
+        <body style="font-family: Arial, sans-serif; color: #222; max-width: 560px; margin: auto;">
+          <p>Bonjour ${safeName},</p>
+          <p>Un compte club vient d'être créé pour vous sur FFD Connect.</p>
+          <p>Pour l'activer, choisissez votre mot de passe :</p>
+          <p><a href="${url}" style="display:inline-block;padding:12px 20px;background:#1d4ed8;color:#fff;border-radius:6px;text-decoration:none;">Définir mon mot de passe</a></p>
+          <p>Ce lien est valable 7 jours et ne peut servir qu'une fois.</p>
+          <p>Si vous n'attendiez pas cet email, ignorez-le.</p>
+        </body>
+      </html>`;
+  }
+
   /**
    * Template HTML pour l'email de réinitialisation
    * @private

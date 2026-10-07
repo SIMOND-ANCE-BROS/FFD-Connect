@@ -28,6 +28,28 @@ export class AuthPasswordService {
     return crypto.createHash("sha256").update(token).digest("hex");
   }
 
+  /**
+   * Issues a single-use password token (reset or invitation): previous unused
+   * tokens of the user are invalidated, only the SHA-256 hash is stored, and
+   * the plain token is returned for the email link.
+   */
+  async issuePasswordToken(
+    userId: string,
+    expiryHours: number,
+  ): Promise<string> {
+    await this.prisma.passwordResetToken.updateMany({
+      where: { userId, used: false },
+      data: { used: true, usedAt: new Date() },
+    });
+
+    const plainToken = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + expiryHours * 3600_000);
+    await this.prisma.passwordResetToken.create({
+      data: { token: this.hashToken(plainToken), userId, expiresAt },
+    });
+    return plainToken;
+  }
+
   async forgotPassword(email: string): Promise<{ success: boolean }> {
     const user = await this.prisma.user.findUnique({
       where: { email },
@@ -37,31 +59,10 @@ export class AuthPasswordService {
       return { success: true };
     }
 
-    await this.prisma.passwordResetToken.updateMany({
-      where: {
-        userId: user.id,
-        used: false,
-      },
-      data: {
-        used: true,
-        usedAt: new Date(),
-      },
-    });
-
-    const plainToken = crypto.randomBytes(32).toString("hex");
-    const tokenHash = this.hashToken(plainToken);
-    const expiresAt = new Date();
-    expiresAt.setHours(
-      expiresAt.getHours() + this.PASSWORD_RESET_TOKEN_EXPIRY_HOURS,
+    const plainToken = await this.issuePasswordToken(
+      user.id,
+      this.PASSWORD_RESET_TOKEN_EXPIRY_HOURS,
     );
-
-    await this.prisma.passwordResetToken.create({
-      data: {
-        token: tokenHash,
-        userId: user.id,
-        expiresAt,
-      },
-    });
 
     // Send plain token via email (DB only stores hash)
     await this.emailService.sendPasswordResetEmail(email, plainToken);
