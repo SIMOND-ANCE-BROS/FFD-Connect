@@ -84,7 +84,7 @@ describe('LoginPage', () => {
     } as never);
     renderLogin();
     await submit();
-    expect(await screen.findByText(/serveur indisponible/i)).toBeInTheDocument();
+    expect(await screen.findByText('Serveur injoignable, réessayez dans un instant.')).toBeInTheDocument();
     expect(screen.queryByText(/identifiants incorrects/i)).toBeNull();
   });
 
@@ -92,7 +92,7 @@ describe('LoginPage', () => {
     vi.spyOn(sdk, 'authControllerLogin').mockRejectedValue(new TypeError('Failed to fetch'));
     renderLogin();
     await submit();
-    expect(await screen.findByText(/serveur indisponible/i)).toBeInTheDocument();
+    expect(await screen.findByText('Serveur injoignable, réessayez dans un instant.')).toBeInTheDocument();
     expect(screen.queryByText(/identifiants incorrects/i)).toBeNull();
   });
 

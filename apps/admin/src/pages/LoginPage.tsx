@@ -17,9 +17,8 @@ import { useNavigate } from 'react-router';
 import { authControllerLogin, healthControllerCheck } from '../api/generated/sdk.gen';
 import type { AuthControllerLoginResponse } from '../api/generated/types.gen';
 import { API_ORIGIN } from '../config';
+import { UNAVAILABLE_MESSAGE } from '../lib/apiError';
 import { type SessionUser, useSession } from '../session/sessionStore';
-
-const UNAVAILABLE = 'Serveur indisponible, réessayez dans un instant.';
 
 type LoginUser = NonNullable<AuthControllerLoginResponse['user']>;
 
@@ -65,12 +64,12 @@ export function LoginPage() {
         body: { username: email.trim(), password },
       });
       if (!data) {
-        setError(response?.status === 401 ? 'Identifiants incorrects.' : UNAVAILABLE);
+        setError(response?.status === 401 ? 'Identifiants incorrects.' : UNAVAILABLE_MESSAGE);
         return;
       }
       const user = toSessionUser(data.user);
       if (!data.access_token || !data.refresh_token || !user) {
-        setError(UNAVAILABLE);
+        setError(UNAVAILABLE_MESSAGE);
         return;
       }
       if (user.role !== 'ADMIN') {
@@ -80,7 +79,7 @@ export function LoginPage() {
       setSession({ accessToken: data.access_token, refreshToken: data.refresh_token, user });
       navigate('/users', { replace: true });
     } catch {
-      setError(UNAVAILABLE);
+      setError(UNAVAILABLE_MESSAGE);
     } finally {
       setSubmitting(false);
     }

@@ -18,10 +18,8 @@ import { useNavigate } from 'react-router';
 import { adminControllerCreateUser } from '../api/generated/sdk.gen';
 import type { AdminControllerCreateUserData } from '../api/generated/types.gen';
 import { clubOptionsQuery, referenceQuery } from '../api/queries';
-import { apiErrorMessage } from '../lib/apiError';
+import { apiErrorMessage, UNAVAILABLE_MESSAGE } from '../lib/apiError';
 import { ROLE_LABELS } from '../lib/labels';
-
-const UNAVAILABLE = 'Serveur indisponible, réessayez dans un instant.';
 
 type CreateBody = AdminControllerCreateUserData['body'];
 type Role = CreateBody['role'];
@@ -155,7 +153,7 @@ export function NewUserPage() {
       });
       if (!data) {
         // The generated client never throws: no response means a network failure.
-        setError(response ? toFormError(apiError) : { message: UNAVAILABLE });
+        setError(response ? toFormError(apiError) : { message: UNAVAILABLE_MESSAGE });
         return;
       }
       void qc.invalidateQueries({ queryKey: ['admin'] });
@@ -170,7 +168,7 @@ export function NewUserPage() {
       );
       navigate(`/users/${data.userId}`);
     } catch {
-      setError({ message: UNAVAILABLE });
+      setError({ message: UNAVAILABLE_MESSAGE });
     } finally {
       setSubmitting(false);
     }
