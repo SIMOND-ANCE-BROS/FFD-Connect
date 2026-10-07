@@ -55,3 +55,13 @@ export const auditQuery = (q: AuditFilter) =>
     queryKey: ['admin', 'audit', q],
     queryFn: () => unwrap(adminControllerAuditLog({ query: q })),
   });
+
+/** For endpoints answering 204 (no body): rejects with the parsed error body, resolves otherwise. */
+export async function ensureOk(
+  p: Promise<{ error?: unknown; response?: Response }>,
+): Promise<void> {
+  const { error, response } = await p;
+  if (error !== undefined || !response?.ok) {
+    throw error ?? new Error('Requête refusée');
+  }
+}
