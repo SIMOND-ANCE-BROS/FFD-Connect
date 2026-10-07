@@ -479,10 +479,13 @@ jobs:
   #   - resume → reprend un build `beta` DÉJÀ FAIT (input build_id, et
   #              `platform` si on veut viser une seule jambe), sans rebuild
   #              (0 $) : tag/release, envoi s'il n'a pas abouti, distribution.
-  # Secrets, dans l'environnement `testflight-beta` (relecteur obligatoire,
-  # branches restreintes ; le nom date d'avant Android) : ASC_KEY_ID,
+  # Environnement `testflight-beta` (relecteur obligatoire, branches
+  # restreintes ; le nom date d'avant Android). Clés de distribution ASC_KEY_ID,
   # ASC_ISSUER_ID, ASC_KEY_P8 (iOS) et PLAY_SERVICE_ACCOUNT_JSON (Android, notes
-  # de version ; sans lui l'étape avertit et passe).
+  # de version ; sans elle l'étape avertit et passe) : lues dans Key Vault
+  # `ffd-connect-release-kv` (ADR-0020) via OIDC, variable d'environnement
+  # AZURE_RELEASE_KEYS_CLIENT_ID ; repli de transition sur les secrets GitHub
+  # du même nom. Rotation : docs/exploitation/rotation-cles-distribution.md.
   #
   # Nommage identique sur les deux stores : tag `beta-<version>-<ios|android>-<n°>`
   # et release « Bêta iOS 1.0.0 (18) » / « Bêta Android 1.0.0 (12) », où n° est
@@ -522,9 +525,12 @@ jobs:
     # leg: what went to each store is in the run summary and the tags.
     environment:
       name: testflight-beta
-    # Nécessaire pour créer la GitHub Release (changelog testeurs).
+    # contents: write — créer la GitHub Release (changelog testeurs).
+    # id-token: write — jeton OIDC pour lire les clés de distribution dans Key
+    # Vault ; l'identité Azure n'accepte que le sujet `environment:testflight-beta`.
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
@@ -944,6 +950,117 @@ jobs:
           echo "state=finished" >> "$GITHUB_OUTPUT"
           echo "📤 Envoyé sur $STORE_NAME (soumission \`$SUB_ID\`)" >> "$GITHUB_STEP_SUMMARY"
 
+      # Clés de distribution : source de vérité = Key Vault `ffd-connect-release-kv`
+      # (ADR-0020, runbook docs/exploitation/rotation-cles-distribution.md),
+      # lu par une identité dédiée qui ne fait QUE lire ce coffre et dont le
+      # credential fédéré n'accepte que l'environnement `testflight-beta`.
+      # Connexion juste avant la distribution (pas en début de job) : un build
+      # + une soumission durent jusqu'à ~2 h, bien au-delà du jeton.
+      # Transition : si la variable AZURE_RELEASE_KEYS_CLIENT_ID n'est pas
+      # posée, ou si la connexion échoue, l'étape suivante retombe sur les
+      # secrets GitHub de l'environnement (avertissement) — la promotion ne
+      # casse jamais pendant la migration.
+      - name: Azure login (release keys)
+        id: azlogin
+        if: >-
+          !cancelled() && steps.submit.outputs.state == 'finished'
+          && vars.AZURE_RELEASE_KEYS_CLIENT_ID != ''
+        continue-on-error: true
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ vars.AZURE_RELEASE_KEYS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          # L'identité n'a aucun rôle ARM (seulement Key Vault Secrets User sur
+          # le coffre) : les appels Key Vault sont du plan de données.
+          allow-no-subscriptions: true
+
+      # Ne récupère que ce dont la jambe a besoin (iOS : ASC_*, Android :
+      # PLAY_*). Tout-ou-rien par jambe : un mélange coffre / GitHub pendant une
+      # rotation associerait un Key ID et un .p8 qui ne vont pas ensemble.
+      # Chaque ligne de chaque valeur est masquée AVANT tout autre usage ;
+      # transmission par $GITHUB_ENV avec un délimiteur aléatoire (multi-ligne).
+      - name: Load distribution keys (Key Vault, GitHub fallback)
+        id: keys
+        if: >-
+          !cancelled() && steps.submit.outputs.state == 'finished'
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          KV_NAME: ffd-connect-release-kv
+          LOGIN_OUTCOME: ${{ steps.azlogin.outcome }}
+          # Repli de transition (à supprimer une fois le coffre éprouvé).
+          GH_ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          GH_ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          GH_ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          GH_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          case "$PLATFORM" in
+            ios) VARS=(ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8) ;;
+            android) VARS=(PLAY_SERVICE_ACCOUNT_JSON) ;;
+            *) exit 0 ;;
+          esac
+          # ASC_KEY_P8 -> asc-key-p8
+          kv_name() { printf '%s' "$1" | tr 'A-Z_' 'a-z-'; }
+          mask_file() {
+            local line
+            while IFS= read -r line || [ -n "$line" ]; do
+              if [ -n "$line" ]; then echo "::add-mask::$line"; fi
+            done < "$1"
+          }
+          # $(cat) retire les fins de ligne finales : un Key ID suivi d'un « \n »
+          # casserait le JWT App Store Connect.
+          export_file() {
+            local delim
+            delim="EOF_$(openssl rand -hex 16)"
+            { echo "$1<<$delim"; printf '%s\n' "$(cat "$2")"; echo "$delim"; } >> "$GITHUB_ENV"
+          }
+
+          DIR="$RUNNER_TEMP/release-keys"
+          mkdir -p "$DIR"
+          SOURCE=keyvault
+          REASON=""
+          if [ "$LOGIN_OUTCOME" != "success" ]; then
+            SOURCE=github
+            REASON="connexion Azure ${LOGIN_OUTCOME:-non tentée} (variable AZURE_RELEASE_KEYS_CLIENT_ID posée sur l'environnement ?)"
+          else
+            for v in "${VARS[@]}"; do
+              f="$DIR/$v"
+              # Valeur dans un fichier, jamais sur la sortie standard du log.
+              # JSON + jq -r : restitue fidèlement une valeur multi-ligne (.p8).
+              if ! az keyvault secret show --vault-name "$KV_NAME" --name "$(kv_name "$v")" \
+                --query value -o json 2> "$DIR/err" | jq -er . > "$f" 2>> "$DIR/err"; then
+                : > "$f"
+              fi
+              mask_file "$f"
+              if [ ! -s "$f" ] || ! grep -q '[^[:space:]]' "$f"; then
+                SOURCE=github
+                # Le message d'erreur d'az (SecretNotFound, Forbidden…) ne
+                # contient jamais la valeur.
+                REASON="secret $(kv_name "$v") absent, vide ou illisible dans $KV_NAME ($(head -n 1 "$DIR/err" | cut -c1-200))"
+                break
+              fi
+            done
+          fi
+          az logout > /dev/null 2>&1 || true
+
+          if [ "$SOURCE" = "github" ]; then
+            echo "::warning::clés de distribution lues depuis les secrets GitHub (repli de transition) : $REASON"
+            for v in "${VARS[@]}"; do
+              gh_var="GH_$v"
+              printf '%s' "${!gh_var}" > "$DIR/$v"
+            done
+          fi
+          for v in "${VARS[@]}"; do
+            mask_file "$DIR/$v"
+            # Fichier vide : on n'exporte rien, l'étape suivante garde son
+            # comportement « secret absent » (Android : avertit et passe).
+            if [ -s "$DIR/$v" ]; then export_file "$v" "$DIR/$v"; fi
+          done
+          rm -rf "$DIR"
+          echo "source=$SOURCE" >> "$GITHUB_OUTPUT"
+          echo "🔑 Clés de distribution : **$SOURCE**${REASON:+ ($REASON)}" >> "$GITHUB_STEP_SUMMARY"
+
       # Distribution aux testeurs, même rôle sur les deux stores :
       # - iOS : `eas submit --groups` ne vise que les groupes INTERNES ; le
       #   groupe EXTERNE, « What to Test » et la Beta App Review passent par
@@ -954,16 +1071,16 @@ jobs:
       # Idempotent. --timeout borne l'attente côté store, sous celle de l'étape.
       - name: Distribute to testers
         id: distribute
+        # ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_P8 / PLAY_SERVICE_ACCOUNT_JSON
+        # arrivent par $GITHUB_ENV (étape précédente) : surtout pas de `env:`
+        # ici pour elles, il l'emporterait sur $GITHUB_ENV.
         if: >-
           !cancelled() && steps.submit.outputs.state == 'finished'
+          && steps.keys.outcome == 'success'
         timeout-minutes: 50
         env:
           PLATFORM: ${{ matrix.platform }}
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           ASC_APP_ID: '6787383066'
-          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           BUILD_NUMBER: ${{ steps.build.outputs.number || steps.resolve.outputs.number }}
         run: |
           set -euo pipefail
@@ -971,9 +1088,9 @@ jobs:
             pnpm testflight:distribute --build-number "$BUILD_NUMBER" --notes-file beta-notes.txt --timeout 45
             echo "✅ Build iOS $BUILD_NUMBER : « What to Test », groupe « Beta FFD », Beta App Review" \
               >> "$GITHUB_STEP_SUMMARY"
-          elif [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
-            echo "::warning::PLAY_SERVICE_ACCOUNT_JSON absent de l'environnement testflight-beta : build Android $BUILD_NUMBER publié sans notes de version"
-            echo "⚠️ Build Android $BUILD_NUMBER publié **sans notes de version** (secret PLAY_SERVICE_ACCOUNT_JSON absent)" \
+          elif [ -z "${PLAY_SERVICE_ACCOUNT_JSON:-}" ]; then
+            echo "::warning::PLAY_SERVICE_ACCOUNT_JSON absent (Key Vault et secrets GitHub) : build Android $BUILD_NUMBER publié sans notes de version"
+            echo "⚠️ Build Android $BUILD_NUMBER publié **sans notes de version** (clé PLAY_SERVICE_ACCOUNT_JSON absente)" \
               >> "$GITHUB_STEP_SUMMARY"
           else
             pnpm play:distribute --version-code "$BUILD_NUMBER" --notes-file beta-notes.txt --timeout 45
