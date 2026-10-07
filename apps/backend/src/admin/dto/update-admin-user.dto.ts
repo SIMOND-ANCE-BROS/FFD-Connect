@@ -44,13 +44,13 @@ export class UpdateAdminUserDto {
   @IsUUID()
   clubId?: string | null;
 
-  @ApiPropertyOptional({ nullable: true, enum: USER_CATEGORIES })
+  @ApiPropertyOptional({ nullable: true, enum: [...USER_CATEGORIES, null] })
   @ValidateIf(notNull)
   @IsOptional()
   @IsIn(USER_CATEGORIES)
   category?: string | null;
 
-  @ApiPropertyOptional({ nullable: true, enum: AGE_GROUPS })
+  @ApiPropertyOptional({ nullable: true, enum: [...AGE_GROUPS, null] })
   @ValidateIf(notNull)
   @IsOptional()
   @IsIn(AGE_GROUPS)
@@ -76,7 +76,7 @@ export class UpdateAdminUserDto {
   @IsEnum(PassportLevel)
   passportLevelStandard?: PassportLevel | null;
 
-  @ApiPropertyOptional({ nullable: true, enum: COMPETITION_LEVELS })
+  @ApiPropertyOptional({ nullable: true, enum: [...COMPETITION_LEVELS, null] })
   @ValidateIf(notNull)
   @IsOptional()
   @IsIn(COMPETITION_LEVELS)

@@ -1,6 +1,6 @@
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { vi } from 'vitest';
@@ -22,6 +22,19 @@ const page = (n: number) => ({
         ageGroup: 'Adulte',
         licenseStatus: 'ACTIVE',
         createdAt: '2026-09-01T00:00:00.000Z',
+      },
+      {
+        id: 'u2',
+        email: 'paul@x.fr',
+        firstName: 'Paul',
+        lastName: 'Durand',
+        role: 'LICENSEE',
+        clubId: null,
+        clubName: null,
+        category: null,
+        ageGroup: null,
+        licenseStatus: null,
+        createdAt: '2026-09-02T00:00:00.000Z',
       },
     ],
     meta: { total: n, skip: 0, take: 50, hasMore: n > 50 },
@@ -63,10 +76,17 @@ describe('UsersPage', () => {
   });
 
   it('lists users with the total count', async () => {
-    vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(1) as never);
+    vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(2) as never);
     renderPage();
     expect(await screen.findByText('jeanne@x.fr')).toBeInTheDocument();
-    expect(screen.getByText('1 inscrit')).toBeInTheDocument();
+    expect(screen.getByText('2 inscrits')).toBeInTheDocument();
+  });
+
+  it('renders a dash for null club, category, age group and license', async () => {
+    vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(2) as never);
+    renderPage();
+    const row = (await screen.findByText('paul@x.fr')).closest('tr') as HTMLElement;
+    expect(within(row).getAllByText('—')).toHaveLength(4);
   });
 
   it('sends the search after debounce, from the first page', async () => {

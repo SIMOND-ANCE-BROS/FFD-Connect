@@ -62,7 +62,7 @@ export class AdminUserListItemDto {
   @ApiProperty({ nullable: true, type: String }) clubName!: string | null;
   @ApiProperty({ nullable: true, type: String }) category!: string | null;
   @ApiProperty({ nullable: true, type: String }) ageGroup!: string | null;
-  @ApiProperty({ enum: LICENSE_STATUSES, nullable: true })
+  @ApiProperty({ enum: [...LICENSE_STATUSES, null], nullable: true })
   licenseStatus!: LicenseStatus | null;
   @ApiProperty() createdAt!: Date;
 }

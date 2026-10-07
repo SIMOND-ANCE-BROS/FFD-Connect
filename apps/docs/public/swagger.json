@@ -19504,7 +19504,7 @@
           },
           "licenseStatus": {
             "type": "string",
-            "enum": ["ACTIVE", "EXPIRED"],
+            "enum": ["ACTIVE", "EXPIRED", null],
             "nullable": true
           },
           "createdAt": {
@@ -19585,7 +19585,7 @@
           },
           "licenseStatus": {
             "type": "string",
-            "enum": ["ACTIVE", "EXPIRED"],
+            "enum": ["ACTIVE", "EXPIRED", null],
             "nullable": true
           },
           "createdAt": {
@@ -19690,7 +19690,7 @@
           "category": {
             "type": "string",
             "nullable": true,
-            "enum": ["Latin", "Standard", "Ten Dance"]
+            "enum": ["Latin", "Standard", "Ten Dance", null]
           },
           "ageGroup": {
             "type": "string",
@@ -19712,7 +19712,8 @@
               "Solo Junior 2",
               "Solo Youth",
               "Solo Adulte",
-              "Solo Senior"
+              "Solo Senior",
+              null
             ]
           },
           "passportLevelLatin": {
@@ -19734,7 +19735,7 @@
           "competitionLevel": {
             "type": "string",
             "nullable": true,
-            "enum": ["International", "Avancé", "Intermédiaire", "Débutant"]
+            "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null]
           },
           "nationalRanking": {
             "type": "number",

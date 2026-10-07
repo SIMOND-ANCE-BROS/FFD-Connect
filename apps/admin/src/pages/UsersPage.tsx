@@ -148,7 +148,7 @@ export function UsersPage() {
                   <Table.Td>{u.clubName ?? '—'}</Table.Td>
                   <Table.Td>{u.category ?? '—'}</Table.Td>
                   <Table.Td>{u.ageGroup ?? '—'}</Table.Td>
-                  <Table.Td>{LICENSE_LABEL[u.licenseStatus]}</Table.Td>
+                  <Table.Td>{u.licenseStatus ? LICENSE_LABEL[u.licenseStatus] : '—'}</Table.Td>
                   <Table.Td>{dayjs(u.createdAt).format('DD/MM/YYYY')}</Table.Td>
                 </Table.Tr>
               ))}
