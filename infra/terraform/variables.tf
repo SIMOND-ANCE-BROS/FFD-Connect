@@ -158,3 +158,9 @@ variable "release_keys_officer_principal_ids" {
   type        = set(string)
   default     = []
 }
+
+variable "release_keys_audit_enabled" {
+  description = "Send the release-keys vault AuditEvent logs (who read which distribution key) to a dedicated, capped Log Analytics workspace. Default false: no workspace exists yet. ~0 EUR/month when enabled (a few KB/month, within the 5 GB free ingestion)."
+  type        = bool
+  default     = false
+}

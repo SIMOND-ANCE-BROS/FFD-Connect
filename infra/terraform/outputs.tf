@@ -92,3 +92,8 @@ output "ci_release_client_id" {
   description = "Client ID of the beta-promotion identity — set as variable AZURE_RELEASE_KEYS_CLIENT_ID on the testflight-beta GitHub environment (not a secret)"
   value       = azuread_application.ci_release.client_id
 }
+
+output "release_keys_audit_workspace_id" {
+  description = "Workspace (customer) ID receiving the release-keys vault AuditEvent logs — null while release_keys_audit_enabled = false. Query: AzureDiagnostics | where OperationName == \"SecretGet\""
+  value       = var.release_keys_audit_enabled ? azurerm_log_analytics_workspace.release_keys_audit[0].workspace_id : null
+}

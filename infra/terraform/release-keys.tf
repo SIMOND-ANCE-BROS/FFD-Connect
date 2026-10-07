@@ -98,3 +98,44 @@ resource "azurerm_role_assignment" "release_keys_officer" {
   role_definition_name = "Key Vault Secrets Officer"
   principal_id         = each.value
 }
+
+# ── Audit (who read which key, when) ───────────
+# Key Vault data-plane reads (SecretGet) are NOT in the free Activity Log: they
+# need a diagnostic setting sending the `AuditEvent` category somewhere. No Log
+# Analytics workspace exists in the subscription (checked 2026-10-07; the CAE
+# has no log destination either), so this block creates a DEDICATED, capped
+# one — opt-in via `release_keys_audit_enabled` (default false = nothing
+# created until Gabin decides).
+#
+# Cost: ~10 SecretGet per beta promotion ≈ a few KB of AuditEvent per month.
+# PerGB2018 ingestion is free up to 5 GB/month per billing account and the
+# first 31 days of retention are included: 0 EUR in practice. The daily cap
+# (0.1 GB) bounds a runaway reader to ~0.25 EUR/day; once hit, ingestion stops
+# until the next UTC day (audit gap, visible in the workspace).
+
+resource "azurerm_log_analytics_workspace" "release_keys_audit" {
+  count = var.release_keys_audit_enabled ? 1 : 0
+
+  name                = "${local.name_prefix}-release-keys-audit"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+  daily_quota_gb      = 0.1
+
+  tags = local.common_tags
+}
+
+resource "azurerm_monitor_diagnostic_setting" "release_keys_audit" {
+  count = var.release_keys_audit_enabled ? 1 : 0
+
+  name                       = "release-keys-audit"
+  target_resource_id         = azurerm_key_vault.release_keys.id
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.release_keys_audit[0].id
+
+  # AuditEvent = every data-plane call (SecretGet, SecretSet, failed auth…),
+  # with the caller's object ID and IP. Metrics are not exported.
+  enabled_log {
+    category = "AuditEvent"
+  }
+}
