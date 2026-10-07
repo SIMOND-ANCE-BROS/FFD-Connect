@@ -370,3 +370,18 @@ export const trackCorrectionExportSelect = {
     select: { title: true, artist: true, titleMasked: true, blacklisted: true },
   },
 } as const;
+
+/** Back-office: one audit row with its author's name. */
+export const adminAuditLogSelect = {
+  id: true,
+  action: true,
+  targetType: true,
+  targetId: true,
+  before: true,
+  after: true,
+  createdAt: true,
+  actor: { select: userNameSelect },
+} as const;
+
+/** Back-office: club options for selects (id + name only). */
+export const adminClubOptionSelect = { id: true, name: true } as const;
