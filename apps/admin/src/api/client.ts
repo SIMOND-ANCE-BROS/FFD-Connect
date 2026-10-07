@@ -16,8 +16,9 @@ client.interceptors.request.use((request) => {
   return request;
 });
 
-// 401 → refresh once; replay only bodyless reads. A failed refresh clears the
-// session, and RequireAdmin then redirects to /login.
+// 401 → refresh once; replay only bodyless reads. A rejected refresh token
+// (401/403) clears the session, and RequireAdmin then redirects to /login; an
+// unreachable or cold backend keeps it.
 client.interceptors.response.use(async (response, request) => {
   if (response.status !== 401 || request.url.includes('/auth/')) {
     return response;

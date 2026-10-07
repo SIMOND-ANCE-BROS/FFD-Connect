@@ -11,13 +11,23 @@ async function performRefresh(): Promise<string | null> {
   try {
     result = await authControllerRefresh({ body: { refresh_token: refreshToken } });
   } catch {
-    // Network failure (e.g. backend still waking up): the refresh token may
-    // still be valid, so keep the session and let the caller surface the error.
+    // Defensive: the generated client (throwOnError=false) does not reject.
     return null;
   }
 
-  const { data, error } = result;
-  if (error || !data?.access_token || !data.refresh_token) {
+  const { data, response } = result;
+  const status = response?.status;
+  if (status === 401 || status === 403) {
+    // The refresh token itself is rejected: the session is over.
+    useSession.getState().clear();
+    return null;
+  }
+  if (!response?.ok) {
+    // No response (network failure, cold start) or 5xx: the refresh token may
+    // still be valid, so keep the session and let the caller surface the error.
+    return null;
+  }
+  if (!data?.access_token || !data.refresh_token) {
     useSession.getState().clear();
     return null;
   }

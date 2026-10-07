@@ -75,6 +75,19 @@ describe('LoginPage', () => {
   });
 
   it('reports an unavailable server (not a password error) on network failure', async () => {
+    // Real shape: the generated client catches fetch's TypeError (no response).
+    vi.spyOn(sdk, 'authControllerLogin').mockResolvedValue({
+      data: undefined,
+      error: new TypeError('Failed to fetch'),
+      response: undefined,
+    } as never);
+    renderLogin();
+    await submit();
+    expect(await screen.findByText(/serveur indisponible/i)).toBeInTheDocument();
+    expect(screen.queryByText(/identifiants incorrects/i)).toBeNull();
+  });
+
+  it('reports an unavailable server if the login call rejects', async () => {
     vi.spyOn(sdk, 'authControllerLogin').mockRejectedValue(new TypeError('Failed to fetch'));
     renderLogin();
     await submit();
