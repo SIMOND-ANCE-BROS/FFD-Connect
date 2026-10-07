@@ -127,7 +127,14 @@ export function normalizeNotes(raw: string): string {
     if (next.length > room) break;
     kept = next;
   }
-  if (!kept) kept = text.slice(0, room);
+  if (!kept) {
+    // Point de code par point de code (Array.from) : une coupe au milieu d'un
+    // emoji enverrait une moitie de paire UTF-16 que Google rejette.
+    for (const char of Array.from(text)) {
+      if (kept.length + char.length > room) break;
+      kept += char;
+    }
+  }
   return `${kept.trimEnd()}\n…`;
 }
 
@@ -204,7 +211,9 @@ function client() {
         `Play ${init.method ?? 'GET'} ${pathname} → ${res.status}: ${describeGoogleError(await res.text())}`,
       );
     }
-    return res.status === 204 ? null : ((await res.json()) as unknown);
+    // Corps vide documenté (ex. edits.delete) sans garantie de statut 204.
+    const body = await res.text();
+    return body ? (JSON.parse(body) as unknown) : null;
   };
   return { api, packageName };
 }
@@ -232,11 +241,27 @@ async function readTrack(api: Api, track: string): Promise<PlayTrack> {
   });
 }
 
+/**
+ * Erreur definitive (cle, droits, app ou piste inconnue) : inutile d'insister.
+ * Le reste (429, 5xx, reseau) est passager et ne doit pas casser l'attente.
+ */
+export function isFatalPlayError(message: string): boolean {
+  return /→ (400|401|403|404):|Jeton Google refuse|Cle Google|PLAY_SERVICE_ACCOUNT_JSON/.test(
+    message,
+  );
+}
+
 async function waitForRelease(api: Api, options: Options): Promise<void> {
   const deadline = Date.now() + options.timeoutMin * 60_000;
   for (;;) {
     // Une modification est un instantane : en rouvrir une a chaque tour.
-    if (findRelease(await readTrack(api, options.track), options.versionCode)) return;
+    try {
+      if (findRelease(await readTrack(api, options.track), options.versionCode)) return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isFatalPlayError(message)) throw error;
+      console.log(`… erreur passagere de l'API Play, nouvel essai : ${message}`);
+    }
     if (Date.now() > deadline) {
       throw new Error(
         `versionCode ${options.versionCode} toujours absent de la piste ${options.track} ` +
@@ -274,7 +299,20 @@ async function main(): Promise<void> {
       method: 'PUT',
       body: JSON.stringify(withNotes(track, options.versionCode, options.language, notes)),
     });
-    await api(`/edits/${editId}:commit`, { method: 'POST' });
+    try {
+      await api(`/edits/${editId}:commit`, { method: 'POST' });
+    } catch (error) {
+      // Une modification en attente dans la Play Console (refusee, ou a
+      // envoyer a la main) bloque tout commit « envoye en revue » : on valide
+      // sans envoi, et il faut alors l'envoyer depuis la Console.
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/changesNotSentForReview/i.test(message)) throw error;
+      await api(`/edits/${editId}:commit?changesNotSentForReview=true`, { method: 'POST' });
+      console.log(
+        '::warning::Notes enregistrees SANS envoi en revue (modification en attente dans la ' +
+          'Play Console) : Play Console → Vue d ensemble de la publication → Envoyer en revue',
+      );
+    }
   });
   console.log(`✓ Notes de version renseignees (${options.language}, ${notes.length} car.)`);
 }

@@ -510,8 +510,9 @@ jobs:
     # (build 75 + envoi 35 + distribution 50 min) et la somme reste en dessous,
     # pour que l'étape de suivi puisse toujours écrire la commande de reprise.
     timeout-minutes: 180
-    # The environment carries the deployment record (what went to the stores,
-    # when, from which SHA), a required reviewer, and the store secrets.
+    # The environment carries a required reviewer and the store secrets (one
+    # approval releases both legs). Its deployment record only keeps the LAST
+    # leg: what went to each store is in the run summary and the tags.
     environment:
       name: testflight-beta
     # Nécessaire pour créer la GitHub Release (changelog testeurs).
@@ -591,9 +592,20 @@ jobs:
           PROFILE=$(field buildProfile)
           NUMBER=$(field appBuildVersion)
           COMMIT=$(field gitCommitHash)
+          # Plateforme illisible = échec, jamais « rien à reprendre » : sinon, avec
+          # platform=all, les deux jambes se mettraient de côté et le run finirait
+          # vert sans rien distribuer.
+          case "$PLATFORM" in
+            IOS | ANDROID) ;;
+            *)
+              echo "::error::plateforme du build $BUILD_ID illisible (« $PLATFORM ») : eas build:view a-t-il répondu ?"
+              exit 1
+              ;;
+          esac
           if [ "$PLATFORM" != "$EAS_PLATFORM" ]; then
             if [ "$REQUESTED" = "all" ]; then
               echo "Build $BUILD_ID : plateforme $PLATFORM, pas $EAS_PLATFORM — rien à reprendre sur cette jambe."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "::error::build $BUILD_ID est $PLATFORM, pas $EAS_PLATFORM (input platform=$REQUESTED)"
@@ -625,18 +637,27 @@ jobs:
       # Chaque store les tronque à sa limite (TestFlight 4000 car., Play 500).
       - name: Generate beta changelog
         id: changelog
+        if: steps.resolve.outputs.skip != 'true'
         # Notes passées via env (pas d'interpolation dans le shell → pas
         # d'injection de commande depuis le champ du formulaire).
         env:
           RELEASE_NOTES: ${{ inputs.releaseNotes }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
+          # Base des notes propre à la plateforme : une promotion iOS seule ne
+          # déplace pas celle d'Android (et inversement). L'OTA, commune, garde
+          # le dernier tag beta-* quel qu'il soit.
+          BASE=()
+          if [ "$PLATFORM" = "ios" ] || [ "$PLATFORM" = "android" ]; then
+            BASE=(--platform "$PLATFORM")
+          fi
           if [ -n "$RELEASE_NOTES" ]; then
             printf '%s\n' "$RELEASE_NOTES" > beta-notes.md
             cp beta-notes.md beta-notes.txt
           else
-            node scripts/generate-changelog.mjs --format markdown > beta-notes.md
-            node scripts/generate-changelog.mjs --format testflight > beta-notes.txt
+            node scripts/generate-changelog.mjs "${BASE[@]}" --format markdown > beta-notes.md
+            node scripts/generate-changelog.mjs "${BASE[@]}" --format testflight > beta-notes.txt
           fi
           {
             echo "## 📝 Notes testeurs ($NOTES_TITLE)"
@@ -646,6 +667,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload changelog artifact
+        if: steps.resolve.outputs.skip != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: beta-changelog-${{ matrix.platform }}

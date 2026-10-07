@@ -14,6 +14,7 @@ import assert from 'assert';
 import {
   describeGoogleError,
   findRelease,
+  isFatalPlayError,
   normalizeNotes,
   parseFlags,
   PLAY_NOTES_MAX,
@@ -133,6 +134,21 @@ test('describeGoogleError : extrait error.status/message et borne la longueur', 
   assert.strictEqual(describeGoogleError(body), 'PERMISSION_DENIED — Pas les droits');
   assert.strictEqual(describeGoogleError('pas du json'), 'pas du json');
   assert.strictEqual(describeGoogleError('x'.repeat(900)).length, 500);
+});
+
+test('normalizeNotes : ne coupe jamais une paire UTF-16 (emoji)', () => {
+  const notes = normalizeNotes('é'.repeat(300) + '🎉'.repeat(300));
+  assert.ok(notes.length <= PLAY_NOTES_MAX, `${notes.length}`);
+  assert.doesNotThrow(() => encodeURIComponent(notes), 'paire UTF-16 orpheline');
+});
+
+test('isFatalPlayError : droits et cle = definitif, 429/5xx/reseau = passager', () => {
+  assert.ok(isFatalPlayError('Play GET /edits/1/tracks/alpha → 403: PERMISSION_DENIED'));
+  assert.ok(isFatalPlayError('Play POST /edits → 404: NOT_FOUND'));
+  assert.ok(isFatalPlayError('Jeton Google refuse → 400: invalid_grant'));
+  assert.ok(!isFatalPlayError('Play POST /edits → 429: RESOURCE_EXHAUSTED'));
+  assert.ok(!isFatalPlayError('Play POST /edits → 503: UNAVAILABLE'));
+  assert.ok(!isFatalPlayError('fetch failed'));
 });
 
 console.log(failures === 0 ? '\n✓ tous les tests passent\n' : `\n✗ ${failures} test(s) en echec\n`);
