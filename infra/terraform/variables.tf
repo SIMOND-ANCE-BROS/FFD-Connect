@@ -144,3 +144,17 @@ variable "backend_managed_identity_principal_ids" {
     "270b19f2-e363-4206-be9e-6bca71c18cdf", # backend-prod
   ]
 }
+
+# ── Release keys (app distribution, ADR-0020) ──
+
+variable "release_keys_vault_name" {
+  description = "Name of the Key Vault holding the app-distribution keys read by the beta promotion (3-24 chars, globally unique). Must match KV_NAME in eas-build.yml (promote-beta)."
+  type        = string
+  default     = "ffd-connect-release-kv"
+}
+
+variable "release_keys_officer_principal_ids" {
+  description = "Object IDs granted 'Key Vault Secrets Officer' on the release-keys vault (humans who set/rotate the values). Empty = the principal running terraform apply."
+  type        = set(string)
+  default     = []
+}

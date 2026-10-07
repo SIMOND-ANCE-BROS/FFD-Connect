@@ -83,8 +83,9 @@ resource "azuread_application_federated_identity_credential" "develop" {
 # the branch credentials never match `...:environment:<name>`.
 #
 # These two cover the environments used by deploy-backend.yml. The EAS
-# environments (preview, testflight-beta, app-production) need nothing here:
-# those jobs talk to Expo, not Azure.
+# environments (preview, app-production) need nothing here: those jobs talk to
+# Expo, not Azure. `testflight-beta` reads the distribution keys from Key Vault
+# with its OWN read-only identity (release-keys.tf), never with this one.
 resource "azuread_application_federated_identity_credential" "env_staging" {
   application_id = azuread_application.ci.id
   display_name   = "${local.name_prefix}-github-env-staging"
