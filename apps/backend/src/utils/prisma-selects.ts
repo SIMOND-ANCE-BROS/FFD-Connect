@@ -385,3 +385,32 @@ export const adminAuditLogSelect = {
 
 /** Back-office: club options for selects (id + name only). */
 export const adminClubOptionSelect = { id: true, name: true } as const;
+
+/** Back-office users table. Never select password. */
+export const adminUserListSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  role: true,
+  clubId: true,
+  clubName: true,
+  category: true,
+  ageGroup: true,
+  createdAt: true,
+  license: { select: { number: true, validUntil: true } },
+} as const;
+
+/** Back-office user page. Never select password. */
+export const adminUserDetailSelect = {
+  ...adminUserListSelect,
+  birthDate: true,
+  nationalRanking: true,
+  passportLevelLatin: true,
+  passportLevelStandard: true,
+  competitionLevel: true,
+  wdsfMin: true,
+  wdsfExpiresOn: true,
+  lastLoginAt: true,
+  updatedAt: true,
+} as const;

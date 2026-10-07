@@ -1,7 +1,15 @@
-import { Controller, Get, Query, UseGuards } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiParam,
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
@@ -11,8 +19,14 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { AdminAuditService } from "./admin-audit.service";
+import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminReferenceService } from "./admin-reference.service";
 import { AuditLogPageDto, ListAuditLogQueryDto } from "./dto/admin-audit.dto";
+import {
+  AdminUserDetailDto,
+  AdminUsersPageDto,
+  ListAdminUsersQueryDto,
+} from "./dto/admin-users.dto";
 import {
   AdminClubOptionDto,
   AdminReferenceDataDto,
@@ -32,6 +46,7 @@ export class AdminController {
   constructor(
     private readonly audit: AdminAuditService,
     private readonly reference: AdminReferenceService,
+    private readonly usersQuery: AdminUsersQueryService,
   ) {}
 
   @Get("reference-data")
@@ -53,5 +68,22 @@ export class AdminController {
   @ApiResponse({ status: 200, type: AuditLogPageDto })
   auditLog(@Query() query: ListAuditLogQueryDto): Promise<AuditLogPageDto> {
     return this.audit.list(query);
+  }
+
+  @Get("users")
+  @ApiOperation({ summary: "Liste paginée des inscrits" })
+  @ApiResponse({ status: 200, type: AdminUsersPageDto })
+  listUsers(
+    @Query() query: ListAdminUsersQueryDto,
+  ): Promise<AdminUsersPageDto> {
+    return this.usersQuery.list(query);
+  }
+
+  @Get("users/:id")
+  @ApiOperation({ summary: "Fiche d'un inscrit" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, type: AdminUserDetailDto })
+  getUser(@Param("id", ParseUUIDPipe) id: string): Promise<AdminUserDetailDto> {
+    return this.usersQuery.detail(id);
   }
 }
