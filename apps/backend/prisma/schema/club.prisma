@@ -27,6 +27,7 @@ model Club {
   helloAssoClientSecret String?
   helloAssoOrgSlug      String?
   registrationMode      ClubRegistrationMode @default(MEMBERS_AUTO_CONFIRM)
+  disabledAt            DateTime?            // Désactivé par un admin (null = actif) : ses comptes CLUB sont bloqués
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   members                    User[]

@@ -439,3 +439,13 @@ export const adminInvitationTargetSelect = {
   role: true,
   lastLoginAt: true,
 } as const;
+
+/**
+ * Account status, read at login, at refresh and on every authenticated
+ * request (JwtStrategy). Indexed lookup by primary key, three columns.
+ */
+export const accountStatusSelect = {
+  role: true,
+  disabledAt: true,
+  club: { select: { disabledAt: true } },
+} as const;

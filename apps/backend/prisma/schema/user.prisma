@@ -21,6 +21,7 @@ model User {
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
   lastLoginAt          DateTime?      // Dernière connexion réussie (back-office : « renvoyer l'invitation » tant que null)
+  disabledAt           DateTime?      // Désactivé par un admin (null = actif) : connexion, refresh et requêtes refusés
   ageGroup             String?        // 1 seule classe d'âge par licencié
   category             String?        // discipline(s) : Latin, Standard, Ten Dance
   clubId               String?
@@ -59,6 +60,7 @@ model User {
   @@index([clubName])
   @@index([clubId])
   @@index([clubId, role]) // membres d'un club filtrés par rôle
+  @@index([disabledAt])
 }
 
 enum UserRole {

@@ -2,6 +2,8 @@ import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
+import { accountStatusSelect } from "../utils/prisma-selects";
+import { ACCOUNT_DISABLED_MESSAGE, accountBlockReason } from "./account-status";
 import { LoginResponse } from "./auth.service";
 
 @Injectable()
@@ -46,6 +48,7 @@ export class AuthTokenService {
       include: {
         user: {
           select: {
+            ...accountStatusSelect,
             id: true,
             email: true,
             firstName: true,
@@ -76,6 +79,11 @@ export class AuthTokenService {
     }
 
     const user = tokenRecord.user;
+
+    // A disabled account's session is over, whatever the token says.
+    if (accountBlockReason(user)) {
+      throw new UnauthorizedException(ACCOUNT_DISABLED_MESSAGE);
+    }
 
     const newPlainToken = crypto.randomBytes(64).toString("hex");
     const newTokenHash = this.hashToken(newPlainToken);
