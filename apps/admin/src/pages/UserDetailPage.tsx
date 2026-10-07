@@ -26,6 +26,7 @@ import {
 import type { AdminControllerUpdateUserData } from '../api/generated/types.gen';
 import { auditQuery, clubsQuery, referenceQuery, unwrap, userQuery } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
+import { ACTION_LABELS } from '../lib/auditLabels';
 import { changedFields, type EditableFields, withLegacy } from '../lib/diff';
 import { useSession } from '../session/sessionStore';
 
@@ -255,8 +256,8 @@ export function UserDetailPage() {
         history.data.data.map((h) => (
           <Card key={h.id} withBorder p="xs">
             <Text size="sm" fw={500}>
-              {dayjs(h.createdAt).format('DD/MM/YYYY HH:mm')} — {h.action} par{' '}
-              {h.actorName ?? 'admin supprimé'}
+              {dayjs(h.createdAt).format('DD/MM/YYYY HH:mm')} —{' '}
+              {ACTION_LABELS[h.action] ?? h.action} par {h.actorName ?? 'admin supprimé'}
             </Text>
             {h.after && <ChangeSummary before={h.before ?? {}} after={h.after} />}
           </Card>
