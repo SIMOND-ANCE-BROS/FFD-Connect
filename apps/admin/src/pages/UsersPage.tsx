@@ -19,7 +19,7 @@ import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { UserRole } from '../api/generated/types.gen';
-import { clubsQuery, referenceQuery, usersQuery, type UsersFilter } from '../api/queries';
+import { clubOptionsQuery, referenceQuery, usersQuery, type UsersFilter } from '../api/queries';
 
 const PAGE_SIZE = 50;
 
@@ -62,7 +62,7 @@ export function UsersPage() {
     }),
     placeholderData: keepPreviousData,
   });
-  const clubs = useQuery(clubsQuery);
+  const clubs = useQuery(clubOptionsQuery(clubId));
   const reference = useQuery(referenceQuery);
   const total = users.data?.meta.total ?? 0;
 

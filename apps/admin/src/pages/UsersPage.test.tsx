@@ -59,7 +59,7 @@ function renderPage() {
 describe('UsersPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.spyOn(sdk, 'adminControllerClubs').mockResolvedValue({
+    vi.spyOn(sdk, 'adminControllerClubOptions').mockResolvedValue({
       data: [{ id: 'c1', name: 'Club A' }],
       error: undefined,
     } as never);

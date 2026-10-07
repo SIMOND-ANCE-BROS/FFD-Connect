@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query';
 import {
   adminControllerAuditLog,
-  adminControllerClubs,
+  adminControllerClubOptions,
   adminControllerGetUser,
   adminControllerListUsers,
   adminControllerReferenceData,
@@ -35,11 +35,14 @@ export const userQuery = (id: string) =>
     queryFn: () => unwrap(adminControllerGetUser({ path: { id } })),
   });
 
-export const clubsQuery = queryOptions({
-  queryKey: ['admin', 'clubs'],
-  queryFn: () => unwrap(adminControllerClubs()),
-  staleTime: 5 * 60_000,
-});
+/** Active clubs for selects, plus `includeId` (the current value) even if disabled. */
+export const clubOptionsQuery = (includeId?: string | null) =>
+  queryOptions({
+    queryKey: ['admin', 'clubs', 'options', includeId ?? null],
+    queryFn: () =>
+      unwrap(adminControllerClubOptions(includeId ? { query: { includeId } } : undefined)),
+    staleTime: 5 * 60_000,
+  });
 
 export const referenceQuery = queryOptions({
   queryKey: ['admin', 'reference'],

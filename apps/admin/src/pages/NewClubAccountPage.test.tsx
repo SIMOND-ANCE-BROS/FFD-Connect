@@ -36,14 +36,14 @@ async function fillNewClub(clubName: string) {
 describe('NewClubAccountPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.spyOn(sdk, 'adminControllerClubs').mockResolvedValue({
+    vi.spyOn(sdk, 'adminControllerClubOptions').mockResolvedValue({
       data: [{ id: 'c1', name: 'Club A' }],
       error: undefined,
     } as never);
   });
 
   it('creates the account and opens the user page', async () => {
-    const create = vi.spyOn(sdk, 'adminControllerCreateClubAccount').mockResolvedValue({
+    const create = vi.spyOn(sdk, 'adminControllerCreateUser').mockResolvedValue({
       data: { userId: 'u-new', clubId: 'c-new', invitationSent: true },
       error: undefined,
     } as never);
@@ -54,6 +54,7 @@ describe('NewClubAccountPage', () => {
         email: 'club@x.fr',
         firstName: 'Jeanne',
         lastName: 'Martin',
+        role: 'CLUB',
         clubName: 'Club Neuf',
       },
     });
@@ -61,7 +62,7 @@ describe('NewClubAccountPage', () => {
   });
 
   it('offers the existing club when the name is taken', async () => {
-    vi.spyOn(sdk, 'adminControllerCreateClubAccount').mockResolvedValue({
+    vi.spyOn(sdk, 'adminControllerCreateUser').mockResolvedValue({
       data: undefined,
       error: { message: 'Un club porte déjà ce nom', existingClubId: 'c1' },
       response: new Response(null, { status: 409 }),
@@ -75,7 +76,7 @@ describe('NewClubAccountPage', () => {
   });
 
   it('warns when the invitation email was not sent', async () => {
-    vi.spyOn(sdk, 'adminControllerCreateClubAccount').mockResolvedValue({
+    vi.spyOn(sdk, 'adminControllerCreateUser').mockResolvedValue({
       data: { userId: 'u-new', clubId: 'c-new', invitationSent: false },
       error: undefined,
     } as never);
@@ -85,7 +86,7 @@ describe('NewClubAccountPage', () => {
   });
 
   it('shows a plain error without a club shortcut on an email conflict', async () => {
-    vi.spyOn(sdk, 'adminControllerCreateClubAccount').mockResolvedValue({
+    vi.spyOn(sdk, 'adminControllerCreateUser').mockResolvedValue({
       data: undefined,
       error: { message: 'Email déjà utilisé' },
       response: new Response(null, { status: 409 }),
@@ -97,7 +98,7 @@ describe('NewClubAccountPage', () => {
   });
 
   it('shows the unavailable message on a network failure', async () => {
-    vi.spyOn(sdk, 'adminControllerCreateClubAccount').mockResolvedValue({
+    vi.spyOn(sdk, 'adminControllerCreateUser').mockResolvedValue({
       data: undefined,
       error: new TypeError('Failed to fetch'),
       response: undefined,
@@ -108,11 +109,11 @@ describe('NewClubAccountPage', () => {
   });
 
   it('still offers the existing club when the clubs list is empty', async () => {
-    vi.spyOn(sdk, 'adminControllerClubs').mockResolvedValue({
+    vi.spyOn(sdk, 'adminControllerClubOptions').mockResolvedValue({
       data: [],
       error: undefined,
     } as never);
-    vi.spyOn(sdk, 'adminControllerCreateClubAccount').mockResolvedValue({
+    vi.spyOn(sdk, 'adminControllerCreateUser').mockResolvedValue({
       data: undefined,
       error: { message: 'Un club porte déjà ce nom', existingClubId: 'c1' },
       response: new Response(null, { status: 409 }),

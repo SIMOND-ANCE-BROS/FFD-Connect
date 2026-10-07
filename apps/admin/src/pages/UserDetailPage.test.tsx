@@ -61,7 +61,7 @@ describe('UserDetailPage', () => {
       data: detail,
       error: undefined,
     } as never);
-    vi.spyOn(sdk, 'adminControllerClubs').mockResolvedValue({
+    vi.spyOn(sdk, 'adminControllerClubOptions').mockResolvedValue({
       data: [
         { id: 'c1', name: 'Club A' },
         { id: 'c2', name: 'Club B' },

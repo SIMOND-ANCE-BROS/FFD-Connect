@@ -4,8 +4,8 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { adminControllerCreateClubAccount } from '../api/generated/sdk.gen';
-import { clubsQuery } from '../api/queries';
+import { adminControllerCreateUser } from '../api/generated/sdk.gen';
+import { clubOptionsQuery } from '../api/queries';
 
 const UNAVAILABLE = 'Serveur indisponible, réessayez dans un instant.';
 
@@ -33,7 +33,7 @@ function toFormError(body: unknown): FormError {
 export function NewClubAccountPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const clubs = useQuery(clubsQuery);
+  const clubs = useQuery(clubOptionsQuery());
   const [mode, setMode] = useState<Mode>('existing');
   const [error, setError] = useState<FormError | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -62,9 +62,10 @@ export function NewClubAccountPage() {
         email: v.email.trim(),
         firstName: v.firstName.trim(),
         lastName: v.lastName.trim(),
+        role: 'CLUB' as const,
         ...(mode === 'existing' ? { clubId: v.clubId as string } : { clubName: v.clubName.trim() }),
       };
-      const { data, error: apiError, response } = await adminControllerCreateClubAccount({ body });
+      const { data, error: apiError, response } = await adminControllerCreateUser({ body });
       if (!data) {
         // The generated client never throws: no response means a network failure.
         setError(response ? toFormError(apiError) : { message: UNAVAILABLE });

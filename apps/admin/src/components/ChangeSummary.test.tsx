@@ -17,4 +17,21 @@ describe('ChangeSummary', () => {
     expect(screen.getByText('Club B')).toBeInTheDocument();
     expect(screen.queryByText(/11111111|22222222/)).not.toBeInTheDocument();
   });
+
+  it('labels club fields and shows registration modes and roles in French', () => {
+    render(
+      <MantineProvider>
+        <ChangeSummary
+          before={{ name: 'Club A', registrationMode: 'CLUB_ONLY', role: 'LICENSEE' }}
+          after={{ name: 'Club Z', registrationMode: 'MEMBERS_AUTO_CONFIRM', role: 'STAFF' }}
+        />
+      </MantineProvider>,
+    );
+    expect(screen.getByText('Nom du club')).toBeInTheDocument();
+    expect(screen.getByText("Mode d'inscription")).toBeInTheDocument();
+    expect(screen.getByText('Le club seul inscrit ses licenciés')).toBeInTheDocument();
+    expect(screen.getByText('Licenciés, validation automatique')).toBeInTheDocument();
+    expect(screen.getByText('Licencié')).toBeInTheDocument();
+    expect(screen.getByText('Staff')).toBeInTheDocument();
+  });
 });

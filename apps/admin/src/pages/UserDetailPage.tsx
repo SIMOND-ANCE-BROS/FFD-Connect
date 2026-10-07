@@ -24,7 +24,7 @@ import {
   adminControllerUpdateUser,
 } from '../api/generated/sdk.gen';
 import type { AdminControllerUpdateUserData } from '../api/generated/types.gen';
-import { auditQuery, clubsQuery, referenceQuery, unwrap, userQuery } from '../api/queries';
+import { auditQuery, clubOptionsQuery, referenceQuery, unwrap, userQuery } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { changedFields, type EditableFields, withLegacy } from '../lib/diff';
@@ -47,7 +47,7 @@ export function UserDetailPage() {
   const me = useSession((s) => s.user);
   const qc = useQueryClient();
   const user = useQuery(userQuery(id));
-  const clubs = useQuery(clubsQuery);
+  const clubs = useQuery(clubOptionsQuery(user.data?.clubId));
   const ref = useQuery(referenceQuery);
   const history = useQuery(auditQuery({ targetType: 'USER', targetId: id, skip: 0, take: 20 }));
   const [pending, setPending] = useState<Partial<EditableFields> | null>(null);

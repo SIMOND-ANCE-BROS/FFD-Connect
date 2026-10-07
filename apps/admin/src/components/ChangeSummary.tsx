@@ -1,4 +1,5 @@
 import { Table } from '@mantine/core';
+import { REGISTRATION_MODE_LABELS, ROLE_LABELS } from '../lib/labels';
 
 const LABELS: Record<string, string> = {
   firstName: 'Prénom',
@@ -13,7 +14,20 @@ const LABELS: Record<string, string> = {
   nationalRanking: 'Classement national',
   role: 'Rôle',
   email: 'Email',
+  name: 'Nom du club',
+  registrationMode: "Mode d'inscription",
 };
+
+const VALUE_LABELS: Record<string, Record<string, string>> = {
+  role: ROLE_LABELS,
+  registrationMode: REGISTRATION_MODE_LABELS,
+};
+
+function display(key: string, value: unknown): string {
+  if (value === null || value === undefined) return '—';
+  const text = String(value);
+  return VALUE_LABELS[key]?.[text] ?? text;
+}
 
 export function ChangeSummary({
   before,
@@ -38,8 +52,8 @@ export function ChangeSummary({
           .map((k) => (
             <Table.Tr key={k}>
               <Table.Td>{LABELS[k] ?? k}</Table.Td>
-              <Table.Td>{String(before[k] ?? '—')}</Table.Td>
-              <Table.Td>{String(after[k] ?? '—')}</Table.Td>
+              <Table.Td>{display(k, before[k])}</Table.Td>
+              <Table.Td>{display(k, after[k])}</Table.Td>
             </Table.Tr>
           ))}
       </Table.Tbody>
