@@ -17,6 +17,8 @@
     "api:sync": "pnpm docs:export && pnpm api:generate",
     "changelog:beta": "node scripts/generate-changelog.mjs --format markdown",
     "changelog:testflight": "node scripts/generate-changelog.mjs --format testflight",
+    "changelog:testers": "node scripts/generate-changelog.mjs --format testers",
+    "tester-notes:test": "node --test scripts/tester-notes.test.mjs",
     "docs:export": "pnpm --filter backend run build && node apps/backend/scripts/export-swagger.js && cp apps/backend/swagger.json apps/docs/public/swagger.json && prettier --write apps/backend/swagger.json apps/docs/public/swagger.json",
     "start:dev": "pnpm exec tsx scripts/start-dev.ts",
     "start:dev:separate": "SEPARATE_TERMINALS=true pnpm exec tsx scripts/start-dev.ts",

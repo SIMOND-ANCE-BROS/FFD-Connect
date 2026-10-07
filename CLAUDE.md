@@ -63,6 +63,8 @@ Informational (non-blocking): `playwright-e2e`, `mutation` (Stryker). Weekly `mu
 
 Branches cascade: `develop` (default, target of feature PRs) → `staging` → `master`. Promotions are merges up the cascade — never cherry-picks, never force-pushes.
 
+**A merged remote branch must be deleted.** Merge feature PRs with `gh pr merge <n> --squash --delete-branch`; if a remote branch is found merged but still present, delete it (`git push origin --delete <branch>`) along with its local branch and worktree. Exception: never delete `develop`, `staging` or `master` — they are the head of promotion PRs, so never pass `--delete-branch` when merging a promotion.
+
 | Branch    | Deploys (after CI passes)                                          |
 | --------- | ------------------------------------------------------------------ |
 | `staging` | Container App `backend-staging` — TestFlight beta testers hit this |
@@ -93,6 +95,7 @@ The backend runs on Azure Container Apps with `minReplicas=0` (see `docs/exploit
 - **Tests required** — coverage thresholds enforced per module (auth 94%, global 65%). Mutation testing (Stryker) on critical modules.
 - **Commits:** conventional commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `perf:`, `security:`)
 - **Language:** code, comments, commits and PRs in English; `docs/exploitation/`, `docs/adr/` and user-facing copy in French
+- **PR « Pour les testeurs » section:** every PR with a user-visible change fills `## Pour les testeurs` (template) in **French, for a tester**: what changes, where, what to check. It becomes the TestFlight "What to Test" and Play release notes of the next beta (`generate-changelog --format testers`). Leave it empty or « Rien » for CI/refactor/infra PRs
 - **Prisma queries:** Always use `select` over `include` when possible. Add `take` to unbounded queries. Index frequently queried columns.
 - **External services:** Always wrap in circuit breaker (opossum) + timeout (`withTimeout` utility). Graceful degradation required.
 

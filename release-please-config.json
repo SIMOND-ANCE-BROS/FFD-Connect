@@ -5,6 +5,7 @@
     ".": {
       "component": "ffd-connect",
       "changelog-path": "CHANGELOG.md",
+      "exclude-paths": [".github", "apps/landing", "apps/docs", "docs", "infra", "scripts"],
       "extra-files": [
         { "type": "generic", "path": "apps/client/app.config.js" },
         { "type": "json", "path": "apps/client/package.json", "jsonpath": "$.version" }
@@ -16,10 +17,10 @@
     { "type": "fix", "section": "Corrections de bugs" },
     { "type": "perf", "section": "Performances" },
     { "type": "security", "section": "Sécurité" },
-    { "type": "refactor", "section": "Refactoring" },
-    { "type": "docs", "section": "Documentation" },
-    { "type": "test", "section": "Tests" },
-    { "type": "chore", "section": "Maintenance" }
+    { "type": "refactor", "section": "Refactoring", "hidden": true },
+    { "type": "docs", "section": "Documentation", "hidden": true },
+    { "type": "test", "section": "Tests", "hidden": true },
+    { "type": "chore", "section": "Maintenance", "hidden": true }
   ],
   "include-component-in-tag": false,
   "pull-request-title-pattern": "chore: release ${version}",

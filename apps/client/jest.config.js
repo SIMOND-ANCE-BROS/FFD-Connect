@@ -1,5 +1,7 @@
 const path = require("path");
 const baseConfig = require("../../packages/jest-config/react-native");
+// Same Babel options jest-expo hands to babel-jest for the app sources.
+const { resolveBabelOptions } = require("jest-expo/src/resolveBabelOptions");
 
 /** Directory prefix for Jest PATH thresholds (aggregates coverage under that folder). */
 const srcDir = (...parts) => path.join(__dirname, "src", ...parts) + path.sep;
@@ -89,7 +91,23 @@ module.exports = {
     defaultPlatform: "ios",
     platforms: ["ios", "android", "native"],
   },
-  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
+  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "mjs", "json", "node"],
+  // msw 3 and several of its dependencies ship ESM only (`.js` files in
+  // `"type": "module"` packages, or `.mjs`). Jest stays in CommonJS mode, so
+  // babel-jest transpiles them with the project Babel config plus a plugin
+  // that rewrites `import.meta` (used by @mswjs/interceptors to locate its
+  // WASM file). Own-config keys come before the jest-expo preset entries in
+  // the merged `transform`, so this pattern wins for these packages.
+  transform: {
+    "/node_modules/(msw|@msw|@mswjs|@open-draft|rettime|until-async|headers-polyfill|cookie|tough-cookie)/.+\\.m?js$":
+      [
+        "babel-jest",
+        {
+          ...resolveBabelOptions(__dirname),
+          plugins: [path.join(__dirname, "jest.import-meta-plugin.js")],
+        },
+      ],
+  },
   moduleNameMapper: {
     ...baseConfig.moduleNameMapper,
     "^react$": "<rootDir>/../../node_modules/react",
@@ -124,6 +142,6 @@ module.exports = {
       "<rootDir>/__mocks__/ViewConfigIgnore.js",
   },
   transformIgnorePatterns: [
-    "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|@sentry/.*|@shopify/.*|lucide-react-native|until-async|msw|@mswjs/.*|outvariant|is-node-process|strict-event-emitter))",
+    "node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|@sentry/.*|@shopify/.*|lucide-react-native|until-async|msw|@mswjs/.*|@msw/.*|@open-draft/.*|rettime|headers-polyfill|cookie|tough-cookie|outvariant|is-node-process|strict-event-emitter))",
   ],
 };
