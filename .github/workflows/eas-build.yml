@@ -16,19 +16,30 @@ on:
     inputs:
       action:
         description: >-
-          Promote staging → TestFlight beta. resume = reprendre un build iOS
-          beta EXISTANT (tag/release, submit si besoin, distribution) sans
-          rebuild : renseigner build_id.
+          Promote staging → bêta testeurs (iOS TestFlight + Android Google
+          Play). resume = reprendre un build beta EXISTANT (tag/release, envoi
+          si besoin, distribution) sans rebuild : renseigner build_id.
         required: true
         type: choice
         options:
           - ota
           - build
           - resume
+      platform:
+        description: >-
+          action=build / resume : plateforme(s) visée(s). all = iOS (TestFlight)
+          et Android (Google Play, test fermé) en parallèle, mêmes étapes.
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - ios
+          - android
       build_id:
         description: >-
-          action=resume uniquement : ID EAS du build iOS beta à reprendre
-          (UUID, affiché dans le résumé du run qui l'a lancé).
+          action=resume uniquement : ID EAS du build beta à reprendre, iOS ou
+          Android (UUID, affiché dans le résumé du run qui l'a lancé).
         required: false
         type: string
       releaseNotes:
@@ -52,9 +63,8 @@ env:
   # target, space-separated (ios, android). Single source of truth: the gate
   # checks a fingerprint per platform listed here and the build jobs build from
   # the same list, so the two cannot drift. Android is not built automatically
-  # yet (once #102 is merged, the manual Play promotion builds it through
-  # promote-beta-android): enabling it on preview/production is `ios android`
-  # here and nothing else.
+  # yet (the manual beta promotion, promote-beta, builds both platforms):
+  # enabling it on preview/production is `ios android` here and nothing else.
   AUTO_BUILD_PLATFORMS: ios
 
 jobs:
@@ -444,45 +454,64 @@ jobs:
           ../../scripts/check-ota-reach.sh preview "$RUNNER_TEMP/eas-update.json"
 
   # ============================================================
-  # PROMOTION MANUELLE — staging → TestFlight beta
-  # beta = variante distincte (FFD Connect Beta, bundle .beta, API staging),
-  # distribuée via TestFlight. Bundle id propre → coexiste avec l'app ad-hoc
-  # preview (.staging) et la prod sur un même appareil ; même code/API que
-  # preview, seule la distribution (store) et l'identité de l'app diffèrent.
-  # Déclenché à la main (workflow_dispatch) une fois la version
-  # validée sur le canal preview :
-  #   - ota   → publie le JS courant de staging sur le canal beta
-  #   - build → build natif iOS `beta` (attendu), `eas submit` vers App Store
-  #             Connect, puis scripts/testflight-distribute.ts : groupe
-  #             TestFlight EXTERNE « Beta FFD » + « What to Test » + soumission
-  #             Beta App Review, via l'API App Store Connect. Fonctionne en plan
-  #             EAS gratuit (le job `testflight` des EAS Workflows exige un plan
-  #             payant). Le job attend ~1 h (build + traitement Apple) : minutes
-  #             Actions gratuites, le repo est public.
-  #             Secrets requis, dans l'environnement `testflight-beta` (pas au
-  #             niveau du repo : relecteur obligatoire + branches restreintes) :
-  #             ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (clé API App Store Connect,
-  #             rôle App Manager).
-  #   - resume → reprend un build iOS `beta` DÉJÀ FAIT (input build_id), sans
-  #             rebuild (0 $) : tag/release, submit s'il n'a pas abouti,
-  #             distribution. Même environnement, donc même approbation.
+  # PROMOTION MANUELLE — staging → bêta testeurs, iOS ET Android
+  # Un seul job, décliné par plateforme (matrice) : les deux stores suivent
+  # exactement les mêmes étapes, seules les valeurs propres au store changent.
+  # beta = variante distincte (FFD Connect Beta, bundle .beta, API staging) :
+  # coexiste avec preview (.staging) et la prod sur un même appareil.
+  # Déclenché à la main (workflow_dispatch) une fois la version validée sur le
+  # canal preview :
+  #   - ota    → publie le JS courant de staging sur le canal beta (les deux
+  #              plateformes d'un coup : une seule jambe « OTA »)
+  #   - build  → par plateforme (input `platform`, défaut : les deux) :
+  #              notes → build natif `beta` → tag + release → envoi au store →
+  #              distribution (iOS : scripts/testflight-distribute.ts, groupe
+  #              externe « Beta FFD » + « What to Test » + Beta App Review ;
+  #              Android : scripts/play-distribute.ts, notes de version de la
+  #              piste `alpha`, test fermé). Plan EAS gratuit.
+  #   - resume → reprend un build `beta` DÉJÀ FAIT (input build_id, et
+  #              `platform` si on veut viser une seule jambe), sans rebuild
+  #              (0 $) : tag/release, envoi s'il n'a pas abouti, distribution.
+  # Secrets, dans l'environnement `testflight-beta` (relecteur obligatoire,
+  # branches restreintes ; le nom date d'avant Android) : ASC_KEY_ID,
+  # ASC_ISSUER_ID, ASC_KEY_P8 (iOS) et PLAY_SERVICE_ACCOUNT_JSON (Android, notes
+  # de version ; sans lui l'étape avertit et passe).
+  #
+  # Nommage identique sur les deux stores : tag `beta-<version>-<ios|android>-<n°>`
+  # et release « Bêta iOS 1.0.0 (18) » / « Bêta Android 1.0.0 (12) », où n° est
+  # le numéro que le store affiche (CFBundleVersion / versionCode).
   #
   # Chaque attente a sa propre borne (incident 2026-10-06 : la soumission EAS
   # est restée 1 h 56 IN_QUEUE, le timeout du JOB l'a tuée et tag/release +
   # distribution ont sauté). Un build fini n'est jamais perdu : il est tagué
-  # dès sa fin, et si le submit ou la distribution n'aboutit pas à temps le job
+  # dès sa fin, et si l'envoi ou la distribution n'aboutit pas à temps la jambe
   # se termine en avertissement avec la commande `action=resume` exacte.
   # ============================================================
   promote-beta:
-    name: Promote staging → TestFlight beta (${{ inputs.action }})
+    name: >-
+      Bêta ${{ matrix.platform == 'ios' && 'iOS · TestFlight'
+      || matrix.platform == 'android' && 'Android · Google Play' || 'OTA' }}
+      (${{ inputs.action }})
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
+    strategy:
+      # Une plateforme en échec n'interrompt pas l'autre.
+      fail-fast: false
+      matrix:
+        platform: >-
+          ${{ fromJSON(inputs.action == 'ota' && '["ota"]'
+          || inputs.platform == 'ios' && '["ios"]'
+          || inputs.platform == 'android' && '["android"]'
+          || '["ios","android"]') }}
+        # Pas d'`include` : une entrée qui ne correspond à aucune jambe en CRÉE
+        # une (platform=ios ferait aussi tourner Android). Les valeurs propres à
+        # chaque store sont posées par l'étape « Platform settings ».
     # Filet de sécurité seulement : chaque attente est bornée par l'étape
-    # (build 75 + submit 35 + distribution 50 min) et la somme reste en dessous,
+    # (build 75 + envoi 35 + distribution 50 min) et la somme reste en dessous,
     # pour que l'étape de suivi puisse toujours écrire la commande de reprise.
     timeout-minutes: 180
-    # The environment carries the deployment record (what went to TestFlight,
-    # when, from which SHA), a required reviewer, and the ASC_* secrets.
+    # The environment carries the deployment record (what went to the stores,
+    # when, from which SHA), a required reviewer, and the store secrets.
     environment:
       name: testflight-beta
     # Nécessaire pour créer la GitHub Release (changelog testeurs).
@@ -498,6 +527,35 @@ jobs:
           # l'étape GitHub Release passe GH_TOKEN explicitement.
           persist-credentials: false
 
+      # Seul endroit où iOS et Android diffèrent par des valeurs : tout le reste
+      # du job lit ces variables.
+      - name: Platform settings
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          case "$PLATFORM" in
+            ios)
+              NAME=iOS EAS_PLATFORM=IOS ICON=🍏 STORE='App Store Connect'
+              NOTES_TITLE='TestFlight « What to Test »'
+              ;;
+            android)
+              NAME=Android EAS_PLATFORM=ANDROID ICON=🤖 STORE='Google Play (test fermé)'
+              NOTES_TITLE='Google Play « Notes de version » (500 car. max)'
+              ;;
+            *)
+              NAME=OTA EAS_PLATFORM='' ICON=📲 STORE='canal beta (OTA)'
+              NOTES_TITLE='OTA'
+              ;;
+          esac
+          {
+            echo "PLATFORM_NAME=$NAME"
+            echo "EAS_PLATFORM=$EAS_PLATFORM"
+            echo "PLATFORM_ICON=$ICON"
+            echo "STORE_NAME=$STORE"
+            echo "NOTES_TITLE=$NOTES_TITLE"
+          } >> "$GITHUB_ENV"
+
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm
 
@@ -509,14 +567,16 @@ jobs:
 
       # action=resume : retrouve le build EXISTANT et se place sur son commit,
       # pour que changelog, version et tag décrivent ce qui a été construit, et
-      # non la pointe actuelle de staging (qui a pu avancer depuis).
-      - name: Resolve existing iOS beta build (resume)
+      # non la pointe actuelle de staging (qui a pu avancer depuis). Avec
+      # platform=all, la jambe de l'autre plateforme s'arrête ici sans erreur.
+      - name: Resolve existing beta build (resume)
         id: resolve
         if: inputs.action == 'resume'
         working-directory: apps/client
         env:
           EXPO_PUBLIC_APP_ENV: beta
           BUILD_ID: ${{ inputs.build_id }}
+          REQUESTED: ${{ inputs.platform }}
         run: |
           set -euo pipefail
           if ! printf '%s' "$BUILD_ID" \
@@ -531,9 +591,17 @@ jobs:
           PROFILE=$(field buildProfile)
           NUMBER=$(field appBuildVersion)
           COMMIT=$(field gitCommitHash)
-          # Garde-fous : on ne reprend qu'un build iOS `beta` terminé, issu de staging.
-          if [ "$STATUS" != "FINISHED" ] || [ "$PLATFORM" != "IOS" ] || [ "$PROFILE" != "beta" ]; then
-            echo "::error::build $BUILD_ID non repris : status=$STATUS platform=$PLATFORM profile=$PROFILE (attendu FINISHED / IOS / beta)"
+          if [ "$PLATFORM" != "$EAS_PLATFORM" ]; then
+            if [ "$REQUESTED" = "all" ]; then
+              echo "Build $BUILD_ID : plateforme $PLATFORM, pas $EAS_PLATFORM — rien à reprendre sur cette jambe."
+              exit 0
+            fi
+            echo "::error::build $BUILD_ID est $PLATFORM, pas $EAS_PLATFORM (input platform=$REQUESTED)"
+            exit 1
+          fi
+          # Garde-fous : on ne reprend qu'un build `beta` terminé, issu de staging.
+          if [ "$STATUS" != "FINISHED" ] || [ "$PROFILE" != "beta" ]; then
+            echo "::error::build $BUILD_ID non repris : status=$STATUS profile=$PROFILE (attendu FINISHED / beta)"
             exit 1
           fi
           if [ -z "$NUMBER" ] || [ -z "$COMMIT" ]; then
@@ -549,11 +617,12 @@ jobs:
             echo "id=$BUILD_ID"
             echo "number=$NUMBER"
           } >> "$GITHUB_OUTPUT"
-          echo "## 🔁 Reprise du build iOS beta $NUMBER (\`$BUILD_ID\`, commit ${COMMIT:0:7}) — aucun rebuild" \
+          echo "## 🔁 Reprise du build $PLATFORM_NAME beta $NUMBER (\`$BUILD_ID\`, commit ${COMMIT:0:7}) — aucun rebuild" \
             >> "$GITHUB_STEP_SUMMARY"
 
-      # Changelog testeurs : notes fournies (relecture) OU génération auto depuis
-      # les commits conventionnels depuis le dernier tag beta-*.
+      # Notes testeurs, identiques pour les deux stores : fournies (relecture) OU
+      # générées depuis les commits conventionnels depuis le tag beta-* précédent.
+      # Chaque store les tronque à sa limite (TestFlight 4000 car., Play 500).
       - name: Generate beta changelog
         id: changelog
         # Notes passées via env (pas d'interpolation dans le shell → pas
@@ -570,7 +639,7 @@ jobs:
             node scripts/generate-changelog.mjs --format testflight > beta-notes.txt
           fi
           {
-            echo '## 📝 Notes testeurs (TestFlight « What to Test »)'
+            echo "## 📝 Notes testeurs ($NOTES_TITLE)"
             echo '```'
             cat beta-notes.txt
             echo '```'
@@ -579,26 +648,27 @@ jobs:
       - name: Upload changelog artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: beta-changelog
+          name: beta-changelog-${{ matrix.platform }}
           path: |
             beta-notes.md
             beta-notes.txt
 
-      # Build natif iOS `beta`. Lancé sans --wait pour connaître son ID tout de
+      # Build natif `beta`. Lancé sans --wait pour connaître son ID tout de
       # suite (il est écrit dans le résumé : une reprise reste possible même si
       # l'attente expire), puis attente BORNÉE de sa fin (file EAS gratuite +
-      # ~20-30 min de build). Sortie JSON hors de l'arbre (RUNNER_TEMP) : rien
+      # ~10-30 min de build). Sortie JSON hors de l'arbre (RUNNER_TEMP) : rien
       # d'ajouté à l'archive envoyée à EAS.
-      - name: Build iOS beta
+      - name: Build beta
         id: build
         if: inputs.action == 'build'
         working-directory: apps/client
         timeout-minutes: 75
         env:
           BUILD_WAIT_MIN: '70'
+          PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
-          eas build --platform ios --profile beta --non-interactive --no-wait --json \
+          eas build --platform "$PLATFORM" --profile beta --non-interactive --no-wait --json \
             < /dev/null | sed -n '/^\[/,$p' > "$RUNNER_TEMP/eas-build.json"
           BUILD_ID=$(jq -r '.[0].id // empty' "$RUNNER_TEMP/eas-build.json")
           if [ -z "$BUILD_ID" ]; then
@@ -606,7 +676,7 @@ jobs:
             exit 1
           fi
           echo "id=$BUILD_ID" >> "$GITHUB_OUTPUT"
-          echo "## 🍏 Build iOS beta lancé : \`$BUILD_ID\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "## $PLATFORM_ICON Build $PLATFORM_NAME beta lancé : \`$BUILD_ID\`" >> "$GITHUB_STEP_SUMMARY"
 
           deadline=$(( $(date +%s) + BUILD_WAIT_MIN * 60 ))
           while :; do
@@ -640,7 +710,7 @@ jobs:
             echo "state=finished"
             echo "number=$BUILD_NUMBER"
           } >> "$GITHUB_OUTPUT"
-          echo "Build iOS beta **$BUILD_NUMBER** terminé." >> "$GITHUB_STEP_SUMMARY"
+          echo "Build $PLATFORM_NAME beta **$BUILD_NUMBER** terminé." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish OTA update (beta)
         id: ota
@@ -681,10 +751,11 @@ jobs:
       # the binary, which is already paid for, so a stuck submission (2026-10-06)
       # or a failed distribution must never leave a build without its tag.
       #
-      # Tag = what testers see. A build is `beta-<version>-<build number>`, the
-      # pair TestFlight displays ("1.0.0 (85)"). An OTA is tagged too: without
-      # it the next changelog (built from the last `beta-*` tag) would announce
-      # changes testers already received. Idempotent: a resume skips it.
+      # Tag = what testers see, same scheme on both stores:
+      # `beta-<version>-<ios|android>-<build number>`, the number TestFlight /
+      # Play display ("1.0.0 (18)"). An OTA is tagged too: without it the next
+      # changelog (built from the last `beta-*` tag) would announce changes
+      # testers already received. Idempotent: a resume skips it.
       - name: Tag & GitHub Release (beta, prerelease)
         id: tag
         if: >-
@@ -695,6 +766,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           ACTION: ${{ inputs.action }}
+          PLATFORM: ${{ matrix.platform }}
           BUILD_NUMBER: ${{ steps.build.outputs.number || steps.resolve.outputs.number }}
         run: |
           set -euo pipefail
@@ -707,33 +779,37 @@ jobs:
           fi
           if [ "$ACTION" = "ota" ]; then
             TAG="beta-$VERSION-ota-$(date +%Y%m%d)-${SHA:0:7}"
-            TITLE="Beta $VERSION — OTA ${SHA:0:7}"
+            TITLE="Bêta OTA $VERSION — ${SHA:0:7}"
+            HEADER="Mise à jour OTA du canal beta (iOS et Android), commit ${SHA:0:7}."
           else
-            TAG="beta-$VERSION-$BUILD_NUMBER"
-            TITLE="Beta $VERSION ($BUILD_NUMBER)"
+            TAG="beta-$VERSION-$PLATFORM-$BUILD_NUMBER"
+            TITLE="Bêta $PLATFORM_NAME $VERSION ($BUILD_NUMBER)"
+            HEADER="Build $PLATFORM_NAME $VERSION ($BUILD_NUMBER) — $STORE_NAME, commit ${SHA:0:7}."
           fi
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "::notice::Release $TAG déjà présente (relance) — rien à faire."
           else
+            printf '%s\n\n' "$HEADER" | cat - beta-notes.md > "$RUNNER_TEMP/release-notes.md"
             gh release create "$TAG" \
               --title "$TITLE" \
-              --notes-file beta-notes.md \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
               --prerelease \
               --target "$SHA"
           fi
           echo "🏷️ Tag \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
 
-      # Envoi vers App Store Connect, avec une attente BORNÉE : la file de
-      # soumission EAS (plan gratuit) a déjà retenu une soumission 1 h 56
-      # IN_QUEUE sans log. Au-delà de SUBMIT_WAIT_MIN, l'étape s'arrête en
-      # avertissement (state=pending) — la soumission, elle, continue chez EAS.
-      # En reprise, on ne soumet PAS deux fois : une soumission FINISHED est
-      # acquise, une soumission encore en file est attendue ; seule une
-      # soumission absente, ERRORED ou CANCELED est relancée.
+      # Envoi au store, avec une attente BORNÉE : la file de soumission EAS
+      # (plan gratuit) a déjà retenu une soumission 1 h 56 IN_QUEUE sans log.
+      # Au-delà de SUBMIT_WAIT_MIN, l'étape s'arrête en avertissement
+      # (state=pending) — la soumission, elle, continue chez EAS. En reprise, on
+      # ne soumet PAS deux fois : une soumission FINISHED est acquise, une
+      # soumission encore en file est attendue ; seule une soumission absente,
+      # ERRORED ou CANCELED est relancée. Android : piste et statut viennent de
+      # submit.beta.android (eas.json).
       # EXPO_PUBLIC_APP_ENV=beta : sans lui, app.config.js retombe sur la variante
       # development et la CLI cherche les credentials de fr.ffdanse.connect.dev
       # (cf. scripts/submit-beta.ts).
-      - name: Submit to App Store Connect
+      - name: Submit to store
         id: submit
         if: >-
           !cancelled()
@@ -743,6 +819,7 @@ jobs:
         env:
           EXPO_PUBLIC_APP_ENV: beta
           ACTION: ${{ inputs.action }}
+          PLATFORM: ${{ matrix.platform }}
           BUILD_ID: ${{ steps.build.outputs.id || steps.resolve.outputs.id }}
           SUBMIT_WAIT_MIN: '30'
         run: |
@@ -750,7 +827,7 @@ jobs:
           # "<id> <status>" de la soumission la plus récente de CE build, "" si
           # aucune. Code 1 si la liste est illisible (≠ « aucune soumission »).
           latest_submission() {
-            eas submit:list --platform ios --limit 50 --json --non-interactive < /dev/null 2> /dev/null \
+            eas submit:list --platform "$PLATFORM" --limit 50 --json --non-interactive < /dev/null 2> /dev/null \
               | sed -n '/^\[/,$p' \
               | jq -re --arg b "$BUILD_ID" '
                   if type != "array" then error("not an array") else
@@ -778,7 +855,7 @@ jobs:
             *)
               [ -z "$SUB_STATUS" ] || echo "Soumission précédente $SUB_ID terminée en $SUB_STATUS : nouvel envoi."
               OLD_ID="$SUB_ID"
-              eas submit --platform ios --profile beta --id "$BUILD_ID" --non-interactive --no-wait < /dev/null
+              eas submit --platform "$PLATFORM" --profile beta --id "$BUILD_ID" --non-interactive --no-wait < /dev/null
               SUB_ID=""
               for _ in 1 2 3 4 5 6; do
                 found=$(latest_submission || true)
@@ -816,28 +893,44 @@ jobs:
               | sed -n '/^{/,$p' | jq -r '.status // empty' 2> /dev/null || true)
           done
           echo "state=finished" >> "$GITHUB_OUTPUT"
-          echo "📤 Envoyé à App Store Connect (soumission \`$SUB_ID\`)" >> "$GITHUB_STEP_SUMMARY"
+          echo "📤 Envoyé sur $STORE_NAME (soumission \`$SUB_ID\`)" >> "$GITHUB_STEP_SUMMARY"
 
-      # `eas submit --groups` ne vise que les groupes INTERNES : le groupe
-      # EXTERNE et la Beta App Review passent par l'API App Store Connect.
-      # Idempotent (notes réécrites, ajout au groupe, review seulement si absente).
-      # --timeout borne l'attente du traitement Apple, sous le timeout de l'étape.
-      - name: Distribute to external TestFlight group + Beta App Review
+      # Distribution aux testeurs, même rôle sur les deux stores :
+      # - iOS : `eas submit --groups` ne vise que les groupes INTERNES ; le
+      #   groupe EXTERNE, « What to Test » et la Beta App Review passent par
+      #   l'API App Store Connect.
+      # - Android : `eas submit` publie déjà sur la piste ; on y pose les notes
+      #   de version (fr-FR, 500 car.) via l'API Google Play. Sans la clé du
+      #   compte de service, l'étape avertit et passe : le build reste publié.
+      # Idempotent. --timeout borne l'attente côté store, sous celle de l'étape.
+      - name: Distribute to testers
         id: distribute
         if: >-
           !cancelled() && steps.submit.outputs.state == 'finished'
         timeout-minutes: 50
         env:
+          PLATFORM: ${{ matrix.platform }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           ASC_APP_ID: '6787383066'
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           BUILD_NUMBER: ${{ steps.build.outputs.number || steps.resolve.outputs.number }}
         run: |
           set -euo pipefail
-          pnpm testflight:distribute --build-number "$BUILD_NUMBER" --notes-file beta-notes.txt --timeout 45
-          echo "✅ Build $BUILD_NUMBER ajouté au groupe « Beta FFD » et soumis à la Beta App Review" \
-            >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PLATFORM" = "ios" ]; then
+            pnpm testflight:distribute --build-number "$BUILD_NUMBER" --notes-file beta-notes.txt --timeout 45
+            echo "✅ Build iOS $BUILD_NUMBER : « What to Test », groupe « Beta FFD », Beta App Review" \
+              >> "$GITHUB_STEP_SUMMARY"
+          elif [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::warning::PLAY_SERVICE_ACCOUNT_JSON absent de l'environnement testflight-beta : build Android $BUILD_NUMBER publié sans notes de version"
+            echo "⚠️ Build Android $BUILD_NUMBER publié **sans notes de version** (secret PLAY_SERVICE_ACCOUNT_JSON absent)" \
+              >> "$GITHUB_STEP_SUMMARY"
+          else
+            pnpm play:distribute --version-code "$BUILD_NUMBER" --notes-file beta-notes.txt --timeout 45
+            echo "✅ Build Android $BUILD_NUMBER : notes de version sur la piste de test fermé" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       # Fin claire plutôt qu'un échec muet : si le build existe mais que la
       # chaîne n'est pas allée au bout, le résumé donne la commande exacte de
@@ -851,6 +944,7 @@ jobs:
           TAG_OUTCOME: ${{ steps.tag.outcome }}
           SUBMIT_STATE: ${{ steps.submit.outputs.state }}
           DISTRIBUTE_OUTCOME: ${{ steps.distribute.outcome }}
+          PLATFORM: ${{ matrix.platform }}
           REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
@@ -866,7 +960,7 @@ jobs:
             echo "Promotion complète." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          CMD="gh workflow run eas-build.yml --ref $REF -f action=resume -f build_id=$BUILD_ID"
+          CMD="gh workflow run eas-build.yml --ref $REF -f action=resume -f platform=$PLATFORM -f build_id=$BUILD_ID"
           echo "::warning::promotion incomplète (tag=${TAG_OUTCOME:-skipped} submit=${SUBMIT_STATE:-skipped} distribution=${DISTRIBUTE_OUTCOME:-skipped}) - reprendre SANS rebuild : $CMD"
           {
             echo '## ⚠️ Promotion incomplète — reprise sans rebuild (0 $)'
@@ -875,74 +969,17 @@ jobs:
             echo "| --- | --- |"
             echo "| Build | ${BUILD_STATE:-repris} |"
             echo "| Tag & Release | ${TAG_OUTCOME:-skipped} |"
-            echo "| Submit | ${SUBMIT_STATE:-skipped} |"
+            echo "| Envoi au store | ${SUBMIT_STATE:-skipped} |"
             echo "| Distribution | ${DISTRIBUTE_OUTCOME:-skipped} |"
             echo
-            echo 'Une fois le build FINISHED / la soumission sortie de la file EAS (`eas submit:list -p ios`) :'
+            echo "Une fois le build FINISHED / la soumission sortie de la file EAS (\`eas submit:list -p $PLATFORM\`) :"
             echo
             echo '```bash'
             echo "$CMD"
             echo '```'
             echo
-            echo 'Ou Actions → EAS Build & Update → Run workflow : `action = resume`, `build_id` ci-dessus.'
+            echo "Ou Actions → EAS Build & Update → Run workflow : \`action = resume\`, \`platform = $PLATFORM\`, \`build_id\` ci-dessus."
           } >> "$GITHUB_STEP_SUMMARY"
-
-  # ============================================================
-  # PROMOTION MANUELLE — staging → Google Play, test fermé (Android)
-  # Même bouton que promote-beta (action: build), en parallèle d'iOS : build
-  # natif Android `beta` puis `eas submit` sur la piste `alpha` (test fermé),
-  # selon submit.beta.android d'eas.json. Fonctionne en plan EAS gratuit.
-  # Prérequis : clé du compte de service Google « Play Store Submissions »
-  # stockée dans les credentials EAS (fr.ffdanse.connect.beta). releaseStatus
-  # `completed` : publiée directement sur la piste (après revue Google).
-  # Coût : un build Android EAS de plus par promotion (~2 $ ou 1 unité du quota).
-  # ============================================================
-  promote-beta-android:
-    name: Promote staging → Play closed test (Android)
-    if: github.event_name == 'workflow_dispatch' && inputs.action == 'build'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    environment:
-      name: testflight-beta
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
-        with:
-          ref: staging
-          # Pas de token dans .git/config : `eas build` archive le projet.
-          persist-credentials: false
-
-      - name: Setup pnpm & Node
-        uses: ./.github/actions/setup-pnpm
-
-      - name: Setup EAS CLI
-        uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Build Android beta
-        id: build
-        working-directory: apps/client
-        run: |
-          set -euo pipefail
-          eas build --platform android --profile beta --non-interactive --wait --json \
-            > "$RUNNER_TEMP/eas-build.json"
-          BUILD_ID=$(jq -r '.[0].id' "$RUNNER_TEMP/eas-build.json")
-          VERSION_CODE=$(jq -r '.[0].appBuildVersion' "$RUNNER_TEMP/eas-build.json")
-          echo "id=$BUILD_ID" >> "$GITHUB_OUTPUT"
-          echo "## 🤖 Build Android beta $VERSION_CODE ($BUILD_ID)" >> "$GITHUB_STEP_SUMMARY"
-
-      # EXPO_PUBLIC_APP_ENV=beta : sans lui, app.config.js retombe sur la variante
-      # development et la CLI cherche la clé de fr.ffdanse.connect.dev.
-      - name: Submit to Google Play (closed test)
-        working-directory: apps/client
-        env:
-          EXPO_PUBLIC_APP_ENV: beta
-          BUILD_ID: ${{ steps.build.outputs.id }}
-        run: |
-          set -euo pipefail
-          eas submit --platform android --profile beta --id "$BUILD_ID" --non-interactive --wait
-          echo "✅ Envoyé sur la piste de test fermé Google Play" >> "$GITHUB_STEP_SUMMARY"
 
   # ============================================================
   # MASTER — Production (réservé au lancement App Store public).

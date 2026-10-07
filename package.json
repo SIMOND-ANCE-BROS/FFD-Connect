@@ -42,7 +42,9 @@
     "submit:beta": "pnpm exec tsx scripts/submit-beta.ts",
     "submit:beta:test": "pnpm exec tsx scripts/submit-beta.test.ts",
     "testflight:distribute": "pnpm exec tsx scripts/testflight-distribute.ts",
-    "testflight:distribute:test": "pnpm exec tsx scripts/testflight-distribute.test.ts"
+    "testflight:distribute:test": "pnpm exec tsx scripts/testflight-distribute.test.ts",
+    "play:distribute": "pnpm exec tsx scripts/play-distribute.ts",
+    "play:distribute:test": "pnpm exec tsx scripts/play-distribute.test.ts"
   },
   "engines": {
     "node": ">=22",
