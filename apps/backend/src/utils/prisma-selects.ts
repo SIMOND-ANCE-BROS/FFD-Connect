@@ -445,6 +445,8 @@ export const adminInvitationTargetSelect = {
   role: true,
   lastLoginAt: true,
   disabledAt: true,
+  // A CLUB account of a disabled club cannot log in: no invitation either.
+  club: { select: { disabledAt: true } },
 } as const;
 
 /**
@@ -492,3 +494,10 @@ export const adminClubEditableSelect = {
 
 /** Back-office club status toggle: current state only. */
 export const adminClubStatusSelect = { id: true, disabledAt: true } as const;
+
+/** Existing club an admin attaches a new account to (refused when disabled). */
+export const adminClubAttachSelect = {
+  id: true,
+  name: true,
+  disabledAt: true,
+} as const;

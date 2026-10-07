@@ -108,6 +108,11 @@ export class AdminUserDetailDto extends AdminUserListItemDto {
     description: "Désactivation du club rattaché (bloque un compte CLUB)",
   })
   clubDisabledAt!: Date | null;
+  @ApiProperty({
+    description:
+      "Compte créé depuis le back-office (seul cas où l'invitation peut être renvoyée)",
+  })
+  createdByAdmin!: boolean;
   @ApiProperty() updatedAt!: Date;
 }
 

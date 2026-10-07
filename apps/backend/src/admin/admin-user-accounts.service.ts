@@ -12,18 +12,22 @@ import { AuthPasswordService } from "../auth/auth-password.service";
 import { EmailService, InvitationRole } from "../auth/email.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
+  adminClubAttachSelect,
   adminClubOptionSelect,
   adminInvitationTargetSelect,
 } from "../utils/prisma-selects";
 import { AdminAuditService } from "./admin-audit.service";
+import { isCreatedByAdmin } from "./admin-audit.util";
 import {
   AdminUserCreatedDto,
   CreateAdminUserDto,
+  INVITABLE_ROLES,
   InvitationResultDto,
 } from "./dto/admin-user-accounts.dto";
 
 export const INVITATION_EXPIRY_HOURS = 168;
 const BCRYPT_ROUNDS = 12;
+const CLUB_DISABLED = "Ce club est désactivé.";
 
 /** Profile fields the admin filled; null and absent both mean "not set". */
 function profileOf(dto: CreateAdminUserDto) {
@@ -138,11 +142,20 @@ export class AdminUserAccountsService {
         "Un compte administrateur ne reçoit pas d'invitation",
       );
     }
+    // A self-registered account already chose its password: never re-invite it.
+    if (!(await isCreatedByAdmin(this.prisma, user.id))) {
+      throw new BadRequestException(
+        "Ce compte n'a pas été créé depuis le back-office.",
+      );
+    }
     if (user.lastLoginAt) {
       throw new BadRequestException("Ce compte s'est déjà connecté");
     }
     if (user.disabledAt) {
       throw new BadRequestException("Ce compte est désactivé");
+    }
+    if (user.role === UserRole.CLUB && user.club?.disabledAt) {
+      throw new BadRequestException(CLUB_DISABLED);
     }
     const role: InvitationRole = user.role;
     await this.prisma.$transaction(async (tx) => {
@@ -164,6 +177,12 @@ export class AdminUserAccountsService {
 
   /** A new club only for a CLUB account; a CLUB account always has a club. */
   private checkClubChoice(dto: CreateAdminUserDto): void {
+    // Defence in depth behind the DTO: ADMIN is only granted from the user page.
+    if (!INVITABLE_ROLES.includes(dto.role)) {
+      throw new BadRequestException(
+        "Un compte administrateur ne peut pas être créé ici",
+      );
+    }
     if (dto.clubId && dto.clubName) {
       throw new BadRequestException(
         "Indiquer soit un club existant, soit le nom d'un nouveau club",
@@ -188,10 +207,11 @@ export class AdminUserAccountsService {
     if (dto.clubId) {
       const existing = await tx.club.findUnique({
         where: { id: dto.clubId },
-        select: adminClubOptionSelect,
+        select: adminClubAttachSelect,
       });
       if (!existing) throw new BadRequestException("Club introuvable");
-      return existing;
+      if (existing.disabledAt) throw new BadRequestException(CLUB_DISABLED);
+      return { id: existing.id, name: existing.name };
     }
     if (!dto.clubName) return null;
     const name = dto.clubName.trim();

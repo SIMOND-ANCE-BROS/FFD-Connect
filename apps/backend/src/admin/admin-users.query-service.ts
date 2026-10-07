@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
+import { isCreatedByAdmin } from "./admin-audit.util";
 import {
   adminUserDetailSelect,
   adminUserListSelect,
@@ -95,6 +96,7 @@ export class AdminUsersQueryService {
     const { license, club, ...rest } = row;
     return {
       ...rest,
+      createdByAdmin: await isCreatedByAdmin(this.prisma, id),
       clubDisabledAt: club?.disabledAt ?? null,
       licenseStatus: licenseStatus(license, new Date()),
       licenseNumber: license?.number ?? null,

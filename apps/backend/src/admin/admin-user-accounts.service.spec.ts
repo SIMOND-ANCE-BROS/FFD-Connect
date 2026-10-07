@@ -37,6 +37,7 @@ describe("AdminUserAccountsService", () => {
       name: "Club Neuf",
     } as never);
     prisma.user.create.mockResolvedValue({ id: "u-new" } as never);
+    prisma.adminAuditLog.findFirst.mockResolvedValue({ id: "a1" } as never);
     audit = { record: jest.fn() };
     passwords = { issuePasswordToken: jest.fn().mockResolvedValue("plain") };
     email = { sendInvitationEmail: jest.fn().mockResolvedValue(undefined) };
@@ -146,6 +147,7 @@ describe("AdminUserAccountsService", () => {
     prisma.club.findUnique.mockResolvedValue({
       id: "c1",
       name: "Club A",
+      disabledAt: null,
     } as never);
     await service.create(
       "admin-1",
@@ -169,6 +171,33 @@ describe("AdminUserAccountsService", () => {
   ] as const)("400s on %s, writing nothing", async (_label, o) => {
     await expect(service.create("admin-1", dto(o))).rejects.toBeInstanceOf(
       BadRequestException,
+    );
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it("400s on a disabled club id, writing nothing", async () => {
+    prisma.club.findUnique.mockResolvedValue({
+      id: "c1",
+      name: "Club A",
+      disabledAt: new Date(),
+    } as never);
+    await expect(
+      service.create("admin-1", dto({ role: UserRole.CLUB, clubId: "c1" })),
+    ).rejects.toThrow(new BadRequestException("Ce club est désactivé."));
+    expect(prisma.user.create).not.toHaveBeenCalled();
+    expect(email.sendInvitationEmail).not.toHaveBeenCalled();
+  });
+
+  it("400s on role ADMIN even if validation was bypassed, writing nothing", async () => {
+    await expect(
+      service.create("admin-1", {
+        ...dto({}),
+        role: UserRole.ADMIN as never,
+      }),
+    ).rejects.toThrow(
+      new BadRequestException(
+        "Un compte administrateur ne peut pas être créé ici",
+      ),
     );
     expect(prisma.user.create).not.toHaveBeenCalled();
   });
@@ -262,6 +291,7 @@ describe("AdminUserAccountsService", () => {
       role: UserRole.LICENSEE,
       lastLoginAt: null,
       disabledAt: null,
+      club: null,
     };
 
     it("re-issues a token for any non-admin role, with that role's wording, and audits", async () => {
@@ -303,6 +333,11 @@ describe("AdminUserAccountsService", () => {
         { disabledAt: new Date() },
         "Ce compte est désactivé",
       ],
+      [
+        "a CLUB account whose club is disabled",
+        { role: UserRole.CLUB, club: { disabledAt: new Date() } },
+        "Ce club est désactivé.",
+      ],
     ])("400s for %s, without auditing or mailing", async (_l, o, message) => {
       prisma.user.findUnique.mockResolvedValue({ ...target, ...o } as never);
       await expect(service.resendInvitation("admin-1", "u1")).rejects.toThrow(
@@ -310,6 +345,34 @@ describe("AdminUserAccountsService", () => {
       );
       expect(audit.record).not.toHaveBeenCalled();
       expect(passwords.issuePasswordToken).not.toHaveBeenCalled();
+    });
+
+    it("400s for an account not created from the back-office", async () => {
+      prisma.user.findUnique.mockResolvedValue(target as never);
+      prisma.adminAuditLog.findFirst.mockResolvedValue(null);
+      await expect(service.resendInvitation("admin-1", "u1")).rejects.toThrow(
+        new BadRequestException(
+          "Ce compte n'a pas été créé depuis le back-office.",
+        ),
+      );
+      expect(prisma.adminAuditLog.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ targetId: "u1" }) as unknown,
+        }),
+      );
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(passwords.issuePasswordToken).not.toHaveBeenCalled();
+    });
+
+    it("re-invites a CLUB account whose club is active", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...target,
+        role: UserRole.CLUB,
+        club: { disabledAt: null },
+      } as never);
+      await expect(service.resendInvitation("admin-1", "u1")).resolves.toEqual({
+        invitationSent: true,
+      });
     });
 
     it("404s on an unknown user", async () => {

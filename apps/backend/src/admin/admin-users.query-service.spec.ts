@@ -149,6 +149,27 @@ describe("AdminUsersQueryService", () => {
     expect(d.clubDisabledAt).toEqual(at);
     expect(d).not.toHaveProperty("club");
   });
+
+  it.each([
+    ["with", { id: "a1" }, true],
+    ["without", null, false],
+  ] as const)(
+    "detail exposes createdByAdmin %s a creation audit row",
+    async (_l, auditRow, expected) => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...row,
+        club: null,
+      } as never);
+      prisma.adminAuditLog.findFirst.mockResolvedValue(auditRow as never);
+      const d = await service.detail("u1");
+      expect(d.createdByAdmin).toBe(expected);
+      expect(prisma.adminAuditLog.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ targetId: "u1" }) as unknown,
+        }),
+      );
+    },
+  );
 });
 
 describe("licenseStatus", () => {

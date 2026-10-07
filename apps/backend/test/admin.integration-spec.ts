@@ -5,6 +5,7 @@ import { ClubRegistrationMode, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { AdminClubsService } from "../src/admin/admin-clubs.service";
 import { AdminUserAccountsService } from "../src/admin/admin-user-accounts.service";
+import { AdminUsersQueryService } from "../src/admin/admin-users.query-service";
 import { AdminUsersService } from "../src/admin/admin-users.service";
 import { AuthService } from "../src/auth/auth.service";
 import { AuthTokenService } from "../src/auth/auth-token.service";
@@ -188,6 +189,28 @@ describe("Admin (integration, real DB)", () => {
         where: { userId: res.userId, used: false },
       }),
     ).toBe(1);
+  });
+
+  it("only a back-office account is flagged createdByAdmin and can be re-invited", async () => {
+    const admin = await create({ role: UserRole.ADMIN });
+    const selfRegistered = await create({});
+    const res = await userAccounts.create(admin.id, {
+      email: `${randomUUID()}@test.local`,
+      firstName: "L",
+      lastName: "M",
+      role: UserRole.LICENSEE,
+    });
+    createdUserIds.push(res.userId);
+    const users = moduleRef.get(AdminUsersQueryService);
+
+    expect((await users.detail(res.userId)).createdByAdmin).toBe(true);
+    expect((await users.detail(selfRegistered.id)).createdByAdmin).toBe(false);
+    await expect(
+      userAccounts.resendInvitation(admin.id, selfRegistered.id),
+    ).rejects.toThrow("Ce compte n'a pas été créé depuis le back-office.");
+    await expect(
+      userAccounts.resendInvitation(admin.id, res.userId),
+    ).resolves.toHaveProperty("invitationSent");
   });
 
   it("a deactivated user cannot log in, refresh or use a live token, until reactivated", async () => {
