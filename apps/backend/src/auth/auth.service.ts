@@ -354,6 +354,12 @@ export class AuthService {
       expiresIn: `${this.ACCESS_TOKEN_EXPIRY_MINUTES}m`,
     });
 
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+      select: { id: true },
+    });
+
     const refreshToken = await this.authTokenService.createRefreshToken(
       user.id,
     );

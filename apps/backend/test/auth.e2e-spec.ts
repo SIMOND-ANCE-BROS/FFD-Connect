@@ -20,7 +20,10 @@ describe("AuthController (e2e)", () => {
 
   beforeAll(async () => {
     const mockPrisma = {
-      user: { findUnique: jest.fn() },
+      user: {
+        findUnique: jest.fn(),
+        update: jest.fn().mockResolvedValue({ id: "user-1" }),
+      },
       refreshToken: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         create: jest

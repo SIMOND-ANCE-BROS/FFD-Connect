@@ -725,6 +725,16 @@ describe("UsersService", () => {
       });
     });
 
+    it("purges admin audit rows that target the deleted user", async () => {
+      compare.mockResolvedValue(true);
+
+      await service.deleteMyAccount("u1", "correct-password");
+
+      expect(prisma.adminAuditLog.deleteMany).toHaveBeenCalledWith({
+        where: { targetType: "USER", targetId: "u1" },
+      });
+    });
+
     it("toutes les écritures sont dans la même transaction, suppression du user en dernier", async () => {
       compare.mockResolvedValue(true);
       const marker = (name: string) => ({ op: name }) as never;
@@ -736,6 +746,7 @@ describe("UsersService", () => {
         marker("trackCorrectionAnon"),
       );
       prisma.bugReport.deleteMany.mockReturnValue(marker("bugReports"));
+      prisma.adminAuditLog.deleteMany.mockReturnValue(marker("adminAudit"));
       prisma.user.delete.mockReturnValue(marker("user"));
 
       await service.deleteMyAccount("u1", "correct-password");
@@ -752,6 +763,7 @@ describe("UsersService", () => {
         "partnerAnon",
         "trackCorrectionAnon",
         "bugReports",
+        "adminAudit",
         "user",
       ]);
     });

@@ -97,6 +97,36 @@ describe("AuthPasswordService", () => {
     });
   });
 
+  describe("issuePasswordToken", () => {
+    it("invalidates previous tokens, stores only the hash and returns the plain token", async () => {
+      mockPrismaService.passwordResetToken.updateMany.mockResolvedValue({
+        count: 1,
+      });
+      mockPrismaService.passwordResetToken.create.mockResolvedValue({});
+      const before = Date.now();
+
+      const token = await service.issuePasswordToken("user-1", 168);
+
+      expect(token).toMatch(/^[0-9a-f]{64}$/);
+      expect(
+        mockPrismaService.passwordResetToken.updateMany,
+      ).toHaveBeenCalledWith({
+        where: { userId: "user-1", used: false },
+        data: { used: true, usedAt: expect.any(Date) },
+      });
+      const created =
+        mockPrismaService.passwordResetToken.create.mock.calls[0][0].data;
+      expect(created.token).not.toBe(token);
+      expect(created.token).toBe(
+        crypto.createHash("sha256").update(token).digest("hex"),
+      );
+      expect(created.userId).toBe("user-1");
+      const expiresAt = (created.expiresAt as Date).getTime();
+      expect(expiresAt - before).toBeGreaterThanOrEqual(168 * 3600_000 - 1000);
+      expect(expiresAt - before).toBeLessThanOrEqual(168 * 3600_000 + 1000);
+    });
+  });
+
   describe("resetPassword", () => {
     it("should throw when password invalid", async () => {
       await expect(service.resetPassword("token", "short")).rejects.toThrow(

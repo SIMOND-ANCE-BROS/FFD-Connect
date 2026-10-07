@@ -1,0 +1,19 @@
+/// Journal des actions du back-office admin (lot 1). Une ligne par écriture
+/// admin, insérée dans la même transaction que l'écriture. `before`/`after`
+/// ne contiennent que les champs modifiés, jamais de secret.
+model AdminAuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation("AdminAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([targetType, targetId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+}

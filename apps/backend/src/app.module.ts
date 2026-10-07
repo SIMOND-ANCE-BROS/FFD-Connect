@@ -12,6 +12,7 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { AdminModule } from "./admin/admin.module";
 import { AuthModule } from "./auth/auth.module";
 import { CareerModule } from "./career/career.module";
 import { CircuitBreakerModule } from "./common/circuit-breaker/circuit-breaker.module";
@@ -76,6 +77,7 @@ import { WdsfModule } from "./wdsf/wdsf.module";
     RedisModule,
     StorageModule,
     AuthModule,
+    AdminModule,
     TracksModule,
     TrackCorrectionsModule,
     TtsModule,

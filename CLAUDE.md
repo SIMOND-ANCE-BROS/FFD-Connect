@@ -4,7 +4,7 @@
 
 FFD-Connect is a monorepo for the French Dance Federation (FFD). It manages competitions, licenses, clubs, partnerships, and music for ballroom/latin dancers.
 
-**Apps:** backend (NestJS 11), client (React Native 0.86 / Expo SDK 57), landing (Vite/React), docs (Astro/Starlight)
+**Apps:** backend (NestJS 11), client (React Native 0.86 / Expo SDK 57), landing (Vite/React), admin (Vite/React back-office), docs (Astro/Starlight)
 **Packages:** @ffd-connect/shared (types), eslint-config, jest-config
 
 ## Key commands
@@ -14,6 +14,7 @@ FFD-Connect is a monorepo for the French Dance Federation (FFD). It manages comp
 pnpm start:dev              # Start all apps in dev mode
 pnpm --filter backend start:dev   # Backend only (NestJS watch)
 pnpm --filter client start        # Client only (Expo Metro)
+pnpm --filter admin dev           # Admin back-office only (Vite; API = VITE_API_URL, default localhost:3000)
 
 # Before pushing — run exactly what blocks CI
 pnpm preflight              # typecheck + lint + format + tests + audit (single command)
@@ -126,6 +127,7 @@ The project ships a full agent team. Delegate to them via the Agent tool — the
 | --------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Backend endpoint/service/module, Prisma migration   | `backend-dev`                                                                |
 | Mobile screen, feature, store, API integration      | `client-dev`                                                                 |
+| Admin back-office screen (apps/admin)               | `client-dev`                                                                 |
 | Terraform, workflows, Docker, cloud cost change     | `infra-azure` (+ `cost-manager` to price it)                                 |
 | Review my diff before push                          | `code-reviewer` (+ `security-reviewer` if auth/payment/main.ts/RGPD touched) |
 | Run the tests / verify this change                  | `test-verifier`                                                              |

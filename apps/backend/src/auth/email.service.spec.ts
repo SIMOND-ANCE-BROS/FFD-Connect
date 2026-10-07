@@ -59,6 +59,27 @@ describe("EmailService", () => {
     });
   });
 
+  describe("sendInvitationEmail without Resend", () => {
+    beforeEach(async () => {
+      mockConfigService.get.mockReturnValue(undefined);
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          EmailService,
+          { provide: ConfigService, useValue: mockConfigService },
+        ],
+      }).compile();
+      service = module.get<EmailService>(EmailService);
+      jest.clearAllMocks();
+    });
+
+    it("only logs when Resend is not configured", async () => {
+      await expect(
+        service.sendInvitationEmail("c@x.fr", "tok", "Jo"),
+      ).resolves.toBeUndefined();
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+  });
+
   describe("with Resend configured", () => {
     beforeEach(async () => {
       mockConfigService.get.mockImplementation((key: string) => {
@@ -111,6 +132,35 @@ describe("EmailService", () => {
       await expect(
         service.sendPasswordResetEmail("u@test.com", "tok"),
       ).rejects.toThrow("Network error");
+    });
+
+    describe("sendInvitationEmail", () => {
+      it("sends the invitation with a reset-password link carrying the token", async () => {
+        await service.sendInvitationEmail(
+          "club@example.fr",
+          "tok123",
+          "Jeanne",
+        );
+
+        const arg = mockSend.mock.calls[0][0];
+        expect(arg.to).toBe("club@example.fr");
+        expect(arg.subject).toBe("Votre accès club FFD Connect");
+        expect(arg.html).toContain("/reset-password?token=tok123");
+        expect(arg.html).toContain("Bonjour Jeanne");
+        expect(arg.html).toContain("7 jours");
+      });
+
+      it("strips HTML from the first name", async () => {
+        await service.sendInvitationEmail("c@x.fr", "t", "<b>Jo</b>");
+        expect(mockSend.mock.calls[0][0].html).toContain("Bonjour bJo/b");
+      });
+
+      it("throws when the provider returns an error", async () => {
+        mockSend.mockResolvedValue({ data: null, error: { message: "boom" } });
+        await expect(
+          service.sendInvitationEmail("club@example.fr", "tok123", "Jeanne"),
+        ).rejects.toThrow("Failed to send email: boom");
+      });
     });
   });
 });

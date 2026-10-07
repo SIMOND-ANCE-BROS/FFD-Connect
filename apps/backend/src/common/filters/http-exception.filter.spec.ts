@@ -116,6 +116,20 @@ describe("HttpExceptionFilter", () => {
     );
   });
 
+  it("carries existingClubId through a 409 body", () => {
+    const exception = new HttpException(
+      { message: "Un club porte déjà ce nom", existingClubId: "c1" },
+      HttpStatus.CONFLICT,
+    );
+    filter.catch(exception, mockArgumentsHost);
+    expect(mockResponse.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Un club porte déjà ce nom",
+        existingClubId: "c1",
+      }),
+    );
+  });
+
   it("should handle 500 errors and log them", () => {
     const exception = new Error("Server error");
     filter.catch(exception, mockArgumentsHost);
