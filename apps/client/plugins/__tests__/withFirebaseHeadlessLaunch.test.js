@@ -1,3 +1,13 @@
+/**
+ * @jest-environment node
+ * @jest-environment-options {"customExportConditions": ["node", "require"]}
+ *
+ * Config plugins run in Node during `expo prebuild`, never in the app bundle,
+ * so they are tested under Node's export conditions. The jest-expo preset's
+ * react-native conditions would resolve dual-format deps of
+ * `expo/config-plugins` (e.g. uuid@11 via xcode) to their ESM browser build,
+ * which Jest's CJS runtime cannot parse.
+ */
 const {
   patchAppDelegate,
   TARGET_CALL,
