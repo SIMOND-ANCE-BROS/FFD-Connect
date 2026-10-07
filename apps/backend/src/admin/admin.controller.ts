@@ -2,13 +2,17 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -23,6 +27,7 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { AdminAuditService } from "./admin-audit.service";
+import { AdminClubAccountsService } from "./admin-club-accounts.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminReferenceService } from "./admin-reference.service";
@@ -32,6 +37,11 @@ import {
   AdminUsersPageDto,
   ListAdminUsersQueryDto,
 } from "./dto/admin-users.dto";
+import {
+  ClubAccountCreatedDto,
+  CreateClubAccountDto,
+  InvitationResultDto,
+} from "./dto/club-account.dto";
 import { UpdateAdminUserDto } from "./dto/update-admin-user.dto";
 import {
   AdminClubOptionDto,
@@ -54,6 +64,7 @@ export class AdminController {
     private readonly reference: AdminReferenceService,
     private readonly usersQuery: AdminUsersQueryService,
     private readonly users: AdminUsersService,
+    private readonly clubAccounts: AdminClubAccountsService,
   ) {}
 
   @Get("reference-data")
@@ -104,5 +115,35 @@ export class AdminController {
     @Req() req: RequestWithUser,
   ): Promise<AdminUserDetailDto> {
     return this.users.update(req.user.userId, id, dto);
+  }
+
+  @Post("club-accounts")
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @ApiOperation({ summary: "Créer un compte Club et envoyer l'invitation" })
+  @ApiResponse({ status: 201, type: ClubAccountCreatedDto })
+  @ApiResponse({
+    status: 409,
+    description: "Email ou nom de club déjà utilisé",
+  })
+  createClubAccount(
+    @Body() dto: CreateClubAccountDto,
+    @Req() req: RequestWithUser,
+  ): Promise<ClubAccountCreatedDto> {
+    return this.clubAccounts.create(req.user.userId, dto);
+  }
+
+  @Post("users/:id/resend-invitation")
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @ApiOperation({
+    summary: "Renvoyer l'invitation d'un compte jamais connecté",
+  })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, type: InvitationResultDto })
+  resendInvitation(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() req: RequestWithUser,
+  ): Promise<InvitationResultDto> {
+    return this.clubAccounts.resendInvitation(req.user.userId, id);
   }
 }
