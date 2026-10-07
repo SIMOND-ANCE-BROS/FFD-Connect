@@ -46,18 +46,38 @@ export type ApiOutcome = { networkError: true } | { status: number; body?: unkno
 export interface UiResult {
   kind: 'success' | 'error';
   messages: string[];
+  /** The token itself was rejected: retrying with it is pointless. */
+  linkInvalid?: boolean;
 }
 
-const INVALID_LINK =
-  "Ce lien est invalide, expiré ou déjà utilisé. Demandez un nouveau lien depuis l'application (« Mot de passe oublié »).";
+const HINT = "Demandez un nouveau lien depuis l'application (« Mot de passe oublié »).";
+const INVALID_LINK = `Ce lien est invalide, expiré ou déjà utilisé. ${HINT}`;
 const UNAVAILABLE = 'Serveur indisponible pour le moment. Réessayez dans quelques instants.';
+// Backend text for a bad token: "Token de réinitialisation invalide, expiré ou déjà utilisé".
+const TOKEN_REJECTED = /invalide, expiré ou déjà utilisé/i;
 
-function errorList(body: unknown): string[] | null {
-  if (typeof body !== 'object' || body === null) return null;
-  const errors = (body as { errors?: unknown }).errors;
-  if (!Array.isArray(errors)) return null;
-  const list = errors.filter((e): e is string => typeof e === 'string');
+function stringList(value: unknown): string[] | null {
+  if (typeof value === 'string') return value ? [value] : null;
+  if (!Array.isArray(value)) return null;
+  const list = value.filter((e): e is string => typeof e === 'string');
   return list.length > 0 ? list : null;
+}
+
+// The global HttpExceptionFilter returns { statusCode, ..., message }, where
+// message is a string or, for ValidationPipe errors, a string array.
+function badRequest(body: unknown): UiResult {
+  const record = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+  const errors = Array.isArray(record.errors) ? stringList(record.errors) : null;
+  const messages = errors ?? stringList(record.message);
+  if (!messages) return { kind: 'error', messages: [INVALID_LINK], linkInvalid: true };
+  if (messages.some((m) => TOKEN_REJECTED.test(m))) {
+    return {
+      kind: 'error',
+      messages: [`Ce lien est invalide, expiré ou déjà utilisé. ${HINT}`],
+      linkInvalid: true,
+    };
+  }
+  return { kind: 'error', messages };
 }
 
 export function describeResult(outcome: ApiOutcome): UiResult {
@@ -73,12 +93,7 @@ export function describeResult(outcome: ApiOutcome): UiResult {
       ],
     };
   }
-  if (status === 400) {
-    return {
-      kind: 'error',
-      messages: errorList(outcome.body) ?? [INVALID_LINK],
-    };
-  }
+  if (status === 400) return badRequest(outcome.body);
   if (status === 429) {
     return {
       kind: 'error',

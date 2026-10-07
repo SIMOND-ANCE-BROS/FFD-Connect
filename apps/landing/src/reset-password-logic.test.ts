@@ -64,22 +64,48 @@ describe('describeResult', () => {
       ],
     });
   });
-  it('lists the errors of a 400 body', () => {
+  const filtered = (message: unknown) => ({
+    statusCode: 400,
+    timestamp: '2026-10-07T12:00:00.000Z',
+    path: '/api/v1/auth/reset-password',
+    method: 'POST',
+    message,
+  });
+  it('lists the errors of a 400 body when present', () => {
     expect(describeResult({ status: 400, body: { errors: ['a', 'b'] } })).toEqual({
       kind: 'error',
       messages: ['a', 'b'],
     });
   });
-  it('maps other 400 to the invalid link message', () => {
-    const expected = {
-      kind: 'error',
-      messages: [
-        "Ce lien est invalide, expiré ou déjà utilisé. Demandez un nouveau lien depuis l'application (« Mot de passe oublié »).",
-      ],
-    };
-    expect(describeResult({ status: 400, body: { message: 'x' } })).toEqual(expected);
-    expect(describeResult({ status: 400 })).toEqual(expected);
-    expect(describeResult({ status: 400, body: { errors: 'no' } })).toEqual(expected);
+  it('maps a rejected token to the invalid link message with hint', () => {
+    const r = describeResult({
+      status: 400,
+      body: filtered('Token de réinitialisation invalide, expiré ou déjà utilisé'),
+    });
+    expect(r.kind).toBe('error');
+    expect(r.linkInvalid).toBe(true);
+    expect(r.messages).toEqual([
+      "Ce lien est invalide, expiré ou déjà utilisé. Demandez un nouveau lien depuis l'application (« Mot de passe oublié »).",
+    ]);
+  });
+  it('shows a policy rejection message as is', () => {
+    const r = describeResult({
+      status: 400,
+      body: filtered('Le mot de passe ne respecte pas la politique de sécurité'),
+    });
+    expect(r.messages).toEqual(['Le mot de passe ne respecte pas la politique de sécurité']);
+    expect(r.linkInvalid).toBeUndefined();
+  });
+  it('shows each item of a ValidationPipe message array', () => {
+    const msgs = ['newPassword must be longer than or equal to 8 characters', 'x'];
+    expect(describeResult({ status: 400, body: filtered(msgs) }).messages).toEqual(msgs);
+  });
+  it('falls back to the invalid link message without any message', () => {
+    for (const body of [undefined, {}, { errors: 'no' }, filtered('')]) {
+      const r = describeResult({ status: 400, body });
+      expect(r.messages[0]).toMatch(/^Ce lien est invalide/);
+      expect(r.linkInvalid).toBe(true);
+    }
   });
   it('maps 429 to retry later', () => {
     const r = describeResult({ status: 429 });

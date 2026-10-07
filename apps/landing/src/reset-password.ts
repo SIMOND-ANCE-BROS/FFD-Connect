@@ -67,6 +67,7 @@ if (!token) {
 }
 
 async function onSubmit(currentToken: string): Promise<void> {
+  if (submit.disabled) return;
   const password = passwordInput.value;
   if (password !== confirmInput.value) {
     show('error', ['Les deux mots de passe ne correspondent pas.']);
@@ -111,9 +112,9 @@ async function onSubmit(currentToken: string): Promise<void> {
   submit.disabled = false;
   const result = describeResult(outcome);
   show(result.kind, result.messages);
-  if (result.kind === 'success') {
+  if (result.kind === 'success' || result.linkInvalid) {
     form.hidden = true;
-    appBox.hidden = true;
+    appBox.hidden = result.kind === 'success';
     passwordInput.value = '';
     confirmInput.value = '';
   }
