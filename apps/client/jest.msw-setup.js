@@ -74,7 +74,9 @@ global.setTimeout = (fn, delay, ...args) => {
   return handle;
 };
 
-beforeAll(() => server.listen({ onUnhandledRequest: "warn" }));
+// msw 3 renamed `onUnhandledRequest` to `onUnhandledFrame` (the old key is
+// silently ignored).
+beforeAll(() => server.listen({ onUnhandledFrame: "warn" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 afterAll(() => {
