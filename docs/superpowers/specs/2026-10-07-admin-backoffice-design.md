@@ -15,7 +15,7 @@ Give FFD platform administrators a web back-office to:
 - follow usage statistics of the mobile app (iOS + Android), both database figures and real usage (sessions, screens, plays);
 - perform the other admin actions (impersonation, roles…).
 
-Success for lot 1: an admin can log in on `admin.ffd-connect.fr`, find any user, fix their profile fields, create a Club account whose manager receives an invitation, and every write is traceable in an audit log.
+Success for lot 1: an admin can log in on `admin.ffd.gabin-simond.fr`, find any user, fix their profile fields, create a Club account whose manager receives an invitation, and every write is traceable in an audit log.
 
 ## 2. Decisions taken during brainstorming
 
@@ -24,7 +24,7 @@ Success for lot 1: an admin can log in on `admin.ffd-connect.fr`, find any user,
 | Users of the back-office | `ADMIN` role only, full rights. A restricted `STAFF` access may come later.                                                                                                                                                                                                                                                                                            |
 | Stack                    | New `apps/admin`: Vite + React 19 + TypeScript strict, Mantine, TanStack Query, React Router, generated OpenAPI client.                                                                                                                                                                                                                                                |
 | Rejected                 | Refine / react-admin (CRUD framework fights the custom screens of lots 3 and 5); AdminJS on Prisma (bypasses business services, adds admin UI to the prod image).                                                                                                                                                                                                      |
-| Hosting                  | Azure Static Web Apps, Free tier, `admin.ffd-connect.fr`. GitHub Pages is already used by the landing (one site per repo).                                                                                                                                                                                                                                             |
+| Hosting                  | Azure Static Web Apps, Free tier, `admin.ffd.gabin-simond.fr`. GitHub Pages is already used by the landing (one site per repo).                                                                                                                                                                                                                                        |
 | Writes                   | Always through the NestJS API, never direct DB access.                                                                                                                                                                                                                                                                                                                 |
 | Usage analytics (lot 5)  | No third-party or self-hosted analytics server (Umami/Plausible/PostHog would add ~10-40 EUR/month of always-on infra). First-party anonymous events sent in batches to our backend; no user id, random per-launch session id, aggregated and purged after a few months → CNIL audience-measurement exemption, no consent banner; one paragraph in the privacy policy. |
 
@@ -54,9 +54,10 @@ Each lot = its own spec (if needed), plan and PR(s), in this order:
   - Prisma: `select` constants from `src/utils/prisma-selects.ts`, `take` on every list.
 - **Hosting & CI**
   - `deploy-admin.yml`: builds `apps/admin` and deploys to Azure SWA; triggered only on `apps/admin/**` changes (+ manual).
-  - `admin.ffd-connect.fr` added to `CORS_ORIGINS` (staging + prod).
+  - `admin.ffd.gabin-simond.fr` added to `CORS_ORIGINS` (staging + prod).
   - SWA config (`staticwebapp.config.json`): SPA fallback, strict CSP (`default-src 'self'; script-src 'self'; connect-src 'self' <api origins>`), `X-Frame-Options: DENY`, `noindex`.
   - SWA resource declared in Terraform (by `infra-azure`).
+  - DNS: `admin.ffd.gabin-simond.fr` CNAME to the SWA hostname, added by hand in Cloudflare (DNS-only, like the other records — see `infra/terraform/dns.tf`); custom domain + certificate bound on the SWA side.
   - CI: `apps/admin` joins `typecheck` and `lint-format`, and gets a unit-test step (existing job or a new small one — decided in the plan, with its cost stated).
 
 ### 4.2 Authentication
@@ -142,7 +143,7 @@ All under `/admin`, `ADMIN` only, documented in Swagger (Swagger UI stays hidden
 - If the email fails, the account stays created; the response carries `invitationSent: false` and the UI shows a warning + "Resend invitation" (graceful degradation).
 - `@Throttle` on creation and resend.
 
-**Open point to check during implementation:** `https://app.ffd-connect.fr/reset-password?token=…` is a universal link handled by the mobile app (`apps/client/src/navigation/linking.ts`). A club manager without the app installed must still be able to set a password: verify what that URL serves without the app and, if needed, add a minimal web page that calls `POST /auth/reset-password`.
+**Open point to check during implementation:** the mobile app handles `https://app.ffd-connect.fr/reset-password?token=…` as a universal link (`apps/client/src/navigation/linking.ts`), but the project domain is `ffd.gabin-simond.fr` and the email link is built from the backend `FRONTEND_URL`. Check which host the emails actually point to and that it opens the app. A club manager without the app installed must still be able to set a password: verify what that URL serves without the app and, if needed, add a minimal web page that calls `POST /auth/reset-password`.
 
 ## 7. Testing
 
