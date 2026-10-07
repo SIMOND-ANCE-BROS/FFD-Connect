@@ -49,6 +49,8 @@ model User {
   passwordResetTokens  PasswordResetToken[]
   seatBookings         SeatBooking[]
   submittedTracks      Track[]        @relation("TrackSubmissions")
+  trackCorrectionsProposed TrackCorrection[] @relation("TrackCorrectionsProposed")
+  trackCorrectionsReviewed TrackCorrection[] @relation("TrackCorrectionsReviewed")
 
   @@index([email])
   @@index([role])

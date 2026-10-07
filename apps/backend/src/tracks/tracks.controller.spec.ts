@@ -5,7 +5,6 @@ import { validateHeaderValue } from "http";
 import * as fs from "fs";
 import * as path from "path";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
-import { ReportTrackReason } from "./dto/report-track.dto";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { TracksController } from "./tracks.controller";
 import { TracksService } from "./tracks.service";
@@ -18,9 +17,9 @@ describe("TracksController", () => {
   const mockTracksService = {
     findAll: jest.fn(),
     findOne: jest.fn(),
+    findAmbiance: jest.fn(),
     updateTrack: jest.fn(),
     deleteTrack: jest.fn(),
-    reportTrack: jest.fn(),
   };
 
   const adminReq = {
@@ -53,6 +52,37 @@ describe("TracksController", () => {
     }).compile();
 
     controller = module.get<TracksController>(TracksController);
+  });
+
+  // ─── findAmbiance ────────────────────────────────────────────────────────────
+
+  describe("findAmbiance", () => {
+    it("returns the ambiance tracks from the service", async () => {
+      const tracks = [{ id: "a1", title: "Lounge", artist: "Ambiance" }];
+      mockTracksService.findAmbiance.mockResolvedValue(tracks);
+
+      const result = await controller.findAmbiance(licenseeReq);
+
+      expect(result).toEqual(tracks);
+      expect(mockTracksService.findAmbiance).toHaveBeenCalledWith(false);
+    });
+
+    it("forwards the admin flag to the service", async () => {
+      mockTracksService.findAmbiance.mockResolvedValue([]);
+
+      await controller.findAmbiance(adminReq);
+
+      expect(mockTracksService.findAmbiance).toHaveBeenCalledWith(true);
+    });
+
+    it("is routed before GET /tracks/:id so 'ambiance' is not taken as an id", () => {
+      const proto = TracksController.prototype;
+      const methods = Object.getOwnPropertyNames(proto);
+      expect(methods.indexOf("findAmbiance")).toBeLessThan(
+        methods.indexOf("findOne"),
+      );
+      expect(Reflect.getMetadata("path", proto.findAmbiance)).toBe("ambiance");
+    });
   });
 
   // ─── findAll ─────────────────────────────────────────────────────────────────
@@ -223,41 +253,6 @@ describe("TracksController", () => {
       await expect(controller.remove("track-x")).rejects.toThrow(
         NotFoundException,
       );
-    });
-  });
-
-  // ─── report (POST /tracks/:id/report) ──────────────────────────────────────
-
-  describe("report", () => {
-    it("delegates to the service with reason, message and reporter id", async () => {
-      mockTracksService.reportTrack.mockResolvedValue(undefined);
-
-      await controller.report(
-        "track-1",
-        { reason: ReportTrackReason.TITLE, message: "typo" },
-        licenseeReq,
-      );
-
-      expect(mockTracksService.reportTrack).toHaveBeenCalledWith(
-        "track-1",
-        ReportTrackReason.TITLE,
-        "typo",
-        "user-1",
-      );
-    });
-
-    it("propagates NotFoundException from the service", async () => {
-      mockTracksService.reportTrack.mockRejectedValue(
-        new NotFoundException("Track track-x not found"),
-      );
-
-      await expect(
-        controller.report(
-          "track-x",
-          { reason: ReportTrackReason.OTHER },
-          licenseeReq,
-        ),
-      ).rejects.toThrow(NotFoundException);
     });
   });
 

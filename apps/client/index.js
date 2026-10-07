@@ -74,7 +74,7 @@ const sentryDsn =
 const sentryDisabled = process.env?.EXPO_PUBLIC_DISABLE_SENTRY === "1";
 
 // Release Health : rattache le crash-free sessions rate à une version + un OTA,
-// avec les identifiants de TestFlight / Play et des tags beta-<version>-<build>
+// avec les identifiants de TestFlight / Play et des tags beta-<version>-<plateforme>-<build>
 // (cf. src/utils/appIdentity).
 // - release  = « <bundle id>@<version>+<build> » (ex. fr.ffdanse.connect.beta@1.0.0+85) :
 //   le format Sentry des apps mobiles, celui que le plugin Sentry utilise pour

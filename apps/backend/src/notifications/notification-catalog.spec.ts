@@ -18,16 +18,18 @@ describe("catalogue des notifications", () => {
   describe("défauts documentés", () => {
     /**
      * Opt-out (activé) quand la notification porte sur le dossier de
-     * l'utilisateur ou appelle une action de sa part ; opt-in (désactivé) pour
-     * la diffusion.
+     * l'utilisateur, le concerne personnellement, ou appelle une action de sa
+     * part ; opt-in (désactivé) quand elle se déclenche sur l'activité
+     * d'AUTRUI et peut donc arriver en rafale.
      */
     const DOCUMENTED_DEFAULTS: Record<NotificationType, boolean> = {
       [NotificationType.REGISTRATION_STATUS]: true,
       [NotificationType.COMPETITION_RESULTS]: true,
-      [NotificationType.NEW_COMPETITION]: false,
+      [NotificationType.NEW_COMPETITION]: true,
       [NotificationType.CLUB_MEMBER_REGISTRATION]: false,
       [NotificationType.CLUB_PARTNERSHIP]: true,
       [NotificationType.TRACK_REPORT]: true,
+      [NotificationType.TRACK_CORRECTION_DECISION]: true,
       [NotificationType.DIAGNOSTIC_TEST]: true,
     };
 
@@ -38,10 +40,22 @@ describe("catalogue des notifications", () => {
       },
     );
 
-    it("n'active par défaut aucun type de diffusion", () => {
-      // Une diffusion part vers une population éligible, pas vers quelqu'un que
-      // l'événement concerne personnellement : elle doit être choisie.
-      expect(isEnabledByDefault(NotificationType.NEW_COMPETITION)).toBe(false);
+    /**
+     * Le critère n'est PAS « combien de destinataires » mais « le destinataire
+     * est-il concerné ».
+     *
+     * `NEW_COMPETITION` a longtemps été en opt-in parce qu'on la prenait pour
+     * une diffusion générale. Elle n'en est pas une : l'éligibilité est
+     * calculée avant l'envoi, discipline, niveau et classe d'âge compris. La
+     * laisser désactivée la rendait invisible à ceux-là mêmes qu'elle vise.
+     *
+     * `CLUB_MEMBER_REGISTRATION` reste en opt-in, et c'est le vrai critère à
+     * l'œuvre : elle se déclenche sur l'activité d'autrui, donc en rafale — un
+     * week-end d'ouverture dans un club d'une centaine de membres suffirait à
+     * faire désinstaller l'application.
+     */
+    it("n'active par défaut que ce qui concerne personnellement le destinataire", () => {
+      expect(isEnabledByDefault(NotificationType.NEW_COMPETITION)).toBe(true);
       expect(
         isEnabledByDefault(NotificationType.CLUB_MEMBER_REGISTRATION),
       ).toBe(false);
@@ -90,6 +104,7 @@ describe("catalogue des notifications", () => {
         NotificationType.CLUB_MEMBER_REGISTRATION,
         NotificationType.CLUB_PARTNERSHIP,
         NotificationType.TRACK_REPORT,
+        NotificationType.TRACK_CORRECTION_DECISION,
       ]);
     });
   });
@@ -121,6 +136,13 @@ describe("catalogue des notifications", () => {
       [NotificationType.CLUB_PARTNERSHIP]: [UserRole.CLUB],
       // reportTrack : where { role: ADMIN }
       [NotificationType.TRACK_REPORT]: [UserRole.ADMIN],
+      // Destinataire = correction.proposedById, aucun filtre de rôle.
+      [NotificationType.TRACK_CORRECTION_DECISION]: [
+        UserRole.LICENSEE,
+        UserRole.CLUB,
+        UserRole.STAFF,
+        UserRole.ADMIN,
+      ],
       // Chacun déclenche son propre diagnostic (type non réglable de toute façon).
       [NotificationType.DIAGNOSTIC_TEST]: [
         UserRole.LICENSEE,
@@ -160,6 +182,7 @@ describe("catalogue des notifications", () => {
         NotificationType.REGISTRATION_STATUS,
         NotificationType.COMPETITION_RESULTS,
         NotificationType.NEW_COMPETITION,
+        NotificationType.TRACK_CORRECTION_DECISION,
       ]);
       // Sous-suite de l'ordre global, jamais une réorganisation.
       expect(forLicensee).toEqual(

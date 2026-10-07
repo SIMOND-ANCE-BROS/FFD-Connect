@@ -3,6 +3,7 @@ import { render } from "@testing-library/react-native";
 import React from "react";
 import { useTheme } from "../../../../context/ThemeContext";
 import { usePerformanceEngine } from "../../hooks/usePerformanceEngine";
+import { usePerformanceStore } from "../../../../stores/performance.store";
 import { PerformancePlayerScreen } from "../PerformancePlayerScreen";
 
 // Mock dependencies
@@ -50,6 +51,13 @@ describe("PerformancePlayerScreen", () => {
       {
         heatIndex: 1,
         totalHeats: 5,
+        roundIndex: 1,
+        totalRounds: 2,
+        roundType: "Round" as const,
+        category: "Latin" as const,
+        dancesInRound: 2,
+        danceIndex: 0,
+        announcementText: "Samba !",
         style: "Samba",
         isPaso: false,
         announcementPath: "/path/to/audio.mp3",
@@ -65,6 +73,13 @@ describe("PerformancePlayerScreen", () => {
       {
         heatIndex: 2,
         totalHeats: 5,
+        roundIndex: 1,
+        totalRounds: 2,
+        roundType: "Round" as const,
+        category: "Latin" as const,
+        dancesInRound: 2,
+        danceIndex: 1,
+        announcementText: "Cha !",
         style: "Cha-Cha-Cha",
         isPaso: false,
         announcementPath: "/path/to/audio2.mp3",
@@ -81,6 +96,8 @@ describe("PerformancePlayerScreen", () => {
     currentDanceIndex: 0,
     timeRemaining: 90,
     activePhase: "dance" as const,
+    loadingProgress: null,
+    isAnnouncing: false,
     togglePlayPause: jest.fn(),
     nextDance: jest.fn(),
     stopPerformance: jest.fn(),
@@ -186,6 +203,28 @@ describe("PerformancePlayerScreen", () => {
     });
   });
 
+  describe("Leaving the screen stops the engine", () => {
+    it.each(["break", "playing", "paused"] as const)(
+      "stops the competition on unmount while %s (swipe-back, reset…)",
+      async (status) => {
+        usePerformanceStore.getState().setStatus(status);
+        const { unmount } = await render(<PerformancePlayerScreen />);
+        await unmount();
+        expect(mockPerformanceData.stopPerformance).toHaveBeenCalled();
+      },
+    );
+
+    it.each(["idle", "finished"] as const)(
+      "does not stop again when already %s",
+      async (status) => {
+        usePerformanceStore.getState().setStatus(status);
+        const { unmount } = await render(<PerformancePlayerScreen />);
+        await unmount();
+        expect(mockPerformanceData.stopPerformance).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   describe("Auto-exit on Finish", () => {
     it("should navigate back when status is finished", async () => {
       // Arrange
@@ -207,11 +246,16 @@ describe("PerformancePlayerScreen", () => {
   describe("UI Rendering", () => {
     it("should display current heat information", async () => {
       // Act
-      const { getByText } = await render(<PerformancePlayerScreen />);
+      const { getByText, getByTestId } = await render(
+        <PerformancePlayerScreen />,
+      );
 
       // Assert
-      expect(getByText("1/5 HEAT")).toBeTruthy();
-      expect(getByText("SAMBA")).toBeTruthy(); // Style is uppercase in header chip
+      expect(getByText("PASSAGE 1/5")).toBeTruthy();
+      expect(getByText("TOUR 1/2")).toBeTruthy();
+      expect(getByTestId("performance-player-context")).toHaveTextContent(
+        "Tour 1 · Latines · Samba · Passage 1/5",
+      );
     });
 
     it("should display current dance style", async () => {
@@ -235,7 +279,34 @@ describe("PerformancePlayerScreen", () => {
 
       // Assert
       expect(getByText("PAUSE")).toBeTruthy();
-      expect(getByText(/Suivant :/)).toBeTruthy();
+      expect(
+        getByText("Suivant : Tour 1 · Latines · Cha-cha-cha · Passage 2/5"),
+      ).toBeTruthy();
+    });
+
+    it("shows that the announcement is being spoken", async () => {
+      mockUsePerformance.mockReturnValue({
+        ...mockPerformanceData,
+        activePhase: "break",
+        isAnnouncing: true,
+        timeRemaining: 0,
+      });
+      const { getByText } = await render(<PerformancePlayerScreen />);
+      expect(getByText("Annonce en cours…")).toBeTruthy();
+    });
+
+    it("shows FINALE for a final round", async () => {
+      mockUsePerformance.mockReturnValue({
+        ...mockPerformanceData,
+        playlist: mockPerformanceData.playlist.map((i) => ({
+          ...i,
+          roundType: "Final" as const,
+          totalHeats: 1,
+          heatIndex: 1,
+        })),
+      });
+      const { getByText } = await render(<PerformancePlayerScreen />);
+      expect(getByText("FINALE")).toBeTruthy();
     });
   });
 

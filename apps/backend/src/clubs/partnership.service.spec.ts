@@ -18,6 +18,13 @@ type MockPrisma = DeepMockProxy<PrismaClient>;
 
 const mockNotifications = {
   createForUser: jest.fn().mockResolvedValue(undefined),
+  // Deux chemins coexistent À DESSEIN (#38) : `sendToUsers` quand la
+  // notification appelle une action ou annonce une décision subie,
+  // `createManyForUsers` quand elle ne fait qu'informer — le téléphone ne
+  // vibre alors pas, la cloche suffit.
+  createManyForUsers: jest.fn().mockResolvedValue({ count: 0 }),
+  sendToUser: jest.fn(),
+  sendToUsers: jest.fn(),
 };
 
 const makeUser = (overrides: Record<string, unknown> = {}) => ({

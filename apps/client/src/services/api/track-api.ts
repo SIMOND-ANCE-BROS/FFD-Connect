@@ -1,21 +1,9 @@
+import { tracksControllerFindAmbiance } from "../../api/generated";
 import { getAccessToken } from "../../api/tokenStore";
+import type { Track } from "../../features/player/services/TrackRepository";
 import { BACKEND_URL } from "../../config";
 import { ERROR_MESSAGES } from "../../constants/errorMessages";
-import {
-  httpDelete,
-  httpGet,
-  httpPatch,
-  httpPost,
-} from "../../utils/httpInterceptor";
-
-/** Motifs de signalement d'un problème sur une piste (miroir du backend). */
-export type ReportTrackReason =
-  | "TITLE"
-  | "ARTIST"
-  | "DANCE"
-  | "MPM"
-  | "PASO_CLASH"
-  | "OTHER";
+import { httpDelete, httpGet, httpPatch } from "../../utils/httpInterceptor";
 
 async function authHeaders(): Promise<Record<string, string>> {
   try {
@@ -27,6 +15,29 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 export const TrackApi = {
+  /**
+   * Pistes « Ambiance » (musique de pause du mode compétition). Exclues de
+   * GET /tracks, servies par GET /tracks/ambiance (client OpenAPI généré) avec
+   * la même forme d'item, ramenée ici au type `Track` de la bibliothèque.
+   */
+  async getAmbianceTracks(): Promise<Track[]> {
+    const { data, error } = await tracksControllerFindAmbiance();
+    if (error) {
+      throw new Error(ERROR_MESSAGES.LOADING_FAILED);
+    }
+    return data.map((t) => ({
+      id: t.id,
+      title: t.title,
+      artist: t.artist,
+      filename: t.filename,
+      bpm: t.bpm,
+      style: t.style ?? undefined,
+      artwork: t.artwork ?? undefined,
+      titleMasked: t.titleMasked,
+      clashTimecodes: t.clashTimecodes,
+    }));
+  },
+
   async getTrack(trackId: string): Promise<{
     id: string;
     title: string;
@@ -72,25 +83,5 @@ export const TrackApi = {
       errorMessage: ERROR_MESSAGES.OPERATION_FAILED,
       logErrors: true,
     });
-  },
-
-  /**
-   * Signale un problème sur une piste (tout utilisateur authentifié).
-   * Le backend notifie chaque administrateur.
-   */
-  async reportTrack(
-    trackId: string,
-    reason: ReportTrackReason,
-    message?: string,
-  ): Promise<void> {
-    await httpPost(
-      `${BACKEND_URL}/tracks/${trackId}/report`,
-      { reason, message },
-      {
-        headers: await authHeaders(),
-        errorMessage: ERROR_MESSAGES.OPERATION_FAILED,
-        logErrors: true,
-      },
-    );
   },
 };

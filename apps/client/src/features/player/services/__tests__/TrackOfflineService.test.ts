@@ -7,8 +7,10 @@ import {
   deleteAsync,
   downloadAsync,
   getInfoAsync,
+  moveAsync,
 } from "expo-file-system/legacy";
 import {
+  downloadToFile,
   getDownloadedSet,
   localTrackUri,
   syncFavoriteDownloads,
@@ -19,11 +21,14 @@ jest.mock("expo-file-system/legacy", () => ({
   getInfoAsync: jest.fn(),
   downloadAsync: jest.fn(),
   deleteAsync: jest.fn().mockResolvedValue(undefined),
+  moveAsync: jest.fn().mockResolvedValue(undefined),
 }));
 
 const getInfo = getInfoAsync as jest.Mock;
 const download = downloadAsync as jest.Mock;
 const del = deleteAsync as jest.Mock;
+const move = moveAsync as jest.Mock;
+const PART = /\.[0-9a-z]+\.part$/;
 
 const REGISTRY_KEY = "offline_favorite_files_v1";
 
@@ -56,10 +61,15 @@ describe("syncFavoriteDownloads", () => {
   it("télécharge les favoris manquants et les enregistre au registre", async () => {
     await syncFavoriteDownloads([samba, rumba]);
 
-    expect(download).toHaveBeenCalledWith(
-      samba.remoteUrl,
-      localTrackUri("samba.mp3"),
-    );
+    const partUri = download.mock.calls[0][1] as string;
+    expect(download).toHaveBeenCalledWith(samba.remoteUrl, partUri);
+    expect(partUri.startsWith(localTrackUri("samba.mp3"))).toBe(true);
+    expect(partUri).toMatch(PART);
+    // Déplacé sur le chemin final seulement une fois complet.
+    expect(move).toHaveBeenCalledWith({
+      from: partUri,
+      to: localTrackUri("samba.mp3"),
+    });
     expect(download).toHaveBeenCalledTimes(1); // pas les non-favoris
     expect(JSON.parse((await AsyncStorage.getItem(REGISTRY_KEY))!)).toEqual([
       "samba.mp3",
@@ -105,10 +115,30 @@ describe("syncFavoriteDownloads", () => {
 
     await syncFavoriteDownloads([samba]);
 
-    expect(del).toHaveBeenCalledWith(localTrackUri("samba.mp3"), {
-      idempotent: true,
-    });
+    const partUri = download.mock.calls[0][1] as string;
+    expect(del).toHaveBeenCalledWith(partUri, { idempotent: true });
+    expect(move).not.toHaveBeenCalled();
     expect(JSON.parse((await AsyncStorage.getItem(REGISTRY_KEY))!)).toEqual([]);
+  });
+});
+
+describe("downloadToFile (.part)", () => {
+  it("purges the .part and never touches the final file on a network error", async () => {
+    download.mockRejectedValueOnce(new Error("socket closed"));
+    await expect(
+      downloadToFile("https://x/a.mp3", "file:///c/a.mp3"),
+    ).rejects.toThrow("socket closed");
+    const partUri = download.mock.calls[0][1] as string;
+    expect(partUri).toMatch(PART);
+    expect(del).toHaveBeenCalledWith(partUri, { idempotent: true });
+    expect(del).not.toHaveBeenCalledWith("file:///c/a.mp3", expect.anything());
+    expect(move).not.toHaveBeenCalled();
+  });
+
+  it("uses a unique .part per call (stop + immediate restart can't collide)", async () => {
+    await downloadToFile("https://x/a.mp3", "file:///c/a.mp3");
+    await downloadToFile("https://x/a.mp3", "file:///c/a.mp3");
+    expect(download.mock.calls[0][1]).not.toBe(download.mock.calls[1][1]);
   });
 });
 

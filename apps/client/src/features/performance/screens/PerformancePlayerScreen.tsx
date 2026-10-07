@@ -1,6 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
 import { Pause, Play, X } from "lucide-react-native";
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   Alert,
   BackHandler,
@@ -14,6 +14,8 @@ import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
 import { PlaylistItem } from "../context/PerformanceContext";
 import { usePerformanceEngine } from "../hooks/usePerformanceEngine";
+import { usePerformanceStore } from "../../../stores/performance.store";
+import { danceLabel, describeItem } from "../utils/competitionProgram";
 
 export const PerformancePlayerScreen = () => {
   const { theme: currentTheme, isDark } = useTheme();
@@ -23,6 +25,7 @@ export const PerformancePlayerScreen = () => {
     currentDanceIndex,
     timeRemaining,
     activePhase,
+    isAnnouncing,
     togglePlayPause,
     stopPerformance,
   } = usePerformanceEngine();
@@ -41,6 +44,21 @@ export const PerformancePlayerScreen = () => {
       },
     ]);
   }, [stopPerformance, navigation]);
+
+  // Leaving this screen by ANY path (swipe, deep link, reset…) stops the
+  // competition: the engine is a module singleton and would otherwise keep
+  // playing with no screen to control it. Exit/finish already stop it.
+  const stopRef = useRef(stopPerformance);
+  stopRef.current = stopPerformance;
+  useEffect(
+    () => () => {
+      const current = usePerformanceStore.getState().status;
+      if (current !== "idle" && current !== "finished") {
+        stopRef.current();
+      }
+    },
+    [],
+  );
 
   // Prevent back button
   useEffect(() => {
@@ -109,11 +127,13 @@ export const PerformancePlayerScreen = () => {
           >
             <AppText variant="caption" weight="bold" color={currentTheme.text}>
               {hasCurrentItem && currentItem
-                ? `${currentItem.heatIndex}/${currentItem.totalHeats} HEAT`
+                ? currentItem.roundType === "Final"
+                  ? "FINALE"
+                  : `PASSAGE ${currentItem.heatIndex}/${currentItem.totalHeats}`
                 : "PRÉPARATION"}
             </AppText>
           </View>
-          {hasCurrentItem && (
+          {hasCurrentItem && currentItem && (
             <View
               style={[
                 styles.headerChip,
@@ -125,14 +145,24 @@ export const PerformancePlayerScreen = () => {
                 weight="bold"
                 color={currentTheme.text}
               >
-                {currentItem?.isPaso
-                  ? "PASO DOBLE"
-                  : currentItem?.style.toUpperCase()}
+                {`TOUR ${currentItem.roundIndex}/${currentItem.totalRounds}`}
               </AppText>
             </View>
           )}
         </View>
       </View>
+
+      {hasCurrentItem && currentItem && (
+        <AppText
+          variant="body"
+          weight="600"
+          color={currentTheme.textSecondary}
+          style={styles.contextLine}
+          testID="performance-player-context"
+        >
+          {describeItem(currentItem)}
+        </AppText>
+      )}
 
       {/* Main Visual */}
       <View style={styles.mainContent}>
@@ -159,7 +189,11 @@ export const PerformancePlayerScreen = () => {
               color={currentTheme.textSecondary}
               style={styles.preparationSubtext}
             >
-              Appuyez sur Play pour commencer
+              {isAnnouncing
+                ? "Annonce en cours…"
+                : nextItem
+                  ? `Premier : ${describeItem(nextItem)}`
+                  : "Préparez-vous"}
             </AppText>
           </View>
         ) : isBreak ? (
@@ -185,10 +219,9 @@ export const PerformancePlayerScreen = () => {
               color={currentTheme.textSecondary}
               style={styles.pauseSubtext}
             >
-              Suivant :{" "}
-              {currentDanceIndex + 1 < playlist.length
-                ? `${nextItem?.style}`
-                : "Fin"}
+              {isAnnouncing
+                ? "Annonce en cours…"
+                : `Suivant : ${nextItem ? describeItem(nextItem) : "Fin"}`}
             </AppText>
           </View>
         ) : (
@@ -207,7 +240,7 @@ export const PerformancePlayerScreen = () => {
               color={currentTheme.text}
               style={styles.inProgressSubtext}
             >
-              {currentItem?.style}
+              {currentItem ? danceLabel(currentItem.style) : ""}
             </AppText>
             <AppText
               variant="h1"
@@ -275,6 +308,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
+  },
+  contextLine: {
+    textAlign: "center",
+    paddingHorizontal: 20,
   },
   headerChips: {
     flexDirection: "row",

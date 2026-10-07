@@ -193,6 +193,8 @@ export class PartnershipService {
         title: "Nouveau couple inter-club à valider",
         body,
         partnershipId: partnership.id,
+        // Appelle une action du club partenaire.
+        push: true,
       });
     }
 
@@ -271,6 +273,8 @@ export class PartnershipService {
             : "Un couple";
         await this.notifyClubOrganizersForClub(otherClub, {
           type: "partnership_interclub_ended",
+          // Information, pas action : elle peut attendre l'ouverture de l'app.
+          push: false,
           title: "Couple inter-club clôturé",
           body: `${pLabel} : le couple inter-club a été clôturé par l'autre club.`,
           partnershipId: updated.id,
@@ -340,6 +344,9 @@ export class PartnershipService {
             p.secondaryClub?.name ?? "partenaire"
           } a ${decisionText} le couple inter-club.`,
           partnershipId: p.id,
+          // Décision prise par le club partenaire sur un couple du club : subie,
+          // et elle conditionne la suite (inscriptions possibles ou non).
+          push: true,
         },
       );
     }
@@ -354,6 +361,12 @@ export class PartnershipService {
       title: string;
       body: string;
       partnershipId: string;
+      /**
+       * `true` quand la notification appelle une action ou annonce une décision
+       * subie, `false` quand elle ne fait qu'informer. Décidé au point d'appel :
+       * c'est là qu'on sait ce que l'événement représente pour le destinataire.
+       */
+      push: boolean;
     },
   ): Promise<void> {
     const organizers = await this.prisma.user.findMany({
@@ -377,16 +390,24 @@ export class PartnershipService {
       type: notification.type,
       partnershipId: notification.partnershipId,
     };
-    await Promise.all(
-      organizers.map((o) =>
-        this.notificationsService.createForUser(
-          o.id,
-          NotificationType.CLUB_PARTNERSHIP,
-          notification.title,
-          notification.body,
-          data,
-        ),
-      ),
+    const recipients = organizers.map((organizer) => organizer.id);
+    if (notification.push) {
+      await this.notificationsService.sendToUsers(
+        recipients,
+        NotificationType.CLUB_PARTNERSHIP,
+        notification.title,
+        notification.body,
+        data,
+      );
+      return;
+    }
+    // Sans push : la cloche suffit, le téléphone ne vibre pas.
+    await this.notificationsService.createManyForUsers(
+      recipients,
+      NotificationType.CLUB_PARTNERSHIP,
+      notification.title,
+      notification.body,
+      data,
     );
   }
 }

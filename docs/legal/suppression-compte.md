@@ -55,6 +55,8 @@ propre ou relèvent d'une obligation légale :
   l'application, sans plus aucun lien avec un compte.
 - **Musiques ajoutées à la bibliothèque partagée** : elles restent disponibles pour
   les autres utilisateurs, **sans indication** de la personne qui les a ajoutées.
+- **Propositions de correction de musiques** : conservées **sans lien** avec votre
+  compte, commentaire effacé.
 - **Inscriptions de vos partenaires** : si vous étiez inscrit·e comme partenaire
   d'une autre personne, son inscription est conservée, mais votre nom en est retiré.
 - **Paiements** : les transactions réalisées via HelloAsso sont conservées par

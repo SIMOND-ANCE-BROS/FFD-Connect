@@ -4,6 +4,7 @@ import { join } from "path";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { PrismaModule } from "./prisma/prisma.module";
+import { TrackCorrectionsModule } from "./track-corrections/track-corrections.module";
 import { TracksModule } from "./tracks/tracks.module";
 
 import { BullModule } from "@nestjs/bullmq";
@@ -76,6 +77,7 @@ import { WdsfModule } from "./wdsf/wdsf.module";
     StorageModule,
     AuthModule,
     TracksModule,
+    TrackCorrectionsModule,
     TtsModule,
     PrismaModule,
     ServeStaticModule.forRoot({

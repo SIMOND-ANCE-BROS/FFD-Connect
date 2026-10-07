@@ -11,41 +11,25 @@ logger.warn(
   "PerformanceContext.web.tsx loaded - This is a stub implementation for web",
 );
 
-import { TrackData, usePlayer } from "../../player/context";
+import { usePlayer } from "../../player/context";
+import {
+  createDefaultConfig,
+  type LoadingProgress,
+  type PerformanceConfig,
+  type PlaylistItem,
+} from "../../../stores/performance.store";
 import { useLibrary } from "../../player/context/LibraryContext";
 
-export type Category = "Standard" | "Latin";
-export type Mode = "Round" | "Final";
-
-export interface PerformanceConfig {
-  mode: Mode;
-  category: Category;
-  selectedDances: string[];
-  duration: number;
-  pauseDuration: number;
-  pasoClashes: 2 | 3;
-  numberOfHeats: number;
-}
-
-export interface PlaylistItem {
-  track: TrackData;
-  style: string;
-  duration: number;
-  isPaso: boolean;
-  heatIndex: number;
-  totalHeats: number;
-  announcementPath?: string;
-}
-
-const defaultConfig: PerformanceConfig = {
-  mode: "Round",
-  category: "Latin",
-  selectedDances: ["Samba", "Cha-Cha-Cha", "Rumba", "Paso Doble", "Jive"],
-  duration: 90,
-  pauseDuration: 15,
-  pasoClashes: 2,
-  numberOfHeats: 1,
-};
+// Types are shared with native (single source of truth in the store).
+export type {
+  Category,
+  LoadingProgress,
+  Mode,
+  PerformanceConfig,
+  PlaylistItem,
+  RoundConfig,
+  RoundType,
+} from "../../../stores/performance.store";
 
 const PerformanceContext = createContext<
   | {
@@ -56,6 +40,8 @@ const PerformanceContext = createContext<
       status: "idle" | "playing" | "paused" | "finished" | "break" | "loading";
       activePhase: "dance" | "break";
       timeRemaining: number;
+      loadingProgress: LoadingProgress | null;
+      isAnnouncing: boolean;
       generatePlaylist: () => void;
       startPerformance: () => Promise<boolean>;
       stopPerformance: () => void;
@@ -71,7 +57,7 @@ export const PerformanceProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   useLibrary(); // Ensure provider is mounted
   usePlayer();
-  const [config, setConfig] = useState<PerformanceConfig>(defaultConfig);
+  const [config, setConfig] = useState<PerformanceConfig>(createDefaultConfig);
   const [playlist] = useState<PlaylistItem[]>([]);
   const [currentDanceIndex] = useState(0);
   const [status] = useState<
@@ -88,6 +74,8 @@ export const PerformanceProvider: React.FC<{ children: React.ReactNode }> = ({
     status,
     activePhase,
     timeRemaining,
+    loadingProgress: null,
+    isAnnouncing: false,
     generatePlaylist: () => {},
     startPerformance: () => Promise.resolve(false),
     stopPerformance: () => {},

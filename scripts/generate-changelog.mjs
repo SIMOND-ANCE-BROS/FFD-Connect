@@ -9,12 +9,17 @@
  * Usage :
  *   node scripts/generate-changelog.mjs [--since <ref>] [--to <ref>]
  *                                       [--version <x.y.z>] [--format <fmt>]
+ *                                       [--platform ios|android]
  *
  *   --since    Réf de départ (exclue). Défaut : dernier tag `beta-*`, sinon
  *              dernier tag, sinon le premier commit du dépôt.
  *   --to       Réf de fin (incluse). Défaut : HEAD.
  *   --version  Étiquette de version affichée en tête. Défaut : date du jour.
  *   --format   markdown (défaut) | testflight | json
+ *   --platform Base = dernier tag de CETTE plateforme (`beta-*-<platform>-*`) ou
+ *              d'une OTA (`beta-*-ota-*`, commune aux deux) : une promotion
+ *              iOS seule ne doit pas déplacer la base des notes Android, et
+ *              inversement. Sans tag de la plateforme, repli sur `beta-*`.
  *
  * `markdown`   → notes pour la GitHub Release / relecture.
  * `testflight` → texte brut compact pour le champ « What to Test » (TestFlight).
@@ -49,20 +54,47 @@ function parseArgs(argv) {
 
 /** Exécute git avec des arguments passés en tableau (pas de shell). */
 function git(gitArgs) {
-  return execFileSync('git', gitArgs, { encoding: 'utf8' }).trim();
+  // stderr capturé : un `describe` sans tag correspondant est un cas prévu
+  // (repli), pas une erreur à afficher.
+  return execFileSync('git', gitArgs, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
 }
 
-/** Dernier tag beta, sinon dernier tag, sinon premier commit (racine). */
-function defaultSince() {
+/**
+ * Dernier tag beta (de la plateforme si donnée), sinon dernier tag beta, sinon
+ * dernier tag, sinon premier commit (racine).
+ * Cherché depuis le PARENT de `to` : un tag déjà posé sur `to` lui-même (reprise
+ * d'un build déjà tagué, `action: resume`) donnerait sinon des notes vides.
+ */
+function defaultSince(to, platform) {
+  const from = `${to}^`;
+  if (platform) {
+    try {
+      return git([
+        'describe',
+        '--tags',
+        '--match',
+        `beta-*-${platform}-*`,
+        '--match',
+        'beta-*-ota-*',
+        '--abbrev=0',
+        from,
+      ]);
+    } catch {
+      /* pas encore de tag pour cette plateforme */
+    }
+  }
   try {
-    return git(['describe', '--tags', '--match', 'beta-*', '--abbrev=0']);
+    return git(['describe', '--tags', '--match', 'beta-*', '--abbrev=0', from]);
   } catch {
     /* pas de tag beta */
   }
   try {
-    return git(['describe', '--tags', '--abbrev=0']);
+    return git(['describe', '--tags', '--abbrev=0', from]);
   } catch {
-    const roots = git(['rev-list', '--max-parents=0', 'HEAD']).split('\n');
+    const roots = git(['rev-list', '--max-parents=0', to]).split('\n');
     return roots[roots.length - 1];
   }
 }
@@ -135,7 +167,10 @@ function render(sections, version, date, format) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const to = args.to || 'HEAD';
-  const since = args.since || defaultSince();
+  if (args.platform && !['ios', 'android'].includes(args.platform)) {
+    throw new Error(`--platform : ios ou android attendu, reçu « ${args.platform} »`);
+  }
+  const since = args.since || defaultSince(to, args.platform);
   const version = args.version || `beta ${new Date().toISOString().slice(0, 10)}`;
   const date = new Date().toISOString().slice(0, 10);
   const format = args.format || 'markdown';

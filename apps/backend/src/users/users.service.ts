@@ -11,10 +11,12 @@ import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
+import { publicTrackName } from "../tracks/track-visibility.util";
 import {
   deviceTokenExportSelect,
   licenseRenewalDocumentFileSelect,
   notificationPreferenceExportSelect,
+  trackCorrectionExportSelect,
 } from "../utils/prisma-selects";
 
 /**
@@ -409,15 +411,34 @@ export class UsersService {
           orderBy: { updatedAt: "desc" },
           take: 50,
         },
+        // Propositions de correction de musiques : le contenu soumis (valeurs,
+        // commentaire) et la décision, sans l'identité de l'administrateur.
+        trackCorrectionsProposed: {
+          select: trackCorrectionExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 500,
+        },
       },
     });
     if (!user) {
       throw new NotFoundException("Utilisateur introuvable");
     }
+    // Nom des pistes visées par les propositions : filtré comme partout côté
+    // non-admin. L'export ne doit pas démasquer une piste modérée (titre
+    // masqué ou piste blacklistée) que l'utilisateur a pu cibler.
+    const { trackCorrectionsProposed, ...rest } = user;
     return {
       format: "ffd-connect-export-v1",
       exportedAt: new Date().toISOString(),
-      data: user,
+      data: {
+        ...rest,
+        trackCorrectionsProposed: trackCorrectionsProposed.map(
+          ({ track, ...correction }) => ({
+            ...correction,
+            track: publicTrackName(track),
+          }),
+        ),
+      },
     };
   }
 
@@ -429,7 +450,11 @@ export class UsersService {
    * Cascades Prisma (schéma) : refreshTokens, passwordResetTokens,
    * deviceTokens, notificationPrefs, partnerships, soloTeamMemberships,
    * licenseRenewalRequests (et leurs licenseRenewalDocuments).
-   * SetNull : licence (reste propriété fédération), tracks soumis.
+   * SetNull : licence (reste propriété fédération), tracks soumis,
+   * propositions de correction de musiques (auteur ET relecteur).
+   * Propositions de correction de l'utilisateur : commentaire libre effacé
+   * explicitement (texte potentiellement identifiant) ; les valeurs proposées
+   * (titre, MPM…) portent sur la musique, pas sur la personne, et restent.
    * Inscriptions d'autrui en tant que partenaire : anonymisées explicitement
    * (partnerUserId ET partnerName, copie du nom complet → null ; null est
    * déjà géré partout à l'affichage).
@@ -478,6 +503,12 @@ export class UsersService {
       this.prisma.registration.updateMany({
         where: { partnerUserId: userId },
         data: { partnerUserId: null, partnerName: null },
+      }),
+      // Le SetNull de proposedById laisserait le commentaire libre, qui peut
+      // identifier son auteur : il est effacé avant la suppression du compte.
+      this.prisma.trackCorrection.updateMany({
+        where: { proposedById: userId },
+        data: { message: null },
       }),
       // BugReport.userId n'a pas de FK (report.prisma) : suppression explicite.
       this.prisma.bugReport.deleteMany({ where: { userId } }),

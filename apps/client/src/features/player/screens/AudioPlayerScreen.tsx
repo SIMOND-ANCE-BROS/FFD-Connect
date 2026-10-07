@@ -1,6 +1,11 @@
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { ChevronDown, ListMusic, SlidersHorizontal } from "lucide-react-native";
-import React, { useState } from "react";
+import {
+  ChevronDown,
+  Flag,
+  ListMusic,
+  SlidersHorizontal,
+} from "lucide-react-native";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   SafeAreaView,
@@ -12,7 +17,10 @@ import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
 import { audioPlayerStyles as styles } from "../components/audio-player.styles";
-import { PasoClashEditorModal } from "../components/PasoClashEditorModal";
+import {
+  PasoClashEditorModal,
+  type PasoClashEditorMode,
+} from "../components/PasoClashEditorModal";
 import { PlayerArtwork } from "../components/PlayerArtwork";
 import { PlayerBpmControls } from "../components/PlayerBpmControls";
 import { PlayerControls } from "../components/PlayerControls";
@@ -23,6 +31,10 @@ import { useAudioPlayerLogic } from "../hooks/useAudioPlayerLogic";
 import { isPasoDoble } from "../utils/pasoClashes";
 import { usePlayerStore } from "../../../stores/player.store";
 import { useAuthStore } from "../../../stores/auth.store";
+import {
+  TrackCorrectionModal,
+  type CorrectableTrack,
+} from "../../track-corrections/components/TrackCorrectionModal";
 
 type AudioPlayerScreenProps = NativeStackScreenProps<
   RootStackParamList,
@@ -32,11 +44,24 @@ type AudioPlayerScreenProps = NativeStackScreenProps<
 export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
   const { theme: currentTheme, isDark } = useTheme();
   const { state, actions } = useAudioPlayerLogic();
-  const { role } = useAuthStore();
+  const { role, isGuest } = useAuthStore();
   const setCurrentTrack = usePlayerStore((s) => s.setCurrentTrack);
-  const [clashEditorVisible, setClashEditorVisible] = useState(false);
-  const canEditClashes =
-    role === "ADMIN" && isPasoDoble(state.currentTrack.style);
+  // Éditeur de clashs : `null` = fermé, sinon le mode dans lequel il s'ouvre.
+  const [clashEditorMode, setClashEditorMode] =
+    useState<PasoClashEditorMode | null>(null);
+  const [correctionVisible, setCorrectionVisible] = useState(false);
+  const isAdmin = role === "ADMIN";
+  // Tout compte connecté peut proposer une correction ; pas un invité.
+  const canPropose = role !== null && role !== "GUEST" && !isGuest;
+  const isPaso = isPasoDoble(state.currentTrack.style);
+  const canEditClashes = isAdmin && isPaso;
+  const canProposeClashes = canPropose && !isAdmin && isPaso;
+
+  const { id, title, artist, style, baseBpm } = state.currentTrack;
+  const correctionTrack = useMemo<CorrectableTrack>(
+    () => ({ id, title, artist, style, bpm: baseBpm }),
+    [id, title, artist, style, baseBpm],
+  );
 
   if (!state.isPlayerReady || state.isLoading) {
     return (
@@ -187,21 +212,53 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
           clashTimecodes={state.currentTrack.clashTimecodes}
         />
 
-        {canEditClashes && (
-          <TouchableOpacity
-            onPress={() => setClashEditorVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Éditer les appels du paso doble"
-            accessibilityHint="Ouvre l'éditeur des timecodes des appels (admin)"
-            testID="paso-edit-clashes-button"
-            style={styles.clashEditButton}
-          >
-            <SlidersHorizontal size={16} color={currentTheme.textSecondary} />
-            <AppText variant="caption" color={currentTheme.textSecondary}>
-              Éditer les appels
-            </AppText>
-          </TouchableOpacity>
-        )}
+        <View style={styles.playerActionsRow}>
+          {canEditClashes && (
+            <TouchableOpacity
+              onPress={() => setClashEditorMode("edit")}
+              accessibilityRole="button"
+              accessibilityLabel="Éditer les appels du paso doble"
+              accessibilityHint="Ouvre l'éditeur des timecodes des appels (admin)"
+              testID="paso-edit-clashes-button"
+              style={styles.clashEditButton}
+            >
+              <SlidersHorizontal size={16} color={currentTheme.textSecondary} />
+              <AppText variant="caption" color={currentTheme.textSecondary}>
+                Éditer les appels
+              </AppText>
+            </TouchableOpacity>
+          )}
+          {canProposeClashes && (
+            <TouchableOpacity
+              onPress={() => setClashEditorMode("propose")}
+              accessibilityRole="button"
+              accessibilityLabel="Proposer les clashs du paso doble"
+              accessibilityHint="Ouvre l'éditeur pour placer les clashs et les proposer aux administrateurs"
+              testID="paso-propose-clashes-button"
+              style={styles.clashEditButton}
+            >
+              <SlidersHorizontal size={16} color={currentTheme.textSecondary} />
+              <AppText variant="caption" color={currentTheme.textSecondary}>
+                Proposer les clashs
+              </AppText>
+            </TouchableOpacity>
+          )}
+          {canPropose && (
+            <TouchableOpacity
+              onPress={() => setCorrectionVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Signaler ou proposer une correction"
+              accessibilityHint="Propose aux administrateurs une correction du titre, de l'artiste, de la danse ou du MPM"
+              testID="player-propose-correction-button"
+              style={styles.clashEditButton}
+            >
+              <Flag size={16} color={currentTheme.textSecondary} />
+              <AppText variant="caption" color={currentTheme.textSecondary}>
+                Signaler / proposer une correction
+              </AppText>
+            </TouchableOpacity>
+          )}
+        </View>
 
         <PlayerControls
           currentTheme={currentTheme}
@@ -227,9 +284,12 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
         removeQueueTrack={actions.removeQueueTrack}
       />
 
-      {canEditClashes && (
+      {/* Monté seulement à l'ouverture : les appels de départ sont calculés à
+          partir de la durée connue à ce moment-là. */}
+      {clashEditorMode !== null && (canEditClashes || canProposeClashes) && (
         <PasoClashEditorModal
-          visible={clashEditorVisible}
+          visible
+          mode={clashEditorMode}
           trackId={state.currentTrack.id}
           style={state.currentTrack.style}
           clashTimecodes={state.currentTrack.clashTimecodes}
@@ -240,11 +300,27 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
           onSeek={(s) => {
             actions.seekTo(s).catch(() => {});
           }}
-          onClose={() => setClashEditorVisible(false)}
+          onClose={() => setClashEditorMode(null)}
           onSaved={(clashes) => {
             // Rafraîchit les marqueurs du lecteur sans recharger.
             setCurrentTrack({ ...state.currentTrack, clashTimecodes: clashes });
           }}
+        />
+      )}
+
+      {correctionVisible && (
+        <TrackCorrectionModal
+          visible
+          onClose={() => setCorrectionVisible(false)}
+          track={correctionTrack}
+          onProposeClashes={
+            canProposeClashes || canEditClashes
+              ? () => {
+                  setCorrectionVisible(false);
+                  setClashEditorMode(canEditClashes ? "edit" : "propose");
+                }
+              : undefined
+          }
         />
       )}
     </SafeAreaView>

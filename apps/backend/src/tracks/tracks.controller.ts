@@ -8,7 +8,6 @@ import {
   NotFoundException,
   Param,
   Patch,
-  Post,
   Query,
   Req,
   Res,
@@ -18,6 +17,7 @@ import {
 import {
   ApiBearerAuth,
   ApiBody,
+  ApiOkResponse,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -35,7 +35,7 @@ import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { BlobStorageService } from "../storage/blob-storage.service";
-import { ReportTrackDto } from "./dto/report-track.dto";
+import { TrackResponseDto } from "./dto/track-response.dto";
 import {
   buildContentDisposition,
   contentTypeForFilename,
@@ -66,6 +66,23 @@ export class TracksController {
     @Req() req: RequestWithUser,
   ) {
     return this.tracksService.findAll(pagination, req.user.role === "ADMIN");
+  }
+
+  // Déclaré AVANT @Get(":id") : sinon "ambiance" serait capturé comme un id.
+  @Get("ambiance")
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Récupère les musiques d'ambiance",
+    description:
+      "Musiques de pause du mode compétition : pistes READY non blacklistées dont le style ou l'artiste vaut « Ambiance » (insensible à la casse). Exclues de GET /tracks. Au plus 50 pistes, plus récentes d'abord.",
+  })
+  @ApiOkResponse({
+    description: "Liste des musiques d'ambiance",
+    type: [TrackResponseDto],
+  })
+  async findAmbiance(@Req() req: RequestWithUser): Promise<TrackResponseDto[]> {
+    return this.tracksService.findAmbiance(req.user.role === "ADMIN");
   }
 
   @Get("download/:token")
@@ -145,32 +162,6 @@ export class TracksController {
       dto,
     );
     return this.tracksService.findOne(id, req.user.role === "ADMIN");
-  }
-
-  @Post(":id/report")
-  @UseGuards(JwtAuthGuard)
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiBearerAuth("JWT-auth")
-  @ApiOperation({
-    summary: "Signale un problème sur une musique",
-    description:
-      "Ouvert à tout utilisateur authentifié. Notifie chaque administrateur du motif (titre, artiste, danse, MPM, clash paso doble, autre) et d'un éventuel message.",
-  })
-  @ApiParam({ name: "id", description: "UUID de la musique" })
-  @ApiBody({ type: ReportTrackDto })
-  @ApiResponse({ status: 204, description: "Signalement envoyé" })
-  @ApiResponse({ status: 404, description: "Musique non trouvée" })
-  async report(
-    @Param("id") id: string,
-    @Body() dto: ReportTrackDto,
-    @Req() req: RequestWithUser,
-  ): Promise<void> {
-    await this.tracksService.reportTrack(
-      id,
-      dto.reason,
-      dto.message,
-      req.user.userId,
-    );
   }
 
   @Delete(":id")
