@@ -70,8 +70,8 @@ export function UsersPage() {
     <Stack>
       <Group justify="space-between">
         <Title order={2}>Inscrits</Title>
-        <Button component={Link} to="/club-accounts/new">
-          Nouveau compte Club
+        <Button component={Link} to="/users/new">
+          Nouvel utilisateur
         </Button>
       </Group>
       <Group grow>
