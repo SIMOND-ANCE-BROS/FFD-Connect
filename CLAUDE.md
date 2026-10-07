@@ -103,6 +103,7 @@ The backend runs on Azure Container Apps with `minReplicas=0` (see `docs/exploit
 ## Sensitive areas
 
 - `src/auth/` — Security-critical. 94% coverage threshold. Tokens hashed with SHA-256 in DB.
+- `src/auth/account-status.ts` + `JwtStrategy` — every authenticated request re-reads the account status (disabled user, or `CLUB` account of a disabled club → 401). An e2e that boots the real `JwtStrategy` with a hand-written Prisma mock must mock `user.findUnique` for that lookup.
 - `src/payment/` — HelloAsso webhooks. DTO validation required on all endpoints.
 - `src/main.ts` — Swagger hidden in production. CORS_ORIGINS mandatory in production (fatal exit).
 - `prisma/schema/` — After schema changes: run `prisma migrate dev`, verify indexes, update Swagger via `pnpm api:sync`.
