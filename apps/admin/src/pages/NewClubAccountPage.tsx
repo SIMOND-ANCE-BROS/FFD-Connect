@@ -7,6 +7,8 @@ import { useNavigate } from 'react-router';
 import { adminControllerCreateClubAccount } from '../api/generated/sdk.gen';
 import { clubsQuery } from '../api/queries';
 
+const UNAVAILABLE = 'Serveur indisponible, réessayez dans un instant.';
+
 type Mode = 'existing' | 'new';
 
 interface FormError {
@@ -62,9 +64,10 @@ export function NewClubAccountPage() {
         lastName: v.lastName.trim(),
         ...(mode === 'existing' ? { clubId: v.clubId as string } : { clubName: v.clubName.trim() }),
       };
-      const { data, error: apiError } = await adminControllerCreateClubAccount({ body });
+      const { data, error: apiError, response } = await adminControllerCreateClubAccount({ body });
       if (!data) {
-        setError(toFormError(apiError));
+        // The generated client never throws: no response means a network failure.
+        setError(response ? toFormError(apiError) : { message: UNAVAILABLE });
         return;
       }
       void qc.invalidateQueries({ queryKey: ['admin'] });
@@ -79,7 +82,7 @@ export function NewClubAccountPage() {
       );
       navigate(`/users/${data.userId}`);
     } catch {
-      setError({ message: 'Serveur indisponible, réessayez dans un instant.' });
+      setError({ message: UNAVAILABLE });
     } finally {
       setSubmitting(false);
     }
@@ -92,10 +95,11 @@ export function NewClubAccountPage() {
   return (
     <Stack maw={520}>
       <Title order={2}>Nouveau compte Club</Title>
+      {clubs.isError && <Alert color="red">Impossible de charger la liste des clubs.</Alert>}
       {error && (
         <Alert color="red">
           {error.message}
-          {error.existingClubId && existingName && (
+          {error.existingClubId && (
             <Button
               size="xs"
               ml="sm"
@@ -103,10 +107,11 @@ export function NewClubAccountPage() {
               onClick={() => {
                 setMode('existing');
                 form.setFieldValue('clubId', error.existingClubId ?? null);
+                if (!existingName) void clubs.refetch();
                 setError(null);
               }}
             >
-              Utiliser « {existingName} »
+              {existingName ? `Utiliser « ${existingName} »` : 'Utiliser le club existant'}
             </Button>
           )}
         </Alert>

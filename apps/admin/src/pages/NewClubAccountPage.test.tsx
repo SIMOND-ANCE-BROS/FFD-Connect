@@ -64,6 +64,7 @@ describe('NewClubAccountPage', () => {
     vi.spyOn(sdk, 'adminControllerCreateClubAccount').mockResolvedValue({
       data: undefined,
       error: { message: 'Un club porte déjà ce nom', existingClubId: 'c1' },
+      response: new Response(null, { status: 409 }),
     } as never);
     renderPage();
     await screen.findByLabelText(/^Email/);
@@ -87,10 +88,40 @@ describe('NewClubAccountPage', () => {
     vi.spyOn(sdk, 'adminControllerCreateClubAccount').mockResolvedValue({
       data: undefined,
       error: { message: 'Email déjà utilisé' },
+      response: new Response(null, { status: 409 }),
     } as never);
     renderPage();
     await fillNewClub('Club Neuf');
     expect(await screen.findByText(/email déjà utilisé/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /utiliser/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the unavailable message on a network failure', async () => {
+    vi.spyOn(sdk, 'adminControllerCreateClubAccount').mockResolvedValue({
+      data: undefined,
+      error: new TypeError('Failed to fetch'),
+      response: undefined,
+    } as never);
+    renderPage();
+    await fillNewClub('Club Neuf');
+    expect(await screen.findByText(/serveur indisponible/i)).toBeInTheDocument();
+  });
+
+  it('still offers the existing club when the clubs list is empty', async () => {
+    vi.spyOn(sdk, 'adminControllerClubs').mockResolvedValue({
+      data: [],
+      error: undefined,
+    } as never);
+    vi.spyOn(sdk, 'adminControllerCreateClubAccount').mockResolvedValue({
+      data: undefined,
+      error: { message: 'Un club porte déjà ce nom', existingClubId: 'c1' },
+      response: new Response(null, { status: 409 }),
+    } as never);
+    renderPage();
+    await fillNewClub('Club A');
+    await userEvent.click(
+      await screen.findByRole('button', { name: /utiliser le club existant/i }),
+    );
+    expect(screen.getByRole('radio', { name: /club existant/i })).toBeChecked();
   });
 });
