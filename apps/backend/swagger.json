@@ -21623,6 +21623,10 @@
             "nullable": true,
             "description": "Désactivation du club rattaché (bloque un compte CLUB)"
           },
+          "createdByAdmin": {
+            "type": "boolean",
+            "description": "Compte créé depuis le back-office (seul cas où l'invitation peut être renvoyée)"
+          },
           "updatedAt": {
             "format": "date-time",
             "type": "string"
@@ -21652,6 +21656,7 @@
           "licenseValidUntil",
           "lastLoginAt",
           "clubDisabledAt",
+          "createdByAdmin",
           "updatedAt"
         ]
       },
@@ -21742,7 +21747,8 @@
         "properties": {
           "confirmEmail": {
             "type": "string",
-            "description": "Email du compte, recopié pour confirmer"
+            "description": "Email du compte, recopié pour confirmer",
+            "maxLength": 254
           }
         },
         "required": ["confirmEmail"]

@@ -33,6 +33,7 @@ const detail = {
   lastLoginAt: null,
   disabledAt: null,
   clubDisabledAt: null,
+  createdByAdmin: true,
 };
 
 function renderPage() {
@@ -158,6 +159,11 @@ describe('UserDetailPage', () => {
   it.each([
     ['an ADMIN account', { role: 'ADMIN' }],
     ['a disabled account', { disabledAt: '2026-10-01T10:00:00.000Z' }],
+    ['a self-registered account', { createdByAdmin: false }],
+    [
+      'a CLUB account of a disabled club',
+      { role: 'CLUB', clubDisabledAt: '2026-10-01T10:00:00.000Z' },
+    ],
   ])('hides the resend button for %s', async (_label, patch) => {
     vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
       data: { ...detail, ...patch },

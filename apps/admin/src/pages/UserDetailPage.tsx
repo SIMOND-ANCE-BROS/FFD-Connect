@@ -174,7 +174,14 @@ export function UserDetailPage() {
   const isSelf = me?.id === u.id;
   const disabled = u.disabledAt != null;
   // lastLoginAt is recorded at login and refresh since lot 1; null = never used.
-  const canResend = u.role !== 'ADMIN' && u.lastLoginAt === null && !disabled;
+  // Only back-office accounts get an invitation; a CLUB account of a disabled
+  // club could not log in anyway (the server refuses both cases too).
+  const canResend =
+    u.createdByAdmin &&
+    u.role !== 'ADMIN' &&
+    u.lastLoginAt === null &&
+    !disabled &&
+    !(u.role === 'CLUB' && u.clubDisabledAt !== null);
   const emailMatches = typedEmail.trim().toLowerCase() === u.email.toLowerCase();
   const closeDelete = () => {
     setDeleteOpen(false);
