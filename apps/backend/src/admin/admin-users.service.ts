@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { AuthTokenService } from "../auth/auth-token.service";
@@ -19,6 +20,8 @@ import { UpdateAdminUserDto } from "./dto/update-admin-user.dto";
 /** Back-office writes on users. Every change is audited in the same tx. */
 @Injectable()
 export class AdminUsersService {
+  private readonly logger = new Logger(AdminUsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AdminAuditService,
@@ -82,10 +85,23 @@ export class AdminUsersService {
       });
     });
 
-    // Revoke refresh tokens after commit so the stale role cannot be renewed.
-    // The current access token stays valid until it expires (60 min max).
-    if (roleChanged) await this.tokens.revokeAllUserTokens(userId);
+    // Defence in depth: /auth/refresh already re-reads the role from the
+    // database, so a renewed access token carries the new role either way.
+    // Revoking forces a fresh login after a role change. It runs after the
+    // commit, so a failure here must not turn a saved update into a 500.
+    if (roleChanged) await this.revokeSessions(userId);
 
     return this.query.detail(userId);
+  }
+
+  private async revokeSessions(userId: string): Promise<void> {
+    try {
+      await this.tokens.revokeAllUserTokens(userId);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Role changed for user ${userId} but refresh-token revocation failed: ${reason}`,
+      );
+    }
   }
 }

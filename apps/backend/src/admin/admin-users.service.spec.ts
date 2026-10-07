@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
@@ -150,5 +151,23 @@ describe("AdminUsersService.update", () => {
   it("does not revoke tokens when the role is absent", async () => {
     await service.update("admin-1", "u1", { lastName: "Durand" });
     expect(tokens.revokeAllUserTokens).not.toHaveBeenCalled();
+  });
+
+  it("still returns the committed update when the post-commit revocation fails", async () => {
+    const warn = jest
+      .spyOn(Logger.prototype, "warn")
+      .mockImplementation(() => undefined);
+    tokens.revokeAllUserTokens.mockRejectedValue(new Error("connection reset"));
+
+    await expect(
+      service.update("admin-1", "u1", { role: UserRole.STAFF }),
+    ).resolves.toEqual({ id: "u1" });
+
+    expect(audit.record).toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [message] = warn.mock.calls[0] as [string];
+    expect(message).toContain("u1");
+    expect(message).toContain("connection reset");
+    warn.mockRestore();
   });
 });
