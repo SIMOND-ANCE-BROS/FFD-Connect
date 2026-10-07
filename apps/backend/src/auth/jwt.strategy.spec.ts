@@ -49,17 +49,6 @@ describe("JwtStrategy", () => {
     });
   });
 
-  it("keeps the impersonation claim", async () => {
-    prisma.user.findUnique.mockResolvedValue({
-      role: UserRole.LICENSEE,
-      disabledAt: null,
-      club: null,
-    } as never);
-    await expect(
-      strategy.validate({ ...payload, impersonatedBy: "admin-1" }),
-    ).resolves.toMatchObject({ impersonatedBy: "admin-1" });
-  });
-
   it("rejects a disabled account with 401", async () => {
     prisma.user.findUnique.mockResolvedValue({
       role: UserRole.LICENSEE,
@@ -87,5 +76,58 @@ describe("JwtStrategy", () => {
     await expect(strategy.validate(payload)).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
+  });
+
+  it("returns the database role, not the stale token claim", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      role: UserRole.LICENSEE,
+      disabledAt: null,
+      club: null,
+    } as never);
+    await expect(
+      strategy.validate({ ...payload, role: "ADMIN" }),
+    ).resolves.toMatchObject({ role: UserRole.LICENSEE });
+  });
+
+  describe("impersonation", () => {
+    const imp = { ...payload, impersonatedBy: "admin-1" };
+    const target = { role: UserRole.LICENSEE, disabledAt: null, club: null };
+    const mockLookups = (impersonator: unknown) =>
+      prisma.user.findUnique.mockImplementation((async (args: {
+        where: { id: string };
+      }) => (args.where.id === "user-1" ? target : impersonator)) as never);
+
+    it("accepts an active ADMIN impersonator", async () => {
+      mockLookups({ role: UserRole.ADMIN, disabledAt: null, club: null });
+      await expect(strategy.validate(imp)).resolves.toMatchObject({
+        userId: "user-1",
+        impersonatedBy: "admin-1",
+      });
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: "admin-1" },
+        select: accountStatusSelect,
+      });
+    });
+
+    it("rejects a disabled impersonator", async () => {
+      mockLookups({ role: UserRole.ADMIN, disabledAt: new Date(), club: null });
+      await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it("rejects a demoted impersonator", async () => {
+      mockLookups({ role: UserRole.LICENSEE, disabledAt: null, club: null });
+      await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it("rejects a missing impersonator", async () => {
+      mockLookups(null);
+      await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
   });
 });

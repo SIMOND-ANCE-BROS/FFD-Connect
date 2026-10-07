@@ -431,15 +431,18 @@ export class AuthService {
       select: {
         id: true,
         email: true,
-        role: true,
         firstName: true,
         lastName: true,
         clubId: true,
         clubName: true,
+        ...accountStatusSelect, // includes role
       },
     });
     if (!targetUser) {
       throw new NotFoundException("Utilisateur cible introuvable.");
+    }
+    if (accountBlockReason(targetUser)) {
+      throw new ForbiddenException("Ce compte est désactivé.");
     }
     if (actorId === targetUser.id) {
       throw new BadRequestException("Impossible de s'impersonner soi-même.");

@@ -487,6 +487,24 @@ describe("AuthService", () => {
       );
     });
 
+    it("refuse d'impersonner un compte désactivé", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...licenseeTarget,
+        disabledAt: new Date(),
+        club: null,
+      });
+      await expect(
+        service.impersonate(
+          "admin-1",
+          "ADMIN",
+          { userId: "target-1" },
+          undefined,
+          undefined,
+        ),
+      ).rejects.toThrow(new ForbiddenException("Ce compte est désactivé."));
+      expect(mockJwtService.sign).not.toHaveBeenCalled();
+    });
+
     it("refuse d'impersonner un admin", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({
         ...licenseeTarget,
