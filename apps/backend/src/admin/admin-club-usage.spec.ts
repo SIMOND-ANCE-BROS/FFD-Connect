@@ -34,7 +34,7 @@ describe("clubUsage", () => {
       where: { clubId: "c1", role: UserRole.CLUB },
     });
     expect(prisma.competition.count).toHaveBeenCalledWith({
-      where: { organizer: "Club A" },
+      where: { organizer: { equals: "Club A", mode: "insensitive" } },
     });
     expect(prisma.partnership.count).toHaveBeenCalledWith({
       where: { clubId: "c1" },

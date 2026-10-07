@@ -9,14 +9,17 @@ import {
   adminClubEditableSelect,
   adminClubOptionSelect,
   adminClubStatusSelect,
+  idOnlySelect,
 } from "../utils/prisma-selects";
 import { AdminAuditService } from "./admin-audit.service";
 import { diffFields } from "./admin-audit.util";
-import { clubUsage, isClubEmpty } from "./admin-club-usage";
+import { clubUsage, isClubEmpty, sameClubName } from "./admin-club-usage";
 import { AdminClubsQueryService } from "./admin-clubs.query-service";
 import { AdminClubDetailDto, UpdateAdminClubDto } from "./dto/admin-clubs.dto";
 
 const NAME_TAKEN = "Un club porte déjà ce nom";
+const FFD_SYNCED_NAME =
+  "Ce club organise des compétitions synchronisées avec la FFD : son nom ne peut pas être changé ici (la synchronisation rétablirait l'ancien nom).";
 
 /** Back-office writes on clubs. Every change is audited in the same tx. */
 @Injectable()
@@ -31,7 +34,10 @@ export class AdminClubsService {
    * Club.name is copied into User.clubName, License.clubName and
    * Competition.organizer: a rename rewrites every copy in the same
    * transaction. Users of another club are never touched; legacy members
-   * without clubId are matched on the old name.
+   * without clubId are matched on the old name (case-insensitive).
+   * The FFD sync rewrites Competition.organizer on every run, so a club that
+   * organises FFD-synced competitions cannot be renamed here: the rename
+   * would be silently undone and break the HelloAsso lookup by organizer.
    */
   async update(
     actorId: string,
@@ -57,8 +63,19 @@ export class AdminClubsService {
         const newName =
           typeof diff.after.name === "string" ? diff.after.name : undefined;
         if (newName !== undefined) {
-          const clash = await tx.club.findUnique({
-            where: { name: newName },
+          const ffdSynced = await tx.competition.findFirst({
+            where: {
+              organizer: sameClubName(current.name),
+              ffdId: { not: null },
+            },
+            select: idOnlySelect,
+          });
+          if (ffdSynced) {
+            throw new ConflictException({ message: FFD_SYNCED_NAME });
+          }
+          // Excludes the club itself so a case-only rename is allowed.
+          const clash = await tx.club.findFirst({
+            where: { name: sameClubName(newName), id: { not: clubId } },
             select: adminClubOptionSelect,
           });
           if (clash) {
@@ -77,16 +94,19 @@ export class AdminClubsService {
         if (newName !== undefined) {
           await tx.user.updateMany({
             where: {
-              OR: [{ clubId }, { clubId: null, clubName: current.name }],
+              OR: [
+                { clubId },
+                { clubId: null, clubName: sameClubName(current.name) },
+              ],
             },
             data: { clubName: newName },
           });
           await tx.license.updateMany({
-            where: { clubName: current.name },
+            where: { clubName: sameClubName(current.name) },
             data: { clubName: newName },
           });
           await tx.competition.updateMany({
-            where: { organizer: current.name },
+            where: { organizer: sameClubName(current.name) },
             data: { organizer: newName },
           });
         }

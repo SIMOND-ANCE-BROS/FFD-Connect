@@ -46,9 +46,9 @@ describe("AdminClubsService", () => {
 
   describe("update", () => {
     beforeEach(() => {
-      prisma.club.findUnique
-        .mockResolvedValueOnce(current as never) // current values
-        .mockResolvedValueOnce(null); // no other club with the new name
+      prisma.club.findUnique.mockResolvedValueOnce(current as never);
+      prisma.club.findFirst.mockResolvedValue(null); // name is free
+      prisma.competition.findFirst.mockResolvedValue(null); // no FFD competition
     });
 
     it("renames, rewrites every copy of the name, and audits the diff", async () => {
@@ -63,19 +63,31 @@ describe("AdminClubsService", () => {
         data: { name: "Club Z" },
         select: { id: true },
       });
+      const sameName = { equals: "Club A", mode: "insensitive" };
       expect(prisma.user.updateMany).toHaveBeenCalledWith({
         where: {
-          OR: [{ clubId: "c1" }, { clubId: null, clubName: "Club A" }],
+          OR: [{ clubId: "c1" }, { clubId: null, clubName: sameName }],
         },
         data: { clubName: "Club Z" },
       });
       expect(prisma.license.updateMany).toHaveBeenCalledWith({
-        where: { clubName: "Club A" },
+        where: { clubName: sameName },
         data: { clubName: "Club Z" },
       });
       expect(prisma.competition.updateMany).toHaveBeenCalledWith({
-        where: { organizer: "Club A" },
+        where: { organizer: sameName },
         data: { organizer: "Club Z" },
+      });
+      expect(prisma.club.findFirst).toHaveBeenCalledWith({
+        where: {
+          name: { equals: "Club Z", mode: "insensitive" },
+          id: { not: "c1" },
+        },
+        select: { id: true, name: true },
+      });
+      expect(prisma.competition.findFirst).toHaveBeenCalledWith({
+        where: { organizer: sameName, ffdId: { not: null } },
+        select: { id: true },
       });
       expect(audit.record).toHaveBeenCalledWith(prisma, {
         actorId: "admin-1",
@@ -97,6 +109,41 @@ describe("AdminClubsService", () => {
       expect(prisma.user.updateMany).not.toHaveBeenCalled();
       expect(prisma.license.updateMany).not.toHaveBeenCalled();
       expect(prisma.competition.updateMany).not.toHaveBeenCalled();
+      expect(prisma.competition.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("changes the mode even when the club organises FFD-synced competitions", async () => {
+      prisma.competition.findFirst.mockResolvedValue({ id: "comp-1" } as never);
+      await service.update("admin-1", "c1", {
+        registrationMode: ClubRegistrationMode.CLUB_ONLY,
+      });
+      expect(prisma.club.update).toHaveBeenCalled();
+    });
+
+    it("409s on a rename when the club organises an FFD-synced competition, changing nothing", async () => {
+      prisma.competition.findFirst.mockResolvedValue({ id: "comp-1" } as never);
+      await expect(
+        service.update("admin-1", "c1", {
+          name: "Club Z",
+          registrationMode: ClubRegistrationMode.CLUB_ONLY,
+        }),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: {
+          message:
+            "Ce club organise des compétitions synchronisées avec la FFD : son nom ne peut pas être changé ici (la synchronisation rétablirait l'ancien nom).",
+        },
+      });
+      expect(prisma.club.update).not.toHaveBeenCalled();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it("allows a case-only rename of the same club", async () => {
+      await service.update("admin-1", "c1", { name: "CLUB A" });
+      expect(prisma.club.update.mock.calls[0][0].data).toEqual({
+        name: "CLUB A",
+      });
     });
 
     it("writes and audits nothing when the values are unchanged", async () => {
@@ -107,10 +154,10 @@ describe("AdminClubsService", () => {
     });
 
     it("409s with the clashing club id when the new name is taken, changing nothing", async () => {
-      prisma.club.findUnique
-        .mockReset()
-        .mockResolvedValueOnce(current as never)
-        .mockResolvedValueOnce({ id: "c2", name: "Club B" } as never);
+      prisma.club.findFirst.mockResolvedValue({
+        id: "c2",
+        name: "Club B",
+      } as never);
 
       await expect(
         service.update("admin-1", "c1", { name: "Club B" }),

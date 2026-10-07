@@ -1,5 +1,13 @@
 import { Prisma, UserRole } from "@prisma/client";
 
+/**
+ * Club names are copied as free text (User.clubName, License.clubName,
+ * Competition.organizer) and compared case-insensitively across the codebase.
+ */
+export function sameClubName(name: string): Prisma.StringFilter {
+  return { equals: name, mode: "insensitive" };
+}
+
 /** What still points at a club. A club can be deleted only when all are 0. */
 export interface ClubUsage {
   memberCount: number;
@@ -26,7 +34,7 @@ export async function clubUsage(
   });
   // Competition.organizer holds a copy of the club name, not an id.
   const competitionCount = await db.competition.count({
-    where: { organizer: club.name },
+    where: { organizer: sameClubName(club.name) },
   });
   const partnershipCount = await db.partnership.count({
     where: { clubId: club.id },

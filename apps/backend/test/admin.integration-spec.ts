@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { ConflictException, UnauthorizedException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
-import { UserRole } from "@prisma/client";
+import { ClubRegistrationMode, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { AdminClubsService } from "../src/admin/admin-clubs.service";
 import { AdminUserAccountsService } from "../src/admin/admin-user-accounts.service";
@@ -318,6 +318,96 @@ describe("Admin (integration, real DB)", () => {
         where: { targetId: club.id, action: "CLUB_UPDATE" },
       }),
     ).toBe(1);
+  });
+
+  it("the rename cascade matches copies of the name in another casing", async () => {
+    const admin = await create({ role: UserRole.ADMIN });
+    const club = await newClub();
+    const newName = `Club ${randomUUID()}`;
+    const legacy = await create({ clubName: club.name.toUpperCase() });
+    const license = await prisma.license.create({
+      data: {
+        number: `L-${randomUUID()}`,
+        validUntil: new Date("2027-08-31"),
+        category: "Latin",
+        clubName: club.name.toLowerCase(),
+      },
+    });
+    createdLicenseIds.push(license.id);
+    const competition = await prisma.competition.create({
+      data: {
+        title: "Gala",
+        date: new Date("2027-01-01"),
+        location: "Paris",
+        organizer: club.name.toUpperCase(),
+      },
+    });
+    createdCompetitionIds.push(competition.id);
+
+    await clubs.update(admin.id, club.id, { name: newName });
+
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: legacy.id } }))
+        .clubName,
+    ).toBe(newName);
+    expect(
+      (await prisma.license.findUniqueOrThrow({ where: { id: license.id } }))
+        .clubName,
+    ).toBe(newName);
+    expect(
+      (
+        await prisma.competition.findUniqueOrThrow({
+          where: { id: competition.id },
+        })
+      ).organizer,
+    ).toBe(newName);
+  });
+
+  it("a club organising an FFD-synced competition cannot be renamed, but its mode can change", async () => {
+    const admin = await create({ role: UserRole.ADMIN });
+    const club = await newClub();
+    const competition = await prisma.competition.create({
+      data: {
+        title: "Gala FFD",
+        date: new Date("2027-01-01"),
+        location: "Paris",
+        organizer: club.name.toLowerCase(),
+        ffdId: `ffd-${randomUUID()}`,
+      },
+    });
+    createdCompetitionIds.push(competition.id);
+
+    await expect(
+      clubs.update(admin.id, club.id, { name: `Club ${randomUUID()}` }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        message: expect.stringContaining(
+          "synchronisées avec la FFD",
+        ) as unknown,
+      },
+    });
+    expect(
+      (await prisma.club.findUniqueOrThrow({ where: { id: club.id } })).name,
+    ).toBe(club.name);
+
+    await clubs.update(admin.id, club.id, {
+      registrationMode: ClubRegistrationMode.CLUB_ONLY,
+    });
+    expect(
+      (await prisma.club.findUniqueOrThrow({ where: { id: club.id } }))
+        .registrationMode,
+    ).toBe(ClubRegistrationMode.CLUB_ONLY);
+  });
+
+  it("a rename onto an existing name in another casing is refused", async () => {
+    const admin = await create({ role: UserRole.ADMIN });
+    const club = await newClub();
+    const taken = await newClub();
+
+    await expect(
+      clubs.update(admin.id, club.id, { name: taken.name.toUpperCase() }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it("a rename onto an existing name changes nothing", async () => {

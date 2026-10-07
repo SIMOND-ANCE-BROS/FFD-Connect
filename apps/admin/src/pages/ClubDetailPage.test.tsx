@@ -111,6 +111,24 @@ describe('ClubDetailPage', () => {
     expect(await within(dialog).findByText('Un club porte déjà ce nom')).toBeInTheDocument();
   });
 
+  it('explains why a club organising FFD-synced competitions cannot be renamed', async () => {
+    const message =
+      "Ce club organise des compétitions synchronisées avec la FFD : son nom ne peut pas être changé ici (la synchronisation rétablirait l'ancien nom).";
+    vi.spyOn(sdk, 'adminControllerUpdateClub').mockResolvedValue({
+      data: undefined,
+      error: { statusCode: 409, message },
+      response: new Response(null, { status: 409 }),
+    } as never);
+    renderPage(empty);
+    const name = await screen.findByLabelText(/^Nom du club/);
+    await userEvent.clear(name);
+    await userEvent.type(name, 'Club Z');
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    expect(await within(dialog).findByText(message)).toBeInTheDocument();
+  });
+
   it('deactivates the club after a confirmation', async () => {
     const setStatus = vi.spyOn(sdk, 'adminControllerSetClubStatus').mockResolvedValue({
       data: { ...empty, disabledAt: '2026-10-07T10:00:00.000Z' },
