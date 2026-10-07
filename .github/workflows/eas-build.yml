@@ -1086,9 +1086,22 @@ jobs:
             not_ready "jambe sans objet"
             exit 0
           fi
+          # L'état vient d'un job qui exécute du code non épinglé (pnpm install,
+          # eas-cli) : c'est une DONNÉE non fiable. Chaque champ est validé par
+          # un motif strict avant toute utilisation ; aucune valeur brute n'est
+          # écrite dans $GITHUB_OUTPUT ni dans le log (un saut de ligne y
+          # injecterait `ready=true` ou une commande de workflow).
           BUILD_ID=$(field build_id)
           BUILD_NUMBER=$(field build_number)
           SUBMIT_STATE=$(field submit_state)
+          # [[ =~ ]] ancre sur la chaîne ENTIÈRE ; grep -x validerait ligne par
+          # ligne et laisserait passer « pending⏎ready=true ».
+          if ! [[ "$BUILD_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            BUILD_ID=""
+          fi
+          if ! [[ "$SUBMIT_STATE" =~ ^[a-z_]{1,20}$ ]]; then
+            SUBMIT_STATE="invalide"
+          fi
           if [ "$SUBMIT_STATE" != "finished" ]; then
             if [ -n "$BUILD_ID" ]; then
               echo "::warning::envoi au store non abouti (${SUBMIT_STATE:-non tenté}) : distribution $PLATFORM différée - reprendre : gh workflow run eas-build.yml --ref $REF -f action=resume -f platform=$PLATFORM -f build_id=$BUILD_ID"
@@ -1096,8 +1109,8 @@ jobs:
             not_ready "envoi ${SUBMIT_STATE:-non tenté}"
             exit 0
           fi
-          if ! printf '%s' "$BUILD_NUMBER" | grep -qE '^[0-9]+$'; then
-            echo "::error::numéro de build illisible dans l'état transmis (« $BUILD_NUMBER »)"
+          if ! [[ "$BUILD_NUMBER" =~ ^[0-9]{1,9}$ ]]; then
+            echo "::error::numéro de build illisible dans l'état transmis"
             not_ready "numéro de build illisible"
             exit 1
           fi
