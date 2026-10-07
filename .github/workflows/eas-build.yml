@@ -639,13 +639,15 @@ jobs:
           echo "## 🔁 Reprise du build $PLATFORM_NAME beta $NUMBER (\`$BUILD_ID\`, commit ${COMMIT:0:7}) — aucun rebuild" \
             >> "$GITHUB_STEP_SUMMARY"
 
-      # Notes testeurs, identiques pour les deux stores : « À tester en priorité »
-      # (input toTest) en tête, puis les notes fournies (relecture) OU générées
-      # depuis les commits conventionnels depuis le tag bêta précédent. Chaque
-      # store les tronque à sa limite (TestFlight 4000 car., Play 500) : la
-      # partie « À tester » passe en premier, donc survit à la coupe.
-      # beta-notes.md = corps de la release GitHub, beta-notes.txt = texte brut
-      # pour les stores.
+      # Deux textes, deux publics :
+      # - beta-notes.txt → testeurs (What to Test, notes Play) : EN FRANÇAIS,
+      #   tiré de la section « ## Pour les testeurs » des PR depuis le tag bêta
+      #   précédent (generate-changelog --format testers) ;
+      # - beta-notes.md → release GitHub, pour l'équipe : liste technique des
+      #   commits conventionnels (en anglais, comme les commits).
+      # « À tester en priorité » (input toTest) passe en tête des deux ; l'input
+      # notes remplace la génération auto (relecture). Chaque store tronque à sa
+      # limite (TestFlight 4000 car., Play 500) : « À tester » survit à la coupe.
       - name: Generate tester notes
         id: notes
         if: steps.resolve.outputs.skip != 'true'
@@ -655,6 +657,8 @@ jobs:
           NOTES: ${{ inputs.notes }}
           TO_TEST: ${{ inputs.toTest }}
           PLATFORM: ${{ matrix.platform }}
+          # Lecture des descriptions de PR (format testers).
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # Base des notes propre à la plateforme : une promotion iOS seule ne
@@ -670,7 +674,7 @@ jobs:
           else
             # Sans titre : la release porte déjà « Bêta iOS 1.0.0 (19) ».
             node scripts/generate-changelog.mjs "${BASE[@]}" --format markdown --heading none > beta-notes.md
-            node scripts/generate-changelog.mjs "${BASE[@]}" --format testflight > beta-notes.txt
+            node scripts/generate-changelog.mjs "${BASE[@]}" --format testers > beta-notes.txt
           fi
           if [ -n "$TO_TEST" ]; then
             # Un point par élément séparé par « ; », espaces de bord retirés.

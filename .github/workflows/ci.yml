@@ -526,6 +526,7 @@ jobs:
         run: |
           pnpm testflight:distribute:test
           pnpm play:distribute:test
+          pnpm tester-notes:test
 
       - name: Run code quality audit
         run: pnpm audit:quality

@@ -93,6 +93,7 @@ The backend runs on Azure Container Apps with `minReplicas=0` (see `docs/exploit
 - **Tests required** — coverage thresholds enforced per module (auth 94%, global 65%). Mutation testing (Stryker) on critical modules.
 - **Commits:** conventional commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `perf:`, `security:`)
 - **Language:** code, comments, commits and PRs in English; `docs/exploitation/`, `docs/adr/` and user-facing copy in French
+- **PR « Pour les testeurs » section:** every PR with a user-visible change fills `## Pour les testeurs` (template) in **French, for a tester**: what changes, where, what to check. It becomes the TestFlight "What to Test" and Play release notes of the next beta (`generate-changelog --format testers`). Leave it empty or « Rien » for CI/refactor/infra PRs
 - **Prisma queries:** Always use `select` over `include` when possible. Add `take` to unbounded queries. Index frequently queried columns.
 - **External services:** Always wrap in circuit breaker (opossum) + timeout (`withTimeout` utility). Graceful degradation required.
 
