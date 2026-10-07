@@ -7,6 +7,7 @@
 #     custom domain + certificate set in the repo's Pages settings, site
 #     published by .github/workflows/deploy-landing.yml)
 #   - my.ffd.gabin-simond.fr → web app
+#   - admin.ffd.gabin-simond.fr → Azure Static Web App (CNAME to the admin_swa_hostname output, DNS-only)
 #
 # Legacy note: the api record above dates from the retired VM, whose Caddy
 # obtained Let's Encrypt certificates (Cloudflare proxy had to stay DNS-only).

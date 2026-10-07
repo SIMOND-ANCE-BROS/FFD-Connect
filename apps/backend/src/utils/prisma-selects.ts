@@ -370,3 +370,72 @@ export const trackCorrectionExportSelect = {
     select: { title: true, artist: true, titleMasked: true, blacklisted: true },
   },
 } as const;
+
+/** Back-office: one audit row with its author's name. */
+export const adminAuditLogSelect = {
+  id: true,
+  action: true,
+  targetType: true,
+  targetId: true,
+  before: true,
+  after: true,
+  createdAt: true,
+  actor: { select: userNameSelect },
+} as const;
+
+/** Back-office: club options for selects (id + name only). */
+export const adminClubOptionSelect = { id: true, name: true } as const;
+
+/** Back-office users table. Never select password. */
+export const adminUserListSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  role: true,
+  clubId: true,
+  clubName: true,
+  category: true,
+  ageGroup: true,
+  createdAt: true,
+  license: { select: { number: true, validUntil: true } },
+} as const;
+
+/** Back-office user page. Never select password. */
+export const adminUserDetailSelect = {
+  ...adminUserListSelect,
+  birthDate: true,
+  nationalRanking: true,
+  passportLevelLatin: true,
+  passportLevelStandard: true,
+  competitionLevel: true,
+  wdsfMin: true,
+  wdsfExpiresOn: true,
+  lastLoginAt: true,
+  updatedAt: true,
+} as const;
+
+/** Back-office: the editable fields of a user, for the audit diff. */
+export const adminUserEditableSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  clubId: true,
+  clubName: true,
+  category: true,
+  ageGroup: true,
+  passportLevelLatin: true,
+  passportLevelStandard: true,
+  competitionLevel: true,
+  nationalRanking: true,
+  role: true,
+} as const;
+
+/** Admin invitation resend: who to mail and whether they ever logged in. */
+export const adminInvitationTargetSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  role: true,
+  lastLoginAt: true,
+} as const;

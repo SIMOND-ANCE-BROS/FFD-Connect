@@ -44,6 +44,13 @@ module.exports = {
       functions: 88,
       lines: 94,
     },
+    // Admin back-office can change roles and create accounts: same bar as auth.
+    [srcDir("admin")]: {
+      statements: 94,
+      branches: 75,
+      functions: 88,
+      lines: 94,
+    },
     [path.join(__dirname, "src", "auth", "auth.service.ts")]: {
       branches: 80,
       functions: 85,

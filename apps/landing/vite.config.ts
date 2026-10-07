@@ -27,6 +27,7 @@ export default defineConfig({
         mentions: resolve(__dirname, 'mentions-legales/index.html'),
         suppression: resolve(__dirname, 'suppression-compte/index.html'),
         beta: resolve(__dirname, 'beta/index.html'),
+        resetPassword: resolve(__dirname, 'reset-password/index.html'),
       },
     },
   },

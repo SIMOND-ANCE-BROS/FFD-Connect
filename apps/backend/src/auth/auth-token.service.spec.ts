@@ -22,6 +22,9 @@ describe("AuthTokenService", () => {
       update: jest.fn(),
       updateMany: jest.fn(),
     },
+    user: {
+      update: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
 
@@ -110,6 +113,34 @@ describe("AuthTokenService", () => {
           licenseNumber: "L1",
         }),
       );
+    });
+
+    it("records lastLoginAt in the rotation transaction", async () => {
+      mockPrismaService.refreshToken.findUnique.mockResolvedValue({
+        id: "tok-1",
+        revoked: false,
+        expiresAt: new Date(Date.now() + 86400000),
+        user: { id: "u1", email: "u@test.com", role: UserRole.CLUB },
+      });
+      mockPrismaService.user.update.mockReturnValue("user-update-op");
+      mockPrismaService.$transaction.mockResolvedValue([{}, {}, {}]);
+      mockJwtService.sign.mockReturnValue("new-access");
+
+      await service.refreshAccessToken("old-refresh-plain");
+
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: "u1" },
+        data: { lastLoginAt: expect.any(Date) as unknown },
+        select: { id: true },
+      });
+      const ops = mockPrismaService.$transaction.mock.calls[0][0] as unknown[];
+      expect(ops).toContain("user-update-op");
+    });
+
+    it("does not record lastLoginAt when the refresh token is rejected", async () => {
+      mockPrismaService.refreshToken.findUnique.mockResolvedValue(null);
+      await expect(service.refreshAccessToken("bad")).rejects.toThrow();
+      expect(mockPrismaService.user.update).not.toHaveBeenCalled();
     });
 
     it("should throw when refresh token is invalid", async () => {

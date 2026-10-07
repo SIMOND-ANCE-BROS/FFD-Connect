@@ -19,6 +19,7 @@ COPY patches ./patches
 COPY apps/backend/package.json ./apps/backend/
 COPY apps/client/package.json ./apps/client/
 COPY apps/landing/package.json ./apps/landing/
+COPY apps/admin/package.json ./apps/admin/
 COPY apps/docs/package.json ./apps/docs/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/eslint-config/package.json ./packages/eslint-config/

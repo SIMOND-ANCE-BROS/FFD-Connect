@@ -12,6 +12,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/backend/package.json ./apps/backend/
 COPY apps/client/package.json ./apps/client/
 COPY apps/landing/package.json ./apps/landing/
+COPY apps/admin/package.json ./apps/admin/
 COPY packages/shared/package.json packages/shared/tsconfig.json ./packages/shared/
 COPY packages/shared/src ./packages/shared/src
 COPY packages/jest-config ./packages/jest-config

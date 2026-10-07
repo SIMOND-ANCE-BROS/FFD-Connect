@@ -184,6 +184,31 @@ describe("AuthService", () => {
   });
 
   describe("login", () => {
+    it("records lastLoginAt on successful login", async () => {
+      const loginUser = {
+        id: "u1",
+        email: "test@example.com",
+        role: UserRole.LICENSEE,
+        clubName: "Club",
+        firstName: "First",
+        lastName: "Last",
+        license: { number: "LIC123" },
+      };
+      mockJwtService.sign.mockReturnValue("jwt-token");
+      mockAuthTokenService.createRefreshToken.mockResolvedValue({
+        token: "refresh-token",
+      });
+      mockPrismaService.user.update.mockResolvedValue({});
+
+      await service.login(loginUser as never);
+
+      expect(mockPrismaService.user.update).toHaveBeenCalledWith({
+        where: { id: "u1" },
+        data: { lastLoginAt: expect.any(Date) as unknown },
+        select: { id: true },
+      });
+    });
+
     it("should return access token, refresh token and user info", async () => {
       const mockUser = {
         id: "u1",

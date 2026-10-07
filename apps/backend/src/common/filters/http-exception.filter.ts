@@ -19,6 +19,7 @@ import { Request, Response } from "express";
 /** 503 en littéral numérique : comparaison `number` pure, évite le lint
  * `no-unsafe-enum-comparison` (status est un number, pas un HttpStatus). */
 const HTTP_STATUS_SERVICE_UNAVAILABLE = 503;
+const HTTP_STATUS_CONFLICT = 409;
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -44,6 +45,18 @@ export class HttpExceptionFilter implements ExceptionFilter {
           ? exception.message
           : "Internal server error";
 
+    // Admin club-account 409 hands the clashing club back so the UI can offer
+    // to attach the account to it instead.
+    const body =
+      exception instanceof HttpException ? exception.getResponse() : null;
+    const existingClubId =
+      status === HTTP_STATUS_CONFLICT &&
+      typeof body === "object" &&
+      body !== null &&
+      typeof (body as { existingClubId?: unknown }).existingClubId === "string"
+        ? (body as { existingClubId: string }).existingClubId
+        : undefined;
+
     // Logging structuré pour le debugging
     const errorResponse = {
       statusCode: status,
@@ -51,6 +64,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       path: request.url,
       method: request.method,
       message,
+      ...(existingClubId ? { existingClubId } : {}),
     };
 
     // Log les erreurs selon leur sévérité avec logging structuré

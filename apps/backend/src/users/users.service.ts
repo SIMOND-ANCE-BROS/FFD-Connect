@@ -512,6 +512,11 @@ export class UsersService {
       }),
       // BugReport.userId n'a pas de FK (report.prisma) : suppression explicite.
       this.prisma.bugReport.deleteMany({ where: { userId } }),
+      // Back-office audit rows about this person would outlive the account.
+      // Rows the user authored as an admin stay (actorId -> SetNull).
+      this.prisma.adminAuditLog.deleteMany({
+        where: { targetType: "USER", targetId: userId },
+      }),
       this.prisma.user.delete({ where: { id: userId } }),
     ]);
     await this.renewalDocumentFiles.deleteFiles(

@@ -1,0 +1,100 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Deploy admin (Static Web App)
+
+# Publishes apps/admin (back-office SPA) to the Azure Static Web App
+# `swa-ffd-admin` (infra/terraform/admin-swa.tf), served at
+# https://admin.ffd.gabin-simond.fr. Runbook: docs/exploitation/backoffice-admin.md.
+#
+# Deploys from `staging` because the admin talks to backend-staging (the URL is
+# baked in at build time through VITE_API_URL). When backend-prod restarts, one
+# PR switches the trigger to `master` and the URL to api.ffd.gabin-simond.fr.
+#
+# Auth: OIDC only, with a DEDICATED identity (azuread_application.ci_admin in
+# infra/terraform/ci-iam.tf, client id in the variable AZURE_ADMIN_CLIENT_ID).
+# It trusts only the GitHub environment `admin` (deployment branches: staging)
+# and can only read this one Static Web App and list its deployment token,
+# which is fetched at run time, masked, and never stored in GitHub.
+#
+# Cost: ~2 min of Actions per run, only on staging pushes touching apps/admin.
+# SWA Free tier hosting is 0 EUR.
+
+on:
+  push:
+    branches: [staging]
+    paths: ['apps/admin/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # Azure OIDC federated credential
+
+# A newer push supersedes an in-flight upload: the last build is the one that
+# must end up online, and a SWA upload is atomic (no half-published site).
+concurrency:
+  group: deploy-admin
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    # Defence in depth on top of the `admin` environment's branch policy: a
+    # workflow_dispatch from any other branch never reaches the Azure login.
+    if: github.ref == 'refs/heads/staging'
+    environment: admin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      # Full workspace install: apps/admin's postinstall regenerates its API
+      # client (src/api/generated, gitignored) from apps/backend/swagger.json.
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Build
+        env:
+          VITE_API_URL: https://api-staging.ffd.gabin-simond.fr/api/v1
+        run: pnpm --filter admin build
+
+      # Dedicated admin deploy identity (not the shared CI one). Client,
+      # tenant and subscription IDs are identifiers, not secrets.
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
+        with:
+          client-id: ${{ vars.AZURE_ADMIN_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # The SWA lives in the shared resource group (same as backend-staging).
+      - name: Fetch SWA deployment token
+        id: swa-token
+        env:
+          RESOURCE_GROUP: ${{ secrets.STAGING_RESOURCE_GROUP }}
+        run: |
+          set -euo pipefail
+          TOKEN=$(az staticwebapp secrets list \
+            --name swa-ffd-admin \
+            --resource-group "$RESOURCE_GROUP" \
+            --query properties.apiKey -o tsv)
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Empty deployment token for swa-ffd-admin"
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+          # Drop the Azure session before the third-party deploy action runs
+          # (Docker action on a mutable base image): it only gets the SWA token.
+          az logout || true
+          rm -rf ~/.azure || true
+
+      # Pinned to the head of the action's `v1` branch: the `v1` tag still
+      # points at a 2021 commit that predates the `skip_api_build` input.
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.token }}
+          action: upload
+          app_location: apps/admin/dist
+          skip_app_build: true
+          skip_api_build: true

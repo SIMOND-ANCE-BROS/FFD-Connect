@@ -32,6 +32,6 @@ import { SessionCleanupService } from "./session-cleanup.service";
     EmailService,
   ],
   controllers: [AuthController],
-  exports: [AuthService, AuthTokenService, AuthPasswordService],
+  exports: [AuthService, AuthTokenService, AuthPasswordService, EmailService],
 })
 export class AuthModule {}

@@ -90,6 +90,13 @@ export class AuthTokenService {
       this.prisma.refreshToken.create({
         data: { token: newTokenHash, userId: user.id, expiresAt },
       }),
+      // A refresh is a returning session: keep lastLoginAt meaningful for
+      // users who stay logged in and never go through login() again.
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+        select: { id: true },
+      }),
     ]);
 
     const payload = {
