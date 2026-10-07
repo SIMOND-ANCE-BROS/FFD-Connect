@@ -10,6 +10,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import {
   adminClubOptionSelect,
   adminUserEditableSelect,
+  adminUserStatusSelect,
 } from "../utils/prisma-selects";
 import { AdminAuditService } from "./admin-audit.service";
 import { diffFields } from "./admin-audit.util";
@@ -91,6 +92,50 @@ export class AdminUsersService {
     // commit, so a failure here must not turn a saved update into a 500.
     if (roleChanged) await this.revokeSessions(userId);
 
+    return this.query.detail(userId);
+  }
+
+  /**
+   * Reversible measure. Deactivation revokes every refresh token in the same
+   * transaction; live access tokens are refused by JwtStrategy right away.
+   * Asking for the state already in place writes and audits nothing.
+   */
+  async setStatus(
+    actorId: string,
+    userId: string,
+    active: boolean,
+  ): Promise<AdminUserDetailDto> {
+    if (actorId === userId) {
+      throw new ForbiddenException(
+        "Un administrateur ne peut pas changer le statut de son propre compte",
+      );
+    }
+    await this.prisma.$transaction(async (tx) => {
+      const current = await tx.user.findUnique({
+        where: { id: userId },
+        select: adminUserStatusSelect,
+      });
+      if (!current) throw new NotFoundException("Utilisateur introuvable");
+      if ((current.disabledAt === null) === active) return;
+
+      await tx.user.update({
+        where: { id: userId },
+        data: { disabledAt: active ? null : new Date() },
+        select: { id: true },
+      });
+      if (!active) {
+        await tx.refreshToken.updateMany({
+          where: { userId, revoked: false },
+          data: { revoked: true, revokedAt: new Date() },
+        });
+      }
+      await this.audit.record(tx, {
+        actorId,
+        action: active ? "USER_ENABLE" : "USER_DISABLE",
+        targetType: "USER",
+        targetId: userId,
+      });
+    });
     return this.query.detail(userId);
   }
 

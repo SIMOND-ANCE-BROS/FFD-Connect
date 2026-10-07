@@ -31,6 +31,7 @@ import { AdminClubAccountsService } from "./admin-club-accounts.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminReferenceService } from "./admin-reference.service";
+import { SetActiveDto } from "./dto/admin-actions.dto";
 import { AuditLogPageDto, ListAuditLogQueryDto } from "./dto/admin-audit.dto";
 import {
   AdminUserDetailDto,
@@ -89,7 +90,7 @@ export class AdminController {
   }
 
   @Get("users")
-  @ApiOperation({ summary: "Liste paginée des inscrits" })
+  @ApiOperation({ summary: "Liste paginée des utilisateurs" })
   @ApiResponse({ status: 200, type: AdminUsersPageDto })
   listUsers(
     @Query() query: ListAdminUsersQueryDto,
@@ -98,7 +99,7 @@ export class AdminController {
   }
 
   @Get("users/:id")
-  @ApiOperation({ summary: "Fiche d'un inscrit" })
+  @ApiOperation({ summary: "Fiche d'un utilisateur" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: AdminUserDetailDto })
   getUser(@Param("id", ParseUUIDPipe) id: string): Promise<AdminUserDetailDto> {
@@ -106,7 +107,7 @@ export class AdminController {
   }
 
   @Patch("users/:id")
-  @ApiOperation({ summary: "Modifier la fiche d'un inscrit" })
+  @ApiOperation({ summary: "Modifier la fiche d'un utilisateur" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: AdminUserDetailDto })
   updateUser(
@@ -115,6 +116,20 @@ export class AdminController {
     @Req() req: RequestWithUser,
   ): Promise<AdminUserDetailDto> {
     return this.users.update(req.user.userId, id, dto);
+  }
+
+  @Post("users/:id/status")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Activer ou désactiver un utilisateur" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, type: AdminUserDetailDto })
+  @ApiResponse({ status: 403, description: "Son propre compte" })
+  setUserStatus(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: SetActiveDto,
+    @Req() req: RequestWithUser,
+  ): Promise<AdminUserDetailDto> {
+    return this.users.setStatus(req.user.userId, id, dto.active);
   }
 
   @Post("club-accounts")

@@ -52,6 +52,9 @@ export class AdminUsersQueryService {
       ...(q.role && { role: q.role }),
       ...(q.clubId && { clubId: q.clubId }),
       ...(q.category && { category: q.category }),
+      ...(q.status && {
+        disabledAt: q.status === "active" ? null : { not: null },
+      }),
       ...((q.createdFrom || q.createdTo) && {
         createdAt: {
           ...(q.createdFrom && { gte: new Date(q.createdFrom) }),
@@ -89,9 +92,10 @@ export class AdminUsersQueryService {
       select: adminUserDetailSelect,
     });
     if (!row) throw new NotFoundException("Utilisateur introuvable");
-    const { license, ...rest } = row;
+    const { license, club, ...rest } = row;
     return {
       ...rest,
+      clubDisabledAt: club?.disabledAt ?? null,
       licenseStatus: licenseStatus(license, new Date()),
       licenseNumber: license?.number ?? null,
       licenseValidUntil: license?.validUntil ?? null,

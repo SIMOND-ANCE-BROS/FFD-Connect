@@ -1,17 +1,32 @@
 import { randomUUID } from "crypto";
-import { UserRole } from "@prisma/client";
+import { UnauthorizedException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
+import { UserRole } from "@prisma/client";
+import * as bcrypt from "bcrypt";
 import { AdminClubAccountsService } from "../src/admin/admin-club-accounts.service";
 import { AdminUsersService } from "../src/admin/admin-users.service";
+import { AuthService } from "../src/auth/auth.service";
+import { AuthTokenService } from "../src/auth/auth-token.service";
+import { JwtStrategy } from "../src/auth/jwt.strategy";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { buildServiceModule } from "./integration-app.builder";
 
-const userData = (o: { role?: UserRole; lastName?: string }) => ({
+const PASSWORD = "Secret-123!";
+
+const userData = (o: {
+  role?: UserRole;
+  lastName?: string;
+  password?: string;
+  clubId?: string;
+  clubName?: string;
+}) => ({
   email: `${randomUUID()}@test.local`,
-  password: "x",
+  password: o.password ?? "x",
   firstName: "Test",
   lastName: o.lastName ?? "User",
   role: o.role ?? UserRole.LICENSEE,
+  ...(o.clubId && { clubId: o.clubId }),
+  ...(o.clubName && { clubName: o.clubName }),
 });
 
 describe("Admin (integration, real DB)", () => {
@@ -19,6 +34,9 @@ describe("Admin (integration, real DB)", () => {
   let prisma: PrismaService;
   let service: AdminUsersService;
   let clubAccounts: AdminClubAccountsService;
+  let auth: AuthService;
+  let tokens: AuthTokenService;
+  let strategy: JwtStrategy;
   const createdUserIds: string[] = [];
   const createdClubIds: string[] = [];
 
@@ -28,6 +46,9 @@ describe("Admin (integration, real DB)", () => {
     prisma = built.prisma;
     service = moduleRef.get(AdminUsersService);
     clubAccounts = moduleRef.get(AdminClubAccountsService);
+    auth = moduleRef.get(AuthService);
+    tokens = moduleRef.get(AuthTokenService);
+    strategy = moduleRef.get(JwtStrategy);
   });
 
   afterEach(async () => {
@@ -125,5 +146,39 @@ describe("Admin (integration, real DB)", () => {
     expect(
       await prisma.adminAuditLog.count({ where: { targetId: res.userId } }),
     ).toBe(1);
+  });
+
+  it("a deactivated user cannot log in, refresh or use a live token, until reactivated", async () => {
+    const admin = await create({ role: UserRole.ADMIN });
+    const target = await create({
+      password: await bcrypt.hash(PASSWORD, 12),
+    });
+    const refresh = await tokens.createRefreshToken(target.id);
+
+    await service.setStatus(admin.id, target.id, false);
+
+    await expect(auth.validateUser(target.email, PASSWORD)).rejects.toThrow(
+      "Compte désactivé. Contactez la fédération.",
+    );
+    await expect(
+      tokens.refreshAccessToken(refresh.token),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(
+      strategy.validate({
+        sub: target.id,
+        email: target.email,
+        role: target.role,
+      }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(
+      await prisma.adminAuditLog.count({
+        where: { targetId: target.id, action: "USER_DISABLE" },
+      }),
+    ).toBe(1);
+
+    await service.setStatus(admin.id, target.id, true);
+    await expect(
+      auth.validateUser(target.email, PASSWORD),
+    ).resolves.toMatchObject({ id: target.id });
   });
 });

@@ -17,7 +17,7 @@ describe("AdminController", () => {
   const audit = { list: jest.fn() };
   const reference = { referenceData: jest.fn(), clubs: jest.fn() };
   const usersQuery = { list: jest.fn(), detail: jest.fn() };
-  const users = { update: jest.fn() };
+  const users = { update: jest.fn(), setStatus: jest.fn() };
   const clubAccounts = { create: jest.fn(), resendInvitation: jest.fn() };
 
   const controller = new AdminController(
@@ -81,6 +81,12 @@ describe("AdminController", () => {
     const dto = { firstName: "A" } as UpdateAdminUserDto;
     await controller.updateUser("u1", dto, req);
     expect(users.update).toHaveBeenCalledWith("admin-1", "u1", dto);
+  });
+
+  it("passes the acting admin id when changing a user's status", async () => {
+    users.setStatus.mockResolvedValue({ id: "u1" });
+    await controller.setUserStatus("u1", { active: false }, req);
+    expect(users.setStatus).toHaveBeenCalledWith("admin-1", "u1", false);
   });
 
   it("passes the acting admin id when creating a club account", async () => {

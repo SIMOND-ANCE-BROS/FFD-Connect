@@ -398,6 +398,7 @@ export const adminUserListSelect = {
   category: true,
   ageGroup: true,
   createdAt: true,
+  disabledAt: true,
   license: { select: { number: true, validUntil: true } },
 } as const;
 
@@ -413,7 +414,12 @@ export const adminUserDetailSelect = {
   wdsfExpiresOn: true,
   lastLoginAt: true,
   updatedAt: true,
+  // Why a CLUB account may be blocked although the account itself is active.
+  club: { select: { disabledAt: true } },
 } as const;
+
+/** Back-office status toggle: current state only. */
+export const adminUserStatusSelect = { id: true, disabledAt: true } as const;
 
 /** Back-office: the editable fields of a user, for the audit diff. */
 export const adminUserEditableSelect = {

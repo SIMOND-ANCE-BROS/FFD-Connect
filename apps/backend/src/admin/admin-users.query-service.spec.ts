@@ -26,6 +26,7 @@ const row = {
   category: "Latin",
   ageGroup: "Adulte",
   createdAt: new Date("2026-09-01T00:00:00Z"),
+  disabledAt: null,
   license: { number: "L1", validUntil: new Date("2999-08-31T00:00:00Z") },
 };
 
@@ -125,6 +126,28 @@ describe("AdminUsersQueryService", () => {
       where: { id: "nope" },
       select: adminUserDetailSelect,
     });
+  });
+
+  it.each([
+    ["active", { disabledAt: null }],
+    ["disabled", { disabledAt: { not: null } }],
+  ] as const)("filters on status %s", async (status, where) => {
+    prisma.user.count.mockResolvedValue(0);
+    prisma.user.findMany.mockResolvedValue([]);
+    await service.list({ status });
+    expect(prisma.user.findMany.mock.calls[0][0]?.where).toEqual(where);
+  });
+
+  it("detail exposes the club deactivation and hides the relation", async () => {
+    const at = new Date("2026-10-07T10:00:00Z");
+    prisma.user.findUnique.mockResolvedValue({
+      ...row,
+      club: { disabledAt: at },
+      license: null,
+    } as never);
+    const d = await service.detail("u1");
+    expect(d.clubDisabledAt).toEqual(at);
+    expect(d).not.toHaveProperty("club");
   });
 });
 

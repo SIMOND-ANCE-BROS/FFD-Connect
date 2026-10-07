@@ -34,7 +34,7 @@ const current = {
 describe("AdminUsersService.update", () => {
   let service: AdminUsersService;
   let prisma: MockPrismaService;
-  let audit: { record: jest.Mock };
+  let audit: { record: jest.Mock; recordOp: jest.Mock };
   let query: { detail: jest.Mock };
   let tokens: { revokeAllUserTokens: jest.Mock };
 
@@ -44,7 +44,7 @@ describe("AdminUsersService.update", () => {
       fn(prisma)) as never);
     prisma.user.findUnique.mockResolvedValue(current as never);
     prisma.user.update.mockResolvedValue({} as never);
-    audit = { record: jest.fn() };
+    audit = { record: jest.fn(), recordOp: jest.fn() };
     query = { detail: jest.fn().mockResolvedValue({ id: "u1" }) };
     tokens = { revokeAllUserTokens: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
@@ -169,5 +169,117 @@ describe("AdminUsersService.update", () => {
     expect(message).toContain("u1");
     expect(message).toContain("connection reset");
     warn.mockRestore();
+  });
+});
+
+describe("AdminUsersService.setStatus", () => {
+  let service: AdminUsersService;
+  let prisma: MockPrismaService;
+  let audit: { record: jest.Mock; recordOp: jest.Mock };
+  let query: { detail: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = createMockPrismaService();
+    prisma.$transaction.mockImplementation(((fn: (tx: unknown) => unknown) =>
+      fn(prisma)) as never);
+    prisma.user.update.mockResolvedValue({} as never);
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 2 });
+    audit = { record: jest.fn(), recordOp: jest.fn() };
+    query = { detail: jest.fn().mockResolvedValue({ id: "u1" }) };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        AdminUsersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AdminAuditService, useValue: audit },
+        { provide: AdminUsersQueryService, useValue: query },
+        {
+          provide: AuthTokenService,
+          useValue: { revokeAllUserTokens: jest.fn() },
+        },
+      ],
+    }).compile();
+    service = moduleRef.get(AdminUsersService);
+  });
+
+  it("deactivates, revokes every session and audits, in one transaction", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "u1",
+      disabledAt: null,
+    } as never);
+
+    await expect(service.setStatus("admin-1", "u1", false)).resolves.toEqual({
+      id: "u1",
+    });
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { disabledAt: expect.any(Date) as unknown },
+      select: { id: true },
+    });
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1", revoked: false },
+      data: { revoked: true, revokedAt: expect.any(Date) as unknown },
+    });
+    expect(audit.record).toHaveBeenCalledWith(prisma, {
+      actorId: "admin-1",
+      action: "USER_DISABLE",
+      targetType: "USER",
+      targetId: "u1",
+    });
+  });
+
+  it("reactivates without touching sessions", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "u1",
+      disabledAt: new Date(),
+    } as never);
+
+    await service.setStatus("admin-1", "u1", true);
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { disabledAt: null },
+      select: { id: true },
+    });
+    expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({ action: "USER_ENABLE" }),
+    );
+  });
+
+  it.each([
+    [false, new Date()],
+    [true, null],
+  ])(
+    "is idempotent: active=%s on an account already in that state writes nothing",
+    async (active, disabledAt) => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "u1",
+        disabledAt,
+      } as never);
+
+      await expect(service.setStatus("admin-1", "u1", active)).resolves.toEqual(
+        { id: "u1" },
+      );
+
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    },
+  );
+
+  it("refuses the admin's own account before reading anything", async () => {
+    await expect(service.setStatus("u1", "u1", false)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("404s on an unknown user", async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    await expect(
+      service.setStatus("admin-1", "nope", false),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });
