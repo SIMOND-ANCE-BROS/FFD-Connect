@@ -101,14 +101,26 @@ describe("TrackCorrectionsService", () => {
   /** Client de transaction DISTINCT : prouve que les écritures passent par tx. */
   let tx: MockPrismaService;
   let tracks: { updateTrack: jest.Mock };
-  let notifications: { createForUser: jest.Mock };
+  let notifications: {
+    createForUser: jest.Mock;
+    sendToUser: jest.Mock;
+    sendToUsers: jest.Mock;
+  };
   let queryService: { findOneForAdmin: jest.Mock };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     prisma = createMockPrismaService();
     tracks = { updateTrack: jest.fn().mockResolvedValue(undefined) };
-    notifications = { createForUser: jest.fn().mockResolvedValue(undefined) };
+    notifications = {
+      createForUser: jest.fn().mockResolvedValue(undefined),
+      sendToUser: jest
+        .fn()
+        .mockResolvedValue({ sent: 0, failed: 0, pruned: 0 }),
+      sendToUsers: jest
+        .fn()
+        .mockResolvedValue({ recipients: 0, sent: 0, failed: 0, pruned: 0 }),
+    };
     queryService = {
       findOneForAdmin: jest.fn().mockResolvedValue({ id: "c1" }),
     };
@@ -279,8 +291,8 @@ describe("TrackCorrectionsService", () => {
         proposesClashes: true,
         proposedClashTimecodes: [],
       });
-      expect(notifications.createForUser).toHaveBeenCalledWith(
-        "admin-1",
+      expect(notifications.sendToUsers).toHaveBeenCalledWith(
+        expect.arrayContaining(["admin-1"]),
         NotificationType.TRACK_REPORT,
         "Proposition de correction",
         "«España Cañí» — Aucun clash",
@@ -449,9 +461,11 @@ describe("TrackCorrectionsService", () => {
         select: { id: true },
         take: MAX_ADMINS_NOTIFIED,
       });
-      expect(notifications.createForUser).toHaveBeenCalledTimes(2);
-      expect(notifications.createForUser).toHaveBeenCalledWith(
-        "admin-2",
+      // Un seul appel pour tous les administrateurs (#38) au lieu d'un par
+      // destinataire : le fil est écrit en une requête, les push sont bornées.
+      expect(notifications.sendToUsers).toHaveBeenCalledTimes(1);
+      expect(notifications.sendToUsers).toHaveBeenCalledWith(
+        ["admin-1", "admin-2"],
         NotificationType.TRACK_REPORT,
         "Proposition de correction",
         "«España Cañí» — Titre « Titre », Artiste « Artiste », Danse Paso Doble, MPM proposé 62, Clashs 10 s, 20 s",
@@ -460,7 +474,7 @@ describe("TrackCorrectionsService", () => {
     });
 
     it("n'échoue pas si une notification admin échoue", async () => {
-      notifications.createForUser.mockRejectedValueOnce(new Error("fcm"));
+      notifications.sendToUsers.mockRejectedValueOnce(new Error("fcm"));
       await expect(
         service.create("u1", {
           trackId: "t1",
@@ -519,8 +533,8 @@ describe("TrackCorrectionsService", () => {
         },
         select: { id: true },
       });
-      expect(notifications.createForUser).toHaveBeenCalledWith(
-        "admin-1",
+      expect(notifications.sendToUsers).toHaveBeenCalledWith(
+        expect.arrayContaining(["admin-1"]),
         NotificationType.TRACK_REPORT,
         "Proposition de correction",
         "«España Cañí» — MPM signalé",
@@ -535,8 +549,8 @@ describe("TrackCorrectionsService", () => {
         "  appel décalé  ",
         "u1",
       );
-      expect(notifications.createForUser).toHaveBeenCalledWith(
-        "admin-1",
+      expect(notifications.sendToUsers).toHaveBeenCalledWith(
+        expect.arrayContaining(["admin-1"]),
         NotificationType.TRACK_REPORT,
         "Proposition de correction",
         "«España Cañí» — Clash paso doble signalé",
@@ -574,7 +588,7 @@ describe("TrackCorrectionsService", () => {
           ),
         ).rejects.toThrow(new NotFoundException("Track t1 not found"));
         expect(tx.trackCorrection.create).not.toHaveBeenCalled();
-        expect(notifications.createForUser).not.toHaveBeenCalled();
+        expect(notifications.sendToUser).not.toHaveBeenCalled();
       },
     );
 
@@ -607,7 +621,7 @@ describe("TrackCorrectionsService", () => {
           ),
         ).resolves.toBeUndefined();
         expect(tx.trackCorrection.create).not.toHaveBeenCalled();
-        expect(notifications.createForUser).not.toHaveBeenCalled();
+        expect(notifications.sendToUser).not.toHaveBeenCalled();
       },
     );
   });
@@ -645,7 +659,7 @@ describe("TrackCorrectionsService", () => {
         ConflictException,
       );
       expect(tracks.updateTrack).not.toHaveBeenCalled();
-      expect(notifications.createForUser).not.toHaveBeenCalled();
+      expect(notifications.sendToUser).not.toHaveBeenCalled();
     });
 
     it("marque APPROVED et applique les valeurs proposées via updateTrack, en transaction", async () => {
@@ -676,7 +690,7 @@ describe("TrackCorrectionsService", () => {
         },
         tx,
       );
-      expect(notifications.createForUser).toHaveBeenCalledWith(
+      expect(notifications.sendToUser).toHaveBeenCalledWith(
         "u1",
         NotificationType.TRACK_CORRECTION_DECISION,
         "Proposition validée",
@@ -750,7 +764,7 @@ describe("TrackCorrectionsService", () => {
       await expect(service.approve("c1", "admin-1", {})).rejects.toThrow(
         NotFoundException,
       );
-      expect(notifications.createForUser).not.toHaveBeenCalled();
+      expect(notifications.sendToUser).not.toHaveBeenCalled();
     });
 
     it("ne notifie personne si l'auteur a supprimé son compte", async () => {
@@ -758,7 +772,7 @@ describe("TrackCorrectionsService", () => {
         decisionRow({ proposedById: null }) as never,
       );
       await service.approve("c1", "admin-1", {});
-      expect(notifications.createForUser).not.toHaveBeenCalled();
+      expect(notifications.sendToUser).not.toHaveBeenCalled();
     });
 
     it("masque le titre d'une piste modérée dans la notification à l'auteur", async () => {
@@ -773,7 +787,7 @@ describe("TrackCorrectionsService", () => {
         }) as never,
       );
       await service.approve("c1", "admin-1", {});
-      expect(notifications.createForUser).toHaveBeenCalledWith(
+      expect(notifications.sendToUser).toHaveBeenCalledWith(
         "u1",
         NotificationType.TRACK_CORRECTION_DECISION,
         "Proposition validée",
@@ -796,7 +810,7 @@ describe("TrackCorrectionsService", () => {
       );
       prisma.trackCorrection.updateMany.mockResolvedValue({ count: 1 });
       await service.reject("c1", "admin-1", {});
-      expect(notifications.createForUser).toHaveBeenCalledWith(
+      expect(notifications.sendToUser).toHaveBeenCalledWith(
         "u1",
         NotificationType.TRACK_CORRECTION_DECISION,
         "Proposition refusée",
@@ -817,21 +831,21 @@ describe("TrackCorrectionsService", () => {
         }) as never,
       );
       await service.approve("c1", "admin-1", { title: "Autre vrai titre" });
-      const body = notifications.createForUser.mock.calls[0][3] as string;
+      const body = notifications.sendToUser.mock.calls[0][3] as string;
       expect(body).toContain("Titre masqué");
       expect(body).not.toContain("Autre vrai titre");
       expect(body).not.toContain("Vrai");
     });
 
     it("un échec de notification n'annule pas la décision", async () => {
-      notifications.createForUser.mockRejectedValue(new Error("fcm"));
+      notifications.sendToUser.mockRejectedValue(new Error("fcm"));
       await expect(service.approve("c1", "admin-1", {})).resolves.toEqual({
         id: "c1",
       });
     });
 
     it("un échec de notification non-Error est aussi absorbé", async () => {
-      notifications.createForUser.mockRejectedValue("boom");
+      notifications.sendToUser.mockRejectedValue("boom");
       await expect(service.approve("c1", "admin-1", {})).resolves.toEqual({
         id: "c1",
       });
@@ -861,7 +875,7 @@ describe("TrackCorrectionsService", () => {
         },
       });
       expect(tracks.updateTrack).not.toHaveBeenCalled();
-      expect(notifications.createForUser).toHaveBeenCalledWith(
+      expect(notifications.sendToUser).toHaveBeenCalledWith(
         "u1",
         NotificationType.TRACK_CORRECTION_DECISION,
         "Proposition refusée",
@@ -882,7 +896,7 @@ describe("TrackCorrectionsService", () => {
           data: expect.objectContaining({ reviewComment: null }),
         }),
       );
-      expect(notifications.createForUser).toHaveBeenCalledWith(
+      expect(notifications.sendToUser).toHaveBeenCalledWith(
         "u1",
         NotificationType.TRACK_CORRECTION_DECISION,
         "Proposition refusée",
@@ -896,7 +910,7 @@ describe("TrackCorrectionsService", () => {
       await expect(service.reject("c1", "admin-1", {})).rejects.toThrow(
         ConflictException,
       );
-      expect(notifications.createForUser).not.toHaveBeenCalled();
+      expect(notifications.sendToUser).not.toHaveBeenCalled();
     });
 
     it("409 si déjà validée", async () => {

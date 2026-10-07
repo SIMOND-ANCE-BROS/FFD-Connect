@@ -45,6 +45,16 @@ const FCM_STALE_TOKEN_CODES: ReadonlySet<string> = new Set([
 const MAX_DEVICES_PER_USER = 20;
 
 /**
+ * Destinataires traités simultanément par {@link NotificationsService.sendToUsers}.
+ *
+ * Une nouvelle compétition peut concerner des centaines de licenciés, et chacun
+ * ouvre jusqu'à `MAX_DEVICES_PER_USER` envois FCM : sans borne, un seul
+ * événement métier lancerait des milliers d'appels d'un coup. La borne garde
+ * aussi le disjoncteur FCM dans un régime où un échec isolé reste isolé.
+ */
+const PUSH_FANOUT_CHUNK = 20;
+
+/**
  * Durée de conservation d'un token d'appareil sans ré-enregistrement
  * (RGPD art. 5.1.e — limitation de la conservation). Le client ré-enregistre à
  * chaque ouverture de session : 90 jours de silence signifient que l'appareil
@@ -787,6 +797,72 @@ export class NotificationsService implements OnModuleInit {
         getErrorStack(error),
       );
       return { sent: 0, failed: 0, pruned: 0 };
+    }
+  }
+
+  /**
+   * Version multi-destinataires de {@link sendToUser}.
+   *
+   * Le feed in-app est écrit en UNE SEULE requête pour tout le monde
+   * (`createManyForUsers`), comme avant ; seule la push s'ajoute. C'est la
+   * substitution exacte de `createManyForUsers` chez les producteurs de masse.
+   *
+   * Les préférences sont lues en lot, puis les envois partent par paquets de
+   * {@link PUSH_FANOUT_CHUNK} destinataires. Best-effort de bout en bout : un
+   * échec de push ne remonte jamais à l'opération métier, seule l'écriture du
+   * feed peut faire échouer l'appel.
+   *
+   * @param userIds - Destinataires, déjà filtrés métier par l'appelant
+   * @param type - Type d'événement du catalogue, confronté aux préférences
+   * @returns `recipients` = ceux qui acceptaient la push, et les compteurs FCM
+   */
+  async sendToUsers(
+    userIds: readonly string[],
+    type: NotificationType,
+    title: string,
+    body: string,
+    data?: Record<string, string>,
+  ): Promise<{
+    recipients: number;
+    sent: number;
+    failed: number;
+    pruned: number;
+  }> {
+    const nothing = { recipients: 0, sent: 0, failed: 0, pruned: 0 };
+    if (userIds.length === 0) return nothing;
+
+    // Le feed d'abord, et son échec remonte : c'est la partie qui compte.
+    await this.createManyForUsers([...userIds], type, title, body, data);
+
+    try {
+      const allowed = await this.preferences.filterPushEnabled(userIds, type);
+      if (allowed.length === 0) return nothing;
+
+      let sent = 0;
+      let failed = 0;
+      let pruned = 0;
+      for (let i = 0; i < allowed.length; i += PUSH_FANOUT_CHUNK) {
+        const chunk = allowed.slice(i, i + PUSH_FANOUT_CHUNK);
+        const results = await Promise.all(
+          chunk.map((userId) =>
+            this.pushToUserDevices(userId, title, body, data),
+          ),
+        );
+        for (const result of results) {
+          sent += result.sent;
+          failed += result.failed;
+          pruned += result.pruned;
+        }
+      }
+      return { recipients: allowed.length, sent, failed, pruned };
+    } catch (error: unknown) {
+      // Même règle que `sendToUser` : on échoue fermé. Une préférence illisible
+      // ne part pas quand même — le contenu reste dans la cloche de chacun.
+      this.logger.error(
+        `Bulk push delivery failed (${type}): ${getErrorMessage(error)}`,
+        getErrorStack(error),
+      );
+      return nothing;
     }
   }
 

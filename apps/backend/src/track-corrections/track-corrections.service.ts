@@ -550,23 +550,17 @@ export class TrackCorrectionsService {
       // l'admin le lit dans la file, d'où il disparaît à la suppression.
       const body = `«${trackTitle}» — ${TrackCorrectionsService.summarize(reason, values)}`;
       const data = { type: "TRACK_CORRECTION", correctionId, trackId };
-      const results = await Promise.allSettled(
-        admins.map((admin) =>
-          this.notificationsService.createForUser(
-            admin.id,
-            NotificationType.TRACK_REPORT,
-            NEW_CORRECTION_NOTIFICATION_TITLE,
-            body,
-            data,
-          ),
-        ),
+      // Push (#38) : une proposition appelle une décision de modération.
+      // UN seul appel pour tous les administrateurs — le fil est écrit en une
+      // requête et les push partent par paquets bornés, au lieu d'un
+      // aller-retour en base par destinataire.
+      await this.notificationsService.sendToUsers(
+        admins.map((admin) => admin.id),
+        NotificationType.TRACK_REPORT,
+        NEW_CORRECTION_NOTIFICATION_TITLE,
+        body,
+        data,
       );
-      const failed = results.filter((r) => r.status === "rejected").length;
-      if (failed > 0) {
-        this.logger.warn(
-          `Track correction ${correctionId}: ${failed}/${admins.length} admin notification(s) failed`,
-        );
-      }
     } catch (error) {
       this.logger.warn(
         `Track correction ${correctionId}: admin notification failed: ${
@@ -595,7 +589,8 @@ export class TrackCorrectionsService {
       `«${title}» : votre proposition de correction a été ${approved ? "validée" : "refusée"}.` +
       (comment ? ` Commentaire : ${comment}` : "");
     try {
-      await this.notificationsService.createForUser(
+      // Push (#38) : décision prise par un tiers sur SA proposition.
+      await this.notificationsService.sendToUser(
         correction.proposedById,
         NotificationType.TRACK_CORRECTION_DECISION,
         approved ? "Proposition validée" : "Proposition refusée",

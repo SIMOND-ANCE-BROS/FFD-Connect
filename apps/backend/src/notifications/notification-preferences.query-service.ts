@@ -112,4 +112,45 @@ export class NotificationPreferencesQueryService {
 
     return preference?.enabled ?? isEnabledByDefault(type);
   }
+
+  /**
+   * Version en lot d'{@link isPushEnabled} : parmi `userIds`, ceux qui acceptent
+   * la push de ce type.
+   *
+   * UNE SEULE requête, et non une par destinataire : les producteurs de masse
+   * (nouvelle compétition éligible, résultats publiés) s'adressent à des
+   * centaines de licenciés, et autant d'allers-retours à la base avant même
+   * d'avoir envoyé quoi que ce soit serait absurde.
+   *
+   * Même règle de lecture que l'unitaire — « la ligne si elle existe, sinon le
+   * défaut du catalogue » — pour que les deux chemins ne divergent jamais :
+   * l'absence de ligne signifie « jamais réglé », pas « refusé ».
+   *
+   * L'ordre d'entrée est préservé, et les doublons éventuels aussi : c'est
+   * l'appelant qui décide de ce qu'il envoie.
+   *
+   * @param userIds - Destinataires envisagés
+   * @param type - Type d'événement du catalogue
+   * @returns Le sous-ensemble de `userIds` dont la push doit partir
+   */
+  async filterPushEnabled(
+    userIds: readonly string[],
+    type: NotificationType,
+  ): Promise<string[]> {
+    if (userIds.length === 0) return [];
+    // Un type non réglable n'a pas d'interrupteur : personne ne peut l'avoir
+    // refusé, inutile d'interroger la base.
+    if (!isConfigurable(type)) return [...userIds];
+
+    const preferences = await this.prisma.notificationPreference.findMany({
+      where: { type, userId: { in: [...new Set(userIds)] } },
+      select: { userId: true, enabled: true },
+    });
+    const decided = new Map(
+      preferences.map((preference) => [preference.userId, preference.enabled]),
+    );
+
+    const fallback = isEnabledByDefault(type);
+    return userIds.filter((userId) => decided.get(userId) ?? fallback);
+  }
 }
