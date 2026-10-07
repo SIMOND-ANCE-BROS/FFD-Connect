@@ -12,3 +12,11 @@ export const REGISTRATION_MODE_LABELS: Record<ClubRegistrationMode, string> = {
   CLUB_ONLY: 'Le club seul inscrit ses licenciés',
   MEMBERS_AUTO_CONFIRM: 'Licenciés, validation automatique',
 };
+
+export type StatusChoice = 'all' | 'active' | 'disabled';
+
+export const STATUS_FILTER_OPTIONS: { value: StatusChoice; label: string }[] = [
+  { value: 'all', label: 'Tous' },
+  { value: 'active', label: 'Actifs' },
+  { value: 'disabled', label: 'Désactivés' },
+];
