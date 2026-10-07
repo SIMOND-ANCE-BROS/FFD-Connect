@@ -520,6 +520,13 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
+      # Scripts de distribution bêta (stores) : autonomes, hors Jest (cf. en-tête
+      # des fichiers de test). Quelques secondes, sans job de plus.
+      - name: Test beta distribution scripts
+        run: |
+          pnpm testflight:distribute:test
+          pnpm play:distribute:test
+
       - name: Run code quality audit
         run: pnpm audit:quality
 

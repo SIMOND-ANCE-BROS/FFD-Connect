@@ -17,7 +17,7 @@ export const IS_PROD = APP_ENV === "production";
 export const IS_PREVIEW = APP_ENV === "preview";
 
 /**
- * Identité du binaire, au format des stores et des tags `beta-<version>-<build>` :
+ * Identité du binaire, au format des stores et des tags `beta-<version>-<plateforme>-<build>` :
  * version marketing + numéro de build NATIFS, ceux que TestFlight et Play
  * affichent. Pas `expoConfig` : sous OTA il vient du manifeste de la mise à
  * jour, et `android.versionCode` y vaut 1 en dur.
