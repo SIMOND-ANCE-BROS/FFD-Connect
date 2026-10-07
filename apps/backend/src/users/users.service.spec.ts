@@ -9,7 +9,11 @@ import * as bcrypt from "bcrypt";
 import { mockDeep, MockProxy } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
-import { MAX_RENEWAL_DOCUMENTS_TO_PURGE, UsersService } from "./users.service";
+import {
+  AccountDeletionService,
+  MAX_RENEWAL_DOCUMENTS_TO_PURGE,
+} from "./account-deletion.service";
+import { UsersService } from "./users.service";
 
 jest.mock("bcrypt", () => ({
   compare: jest.fn(),
@@ -68,6 +72,7 @@ describe("UsersService", () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
+        AccountDeletionService,
         { provide: PrismaService, useValue: prisma },
         {
           provide: RenewalDocumentFileCleaner,
