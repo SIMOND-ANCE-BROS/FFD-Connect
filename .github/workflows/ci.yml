@@ -34,6 +34,7 @@ jobs:
       client: ${{ steps.filter.outputs.client }}
       landing: ${{ steps.filter.outputs.landing }}
       docs: ${{ steps.filter.outputs.docs }}
+      admin: ${{ steps.filter.outputs.admin }}
       backend_image: ${{ steps.backend-image.outputs.build }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
@@ -58,6 +59,7 @@ jobs:
               # postinstall did. Without this line that PR skipped the check.
               - 'apps/client/package.json'
               - 'apps/landing/package.json'
+              - 'apps/admin/package.json'
             client:
               - 'apps/client/**'
               - 'packages/shared/**'
@@ -81,6 +83,14 @@ jobs:
               - 'apps/docs/**'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
+              - 'package.json'
+            # The admin's API client is generated from the backend's swagger.json
+            # (postinstall), so a backend API change can break its build.
+            admin:
+              - 'apps/admin/**'
+              - 'apps/backend/swagger.json'
+              - 'packages/eslint-config/**'
+              - 'pnpm-lock.yaml'
               - 'package.json'
 
       # Should this staging/master push build (and then deploy) the backend
@@ -113,7 +123,7 @@ jobs:
           set -uo pipefail
           # deploy-backend.yml here only forces a rebuild + redeploy: workflow_run
           # always runs develop's copy of it, whatever this commit contains.
-          PATTERNS='^(apps/backend/|packages/shared/|packages/jest-config/|patches/|scripts/|apps/client/package\.json$|apps/landing/package\.json$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.npmrc$|\.dockerignore$|\.github/workflows/deploy-backend\.yml$)'
+          PATTERNS='^(apps/backend/|packages/shared/|packages/jest-config/|patches/|scripts/|apps/client/package\.json$|apps/landing/package\.json$|apps/admin/package\.json$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|\.npmrc$|\.dockerignore$|\.github/workflows/deploy-backend\.yml$)'
           build() {
             echo "$1 - building the backend image (fail-safe)"
             echo "build=true" >> "$GITHUB_OUTPUT"
@@ -500,8 +510,9 @@ jobs:
   lint-format:
     name: Lint & Format
     runs-on: ubuntu-24.04
-    # 7, not 5: also builds the landing (vite, < 1 min) when it changed.
-    timeout-minutes: 7
+    # 10, not 5: also builds the landing (vite, < 1 min) and checks the admin
+    # (lint + typecheck + tests + build, ~1-2 min) when they changed.
+    timeout-minutes: 10
     needs: [changes]
     # Runs on all events — merge-back and bot pushes to develop/staging
     # must still pass formatting and lint to prevent drift.
@@ -564,6 +575,20 @@ jobs:
         timeout-minutes: 5
         run: pnpm --filter landing build
 
+      # apps/admin (back-office SPA, deployed by deploy-admin.yml). A step in
+      # this job rather than a job of its own: no extra runner start-up and no
+      # extra per-job minute rounding. VITE_API_URL is baked in at build time.
+      - name: Admin (lint, typecheck, tests, build)
+        if: github.event_name != 'pull_request' || needs.changes.outputs.admin == 'true'
+        timeout-minutes: 5
+        env:
+          VITE_API_URL: https://api-staging.ffd.gabin-simond.fr/api/v1
+        run: |
+          pnpm --filter admin lint
+          pnpm --filter admin typecheck
+          pnpm --filter admin test
+          pnpm --filter admin build
+
   # ============================================================
   # DOCS BUILD — apps/docs had no gate at all                   [BLOCKING]
   #
@@ -607,13 +632,14 @@ jobs:
     timeout-minutes: 6
     needs: [changes]
     # Runs on all push events (including develop/staging for merge-back safety).
-    # On PRs, skip if neither app changed.
+    # On PRs, skip if no typechecked app changed.
     if: >-
       github.event_name == 'push'
       || github.event_name == 'merge_group'
       || (github.event_name == 'pull_request'
           && (needs.changes.outputs.backend == 'true'
-              || needs.changes.outputs.client == 'true'))
+              || needs.changes.outputs.client == 'true'
+              || needs.changes.outputs.admin == 'true'))
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
@@ -626,7 +652,7 @@ jobs:
       - name: Setup Prisma
         uses: ./.github/actions/setup-prisma
 
-      - name: Typecheck (backend + client)
+      - name: Typecheck (backend + client + admin)
         run: pnpm typecheck
 
   # ============================================================

@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Deploy admin (Static Web App)
+
+# Publishes apps/admin (back-office SPA) to the Azure Static Web App
+# `swa-ffd-admin` (infra/terraform/admin-swa.tf), served at
+# https://admin.ffd.gabin-simond.fr. Runbook: docs/exploitation/backoffice-admin.md.
+#
+# Deploys from `staging` because the admin talks to backend-staging (the URL is
+# baked in at build time through VITE_API_URL). When backend-prod restarts, one
+# PR switches the trigger to `master` and the URL to api.ffd.gabin-simond.fr.
+#
+# Auth: the SWA deployment token (secret AZURE_STATIC_WEB_APPS_API_TOKEN_ADMIN,
+# scoped to the GitHub environment `admin`). It can only upload content to
+# this one Static Web App — no Azure RBAC role is granted to CI for it.
+#
+# Cost: ~2 min of Actions per run, only on staging pushes touching apps/admin.
+# SWA Free tier hosting is 0 EUR.
+
+on:
+  push:
+    branches: [staging]
+    paths: ['apps/admin/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push supersedes an in-flight upload: the last build is the one that
+# must end up online, and a SWA upload is atomic (no half-published site).
+concurrency:
+  group: deploy-admin
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment: admin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+
+      # Full workspace install: apps/admin's postinstall regenerates its API
+      # client (src/api/generated, gitignored) from apps/backend/swagger.json.
+      - name: Setup pnpm & Node
+        uses: ./.github/actions/setup-pnpm
+
+      - name: Build
+        env:
+          VITE_API_URL: https://api-staging.ffd.gabin-simond.fr/api/v1
+        run: pnpm --filter admin build
+
+      # Pinned to the head of the action's `v1` branch: the `v1` tag still
+      # points at a 2021 commit that predates the `skip_api_build` input.
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@4d27395796ac319302594769cfe812bd207490b1 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ADMIN }}
+          action: upload
+          app_location: apps/admin/dist
+          skip_app_build: true
+          skip_api_build: true
