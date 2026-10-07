@@ -42,10 +42,17 @@ on:
           Android (UUID, affiché dans le résumé du run qui l'a lancé).
         required: false
         type: string
-      releaseNotes:
+      toTest:
+        description: >-
+          À tester en priorité (facultatif), en tête des notes testeurs des deux
+          stores. Plusieurs points séparés par « ; » (ex. « Inscription à une
+          compétition ; Lecture hors ligne »).
+        required: false
+        type: string
+      notes:
         description: >-
           Notes testeurs (relecture). Laisser VIDE = génération auto depuis les
-          commits conventionnels depuis le dernier tag beta-*.
+          commits conventionnels depuis le tag bêta précédent.
         required: false
         type: string
 
@@ -632,16 +639,21 @@ jobs:
           echo "## 🔁 Reprise du build $PLATFORM_NAME beta $NUMBER (\`$BUILD_ID\`, commit ${COMMIT:0:7}) — aucun rebuild" \
             >> "$GITHUB_STEP_SUMMARY"
 
-      # Notes testeurs, identiques pour les deux stores : fournies (relecture) OU
-      # générées depuis les commits conventionnels depuis le tag beta-* précédent.
-      # Chaque store les tronque à sa limite (TestFlight 4000 car., Play 500).
-      - name: Generate beta changelog
-        id: changelog
+      # Notes testeurs, identiques pour les deux stores : « À tester en priorité »
+      # (input toTest) en tête, puis les notes fournies (relecture) OU générées
+      # depuis les commits conventionnels depuis le tag bêta précédent. Chaque
+      # store les tronque à sa limite (TestFlight 4000 car., Play 500) : la
+      # partie « À tester » passe en premier, donc survit à la coupe.
+      # beta-notes.md = corps de la release GitHub, beta-notes.txt = texte brut
+      # pour les stores.
+      - name: Generate tester notes
+        id: notes
         if: steps.resolve.outputs.skip != 'true'
         # Notes passées via env (pas d'interpolation dans le shell → pas
         # d'injection de commande depuis le champ du formulaire).
         env:
-          RELEASE_NOTES: ${{ inputs.releaseNotes }}
+          NOTES: ${{ inputs.notes }}
+          TO_TEST: ${{ inputs.toTest }}
           PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
@@ -652,12 +664,23 @@ jobs:
           if [ "$PLATFORM" = "ios" ] || [ "$PLATFORM" = "android" ]; then
             BASE=(--platform "$PLATFORM")
           fi
-          if [ -n "$RELEASE_NOTES" ]; then
-            printf '%s\n' "$RELEASE_NOTES" > beta-notes.md
+          if [ -n "$NOTES" ]; then
+            printf '%s\n' "$NOTES" > beta-notes.md
             cp beta-notes.md beta-notes.txt
           else
-            node scripts/generate-changelog.mjs "${BASE[@]}" --format markdown > beta-notes.md
+            # Sans titre : la release porte déjà « Bêta iOS 1.0.0 (19) ».
+            node scripts/generate-changelog.mjs "${BASE[@]}" --format markdown --heading none > beta-notes.md
             node scripts/generate-changelog.mjs "${BASE[@]}" --format testflight > beta-notes.txt
+          fi
+          if [ -n "$TO_TEST" ]; then
+            # Un point par élément séparé par « ; », espaces de bord retirés.
+            mapfile -t ITEMS < <(printf '%s' "$TO_TEST" | tr ';' '\n' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' | grep -v '^$')
+            if [ "${#ITEMS[@]}" -gt 0 ]; then
+              { echo '### 🎯 À tester en priorité'; printf -- '- %s\n' "${ITEMS[@]}"; echo; cat beta-notes.md; } > "$RUNNER_TEMP/notes.md"
+              { echo 'À tester en priorité'; printf '• %s\n' "${ITEMS[@]}"; echo; cat beta-notes.txt; } > "$RUNNER_TEMP/notes.txt"
+              mv "$RUNNER_TEMP/notes.md" beta-notes.md
+              mv "$RUNNER_TEMP/notes.txt" beta-notes.txt
+            fi
           fi
           {
             echo "## 📝 Notes testeurs ($NOTES_TITLE)"
@@ -666,11 +689,11 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload changelog artifact
+      - name: Upload tester notes
         if: steps.resolve.outputs.skip != 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: beta-changelog-${{ matrix.platform }}
+          name: beta-notes-${{ matrix.platform }}
           path: |
             beta-notes.md
             beta-notes.txt

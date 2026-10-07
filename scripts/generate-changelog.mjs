@@ -16,6 +16,8 @@
  *   --to       Réf de fin (incluse). Défaut : HEAD.
  *   --version  Étiquette de version affichée en tête. Défaut : date du jour.
  *   --format   markdown (défaut) | testflight | json
+ *   --heading  `none` : pas de titre « ## <version> — <date> » en markdown (la
+ *              promotion bêta titre elle-même la release : « Bêta iOS 1.0.0 (19) »).
  *   --platform Base = dernier tag de CETTE plateforme (`beta-*-<platform>-*`) ou
  *              d'une OTA (`beta-*-ota-*`, commune aux deux) : une promotion
  *              iOS seule ne doit pas déplacer la base des notes Android, et
@@ -39,6 +41,21 @@ const SECTIONS = [
   { type: 'security', title: '🔒 Sécurité' },
 ];
 const BREAKING_TITLE = '⚠️ Changements importants';
+
+// Périmètres (scope) sans effet visible pour un testeur, même typés feat/fix :
+// pipeline, build EAS, site vitrine, dépendances, outillage, infra, docs.
+// « feat(ci): run the iOS and Android beta promotions… » n'a rien à faire dans
+// « What to Test ».
+const INTERNAL_SCOPES = new Set([
+  'ci',
+  'eas',
+  'landing',
+  'deps',
+  'scripts',
+  'release',
+  'infra',
+  'docs',
+]);
 
 function parseArgs(argv) {
   const args = {};
@@ -103,13 +120,18 @@ function defaultSince(to, platform) {
 function parseCommit(subject) {
   const m = subject.match(/^(\w+)(?:\(([^)]*)\))?(!)?:\s*(.+)$/);
   if (!m) return null;
-  const [, type, , bang, rest] = m;
+  const [, type, scope, bang, rest] = m;
   const breaking = bang === '!';
   // Retire les réfs de PR en fin de sujet (« … (#563) (#549) ») : du bruit
   // pour les testeurs.
   const trimmed = rest.replace(/(?:\s*\(#\d+\))+\s*$/, '').trim();
   const clean = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-  return { type: type.toLowerCase(), breaking, subject: clean };
+  return {
+    type: type.toLowerCase(),
+    scope: (scope ?? '').toLowerCase(),
+    breaking,
+    subject: clean,
+  };
 }
 
 function collect(since, to) {
@@ -127,6 +149,7 @@ function collect(since, to) {
   for (const line of lines) {
     const c = parseCommit(line);
     if (!c) continue;
+    if (INTERNAL_SCOPES.has(c.scope)) continue;
     const section = SECTIONS.find((s) => s.type === c.type);
     if (c.breaking) add(BREAKING_TITLE, c.subject);
     if (section) add(section.title, c.subject);
@@ -139,14 +162,14 @@ function collect(since, to) {
     .map((title) => ({ title, entries: [...buckets.get(title)] }));
 }
 
-function render(sections, version, date, format) {
+function render(sections, version, date, format, heading = true) {
   if (format === 'json') {
     return JSON.stringify({ version, date, sections }, null, 2);
   }
   if (sections.length === 0) {
     return format === 'testflight'
       ? 'Corrections et améliorations diverses.'
-      : `## ${version} — ${date}\n\n_Aucun changement destiné aux testeurs._`;
+      : `${heading ? `## ${version} — ${date}\n\n` : ''}_Aucun changement destiné aux testeurs._`;
   }
   if (format === 'testflight') {
     // Texte brut, sans markdown (TestFlight n'affiche pas le markdown).
@@ -161,7 +184,7 @@ function render(sections, version, date, format) {
   const body = sections
     .map((s) => `### ${s.title}\n${s.entries.map((e) => `- ${e}`).join('\n')}`)
     .join('\n\n');
-  return `## ${version} — ${date}\n\n${body}`;
+  return heading ? `## ${version} — ${date}\n\n${body}` : body;
 }
 
 function main() {
@@ -176,7 +199,11 @@ function main() {
   const format = args.format || 'markdown';
 
   const sections = collect(since, to);
-  process.stdout.write(render(sections, version, date, format) + '\n');
+  if (args.heading && args.heading !== 'none') {
+    throw new Error(`--heading : seule la valeur « none » est acceptée, reçu « ${args.heading} »`);
+  }
+  const heading = args.heading !== 'none';
+  process.stdout.write(render(sections, version, date, format, heading) + '\n');
 }
 
 main();
