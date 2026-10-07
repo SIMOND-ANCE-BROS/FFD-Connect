@@ -27,7 +27,7 @@ describe("AccountDeletionService", () => {
 
   it("runs the caller's operations after the user deletion, in the same transaction", async () => {
     const marker = (op: string) => ({ op }) as never;
-    prisma.adminAuditLog.deleteMany.mockReturnValue(marker("auditPurge"));
+    prisma.adminAuditLog.updateMany.mockReturnValue(marker("auditAnon"));
     prisma.user.delete.mockReturnValue(marker("user"));
 
     await service.deleteAccount("u1", [marker("adminAudit")]);
@@ -40,7 +40,7 @@ describe("AccountDeletionService", () => {
     )
       .map((o) => o?.op)
       .filter(Boolean);
-    expect(ops).toEqual(["auditPurge", "user", "adminAudit"]);
+    expect(ops).toEqual(["auditAnon", "user", "adminAudit"]);
   });
 
   it("checks no password: authorising the deletion is the caller's job", async () => {

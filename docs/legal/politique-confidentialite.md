@@ -56,7 +56,7 @@ Nous faisons appel aux prestataires suivants, qui agissent comme sous-traitants 
 | **Microsoft Azure AI** (Vision, Speech) | OCR du certificat, synthèse vocale                  | UE (Irlande)                       |
 | **Resend**                              | envoi d'e-mails transactionnels                     | États-Unis (voir §6)               |
 
-Les administrateurs de la plateforme peuvent consulter et corriger les informations de profil (club, catégorie, classe d'âge, niveaux) ; chaque modification est tracée (auteur, date, valeurs avant/après) et ces traces sont supprimées avec le compte.
+Les administrateurs de la plateforme peuvent consulter et corriger les informations de profil (club, catégorie, classe d'âge, niveaux) ; chaque modification est tracée (auteur, date, valeurs avant/après) et, à la suppression du compte, ces traces sont conservées mais dépouillées de toute donnée personnelle (seuls l'action, la date et un identifiant technique subsistent).
 
 Aucune donnée n'est vendue à des tiers.
 

@@ -29,8 +29,11 @@ export const MAX_RENEWAL_DOCUMENTS_TO_PURGE = 200;
  * (partnerUserId ET partnerName, copie du nom complet → null ; null est
  * déjà géré partout à l'affichage).
  * Suppressions explicites (FK sans onDelete → RESTRICT) : registrations,
- * seatBookings, notifications ; bugReports (userId sans FK) ; lignes du
- * journal admin qui visent l'utilisateur.
+ * seatBookings, notifications ; bugReports (userId sans FK).
+ * Journal admin : les lignes qui visent l'utilisateur sont CONSERVÉES mais
+ * anonymisées (before/after mis à NULL, seuls action, auteur, date et
+ * targetId — un UUID — restent), pour qu'un admin ne puisse pas effacer la
+ * trace de ses actions en supprimant le compte.
  * ImpersonationLog est conservé (piste d'audit).
  *
  * Fichiers des documents de renouvellement (certificat médical — donnée de
@@ -89,10 +92,13 @@ export class AccountDeletionService {
       }),
       // BugReport.userId n'a pas de FK (report.prisma) : suppression explicite.
       this.prisma.bugReport.deleteMany({ where: { userId } }),
-      // Back-office audit rows about this person would outlive the account.
-      // Rows the user authored as an admin stay (actorId -> SetNull).
-      this.prisma.adminAuditLog.deleteMany({
+      // Keep the audit trail but strip what may identify the person (before /
+      // after hold names, emails...). Must run before the caller's own ops so
+      // the USER_DELETE row appended below keeps its { role }. Rows the user
+      // authored as an admin stay (actorId -> SetNull).
+      this.prisma.adminAuditLog.updateMany({
         where: { targetType: "USER", targetId: userId },
+        data: { before: Prisma.DbNull, after: Prisma.DbNull },
       }),
       this.prisma.user.delete({ where: { id: userId } }),
       ...alsoInTransaction,

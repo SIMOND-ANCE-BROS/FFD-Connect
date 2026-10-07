@@ -182,10 +182,10 @@ describe("Admin (integration, real DB)", () => {
     ).resolves.toMatchObject({ id: target.id });
   });
 
-  it("admin deletion goes through the shared core and keeps one role-only audit row", async () => {
+  it("admin deletion goes through the shared core and keeps an anonymised trail and a role-only delete row", async () => {
     const admin = await create({ role: UserRole.ADMIN });
     const target = await create({ lastName: "Martin" });
-    // An earlier audit row about the target: the core must purge it.
+    // An earlier audit row about the target: the core must anonymise it.
     await service.update(admin.id, target.id, { lastName: "Durand" });
     await tokens.createRefreshToken(target.id);
 
@@ -204,9 +204,13 @@ describe("Admin (integration, real DB)", () => {
     const rows = await prisma.adminAuditLog.findMany({
       where: { targetId: target.id },
     });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      action: "USER_DELETE",
+    expect(rows).toHaveLength(2);
+    const update = rows.find((r) => r.action === "USER_UPDATE");
+    expect(update).toMatchObject({ actorId: admin.id });
+    expect(update?.before).toBeNull();
+    expect(update?.after).toBeNull();
+    const del = rows.find((r) => r.action === "USER_DELETE");
+    expect(del).toMatchObject({
       actorId: admin.id,
       before: null,
       after: { role: "LICENSEE" },
