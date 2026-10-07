@@ -463,3 +463,22 @@ export const adminUserDeletionTargetSelect = {
   email: true,
   role: true,
 } as const;
+
+/** Back-office clubs table. Never select HelloAsso credentials. */
+export const adminClubListSelect = {
+  id: true,
+  name: true,
+  registrationMode: true,
+  disabledAt: true,
+  createdAt: true,
+} as const;
+
+/** Back-office club page: one member row. */
+export const adminClubMemberSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+  role: true,
+  disabledAt: true,
+} as const;

@@ -15,6 +15,8 @@ const ADMIN_ROUTES: Array<
 > = [
   ["get", "/api/v1/admin/reference-data"],
   ["get", "/api/v1/admin/clubs"],
+  ["get", "/api/v1/admin/clubs/options"],
+  ["get", "/api/v1/admin/clubs/00000000-0000-4000-8000-000000000000"],
   ["get", "/api/v1/admin/audit-log"],
   ["get", "/api/v1/admin/users"],
   ["get", "/api/v1/admin/users/00000000-0000-4000-8000-000000000000"],

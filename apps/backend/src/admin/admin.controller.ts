@@ -28,10 +28,17 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { AdminAuditService } from "./admin-audit.service";
+import { AdminClubsQueryService } from "./admin-clubs.query-service";
 import { AdminUserAccountsService } from "./admin-user-accounts.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminReferenceService } from "./admin-reference.service";
+import {
+  AdminClubDetailDto,
+  AdminClubsPageDto,
+  ClubOptionsQueryDto,
+  ListAdminClubsQueryDto,
+} from "./dto/admin-clubs.dto";
 import { DeleteAdminUserDto, SetActiveDto } from "./dto/admin-actions.dto";
 import { AuditLogPageDto, ListAuditLogQueryDto } from "./dto/admin-audit.dto";
 import {
@@ -67,6 +74,7 @@ export class AdminController {
     private readonly usersQuery: AdminUsersQueryService,
     private readonly users: AdminUsersService,
     private readonly userAccounts: AdminUserAccountsService,
+    private readonly clubsQuery: AdminClubsQueryService,
   ) {}
 
   @Get("reference-data")
@@ -77,10 +85,31 @@ export class AdminController {
   }
 
   @Get("clubs")
-  @ApiOperation({ summary: "Clubs (id + nom) pour les listes déroulantes" })
+  @ApiOperation({ summary: "Liste paginée des clubs" })
+  @ApiResponse({ status: 200, type: AdminClubsPageDto })
+  listClubs(
+    @Query() query: ListAdminClubsQueryDto,
+  ): Promise<AdminClubsPageDto> {
+    return this.clubsQuery.list(query);
+  }
+
+  @Get("clubs/options")
+  @ApiOperation({
+    summary: "Clubs actifs (id + nom) pour les listes déroulantes",
+  })
   @ApiResponse({ status: 200, type: [AdminClubOptionDto] })
-  clubs(): Promise<AdminClubOptionDto[]> {
-    return this.reference.clubs();
+  clubOptions(
+    @Query() query: ClubOptionsQueryDto,
+  ): Promise<AdminClubOptionDto[]> {
+    return this.clubsQuery.options(query.includeId);
+  }
+
+  @Get("clubs/:id")
+  @ApiOperation({ summary: "Fiche d'un club" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, type: AdminClubDetailDto })
+  getClub(@Param("id", ParseUUIDPipe) id: string): Promise<AdminClubDetailDto> {
+    return this.clubsQuery.detail(id);
   }
 
   @Get("audit-log")

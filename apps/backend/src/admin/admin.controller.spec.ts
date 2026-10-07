@@ -5,6 +5,7 @@ import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { AdminAuditService } from "./admin-audit.service";
+import { AdminClubsQueryService } from "./admin-clubs.query-service";
 import { AdminReferenceService } from "./admin-reference.service";
 import { AdminUserAccountsService } from "./admin-user-accounts.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
@@ -15,17 +16,19 @@ import type { UpdateAdminUserDto } from "./dto/update-admin-user.dto";
 
 describe("AdminController", () => {
   const audit = { list: jest.fn() };
-  const reference = { referenceData: jest.fn(), clubs: jest.fn() };
+  const reference = { referenceData: jest.fn() };
   const usersQuery = { list: jest.fn(), detail: jest.fn() };
   const users = { update: jest.fn(), setStatus: jest.fn(), delete: jest.fn() };
   const userAccounts = { create: jest.fn(), resendInvitation: jest.fn() };
+  const clubsQuery = { list: jest.fn(), options: jest.fn(), detail: jest.fn() };
 
   const controller = new AdminController(
     audit as unknown as AdminAuditService,
-    reference as unknown as AdminReferenceService,
+    reference,
     usersQuery as unknown as AdminUsersQueryService,
     users as unknown as AdminUsersService,
     userAccounts as unknown as AdminUserAccountsService,
+    clubsQuery as unknown as AdminClubsQueryService,
   );
 
   const req = {
@@ -49,11 +52,24 @@ describe("AdminController", () => {
     expect(controller.referenceData()).toEqual({ roles: [] });
   });
 
-  it("lists clubs", async () => {
-    reference.clubs.mockResolvedValue([{ id: "c1", name: "Club" }]);
-    await expect(controller.clubs()).resolves.toEqual([
+  it("delegates the clubs list", async () => {
+    clubsQuery.list.mockResolvedValue({ data: [] });
+    const query = { skip: 0, take: 10 };
+    await controller.listClubs(query);
+    expect(clubsQuery.list).toHaveBeenCalledWith(query);
+  });
+
+  it("passes the selected club through to the options", async () => {
+    clubsQuery.options.mockResolvedValue([{ id: "c1", name: "Club" }]);
+    await expect(controller.clubOptions({ includeId: "c1" })).resolves.toEqual([
       { id: "c1", name: "Club" },
     ]);
+    expect(clubsQuery.options).toHaveBeenCalledWith("c1");
+  });
+
+  it("delegates the club detail", async () => {
+    clubsQuery.detail.mockResolvedValue({ id: "c1" });
+    await expect(controller.getClub("c1")).resolves.toEqual({ id: "c1" });
   });
 
   it("delegates the audit log query", async () => {
