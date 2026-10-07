@@ -261,6 +261,17 @@ describe("AdminClubsService", () => {
       } as never);
     });
 
+    it("locks the club row before counting what points at it", async () => {
+      await service.delete("admin-1", "c1");
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+      const [sql] = prisma.$queryRaw.mock.calls[0] as unknown as [Prisma.Sql];
+      expect(sql.sql).toBe('SELECT id FROM "Club" WHERE id = ? FOR UPDATE');
+      expect(sql.values).toEqual(["c1"]);
+      expect(prisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.user.count.mock.invocationCallOrder[0],
+      );
+    });
+
     it("deletes an empty club and audits its name", async () => {
       await service.delete("admin-1", "c1");
       expect(prisma.club.delete).toHaveBeenCalledWith({

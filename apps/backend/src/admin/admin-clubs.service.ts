@@ -178,6 +178,10 @@ export class AdminClubsService {
         select: adminClubOptionSelect,
       });
       if (!club) throw new NotFoundException("Club introuvable");
+      // Serialises against a concurrent attach (member, account) to this club.
+      await tx.$queryRaw(
+        Prisma.sql`SELECT id FROM "Club" WHERE id = ${clubId} FOR UPDATE`,
+      );
       const usage = await clubUsage(tx, club);
       if (!isClubEmpty(usage)) {
         throw new ConflictException({
