@@ -21,7 +21,7 @@ const ADMIN_ROUTES: Array<
   ["patch", "/api/v1/admin/users/00000000-0000-4000-8000-000000000000"],
   ["post", "/api/v1/admin/users/00000000-0000-4000-8000-000000000000/status"],
   ["delete", "/api/v1/admin/users/00000000-0000-4000-8000-000000000000"],
-  ["post", "/api/v1/admin/club-accounts"],
+  ["post", "/api/v1/admin/users"],
   [
     "post",
     "/api/v1/admin/users/00000000-0000-4000-8000-000000000000/resend-invitation",
@@ -98,5 +98,13 @@ describe("Admin routes (e2e) — role matrix", () => {
       .get("/api/v1/admin/reference-data")
       .expect(200);
     expect(res.body.roles).toEqual(["LICENSEE", "CLUB", "STAFF", "ADMIN"]);
+  });
+
+  it("the former club-accounts route is gone", async () => {
+    currentRole = UserRole.ADMIN;
+    await request(server())
+      .post("/api/v1/admin/club-accounts")
+      .send({})
+      .expect(404);
   });
 });

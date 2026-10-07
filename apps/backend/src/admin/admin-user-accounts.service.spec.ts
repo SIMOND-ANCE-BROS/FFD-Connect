@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { Prisma, UserRole } from "@prisma/client";
 import {
@@ -10,12 +14,13 @@ import { EmailService } from "../auth/email.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { AdminAuditService } from "./admin-audit.service";
 import {
-  AdminClubAccountsService,
+  AdminUserAccountsService,
   INVITATION_EXPIRY_HOURS,
-} from "./admin-club-accounts.service";
+} from "./admin-user-accounts.service";
+import type { CreateAdminUserDto } from "./dto/admin-user-accounts.dto";
 
-describe("AdminClubAccountsService", () => {
-  let service: AdminClubAccountsService;
+describe("AdminUserAccountsService", () => {
+  let service: AdminUserAccountsService;
   let prisma: MockPrismaService;
   let audit: { record: jest.Mock };
   let passwords: { issuePasswordToken: jest.Mock };
@@ -37,27 +42,32 @@ describe("AdminClubAccountsService", () => {
     email = { sendInvitationEmail: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
       providers: [
-        AdminClubAccountsService,
+        AdminUserAccountsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AdminAuditService, useValue: audit },
         { provide: AuthPasswordService, useValue: passwords },
         { provide: EmailService, useValue: email },
       ],
     }).compile();
-    service = moduleRef.get(AdminClubAccountsService);
+    service = moduleRef.get(AdminUserAccountsService);
   });
 
   const base = {
-    email: " Club@Example.FR ",
+    email: " Jeanne@Example.FR ",
     firstName: "Jeanne",
     lastName: "Martin",
   };
+  const dto = (o: Partial<CreateAdminUserDto>): CreateAdminUserDto => ({
+    ...base,
+    role: UserRole.LICENSEE,
+    ...o,
+  });
 
-  it("creates a new club + CLUB user with a normalised email, audits, then invites", async () => {
-    const res = await service.create("admin-1", {
-      ...base,
-      clubName: " Club Neuf ",
-    });
+  it("creates a CLUB account with a new club, audits USER_CREATE, then invites", async () => {
+    const res = await service.create(
+      "admin-1",
+      dto({ role: UserRole.CLUB, clubName: " Club Neuf " }),
+    );
 
     expect(prisma.club.create).toHaveBeenCalledWith({
       data: { name: "Club Neuf" },
@@ -65,7 +75,7 @@ describe("AdminClubAccountsService", () => {
     });
     const userData = prisma.user.create.mock.calls[0][0].data;
     expect(userData).toMatchObject({
-      email: "club@example.fr",
+      email: "jeanne@example.fr",
       firstName: "Jeanne",
       lastName: "Martin",
       role: UserRole.CLUB,
@@ -73,28 +83,27 @@ describe("AdminClubAccountsService", () => {
       clubName: "Club Neuf",
     });
     expect(userData.password).toMatch(/^\$2[aby]\$/);
-    expect(audit.record).toHaveBeenCalledWith(
-      prisma,
-      expect.objectContaining({
-        action: "CLUB_ACCOUNT_CREATE",
-        targetType: "USER",
-        targetId: "u-new",
-        after: {
-          email: "club@example.fr",
-          clubId: "c-new",
-          clubName: "Club Neuf",
-          role: "CLUB",
-        },
-      }),
-    );
+    expect(audit.record).toHaveBeenCalledWith(prisma, {
+      actorId: "admin-1",
+      action: "USER_CREATE",
+      targetType: "USER",
+      targetId: "u-new",
+      after: {
+        email: "jeanne@example.fr",
+        role: "CLUB",
+        clubId: "c-new",
+        clubName: "Club Neuf",
+      },
+    });
     expect(passwords.issuePasswordToken).toHaveBeenCalledWith(
       "u-new",
       INVITATION_EXPIRY_HOURS,
     );
     expect(email.sendInvitationEmail).toHaveBeenCalledWith(
-      "club@example.fr",
+      "jeanne@example.fr",
       "plain",
       "Jeanne",
+      UserRole.CLUB,
     );
     expect(res).toEqual({
       userId: "u-new",
@@ -103,26 +112,80 @@ describe("AdminClubAccountsService", () => {
     });
   });
 
-  it("attaches to an existing club by id", async () => {
+  it("creates a licensee without club, with the profile fields it was given", async () => {
+    const res = await service.create(
+      "admin-1",
+      dto({ category: "Latin", nationalRanking: 12, ageGroup: null }),
+    );
+
+    const userData = prisma.user.create.mock.calls[0][0].data;
+    expect(userData).toMatchObject({
+      role: UserRole.LICENSEE,
+      clubId: null,
+      clubName: null,
+      category: "Latin",
+      nationalRanking: 12,
+    });
+    expect(userData.ageGroup).toBeUndefined();
+    expect(audit.record.mock.calls[0][1].after).toEqual({
+      email: "jeanne@example.fr",
+      role: "LICENSEE",
+      category: "Latin",
+      nationalRanking: 12,
+    });
+    expect(email.sendInvitationEmail).toHaveBeenCalledWith(
+      "jeanne@example.fr",
+      "plain",
+      "Jeanne",
+      UserRole.LICENSEE,
+    );
+    expect(res.clubId).toBeNull();
+  });
+
+  it("attaches a STAFF account to an existing club by id", async () => {
     prisma.club.findUnique.mockResolvedValue({
       id: "c1",
       name: "Club A",
     } as never);
-    await service.create("admin-1", { ...base, clubId: "c1" });
+    await service.create(
+      "admin-1",
+      dto({ role: UserRole.STAFF, clubId: "c1" }),
+    );
     expect(prisma.club.create).not.toHaveBeenCalled();
     expect(prisma.user.create.mock.calls[0][0].data).toMatchObject({
+      role: UserRole.STAFF,
       clubId: "c1",
       clubName: "Club A",
     });
   });
 
+  it.each([
+    ["a new club for a non-Club role", { clubName: "Club Neuf" }],
+    ["a Club account without club", { role: UserRole.CLUB }],
+    [
+      "both clubId and clubName",
+      { role: UserRole.CLUB, clubId: "c1", clubName: "A" },
+    ],
+  ] as const)("400s on %s, writing nothing", async (_label, o) => {
+    await expect(service.create("admin-1", dto(o))).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it("400s on an unknown club id", async () => {
+    await expect(
+      service.create("admin-1", dto({ clubId: "c9" })),
+    ).rejects.toThrow(new BadRequestException("Club introuvable"));
+  });
+
   it("409s on an email already used, looked up in normalised form", async () => {
     prisma.user.findUnique.mockResolvedValue({ id: "x" } as never);
-    await expect(
-      service.create("admin-1", { ...base, clubName: "Z" }),
-    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.create("admin-1", dto({}))).rejects.toBeInstanceOf(
+      ConflictException,
+    );
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
-      where: { email: "club@example.fr" },
+      where: { email: "jeanne@example.fr" },
       select: { id: true },
     });
   });
@@ -133,27 +196,16 @@ describe("AdminClubAccountsService", () => {
       name: "Club A",
     } as never);
     await expect(
-      service.create("admin-1", { ...base, clubName: "Club A" }),
-    ).rejects.toMatchObject({
-      response: { existingClubId: "c1" },
-    });
-  });
-
-  it("400s when both or neither of clubId / clubName are given", async () => {
-    await expect(service.create("admin-1", { ...base })).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    await expect(
-      service.create("admin-1", { ...base, clubId: "c1", clubName: "A" }),
-    ).rejects.toBeInstanceOf(BadRequestException);
+      service.create(
+        "admin-1",
+        dto({ role: UserRole.CLUB, clubName: "Club A" }),
+      ),
+    ).rejects.toMatchObject({ response: { existingClubId: "c1" } });
   });
 
   it("keeps the account and reports invitationSent=false when the email fails", async () => {
     email.sendInvitationEmail.mockRejectedValue(new Error("down"));
-    const res = await service.create("admin-1", {
-      ...base,
-      clubName: "Club Neuf",
-    });
+    const res = await service.create("admin-1", dto({}));
     expect(res.invitationSent).toBe(false);
     expect(prisma.user.create).toHaveBeenCalled();
   });
@@ -168,9 +220,7 @@ describe("AdminClubAccountsService", () => {
 
     it("maps an email race to a 409", async () => {
       prisma.user.create.mockRejectedValue(p2002(["email"]));
-      await expect(
-        service.create("admin-1", { ...base, clubName: "Club Neuf" }),
-      ).rejects.toMatchObject({
+      await expect(service.create("admin-1", dto({}))).rejects.toMatchObject({
         status: 409,
         response: expect.objectContaining({
           message: "Cet email est déjà utilisé",
@@ -184,7 +234,10 @@ describe("AdminClubAccountsService", () => {
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce({ id: "c9", name: "Club Neuf" } as never);
       await expect(
-        service.create("admin-1", { ...base, clubName: "Club Neuf" }),
+        service.create(
+          "admin-1",
+          dto({ role: UserRole.CLUB, clubName: "Club Neuf" }),
+        ),
       ).rejects.toMatchObject({
         status: 409,
         response: {
@@ -197,29 +250,32 @@ describe("AdminClubAccountsService", () => {
     it("rethrows anything that is not a P2002", async () => {
       const boom = new Error("db down");
       prisma.user.create.mockRejectedValue(boom);
-      await expect(
-        service.create("admin-1", { ...base, clubName: "Club Neuf" }),
-      ).rejects.toBe(boom);
+      await expect(service.create("admin-1", dto({}))).rejects.toBe(boom);
     });
   });
 
   describe("resendInvitation", () => {
-    const clubUser = {
+    const target = {
       id: "u1",
-      email: "c@x.fr",
+      email: "j@x.fr",
       firstName: "J",
-      role: UserRole.CLUB,
+      role: UserRole.LICENSEE,
+      lastLoginAt: null,
+      disabledAt: null,
     };
 
-    it("re-issues a token and audits", async () => {
-      prisma.user.findUnique.mockResolvedValue({
-        ...clubUser,
-        lastLoginAt: null,
-      } as never);
+    it("re-issues a token for any non-admin role, with that role's wording, and audits", async () => {
+      prisma.user.findUnique.mockResolvedValue(target as never);
       const res = await service.resendInvitation("admin-1", "u1");
       expect(passwords.issuePasswordToken).toHaveBeenCalledWith(
         "u1",
         INVITATION_EXPIRY_HOURS,
+      );
+      expect(email.sendInvitationEmail).toHaveBeenCalledWith(
+        "j@x.fr",
+        "plain",
+        "J",
+        UserRole.LICENSEE,
       );
       expect(audit.record).toHaveBeenCalledWith(
         prisma,
@@ -231,29 +287,35 @@ describe("AdminClubAccountsService", () => {
       expect(res).toEqual({ invitationSent: true });
     });
 
-    it("400s for a non-CLUB account, without auditing or mailing", async () => {
-      prisma.user.findUnique.mockResolvedValue({
-        ...clubUser,
-        role: UserRole.LICENSEE,
-        lastLoginAt: null,
-      } as never);
+    it.each([
+      [
+        "an ADMIN account",
+        { role: UserRole.ADMIN },
+        "Un compte administrateur ne reçoit pas d'invitation",
+      ],
+      [
+        "an account that has logged in",
+        { lastLoginAt: new Date() },
+        "Ce compte s'est déjà connecté",
+      ],
+      [
+        "a disabled account",
+        { disabledAt: new Date() },
+        "Ce compte est désactivé",
+      ],
+    ])("400s for %s, without auditing or mailing", async (_l, o, message) => {
+      prisma.user.findUnique.mockResolvedValue({ ...target, ...o } as never);
       await expect(service.resendInvitation("admin-1", "u1")).rejects.toThrow(
-        new BadRequestException(
-          "Seuls les comptes Club peuvent recevoir une invitation",
-        ),
+        new BadRequestException(message),
       );
       expect(audit.record).not.toHaveBeenCalled();
       expect(passwords.issuePasswordToken).not.toHaveBeenCalled();
     });
 
-    it("400s once the user has logged in", async () => {
-      prisma.user.findUnique.mockResolvedValue({
-        ...clubUser,
-        lastLoginAt: new Date(),
-      } as never);
+    it("404s on an unknown user", async () => {
       await expect(
-        service.resendInvitation("admin-1", "u1"),
-      ).rejects.toBeInstanceOf(BadRequestException);
+        service.resendInvitation("admin-1", "nope"),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

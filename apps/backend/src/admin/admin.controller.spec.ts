@@ -5,12 +5,12 @@ import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { AdminAuditService } from "./admin-audit.service";
-import { AdminClubAccountsService } from "./admin-club-accounts.service";
 import { AdminReferenceService } from "./admin-reference.service";
+import { AdminUserAccountsService } from "./admin-user-accounts.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminController } from "./admin.controller";
-import type { CreateClubAccountDto } from "./dto/club-account.dto";
+import type { CreateAdminUserDto } from "./dto/admin-user-accounts.dto";
 import type { UpdateAdminUserDto } from "./dto/update-admin-user.dto";
 
 describe("AdminController", () => {
@@ -18,14 +18,14 @@ describe("AdminController", () => {
   const reference = { referenceData: jest.fn(), clubs: jest.fn() };
   const usersQuery = { list: jest.fn(), detail: jest.fn() };
   const users = { update: jest.fn(), setStatus: jest.fn(), delete: jest.fn() };
-  const clubAccounts = { create: jest.fn(), resendInvitation: jest.fn() };
+  const userAccounts = { create: jest.fn(), resendInvitation: jest.fn() };
 
   const controller = new AdminController(
     audit as unknown as AdminAuditService,
     reference as unknown as AdminReferenceService,
     usersQuery as unknown as AdminUsersQueryService,
     users as unknown as AdminUsersService,
-    clubAccounts as unknown as AdminClubAccountsService,
+    userAccounts as unknown as AdminUserAccountsService,
   );
 
   const req = {
@@ -89,17 +89,17 @@ describe("AdminController", () => {
     expect(users.setStatus).toHaveBeenCalledWith("admin-1", "u1", false);
   });
 
-  it("passes the acting admin id when creating a club account", async () => {
-    clubAccounts.create.mockResolvedValue({ id: "u2" });
-    const dto = { email: "c@test.com" } as CreateClubAccountDto;
-    await controller.createClubAccount(dto, req);
-    expect(clubAccounts.create).toHaveBeenCalledWith("admin-1", dto);
+  it("passes the acting admin id when creating a user", async () => {
+    userAccounts.create.mockResolvedValue({ userId: "u2" });
+    const dto = { email: "c@test.com", role: "CLUB" } as CreateAdminUserDto;
+    await controller.createUser(dto, req);
+    expect(userAccounts.create).toHaveBeenCalledWith("admin-1", dto);
   });
 
   it("passes the acting admin id when resending an invitation", async () => {
-    clubAccounts.resendInvitation.mockResolvedValue({ sent: true });
+    userAccounts.resendInvitation.mockResolvedValue({ invitationSent: true });
     await controller.resendInvitation("u1", req);
-    expect(clubAccounts.resendInvitation).toHaveBeenCalledWith("admin-1", "u1");
+    expect(userAccounts.resendInvitation).toHaveBeenCalledWith("admin-1", "u1");
   });
 
   it("passes the acting admin id and the typed email when deleting a user", async () => {

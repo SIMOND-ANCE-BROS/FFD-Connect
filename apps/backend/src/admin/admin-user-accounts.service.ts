@@ -9,7 +9,7 @@ import { Prisma, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import { AuthPasswordService } from "../auth/auth-password.service";
-import { EmailService } from "../auth/email.service";
+import { EmailService, InvitationRole } from "../auth/email.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   adminClubOptionSelect,
@@ -17,18 +17,33 @@ import {
 } from "../utils/prisma-selects";
 import { AdminAuditService } from "./admin-audit.service";
 import {
-  ClubAccountCreatedDto,
-  CreateClubAccountDto,
+  AdminUserCreatedDto,
+  CreateAdminUserDto,
   InvitationResultDto,
-} from "./dto/club-account.dto";
+} from "./dto/admin-user-accounts.dto";
 
 export const INVITATION_EXPIRY_HOURS = 168;
 const BCRYPT_ROUNDS = 12;
 
-/** Club accounts created by an admin; the manager sets the password by email. */
+/** Profile fields the admin filled; null and absent both mean "not set". */
+function profileOf(dto: CreateAdminUserDto) {
+  return {
+    category: dto.category ?? undefined,
+    ageGroup: dto.ageGroup ?? undefined,
+    passportLevelLatin: dto.passportLevelLatin ?? undefined,
+    passportLevelStandard: dto.passportLevelStandard ?? undefined,
+    competitionLevel: dto.competitionLevel ?? undefined,
+    nationalRanking: dto.nationalRanking ?? undefined,
+  };
+}
+
+const definedOnly = (o: Record<string, unknown>): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
+
+/** Accounts created by an admin; the person sets the password by email. */
 @Injectable()
-export class AdminClubAccountsService {
-  private readonly logger = new Logger(AdminClubAccountsService.name);
+export class AdminUserAccountsService {
+  private readonly logger = new Logger(AdminUserAccountsService.name);
 
   constructor(
     private readonly prisma: PrismaService,
@@ -39,23 +54,23 @@ export class AdminClubAccountsService {
 
   async create(
     actorId: string,
-    dto: CreateClubAccountDto,
-  ): Promise<ClubAccountCreatedDto> {
-    if (Boolean(dto.clubId) === Boolean(dto.clubName)) {
-      throw new BadRequestException(
-        "Indiquer soit un club existant, soit le nom d'un nouveau club",
-      );
-    }
+    dto: CreateAdminUserDto,
+  ): Promise<AdminUserCreatedDto> {
+    this.checkClubChoice(dto);
     const email = dto.email.trim().toLowerCase();
     const firstName = dto.firstName.trim();
     const lastName = dto.lastName.trim();
-    // Unusable secret: the manager sets the real password via the invitation.
+    const profile = profileOf(dto);
+    // Unusable secret: the person sets the real password via the invitation.
     const password = await bcrypt.hash(
       crypto.randomBytes(32).toString("hex"),
       BCRYPT_ROUNDS,
     );
 
-    let created: { userId: string; club: { id: string; name: string } };
+    let created: {
+      userId: string;
+      club: { id: string; name: string } | null;
+    };
     try {
       created = await this.prisma.$transaction(async (tx) => {
         const taken = await tx.user.findUnique({
@@ -64,54 +79,30 @@ export class AdminClubAccountsService {
         });
         if (taken) throw new ConflictException("Cet email est déjà utilisé");
 
-        let club: { id: string; name: string };
-        if (dto.clubId) {
-          const existing = await tx.club.findUnique({
-            where: { id: dto.clubId },
-            select: adminClubOptionSelect,
-          });
-          if (!existing) throw new BadRequestException("Club introuvable");
-          club = existing;
-        } else {
-          const name = (dto.clubName ?? "").trim();
-          const existing = await tx.club.findUnique({
-            where: { name },
-            select: adminClubOptionSelect,
-          });
-          if (existing) {
-            throw new ConflictException({
-              message: "Un club porte déjà ce nom",
-              existingClubId: existing.id,
-            });
-          }
-          club = await tx.club.create({
-            data: { name },
-            select: adminClubOptionSelect,
-          });
-        }
-
+        const club = await this.resolveClub(tx, dto);
         const user = await tx.user.create({
           data: {
             email,
             password,
             firstName,
             lastName,
-            role: UserRole.CLUB,
-            clubId: club.id,
-            clubName: club.name,
+            role: dto.role,
+            clubId: club?.id ?? null,
+            clubName: club?.name ?? null,
+            ...profile,
           },
           select: { id: true },
         });
         await this.audit.record(tx, {
           actorId,
-          action: "CLUB_ACCOUNT_CREATE",
+          action: "USER_CREATE",
           targetType: "USER",
           targetId: user.id,
           after: {
             email,
-            clubId: club.id,
-            clubName: club.name,
-            role: UserRole.CLUB,
+            role: dto.role,
+            ...(club && { clubId: club.id, clubName: club.name }),
+            ...definedOnly(profile),
           },
         });
         return { userId: user.id, club };
@@ -119,10 +110,18 @@ export class AdminClubAccountsService {
     } catch (err) {
       throw await this.mapUniqueViolation(err, dto);
     }
-    const { userId, club } = created;
 
-    const invitationSent = await this.sendInvitation(userId, email, firstName);
-    return { userId, clubId: club.id, invitationSent };
+    const invitationSent = await this.sendInvitation(
+      created.userId,
+      email,
+      firstName,
+      dto.role,
+    );
+    return {
+      userId: created.userId,
+      clubId: created.club?.id ?? null,
+      invitationSent,
+    };
   }
 
   async resendInvitation(
@@ -134,14 +133,18 @@ export class AdminClubAccountsService {
       select: adminInvitationTargetSelect,
     });
     if (!user) throw new NotFoundException("Utilisateur introuvable");
-    if (user.role !== UserRole.CLUB) {
+    if (user.role === UserRole.ADMIN) {
       throw new BadRequestException(
-        "Seuls les comptes Club peuvent recevoir une invitation",
+        "Un compte administrateur ne reçoit pas d'invitation",
       );
     }
     if (user.lastLoginAt) {
       throw new BadRequestException("Ce compte s'est déjà connecté");
     }
+    if (user.disabledAt) {
+      throw new BadRequestException("Ce compte est désactivé");
+    }
+    const role: InvitationRole = user.role;
     await this.prisma.$transaction(async (tx) => {
       await this.audit.record(tx, {
         actorId,
@@ -154,8 +157,55 @@ export class AdminClubAccountsService {
       user.id,
       user.email,
       user.firstName,
+      role,
     );
     return { invitationSent };
+  }
+
+  /** A new club only for a CLUB account; a CLUB account always has a club. */
+  private checkClubChoice(dto: CreateAdminUserDto): void {
+    if (dto.clubId && dto.clubName) {
+      throw new BadRequestException(
+        "Indiquer soit un club existant, soit le nom d'un nouveau club",
+      );
+    }
+    if (dto.clubName && dto.role !== UserRole.CLUB) {
+      throw new BadRequestException(
+        "Seul un compte Club peut créer un nouveau club",
+      );
+    }
+    if (dto.role === UserRole.CLUB && !dto.clubId && !dto.clubName) {
+      throw new BadRequestException(
+        "Un compte Club doit être rattaché à un club",
+      );
+    }
+  }
+
+  private async resolveClub(
+    tx: Prisma.TransactionClient,
+    dto: CreateAdminUserDto,
+  ): Promise<{ id: string; name: string } | null> {
+    if (dto.clubId) {
+      const existing = await tx.club.findUnique({
+        where: { id: dto.clubId },
+        select: adminClubOptionSelect,
+      });
+      if (!existing) throw new BadRequestException("Club introuvable");
+      return existing;
+    }
+    if (!dto.clubName) return null;
+    const name = dto.clubName.trim();
+    const existing = await tx.club.findUnique({
+      where: { name },
+      select: adminClubOptionSelect,
+    });
+    if (existing) {
+      throw new ConflictException({
+        message: "Un club porte déjà ce nom",
+        existingClubId: existing.id,
+      });
+    }
+    return tx.club.create({ data: { name }, select: adminClubOptionSelect });
   }
 
   /**
@@ -164,7 +214,7 @@ export class AdminClubAccountsService {
    */
   private async mapUniqueViolation(
     err: unknown,
-    dto: CreateClubAccountDto,
+    dto: CreateAdminUserDto,
   ): Promise<unknown> {
     if (
       !(err instanceof Prisma.PrismaClientKnownRequestError) ||
@@ -194,17 +244,18 @@ export class AdminClubAccountsService {
     userId: string,
     email: string,
     firstName: string,
+    role: InvitationRole,
   ): Promise<boolean> {
     try {
       const token = await this.passwords.issuePasswordToken(
         userId,
         INVITATION_EXPIRY_HOURS,
       );
-      await this.email.sendInvitationEmail(email, token, firstName);
+      await this.email.sendInvitationEmail(email, token, firstName, role);
       return true;
     } catch (error) {
       this.logger.warn(
-        `Club invitation not sent for user ${userId}: ${(error as Error).message}`,
+        `Invitation not sent for user ${userId}: ${(error as Error).message}`,
       );
       return false;
     }

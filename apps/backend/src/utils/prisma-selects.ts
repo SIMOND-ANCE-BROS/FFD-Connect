@@ -444,6 +444,7 @@ export const adminInvitationTargetSelect = {
   firstName: true,
   role: true,
   lastLoginAt: true,
+  disabledAt: true,
 } as const;
 
 /**

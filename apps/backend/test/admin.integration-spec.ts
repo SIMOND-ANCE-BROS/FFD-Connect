@@ -3,7 +3,7 @@ import { UnauthorizedException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
-import { AdminClubAccountsService } from "../src/admin/admin-club-accounts.service";
+import { AdminUserAccountsService } from "../src/admin/admin-user-accounts.service";
 import { AdminUsersService } from "../src/admin/admin-users.service";
 import { AuthService } from "../src/auth/auth.service";
 import { AuthTokenService } from "../src/auth/auth-token.service";
@@ -33,7 +33,7 @@ describe("Admin (integration, real DB)", () => {
   let moduleRef: TestingModule;
   let prisma: PrismaService;
   let service: AdminUsersService;
-  let clubAccounts: AdminClubAccountsService;
+  let userAccounts: AdminUserAccountsService;
   let auth: AuthService;
   let tokens: AuthTokenService;
   let strategy: JwtStrategy;
@@ -45,7 +45,7 @@ describe("Admin (integration, real DB)", () => {
     moduleRef = built.module;
     prisma = built.prisma;
     service = moduleRef.get(AdminUsersService);
-    clubAccounts = moduleRef.get(AdminClubAccountsService);
+    userAccounts = moduleRef.get(AdminUserAccountsService);
     auth = moduleRef.get(AuthService);
     tokens = moduleRef.get(AuthTokenService);
     strategy = moduleRef.get(JwtStrategy);
@@ -105,7 +105,7 @@ describe("Admin (integration, real DB)", () => {
     ).toBe(0);
   });
 
-  it("club account creation is atomic: a duplicate club name leaves no user behind", async () => {
+  it("account creation is atomic: a duplicate club name leaves no user behind", async () => {
     const admin = await create({ role: UserRole.ADMIN });
     const club = await prisma.club.create({
       data: { name: `Club ${randomUUID()}` },
@@ -114,10 +114,11 @@ describe("Admin (integration, real DB)", () => {
     const email = `${randomUUID()}@test.local`;
 
     await expect(
-      clubAccounts.create(admin.id, {
+      userAccounts.create(admin.id, {
         email,
         firstName: "J",
         lastName: "M",
+        role: UserRole.CLUB,
         clubName: club.name,
       }),
     ).rejects.toThrow("Un club porte déjà ce nom");
@@ -125,18 +126,17 @@ describe("Admin (integration, real DB)", () => {
     expect(await prisma.user.findUnique({ where: { email } })).toBeNull();
   });
 
-  it("creates club + user + audit row together", async () => {
+  it("creates club + CLUB account + audit row together", async () => {
     const admin = await create({ role: UserRole.ADMIN });
-    const email = `${randomUUID()}@test.local`;
-
-    const res = await clubAccounts.create(admin.id, {
-      email,
+    const res = await userAccounts.create(admin.id, {
+      email: `${randomUUID()}@test.local`,
       firstName: "J",
       lastName: "M",
+      role: UserRole.CLUB,
       clubName: `Club ${randomUUID()}`,
     });
     createdUserIds.push(res.userId);
-    createdClubIds.push(res.clubId);
+    if (res.clubId) createdClubIds.push(res.clubId);
 
     const user = await prisma.user.findUniqueOrThrow({
       where: { id: res.userId },
@@ -144,7 +144,36 @@ describe("Admin (integration, real DB)", () => {
     expect(user.role).toBe(UserRole.CLUB);
     expect(user.clubId).toBe(res.clubId);
     expect(
-      await prisma.adminAuditLog.count({ where: { targetId: res.userId } }),
+      await prisma.adminAuditLog.count({
+        where: { targetId: res.userId, action: "USER_CREATE" },
+      }),
+    ).toBe(1);
+  });
+
+  it("creates a licensee without club, with a pending invitation token", async () => {
+    const admin = await create({ role: UserRole.ADMIN });
+    const res = await userAccounts.create(admin.id, {
+      email: `${randomUUID()}@test.local`,
+      firstName: "L",
+      lastName: "M",
+      role: UserRole.LICENSEE,
+      category: "Latin",
+    });
+    createdUserIds.push(res.userId);
+
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { id: res.userId },
+    });
+    expect(user).toMatchObject({
+      role: UserRole.LICENSEE,
+      clubId: null,
+      category: "Latin",
+    });
+    expect(res.clubId).toBeNull();
+    expect(
+      await prisma.passwordResetToken.count({
+        where: { userId: res.userId, used: false },
+      }),
     ).toBe(1);
   });
 

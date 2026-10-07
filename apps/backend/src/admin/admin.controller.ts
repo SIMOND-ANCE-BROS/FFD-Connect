@@ -28,7 +28,7 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { AdminAuditService } from "./admin-audit.service";
-import { AdminClubAccountsService } from "./admin-club-accounts.service";
+import { AdminUserAccountsService } from "./admin-user-accounts.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminReferenceService } from "./admin-reference.service";
@@ -40,10 +40,10 @@ import {
   ListAdminUsersQueryDto,
 } from "./dto/admin-users.dto";
 import {
-  ClubAccountCreatedDto,
-  CreateClubAccountDto,
+  AdminUserCreatedDto,
+  CreateAdminUserDto,
   InvitationResultDto,
-} from "./dto/club-account.dto";
+} from "./dto/admin-user-accounts.dto";
 import { UpdateAdminUserDto } from "./dto/update-admin-user.dto";
 import {
   AdminClubOptionDto,
@@ -66,7 +66,7 @@ export class AdminController {
     private readonly reference: AdminReferenceService,
     private readonly usersQuery: AdminUsersQueryService,
     private readonly users: AdminUsersService,
-    private readonly clubAccounts: AdminClubAccountsService,
+    private readonly userAccounts: AdminUserAccountsService,
   ) {}
 
   @Get("reference-data")
@@ -148,26 +148,29 @@ export class AdminController {
     return this.users.delete(req.user.userId, id, dto.confirmEmail);
   }
 
-  @Post("club-accounts")
+  @Post("users")
   @Throttle({ default: { ttl: 60000, limit: 10 } })
-  @ApiOperation({ summary: "Créer un compte Club et envoyer l'invitation" })
-  @ApiResponse({ status: 201, type: ClubAccountCreatedDto })
+  @ApiOperation({
+    summary: "Créer un utilisateur (licencié, club ou staff) et l'inviter",
+  })
+  @ApiResponse({ status: 201, type: AdminUserCreatedDto })
   @ApiResponse({
     status: 409,
     description: "Email ou nom de club déjà utilisé",
   })
-  createClubAccount(
-    @Body() dto: CreateClubAccountDto,
+  createUser(
+    @Body() dto: CreateAdminUserDto,
     @Req() req: RequestWithUser,
-  ): Promise<ClubAccountCreatedDto> {
-    return this.clubAccounts.create(req.user.userId, dto);
+  ): Promise<AdminUserCreatedDto> {
+    return this.userAccounts.create(req.user.userId, dto);
   }
 
   @Post("users/:id/resend-invitation")
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiOperation({
-    summary: "Renvoyer l'invitation d'un compte jamais connecté",
+    summary:
+      "Renvoyer l'invitation d'un compte jamais connecté (hors administrateurs)",
   })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: InvitationResultDto })
@@ -175,6 +178,6 @@ export class AdminController {
     @Param("id", ParseUUIDPipe) id: string,
     @Req() req: RequestWithUser,
   ): Promise<InvitationResultDto> {
-    return this.clubAccounts.resendInvitation(req.user.userId, id);
+    return this.userAccounts.resendInvitation(req.user.userId, id);
   }
 }
