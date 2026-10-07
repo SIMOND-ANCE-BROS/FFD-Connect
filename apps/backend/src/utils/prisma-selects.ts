@@ -430,3 +430,12 @@ export const adminUserEditableSelect = {
   nationalRanking: true,
   role: true,
 } as const;
+
+/** Admin invitation resend: who to mail and whether they ever logged in. */
+export const adminInvitationTargetSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  role: true,
+  lastLoginAt: true,
+} as const;

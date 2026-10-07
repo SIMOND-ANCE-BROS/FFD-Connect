@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { UserRole } from "@prisma/client";
+import { Prisma, UserRole } from "@prisma/client";
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -156,6 +156,51 @@ describe("AdminClubAccountsService", () => {
     });
     expect(res.invitationSent).toBe(false);
     expect(prisma.user.create).toHaveBeenCalled();
+  });
+
+  describe("concurrent duplicates (P2002)", () => {
+    const p2002 = (target: string[]) =>
+      new Prisma.PrismaClientKnownRequestError("dup", {
+        code: "P2002",
+        clientVersion: "x",
+        meta: { target },
+      });
+
+    it("maps an email race to a 409", async () => {
+      prisma.user.create.mockRejectedValue(p2002(["email"]));
+      await expect(
+        service.create("admin-1", { ...base, clubName: "Club Neuf" }),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          message: "Cet email est déjà utilisé",
+        }),
+      });
+    });
+
+    it("maps a club-name race to a 409 carrying existingClubId", async () => {
+      prisma.club.create.mockRejectedValue(p2002(["name"]));
+      prisma.club.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: "c9", name: "Club Neuf" } as never);
+      await expect(
+        service.create("admin-1", { ...base, clubName: "Club Neuf" }),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: {
+          message: "Un club porte déjà ce nom",
+          existingClubId: "c9",
+        },
+      });
+    });
+
+    it("rethrows anything that is not a P2002", async () => {
+      const boom = new Error("db down");
+      prisma.user.create.mockRejectedValue(boom);
+      await expect(
+        service.create("admin-1", { ...base, clubName: "Club Neuf" }),
+      ).rejects.toBe(boom);
+    });
   });
 
   describe("resendInvitation", () => {

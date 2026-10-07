@@ -5,13 +5,16 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { UserRole } from "@prisma/client";
+import { Prisma, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import { AuthPasswordService } from "../auth/auth-password.service";
 import { EmailService } from "../auth/email.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { adminClubOptionSelect } from "../utils/prisma-selects";
+import {
+  adminClubOptionSelect,
+  adminInvitationTargetSelect,
+} from "../utils/prisma-selects";
 import { AdminAuditService } from "./admin-audit.service";
 import {
   ClubAccountCreatedDto,
@@ -52,65 +55,71 @@ export class AdminClubAccountsService {
       BCRYPT_ROUNDS,
     );
 
-    const { userId, club } = await this.prisma.$transaction(async (tx) => {
-      const taken = await tx.user.findUnique({
-        where: { email },
-        select: { id: true },
-      });
-      if (taken) throw new ConflictException("Cet email est déjà utilisé");
+    let created: { userId: string; club: { id: string; name: string } };
+    try {
+      created = await this.prisma.$transaction(async (tx) => {
+        const taken = await tx.user.findUnique({
+          where: { email },
+          select: { id: true },
+        });
+        if (taken) throw new ConflictException("Cet email est déjà utilisé");
 
-      let club: { id: string; name: string };
-      if (dto.clubId) {
-        const existing = await tx.club.findUnique({
-          where: { id: dto.clubId },
-          select: adminClubOptionSelect,
-        });
-        if (!existing) throw new BadRequestException("Club introuvable");
-        club = existing;
-      } else {
-        const name = (dto.clubName ?? "").trim();
-        const existing = await tx.club.findUnique({
-          where: { name },
-          select: adminClubOptionSelect,
-        });
-        if (existing) {
-          throw new ConflictException({
-            message: "Un club porte déjà ce nom",
-            existingClubId: existing.id,
+        let club: { id: string; name: string };
+        if (dto.clubId) {
+          const existing = await tx.club.findUnique({
+            where: { id: dto.clubId },
+            select: adminClubOptionSelect,
+          });
+          if (!existing) throw new BadRequestException("Club introuvable");
+          club = existing;
+        } else {
+          const name = (dto.clubName ?? "").trim();
+          const existing = await tx.club.findUnique({
+            where: { name },
+            select: adminClubOptionSelect,
+          });
+          if (existing) {
+            throw new ConflictException({
+              message: "Un club porte déjà ce nom",
+              existingClubId: existing.id,
+            });
+          }
+          club = await tx.club.create({
+            data: { name },
+            select: adminClubOptionSelect,
           });
         }
-        club = await tx.club.create({
-          data: { name },
-          select: adminClubOptionSelect,
-        });
-      }
 
-      const user = await tx.user.create({
-        data: {
-          email,
-          password,
-          firstName,
-          lastName,
-          role: UserRole.CLUB,
-          clubId: club.id,
-          clubName: club.name,
-        },
-        select: { id: true },
+        const user = await tx.user.create({
+          data: {
+            email,
+            password,
+            firstName,
+            lastName,
+            role: UserRole.CLUB,
+            clubId: club.id,
+            clubName: club.name,
+          },
+          select: { id: true },
+        });
+        await this.audit.record(tx, {
+          actorId,
+          action: "CLUB_ACCOUNT_CREATE",
+          targetType: "USER",
+          targetId: user.id,
+          after: {
+            email,
+            clubId: club.id,
+            clubName: club.name,
+            role: UserRole.CLUB,
+          },
+        });
+        return { userId: user.id, club };
       });
-      await this.audit.record(tx, {
-        actorId,
-        action: "CLUB_ACCOUNT_CREATE",
-        targetType: "USER",
-        targetId: user.id,
-        after: {
-          email,
-          clubId: club.id,
-          clubName: club.name,
-          role: UserRole.CLUB,
-        },
-      });
-      return { userId: user.id, club };
-    });
+    } catch (err) {
+      throw await this.mapUniqueViolation(err, dto);
+    }
+    const { userId, club } = created;
 
     const invitationSent = await this.sendInvitation(userId, email, firstName);
     return { userId, clubId: club.id, invitationSent };
@@ -122,13 +131,7 @@ export class AdminClubAccountsService {
   ): Promise<InvitationResultDto> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        role: true,
-        lastLoginAt: true,
-      },
+      select: adminInvitationTargetSelect,
     });
     if (!user) throw new NotFoundException("Utilisateur introuvable");
     if (user.lastLoginAt) {
@@ -148,6 +151,37 @@ export class AdminClubAccountsService {
       user.firstName,
     );
     return { invitationSent };
+  }
+
+  /**
+   * Lost a race against a concurrent create: the pre-checks passed but the
+   * unique constraint fired. Surface it as the same 409 the checks produce.
+   */
+  private async mapUniqueViolation(
+    err: unknown,
+    dto: CreateClubAccountDto,
+  ): Promise<unknown> {
+    if (
+      !(err instanceof Prisma.PrismaClientKnownRequestError) ||
+      err.code !== "P2002"
+    ) {
+      return err;
+    }
+    const target = JSON.stringify(err.meta?.target ?? "").toLowerCase();
+    if (target.includes("email")) {
+      return new ConflictException("Cet email est déjà utilisé");
+    }
+    if (dto.clubName && target.includes("name")) {
+      const existing = await this.prisma.club.findUnique({
+        where: { name: dto.clubName.trim() },
+        select: adminClubOptionSelect,
+      });
+      return new ConflictException({
+        message: "Un club porte déjà ce nom",
+        ...(existing ? { existingClubId: existing.id } : {}),
+      });
+    }
+    return err;
   }
 
   /** Graceful degradation: a mail failure never rolls back the account. */
