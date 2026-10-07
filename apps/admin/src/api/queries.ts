@@ -2,6 +2,7 @@ import { queryOptions } from '@tanstack/react-query';
 import {
   adminControllerAuditLog,
   adminControllerClubOptions,
+  adminControllerGetClub,
   adminControllerGetUser,
   adminControllerListClubs,
   adminControllerListUsers,
@@ -73,4 +74,10 @@ export const clubsQuery = (q: ClubsFilter) =>
   queryOptions({
     queryKey: ['admin', 'clubs', 'list', q],
     queryFn: () => unwrap(adminControllerListClubs({ query: q })),
+  });
+
+export const clubQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['admin', 'club', id],
+    queryFn: () => unwrap(adminControllerGetClub({ path: { id } })),
   });
