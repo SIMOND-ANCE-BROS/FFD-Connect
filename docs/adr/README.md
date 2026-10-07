@@ -23,3 +23,4 @@ Ce dossier contient les ADRs (Architecture Decision Records) du projet FFD-Conne
 | [0017](0017-migration-azure-container-apps.md)        | Migration vers Azure Container Apps                      | accepted   | 2026-04-27 |
 | [0018](0018-firebase-push-notifications.md)           | Firebase Cloud Messaging pour les notifications push     | accepted   | 2026-04-27 |
 | [0019](0019-strategie-environnements-prod-staging.md) | Strategie d'environnements prod/staging (infra partagee) | accepted   | 2026-07-08 |
+| [0020](0020-key-vault-cles-distribution.md)           | Key Vault, source de verite des cles de distribution     | proposed   | 2026-10-07 |
