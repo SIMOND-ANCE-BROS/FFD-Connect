@@ -78,9 +78,11 @@ model ImpersonationLog {
   id             String    @id @default(uuid())
   /// Auteur de l'impersonation (admin ou staff).
   actorId        String
+  /// Rôle qui a autorisé l'impersonation (ADMIN ou STAFF), pas le rôle principal.
   actorRole      UserRole
   /// Compte cible dont on prend l'identité.
   targetUserId   String
+  /// Rôle principal de la cible.
   targetRole     UserRole
   /// Raison (obligatoire pour le staff ; facultative pour l'admin).
   reason         String?

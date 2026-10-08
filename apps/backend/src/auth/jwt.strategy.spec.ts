@@ -130,6 +130,28 @@ describe("JwtStrategy", () => {
         UnauthorizedException,
       );
     });
+
+    it.each([
+      ["main", { role: UserRole.ADMIN, extraRoles: [] }],
+      ["extra", { role: UserRole.LICENSEE, extraRoles: [UserRole.ADMIN] }],
+    ])(
+      "rejects the session once the target holds ADMIN (%s role)",
+      async (_label, roles) => {
+        prisma.user.findUnique.mockImplementation((async (args: {
+          where: { id: string };
+        }) =>
+          args.where.id === "user-1"
+            ? { ...roles, disabledAt: null, club: null }
+            : {
+                role: UserRole.ADMIN,
+                disabledAt: null,
+                club: null,
+              }) as never);
+        await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
+          UnauthorizedException,
+        );
+      },
+    );
   });
 
   it("returns every effective role from the database", async () => {

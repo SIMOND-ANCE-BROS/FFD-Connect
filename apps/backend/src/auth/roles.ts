@@ -27,9 +27,22 @@ const inEnumOrder = (roles: Iterable<UserRole>): UserRole[] => {
 };
 
 /**
+ * An extra CLUB counts only for an active club (same rule as
+ * `withActiveRole`). `club` tells which:
+ * - `{ disabledAt: null }`: active club, keep;
+ * - `{ disabledAt: <date> }`: disabled club, drop;
+ * - `null`: no club relation, drop;
+ * - `undefined` (field not selected): status unknown, keep the STORED role.
+ *   Only for callers that want stored roles (admin detail, admin self-edit);
+ *   every effective-role caller selects `club`.
+ */
+const keepExtraClub = (club: RoleFields["club"]): boolean =>
+  club === undefined || (club !== null && !club.disabledAt);
+
+/**
  * Effective roles: main first, then extras in enum order. An extra CLUB is
- * dropped while its club is disabled (a main CLUB is blocked at the account
- * level instead, see accountBlockReason).
+ * kept only for an active club, see `keepExtraClub` (a main CLUB is blocked
+ * at the account level instead, see accountBlockReason).
  */
 export function rolesOf(user: RoleSubject): UserRole[] {
   if ("roles" in user) return user.roles.filter(isRole);
@@ -37,7 +50,7 @@ export function rolesOf(user: RoleSubject): UserRole[] {
   const extras = (user.extraRoles ?? [])
     .filter(isRole)
     .filter((r) => !main.includes(r))
-    .filter((r) => !(r === UserRole.CLUB && user.club?.disabledAt));
+    .filter((r) => r !== UserRole.CLUB || keepExtraClub(user.club));
   return [...main, ...inEnumOrder(extras)];
 }
 

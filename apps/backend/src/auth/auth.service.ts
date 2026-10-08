@@ -474,20 +474,12 @@ export class AuthService {
       }
     }
 
-    // Rôle de l'acteur lu en base (typé UserRole, autoritaire — pas la string
-    // du JWT) pour le journal d'audit.
-    const actor = await this.prisma.user.findUnique({
-      where: { id: actorId },
-      select: { role: true },
-    });
-    if (!actor) {
-      throw new NotFoundException("Acteur introuvable.");
-    }
-
     await this.prisma.impersonationLog.create({
       data: {
         actorId,
-        actorRole: actor.role,
+        // The role that authorised this impersonation, not the main role:
+        // actorRoles come from the database (JwtStrategy), not the token claim.
+        actorRole: actorIsAdmin ? UserRole.ADMIN : UserRole.STAFF,
         targetUserId: targetUser.id,
         targetRole: targetUser.role,
         reason: reason?.trim() || null,

@@ -37,6 +37,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException(ACCOUNT_DISABLED_MESSAGE);
     }
     if (payload.impersonatedBy) {
+      // "Never impersonate an admin" holds for the whole session: promoting
+      // the target to ADMIN (main or extra role) ends it.
+      if (hasRole(account, UserRole.ADMIN)) {
+        throw new UnauthorizedException();
+      }
       // Impersonation is ADMIN-only: the admin behind the token must still be
       // an active ADMIN, or the session dies with their demotion/deactivation.
       const impersonator = await this.prisma.user.findUnique({

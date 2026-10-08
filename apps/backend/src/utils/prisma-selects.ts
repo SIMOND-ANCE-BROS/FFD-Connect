@@ -445,6 +445,8 @@ export const adminInvitationTargetSelect = {
   email: true,
   firstName: true,
   role: true,
+  // An extra ADMIN role blocks the invitation too (hasRole).
+  extraRoles: true,
   lastLoginAt: true,
   disabledAt: true,
   // A CLUB account of a disabled club cannot log in: no invitation either.

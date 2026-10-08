@@ -45,6 +45,32 @@ describe("roles", () => {
       ]);
     });
 
+    it("drops an extra CLUB when the account has no club relation (club: null)", () => {
+      expect(
+        rolesOf({
+          role: UserRole.LICENSEE,
+          extraRoles: [UserRole.CLUB],
+          club: null,
+        }),
+      ).toEqual([UserRole.LICENSEE]);
+    });
+
+    it("keeps an extra CLUB of an active club", () => {
+      expect(
+        rolesOf({
+          role: UserRole.LICENSEE,
+          extraRoles: [UserRole.CLUB],
+          club: { disabledAt: null },
+        }),
+      ).toEqual([UserRole.LICENSEE, UserRole.CLUB]);
+    });
+
+    it("keeps a stored extra CLUB when club was not selected (status unknown)", () => {
+      expect(
+        rolesOf({ role: UserRole.LICENSEE, extraRoles: [UserRole.CLUB] }),
+      ).toEqual([UserRole.LICENSEE, UserRole.CLUB]);
+    });
+
     it("returns precomputed roles as is (req.user)", () => {
       expect(rolesOf({ roles: [UserRole.LICENSEE, UserRole.ADMIN] })).toEqual([
         UserRole.LICENSEE,

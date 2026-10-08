@@ -713,6 +713,63 @@ describe("AuthService", () => {
       ).resolves.toHaveProperty("access_token");
     });
 
+    it("journalise le rôle qui autorise l'impersonation (principal LICENSEE + ADMIN supplémentaire → ADMIN)", async () => {
+      // Distinct rows: the target first; an actor row with main role LICENSEE
+      // would leak into actorRole if it were still read from the database.
+      mockPrismaService.user.findUnique.mockImplementation(
+        ({ where }: { where: { id?: string } }) =>
+          Promise.resolve(
+            where.id === "target-1"
+              ? { ...licenseeTarget, role: UserRole.CLUB }
+              : { role: UserRole.LICENSEE },
+          ),
+      );
+      mockPrismaService.impersonationLog.create.mockResolvedValue({});
+      mockJwtService.sign.mockReturnValue("imp-token");
+
+      await service.impersonate(
+        "admin-1",
+        [UserRole.LICENSEE, UserRole.ADMIN],
+        { userId: "target-1" },
+        undefined,
+        undefined,
+      );
+
+      expect(mockPrismaService.impersonationLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actorRole: UserRole.ADMIN,
+          targetRole: UserRole.CLUB,
+        }),
+      });
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledTimes(1);
+    });
+
+    it("journalise STAFF quand le staff (sans ADMIN) autorise l'impersonation", async () => {
+      mockPrismaService.user.findUnique.mockImplementation(
+        ({ where }: { where: { id?: string } }) =>
+          Promise.resolve(
+            where.id === "target-1" ? licenseeTarget : { role: UserRole.CLUB },
+          ),
+      );
+      mockPrismaService.impersonationLog.create.mockResolvedValue({});
+      mockJwtService.sign.mockReturnValue("imp-token");
+
+      await service.impersonate(
+        "staff-1",
+        [UserRole.CLUB, UserRole.STAFF],
+        { userId: "target-1" },
+        "support",
+        undefined,
+      );
+
+      expect(mockPrismaService.impersonationLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actorRole: UserRole.STAFF,
+          targetRole: UserRole.LICENSEE,
+        }),
+      });
+    });
+
     it("stopImpersonation clôt le log ouvert", async () => {
       mockPrismaService.impersonationLog.findFirst.mockResolvedValue({
         id: "log-1",
