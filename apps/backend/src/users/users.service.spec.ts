@@ -115,6 +115,17 @@ describe("UsersService", () => {
       );
     });
 
+    it("selects the user's own extraRoles", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+
+      await service.findOne("u1");
+
+      expect(prisma.user.findUnique.mock.calls[0][0]?.select).toHaveProperty(
+        "extraRoles",
+        true,
+      );
+    });
+
     it("returns user data including the id and email", async () => {
       prisma.user.findUnique.mockResolvedValue(makeUser());
 
@@ -285,6 +296,26 @@ describe("UsersService", () => {
 
       expect(result.data).toHaveLength(2);
       expect(result.meta.total).toBe(2);
+    });
+
+    it("never selects the members' extraRoles (data minimisation)", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "org1",
+        role: UserRole.CLUB,
+        clubId: "c1",
+        clubName: "DanceClub",
+      });
+      prisma.user.count.mockResolvedValue(0);
+      prisma.user.findMany.mockResolvedValue([]);
+
+      await service.findClubMembers("org1");
+
+      const select = prisma.user.findMany.mock.calls[0][0]?.select as Record<
+        string,
+        unknown
+      >;
+      expect(select).not.toHaveProperty("extraRoles");
+      expect(select).toHaveProperty("role", true);
     });
 
     it("scopes the query to the organizer's club by clubName when no clubId exists", async () => {
@@ -555,6 +586,19 @@ describe("UsersService", () => {
       expect(result.format).toBe("ffd-connect-export-v1");
       expect(typeof result.exportedAt).toBe("string");
       expect(result.data).toEqual(exported);
+    });
+
+    it("exporte les rôles supplémentaires de l'utilisateur", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ trackCorrectionsProposed: [] }),
+      );
+
+      await service.exportMyData("u1");
+
+      expect(prisma.user.findUnique.mock.calls[0][0]?.select).toHaveProperty(
+        "extraRoles",
+        true,
+      );
     });
 
     it("ne sélectionne jamais le mot de passe ni les tokens", async () => {

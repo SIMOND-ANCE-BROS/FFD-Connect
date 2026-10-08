@@ -181,6 +181,10 @@ describe("AdminClubsQueryService", () => {
       });
     });
 
+    it("selects the members' extra roles, for the « + Club » badge", () => {
+      expect(adminClubMemberSelect).toHaveProperty("extraRoles", true);
+    });
+
     it("404s on an unknown club", async () => {
       prisma.club.findUnique.mockResolvedValue(null);
       await expect(service.detail("nope")).rejects.toThrow(

@@ -26,7 +26,6 @@ const USER_BASE_SELECT = {
   firstName: true,
   lastName: true,
   role: true,
-  extraRoles: true,
   category: true,
   ageGroup: true,
   competitionLevel: true,
@@ -247,6 +246,9 @@ export class UsersService {
       where: { id },
       select: {
         ...USER_BASE_SELECT,
+        // Own data only: never in USER_BASE_SELECT, which also feeds the
+        // club members list (data minimisation).
+        extraRoles: true,
         birthDate: true,
         nationalRanking: true,
         club: { select: { disabledAt: true } },
@@ -366,6 +368,7 @@ export class UsersService {
       where: { id: userId },
       select: {
         ...USER_BASE_SELECT,
+        extraRoles: true,
         birthDate: true,
         license: {
           select: {

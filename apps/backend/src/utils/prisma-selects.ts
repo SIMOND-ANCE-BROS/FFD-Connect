@@ -487,6 +487,7 @@ export const adminClubMemberSelect = {
   lastName: true,
   email: true,
   role: true,
+  extraRoles: true,
   disabledAt: true,
 } as const;
 

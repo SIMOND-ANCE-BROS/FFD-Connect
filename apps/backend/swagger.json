@@ -21204,6 +21204,12 @@
               }
             ]
           },
+          "extraRoles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
+          },
           "disabledAt": {
             "format": "date-time",
             "type": "string",
@@ -21216,6 +21222,7 @@
           "lastName",
           "email",
           "role",
+          "extraRoles",
           "disabledAt"
         ]
       },

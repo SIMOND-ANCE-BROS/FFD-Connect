@@ -20914,13 +20914,19 @@
               }
             ]
           },
+          "extraRoles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
+          },
           "disabledAt": {
             "format": "date-time",
             "type": "string",
             "nullable": true
           }
         },
-        "required": ["id", "firstName", "lastName", "email", "role", "disabledAt"]
+        "required": ["id", "firstName", "lastName", "email", "role", "extraRoles", "disabledAt"]
       },
       "AdminClubDetailDto": {
         "type": "object",
