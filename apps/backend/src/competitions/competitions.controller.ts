@@ -29,6 +29,7 @@ import { OptionalJwtAuthGuard } from "../auth/optional-jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
+import { CompetitionAccessService } from "./services/competition-access.service";
 import { CompetitionManagementService } from "./services/competition-management.service";
 import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
@@ -56,6 +57,7 @@ export class CompetitionsController {
     private readonly registrationService: CompetitionRegistrationService,
     private readonly resultsService: CompetitionResultsService,
     private readonly managementService: CompetitionManagementService,
+    private readonly accessService: CompetitionAccessService,
   ) {}
 
   @Get()
@@ -709,7 +711,8 @@ export class CompetitionsController {
   }
 
   @Post(":id/checkin")
-  @UseGuards(JwtAuthGuard, ThrottlerUserGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, ThrottlerUserGuard)
+  @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @Throttle({ default: { ttl: 60_000, limit: 30 } }) // 30 check-ins/min per user (scanner)
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
@@ -733,7 +736,12 @@ export class CompetitionsController {
   })
   @ApiResponse({ status: 400, description: "Données QR code invalides" })
   @ApiResponse({ status: 404, description: "Inscription non trouvée" })
-  checkIn(@Param("id") competitionId: string, @Body() body: CheckInDto) {
+  async checkIn(
+    @Param("id") competitionId: string,
+    @Body() body: CheckInDto,
+    @Request() req: RequestWithUser,
+  ) {
+    await this.accessService.assertCanManageCheckIn(competitionId, req.user);
     return this.resultsService.checkIn(competitionId, body.qrData);
   }
 
@@ -752,10 +760,12 @@ export class CompetitionsController {
     status: 201,
     description: "Jeton généré avec succès",
   })
-  generateVolunteerToken(
+  async generateVolunteerToken(
     @Param("id") competitionId: string,
     @Body() body: GenerateVolunteerTokenDto,
+    @Request() req: RequestWithUser,
   ) {
+    await this.accessService.assertCanManageCheckIn(competitionId, req.user);
     return this.resultsService.generateVolunteerToken(competitionId, body.name);
   }
 

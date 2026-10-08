@@ -260,7 +260,7 @@ export class CompetitionResultsService {
     }
 
     this.logger.log(
-      `Volunteer ${volunteerToken.name} performing check-in with token ${token}`,
+      `Volunteer ${volunteerToken.name} performing check-in (link ${volunteerToken.id})`,
     );
     return this.checkIn(competitionId, qrData);
   }

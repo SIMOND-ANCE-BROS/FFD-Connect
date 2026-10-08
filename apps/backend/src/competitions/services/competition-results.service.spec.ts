@@ -96,6 +96,72 @@ describe("CompetitionResultsService", () => {
     });
   });
 
+  describe("checkInAsVolunteer", () => {
+    const TOKEN = "a".repeat(64);
+    const validToken = (overrides: Record<string, unknown> = {}) => ({
+      id: "vt-1",
+      token: TOKEN,
+      competitionId: "c1",
+      name: "Bénévole",
+      expiresAt: new Date(Date.now() + 3_600_000),
+      ...overrides,
+    });
+
+    it("checks in with a token bound to the requested competition, without logging the token", async () => {
+      const logSpy = jest
+        .spyOn(service["logger"], "log")
+        .mockImplementation(() => undefined);
+      mockPrismaService.volunteerToken.findUnique.mockResolvedValue(
+        validToken(),
+      );
+      const checkInSpy = jest.spyOn(service, "checkIn").mockResolvedValue({
+        user: { firstName: "A", lastName: "B" },
+      } as never);
+
+      await service.checkInAsVolunteer("c1", TOKEN, "u1");
+
+      expect(mockPrismaService.volunteerToken.findUnique).toHaveBeenCalledWith({
+        where: { token: TOKEN },
+      });
+      expect(checkInSpy).toHaveBeenCalledWith("c1", "u1");
+      const logged = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+      expect(logged).not.toContain(TOKEN.slice(0, 7));
+      logSpy.mockRestore();
+      checkInSpy.mockRestore();
+    });
+
+    it("refuses a token issued for another competition", async () => {
+      mockPrismaService.volunteerToken.findUnique.mockResolvedValue(
+        validToken({ competitionId: "other" }),
+      );
+      const checkInSpy = jest.spyOn(service, "checkIn");
+
+      await expect(
+        service.checkInAsVolunteer("c1", TOKEN, "u1"),
+      ).rejects.toThrow("Lien d'accès invalide ou expiré");
+      expect(checkInSpy).not.toHaveBeenCalled();
+      checkInSpy.mockRestore();
+    });
+
+    it("refuses an expired token", async () => {
+      mockPrismaService.volunteerToken.findUnique.mockResolvedValue(
+        validToken({ expiresAt: new Date(Date.now() - 1000) }),
+      );
+
+      await expect(
+        service.checkInAsVolunteer("c1", TOKEN, "u1"),
+      ).rejects.toThrow("Lien d'accès invalide ou expiré");
+    });
+
+    it("refuses an unknown token", async () => {
+      mockPrismaService.volunteerToken.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.checkInAsVolunteer("c1", TOKEN, "u1"),
+      ).rejects.toThrow("Lien d'accès invalide ou expiré");
+    });
+  });
+
   describe("checkIn", () => {
     it("should throw NotFoundException if user not found", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue(null);

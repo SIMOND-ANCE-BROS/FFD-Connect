@@ -526,7 +526,7 @@ describe("CompetitionsController HTTP Integration", () => {
     });
 
     it("returns 404 when user is not registered for the competition", async () => {
-      const { token } = await makeUser();
+      const { token } = await makeUser(UserRole.STAFF);
       const { user: otherUser } = await makeUser();
       const comp = await makeCompetition();
 
@@ -540,7 +540,7 @@ describe("CompetitionsController HTTP Integration", () => {
     });
 
     it("returns 404 when qrData refers to a non-existent user", async () => {
-      const { token } = await makeUser();
+      const { token } = await makeUser(UserRole.STAFF);
       const comp = await makeCompetition();
 
       await request(app.getHttpServer())
@@ -551,7 +551,7 @@ describe("CompetitionsController HTTP Integration", () => {
     });
 
     it("returns 400 when qrData is missing", async () => {
-      const { token } = await makeUser();
+      const { token } = await makeUser(UserRole.STAFF);
       const comp = await makeCompetition();
 
       await request(app.getHttpServer())
@@ -562,7 +562,8 @@ describe("CompetitionsController HTTP Integration", () => {
     });
 
     it("successfully checks in a user with a CONFIRMED registration with feePaid=true → 200 with results", async () => {
-      const { user, token } = await makeUser();
+      const { user } = await makeUser();
+      const { token } = await makeUser(UserRole.STAFF);
       const comp = await makeCompetition();
       const event = await makeEvent(comp.id, {
         eventType: "SOLO",
@@ -594,7 +595,8 @@ describe("CompetitionsController HTTP Integration", () => {
     });
 
     it("returns ALREADY_CHECKED_IN status when checking in a user who is already checked in", async () => {
-      const { user, token } = await makeUser();
+      const { user } = await makeUser();
+      const { token } = await makeUser(UserRole.STAFF);
       const comp = await makeCompetition();
       const event = await makeEvent(comp.id, {
         eventType: "SOLO",
@@ -624,7 +626,8 @@ describe("CompetitionsController HTTP Integration", () => {
     });
 
     it("returns ERROR status for a registration with feePaid=false", async () => {
-      const { user, token } = await makeUser();
+      const { user } = await makeUser();
+      const { token } = await makeUser(UserRole.STAFF);
       const comp = await makeCompetition();
       const event = await makeEvent(comp.id, {
         eventType: "SOLO",
@@ -653,7 +656,8 @@ describe("CompetitionsController HTTP Integration", () => {
     });
 
     it("accepts JSON-encoded qrData with an id field", async () => {
-      const { user, token } = await makeUser();
+      const { user } = await makeUser();
+      const { token } = await makeUser(UserRole.STAFF);
       const comp = await makeCompetition();
       const event = await makeEvent(comp.id, {
         eventType: "SOLO",
@@ -679,6 +683,93 @@ describe("CompetitionsController HTTP Integration", () => {
       expect(Array.isArray(res.body.registrations)).toBe(true);
       const checkInResult = res.body.registrations[0] as { status: string };
       expect(["SUCCESS", "ALREADY_CHECKED_IN"]).toContain(checkInResult.status);
+    });
+
+    describe("access", () => {
+      const ORGANIZER = `Club Org ${suffix}`;
+
+      const makeClubUser = async (clubName: string) => {
+        const { user, token } = await makeUser(UserRole.CLUB);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { clubName },
+        });
+        return { user, token };
+      };
+
+      const seedConfirmed = async (competitionId: string, userId: string) => {
+        const event = await makeEvent(competitionId, {
+          eventType: "SOLO",
+          ageGroup: "Solo Adulte",
+        });
+        await prisma.registration.create({
+          data: {
+            userId,
+            eventId: event.id,
+            status: RegistrationStatus.CONFIRMED,
+            feePaid: true,
+            checkedIn: false,
+          },
+        });
+      };
+
+      it("returns 403 for a LICENSEE, even checking themselves in", async () => {
+        const { user, token } = await makeUser();
+        const comp = await makeCompetition({ organizer: ORGANIZER });
+        await seedConfirmed(comp.id, user.id);
+
+        await request(app.getHttpServer())
+          .post(`/api/v1/competitions/${comp.id}/checkin`)
+          .set("Authorization", `Bearer ${token}`)
+          .send({ qrData: user.id })
+          .expect(403);
+
+        const reg = await prisma.registration.findFirst({
+          where: { userId: user.id },
+        });
+        expect(reg?.checkedIn).toBe(false);
+      });
+
+      it("returns 403 for a CLUB account that does not organize the competition", async () => {
+        const { user } = await makeUser();
+        const { token } = await makeClubUser(`Other Club ${suffix}`);
+        const comp = await makeCompetition({ organizer: ORGANIZER });
+        await seedConfirmed(comp.id, user.id);
+
+        await request(app.getHttpServer())
+          .post(`/api/v1/competitions/${comp.id}/checkin`)
+          .set("Authorization", `Bearer ${token}`)
+          .send({ qrData: user.id })
+          .expect(403);
+      });
+
+      it("lets the organizing CLUB account check a participant in", async () => {
+        const { user } = await makeUser();
+        const { token } = await makeClubUser(ORGANIZER);
+        const comp = await makeCompetition({ organizer: ORGANIZER });
+        await seedConfirmed(comp.id, user.id);
+
+        const res = await request(app.getHttpServer())
+          .post(`/api/v1/competitions/${comp.id}/checkin`)
+          .set("Authorization", `Bearer ${token}`)
+          .send({ qrData: user.id })
+          .expect(201);
+
+        expect(res.body.registrations[0].status).toBe("SUCCESS");
+      });
+
+      it("lets an ADMIN check a participant in on any competition", async () => {
+        const { user } = await makeUser();
+        const { token } = await makeUser(UserRole.ADMIN);
+        const comp = await makeCompetition({ organizer: ORGANIZER });
+        await seedConfirmed(comp.id, user.id);
+
+        await request(app.getHttpServer())
+          .post(`/api/v1/competitions/${comp.id}/checkin`)
+          .set("Authorization", `Bearer ${token}`)
+          .send({ qrData: user.id })
+          .expect(201);
+      });
     });
   });
 

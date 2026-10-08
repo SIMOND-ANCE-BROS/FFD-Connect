@@ -16,8 +16,11 @@ import { applyE2EOverrides, configureTestApp } from "./test-app.factory";
 describe("CompetitionsController - Additional Scenarios (e2e)", () => {
   let app: INestApplication;
   let prismaService: PrismaService;
+  // Role carried by the stubbed JWT guard; check-in needs a scanner role.
+  let currentRole = "LICENSEE";
 
   beforeEach(async () => {
+    currentRole = "LICENSEE";
     const mockRedis = {
       get: jest.fn().mockResolvedValue(null),
       set: jest.fn().mockResolvedValue(undefined),
@@ -95,7 +98,7 @@ describe("CompetitionsController - Additional Scenarios (e2e)", () => {
             req.user = {
               userId: "u1",
               email: "test@test.com",
-              role: "LICENSEE",
+              role: currentRole,
             };
             return true;
           },
@@ -224,6 +227,7 @@ describe("CompetitionsController - Additional Scenarios (e2e)", () => {
 
   describe("Data Validation", () => {
     it("should validate QR data format", () => {
+      currentRole = "STAFF";
       return request(app.getHttpServer() as Parameters<typeof request>[0])
         .post("/api/v1/competitions/comp-1/checkin")
         .send({ qrData: null })
