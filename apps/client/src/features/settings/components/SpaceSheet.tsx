@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
 import type { SpaceRole } from "./spaces";
@@ -29,6 +30,7 @@ export const SpaceSheet = ({
   onClose,
 }: SpaceSheetProps) => {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
     <Modal
@@ -46,7 +48,16 @@ export const SpaceSheet = ({
           accessibilityLabel="Fermer"
           accessibilityHint="Ferme le sélecteur d'espace"
         />
-        <View style={[styles.card, { backgroundColor: theme.surface }]}>
+        <View
+          testID="settings-space-sheet"
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.surface,
+              paddingBottom: Math.max(insets.bottom, 16) + 16,
+            },
+          ]}
+        >
           <AppText
             variant="h3"
             color={theme.text}
@@ -60,14 +71,14 @@ export const SpaceSheet = ({
             return (
               <TouchableOpacity
                 key={r}
-                accessibilityRole="button"
+                accessibilityRole="radio"
                 accessibilityLabel={SPACE_LABELS[r]}
                 accessibilityHint={
                   selected
                     ? "Espace actuel"
                     : "Change l'espace actif de l'application"
                 }
-                accessibilityState={{ selected }}
+                accessibilityState={{ checked: selected }}
                 testID={`settings-space-${r}`}
                 onPress={() => onSelect(r)}
                 style={[
@@ -117,7 +128,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 32,
   },
   title: { marginBottom: 8 },
   row: {

@@ -1,5 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import React from "react";
+import { StyleSheet } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SpaceSelector } from "../SpaceSelector";
 
 jest.mock("../../../../context/ThemeContext", () => ({
@@ -52,7 +54,10 @@ describe("SpaceSelector pill", () => {
     expect(pill.props.accessibilityRole).toBe("button");
     expect(pill.props.accessibilityLabel).toBe("Espace : Danseur");
     expect(pill.props.accessibilityHint).toBeTruthy();
-    expect(screen.getByText("Danseur")).toBeTruthy();
+    const label = screen.getByText("Danseur");
+    expect(label.props.numberOfLines).toBe(1);
+    expect(label.props.maxFontSizeMultiplier).toBe(1.3);
+    expect(StyleSheet.flatten(pill.props.style).maxWidth).toBe(140);
     expect(screen.queryByText(SHEET_TITLE)).toBeNull();
   });
 });
@@ -77,14 +82,31 @@ describe("SpaceSelector sheet", () => {
     expect(screen.getByTestId("settings-space-LICENSEE")).toBeTruthy();
   });
 
-  it("marks the current space as selected", async () => {
+  it("exposes the spaces as radios and marks the current one as checked", async () => {
     await open();
-    expect(
-      screen.getByTestId("settings-space-ADMIN").props.accessibilityState,
-    ).toMatchObject({ selected: true });
+    const admin = screen.getByTestId("settings-space-ADMIN");
+    expect(admin.props.accessibilityRole).toBe("radio");
+    expect(admin.props.accessibilityState).toMatchObject({ checked: true });
     expect(
       screen.getByTestId("settings-space-LICENSEE").props.accessibilityState,
-    ).toMatchObject({ selected: false });
+    ).toMatchObject({ checked: false });
+  });
+
+  it("pads the sheet bottom with the safe area", async () => {
+    const mocked = useSafeAreaInsets as jest.Mock;
+    mocked.mockReturnValue({ top: 0, right: 0, bottom: 34, left: 0 });
+    await open();
+    const card = StyleSheet.flatten(
+      screen.getByTestId("settings-space-sheet").props.style,
+    );
+    expect(card.paddingBottom).toBe(34 + 16);
+    mocked.mockReturnValue({ top: 0, right: 0, bottom: 0, left: 0 });
+    await screen.unmount();
+    await open();
+    expect(
+      StyleSheet.flatten(screen.getByTestId("settings-space-sheet").props.style)
+        .paddingBottom,
+    ).toBe(16 + 16);
   });
 
   it("closes and reports the choice when another space is picked", async () => {

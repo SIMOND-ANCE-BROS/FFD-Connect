@@ -57,6 +57,8 @@ export const SpaceSelector = ({
           variant="caption"
           color={theme.text}
           weight="600"
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.3}
           style={styles.label}
         >
           {label}
@@ -77,6 +79,7 @@ export const SpaceSelector = ({
 const styles = StyleSheet.create({
   pill: {
     height: 44,
+    maxWidth: 140,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
@@ -84,5 +87,5 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
   },
-  label: { marginBottom: 0 },
+  label: { marginBottom: 0, flexShrink: 1 },
 });
