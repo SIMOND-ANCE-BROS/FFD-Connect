@@ -21,11 +21,12 @@ describe("CreateAdminClubDto", () => {
     expect(await errorsOf({ name: "   " })).toEqual(["name"]);
   });
 
-  it("requires a name of 1 to 100 characters", async () => {
+  it("requires a name of 2 to 120 characters", async () => {
     expect(await errorsOf({})).toEqual(["name"]);
-    expect(await errorsOf({ name: "A" })).toEqual([]);
-    expect(await errorsOf({ name: "a".repeat(100) })).toEqual([]);
-    expect(await errorsOf({ name: "a".repeat(101) })).toEqual(["name"]);
+    expect(await errorsOf({ name: "A" })).toEqual(["name"]);
+    expect(await errorsOf({ name: "AB" })).toEqual([]);
+    expect(await errorsOf({ name: "a".repeat(120) })).toEqual([]);
+    expect(await errorsOf({ name: "a".repeat(121) })).toEqual(["name"]);
     expect(await errorsOf({ name: 12 })).toEqual(["name"]);
   });
 

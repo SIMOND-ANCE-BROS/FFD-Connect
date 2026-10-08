@@ -42,7 +42,7 @@ export function NewClubPage() {
   const form = useForm<Values>({
     initialValues: { name: '', registrationMode: 'MEMBERS_AUTO_CONFIRM' },
     validate: {
-      name: (v) => (v.trim() ? null : 'Obligatoire'),
+      name: (v) => (v.trim().length >= 2 ? null : 'Nom trop court'),
     },
   });
 

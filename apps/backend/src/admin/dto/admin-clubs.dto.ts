@@ -106,10 +106,10 @@ export class UpdateAdminClubDto {
 }
 
 export class CreateAdminClubDto {
-  @ApiProperty({ minLength: 1, maxLength: 100 })
+  @ApiProperty({ minLength: 2, maxLength: 120 })
   @Transform(trim)
   @IsString()
-  @Length(1, 100)
+  @Length(2, 120)
   name!: string;
 
   @ApiPropertyOptional({

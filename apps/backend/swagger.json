@@ -21399,8 +21399,8 @@
         "properties": {
           "name": {
             "type": "string",
-            "minLength": 1,
-            "maxLength": 100
+            "minLength": 2,
+            "maxLength": 120
           },
           "registrationMode": {
             "default": "MEMBERS_AUTO_CONFIRM",

@@ -64,11 +64,14 @@ describe('NewClubPage', () => {
     });
   });
 
-  it('refuses an empty name without calling the API', async () => {
+  it('refuses an empty or one-character name without calling the API', async () => {
     const create = vi.spyOn(sdk, 'adminControllerCreateClub');
     renderPage();
     await submit();
-    expect(await screen.findByText('Obligatoire')).toBeInTheDocument();
+    expect(await screen.findByText('Nom trop court')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/^Nom du club/), 'A');
+    await submit();
+    expect(await screen.findByText('Nom trop court')).toBeInTheDocument();
     expect(create).not.toHaveBeenCalled();
   });
 
