@@ -37,6 +37,7 @@ import type { UserRole } from "../../auth/services/AuthService";
 import { SpaceSelector } from "../components/SpaceSelector";
 import { AuthService } from "../../auth/services/AuthService";
 import { useAuthStore } from "../../../stores/auth.store";
+import { createLogger } from "../../../utils/logger";
 import { SettingsClubSection } from "../components/SettingsClubSection";
 import { SettingsFiltersSection } from "../components/SettingsFiltersSection";
 import { SettingsInterfaceSection } from "../components/SettingsInterfaceSection";
@@ -50,6 +51,8 @@ type SettingsScreenProps = NativeStackScreenProps<
   RootStackParamList,
   "Settings"
 >;
+
+const logger = createLogger("SettingsScreen");
 
 export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
   const insets = useSafeAreaInsets();
@@ -297,7 +300,10 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
           roles={roles}
           space={role}
           onChange={(space) => {
-            handleChangeSpace(space).catch(() => {});
+            handleChangeSpace(space).catch((error: unknown) => {
+              logger.error("Failed to change space", error);
+              Alert.alert("Erreur", "Impossible de changer d'espace.");
+            });
           }}
         />
 

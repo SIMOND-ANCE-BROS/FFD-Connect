@@ -47,6 +47,10 @@ export interface AuthConfig {
   roles?: UserRole[];
   /** Main role of the account, the default space. */
   mainRole?: UserRole;
+  /** Account of the last session, kept across logout (space memory). */
+  lastUser?: string;
+  /** Space of the last session, reopened at the next login of `lastUser`. */
+  lastSpace?: UserRole;
   isGuest?: boolean;
   username?: string;
   clubName?: string;
@@ -171,6 +175,22 @@ export function resolveSpace(o: {
 const rolesFrom = (u: { role: UserRole; roles?: UserRole[] }): UserRole[] =>
   u.roles?.length ? u.roles : [u.role];
 
+/**
+ * The session `resolveSpace` compares with: the current one while logged in,
+ * else the one logout kept in `lastUser` / `lastSpace`.
+ */
+export function previousSession(c: AuthConfig): {
+  previousUser?: string;
+  previousSpace?: UserRole;
+} {
+  return c.username
+    ? { previousUser: c.username, previousSpace: c.role }
+    : { previousUser: c.lastUser, previousSpace: c.lastSpace };
+}
+
+const sameRoles = (a: readonly UserRole[] | undefined, b: UserRole[]) =>
+  !!a && a.length === b.length && a.every((r, i) => r === b[i]);
+
 export const DEFAULT_CONFIG: AuthConfig = {
   isLoggedIn: false,
   role: "LICENSEE",
@@ -242,8 +262,7 @@ export const AuthService = {
         authToken: access_token,
         refreshToken: refresh_token,
         role: resolveSpace({
-          previousSpace: currentConfig.role,
-          previousUser: currentConfig.username,
+          ...previousSession(currentConfig),
           user: user.email,
           mainRole: user.role,
           roles,
@@ -316,8 +335,7 @@ export const AuthService = {
         authToken: access_token,
         refreshToken: refresh_token,
         role: resolveSpace({
-          previousSpace: currentConfig.role,
-          previousUser: currentConfig.username,
+          ...previousSession(currentConfig),
           user: user.email,
           mainRole: user.role,
           roles,
@@ -479,6 +497,12 @@ export const AuthService = {
         mainRole: undefined,
         isGuest: false,
         username: undefined,
+        // Space memory: the next login of this account (password or
+        // biometrics) reopens this space. A guest logout keeps the previous.
+        lastUser: currentConfig.username ?? currentConfig.lastUser,
+        lastSpace: currentConfig.username
+          ? currentConfig.role
+          : currentConfig.lastSpace,
       };
       if (!keepTokensForBiometrics) {
         // Before clearTokens(): the unregister call is authenticated, so it
@@ -516,6 +540,38 @@ export const AuthService = {
     const config = await AuthService.getAuthConfig();
     if (!(config.roles ?? [config.role]).includes(space)) return;
     await AuthService.saveAuthConfig({ ...config, role: space });
+  },
+
+  /**
+   * Picks up a role change made in the back-office without a re-login, from a
+   * `/users/me` profile the caller already fetched (no request of its own).
+   * Keeps the active space if still held, else opens the main role. The
+   * caller then refreshAuth(). No-op when logged out, as a guest, or when
+   * nothing changed.
+   */
+  syncRolesFromProfile: async (
+    profile: Pick<UserProfile, "email" | "role" | "roles">,
+  ): Promise<AuthConfig> => {
+    const config = await AuthService.getAuthConfig();
+    if (!config.isLoggedIn || config.isGuest) return config;
+    const roles = rolesFrom(profile);
+    const role = resolveSpace({
+      previousSpace: config.role,
+      previousUser: config.username,
+      user: profile.email,
+      mainRole: profile.role,
+      roles,
+    });
+    if (
+      sameRoles(config.roles, roles) &&
+      config.mainRole === profile.role &&
+      config.role === role
+    ) {
+      return config;
+    }
+    const next: AuthConfig = { ...config, roles, mainRole: profile.role, role };
+    await AuthService.saveAuthConfig(next);
+    return next;
   },
 
   /**
