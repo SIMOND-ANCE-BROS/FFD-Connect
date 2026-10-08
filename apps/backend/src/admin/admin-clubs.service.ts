@@ -45,6 +45,9 @@ export class AdminClubsService {
     let clubId: string;
     try {
       clubId = await this.prisma.$transaction(async (tx) => {
+        // App-level check, case-insensitive. The DB unique constraint is
+        // case-sensitive, so a race between two names differing only by case
+        // can still slip through; follow-up: a unique index on lower(name).
         const clash = await tx.club.findFirst({
           where: { name: sameClubName(name) },
           select: adminClubOptionSelect,

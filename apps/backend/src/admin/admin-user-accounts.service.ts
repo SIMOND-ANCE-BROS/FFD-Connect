@@ -17,6 +17,7 @@ import {
   adminClubOptionSelect,
   adminInvitationTargetSelect,
 } from "../utils/prisma-selects";
+import { sameClubName } from "./admin-club-usage";
 import { AdminAuditService } from "./admin-audit.service";
 import { isCreatedByAdmin } from "./admin-audit.util";
 import {
@@ -206,7 +207,7 @@ export class AdminUserAccountsService {
     }
     if (dto.clubName && !holdsClubRole) {
       throw new BadRequestException(
-        "Seul un compte Club peut créer un nouveau club",
+        "Seul un compte ayant le rôle Club peut créer un nouveau club",
       );
     }
     if (dto.role === UserRole.CLUB && !dto.clubId && !dto.clubName) {
@@ -237,8 +238,8 @@ export class AdminUserAccountsService {
     }
     if (!dto.clubName) return null;
     const name = dto.clubName.trim();
-    const existing = await tx.club.findUnique({
-      where: { name },
+    const existing = await tx.club.findFirst({
+      where: { name: sameClubName(name) },
       select: adminClubOptionSelect,
     });
     if (existing) {
@@ -269,8 +270,8 @@ export class AdminUserAccountsService {
       return new ConflictException("Cet email est déjà utilisé");
     }
     if (dto.clubName && target.includes("name")) {
-      const existing = await this.prisma.club.findUnique({
-        where: { name: dto.clubName.trim() },
+      const existing = await this.prisma.club.findFirst({
+        where: { name: sameClubName(dto.clubName.trim()) },
         select: adminClubOptionSelect,
       });
       return new ConflictException({

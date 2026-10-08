@@ -21802,7 +21802,8 @@
             "type": "array",
             "description": "Rôles supplémentaires (hors Admin ; le rôle principal en est retiré)",
             "items": {
-              "$ref": "#/components/schemas/UserRole"
+              "type": "string",
+              "enum": ["LICENSEE", "CLUB", "STAFF"]
             }
           },
           "clubId": {

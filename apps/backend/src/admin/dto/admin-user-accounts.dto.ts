@@ -5,7 +5,6 @@ import {
   ArrayUnique,
   IsArray,
   IsEmail,
-  IsEnum,
   IsIn,
   IsOptional,
   IsString,
@@ -56,8 +55,7 @@ export class CreateAdminUserDto extends PickType(UpdateAdminUserDto, [
   role!: InvitationRole;
 
   @ApiPropertyOptional({
-    enum: UserRole,
-    enumName: "UserRole",
+    enum: [...INVITABLE_ROLES],
     isArray: true,
     description:
       "Rôles supplémentaires (hors Admin ; le rôle principal en est retiré)",
@@ -65,7 +63,7 @@ export class CreateAdminUserDto extends PickType(UpdateAdminUserDto, [
   @IsOptional()
   @IsArray()
   @ArrayUnique()
-  @IsEnum(UserRole, { each: true })
+  @IsIn([...INVITABLE_ROLES], { each: true })
   extraRoles?: UserRole[];
 
   @ApiPropertyOptional({

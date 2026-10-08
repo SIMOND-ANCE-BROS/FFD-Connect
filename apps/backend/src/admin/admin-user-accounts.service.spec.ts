@@ -32,6 +32,7 @@ describe("AdminUserAccountsService", () => {
       fn(prisma)) as never);
     prisma.user.findUnique.mockResolvedValue(null);
     prisma.club.findUnique.mockResolvedValue(null);
+    prisma.club.findFirst.mockResolvedValue(null);
     prisma.club.create.mockResolvedValue({
       id: "c-new",
       name: "Club Neuf",
@@ -194,7 +195,7 @@ describe("AdminUserAccountsService", () => {
       expect(prisma.user.create).not.toHaveBeenCalled();
     });
 
-    it("accepts an extra CLUB role with a clubId or a clubName", async () => {
+    it("accepts an extra CLUB role with a clubId", async () => {
       prisma.club.findUnique.mockResolvedValue({
         id: "c1",
         name: "Club A",
@@ -283,6 +284,16 @@ describe("AdminUserAccountsService", () => {
     expect(prisma.user.create).not.toHaveBeenCalled();
   });
 
+  it("400s with the role-based message when a non-Club account names a new club", async () => {
+    await expect(
+      service.create("admin-1", dto({ clubName: "Club Neuf" })),
+    ).rejects.toThrow(
+      new BadRequestException(
+        "Seul un compte ayant le rôle Club peut créer un nouveau club",
+      ),
+    );
+  });
+
   it("400s on an unknown club id", async () => {
     await expect(
       service.create("admin-1", dto({ clubId: "c9" })),
@@ -301,7 +312,7 @@ describe("AdminUserAccountsService", () => {
   });
 
   it("409s with the existing club id when the new club name exists", async () => {
-    prisma.club.findUnique.mockResolvedValue({
+    prisma.club.findFirst.mockResolvedValue({
       id: "c1",
       name: "Club A",
     } as never);
@@ -311,6 +322,25 @@ describe("AdminUserAccountsService", () => {
         dto({ role: UserRole.CLUB, clubName: "Club A" }),
       ),
     ).rejects.toMatchObject({ response: { existingClubId: "c1" } });
+  });
+
+  it("409s when the new club name differs from an existing one only by case", async () => {
+    prisma.club.findFirst.mockResolvedValue({
+      id: "c1",
+      name: "Club A",
+    } as never);
+    await expect(
+      service.create(
+        "admin-1",
+        dto({ role: UserRole.CLUB, clubName: "club a" }),
+      ),
+    ).rejects.toMatchObject({ response: { existingClubId: "c1" } });
+    expect(prisma.club.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { name: { equals: "club a", mode: "insensitive" } },
+      }),
+    );
+    expect(prisma.club.create).not.toHaveBeenCalled();
   });
 
   it("keeps the account and reports invitationSent=false when the email fails", async () => {
@@ -340,7 +370,7 @@ describe("AdminUserAccountsService", () => {
 
     it("maps a club-name race to a 409 carrying existingClubId", async () => {
       prisma.club.create.mockRejectedValue(p2002(["name"]));
-      prisma.club.findUnique
+      prisma.club.findFirst
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce({ id: "c9", name: "Club Neuf" } as never);
       await expect(

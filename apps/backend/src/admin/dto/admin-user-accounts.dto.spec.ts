@@ -40,6 +40,9 @@ describe("CreateAdminUserDto", () => {
     expect(await errorsOf({ ...withRole, extraRoles: ["ROOT"] })).toEqual([
       "extraRoles",
     ]);
+    expect(await errorsOf({ ...withRole, extraRoles: ["ADMIN"] })).toEqual([
+      "extraRoles",
+    ]);
     expect(await errorsOf({ ...withRole, extraRoles: "CLUB" })).toEqual([
       "extraRoles",
     ]);
