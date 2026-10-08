@@ -1,5 +1,5 @@
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { Award, CreditCard, ScanLine } from "lucide-react-native";
+import { Award, CreditCard, IdCard } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -149,7 +149,7 @@ export const ProfileScreen = ({ navigation }: Props) => {
               { backgroundColor: `${currentTheme.primary}10` },
             ]}
           >
-            <ScanLine size={32} color={currentTheme.primary} />
+            <IdCard size={32} color={currentTheme.primary} />
             <AppText
               variant="body"
               color={currentTheme.primary}
@@ -157,12 +157,16 @@ export const ProfileScreen = ({ navigation }: Props) => {
             >
               Aucune licence associée
             </AppText>
+            {/* The license is attached through the document workflow
+                (license + medical certificates, OCR, then approval
+                upserts the license). The check-in scanner is an organizer
+                tool and must never be reachable from here. */}
             <AppButton
-              title="Scanner ma licence"
-              onPress={() => navigation.navigate("Scanner")}
-              style={styles.scanButton}
-              accessibilityLabel="Scanner ma licence"
-              accessibilityHint="Ouvrir le scanner pour lier votre licence"
+              title="Ajouter ma licence"
+              onPress={() => navigation.navigate("LicenseRenewal")}
+              style={styles.addLicenseButton}
+              accessibilityLabel="Ajouter ma licence"
+              accessibilityHint="Déposer vos certificats pour associer votre licence"
             />
           </View>
         )}
@@ -262,7 +266,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyText: { marginTop: 8, marginBottom: 12 },
-  scanButton: { minWidth: 200 },
+  addLicenseButton: { minWidth: 200 },
   resultCard: {
     borderRadius: 10,
     borderWidth: 1,
