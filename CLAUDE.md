@@ -117,7 +117,8 @@ The backend runs on Azure Container Apps with `minReplicas=0` (see `docs/exploit
 - Don't add React Context for new state — use Zustand stores
 - Don't skip pre-commit hooks (`--no-verify`)
 - Don't add new API calls to `BackendService.ts` — use domain-specific modules in `services/api/` (TrackApi, CareerApi, LicenseApi, NotificationApi, HealthApi). New endpoints should use the generated OpenAPI client (`src/api/generated/`) when available; manual httpGet/httpPost only as fallback.
-- Don't inline Prisma `select` objects — use shared constants from `src/utils/prisma-selects.ts` (userRoleClubSelect, userNameSelect, clubIdNameSelect, etc.)
+- Don't inline Prisma `select` objects — use shared constants from `src/utils/prisma-selects.ts` (userRolesClubSelect, userNameSelect, idOnlySelect, etc.)
+- Don't compare user.role directly in the backend — use hasRole / withRole / withActiveRole from src/auth/roles.ts (multi-profile, lot 1c)
 - Don't schedule high-frequency crons/probes against the API — every request wakes a scale-to-zero app (cost + churn); see "Runtime & costs"
 
 ## Subagent routing (.claude/agents/)

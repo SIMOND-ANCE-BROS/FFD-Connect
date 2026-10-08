@@ -11,6 +11,7 @@ import rnBiometrics, { BiometryTypes } from "../../../utils/biometrics-adapter";
 import { validateForm } from "../../../utils/formValidation";
 import { createLogger } from "../../../utils/logger";
 import { useAuthRepository } from "../context/AuthContext";
+import { previousSession, resolveSpace } from "../services/AuthService";
 import { loginSchema } from "../schemas/login.schema";
 
 const logger = createLogger("useLoginLogic");
@@ -101,11 +102,19 @@ export const useLoginLogic = ({ navigation }: UseLoginLogicProps) => {
           const profile = await auth.getProfile();
 
           // 2. Restore full session config
+          const roles = profile.roles?.length ? profile.roles : [profile.role];
           const newConfig = {
             ...config,
             isLoggedIn: true,
             username: profile.email,
-            role: profile.role,
+            role: resolveSpace({
+              ...previousSession(config),
+              user: profile.email,
+              mainRole: profile.role,
+              roles,
+            }),
+            roles,
+            mainRole: profile.role,
             clubName: profile.clubName,
             lastLoginDate: new Date().toISOString(),
           };
@@ -214,8 +223,10 @@ export const useLoginLogic = ({ navigation }: UseLoginLogicProps) => {
       logger.info("Attempting login", { username: u });
       await auth.login(u, p);
       const config = await auth.getAuthConfig();
-      Sentry.setUser({ username: u, data: { role: config.role } });
-      logger.info("Login success", { role: config.role });
+      // The account's main role, not the space it opens on.
+      const mainRole = config.mainRole ?? config.role;
+      Sentry.setUser({ username: u, data: { role: mainRole } });
+      logger.info("Login success", { role: mainRole });
       analytics.logEvent("login", { method: "email" });
 
       setLoading(false);

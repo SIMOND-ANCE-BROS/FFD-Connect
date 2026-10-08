@@ -4,6 +4,7 @@ import type { Response } from "express";
 import { validateHeaderValue } from "http";
 import * as fs from "fs";
 import * as path from "path";
+import { UserRole } from "@prisma/client";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { TracksController } from "./tracks.controller";
@@ -115,6 +116,22 @@ describe("TracksController", () => {
       await controller.findAll(pagination, adminReq);
 
       expect(mockTracksService.findAll).toHaveBeenCalledTimes(1);
+      expect(mockTracksService.findAll).toHaveBeenCalledWith(pagination, true);
+    });
+
+    it("shows hidden tracks to an account whose ADMIN role is an extra role", async () => {
+      const pagination: PaginationParamsDto = { skip: 0, take: 10 };
+      mockTracksService.findAll.mockResolvedValue(makePaginatedResponse([]));
+
+      await controller.findAll(pagination, {
+        user: {
+          userId: "u1",
+          email: "a@x.fr",
+          role: "LICENSEE",
+          roles: [UserRole.LICENSEE, UserRole.ADMIN],
+        },
+      } as Parameters<TracksController["findAll"]>[1]);
+
       expect(mockTracksService.findAll).toHaveBeenCalledWith(pagination, true);
     });
 

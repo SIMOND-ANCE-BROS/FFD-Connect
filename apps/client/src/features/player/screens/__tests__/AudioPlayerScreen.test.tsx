@@ -232,7 +232,11 @@ describe("AudioPlayerScreen", () => {
     });
 
     it("un admin garde « Éditer les appels » et a aussi le raccourci de correction", async () => {
-      useAuthStore.setState({ role: "ADMIN", isGuest: false });
+      useAuthStore.setState({
+        role: "ADMIN",
+        roles: ["ADMIN"],
+        isGuest: false,
+      });
       withTrack("Paso Doble");
       const { getByTestId, queryByTestId, getByText } = await renderWithQuery(
         <AudioPlayerScreen {...createTestProps()} />,

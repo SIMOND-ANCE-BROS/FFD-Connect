@@ -396,7 +396,7 @@ export class AuthController {
   ) {
     return this.authService.impersonate(
       req.user.userId,
-      req.user.role,
+      req.user.roles,
       { userId: body.targetUserId, email: body.targetEmail },
       body.reason,
       req.ip,

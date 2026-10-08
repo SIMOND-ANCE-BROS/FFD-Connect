@@ -5,7 +5,9 @@ import {
   Logger,
   NotFoundException,
 } from "@nestjs/common";
+import { UserRole } from "@prisma/client";
 import { AuthTokenService } from "../auth/auth-token.service";
+import { normalizeExtraRoles, rolesOf } from "../auth/roles";
 import { PrismaService } from "../prisma/prisma.service";
 import { AccountDeletionService } from "../users/account-deletion.service";
 import {
@@ -68,6 +70,37 @@ export class AdminUsersService {
           if (!club) throw new BadRequestException("Club introuvable");
           requested.clubName = club.name;
         }
+      }
+
+      // A role promoted to main leaves the extras; the list is stored normalised.
+      const finalRole =
+        (requested.role as UserRole | undefined) ?? current.role;
+      const finalExtras = normalizeExtraRoles(
+        finalRole,
+        (requested.extraRoles as UserRole[] | undefined) ?? current.extraRoles,
+      );
+      if (
+        dto.extraRoles !== undefined ||
+        finalExtras.length !== current.extraRoles.length
+      ) {
+        requested.extraRoles = finalExtras;
+      }
+      const finalClubId =
+        dto.clubId !== undefined ? dto.clubId : current.clubId;
+      if (finalExtras.includes(UserRole.CLUB) && !finalClubId) {
+        throw new BadRequestException(
+          "Un rôle Club supplémentaire nécessite un club",
+        );
+      }
+      if (
+        actorId === userId &&
+        !rolesOf({ role: finalRole, extraRoles: finalExtras }).includes(
+          UserRole.ADMIN,
+        )
+      ) {
+        throw new ForbiddenException(
+          "Un administrateur ne peut pas retirer son propre rôle Admin",
+        );
       }
 
       const diff = diffFields(current, requested);

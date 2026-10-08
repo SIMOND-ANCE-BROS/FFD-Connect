@@ -4969,6 +4969,14 @@
                       "role": {
                         "type": "string",
                         "enum": ["LICENSEE", "CLUB", "STAFF", "ADMIN"]
+                      },
+                      "roles": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": ["LICENSEE", "CLUB", "STAFF", "ADMIN"]
+                        },
+                        "description": "Rôle principal + rôles supplémentaires (multi-profil)"
                       }
                     }
                   }
@@ -20906,13 +20914,19 @@
               }
             ]
           },
+          "extraRoles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
+          },
           "disabledAt": {
             "format": "date-time",
             "type": "string",
             "nullable": true
           }
         },
-        "required": ["id", "firstName", "lastName", "email", "role", "disabledAt"]
+        "required": ["id", "firstName", "lastName", "email", "role", "extraRoles", "disabledAt"]
       },
       "AdminClubDetailDto": {
         "type": "object",
@@ -21133,6 +21147,19 @@
               }
             ]
           },
+          "extraRoles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "description": "Rôle principal + rôles supplémentaires",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
+          },
           "clubId": {
             "type": "string",
             "nullable": true
@@ -21170,6 +21197,8 @@
           "firstName",
           "lastName",
           "role",
+          "extraRoles",
+          "roles",
           "clubId",
           "clubName",
           "category",
@@ -21219,6 +21248,19 @@
                 "$ref": "#/components/schemas/UserRole"
               }
             ]
+          },
+          "extraRoles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "description": "Rôle principal + rôles supplémentaires",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
           },
           "clubId": {
             "type": "string",
@@ -21323,6 +21365,8 @@
           "firstName",
           "lastName",
           "role",
+          "extraRoles",
+          "roles",
           "clubId",
           "clubName",
           "category",
@@ -21418,6 +21462,13 @@
                 "$ref": "#/components/schemas/UserRole"
               }
             ]
+          },
+          "extraRoles": {
+            "type": "array",
+            "description": "Rôles supplémentaires (le rôle principal en est retiré)",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
           }
         }
       },

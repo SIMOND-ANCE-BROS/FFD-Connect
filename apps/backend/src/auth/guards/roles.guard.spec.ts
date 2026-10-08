@@ -6,7 +6,7 @@ import { ROLES_KEY } from "../decorators/roles.decorator";
 import { RolesGuard } from "./roles.guard";
 
 const createMockContext = (
-  user?: { role: UserRole } | null,
+  user?: { role: UserRole; roles?: UserRole[] } | null,
 ): ExecutionContext => {
   const mockHandler = jest.fn();
   const mockClass = jest.fn();
@@ -155,5 +155,20 @@ describe("RolesGuard", () => {
       expect(() => guard.canActivate(context)).not.toThrow();
       expect(guard.canActivate(context)).toBe(false);
     });
+  });
+
+  it("allows a user whose extra role is required", () => {
+    reflector.getAllAndOverride.mockReturnValue([UserRole.CLUB]);
+    const ctx = createMockContext({
+      role: UserRole.LICENSEE,
+      roles: [UserRole.LICENSEE, UserRole.CLUB],
+    });
+    expect(guard.canActivate(ctx)).toBe(true);
+  });
+
+  it("falls back to the main role when roles are absent", () => {
+    reflector.getAllAndOverride.mockReturnValue([UserRole.ADMIN]);
+    const ctx = createMockContext({ role: UserRole.ADMIN });
+    expect(guard.canActivate(ctx)).toBe(true);
   });
 });

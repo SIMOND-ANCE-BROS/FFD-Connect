@@ -14,6 +14,7 @@ import {
   TrackCorrectionStatus,
   UserRole,
 } from "@prisma/client";
+import { withActiveRole } from "../auth/roles";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UpdateTrackDto } from "../tracks/dto/update-track.dto";
@@ -541,7 +542,7 @@ export class TrackCorrectionsService {
   ): Promise<void> {
     try {
       const admins = await this.prisma.user.findMany({
-        where: { role: UserRole.ADMIN },
+        where: withActiveRole(UserRole.ADMIN),
         select: idOnlySelect,
         take: MAX_ADMINS_NOTIFIED,
       });

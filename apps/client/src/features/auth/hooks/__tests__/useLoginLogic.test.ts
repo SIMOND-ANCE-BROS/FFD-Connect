@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react-native";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { Alert } from "react-native";
 import rnBiometrics from "../../../../utils/biometrics-adapter";
@@ -142,6 +143,38 @@ describe("useLoginLogic", () => {
       expect(mockRefreshAuth).toHaveBeenCalled();
     });
 
+    it("tags Sentry with the main role, not the active space", async () => {
+      // No biometric auto-login on mount (it would tag Sentry too).
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        biometricsEnabled: false,
+        isLoggedIn: false,
+      });
+      const { result } = await renderHook(() =>
+        useLoginLogic({ navigation: mockNavigation }),
+      );
+
+      await act(() => {
+        result.current.actions.setUsername("test@test.com");
+        result.current.actions.setPassword("password123");
+      });
+
+      mockAuthRepository.login.mockResolvedValueOnce(undefined);
+      mockAuthRepository.getAuthConfig.mockResolvedValueOnce({
+        role: "CLUB",
+        mainRole: "LICENSEE",
+      });
+
+      await act(async () => {
+        await result.current.actions.onLogin();
+      });
+
+      expect(Sentry.setUser).toHaveBeenCalledTimes(1);
+      expect(Sentry.setUser).toHaveBeenCalledWith({
+        username: "test@test.com",
+        data: { role: "LICENSEE" },
+      });
+    });
+
     it("handles login failure", async () => {
       const { result } = await renderHook(() =>
         useLoginLogic({ navigation: mockNavigation }),
@@ -162,6 +195,45 @@ describe("useLoginLogic", () => {
 
       expect(Alert.alert).toHaveBeenCalledWith("Échec", "Invalid credentials");
       expect(result.current.state.loading).toBe(false);
+    });
+  });
+
+  describe("handleBiometricLogin", () => {
+    it("reopens the space kept by logout for the same account", async () => {
+      (rnBiometrics.isSensorAvailable as jest.Mock).mockResolvedValue({
+        available: true,
+      });
+      (rnBiometrics.simplePrompt as jest.Mock).mockResolvedValue({
+        success: true,
+      });
+      // What logout leaves behind with biometrics on: no username, memory kept.
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        biometricsEnabled: true,
+        isLoggedIn: false,
+        role: "LICENSEE",
+        lastUser: "a@x.fr",
+        lastSpace: "CLUB",
+      });
+      mockAuthRepository.getProfile.mockResolvedValue({
+        email: "a@x.fr",
+        role: "LICENSEE",
+        roles: ["LICENSEE", "CLUB"],
+      });
+      const { result } = await renderHook(() =>
+        useLoginLogic({ navigation: mockNavigation }),
+      );
+
+      await act(async () => {
+        await result.current.actions.onBiometricLogin();
+      });
+
+      expect(mockAuthRepository.saveAuthConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          role: "CLUB",
+          mainRole: "LICENSEE",
+          username: "a@x.fr",
+        }),
+      );
     });
   });
 

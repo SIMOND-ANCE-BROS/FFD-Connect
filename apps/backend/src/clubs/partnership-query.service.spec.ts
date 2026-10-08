@@ -116,6 +116,33 @@ describe("PartnershipQueryService", () => {
       );
     });
 
+    it("accepts a licensee whose CLUB role is an extra role", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({
+          role: UserRole.LICENSEE,
+          extraRoles: [UserRole.CLUB],
+          club: { disabledAt: null },
+        }) as never,
+      );
+      prisma.user.findMany.mockResolvedValue([] as never);
+      await expect(
+        service.getMembersForPartnership("organizer-1"),
+      ).resolves.toEqual([]);
+    });
+
+    it("refuses an extra CLUB role while the club is disabled", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({
+          role: UserRole.LICENSEE,
+          extraRoles: [UserRole.CLUB],
+          club: { disabledAt: new Date() },
+        }) as never,
+      );
+      await expect(
+        service.getMembersForPartnership("organizer-1"),
+      ).rejects.toThrow("Only club role can manage club data");
+    });
+
     it("throws BadRequestException when user not found (null)", async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       await expect(service.getMembersForPartnership("missing")).rejects.toThrow(

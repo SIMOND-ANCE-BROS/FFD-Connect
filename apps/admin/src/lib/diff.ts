@@ -9,9 +9,15 @@ export interface EditableFields {
   competitionLevel: string | null;
   nationalRanking: number | null;
   role: string;
+  extraRoles: string[];
 }
 
 const norm = (v: unknown) => (v === '' || v === undefined ? null : v);
+const same = (a: unknown, b: unknown) =>
+  Array.isArray(a) || Array.isArray(b)
+    ? JSON.stringify([...((a as string[]) ?? [])].sort()) ===
+      JSON.stringify([...((b as string[]) ?? [])].sort())
+    : norm(a) === norm(b);
 
 /** Keys whose value changed; a cleared input becomes null (= clear). */
 export function changedFields(
@@ -20,7 +26,7 @@ export function changedFields(
 ): Partial<EditableFields> {
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(current) as (keyof EditableFields)[]) {
-    if (norm(initial[key]) !== norm(current[key])) out[key] = norm(current[key]);
+    if (!same(initial[key], current[key])) out[key] = norm(current[key]);
   }
   return out as Partial<EditableFields>;
 }

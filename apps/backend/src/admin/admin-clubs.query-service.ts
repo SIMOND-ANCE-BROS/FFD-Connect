@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, UserRole } from "@prisma/client";
+import { withRole } from "../auth/roles";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -107,17 +108,29 @@ export class AdminClubsQueryService {
   ): Promise<Map<string, MemberCounts>> {
     const counts = new Map<string, MemberCounts>();
     if (!ids.length) return counts;
-    const groups = await this.prisma.user.groupBy({
-      by: ["clubId", "role"],
-      where: { clubId: { in: ids } },
-      _count: { _all: true },
-    });
-    for (const g of groups) {
-      if (!g.clubId) continue;
-      const c = counts.get(g.clubId) ?? { memberCount: 0, clubAccountCount: 0 };
-      if (g.role === UserRole.CLUB) c.clubAccountCount += g._count._all;
-      else c.memberCount += g._count._all;
-      counts.set(g.clubId, c);
+    // groupBy cannot group on an array membership: one query per side.
+    const [accounts, members] = await Promise.all([
+      this.prisma.user.groupBy({
+        by: ["clubId"],
+        where: { clubId: { in: ids }, ...withRole(UserRole.CLUB) },
+        _count: { _all: true },
+      }),
+      this.prisma.user.groupBy({
+        by: ["clubId"],
+        where: { clubId: { in: ids }, NOT: withRole(UserRole.CLUB) },
+        _count: { _all: true },
+      }),
+    ]);
+    const entry = (clubId: string): MemberCounts => {
+      const c = counts.get(clubId) ?? { memberCount: 0, clubAccountCount: 0 };
+      counts.set(clubId, c);
+      return c;
+    };
+    for (const g of accounts) {
+      if (g.clubId) entry(g.clubId).clubAccountCount += g._count._all;
+    }
+    for (const g of members) {
+      if (g.clubId) entry(g.clubId).memberCount += g._count._all;
     }
     return counts;
   }

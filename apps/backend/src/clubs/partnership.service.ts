@@ -8,7 +8,9 @@ import {
   NotificationType,
   PartnershipManagementMode,
   PartnershipStatus,
+  UserRole,
 } from "@prisma/client";
+import { withActiveRole } from "../auth/roles";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ClubsService } from "./clubs.service";
@@ -371,14 +373,18 @@ export class PartnershipService {
   ): Promise<void> {
     const organizers = await this.prisma.user.findMany({
       where: {
-        role: "CLUB" as const,
-        OR: [
-          { clubId: club.id },
+        AND: [
+          withActiveRole(UserRole.CLUB),
           {
-            clubName: {
-              equals: club.name.trim(),
-              mode: "insensitive",
-            },
+            OR: [
+              { clubId: club.id },
+              {
+                clubName: {
+                  equals: club.name.trim(),
+                  mode: "insensitive",
+                },
+              },
+            ],
           },
         ],
       },

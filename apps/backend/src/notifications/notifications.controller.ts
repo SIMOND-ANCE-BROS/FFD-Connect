@@ -132,7 +132,7 @@ export class NotificationsController {
   ): Promise<NotificationPreferenceDto[]> {
     return this.preferencesQueryService.getCatalogForUser(
       req.user.userId,
-      req.user.role,
+      req.user.roles,
     );
   }
 
@@ -165,7 +165,7 @@ export class NotificationsController {
   ): Promise<NotificationPreferenceDto> {
     return this.preferencesService.setPreference(
       req.user.userId,
-      req.user.role,
+      req.user.roles,
       dto.type,
       dto.enabled,
     );

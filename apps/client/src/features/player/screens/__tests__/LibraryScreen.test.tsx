@@ -10,12 +10,20 @@ jest.mock("../../hooks/useLibraryLogic");
 
 // Mock the auth store so we can drive the current user's role. The add-track
 // affordance is ADMIN-only (shared, read-only catalog for everyone else).
-const mockAuthState: { role: string | null; isGuest: boolean } = {
+const mockAuthState: {
+  role: string | null;
+  roles: string[];
+  isGuest: boolean;
+  hasRole: (r: string) => boolean;
+} = {
   role: null,
+  roles: [],
   isGuest: false,
+  hasRole: (r) => mockAuthState.roles.includes(r),
 };
 jest.mock("../../../../stores/auth.store", () => ({
-  useAuthStore: () => mockAuthState,
+  useAuthStore: (selector?: (s: typeof mockAuthState) => unknown) =>
+    selector ? selector(mockAuthState) : mockAuthState,
 }));
 
 // Inline ThemeContext Mock for stability
@@ -150,6 +158,7 @@ describe("LibraryScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockAuthState.role = null;
+    mockAuthState.roles = [];
     mockAuthState.isGuest = false;
     mockIngestionEnabled = true;
     (useLibraryLogic as jest.Mock).mockReturnValue({
@@ -269,6 +278,7 @@ describe("LibraryScreen", () => {
 
   it("does not open the report modal on long-press for an admin", async () => {
     mockAuthState.role = "ADMIN";
+    mockAuthState.roles = ["ADMIN"];
     (useLibraryLogic as jest.Mock).mockReturnValue({
       state: {
         ...defaultState,
@@ -286,6 +296,50 @@ describe("LibraryScreen", () => {
     await fireEvent(getByTestId("library-track-t1"), "onLongPress");
 
     expect(queryByTestId("report-modal")).toBeNull();
+  });
+
+  it("keeps the admin edit action in another space when the account holds ADMIN", async () => {
+    mockAuthState.role = "LICENSEE";
+    mockAuthState.roles = ["ADMIN", "LICENSEE"];
+    (useLibraryLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...defaultState,
+        displayData: [
+          { id: "t1", title: "Track 1", artist: "Artist 1", baseBpm: 120 },
+        ],
+      },
+      actions: defaultActions,
+    });
+
+    const { getByTestId, queryByTestId } = await render(
+      <LibraryScreen {...createTestProps()} />,
+    );
+
+    await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+
+    expect(queryByTestId("report-modal")).toBeNull();
+  });
+
+  it("opens the report modal in the LICENSEE space when the account is not admin", async () => {
+    mockAuthState.role = "LICENSEE";
+    mockAuthState.roles = ["LICENSEE", "CLUB"];
+    (useLibraryLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...defaultState,
+        displayData: [
+          { id: "t1", title: "Track 1", artist: "Artist 1", baseBpm: 120 },
+        ],
+      },
+      actions: defaultActions,
+    });
+
+    const { getByTestId } = await render(
+      <LibraryScreen {...createTestProps()} />,
+    );
+
+    await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+
+    expect(getByTestId("report-modal")).toBeTruthy();
   });
 
   it("calls handleSectionPress in grid view", async () => {

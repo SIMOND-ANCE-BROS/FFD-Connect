@@ -5,6 +5,8 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
+import { hasRole } from "../auth/roles";
+import { userRolesClubSelect } from "../utils/prisma-selects";
 import { PrismaService } from "./../prisma/prisma.service";
 
 @Injectable()
@@ -17,10 +19,10 @@ export class ClubsService {
   async getClubIdForOrganizer(organizerUserId: string): Promise<string> {
     const user = await this.prisma.user.findUnique({
       where: { id: organizerUserId },
-      select: { role: true, clubId: true, clubName: true },
+      select: userRolesClubSelect,
     });
     if (!user) throw new NotFoundException("User not found");
-    if (user.role !== UserRole.CLUB) {
+    if (!hasRole(user, UserRole.CLUB)) {
       throw new BadRequestException("Only club role can manage club data");
     }
     const club = user.clubId

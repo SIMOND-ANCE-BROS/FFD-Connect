@@ -83,6 +83,7 @@ const mockAuthRepository: AuthRepository = {
   setWdsfLicenseEnabled: jest.fn(),
   setRegistrationPolicy: jest.fn(),
   getProfile: jest.fn(),
+  syncRolesFromProfile: jest.fn(),
   verifyWdsfLicense: jest.fn(),
   setClubLogo: jest.fn(),
   saveWdsfToBackend: jest.fn(),

@@ -30,6 +30,7 @@ const current = {
   competitionLevel: null,
   nationalRanking: 12,
   role: UserRole.LICENSEE,
+  extraRoles: [] as UserRole[],
 };
 
 describe("AdminUsersService.update", () => {
@@ -125,6 +126,10 @@ describe("AdminUsersService.update", () => {
   });
 
   it("allows an admin to edit their own other fields", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      ...current,
+      role: UserRole.ADMIN,
+    } as never);
     await service.update("u1", "u1", { firstName: "Gabin" });
     expect(prisma.user.update).toHaveBeenCalled();
   });
@@ -174,6 +179,128 @@ describe("AdminUsersService.update", () => {
     expect(message).toContain("u1");
     expect(message).toContain("connection reset");
     warn.mockRestore();
+  });
+
+  describe("extra roles", () => {
+    it("stores normalised extra roles and audits them in USER_UPDATE", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...current,
+        role: UserRole.LICENSEE,
+        extraRoles: [],
+        clubId: "c1",
+      } as never);
+      await service.update("admin-1", "u1", {
+        extraRoles: [UserRole.STAFF, UserRole.LICENSEE, UserRole.CLUB],
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { extraRoles: [UserRole.CLUB, UserRole.STAFF] },
+        }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        prisma,
+        expect.objectContaining({
+          action: "USER_UPDATE",
+          before: { extraRoles: [] },
+          after: { extraRoles: [UserRole.CLUB, UserRole.STAFF] },
+        }),
+      );
+    });
+
+    it("drops an extra role that becomes the main role", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...current,
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        clubId: "c1",
+      } as never);
+      await service.update("admin-1", "u1", { role: UserRole.CLUB });
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { role: UserRole.CLUB, extraRoles: [] },
+        }),
+      );
+    });
+
+    it("lets an admin add an extra role to their own account", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...current,
+        id: "admin-1",
+        role: UserRole.ADMIN,
+        extraRoles: [],
+      } as never);
+      await expect(
+        service.update("admin-1", "admin-1", {
+          extraRoles: [UserRole.LICENSEE],
+        }),
+      ).resolves.toBeDefined();
+      expect(prisma.user.update).toHaveBeenCalled();
+    });
+
+    it("refuses an admin removing their own ADMIN extra role", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...current,
+        id: "admin-1",
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.ADMIN],
+      } as never);
+      const err = await service
+        .update("admin-1", "admin-1", { extraRoles: [] })
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ForbiddenException);
+      expect((err as Error).message).toBe(
+        "Un administrateur ne peut pas retirer son propre rôle Admin",
+      );
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it("refuses an extra CLUB role without a club", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...current,
+        role: UserRole.LICENSEE,
+        extraRoles: [],
+        clubId: null,
+      } as never);
+      const err = await service
+        .update("admin-1", "u1", { extraRoles: [UserRole.CLUB] })
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect((err as Error).message).toBe(
+        "Un rôle Club supplémentaire nécessite un club",
+      );
+    });
+
+    it("refuses removing the club of an account that keeps an extra CLUB role", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...current,
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        clubId: "c1",
+      } as never);
+      await expect(
+        service.update("admin-1", "u1", { clubId: null }),
+      ).rejects.toThrow("Un rôle Club supplémentaire nécessite un club");
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it("writes nothing when the normalised list is unchanged", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...current,
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.STAFF],
+      } as never);
+      await service.update("admin-1", "u1", {
+        extraRoles: [UserRole.STAFF, UserRole.LICENSEE],
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it("does not revoke sessions on an extra-role-only change", async () => {
+      await service.update("admin-1", "u1", { extraRoles: [UserRole.STAFF] });
+      expect(prisma.user.update).toHaveBeenCalled();
+      expect(tokens.revokeAllUserTokens).not.toHaveBeenCalled();
+    });
   });
 });
 

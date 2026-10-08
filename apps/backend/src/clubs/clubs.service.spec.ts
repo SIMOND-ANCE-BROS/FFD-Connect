@@ -40,6 +40,34 @@ describe("ClubsService", () => {
       );
     });
 
+    it("accepts a licensee whose CLUB role is an extra role", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        clubId: "c1",
+        clubName: "Club A",
+        club: { disabledAt: null },
+      } as never);
+      prisma.club.findUnique.mockResolvedValue({
+        id: "c1",
+        name: "Club A",
+      } as never);
+      await expect(service.getClubIdForOrganizer("u1")).resolves.toBe("c1");
+    });
+
+    it("refuses an extra CLUB role while the club is disabled", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        clubId: "c1",
+        clubName: "Club A",
+        club: { disabledAt: new Date() },
+      } as never);
+      await expect(service.getClubIdForOrganizer("u1")).rejects.toThrow(
+        "Only club role can manage club data",
+      );
+    });
+
     it("returns clubId when user has a clubId and club exists", async () => {
       prisma.user.findUnique.mockResolvedValue({
         role: UserRole.CLUB,

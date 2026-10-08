@@ -34,6 +34,7 @@ const busy = {
       lastName: 'Martin',
       email: 'j@x.fr',
       role: 'LICENSEE',
+      extraRoles: ['CLUB'],
       disabledAt: null,
     },
     {
@@ -42,6 +43,7 @@ const busy = {
       lastName: 'Durand',
       email: 'p@x.fr',
       role: 'CLUB',
+      extraRoles: [],
       disabledAt: '2026-10-01T00:00:00.000Z',
     },
   ],
@@ -201,6 +203,16 @@ describe('ClubDetailPage', () => {
     expect(within(row).getByText('Désactivé')).toBeInTheDocument();
     expect(within(row).getByText('Club')).toBeInTheDocument();
   });
+  it('badges a member extra role next to the main role', async () => {
+    renderPage(busy);
+    const row = (await screen.findByRole('link', { name: 'Martin Jeanne' })).closest(
+      'tr',
+    ) as HTMLElement;
+    expect(within(row).getByText('+ Club')).toBeInTheDocument();
+    const other = screen.getByRole('link', { name: 'Durand Paul' }).closest('tr') as HTMLElement;
+    expect(within(other).queryByText(/^\+ /)).toBeNull();
+  });
+
   it('keeps the delete button for a retry when the server is unreachable', async () => {
     vi.spyOn(sdk, 'adminControllerDeleteClub').mockResolvedValue({
       data: undefined,

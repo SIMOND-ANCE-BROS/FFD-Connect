@@ -67,6 +67,15 @@ export class AdminUserListItemDto {
   @ApiProperty() firstName!: string;
   @ApiProperty() lastName!: string;
   @ApiProperty({ enum: UserRole, enumName: "UserRole" }) role!: UserRole;
+  @ApiProperty({ enum: UserRole, enumName: "UserRole", isArray: true })
+  extraRoles!: UserRole[];
+  @ApiProperty({
+    enum: UserRole,
+    enumName: "UserRole",
+    isArray: true,
+    description: "Rôle principal + rôles supplémentaires",
+  })
+  roles!: UserRole[];
   @ApiProperty({ nullable: true, type: String }) clubId!: string | null;
   @ApiProperty({ nullable: true, type: String }) clubName!: string | null;
   @ApiProperty({ nullable: true, type: String }) category!: string | null;
