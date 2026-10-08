@@ -18,6 +18,7 @@ import {
   AccountDeletionService,
   MAX_RENEWAL_DOCUMENTS_TO_PURGE,
 } from "./account-deletion.service";
+import { LicenseQrService } from "../licenses/qr/license-qr.service";
 import { UsersService } from "./users.service";
 
 jest.mock("bcrypt", () => ({
@@ -80,6 +81,13 @@ describe("UsersService", () => {
         AccountDeletionService,
         { provide: PrismaService, useValue: prisma },
         {
+          provide: LicenseQrService,
+          useValue: {
+            buildQrCode: (license: { number: string }) =>
+              `signed:${license.number}`,
+          },
+        },
+        {
           provide: RenewalDocumentFileCleaner,
           useValue: renewalDocumentFiles,
         },
@@ -121,6 +129,27 @@ describe("UsersService", () => {
 
       expect(result.id).toBe("u1");
       expect(result.email).toBe("alice@example.com");
+    });
+
+    it("adds the signed QR content to the license (#168)", async () => {
+      const license = {
+        id: "l1",
+        number: "FFD-1",
+        validUntil: new Date("2026-08-31T00:00:00.000Z"),
+      };
+      prisma.user.findUnique.mockResolvedValue(makeUser({ license }));
+
+      const result = await service.findOne("u1");
+
+      expect(result.license).toEqual({ ...license, qrCode: "signed:FFD-1" });
+    });
+
+    it("keeps license null when the user has none", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+
+      const result = await service.findOne("u1");
+
+      expect(result.license).toBeNull();
     });
 
     it("never returns a password field", async () => {

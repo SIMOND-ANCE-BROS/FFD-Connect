@@ -314,11 +314,14 @@ export const LicenseScreen: React.FC = () => {
                     photoUri={state.photoUri}
                     onShowQr={() =>
                       actions.handleShowQr(
-                        JSON.stringify({
-                          id: item.data?.licenseNumber,
-                          valid: true,
-                          type: item.type,
-                        }),
+                        // QR signé par le serveur (#168) tel quel, sinon
+                        // ancien contenu (backend ancien / snapshot antérieur).
+                        item.data?.qrCode ??
+                          JSON.stringify({
+                            id: item.data?.licenseNumber,
+                            valid: true,
+                            type: item.type,
+                          }),
                       )
                     }
                     themeOverride={isDark ? "dark" : "light"}

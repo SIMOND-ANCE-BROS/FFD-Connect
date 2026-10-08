@@ -45,6 +45,14 @@ describe("licenseSnapshot", () => {
     expect(snapshot?.wdsfUser?.licenseNumber).toBe("10117265");
   });
 
+  it("garde le QR signé pour l'E-Licence hors ligne (#168)", async () => {
+    const qrCode = '{"v":1,"id":"FFD-12345","exp":"2026-08-31","sig":"abc"}';
+    await saveLicenseSnapshot({ ...FFD_USER, qrCode }, null);
+
+    const snapshot = await loadLicenseSnapshot();
+    expect(snapshot?.ffdUser.qrCode).toBe(qrCode);
+  });
+
   it("clearLicenseSnapshot purge la PII locale (logout)", async () => {
     await saveLicenseSnapshot(FFD_USER, null);
     await clearLicenseSnapshot();

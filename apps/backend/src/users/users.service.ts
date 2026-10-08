@@ -8,6 +8,7 @@ import * as bcrypt from "bcrypt";
 import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
+import { LicenseQrService } from "../licenses/qr/license-qr.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { publicTrackName } from "../tracks/track-visibility.util";
 import {
@@ -98,6 +99,7 @@ export class UsersService {
   constructor(
     private prisma: PrismaService,
     private accountDeletion: AccountDeletionService,
+    private licenseQrService: LicenseQrService,
   ) {}
 
   /**
@@ -267,7 +269,14 @@ export class UsersService {
     }
 
     const wdsf = buildWdsfFromUser(user);
-    return { ...user, wdsf };
+    // Signed QR content of the license (#168) — null when signing is off.
+    const license = user.license
+      ? {
+          ...user.license,
+          qrCode: this.licenseQrService.buildQrCode(user.license),
+        }
+      : null;
+    return { ...user, license, wdsf };
   }
 
   /**

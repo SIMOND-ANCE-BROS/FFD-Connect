@@ -1,5 +1,6 @@
 import { View } from "react-native";
 import { theme } from "../../../../theme";
+import { buildLicenseQrData } from "../../utils/licenseQrData";
 import { LicenseCardBody } from "./LicenseCardBody";
 import { LicenseCardFooter } from "./LicenseCardFooter";
 import { LicenseCardHeader } from "./LicenseCardHeader";
@@ -22,12 +23,7 @@ export const LicenseCard: React.FC<LicenseCardProps> = ({
   const isDark = themeOverride === "dark";
   const config = getLicenseConfig(type, isDark);
 
-  const qrData = JSON.stringify({
-    id: user.licenseNumber,
-    name: `${user.lastName} ${user.firstName}`,
-    valid: true,
-    type: type,
-  });
+  const qrData = buildLicenseQrData(user, type);
 
   return (
     <View

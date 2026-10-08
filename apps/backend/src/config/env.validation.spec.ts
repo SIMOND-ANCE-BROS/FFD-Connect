@@ -33,6 +33,26 @@ describe("validate (env.validation)", () => {
     });
   });
 
+  describe("signature des QR de licence (#168)", () => {
+    it("démarre sans QR_SIGNING_SECRET ni QR_SIGNATURE_MODE", () => {
+      const result = validate(VALID_BASE);
+      expect(result.QR_SIGNING_SECRET).toBeUndefined();
+      expect(result.QR_SIGNATURE_MODE).toBeUndefined();
+    });
+
+    it.each(["off", "warn", "enforce"])("accepte le mode '%s'", (mode) => {
+      expect(
+        validate({ ...VALID_BASE, QR_SIGNATURE_MODE: mode }).QR_SIGNATURE_MODE,
+      ).toBe(mode);
+    });
+
+    it("refuse un mode inconnu", () => {
+      expect(() =>
+        validate({ ...VALID_BASE, QR_SIGNATURE_MODE: "strict" }),
+      ).toThrow("Erreur de validation des variables d'environnement");
+    });
+  });
+
   describe("NODE_ENV", () => {
     it("accepte 'development'", () => {
       const result = validate({ ...VALID_BASE, NODE_ENV: "development" });

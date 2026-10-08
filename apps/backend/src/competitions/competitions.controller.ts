@@ -33,7 +33,7 @@ import { CompetitionManagementService } from "./services/competition-management.
 import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
-import { CheckInDto } from "./dto/checkin.dto";
+import { CheckInDto, CheckInResponseDto } from "./dto/checkin.dto";
 import {
   CreateCompetitionDto,
   UpdateCompetitionDto,
@@ -720,18 +720,16 @@ export class CompetitionsController {
   @ApiParam({ name: "id", description: "ID de la compétition" })
   @ApiBody({ type: CheckInDto })
   @ApiResponse({
-    status: 200,
-    description: "Check-in réussi",
-    schema: {
-      type: "object",
-      properties: {
-        success: { type: "boolean" },
-        message: { type: "string" },
-        registration: { type: "object" },
-      },
-    },
+    status: 201,
+    description:
+      "Check-in effectué. `qrVerification` indique si le QR signé a été vérifié (#168) : `warning` non nul = QR accepté mais non vérifié (mode warn), à afficher au staff.",
+    type: CheckInResponseDto,
   })
-  @ApiResponse({ status: 400, description: "Données QR code invalides" })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Données QR code invalides, ou QR non vérifié refusé (mode enforce : non signé, signature invalide ou licence expirée)",
+  })
   @ApiResponse({ status: 404, description: "Inscription non trouvée" })
   checkIn(@Param("id") competitionId: string, @Body() body: CheckInDto) {
     return this.resultsService.checkIn(competitionId, body.qrData);
@@ -768,7 +766,9 @@ export class CompetitionsController {
   @ApiBody({ type: VolunteerCheckInDto })
   @ApiResponse({
     status: 201,
-    description: "Check-in réussi",
+    description:
+      "Check-in effectué (même réponse que le check-in staff). En mode enforce, un QR non vérifié est refusé en 400.",
+    type: CheckInResponseDto,
   })
   @ApiResponse({ status: 401, description: "Jeton invalide ou expiré" })
   checkInAsVolunteer(@Body() body: VolunteerCheckInDto) {

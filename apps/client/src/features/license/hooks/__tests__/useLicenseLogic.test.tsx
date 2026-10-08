@@ -455,6 +455,35 @@ describe("useLicenseLogic", () => {
       expect(ffdItem?.data?.firstName).toBe("Jean");
       expect(ffdItem?.data?.lastName).toBe("Dupont");
       expect(ffdItem?.data?.licenseNumber).toBe("12345");
+      // Backend sans QR signé : pas de qrCode ⇒ repli sur l'ancien contenu.
+      expect(ffdItem?.data?.qrCode).toBeUndefined();
+    });
+  });
+
+  it("keeps the server-signed QR on the FFD license (#168)", async () => {
+    const qrCode = '{"v":1,"id":"FFD-12345","exp":"2026-08-31","sig":"abc"}';
+    mockAuthRepository.getAuthConfig.mockResolvedValue({
+      role: "LICENSEE",
+      hasWdsfLicense: false,
+      licensePhotoUri: null,
+      isLoggedIn: true,
+    });
+    mockAuthRepository.getProfile.mockResolvedValue({
+      firstName: "Jean",
+      lastName: "Dupont",
+      license: { number: "FFD-12345", validUntil: "2026-08-31", qrCode },
+      clubName: "Club FFD",
+      birthDate: "1990-05-15",
+      role: "LICENSEE",
+    });
+
+    const { result } = await renderHook(() => useLicenseLogic());
+
+    await waitFor(() => {
+      const ffdItem = result.current.state.listItems.find(
+        (i) => i.type === "FFD",
+      );
+      expect(ffdItem?.data?.qrCode).toBe(qrCode);
     });
   });
 });

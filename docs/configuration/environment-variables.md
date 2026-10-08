@@ -142,6 +142,13 @@ modes d'authentification (token API v2 ou Basic Auth v1).
 | -------------------------- | ------ | -------------------------------------------- |
 | `HELLOASSO_WEBHOOK_SECRET` | —      | Secret de validation des webhooks HelloAsso. |
 
+## QR de licence signé (#168)
+
+| Variable            | Défaut | Rôle                                                                                                                                                                                                                                             |
+| ------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `QR_SIGNING_SECRET` | —      | Clé HMAC-SHA256 des QR de licence (≥ 32 caractères, sinon ignorée). **Absent → QR non signés et non vérifiés** (équivalent au mode `off`), le backend démarre quand même. Changer la clé invalide tous les QR déjà émis (passes Wallet compris). |
+| `QR_SIGNATURE_MODE` | `warn` | Vérification au check-in : `off` (aucune), `warn` (QR non signé, falsifié ou expiré accepté mais signalé au staff), `enforce` (refusé).                                                                                                          |
+
 ## Azure AI Vision (OCR licences)
 
 | Variable                | Défaut | Rôle                                                                                                          |

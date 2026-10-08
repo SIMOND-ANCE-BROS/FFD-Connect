@@ -147,6 +147,26 @@ export class UsersController {
           example: "Club de Danse Paris",
         },
         licenseNumber: { type: "string", nullable: true },
+        license: {
+          type: "object",
+          nullable: true,
+          properties: {
+            id: { type: "string" },
+            number: { type: "string", example: "FFD-123456" },
+            validUntil: { type: "string", format: "date-time" },
+            category: { type: "string" },
+            clubName: { type: "string" },
+            qrCodeSignature: { type: "string", nullable: true },
+            qrCode: {
+              type: "string",
+              nullable: true,
+              description:
+                "Contenu du QR de licence signé par le serveur, à afficher tel quel. Null si la signature est désactivée.",
+            },
+            createdAt: { type: "string", format: "date-time" },
+            updatedAt: { type: "string", format: "date-time" },
+          },
+        },
         createdAt: { type: "string", format: "date-time" },
         updatedAt: { type: "string", format: "date-time" },
       },
