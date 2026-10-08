@@ -41,9 +41,13 @@ jest.mock("@react-navigation/native", () => ({
 // Mock Child Components to simplify test
 jest.mock("react-native-qrcode-svg", () => "QRCode");
 jest.mock("../../components/LicenseCard", () => ({
-  LicenseCard: (props: { testID?: string }) => {
+  LicenseCard: (props: { testID?: string; onShowQr?: () => void }) => {
     const { Text } = require("react-native");
-    return <Text testID={props.testID}>{props.testID}</Text>;
+    return (
+      <Text testID={props.testID} onPress={props.onShowQr}>
+        {props.testID}
+      </Text>
+    );
   },
   LicenseUser: {},
   LicenseType: {},
@@ -164,6 +168,58 @@ describe("LicenseScreen Integration", () => {
     expect(getByTestId("license-screen-scroll-view")).toBeTruthy();
     expect(getByTestId("license-screen-card-FFD")).toBeTruthy();
     expect(getByTestId("license-screen-add-wdsf-card")).toBeTruthy();
+  });
+
+  it("opens the QR modal with the server-signed QR as-is (#168)", async () => {
+    const qrCode = '{"v":1,"id":"123","exp":"2026-08-31","sig":"abc"}';
+    (useLicenseLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...mockState,
+        listItems: [
+          {
+            type: "FFD",
+            data: {
+              firstName: "John",
+              lastName: "Doe",
+              licenseNumber: "123",
+              qrCode,
+            },
+          },
+        ],
+      },
+      actions: mockActions,
+    });
+
+    const { getByTestId } = await render(<LicenseScreen />);
+    await fireEvent.press(getByTestId("license-card-FFD"));
+
+    expect(mockActions.handleShowQr).toHaveBeenCalledWith(qrCode);
+  });
+
+  it("falls back to the legacy QR content without a signed QR", async () => {
+    (useLicenseLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...mockState,
+        listItems: [
+          {
+            type: "FFD",
+            data: { firstName: "John", lastName: "Doe", licenseNumber: "123" },
+          },
+        ],
+      },
+      actions: mockActions,
+    });
+
+    const { getByTestId } = await render(<LicenseScreen />);
+    await fireEvent.press(getByTestId("license-card-FFD"));
+
+    const shown = mockActions.handleShowQr.mock.calls[0][0] as string;
+    expect(JSON.parse(shown)).toEqual({
+      id: "123",
+      name: "Doe John",
+      valid: true,
+      type: "FFD",
+    });
   });
 
   it("renders Guest Mode correctly", async () => {

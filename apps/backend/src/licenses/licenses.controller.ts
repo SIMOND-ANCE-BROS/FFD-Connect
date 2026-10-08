@@ -78,6 +78,13 @@ export class LicensesController {
         category: { type: "string", example: "Standard" },
         clubName: { type: "string", example: "Vienne Handi Danse" },
         qrCodeSignature: { type: "string", nullable: true },
+        qrCode: {
+          type: "string",
+          nullable: true,
+          description:
+            "Contenu du QR de licence signé par le serveur, à afficher tel quel (valable jusqu'à la fin de validité de la licence). Null si la signature est désactivée.",
+          example: '{"v":1,"id":"FFD-123456","exp":"2026-08-31","sig":"…"}',
+        },
         createdAt: { type: "string", format: "date-time" },
         updatedAt: { type: "string", format: "date-time" },
       },

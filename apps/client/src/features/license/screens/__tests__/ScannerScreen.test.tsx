@@ -133,6 +133,71 @@ describe("ScannerScreen", () => {
     expect(getByText("John Doe")).toBeTruthy();
   });
 
+  it("shows the unverified-QR warning returned by the backend (#168)", async () => {
+    (useScannerLogic as jest.Mock).mockReturnValue({
+      state: {
+        hasPermission: true,
+        torch: "off",
+        isActive: false,
+        isLoading: false,
+        result: {
+          user: { firstName: "John", lastName: "Doe" },
+          registrations: [
+            { event: "Cha Cha", bibNumber: "123", status: "SUCCESS" },
+          ],
+          qrVerification: {
+            mode: "warn",
+            status: "UNSIGNED",
+            warning: "QR non vérifié : ancien QR non signé",
+          },
+        },
+        error: null,
+      },
+      actions: {
+        toggleTorch: jest.fn(),
+        resetScan: jest.fn(),
+        handleBarcodeScanned: jest.fn(),
+      },
+    });
+
+    const { getByTestId, getByText } = await render(
+      <ScannerScreen {...createMockScreenProps("Scanner", undefined)} />,
+    );
+
+    expect(getByTestId("scanner-qr-warning")).toBeTruthy();
+    expect(getByText("QR non vérifié : ancien QR non signé")).toBeTruthy();
+  });
+
+  it("shows no QR warning when the QR is verified", async () => {
+    (useScannerLogic as jest.Mock).mockReturnValue({
+      state: {
+        hasPermission: true,
+        torch: "off",
+        isActive: false,
+        isLoading: false,
+        result: {
+          user: { firstName: "John", lastName: "Doe" },
+          registrations: [
+            { event: "Cha Cha", bibNumber: "123", status: "SUCCESS" },
+          ],
+          qrVerification: { mode: "warn", status: "VALID", warning: null },
+        },
+        error: null,
+      },
+      actions: {
+        toggleTorch: jest.fn(),
+        resetScan: jest.fn(),
+        handleBarcodeScanned: jest.fn(),
+      },
+    });
+
+    const { queryByTestId } = await render(
+      <ScannerScreen {...createMockScreenProps("Scanner", undefined)} />,
+    );
+
+    expect(queryByTestId("scanner-qr-warning")).toBeNull();
+  });
+
   it("renders error overlay when scan fails", async () => {
     (useScannerLogic as jest.Mock).mockReturnValue({
       state: {

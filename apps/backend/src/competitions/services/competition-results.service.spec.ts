@@ -1,5 +1,8 @@
-import { NotFoundException } from "@nestjs/common";
+import { BadRequestException, Logger, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
+import { buildSignedLicenseQr } from "../../licenses/qr/license-qr";
+import { LicenseQrService } from "../../licenses/qr/license-qr.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import { createMockPrismaService } from "../__mocks__/types";
@@ -11,6 +14,15 @@ const mockRedisService = {
   get: jest.fn().mockResolvedValue(null),
   set: jest.fn().mockResolvedValue(null),
 };
+const QR_SECRET = "q".repeat(32);
+
+/** Real LicenseQrService fed with a fake config (no secret ⇒ mode off). */
+function makeQrService(env: Record<string, string> = {}): LicenseQrService {
+  return new LicenseQrService({
+    get: (key: string) => env[key],
+  } as unknown as ConfigService);
+}
+
 const mockCacheService = {
   invalidateCompetition: jest.fn().mockResolvedValue(null),
   invalidateAll: jest.fn().mockResolvedValue(null),
@@ -30,6 +42,7 @@ describe("CompetitionResultsService", () => {
         },
         { provide: RedisService, useValue: mockRedisService },
         { provide: CompetitionCacheService, useValue: mockCacheService },
+        { provide: LicenseQrService, useValue: makeQrService() },
       ],
     }).compile();
 
@@ -254,6 +267,24 @@ describe("CompetitionResultsService", () => {
       expect(result.registrations[0].message).toBe("Droits non payés");
     });
 
+    it("reports qrVerification NOT_CHECKED when signing is disabled", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: "u1",
+        firstName: "A",
+        lastName: "B",
+      });
+      mockPrismaService.registration.findMany.mockResolvedValue([
+        { id: "r1", feePaid: true, event: { category: "Latin" } },
+      ]);
+
+      const result = await service.checkIn("c1", "u1");
+      expect(result.qrVerification).toEqual({
+        mode: "off",
+        status: "NOT_CHECKED",
+        warning: null,
+      });
+    });
+
     it("should handle already checked-in registrations", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({
         id: "u1",
@@ -269,6 +300,120 @@ describe("CompetitionResultsService", () => {
 
       const result = await service.checkIn("c1", "u1");
       expect(result.registrations[0].status).toBe("ALREADY_CHECKED_IN");
+    });
+  });
+
+  describe("checkIn — signed license QR (#168)", () => {
+    const license = {
+      number: "FFD-123456",
+      validUntil: new Date(Date.now() + 30 * 86_400_000),
+    };
+    const signedQr = buildSignedLicenseQr(license, QR_SECRET);
+    const tamperedQr = signedQr.replace("FFD-123456", "FFD-999999");
+    const legacyQr = JSON.stringify({
+      id: "FFD-123456",
+      name: "DOE John",
+      valid: true,
+      type: "FFD",
+    });
+    let warnSpy: jest.SpyInstance;
+
+    function serviceWithMode(mode: "warn" | "enforce") {
+      return new CompetitionResultsService(
+        mockPrismaService as unknown as PrismaService,
+        mockRedisService as unknown as RedisService,
+        mockCacheService as unknown as CompetitionCacheService,
+        makeQrService({
+          QR_SIGNING_SECRET: QR_SECRET,
+          QR_SIGNATURE_MODE: mode,
+        }),
+      );
+    }
+
+    function mockLicenseHolder() {
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockPrismaService.license.findUnique.mockResolvedValue({
+        user: { id: "u1", firstName: "John", lastName: "Doe" },
+      });
+      mockPrismaService.registration.findMany.mockResolvedValue([
+        {
+          id: "r1",
+          feePaid: true,
+          checkedIn: false,
+          event: { category: "Latin" },
+        },
+      ]);
+      mockPrismaService.registration.updateMany.mockResolvedValue({
+        count: 1,
+      });
+    }
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      warnSpy = jest.spyOn(Logger.prototype, "warn").mockImplementation();
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    it("checks in a genuine signed QR, resolving by license number only", async () => {
+      mockLicenseHolder();
+      const result = await serviceWithMode("enforce").checkIn("c1", signedQr);
+
+      expect(result.registrations[0].status).toBe("SUCCESS");
+      expect(result.qrVerification).toEqual({
+        mode: "enforce",
+        status: "VALID",
+        warning: null,
+      });
+      // A verified QR carries a license number: no user-id lookup at all.
+      expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaService.license.findUnique).toHaveBeenCalledWith({
+        where: { number: "FFD-123456" },
+        select: expect.anything(),
+      });
+    });
+
+    it("refuses a QR whose license number was changed (enforce)", async () => {
+      mockLicenseHolder();
+      await expect(
+        serviceWithMode("enforce").checkIn("c1", tamperedQr),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        serviceWithMode("enforce").checkIn("c1", tamperedQr),
+      ).rejects.toThrow("signature invalide");
+      expect(mockPrismaService.license.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaService.registration.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("refuses a legacy unsigned QR (enforce)", async () => {
+      mockLicenseHolder();
+      await expect(
+        serviceWithMode("enforce").checkIn("c1", legacyQr),
+      ).rejects.toThrow("ancien QR non signé");
+    });
+
+    it("accepts a legacy unsigned QR with a staff warning (warn)", async () => {
+      mockLicenseHolder();
+      const result = await serviceWithMode("warn").checkIn("c1", legacyQr);
+
+      expect(result.registrations[0].status).toBe("SUCCESS");
+      expect(result.qrVerification).toEqual({
+        mode: "warn",
+        status: "UNSIGNED",
+        warning: "QR non vérifié : ancien QR non signé",
+      });
+    });
+
+    it("accepts a tampered QR with a warning in warn mode", async () => {
+      mockLicenseHolder();
+      const result = await serviceWithMode("warn").checkIn("c1", tamperedQr);
+
+      expect(result.qrVerification.status).toBe("INVALID_SIGNATURE");
+      expect(result.qrVerification.warning).toBe(
+        "QR non vérifié : signature invalide",
+      );
     });
   });
 });

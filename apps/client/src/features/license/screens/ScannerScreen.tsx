@@ -68,6 +68,18 @@ const CheckinResultOverlay = ({
           {result.user.firstName} {result.user.lastName}
         </AppText>
 
+        {result.qrVerification?.warning ? (
+          <View
+            style={[styles.badge, styles.warningBadge, styles.qrWarning]}
+            testID="scanner-qr-warning"
+            accessibilityRole="alert"
+          >
+            <AppText variant="caption" style={styles.whiteText}>
+              {result.qrVerification.warning}
+            </AppText>
+          </View>
+        ) : null}
+
         {result.registrations.map((reg, index) => (
           <View
             key={index}
@@ -418,6 +430,11 @@ const styles = StyleSheet.create({
   },
   warningBadge: {
     backgroundColor: "#FF9800",
+  },
+  qrWarning: {
+    alignSelf: "center",
+    marginBottom: 8,
+    paddingVertical: 4,
   },
   partnerText: {
     marginTop: 4,

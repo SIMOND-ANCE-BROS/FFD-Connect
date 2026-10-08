@@ -4,6 +4,7 @@ import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 import { ClubsModule } from "../clubs/clubs.module";
+import { LicenseQrModule } from "../licenses/qr/license-qr.module";
 import { RedisModule } from "../redis/redis.module";
 import { CompetitionsController } from "./competitions.controller";
 import { LiveGateway } from "./live.gateway";
@@ -23,6 +24,7 @@ import { SyncProcessor } from "./sync.processor";
     HttpModule,
     RedisModule,
     ClubsModule,
+    LicenseQrModule,
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService) => ({
         secret: configService.getOrThrow<string>("JWT_SECRET"),

@@ -109,7 +109,9 @@ export interface UserProfile {
     number: string;
     validUntil: string;
     type?: string;
-  };
+    /** QR signé par le serveur (#168) — absent/null si backend ancien ou signature désactivée. */
+    qrCode?: string | null;
+  } | null;
   wdsf?: {
     min: string;
     nationality?: string | null;

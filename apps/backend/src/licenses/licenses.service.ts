@@ -5,34 +5,28 @@ import {
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { OcrService } from "../utils/ocr.service";
+import { licenseBaseSelect } from "../utils/prisma-selects";
+import { LicenseQrService } from "./qr/license-qr.service";
 
 @Injectable()
 export class LicensesService {
   constructor(
     private prisma: PrismaService,
     private ocrService: OcrService,
+    private licenseQrService: LicenseQrService,
   ) {}
 
   /**
-   * Récupère la licence d'un utilisateur
+   * Récupère la licence d'un utilisateur, avec le contenu de son QR signé
+   * (`qrCode`, null si la signature est désactivée — #168).
    */
   async getLicense(userId: string) {
     const license = await this.prisma.license.findUnique({
       where: { userId },
-      select: {
-        id: true,
-        userId: true,
-        number: true,
-        validUntil: true,
-        category: true,
-        clubName: true,
-        qrCodeSignature: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: licenseBaseSelect,
     });
     if (!license) throw new NotFoundException("License non trouvée");
-    return license;
+    return { ...license, qrCode: this.licenseQrService.buildQrCode(license) };
   }
 
   /**

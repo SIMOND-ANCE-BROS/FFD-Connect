@@ -23,6 +23,11 @@ export interface LicenseUser {
   administrator?: string;
   /** URL de la photo de licence (ex. renvoyée par l'API WDSF si disponible). */
   photoUrl?: string;
+  /**
+   * Contenu du QR signé par le serveur (#168), à afficher tel quel. Gardé dans
+   * le snapshot hors ligne. Absent ⇒ repli sur l'ancien contenu (backend ancien).
+   */
+  qrCode?: string;
 }
 
 export interface LicenseConfig {
