@@ -16,6 +16,8 @@ const page = (n: number) => ({
         firstName: 'Jeanne',
         lastName: 'Martin',
         role: 'LICENSEE',
+        extraRoles: [],
+        roles: ['LICENSEE'],
         clubId: 'c1',
         clubName: 'Club A',
         category: 'Latin',
@@ -30,6 +32,8 @@ const page = (n: number) => ({
         firstName: 'Paul',
         lastName: 'Durand',
         role: 'LICENSEE',
+        extraRoles: [],
+        roles: ['LICENSEE'],
         clubId: null,
         clubName: null,
         category: null,
@@ -134,5 +138,18 @@ describe('UsersPage', () => {
         query: expect.objectContaining({ status: 'disabled', skip: 0 }),
       }),
     );
+  });
+
+  it('shows a badge per extra role', async () => {
+    const res = page(1);
+    res.data.data[0] = {
+      ...res.data.data[0],
+      extraRoles: ['CLUB'],
+      roles: ['LICENSEE', 'CLUB'],
+    } as never;
+    vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(res as never);
+    renderPage();
+    expect((await screen.findAllByText('Licencié')).length).toBeGreaterThan(0);
+    expect(screen.getByText('+ Club')).toBeInTheDocument();
   });
 });

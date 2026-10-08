@@ -14,6 +14,8 @@ const detail = {
   firstName: 'Jeanne',
   lastName: 'Martin',
   role: 'LICENSEE',
+  extraRoles: [],
+  roles: ['LICENSEE'],
   clubId: 'c1',
   clubName: 'Club A',
   category: 'Latine',
@@ -324,5 +326,41 @@ describe('UserDetailPage', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     await screen.findByText('users list');
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin', 'users'] });
+  });
+
+  it('saves extra roles after the confirmation', async () => {
+    const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
+      data: { ...detail, extraRoles: ['CLUB'], roles: ['LICENSEE', 'CLUB'] },
+      error: undefined,
+    } as never);
+    renderPage();
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Club' }));
+    await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Rôles supplémentaires');
+    await userEvent.click(screen.getByRole('button', { name: /confirmer/i }));
+    expect(patch).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { extraRoles: ['CLUB'] } });
+  });
+
+  it('does not offer the main role as an extra role', async () => {
+    renderPage();
+    await screen.findByRole('checkbox', { name: 'Club' });
+    expect(screen.queryByRole('checkbox', { name: 'Licencié' })).not.toBeInTheDocument();
+  });
+
+  it("locks the admin's own ADMIN extra role", async () => {
+    vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+      data: {
+        ...detail,
+        id: 'admin-1',
+        role: 'LICENSEE',
+        extraRoles: ['ADMIN'],
+        roles: ['LICENSEE', 'ADMIN'],
+      },
+      error: undefined,
+    } as never);
+    renderPage();
+    expect(await screen.findByRole('checkbox', { name: 'Admin' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Club' })).toBeEnabled();
   });
 });

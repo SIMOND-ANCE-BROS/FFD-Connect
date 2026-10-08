@@ -2,6 +2,7 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Group,
   Loader,
   Modal,
@@ -25,7 +26,7 @@ import {
   adminControllerSetUserStatus,
   adminControllerUpdateUser,
 } from '../api/generated/sdk.gen';
-import type { AdminControllerUpdateUserData } from '../api/generated/types.gen';
+import type { AdminControllerUpdateUserData, UserRole } from '../api/generated/types.gen';
 import {
   auditQuery,
   clubOptionsQuery,
@@ -37,6 +38,7 @@ import {
 import { ChangeSummary } from '../components/ChangeSummary';
 import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
+import { ROLE_LABELS } from '../lib/labels';
 import { changedFields, type EditableFields, withLegacy } from '../lib/diff';
 import { useSession } from '../session/sessionStore';
 
@@ -80,6 +82,7 @@ export function UserDetailPage() {
       competitionLevel: u.competitionLevel,
       nationalRanking: u.nationalRanking,
       role: u.role,
+      extraRoles: u.extraRoles,
     };
   }, [user.data]);
 
@@ -95,6 +98,7 @@ export function UserDetailPage() {
       competitionLevel: null,
       nationalRanking: null,
       role: '',
+      extraRoles: [],
     },
     // The backend rejects null names; block the save instead of a 400.
     validate: {
@@ -117,7 +121,11 @@ export function UserDetailPage() {
       setPending(null);
       notifications.show({ color: 'green', message: 'Fiche mise à jour' });
     },
-    onError: () => notifications.show({ color: 'red', message: "Échec de l'enregistrement" }),
+    onError: (e) =>
+      notifications.show({
+        color: 'red',
+        message: apiErrorMessage(e, "Échec de l'enregistrement"),
+      }),
   });
 
   const resend = useMutation({
@@ -304,7 +312,32 @@ export function UserDetailPage() {
             disabled={isSelf}
             description={isSelf ? 'Vous ne pouvez pas modifier votre propre rôle' : undefined}
             {...form.getInputProps('role')}
+            onChange={(v) => {
+              form.setFieldValue('role', v ?? '');
+              form.setFieldValue(
+                'extraRoles',
+                form.values.extraRoles.filter((r) => r !== v),
+              );
+            }}
           />
+          <Checkbox.Group
+            label="Rôles supplémentaires"
+            description="Droits cumulés avec le rôle principal"
+            {...form.getInputProps('extraRoles')}
+          >
+            <Group mt="xs">
+              {(Object.keys(ROLE_LABELS) as UserRole[])
+                .filter((r) => r !== form.values.role)
+                .map((r) => (
+                  <Checkbox
+                    key={r}
+                    value={r}
+                    label={ROLE_LABELS[r]}
+                    disabled={isSelf && r === 'ADMIN' && u.role !== 'ADMIN'}
+                  />
+                ))}
+            </Group>
+          </Checkbox.Group>
         </SimpleGrid>
         <Group mt="md">
           <Button type="submit">Enregistrer</Button>
