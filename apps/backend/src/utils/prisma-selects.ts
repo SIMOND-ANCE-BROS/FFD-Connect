@@ -525,3 +525,23 @@ export const userRolesClubNameSelect = {
 
 /** Competition ownership check: the organizing club's name. */
 export const competitionOrganizerSelect = { organizer: true } as const;
+
+/**
+ * Volunteer check-in link as returned to the organizer: never the stored
+ * token column (a SHA-256 hash); the plain token is added once by the caller.
+ */
+export const volunteerTokenIssuedSelect = {
+  id: true,
+  competitionId: true,
+  expiresAt: true,
+  name: true,
+  createdAt: true,
+} as const;
+
+/** Volunteer check-in link validation: scope and expiry, never the hash. */
+export const volunteerTokenAuthSelect = {
+  id: true,
+  competitionId: true,
+  expiresAt: true,
+  name: true,
+} as const;
