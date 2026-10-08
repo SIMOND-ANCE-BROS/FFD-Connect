@@ -18,9 +18,13 @@ import { authControllerLogin, healthControllerCheck } from '../api/generated/sdk
 import type { AuthControllerLoginResponse } from '../api/generated/types.gen';
 import { API_ORIGIN } from '../config';
 import { UNAVAILABLE_MESSAGE } from '../lib/apiError';
-import { type SessionUser, useSession } from '../session/sessionStore';
+import { isAdmin, type SessionUser, useSession } from '../session/sessionStore';
 
-type LoginUser = NonNullable<AuthControllerLoginResponse['user']>;
+// The login response has no Swagger DTO for `roles` (lot 1c): read it defensively.
+type LoginUser = NonNullable<AuthControllerLoginResponse['user']> & { roles?: unknown };
+
+const toRoles = (roles: unknown): string[] | undefined =>
+  Array.isArray(roles) && roles.every((r) => typeof r === 'string') ? roles : undefined;
 
 /** The generated login response marks every field optional: require them all. */
 function toSessionUser(user: LoginUser | undefined): SessionUser | null {
@@ -31,6 +35,7 @@ function toSessionUser(user: LoginUser | undefined): SessionUser | null {
     firstName: user.firstName ?? '',
     lastName: user.lastName ?? '',
     role: user.role,
+    roles: toRoles(user.roles),
   };
 }
 
@@ -72,7 +77,7 @@ export function LoginPage() {
         setError(UNAVAILABLE_MESSAGE);
         return;
       }
-      if (user.role !== 'ADMIN') {
+      if (!isAdmin(user)) {
         setError('Accès réservé aux administrateurs.');
         return;
       }

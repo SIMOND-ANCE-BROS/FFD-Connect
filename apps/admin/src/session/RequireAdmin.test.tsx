@@ -38,6 +38,40 @@ describe('RequireAdmin', () => {
     expect(screen.getByText('login page')).toBeInTheDocument();
   });
 
+  it('renders children for a LICENSEE whose extra role is ADMIN', () => {
+    useSession.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: {
+        id: '1',
+        email: 'a@x.fr',
+        firstName: 'G',
+        lastName: 'S',
+        role: 'LICENSEE',
+        roles: ['LICENSEE', 'ADMIN'],
+      },
+    });
+    renderAt();
+    expect(screen.getByText('secret')).toBeInTheDocument();
+  });
+
+  it('redirects a LICENSEE without ADMIN in its roles', () => {
+    useSession.getState().setSession({
+      accessToken: 'a',
+      refreshToken: 'r',
+      user: {
+        id: '1',
+        email: 'a@x.fr',
+        firstName: 'G',
+        lastName: 'S',
+        role: 'LICENSEE',
+        roles: ['LICENSEE'],
+      },
+    });
+    renderAt();
+    expect(screen.getByText('login page')).toBeInTheDocument();
+  });
+
   it('renders children for an ADMIN', () => {
     useSession.getState().setSession({
       accessToken: 'a',

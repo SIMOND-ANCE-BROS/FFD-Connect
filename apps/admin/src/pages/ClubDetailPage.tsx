@@ -32,7 +32,7 @@ import { auditQuery, clubQuery, ensureOk, unwrap } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
 import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
-import { REGISTRATION_MODE_LABELS, ROLE_LABELS } from '../lib/labels';
+import { extraRoleLabels, REGISTRATION_MODE_LABELS, ROLE_LABELS } from '../lib/labels';
 
 interface ClubForm {
   name: string;
@@ -272,7 +272,16 @@ export function ClubDetailPage() {
                   </Anchor>
                 </Table.Td>
                 <Table.Td>{m.email}</Table.Td>
-                <Table.Td>{ROLE_LABELS[m.role]}</Table.Td>
+                <Table.Td>
+                  <Group gap={4}>
+                    {ROLE_LABELS[m.role]}
+                    {extraRoleLabels(m.extraRoles).map((l) => (
+                      <Badge key={l} variant="outline" size="sm">
+                        {l}
+                      </Badge>
+                    ))}
+                  </Group>
+                </Table.Td>
                 <Table.Td>
                   {m.disabledAt ? (
                     <Badge color="red" variant="light">

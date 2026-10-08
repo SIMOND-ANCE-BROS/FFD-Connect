@@ -6,7 +6,15 @@ export interface SessionUser {
   email: string;
   firstName: string;
   lastName: string;
+  /** Main role. */
   role: string;
+  /** Main + extra roles (lot 1c). Missing in a session saved before lot 1c. */
+  roles?: string[];
+}
+
+/** Rights are cumulative: ADMIN as main or extra role opens the back-office. */
+export function isAdmin(user: SessionUser | null | undefined): boolean {
+  return user ? (user.roles ?? [user.role]).includes('ADMIN') : false;
 }
 
 interface SessionState {

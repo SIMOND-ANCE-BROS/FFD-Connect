@@ -159,7 +159,11 @@ describe('UserDetailPage', () => {
   });
 
   it.each([
-    ['an ADMIN account', { role: 'ADMIN' }],
+    ['an ADMIN account', { role: 'ADMIN', roles: ['ADMIN'] }],
+    [
+      'an account whose extra role is ADMIN',
+      { extraRoles: ['ADMIN'], roles: ['LICENSEE', 'ADMIN'] },
+    ],
     ['a disabled account', { disabledAt: '2026-10-01T10:00:00.000Z' }],
     ['a self-registered account', { createdByAdmin: false }],
     [

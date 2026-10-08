@@ -186,7 +186,7 @@ export function UserDetailPage() {
   // club could not log in anyway (the server refuses both cases too).
   const canResend =
     u.createdByAdmin &&
-    u.role !== 'ADMIN' &&
+    !u.roles.includes('ADMIN') &&
     u.lastLoginAt === null &&
     !disabled &&
     !(u.role === 'CLUB' && u.clubDisabledAt !== null);

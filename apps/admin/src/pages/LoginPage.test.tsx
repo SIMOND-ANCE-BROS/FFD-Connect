@@ -27,11 +27,11 @@ async function submit() {
   await userEvent.click(screen.getByRole('button', { name: /se connecter/i }));
 }
 
-const loginOk = (role: string) => ({
+const loginOk = (role: string, roles?: string[]) => ({
   data: {
     access_token: 'at',
     refresh_token: 'rt',
-    user: { id: 'a1', email: 'a@x.fr', firstName: 'G', lastName: 'S', role },
+    user: { id: 'a1', email: 'a@x.fr', firstName: 'G', lastName: 'S', role, roles },
   },
   error: undefined,
   response: new Response(null, { status: 200 }),
@@ -58,6 +58,26 @@ describe('LoginPage', () => {
 
   it('refuses a non-admin and keeps no session', async () => {
     vi.spyOn(sdk, 'authControllerLogin').mockResolvedValue(loginOk('CLUB') as never);
+    renderLogin();
+    await submit();
+    expect(await screen.findByText(/réservé aux administrateurs/i)).toBeInTheDocument();
+    expect(useSession.getState().accessToken).toBeNull();
+  });
+
+  it('lets a LICENSEE with an extra ADMIN role in, and keeps its roles', async () => {
+    vi.spyOn(sdk, 'authControllerLogin').mockResolvedValue(
+      loginOk('LICENSEE', ['LICENSEE', 'ADMIN']) as never,
+    );
+    renderLogin();
+    await submit();
+    expect(await screen.findByText('users page')).toBeInTheDocument();
+    expect(useSession.getState().user?.roles).toEqual(['LICENSEE', 'ADMIN']);
+  });
+
+  it('refuses a plain LICENSEE whose roles do not include ADMIN', async () => {
+    vi.spyOn(sdk, 'authControllerLogin').mockResolvedValue(
+      loginOk('LICENSEE', ['LICENSEE', 'STAFF']) as never,
+    );
     renderLogin();
     await submit();
     expect(await screen.findByText(/réservé aux administrateurs/i)).toBeInTheDocument();
