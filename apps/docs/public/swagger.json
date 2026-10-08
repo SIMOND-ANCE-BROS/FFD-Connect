@@ -21141,6 +21141,19 @@
               }
             ]
           },
+          "extraRoles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "description": "Rôle principal + rôles supplémentaires",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
+          },
           "clubId": {
             "type": "string",
             "nullable": true
@@ -21178,6 +21191,8 @@
           "firstName",
           "lastName",
           "role",
+          "extraRoles",
+          "roles",
           "clubId",
           "clubName",
           "category",
@@ -21227,6 +21242,19 @@
                 "$ref": "#/components/schemas/UserRole"
               }
             ]
+          },
+          "extraRoles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "description": "Rôle principal + rôles supplémentaires",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
           },
           "clubId": {
             "type": "string",
@@ -21331,6 +21359,8 @@
           "firstName",
           "lastName",
           "role",
+          "extraRoles",
+          "roles",
           "clubId",
           "clubName",
           "category",
@@ -21426,6 +21456,13 @@
                 "$ref": "#/components/schemas/UserRole"
               }
             ]
+          },
+          "extraRoles": {
+            "type": "array",
+            "description": "Rôles supplémentaires (le rôle principal en est retiré)",
+            "items": {
+              "$ref": "#/components/schemas/UserRole"
+            }
           }
         }
       },
