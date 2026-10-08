@@ -73,6 +73,35 @@ export function parseNamePart(name: unknown, part: "first" | "last"): string {
   return parts.length > 1 ? parts.slice(1).join(" ") : "";
 }
 
+/** Découpe un nom en mots comparables : sans accents, minuscules, tirets/apostrophes = espaces. */
+export function nameTokens(value: string): string[] {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+}
+
+/**
+ * Vrai si le nom WDSF correspond au prénom + nom du compte, quel que soit
+ * l'ordre (« Gabin Simond » comme « Simond Gabin »). Chaque mot du prénom et
+ * du nom doit figurer dans le nom WDSF ; un deuxième prénom côté WDSF est toléré.
+ */
+export function wdsfNameMatches(
+  wdsfFullName: string,
+  firstName: string,
+  lastName: string,
+): boolean {
+  const wdsf = new Set(nameTokens(wdsfFullName));
+  const first = nameTokens(firstName);
+  const last = nameTokens(lastName);
+  if (wdsf.size === 0 || first.length === 0 || last.length === 0) return false;
+  return [...first, ...last].every((token) => wdsf.has(token));
+}
+
 /**
  * Parse la réponse WDSF (array, objet wrapper, ou objet personne unique) et mappe vers le format attendu.
  */
@@ -178,9 +207,10 @@ export function parsePersonsToAthlete(
   }
   const photoUrl = extractPhotoUrl(athlete);
   return {
+    // "name" is the full name ("Gabin Simond"): never use it as the first name,
+    // it would be rendered as "Gabin Simond Simond" next to the parsed last name.
     firstName:
-      (toStr(athlete.firstName) || toStr(athlete.name)).trim() ||
-      parseNamePart(athlete.name, "first"),
+      toStr(athlete.firstName).trim() || parseNamePart(athlete.name, "first"),
     lastName:
       (toStr(athlete.lastName) || toStr(athlete.surname)).trim() ||
       parseNamePart(athlete.name, "last"),

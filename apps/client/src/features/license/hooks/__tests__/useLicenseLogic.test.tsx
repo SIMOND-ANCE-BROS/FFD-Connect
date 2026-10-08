@@ -195,6 +195,42 @@ describe("useLicenseLogic", () => {
     expect(result.current.state.showWdsf).toBe(false);
   });
 
+  it("does not show the WDSF card when the backend refuses the MIN (name mismatch)", async () => {
+    mockAuthRepository.getAuthConfig.mockResolvedValue({
+      role: "LICENSEE",
+      authToken: "token",
+      isLoggedIn: true,
+    });
+    mockAuthRepository.verifyWdsfLicense.mockResolvedValue({
+      licenseNumber: "10117265",
+      firstName: "Bob",
+      lastName: "Martin",
+    });
+    mockAuthRepository.saveWdsfToBackend.mockRejectedValueOnce(
+      new Error("Cette licence WDSF n'est pas à votre nom"),
+    );
+
+    const { result } = await renderHook(() => useLicenseLogic());
+    await waitFor(() =>
+      expect(mockAuthRepository.getAuthConfig).toHaveBeenCalled(),
+    );
+
+    result.current.actions.handleVerifyWdsf("10117265").catch(() => {});
+
+    await waitFor(
+      () => {
+        expect(result.current.state.wdsfError).toBe(
+          "Cette licence WDSF n'est pas à votre nom",
+        );
+      },
+      { timeout: 5000 },
+    );
+    expect(result.current.state.showWdsf).toBe(false);
+    expect(mockAuthRepository.setWdsfLicenseEnabled).not.toHaveBeenCalledWith(
+      true,
+    );
+  });
+
   it("should return correct list items for STAFF role", async () => {
     mockAuthRepository.getAuthConfig.mockResolvedValue({ role: "STAFF" });
 
