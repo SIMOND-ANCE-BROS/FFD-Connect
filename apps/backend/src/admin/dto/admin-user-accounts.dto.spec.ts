@@ -30,4 +30,21 @@ describe("CreateAdminUserDto", () => {
       await errorsOf({ ...base, role: "LICENSEE", category: "Latine" }),
     ).toEqual(["category"]);
   });
+
+  it("validates extraRoles like the update DTO", async () => {
+    const withRole = { ...base, role: "LICENSEE" };
+    expect(
+      await errorsOf({ ...withRole, extraRoles: ["CLUB", "STAFF"] }),
+    ).toEqual([]);
+    expect(await errorsOf({ ...withRole, extraRoles: [] })).toEqual([]);
+    expect(await errorsOf({ ...withRole, extraRoles: ["ROOT"] })).toEqual([
+      "extraRoles",
+    ]);
+    expect(await errorsOf({ ...withRole, extraRoles: "CLUB" })).toEqual([
+      "extraRoles",
+    ]);
+    expect(
+      await errorsOf({ ...withRole, extraRoles: ["CLUB", "CLUB"] }),
+    ).toEqual(["extraRoles"]);
+  });
 });

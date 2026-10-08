@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma, UserRole } from "@prisma/client";
+import { ClubRegistrationMode, Prisma, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   adminClubEditableSelect,
@@ -15,7 +15,11 @@ import { AdminAuditService } from "./admin-audit.service";
 import { diffFields } from "./admin-audit.util";
 import { clubUsage, isClubEmpty, sameClubName } from "./admin-club-usage";
 import { AdminClubsQueryService } from "./admin-clubs.query-service";
-import { AdminClubDetailDto, UpdateAdminClubDto } from "./dto/admin-clubs.dto";
+import {
+  AdminClubDetailDto,
+  CreateAdminClubDto,
+  UpdateAdminClubDto,
+} from "./dto/admin-clubs.dto";
 
 const NAME_TAKEN = "Un club porte déjà ce nom";
 const FFD_SYNCED_NAME =
@@ -29,6 +33,53 @@ export class AdminClubsService {
     private readonly audit: AdminAuditService,
     private readonly query: AdminClubsQueryService,
   ) {}
+
+  /** Names are unique ignoring case, so "club a" cannot sit beside "Club A". */
+  async create(
+    actorId: string,
+    dto: CreateAdminClubDto,
+  ): Promise<AdminClubDetailDto> {
+    const name = dto.name.trim();
+    const registrationMode =
+      dto.registrationMode ?? ClubRegistrationMode.MEMBERS_AUTO_CONFIRM;
+    let clubId: string;
+    try {
+      clubId = await this.prisma.$transaction(async (tx) => {
+        const clash = await tx.club.findFirst({
+          where: { name: sameClubName(name) },
+          select: adminClubOptionSelect,
+        });
+        if (clash) {
+          throw new ConflictException({
+            message: NAME_TAKEN,
+            existingClubId: clash.id,
+          });
+        }
+        const created = await tx.club.create({
+          data: { name, registrationMode },
+          select: idOnlySelect,
+        });
+        await this.audit.record(tx, {
+          actorId,
+          action: "CLUB_CREATE",
+          targetType: "CLUB",
+          targetId: created.id,
+          after: { name, registrationMode },
+        });
+        return created.id;
+      });
+    } catch (err) {
+      // Lost a race against a concurrent create of the same name.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002"
+      ) {
+        throw new ConflictException(NAME_TAKEN);
+      }
+      throw err;
+    }
+    return this.query.detail(clubId);
+  }
 
   /**
    * Club.name is copied into User.clubName, License.clubName and

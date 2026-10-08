@@ -105,6 +105,23 @@ export class UpdateAdminClubDto {
   registrationMode?: ClubRegistrationMode;
 }
 
+export class CreateAdminClubDto {
+  @ApiProperty({ minLength: 1, maxLength: 100 })
+  @Transform(trim)
+  @IsString()
+  @Length(1, 100)
+  name!: string;
+
+  @ApiPropertyOptional({
+    enum: ClubRegistrationMode,
+    enumName: "ClubRegistrationMode",
+    default: ClubRegistrationMode.MEMBERS_AUTO_CONFIRM,
+  })
+  @IsOptional()
+  @IsEnum(ClubRegistrationMode)
+  registrationMode?: ClubRegistrationMode;
+}
+
 /** 409 body of DELETE /admin/clubs/:id. */
 export class ClubNotEmptyDto {
   @ApiProperty() statusCode!: number;

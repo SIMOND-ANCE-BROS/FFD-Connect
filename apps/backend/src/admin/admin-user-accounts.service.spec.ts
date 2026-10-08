@@ -143,6 +143,87 @@ describe("AdminUserAccountsService", () => {
     expect(res.clubId).toBeNull();
   });
 
+  describe("extraRoles at creation", () => {
+    it("stores the list normalised against the main role and audits it", async () => {
+      await service.create(
+        "admin-1",
+        dto({
+          role: UserRole.STAFF,
+          extraRoles: [UserRole.STAFF, UserRole.LICENSEE],
+        }),
+      );
+      expect(prisma.user.create.mock.calls[0][0].data).toMatchObject({
+        role: UserRole.STAFF,
+        extraRoles: [UserRole.LICENSEE],
+      });
+      expect(audit.record.mock.calls[0][1].after).toMatchObject({
+        extraRoles: [UserRole.LICENSEE],
+      });
+    });
+
+    it("leaves extraRoles out of the audit row when the list ends up empty", async () => {
+      await service.create(
+        "admin-1",
+        dto({ role: UserRole.STAFF, extraRoles: [UserRole.STAFF] }),
+      );
+      expect(prisma.user.create.mock.calls[0][0].data.extraRoles).toEqual([]);
+      expect(audit.record.mock.calls[0][1].after).not.toHaveProperty(
+        "extraRoles",
+      );
+    });
+
+    it("refuses ADMIN as an extra role, writing nothing", async () => {
+      await expect(
+        service.create("admin-1", dto({ extraRoles: [UserRole.ADMIN] })),
+      ).rejects.toThrow(
+        new BadRequestException(
+          "Le rôle Admin ne peut pas être attribué à la création",
+        ),
+      );
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses an extra CLUB role without a club, writing nothing", async () => {
+      await expect(
+        service.create("admin-1", dto({ extraRoles: [UserRole.CLUB] })),
+      ).rejects.toThrow(
+        new BadRequestException(
+          "Un rôle Club supplémentaire nécessite un club",
+        ),
+      );
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it("accepts an extra CLUB role with a clubId or a clubName", async () => {
+      prisma.club.findUnique.mockResolvedValue({
+        id: "c1",
+        name: "Club A",
+        disabledAt: null,
+      } as never);
+      await service.create(
+        "admin-1",
+        dto({ extraRoles: [UserRole.CLUB], clubId: "c1" }),
+      );
+      expect(prisma.user.create.mock.calls[0][0].data.extraRoles).toEqual([
+        UserRole.CLUB,
+      ]);
+    });
+
+    it("accepts an extra CLUB role with a clubName (the club is created)", async () => {
+      await service.create(
+        "admin-1",
+        dto({
+          role: UserRole.STAFF,
+          extraRoles: [UserRole.CLUB],
+          clubName: "Club Neuf",
+        }),
+      );
+      expect(prisma.user.create.mock.calls[0][0].data.extraRoles).toEqual([
+        UserRole.CLUB,
+      ]);
+    });
+  });
+
   it("attaches a STAFF account to an existing club by id", async () => {
     prisma.club.findUnique.mockResolvedValue({
       id: "c1",

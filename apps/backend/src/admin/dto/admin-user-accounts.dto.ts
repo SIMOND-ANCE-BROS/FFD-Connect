@@ -2,7 +2,10 @@ import { ApiProperty, ApiPropertyOptional, PickType } from "@nestjs/swagger";
 import { UserRole } from "@prisma/client";
 import { Transform } from "class-transformer";
 import {
+  ArrayUnique,
+  IsArray,
   IsEmail,
+  IsEnum,
   IsIn,
   IsOptional,
   IsString,
@@ -53,6 +56,19 @@ export class CreateAdminUserDto extends PickType(UpdateAdminUserDto, [
   role!: InvitationRole;
 
   @ApiPropertyOptional({
+    enum: UserRole,
+    enumName: "UserRole",
+    isArray: true,
+    description:
+      "Rôles supplémentaires (hors Admin ; le rôle principal en est retiré)",
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsEnum(UserRole, { each: true })
+  extraRoles?: UserRole[];
+
+  @ApiPropertyOptional({
     description: "Club existant (exclusif avec clubName)",
   })
   @IsOptional()
@@ -61,7 +77,7 @@ export class CreateAdminUserDto extends PickType(UpdateAdminUserDto, [
 
   @ApiPropertyOptional({
     description:
-      "Nouveau club, uniquement pour un compte Club (exclusif avec clubId)",
+      "Nouveau club, pour un compte Club ou ayant le rôle Club en supplément (exclusif avec clubId)",
   })
   @IsOptional()
   @Transform(trim)

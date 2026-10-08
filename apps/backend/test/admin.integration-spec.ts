@@ -291,6 +291,37 @@ describe("Admin (integration, real DB)", () => {
     return club;
   };
 
+  it("creates a club with its audit row, and a duplicate name in another case is a 409", async () => {
+    const admin = await create({ role: UserRole.ADMIN });
+    const name = `Club Neuf ${randomUUID()}`;
+
+    const created = await clubs.create(admin.id, { name: ` ${name} ` });
+    createdClubIds.push(created.id);
+    expect(created.name).toBe(name);
+    expect(created.registrationMode).toBe(
+      ClubRegistrationMode.MEMBERS_AUTO_CONFIRM,
+    );
+    const audit = await prisma.adminAuditLog.findFirstOrThrow({
+      where: { targetId: created.id, action: "CLUB_CREATE" },
+    });
+    expect(audit.actorId).toBe(admin.id);
+
+    await expect(
+      clubs.create(admin.id, { name: name.toUpperCase() }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: {
+        message: "Un club porte déjà ce nom",
+        existingClubId: created.id,
+      },
+    });
+    expect(
+      await prisma.club.count({
+        where: { name: { equals: name, mode: "insensitive" } },
+      }),
+    ).toBe(1);
+  });
+
   it("renaming a club rewrites every copy of its name, and only those", async () => {
     const admin = await create({ role: UserRole.ADMIN });
     const club = await newClub();
