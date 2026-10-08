@@ -241,6 +241,16 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
         scrollY={scrollY}
         right={
           <View style={headerStyles.actions}>
+            <SpaceSelector
+              roles={roles}
+              space={role}
+              onChange={(space) => {
+                handleChangeSpace(space).catch((error: unknown) => {
+                  logger.error("Failed to change space", error);
+                  Alert.alert("Erreur", "Impossible de changer d'espace.");
+                });
+              }}
+            />
             {!isGuest && (
               <NotificationBell
                 theme={currentTheme}
@@ -296,17 +306,6 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
           { useNativeDriver: true },
         )}
       >
-        <SpaceSelector
-          roles={roles}
-          space={role}
-          onChange={(space) => {
-            handleChangeSpace(space).catch((error: unknown) => {
-              logger.error("Failed to change space", error);
-              Alert.alert("Erreur", "Impossible de changer d'espace.");
-            });
-          }}
-        />
-
         {isAdminAccount && (
           <TouchableOpacity
             onPress={() => setImpersonationVisible(true)}
