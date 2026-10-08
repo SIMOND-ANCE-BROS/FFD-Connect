@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { PassportLevel, UserRole } from "@prisma/client";
 import {
+  ArrayUnique,
+  IsArray,
   IsEnum,
   IsIn,
   IsInt,
@@ -94,4 +96,16 @@ export class UpdateAdminUserDto {
   @ValidateIf(notUndefined)
   @IsEnum(UserRole)
   role?: UserRole;
+
+  @ApiPropertyOptional({
+    enum: UserRole,
+    enumName: "UserRole",
+    isArray: true,
+    description: "Rôles supplémentaires (le rôle principal en est retiré)",
+  })
+  @ValidateIf(notUndefined)
+  @IsArray()
+  @ArrayUnique()
+  @IsEnum(UserRole, { each: true })
+  extraRoles?: UserRole[];
 }

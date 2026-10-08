@@ -393,6 +393,7 @@ export const adminUserListSelect = {
   firstName: true,
   lastName: true,
   role: true,
+  extraRoles: true,
   clubId: true,
   clubName: true,
   category: true,
@@ -435,6 +436,7 @@ export const adminUserEditableSelect = {
   competitionLevel: true,
   nationalRanking: true,
   role: true,
+  extraRoles: true,
 } as const;
 
 /** Admin invitation resend: who to mail and whether they ever logged in. */

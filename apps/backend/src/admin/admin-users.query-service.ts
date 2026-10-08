@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { rolesOf, withRole } from "../auth/roles";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { isCreatedByAdmin } from "./admin-audit.util";
@@ -30,7 +31,11 @@ export function licenseStatus(
 
 function toListItem(row: ListRow, now: Date): AdminUserListItemDto {
   const { license, ...rest } = row;
-  return { ...rest, licenseStatus: licenseStatus(license, now) };
+  return {
+    ...rest,
+    roles: rolesOf(rest),
+    licenseStatus: licenseStatus(license, now),
+  };
 }
 
 /** Back-office reads of users (list + detail). */
@@ -50,7 +55,8 @@ export class AdminUsersQueryService {
           { lastName: { contains: search, mode: "insensitive" } },
         ],
       }),
-      ...(q.role && { role: q.role }),
+      // AND, never next to the search OR: withRole is itself an OR.
+      ...(q.role && { AND: [withRole(q.role)] }),
       ...(q.clubId && { clubId: q.clubId }),
       ...(q.category && { category: q.category }),
       ...(q.status && {
@@ -96,6 +102,8 @@ export class AdminUsersQueryService {
     const { license, club, ...rest } = row;
     return {
       ...rest,
+      // Stored roles (no club status): a disabled club still shows its extra CLUB.
+      roles: rolesOf(rest),
       createdByAdmin: await isCreatedByAdmin(this.prisma, id),
       clubDisabledAt: club?.disabledAt ?? null,
       licenseStatus: licenseStatus(license, new Date()),

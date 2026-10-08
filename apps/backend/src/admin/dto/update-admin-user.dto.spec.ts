@@ -27,6 +27,16 @@ describe("UpdateAdminUserDto", () => {
     },
   );
 
+  it("accepts a list of known roles and rejects an unknown one", async () => {
+    expect(await errorsOf({ extraRoles: ["CLUB", "STAFF"] })).toEqual([]);
+    expect(await errorsOf({ extraRoles: ["ROOT"] })).toContain("extraRoles");
+    expect(await errorsOf({ extraRoles: "CLUB" })).toContain("extraRoles");
+    expect(await errorsOf({ extraRoles: ["CLUB", "CLUB"] })).toContain(
+      "extraRoles",
+    );
+    expect(await errorsOf({ extraRoles: null })).toContain("extraRoles");
+  });
+
   it("accepts an empty body", async () => {
     expect(await errorsOf({})).toEqual([]);
   });

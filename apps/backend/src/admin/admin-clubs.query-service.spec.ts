@@ -5,6 +5,7 @@ import {
   createMockPrismaService,
   MockPrismaService,
 } from "../../test/mocks/prisma.mock";
+import { withRole } from "../auth/roles";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   adminClubListSelect,
@@ -47,11 +48,10 @@ describe("AdminClubsQueryService", () => {
           { ...club, id: "c2", name: "Club B" },
         ] as never)
         .mockResolvedValueOnce([{ id: "c2" }] as never);
-      groupBy.mockResolvedValue([
-        { clubId: "c1", role: UserRole.LICENSEE, _count: { _all: 3 } },
-        { clubId: "c1", role: UserRole.STAFF, _count: { _all: 1 } },
-        { clubId: "c1", role: UserRole.CLUB, _count: { _all: 1 } },
-      ]);
+      // 1st call: club accounts (main or extra CLUB), 2nd: members.
+      groupBy
+        .mockResolvedValueOnce([{ clubId: "c1", _count: { _all: 1 } }])
+        .mockResolvedValueOnce([{ clubId: "c1", _count: { _all: 4 } }]);
 
       const page = await service.list({
         search: " club ",
@@ -70,9 +70,14 @@ describe("AdminClubsQueryService", () => {
         take: 50,
         select: adminClubListSelect,
       });
-      expect(groupBy).toHaveBeenCalledWith({
-        by: ["clubId", "role"],
-        where: { clubId: { in: ["c1", "c2"] } },
+      expect(groupBy).toHaveBeenNthCalledWith(1, {
+        by: ["clubId"],
+        where: { clubId: { in: ["c1", "c2"] }, ...withRole(UserRole.CLUB) },
+        _count: { _all: true },
+      });
+      expect(groupBy).toHaveBeenNthCalledWith(2, {
+        by: ["clubId"],
+        where: { clubId: { in: ["c1", "c2"] }, NOT: withRole(UserRole.CLUB) },
         _count: { _all: true },
       });
       expect(prisma.club.findMany).toHaveBeenNthCalledWith(2, {
