@@ -35,6 +35,24 @@ describe("buildPinoHttpOptions", () => {
     );
   });
 
+  it("redacts a mixed-case URL and a token echoed in the error", () => {
+    const mixed = {
+      ...req,
+      url: `/API/v1/Licenses/Wallet/Apple/${TOKEN}?x=1`,
+    } as unknown as IncomingMessage;
+    const err = new Error(`Cannot GET /api/v1/licenses/wallet/apple/${TOKEN}`);
+    const serializers = options.serializers as {
+      req: (r: IncomingMessage) => { url: string };
+      err: (e: Error) => { message: string; stack?: string };
+    };
+    const logged = JSON.stringify([
+      serializers.req(mixed),
+      serializers.err(err),
+      options.customErrorMessage?.(mixed, res(429), err),
+    ]);
+    expect(logged).not.toContain(TOKEN);
+  });
+
   it("handles a request without method or URL", () => {
     const bare = { headers: {} } as unknown as IncomingMessage;
     expect(options.customSuccessMessage?.(bare, res(200), 1)).toBe("  200");

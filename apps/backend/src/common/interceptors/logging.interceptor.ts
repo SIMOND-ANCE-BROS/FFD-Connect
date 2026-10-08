@@ -8,7 +8,7 @@ import { Observable } from "rxjs";
 import { tap } from "rxjs/operators";
 import { Request, Response } from "express";
 import { PinoLogger } from "nestjs-pino";
-import { redactUrl } from "../logger/redact-url";
+import { redactSecretsInText, redactUrl } from "../logger/redact-url";
 
 /**
  * Intercepteur de logging structuré pour tracer les requêtes HTTP
@@ -91,12 +91,12 @@ export class LoggingInterceptor implements NestInterceptor {
               ip,
               error: {
                 name: err.name,
-                message: err.message,
-                stack: err.stack,
+                message: redactSecretsInText(err.message),
+                stack: err.stack && redactSecretsInText(err.stack),
               },
               context: "HTTP_ERROR",
             },
-            `${method} ${url} ${statusCode} - ${delay}ms - ${err.message}`,
+            `${method} ${url} ${statusCode} - ${delay}ms - ${redactSecretsInText(err.message)}`,
           );
         },
       }),

@@ -8,7 +8,11 @@ import {
 import * as Sentry from "@sentry/nestjs";
 import { PinoLogger } from "nestjs-pino";
 import { Request, Response } from "express";
-import { redactUrl } from "../logger/redact-url";
+import {
+  redactSecretsDeep,
+  redactSecretsInText,
+  redactUrl,
+} from "../logger/redact-url";
 
 /**
  * Filtre global d'exceptions HTTP pour une gestion cohérente des erreurs
@@ -46,7 +50,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const message =
+    // Nest's own 404 ("Cannot GET /…") echoes the path: redact it too.
+    const message = redactSecretsDeep(
       exception instanceof HttpException
         ? typeof exception.getResponse() === "string"
           ? exception.getResponse()
@@ -54,7 +59,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
             exception.message)
         : exception instanceof Error
           ? exception.message
-          : "Internal server error";
+          : "Internal server error",
+    );
 
     // Admin 409s carry details the back-office needs: the clashing club
     // (create / rename) or what still points at a club (delete). Whitelisted
@@ -111,10 +117,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
             exception instanceof Error
               ? {
                   name: exception.name,
-                  message: exception.message,
-                  stack: exception.stack,
+                  message: redactSecretsInText(exception.message),
+                  stack:
+                    exception.stack && redactSecretsInText(exception.stack),
                 }
-              : exception,
+              : redactSecretsDeep(exception),
           context: "HttpExceptionFilter",
         },
         `${request.method} ${safeUrl} - ${logMessage}`,

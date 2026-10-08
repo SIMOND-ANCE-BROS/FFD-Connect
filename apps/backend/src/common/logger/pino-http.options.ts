@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import type { Options } from "pino-http";
-import { redactUrl } from "./redact-url";
+import { redactSecretsInText, redactUrl } from "./redact-url";
 
 /**
  * pino-http options (access log). Extracted from LoggerModule so the
@@ -38,8 +38,8 @@ export function buildPinoHttpOptions(isDevelopment: boolean): Options {
       }),
       err: (err: Error) => ({
         type: err.constructor.name,
-        message: err.message,
-        stack: err.stack,
+        message: redactSecretsInText(err.message),
+        stack: err.stack && redactSecretsInText(err.stack),
       }),
     },
     customProps: (_req: IncomingMessage, _res: ServerResponse) => ({
@@ -57,7 +57,7 @@ export function buildPinoHttpOptions(isDevelopment: boolean): Options {
       res: ServerResponse,
       err: Error,
     ) => {
-      return `${req.method ?? ""} ${redactUrl(req.url)} ${res.statusCode} - ${err.message}`;
+      return `${req.method ?? ""} ${redactUrl(req.url)} ${res.statusCode} - ${redactSecretsInText(err.message)}`;
     },
     customLogLevel: (
       _req: IncomingMessage,
