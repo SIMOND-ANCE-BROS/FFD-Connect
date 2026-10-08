@@ -45,8 +45,8 @@ const PerformanceContext = createContext<
       generatePlaylist: () => void;
       startPerformance: () => Promise<boolean>;
       stopPerformance: () => void;
-      nextDance: () => void;
-      previousDance: () => void;
+      nextStep: () => void;
+      previousStep: () => void;
       togglePlayPause: () => void;
       fadeNow: () => void;
     }
@@ -80,8 +80,8 @@ export const PerformanceProvider: React.FC<{ children: React.ReactNode }> = ({
     generatePlaylist: () => {},
     startPerformance: () => Promise.resolve(false),
     stopPerformance: () => {},
-    nextDance: () => {},
-    previousDance: () => {},
+    nextStep: () => {},
+    previousStep: () => {},
     togglePlayPause: () => {},
     fadeNow: () => {},
   };

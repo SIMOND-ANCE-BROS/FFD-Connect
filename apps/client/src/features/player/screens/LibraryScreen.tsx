@@ -361,7 +361,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
           numColumns={2}
           contentContainerStyle={[
             styles.gridListContent,
-            { paddingTop: headerH + 8 },
+            { paddingTop: headerH },
           ]}
           columnWrapperStyle={
             filteredSections.length > 0 ? styles.columnWrapper : undefined
@@ -379,10 +379,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
           renderItem={renderTrackItem}
           keyExtractor={(item) => item.id}
           numColumns={1}
-          contentContainerStyle={[
-            styles.trackList,
-            { paddingTop: headerH + 8 },
-          ]}
+          contentContainerStyle={[styles.trackList, { paddingTop: headerH }]}
           ListEmptyComponent={renderEmptyComponent}
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.3}

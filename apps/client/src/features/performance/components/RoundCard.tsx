@@ -1,50 +1,67 @@
-import { Minus, Plus, Trash2 } from "lucide-react-native";
+import { Plus, Trash2, X } from "lucide-react-native";
 import React from "react";
-import { StyleSheet, Switch, TouchableOpacity, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { AppText } from "../../../components/AppText";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import { useTheme } from "../../../context/ThemeContext";
 import {
   DANCES,
-  MAX_ROUND_HEATS,
-  MIN_ROUND_HEATS,
+  MAX_ROUND_GROUPS,
+  MIN_ROUND_GROUPS,
   type Category,
   type RoundConfig,
   type RoundType,
 } from "../../../stores/performance.store";
-import { danceLabel } from "../utils/competitionProgram";
+import {
+  CATEGORY_LABELS,
+  danceLabel,
+  roundCategories,
+  roundSequence,
+} from "../utils/competitionProgram";
 
 interface RoundCardProps {
   round: RoundConfig;
   /** 0-based position in the programme (testIDs use it). */
   index: number;
   canDelete: boolean;
-  onCategoryChange: (category: Category) => void;
   onTypeChange: (type: RoundType) => void;
-  onHeatsStep: (delta: number) => void;
-  onToggleDance: (dance: string) => void;
+  onAddGroup: () => void;
+  onRemoveGroup: (groupIndex: number) => void;
+  onGroupCategoryChange: (groupIndex: number, category: Category) => void;
+  onToggleDance: (category: Category, dance: string) => void;
   onDelete: () => void;
-  /** Absent on the first round (nothing to alternate with). */
-  onMixChange?: (mix: boolean) => void;
 }
 
 const slug = (s: string) => s.replace(/\s+/g, "-").toLowerCase();
+const CATEGORIES: Category[] = ["Standard", "Latin"];
+/** Steps shown in the floor-order preview before « … ». */
+const PREVIEW_STEPS = 6;
 
-/** One « tour » of the competition programme. */
+/** One « tour » of the competition programme: its groups and dances. */
 export const RoundCard: React.FC<RoundCardProps> = ({
   round,
   index,
   canDelete,
-  onCategoryChange,
   onTypeChange,
-  onHeatsStep,
+  onAddGroup,
+  onRemoveGroup,
+  onGroupCategoryChange,
   onToggleDance,
   onDelete,
-  onMixChange,
 }) => {
   const { theme } = useTheme();
   const prefix = `performance-round-${index}`;
-  const isRound = round.type === "Round";
+  const canRemoveGroup = round.groups.length > MIN_ROUND_GROUPS;
+  const canAddGroup = round.groups.length < MAX_ROUND_GROUPS;
+  const sequence = roundSequence(round);
+  const preview = sequence
+    .slice(0, PREVIEW_STEPS)
+    .map((s) =>
+      round.groups.length > 1
+        ? `${danceLabel(s.dance)} (G${s.groupIndex})`
+        : danceLabel(s.dance),
+    )
+    .join(" → ");
 
   return (
     <View
@@ -72,40 +89,6 @@ export const RoundCard: React.FC<RoundCardProps> = ({
         )}
       </View>
 
-      {onMixChange && (
-        <View style={[styles.row, styles.mixRow]}>
-          <View style={styles.mixText}>
-            <AppText variant="caption" weight="600" color={theme.text}>
-              Passages mixés avec le tour {index}
-            </AppText>
-            <AppText variant="caption" color={theme.textSecondary}>
-              Les passages alternent entre les deux tours, danse par danse (ex.
-              Valse, Samba, Valse… puis Tango, Cha-cha-cha…).
-            </AppText>
-          </View>
-          <Switch
-            value={Boolean(round.mixWithPrevious)}
-            onValueChange={onMixChange}
-            trackColor={{ true: theme.primary }}
-            testID={`${prefix}-mix-switch`}
-            accessibilityLabel={`Passages mixés avec le tour ${index}`}
-            accessibilityHint="Alterne les passages de ce tour avec ceux du tour précédent"
-          />
-        </View>
-      )}
-
-      <View style={styles.row}>
-        <FluidSegmentedTab
-          testID={`${prefix}-category-tab`}
-          activeValue={round.category}
-          onChange={(val) => onCategoryChange(val as Category)}
-          options={[
-            { label: "Latines", value: "Latin" },
-            { label: "Standard", value: "Standard" },
-          ]}
-        />
-      </View>
-
       <View style={styles.row}>
         <FluidSegmentedTab
           testID={`${prefix}-type-tab`}
@@ -118,90 +101,151 @@ export const RoundCard: React.FC<RoundCardProps> = ({
         />
       </View>
 
-      {isRound && (
-        <View style={[styles.row, styles.heatsRow]}>
-          <AppText variant="caption" color={theme.textSecondary}>
-            Passages par danse
+      <AppText
+        variant="caption"
+        weight="600"
+        color={theme.textSecondary}
+        style={styles.sectionLabel}
+      >
+        Groupes, dans l&apos;ordre de passage
+      </AppText>
+      {round.groups.map((category, g) => (
+        <View
+          // Groups have no identity of their own: position is the identity.
+          key={g}
+          style={styles.groupRow}
+          testID={`${prefix}-group-${g}`}
+        >
+          <AppText
+            variant="body"
+            weight="600"
+            color={theme.text}
+            style={styles.groupLabel}
+          >
+            Groupe {g + 1}
           </AppText>
-          <View style={styles.stepper}>
-            <TouchableOpacity
-              onPress={() => onHeatsStep(-1)}
-              disabled={round.heats <= MIN_ROUND_HEATS}
-              style={[
-                styles.stepButton,
-                { borderColor: theme.border },
-                round.heats <= MIN_ROUND_HEATS && styles.disabled,
-              ]}
-              testID={`${prefix}-heats-minus`}
-              accessibilityRole="button"
-              accessibilityLabel="Retirer un passage"
-              accessibilityHint={`Minimum ${MIN_ROUND_HEATS} passage`}
-              accessibilityState={{ disabled: round.heats <= MIN_ROUND_HEATS }}
-            >
-              <Minus color={theme.text} size={16} />
-            </TouchableOpacity>
-            <AppText
-              variant="body"
-              weight="bold"
-              color={theme.text}
-              style={styles.stepValue}
-              testID={`${prefix}-heats-value`}
-            >
-              {round.heats}
-            </AppText>
-            <TouchableOpacity
-              onPress={() => onHeatsStep(1)}
-              disabled={round.heats >= MAX_ROUND_HEATS}
-              style={[
-                styles.stepButton,
-                { borderColor: theme.border },
-                round.heats >= MAX_ROUND_HEATS && styles.disabled,
-              ]}
-              testID={`${prefix}-heats-plus`}
-              accessibilityRole="button"
-              accessibilityLabel="Ajouter un passage"
-              accessibilityHint="Augmente le nombre de passages par danse"
-              accessibilityState={{ disabled: round.heats >= MAX_ROUND_HEATS }}
-            >
-              <Plus color={theme.text} size={16} />
-            </TouchableOpacity>
+          <View style={styles.categoryChips}>
+            {CATEGORIES.map((c) => {
+              const active = c === category;
+              return (
+                <TouchableOpacity
+                  key={c}
+                  onPress={() => onGroupCategoryChange(g, c)}
+                  testID={`${prefix}-group-${g}-${c.toLowerCase()}`}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: active }}
+                  accessibilityLabel={`Groupe ${g + 1} en ${CATEGORY_LABELS[c]}`}
+                  accessibilityHint="Choisit la catégorie dansée par ce groupe"
+                  style={[
+                    styles.categoryChip,
+                    active
+                      ? {
+                          borderColor: theme.primary,
+                          backgroundColor: theme.primary,
+                        }
+                      : { borderColor: theme.border },
+                  ]}
+                >
+                  <AppText
+                    variant="caption"
+                    weight="600"
+                    color={active ? "#FFF" : theme.text}
+                  >
+                    {CATEGORY_LABELS[c]}
+                  </AppText>
+                </TouchableOpacity>
+              );
+            })}
           </View>
+          {canRemoveGroup ? (
+            <TouchableOpacity
+              onPress={() => onRemoveGroup(g)}
+              style={styles.iconButton}
+              testID={`${prefix}-group-${g}-remove`}
+              accessibilityRole="button"
+              accessibilityLabel={`Retirer le groupe ${g + 1}`}
+              accessibilityHint="Retire ce groupe de l'ordre de passage"
+            >
+              <X color={theme.textSecondary} size={18} />
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.iconPlaceholder} />
+          )}
         </View>
+      ))}
+      {canAddGroup && (
+        <TouchableOpacity
+          onPress={onAddGroup}
+          style={[styles.addGroupButton, { borderColor: theme.border }]}
+          testID={`${prefix}-add-group`}
+          accessibilityRole="button"
+          accessibilityLabel="Ajouter un groupe"
+          accessibilityHint="Ajoute un groupe à la fin de l'ordre de passage"
+        >
+          <Plus color={theme.primary} size={16} />
+          <AppText variant="caption" weight="600" color={theme.primary}>
+            Ajouter un groupe
+          </AppText>
+        </TouchableOpacity>
       )}
 
-      <View style={styles.dancesGrid}>
-        {DANCES[round.category].map((dance) => {
-          const isActive = round.selectedDances.includes(dance);
-          return (
-            <TouchableOpacity
-              key={dance}
-              testID={`${prefix}-dance-${slug(dance)}`}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: isActive }}
-              accessibilityLabel={`Danse ${danceLabel(dance)}`}
-              accessibilityHint="Active ou désactive cette danse pour ce tour"
-              onPress={() => onToggleDance(dance)}
-              style={[
-                styles.danceChip,
-                isActive
-                  ? {
-                      borderColor: theme.primary,
-                      backgroundColor: theme.primary,
-                    }
-                  : { borderColor: theme.border },
-              ]}
-            >
-              <AppText
-                variant="caption"
-                weight="600"
-                color={isActive ? "#FFF" : theme.text}
-              >
-                {danceLabel(dance)}
-              </AppText>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {roundCategories(round).map((category) => (
+        <View key={category} style={styles.dancesBlock}>
+          <AppText
+            variant="caption"
+            weight="600"
+            color={theme.textSecondary}
+            style={styles.sectionLabel}
+          >
+            Danses {CATEGORY_LABELS[category]}
+          </AppText>
+          <View style={styles.dancesGrid}>
+            {DANCES[category].map((dance) => {
+              const isActive = round.dances[category].includes(dance);
+              return (
+                <TouchableOpacity
+                  key={dance}
+                  testID={`${prefix}-dance-${slug(dance)}`}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: isActive }}
+                  accessibilityLabel={`Danse ${danceLabel(dance)}`}
+                  accessibilityHint="Active ou désactive cette danse pour ce tour"
+                  onPress={() => onToggleDance(category, dance)}
+                  style={[
+                    styles.danceChip,
+                    isActive
+                      ? {
+                          borderColor: theme.primary,
+                          backgroundColor: theme.primary,
+                        }
+                      : { borderColor: theme.border },
+                  ]}
+                >
+                  <AppText
+                    variant="caption"
+                    weight="600"
+                    color={isActive ? "#FFF" : theme.text}
+                  >
+                    {danceLabel(dance)}
+                  </AppText>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ))}
+
+      {sequence.length > 0 && (
+        <AppText
+          variant="caption"
+          color={theme.textSecondary}
+          style={styles.preview}
+          testID={`${prefix}-preview`}
+        >
+          Déroulé : {preview}
+          {sequence.length > PREVIEW_STEPS ? " → …" : ""}
+        </AppText>
+      )}
     </View>
   );
 };
@@ -222,40 +266,50 @@ const styles = StyleSheet.create({
   iconButton: {
     padding: 6,
   },
+  iconPlaceholder: {
+    width: 30,
+  },
   row: {
     marginBottom: 10,
   },
-  mixRow: {
+  sectionLabel: {
+    marginBottom: 6,
+  },
+  groupRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    marginBottom: 6,
+    gap: 8,
   },
-  mixText: {
+  groupLabel: {
+    minWidth: 80,
+  },
+  categoryChips: {
     flex: 1,
-  },
-  heatsRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    gap: 6,
   },
-  stepper: {
-    flexDirection: "row",
+  categoryChip: {
+    flex: 1,
     alignItems: "center",
-  },
-  stepButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    borderRadius: 30,
     borderWidth: 1,
+    paddingVertical: 6,
+  },
+  addGroupButton: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderRadius: 30,
+    paddingVertical: 8,
+    marginTop: 2,
+    marginBottom: 12,
   },
-  stepValue: {
-    minWidth: 36,
-    textAlign: "center",
-  },
-  disabled: {
-    opacity: 0.4,
+  dancesBlock: {
+    marginBottom: 10,
   },
   dancesGrid: {
     flexDirection: "row",
@@ -267,5 +321,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingVertical: 8,
     paddingHorizontal: 14,
+  },
+  preview: {
+    marginTop: 4,
   },
 });

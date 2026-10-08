@@ -925,4 +925,109 @@ describe("TrackCorrectionsService", () => {
       expect(prisma.trackCorrection.updateMany).not.toHaveBeenCalled();
     });
   });
+
+  // ── approve → piste réellement modifiée ───────────────────────────────────
+
+  /**
+   * Bug beta : « clash validé, bibliothèque inchangée ». Ici TracksService est
+   * le VRAI service (Prisma mocké) : on vérifie que la validation écrit bien
+   * les clashs sur la ligne Track, dans la transaction de la décision.
+   */
+  describe("approve (TracksService réel)", () => {
+    let realService: TrackCorrectionsService;
+
+    beforeEach(() => {
+      const realTracks = new TracksService(
+        prisma as unknown as PrismaService,
+        { calculateMpm: jest.fn().mockReturnValue(0) } as never,
+        {} as never,
+      );
+      realService = new TrackCorrectionsService(
+        prisma as unknown as PrismaService,
+        realTracks,
+        notifications as unknown as NotificationsService,
+        queryService as unknown as TrackCorrectionsQueryService,
+      );
+      tx.trackCorrection.updateMany.mockResolvedValue({ count: 1 });
+      tx.track.findUnique.mockResolvedValue({
+        submittedById: "u2",
+        rawBpm: 120,
+      } as never);
+      tx.track.update.mockResolvedValue({} as never);
+    });
+
+    it("écrit les clashs proposés (triés) sur la piste", async () => {
+      prisma.trackCorrection.findUnique.mockResolvedValue(
+        decisionRow({
+          proposedTitle: null,
+          proposedBpm: null,
+          proposesClashes: true,
+          proposedClashTimecodes: [78.5, 39.2],
+        }) as never,
+      );
+
+      await realService.approve("c1", "admin-1", {});
+
+      expect(tx.track.update).toHaveBeenCalledWith({
+        where: { id: "t1" },
+        data: { clashTimecodes: [39.2, 78.5] },
+      });
+      expect(prisma.track.update).not.toHaveBeenCalled();
+    });
+
+    it("écrit une liste de 3 clashs (paso coupé au 3e clash)", async () => {
+      prisma.trackCorrection.findUnique.mockResolvedValue(
+        decisionRow({
+          proposedTitle: null,
+          proposedBpm: null,
+          proposesClashes: true,
+          proposedClashTimecodes: [120, 40, 80],
+        }) as never,
+      );
+
+      await realService.approve("c1", "admin-1", {});
+
+      expect(tx.track.update).toHaveBeenCalledWith({
+        where: { id: "t1" },
+        data: { clashTimecodes: [40, 80, 120] },
+      });
+    });
+
+    it("400 si une proposition ancienne porte plus de 3 clashs (rien n'est écrit)", async () => {
+      prisma.trackCorrection.findUnique.mockResolvedValue(
+        decisionRow({
+          proposedTitle: null,
+          proposedBpm: null,
+          proposesClashes: true,
+          proposedClashTimecodes: [40, 80, 120, 160],
+        }) as never,
+      );
+
+      await expect(realService.approve("c1", "admin-1", {})).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(tx.track.update).not.toHaveBeenCalled();
+      expect(notifications.sendToUser).not.toHaveBeenCalled();
+    });
+
+    it("l'admin peut ramener une ancienne proposition à 3 clashs", async () => {
+      prisma.trackCorrection.findUnique.mockResolvedValue(
+        decisionRow({
+          proposedTitle: null,
+          proposedBpm: null,
+          proposesClashes: true,
+          proposedClashTimecodes: [40, 80, 120, 160],
+        }) as never,
+      );
+
+      await realService.approve("c1", "admin-1", {
+        clashTimecodes: [40, 80, 120],
+      });
+
+      expect(tx.track.update).toHaveBeenCalledWith({
+        where: { id: "t1" },
+        data: { clashTimecodes: [40, 80, 120] },
+      });
+    });
+  });
 });

@@ -8,6 +8,7 @@ import {
   type TrackCorrectionAdminDto,
 } from "../../../../services/api/track-correction-api";
 import { useAuthStore } from "../../../../stores/auth.store";
+import { useLibrarySyncStore } from "../../../../stores/librarySync.store";
 import { TrackCorrectionsReviewScreen } from "../TrackCorrectionsReviewScreen";
 
 jest.mock("../../../../services/api/track-correction-api", () => {
@@ -432,6 +433,163 @@ describe("TrackCorrectionsReviewScreen", () => {
       const { findByTestId } = await renderScreen("c1");
       await findByTestId("correction-card-c1");
       expect(api.list).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /**
+   * Bug beta : après validation, la proposition restait dans « En attente »
+   * jusqu'à quitter puis rouvrir l'écran.
+   */
+  describe("retrait de la file après décision", () => {
+    /** File « En attente » figée : simule un rechargement lent ou en retard. */
+    const stalePendingList = () =>
+      api.list.mockImplementation(({ status }: { status: string }) =>
+        Promise.resolve(
+          page(
+            status === "PENDING"
+              ? [correction({ id: "c1" }), correction({ id: "c2" })]
+              : [],
+          ),
+        ),
+      );
+
+    it("retire immédiatement la proposition validée de la file", async () => {
+      confirmWith("Valider");
+      stalePendingList();
+      const { findByTestId, queryByTestId } = await renderScreen();
+
+      await fireEvent.press(await findByTestId("correction-approve-c1"));
+
+      await waitFor(() =>
+        expect(queryByTestId("correction-card-c1")).toBeNull(),
+      );
+      expect(queryByTestId("correction-card-c2")).toBeTruthy();
+      // La file est tout de même rechargée (état serveur).
+      await waitFor(() =>
+        expect(
+          api.list.mock.calls.filter(
+            ([q]: [{ status: string }]) => q.status === "PENDING",
+          ).length,
+        ).toBeGreaterThanOrEqual(2),
+      );
+    });
+
+    it("retire aussi une proposition refusée", async () => {
+      confirmWith("Refuser");
+      stalePendingList();
+      const { findByTestId, queryByTestId } = await renderScreen();
+
+      await fireEvent.press(await findByTestId("correction-reject-c2"));
+
+      await waitFor(() =>
+        expect(queryByTestId("correction-card-c2")).toBeNull(),
+      );
+      expect(queryByTestId("correction-card-c1")).toBeTruthy();
+    });
+
+    it("ouverte depuis une notification : ne revient pas en tête une fois validée", async () => {
+      confirmWith("Valider");
+      // Après validation, le serveur ne la sert plus en attente, mais le
+      // repli « proposition ciblée » la retrouve parmi les validées.
+      let approved = false;
+      api.approve.mockImplementation(() => {
+        approved = true;
+        return Promise.resolve(correction({ id: "c2", status: "APPROVED" }));
+      });
+      api.list.mockImplementation(({ status }: { status: string }) =>
+        Promise.resolve(
+          page(
+            status === "PENDING"
+              ? approved
+                ? [correction({ id: "c1" })]
+                : [correction({ id: "c1" }), correction({ id: "c2" })]
+              : status === "APPROVED" && approved
+                ? [correction({ id: "c2", status: "APPROVED" })]
+                : [],
+          ),
+        ),
+      );
+      const { findByTestId, queryByTestId } = await renderScreen("c2");
+
+      await fireEvent.press(await findByTestId("correction-approve-c2"));
+
+      await waitFor(() =>
+        expect(queryByTestId("correction-card-c2")).toBeNull(),
+      );
+      // Laisse le repli éventuel se résoudre : elle ne doit pas réapparaître.
+      await waitFor(() =>
+        expect(api.list).toHaveBeenCalledWith({
+          status: "APPROVED",
+          take: 100,
+        }),
+      );
+      expect(queryByTestId("correction-card-c2")).toBeNull();
+      expect(queryByTestId("correction-card-c1")).toBeTruthy();
+    });
+
+    it("409 : retire aussi la proposition déjà traitée par un autre admin", async () => {
+      confirmWith("Valider");
+      stalePendingList();
+      api.approve.mockRejectedValueOnce(
+        new TrackCorrectionApiError(
+          "Cette proposition a déjà été traitée.",
+          409,
+        ),
+      );
+      const { findByTestId, queryByTestId } = await renderScreen();
+
+      await fireEvent.press(await findByTestId("correction-approve-c1"));
+
+      await waitFor(() =>
+        expect(queryByTestId("correction-card-c1")).toBeNull(),
+      );
+    });
+
+    it("reste visible dans l'onglet « Validées »", async () => {
+      confirmWith("Valider");
+      api.list.mockImplementation(({ status }: { status: string }) =>
+        Promise.resolve(
+          page(
+            status === "APPROVED"
+              ? [correction({ id: "c1", status: "APPROVED" })]
+              : [correction({ id: "c1" })],
+          ),
+        ),
+      );
+      const { findByTestId, queryByTestId, getByTestId } = await renderScreen();
+
+      await fireEvent.press(await findByTestId("correction-approve-c1"));
+      await waitFor(() =>
+        expect(queryByTestId("correction-card-c1")).toBeNull(),
+      );
+
+      await fireEvent.press(getByTestId("corrections-filter-APPROVED"));
+      expect(await findByTestId("correction-card-c1")).toBeTruthy();
+    });
+  });
+
+  describe("bibliothèque", () => {
+    it("une validation signale la bibliothèque comme périmée", async () => {
+      confirmWith("Valider");
+      const before = useLibrarySyncStore.getState().version;
+      const { findByTestId } = await renderScreen();
+
+      await fireEvent.press(await findByTestId("correction-approve-c1"));
+
+      await waitFor(() =>
+        expect(useLibrarySyncStore.getState().version).toBe(before + 1),
+      );
+    });
+
+    it("un refus ne touche pas à la bibliothèque", async () => {
+      confirmWith("Refuser");
+      const before = useLibrarySyncStore.getState().version;
+      const { findByTestId } = await renderScreen();
+
+      await fireEvent.press(await findByTestId("correction-reject-c1"));
+
+      await waitFor(() => expect(api.reject).toHaveBeenCalled());
+      expect(useLibrarySyncStore.getState().version).toBe(before);
     });
   });
 });

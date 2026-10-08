@@ -1,18 +1,13 @@
-import { Check } from "lucide-react-native";
-import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { ChevronDown } from "lucide-react-native";
+import React, { useState } from "react";
+import { StyleSheet, TouchableOpacity } from "react-native";
+import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
 import type { AuthRole } from "../../../stores/auth.store";
-import { styles } from "./settings.styles";
+import { SpaceSheet } from "./SpaceSheet";
+import { SPACE_LABELS, type SpaceRole } from "./spaces";
 
-type SpaceRole = Exclude<AuthRole, "GUEST">;
-
-export const SPACE_LABELS: Record<SpaceRole, string> = {
-  LICENSEE: "Danseur",
-  CLUB: "Club",
-  STAFF: "Staff",
-  ADMIN: "Admin",
-};
+export { SPACE_LABELS };
 
 interface SpaceSelectorProps {
   roles: AuthRole[];
@@ -20,52 +15,77 @@ interface SpaceSelectorProps {
   onChange: (space: SpaceRole) => void;
 }
 
-/** Réglages → Espace. Hidden for a single-role account. */
+/**
+ * Header pill showing the active space; opens a bottom sheet to switch.
+ * Hidden for an account holding fewer than two non-guest roles.
+ */
 export const SpaceSelector = ({
   roles,
   space,
   onChange,
 }: SpaceSelectorProps) => {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
+  const [open, setOpen] = useState(false);
   const choices = roles.filter((r): r is SpaceRole => r !== "GUEST");
   if (choices.length < 2) return null;
 
+  const current = choices.find((r) => r === space) ?? null;
+  const label = current ? SPACE_LABELS[current] : "Espace";
+
+  const handleSelect = (next: SpaceRole) => {
+    setOpen(false);
+    if (next !== current) onChange(next);
+  };
+
   return (
     <>
-      <View style={styles.sectionTitleContainer}>
-        <Text
-          accessibilityRole="header"
-          style={[styles.sectionTitle, { color: theme.textSecondary }]}
+      <TouchableOpacity
+        onPress={() => setOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`Espace : ${label}`}
+        accessibilityHint="Ouvre le sélecteur d'espace"
+        testID="settings-space-pill"
+        style={[
+          styles.pill,
+          {
+            borderColor: theme.border,
+            backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "#F5F5F5",
+          },
+        ]}
+      >
+        <AppText
+          variant="caption"
+          color={theme.text}
+          weight="600"
+          numberOfLines={1}
+          maxFontSizeMultiplier={1.3}
+          style={styles.label}
         >
-          Espace
-        </Text>
-      </View>
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
-        {choices.map((r, index) => {
-          const selected = r === space;
-          return (
-            <TouchableOpacity
-              key={r}
-              accessibilityRole="button"
-              accessibilityLabel={SPACE_LABELS[r]}
-              accessibilityHint="Change l'espace actif de l'application"
-              accessibilityState={{ selected }}
-              testID={`settings-space-${r}`}
-              onPress={() => onChange(r)}
-              style={[
-                styles.row,
-                index > 0 && styles.borderTop,
-                index > 0 && { borderTopColor: theme.border },
-              ]}
-            >
-              <Text style={[styles.rowLabel, { color: theme.text }]}>
-                {SPACE_LABELS[r]}
-              </Text>
-              {selected && <Check size={18} color={theme.primary} />}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+          {label}
+        </AppText>
+        <ChevronDown size={16} color={theme.text} />
+      </TouchableOpacity>
+      <SpaceSheet
+        visible={open}
+        choices={choices}
+        current={current}
+        onSelect={handleSelect}
+        onClose={() => setOpen(false)}
+      />
     </>
   );
 };
+
+const styles = StyleSheet.create({
+  pill: {
+    height: 44,
+    maxWidth: 140,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    borderWidth: 1,
+  },
+  label: { marginBottom: 0, flexShrink: 1 },
+});

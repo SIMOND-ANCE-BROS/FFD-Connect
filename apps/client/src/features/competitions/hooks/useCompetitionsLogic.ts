@@ -73,6 +73,22 @@ export function getDistanceKm(
   return R * c;
 }
 
+/** Page size of the competitions infinite query. */
+export const COMPETITIONS_PAGE_SIZE = 10;
+
+/**
+ * Below this many FILTERED results, the next page is fetched automatically
+ * (roughly one screen of cards — see the auto-fetch effect in the hook).
+ */
+export const MIN_FILTERED_RESULTS = 10;
+
+/**
+ * Max pages fetched AUTOMATICALLY per filter change (or refresh / manual
+ * "Charger plus"). Without a cap, a search matching nothing would download the
+ * whole catalogue behind a full-screen spinner.
+ */
+export const MAX_AUTO_PAGES = 5;
+
 /** Nombre de mois de la fenêtre pour chaque période (null = pas de borne). */
 const DATE_PERIOD_MONTHS: Record<CompetitionDatePeriod, number | null> = {
   ALL: null,
@@ -144,6 +160,8 @@ const DEFAULT_USER_STATE: UserState = {
  * @returns {Object} state - État actuel des compétitions filtrées et de l'interface
  * @returns {Competition[]} state.competitions - Liste des compétitions filtrées
  * @returns {boolean} state.isLoading - Indique si les compétitions sont en cours de chargement
+ * @returns {boolean} state.isLoadingMore - Indique qu'une page suivante se charge sous des résultats déjà affichés
+ * @returns {boolean} state.canLoadMoreManually - Budget d'auto-chargement épuisé alors qu'il reste des pages : proposer « Charger plus »
  * @returns {boolean} state.refreshing - Indique si un rafraîchissement est en cours
  * @returns {CompetitionScope} state.scope - Scope actuel du filtre (ALL ou FOR_ME)
  * @returns {CompetitionStatusFilter} state.statusFilter - Filtre de statut actuel
@@ -235,24 +253,24 @@ export const useCompetitionsLogic = () => {
     data: queryData,
     isLoading: isQueryLoading,
     isFetchingNextPage,
+    isFetchNextPageError,
     hasNextPage,
     fetchNextPage,
     refetch,
   } = useInfiniteQuery({
     queryKey: ["competitions"],
     queryFn: async ({ pageParam = 0 }) => {
-      return getCompetitions(pageParam, 10);
+      return getCompetitions(pageParam, COMPETITIONS_PAGE_SIZE);
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
       // getCompetitions returns { data, meta }
       if (!lastPage.meta.hasMore) return undefined;
       // offset = number of pages * take
-      return allPages.length * 10;
+      return allPages.length * COMPETITIONS_PAGE_SIZE;
     },
   });
 
-  const isLoading = isQueryLoading || isFetchingNextPage;
   const hasMore = !!hasNextPage;
   const allLoadedCompetitions = useMemo(() => {
     if (!queryData) return [];
@@ -445,14 +463,76 @@ export const useCompetitionsLogic = () => {
     userLocation,
   ]);
 
+  // Filters are applied CLIENT-SIDE on top of a date-ascending pagination, so
+  // the first pages are mostly past competitions: with the default "UPCOMING"
+  // filter the visible list could be empty (or a couple of rows). An empty
+  // list never triggers `onEndReached`, so pagination stalled until the user
+  // touched a filter. Keep fetching pages until the filtered list can fill
+  // the screen, or until there is nothing left to fetch.
+  const filteredCount = filteredCompetitions.length;
+
+  // Auto-fetch budget, keyed by the active filters: changing any filter
+  // yields a fresh budget without an extra reset effect.
+  const filterKey = JSON.stringify([
+    scope,
+    statusFilter,
+    searchQuery.trim().toLowerCase(),
+    maxDistanceKm,
+    datePeriod,
+    dateFrom?.getTime() ?? null,
+    dateTo?.getTime() ?? null,
+    [...styleFilter].sort(),
+    [...disciplineFilter].sort(),
+  ]);
+  const [autoFetch, setAutoFetch] = useState({ key: filterKey, pages: 0 });
+  const autoFetchedPages = autoFetch.key === filterKey ? autoFetch.pages : 0;
+  const autoFetchExhausted = autoFetchedPages >= MAX_AUTO_PAGES;
+  const resetAutoFetchBudget = useCallback(() => {
+    setAutoFetch({ key: filterKey, pages: 0 });
+  }, [filterKey]);
+
+  const canAutoFetch =
+    hasMore &&
+    !isQueryLoading &&
+    !isFetchingNextPage &&
+    !isFetchNextPageError &&
+    !autoFetchExhausted;
+  useEffect(() => {
+    if (canAutoFetch && filteredCount < MIN_FILTERED_RESULTS) {
+      setAutoFetch((prev) => ({
+        key: filterKey,
+        pages: (prev.key === filterKey ? prev.pages : 0) + 1,
+      }));
+      fetchNextPage().catch(() => {});
+    }
+  }, [canAutoFetch, filteredCount, fetchNextPage, filterKey]);
+
+  // One loader at a time: the full-screen one while nothing matching is shown
+  // yet (initial load, or pages still being scanned for matches within the
+  // auto-fetch budget), the footer one only when paginating below already
+  // visible rows. Once the budget is spent, the empty state/list is shown
+  // normally with a manual "Charger plus" (see `canLoadMoreManually`).
+  const isLoading =
+    isQueryLoading ||
+    (filteredCount === 0 &&
+      hasMore &&
+      !isFetchNextPageError &&
+      !autoFetchExhausted);
+  const isLoadingMore = isFetchingNextPage && filteredCount > 0;
+  const canLoadMoreManually =
+    hasMore && autoFetchExhausted && !isFetchingNextPage;
+
   const handleLoadMore = async () => {
     if (hasNextPage && !isFetchingNextPage) {
+      // An explicit request also renews the auto-fetch budget.
+      resetAutoFetchBudget();
       await fetchNextPage();
     }
   };
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    resetAutoFetchBudget();
     try {
       const syncResult = await syncCompetitions();
       if (syncResult?.jobId) {
@@ -470,8 +550,10 @@ export const useCompetitionsLogic = () => {
     state: {
       competitions: filteredCompetitions,
       isLoading,
+      isLoadingMore,
       refreshing,
       hasMore,
+      canLoadMoreManually,
       scope,
       statusFilter,
       searchQuery,

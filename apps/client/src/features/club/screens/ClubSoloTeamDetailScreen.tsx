@@ -99,12 +99,12 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {isLoading || !team ? (
-        <View style={[styles.centered, { paddingTop: headerH + 8 }]}>
+        <View style={[styles.centered, { paddingTop: headerH }]}>
           <ActivityIndicator size="large" color={theme.primary} />
         </View>
       ) : (
         <>
-          <View style={{ height: headerH + 8 }} />
+          <View style={{ height: headerH }} />
           <View style={[styles.infoCard, { backgroundColor: theme.surface }]}>
             <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
               <TeamIcon size={28} color="#fff" />

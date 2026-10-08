@@ -195,7 +195,7 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
         style={styles.scroll}
         contentContainerStyle={{
           ...styles.scrollContent,
-          paddingTop: headerH + 8,
+          paddingTop: headerH,
         }}
         keyboardShouldPersistTaps="handled"
       >

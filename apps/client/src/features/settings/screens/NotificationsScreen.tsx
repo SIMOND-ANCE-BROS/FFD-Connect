@@ -196,7 +196,7 @@ export const NotificationsScreen = ({ navigation }: Props) => {
       testID="notifications-header"
     >
       {loading ? (
-        <View style={[styles.center, { paddingTop: headerH + 8 }]}>
+        <View style={[styles.center, { paddingTop: headerH }]}>
           <ActivityIndicator color={theme.primary} size="large" />
         </View>
       ) : (
@@ -212,7 +212,7 @@ export const NotificationsScreen = ({ navigation }: Props) => {
               tintColor={theme.primary}
             />
           }
-          contentContainerStyle={{ ...styles.list, paddingTop: headerH + 8 }}
+          contentContainerStyle={{ ...styles.list, paddingTop: headerH }}
           ListFooterComponent={
             // En pied de liste, et non dans l'en-tête à côté de « Tout lire » :
             // une action destructive n'a pas à être à portée de pouce

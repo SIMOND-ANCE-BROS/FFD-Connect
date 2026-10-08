@@ -125,7 +125,7 @@ export const ViewCareerScreen = ({ navigation, route }: Props) => {
         style={styles.scroll}
         contentContainerStyle={{
           ...styles.scrollContent,
-          paddingTop: headerH + 8,
+          paddingTop: headerH,
         }}
         refreshControl={
           <RefreshControl

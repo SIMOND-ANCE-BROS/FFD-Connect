@@ -4,6 +4,8 @@ import {
   getStructureDisplayName,
   normalizeBirthDate,
   parseNamePart,
+  nameTokens,
+  wdsfNameMatches,
   parsePersonsToAthlete,
 } from "./wdsf.utils";
 
@@ -150,6 +152,51 @@ describe("wdsf.utils", () => {
       ];
       const result = parsePersonsToAthlete(data, "11111");
       expect(result.structure).toBe("FFD - Fédération Française de Danse");
+    });
+  });
+
+  describe("wdsfNameMatches", () => {
+    it.each([
+      ["Gabin Simond", "Gabin", "Simond"],
+      ["Simond Gabin", "Gabin", "Simond"],
+      ["SIMOND Gabin", "gabin", "simond"],
+      ["Jean Pierre Dupré", "Jean-Pierre", "Dupre"],
+      ["Anne Marie D'Arc", "Anne", "d’Arc"],
+      ["Gabin Louis Simond", "Gabin", "Simond"],
+    ])("matches %s with %s %s", (wdsf, first, last) => {
+      expect(wdsfNameMatches(wdsf, first, last)).toBe(true);
+    });
+
+    it.each([
+      ["Gabin Simond", "Noelie", "Bazin"],
+      ["Gabin Simond", "Gabin", "Simon"],
+      ["Gabin", "Gabin", "Simond"],
+      ["", "Gabin", "Simond"],
+      ["Gabin Simond", "", "Simond"],
+      ["Gabin Simond", "Gabin", ""],
+    ])("rejects %s with %s %s", (wdsf, first, last) => {
+      expect(wdsfNameMatches(wdsf, first, last)).toBe(false);
+    });
+
+    it("tokenizes without accents, case or punctuation", () => {
+      expect(nameTokens("  Éloïse-Marie  O'Brien ")).toEqual([
+        "eloise",
+        "marie",
+        "o",
+        "brien",
+      ]);
+    });
+  });
+
+  describe("parsePersonsToAthlete with a full-name-only record", () => {
+    it("splits name into first and last name without duplicating it", () => {
+      const athlete = parsePersonsToAthlete(
+        [{ id: "10117265", name: "Gabin Simond", country: "France" }],
+        "10117265",
+      );
+
+      expect(athlete.firstName).toBe("Gabin");
+      expect(athlete.lastName).toBe("Simond");
     });
   });
 });

@@ -16,12 +16,13 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
   },
   collapsedCardHeight: {
-    height: 120,
+    height: 88,
   },
 
-  // Header
+  // Header — kept compact so a full card (FFD or WDSF) fits on one phone
+  // screen without scrolling.
   cardHeader: {
-    height: 120,
+    height: 88,
     position: "relative",
     width: "100%",
   },
@@ -30,7 +31,7 @@ export const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    bottom: 20,
+    bottom: 16,
     width: "100%",
   },
   curveSvg: {
@@ -45,91 +46,99 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     height: "100%",
-    paddingBottom: 20,
-    paddingHorizontal: 20,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
     width: "100%",
   },
   logoContainer: {
     position: "absolute",
-    left: 20,
-    top: 25,
+    left: 16,
+    top: 14,
   },
   logoImage: {
-    width: 60,
-    height: 60,
+    width: 44,
+    height: 44,
     tintColor: "white",
   },
   titleContainer: {
     alignItems: "center",
-    paddingLeft: 40,
+    paddingHorizontal: 48,
   },
   typeLabel: {
     color: "white",
-    fontSize: 22,
+    fontSize: 18,
     letterSpacing: 1,
     textAlign: "center",
   },
   statusTag: {
-    marginTop: 5,
+    marginTop: 4,
     borderWidth: 1,
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
   seasonLabel: {
-    fontSize: 20,
-    marginTop: 4,
+    fontSize: 16,
+    marginTop: 2,
   },
   optionsButton: {
     position: "absolute",
-    right: 20,
-    top: 25,
+    right: 16,
+    top: 20,
     padding: 4,
   },
 
   // Body
   cardBody: {
     flexDirection: "row",
-    padding: 20,
-    paddingTop: 10,
-    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 8,
   },
   infoColumn: {
     flex: 1,
-    paddingRight: 10,
+    paddingRight: 8,
   },
   nameContainer: {
-    marginBottom: 15,
+    marginBottom: 8,
   },
   nameValue: {
     fontSize: 18,
-    marginBottom: 4,
   },
-  infoRow: {
+  infoGrid: {
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: "wrap",
+  },
+  infoCell: {
+    width: "50%",
+    paddingRight: 6,
     marginBottom: 8,
   },
   infoGroup: {
-    marginBottom: 8,
+    marginBottom: 6,
   },
   label: {
-    marginBottom: 2,
+    marginBottom: 1,
   },
   value: {
     fontSize: 13,
+  },
+  cellValue: {
+    fontSize: 14,
   },
   valueWrap: {
     flexWrap: "wrap",
   },
   photoColumn: {
-    width: 110,
+    width: 80,
     alignItems: "center",
-    gap: 15,
+    gap: 8,
   },
   photoPlaceholder: {
-    width: 90,
-    height: 110,
+    width: 64,
+    height: 80,
+    borderRadius: 6,
+    overflow: "hidden",
     backgroundColor: "#F0F0F0",
     justifyContent: "center",
     alignItems: "center",
@@ -147,8 +156,7 @@ export const styles = StyleSheet.create({
 
   // Barcode
   barcodeWrapper: {
-    marginTop: 10,
-    width: 100,
+    width: 80,
     alignItems: "center",
     borderRadius: 4,
   },
@@ -178,35 +186,29 @@ export const styles = StyleSheet.create({
     textAlign: "center",
   },
   barcodeLine: {
-    height: 40,
+    height: 32,
     backgroundColor: "black",
   },
 
   // Footer
   cardFooter: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
   },
-  sectionBlock: {
-    marginBottom: 15,
+  footerColumns: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 6,
+  },
+  footerColumn: {
+    flex: 1,
   },
   sectionTitle: {
-    marginBottom: 8,
-  },
-  rowBetween: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  valueRight: {
-    textAlign: "right",
-  },
-  federationName: {
-    marginBottom: 4,
+    marginBottom: 2,
   },
   contactButton: {
     borderRadius: 8,
-    paddingVertical: 12,
+    paddingVertical: 8,
     alignItems: "center",
     marginTop: 10,
   },
@@ -214,12 +216,12 @@ export const styles = StyleSheet.create({
     fontSize: 14,
   },
   validityContainer: {
-    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 4,
     borderTopWidth: 1,
     borderTopColor: "#33333320",
-    paddingTop: 10,
-  },
-  validityDate: {
-    marginTop: 2,
+    paddingTop: 8,
   },
 });

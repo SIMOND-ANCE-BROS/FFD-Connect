@@ -30,6 +30,7 @@ import {
 import type { AdminClubDetailDto, ClubRegistrationMode } from '../api/generated/types.gen';
 import { auditQuery, clubQuery, ensureOk, unwrap } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
+import { LinkMemberModal } from '../components/LinkMemberModal';
 import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { extraRoleLabels, REGISTRATION_MODE_LABELS, ROLE_LABELS } from '../lib/labels';
@@ -81,6 +82,7 @@ export function ClubDetailPage() {
   const [pending, setPending] = useState<Partial<ClubForm> | null>(null);
   const [statusOpen, setStatusOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
 
   const form = useForm<ClubForm>({
     initialValues: { name: '', registrationMode: 'MEMBERS_AUTO_CONFIRM' },
@@ -252,7 +254,19 @@ export function ClubDetailPage() {
         </Stack>
       </Card>
 
-      <Title order={4}>Membres</Title>
+      <Group justify="space-between">
+        <Title order={4}>Membres</Title>
+        <Group gap="xs">
+          {disabled && (
+            <Text size="xs" c="dimmed">
+              Club désactivé
+            </Text>
+          )}
+          <Button variant="light" disabled={disabled} onClick={() => setLinkOpen(true)}>
+            Lier un membre
+          </Button>
+        </Group>
+      </Group>
       {c.members.length ? (
         <Table>
           <Table.Thead>
@@ -324,6 +338,12 @@ export function ClubDetailPage() {
           Aucune modification admin.
         </Text>
       )}
+
+      <LinkMemberModal
+        club={{ id: c.id, name: c.name }}
+        opened={linkOpen}
+        onClose={() => setLinkOpen(false)}
+      />
 
       <Modal
         opened={pending !== null}

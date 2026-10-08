@@ -23,6 +23,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { AppButton } from "../../../components/AppButton";
 import { AppText } from "../../../components/AppText";
 import { PinnedHeader } from "../../../components/PinnedHeader";
 import { NotificationBell } from "../../../components/NotificationBell";
@@ -32,6 +33,7 @@ import { FilterSheet } from "../../../components/FilterSheet";
 import { FilterChip } from "../../../components/FilterChip";
 import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
+import { useWakeStore } from "../../../stores/wake.store";
 import { Competition } from "../context/CompetitionContext";
 import {
   CompetitionDatePeriod,
@@ -96,7 +98,8 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
     competitions,
     refreshing,
     isLoading,
-    hasMore,
+    isLoadingMore,
+    canLoadMoreManually,
     scope,
     statusFilter,
     searchQuery,
@@ -126,6 +129,7 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
   } = actions;
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const wakeOverlayVisible = useWakeStore((s) => s.waking && s.visible);
 
   // Feuille de filtres avancés (discipline + style + distance + période)
   const [filterVisible, setFilterVisible] = useState(false);
@@ -535,10 +539,12 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
       <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} />
 
       <View style={styles.container}>
-        {isLoading && competitions.length === 0 ? (
+        {/* Single full-screen loader; hidden while the wake overlay (which
+            has its own spinner) is up, so only one spinner is ever on screen. */}
+        {isLoading && !wakeOverlayVisible ? (
           <View
             testID="competitions-loading"
-            style={[styles.emptyContainer, { paddingTop: headerH + 8 }]}
+            style={[styles.emptyContainer, { paddingTop: headerH }]}
           >
             <ActivityIndicator size="large" color={theme.primary} />
           </View>
@@ -559,34 +565,52 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
             />
           }
           onEndReached={() => {
+            // onLoadMore renews the auto-fetch budget: only a real scroll to
+            // the end of a non-empty list may do that. An empty list can fire
+            // onEndReached on layout, which would re-open unbounded fetching.
+            if (competitions.length === 0) return;
             onLoadMore().catch(() => {});
           }}
           onEndReachedThreshold={0.5}
           ListFooterComponent={
-            <ListFooter isLoading={isLoading} hasMore={hasMore} />
+            <ListFooter
+              isLoadingMore={isLoadingMore}
+              // In the empty state the button lives there instead.
+              canLoadMore={canLoadMoreManually && competitions.length > 0}
+              onLoadMore={onLoadMore}
+            />
           }
+          // headerH already includes the header's fade tail (and the filters
+          // keep their own bottom margin): no extra offset on top of it.
           contentContainerStyle={{
             ...styles.listContent,
-            paddingTop: headerH + 8,
+            paddingTop: headerH,
           }}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <AppText
-                variant="h3"
-                align="center"
-                style={{ color: theme.text }}
-              >
-                {emptyState.title}
-              </AppText>
-              <AppText
-                variant="body"
-                align="center"
-                style={[styles.emptySubtitle, { color: theme.textSecondary }]}
-              >
-                {emptyState.subtitle}
-              </AppText>
-            </View>
+            // While pages may still hold matches, the loader above is shown
+            // instead of a premature "no competition" message.
+            isLoading ? null : (
+              <View style={styles.emptyContainer}>
+                <AppText
+                  variant="h3"
+                  align="center"
+                  style={{ color: theme.text }}
+                >
+                  {emptyState.title}
+                </AppText>
+                <AppText
+                  variant="body"
+                  align="center"
+                  style={[styles.emptySubtitle, { color: theme.textSecondary }]}
+                >
+                  {emptyState.subtitle}
+                </AppText>
+                {canLoadMoreManually ? (
+                  <LoadMoreButton onLoadMore={onLoadMore} />
+                ) : null}
+              </View>
+            )
           }
         />
 
@@ -876,19 +900,50 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
   );
 };
 
-const ListFooter = ({
-  isLoading,
-  hasMore,
+/**
+ * Shown once the automatic page scan has used its budget while older pages
+ * remain: lets the user keep searching instead of an endless spinner.
+ */
+const LoadMoreButton = ({
+  onLoadMore,
 }: {
-  isLoading: boolean;
-  hasMore: boolean;
+  onLoadMore: () => Promise<void>;
+}) => (
+  <AppButton
+    title="Charger plus"
+    variant="outline"
+    testID="competitions-load-more-button"
+    accessibilityHint="Charge plus de compétitions pour poursuivre la recherche"
+    onPress={() => {
+      onLoadMore().catch(() => {});
+    }}
+    style={styles.loadMoreButton}
+  />
+);
+
+const ListFooter = ({
+  isLoadingMore,
+  canLoadMore,
+  onLoadMore,
+}: {
+  isLoadingMore: boolean;
+  canLoadMore: boolean;
+  onLoadMore: () => Promise<void>;
 }) => {
   const { theme } = useTheme();
 
-  if (!isLoading || !hasMore) return <View style={styles.footerEmpty} />;
+  if (!isLoadingMore) {
+    return canLoadMore ? (
+      <View style={styles.footerLoader}>
+        <LoadMoreButton onLoadMore={onLoadMore} />
+      </View>
+    ) : (
+      <View style={styles.footerEmpty} />
+    );
+  }
 
   return (
-    <View style={styles.footerLoader}>
+    <View style={styles.footerLoader} testID="competitions-load-more">
       <ActivityIndicator color={theme.primary} />
     </View>
   );

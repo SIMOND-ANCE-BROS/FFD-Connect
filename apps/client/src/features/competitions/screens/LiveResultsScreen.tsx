@@ -257,7 +257,8 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
             tintColor={theme.primary}
           />
         }
-        contentContainerStyle={{ ...styles.list, paddingTop: headerH + 8 }}
+        // headerH already includes the header's fade tail: no extra offset.
+        contentContainerStyle={{ ...styles.list, paddingTop: headerH }}
         stickySectionHeadersEnabled={true}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -310,7 +311,7 @@ const styles = StyleSheet.create({
   },
   info: { flex: 1 },
   emptyContainer: {
-    marginTop: 80,
+    marginTop: 24,
     alignItems: "center",
     paddingHorizontal: 32,
   },

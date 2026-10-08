@@ -44,6 +44,93 @@ describe("AdminClubsService", () => {
     service = moduleRef.get(AdminClubsService);
   });
 
+  describe("create", () => {
+    beforeEach(() => {
+      prisma.club.findFirst.mockResolvedValue(null);
+      prisma.club.create.mockResolvedValue({ id: "c-new" } as never);
+    });
+
+    it("creates the club, audits CLUB_CREATE and returns the detail", async () => {
+      query.detail.mockResolvedValue({ id: "c-new", name: "Club Neuf" });
+      await expect(
+        service.create("admin-1", {
+          name: " Club Neuf ",
+          registrationMode: ClubRegistrationMode.CLUB_ONLY,
+        }),
+      ).resolves.toEqual({ id: "c-new", name: "Club Neuf" });
+
+      expect(prisma.club.findFirst).toHaveBeenCalledWith({
+        where: { name: { equals: "Club Neuf", mode: "insensitive" } },
+        select: { id: true, name: true },
+      });
+      expect(prisma.club.create).toHaveBeenCalledWith({
+        data: {
+          name: "Club Neuf",
+          registrationMode: ClubRegistrationMode.CLUB_ONLY,
+        },
+        select: { id: true },
+      });
+      expect(audit.record).toHaveBeenCalledWith(prisma, {
+        actorId: "admin-1",
+        action: "CLUB_CREATE",
+        targetType: "CLUB",
+        targetId: "c-new",
+        after: {
+          name: "Club Neuf",
+          registrationMode: ClubRegistrationMode.CLUB_ONLY,
+        },
+      });
+      expect(query.detail).toHaveBeenCalledWith("c-new");
+    });
+
+    it("defaults the registration mode when none is given", async () => {
+      await service.create("admin-1", { name: "Club Neuf" });
+      expect(prisma.club.create).toHaveBeenCalledWith({
+        data: {
+          name: "Club Neuf",
+          registrationMode: ClubRegistrationMode.MEMBERS_AUTO_CONFIRM,
+        },
+        select: { id: true },
+      });
+    });
+
+    it("409s on a name that exists in another case, writing nothing", async () => {
+      prisma.club.findFirst.mockResolvedValue({
+        id: "c1",
+        name: "Club A",
+      } as never);
+      await expect(
+        service.create("admin-1", { name: "club a" }),
+      ).rejects.toMatchObject({
+        response: {
+          message: "Un club porte déjà ce nom",
+          existingClubId: "c1",
+        },
+      });
+      expect(prisma.club.create).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it("409s when it loses a race on the unique name", async () => {
+      prisma.club.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError("dup", {
+          code: "P2002",
+          clientVersion: "x",
+        }),
+      );
+      await expect(
+        service.create("admin-1", { name: "Club A" }),
+      ).rejects.toThrow(new ConflictException("Un club porte déjà ce nom"));
+    });
+
+    it("rethrows any other failure", async () => {
+      prisma.club.create.mockRejectedValue(new Error("boom"));
+      await expect(
+        service.create("admin-1", { name: "Club A" }),
+      ).rejects.toThrow("boom");
+    });
+  });
+
   describe("update", () => {
     beforeEach(() => {
       prisma.club.findUnique.mockResolvedValueOnce(current as never);

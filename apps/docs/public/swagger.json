@@ -2211,6 +2211,189 @@
         ],
         "summary": "Liste paginée des clubs",
         "tags": ["admin"]
+      },
+      "post": {
+        "operationId": "AdminController_createClub",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAdminClubDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminClubDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nom déjà utilisé"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Créer un club",
+        "tags": ["admin"]
       }
     },
     "/admin/clubs/options": {
@@ -5374,6 +5557,50 @@
                       "type": "string",
                       "nullable": true
                     },
+                    "license": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string",
+                          "example": "FFD-123456"
+                        },
+                        "validUntil": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "clubName": {
+                          "type": "string"
+                        },
+                        "qrCodeSignature": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "qrCode": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Contenu du QR de licence signé par le serveur, à afficher tel quel. Null si la signature est désactivée."
+                        },
+                        "appleWalletAvailable": {
+                          "type": "boolean",
+                          "description": "Vrai si le serveur peut produire le pass Apple Wallet : l'app n'affiche le bouton « Ajouter à Apple Wallet » que dans ce cas."
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -6060,6 +6287,257 @@
         ],
         "summary": "Export RGPD des données personnelles (portabilité)",
         "tags": ["users"]
+      }
+    },
+    "/licenses/my/wallet/apple": {
+      "post": {
+        "description": "Émet un lien à usage unique (5 minutes) vers le pass `.pkpass` de la licence de l'utilisateur connecté, à ouvrir dans Safari. Émettre un lien invalide les précédents.",
+        "operationId": "AppleWalletController_createDownloadLink",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Lien émis",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppleWalletPassLinkDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "404": {
+            "description": "Aucune licence pour ce compte"
+          },
+          "422": {
+            "description": "Licence expirée"
+          },
+          "429": {
+            "description": "Trop de demandes"
+          },
+          "503": {
+            "description": "Fonctionnalité indisponible (pass non configuré ou signature des QR désactivée)"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Lien de téléchargement du pass Apple Wallet de ma licence",
+        "tags": ["licenses"]
+      }
+    },
+    "/licenses/wallet/apple/{token}": {
+      "get": {
+        "description": "Route publique : le jeton émis par `POST /licenses/my/wallet/apple` tient lieu d'authentification, une seule fois.",
+        "operationId": "AppleWalletController_downloadPass",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "description": "Jeton de téléchargement à usage unique (43 caractères)",
+            "schema": {
+              "example": "q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pass signé",
+            "content": {
+              "application/vnd.apple.pkpass": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Jeton mal formé"
+          },
+          "404": {
+            "description": "Lien invalide ou déjà utilisé, ou licence introuvable"
+          },
+          "410": {
+            "description": "Lien expiré"
+          },
+          "422": {
+            "description": "Licence expirée"
+          },
+          "429": {
+            "description": "Trop de demandes"
+          },
+          "503": {
+            "description": "Fonctionnalité indisponible"
+          }
+        },
+        "summary": "Télécharge le pass Apple Wallet (lien à usage unique)",
+        "tags": ["licenses"]
+      }
+    },
+    "/wdsf/athlete/{min}": {
+      "get": {
+        "description": "Récupère les informations d'un athlète WDSF à partir de son numéro MIN (Member Identification Number)",
+        "operationId": "WdsfController_getAthlete",
+        "parameters": [
+          {
+            "name": "min",
+            "required": true,
+            "in": "path",
+            "description": "Numéro MIN (Member Identification Number) de l'athlète",
+            "schema": {
+              "example": "123456",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Informations de l'athlète récupérées avec succès"
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autorisé"
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Athlète non trouvé"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Récupère les informations d'un athlète WDSF",
+        "tags": ["wdsf"]
       }
     },
     "/tracks": {
@@ -15996,29 +16474,18 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Check-in réussi",
+          "201": {
+            "description": "Check-in effectué. `qrVerification` indique si le QR signé a été vérifié (#168) : `warning` non nul = QR accepté mais non vérifié (mode warn), à afficher au staff.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "registration": {
-                      "type": "object"
-                    }
-                  }
+                  "$ref": "#/components/schemas/CheckInResponseDto"
                 }
               }
             }
           },
           "400": {
-            "description": "Données QR code invalides"
+            "description": "Données QR code invalides, ou QR non vérifié refusé (mode enforce : non signé, signature invalide ou licence expirée)"
           },
           "401": {
             "description": "Non authentifié - Token manquant ou invalide",
@@ -16380,7 +16847,14 @@
         },
         "responses": {
           "201": {
-            "description": "Check-in réussi"
+            "description": "Check-in effectué (même réponse que le check-in staff). En mode enforce, un QR non vérifié est refusé en 400.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckInResponseDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Requête invalide - Erreur de validation",
@@ -16829,165 +17303,6 @@
         },
         "summary": "Crée un rapport/signalement",
         "tags": ["reports"]
-      }
-    },
-    "/wdsf/athlete/{min}": {
-      "get": {
-        "description": "Récupère les informations d'un athlète WDSF à partir de son numéro MIN (Member Identification Number)",
-        "operationId": "WdsfController_getAthlete",
-        "parameters": [
-          {
-            "name": "min",
-            "required": true,
-            "in": "path",
-            "description": "Numéro MIN (Member Identification Number) de l'athlète",
-            "schema": {
-              "example": "123456",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Informations de l'athlète récupérées avec succès"
-          },
-          "400": {
-            "description": "Requête invalide - Erreur de validation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 400
-                    },
-                    "message": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "example": ["email must be an email", "password is required"]
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Bad Request"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Non autorisé"
-          },
-          "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Athlète non trouvé"
-          },
-          "409": {
-            "description": "Conflit - La ressource existe déjà",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 409
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Resource already exists"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Conflict"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Trop de requêtes - Rate limit dépassé",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 429
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Too many requests"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Too Many Requests"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Erreur serveur interne",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 500
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Internal Server Error"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "JWT-auth": []
-          }
-        ],
-        "summary": "Récupère les informations d'un athlète WDSF",
-        "tags": ["wdsf"]
       }
     },
     "/notifications": {
@@ -18988,6 +19303,17 @@
                       "type": "string",
                       "nullable": true
                     },
+                    "qrCode": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Contenu du QR de licence signé par le serveur, à afficher tel quel (valable jusqu'à la fin de validité de la licence). Null si la signature est désactivée.",
+                      "example": "{\"v\":1,\"id\":\"FFD-123456\",\"exp\":\"2026-08-31\",\"sig\":\"…\"}"
+                    },
+                    "appleWalletAvailable": {
+                      "type": "boolean",
+                      "description": "Vrai si le serveur peut produire le pass Apple Wallet (pass configuré et QR signés) : l'app n'affiche le bouton « Ajouter à Apple Wallet » que dans ce cas.",
+                      "example": true
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -20876,17 +21202,24 @@
         },
         "required": ["data", "meta"]
       },
-      "AdminClubOptionDto": {
+      "CreateAdminClubDto": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string"
-          },
           "name": {
-            "type": "string"
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120
+          },
+          "registrationMode": {
+            "default": "MEMBERS_AUTO_CONFIRM",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubRegistrationMode"
+              }
+            ]
           }
         },
-        "required": ["id", "name"]
+        "required": ["name"]
       },
       "UserRole": {
         "type": "string",
@@ -20997,6 +21330,18 @@
           "members"
         ]
       },
+      "AdminClubOptionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "name"]
+      },
       "UpdateAdminClubDto": {
         "type": "object",
         "properties": {
@@ -21072,6 +21417,7 @@
               "USER_DISABLE",
               "USER_ENABLE",
               "USER_DELETE",
+              "CLUB_CREATE",
               "CLUB_UPDATE",
               "CLUB_DISABLE",
               "CLUB_ENABLE",
@@ -21553,13 +21899,21 @@
             "type": "string",
             "enum": ["LICENSEE", "CLUB", "STAFF"]
           },
+          "extraRoles": {
+            "type": "array",
+            "description": "Rôles supplémentaires (hors Admin ; le rôle principal en est retiré)",
+            "items": {
+              "type": "string",
+              "enum": ["LICENSEE", "CLUB", "STAFF"]
+            }
+          },
           "clubId": {
             "type": "string",
             "description": "Club existant (exclusif avec clubName)"
           },
           "clubName": {
             "type": "string",
-            "description": "Nouveau club, uniquement pour un compte Club (exclusif avec clubId)"
+            "description": "Nouveau club, pour un compte Club ou ayant le rôle Club en supplément (exclusif avec clubId)"
           }
         },
         "required": ["email", "firstName", "lastName", "role"]
@@ -21644,6 +21998,27 @@
           }
         },
         "required": ["password"]
+      },
+      "AppleWalletPassLinkDto": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "URL absolue du pass, à ouvrir dans Safari (qui propose « Ajouter à Apple Wallet »). Usage unique, quelques minutes.",
+            "example": "https://api.example.org/api/v1/licenses/wallet/apple/q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW"
+          },
+          "path": {
+            "type": "string",
+            "description": "Même lien, relatif à la racine de l'API (sans préfixe), si l'app préfère le recomposer avec son URL d'API.",
+            "example": "licenses/wallet/apple/q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "Fin de validité du lien",
+            "format": "date-time"
+          }
+        },
+        "required": ["url", "path", "expiresAt"]
       },
       "TrackResponseDto": {
         "type": "object",
@@ -21748,8 +22123,9 @@
             "description": "Modération (ADMIN) — blackliste la piste : elle disparaît de la bibliothèque partagée."
           },
           "clashTimecodes": {
-            "description": "Paso doble (ADMIN) — timecodes (secondes) des appels/coups affichés sur le lecteur. Remplace entièrement la liste existante.",
-            "example": [12.5, 40, 68.3],
+            "description": "Paso doble (ADMIN) — timecodes (secondes) des appels/coups affichés sur le lecteur. Remplace entièrement la liste existante. Un paso doble comporte au plus 3 clashs.",
+            "maxItems": 3,
+            "example": [40, 80, 120],
             "type": "array",
             "items": {
               "type": "number"
@@ -21788,9 +22164,9 @@
             "example": 31
           },
           "clashTimecodes": {
-            "description": "Paso doble — timecodes (secondes) des clashs proposés. Remplace entièrement la liste ; une liste vide propose « aucun clash ».",
-            "maxItems": 10,
-            "example": [12.5, 40, 68.3],
+            "description": "Paso doble — timecodes (secondes) des clashs proposés (3 au plus). Remplace entièrement la liste ; une liste vide propose « aucun clash ».",
+            "maxItems": 3,
+            "example": [40, 80, 120],
             "type": "array",
             "items": {
               "type": "number"
@@ -22150,9 +22526,9 @@
             "example": 31
           },
           "clashTimecodes": {
-            "description": "Paso doble — timecodes (secondes) des clashs proposés. Remplace entièrement la liste ; une liste vide propose « aucun clash ».",
-            "maxItems": 10,
-            "example": [12.5, 40, 68.3],
+            "description": "Paso doble — timecodes (secondes) des clashs proposés (3 au plus). Remplace entièrement la liste ; une liste vide propose « aucun clash ».",
+            "maxItems": 3,
+            "example": [40, 80, 120],
             "type": "array",
             "items": {
               "type": "number"
@@ -22406,11 +22782,88 @@
         "properties": {
           "qrData": {
             "type": "string",
-            "description": "Données QR code du participant à checker",
-            "example": "{\"userId\":\"user-123\",\"eventId\":\"event-456\"}"
+            "description": "Contenu du QR de licence scanné : QR signé (#168), ancien JSON non signé, ou identifiant brut",
+            "example": "{\"v\":1,\"id\":\"FFD-123456\",\"exp\":\"2026-08-31\",\"sig\":\"…\"}",
+            "maxLength": 512
           }
         },
         "required": ["qrData"]
+      },
+      "CheckInUserDto": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          }
+        },
+        "required": ["firstName", "lastName"]
+      },
+      "CheckInRegistrationResultDto": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": "string",
+            "description": "Catégorie de l'épreuve"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["SUCCESS", "ALREADY_CHECKED_IN", "ERROR"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "bibNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "partner": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": ["event", "status"]
+      },
+      "CheckInQrVerificationDto": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["off", "warn", "enforce"],
+            "description": "Mode effectif (off si la signature est désactivée)"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["NOT_CHECKED", "VALID", "UNSIGNED", "INVALID_SIGNATURE", "EXPIRED"]
+          },
+          "warning": {
+            "type": "string",
+            "nullable": true,
+            "description": "Avertissement à afficher au staff (QR accepté mais non vérifié), null sinon",
+            "example": "QR non vérifié : ancien QR non signé"
+          }
+        },
+        "required": ["mode", "status", "warning"]
+      },
+      "CheckInResponseDto": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/CheckInUserDto"
+          },
+          "registrations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckInRegistrationResultDto"
+            }
+          },
+          "qrVerification": {
+            "$ref": "#/components/schemas/CheckInQrVerificationDto"
+          }
+        },
+        "required": ["user", "registrations", "qrVerification"]
       },
       "GenerateVolunteerTokenDto": {
         "type": "object",
@@ -22435,7 +22888,8 @@
           },
           "qrData": {
             "type": "string",
-            "description": "Données du QR code du participant"
+            "description": "Données du QR code du participant",
+            "maxLength": 512
           }
         },
         "required": ["token", "competitionId", "qrData"]

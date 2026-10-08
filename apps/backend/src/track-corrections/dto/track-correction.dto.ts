@@ -13,15 +13,17 @@ import {
   Min,
 } from "class-validator";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
+import { PASO_MAX_CLASHES } from "../../tracks/paso-clashes";
 
 /** Longueur maximale du commentaire libre (auteur ou administrateur). */
 export const TRACK_CORRECTION_MESSAGE_MAX_LENGTH = 500;
 
 /**
- * Nombre maximal de timecodes de clash. Aligné sur `UpdateTrackDto` (PATCH
- * /tracks/:id) : une valeur validée ici doit rester ré-éditable par l'admin.
+ * Nombre maximal de timecodes de clash : un paso doble en comporte 2 ou 3.
+ * Même borne que `UpdateTrackDto` (PATCH /tracks/:id) : une valeur validée ici
+ * doit rester ré-éditable par l'admin.
  */
-export const TRACK_CORRECTION_MAX_CLASHES = 10;
+export const TRACK_CORRECTION_MAX_CLASHES = PASO_MAX_CLASHES;
 
 /** Timecode maximal d'un clash (secondes) : une musique de compétition dure ~2 min. */
 export const TRACK_CORRECTION_MAX_CLASH_SECONDS = 3600;
@@ -67,10 +69,10 @@ export class TrackCorrectionValuesDto {
 
   @ApiPropertyOptional({
     description:
-      "Paso doble — timecodes (secondes) des clashs proposés. Remplace entièrement la liste ; une liste vide propose « aucun clash ».",
+      "Paso doble — timecodes (secondes) des clashs proposés (3 au plus). Remplace entièrement la liste ; une liste vide propose « aucun clash ».",
     type: [Number],
     maxItems: TRACK_CORRECTION_MAX_CLASHES,
-    example: [12.5, 40.0, 68.3],
+    example: [40.0, 80.0, 120.0],
   })
   @IsOptional()
   @IsArray()

@@ -19,12 +19,16 @@ import {
 import { QRCodeView } from "../components/QRCodeView.native";
 
 import { AppText } from "../../../components/AppText";
+import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import {
   GlassHeader,
   GLASS_HEADER_HEIGHT,
 } from "../../../components/GlassHeader";
 import { NotificationBell } from "../../../components/NotificationBell";
-import { StackedCard } from "../../../components/StackedCard";
+import {
+  StackedCard,
+  STACKED_CARD_ACTIVE_OFFSET,
+} from "../../../components/StackedCard";
 import { AddLicenseCard } from "../components/AddLicenseCard";
 import { BigBarcode } from "../components/BigBarcode";
 import {
@@ -41,12 +45,22 @@ import { useTheme } from "../../../context/ThemeContext";
 import type { RootStackParamList } from "../../../navigation/types";
 import { isWdsfQrData } from "../../../utils/typeGuards";
 import { useLicenseLogic } from "../hooks/useLicenseLogic";
+import { buildLicenseQrData } from "../utils/licenseQrData";
 
 if (Platform.OS === "android") {
   if (UIManager.setLayoutAnimationEnabledExperimental) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
   }
 }
+
+/**
+ * Bottom clearance for the floating tab bar (70pt pill + its own bottom gap)
+ * and the mini player that can sit above it — same budget as the other tab
+ * root screens. Without it the end of the content hides behind the tab bar.
+ */
+const FLOATING_TAB_BAR_CLEARANCE = 120;
+
+type LicenseListItem = { type: string; data: LicenseUser | null };
 
 export const LicenseScreen: React.FC = () => {
   const { state, actions } = useLicenseLogic();
@@ -66,6 +80,67 @@ export const LicenseScreen: React.FC = () => {
     state.listItems.find((item) => item.type === "FFD")?.data?.validUntilRaw ??
     null;
 
+  // FFD/WDSF card (WDSF wrapped for swipe-to-remove). Shared by the stacked
+  // wallet and the dual-license segmented view.
+  const renderLicenseCard = (item: LicenseListItem, collapsed: boolean) => {
+    const user = item.data as LicenseUser;
+    if (item.type === "WDSF") {
+      return (
+        <SwipeableLicenseCard
+          onRemove={actions.handleRemoveWdsfWithConfirm}
+          enabled={!collapsed}
+          theme={currentTheme}
+        >
+          <LicenseCard
+            type="WDSF"
+            user={user}
+            photoUri={state.photoUri}
+            onShowQr={() =>
+              actions.handleShowQr(
+                JSON.stringify({
+                  id: item.data?.licenseNumber,
+                  valid: true,
+                  type: item.type,
+                }),
+              )
+            }
+            themeOverride={isDark ? "dark" : "light"}
+            collapsed={collapsed}
+            onOptions={actions.handleRemoveWdsfWithConfirm}
+            testID="license-card-WDSF"
+          />
+        </SwipeableLicenseCard>
+      );
+    }
+    return (
+      <LicenseCard
+        type={item.type as LicenseType}
+        user={user}
+        photoUri={state.photoUri}
+        onShowQr={() =>
+          actions.handleShowQr(
+            // QR signé par le serveur (#168) tel quel, sinon
+            // ancien contenu (backend ancien / snapshot antérieur).
+            buildLicenseQrData(user, item.type),
+          )
+        }
+        themeOverride={isDark ? "dark" : "light"}
+        collapsed={collapsed}
+        testID={`license-card-${item.type}`}
+      />
+    );
+  };
+
+  // With both an FFD and a WDSF license, the stacked wallet (active card
+  // shifted below a peeking one) is too tall for a phone screen. Show a
+  // segmented FFD/WDSF switch and a single full card instead.
+  const ffdIndex = state.listItems.findIndex((item) => item.type === "FFD");
+  const wdsfIndex = state.listItems.findIndex((item) => item.type === "WDSF");
+  const hasDualLicense = ffdIndex !== -1 && wdsfIndex !== -1;
+  const dualActiveIndex =
+    state.activeCardIndex === wdsfIndex ? wdsfIndex : ffdIndex;
+  const dualActiveItem = state.listItems[dualActiveIndex];
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: currentTheme.background }]}
@@ -83,11 +158,6 @@ export const LicenseScreen: React.FC = () => {
         scrollY={scrollY}
         right={
           <View style={styles.headerActions}>
-            <NotificationBell
-              theme={currentTheme}
-              isDark={isDark}
-              onPress={() => navigation.getParent()?.navigate("Notifications")}
-            />
             {/* Le renouvellement se fait via la bannière d'expiration (cliquable)
                 affichée quand la licence approche/à échéance. Plus de bouton
                 dédié dans l'en-tête (redondant). */}
@@ -106,14 +176,21 @@ export const LicenseScreen: React.FC = () => {
             >
               <Share size={22} color={currentTheme.text} />
             </TouchableOpacity>
+            <NotificationBell
+              theme={currentTheme}
+              isDark={isDark}
+              onPress={() => navigation.getParent()?.navigate("Notifications")}
+            />
           </View>
         }
       />
 
       <Animated.ScrollView
         contentContainerStyle={[
-          styles.listContent,
-          { paddingTop: insets.top + GLASS_HEADER_HEIGHT + 8 },
+          {
+            paddingTop: insets.top + GLASS_HEADER_HEIGHT + 8,
+            paddingBottom: insets.bottom + FLOATING_TAB_BAR_CLEARANCE,
+          },
         ]}
         style={styles.mainContainer}
         testID="license-screen-scroll-view"
@@ -161,135 +238,115 @@ export const LicenseScreen: React.FC = () => {
           validUntil={ffdValidUntilRaw}
           onPress={() => navigation.getParent()?.navigate("LicenseRenewal")}
         />
-        <View style={styles.walletContainer}>
-          {state.listItems.map((item, index) => {
-            const isActive = index === state.activeCardIndex;
+        {hasDualLicense ? (
+          <View style={styles.dualContainer}>
+            <View style={styles.segmentWrapper}>
+              <FluidSegmentedTab
+                testID="license-screen-type-switch"
+                options={[
+                  { label: "Licence FFD", value: "FFD" },
+                  { label: "Licence WDSF", value: "WDSF" },
+                ]}
+                activeValue={dualActiveItem.type}
+                onChange={(value) =>
+                  actions.handleCardPress(
+                    value === "WDSF" ? wdsfIndex : ffdIndex,
+                  )
+                }
+              />
+            </View>
+            <View testID={`license-screen-card-${dualActiveItem.type}`}>
+              {renderLicenseCard(dualActiveItem, false)}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.walletContainer} testID="license-screen-wallet">
+            {state.listItems.map((item, index) => {
+              const isActive = index === state.activeCardIndex;
 
-            if (item.type === "ADD_WDSF") {
-              return (
-                <StackedCard
-                  key="add-wdsf"
-                  index={index}
-                  isActive={isActive}
-                  pullY={state.pullY}
-                  pullGesture={state.pullGesture}
-                  isPullable={false}
-                  onPress={actions.handleAddWdsf}
-                  testID="license-screen-add-wdsf-card"
-                >
-                  <AddLicenseCard
+              if (item.type === "ADD_WDSF") {
+                return (
+                  <StackedCard
+                    key="add-wdsf"
+                    index={index}
+                    isActive={isActive}
                     pullY={state.pullY}
-                    theme={currentTheme}
-                    onPlusLayout={setAddWdsfOrigin}
-                  />
-                </StackedCard>
-              );
-            }
+                    pullGesture={state.pullGesture}
+                    isPullable={false}
+                    onPress={actions.handleAddWdsf}
+                    testID="license-screen-add-wdsf-card"
+                  >
+                    <AddLicenseCard
+                      pullY={state.pullY}
+                      theme={currentTheme}
+                      onPlusLayout={setAddWdsfOrigin}
+                    />
+                  </StackedCard>
+                );
+              }
 
-            if (item.type === "GUEST") {
-              return (
-                <StackedCard
-                  key="guest"
-                  index={index}
-                  isActive={isActive}
-                  pullY={state.pullY}
-                  pullGesture={state.pullGesture}
-                  isPullable={false}
-                  onPress={() => {}}
-                  testID="license-screen-guest-card"
-                >
-                  <View
-                    style={[
-                      styles.guestCard,
-                      {
-                        backgroundColor: currentTheme.surface,
-                        borderColor: currentTheme.border,
-                      },
-                    ]}
+              if (item.type === "GUEST") {
+                return (
+                  <StackedCard
+                    key="guest"
+                    index={index}
+                    isActive={isActive}
+                    pullY={state.pullY}
+                    pullGesture={state.pullGesture}
+                    isPullable={false}
+                    onPress={() => {}}
+                    testID="license-screen-guest-card"
                   >
                     <View
                       style={[
-                        styles.guestIconBox,
-                        isDark
-                          ? styles.guestIconBoxDark
-                          : styles.guestIconBoxLight,
+                        styles.guestCard,
+                        {
+                          backgroundColor: currentTheme.surface,
+                          borderColor: currentTheme.border,
+                        },
                       ]}
                     >
-                      <User size={32} color={currentTheme.textSecondary} />
+                      <View
+                        style={[
+                          styles.guestIconBox,
+                          isDark
+                            ? styles.guestIconBoxDark
+                            : styles.guestIconBoxLight,
+                        ]}
+                      >
+                        <User size={32} color={currentTheme.textSecondary} />
+                      </View>
+                      <AppText
+                        variant="h2"
+                        align="center"
+                        style={[styles.guestTitle]}
+                      >
+                        Mode Invité
+                      </AppText>
+                      <AppText variant="body" align="center">
+                        Vous consultez l'application en tant qu'invité.
+                        Connectez-vous avec votre licence pour accéder à toutes
+                        les fonctionnalités.
+                      </AppText>
                     </View>
-                    <AppText
-                      variant="h2"
-                      align="center"
-                      style={[styles.guestTitle]}
-                    >
-                      Mode Invité
-                    </AppText>
-                    <AppText variant="body" align="center">
-                      Vous consultez l'application en tant qu'invité.
-                      Connectez-vous avec votre licence pour accéder à toutes
-                      les fonctionnalités.
-                    </AppText>
-                  </View>
-                </StackedCard>
-              );
-            }
+                  </StackedCard>
+                );
+              }
 
-            if (item.type === "STAFF") {
-              return (
-                <StackedCard
-                  key="staff"
-                  index={index}
-                  isActive={isActive}
-                  pullY={state.pullY}
-                  pullGesture={state.pullGesture}
-                  isPullable={false}
-                  onPress={() => actions.handleCardPress(index)}
-                  testID="license-screen-staff-card"
-                >
-                  <LicenseCard
-                    type="FFD"
-                    user={item.data as LicenseUser}
-                    photoUri={state.photoUri}
-                    onShowQr={() =>
-                      actions.handleShowQr(
-                        JSON.stringify({
-                          id: item.data?.licenseNumber,
-                          valid: true,
-                          type: "STAFF",
-                          role: "STAFF",
-                        }),
-                      )
-                    }
-                    themeOverride={isDark ? "dark" : "light"}
-                    collapsed={!isActive}
-                    testID={`license-card-${index}`}
-                  />
-                </StackedCard>
-              );
-            }
-
-            const isPullable =
-              item.type === "FFD" && !state.showWdsf && isActive;
-
-            return (
-              <StackedCard
-                key={index}
-                index={index}
-                isActive={isActive}
-                pullY={state.pullY}
-                pullGesture={state.pullGesture}
-                isPullable={isPullable}
-                onPress={() => actions.handleCardPress(index)}
-                testID={`license-screen-card-${item.type}`}
-              >
-                {item.type === "WDSF" ? (
-                  <SwipeableLicenseCard
-                    onRemove={actions.handleRemoveWdsfWithConfirm}
-                    enabled={isActive}
-                    theme={currentTheme}
+              if (item.type === "STAFF") {
+                return (
+                  <StackedCard
+                    key="staff"
+                    index={index}
+                    isActive={isActive}
+                    pullY={state.pullY}
+                    pullGesture={state.pullGesture}
+                    isPullable={false}
+                    onPress={() => actions.handleCardPress(index)}
+                    testID="license-screen-staff-card"
                   >
                     <LicenseCard
-                      type={item.type}
+                      type="FFD"
                       user={item.data as LicenseUser}
                       photoUri={state.photoUri}
                       onShowQr={() =>
@@ -297,44 +354,39 @@ export const LicenseScreen: React.FC = () => {
                           JSON.stringify({
                             id: item.data?.licenseNumber,
                             valid: true,
-                            type: item.type,
+                            type: "STAFF",
+                            role: "STAFF",
                           }),
                         )
                       }
                       themeOverride={isDark ? "dark" : "light"}
                       collapsed={!isActive}
-                      onOptions={actions.handleRemoveWdsfWithConfirm}
-                      testID={`license-card-${item.type}`}
+                      testID={`license-card-${index}`}
                     />
-                  </SwipeableLicenseCard>
-                ) : (
-                  <LicenseCard
-                    type={item.type as LicenseType}
-                    user={item.data as LicenseUser}
-                    photoUri={state.photoUri}
-                    onShowQr={() =>
-                      actions.handleShowQr(
-                        JSON.stringify({
-                          id: item.data?.licenseNumber,
-                          valid: true,
-                          type: item.type,
-                        }),
-                      )
-                    }
-                    themeOverride={isDark ? "dark" : "light"}
-                    collapsed={!isActive}
-                    onOptions={
-                      item.type === "WDSF"
-                        ? actions.handleRemoveWdsfWithConfirm
-                        : undefined
-                    }
-                    testID={`license-card-${item.type}`}
-                  />
-                )}
-              </StackedCard>
-            );
-          })}
-        </View>
+                  </StackedCard>
+                );
+              }
+
+              const isPullable =
+                item.type === "FFD" && !state.showWdsf && isActive;
+
+              return (
+                <StackedCard
+                  key={index}
+                  index={index}
+                  isActive={isActive}
+                  pullY={state.pullY}
+                  pullGesture={state.pullGesture}
+                  isPullable={isPullable}
+                  onPress={() => actions.handleCardPress(index)}
+                  testID={`license-screen-card-${item.type}`}
+                >
+                  {renderLicenseCard(item, !isActive)}
+                </StackedCard>
+              );
+            })}
+          </View>
+        )}
       </Animated.ScrollView>
 
       <WdsfEntryModal
@@ -409,10 +461,18 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   walletContainer: {
-    flex: 1,
     marginTop: 10,
     paddingHorizontal: 20,
     minHeight: 500,
+    // The active StackedCard is shifted down with `top`, which does not grow
+    // this container: reserve that offset so its bottom stays scrollable.
+    paddingBottom: STACKED_CARD_ACTIVE_OFFSET,
+  },
+  dualContainer: {
+    paddingHorizontal: 16,
+  },
+  segmentWrapper: {
+    marginBottom: 12,
   },
   modalOverlay: {
     flex: 1,
@@ -428,9 +488,6 @@ const styles = StyleSheet.create({
   },
   mainContainer: {
     flex: 1,
-  },
-  listContent: {
-    paddingBottom: 40,
   },
   qrCodeContainer: {
     padding: 20,

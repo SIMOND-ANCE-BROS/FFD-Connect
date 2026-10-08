@@ -54,6 +54,10 @@ export type MockPrismaService = Partial<
   result: {
     findMany: jest.Mock;
   };
+  volunteerToken: {
+    findUnique: jest.Mock;
+    create: jest.Mock;
+  };
 };
 
 /**
@@ -106,6 +110,10 @@ export function createMockPrismaService(): MockPrismaService {
     },
     result: {
       findMany: jest.fn(),
+    },
+    volunteerToken: {
+      findUnique: jest.fn(),
+      create: jest.fn(),
     },
   } as MockPrismaService;
 }

@@ -146,6 +146,14 @@ module.exports = {
       lines: 88,
       statements: 86,
     },
+    // Apple Wallet pass (#162): a public route handing out a signed document
+    // in exchange for a one-shot token — same bar as auth.
+    [srcDir("licenses", "wallet")]: {
+      statements: 95,
+      branches: 85,
+      functions: 95,
+      lines: 95,
+    },
     [path.join(__dirname, "src", "payment", "payment.service.ts")]: {
       branches: 78,
       functions: 92,

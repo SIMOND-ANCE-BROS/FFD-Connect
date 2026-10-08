@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
@@ -8,7 +9,11 @@ import { ThrottlerModule } from "@nestjs/throttler";
 import { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
+import { UserRole } from "@prisma/client";
+import { ROLES_KEY } from "../auth/decorators/roles.decorator";
+import { RolesGuard } from "../auth/guards/roles.guard";
 import { CompetitionsController } from "./competitions.controller";
+import { CompetitionAccessService } from "./services/competition-access.service";
 import { CompetitionManagementService } from "./services/competition-management.service";
 import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
@@ -54,6 +59,10 @@ describe("CompetitionsController", () => {
     update: jest.fn(),
   };
 
+  const mockAccessService = {
+    assertCanManageCheckIn: jest.fn(),
+  };
+
   const req = (userId: string, role = "LICENSEE") =>
     ({ user: { userId, role } }) as any as RequestWithUser;
 
@@ -72,6 +81,7 @@ describe("CompetitionsController", () => {
           provide: CompetitionManagementService,
           useValue: mockManagementService,
         },
+        { provide: CompetitionAccessService, useValue: mockAccessService },
       ],
     })
       .overrideGuard(ThrottlerUserGuard)
@@ -278,23 +288,106 @@ describe("CompetitionsController", () => {
   });
 
   describe("checkIn", () => {
-    it("calls resultsService.checkIn with competitionId and qrData from body", async () => {
+    const staff = req("staff1", "STAFF");
+
+    it("is restricted to CLUB, STAFF and ADMIN by RolesGuard", () => {
+      const handler = CompetitionsController.prototype.checkIn;
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([
+        UserRole.CLUB,
+        UserRole.STAFF,
+        UserRole.ADMIN,
+      ]);
+      expect(Reflect.getMetadata("__guards__", handler)).toContain(RolesGuard);
+    });
+
+    it("checks access, then calls resultsService.checkIn with competitionId and qrData", async () => {
       const checkInResult = { success: true, message: "OK" };
+      mockAccessService.assertCanManageCheckIn.mockResolvedValue(undefined);
       resultsService.checkIn.mockResolvedValue(checkInResult as any);
 
-      const result = await controller.checkIn("comp1", { qrData: "qr-code" });
+      const result = await controller.checkIn(
+        "comp1",
+        { qrData: "qr-code" },
+        staff,
+      );
 
+      expect(mockAccessService.assertCanManageCheckIn).toHaveBeenCalledWith(
+        "comp1",
+        staff.user,
+      );
       expect(resultsService.checkIn).toHaveBeenCalledWith("comp1", "qr-code");
       expect(result).toBe(checkInResult);
     });
 
+    it("does not check in when the caller may not manage the competition", async () => {
+      mockAccessService.assertCanManageCheckIn.mockRejectedValue(
+        new ForbiddenException(),
+      );
+
+      await expect(
+        controller.checkIn("comp1", { qrData: "qr-code" }, req("c1", "CLUB")),
+      ).rejects.toThrow(ForbiddenException);
+      expect(resultsService.checkIn).not.toHaveBeenCalled();
+    });
+
     it("propagates BadRequestException on invalid QR data", async () => {
+      mockAccessService.assertCanManageCheckIn.mockResolvedValue(undefined);
       resultsService.checkIn.mockRejectedValue(
         new BadRequestException("Invalid QR code"),
       );
       await expect(
-        controller.checkIn("comp1", { qrData: "bad" }),
+        controller.checkIn("comp1", { qrData: "bad" }, staff),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("generateVolunteerToken", () => {
+    it("is restricted to CLUB, STAFF and ADMIN by RolesGuard", () => {
+      const handler = CompetitionsController.prototype.generateVolunteerToken;
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([
+        UserRole.CLUB,
+        UserRole.STAFF,
+        UserRole.ADMIN,
+      ]);
+      expect(Reflect.getMetadata("__guards__", handler)).toContain(RolesGuard);
+    });
+
+    it("checks access, then generates the token", async () => {
+      const club = req("club1", "CLUB");
+      const token = { id: "vt1", token: "t" };
+      mockAccessService.assertCanManageCheckIn.mockResolvedValue(undefined);
+      resultsService.generateVolunteerToken.mockResolvedValue(token as any);
+
+      const result = await controller.generateVolunteerToken(
+        "comp1",
+        { name: "Bénévole" },
+        club,
+      );
+
+      expect(mockAccessService.assertCanManageCheckIn).toHaveBeenCalledWith(
+        "comp1",
+        club.user,
+      );
+      expect(resultsService.generateVolunteerToken).toHaveBeenCalledWith(
+        "comp1",
+        "Bénévole",
+      );
+      expect(result).toBe(token);
+    });
+
+    it("does not generate a token for a competition the caller does not organize", async () => {
+      mockAccessService.assertCanManageCheckIn.mockRejectedValue(
+        new ForbiddenException(),
+      );
+
+      await expect(
+        controller.generateVolunteerToken(
+          "comp1",
+          { name: "Bénévole" },
+          req("club1", "CLUB"),
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(resultsService.generateVolunteerToken).not.toHaveBeenCalled();
     });
   });
 

@@ -32,7 +32,7 @@ export const ClubMembersScreen = () => {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {isLoading && members.length === 0 ? (
-        <View style={[styles.center, { paddingTop: headerH + 8 }]}>
+        <View style={[styles.center, { paddingTop: headerH }]}>
           <ActivityIndicator size="large" color={theme.primary} />
         </View>
       ) : (
@@ -104,7 +104,7 @@ export const ClubMembersScreen = () => {
           keyExtractor={(item) => item.id}
           contentContainerStyle={[
             styles.listContent,
-            { paddingTop: headerH + 8, paddingBottom: insets.bottom + 80 },
+            { paddingTop: headerH, paddingBottom: insets.bottom + 80 },
           ]}
           ListEmptyComponent={
             <View style={styles.center}>

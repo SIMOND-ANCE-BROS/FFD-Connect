@@ -71,6 +71,52 @@ describe("HttpExceptionFilter", () => {
     });
   });
 
+  it("never logs nor echoes a Wallet pass token from the URL", () => {
+    const token = "q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW";
+    mockRequest.url = `/api/v1/licenses/wallet/apple/${token}`;
+
+    filter.catch(
+      new HttpException("Too Many Requests", HttpStatus.TOO_MANY_REQUESTS),
+      mockArgumentsHost,
+    );
+    filter.catch(
+      new HttpException("Unavailable", HttpStatus.SERVICE_UNAVAILABLE),
+      mockArgumentsHost,
+    );
+
+    const everything = JSON.stringify([
+      mockLogger.warn.mock.calls,
+      mockLogger.error.mock.calls,
+      mockResponse.json.mock.calls,
+    ]);
+    expect(everything).not.toContain(token);
+    expect(everything).toContain("/api/v1/licenses/wallet/apple/[REDACTED]");
+  });
+
+  it("redacts a mixed-case token URL and Nest's 'Cannot GET' echo", () => {
+    const token = "q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW";
+    mockRequest.url = `/api/v1/Licenses/Wallet/APPLE/${token}/extra`;
+
+    filter.catch(
+      new HttpException(
+        `Cannot GET /api/v1/Licenses/Wallet/APPLE/${token}/extra`,
+        HttpStatus.NOT_FOUND,
+      ),
+      mockArgumentsHost,
+    );
+    filter.catch(
+      new Error(`boom at /licenses/wallet/apple/${token}`),
+      mockArgumentsHost,
+    );
+
+    const everything = JSON.stringify([
+      mockLogger.warn.mock.calls,
+      mockLogger.error.mock.calls,
+      mockResponse.json.mock.calls,
+    ]);
+    expect(everything).not.toContain(token);
+  });
+
   it("should handle generic Error correctly", () => {
     const exception = new Error("Generic error");
 

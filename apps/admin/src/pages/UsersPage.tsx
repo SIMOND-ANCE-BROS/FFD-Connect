@@ -142,7 +142,8 @@ export function UsersPage() {
               <Table.Tr>
                 <Table.Th>Nom</Table.Th>
                 <Table.Th>Email</Table.Th>
-                <Table.Th>Rôle</Table.Th>
+                <Table.Th>Rôle principal</Table.Th>
+                <Table.Th>Rôles supplémentaires</Table.Th>
                 <Table.Th>Club</Table.Th>
                 <Table.Th>Catégorie</Table.Th>
                 <Table.Th>Classe d'âge</Table.Th>
@@ -167,14 +168,20 @@ export function UsersPage() {
                   </Table.Td>
                   <Table.Td>{u.email}</Table.Td>
                   <Table.Td>
-                    <Group gap={4}>
-                      <Badge variant="light">{ROLE_LABELS[u.role]}</Badge>
-                      {extraRoleLabels(u.extraRoles).map((l) => (
-                        <Badge key={l} variant="outline" size="sm">
-                          {l}
-                        </Badge>
-                      ))}
-                    </Group>
+                    <Badge variant="light">{ROLE_LABELS[u.role]}</Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    {u.extraRoles.length ? (
+                      <Group gap={4}>
+                        {extraRoleLabels(u.extraRoles).map((l) => (
+                          <Badge key={l} variant="outline" size="sm">
+                            {l}
+                          </Badge>
+                        ))}
+                      </Group>
+                    ) : (
+                      '—'
+                    )}
                   </Table.Td>
                   <Table.Td>{u.clubName ?? '—'}</Table.Td>
                   <Table.Td>{u.category ?? '—'}</Table.Td>

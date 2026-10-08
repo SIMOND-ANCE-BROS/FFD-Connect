@@ -195,6 +195,42 @@ describe("useLicenseLogic", () => {
     expect(result.current.state.showWdsf).toBe(false);
   });
 
+  it("does not show the WDSF card when the backend refuses the MIN (name mismatch)", async () => {
+    mockAuthRepository.getAuthConfig.mockResolvedValue({
+      role: "LICENSEE",
+      authToken: "token",
+      isLoggedIn: true,
+    });
+    mockAuthRepository.verifyWdsfLicense.mockResolvedValue({
+      licenseNumber: "10117265",
+      firstName: "Bob",
+      lastName: "Martin",
+    });
+    mockAuthRepository.saveWdsfToBackend.mockRejectedValueOnce(
+      new Error("Cette licence WDSF n'est pas à votre nom"),
+    );
+
+    const { result } = await renderHook(() => useLicenseLogic());
+    await waitFor(() =>
+      expect(mockAuthRepository.getAuthConfig).toHaveBeenCalled(),
+    );
+
+    result.current.actions.handleVerifyWdsf("10117265").catch(() => {});
+
+    await waitFor(
+      () => {
+        expect(result.current.state.wdsfError).toBe(
+          "Cette licence WDSF n'est pas à votre nom",
+        );
+      },
+      { timeout: 5000 },
+    );
+    expect(result.current.state.showWdsf).toBe(false);
+    expect(mockAuthRepository.setWdsfLicenseEnabled).not.toHaveBeenCalledWith(
+      true,
+    );
+  });
+
   it("should return correct list items for STAFF role", async () => {
     mockAuthRepository.getAuthConfig.mockResolvedValue({ role: "STAFF" });
 
@@ -455,6 +491,35 @@ describe("useLicenseLogic", () => {
       expect(ffdItem?.data?.firstName).toBe("Jean");
       expect(ffdItem?.data?.lastName).toBe("Dupont");
       expect(ffdItem?.data?.licenseNumber).toBe("12345");
+      // Backend sans QR signé : pas de qrCode ⇒ repli sur l'ancien contenu.
+      expect(ffdItem?.data?.qrCode).toBeUndefined();
+    });
+  });
+
+  it("keeps the server-signed QR on the FFD license (#168)", async () => {
+    const qrCode = '{"v":1,"id":"FFD-12345","exp":"2026-08-31","sig":"abc"}';
+    mockAuthRepository.getAuthConfig.mockResolvedValue({
+      role: "LICENSEE",
+      hasWdsfLicense: false,
+      licensePhotoUri: null,
+      isLoggedIn: true,
+    });
+    mockAuthRepository.getProfile.mockResolvedValue({
+      firstName: "Jean",
+      lastName: "Dupont",
+      license: { number: "FFD-12345", validUntil: "2026-08-31", qrCode },
+      clubName: "Club FFD",
+      birthDate: "1990-05-15",
+      role: "LICENSEE",
+    });
+
+    const { result } = await renderHook(() => useLicenseLogic());
+
+    await waitFor(() => {
+      const ffdItem = result.current.state.listItems.find(
+        (i) => i.type === "FFD",
+      );
+      expect(ffdItem?.data?.qrCode).toBe(qrCode);
     });
   });
 });

@@ -1,6 +1,10 @@
 import { NavigationProp, useFocusEffect } from "@react-navigation/native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RootStackParamList } from "../../../navigation/types";
+import {
+  isLibraryStale,
+  useLibrarySyncStore,
+} from "../../../stores/librarySync.store";
 import { createLogger } from "../../../utils/logger";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 import { useLibrary } from "../context/LibraryContext";
@@ -42,10 +46,15 @@ export const useLibraryLogic = ({ navigation }: UseLibraryLogicProps) => {
     height: number;
   } | null>(null);
 
-  // Load library when user opens the Library tab (deferred from app mount to avoid /tracks on Login screen)
+  // Load library when user opens the Library tab (deferred from app mount to avoid /tracks on Login screen).
+  // Also reload a stale one (a track was corrected, or it is older than
+  // LIBRARY_MAX_AGE_MS) so validated corrections show up without restarting.
   useFocusEffect(
     useCallback(() => {
-      if (sections.length === 0) {
+      if (
+        sections.length === 0 ||
+        isLibraryStale(useLibrarySyncStore.getState(), Date.now())
+      ) {
         reloadLibrary().catch(() => {});
       }
     }, [reloadLibrary, sections.length]),

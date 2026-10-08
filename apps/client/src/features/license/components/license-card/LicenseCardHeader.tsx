@@ -30,12 +30,12 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
 
     {/* Curved Edge */}
     <Svg
-      height="30"
+      height="20"
       width="100%"
       style={styles.curveSvg}
       preserveAspectRatio="none"
     >
-      <Path d="M0 0 Q500 30 1000 0 V30 H0 Z" fill={config.cardBackground} />
+      <Path d="M0 0 Q500 20 1000 0 V20 H0 Z" fill={config.cardBackground} />
     </Svg>
 
     <View style={styles.headerContent}>
@@ -48,13 +48,18 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
             contentFit="contain"
           />
         ) : (
-          <SvgUri width="60" height="60" uri={config.logo as string} />
+          <SvgUri width="44" height="44" uri={config.logo as string} />
         )}
       </View>
 
       {/* Title Centered */}
       <View style={styles.titleContainer}>
-        <AppText variant="h1" style={styles.typeLabel}>
+        <AppText
+          variant="h1"
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          style={styles.typeLabel}
+        >
           {user.type}
         </AppText>
         {user.season ? (

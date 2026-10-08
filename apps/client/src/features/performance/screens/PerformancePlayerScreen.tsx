@@ -15,7 +15,11 @@ import { useTheme } from "../../../context/ThemeContext";
 import { PlaylistItem } from "../context/PerformanceContext";
 import { usePerformanceEngine } from "../hooks/usePerformanceEngine";
 import { usePerformanceStore } from "../../../stores/performance.store";
-import { danceLabel, describeItem } from "../utils/competitionProgram";
+import {
+  danceLabel,
+  describeGroup,
+  describeItem,
+} from "../utils/competitionProgram";
 
 export const PerformancePlayerScreen = () => {
   const { theme: currentTheme, isDark } = useTheme();
@@ -28,8 +32,8 @@ export const PerformancePlayerScreen = () => {
     isAnnouncing,
     togglePlayPause,
     stopPerformance,
-    nextDance,
-    previousDance,
+    nextStep,
+    previousStep,
   } = usePerformanceEngine();
   const navigation = useNavigation<{ goBack: () => void }>();
 
@@ -134,11 +138,10 @@ export const PerformancePlayerScreen = () => {
           >
             <AppText variant="caption" weight="bold" color={currentTheme.text}>
               {hasCurrentItem && currentItem
-                ? currentItem.roundType === "Final"
+                ? currentItem.roundType === "Final" &&
+                  currentItem.totalGroups <= 1
                   ? "FINALE"
-                  : currentItem.totalHeats <= 1
-                    ? "PASSAGE UNIQUE"
-                    : `PASSAGE ${currentItem.heatIndex}/${currentItem.totalHeats}`
+                  : describeGroup(currentItem).toUpperCase()
                 : "PRÉPARATION"}
             </AppText>
           </View>
@@ -271,12 +274,12 @@ export const PerformancePlayerScreen = () => {
             { backgroundColor: currentTheme.surface },
             !canSkipBack && styles.disabled,
           ]}
-          onPress={previousDance}
+          onPress={previousStep}
           disabled={!canSkipBack}
           testID="performance-player-previous-button"
           accessibilityRole="button"
-          accessibilityLabel="Danse précédente"
-          accessibilityHint="Relance la danse en cours, ou revient à la précédente si elle vient de commencer"
+          accessibilityLabel="Recommencer la danse"
+          accessibilityHint="Relance la danse depuis le début ; deux appuis rapides reviennent à la danse précédente"
           accessibilityState={{ disabled: !canSkipBack }}
         >
           <SkipBack color={currentTheme.text} size={28} />
@@ -315,12 +318,12 @@ export const PerformancePlayerScreen = () => {
             { backgroundColor: currentTheme.surface },
             !canSkipForward && styles.disabled,
           ]}
-          onPress={nextDance}
+          onPress={nextStep}
           disabled={!canSkipForward}
           testID="performance-player-next-button"
           accessibilityRole="button"
-          accessibilityLabel="Danse suivante"
-          accessibilityHint="Passe directement à l'annonce de la danse suivante"
+          accessibilityLabel="Étape suivante"
+          accessibilityHint="Termine la danse et lance la pause, ou termine la pause et annonce la danse suivante"
           accessibilityState={{ disabled: !canSkipForward }}
         >
           <SkipForward color={currentTheme.text} size={28} />

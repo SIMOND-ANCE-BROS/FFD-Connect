@@ -99,7 +99,7 @@ export const ForgotPasswordScreen = ({
         <ScrollView
           contentContainerStyle={{
             ...styles.scrollContent,
-            paddingTop: headerH + 8,
+            paddingTop: headerH,
           }}
           keyboardShouldPersistTaps="handled"
         >

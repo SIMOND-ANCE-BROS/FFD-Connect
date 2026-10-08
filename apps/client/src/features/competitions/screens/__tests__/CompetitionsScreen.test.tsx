@@ -1,5 +1,6 @@
-import { fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import React from "react";
+import { useWakeStore } from "../../../../stores/wake.store";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useCompetitionsLogic } from "../../hooks/useCompetitionsLogic";
 import { CompetitionsScreen } from "../CompetitionsScreen";
@@ -139,6 +140,35 @@ describe("CompetitionsScreen", () => {
     expect(getByText("Compétitions")).toBeTruthy();
     expect(getByText("Toutes (Active)")).toBeTruthy(); // Scope Tab
     expect(getByText("À venir (Active)")).toBeTruthy(); // Status Tab
+  });
+
+  it("offers « Charger plus » in the empty state once the auto-fetch budget is spent", async () => {
+    (useCompetitionsLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...mockState,
+        competitions: [],
+        hasMore: true,
+        canLoadMoreManually: true,
+      },
+      actions: mockActions,
+    });
+    const { getByTestId } = await render(
+      <CompetitionsScreen {...createTestProps()} />,
+    );
+
+    await fireEvent.press(getByTestId("competitions-load-more-button"));
+    expect(mockActions.onLoadMore).toHaveBeenCalled();
+  });
+
+  it("hides « Charger plus » while the budget is not spent", async () => {
+    (useCompetitionsLogic as jest.Mock).mockReturnValue({
+      state: { ...mockState, competitions: [], canLoadMoreManually: false },
+      actions: mockActions,
+    });
+    const { queryByTestId } = await render(
+      <CompetitionsScreen {...createTestProps()} />,
+    );
+    expect(queryByTestId("competitions-load-more-button")).toBeNull();
   });
 
   it("displays different empty state messages pending on status filter", async () => {
@@ -297,5 +327,81 @@ describe("CompetitionsScreen", () => {
     expect(mockActions.setStyleFilter).toHaveBeenCalled();
     expect(mockActions.setMaxDistanceKm).toHaveBeenCalledWith(42);
     expect(mockActions.setDatePeriod).toHaveBeenCalledWith("MONTH");
+  });
+
+  describe("loading indicators", () => {
+    const competitions = [
+      {
+        id: "c1",
+        title: "Comp A",
+        date: new Date().toISOString(),
+        location: "Paris",
+        status: "UPCOMING",
+      },
+    ];
+
+    afterEach(async () => {
+      await act(() => {
+        useWakeStore.setState({ waking: false, visible: false });
+      });
+    });
+
+    it("shows a single spinner and no empty state on the initial load", async () => {
+      (useCompetitionsLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          isLoading: true,
+          isLoadingMore: false,
+          hasMore: true,
+        },
+        actions: mockActions,
+      });
+
+      const { getByTestId, queryByTestId, queryByText } = await render(
+        <CompetitionsScreen {...createTestProps()} />,
+      );
+
+      expect(getByTestId("competitions-loading")).toBeTruthy();
+      expect(queryByTestId("competitions-load-more")).toBeNull();
+      // The "nothing found" message must not flash while pages are scanned.
+      expect(queryByText("Aucune compétition")).toBeNull();
+    });
+
+    // (FlashList renders no footer under jest — the footer itself is driven by
+    // `isLoadingMore` only, see ListFooter.)
+    it("keeps the full-screen loader off when paginating under visible rows", async () => {
+      (useCompetitionsLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          competitions,
+          isLoading: false,
+          isLoadingMore: true,
+          hasMore: true,
+        },
+        actions: mockActions,
+      });
+
+      const { queryByTestId } = await render(
+        <CompetitionsScreen {...createTestProps()} />,
+      );
+
+      expect(queryByTestId("competitions-loading")).toBeNull();
+    });
+
+    it("hides its own loader while the wake overlay is displayed", async () => {
+      await act(() => {
+        useWakeStore.setState({ waking: true, visible: true });
+      });
+      (useCompetitionsLogic as jest.Mock).mockReturnValue({
+        state: { ...mockState, isLoading: true, hasMore: true },
+        actions: mockActions,
+      });
+
+      const { queryByTestId } = await render(
+        <CompetitionsScreen {...createTestProps()} />,
+      );
+
+      expect(queryByTestId("competitions-loading")).toBeNull();
+    });
   });
 });

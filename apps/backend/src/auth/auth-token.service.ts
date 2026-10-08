@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
+import { hashToken } from "../utils/token-hash.util";
 import { accountStatusSelect } from "../utils/prisma-selects";
 import { ACCOUNT_DISABLED_MESSAGE, accountBlockReason } from "./account-status";
 import { rolesOf } from "./roles";
@@ -17,14 +18,9 @@ export class AuthTokenService {
     private jwtService: JwtService,
   ) {}
 
-  /** Hash a token with SHA-256 for secure storage. Only the hash is persisted. */
-  private hashToken(token: string): string {
-    return crypto.createHash("sha256").update(token).digest("hex");
-  }
-
   async createRefreshToken(userId: string) {
     const plainToken = crypto.randomBytes(64).toString("hex");
-    const tokenHash = this.hashToken(plainToken);
+    const tokenHash = hashToken(plainToken);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + this.REFRESH_TOKEN_EXPIRY_DAYS);
 
@@ -43,7 +39,7 @@ export class AuthTokenService {
   }
 
   async refreshAccessToken(refreshToken: string): Promise<LoginResponse> {
-    const tokenHash = this.hashToken(refreshToken);
+    const tokenHash = hashToken(refreshToken);
     const tokenRecord = await this.prisma.refreshToken.findUnique({
       where: { token: tokenHash },
       include: {
@@ -87,7 +83,7 @@ export class AuthTokenService {
     }
 
     const newPlainToken = crypto.randomBytes(64).toString("hex");
-    const newTokenHash = this.hashToken(newPlainToken);
+    const newTokenHash = hashToken(newPlainToken);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + this.REFRESH_TOKEN_EXPIRY_DAYS);
 
@@ -140,7 +136,7 @@ export class AuthTokenService {
   }
 
   async revokeRefreshToken(refreshToken: string): Promise<boolean> {
-    const tokenHash = this.hashToken(refreshToken);
+    const tokenHash = hashToken(refreshToken);
     const result = await this.prisma.refreshToken.updateMany({
       where: {
         token: tokenHash,

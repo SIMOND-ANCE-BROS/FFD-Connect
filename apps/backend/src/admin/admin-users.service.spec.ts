@@ -111,6 +111,28 @@ describe("AdminUsersService.update", () => {
     });
   });
 
+  it("refuses to move a user into a disabled club", async () => {
+    prisma.club.findUnique.mockResolvedValue({
+      id: "c2",
+      name: "Club B",
+      disabledAt: new Date(),
+    } as never);
+    await expect(
+      service.update("admin-1", "u1", { clubId: "c2" }),
+    ).rejects.toMatchObject({ message: "Ce club est désactivé" });
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it("still allows re-saving the current club when it is disabled", async () => {
+    prisma.club.findUnique.mockResolvedValue({
+      id: "c1",
+      name: "Club A",
+      disabledAt: new Date(),
+    } as never);
+    await service.update("admin-1", "u1", { clubId: "c1", nationalRanking: 3 });
+    expect(prisma.user.update).toHaveBeenCalled();
+  });
+
   it("rejects an unknown club with 400", async () => {
     prisma.club.findUnique.mockResolvedValue(null);
     await expect(

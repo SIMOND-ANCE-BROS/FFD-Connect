@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Logger,
   NotFoundException,
   UnauthorizedException,
@@ -15,10 +16,13 @@ import { mockDeep, MockProxy } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
 import { withActiveRole } from "../auth/roles";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
+import { WdsfService } from "../wdsf/wdsf.service";
 import {
   AccountDeletionService,
   MAX_RENEWAL_DOCUMENTS_TO_PURGE,
 } from "./account-deletion.service";
+import { LicenseQrService } from "../licenses/qr/license-qr.service";
+import { AppleWalletPassGenerator } from "../licenses/wallet/apple-wallet-pass.generator";
 import { UsersService } from "./users.service";
 
 jest.mock("bcrypt", () => ({
@@ -68,8 +72,14 @@ describe("UsersService", () => {
   let service: UsersService;
   let prisma: MockProxy<PrismaClient>;
   let renewalDocumentFiles: { deleteFiles: jest.Mock };
+  let wdsfService: { getAthleteByMin: jest.Mock };
 
   beforeEach(async () => {
+    wdsfService = {
+      getAthleteByMin: jest
+        .fn()
+        .mockResolvedValue({ firstName: "Alice", lastName: "Dupont" }),
+    };
     prisma = mockDeep<PrismaClient>();
     renewalDocumentFiles = {
       deleteFiles: jest.fn().mockResolvedValue(new Set()),
@@ -81,9 +91,21 @@ describe("UsersService", () => {
         AccountDeletionService,
         { provide: PrismaService, useValue: prisma },
         {
+          provide: LicenseQrService,
+          useValue: {
+            buildQrCode: (license: { number: string }) =>
+              `signed:${license.number}`,
+          },
+        },
+        {
+          provide: AppleWalletPassGenerator,
+          useValue: { isAvailable: () => true },
+        },
+        {
           provide: RenewalDocumentFileCleaner,
           useValue: renewalDocumentFiles,
         },
+        { provide: WdsfService, useValue: wdsfService },
       ],
     }).compile();
 
@@ -133,6 +155,31 @@ describe("UsersService", () => {
 
       expect(result.id).toBe("u1");
       expect(result.email).toBe("alice@example.com");
+    });
+
+    it("adds the signed QR content to the license (#168)", async () => {
+      const license = {
+        id: "l1",
+        number: "FFD-1",
+        validUntil: new Date("2026-08-31T00:00:00.000Z"),
+      };
+      prisma.user.findUnique.mockResolvedValue(makeUser({ license }));
+
+      const result = await service.findOne("u1");
+
+      expect(result.license).toEqual({
+        ...license,
+        qrCode: "signed:FFD-1",
+        appleWalletAvailable: true,
+      });
+    });
+
+    it("keeps license null when the user has none", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+
+      const result = await service.findOne("u1");
+
+      expect(result.license).toBeNull();
     });
 
     it("adds roles next to role without leaking the club status", async () => {
@@ -508,6 +555,51 @@ describe("UsersService", () => {
           expiresOn: "not-a-date",
         }),
       ).rejects.toThrow("Invalid wdsf.expiresOn date");
+    });
+
+    it("re-fetches the MIN from WDSF and links it when the name matches in reverse order", async () => {
+      wdsfService.getAthleteByMin.mockResolvedValue({
+        firstName: "Dupont",
+        lastName: "Alice",
+      });
+      prisma.user.update.mockResolvedValue(makeUser());
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+
+      await service.updateWdsf("u1", { min: " 12345 " });
+
+      expect(wdsfService.getAthleteByMin).toHaveBeenCalledWith("12345");
+      expect(prisma.user.update).toHaveBeenCalled();
+    });
+
+    it("rejects a MIN whose WDSF holder is not the account holder", async () => {
+      wdsfService.getAthleteByMin.mockResolvedValue({
+        firstName: "Bob",
+        lastName: "Martin",
+      });
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+
+      await expect(
+        service.updateWdsf("u1", { min: "12345" }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it("throws NotFound when the account does not exist", async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateWdsf("u1", { min: "12345" }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(wdsfService.getAthleteByMin).not.toHaveBeenCalled();
+    });
+
+    it("does not call WDSF when unlinking", async () => {
+      prisma.user.update.mockResolvedValue(makeUser());
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+
+      await service.updateWdsf("u1", null);
+
+      expect(wdsfService.getAthleteByMin).not.toHaveBeenCalled();
     });
 
     it("returns the updated user profile after persisting changes", async () => {

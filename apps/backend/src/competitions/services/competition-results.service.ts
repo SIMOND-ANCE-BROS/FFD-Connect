@@ -1,12 +1,21 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import * as crypto from "crypto";
+import { LicenseQrService } from "../../licenses/qr/license-qr.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
+import {
+  idOnlySelect,
+  userNameSelect,
+  volunteerTokenAuthSelect,
+  volunteerTokenIssuedSelect,
+} from "../../utils/prisma-selects";
+import { hashToken } from "../../utils/token-hash.util";
 import { CompetitionCacheService } from "./competition-cache.service";
 
 @Injectable()
@@ -19,6 +28,7 @@ export class CompetitionResultsService {
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
     private readonly cacheService: CompetitionCacheService,
+    private readonly licenseQrService: LicenseQrService,
   ) {}
 
   async getResults(competitionId: string): Promise<unknown> {
@@ -113,27 +123,42 @@ export class CompetitionResultsService {
   }
 
   async checkIn(competitionId: string, qrData: string) {
-    let userId = qrData;
-    try {
-      const parsed = JSON.parse(qrData) as { id?: string };
-      if (parsed.id) userId = parsed.id;
-    } catch {
-      // Raw ID
+    // Signature check first (#168): in `enforce` mode an unsigned, forged or
+    // expired QR never reaches the lookup; in `warn` mode it goes through but
+    // the response carries a warning for the staff screen.
+    const qrCheck = this.licenseQrService.verify(qrData);
+    if (!qrCheck.accepted) {
+      this.logger.warn(
+        `Check-in refused for competition ${competitionId}: QR ${qrCheck.status}`,
+      );
+      throw new BadRequestException(qrCheck.warning ?? "QR Code non vérifié");
     }
+    if (qrCheck.warning) {
+      this.logger.warn(
+        `Check-in with unverified QR for competition ${competitionId}: ${qrCheck.status}`,
+      );
+    }
+    const qrVerification = {
+      mode: qrCheck.mode,
+      status: qrCheck.status,
+      warning: qrCheck.warning,
+    };
+    const identifier = qrCheck.identifier;
 
-    let user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, firstName: true, lastName: true },
-    });
+    // A verified QR carries a license NUMBER: never resolve it as a user id.
+    let user = qrCheck.signedLicenseNumber
+      ? null
+      : await this.prisma.user.findUnique({
+          where: { id: identifier },
+          select: userNameSelect,
+        });
     // Le QR licence de l'app encode le NUMÉRO de licence (cf. LicenseCard :
     // qrData.id = licenseNumber), pas l'id utilisateur. Si la résolution directe
     // par id échoue, on retombe sur une résolution par numéro de licence.
     if (!user) {
       const license = await this.prisma.license.findUnique({
-        where: { number: userId },
-        select: {
-          user: { select: { id: true, firstName: true, lastName: true } },
-        },
+        where: { number: identifier },
+        select: { user: { select: userNameSelect } },
       });
       user = license?.user ?? null;
     }
@@ -213,12 +238,14 @@ export class CompetitionResultsService {
     return {
       user: { firstName: user.firstName, lastName: user.lastName },
       registrations: checkInResults,
+      qrVerification,
     };
   }
 
   async generateVolunteerToken(competitionId: string, name?: string) {
     const competition = await this.prisma.competition.findUnique({
       where: { id: competitionId },
+      select: idOnlySelect,
     });
     if (!competition) {
       throw new NotFoundException("Compétition non trouvée");
@@ -228,17 +255,21 @@ export class CompetitionResultsService {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24); // Token valid for 24h
 
+    // Only the SHA-256 hash is persisted; the plain token is returned once,
+    // here, and cannot be read back afterwards.
     const volunteerToken = await this.prisma.volunteerToken.create({
       data: {
-        token,
+        token: hashToken(token),
         competitionId,
         expiresAt,
         name: name ?? "Bénévole",
       },
+      select: volunteerTokenIssuedSelect,
     });
 
     return {
       ...volunteerToken,
+      token,
       accessUrl: `https://ffd-connect.fr/volunteer/checkin?token=${token}&id=${competitionId}`,
     };
   }
@@ -249,7 +280,8 @@ export class CompetitionResultsService {
     qrData: string,
   ) {
     const volunteerToken = await this.prisma.volunteerToken.findUnique({
-      where: { token },
+      where: { token: hashToken(token) },
+      select: volunteerTokenAuthSelect,
     });
 
     if (
@@ -260,7 +292,7 @@ export class CompetitionResultsService {
     }
 
     this.logger.log(
-      `Volunteer ${volunteerToken.name} performing check-in with token ${token}`,
+      `Volunteer ${volunteerToken.name} performing check-in (link ${volunteerToken.id})`,
     );
     return this.checkIn(competitionId, qrData);
   }

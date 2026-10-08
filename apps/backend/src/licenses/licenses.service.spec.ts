@@ -3,6 +3,8 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../prisma/prisma.service";
 import { OcrService } from "../utils/ocr.service";
 import { LicensesService } from "./licenses.service";
+import { LicenseQrService } from "./qr/license-qr.service";
+import { AppleWalletPassGenerator } from "./wallet/apple-wallet-pass.generator";
 
 /** Buffer factice du certificat uploadé en mémoire (OCR uniquement). */
 const CERT_BUFFER = Buffer.from("fake-certificate-bytes");
@@ -40,12 +42,20 @@ describe("LicensesService", () => {
     extractLicenseInfo: jest.fn(),
   };
 
+  const mockLicenseQr = {
+    buildQrCode: jest.fn(),
+  };
+
+  const mockWallet = { isAvailable: jest.fn() };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LicensesService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: OcrService, useValue: mockOcr },
+        { provide: LicenseQrService, useValue: mockLicenseQr },
+        { provide: AppleWalletPassGenerator, useValue: mockWallet },
       ],
     }).compile();
 
@@ -55,11 +65,33 @@ describe("LicensesService", () => {
 
   describe("getLicense", () => {
     it("should return license if found", async () => {
-      const mockLicense = { userId: "1", number: "123" };
+      const mockLicense = {
+        userId: "1",
+        number: "123",
+        validUntil: new Date("2026-08-31T00:00:00.000Z"),
+      };
       mockPrisma.license.findUnique.mockResolvedValue(mockLicense);
+      mockLicenseQr.buildQrCode.mockReturnValue("signed-qr");
+      mockWallet.isAvailable.mockReturnValue(true);
 
       const result = await service.getLicense("1");
-      expect(result).toBe(mockLicense);
+      expect(result).toEqual({
+        ...mockLicense,
+        qrCode: "signed-qr",
+        appleWalletAvailable: true,
+      });
+      expect(mockLicenseQr.buildQrCode).toHaveBeenCalledWith(mockLicense);
+    });
+
+    it("exposes qrCode null when QR signing is disabled", async () => {
+      mockPrisma.license.findUnique.mockResolvedValue({ number: "123" });
+      mockLicenseQr.buildQrCode.mockReturnValue(null);
+
+      mockWallet.isAvailable.mockReturnValue(false);
+
+      const result = await service.getLicense("1");
+      expect(result.qrCode).toBeNull();
+      expect(result.appleWalletAvailable).toBe(false);
     });
 
     it("should throw NotFound if not found", async () => {

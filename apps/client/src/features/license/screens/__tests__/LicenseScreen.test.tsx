@@ -1,11 +1,17 @@
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import React from "react";
+import { StyleSheet } from "react-native";
+import type { ReactTestRendererJSON } from "react-test-renderer";
+import { STACKED_CARD_ACTIVE_OFFSET } from "../../../../components/StackedCard";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useLicenseLogic } from "../../hooks/useLicenseLogic";
 import { LicenseScreen } from "../LicenseScreen";
 
 jest.mock("../../../../components/NotificationBell", () => ({
-  NotificationBell: () => null,
+  NotificationBell: () => {
+    const { View } = require("react-native");
+    return <View testID="notification-bell" />;
+  },
 }));
 jest.mock("../../components/SwipeableLicenseCard", () => ({
   SwipeableLicenseCard: ({
@@ -41,9 +47,13 @@ jest.mock("@react-navigation/native", () => ({
 // Mock Child Components to simplify test
 jest.mock("react-native-qrcode-svg", () => "QRCode");
 jest.mock("../../components/LicenseCard", () => ({
-  LicenseCard: (props: { testID?: string }) => {
+  LicenseCard: (props: { testID?: string; onShowQr?: () => void }) => {
     const { Text } = require("react-native");
-    return <Text testID={props.testID}>{props.testID}</Text>;
+    return (
+      <Text testID={props.testID} onPress={props.onShowQr}>
+        {props.testID}
+      </Text>
+    );
   },
   LicenseUser: {},
   LicenseType: {},
@@ -164,6 +174,58 @@ describe("LicenseScreen Integration", () => {
     expect(getByTestId("license-screen-scroll-view")).toBeTruthy();
     expect(getByTestId("license-screen-card-FFD")).toBeTruthy();
     expect(getByTestId("license-screen-add-wdsf-card")).toBeTruthy();
+  });
+
+  it("opens the QR modal with the server-signed QR as-is (#168)", async () => {
+    const qrCode = '{"v":1,"id":"123","exp":"2026-08-31","sig":"abc"}';
+    (useLicenseLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...mockState,
+        listItems: [
+          {
+            type: "FFD",
+            data: {
+              firstName: "John",
+              lastName: "Doe",
+              licenseNumber: "123",
+              qrCode,
+            },
+          },
+        ],
+      },
+      actions: mockActions,
+    });
+
+    const { getByTestId } = await render(<LicenseScreen />);
+    await fireEvent.press(getByTestId("license-card-FFD"));
+
+    expect(mockActions.handleShowQr).toHaveBeenCalledWith(qrCode);
+  });
+
+  it("falls back to the legacy QR content without a signed QR", async () => {
+    (useLicenseLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...mockState,
+        listItems: [
+          {
+            type: "FFD",
+            data: { firstName: "John", lastName: "Doe", licenseNumber: "123" },
+          },
+        ],
+      },
+      actions: mockActions,
+    });
+
+    const { getByTestId } = await render(<LicenseScreen />);
+    await fireEvent.press(getByTestId("license-card-FFD"));
+
+    const shown = mockActions.handleShowQr.mock.calls[0][0] as string;
+    expect(JSON.parse(shown)).toEqual({
+      id: "123",
+      name: "Doe John",
+      valid: true,
+      type: "FFD",
+    });
   });
 
   it("renders Guest Mode correctly", async () => {
@@ -326,5 +388,124 @@ describe("LicenseScreen Integration", () => {
     const { getByTestId } = await render(<LicenseScreen />);
     await fireEvent.press(getByTestId("license-screen-card-WDSF"));
     expect(mockActions.handleCardPress).toHaveBeenCalledWith(0);
+  });
+  describe("beta UX fixes", () => {
+    const dualItems = [
+      {
+        type: "FFD",
+        data: { firstName: "John", lastName: "Doe", licenseNumber: "123" },
+      },
+      {
+        type: "WDSF",
+        data: { firstName: "John", lastName: "Doe", licenseNumber: "1000" },
+      },
+    ];
+
+    /** testIDs in render (document) order. */
+    const collectTestIds = (
+      node: ReactTestRendererJSON | ReactTestRendererJSON[] | null,
+      acc: string[] = [],
+    ): string[] => {
+      if (!node) return acc;
+      if (Array.isArray(node)) {
+        node.forEach((child) => collectTestIds(child, acc));
+        return acc;
+      }
+      const testID = node.props.testID as unknown;
+      if (typeof testID === "string") acc.push(testID);
+      (node.children ?? []).forEach((child) => {
+        if (typeof child !== "string") collectTestIds(child, acc);
+      });
+      return acc;
+    };
+
+    it("puts the export button before the notification bell", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: { ...mockState },
+        actions: mockActions,
+      });
+
+      const { toJSON } = await render(<LicenseScreen />);
+      const ids = collectTestIds(toJSON());
+
+      const shareIdx = ids.indexOf("license-screen-share-button");
+      const bellIdx = ids.indexOf("notification-bell");
+      expect(shareIdx).toBeGreaterThanOrEqual(0);
+      expect(bellIdx).toBeGreaterThan(shareIdx);
+    });
+
+    it("reserves bottom space for the floating tab bar", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: { ...mockState },
+        actions: mockActions,
+      });
+
+      const { getByTestId } = await render(<LicenseScreen />);
+      const contentStyle = StyleSheet.flatten(
+        getByTestId("license-screen-scroll-view").props
+          .contentContainerStyle as object,
+      ) as { paddingBottom?: number };
+
+      // Tab bar pill (70) + its bottom gap (20 without insets) must fit.
+      expect(contentStyle.paddingBottom).toBeGreaterThanOrEqual(90);
+    });
+
+    it("reserves the stacked card offset under the wallet", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          listItems: [
+            { type: "FFD", data: { licenseNumber: "123" } },
+            { type: "ADD_WDSF", data: null },
+          ],
+        },
+        actions: mockActions,
+      });
+
+      const { getByTestId } = await render(<LicenseScreen />);
+      const walletStyle = StyleSheet.flatten(
+        getByTestId("license-screen-wallet").props.style as object,
+      ) as { paddingBottom?: number };
+
+      expect(walletStyle.paddingBottom).toBe(STACKED_CARD_ACTIVE_OFFSET);
+    });
+
+    it("shows an FFD/WDSF switch and a single card with both licenses", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: { ...mockState, showWdsf: true, listItems: dualItems },
+        actions: mockActions,
+      });
+
+      const { getByTestId, queryByTestId } = await render(<LicenseScreen />);
+
+      expect(getByTestId("license-screen-type-switch")).toBeTruthy();
+      expect(getByTestId("license-card-FFD")).toBeTruthy();
+      expect(queryByTestId("license-card-WDSF")).toBeNull();
+      // No stacked wallet in this mode.
+      expect(queryByTestId("license-screen-wallet")).toBeNull();
+
+      await fireEvent.press(getByTestId("license-screen-type-switch-WDSF"));
+      expect(mockActions.handleCardPress).toHaveBeenCalledWith(1);
+    });
+
+    it("shows only the WDSF card when it is the selected license", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          showWdsf: true,
+          listItems: dualItems,
+          activeCardIndex: 1,
+        },
+        actions: mockActions,
+      });
+
+      const { getByTestId, queryByTestId } = await render(<LicenseScreen />);
+
+      expect(getByTestId("license-screen-card-WDSF")).toBeTruthy();
+      expect(queryByTestId("license-card-FFD")).toBeNull();
+
+      await fireEvent.press(getByTestId("license-screen-type-switch-FFD"));
+      expect(mockActions.handleCardPress).toHaveBeenCalledWith(0);
+    });
   });
 });

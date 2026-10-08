@@ -116,13 +116,13 @@ export const MyTrackCorrectionsScreen = ({ navigation }: Props) => {
   let body: React.ReactNode;
   if (isLoading) {
     body = (
-      <View style={[styles.center, { paddingTop: headerH + 24 }]}>
+      <View style={[styles.center, { paddingTop: headerH }]}>
         <ActivityIndicator color={theme.primary} size="large" />
       </View>
     );
   } else if (isError) {
     body = (
-      <View style={[styles.center, { paddingTop: headerH + 24 }]}>
+      <View style={[styles.center, { paddingTop: headerH }]}>
         <AppText
           variant="body"
           color={theme.textSecondary}
@@ -163,7 +163,7 @@ export const MyTrackCorrectionsScreen = ({ navigation }: Props) => {
         }
         contentContainerStyle={[
           styles.list,
-          { paddingTop: headerH + 8, paddingBottom: insets.bottom + 40 },
+          { paddingTop: headerH, paddingBottom: insets.bottom + 40 },
         ]}
         refreshControl={
           <RefreshControl

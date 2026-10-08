@@ -29,7 +29,7 @@ overrides:
   effect: '^3.22.2'
   socket.io-parser: '>=4.2.7'
   h3: '>=1.15.6'
-  handlebars: '>=4.7.9'
+  handlebars: '>=4.7.10'
   node-forge: '>=1.4.0'
   picomatch: '>=4.0.4'
   path-to-regexp: '>=8.4.0'

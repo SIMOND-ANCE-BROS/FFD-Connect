@@ -26,3 +26,5 @@ globalThis.ResizeObserver = class {
   unobserve() {}
   disconnect() {}
 };
+// Mantine's Select scrolls the active option into view.
+Element.prototype.scrollIntoView = () => {};

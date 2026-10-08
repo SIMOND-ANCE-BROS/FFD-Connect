@@ -109,7 +109,9 @@ export interface UserProfile {
     number: string;
     validUntil: string;
     type?: string;
-  };
+    /** QR signé par le serveur (#168) — absent/null si backend ancien ou signature désactivée. */
+    qrCode?: string | null;
+  } | null;
   wdsf?: {
     min: string;
     nationality?: string | null;
@@ -776,7 +778,17 @@ export const AuthService = {
       expiresOn?: string | null;
     } | null,
   ): Promise<void> => {
-    await api.patch("/users/me", { wdsf });
+    try {
+      await api.patch("/users/me", { wdsf });
+    } catch (error: unknown) {
+      // Surface the server reason (e.g. WDSF_NAME_MISMATCH) instead of axios's
+      // generic "Request failed with status code 400".
+      if (axios.isAxiosError(error)) {
+        const data = error.response?.data as ApiErrorData | undefined;
+        if (data?.message) throw new Error(data.message);
+      }
+      throw error;
+    }
   },
 
   /**

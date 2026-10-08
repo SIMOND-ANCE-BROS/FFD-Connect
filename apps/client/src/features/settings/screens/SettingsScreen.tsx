@@ -241,6 +241,16 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
         scrollY={scrollY}
         right={
           <View style={headerStyles.actions}>
+            <SpaceSelector
+              roles={roles}
+              space={role}
+              onChange={(space) => {
+                handleChangeSpace(space).catch((error: unknown) => {
+                  logger.error("Failed to change space", error);
+                  Alert.alert("Erreur", "Impossible de changer d'espace.");
+                });
+              }}
+            />
             {!isGuest && (
               <NotificationBell
                 theme={currentTheme}
@@ -291,22 +301,12 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
           },
         ]}
         scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           { useNativeDriver: true },
         )}
       >
-        <SpaceSelector
-          roles={roles}
-          space={role}
-          onChange={(space) => {
-            handleChangeSpace(space).catch((error: unknown) => {
-              logger.error("Failed to change space", error);
-              Alert.alert("Erreur", "Impossible de changer d'espace.");
-            });
-          }}
-        />
-
         {isAdminAccount && (
           <TouchableOpacity
             onPress={() => setImpersonationVisible(true)}
@@ -447,13 +447,6 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
           onClose={() => setChangePasswordModalVisible(false)}
         />
 
-        {isAdminAccount && (
-          <ImpersonationModal
-            visible={impersonationVisible}
-            onClose={() => setImpersonationVisible(false)}
-          />
-        )}
-
         <DeleteAccountModal
           visible={deleteAccountModalVisible}
           onClose={() => setDeleteAccountModalVisible(false)}
@@ -474,6 +467,17 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
           }}
         />
       </Animated.ScrollView>
+
+      {/* Rendered OUTSIDE the ScrollView on purpose: touches inside a <Modal>
+          still bubble through its React ancestors, so a parent ScrollView with
+          the default keyboardShouldPersistTaps="never" captured the first tap
+          (keyboard dismiss only) — every tap in the search sheet needed two. */}
+      {isAdminAccount && (
+        <ImpersonationModal
+          visible={impersonationVisible}
+          onClose={() => setImpersonationVisible(false)}
+        />
+      )}
     </SafeAreaView>
   );
 };

@@ -22,7 +22,12 @@ describe("AdminController", () => {
   const users = { update: jest.fn(), setStatus: jest.fn(), delete: jest.fn() };
   const userAccounts = { create: jest.fn(), resendInvitation: jest.fn() };
   const clubsQuery = { list: jest.fn(), options: jest.fn(), detail: jest.fn() };
-  const clubs = { update: jest.fn(), setStatus: jest.fn(), delete: jest.fn() };
+  const clubs = {
+    create: jest.fn(),
+    update: jest.fn(),
+    setStatus: jest.fn(),
+    delete: jest.fn(),
+  };
 
   const controller = new AdminController(
     audit as unknown as AdminAuditService,
@@ -76,6 +81,8 @@ describe("AdminController", () => {
   });
 
   it("passes the acting admin id to every club write", async () => {
+    await controller.createClub({ name: "Club N" }, req);
+    expect(clubs.create).toHaveBeenCalledWith("admin-1", { name: "Club N" });
     await controller.updateClub("c1", { name: "Club Z" }, req);
     expect(clubs.update).toHaveBeenCalledWith("admin-1", "c1", {
       name: "Club Z",

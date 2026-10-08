@@ -142,6 +142,40 @@ modes d'authentification (token API v2 ou Basic Auth v1).
 | -------------------------- | ------ | -------------------------------------------- |
 | `HELLOASSO_WEBHOOK_SECRET` | —      | Secret de validation des webhooks HelloAsso. |
 
+## QR de licence signé (#168)
+
+| Variable            | Défaut | Rôle                                                                                                                                                                                                                                             |
+| ------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `QR_SIGNING_SECRET` | —      | Clé HMAC-SHA256 des QR de licence (≥ 32 caractères, sinon ignorée). **Absent → QR non signés et non vérifiés** (équivalent au mode `off`), le backend démarre quand même. Changer la clé invalide tous les QR déjà émis (passes Wallet compris). |
+| `QR_SIGNATURE_MODE` | `warn` | Vérification au check-in : `off` (aucune), `warn` (QR non signé, falsifié ou expiré accepté mais signalé au staff), `enforce` (refusé).                                                                                                          |
+
+Précisions :
+
+- La clé est lue après suppression des espaces en début et fin (`.trim()`). Tout autre générateur de QR (passe Wallet) doit utiliser la même valeur nettoyée.
+- Le QR est valable jusqu'à la fin du jour d'expiration de la licence, **à l'heure de Paris**.
+- **`enforce` exige un `QR_SIGNING_SECRET` d'au moins 32 caractères** : sans lui, le backend refuse de démarrer (erreur explicite) au lieu de refuser silencieusement tous les check-ins. `off` et `warn` sans secret démarrent normalement (mode `off` de fait).
+- **Avant de passer en `enforce`**, chaque utilisateur doit avoir mis à jour l'app **et rouvert sa licence en ligne** au moins une fois : le QR signé n'est mis en cache (E-Licence hors ligne) qu'à ce moment-là. Sinon il présentera encore l'ancien QR non signé, refusé en `enforce`. Rester en `warn` pendant la transition et surveiller les avertissements « QR non vérifié » au check-in.
+
+## Pass Apple Wallet de la licence (#162)
+
+Les cinq variables sont nécessaires. Une seule absente ou invalide ⇒ **fonctionnalité désactivée** : le backend démarre, `appleWalletAvailable` vaut `false` dans la licence (`GET /users/me`, `GET /licenses/my`) et les routes du pass répondent 503. Le pass exige aussi un `QR_SIGNING_SECRET` valide : jamais de pass avec un QR non signé.
+
+| Variable                    | Défaut | Rôle                                                                                               |
+| --------------------------- | ------ | -------------------------------------------------------------------------------------------------- |
+| `WALLET_APPLE_PASS_CERT`    | —      | Certificat de signature du Pass Type ID (PEM).                                                     |
+| `WALLET_APPLE_PASS_KEY`     | —      | Clé privée de ce certificat (PEM, **non chiffrée**). Doit correspondre au certificat.              |
+| `WALLET_APPLE_WWDR_CERT`    | —      | Certificat intermédiaire Apple WWDR **G4** (PEM).                                                  |
+| `WALLET_APPLE_PASS_TYPE_ID` | —      | Identifiant du type de pass, de la forme `pass.<domaine inversé>` (doit être celui du certificat). |
+| `WALLET_APPLE_TEAM_ID`      | —      | Team ID du compte développeur Apple (10 caractères majuscules/chiffres).                           |
+
+Précisions :
+
+- Contenus PEM complets (`-----BEGIN …-----` inclus). Une valeur sur une seule ligne avec des `\n` littéraux est acceptée.
+- Au démarrage, le backend vérifie le format des identifiants, la lecture des PEM, la correspondance clé/certificat et l'expiration du certificat ; le motif d'une désactivation est journalisé **sans jamais le contenu des PEM**.
+- Un échec de signature à l'exécution répond 503 et remonte dans Sentry (message expurgé des blocs PEM).
+- Le certificat de pass expire (1 an) : le renouveler côté Apple puis mettre à jour les deux premières variables. Les pass déjà installés restent valides.
+- Aucune requête planifiée : le pass est généré à la demande, sans web service de mise à jour (#167).
+
 ## Azure AI Vision (OCR licences)
 
 | Variable                | Défaut | Rôle                                                                                                          |

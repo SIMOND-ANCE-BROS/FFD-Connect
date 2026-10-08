@@ -6,6 +6,7 @@ import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../../common/utils/pagination.util";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
+import { isOrganizedByClub } from "../competition-organizer";
 import {
   enrichCompetitionsForUser,
   mapEventsWithEligibility,
@@ -318,11 +319,9 @@ export class CompetitionQueryService {
       return acc;
     }, {});
 
-    const clubNameNorm = (club.clubName ?? "").trim().toLowerCase();
     return competitions.map((comp) => ({
       ...comp,
-      isOrganizedByMyClub:
-        (comp.organizer?.trim().toLowerCase() ?? "") === clubNameNorm,
+      isOrganizedByMyClub: isOrganizedByClub(comp.organizer, [club.clubName]),
       clubMembersRegisteredCount: countByCompetitionId[comp.id] ?? 0,
     }));
   }

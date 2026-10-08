@@ -154,6 +154,27 @@ export const licenseBaseSelect = {
 } as const;
 
 /**
+ * Champs d'une licence nécessaires au pass Apple Wallet (#162) : contenu du
+ * pass + nom du titulaire. Rien d'autre (minimisation).
+ */
+export const licenseWalletPassSelect = {
+  id: true,
+  number: true,
+  validUntil: true,
+  category: true,
+  user: { select: { firstName: true, lastName: true } },
+} as const;
+
+/**
+ * Jeton de téléchargement de pass Wallet (#162) : à qui il appartient et
+ * jusqu'à quand il vaut.
+ */
+export const walletPassTokenSelect = {
+  userId: true,
+  expiresAt: true,
+} as const;
+
+/**
  * Sélecteur minimal pour une licence : seul l'identifiant (ex. retour d'une
  * création dont on connaît déjà les champs).
  */
@@ -515,4 +536,33 @@ export const userRolesClubSelect = {
   clubId: true,
   clubName: true,
   club: { select: { disabledAt: true } },
+} as const;
+
+/** Check-in operator: roles plus every club name it can be matched on. */
+export const userRolesClubNameSelect = {
+  ...userRolesClubSelect,
+  club: { select: { disabledAt: true, name: true } },
+} as const;
+
+/** Competition ownership check: the organizing club's name. */
+export const competitionOrganizerSelect = { organizer: true } as const;
+
+/**
+ * Volunteer check-in link as returned to the organizer: never the stored
+ * token column (a SHA-256 hash); the plain token is added once by the caller.
+ */
+export const volunteerTokenIssuedSelect = {
+  id: true,
+  competitionId: true,
+  expiresAt: true,
+  name: true,
+  createdAt: true,
+} as const;
+
+/** Volunteer check-in link validation: scope and expiry, never the hash. */
+export const volunteerTokenAuthSelect = {
+  id: true,
+  competitionId: true,
+  expiresAt: true,
+  name: true,
 } as const;

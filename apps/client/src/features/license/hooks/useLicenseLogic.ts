@@ -165,6 +165,8 @@ export const useLicenseLogic = (): {
                   )
                 : "31/08/2026",
               validUntilRaw: profile.license?.validUntil ?? undefined,
+              // QR signé par le serveur (#168), mis en cache avec le snapshot.
+              qrCode: profile.license?.qrCode ?? undefined,
               season: "2025/2026",
               birthDate: profile.birthDate
                 ? new Date(profile.birthDate).toLocaleDateString("fr-FR")
@@ -319,6 +321,18 @@ export const useLicenseLogic = (): {
         startVerifyingWdsf();
         try {
           const wdsfData = await auth.verifyWdsfLicense(min);
+          // Save first: the backend refuses a MIN that is not in the account
+          // holder's name, and the card must not appear in that case.
+          await auth.saveWdsfToBackend({
+            min: wdsfData.licenseNumber,
+            nationality: wdsfData.country ?? null,
+            licenseType: wdsfData.type,
+            ageGroup: wdsfData.ageGroup ?? null,
+            expiresOn:
+              wdsfData.validUntil && wdsfData.validUntil !== "Active"
+                ? wdsfData.validUntil
+                : null,
+          });
 
           // Map WDSF API response to LicenseUser
           const formatDate = (isoOrLabel: string): string => {
@@ -364,16 +378,6 @@ export const useLicenseLogic = (): {
           await auth.setWdsfLicenseEnabled(true);
           setShowWdsf(true);
           setActiveCardIndex(1); // Focus new card
-          await auth.saveWdsfToBackend({
-            min: wdsfData.licenseNumber,
-            nationality: wdsfData.country ?? null,
-            licenseType: wdsfData.type,
-            ageGroup: wdsfData.ageGroup ?? null,
-            expiresOn:
-              wdsfData.validUntil && wdsfData.validUntil !== "Active"
-                ? wdsfData.validUntil
-                : null,
-          });
         } finally {
           stopVerifyingWdsf();
         }

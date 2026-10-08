@@ -39,7 +39,7 @@ export const LegalScreen = ({ route, navigation }: Props) => {
       <ScrollView
         contentContainerStyle={{
           ...styles.content,
-          paddingTop: headerH + 8,
+          paddingTop: headerH,
         }}
         testID="legal-scroll-view"
       >
