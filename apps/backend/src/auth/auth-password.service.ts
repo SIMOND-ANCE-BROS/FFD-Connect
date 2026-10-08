@@ -7,6 +7,7 @@ import {
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
+import { hashToken } from "../utils/token-hash.util";
 import { EmailService } from "./email.service";
 import { AuthTokenService } from "./auth-token.service";
 import { PasswordValidator } from "./password-validator";
@@ -22,11 +23,6 @@ export class AuthPasswordService {
     private emailService: EmailService,
     private authTokenService: AuthTokenService,
   ) {}
-
-  /** Hash a token with SHA-256 for secure storage. Only the hash is persisted. */
-  private hashToken(token: string): string {
-    return crypto.createHash("sha256").update(token).digest("hex");
-  }
 
   /**
    * Issues a single-use password token (reset or invitation): previous unused
@@ -45,7 +41,7 @@ export class AuthPasswordService {
     const plainToken = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + expiryHours * 3600_000);
     await this.prisma.passwordResetToken.create({
-      data: { token: this.hashToken(plainToken), userId, expiresAt },
+      data: { token: hashToken(plainToken), userId, expiresAt },
     });
     return plainToken;
   }
@@ -82,7 +78,7 @@ export class AuthPasswordService {
       });
     }
 
-    const tokenHash = this.hashToken(token);
+    const tokenHash = hashToken(token);
     const resetToken = await this.prisma.passwordResetToken.findUnique({
       where: { token: tokenHash },
       select: {

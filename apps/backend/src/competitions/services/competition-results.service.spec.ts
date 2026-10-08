@@ -1,10 +1,16 @@
 import { BadRequestException, Logger, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
+import { createHash } from "crypto";
 import { buildSignedLicenseQr } from "../../licenses/qr/license-qr";
 import { LicenseQrService } from "../../licenses/qr/license-qr.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
+import {
+  idOnlySelect,
+  volunteerTokenAuthSelect,
+  volunteerTokenIssuedSelect,
+} from "../../utils/prisma-selects";
 import { createMockPrismaService } from "../__mocks__/types";
 import { CompetitionCacheService } from "./competition-cache.service";
 import { CompetitionResultsService } from "./competition-results.service";
@@ -15,6 +21,10 @@ const mockRedisService = {
   set: jest.fn().mockResolvedValue(null),
 };
 const QR_SECRET = "q".repeat(32);
+
+/** Independent SHA-256 so the test does not trust the code under test. */
+const sha256 = (value: string): string =>
+  createHash("sha256").update(value).digest("hex");
 
 /** Real LicenseQrService fed with a fake config (no secret ⇒ mode off). */
 function makeQrService(env: Record<string, string> = {}): LicenseQrService {
@@ -109,11 +119,70 @@ describe("CompetitionResultsService", () => {
     });
   });
 
+  describe("generateVolunteerToken", () => {
+    it("stores only the SHA-256 hash and returns the plain token once", async () => {
+      mockPrismaService.competition.findUnique.mockResolvedValue({ id: "c1" });
+      mockPrismaService.volunteerToken.create.mockResolvedValue({
+        id: "vt-1",
+        competitionId: "c1",
+        expiresAt: new Date(),
+        name: "Jean",
+        createdAt: new Date(),
+      });
+
+      const result = await service.generateVolunteerToken("c1", "Jean");
+
+      expect(mockPrismaService.competition.findUnique).toHaveBeenCalledWith({
+        where: { id: "c1" },
+        select: idOnlySelect,
+      });
+      const createArgs = mockPrismaService.volunteerToken.create.mock
+        .calls[0][0] as {
+        data: { token: string; competitionId: string; name: string };
+        select: unknown;
+      };
+      expect(result.token).toMatch(/^[0-9a-f]{64}$/);
+      expect(createArgs.data.token).toBe(sha256(result.token));
+      expect(createArgs.data.token).not.toBe(result.token);
+      expect(createArgs.data).toMatchObject({
+        competitionId: "c1",
+        name: "Jean",
+      });
+      expect(createArgs.select).toBe(volunteerTokenIssuedSelect);
+      expect(result.accessUrl).toContain(`token=${result.token}`);
+      expect(result.accessUrl).toContain("id=c1");
+      expect(result.id).toBe("vt-1");
+    });
+
+    it("defaults the volunteer name and expires after 24h", async () => {
+      mockPrismaService.competition.findUnique.mockResolvedValue({ id: "c1" });
+      mockPrismaService.volunteerToken.create.mockResolvedValue({ id: "vt-1" });
+      const before = Date.now();
+
+      await service.generateVolunteerToken("c1");
+
+      const createArgs = mockPrismaService.volunteerToken.create.mock
+        .calls[0][0] as { data: { name: string; expiresAt: Date } };
+      expect(createArgs.data.name).toBe("Bénévole");
+      const ttl = createArgs.data.expiresAt.getTime() - before;
+      expect(ttl).toBeGreaterThan(23 * 3_600_000);
+      expect(ttl).toBeLessThanOrEqual(24 * 3_600_000 + 1000);
+    });
+
+    it("rejects an unknown competition without creating a token", async () => {
+      mockPrismaService.competition.findUnique.mockResolvedValue(null);
+
+      await expect(service.generateVolunteerToken("nope")).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockPrismaService.volunteerToken.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe("checkInAsVolunteer", () => {
     const TOKEN = "a".repeat(64);
     const validToken = (overrides: Record<string, unknown> = {}) => ({
       id: "vt-1",
-      token: TOKEN,
       competitionId: "c1",
       name: "Bénévole",
       expiresAt: new Date(Date.now() + 3_600_000),
@@ -134,7 +203,8 @@ describe("CompetitionResultsService", () => {
       await service.checkInAsVolunteer("c1", TOKEN, "u1");
 
       expect(mockPrismaService.volunteerToken.findUnique).toHaveBeenCalledWith({
-        where: { token: TOKEN },
+        where: { token: sha256(TOKEN) },
+        select: volunteerTokenAuthSelect,
       });
       expect(checkInSpy).toHaveBeenCalledWith("c1", "u1");
       const logged = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
