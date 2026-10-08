@@ -22,13 +22,13 @@ import { RoundCard } from "../components/RoundCard";
 import { usePerformanceEngine } from "../hooks/usePerformanceEngine";
 import { usePerformanceStore } from "../../../stores/performance.store";
 import {
+  addGroup,
   addRound,
   isPasoDoble,
+  removeGroup,
   removeRound,
-  setRoundCategory,
-  setRoundMix,
+  setGroupCategory,
   setRoundType,
-  stepRoundHeats,
   toggleRoundDance,
 } from "../utils/competitionProgram";
 
@@ -72,7 +72,7 @@ export const PerformanceSetupScreen = () => {
   };
 
   const hasPaso = config.rounds.some(
-    (r) => r.category === "Latin" && r.selectedDances.some(isPasoDoble),
+    (r) => r.groups.includes("Latin") && r.dances.Latin.some(isPasoDoble),
   );
 
   // Validation (≥ 1 dance per round, tracks available for every dance) is
@@ -128,22 +128,16 @@ export const PerformanceSetupScreen = () => {
               round={round}
               index={index}
               canDelete={config.rounds.length > 1}
-              onCategoryChange={(category) =>
-                setConfig(setRoundCategory(round.id, category))
-              }
               onTypeChange={(type) => setConfig(setRoundType(round.id, type))}
-              onHeatsStep={(delta) =>
-                setConfig(stepRoundHeats(round.id, delta))
+              onAddGroup={() => setConfig(addGroup(round.id))}
+              onRemoveGroup={(g) => setConfig(removeGroup(round.id, g))}
+              onGroupCategoryChange={(g, category) =>
+                setConfig(setGroupCategory(round.id, g, category))
               }
-              onToggleDance={(dance) =>
-                setConfig(toggleRoundDance(round.id, dance))
+              onToggleDance={(category, dance) =>
+                setConfig(toggleRoundDance(round.id, category, dance))
               }
               onDelete={() => setConfig(removeRound(round.id))}
-              onMixChange={
-                index > 0
-                  ? (mix) => setConfig(setRoundMix(round.id, mix))
-                  : undefined
-              }
             />
           ))}
           <TouchableOpacity

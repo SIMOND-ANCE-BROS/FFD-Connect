@@ -105,34 +105,16 @@ describe("PerformanceSetupScreen", () => {
     expect(getByText("Valse viennoise")).toBeTruthy();
   });
 
-  it("adds a round copying the previous category with 2 heats", async () => {
+  it("adds a round copying the previous round's groups", async () => {
     const { setConfig } = mockEngine();
     const { getByTestId } = await render(<PerformanceSetupScreen />);
     await fireEvent.press(getByTestId("performance-add-round-button"));
     const next = applyLast(setConfig);
     expect(next.rounds).toHaveLength(2);
     expect(next.rounds[1]).toMatchObject({
-      category: "Latin",
       type: "Round",
-      heats: 2,
+      groups: ["Latin", "Latin"],
     });
-  });
-
-  it("offers « passages mixés » from the second round only", async () => {
-    const program = { ...baseConfig, rounds: [latin, standard] };
-    const { setConfig } = mockEngine({ config: program });
-    const { getByTestId, queryByTestId } = await render(
-      <PerformanceSetupScreen />,
-    );
-    expect(queryByTestId("performance-round-0-mix-switch")).toBeNull();
-    await fireEvent(
-      getByTestId("performance-round-1-mix-switch"),
-      "valueChange",
-      true,
-    );
-    const next = applyLast(setConfig, program);
-    expect(next.rounds[1].mixWithPrevious).toBe(true);
-    expect(next.rounds[0].mixWithPrevious).toBeFalsy();
   });
 
   it("only allows deleting when several rounds exist", async () => {
@@ -155,58 +137,67 @@ describe("PerformanceSetupScreen", () => {
     expect(next.rounds.map((r) => r.id)).toEqual(["r1"]);
   });
 
-  it("changes a round category and resets its dances", async () => {
+  it("lists the groups and sets the category of each", async () => {
     const { setConfig } = mockEngine();
-    const { getByTestId } = await render(<PerformanceSetupScreen />);
-    await fireEvent.press(
-      getByTestId("performance-round-0-category-tab-Standard"),
-    );
-    const next = applyLast(setConfig);
-    expect(next.rounds[0].category).toBe("Standard");
-    expect(next.rounds[0].selectedDances).toContain("Valse Viennoise");
+    const { getByTestId, getByText } = await render(<PerformanceSetupScreen />);
+    expect(getByText("Groupe 1")).toBeTruthy();
+    expect(getByText("Groupe 2")).toBeTruthy();
+    await fireEvent.press(getByTestId("performance-round-0-group-1-standard"));
+    expect(applyLast(setConfig).rounds[0].groups).toEqual([
+      "Latin",
+      "Standard",
+    ]);
   });
 
-  it("heats stepper: plus increments, minus goes down to 1 then disables", async () => {
-    const { setConfig } = mockEngine();
-    const { getByTestId, rerender } = await render(<PerformanceSetupScreen />);
-    expect(getByTestId("performance-round-0-heats-value")).toHaveTextContent(
-      "2",
-    );
-
-    await fireEvent.press(getByTestId("performance-round-0-heats-plus"));
-    const three = applyLast(setConfig);
-    expect(three.rounds[0].heats).toBe(3);
-
-    await fireEvent.press(getByTestId("performance-round-0-heats-minus"));
-    const one = applyLast(setConfig);
-    expect(one.rounds[0].heats).toBe(1);
-
-    mockEngine({ config: one, setConfig });
-    await rerender(<PerformanceSetupScreen />);
-    expect(getByTestId("performance-round-0-heats-minus")).toBeDisabled();
-  });
-
-  it("switching a round to Final hides the heats stepper (1 heat)", async () => {
+  it("adds and removes groups, never below one", async () => {
     const { setConfig } = mockEngine();
     const { getByTestId, queryByTestId, rerender } = await render(
       <PerformanceSetupScreen />,
     );
-    await fireEvent.press(getByTestId("performance-round-0-type-tab-Final"));
-    const next = applyLast(setConfig);
-    expect(next.rounds[0]).toMatchObject({ type: "Final", heats: 1 });
+    await fireEvent.press(getByTestId("performance-round-0-add-group"));
+    expect(applyLast(setConfig).rounds[0].groups).toHaveLength(3);
+    await fireEvent.press(getByTestId("performance-round-0-group-0-remove"));
+    const one = applyLast(setConfig);
+    expect(one.rounds[0].groups).toEqual(["Latin"]);
 
-    mockEngine({ config: next });
+    mockEngine({ config: one, setConfig });
     await rerender(<PerformanceSetupScreen />);
-    expect(queryByTestId("performance-round-0-heats-plus")).toBeNull();
+    expect(queryByTestId("performance-round-0-group-0-remove")).toBeNull();
+  });
+
+  it("shows the dances of each category danced, and the floor order", async () => {
+    const mixed: RoundConfig = {
+      ...latin,
+      groups: ["Standard", "Latin", "Standard"],
+      dances: { Standard: ["Valse Lente", "Tango"], Latin: ["Samba"] },
+    };
+    mockEngine({ config: { ...baseConfig, rounds: [mixed] } });
+    const { getByText, getByTestId } = await render(<PerformanceSetupScreen />);
+    expect(getByText("Danses Standard")).toBeTruthy();
+    expect(getByText("Danses Latines")).toBeTruthy();
+    expect(getByTestId("performance-round-0-preview")).toHaveTextContent(
+      "Déroulé : Valse lente (G1) → Samba (G2) → Valse lente (G3) → Tango (G1) → Tango (G3)",
+    );
+  });
+
+  it("hides the dances of a category no group dances", async () => {
+    mockEngine();
+    const { queryByText } = await render(<PerformanceSetupScreen />);
+    expect(queryByText("Danses Standard")).toBeNull();
+  });
+
+  it("switches a round to Final", async () => {
+    const { setConfig } = mockEngine();
+    const { getByTestId } = await render(<PerformanceSetupScreen />);
+    await fireEvent.press(getByTestId("performance-round-0-type-tab-Final"));
+    expect(applyLast(setConfig).rounds[0].type).toBe("Final");
   });
 
   it("toggles a dance of a round", async () => {
     const { setConfig } = mockEngine();
     const { getByTestId } = await render(<PerformanceSetupScreen />);
     await fireEvent.press(getByTestId("performance-round-0-dance-samba"));
-    expect(applyLast(setConfig).rounds[0].selectedDances).not.toContain(
-      "Samba",
-    );
+    expect(applyLast(setConfig).rounds[0].dances.Latin).not.toContain("Samba");
   });
 
   it("shows the Paso setting only when a Latin round contains the Paso", async () => {

@@ -1,15 +1,14 @@
 /**
  * Pure logic of the competition mode ("Programme de tours"): dance matching,
- * playlist generation for a mixed programme, validation and the French MC
+ * playlist generation (rounds of Standard / Latin groups), validation and the French MC
  * announcements. No React, no audio — fully unit-testable.
  */
 import type { TrackData } from "../../player/context/PlayerContext";
 import {
   createRound,
   DANCES,
-  DEFAULT_ROUND_HEATS,
-  MAX_ROUND_HEATS,
-  MIN_ROUND_HEATS,
+  MAX_ROUND_GROUPS,
+  MIN_ROUND_GROUPS,
   type Category,
   type PerformanceConfig,
   type PlaylistItem,
@@ -92,23 +91,25 @@ export const isAmbianceTrack = (t: TrackData): boolean =>
 
 // --- Rounds -----------------------------------------------------------------
 
-export const clampHeats = (round: Pick<RoundConfig, "type">, heats: number) =>
-  round.type === "Final"
-    ? 1
-    : Math.min(
-        MAX_ROUND_HEATS,
-        Math.max(MIN_ROUND_HEATS, Math.round(heats) || MIN_ROUND_HEATS),
-      );
-
-/** Keeps dances in the canonical order of the round's category. */
+/** Keeps dances in the canonical order of their category. */
 export const sortDances = (category: Category, dances: string[]): string[] =>
   DANCES[category].filter((d) => dances.includes(d));
 
-/** Enforces the round invariants (heats bounds, dances of its category). */
+/** Categories danced in the round, in order of first appearance. */
+export const roundCategories = (round: Pick<RoundConfig, "groups">) =>
+  round.groups.filter((c, i) => round.groups.indexOf(c) === i);
+
+/** Enforces the round invariants (group count bounds, canonical dances). */
 export const normalizeRound = (round: RoundConfig): RoundConfig => ({
   ...round,
-  heats: clampHeats(round, round.heats),
-  selectedDances: sortDances(round.category, round.selectedDances),
+  groups:
+    round.groups.length >= MIN_ROUND_GROUPS
+      ? round.groups.slice(0, MAX_ROUND_GROUPS)
+      : ["Latin"],
+  dances: {
+    Standard: sortDances("Standard", round.dances.Standard),
+    Latin: sortDances("Latin", round.dances.Latin),
+  },
 });
 
 // --- Programme edition (pure updaters for setConfig) ------------------------
@@ -122,12 +123,25 @@ const patchRound =
     rounds: cfg.rounds.map((r) => (r.id === id ? normalizeRound(patch(r)) : r)),
   });
 
-/** New round = previous round's category, Passage, 2 heats, all dances. */
+/** New round = same groups and dances as the previous one, as a Passage. */
 export const addRound = (cfg: PerformanceConfig): PerformanceConfig => {
   const last = cfg.rounds[cfg.rounds.length - 1] as RoundConfig | undefined;
+  const round = createRound("Latin", "Round");
   return {
     ...cfg,
-    rounds: [...cfg.rounds, createRound(last?.category ?? "Latin", "Round")],
+    rounds: [
+      ...cfg.rounds,
+      last
+        ? {
+            ...round,
+            groups: [...last.groups],
+            dances: {
+              Standard: [...last.dances.Standard],
+              Latin: [...last.dances.Latin],
+            },
+          }
+        : round,
+    ],
   };
 };
 
@@ -139,35 +153,52 @@ export const removeRound =
       ? cfg
       : { ...cfg, rounds: cfg.rounds.filter((r) => r.id !== id) };
 
-/** Changing category resets the dances to the whole new category. */
-export const setRoundCategory = (id: string, category: Category) =>
+export const setRoundType = (id: string, type: RoundConfig["type"]) =>
+  patchRound(id, (r) => ({ ...r, type }));
+
+/** Adds a group at the end, of the same category as the last one. */
+export const addGroup = (id: string) =>
   patchRound(id, (r) =>
-    r.category === category
+    r.groups.length >= MAX_ROUND_GROUPS
       ? r
-      : { ...r, category, selectedDances: [...DANCES[category]] },
+      : { ...r, groups: [...r.groups, r.groups[r.groups.length - 1]] },
   );
 
-export const setRoundType = (id: string, type: RoundConfig["type"]) =>
+/** Removes a group — a round always keeps at least one. */
+export const removeGroup = (id: string, index: number) =>
+  patchRound(id, (r) =>
+    r.groups.length <= MIN_ROUND_GROUPS
+      ? r
+      : { ...r, groups: r.groups.filter((_, i) => i !== index) },
+  );
+
+export const setGroupCategory = (
+  id: string,
+  index: number,
+  category: Category,
+) =>
   patchRound(id, (r) => ({
     ...r,
-    type,
-    heats:
-      type === "Final" ? 1 : r.type === "Final" ? DEFAULT_ROUND_HEATS : r.heats,
+    groups: r.groups.map((c, i) => (i === index ? category : c)),
   }));
 
-export const stepRoundHeats = (id: string, delta: number) =>
-  patchRound(id, (r) => ({ ...r, heats: r.heats + delta }));
-
-export const setRoundMix = (id: string, mixWithPrevious: boolean) =>
-  patchRound(id, (r) => ({ ...r, mixWithPrevious }));
-
-export const toggleRoundDance = (id: string, dance: string) =>
-  patchRound(id, (r) => ({
-    ...r,
-    selectedDances: r.selectedDances.includes(dance)
-      ? r.selectedDances.filter((d) => d !== dance)
-      : [...r.selectedDances, dance],
-  }));
+export const toggleRoundDance = (
+  id: string,
+  category: Category,
+  dance: string,
+) =>
+  patchRound(id, (r) => {
+    const list = r.dances[category];
+    return {
+      ...r,
+      dances: {
+        ...r.dances,
+        [category]: list.includes(dance)
+          ? list.filter((d) => d !== dance)
+          : [...list, dance],
+      },
+    };
+  });
 
 // --- Playlist ---------------------------------------------------------------
 
@@ -195,15 +226,18 @@ export const danceDuration = (
   return cfg.duration;
 };
 
-export interface MissingDances {
+export interface RoundCategoryProblem {
   roundIndex: number;
   category: Category;
+}
+
+export interface MissingDances extends RoundCategoryProblem {
   dances: string[];
 }
 
 export interface ProgramValidation {
-  /** 1-based indexes of rounds with no dance selected. */
-  emptyRounds: number[];
+  /** Rounds (1-based) with a group whose category has no dance selected. */
+  emptyRounds: RoundCategoryProblem[];
   /** Dances for which the library has no track, grouped by round. */
   missing: MissingDances[];
 }
@@ -212,23 +246,22 @@ export const validateProgram = (
   cfg: PerformanceConfig,
   tracks: TrackData[],
 ): ProgramValidation => {
-  const emptyRounds: number[] = [];
+  const emptyRounds: RoundCategoryProblem[] = [];
   const missing: MissingDances[] = [];
-  cfg.rounds.forEach((round, i) => {
-    const dances = sortDances(round.category, round.selectedDances);
-    if (dances.length === 0) {
-      emptyRounds.push(i + 1);
-      return;
-    }
-    const absent = dances.filter(
-      (d) => !tracks.some((t) => trackMatchesDance(t.style, d)),
-    );
-    if (absent.length > 0) {
-      missing.push({
-        roundIndex: i + 1,
-        category: round.category,
-        dances: absent,
-      });
+  cfg.rounds.forEach((raw, i) => {
+    const round = normalizeRound(raw);
+    for (const category of roundCategories(round)) {
+      const dances = round.dances[category];
+      if (dances.length === 0) {
+        emptyRounds.push({ roundIndex: i + 1, category });
+        continue;
+      }
+      const absent = dances.filter(
+        (d) => !tracks.some((t) => trackMatchesDance(t.style, d)),
+      );
+      if (absent.length > 0) {
+        missing.push({ roundIndex: i + 1, category, dances: absent });
+      }
     }
   });
   return { emptyRounds, missing };
@@ -237,7 +270,9 @@ export const validateProgram = (
 /** French, user-facing description of the validation problems (or null). */
 export const describeValidation = (v: ProgramValidation): string | null => {
   if (v.emptyRounds.length > 0) {
-    const list = v.emptyRounds.map((n) => `tour ${n}`).join(", ");
+    const list = v.emptyRounds
+      .map((e) => `tour ${e.roundIndex} (${CATEGORY_LABELS[e.category]})`)
+      .join(", ");
     return `Sélectionnez au moins une danse pour : ${list}.`;
   }
   if (v.missing.length > 0) {
@@ -252,28 +287,48 @@ export const describeValidation = (v: ProgramValidation): string | null => {
   return null;
 };
 
+export interface RoundStep {
+  dance: string;
+  category: Category;
+  /** 1-based group number. */
+  groupIndex: number;
+  /** 0-based position of the dance in its category. */
+  danceIndex: number;
+}
+
 /**
- * Splits the programme into blocks of 0-based round indexes: a round flagged
- * `mixWithPrevious` joins the previous round's block (the first round always
- * opens one).
+ * Floor order of a round: for every dance position, the groups in order, each
+ * dancing its category's dance (a category with fewer dances drops out).
  */
-export const groupRounds = (rounds: RoundConfig[]): number[][] => {
-  const blocks: number[][] = [];
-  rounds.forEach((round, i) => {
-    // i > 0 ⇒ a previous block exists.
-    if (i > 0 && round.mixWithPrevious) blocks[blocks.length - 1].push(i);
-    else blocks.push([i]);
-  });
-  return blocks;
+export const roundSequence = (raw: RoundConfig): RoundStep[] => {
+  const round = normalizeRound(raw);
+  const steps: RoundStep[] = [];
+  const maxDances = Math.max(
+    ...round.groups.map((c) => round.dances[c].length),
+  );
+  for (let d = 0; d < maxDances; d++) {
+    round.groups.forEach((category, g) => {
+      const dances = round.dances[category];
+      if (d < dances.length) {
+        steps.push({
+          dance: dances[d],
+          category,
+          groupIndex: g + 1,
+          danceIndex: d,
+        });
+      }
+    });
+  }
+  return steps;
 };
 
 /**
- * Builds the competition playlist: for each round, for each dance (canonical
- * order), for each heat — dance-major, like a real competition. Rounds of a
- * mixed block alternate heat by heat (Valse Std 1, Samba Lat 1, Valse Std 2,
- * Samba Lat 2… then Tango / Cha-cha-cha). A track is picked per heat, cycling
- * through a shuffled pool so consecutive heats of the same dance get different
- * music whenever the library allows it.
+ * Builds the competition playlist. In each round, for every dance position,
+ * the groups take the floor in order, each dancing its category's dance:
+ * groups Standard, Latines, Standard → Valse lente, Samba, Valse lente, then
+ * Tango, Cha-cha-cha, Tango… A category with fewer dances simply drops out.
+ * A track is picked per group, cycling through a shuffled pool so consecutive
+ * groups of the same dance get different music whenever the library allows it.
  */
 export const buildPlaylist = (
   cfg: PerformanceConfig,
@@ -306,47 +361,32 @@ export const buildPlaylist = (
     return track;
   };
 
-  const rounds = cfg.rounds.map(normalizeRound);
-
-  const push = (r: number, d: number, h: number, mixed: boolean) => {
-    const round = rounds[r];
-    const dances = round.selectedDances;
-    const dance = dances[d];
-    const track = pick(dance);
-    if (!track) return;
-    items.push({
-      track,
-      style: dance,
-      duration: danceDuration(dance, cfg),
-      isPaso: isPasoDoble(dance),
-      heatIndex: h,
-      totalHeats: round.heats,
-      roundIndex: r + 1,
-      totalRounds,
-      roundType: round.type,
-      category: round.category,
-      danceIndex: d,
-      dancesInRound: dances.length,
-      ...(mixed ? { mixed } : {}),
-    });
-  };
-
-  groupRounds(rounds).forEach((block) => {
-    const mixed = block.length > 1;
-    const maxDances = Math.max(
-      ...block.map((r) => rounds[r].selectedDances.length),
-    );
-    const maxHeats = Math.max(...block.map((r) => rounds[r].heats));
-    // Single round: the loop degenerates to dance → heat (dance-major).
-    for (let d = 0; d < maxDances; d++) {
-      for (let h = 1; h <= maxHeats; h++) {
-        for (const r of block) {
-          const round = rounds[r];
-          if (d < round.selectedDances.length && h <= round.heats) {
-            push(r, d, h, mixed);
-          }
-        }
-      }
+  cfg.rounds.forEach((raw, r) => {
+    const round = normalizeRound(raw);
+    const mixed = roundCategories(round).length > 1;
+    for (const step of roundSequence(round)) {
+      const track = pick(step.dance);
+      if (!track) continue;
+      items.push({
+        track,
+        style: step.dance,
+        duration: danceDuration(step.dance, cfg),
+        isPaso: isPasoDoble(step.dance),
+        groupIndex: step.groupIndex,
+        totalGroups: round.groups.length,
+        roundIndex: r + 1,
+        totalRounds,
+        roundType: round.type,
+        category: step.category,
+        mixed,
+        danceIndex: step.danceIndex,
+        dancesInRound: round.dances[step.category].length,
+        opensCategory:
+          mixed &&
+          step.danceIndex === 0 &&
+          round.groups.indexOf(step.category) === step.groupIndex - 1 &&
+          step.groupIndex > 1,
+      });
     }
   });
 
@@ -361,8 +401,8 @@ export const buildPlaylist = (
 type AnnouncementItem = Pick<
   PlaylistItem,
   | "style"
-  | "heatIndex"
-  | "totalHeats"
+  | "groupIndex"
+  | "totalGroups"
   | "roundIndex"
   | "totalRounds"
   | "roundType"
@@ -370,6 +410,7 @@ type AnnouncementItem = Pick<
   | "dancesInRound"
   | "category"
   | "mixed"
+  | "opensCategory"
 >;
 
 interface Articles {
@@ -393,9 +434,20 @@ const articles = (dance: string): Articles => {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** « Place aux latines » / « Place au standard ». */
+const CATEGORY_TO: Record<Category, string> = {
+  Standard: "au standard",
+  Latin: "aux latines",
+};
+/** « Et maintenant les latines… » */
+const CATEGORY_THE: Record<Category, string> = {
+  Standard: "le standard",
+  Latin: "les latines",
+};
+
 /** Deterministic template choice: same item → same text (preload == playback). */
 const choose = (item: AnnouncementItem, templates: string[]): string => {
-  const key = `${item.roundIndex}|${item.style}|${item.heatIndex}|${item.danceIndex}`;
+  const key = `${item.roundIndex}|${item.style}|${item.groupIndex}|${item.danceIndex}`;
   const idx = parseInt(fnv1aHash(key), 16) % templates.length;
   return templates[idx];
 };
@@ -403,86 +455,88 @@ const choose = (item: AnnouncementItem, templates: string[]): string => {
 /**
  * Natural French announcement, in the voice of a ballroom MC. Punctuation and
  * ellipses are deliberate: they drive the prosody of the neural TTS voice.
+ * The group is only named when the round has several.
  */
 export const getAnnouncementText = (item: AnnouncementItem): string => {
   const a = articles(item.style);
   const isFinal = item.roundType === "Final";
-  // One group per dance: no « premier passage » to announce.
-  const single = item.totalHeats <= 1;
-  const firstHeat = single ? " !" : ", premier passage !";
-  const firstOfRound = item.danceIndex === 0 && item.heatIndex === 1;
+  const single = item.totalGroups <= 1;
+  const groupOrd = ordinal(item.groupIndex);
+  /** « , deuxième groupe ! » — or just « ! » with a single group. */
+  const group = single ? " !" : `, ${groupOrd} groupe !`;
+  const firstOfRound = item.danceIndex === 0 && item.groupIndex === 1;
   const lastDance =
     item.danceIndex === item.dancesInRound - 1 && item.dancesInRound > 1;
-  const heatOrd = ordinal(item.heatIndex);
 
   if (firstOfRound) {
     if (isFinal) {
       return choose(item, [
-        `Et voici la finale… on commence avec ${a.the} !`,
-        `Mesdames et messieurs, place à la finale… ${a.name} !`,
-        `C'est l'heure de la finale ! Première danse : ${a.the}.`,
+        `Et voici la finale… on commence avec ${a.the}${group}`,
+        `Mesdames et messieurs, place à la finale… ${a.name}${group}`,
       ]);
     }
     const roundOrd = ordinal(item.roundIndex);
-    if (item.mixed) {
-      // Mixed block: name the category, the floor alternates between rounds.
-      const cat = item.category === "Latin" ? "en latines" : "en standard";
-      return choose(item, [
-        `Mesdames et messieurs, ${roundOrd} tour ${cat}… on commence avec ${a.the}${firstHeat}`,
-        `Place au ${roundOrd} tour ${cat} ! ${capitalize(a.name)}${firstHeat}`,
-      ]);
-    }
     return choose(item, [
-      `Mesdames et messieurs, place au ${roundOrd} tour… on commence avec ${a.the}${firstHeat}`,
-      `Bienvenue pour le ${roundOrd} tour ! On ouvre avec ${a.the}${firstHeat}`,
-      `Mesdames et messieurs, ${roundOrd} tour ! ${capitalize(a.name)}, à vous !`,
+      `Mesdames et messieurs, place au ${roundOrd} tour… on commence avec ${a.the}${group}`,
+      `Bienvenue pour le ${roundOrd} tour ! On ouvre avec ${a.the}${group}`,
     ]);
   }
 
-  if (item.heatIndex > 1) {
-    const lastHeat = item.heatIndex === item.totalHeats && item.totalHeats > 2;
-    if (lastHeat) {
-      return choose(item, [
-        `${a.name}, ${heatOrd} et dernier passage !`,
-        `Dernier passage ${a.of}… à vous !`,
-      ]);
-    }
+  if (item.opensCategory) {
+    // Mixed round: the first group of the other category takes the floor.
     return choose(item, [
-      `${a.name}, ${heatOrd} passage !`,
-      `${capitalize(heatOrd)} passage ${a.of}, à vous !`,
-      `Et voici le ${heatOrd} passage… ${a.name} !`,
+      `Place ${CATEGORY_TO[item.category]} ! ${capitalize(a.the)}${group}`,
+      `Et maintenant ${CATEGORY_THE[item.category]}… ${a.the}${group}`,
     ]);
   }
 
-  // First heat of a dance that is not the first of the round.
-  if (isFinal) {
-    if (lastDance) {
+  if (item.groupIndex > 1) {
+    const lastGroup =
+      item.groupIndex === item.totalGroups && item.totalGroups > 2;
+    if (lastGroup) {
       return choose(item, [
-        `Dernière danse : ${a.the} !`,
-        `Et pour terminer… ${a.the} !`,
+        `${capitalize(a.name)}, ${groupOrd} et dernier groupe !`,
+        `Dernier groupe ${a.of}… à vous !`,
       ]);
     }
     return choose(item, [
-      `On enchaîne avec ${a.the}.`,
-      `Et maintenant… ${a.the} !`,
-      `Place ${a.to} !`,
+      `${capitalize(a.name)}, ${groupOrd} groupe !`,
+      `${capitalize(groupOrd)} groupe ${a.of}, à vous !`,
     ]);
   }
+
+  // First group of a dance that is not the first of the round.
   if (lastDance) {
-    return choose(item, [
-      `Dernière danse du tour : ${a.the}${firstHeat}`,
-      `Et pour finir ce tour… ${a.the}${firstHeat}`,
-    ]);
+    return choose(
+      item,
+      isFinal
+        ? [
+            `Dernière danse : ${a.the}${group}`,
+            `Et pour terminer… ${a.the}${group}`,
+          ]
+        : [
+            `Dernière danse du tour : ${a.the}${group}`,
+            `Et pour finir ce tour… ${a.the}${group}`,
+          ],
+    );
   }
   return choose(item, [
-    `On enchaîne avec ${a.the}${firstHeat}`,
-    `Place ${a.to}${firstHeat}`,
-    `Et maintenant, ${a.the} ! ${single ? "À vous !" : "Premier passage, à vous !"}`,
+    `On enchaîne avec ${a.the}${group}`,
+    `Place ${a.to}${group}`,
+    `Et maintenant… ${a.the}${group}`,
   ]);
 };
 
 export const CLOSING_ANNOUNCEMENT =
   "Merci à tous, c'est terminé ! Bravo aux danseurs.";
+
+/** Group label: « Groupe 2/3 », or « Groupe unique ». */
+export const describeGroup = (
+  item: Pick<PlaylistItem, "groupIndex" | "totalGroups">,
+): string =>
+  item.totalGroups <= 1
+    ? "Groupe unique"
+    : `Groupe ${item.groupIndex}/${item.totalGroups}`;
 
 /** Short French context line for the player screen. */
 export const describeItem = (item: PlaylistItem): string => {
@@ -490,11 +544,10 @@ export const describeItem = (item: PlaylistItem): string => {
     `Tour ${item.roundIndex}`,
     CATEGORY_LABELS[item.category],
     danceLabel(item.style),
-    item.roundType === "Final"
-      ? "Finale"
-      : item.totalHeats <= 1
-        ? "Passage unique"
-        : `Passage ${item.heatIndex}/${item.totalHeats}`,
+    ...(item.roundType === "Final" ? ["Finale"] : []),
+    ...(item.roundType === "Final" && item.totalGroups <= 1
+      ? []
+      : [describeGroup(item)]),
   ];
   return parts.join(" · ");
 };
