@@ -502,3 +502,12 @@ export const adminClubAttachSelect = {
   name: true,
   disabledAt: true,
 } as const;
+
+/** Caller of a club-representative action: roles, club, club status (lot 1c). */
+export const userRolesClubSelect = {
+  role: true,
+  extraRoles: true,
+  clubId: true,
+  clubName: true,
+  club: { select: { disabledAt: true } },
+} as const;

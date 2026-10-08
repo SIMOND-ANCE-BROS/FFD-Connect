@@ -4,6 +4,8 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Prisma, RegistrationStatus, UserRole } from "@prisma/client";
+import { hasRole } from "../auth/roles";
+import { userRolesClubSelect } from "../utils/prisma-selects";
 import * as bcrypt from "bcrypt";
 import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
@@ -127,10 +129,10 @@ export class UsersService {
     // 1. Fetch Organizer to get their club (clubId or clubName)
     const organizer = await this.prisma.user.findUnique({
       where: { id: organizerId },
-      select: { role: true, clubId: true, clubName: true },
+      select: userRolesClubSelect,
     });
 
-    if (organizer?.role !== UserRole.CLUB) {
+    if (!organizer || !hasRole(organizer, UserRole.CLUB)) {
       throw new NotFoundException("Organizer not found or invalid role");
     }
 

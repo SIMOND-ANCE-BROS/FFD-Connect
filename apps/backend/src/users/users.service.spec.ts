@@ -201,6 +201,38 @@ describe("UsersService", () => {
       );
     });
 
+    it("accepts a licensee whose CLUB role is an extra role", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "org1",
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        clubId: null,
+        clubName: "DanceClub",
+        club: { disabledAt: null },
+      });
+      prisma.user.count.mockResolvedValue(0);
+      prisma.user.findMany.mockResolvedValue([] as never);
+
+      const result = await service.findClubMembers("org1");
+
+      expect(result.data).toEqual([]);
+    });
+
+    it("refuses an extra CLUB role while the club is disabled", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "org1",
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        clubId: "c1",
+        clubName: null,
+        club: { disabledAt: new Date() },
+      });
+
+      await expect(service.findClubMembers("org1")).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
     it("throws NotFoundException when the organizer has no club assigned", async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",

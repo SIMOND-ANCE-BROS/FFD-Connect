@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { PartnershipStatus, Prisma, UserRole } from "@prisma/client";
+import { hasRole } from "../auth/roles";
+import { userRolesClubSelect } from "../utils/prisma-selects";
 import { PrismaService } from "../prisma/prisma.service";
 import { ClubsService } from "./clubs.service";
 
@@ -54,9 +56,9 @@ export class PartnershipQueryService {
   ) {
     const organizer = await this.prisma.user.findUnique({
       where: { id: organizerUserId },
-      select: { role: true, clubId: true, clubName: true },
+      select: userRolesClubSelect,
     });
-    if (organizer?.role !== UserRole.CLUB) {
+    if (!organizer || !hasRole(organizer, UserRole.CLUB)) {
       throw new BadRequestException("Only club role can manage club data");
     }
 
