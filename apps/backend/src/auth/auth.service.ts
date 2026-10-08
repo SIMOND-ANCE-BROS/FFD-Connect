@@ -168,8 +168,11 @@ export class AuthService {
             );
           });
       }
+      // `club` (status only) stays on the result: login() needs it so rolesOf
+      // drops an extra CLUB role of a disabled club. login() builds its
+      // response field by field, so it does not reach the client.
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { password, club, ...result } = user;
+      const { password, ...result } = user;
       return result as Omit<User, "password">;
     }
     return null;

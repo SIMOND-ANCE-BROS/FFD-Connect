@@ -231,7 +231,7 @@ describe("AuthService", () => {
       ).resolves.toBeNull();
     });
 
-    it("reads the account status and strips the club relation from the result", async () => {
+    it("reads the account status and keeps the club status for login()", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({
         id: "u1",
         email: "test@example.com",
@@ -253,8 +253,47 @@ describe("AuthService", () => {
           }) as unknown,
         }),
       );
-      expect(result).not.toHaveProperty("club");
+      expect(result).toHaveProperty("club", { disabledAt: null });
       expect(result).not.toHaveProperty("password");
+    });
+  });
+
+  describe("validateUser -> login roles", () => {
+    const loginViaValidate = async (disabledAt: Date | null) => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: "u1",
+        email: "test@example.com",
+        password: "hashedpassword",
+        firstName: "First",
+        lastName: "Last",
+        clubName: "Club",
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        disabledAt: null,
+        club: { disabledAt },
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      (bcrypt.getRounds as jest.Mock).mockReturnValue(12);
+      mockJwtService.sign.mockReturnValue("jwt-token");
+      mockAuthTokenService.createRefreshToken.mockResolvedValue({
+        token: "refresh-token",
+      });
+      mockPrismaService.user.update.mockResolvedValue({});
+      const user = await service.validateUser("test@example.com", "pw");
+      return service.login(user as never);
+    };
+
+    it("drops an extra CLUB role when the club is disabled", async () => {
+      const res = await loginViaValidate(new Date());
+      expect(res.user.role).toBe(UserRole.LICENSEE);
+      expect(res.user.roles).toEqual([UserRole.LICENSEE]);
+      expect(res.user).not.toHaveProperty("club");
+    });
+
+    it("keeps an extra CLUB role when the club is active", async () => {
+      const res = await loginViaValidate(null);
+      expect(res.user.roles).toEqual([UserRole.LICENSEE, UserRole.CLUB]);
+      expect(res.user).not.toHaveProperty("club");
     });
   });
 
