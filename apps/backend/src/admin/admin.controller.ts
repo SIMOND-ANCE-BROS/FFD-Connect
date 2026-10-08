@@ -39,6 +39,7 @@ import {
   AdminClubsPageDto,
   ClubNotEmptyDto,
   ClubOptionsQueryDto,
+  CreateAdminClubDto,
   ListAdminClubsQueryDto,
   UpdateAdminClubDto,
 } from "./dto/admin-clubs.dto";
@@ -95,6 +96,17 @@ export class AdminController {
     @Query() query: ListAdminClubsQueryDto,
   ): Promise<AdminClubsPageDto> {
     return this.clubsQuery.list(query);
+  }
+
+  @Post("clubs")
+  @ApiOperation({ summary: "Créer un club" })
+  @ApiResponse({ status: 201, type: AdminClubDetailDto })
+  @ApiResponse({ status: 409, description: "Nom déjà utilisé" })
+  createClub(
+    @Body() dto: CreateAdminClubDto,
+    @Req() req: RequestWithUser,
+  ): Promise<AdminClubDetailDto> {
+    return this.clubs.create(req.user.userId, dto);
   }
 
   @Get("clubs/options")

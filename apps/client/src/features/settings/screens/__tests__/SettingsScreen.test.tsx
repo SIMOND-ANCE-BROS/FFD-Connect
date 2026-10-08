@@ -100,6 +100,7 @@ jest.mock("lucide-react-native", () => {
     AlertTriangle: MockIcon,
     Camera: MockIcon,
     Check: MockIcon,
+    ChevronDown: MockIcon,
     ChevronRight: MockIcon,
     Download: MockIcon,
     FileText: MockIcon,
@@ -364,6 +365,7 @@ describe("SettingsScreen", () => {
         <SettingsScreen {...createTestProps()} />,
       );
 
+      await fireEvent.press(getByTestId("settings-space-pill"));
       await act(async () => {
         await fireEvent.press(getByTestId("settings-space-CLUB"));
       });

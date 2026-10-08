@@ -2235,6 +2235,192 @@
         ],
         "summary": "Liste paginée des clubs",
         "tags": ["admin"]
+      },
+      "post": {
+        "operationId": "AdminController_createClub",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAdminClubDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminClubDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nom déjà utilisé"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Créer un club",
+        "tags": ["admin"]
       }
     },
     "/admin/clubs/options": {
@@ -21208,17 +21394,24 @@
         },
         "required": ["data", "meta"]
       },
-      "AdminClubOptionDto": {
+      "CreateAdminClubDto": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string"
-          },
           "name": {
-            "type": "string"
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120
+          },
+          "registrationMode": {
+            "default": "MEMBERS_AUTO_CONFIRM",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ClubRegistrationMode"
+              }
+            ]
           }
         },
-        "required": ["id", "name"]
+        "required": ["name"]
       },
       "UserRole": {
         "type": "string",
@@ -21337,6 +21530,18 @@
           "members"
         ]
       },
+      "AdminClubOptionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "name"]
+      },
       "UpdateAdminClubDto": {
         "type": "object",
         "properties": {
@@ -21412,6 +21617,7 @@
               "USER_DISABLE",
               "USER_ENABLE",
               "USER_DELETE",
+              "CLUB_CREATE",
               "CLUB_UPDATE",
               "CLUB_DISABLE",
               "CLUB_ENABLE",
@@ -21923,13 +22129,21 @@
             "type": "string",
             "enum": ["LICENSEE", "CLUB", "STAFF"]
           },
+          "extraRoles": {
+            "type": "array",
+            "description": "Rôles supplémentaires (hors Admin ; le rôle principal en est retiré)",
+            "items": {
+              "type": "string",
+              "enum": ["LICENSEE", "CLUB", "STAFF"]
+            }
+          },
           "clubId": {
             "type": "string",
             "description": "Club existant (exclusif avec clubName)"
           },
           "clubName": {
             "type": "string",
-            "description": "Nouveau club, uniquement pour un compte Club (exclusif avec clubId)"
+            "description": "Nouveau club, pour un compte Club ou ayant le rôle Club en supplément (exclusif avec clubId)"
           }
         },
         "required": ["email", "firstName", "lastName", "role"]

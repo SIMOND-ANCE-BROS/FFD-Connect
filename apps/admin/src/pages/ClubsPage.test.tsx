@@ -110,4 +110,14 @@ describe('ClubsPage', () => {
       }),
     );
   });
+
+  it('links to the club creation form', async () => {
+    vi.spyOn(sdk, 'adminControllerListClubs').mockResolvedValue(page as never);
+    renderPage();
+    await screen.findByRole('link', { name: 'Club A' });
+    expect(screen.getByRole('link', { name: 'Nouveau club' })).toHaveAttribute(
+      'href',
+      '/clubs/new',
+    );
+  });
 });

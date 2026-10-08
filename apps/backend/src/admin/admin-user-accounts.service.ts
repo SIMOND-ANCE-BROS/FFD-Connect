@@ -10,13 +10,14 @@ import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import { AuthPasswordService } from "../auth/auth-password.service";
 import { EmailService, InvitationRole } from "../auth/email.service";
-import { hasRole } from "../auth/roles";
+import { hasRole, normalizeExtraRoles } from "../auth/roles";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   adminClubAttachSelect,
   adminClubOptionSelect,
   adminInvitationTargetSelect,
 } from "../utils/prisma-selects";
+import { sameClubName } from "./admin-club-usage";
 import { AdminAuditService } from "./admin-audit.service";
 import { isCreatedByAdmin } from "./admin-audit.util";
 import {
@@ -61,7 +62,7 @@ export class AdminUserAccountsService {
     actorId: string,
     dto: CreateAdminUserDto,
   ): Promise<AdminUserCreatedDto> {
-    this.checkClubChoice(dto);
+    const extraRoles = this.checkChoices(dto);
     const email = dto.email.trim().toLowerCase();
     const firstName = dto.firstName.trim();
     const lastName = dto.lastName.trim();
@@ -92,6 +93,7 @@ export class AdminUserAccountsService {
             firstName,
             lastName,
             role: dto.role,
+            extraRoles,
             clubId: club?.id ?? null,
             clubName: club?.name ?? null,
             ...profile,
@@ -106,6 +108,7 @@ export class AdminUserAccountsService {
           after: {
             email,
             role: dto.role,
+            ...(extraRoles.length > 0 && { extraRoles }),
             ...(club && { clubId: club.id, clubName: club.name }),
             ...definedOnly(profile),
           },
@@ -177,22 +180,34 @@ export class AdminUserAccountsService {
     return { invitationSent };
   }
 
-  /** A new club only for a CLUB account; a CLUB account always has a club. */
-  private checkClubChoice(dto: CreateAdminUserDto): void {
+  /**
+   * Validates the role and club choices; returns the extra roles normalised
+   * against the main role. A new club only for an account holding the CLUB
+   * role (main or extra); a CLUB role always comes with a club.
+   */
+  private checkChoices(dto: CreateAdminUserDto): UserRole[] {
     // Defence in depth behind the DTO: ADMIN is only granted from the user page.
     if (!INVITABLE_ROLES.includes(dto.role)) {
       throw new BadRequestException(
         "Un compte administrateur ne peut pas être créé ici",
       );
     }
+    if (dto.extraRoles?.includes(UserRole.ADMIN)) {
+      throw new BadRequestException(
+        "Le rôle Admin ne peut pas être attribué à la création",
+      );
+    }
+    const extraRoles = normalizeExtraRoles(dto.role, dto.extraRoles ?? []);
+    const holdsClubRole =
+      dto.role === UserRole.CLUB || extraRoles.includes(UserRole.CLUB);
     if (dto.clubId && dto.clubName) {
       throw new BadRequestException(
         "Indiquer soit un club existant, soit le nom d'un nouveau club",
       );
     }
-    if (dto.clubName && dto.role !== UserRole.CLUB) {
+    if (dto.clubName && !holdsClubRole) {
       throw new BadRequestException(
-        "Seul un compte Club peut créer un nouveau club",
+        "Seul un compte ayant le rôle Club peut créer un nouveau club",
       );
     }
     if (dto.role === UserRole.CLUB && !dto.clubId && !dto.clubName) {
@@ -200,6 +215,12 @@ export class AdminUserAccountsService {
         "Un compte Club doit être rattaché à un club",
       );
     }
+    if (extraRoles.includes(UserRole.CLUB) && !dto.clubId && !dto.clubName) {
+      throw new BadRequestException(
+        "Un rôle Club supplémentaire nécessite un club",
+      );
+    }
+    return extraRoles;
   }
 
   private async resolveClub(
@@ -217,8 +238,8 @@ export class AdminUserAccountsService {
     }
     if (!dto.clubName) return null;
     const name = dto.clubName.trim();
-    const existing = await tx.club.findUnique({
-      where: { name },
+    const existing = await tx.club.findFirst({
+      where: { name: sameClubName(name) },
       select: adminClubOptionSelect,
     });
     if (existing) {
@@ -249,8 +270,8 @@ export class AdminUserAccountsService {
       return new ConflictException("Cet email est déjà utilisé");
     }
     if (dto.clubName && target.includes("name")) {
-      const existing = await this.prisma.club.findUnique({
-        where: { name: dto.clubName.trim() },
+      const existing = await this.prisma.club.findFirst({
+        where: { name: sameClubName(dto.clubName.trim()) },
         select: adminClubOptionSelect,
       });
       return new ConflictException({

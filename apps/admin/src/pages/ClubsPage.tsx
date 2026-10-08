@@ -2,6 +2,7 @@ import {
   Alert,
   Anchor,
   Badge,
+  Button,
   Group,
   Loader,
   Pagination,
@@ -49,7 +50,12 @@ export function ClubsPage() {
 
   return (
     <Stack>
-      <Title order={2}>Clubs</Title>
+      <Group justify="space-between">
+        <Title order={2}>Clubs</Title>
+        <Button component={Link} to="/clubs/new">
+          Nouveau club
+        </Button>
+      </Group>
       <Group>
         <TextInput
           placeholder="Nom du club"

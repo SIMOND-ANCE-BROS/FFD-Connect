@@ -93,7 +93,7 @@ describe('UsersPage', () => {
     vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(2) as never);
     renderPage();
     const row = (await screen.findByText('paul@x.fr')).closest('tr') as HTMLElement;
-    expect(within(row).getAllByText('—')).toHaveLength(4);
+    expect(within(row).getAllByText('—')).toHaveLength(5);
   });
 
   it('sends the search after debounce, from the first page', async () => {
@@ -151,5 +151,32 @@ describe('UsersPage', () => {
     renderPage();
     expect((await screen.findAllByText('Licencié')).length).toBeGreaterThan(0);
     expect(screen.getByText('+ Club')).toBeInTheDocument();
+  });
+
+  it('shows the main role and the extra roles in two columns', async () => {
+    const res = page(1);
+    res.data.data[0] = {
+      ...res.data.data[0],
+      extraRoles: ['CLUB', 'STAFF'],
+      roles: ['LICENSEE', 'CLUB', 'STAFF'],
+    } as never;
+    vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(res as never);
+    renderPage();
+    await screen.findByText('jeanne@x.fr');
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(headers).toContain('Rôle principal');
+    expect(headers).toContain('Rôles supplémentaires');
+    expect(headers).not.toContain('Rôle');
+
+    const withExtras = screen.getByText('jeanne@x.fr').closest('tr') as HTMLElement;
+    const cells = within(withExtras).getAllByRole('cell');
+    const main = headers.indexOf('Rôle principal');
+    const extra = headers.indexOf('Rôles supplémentaires');
+    expect(within(cells[main]).getByText('Licencié')).toBeInTheDocument();
+    expect(within(cells[extra]).getByText('+ Club')).toBeInTheDocument();
+    expect(within(cells[extra]).getByText('+ Staff')).toBeInTheDocument();
+
+    const without = screen.getByText('paul@x.fr').closest('tr') as HTMLElement;
+    expect(within(within(without).getAllByRole('cell')[extra]).getByText('—')).toBeInTheDocument();
   });
 });

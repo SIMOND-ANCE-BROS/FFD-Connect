@@ -47,16 +47,16 @@ const renderSelector = () => {
   );
 };
 
-describe("role sync from /users/me → space selector", () => {
+describe("role sync from /users/me → space pill", () => {
   beforeEach(async () => {
     await AsyncStorage.clear();
   });
 
-  it("shows the selector once the profile brings a new role", async () => {
+  it("shows the pill once the profile brings a new role", async () => {
     await signedIn({});
     await useAuthStore.getState().refreshAuth();
     await renderSelector();
-    expect(screen.queryByText("Espace")).toBeNull();
+    expect(screen.queryByTestId("settings-space-pill")).toBeNull();
 
     await AuthService.syncRolesFromProfile({
       email: "a@x.fr",
@@ -66,7 +66,7 @@ describe("role sync from /users/me → space selector", () => {
     await useAuthStore.getState().refreshAuth();
     await renderSelector();
 
-    expect(screen.getByText("Espace")).toBeTruthy();
+    expect(screen.getByTestId("settings-space-pill")).toBeTruthy();
     expect(useAuthStore.getState().role).toBe("LICENSEE");
   });
 
@@ -85,6 +85,6 @@ describe("role sync from /users/me → space selector", () => {
       roles: ["LICENSEE"],
     });
     await renderSelector();
-    expect(screen.queryByText("Espace")).toBeNull();
+    expect(screen.queryByTestId("settings-space-pill")).toBeNull();
   });
 });
