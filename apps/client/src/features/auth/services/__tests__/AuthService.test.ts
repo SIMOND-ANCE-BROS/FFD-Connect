@@ -1,7 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../../../../services/api";
 import { createLogger } from "../../../../utils/logger";
-import { AuthService, DEFAULT_CONFIG } from "../AuthService";
+import {
+  AuthService,
+  DEFAULT_CONFIG,
+  resolveSpace,
+  type UserRole,
+} from "../AuthService";
 
 jest.mock("../../../../services/api", () => ({
   post: jest.fn(),
@@ -780,5 +785,151 @@ describe("AuthService — câblage des notifications push", () => {
 
     expect(mockClearTokens).toHaveBeenCalledTimes(1);
     expect(mockClearOfflineQueue).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveSpace", () => {
+  const base = {
+    user: "a@x.fr",
+    mainRole: "ADMIN" as const,
+    roles: ["ADMIN", "LICENSEE"] as UserRole[],
+  };
+
+  it("defaults to the main role", () => {
+    expect(resolveSpace(base)).toBe("ADMIN");
+  });
+
+  it("keeps the previous space of the same account", () => {
+    expect(
+      resolveSpace({
+        ...base,
+        previousUser: "a@x.fr",
+        previousSpace: "LICENSEE",
+      }),
+    ).toBe("LICENSEE");
+  });
+
+  it("ignores the previous space of another account", () => {
+    expect(
+      resolveSpace({
+        ...base,
+        previousUser: "b@x.fr",
+        previousSpace: "LICENSEE",
+      }),
+    ).toBe("ADMIN");
+  });
+
+  it("falls back to the main role when the space was removed", () => {
+    expect(
+      resolveSpace({ ...base, previousUser: "a@x.fr", previousSpace: "CLUB" }),
+    ).toBe("ADMIN");
+  });
+});
+
+describe("AuthService — multi-role", () => {
+  const lastSaved = () => {
+    const calls = (AsyncStorage.setItem as jest.Mock).mock.calls;
+    return JSON.parse(calls[calls.length - 1][1] as string) as Record<
+      string,
+      unknown
+    >;
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+  });
+
+  it("login stores every role and the main role, and keeps role = active space", async () => {
+    (api.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        access_token: "t",
+        refresh_token: "r",
+        user: { email: "a@x.fr", role: "ADMIN", roles: ["ADMIN", "LICENSEE"] },
+      },
+    });
+    await AuthService.login("a@x.fr", "pw");
+    expect(lastSaved()).toMatchObject({
+      role: "ADMIN",
+      mainRole: "ADMIN",
+      roles: ["ADMIN", "LICENSEE"],
+    });
+  });
+
+  it("login keeps the previous space of the same account", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+      JSON.stringify({ username: "a@x.fr", role: "LICENSEE" }),
+    );
+    (api.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        access_token: "t",
+        refresh_token: "r",
+        user: { email: "a@x.fr", role: "ADMIN", roles: ["ADMIN", "LICENSEE"] },
+      },
+    });
+    await AuthService.login("a@x.fr", "pw");
+    expect(lastSaved()).toMatchObject({ role: "LICENSEE", mainRole: "ADMIN" });
+  });
+
+  it("login against an older backend without roles stores [role]", async () => {
+    (api.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        access_token: "t",
+        refresh_token: "r",
+        user: { email: "a@x.fr", role: "LICENSEE" },
+      },
+    });
+    await AuthService.login("a@x.fr", "pw");
+    expect(lastSaved()).toMatchObject({
+      role: "LICENSEE",
+      roles: ["LICENSEE"],
+    });
+  });
+
+  it("impersonate opens on the target's main role with its roles", async () => {
+    (api.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        access_token: "t",
+        user: { email: "c@x.fr", role: "CLUB", roles: ["CLUB", "LICENSEE"] },
+      },
+    });
+    await AuthService.impersonate("u1", "Club Name");
+    expect(lastSaved()).toMatchObject({
+      role: "CLUB",
+      mainRole: "CLUB",
+      roles: ["CLUB", "LICENSEE"],
+      impersonating: true,
+    });
+  });
+
+  it("setActiveSpace switches to a held role", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+      JSON.stringify({ role: "ADMIN", roles: ["ADMIN", "LICENSEE"] }),
+    );
+    await AuthService.setActiveSpace("LICENSEE");
+    expect(lastSaved()).toMatchObject({ role: "LICENSEE" });
+  });
+
+  it("setActiveSpace is a no-op for a role the account does not hold", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+      JSON.stringify({ role: "ADMIN", roles: ["ADMIN", "LICENSEE"] }),
+    );
+    await AuthService.setActiveSpace("CLUB");
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  it("logout clears roles and mainRole", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+      JSON.stringify({
+        role: "ADMIN",
+        mainRole: "ADMIN",
+        roles: ["ADMIN", "LICENSEE"],
+      }),
+    );
+    await AuthService.logout();
+    const saved = lastSaved();
+    expect(saved.roles).toBeUndefined();
+    expect(saved.mainRole).toBeUndefined();
+    expect(saved.role).toBe("LICENSEE");
   });
 });

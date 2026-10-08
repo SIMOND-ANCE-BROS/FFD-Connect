@@ -231,7 +231,11 @@ jest.mock("../../components/HelloAssoModal", () => {
 const mockRefreshAuth = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../../../stores/auth.store", () => ({
   useAuthStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({ refreshAuth: mockRefreshAuth }),
+    selector({
+      refreshAuth: mockRefreshAuth,
+      roles: [],
+      hasRole: () => false,
+    }),
 }));
 
 jest.mock("../../../../stores/club.store", () => ({

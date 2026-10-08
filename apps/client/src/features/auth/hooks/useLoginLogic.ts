@@ -11,6 +11,7 @@ import rnBiometrics, { BiometryTypes } from "../../../utils/biometrics-adapter";
 import { validateForm } from "../../../utils/formValidation";
 import { createLogger } from "../../../utils/logger";
 import { useAuthRepository } from "../context/AuthContext";
+import { resolveSpace } from "../services/AuthService";
 import { loginSchema } from "../schemas/login.schema";
 
 const logger = createLogger("useLoginLogic");
@@ -101,11 +102,20 @@ export const useLoginLogic = ({ navigation }: UseLoginLogicProps) => {
           const profile = await auth.getProfile();
 
           // 2. Restore full session config
+          const roles = profile.roles?.length ? profile.roles : [profile.role];
           const newConfig = {
             ...config,
             isLoggedIn: true,
             username: profile.email,
-            role: profile.role,
+            role: resolveSpace({
+              previousSpace: config.role,
+              previousUser: config.username,
+              user: profile.email,
+              mainRole: profile.role,
+              roles,
+            }),
+            roles,
+            mainRole: profile.role,
             clubName: profile.clubName,
             lastLoginDate: new Date().toISOString(),
           };

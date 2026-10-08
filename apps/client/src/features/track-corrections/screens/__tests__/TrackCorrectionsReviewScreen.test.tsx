@@ -123,7 +123,11 @@ describe("TrackCorrectionsReviewScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.restoreAllMocks();
-    useAuthStore.setState({ role: "ADMIN", isGuest: false });
+    useAuthStore.setState({
+      role: "ADMIN",
+      roles: ["ADMIN"],
+      isGuest: false,
+    });
     api.list.mockResolvedValue(page([correction()]));
     api.approve.mockResolvedValue(correction({ status: "APPROVED" }));
     api.reject.mockResolvedValue(correction({ status: "REJECTED" }));
@@ -271,7 +275,7 @@ describe("TrackCorrectionsReviewScreen", () => {
   });
 
   it("refuse l'accès à un non-admin sans appeler l'API", async () => {
-    useAuthStore.setState({ role: "LICENSEE" });
+    useAuthStore.setState({ role: "LICENSEE", roles: ["LICENSEE"] });
     const { findByText } = await renderScreen();
     expect(await findByText("Accès réservé aux administrateurs.")).toBeTruthy();
     expect(api.list).not.toHaveBeenCalled();

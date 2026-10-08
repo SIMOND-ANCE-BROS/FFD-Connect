@@ -33,6 +33,10 @@ import { SettingsPrivacySection } from "../components/SettingsPrivacySection";
 import { exportAndShareMyData } from "../services/PrivacyService";
 import { LegalDoc } from "../../legal/legalContent";
 import { styles } from "../components/settings.styles";
+import type { UserRole } from "../../auth/services/AuthService";
+import { SpaceSelector } from "../components/SpaceSelector";
+import { AuthService } from "../../auth/services/AuthService";
+import { useAuthStore } from "../../../stores/auth.store";
 import { SettingsClubSection } from "../components/SettingsClubSection";
 import { SettingsFiltersSection } from "../components/SettingsFiltersSection";
 import { SettingsInterfaceSection } from "../components/SettingsInterfaceSection";
@@ -51,6 +55,10 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
   const insets = useSafeAreaInsets();
   const { state, actions } = useSettingsLogic({ navigation });
   const { clubLogoUri, setClubLogo } = useClubLogo();
+  const roles = useAuthStore((s) => s.roles);
+  const refreshAuth = useAuthStore((s) => s.refreshAuth);
+  // Admin actions (impersonation, correction review) follow every role.
+  const isAdminAccount = useAuthStore((s) => s.hasRole("ADMIN"));
   const [deleteAccountModalVisible, setDeleteAccountModalVisible] =
     React.useState(false);
   const [exporting, setExporting] = React.useState(false);
@@ -128,6 +136,15 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
       Alert.alert("Erreur", "Impossible de charger l'image.");
     }
   }, [setClubLogo]);
+
+  const handleChangeSpace = useCallback(
+    async (space: UserRole) => {
+      await AuthService.setActiveSpace(space);
+      await refreshAuth();
+      await loadSettings();
+    },
+    [refreshAuth, loadSettings],
+  );
 
   const isFaceId = biometryType === BiometryTypes.FaceID;
   const isGuest = role === "GUEST";
@@ -276,7 +293,15 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
           { useNativeDriver: true },
         )}
       >
-        {role === "ADMIN" && (
+        <SpaceSelector
+          roles={roles}
+          space={role}
+          onChange={(space) => {
+            handleChangeSpace(space).catch(() => {});
+          }}
+        />
+
+        {isAdminAccount && (
           <TouchableOpacity
             onPress={() => setImpersonationVisible(true)}
             accessibilityRole="button"
@@ -385,7 +410,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
         {!isGuest && (
           <TrackCorrectionsSettingsSection
             theme={currentTheme}
-            isAdmin={role === "ADMIN"}
+            isAdmin={isAdminAccount}
             onOpenMine={() => navigation.navigate("MyTrackCorrections")}
             onOpenReview={() => navigation.navigate("TrackCorrectionsReview")}
           />
@@ -416,7 +441,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
           onClose={() => setChangePasswordModalVisible(false)}
         />
 
-        {role === "ADMIN" && (
+        {isAdminAccount && (
           <ImpersonationModal
             visible={impersonationVisible}
             onClose={() => setImpersonationVisible(false)}
