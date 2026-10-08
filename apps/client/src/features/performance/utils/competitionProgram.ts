@@ -156,6 +156,9 @@ export const setRoundType = (id: string, type: RoundConfig["type"]) =>
 export const stepRoundHeats = (id: string, delta: number) =>
   patchRound(id, (r) => ({ ...r, heats: r.heats + delta }));
 
+export const setRoundMix = (id: string, mixWithPrevious: boolean) =>
+  patchRound(id, (r) => ({ ...r, mixWithPrevious }));
+
 export const toggleRoundDance = (id: string, dance: string) =>
   patchRound(id, (r) => ({
     ...r,
@@ -248,10 +251,27 @@ export const describeValidation = (v: ProgramValidation): string | null => {
 };
 
 /**
+ * Splits the programme into blocks of 0-based round indexes: a round flagged
+ * `mixWithPrevious` joins the previous round's block (the first round always
+ * opens one).
+ */
+export const groupRounds = (rounds: RoundConfig[]): number[][] => {
+  const blocks: number[][] = [];
+  rounds.forEach((round, i) => {
+    // i > 0 ⇒ a previous block exists.
+    if (i > 0 && round.mixWithPrevious) blocks[blocks.length - 1].push(i);
+    else blocks.push([i]);
+  });
+  return blocks;
+};
+
+/**
  * Builds the competition playlist: for each round, for each dance (canonical
- * order), for each heat — dance-major, like a real competition. A track is
- * picked per heat, cycling through a shuffled pool so consecutive heats of the
- * same dance get different music whenever the library allows it.
+ * order), for each heat — dance-major, like a real competition. Rounds of a
+ * mixed block alternate heat by heat (Valse Std 1, Samba Lat 1, Valse Std 2,
+ * Samba Lat 2… then Tango / Cha-cha-cha). A track is picked per heat, cycling
+ * through a shuffled pool so consecutive heats of the same dance get different
+ * music whenever the library allows it.
  */
 export const buildPlaylist = (
   cfg: PerformanceConfig,
@@ -284,29 +304,48 @@ export const buildPlaylist = (
     return track;
   };
 
-  cfg.rounds.forEach((rawRound, r) => {
-    const round = normalizeRound(rawRound);
+  const rounds = cfg.rounds.map(normalizeRound);
+
+  const push = (r: number, d: number, h: number, mixed: boolean) => {
+    const round = rounds[r];
     const dances = round.selectedDances;
-    dances.forEach((dance, d) => {
-      for (let h = 1; h <= round.heats; h++) {
-        const track = pick(dance);
-        if (!track) continue;
-        items.push({
-          track,
-          style: dance,
-          duration: danceDuration(dance, cfg),
-          isPaso: isPasoDoble(dance),
-          heatIndex: h,
-          totalHeats: round.heats,
-          roundIndex: r + 1,
-          totalRounds,
-          roundType: round.type,
-          category: round.category,
-          danceIndex: d,
-          dancesInRound: dances.length,
-        });
-      }
+    const dance = dances[d];
+    const track = pick(dance);
+    if (!track) return;
+    items.push({
+      track,
+      style: dance,
+      duration: danceDuration(dance, cfg),
+      isPaso: isPasoDoble(dance),
+      heatIndex: h,
+      totalHeats: round.heats,
+      roundIndex: r + 1,
+      totalRounds,
+      roundType: round.type,
+      category: round.category,
+      danceIndex: d,
+      dancesInRound: dances.length,
+      ...(mixed ? { mixed } : {}),
     });
+  };
+
+  groupRounds(rounds).forEach((block) => {
+    const mixed = block.length > 1;
+    const maxDances = Math.max(
+      ...block.map((r) => rounds[r].selectedDances.length),
+    );
+    const maxHeats = Math.max(...block.map((r) => rounds[r].heats));
+    // Single round: the loop degenerates to dance → heat (dance-major).
+    for (let d = 0; d < maxDances; d++) {
+      for (let h = 1; h <= maxHeats; h++) {
+        for (const r of block) {
+          const round = rounds[r];
+          if (d < round.selectedDances.length && h <= round.heats) {
+            push(r, d, h, mixed);
+          }
+        }
+      }
+    }
   });
 
   return items.map((item) => ({
@@ -327,6 +366,8 @@ type AnnouncementItem = Pick<
   | "roundType"
   | "danceIndex"
   | "dancesInRound"
+  | "category"
+  | "mixed"
 >;
 
 interface Articles {
@@ -378,6 +419,14 @@ export const getAnnouncementText = (item: AnnouncementItem): string => {
       ]);
     }
     const roundOrd = ordinal(item.roundIndex);
+    if (item.mixed) {
+      // Mixed block: name the category, the floor alternates between rounds.
+      const cat = item.category === "Latin" ? "en latines" : "en standard";
+      return choose(item, [
+        `Mesdames et messieurs, ${roundOrd} tour ${cat}… on commence avec ${a.the}, premier passage !`,
+        `Place au ${roundOrd} tour ${cat} ! ${capitalize(a.name)}, premier passage !`,
+      ]);
+    }
     return choose(item, [
       `Mesdames et messieurs, place au ${roundOrd} tour… on commence avec ${a.the}, premier passage !`,
       `Bienvenue pour le ${roundOrd} tour ! On ouvre avec ${a.the}… premier passage !`,

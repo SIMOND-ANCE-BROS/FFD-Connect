@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useErrorHandler } from "../../../hooks/useErrorHandler";
 import TrackPlayer, { useProgress } from "../../../utils/TrackPlayerWrapper";
+import { usePerformanceStore } from "../../../stores/performance.store";
 import { usePlayerStore } from "../../../stores/player.store";
 import { ContextRepeatMode, TrackData, usePlayer } from "../context";
 
@@ -90,7 +91,12 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
   useEffect(() => {
     if (!currentTrack) return;
     const newBase = Math.round(currentTrack.baseBpm || 123);
-    if (isTempoLocked && newBase > 0) {
+    // A competition plays on the same player at the original tempo: never
+    // carry the library's locked offset onto its tracks.
+    const competition = usePerformanceStore.getState().status;
+    const competitionRunning =
+      competition !== "idle" && competition !== "finished";
+    if (isTempoLocked && newBase > 0 && !competitionRunning) {
       // Preserve the OFFSET: new MPM = this track's base + locked diff, clamped
       // to the ±50% range, then re-apply the matching playback rate.
       const target = Math.max(

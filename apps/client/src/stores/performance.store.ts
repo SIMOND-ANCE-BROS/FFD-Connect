@@ -32,6 +32,12 @@ export interface RoundConfig {
   heats: number;
   /** Subset of DANCES[category], kept in canonical order. */
   selectedDances: string[];
+  /**
+   * Alternates this round's heats with the previous round's (« passages
+   * mixés »): Valse Std, Samba Lat, Valse Std… then the next dance of each.
+   * Ignored on the first round.
+   */
+  mixWithPrevious?: boolean;
 }
 
 export interface PerformanceConfig {
@@ -61,6 +67,8 @@ export interface PlaylistItem {
   /** 0-based position of the dance inside its round + dances in the round. */
   danceIndex: number;
   dancesInRound: number;
+  /** True when the round alternates with another one (mixed heats). */
+  mixed?: boolean;
   /** French MC announcement spoken before this item (deterministic). */
   announcementText: string;
   announcementPath?: string;

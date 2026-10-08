@@ -118,6 +118,23 @@ describe("PerformanceSetupScreen", () => {
     });
   });
 
+  it("offers « passages mixés » from the second round only", async () => {
+    const program = { ...baseConfig, rounds: [latin, standard] };
+    const { setConfig } = mockEngine({ config: program });
+    const { getByTestId, queryByTestId } = await render(
+      <PerformanceSetupScreen />,
+    );
+    expect(queryByTestId("performance-round-0-mix-switch")).toBeNull();
+    await fireEvent(
+      getByTestId("performance-round-1-mix-switch"),
+      "valueChange",
+      true,
+    );
+    const next = applyLast(setConfig, program);
+    expect(next.rounds[1].mixWithPrevious).toBe(true);
+    expect(next.rounds[0].mixWithPrevious).toBeFalsy();
+  });
+
   it("only allows deleting when several rounds exist", async () => {
     const { queryByTestId, rerender } = await render(
       <PerformanceSetupScreen />,
