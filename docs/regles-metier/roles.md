@@ -85,6 +85,35 @@ enum UserRole {
 
 ---
 
+## Multi-profil (rôles supplémentaires)
+
+Règles métier du lot 1c : un même compte peut tenir plusieurs rôles.
+
+- **Rôle principal :** chaque compte en a un (`User.role`). Il détermine
+  l'espace par défaut et la façon dont le compte est traité (ex. blocage si
+  son club est désactivé).
+- **Rôles supplémentaires :** l'administration peut en ajouter ; les droits se
+  cumulent avec ceux du rôle principal. Le serveur les applique dès la requête
+  suivante ; l'app mobile ne les relit qu'à la prochaine connexion ou au
+  prochain déverrouillage biométrique.
+- **Espaces et actions :** avec 2 rôles ou plus, l'utilisateur choisit un
+  **espace** (Licencié, Club, Staff, Admin) dans les Réglages : il change
+  l'affichage et la navigation. Les **actions** (boutons) restent permises
+  selon l'ensemble des rôles détenus, pas selon l'espace actif.
+- **Club supplémentaire :** le rôle Club exige un club et représente ce même
+  club.
+- **Club désactivé :** si Club est le rôle principal, le compte est bloqué.
+  Sinon, le rôle Club supplémentaire est simplement retiré : il ne compte plus
+  pour les droits ni pour les notifications du club (le back-office l'affiche
+  toujours tel que stocké).
+- **Admin :** un admin peut s'ajouter des rôles, mais ne peut pas retirer son
+  propre rôle Admin.
+
+Exploitation : voir
+[`backoffice-admin.md`](../exploitation/backoffice-admin.md).
+
+---
+
 ## Résumé
 
 - **Actuel :** USER (Licencié), ORGANIZER (Club), ADMIN ; pas de STAFF en base.
