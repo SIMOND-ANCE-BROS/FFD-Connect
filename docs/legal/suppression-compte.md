@@ -1,6 +1,6 @@
 # Supprimer son compte FFD Connect
 
-_Dernière mise à jour : 6 octobre 2026_
+_Dernière mise à jour : 8 octobre 2026_
 
 Cette page explique comment supprimer votre compte de l'application **FFD Connect**
 (y compris sa version de test **FFD Connect Beta**), éditée par Gabin Simond, et ce
@@ -66,6 +66,12 @@ propre ou relèvent d'une obligation légale :
   conservée à des fins de sécurité, sans vos données de profil.
 - **Journaux techniques** : conservés **12 mois** pour la sécurité et le diagnostic
   du service, puis supprimés.
+- **Pass Apple Wallet / Google Wallet** : si vous avez ajouté votre licence à
+  l'application Wallet de votre téléphone, ce pass **n'est pas supprimé** avec
+  votre compte. Il est conservé sur votre appareil par Apple ou Google, hors de
+  portée de FFD Connect : **retirez-le vous-même** en ouvrant le pass dans
+  l'application Wallet (Apple Wallet ou Google Wallet) et en choisissant de le
+  supprimer.
 - **Sauvegardes** : la base de données est sauvegardée automatiquement. Vos données
   peuvent y subsister au plus **7 jours** après la suppression, le temps que ces
   sauvegardes soient remplacées. Elles ne servent qu'à restaurer le service en cas
