@@ -565,6 +565,10 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
             />
           }
           onEndReached={() => {
+            // onLoadMore renews the auto-fetch budget: only a real scroll to
+            // the end of a non-empty list may do that. An empty list can fire
+            // onEndReached on layout, which would re-open unbounded fetching.
+            if (competitions.length === 0) return;
             onLoadMore().catch(() => {});
           }}
           onEndReachedThreshold={0.5}
