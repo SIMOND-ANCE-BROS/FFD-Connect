@@ -606,6 +606,44 @@ describe("CompetitionRegistrationService", () => {
       );
     });
 
+    it("accepts a licensee whose CLUB role is an extra role", async () => {
+      mockPrismaService.registration.findUnique.mockResolvedValue(
+        baseRegistration,
+      );
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        clubId: "club-1",
+        clubName: null,
+        club: { disabledAt: null },
+      });
+      mockPrismaService.registration.update.mockResolvedValue({
+        id: "r1",
+        status: RegistrationStatus.CONFIRMED,
+      });
+
+      const result = await service.confirmRegistration("r1", "org-1");
+
+      expect(result.status).toBe(RegistrationStatus.CONFIRMED);
+    });
+
+    it("refuses an extra CLUB role while the club is disabled", async () => {
+      mockPrismaService.registration.findUnique.mockResolvedValue(
+        baseRegistration,
+      );
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        clubId: "club-1",
+        clubName: null,
+        club: { disabledAt: new Date() },
+      });
+
+      await expect(service.confirmRegistration("r1", "org-1")).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+
     it("confirms a pending registration successfully", async () => {
       mockPrismaService.registration.findUnique.mockResolvedValue(
         baseRegistration,

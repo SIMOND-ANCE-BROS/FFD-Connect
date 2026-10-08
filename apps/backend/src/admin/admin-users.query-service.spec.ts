@@ -5,6 +5,7 @@ import {
   createMockPrismaService,
   MockPrismaService,
 } from "../../test/mocks/prisma.mock";
+import { withRole } from "../auth/roles";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   adminUserDetailSelect,
@@ -21,6 +22,7 @@ const row = {
   firstName: "Jeanne",
   lastName: "Martin",
   role: UserRole.LICENSEE,
+  extraRoles: [] as UserRole[],
   clubId: "c1",
   clubName: "Club A",
   category: "Latin",
@@ -67,7 +69,7 @@ describe("AdminUsersQueryService", () => {
           { firstName: { contains: "mar", mode: "insensitive" } },
           { lastName: { contains: "mar", mode: "insensitive" } },
         ],
-        role: UserRole.CLUB,
+        AND: [withRole(UserRole.CLUB)],
         clubId: "c1",
         category: "Latin",
         createdAt: {
@@ -93,6 +95,39 @@ describe("AdminUsersQueryService", () => {
     expect(args?.take).toBe(50);
     expect(page.data[0]).toMatchObject({ id: "u1", licenseStatus: "ACTIVE" });
     expect(page.data[0]).not.toHaveProperty("license");
+  });
+
+  it("filters on main and extra roles without touching the search OR", async () => {
+    prisma.user.count.mockResolvedValue(0);
+    prisma.user.findMany.mockResolvedValue([]);
+    await service.list({ role: UserRole.CLUB });
+    expect(prisma.user.findMany.mock.calls[0][0]?.where).toEqual({
+      AND: [withRole(UserRole.CLUB)],
+    });
+  });
+
+  it("returns extraRoles and roles on each item", async () => {
+    prisma.user.count.mockResolvedValue(1);
+    prisma.user.findMany.mockResolvedValue([
+      { ...row, role: UserRole.LICENSEE, extraRoles: [UserRole.CLUB] },
+    ] as never);
+    const page = await service.list({});
+    expect(page.data[0]).toMatchObject({
+      extraRoles: [UserRole.CLUB],
+      roles: [UserRole.LICENSEE, UserRole.CLUB],
+    });
+  });
+
+  it("detail lists the stored roles even when the club is disabled", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      ...row,
+      extraRoles: [UserRole.CLUB],
+      club: { disabledAt: new Date("2026-10-07T10:00:00Z") },
+      license: null,
+    } as never);
+    const d = await service.detail("u1");
+    expect(d.roles).toEqual([UserRole.LICENSEE, UserRole.CLUB]);
+    expect(d.extraRoles).toEqual([UserRole.CLUB]);
   });
 
   it("detail flattens the license", async () => {

@@ -1,6 +1,6 @@
 # Conditions Générales d'Utilisation (CGU)
 
-_Dernière mise à jour : 5 octobre 2026_
+_Dernière mise à jour : 8 octobre 2026_
 
 > **Projet indépendant.** FFD Connect n'est pas une application officielle de la
 > Fédération Française de Danse, qui n'en est ni l'éditrice ni la responsable de
@@ -14,11 +14,13 @@ Les présentes CGU régissent l'accès et l'utilisation de l'application **FFD-C
 
 L'Application permet notamment aux licenciés de danse de :
 
-- gérer leur licence et leur certificat médical d'aptitude ;
+- gérer leur licence et leur certificat médical d'aptitude, et, s'ils le souhaitent, l'ajouter à Apple Wallet ou Google Wallet ;
 - consulter les compétitions et s'y inscrire (paiement via HelloAsso) ;
 - suivre leur carrière (palmarès, progression) ;
 - gérer une bibliothèque musicale personnelle ;
 - accéder aux services communautaires (partenaires, covoiturage, etc.).
+
+Le pass Wallet de licence est un justificatif pratique généré par l'Application à partir des informations du compte. Ce n'est ni une carte ni un document officiel de la Fédération Française de Danse, et il n'est pas mis à jour automatiquement : seule la licence délivrée par la fédération fait foi.
 
 Le service est fourni « en l'état ». L'éditeur peut faire évoluer, suspendre ou interrompre tout ou partie des fonctionnalités.
 

@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
-import { Prisma } from "@prisma/client";
+import { Prisma, UserRole } from "@prisma/client";
 import { User } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { extractBirthDateFromLicenseNumber } from "../common/birth-date/license-birth-date.util";
@@ -22,6 +22,7 @@ import {
 import { AuthTokenService } from "./auth-token.service";
 import { LICENSE_NUMBER_MAX_LENGTH } from "./dto/register.dto";
 import { PasswordValidator } from "./password-validator";
+import { hasRole, rolesOf } from "./roles";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -43,6 +44,7 @@ export interface LoginResponse {
     firstName: string;
     lastName: string;
     role: string;
+    roles: UserRole[];
     clubId?: string | null;
     clubName: string | null;
     licenseNumber?: string | null;
@@ -166,8 +168,11 @@ export class AuthService {
             );
           });
       }
+      // `club` (status only) stays on the result: login() needs it so rolesOf
+      // drops an extra CLUB role of a disabled club. login() builds its
+      // response field by field, so it does not reach the client.
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { password, club, ...result } = user;
+      const { password, ...result } = user;
       return result as Omit<User, "password">;
     }
     return null;
@@ -354,6 +359,8 @@ export class AuthService {
   async login(
     user: Omit<User, "password"> & {
       license?: { number: string | null } | null;
+      extraRoles?: UserRole[];
+      club?: { disabledAt: Date | null } | null;
     },
   ): Promise<LoginResponse> {
     const payload = {
@@ -386,6 +393,7 @@ export class AuthService {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        roles: rolesOf(user),
         clubId: user.clubId,
         clubName: user.clubName,
         licenseNumber: user.license?.number,
@@ -412,12 +420,13 @@ export class AuthService {
    */
   async impersonate(
     actorId: string,
-    actorRole: string,
+    actorRoles: readonly UserRole[],
     target: { userId?: string; email?: string },
     reason: string | undefined,
     ip: string | undefined,
   ): Promise<{ access_token: string; user: Record<string, unknown> }> {
-    if (actorRole !== "ADMIN" && actorRole !== "STAFF") {
+    const actorIsAdmin = actorRoles.includes(UserRole.ADMIN);
+    if (!actorIsAdmin && !actorRoles.includes(UserRole.STAFF)) {
       throw new ForbiddenException("Impersonation réservée à l'admin/staff.");
     }
     if (!target.userId && !target.email) {
@@ -447,13 +456,13 @@ export class AuthService {
     if (actorId === targetUser.id) {
       throw new BadRequestException("Impossible de s'impersonner soi-même.");
     }
-    if (targetUser.role === "ADMIN") {
+    if (hasRole(targetUser, UserRole.ADMIN)) {
       throw new ForbiddenException(
         "Impossible d'impersonner un administrateur.",
       );
     }
-    if (actorRole === "STAFF") {
-      if (targetUser.role === "STAFF") {
+    if (!actorIsAdmin) {
+      if (hasRole(targetUser, UserRole.STAFF)) {
         throw new ForbiddenException(
           "Un staff ne peut cibler qu'un licencié ou un club.",
         );
@@ -465,20 +474,12 @@ export class AuthService {
       }
     }
 
-    // Rôle de l'acteur lu en base (typé UserRole, autoritaire — pas la string
-    // du JWT) pour le journal d'audit.
-    const actor = await this.prisma.user.findUnique({
-      where: { id: actorId },
-      select: { role: true },
-    });
-    if (!actor) {
-      throw new NotFoundException("Acteur introuvable.");
-    }
-
     await this.prisma.impersonationLog.create({
       data: {
         actorId,
-        actorRole: actor.role,
+        // The role that authorised this impersonation, not the main role:
+        // actorRoles come from the database (JwtStrategy), not the token claim.
+        actorRole: actorIsAdmin ? UserRole.ADMIN : UserRole.STAFF,
         targetUserId: targetUser.id,
         targetRole: targetUser.role,
         reason: reason?.trim() || null,
@@ -498,7 +499,7 @@ export class AuthService {
     });
 
     this.logger.warn(
-      `Impersonation START — actor=${actorId} (${actorRole}) → target=${targetUser.id} (${targetUser.role})`,
+      `Impersonation START — actor=${actorId} (${actorRoles.join("+")}) → target=${targetUser.id} (${targetUser.role})`,
     );
 
     return {
@@ -509,6 +510,7 @@ export class AuthService {
         firstName: targetUser.firstName,
         lastName: targetUser.lastName,
         role: targetUser.role,
+        roles: rolesOf(targetUser),
         clubId: targetUser.clubId,
         clubName: targetUser.clubName,
       },

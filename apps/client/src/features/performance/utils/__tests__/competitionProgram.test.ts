@@ -13,10 +13,12 @@ import {
   describeItem,
   describeValidation,
   getAnnouncementText,
+  groupRounds,
   normalizeRound,
   ordinal,
   removeRound,
   setRoundCategory,
+  setRoundMix,
   setRoundType,
   stepRoundHeats,
   toggleRoundDance,
@@ -93,19 +95,55 @@ describe("heats rules", () => {
     });
   });
 
-  it("clamps a Passage to at least 2 heats and a Final to exactly 1", () => {
-    expect(clampHeats({ type: "Round" }, 1)).toBe(2);
-    expect(clampHeats({ type: "Round" }, 0)).toBe(2);
+  it("clamps a Passage to at least 1 heat and a Final to exactly 1", () => {
+    expect(clampHeats({ type: "Round" }, 1)).toBe(1);
+    expect(clampHeats({ type: "Round" }, 0)).toBe(1);
     expect(clampHeats({ type: "Round" }, 4)).toBe(4);
     expect(clampHeats({ type: "Round" }, 99)).toBe(10);
     expect(clampHeats({ type: "Final" }, 3)).toBe(1);
   });
 
-  it("stepper never goes below 2", () => {
+  it("stepper goes down to a single group, never below", () => {
     const r = round({ heats: 2 });
-    const next = stepRoundHeats(r.id, -1)(cfg([r]));
-    expect(next.rounds[0].heats).toBe(2);
-    expect(stepRoundHeats(r.id, 1)(next).rounds[0].heats).toBe(3);
+    const one = stepRoundHeats(r.id, -1)(cfg([r]));
+    expect(one.rounds[0].heats).toBe(1);
+    expect(stepRoundHeats(r.id, -1)(one).rounds[0].heats).toBe(1);
+    expect(stepRoundHeats(r.id, 1)(one).rounds[0].heats).toBe(2);
+  });
+
+  it("keeps a single-group Passage a Passage (not a Final)", () => {
+    const r = round({ heats: 1, selectedDances: ["Samba", "Jive"] });
+    const list = buildPlaylist(cfg([r]), LIBRARY, () => 0.3);
+    expect(list.map((i) => i.style)).toEqual(["Samba", "Jive"]);
+    expect(list[0].announcementText).not.toMatch(/finale|passage/i);
+    expect(list[1].announcementText).not.toMatch(/finale|passage/i);
+    expect(describeItem(list[0])).toBe(
+      "Tour 1 · Latines · Samba · Passage unique",
+    );
+  });
+
+  it("mixes 2 Standard groups with 1 Latin group: Valse, Samba, Valse", () => {
+    const std = round({
+      category: "Standard",
+      selectedDances: ["Valse Lente", "Tango"],
+      heats: 2,
+    });
+    const lat = round({
+      category: "Latin",
+      selectedDances: ["Samba", "Cha-Cha-Cha"],
+      heats: 1,
+      mixWithPrevious: true,
+    });
+    const list = buildPlaylist(cfg([std, lat]), LIBRARY, () => 0.3);
+    expect(list.map((i) => `${i.style}:${i.heatIndex}`)).toEqual([
+      "Valse Lente:1",
+      "Samba:1",
+      "Valse Lente:2",
+      "Tango:1",
+      "Cha-Cha-Cha:1",
+      "Tango:2",
+    ]);
+    expect(list[1].announcementText).not.toMatch(/passage|finale/i);
   });
 
   it("switching to Final forces 1 heat and back to Passage restores 2", () => {
@@ -243,6 +281,87 @@ describe("buildPlaylist — mixed programme", () => {
     );
     expect(describeItem(list[11])).toBe(
       "Tour 3 · Standard · Quickstep · Finale",
+    );
+  });
+});
+
+describe("buildPlaylist — passages mixés", () => {
+  const std = round({
+    category: "Standard",
+    selectedDances: ["Valse Lente", "Tango"],
+    heats: 2,
+  });
+  const lat = round({
+    category: "Latin",
+    selectedDances: ["Samba", "Cha-Cha-Cha"],
+    heats: 2,
+    mixWithPrevious: true,
+  });
+  const seq = (rounds: RoundConfig[]) =>
+    buildPlaylist(cfg(rounds), LIBRARY, () => 0.3).map(
+      (i) => `${i.roundIndex}:${i.style}:${i.heatIndex}`,
+    );
+
+  it("groups a round flagged mixWithPrevious with the previous one", () => {
+    expect(groupRounds([std, lat])).toEqual([[0, 1]]);
+    expect(groupRounds([std, { ...lat, mixWithPrevious: false }])).toEqual([
+      [0],
+      [1],
+    ]);
+    // Meaningless on the first round.
+    expect(groupRounds([{ ...std, mixWithPrevious: true }, lat])).toEqual([
+      [0, 1],
+    ]);
+  });
+
+  it("alternates heats between the two rounds, dance by dance", () => {
+    expect(seq([std, lat])).toEqual([
+      "1:Valse Lente:1",
+      "2:Samba:1",
+      "1:Valse Lente:2",
+      "2:Samba:2",
+      "1:Tango:1",
+      "2:Cha-Cha-Cha:1",
+      "1:Tango:2",
+      "2:Cha-Cha-Cha:2",
+    ]);
+  });
+
+  it("finishes the longer round alone when sizes differ", () => {
+    const bigStd = { ...std, heats: 3, selectedDances: [...DANCES.Standard] };
+    const order = seq([bigStd, { ...lat, selectedDances: ["Samba"] }]);
+    expect(order.slice(0, 4)).toEqual([
+      "1:Valse Lente:1",
+      "2:Samba:1",
+      "1:Valse Lente:2",
+      "2:Samba:2",
+    ]);
+    expect(order[4]).toBe("1:Valse Lente:3");
+    expect(order.filter((o) => o.startsWith("2:"))).toHaveLength(2);
+    expect(order).toHaveLength(5 * 3 + 2);
+  });
+
+  it("leaves unmixed rounds dance-major and flags mixed items", () => {
+    const solo = round({ category: "Latin", selectedDances: ["Jive"] });
+    const list = buildPlaylist(cfg([std, lat, solo]), LIBRARY, () => 0.3);
+    expect(list.slice(-2).map((i) => i.style)).toEqual(["Jive", "Jive"]);
+    expect(list.slice(-2).every((i) => !i.mixed)).toBe(true);
+    expect(list.slice(0, 8).every((i) => i.mixed)).toBe(true);
+  });
+
+  it("names the category when a mixed round opens", () => {
+    const list = buildPlaylist(cfg([std, lat]), LIBRARY, () => 0.3);
+    expect(list[0].announcementText).toMatch(/premier tour en standard/);
+    expect(list[1].announcementText).toMatch(/deuxième tour en latines/);
+    expect(list[2].announcementText).toMatch(/Valse lente|valse lente/);
+  });
+
+  it("toggles the flag with setRoundMix", () => {
+    const program = cfg([std, { ...lat, mixWithPrevious: false }]);
+    const next = setRoundMix(lat.id, true)(program);
+    expect(next.rounds[1].mixWithPrevious).toBe(true);
+    expect(setRoundMix(lat.id, false)(next).rounds[1].mixWithPrevious).toBe(
+      false,
     );
   });
 });

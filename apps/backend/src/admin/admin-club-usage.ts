@@ -1,4 +1,5 @@
 import { Prisma, UserRole } from "@prisma/client";
+import { withRole } from "../auth/roles";
 
 /**
  * Club names are copied as free text (User.clubName, License.clubName,
@@ -27,10 +28,10 @@ export async function clubUsage(
   club: { id: string; name: string },
 ): Promise<ClubUsage> {
   const memberCount = await db.user.count({
-    where: { clubId: club.id, role: { not: UserRole.CLUB } },
+    where: { clubId: club.id, NOT: withRole(UserRole.CLUB) },
   });
   const clubAccountCount = await db.user.count({
-    where: { clubId: club.id, role: UserRole.CLUB },
+    where: { clubId: club.id, ...withRole(UserRole.CLUB) },
   });
   // Competition.organizer holds a copy of the club name, not an id.
   const competitionCount = await db.competition.count({

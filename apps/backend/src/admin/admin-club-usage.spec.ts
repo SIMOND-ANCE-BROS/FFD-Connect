@@ -1,4 +1,5 @@
 import { UserRole } from "@prisma/client";
+import { withRole } from "../auth/roles";
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -28,10 +29,10 @@ describe("clubUsage", () => {
       soloTeamCount: 5,
     });
     expect(prisma.user.count).toHaveBeenNthCalledWith(1, {
-      where: { clubId: "c1", role: { not: UserRole.CLUB } },
+      where: { clubId: "c1", NOT: withRole(UserRole.CLUB) },
     });
     expect(prisma.user.count).toHaveBeenNthCalledWith(2, {
-      where: { clubId: "c1", role: UserRole.CLUB },
+      where: { clubId: "c1", ...withRole(UserRole.CLUB) },
     });
     expect(prisma.competition.count).toHaveBeenCalledWith({
       where: { organizer: { equals: "Club A", mode: "insensitive" } },

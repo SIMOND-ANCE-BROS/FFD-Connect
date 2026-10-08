@@ -44,7 +44,7 @@ describe("NotificationsController", () => {
     role: string = UserRole.LICENSEE,
   ): RequestWithUser =>
     ({
-      user: { userId, email: "user@test.com", role },
+      user: { userId, email: "user@test.com", role, roles: [role as UserRole] },
     }) as RequestWithUser;
 
   beforeEach(async () => {
@@ -495,7 +495,7 @@ describe("NotificationsController", () => {
       // périmètre renvoyé.
       expect(
         mockPreferencesQueryService.getCatalogForUser,
-      ).toHaveBeenCalledWith("user-77", UserRole.CLUB);
+      ).toHaveBeenCalledWith("user-77", [UserRole.CLUB]);
     });
 
     it("ne prend aucun paramètre de destinataire", () => {
@@ -542,7 +542,7 @@ describe("NotificationsController", () => {
       expect(result).toEqual(updated);
       expect(mockPreferencesService.setPreference).toHaveBeenCalledWith(
         "user-99",
-        UserRole.LICENSEE,
+        [UserRole.LICENSEE],
         NotificationType.NEW_COMPETITION,
         true,
       );
@@ -592,7 +592,7 @@ describe("NotificationsController", () => {
 
       expect(mockPreferencesService.setPreference).toHaveBeenCalledWith(
         "user-1",
-        UserRole.ADMIN,
+        [UserRole.ADMIN],
         NotificationType.TRACK_REPORT,
         true,
       );

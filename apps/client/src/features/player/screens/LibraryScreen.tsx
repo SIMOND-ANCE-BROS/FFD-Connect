@@ -56,7 +56,8 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
   // caler le paddingTop de la liste. Estimation initiale avant onLayout.
   const [headerH, setHeaderH] = useState(insets.top + 170);
   const { role, isGuest } = useAuthStore();
-  const isAdmin = role === "ADMIN";
+  // Actions follow every role of the account, whatever the active space.
+  const isAdmin = useAuthStore((s) => s.hasRole("ADMIN"));
   const [editTrack, setEditTrack] = useState<EditableTrack | null>(null);
   // Proposition de correction (non-admins) : piste ciblée + visibilité.
   const [reportTrack, setReportTrack] = useState<CorrectableTrack | null>(null);

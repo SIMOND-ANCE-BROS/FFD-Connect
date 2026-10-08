@@ -7,6 +7,7 @@ import {
 import { Reflector } from "@nestjs/core";
 import { UserRole } from "@prisma/client";
 import { ROLES_KEY } from "../decorators/roles.decorator";
+import { rolesOf } from "../roles";
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -23,12 +24,13 @@ export class RolesGuard implements CanActivate {
 
     const { user } = context
       .switchToHttp()
-      .getRequest<{ user?: { role: UserRole } }>();
+      .getRequest<{ user?: { role: UserRole; roles?: UserRole[] } }>();
     if (!user) {
       return false;
     }
 
-    const hasRole = requiredRoles.includes(user.role);
+    const roles = user.roles ?? rolesOf({ role: user.role });
+    const hasRole = requiredRoles.some((r) => roles.includes(r));
     if (!hasRole) {
       throw new ForbiddenException(
         `Permissions insuffisantes. Rôles requis: ${requiredRoles.join(", ")}`,

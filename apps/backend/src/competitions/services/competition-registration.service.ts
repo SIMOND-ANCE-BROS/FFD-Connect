@@ -19,7 +19,11 @@ import {
 } from "../../common/age-group";
 import { checkParticipationEligibility } from "../../common/participation-rules";
 import { handlePrismaError } from "../../utils/prisma-errors.util";
-import { competitionForRegistrationSelect } from "../../utils/prisma-selects";
+import { hasRole } from "../../auth/roles";
+import {
+  competitionForRegistrationSelect,
+  userRolesClubSelect,
+} from "../../utils/prisma-selects";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ClubsHelloAssoService } from "../../clubs/clubs-helloasso.service";
 import { CompetitionCacheService } from "./competition-cache.service";
@@ -337,9 +341,9 @@ export class CompetitionRegistrationService {
 
     const organizer = await this.prisma.user.findUnique({
       where: { id: organizerUserId },
-      select: { role: true, clubId: true, clubName: true },
+      select: userRolesClubSelect,
     });
-    if (organizer?.role !== UserRole.CLUB) {
+    if (!organizer || !hasRole(organizer, UserRole.CLUB)) {
       throw new ForbiddenException("Réservé à l'organisateur du club");
     }
     const sameClub =
@@ -490,14 +494,14 @@ export class CompetitionRegistrationService {
     const [organizer, member] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: organizerUserId },
-        select: { role: true, clubId: true, clubName: true },
+        select: userRolesClubSelect,
       }),
       this.prisma.user.findUnique({
         where: { id: memberUserId },
         select: { clubId: true, clubName: true },
       }),
     ]);
-    if (organizer?.role !== UserRole.CLUB) {
+    if (!organizer || !hasRole(organizer, UserRole.CLUB)) {
       throw new NotFoundException("Réservé à l'organisateur du club");
     }
     if (!member) throw new NotFoundException("Membre non trouvé");

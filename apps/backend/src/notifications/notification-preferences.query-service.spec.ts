@@ -3,7 +3,7 @@ import { NotificationType, UserRole } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   CONFIGURABLE_NOTIFICATION_TYPES,
-  configurableTypesForRole,
+  configurableTypesForRoles,
   NOTIFICATION_CATALOG,
 } from "./notification-catalog";
 import { NotificationPreferencesQueryService } from "./notification-preferences.query-service";
@@ -37,10 +37,10 @@ describe("NotificationPreferencesQueryService", () => {
       // Critère d'acceptation #37 : un compte existant, qui n'a évidemment
       // aucune ligne de préférence, se comporte selon le défaut — sans
       // migration de données.
-      const catalog = await service.getCatalogForUser("u1", UserRole.CLUB);
+      const catalog = await service.getCatalogForUser("u1", [UserRole.CLUB]);
 
       expect(catalog).toEqual(
-        configurableTypesForRole(UserRole.CLUB).map((type) => ({
+        configurableTypesForRoles([UserRole.CLUB]).map((type) => ({
           type,
           enabled: NOTIFICATION_CATALOG[type].defaultEnabled,
           label: NOTIFICATION_CATALOG[type].label,
@@ -57,7 +57,9 @@ describe("NotificationPreferencesQueryService", () => {
         { type: NotificationType.NEW_COMPETITION, enabled: true },
       ]);
 
-      const catalog = await service.getCatalogForUser("u1", UserRole.LICENSEE);
+      const catalog = await service.getCatalogForUser("u1", [
+        UserRole.LICENSEE,
+      ]);
       const state = new Map(catalog.map((e) => [e.type, e.enabled]));
 
       expect(state.get(NotificationType.REGISTRATION_STATUS)).toBe(false);
@@ -67,7 +69,9 @@ describe("NotificationPreferencesQueryService", () => {
     });
 
     it("porte les libellés : l'écran de réglages n'a pas à connaître l'enum", async () => {
-      const catalog = await service.getCatalogForUser("u1", UserRole.LICENSEE);
+      const catalog = await service.getCatalogForUser("u1", [
+        UserRole.LICENSEE,
+      ]);
 
       for (const entry of catalog) {
         expect(entry.label).toBe(NOTIFICATION_CATALOG[entry.type].label);
@@ -78,7 +82,7 @@ describe("NotificationPreferencesQueryService", () => {
     });
 
     it("n'expose pas le diagnostic, qui n'est pas réglable", async () => {
-      const catalog = await service.getCatalogForUser("u1", UserRole.ADMIN);
+      const catalog = await service.getCatalogForUser("u1", [UserRole.ADMIN]);
 
       expect(catalog.map((e) => e.type)).not.toContain(
         NotificationType.DIAGNOSTIC_TEST,
@@ -86,7 +90,7 @@ describe("NotificationPreferencesQueryService", () => {
     });
 
     it("lit les préférences du seul appelant, en requête bornée", async () => {
-      await service.getCatalogForUser("u1", UserRole.LICENSEE);
+      await service.getCatalogForUser("u1", [UserRole.LICENSEE]);
 
       expect(mockPrisma.notificationPreference.findMany).toHaveBeenCalledWith({
         where: { userId: "u1" },
@@ -99,7 +103,7 @@ describe("NotificationPreferencesQueryService", () => {
 
     it("ne propose pas au licencié les types réservés au club et à la modération", async () => {
       const types = (
-        await service.getCatalogForUser("u1", UserRole.LICENSEE)
+        await service.getCatalogForUser("u1", [UserRole.LICENSEE])
       ).map((entry) => entry.type);
 
       expect(types).not.toContain(NotificationType.CLUB_MEMBER_REGISTRATION);
@@ -115,9 +119,9 @@ describe("NotificationPreferencesQueryService", () => {
     });
 
     it("propose au gestionnaire de club ses propres types, et pas ceux des autres rôles", async () => {
-      const types = (await service.getCatalogForUser("u1", UserRole.CLUB)).map(
-        (entry) => entry.type,
-      );
+      const types = (
+        await service.getCatalogForUser("u1", [UserRole.CLUB])
+      ).map((entry) => entry.type);
 
       expect(types).toContain(NotificationType.CLUB_MEMBER_REGISTRATION);
       expect(types).toContain(NotificationType.CLUB_PARTNERSHIP);
@@ -130,10 +134,10 @@ describe("NotificationPreferencesQueryService", () => {
 
     it("propose la modération au seul administrateur", async () => {
       const forAdmin = (
-        await service.getCatalogForUser("u1", UserRole.ADMIN)
+        await service.getCatalogForUser("u1", [UserRole.ADMIN])
       ).map((entry) => entry.type);
       const forStaff = (
-        await service.getCatalogForUser("u1", UserRole.STAFF)
+        await service.getCatalogForUser("u1", [UserRole.STAFF])
       ).map((entry) => entry.type);
 
       expect(forAdmin).toContain(NotificationType.TRACK_REPORT);
@@ -142,7 +146,7 @@ describe("NotificationPreferencesQueryService", () => {
 
     it("garde les types universels pour tous les rôles", async () => {
       for (const role of Object.values(UserRole)) {
-        const types = (await service.getCatalogForUser("u1", role)).map(
+        const types = (await service.getCatalogForUser("u1", [role])).map(
           (entry) => entry.type,
         );
         expect(types).toContain(NotificationType.REGISTRATION_STATUS);
@@ -153,7 +157,7 @@ describe("NotificationPreferencesQueryService", () => {
     it("ne propose rien à un rôle inconnu plutôt qu'un réglage sans effet", async () => {
       // Jeton émis par une version antérieure, ou rôle retiré de l'enum.
       await expect(
-        service.getCatalogForUser("u1", "SUPERVISOR"),
+        service.getCatalogForUser("u1", ["SUPERVISOR"]),
       ).resolves.toEqual([]);
     });
 
@@ -164,15 +168,14 @@ describe("NotificationPreferencesQueryService", () => {
         { type: NotificationType.CLUB_MEMBER_REGISTRATION, enabled: true },
       ]);
 
-      const asLicensee = await service.getCatalogForUser(
-        "u1",
+      const asLicensee = await service.getCatalogForUser("u1", [
         UserRole.LICENSEE,
-      );
+      ]);
       expect(asLicensee.map((e) => e.type)).not.toContain(
         NotificationType.CLUB_MEMBER_REGISTRATION,
       );
 
-      const asClub = await service.getCatalogForUser("u1", UserRole.CLUB);
+      const asClub = await service.getCatalogForUser("u1", [UserRole.CLUB]);
       expect(asClub).toContainEqual(
         expect.objectContaining({
           type: NotificationType.CLUB_MEMBER_REGISTRATION,
@@ -182,7 +185,7 @@ describe("NotificationPreferencesQueryService", () => {
     });
 
     it("ne filtre pas la lecture en base par rôle : les lignes hors périmètre survivent", async () => {
-      await service.getCatalogForUser("u1", UserRole.LICENSEE);
+      await service.getCatalogForUser("u1", [UserRole.LICENSEE]);
 
       const where = mockPrisma.notificationPreference.findMany.mock.calls[0][0]
         .where as Record<string, unknown>;

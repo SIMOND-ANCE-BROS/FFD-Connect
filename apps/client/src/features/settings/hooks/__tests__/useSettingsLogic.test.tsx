@@ -69,6 +69,8 @@ const mockNavigation = createMockNavigation();
 
 const mockAuth = {
   getAuthConfig: jest.fn(),
+  getProfile: jest.fn(),
+  syncRolesFromProfile: jest.fn(),
   setBiometricsEnabled: jest.fn(),
   logout: jest.fn(),
   setLicensePhoto: jest.fn(),
@@ -118,6 +120,58 @@ describe("useSettingsLogic", () => {
       biometricsEnabled: false,
       licensePhotoUri: null,
       role: "LICENSEE",
+    });
+  });
+
+  describe("role sync from the profile (no re-login)", () => {
+    it("applies the fetched profile's roles, then refreshes the session", async () => {
+      const profile = {
+        email: "a@x.fr",
+        role: "LICENSEE",
+        roles: ["LICENSEE", "CLUB"],
+      };
+      mockAuth.getProfile.mockResolvedValue(profile);
+      mockAuth.syncRolesFromProfile.mockResolvedValue({
+        role: "LICENSEE",
+        roles: ["LICENSEE", "CLUB"],
+      });
+
+      await renderHook(() => useSettingsLogic({ navigation: mockNavigation }));
+      await act(async () => {});
+
+      expect(mockAuth.getProfile).toHaveBeenCalledTimes(1);
+      expect(mockAuth.syncRolesFromProfile).toHaveBeenCalledWith(profile);
+      expect(mockRefreshAuth).toHaveBeenCalled();
+    });
+
+    it("shows the space the sync fell back to", async () => {
+      mockAuth.getAuthConfig.mockResolvedValue({ role: "CLUB" });
+      mockAuth.getProfile.mockResolvedValue({
+        email: "a@x.fr",
+        role: "LICENSEE",
+        roles: ["LICENSEE"],
+      });
+      mockAuth.syncRolesFromProfile.mockResolvedValue({
+        role: "LICENSEE",
+        roles: ["LICENSEE"],
+      });
+
+      const { result } = await renderHook(() =>
+        useSettingsLogic({ navigation: mockNavigation }),
+      );
+      await act(async () => {});
+
+      expect(result.current.state.role).toBe("LICENSEE");
+    });
+
+    it("does not refresh the session when the profile cannot be loaded", async () => {
+      mockAuth.getProfile.mockRejectedValue(new Error("offline"));
+
+      await renderHook(() => useSettingsLogic({ navigation: mockNavigation }));
+      await act(async () => {});
+
+      expect(mockAuth.syncRolesFromProfile).not.toHaveBeenCalled();
+      expect(mockRefreshAuth).not.toHaveBeenCalled();
     });
   });
 

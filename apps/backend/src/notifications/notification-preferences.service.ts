@@ -6,7 +6,7 @@ import {
 import { NotificationType } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
-  isApplicableToRole,
+  isApplicableToRoles,
   isConfigurable,
   NOTIFICATION_CATALOG,
 } from "./notification-catalog";
@@ -33,8 +33,8 @@ export class NotificationPreferencesService {
    * renvoyer le même état sans créer de doublon ni d'erreur.
    *
    * @param userId - Utilisateur authentifié
-   * @param role - Rôle porté par le JWT de l'appelant
-   * @param type - Type réglable et applicable à ce rôle
+   * @param roles - Rôles effectifs de l'appelant (`req.user.roles`)
+   * @param type - Type réglable et applicable à l'un de ces rôles
    * @param enabled - `true` pour recevoir la push de ce type
    * @returns L'entrée de catalogue mise à jour, prête à remplacer celle du client
    * @throws BadRequestException si le type n'est pas réglable
@@ -42,7 +42,7 @@ export class NotificationPreferencesService {
    */
   async setPreference(
     userId: string,
-    role: string,
+    roles: readonly string[],
     type: NotificationType,
     enabled: boolean,
   ): Promise<ResolvedNotificationPreference> {
@@ -55,7 +55,7 @@ export class NotificationPreferencesService {
       );
     }
 
-    if (!isApplicableToRole(type, role)) {
+    if (!isApplicableToRoles(type, roles)) {
       // Même raison, portée au rôle : écrire une préférence que l'appelant ne
       // peut pas relire (GET ne la renvoie pas) serait incohérent. 403 et non
       // 404 : le type existe et figure dans la documentation OpenAPI, c'est le

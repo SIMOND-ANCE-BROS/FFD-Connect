@@ -21,6 +21,7 @@ import {
 } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { UserRole } from "@prisma/client";
+import { hasRole } from "../auth/roles";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
@@ -88,7 +89,7 @@ export class TrackCorrectionsController {
     return this.service.create(
       req.user.userId,
       dto,
-      req.user.role === UserRole.ADMIN,
+      hasRole(req.user, UserRole.ADMIN),
     );
   }
 

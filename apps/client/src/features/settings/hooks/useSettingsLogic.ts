@@ -111,6 +111,15 @@ export const useSettingsLogic = ({
       // Check license expiry
       try {
         const profile = await auth.getProfile();
+        // Same /users/me response, no extra request: picks up a role changed
+        // in the back-office without a re-login.
+        try {
+          const synced = await auth.syncRolesFromProfile(profile);
+          setRole(synced.role);
+          await refreshAuth();
+        } catch (error) {
+          logger.warn("[Settings] Role sync failed", error);
+        }
         if (profile.license?.validUntil) {
           const now = new Date();
           const expiry = new Date(profile.license.validUntil);
@@ -126,7 +135,7 @@ export const useSettingsLogic = ({
     } catch (error) {
       logger.error("[Settings] Error loading settings:", error);
     }
-  }, [auth]);
+  }, [auth, refreshAuth]);
 
   const checkBiometryAvailability = useCallback(async () => {
     const { available, biometryType: bioType } =

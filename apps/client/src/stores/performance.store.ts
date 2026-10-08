@@ -20,7 +20,10 @@ export const DANCES: Record<Category, readonly string[]> = {
   Latin: ["Samba", "Cha-Cha-Cha", "Rumba", "Paso Doble", "Jive"],
 };
 
-export const MIN_ROUND_HEATS = 2;
+/** A single group per dance is allowed (e.g. one Latin group mixed in). */
+export const MIN_ROUND_HEATS = 1;
+/** Heats of a new round. */
+export const DEFAULT_ROUND_HEATS = 2;
 export const MAX_ROUND_HEATS = 10;
 
 /** One round (« tour ») of the competition programme. */
@@ -32,6 +35,12 @@ export interface RoundConfig {
   heats: number;
   /** Subset of DANCES[category], kept in canonical order. */
   selectedDances: string[];
+  /**
+   * Alternates this round's heats with the previous round's (« passages
+   * mixés »): Valse Std, Samba Lat, Valse Std… then the next dance of each.
+   * Ignored on the first round.
+   */
+  mixWithPrevious?: boolean;
 }
 
 export interface PerformanceConfig {
@@ -61,6 +70,8 @@ export interface PlaylistItem {
   /** 0-based position of the dance inside its round + dances in the round. */
   danceIndex: number;
   dancesInRound: number;
+  /** True when the round alternates with another one (mixed heats). */
+  mixed?: boolean;
   /** French MC announcement spoken before this item (deterministic). */
   announcementText: string;
   announcementPath?: string;
@@ -84,7 +95,7 @@ export const createRound = (
   id: createRoundId(),
   category,
   type,
-  heats: type === "Final" ? 1 : MIN_ROUND_HEATS,
+  heats: type === "Final" ? 1 : DEFAULT_ROUND_HEATS,
   selectedDances: [...DANCES[category]],
 });
 

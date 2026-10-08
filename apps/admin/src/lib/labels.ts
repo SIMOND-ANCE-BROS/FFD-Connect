@@ -7,6 +7,9 @@ export const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: 'Admin',
 };
 
+export const extraRoleLabels = (extraRoles: readonly UserRole[]): string[] =>
+  extraRoles.map((r) => `+ ${ROLE_LABELS[r]}`);
+
 export const REGISTRATION_MODE_LABELS: Record<ClubRegistrationMode, string> = {
   CLUB_AND_MEMBERS_PENDING: 'Licenciés et club, validation par le club',
   CLUB_ONLY: 'Le club seul inscrit ses licenciés',

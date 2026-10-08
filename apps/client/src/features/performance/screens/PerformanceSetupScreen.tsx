@@ -26,6 +26,7 @@ import {
   isPasoDoble,
   removeRound,
   setRoundCategory,
+  setRoundMix,
   setRoundType,
   stepRoundHeats,
   toggleRoundDance,
@@ -138,6 +139,11 @@ export const PerformanceSetupScreen = () => {
                 setConfig(toggleRoundDance(round.id, dance))
               }
               onDelete={() => setConfig(removeRound(round.id))}
+              onMixChange={
+                index > 0
+                  ? (mix) => setConfig(setRoundMix(round.id, mix))
+                  : undefined
+              }
             />
           ))}
           <TouchableOpacity

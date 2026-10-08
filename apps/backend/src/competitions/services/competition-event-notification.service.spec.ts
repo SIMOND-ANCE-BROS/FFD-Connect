@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { NotificationType, PrismaClient, UserRole } from "@prisma/client";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
+import { withActiveRole } from "../../auth/roles";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
@@ -145,7 +146,7 @@ describe("CompetitionEventNotificationService", () => {
 
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { role: UserRole.LICENSEE },
+          where: withActiveRole(UserRole.LICENSEE),
         }),
       );
     });

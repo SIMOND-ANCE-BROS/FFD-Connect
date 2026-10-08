@@ -77,6 +77,32 @@ describe("ClubsHelloAssoService", () => {
       );
     });
 
+    it("accepts a licensee whose CLUB role is an extra role", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({
+          role: UserRole.LICENSEE,
+          extraRoles: [UserRole.CLUB],
+          club: { disabledAt: null },
+        }) as never,
+      );
+      prisma.club.findUnique.mockResolvedValue(makeClub() as never);
+      const result = await service.getMyClubHelloAssoStatus("user-1");
+      expect(result.helloAssoConnected).toBe(false);
+    });
+
+    it("refuses an extra CLUB role while the club is disabled", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({
+          role: UserRole.LICENSEE,
+          extraRoles: [UserRole.CLUB],
+          club: { disabledAt: new Date() },
+        }) as never,
+      );
+      await expect(service.getMyClubHelloAssoStatus("user-1")).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
     it("returns helloAssoConnected: true when all 3 credentials are set", async () => {
       prisma.user.findUnique.mockResolvedValue(makeUser() as never);
       prisma.club.findUnique.mockResolvedValue(

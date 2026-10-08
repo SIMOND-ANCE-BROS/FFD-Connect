@@ -71,6 +71,9 @@ export const usePerformanceEngine = () => {
     nextDance: () => {
       engine.nextDance().catch(() => {});
     },
+    previousDance: () => {
+      engine.previousDance().catch(() => {});
+    },
     togglePlayPause: () => {
       engine.togglePlayPause().catch(() => {});
     },

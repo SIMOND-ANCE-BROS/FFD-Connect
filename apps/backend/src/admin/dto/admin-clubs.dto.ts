@@ -68,6 +68,8 @@ export class AdminClubMemberDto {
   @ApiProperty() lastName!: string;
   @ApiProperty() email!: string;
   @ApiProperty({ enum: UserRole, enumName: "UserRole" }) role!: UserRole;
+  @ApiProperty({ enum: UserRole, enumName: "UserRole", isArray: true })
+  extraRoles!: UserRole[];
   @ApiProperty({ nullable: true, type: Date }) disabledAt!: Date | null;
 }
 

@@ -13,6 +13,7 @@ import {
 import * as bcrypt from "bcrypt";
 import { mockDeep, MockProxy } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
+import { withActiveRole } from "../auth/roles";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import {
   AccountDeletionService,
@@ -122,6 +123,17 @@ describe("UsersService", () => {
       );
     });
 
+    it("selects the user's own extraRoles", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+
+      await service.findOne("u1");
+
+      expect(prisma.user.findUnique.mock.calls[0][0]?.select).toHaveProperty(
+        "extraRoles",
+        true,
+      );
+    });
+
     it("returns user data including the id and email", async () => {
       prisma.user.findUnique.mockResolvedValue(makeUser());
 
@@ -150,6 +162,23 @@ describe("UsersService", () => {
       const result = await service.findOne("u1");
 
       expect(result.license).toBeNull();
+    });
+
+    it("adds roles next to role without leaking the club status", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...makeUser(),
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        club: { disabledAt: null },
+      });
+
+      const result = (await service.findOne("u1")) as Record<string, unknown>;
+
+      expect(result).toMatchObject({
+        role: UserRole.LICENSEE,
+        roles: [UserRole.LICENSEE, UserRole.CLUB],
+      });
+      expect(result.club).toBeUndefined();
     });
 
     it("never returns a password field", async () => {
@@ -230,6 +259,38 @@ describe("UsersService", () => {
       );
     });
 
+    it("accepts a licensee whose CLUB role is an extra role", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "org1",
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        clubId: null,
+        clubName: "DanceClub",
+        club: { disabledAt: null },
+      });
+      prisma.user.count.mockResolvedValue(0);
+      prisma.user.findMany.mockResolvedValue([] as never);
+
+      const result = await service.findClubMembers("org1");
+
+      expect(result.data).toEqual([]);
+    });
+
+    it("refuses an extra CLUB role while the club is disabled", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "org1",
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        clubId: "c1",
+        clubName: null,
+        club: { disabledAt: new Date() },
+      });
+
+      await expect(service.findClubMembers("org1")).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
     it("throws NotFoundException when the organizer has no club assigned", async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
@@ -266,6 +327,26 @@ describe("UsersService", () => {
       expect(result.meta.total).toBe(2);
     });
 
+    it("never selects the members' extraRoles (data minimisation)", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "org1",
+        role: UserRole.CLUB,
+        clubId: "c1",
+        clubName: "DanceClub",
+      });
+      prisma.user.count.mockResolvedValue(0);
+      prisma.user.findMany.mockResolvedValue([]);
+
+      await service.findClubMembers("org1");
+
+      const select = prisma.user.findMany.mock.calls[0][0]?.select as Record<
+        string,
+        unknown
+      >;
+      expect(select).not.toHaveProperty("extraRoles");
+      expect(select).toHaveProperty("role", true);
+    });
+
     it("scopes the query to the organizer's club by clubName when no clubId exists", async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
@@ -280,7 +361,10 @@ describe("UsersService", () => {
 
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { clubName: "DanceClub", role: UserRole.LICENSEE },
+          where: {
+            clubName: "DanceClub",
+            ...withActiveRole(UserRole.LICENSEE),
+          },
         }),
       );
     });
@@ -299,7 +383,7 @@ describe("UsersService", () => {
 
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { clubId: "club-42", role: UserRole.LICENSEE },
+          where: { clubId: "club-42", ...withActiveRole(UserRole.LICENSEE) },
         }),
       );
     });
@@ -531,6 +615,19 @@ describe("UsersService", () => {
       expect(result.format).toBe("ffd-connect-export-v1");
       expect(typeof result.exportedAt).toBe("string");
       expect(result.data).toEqual(exported);
+    });
+
+    it("exporte les rôles supplémentaires de l'utilisateur", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ trackCorrectionsProposed: [] }),
+      );
+
+      await service.exportMyData("u1");
+
+      expect(prisma.user.findUnique.mock.calls[0][0]?.select).toHaveProperty(
+        "extraRoles",
+        true,
+      );
     });
 
     it("ne sélectionne jamais le mot de passe ni les tokens", async () => {

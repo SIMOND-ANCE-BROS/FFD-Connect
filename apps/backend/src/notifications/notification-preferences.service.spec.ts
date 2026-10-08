@@ -34,7 +34,7 @@ describe("NotificationPreferencesService", () => {
 
       await service.setPreference(
         "u1",
-        UserRole.LICENSEE,
+        [UserRole.LICENSEE],
         NotificationType.REGISTRATION_STATUS,
         false,
       );
@@ -63,7 +63,7 @@ describe("NotificationPreferencesService", () => {
 
       const updated = await service.setPreference(
         "u1",
-        UserRole.LICENSEE,
+        [UserRole.LICENSEE],
         NotificationType.NEW_COMPETITION,
         true,
       );
@@ -87,7 +87,7 @@ describe("NotificationPreferencesService", () => {
 
       const updated = await service.setPreference(
         "u1",
-        UserRole.LICENSEE,
+        [UserRole.LICENSEE],
         NotificationType.NEW_COMPETITION,
         true,
       );
@@ -102,13 +102,13 @@ describe("NotificationPreferencesService", () => {
 
       await service.setPreference(
         "u1",
-        UserRole.ADMIN,
+        [UserRole.ADMIN],
         NotificationType.TRACK_REPORT,
         true,
       );
       await service.setPreference(
         "u1",
-        UserRole.ADMIN,
+        [UserRole.ADMIN],
         NotificationType.TRACK_REPORT,
         true,
       );
@@ -125,7 +125,7 @@ describe("NotificationPreferencesService", () => {
       await expect(
         service.setPreference(
           "u1",
-          UserRole.ADMIN,
+          [UserRole.ADMIN],
           NotificationType.DIAGNOSTIC_TEST,
           false,
         ),
@@ -140,7 +140,7 @@ describe("NotificationPreferencesService", () => {
       await expect(
         service.setPreference(
           "u1",
-          UserRole.LICENSEE,
+          [UserRole.LICENSEE],
           NotificationType.TRACK_REPORT,
           true,
         ),
@@ -158,7 +158,7 @@ describe("NotificationPreferencesService", () => {
       [UserRole.ADMIN, NotificationType.CLUB_PARTNERSHIP],
     ])("refuse %s sur %s", async (role, type) => {
       await expect(
-        service.setPreference("u1", role, type, true),
+        service.setPreference("u1", [role], type, true),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -174,7 +174,7 @@ describe("NotificationPreferencesService", () => {
       });
 
       await expect(
-        service.setPreference("u1", role, type, true),
+        service.setPreference("u1", [role], type, true),
       ).resolves.toMatchObject({ type, enabled: true });
     });
 
@@ -182,7 +182,7 @@ describe("NotificationPreferencesService", () => {
       await expect(
         service.setPreference(
           "u1",
-          "SUPERVISOR",
+          ["SUPERVISOR"],
           NotificationType.REGISTRATION_STATUS,
           true,
         ),
