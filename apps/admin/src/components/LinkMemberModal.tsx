@@ -1,4 +1,15 @@
-import { Alert, Button, Group, Loader, Modal, Stack, Table, Text, TextInput } from '@mantine/core';
+import {
+  Alert,
+  Badge,
+  Button,
+  Group,
+  Loader,
+  Modal,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+} from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -7,9 +18,19 @@ import { adminControllerUpdateUser } from '../api/generated/sdk.gen';
 import type { AdminUserListItemDto } from '../api/generated/types.gen';
 import { clubQuery, unwrap, usersQuery } from '../api/queries';
 import { apiErrorMessage } from '../lib/apiError';
+import { extraRoleLabels, ROLE_LABELS } from '../lib/labels';
 
 const MIN_SEARCH_LENGTH = 2;
 const RESULTS = 10;
+
+/** True when the user's current club (id or legacy name) is another club. */
+const leavesAnotherClub = (user: AdminUserListItemDto, club: { name: string }) =>
+  user.clubId
+    ? true
+    : Boolean(user.clubName) && user.clubName?.toLowerCase() !== club.name.toLowerCase();
+
+const holdsClubRole = (user: AdminUserListItemDto) =>
+  user.role === 'CLUB' || user.extraRoles.includes('CLUB');
 
 interface Props {
   club: { id: string; name: string };
@@ -53,17 +74,26 @@ function LinkMemberBody({ club, onClose }: Omit<Props, 'opened'>) {
 
   const choose = (user: AdminUserListItemDto) => {
     link.reset();
-    // A legacy account may carry a club name without a clubId: still a club.
-    if (user.clubName) setConfirming(user);
+    // A legacy account may carry a club name without a clubId: still a club,
+    // unless it is this very club. A CLUB-role holder becomes its manager.
+    if (leavesAnotherClub(user, club) || holdsClubRole(user)) setConfirming(user);
     else link.mutate(user);
   };
 
   if (confirming) {
     return (
       <Stack>
-        <Text>
-          {confirming.firstName} {confirming.lastName} quitte {confirming.clubName} pour {club.name}
-        </Text>
+        {holdsClubRole(confirming) && (
+          <Text>
+            {confirming.firstName} {confirming.lastName} deviendra gestionnaire de {club.name}
+          </Text>
+        )}
+        {leavesAnotherClub(confirming, club) && (
+          <Text>
+            {confirming.firstName} {confirming.lastName} quitte {confirming.clubName} pour{' '}
+            {club.name}
+          </Text>
+        )}
         {link.isError && (
           <Alert color="red">{apiErrorMessage(link.error, "Impossible d'ajouter ce membre")}</Alert>
         )}
@@ -112,40 +142,57 @@ function LinkMemberBody({ club, onClose }: Omit<Props, 'opened'>) {
           Aucun utilisateur trouvé.
         </Text>
       ) : (
-        <Table>
-          <Table.Tbody>
-            {results.data.data.map((u) => (
-              <Table.Tr key={u.id}>
-                <Table.Td>
-                  <Text size="sm" fw={500}>
-                    {u.lastName} {u.firstName}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    {u.email}
-                  </Text>
-                </Table.Td>
-                <Table.Td>{u.clubName ?? 'Sans club'}</Table.Td>
-                <Table.Td>
-                  {u.clubId === club.id ? (
-                    <Text size="sm" c="dimmed">
-                      Déjà membre
+        <>
+          <Table>
+            <Table.Tbody>
+              {results.data.data.map((u) => (
+                <Table.Tr key={u.id}>
+                  <Table.Td>
+                    <Text size="sm" fw={500}>
+                      {u.lastName} {u.firstName}
                     </Text>
-                  ) : (
-                    <Button
-                      size="xs"
-                      variant="light"
-                      loading={link.isPending && link.variables.id === u.id}
-                      onClick={() => choose(u)}
-                      aria-label={`Ajouter ${u.firstName} ${u.lastName}`}
-                    >
-                      Ajouter
-                    </Button>
-                  )}
-                </Table.Td>
-              </Table.Tr>
-            ))}
-          </Table.Tbody>
-        </Table>
+                    <Text size="xs" c="dimmed">
+                      {u.email}
+                    </Text>
+                    <Group gap={4} mt={4}>
+                      <Badge variant="light" size="sm">
+                        {ROLE_LABELS[u.role]}
+                      </Badge>
+                      {extraRoleLabels(u.extraRoles).map((l) => (
+                        <Badge key={l} variant="outline" size="sm">
+                          {l}
+                        </Badge>
+                      ))}
+                    </Group>
+                  </Table.Td>
+                  <Table.Td>{u.clubName ?? 'Sans club'}</Table.Td>
+                  <Table.Td>
+                    {u.clubId === club.id ? (
+                      <Text size="sm" c="dimmed">
+                        Déjà membre
+                      </Text>
+                    ) : (
+                      <Button
+                        size="xs"
+                        variant="light"
+                        loading={link.isPending && link.variables.id === u.id}
+                        onClick={() => choose(u)}
+                        aria-label={`Ajouter ${u.firstName} ${u.lastName}`}
+                      >
+                        Ajouter
+                      </Button>
+                    )}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+          {results.data.meta.total > results.data.data.length && (
+            <Text size="sm" c="dimmed">
+              Affinez la recherche
+            </Text>
+          )}
+        </>
       )}
     </Stack>
   );

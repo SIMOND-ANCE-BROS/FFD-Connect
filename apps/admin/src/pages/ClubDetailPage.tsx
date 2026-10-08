@@ -256,9 +256,16 @@ export function ClubDetailPage() {
 
       <Group justify="space-between">
         <Title order={4}>Membres</Title>
-        <Button variant="light" onClick={() => setLinkOpen(true)}>
-          Lier un membre
-        </Button>
+        <Group gap="xs">
+          {disabled && (
+            <Text size="xs" c="dimmed">
+              Club désactivé
+            </Text>
+          )}
+          <Button variant="light" disabled={disabled} onClick={() => setLinkOpen(true)}>
+            Lier un membre
+          </Button>
+        </Group>
       </Group>
       {c.members.length ? (
         <Table>

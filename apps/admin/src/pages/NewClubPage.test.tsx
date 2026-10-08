@@ -1,7 +1,7 @@
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { vi } from 'vitest';
@@ -72,6 +72,17 @@ describe('NewClubPage', () => {
     await userEvent.type(screen.getByLabelText(/^Nom du club/), 'A');
     await submit();
     expect(await screen.findByText('Nom trop court')).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('caps the name at 120 characters', async () => {
+    const create = vi.spyOn(sdk, 'adminControllerCreateClub');
+    renderPage();
+    const input = screen.getByLabelText(/^Nom du club/);
+    expect(input).toHaveAttribute('maxlength', '120');
+    fireEvent.change(input, { target: { value: 'A'.repeat(121) } });
+    await submit();
+    expect(await screen.findByText('Nom trop long (120 caractères max)')).toBeInTheDocument();
     expect(create).not.toHaveBeenCalled();
   });
 

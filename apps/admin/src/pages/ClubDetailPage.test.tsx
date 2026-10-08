@@ -240,6 +240,13 @@ describe('ClubDetailPage', () => {
     expect(screen.queryByText('Aucune modification admin.')).toBeNull();
   });
 
+  it('disables « Lier un membre » on a disabled club', async () => {
+    renderPage({ ...empty, disabledAt: '2026-10-07T10:00:00.000Z' });
+    const button = await screen.findByRole('button', { name: 'Lier un membre' });
+    expect(button).toBeDisabled();
+    expect(within(button.parentElement as HTMLElement).getByText('Club désactivé')).toBeVisible();
+  });
+
   describe('Lier un membre', () => {
     // Mantine keeps notifications in a module-level store.
     afterEach(() => notifications.clean());
@@ -305,6 +312,67 @@ describe('ClubDetailPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Confirmer' }));
       expect(patch).toHaveBeenCalledWith({ path: { id: 'u9' }, body: { clubId: 'c1' } });
       expect(await screen.findByText('Membre ajouté au club')).toBeInTheDocument();
+    });
+
+    it('shows the role badges of each result', async () => {
+      search(user({ role: 'STAFF', extraRoles: ['CLUB'] }));
+      renderPage(empty);
+      await openSearch();
+      const row = (await screen.findByText('anna@x.fr')).closest('tr') as HTMLElement;
+      expect(within(row).getByText('Staff')).toBeInTheDocument();
+      expect(within(row).getByText('+ Club')).toBeInTheDocument();
+    });
+
+    it('confirms before linking a user holding the CLUB role, even without a club', async () => {
+      search(user({ extraRoles: ['CLUB'], roles: ['LICENSEE', 'CLUB'] }));
+      const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
+        data: { id: 'u9' },
+        error: undefined,
+      } as never);
+      renderPage(empty);
+      await openSearch();
+      await userEvent.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
+      expect(
+        await screen.findByText('Anna Petit deviendra gestionnaire de Club A'),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/quitte/)).toBeNull();
+      expect(patch).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByRole('button', { name: 'Confirmer' }));
+      expect(patch).toHaveBeenCalledWith({ path: { id: 'u9' }, body: { clubId: 'c1' } });
+    });
+
+    it('mentions both the manager role and the club left', async () => {
+      search(user({ role: 'CLUB', clubId: 'c2', clubName: 'Club B' }));
+      renderPage(empty);
+      await openSearch();
+      await userEvent.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
+      expect(
+        await screen.findByText('Anna Petit deviendra gestionnaire de Club A'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Anna Petit quitte Club B pour Club A')).toBeInTheDocument();
+    });
+
+    it('links a legacy user whose club name is this club (any case) directly', async () => {
+      search(user({ clubId: null, clubName: 'club a' }));
+      const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
+        data: { id: 'u9' },
+        error: undefined,
+      } as never);
+      renderPage(empty);
+      await openSearch();
+      await userEvent.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
+      expect(patch).toHaveBeenCalledWith({ path: { id: 'u9' }, body: { clubId: 'c1' } });
+      expect(screen.queryByText(/quitte/)).toBeNull();
+    });
+
+    it('asks to refine the search when there are more results than shown', async () => {
+      vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue({
+        data: { data: [user({})], meta: { total: 25, skip: 0, take: 10, hasMore: true } },
+        error: undefined,
+      } as never);
+      renderPage(empty);
+      await openSearch();
+      expect(await screen.findByText('Affinez la recherche')).toBeInTheDocument();
     });
 
     it('goes back to the results when the move is cancelled', async () => {

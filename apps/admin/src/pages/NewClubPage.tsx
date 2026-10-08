@@ -9,6 +9,8 @@ import type { ClubRegistrationMode } from '../api/generated/types.gen';
 import { apiErrorMessage, UNAVAILABLE_MESSAGE } from '../lib/apiError';
 import { REGISTRATION_MODE_LABELS } from '../lib/labels';
 
+const NAME_MAX = 120;
+
 interface Values {
   name: string;
   registrationMode: ClubRegistrationMode;
@@ -42,7 +44,12 @@ export function NewClubPage() {
   const form = useForm<Values>({
     initialValues: { name: '', registrationMode: 'MEMBERS_AUTO_CONFIRM' },
     validate: {
-      name: (v) => (v.trim().length >= 2 ? null : 'Nom trop court'),
+      name: (v) =>
+        v.trim().length < 2
+          ? 'Nom trop court'
+          : v.trim().length > NAME_MAX
+            ? `Nom trop long (${NAME_MAX} caractères max)`
+            : null,
     },
   });
 
@@ -87,7 +94,12 @@ export function NewClubPage() {
       )}
       <form onSubmit={onSubmit}>
         <Stack>
-          <TextInput label="Nom du club" withAsterisk {...form.getInputProps('name')} />
+          <TextInput
+            label="Nom du club"
+            withAsterisk
+            maxLength={NAME_MAX}
+            {...form.getInputProps('name')}
+          />
           <Select
             label="Mode d'inscription"
             withAsterisk
