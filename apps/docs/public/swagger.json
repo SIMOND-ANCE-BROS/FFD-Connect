@@ -6102,6 +6102,165 @@
         "tags": ["users"]
       }
     },
+    "/wdsf/athlete/{min}": {
+      "get": {
+        "description": "Récupère les informations d'un athlète WDSF à partir de son numéro MIN (Member Identification Number)",
+        "operationId": "WdsfController_getAthlete",
+        "parameters": [
+          {
+            "name": "min",
+            "required": true,
+            "in": "path",
+            "description": "Numéro MIN (Member Identification Number) de l'athlète",
+            "schema": {
+              "example": "123456",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Informations de l'athlète récupérées avec succès"
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non autorisé"
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Athlète non trouvé"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Récupère les informations d'un athlète WDSF",
+        "tags": ["wdsf"]
+      }
+    },
     "/tracks": {
       "get": {
         "description": "Retourne la liste de toutes les musiques disponibles dans la bibliothèque (status READY uniquement, Ambiance exclue).",
@@ -16865,165 +17024,6 @@
         },
         "summary": "Crée un rapport/signalement",
         "tags": ["reports"]
-      }
-    },
-    "/wdsf/athlete/{min}": {
-      "get": {
-        "description": "Récupère les informations d'un athlète WDSF à partir de son numéro MIN (Member Identification Number)",
-        "operationId": "WdsfController_getAthlete",
-        "parameters": [
-          {
-            "name": "min",
-            "required": true,
-            "in": "path",
-            "description": "Numéro MIN (Member Identification Number) de l'athlète",
-            "schema": {
-              "example": "123456",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Informations de l'athlète récupérées avec succès"
-          },
-          "400": {
-            "description": "Requête invalide - Erreur de validation",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 400
-                    },
-                    "message": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "example": ["email must be an email", "password is required"]
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Bad Request"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Non autorisé"
-          },
-          "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Athlète non trouvé"
-          },
-          "409": {
-            "description": "Conflit - La ressource existe déjà",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 409
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Resource already exists"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Conflict"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Trop de requêtes - Rate limit dépassé",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 429
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Too many requests"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Too Many Requests"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Erreur serveur interne",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 500
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Internal Server Error"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "JWT-auth": []
-          }
-        ],
-        "summary": "Récupère les informations d'un athlète WDSF",
-        "tags": ["wdsf"]
       }
     },
     "/notifications": {
