@@ -1,6 +1,7 @@
 import {
   Alert,
   Button,
+  Checkbox,
   Group,
   NumberInput,
   Radio,
@@ -16,7 +17,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { adminControllerCreateUser } from '../api/generated/sdk.gen';
-import type { AdminControllerCreateUserData } from '../api/generated/types.gen';
+import type { AdminControllerCreateUserData, UserRole } from '../api/generated/types.gen';
 import { clubOptionsQuery, referenceQuery } from '../api/queries';
 import { apiErrorMessage, UNAVAILABLE_MESSAGE } from '../lib/apiError';
 import { ROLE_LABELS } from '../lib/labels';
@@ -26,6 +27,8 @@ type Role = CreateBody['role'];
 type ClubMode = 'existing' | 'new';
 
 const ROLES: Role[] = ['LICENSEE', 'CLUB', 'STAFF'];
+// ADMIN is only granted afterwards, from the user page.
+const EXTRA_ROLE_CHOICES: UserRole[] = ['LICENSEE', 'CLUB', 'STAFF'];
 
 interface FormError {
   message: string;
@@ -48,6 +51,7 @@ interface Values {
   firstName: string;
   lastName: string;
   role: Role;
+  extraRoles: UserRole[];
   clubMode: ClubMode;
   clubId: string | null;
   clubName: string;
@@ -97,6 +101,7 @@ function toBody(v: Values): CreateBody {
     firstName: v.firstName.trim(),
     lastName: v.lastName.trim(),
     role: v.role,
+    ...(v.extraRoles.length > 0 && { extraRoles: v.extraRoles }),
     ...club,
     ...profile,
   } as CreateBody;
@@ -115,6 +120,7 @@ export function NewUserPage() {
       firstName: '',
       lastName: '',
       role: 'LICENSEE',
+      extraRoles: [],
       clubMode: 'existing',
       clubId: null,
       clubName: '',
@@ -129,8 +135,13 @@ export function NewUserPage() {
       email: (v) => (/^\S+@\S+\.\S+$/.test(v.trim()) ? null : 'Email invalide'),
       firstName: (v) => (v.trim() ? null : 'Obligatoire'),
       lastName: (v) => (v.trim() ? null : 'Obligatoire'),
-      clubId: (v, values) =>
-        values.role === 'CLUB' && values.clubMode === 'existing' && !v ? 'Choisir un club' : null,
+      clubId: (v, values) => {
+        if (values.role === 'CLUB')
+          return values.clubMode === 'existing' && !v ? 'Choisir un club' : null;
+        return values.extraRoles.includes('CLUB') && !v
+          ? 'Un rôle Club supplémentaire nécessite un club'
+          : null;
+      },
       clubName: (v, values) =>
         values.role === 'CLUB' && values.clubMode === 'new' && v.trim().length < 2
           ? 'Nom trop court'
@@ -203,13 +214,36 @@ export function NewUserPage() {
       )}
       <form onSubmit={onSubmit}>
         <Stack>
-          <Radio.Group label="Rôle" withAsterisk {...form.getInputProps('role')}>
+          <Radio.Group
+            label="Rôle principal"
+            withAsterisk
+            {...form.getInputProps('role')}
+            onChange={(v) => {
+              form.setFieldValue('role', v as Role);
+              // A role promoted to main leaves the extras.
+              form.setFieldValue(
+                'extraRoles',
+                form.values.extraRoles.filter((r) => r !== v),
+              );
+            }}
+          >
             <Group mt="xs">
               {ROLES.map((r) => (
                 <Radio key={r} value={r} label={ROLE_LABELS[r]} />
               ))}
             </Group>
           </Radio.Group>
+          <Checkbox.Group
+            label="Rôles supplémentaires"
+            description="Droits cumulés avec le rôle principal"
+            {...form.getInputProps('extraRoles')}
+          >
+            <Group mt="xs">
+              {EXTRA_ROLE_CHOICES.filter((r) => r !== role).map((r) => (
+                <Checkbox key={r} value={r} label={ROLE_LABELS[r]} />
+              ))}
+            </Group>
+          </Checkbox.Group>
           <TextInput label="Email" type="email" withAsterisk {...form.getInputProps('email')} />
           <TextInput label="Prénom" withAsterisk {...form.getInputProps('firstName')} />
           <TextInput label="Nom de famille" withAsterisk {...form.getInputProps('lastName')} />
