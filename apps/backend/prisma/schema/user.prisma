@@ -18,6 +18,7 @@ model User {
   firstName            String
   lastName             String
   role                 UserRole       @default(LICENSEE)
+  extraRoles           UserRole[]     @default([]) // Rôles supplémentaires (multi-profil, lot 1c) ; jamais le rôle principal
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
   lastLoginAt          DateTime?      // Dernière connexion réussie (back-office : « renvoyer l'invitation » tant que null)
