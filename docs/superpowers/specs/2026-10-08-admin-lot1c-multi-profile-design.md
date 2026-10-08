@@ -68,9 +68,9 @@ model User { … extraRoles UserRole[] @default([]) … }
 
 - `PATCH /admin/users/:id` accepts `extraRoles?: UserRole[]`, validated by the DTO (known values only).
   - The service normalises the list (§3).
-  - An admin cannot remove `ADMIN` from their own account, as main role or extra role: 400.
+  - An admin may edit the extra roles of their own account (that is how the user adds `LICENSEE` to their admin account), but the result must still hold `ADMIN`: otherwise 403, like the existing "cannot change your own role" rule. The main role of one's own account stays locked, as today.
   - Adding `CLUB` needs a `clubId` on the account: 400 with a French message.
-  - Audit action `user.roles.update`, with the role lists before and after (no personal data).
+  - Audited by the existing `USER_UPDATE` row: its `before` / `after` carry `extraRoles` when it changed (role names only).
 - `GET /admin/users` and `GET /admin/users/:id` return `extraRoles` and `roles`. The `role` filter of the list matches main and extra roles (`withRole`).
 - `/auth/me`, login and refresh return `roles`. `role` is unchanged, so older app versions keep working on the main role.
 - `pnpm api:sync` afterwards (Swagger + generated clients).
@@ -85,15 +85,15 @@ model User { … extraRoles UserRole[] @default([]) … }
 
 ## 7. Mobile app
 
-- `auth.store` holds `roles: AuthRole[]` next to `role`, from login, `/auth/me` and session restore. If `roles` is missing (older backend), it falls back to `[role]`.
-- `auth.store` also holds `activeSpace: AuthRole`, persisted on the device.
-  - Default: the main role.
+- The persisted auth config (`auth_config`) and `auth.store` gain `roles: AuthRole[]` (all roles) and `mainRole`, from login, profile restore and impersonation. If `roles` is missing (older backend), it falls back to `[role]`.
+- The existing `role` field of the config **is the active space**. Every screen already reads `role` to pick its tabs and its variant, so they follow the space without change.
+  - Default: the main role. A new login keeps the previous space when it is the same account and the space is still one of its roles.
   - If the active space is no longer one of the account's roles (role removed), it falls back to the main role.
 - **Space selector:** in Réglages, "Espace" with one option per role ("Danseur", "Club", "Staff", "Admin").
   - Hidden when the account has a single role.
   - Switching remounts the tab navigator (`key` built from the active space), as a role switch does today.
 - **Two kinds of checks, kept apart:**
-  - _Navigation and screen variant_ use `activeSpace`: which tabs `MainTabs` shows (today's per-role rules, applied to the space), and which variant of a screen is shown (e.g. a club's own competitions vs the dancer's view).
+  - _Navigation and screen variant_ use the active space (`role`): which tabs `MainTabs` shows (today's per-role rules, applied to the space), and which variant of a screen is shown (e.g. a club's own competitions vs the dancer's view).
   - _Actions_ use `hasRole(role)` over all roles: action buttons inside a screen (edit a track, review a correction, scan, manage a registration…) appear when the account holds the role and the screen has the data the action needs.
 - Purely descriptive uses keep the main role: the impersonation list label, Sentry and log tags.
 - No new screen besides the selector.
