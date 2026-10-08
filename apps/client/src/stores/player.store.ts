@@ -42,6 +42,15 @@ interface PlayerState {
   likedTrackIds: string[];
   repeatMode: PlayerRepeatMode;
   isShuffle: boolean;
+  /**
+   * Tempo (MPM) state, kept here — not in the player screen — so it survives
+   * closing/reopening that screen. `tempo` = the MPM the given track plays at.
+   */
+  tempoLocked: boolean;
+  lockedMpm: number | null;
+  tempo: { trackId: string; mpm: number } | null;
+  setTempoLocked: (locked: boolean, mpm?: number) => void;
+  setTempo: (trackId: string, mpm: number) => void;
 
   // Internal setters for PlayerStoreSync
   setIsPlaying: (v: boolean) => void;
@@ -77,6 +86,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   likedTrackIds: [],
   repeatMode: PlayerRepeatMode.Off,
   isShuffle: false,
+  tempoLocked: false,
+  lockedMpm: null,
+  tempo: null,
+
+  setTempoLocked: (locked, mpm) =>
+    set((st) => ({
+      tempoLocked: locked,
+      lockedMpm: locked && mpm !== undefined ? mpm : st.lockedMpm,
+    })),
+  setTempo: (trackId, mpm) => set({ tempo: { trackId, mpm } }),
 
   setIsPlaying: (v) => set({ isPlaying: v }),
   setCurrentTrack: (t) => set({ currentTrack: t }),
@@ -361,6 +380,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       likedTrackIds: [],
       repeatMode: PlayerRepeatMode.Off,
       isShuffle: false,
+      tempoLocked: false,
+      lockedMpm: null,
+      tempo: null,
     });
   },
 }));

@@ -170,6 +170,9 @@ const playOnMain = (track: TrackData, token: number): Promise<boolean> => {
   const run = playChain.then(async () => {
     if (!alive(token)) return false;
     const d = requireDeps();
+    // The shared player keeps the last tempo set in the library (and re-applies
+    // it to every new track): a competition always plays at the original tempo.
+    await TrackPlayer.setRate(1);
     await d.playTrack(track, undefined, true);
     if (alive(token)) return true;
     // Stopped while the track was loading: undo it.
@@ -622,12 +625,42 @@ export async function togglePlayPause(): Promise<void> {
 export async function nextDance(): Promise<void> {
   if (transitioning) return;
   const s = store();
+  if (s.status === "idle" || s.status === "loading" || s.status === "finished")
+    return;
+  previousStatus = null;
   const nextIndex = s.currentDanceIndex + 1;
   if (nextIndex < s.playlist.length) {
     await transitionToDance(nextIndex);
   } else {
     await finishPerformance();
   }
+}
+
+/** Below this many seconds into a dance, ⏮ goes to the previous one. */
+export const RESTART_THRESHOLD_S = 5;
+
+/**
+ * ⏮ — transport convention: a dance already under way restarts (announcement
+ * included); at its very start, or during the break that follows it, ⏮ goes
+ * back one dance. Does nothing during the initial "get ready" break.
+ */
+export async function previousDance(): Promise<void> {
+  if (transitioning) return;
+  const s = store();
+  const current = s.currentDanceIndex;
+  if (current < 0) return;
+  const phase =
+    s.status === "paused" ? (previousStatus ?? "playing") : s.status;
+  let target = current;
+  if (phase === "playing") {
+    const item = s.playlist[current] as PlaylistItem | undefined;
+    const elapsed = item ? item.duration - s.timeRemaining : 0;
+    if (elapsed < RESTART_THRESHOLD_S) target = Math.max(0, current - 1);
+  } else if (phase !== "break") {
+    return;
+  }
+  previousStatus = null;
+  await transitionToDance(target);
 }
 
 /** Ends the current phase now (with its normal transition). */

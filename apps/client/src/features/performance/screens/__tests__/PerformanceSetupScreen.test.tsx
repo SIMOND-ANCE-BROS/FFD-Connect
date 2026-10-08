@@ -118,6 +118,23 @@ describe("PerformanceSetupScreen", () => {
     });
   });
 
+  it("offers « passages mixés » from the second round only", async () => {
+    const program = { ...baseConfig, rounds: [latin, standard] };
+    const { setConfig } = mockEngine({ config: program });
+    const { getByTestId, queryByTestId } = await render(
+      <PerformanceSetupScreen />,
+    );
+    expect(queryByTestId("performance-round-0-mix-switch")).toBeNull();
+    await fireEvent(
+      getByTestId("performance-round-1-mix-switch"),
+      "valueChange",
+      true,
+    );
+    const next = applyLast(setConfig, program);
+    expect(next.rounds[1].mixWithPrevious).toBe(true);
+    expect(next.rounds[0].mixWithPrevious).toBeFalsy();
+  });
+
   it("only allows deleting when several rounds exist", async () => {
     const { queryByTestId, rerender } = await render(
       <PerformanceSetupScreen />,
@@ -149,22 +166,24 @@ describe("PerformanceSetupScreen", () => {
     expect(next.rounds[0].selectedDances).toContain("Valse Viennoise");
   });
 
-  it("heats stepper: plus increments, minus disabled at the 2-heat minimum", async () => {
+  it("heats stepper: plus increments, minus goes down to 1 then disables", async () => {
     const { setConfig } = mockEngine();
     const { getByTestId, rerender } = await render(<PerformanceSetupScreen />);
     expect(getByTestId("performance-round-0-heats-value")).toHaveTextContent(
       "2",
     );
-    expect(getByTestId("performance-round-0-heats-minus")).toBeDisabled();
 
     await fireEvent.press(getByTestId("performance-round-0-heats-plus"));
     const three = applyLast(setConfig);
     expect(three.rounds[0].heats).toBe(3);
 
-    mockEngine({ config: three, setConfig });
-    await rerender(<PerformanceSetupScreen />);
     await fireEvent.press(getByTestId("performance-round-0-heats-minus"));
-    expect(applyLast(setConfig, three).rounds[0].heats).toBe(2);
+    const one = applyLast(setConfig);
+    expect(one.rounds[0].heats).toBe(1);
+
+    mockEngine({ config: one, setConfig });
+    await rerender(<PerformanceSetupScreen />);
+    expect(getByTestId("performance-round-0-heats-minus")).toBeDisabled();
   });
 
   it("switching a round to Final hides the heats stepper (1 heat)", async () => {

@@ -30,6 +30,7 @@ jest.mock("../../../../utils/TrackPlayerWrapper", () => ({
   RepeatMode: { Off: 0, Track: 1, Queue: 2 },
   default: {
     setVolume: jest.fn(() => Promise.resolve()),
+    setRate: jest.fn(() => Promise.resolve()),
     setRepeatMode: jest.fn(() => Promise.resolve()),
     getState: jest.fn(() => Promise.resolve(3)),
     addEventListener: jest.fn((_e: string, l: StateListener) => {
@@ -507,6 +508,109 @@ describe("competitionController", () => {
       await skipping;
       expect(Tts.speak).toHaveBeenCalledTimes(1);
       expect(store().status).toBe("playing");
+    });
+
+    it("resets the tempo to 1x before every competition track", async () => {
+      await engine.startPerformance();
+      const skipping = engine.nextDance();
+      await advance(3000);
+      await skipping;
+      const rateOrder = (TrackPlayer.setRate as jest.Mock).mock
+        .invocationCallOrder;
+      const playOrder = deps.playTrack.mock.invocationCallOrder;
+      expect(TrackPlayer.setRate).toHaveBeenCalledWith(1);
+      // One reset per track (pause music + dance), each before its playTrack.
+      expect(rateOrder).toHaveLength(playOrder.length);
+      rateOrder.forEach((order, i) => expect(order).toBeLessThan(playOrder[i]));
+    });
+
+    it("ignores ⏭ / ⏮ before the competition started", async () => {
+      await engine.nextDance();
+      await engine.previousDance();
+      expect(Tts.speak).not.toHaveBeenCalled();
+      expect(store().status).toBe("idle");
+    });
+
+    it("⏮ does nothing during the initial get-ready break", async () => {
+      await engine.startPerformance();
+      await engine.previousDance();
+      expect(Tts.speak).not.toHaveBeenCalled();
+      expect(store().status).toBe("break");
+    });
+
+    describe("⏮ previous", () => {
+      beforeEach(() => {
+        setProgram({
+          rounds: [
+            {
+              ...createRound("Latin", "Final"),
+              selectedDances: ["Samba", "Jive"],
+            },
+          ],
+          duration: 20,
+          pauseDuration: 2,
+        });
+      });
+
+      const goTo = async (index: number) => {
+        const skipping = engine.nextDance();
+        await advance(3000);
+        await skipping;
+        expect(store().currentDanceIndex).toBe(index);
+      };
+
+      it("restarts the current dance once it is under way", async () => {
+        await engine.startPerformance();
+        await goTo(0);
+        await goTo(1);
+        await advance(8000);
+        const back = engine.previousDance();
+        await advance(3000);
+        await back;
+        expect(store().currentDanceIndex).toBe(1);
+        expect(store().status).toBe("playing");
+        // Restarted from the top (a few seconds already counted since).
+        expect(store().timeRemaining).toBeGreaterThan(15);
+      });
+
+      it("goes back one dance at the very start of a dance", async () => {
+        await engine.startPerformance();
+        await goTo(0);
+        await goTo(1);
+        const back = engine.previousDance();
+        await advance(3000);
+        await back;
+        expect(store().currentDanceIndex).toBe(0);
+        const spoken = (Tts.speak as jest.Mock).mock.calls.map((c) => c[0]);
+        expect(spoken[spoken.length - 1]).toMatch(/Samba/);
+      });
+
+      it("replays the dance that just ended during the break", async () => {
+        await engine.startPerformance();
+        await goTo(0);
+        for (let i = 0; i < 30 && store().status !== "break"; i++) {
+          await advance(1000); // dance over → break
+        }
+        expect(store().status).toBe("break");
+        const back = engine.previousDance();
+        await advance(3000);
+        await back;
+        expect(store().currentDanceIndex).toBe(0);
+        expect(store().status).toBe("playing");
+      });
+
+      it("works from pause and resumes playing", async () => {
+        await engine.startPerformance();
+        await goTo(0);
+        await goTo(1);
+        await engine.togglePlayPause();
+        expect(store().status).toBe("paused");
+        const back = engine.previousDance();
+        await advance(3000);
+        await back;
+        expect(store().currentDanceIndex).toBe(0);
+        expect(store().status).toBe("playing");
+      });
     });
 
     it("stops with an alert when the announcement fails at playback", async () => {

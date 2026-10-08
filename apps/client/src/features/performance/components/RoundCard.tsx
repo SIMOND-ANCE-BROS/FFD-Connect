@@ -1,6 +1,6 @@
 import { Minus, Plus, Trash2 } from "lucide-react-native";
 import React from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Switch, TouchableOpacity, View } from "react-native";
 import { AppText } from "../../../components/AppText";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import { useTheme } from "../../../context/ThemeContext";
@@ -24,6 +24,8 @@ interface RoundCardProps {
   onHeatsStep: (delta: number) => void;
   onToggleDance: (dance: string) => void;
   onDelete: () => void;
+  /** Absent on the first round (nothing to alternate with). */
+  onMixChange?: (mix: boolean) => void;
 }
 
 const slug = (s: string) => s.replace(/\s+/g, "-").toLowerCase();
@@ -38,6 +40,7 @@ export const RoundCard: React.FC<RoundCardProps> = ({
   onHeatsStep,
   onToggleDance,
   onDelete,
+  onMixChange,
 }) => {
   const { theme } = useTheme();
   const prefix = `performance-round-${index}`;
@@ -68,6 +71,28 @@ export const RoundCard: React.FC<RoundCardProps> = ({
           </TouchableOpacity>
         )}
       </View>
+
+      {onMixChange && (
+        <View style={[styles.row, styles.mixRow]}>
+          <View style={styles.mixText}>
+            <AppText variant="caption" weight="600" color={theme.text}>
+              Passages mixés avec le tour {index}
+            </AppText>
+            <AppText variant="caption" color={theme.textSecondary}>
+              Les passages alternent entre les deux tours, danse par danse (ex.
+              Valse, Samba, Valse… puis Tango, Cha-cha-cha…).
+            </AppText>
+          </View>
+          <Switch
+            value={Boolean(round.mixWithPrevious)}
+            onValueChange={onMixChange}
+            trackColor={{ true: theme.primary }}
+            testID={`${prefix}-mix-switch`}
+            accessibilityLabel={`Passages mixés avec le tour ${index}`}
+            accessibilityHint="Alterne les passages de ce tour avec ceux du tour précédent"
+          />
+        </View>
+      )}
 
       <View style={styles.row}>
         <FluidSegmentedTab
@@ -110,7 +135,7 @@ export const RoundCard: React.FC<RoundCardProps> = ({
               testID={`${prefix}-heats-minus`}
               accessibilityRole="button"
               accessibilityLabel="Retirer un passage"
-              accessibilityHint={`Minimum ${MIN_ROUND_HEATS} passages`}
+              accessibilityHint={`Minimum ${MIN_ROUND_HEATS} passage`}
               accessibilityState={{ disabled: round.heats <= MIN_ROUND_HEATS }}
             >
               <Minus color={theme.text} size={16} />
@@ -199,6 +224,14 @@ const styles = StyleSheet.create({
   },
   row: {
     marginBottom: 10,
+  },
+  mixRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  mixText: {
+    flex: 1,
   },
   heatsRow: {
     flexDirection: "row",
