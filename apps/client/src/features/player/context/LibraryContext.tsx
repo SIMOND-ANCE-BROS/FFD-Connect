@@ -3,11 +3,13 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import * as Sentry from "@sentry/react-native";
 import { BACKEND_URL, DEBUG_PLAYER } from "../../../config";
 import { useIsOnline } from "../../../hooks/useIsOnline";
+import { useLibrarySyncStore } from "../../../stores/librarySync.store";
 import { usePlayerStore } from "../../../stores/player.store";
 import { createLogger } from "../../../utils/logger";
 import {
@@ -27,6 +29,8 @@ export interface LibrarySection {
 }
 
 const LIBRARY_PAGE_SIZE = 30;
+/** Backend cap on `take` for GET /tracks (PaginationParamsDto `@Max(100)`). */
+const MAX_TRACKS_TAKE = 100;
 
 export interface LibraryContextType {
   sections: LibrarySection[];
@@ -51,6 +55,11 @@ export const LibraryProvider = ({
   const [sections, setSections] = useState<LibrarySection[]>([]);
   const [rawTracks, setRawTracks] = useState<Track[]>([]);
   const [allTracks, setAllTracks] = useState<TrackData[]>([]);
+  // Lu par le chemin d'erreur de loadLibrary sans en faire une dépendance.
+  const rawTracksRef = useRef<Track[]>([]);
+  useEffect(() => {
+    rawTracksRef.current = rawTracks;
+  }, [rawTracks]);
 
   const [groupBy, setGroupBy] = useState<"default" | "style" | "artist">(
     "default",
@@ -58,6 +67,10 @@ export const LibraryProvider = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // Bumped when a (re)load starts AND when it commits: a loadMore that was in
+  // flight across a reload carries a stale generation and is dropped, instead
+  // of appending its page after the freshly reloaded list (gap/duplicates).
+  const generationRef = useRef(0);
   const trackRepo = useTrackRepository();
 
   // --- Musique hors-ligne (#416) : favoris téléchargés, le reste streamé ---
@@ -139,18 +152,41 @@ export const LibraryProvider = ({
   );
 
   const loadLibrary = useCallback(async () => {
+    // Version du signal de fraîcheur AVANT la requête : une piste modifiée
+    // pendant le chargement laisse la bibliothèque périmée (rechargée ensuite).
+    const version = useLibrarySyncStore.getState().version;
+    generationRef.current += 1;
+    const generation = generationRef.current;
     try {
       Sentry.addBreadcrumb({
         category: "library",
         message: "Loading library",
         data: { backendUrl: BACKEND_URL ? "set" : "(vide)" },
       });
-      const { tracks, hasMore: more } = await trackRepo.getTracksPage(
-        0,
-        LIBRARY_PAGE_SIZE,
-      );
+      // Background refresh of an already scrolled list: re-fetch everything
+      // already shown (not just page 0) so the list doesn't collapse under the
+      // user. The backend caps `take`, so fetch successive chunks.
+      const target = Math.max(LIBRARY_PAGE_SIZE, rawTracksRef.current.length);
+      const tracks: Track[] = [];
+      const seen = new Set<Track["id"]>();
+      let more = true;
+      while (more && tracks.length < target) {
+        const page = await trackRepo.getTracksPage(
+          tracks.length,
+          Math.min(MAX_TRACKS_TAKE, target - tracks.length),
+        );
+        more = page.hasMore;
+        const fresh = page.tracks.filter((t) => !seen.has(t.id));
+        if (fresh.length === 0) break;
+        fresh.forEach((t) => seen.add(t.id));
+        tracks.push(...fresh);
+      }
+      // A newer reload superseded this one: let it win.
+      if (generation !== generationRef.current) return;
+      generationRef.current += 1;
       setRawTracks(tracks);
       setHasMore(more);
+      useLibrarySyncStore.getState().markLoaded(version);
       Sentry.addBreadcrumb({
         category: "library",
         message: "Library loaded",
@@ -169,6 +205,10 @@ export const LibraryProvider = ({
         data: { error: e instanceof Error ? e.message : String(e) },
       });
       Sentry.captureException(e);
+      if (generation !== generationRef.current) return;
+      // Rafraîchissement d'une bibliothèque déjà affichée : on garde la liste
+      // plutôt que de la vider sur un échec réseau passager.
+      if (rawTracksRef.current.length > 0) return;
       setRawTracks([]);
       setAllTracks([]);
       setSections([]);
@@ -179,11 +219,15 @@ export const LibraryProvider = ({
   const loadMore = useCallback(async () => {
     if (!hasMore || isLoadingMore) return;
     setIsLoadingMore(true);
+    const generation = generationRef.current;
     try {
       const { tracks, hasMore: more } = await trackRepo.getTracksPage(
         rawTracks.length,
         LIBRARY_PAGE_SIZE,
       );
+      // The list was reloaded while this page was in flight: its offset no
+      // longer matches the current list, drop it.
+      if (generation !== generationRef.current) return;
       if (tracks.length > 0) {
         // Dédup par id : sur une liste courte, onEndReached peut déclencher
         // loadMore avec un `skip` périmé (rawTracks.length encore à 0) et
@@ -197,11 +241,21 @@ export const LibraryProvider = ({
       setHasMore(more);
     } catch (e) {
       logger.error("Failed to load more tracks", e);
-      setHasMore(false);
+      if (generation === generationRef.current) setHasMore(false);
     } finally {
       setIsLoadingMore(false);
     }
   }, [trackRepo, rawTracks.length, hasMore, isLoadingMore]);
+
+  // Une piste a changé (proposition validée, clashs édités) : recharge en
+  // arrière-plan une bibliothèque DÉJÀ chargée. Jamais chargée → rien (le
+  // premier chargement reste différé à l'ouverture de l'onglet).
+  const staleVersion = useLibrarySyncStore((s) => s.version);
+  useEffect(() => {
+    const { loadedAt, loadedVersion } = useLibrarySyncStore.getState();
+    if (loadedAt === 0 || staleVersion <= loadedVersion) return;
+    loadLibrary().catch(() => {});
+  }, [staleVersion, loadLibrary]);
 
   // Defer initial load: do NOT fetch on app mount (avoids /tracks call on Login screen and restores previous behavior).
   // The library is loaded when the user opens the Library tab (see useLibraryLogic useFocusEffect).

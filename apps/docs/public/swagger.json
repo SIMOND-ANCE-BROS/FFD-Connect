@@ -22001,8 +22001,9 @@
             "description": "Modération (ADMIN) — blackliste la piste : elle disparaît de la bibliothèque partagée."
           },
           "clashTimecodes": {
-            "description": "Paso doble (ADMIN) — timecodes (secondes) des appels/coups affichés sur le lecteur. Remplace entièrement la liste existante.",
-            "example": [12.5, 40, 68.3],
+            "description": "Paso doble (ADMIN) — timecodes (secondes) des appels/coups affichés sur le lecteur. Remplace entièrement la liste existante. Un paso doble comporte au plus 3 clashs.",
+            "maxItems": 3,
+            "example": [40, 80, 120],
             "type": "array",
             "items": {
               "type": "number"
@@ -22041,9 +22042,9 @@
             "example": 31
           },
           "clashTimecodes": {
-            "description": "Paso doble — timecodes (secondes) des clashs proposés. Remplace entièrement la liste ; une liste vide propose « aucun clash ».",
-            "maxItems": 10,
-            "example": [12.5, 40, 68.3],
+            "description": "Paso doble — timecodes (secondes) des clashs proposés (3 au plus). Remplace entièrement la liste ; une liste vide propose « aucun clash ».",
+            "maxItems": 3,
+            "example": [40, 80, 120],
             "type": "array",
             "items": {
               "type": "number"
@@ -22403,9 +22404,9 @@
             "example": 31
           },
           "clashTimecodes": {
-            "description": "Paso doble — timecodes (secondes) des clashs proposés. Remplace entièrement la liste ; une liste vide propose « aucun clash ».",
-            "maxItems": 10,
-            "example": [12.5, 40, 68.3],
+            "description": "Paso doble — timecodes (secondes) des clashs proposés (3 au plus). Remplace entièrement la liste ; une liste vide propose « aucun clash ».",
+            "maxItems": 3,
+            "example": [40, 80, 120],
             "type": "array",
             "items": {
               "type": "number"

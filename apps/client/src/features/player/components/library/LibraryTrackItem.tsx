@@ -7,7 +7,22 @@ import { DEBUG_PLAYER } from "../../../../config";
 import { useIsOnline } from "../../../../hooks/useIsOnline";
 import { logger } from "../../../../utils/logger";
 import { TrackData } from "../../context/PlayerContext";
+import { storedPasoClashCount } from "../../utils/pasoClashes";
 import { libraryStyles as styles } from "./library.styles";
+
+/**
+ * Badge paso doble : nombre de clashs renseignés (« 2 clashs »), ou
+ * « Clashs estimés » tant qu'aucun n'est saisi. `null` pour une autre danse.
+ */
+export function pasoClashLabel(
+  style: string | undefined,
+  clashTimecodes: number[] | undefined,
+): string | null {
+  const count = storedPasoClashCount(style, clashTimecodes);
+  if (count === null) return null;
+  if (count === 0) return "Clashs estimés";
+  return `${count} clash${count > 1 ? "s" : ""}`;
+}
 
 interface LibraryTrackItemProps {
   item: TrackData;
@@ -39,6 +54,7 @@ export const LibraryTrackItem = React.memo(
     // Hors ligne, seules les copies locales (favoris téléchargés / imports)
     // sont jouables — les autres sont grisées (#416).
     const unavailableOffline = !isOnline && !item.isDownloaded;
+    const clashLabel = pasoClashLabel(item.style, item.clashTimecodes);
 
     const handlePress = () => {
       if (unavailableOffline) {
@@ -151,20 +167,42 @@ export const LibraryTrackItem = React.memo(
             {item.artist}
           </AppText>
           {item.style && (
-            <View
-              style={[
-                styles.styleBadge,
-                isDark ? styles.styleBadgeDark : styles.styleBadgeLight,
-              ]}
-            >
-              <AppText
-                variant="caption"
-                weight="600"
-                color={currentTheme.textSecondary}
-                style={styles.styleText}
+            <View style={styles.badgeRow}>
+              <View
+                style={[
+                  styles.styleBadge,
+                  isDark ? styles.styleBadgeDark : styles.styleBadgeLight,
+                ]}
               >
-                {item.style}
-              </AppText>
+                <AppText
+                  variant="caption"
+                  weight="600"
+                  color={currentTheme.textSecondary}
+                  style={styles.styleText}
+                >
+                  {item.style}
+                </AppText>
+              </View>
+              {clashLabel && (
+                <View
+                  style={[
+                    styles.styleBadge,
+                    isDark ? styles.styleBadgeDark : styles.styleBadgeLight,
+                  ]}
+                  testID={`library-track-${item.id}-clashes`}
+                  accessibilityLabel={clashLabel}
+                  accessibilityHint="Nombre de clashs renseignés pour ce paso doble"
+                >
+                  <AppText
+                    variant="caption"
+                    weight="600"
+                    color={currentTheme.textSecondary}
+                    style={styles.styleText}
+                  >
+                    {clashLabel}
+                  </AppText>
+                </View>
+              )}
             </View>
           )}
         </View>

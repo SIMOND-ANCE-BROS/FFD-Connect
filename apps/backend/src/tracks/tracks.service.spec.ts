@@ -1,4 +1,8 @@
-import { HttpException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  HttpException,
+  NotFoundException,
+} from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { TrackStatus } from "@prisma/client";
 import {
@@ -438,6 +442,20 @@ describe("TracksService", () => {
           data: { clashTimecodes: [12.5, 40, 68.3] },
         }),
       );
+    });
+
+    it("rejects more than 3 paso clashes (after dedup), without writing", async () => {
+      prisma.track.findUnique.mockResolvedValue(
+        // @ts-expect-error - testing partial return
+        { submittedById: "user-1", rawBpm: 0 },
+      );
+
+      await expect(
+        service.updateTrack("t1", "admin", true, {
+          clashTimecodes: [12.5, 40, 68.3, 100],
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.track.update).not.toHaveBeenCalled();
     });
 
     it("ignores clash timecodes from a non-admin", async () => {

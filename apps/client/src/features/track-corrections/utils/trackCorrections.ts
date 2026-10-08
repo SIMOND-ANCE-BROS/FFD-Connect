@@ -1,4 +1,5 @@
 import { DANCE_GROUPS } from "../../player/utils/danceTempo";
+import { PASO_MAX_CLASHES } from "../../player/utils/pasoClashes";
 import type {
   TrackCorrectionAdminDto,
   TrackCorrectionReason,
@@ -31,7 +32,8 @@ export const STATUS_LABELS: Record<TrackCorrectionStatus, string> = {
 /** Bornes du backend (CreateTrackCorrectionDto). */
 export const MPM_MIN = 1;
 export const MPM_MAX = 400;
-export const CLASH_MAX_COUNT = 10;
+/** Un paso doble comporte au plus 3 clashs (même borne que le backend). */
+export const CLASH_MAX_COUNT = PASO_MAX_CLASHES;
 export const CLASH_MAX_SECONDS = 3600;
 export const MESSAGE_MAX_LENGTH = 500;
 

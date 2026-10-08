@@ -11,6 +11,7 @@ import {
   type TrackCorrectionAdminDto,
   type TrackCorrectionStatus,
 } from "../../../services/api/track-correction-api";
+import { markLibraryStale } from "../../../stores/librarySync.store";
 
 /**
  * Taille d'une page. Le plafond « 3 propositions en attente » est PAR
@@ -136,6 +137,9 @@ export type ReviewTrackCorrectionInput =
  * Validation / refus (ADMIN). Invalide toujours, y compris en cas d'échec :
  * un 409 signifie qu'un autre admin a déjà tranché, la liste doit refléter
  * son choix.
+ *
+ * Une validation modifie la piste : la bibliothèque (hors React Query) est
+ * signalée périmée pour se recharger.
  */
 export function useReviewTrackCorrection() {
   const queryClient = useQueryClient();
@@ -144,6 +148,9 @@ export function useReviewTrackCorrection() {
       input.decision === "approve"
         ? TrackCorrectionApi.approve(input.id, input.body)
         : TrackCorrectionApi.reject(input.id, input.comment),
+    onSuccess: (_data, input) => {
+      if (input.decision === "approve") markLibraryStale();
+    },
     onSettled: () => {
       void queryClient.invalidateQueries({
         queryKey: trackCorrectionKeys.all,

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -14,6 +15,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { BpmService } from "./bpm.service";
 import { UpdateTrackDto } from "./dto/update-track.dto";
+import { PASO_MAX_CLASHES, PASO_MAX_CLASHES_MESSAGE } from "./paso-clashes";
 import {
   LIBRARY_TRACK_WHERE,
   MASKED_TITLE_LABEL,
@@ -191,10 +193,15 @@ export class TracksService {
     }
     // Appels paso doble : données de compétition autoritaires → ADMIN only.
     // Triés croissants et dédupliqués pour un affichage stable sur le lecteur.
+    // Au plus PASO_MAX_CLASHES : le DTO le garantit pour PATCH /tracks/:id,
+    // mais la validation d'une proposition passe ici avec des valeurs stockées
+    // avant l'introduction de cette borne.
     if (isAdmin && patch.clashTimecodes !== undefined) {
-      data.clashTimecodes = [...new Set(patch.clashTimecodes)].sort(
-        (a, b) => a - b,
-      );
+      const clashes = [...new Set(patch.clashTimecodes)].sort((a, b) => a - b);
+      if (clashes.length > PASO_MAX_CLASHES) {
+        throw new BadRequestException(PASO_MAX_CLASHES_MESSAGE);
+      }
+      data.clashTimecodes = clashes;
     }
     const bpm = this.bpmForPatch(existing.rawBpm, patch);
     if (bpm !== undefined) data.bpm = bpm;

@@ -126,6 +126,11 @@ export const libraryStyles = StyleSheet.create({
   trackTitle: {
     marginBottom: 2,
   },
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
   styleBadge: {
     alignSelf: "flex-start",
     paddingHorizontal: 6,
