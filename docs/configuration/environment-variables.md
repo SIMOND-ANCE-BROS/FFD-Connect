@@ -149,6 +149,13 @@ modes d'authentification (token API v2 ou Basic Auth v1).
 | `QR_SIGNING_SECRET` | —      | Clé HMAC-SHA256 des QR de licence (≥ 32 caractères, sinon ignorée). **Absent → QR non signés et non vérifiés** (équivalent au mode `off`), le backend démarre quand même. Changer la clé invalide tous les QR déjà émis (passes Wallet compris). |
 | `QR_SIGNATURE_MODE` | `warn` | Vérification au check-in : `off` (aucune), `warn` (QR non signé, falsifié ou expiré accepté mais signalé au staff), `enforce` (refusé).                                                                                                          |
 
+Précisions :
+
+- La clé est lue après suppression des espaces en début et fin (`.trim()`). Tout autre générateur de QR (passe Wallet) doit utiliser la même valeur nettoyée.
+- Le QR est valable jusqu'à la fin du jour d'expiration de la licence, **à l'heure de Paris**.
+- **`enforce` exige un `QR_SIGNING_SECRET` d'au moins 32 caractères** : sans lui, le backend refuse de démarrer (erreur explicite) au lieu de refuser silencieusement tous les check-ins. `off` et `warn` sans secret démarrent normalement (mode `off` de fait).
+- **Avant de passer en `enforce`**, chaque utilisateur doit avoir mis à jour l'app **et rouvert sa licence en ligne** au moins une fois : le QR signé n'est mis en cache (E-Licence hors ligne) qu'à ce moment-là. Sinon il présentera encore l'ancien QR non signé, refusé en `enforce`. Rester en `warn` pendant la transition et surveiller les avertissements « QR non vérifié » au check-in.
+
 ## Azure AI Vision (OCR licences)
 
 | Variable                | Défaut | Rôle                                                                                                          |

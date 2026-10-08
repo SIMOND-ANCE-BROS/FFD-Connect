@@ -13,6 +13,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { publicTrackName } from "../tracks/track-visibility.util";
 import {
   deviceTokenExportSelect,
+  licenseBaseSelect,
   notificationPreferenceExportSelect,
   trackCorrectionExportSelect,
 } from "../utils/prisma-selects";
@@ -248,18 +249,7 @@ export class UsersService {
         ...USER_BASE_SELECT,
         birthDate: true,
         nationalRanking: true,
-        license: {
-          select: {
-            id: true,
-            number: true,
-            validUntil: true,
-            category: true,
-            clubName: true,
-            qrCodeSignature: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
+        license: { select: licenseBaseSelect },
         // Exclure le password explicitement
       },
     });

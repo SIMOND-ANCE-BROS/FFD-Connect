@@ -51,8 +51,9 @@ const WARNINGS: Record<
  * Signs license QR codes and verifies them at check-in (#168).
  *
  * Config (via ConfigService):
- * - `QR_SIGNING_SECRET`: HMAC key. Absent ⇒ no signature produced and no
- *   verification (equivalent to mode `off`), the backend still boots.
+ * - `QR_SIGNING_SECRET`: HMAC key, trimmed. Absent (or < 32 chars) ⇒ no
+ *   signature produced and no verification (equivalent to mode `off`), the
+ *   backend still boots — except in mode `enforce`, which refuses to boot.
  * - `QR_SIGNATURE_MODE`: `off` | `warn` (default) | `enforce`.
  */
 @Injectable()
@@ -82,6 +83,12 @@ export class LicenseQrService {
     )
       ? (rawMode as QrSignatureMode)
       : "warn";
+    if (requested === "enforce" && !this.secret) {
+      // Refusing every check-in silently would be worse than not booting.
+      throw new Error(
+        `QR_SIGNATURE_MODE=enforce requires QR_SIGNING_SECRET (at least ${QR_SIGNING_SECRET_MIN_LENGTH} characters)`,
+      );
+    }
     this.mode = this.secret ? requested : "off";
 
     if (!this.secret) {

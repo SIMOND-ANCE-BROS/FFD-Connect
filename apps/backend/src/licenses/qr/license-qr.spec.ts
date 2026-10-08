@@ -13,7 +13,8 @@ const SECRET = "s".repeat(32);
 const OTHER_SECRET = "o".repeat(32);
 const LICENSE = {
   number: "FFD-123456",
-  validUntil: new Date("2026-08-31T23:59:59.000Z"),
+  // Midnight in Paris (CEST, UTC+2) on 2026-08-31.
+  validUntil: new Date("2026-08-30T22:00:00.000Z"),
 };
 const BEFORE_EXPIRY = new Date("2026-06-01T10:00:00.000Z");
 
@@ -25,9 +26,17 @@ function signedPayload(): SignedLicenseQrPayload {
 
 describe("license-qr", () => {
   describe("toLicenseQrExpiry", () => {
-    it("keeps the UTC calendar day", () => {
-      expect(toLicenseQrExpiry(new Date("2026-08-31T23:59:59.000Z"))).toBe(
+    it("uses the calendar day in Europe/Paris, not UTC", () => {
+      // 22:00Z on the 30th is already the 31st in Paris (UTC+2 in summer).
+      expect(toLicenseQrExpiry(new Date("2026-08-30T22:00:00.000Z"))).toBe(
         "2026-08-31",
+      );
+      expect(toLicenseQrExpiry(new Date("2026-08-30T21:59:59.000Z"))).toBe(
+        "2026-08-30",
+      );
+      // Winter time (UTC+1).
+      expect(toLicenseQrExpiry(new Date("2026-12-31T23:30:00.000Z"))).toBe(
+        "2027-01-01",
       );
     });
   });
@@ -142,12 +151,13 @@ describe("license-qr", () => {
       ).toBe("VALID");
     });
 
-    it("accepts the QR during the whole last day of validity", () => {
+    it("accepts the QR until the end of the last day in Paris", () => {
+      // 23:59:59 on 2026-08-31 in Paris.
       expect(
         verifySignedLicenseQr(
           signedPayload(),
           SECRET,
-          new Date("2026-08-31T23:59:59.000Z"),
+          new Date("2026-08-31T21:59:59.000Z"),
         ),
       ).toBe("VALID");
     });
@@ -200,6 +210,35 @@ describe("license-qr", () => {
       ).toBe("INVALID_SIGNATURE");
     });
 
+    it("rejects a signature that is not strict 43-char base64url", () => {
+      const payload = signedPayload();
+      // Standard base64 alphabet / padding: Buffer would decode it leniently.
+      const standardBase64 = Buffer.from(payload.sig, "base64url").toString(
+        "base64",
+      );
+      expect(
+        verifySignedLicenseQr(
+          { ...payload, sig: standardBase64 },
+          SECRET,
+          BEFORE_EXPIRY,
+        ),
+      ).toBe("INVALID_SIGNATURE");
+      expect(
+        verifySignedLicenseQr(
+          { ...payload, sig: `${payload.sig.slice(0, 42)}+` },
+          SECRET,
+          BEFORE_EXPIRY,
+        ),
+      ).toBe("INVALID_SIGNATURE");
+      expect(
+        verifySignedLicenseQr(
+          { ...payload, sig: `${payload.sig}A` },
+          SECRET,
+          BEFORE_EXPIRY,
+        ),
+      ).toBe("INVALID_SIGNATURE");
+    });
+
     it("rejects an unknown version", () => {
       expect(
         verifySignedLicenseQr(
@@ -220,12 +259,13 @@ describe("license-qr", () => {
       ).toBe("INVALID_SIGNATURE");
     });
 
-    it("reports a genuine but expired QR as EXPIRED", () => {
+    it("reports a genuine QR as EXPIRED from midnight in Paris", () => {
+      // 00:00 on 2026-09-01 in Paris — still 2026-08-31 in UTC.
       expect(
         verifySignedLicenseQr(
           signedPayload(),
           SECRET,
-          new Date("2026-09-01T00:00:00.000Z"),
+          new Date("2026-08-31T22:00:00.000Z"),
         ),
       ).toBe("EXPIRED");
     });

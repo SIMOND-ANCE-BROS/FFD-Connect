@@ -22729,7 +22729,8 @@
           "qrData": {
             "type": "string",
             "description": "Contenu du QR de licence scanné : QR signé (#168), ancien JSON non signé, ou identifiant brut",
-            "example": "{\"v\":1,\"id\":\"FFD-123456\",\"exp\":\"2026-08-31\",\"sig\":\"…\"}"
+            "example": "{\"v\":1,\"id\":\"FFD-123456\",\"exp\":\"2026-08-31\",\"sig\":\"…\"}",
+            "maxLength": 512
           }
         },
         "required": ["qrData"]
@@ -22839,7 +22840,8 @@
           },
           "qrData": {
             "type": "string",
-            "description": "Données du QR code du participant"
+            "description": "Données du QR code du participant",
+            "maxLength": 512
           }
         },
         "required": ["token", "competitionId", "qrData"]

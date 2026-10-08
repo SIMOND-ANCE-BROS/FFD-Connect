@@ -41,6 +41,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import type { RootStackParamList } from "../../../navigation/types";
 import { isWdsfQrData } from "../../../utils/typeGuards";
 import { useLicenseLogic } from "../hooks/useLicenseLogic";
+import { buildLicenseQrData } from "../utils/licenseQrData";
 
 if (Platform.OS === "android") {
   if (UIManager.setLayoutAnimationEnabledExperimental) {
@@ -316,12 +317,7 @@ export const LicenseScreen: React.FC = () => {
                       actions.handleShowQr(
                         // QR signé par le serveur (#168) tel quel, sinon
                         // ancien contenu (backend ancien / snapshot antérieur).
-                        item.data?.qrCode ??
-                          JSON.stringify({
-                            id: item.data?.licenseNumber,
-                            valid: true,
-                            type: item.type,
-                          }),
+                        buildLicenseQrData(item.data as LicenseUser, item.type),
                       )
                     }
                     themeOverride={isDark ? "dark" : "light"}

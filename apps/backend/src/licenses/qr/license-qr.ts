@@ -9,14 +9,21 @@ import { createHmac, timingSafeEqual } from "crypto";
  *
  * - `id` keeps the key the check-in has always read, so a backend that does
  *   not know about signatures still resolves a signed QR.
- * - `exp` is the license end-of-validity date (UTC day). The QR stays valid
- *   until then: it is meant to be copied as-is into a static Wallet pass.
+ * - `exp` is the license end-of-validity date, as a calendar day in
+ *   Europe/Paris (the federation's time zone). The QR stays valid until the
+ *   end of that day in Paris: it is meant to be copied as-is into a static
+ *   Wallet pass.
  * - `sig` is an HMAC-SHA256 over a canonical, versioned string built from the
  *   fields above — never over the raw QR bytes, so re-serialising the JSON
  *   (key order, whitespace) does not break verification.
  *
  * Everything in this file is pure (no Nest, no config) so a future Wallet
  * pass generator can produce exactly the same QR content.
+ *
+ * Secret normalisation: the backend reads `QR_SIGNING_SECRET` and applies
+ * `.trim()` before using it as the HMAC key (see LicenseQrService). Any other
+ * producer (e.g. the Wallet pass generator) MUST pass the same trimmed value,
+ * otherwise its signatures will not verify.
  */
 
 export const LICENSE_QR_VERSION = 1;
@@ -25,6 +32,33 @@ export const LICENSE_QR_VERSION = 1;
 const LICENSE_QR_DOMAIN = "ffd-license-qr";
 
 const EXPIRY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Unpadded base64url of a 32-byte HMAC-SHA256 digest. */
+const SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/** Time zone the license validity day is expressed in. */
+export const LICENSE_QR_TIME_ZONE = "Europe/Paris";
+
+/** `en-CA` formats dates as `YYYY-MM-DD`. */
+const PARIS_DAY_FORMAT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: LICENSE_QR_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/** Calendar day of an instant in Europe/Paris, `YYYY-MM-DD`. */
+function parisDay(instant: Date): string {
+  return PARIS_DAY_FORMAT.format(instant);
+}
+
+/** True when `day` (`YYYY-MM-DD`) is a real calendar date. */
+function isCalendarDay(day: string): boolean {
+  const parsed = new Date(`${day}T00:00:00.000Z`);
+  return (
+    !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === day
+  );
+}
 
 export interface LicenseQrSubject {
   /** License number (the identifier the check-in resolves). */
@@ -40,9 +74,13 @@ export interface SignedLicenseQrPayload {
   sig: string;
 }
 
-/** UTC calendar day of the license end-of-validity, `YYYY-MM-DD`. */
+/**
+ * Calendar day (Europe/Paris) of the license end-of-validity, `YYYY-MM-DD`.
+ * A license stored as 2026-08-30T22:00Z (midnight in Paris) expires on
+ * 2026-08-31, not on the UTC day 2026-08-30.
+ */
 export function toLicenseQrExpiry(validUntil: Date): string {
-  return validUntil.toISOString().slice(0, 10);
+  return parisDay(validUntil);
 }
 
 /**
@@ -136,15 +174,21 @@ export function parseLicenseQr(qrData: string): ParsedLicenseQr {
 export type SignedLicenseQrStatus = "VALID" | "INVALID_SIGNATURE" | "EXPIRED";
 
 /**
- * Verifies a signed payload: version, signature (constant-time), then expiry.
- * A wrong signature always wins over expiry: an attacker learns nothing.
+ * Verifies a signed payload: version, signature format and value
+ * (constant-time), then expiry — the QR is valid until the end of the `exp`
+ * day in Europe/Paris. A wrong signature always wins over expiry: an attacker
+ * learns nothing.
  */
 export function verifySignedLicenseQr(
   payload: SignedLicenseQrPayload,
   secret: string,
   now: Date = new Date(),
 ): SignedLicenseQrStatus {
-  if (payload.v !== LICENSE_QR_VERSION || !EXPIRY_PATTERN.test(payload.exp)) {
+  if (
+    payload.v !== LICENSE_QR_VERSION ||
+    !EXPIRY_PATTERN.test(payload.exp) ||
+    !SIGNATURE_PATTERN.test(payload.sig)
+  ) {
     return "INVALID_SIGNATURE";
   }
   const expected = computeSignature(
@@ -158,8 +202,8 @@ export function verifySignedLicenseQr(
   ) {
     return "INVALID_SIGNATURE";
   }
-  const endOfValidity = Date.parse(`${payload.exp}T23:59:59.999Z`);
-  if (Number.isNaN(endOfValidity) || now.getTime() > endOfValidity) {
+  // YYYY-MM-DD strings compare chronologically.
+  if (!isCalendarDay(payload.exp) || parisDay(now) > payload.exp) {
     return "EXPIRED";
   }
   return "VALID";

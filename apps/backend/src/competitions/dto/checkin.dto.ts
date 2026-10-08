@@ -1,5 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsNotEmpty, IsString } from "class-validator";
+import { IsNotEmpty, IsString, MaxLength } from "class-validator";
+
+/** A signed license QR is ~120 chars; anything far longer is not a QR we issue. */
+export const CHECK_IN_QR_DATA_MAX_LENGTH = 512;
 
 /**
  * DTO pour le check-in d'un participant à une compétition
@@ -9,9 +12,11 @@ export class CheckInDto {
     description:
       "Contenu du QR de licence scanné : QR signé (#168), ancien JSON non signé, ou identifiant brut",
     example: '{"v":1,"id":"FFD-123456","exp":"2026-08-31","sig":"…"}',
+    maxLength: CHECK_IN_QR_DATA_MAX_LENGTH,
   })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(CHECK_IN_QR_DATA_MAX_LENGTH)
   qrData!: string;
 }
 

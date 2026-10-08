@@ -63,18 +63,43 @@ describe("LicenseQrService", () => {
       ).toBe("warn");
     });
 
-    it("is off without a secret, whatever the requested mode", () => {
-      const service = makeService({ QR_SIGNATURE_MODE: "enforce" });
-      expect(service.getMode()).toBe("off");
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining("signing disabled"),
+    it.each([undefined, "warn", "off"])(
+      "is off without a secret (requested mode: %s) and still boots",
+      (mode) => {
+        const service = makeService({ QR_SIGNATURE_MODE: mode });
+        expect(service.getMode()).toBe("off");
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining("signing disabled"),
+        );
+      },
+    );
+
+    it("refuses to boot in enforce mode without a secret", () => {
+      expect(() => makeService({ QR_SIGNATURE_MODE: "enforce" })).toThrow(
+        "QR_SIGNATURE_MODE=enforce requires QR_SIGNING_SECRET (at least 32 characters)",
+      );
+    });
+
+    it("refuses to boot in enforce mode with a secret shorter than 32 characters", () => {
+      expect(() =>
+        makeService({
+          QR_SIGNING_SECRET: "too-short",
+          QR_SIGNATURE_MODE: "enforce",
+        }),
+      ).toThrow("QR_SIGNATURE_MODE=enforce requires QR_SIGNING_SECRET");
+    });
+
+    it("trims the secret before using it", () => {
+      const service = makeService({ QR_SIGNING_SECRET: `  ${SECRET}\n` });
+      expect(service.buildQrCode(LICENSE)).toBe(
+        buildSignedLicenseQr(LICENSE, SECRET),
       );
     });
 
     it("ignores a secret shorter than 32 characters", () => {
       const service = makeService({
         QR_SIGNING_SECRET: "too-short",
-        QR_SIGNATURE_MODE: "enforce",
+        QR_SIGNATURE_MODE: "warn",
       });
       expect(service.getMode()).toBe("off");
       expect(service.buildQrCode(LICENSE)).toBeNull();
