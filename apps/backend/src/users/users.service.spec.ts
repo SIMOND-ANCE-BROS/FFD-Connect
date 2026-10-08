@@ -124,6 +124,23 @@ describe("UsersService", () => {
       expect(result.email).toBe("alice@example.com");
     });
 
+    it("adds roles next to role without leaking the club status", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...makeUser(),
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        club: { disabledAt: null },
+      });
+
+      const result = (await service.findOne("u1")) as Record<string, unknown>;
+
+      expect(result).toMatchObject({
+        role: UserRole.LICENSEE,
+        roles: [UserRole.LICENSEE, UserRole.CLUB],
+      });
+      expect(result.club).toBeUndefined();
+    });
+
     it("never returns a password field", async () => {
       prisma.user.findUnique.mockResolvedValue(makeUser());
 

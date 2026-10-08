@@ -22,7 +22,7 @@ import {
 import { AuthTokenService } from "./auth-token.service";
 import { LICENSE_NUMBER_MAX_LENGTH } from "./dto/register.dto";
 import { PasswordValidator } from "./password-validator";
-import { hasRole } from "./roles";
+import { hasRole, rolesOf } from "./roles";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -44,6 +44,7 @@ export interface LoginResponse {
     firstName: string;
     lastName: string;
     role: string;
+    roles: UserRole[];
     clubId?: string | null;
     clubName: string | null;
     licenseNumber?: string | null;
@@ -355,6 +356,8 @@ export class AuthService {
   async login(
     user: Omit<User, "password"> & {
       license?: { number: string | null } | null;
+      extraRoles?: UserRole[];
+      club?: { disabledAt: Date | null } | null;
     },
   ): Promise<LoginResponse> {
     const payload = {
@@ -387,6 +390,7 @@ export class AuthService {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        roles: rolesOf(user),
         clubId: user.clubId,
         clubName: user.clubName,
         licenseNumber: user.license?.number,
@@ -511,6 +515,7 @@ export class AuthService {
         firstName: targetUser.firstName,
         lastName: targetUser.lastName,
         role: targetUser.role,
+        roles: rolesOf(targetUser),
         clubId: targetUser.clubId,
         clubName: targetUser.clubName,
       },

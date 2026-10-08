@@ -58,6 +58,15 @@ export class UsersController {
             type: "string",
             enum: ["LICENSEE", "CLUB", "STAFF", "ADMIN"],
           },
+          roles: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["LICENSEE", "CLUB", "STAFF", "ADMIN"],
+            },
+            description:
+              "Rôle principal + rôles supplémentaires (multi-profil)",
+          },
         },
       },
     },

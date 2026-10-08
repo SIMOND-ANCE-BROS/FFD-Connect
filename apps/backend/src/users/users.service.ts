@@ -4,7 +4,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Prisma, RegistrationStatus, UserRole } from "@prisma/client";
-import { hasRole, withActiveRole } from "../auth/roles";
+import { hasRole, rolesOf, withActiveRole } from "../auth/roles";
 import { userRolesClubSelect } from "../utils/prisma-selects";
 import * as bcrypt from "bcrypt";
 import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
@@ -26,6 +26,7 @@ const USER_BASE_SELECT = {
   firstName: true,
   lastName: true,
   role: true,
+  extraRoles: true,
   category: true,
   ageGroup: true,
   competitionLevel: true,
@@ -248,6 +249,7 @@ export class UsersService {
         ...USER_BASE_SELECT,
         birthDate: true,
         nationalRanking: true,
+        club: { select: { disabledAt: true } },
         license: {
           select: {
             id: true,
@@ -268,8 +270,10 @@ export class UsersService {
       throw new NotFoundException("User not found");
     }
 
-    const wdsf = buildWdsfFromUser(user);
-    return { ...user, wdsf };
+    // The club status only feeds rolesOf; it must not leak into the payload.
+    const { club, ...profile } = user;
+    const wdsf = buildWdsfFromUser(profile);
+    return { ...profile, roles: rolesOf({ ...profile, club }), wdsf };
   }
 
   /**

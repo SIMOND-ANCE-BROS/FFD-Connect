@@ -259,6 +259,51 @@ describe("AuthService", () => {
   });
 
   describe("login", () => {
+    const rolesUser = {
+      id: "u1",
+      email: "test@example.com",
+      clubName: "Club",
+      firstName: "First",
+      lastName: "Last",
+      license: { number: "LIC123" },
+    };
+
+    it("returns the main role and every role", async () => {
+      mockJwtService.sign.mockReturnValue("jwt-token");
+      mockAuthTokenService.createRefreshToken.mockResolvedValue({
+        token: "refresh-token",
+      });
+      mockPrismaService.user.update.mockResolvedValue({});
+
+      const res = await service.login({
+        ...rolesUser,
+        role: UserRole.ADMIN,
+        extraRoles: [UserRole.LICENSEE],
+      } as never);
+
+      expect(res.user.role).toBe(UserRole.ADMIN);
+      expect(res.user.roles).toEqual([UserRole.ADMIN, UserRole.LICENSEE]);
+    });
+
+    it("returns roles = [role] for a single-role account (old apps unaffected)", async () => {
+      mockJwtService.sign.mockReturnValue("jwt-token");
+      mockAuthTokenService.createRefreshToken.mockResolvedValue({
+        token: "refresh-token",
+      });
+      mockPrismaService.user.update.mockResolvedValue({});
+
+      const res = await service.login({
+        ...rolesUser,
+        role: UserRole.LICENSEE,
+        extraRoles: [],
+      } as never);
+
+      expect(res.user).toMatchObject({
+        role: UserRole.LICENSEE,
+        roles: [UserRole.LICENSEE],
+      });
+    });
+
     it("records lastLoginAt on successful login", async () => {
       const loginUser = {
         id: "u1",
