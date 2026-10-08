@@ -36,7 +36,8 @@ interface RequestWithUser extends ExpressRequest {
 /** Route of the public download, relative to the API prefix. */
 export const APPLE_WALLET_DOWNLOAD_PATH = "licenses/wallet/apple";
 
-const HOST_PATTERN = /^[A-Za-z0-9.-]+(:\d{1,5})?$/;
+/** Hostname or bracketed IPv6 literal, optional port. */
+const HOST_PATTERN = /^([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(:\d{1,5})?$/;
 
 /**
  * Public origin the client reached, as seen behind the Container Apps
@@ -93,11 +94,13 @@ export class AppleWalletController {
   async createDownloadLink(
     @Req() req: RequestWithUser,
   ): Promise<AppleWalletPassLinkDto> {
+    // Validate the Host first: a bad header must not leave a token behind.
+    const origin = publicOrigin(req);
     const { token, expiresAt } =
       await this.walletPassService.issueDownloadToken(req.user.userId);
     const path = `${APPLE_WALLET_DOWNLOAD_PATH}/${token}`;
     return {
-      url: `${publicOrigin(req)}/${API_GLOBAL_PREFIX}/${path}`,
+      url: `${origin}/${API_GLOBAL_PREFIX}/${path}`,
       path,
       expiresAt: expiresAt.toISOString(),
     };

@@ -7,6 +7,7 @@ import {
 import { Observable } from "rxjs";
 import { tap } from "rxjs/operators";
 import { Request, Response } from "express";
+import { redactUrl } from "../logger/redact-url";
 import { MetricsService } from "./metrics.service";
 
 /**
@@ -20,7 +21,9 @@ export class MetricsInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest<Request>();
-    const { method, url } = request;
+    const { method } = request;
+    // Secret path segments must not become metric labels.
+    const url = redactUrl(request.url);
     const now = Date.now();
 
     return next.handle().pipe(

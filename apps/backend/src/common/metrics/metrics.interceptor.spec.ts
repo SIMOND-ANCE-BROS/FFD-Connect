@@ -61,4 +61,21 @@ describe("MetricsInterceptor", () => {
       },
     });
   });
+
+  it("never uses a Wallet pass token as a metric label", (done) => {
+    const context = createMockContext(
+      "GET",
+      "/api/v1/licenses/wallet/apple/q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW",
+      200,
+    );
+    const next: CallHandler = { handle: () => of("data") };
+
+    interceptor.intercept(context, next).subscribe({
+      next: () => {
+        const call = mockMetricsService.recordHttpMetric.mock.calls[0][0];
+        expect(call.endpoint).toBe("/api/v1/licenses/wallet/apple/[REDACTED]");
+        done();
+      },
+    });
+  });
 });

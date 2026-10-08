@@ -8,6 +8,7 @@ import { Observable } from "rxjs";
 import { tap } from "rxjs/operators";
 import { Request, Response } from "express";
 import { PinoLogger } from "nestjs-pino";
+import { redactUrl } from "../logger/redact-url";
 
 /**
  * Intercepteur de logging structuré pour tracer les requêtes HTTP
@@ -21,7 +22,9 @@ export class LoggingInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest<Request>();
-    const { method, url, ip, headers } = request;
+    const { method, ip, headers } = request;
+    // Never log one-shot tokens carried in the path (Wallet pass link).
+    const url = redactUrl(request.url);
     // Security: never log Authorization, Cookie, or other sensitive headers; do not attach request body or headers to error logs.
     const userAgent = headers["user-agent"] ?? "unknown";
     const now = Date.now();

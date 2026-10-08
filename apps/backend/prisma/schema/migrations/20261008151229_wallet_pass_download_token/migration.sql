@@ -13,7 +13,7 @@ CREATE TABLE "WalletPassDownloadToken" (
 CREATE UNIQUE INDEX "WalletPassDownloadToken_tokenHash_key" ON "WalletPassDownloadToken"("tokenHash");
 
 -- CreateIndex
-CREATE INDEX "WalletPassDownloadToken_userId_idx" ON "WalletPassDownloadToken"("userId");
+CREATE UNIQUE INDEX "WalletPassDownloadToken_userId_key" ON "WalletPassDownloadToken"("userId");
 
 -- AddForeignKey
 ALTER TABLE "WalletPassDownloadToken" ADD CONSTRAINT "WalletPassDownloadToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

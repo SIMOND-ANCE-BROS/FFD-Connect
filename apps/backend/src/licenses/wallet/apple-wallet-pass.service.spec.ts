@@ -34,23 +34,28 @@ interface LicenseRow {
 function fakePrisma(licenses: Record<string, LicenseRow>) {
   let tokens: TokenRow[] = [];
   const walletPassDownloadToken = {
-    deleteMany: jest.fn(
-      ({ where }: { where: { userId?: string; tokenHash?: string } }) => {
-        const before = tokens.length;
-        tokens = tokens.filter(
-          (t) =>
-            !(
-              (where.userId === undefined || t.userId === where.userId) &&
-              (where.tokenHash === undefined || t.tokenHash === where.tokenHash)
-            ),
-        );
-        return Promise.resolve({ count: before - tokens.length });
+    deleteMany: jest.fn(({ where }: { where: { tokenHash: string } }) => {
+      const before = tokens.length;
+      tokens = tokens.filter((t) => t.tokenHash !== where.tokenHash);
+      return Promise.resolve({ count: before - tokens.length });
+    }),
+    // `userId` is unique: same semantics as INSERT … ON CONFLICT (userId).
+    upsert: jest.fn(
+      ({
+        where,
+        create,
+        update,
+      }: {
+        where: { userId: string };
+        create: TokenRow;
+        update: Omit<TokenRow, "userId">;
+      }) => {
+        const existing = tokens.find((t) => t.userId === where.userId);
+        if (existing) Object.assign(existing, update);
+        else tokens.push({ ...create });
+        return Promise.resolve({ id: "row" });
       },
     ),
-    create: jest.fn(({ data }: { data: TokenRow }) => {
-      tokens.push({ ...data });
-      return Promise.resolve({ id: "row" });
-    }),
     findUnique: jest.fn(({ where }: { where: { tokenHash: string } }) =>
       Promise.resolve(
         tokens.find((t) => t.tokenHash === where.tokenHash) ?? null,
@@ -65,7 +70,6 @@ function fakePrisma(licenses: Record<string, LicenseRow>) {
           Promise.resolve(licenses[where.userId] ?? null),
         ),
       },
-      $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
     },
     tokens: () => tokens,
   };
@@ -156,6 +160,12 @@ describe("AppleWalletPassService", () => {
       ).toEqual(["alice", "bob"]);
       expect(fake.tokens().find((t) => t.userId === "alice")?.tokenHash).toBe(
         hashWalletPassToken(token),
+      );
+      // Keyed on the unique userId, so concurrent requests cannot both insert.
+      expect(
+        fake.prisma.walletPassDownloadToken.upsert,
+      ).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { userId: "alice" } }),
       );
     });
 

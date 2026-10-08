@@ -81,16 +81,15 @@ model LicenseRenewalDocument {
 /// téléchargement. Court (quelques minutes) et à usage unique — la ligne est
 /// supprimée à la consommation (DELETE atomique : deux requêtes concurrentes ne
 /// peuvent pas le consommer toutes les deux). Seul le SHA-256 du jeton est
-/// stocké. Au plus une ligne vivante par utilisateur : l'émission d'un jeton
-/// supprime les précédents, sans tâche planifiée (backend scale-to-zero).
+/// stocké. Une seule ligne par utilisateur (`userId` unique, émission par
+/// upsert) : un nouveau jeton remplace le précédent, même si deux demandes
+/// arrivent en même temps, sans tâche planifiée (backend scale-to-zero).
 model WalletPassDownloadToken {
   id        String   @id @default(uuid())
   /// SHA-256 hex du jeton (le jeton en clair n'est jamais stocké).
   tokenHash String   @unique
-  userId    String
+  userId    String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
 }

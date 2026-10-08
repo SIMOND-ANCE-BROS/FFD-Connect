@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import {
   GoneException,
   Injectable,
@@ -11,6 +11,7 @@ import {
   licenseWalletPassSelect,
   walletPassTokenSelect,
 } from "../../utils/prisma-selects";
+import { hashToken } from "../../utils/token-hash.util";
 import { toLicenseQrExpiry } from "../qr/license-qr";
 import { ApplePassLicense } from "./apple-wallet-pass";
 import {
@@ -32,9 +33,8 @@ export const TOKEN_INVALID_MESSAGE =
 export const TOKEN_EXPIRED_MESSAGE =
   "Lien de téléchargement expiré : relancez l'ajout depuis l'application";
 
-export function hashWalletPassToken(token: string): string {
-  return createHash("sha256").update(token, "utf8").digest("hex");
-}
+/** SHA-256 hex of the token (shared repo helper): only the hash is stored. */
+export const hashWalletPassToken = hashToken;
 
 export interface IssuedWalletPassToken {
   /** Raw token — returned once, only its SHA-256 is stored. */
@@ -50,7 +50,8 @@ export interface IssuedWalletPassToken {
  * Tokens live in Postgres (hashed): unlike the Redis cache, which degrades to
  * "nothing stored" when unavailable, a one-shot token needs a deterministic
  * store with an atomic consume. No scheduled cleanup (scale-to-zero backend):
- * issuing a token deletes the user's previous ones, consuming deletes the row.
+ * issuing a token replaces the user's previous one (one row per user, upsert),
+ * consuming deletes the row.
  */
 @Injectable()
 export class AppleWalletPassService {
@@ -103,14 +104,16 @@ export class AppleWalletPassService {
 
     const token = randomBytes(32).toString("base64url");
     const expiresAt = new Date(now.getTime() + WALLET_PASS_TOKEN_TTL_MS);
-    await this.prisma.$transaction([
-      // At most one live token per user, and no table growth without a cron.
-      this.prisma.walletPassDownloadToken.deleteMany({ where: { userId } }),
-      this.prisma.walletPassDownloadToken.create({
-        data: { tokenHash: hashWalletPassToken(token), userId, expiresAt },
-        select: { id: true },
-      }),
-    ]);
+    const tokenHash = hashWalletPassToken(token);
+    // One row per user (`userId` unique): a new token replaces the previous
+    // one, even for two simultaneous requests (INSERT … ON CONFLICT), and the
+    // table never grows without a cron.
+    await this.prisma.walletPassDownloadToken.upsert({
+      where: { userId },
+      create: { tokenHash, userId, expiresAt },
+      update: { tokenHash, expiresAt },
+      select: { id: true },
+    });
     return { token, expiresAt };
   }
 

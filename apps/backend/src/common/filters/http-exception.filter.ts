@@ -8,6 +8,7 @@ import {
 import * as Sentry from "@sentry/nestjs";
 import { PinoLogger } from "nestjs-pino";
 import { Request, Response } from "express";
+import { redactUrl } from "../logger/redact-url";
 
 /**
  * Filtre global d'exceptions HTTP pour une gestion cohérente des erreurs
@@ -37,6 +38,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+    // One-shot tokens in the path (Wallet pass link) never reach logs.
+    const safeUrl = redactUrl(request.url);
 
     const status =
       exception instanceof HttpException
@@ -76,7 +79,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const errorResponse = {
       statusCode: status,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: safeUrl,
       method: request.method,
       message,
       ...conflictDetails,
@@ -101,7 +104,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.error(
         {
           method: request.method,
-          url: request.url,
+          url: safeUrl,
           statusCode: status,
           message: logMessage,
           error:
@@ -114,7 +117,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
               : exception,
           context: "HttpExceptionFilter",
         },
-        `${request.method} ${request.url} - ${logMessage}`,
+        `${request.method} ${safeUrl} - ${logMessage}`,
       );
     } else if (status >= 400) {
       const logMessage =
@@ -123,12 +126,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.warn(
         {
           method: request.method,
-          url: request.url,
+          url: safeUrl,
           statusCode: status,
           message: logMessage,
           context: "HttpExceptionFilter",
         },
-        `${request.method} ${request.url} - ${logMessage}`,
+        `${request.method} ${safeUrl} - ${logMessage}`,
       );
     }
 

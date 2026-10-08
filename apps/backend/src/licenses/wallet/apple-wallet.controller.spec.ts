@@ -50,6 +50,15 @@ describe("publicOrigin", () => {
       publicOrigin(fakeRequest({ host: "evil.com/path?x=" })),
     ).toThrow(BadRequestException);
     expect(() => publicOrigin(fakeRequest({}))).toThrow(BadRequestException);
+    expect(() => publicOrigin(fakeRequest({ host: "[::1" }))).toThrow(
+      BadRequestException,
+    );
+  });
+
+  it("accepts a bracketed IPv6 host", () => {
+    expect(publicOrigin(fakeRequest({ host: "[::1]:3000" }))).toBe(
+      "http://[::1]:3000",
+    );
   });
 });
 
@@ -79,6 +88,17 @@ describe("AppleWalletController", () => {
       expiresAt: "2026-10-08T10:05:00.000Z",
     });
     expect(service.issueDownloadToken).toHaveBeenCalledWith("u1");
+  });
+
+  it("rejects a bad Host before issuing any token", async () => {
+    service.issueDownloadToken.mockClear();
+    const req = Object.assign(fakeRequest({ host: "bad host" }), {
+      user: { userId: "u1" },
+    });
+    await expect(controller.createDownloadLink(req)).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(service.issueDownloadToken).not.toHaveBeenCalled();
   });
 
   it("streams the pass with the Wallet MIME type", async () => {
