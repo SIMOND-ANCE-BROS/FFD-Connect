@@ -48,7 +48,7 @@ import { PerformanceSetupScreen } from "../features/performance/screens/Performa
 // --- Other screens ---
 import { ViewCareerScreen } from "../features/career/screens/ViewCareerScreen";
 import { OfflineBanner } from "../components/OfflineBanner";
-import { ImpersonationBanner } from "../components/ImpersonationBanner";
+import { ImpersonationLayout } from "../components/ImpersonationBanner";
 import { CguAcceptanceModal } from "../features/legal/CguAcceptanceModal";
 import { LegalScreen } from "../features/legal/LegalScreen";
 
@@ -133,186 +133,188 @@ export const AppNavigator = () => {
   };
 
   return (
-    <NavigationContainer
-      theme={NavigationTheme}
-      ref={navigationRef}
-      linking={linking}
-      onReady={() => {
-        const routeName = navigationRef.current?.getCurrentRoute()?.name;
-        setCurrentRouteName(routeName ?? undefined);
-        if (routeName) {
-          analytics.logScreenView(routeName);
-        }
-        try {
-          logger.info(`Navigation State Change: ${currentRouteName}`);
-        } catch {
-          // Ignore logger errors during initialization
-        }
-      }}
-      onStateChange={() => {
-        const routeName = navigationRef.current?.getCurrentRoute()?.name;
-        const previousRouteName = currentRouteName;
-
-        if (previousRouteName !== routeName && routeName) {
-          setCurrentRouteName(routeName);
-          analytics.logScreenView(routeName);
-          try {
-            logger.info(`Navigation: ${previousRouteName} -> ${routeName}`);
-          } catch {
-            // Ignore logger errors during state change
+    // Impersonation banner (#545) sits ABOVE the navigator in the layout flow
+    // and pushes it down instead of overlaying screen headers.
+    <ImpersonationLayout>
+      <NavigationContainer
+        theme={NavigationTheme}
+        ref={navigationRef}
+        linking={linking}
+        onReady={() => {
+          const routeName = navigationRef.current?.getCurrentRoute()?.name;
+          setCurrentRouteName(routeName ?? undefined);
+          if (routeName) {
+            analytics.logScreenView(routeName);
           }
-        }
-      }}
-    >
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: currentTheme.background },
-          animation: "slide_from_right",
-          gestureEnabled: true,
-          animationDuration: 350,
+          try {
+            logger.info(`Navigation State Change: ${currentRouteName}`);
+          } catch {
+            // Ignore logger errors during initialization
+          }
+        }}
+        onStateChange={() => {
+          const routeName = navigationRef.current?.getCurrentRoute()?.name;
+          const previousRouteName = currentRouteName;
+
+          if (previousRouteName !== routeName && routeName) {
+            setCurrentRouteName(routeName);
+            analytics.logScreenView(routeName);
+            try {
+              logger.info(`Navigation: ${previousRouteName} -> ${routeName}`);
+            } catch {
+              // Ignore logger errors during state change
+            }
+          }
         }}
       >
-        {isLoggedIn ? (
-          <>
-            {/* App screens — only registered when authenticated */}
-            <Stack.Screen name="Main" component={MainTabs} />
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: currentTheme.background },
+            animation: "slide_from_right",
+            gestureEnabled: true,
+            animationDuration: 350,
+          }}
+        >
+          {isLoggedIn ? (
+            <>
+              {/* App screens — only registered when authenticated */}
+              <Stack.Screen name="Main" component={MainTabs} />
 
-            {/* Competitions */}
-            <Stack.Screen
-              name="CompetitionDetail"
-              component={CompetitionDetailScreen}
-            />
-            <Stack.Screen name="LiveResults" component={LiveResultsScreen} />
-            <Stack.Screen
-              name="VolunteerCheckin"
-              component={VolunteerCheckinScreen}
-              options={{ animation: "slide_from_bottom" }}
-            />
-            <Stack.Screen
-              name="EventRegistrants"
-              component={EventRegistrantsScreen}
-            />
+              {/* Competitions */}
+              <Stack.Screen
+                name="CompetitionDetail"
+                component={CompetitionDetailScreen}
+              />
+              <Stack.Screen name="LiveResults" component={LiveResultsScreen} />
+              <Stack.Screen
+                name="VolunteerCheckin"
+                component={VolunteerCheckinScreen}
+                options={{ animation: "slide_from_bottom" }}
+              />
+              <Stack.Screen
+                name="EventRegistrants"
+                component={EventRegistrantsScreen}
+              />
 
-            {/* Club */}
-            <Stack.Screen
-              name="ClubDashboard"
-              component={ClubDashboardScreen}
-              options={{ animation: "slide_from_right" }}
-            />
-            <Stack.Screen
-              name="ClubCompetitions"
-              component={ClubCompetitionsScreen}
-            />
-            <Stack.Screen
-              name="ClubCompetitionEditor"
-              component={ClubCompetitionFormScreen}
-              options={{ presentation: "modal" }}
-            />
-            <Stack.Screen name="ClubMembers" component={ClubMembersScreen} />
-            <Stack.Screen name="ClubCouples" component={ClubCouplesScreen} />
-            <Stack.Screen
-              name="ClubSoloTeams"
-              component={ClubSoloTeamsScreen}
-            />
-            <Stack.Screen
-              name="ClubSoloTeamDetail"
-              component={ClubSoloTeamDetailScreen}
-            />
-            <Stack.Screen
-              name="ClubMemberEditor"
-              component={ClubMemberEditorScreen}
-              options={{ presentation: "modal" }}
-            />
-            <Stack.Screen
-              name="ClubRegistrations"
-              component={ClubRegistrationsScreen}
-            />
+              {/* Club */}
+              <Stack.Screen
+                name="ClubDashboard"
+                component={ClubDashboardScreen}
+                options={{ animation: "slide_from_right" }}
+              />
+              <Stack.Screen
+                name="ClubCompetitions"
+                component={ClubCompetitionsScreen}
+              />
+              <Stack.Screen
+                name="ClubCompetitionEditor"
+                component={ClubCompetitionFormScreen}
+                options={{ presentation: "modal" }}
+              />
+              <Stack.Screen name="ClubMembers" component={ClubMembersScreen} />
+              <Stack.Screen name="ClubCouples" component={ClubCouplesScreen} />
+              <Stack.Screen
+                name="ClubSoloTeams"
+                component={ClubSoloTeamsScreen}
+              />
+              <Stack.Screen
+                name="ClubSoloTeamDetail"
+                component={ClubSoloTeamDetailScreen}
+              />
+              <Stack.Screen
+                name="ClubMemberEditor"
+                component={ClubMemberEditorScreen}
+                options={{ presentation: "modal" }}
+              />
+              <Stack.Screen
+                name="ClubRegistrations"
+                component={ClubRegistrationsScreen}
+              />
 
-            {/* Player & Performance */}
-            <Stack.Screen
-              name="PerformanceSetup"
-              component={PerformanceSetupScreen}
-            />
-            <Stack.Screen
-              name="PerformancePlayer"
-              component={PerformancePlayerScreen}
-              // No iOS swipe-back: leaving goes through the "Arrêter ?"
-              // confirmation (the engine is a singleton that must be stopped).
-              options={{ animation: "fade", gestureEnabled: false }}
-            />
-            <Stack.Screen
-              name="AudioPlayer"
-              component={AudioPlayerScreen}
-              options={{
-                presentation: "modal",
-                gestureEnabled: true,
-                gestureDirection: "vertical",
-                ...Platform.select({
-                  ios: {
-                    presentation: "modal",
-                  },
-                }),
-              }}
-            />
+              {/* Player & Performance */}
+              <Stack.Screen
+                name="PerformanceSetup"
+                component={PerformanceSetupScreen}
+              />
+              <Stack.Screen
+                name="PerformancePlayer"
+                component={PerformancePlayerScreen}
+                // No iOS swipe-back: leaving goes through the "Arrêter ?"
+                // confirmation (the engine is a singleton that must be stopped).
+                options={{ animation: "fade", gestureEnabled: false }}
+              />
+              <Stack.Screen
+                name="AudioPlayer"
+                component={AudioPlayerScreen}
+                options={{
+                  presentation: "modal",
+                  gestureEnabled: true,
+                  gestureDirection: "vertical",
+                  ...Platform.select({
+                    ios: {
+                      presentation: "modal",
+                    },
+                  }),
+                }}
+              />
 
-            {/* Other */}
-            <Stack.Screen
-              name="Notifications"
-              component={NotificationsScreen}
-            />
-            <Stack.Screen
-              name="Scanner"
-              component={ScannerScreen}
-              options={{
-                presentation: "fullScreenModal",
-                gestureEnabled: false,
-              }}
-            />
-            <Stack.Screen
-              name="LicenseRenewal"
-              component={LicenseRenewalScreen}
-            />
-            <Stack.Screen name="ViewCareer" component={ViewCareerScreen} />
-            <Stack.Screen name="Profile" component={ProfileScreen} />
-            <Stack.Screen
-              name="TrackCorrectionsReview"
-              component={TrackCorrectionsReviewScreen}
-            />
-            <Stack.Screen
-              name="MyTrackCorrections"
-              component={MyTrackCorrectionsScreen}
-            />
-          </>
-        ) : (
-          <>
-            {/* Auth screens — only registered when NOT authenticated */}
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-            <Stack.Screen
-              name="ForgotPassword"
-              component={ForgotPasswordScreen}
-            />
-            <Stack.Screen
-              name="ResetPassword"
-              component={ResetPasswordScreen}
-            />
-          </>
-        )}
-        {/* Documents légaux (#424) — accessibles connecté (Réglages) comme
+              {/* Other */}
+              <Stack.Screen
+                name="Notifications"
+                component={NotificationsScreen}
+              />
+              <Stack.Screen
+                name="Scanner"
+                component={ScannerScreen}
+                options={{
+                  presentation: "fullScreenModal",
+                  gestureEnabled: false,
+                }}
+              />
+              <Stack.Screen
+                name="LicenseRenewal"
+                component={LicenseRenewalScreen}
+              />
+              <Stack.Screen name="ViewCareer" component={ViewCareerScreen} />
+              <Stack.Screen name="Profile" component={ProfileScreen} />
+              <Stack.Screen
+                name="TrackCorrectionsReview"
+                component={TrackCorrectionsReviewScreen}
+              />
+              <Stack.Screen
+                name="MyTrackCorrections"
+                component={MyTrackCorrectionsScreen}
+              />
+            </>
+          ) : (
+            <>
+              {/* Auth screens — only registered when NOT authenticated */}
+              <Stack.Screen name="Login" component={LoginScreen} />
+              <Stack.Screen name="Register" component={RegisterScreen} />
+              <Stack.Screen
+                name="ForgotPassword"
+                component={ForgotPasswordScreen}
+              />
+              <Stack.Screen
+                name="ResetPassword"
+                component={ResetPasswordScreen}
+              />
+            </>
+          )}
+          {/* Documents légaux (#424) — accessibles connecté (Réglages) comme
             non connecté (lien CGU à l'inscription). */}
-        <Stack.Screen name="Legal" component={LegalScreen} />
-      </Stack.Navigator>
-      {currentRouteName !== "PerformancePlayer" && (
-        <MiniPlayer currentRouteName={currentRouteName} />
-      )}
-      {/* Acceptation CGU au premier lancement (#424) — autonome, ne rend
+          <Stack.Screen name="Legal" component={LegalScreen} />
+        </Stack.Navigator>
+        {currentRouteName !== "PerformancePlayer" && (
+          <MiniPlayer currentRouteName={currentRouteName} />
+        )}
+        {/* Acceptation CGU au premier lancement (#424) — autonome, ne rend
           rien si la version courante est déjà acceptée. */}
-      <CguAcceptanceModal />
-      {/* Bandeau hors-ligne global (#416) */}
-      <OfflineBanner />
-      {/* Bandeau permanent d'impersonation (#545) */}
-      <ImpersonationBanner />
-    </NavigationContainer>
+        <CguAcceptanceModal />
+        {/* Bandeau hors-ligne global (#416) */}
+        <OfflineBanner />
+      </NavigationContainer>
+    </ImpersonationLayout>
   );
 };

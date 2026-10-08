@@ -306,7 +306,9 @@ jest.mock("react-native-draggable-flatlist", () => ({
 
 jest.mock("react-native-safe-area-context", () => {
   const Insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  const { createContext } = require("react");
   return {
+    SafeAreaInsetsContext: createContext(Insets),
     SafeAreaProvider: ({ children }) => children,
     SafeAreaView: ({ children }) => children,
     useSafeAreaInsets: jest.fn(() => Insets),
