@@ -3,7 +3,7 @@ import { create } from "zustand";
 import type { TrackData } from "../features/player/context/PlayerContext";
 
 export type Category = "Standard" | "Latin";
-/** Round = « Passage » (≥ 2 heats), Final = « Finale » (exactly 1 heat). */
+/** Round = « Passage » (qualifying round), Final = « Finale » (wording only). */
 export type RoundType = "Round" | "Final";
 /** @deprecated kept for backwards compatibility — use RoundType. */
 export type Mode = RoundType;
@@ -20,27 +20,23 @@ export const DANCES: Record<Category, readonly string[]> = {
   Latin: ["Samba", "Cha-Cha-Cha", "Rumba", "Paso Doble", "Jive"],
 };
 
-/** A single group per dance is allowed (e.g. one Latin group mixed in). */
-export const MIN_ROUND_HEATS = 1;
-/** Heats of a new round. */
-export const DEFAULT_ROUND_HEATS = 2;
-export const MAX_ROUND_HEATS = 10;
+/** Bounds of the number of groups (« groupes » / « passages » / heats) of a round. */
+export const MIN_ROUND_GROUPS = 1;
+export const MAX_ROUND_GROUPS = 10;
 
-/** One round (« tour ») of the competition programme. */
+/**
+ * One round (« tour ») of the competition programme: an ordered list of groups,
+ * each dancing one category. Groups take the floor in order for every dance —
+ * Standard, Latines, Standard → Valse lente, Samba, Valse lente, then Tango,
+ * Cha-cha-cha, Tango…
+ */
 export interface RoundConfig {
   id: string;
-  category: Category;
   type: RoundType;
-  /** ≥ MIN_ROUND_HEATS when type is Round, always 1 when Final. */
-  heats: number;
-  /** Subset of DANCES[category], kept in canonical order. */
-  selectedDances: string[];
-  /**
-   * Alternates this round's heats with the previous round's (« passages
-   * mixés »): Valse Std, Samba Lat, Valse Std… then the next dance of each.
-   * Ignored on the first round.
-   */
-  mixWithPrevious?: boolean;
+  /** Category of each group, in floor order (MIN..MAX_ROUND_GROUPS entries). */
+  groups: Category[];
+  /** Dances of the round per category, subsets of DANCES kept in canonical order. */
+  dances: Record<Category, string[]>;
 }
 
 export interface PerformanceConfig {
@@ -60,18 +56,22 @@ export interface PlaylistItem {
   style: string;
   duration: number;
   isPaso: boolean;
-  heatIndex: number;
-  totalHeats: number;
+  /** 1-based group number inside its round, and the round's group count. */
+  groupIndex: number;
+  totalGroups: number;
   /** 1-based round number and programme size. */
   roundIndex: number;
   totalRounds: number;
   roundType: RoundType;
+  /** Category of the group on the floor. */
   category: Category;
-  /** 0-based position of the dance inside its round + dances in the round. */
+  /** True when the round mixes Standard and Latin groups. */
+  mixed: boolean;
+  /** Mixed round: first group of its category to take the floor. */
+  opensCategory: boolean;
+  /** 0-based position of the dance in its category + dance count. */
   danceIndex: number;
   dancesInRound: number;
-  /** True when the round alternates with another one (mixed heats). */
-  mixed?: boolean;
   /** French MC announcement spoken before this item (deterministic). */
   announcementText: string;
   announcementPath?: string;
@@ -88,15 +88,15 @@ export const createRoundId = (): string => {
   return `round-${Date.now().toString(36)}-${roundSeq}`;
 };
 
+/** New round: groups of one category (2, or 1 for a Final), every dance. */
 export const createRound = (
   category: Category = "Latin",
   type: RoundType = "Round",
 ): RoundConfig => ({
   id: createRoundId(),
-  category,
   type,
-  heats: type === "Final" ? 1 : DEFAULT_ROUND_HEATS,
-  selectedDances: [...DANCES[category]],
+  groups: type === "Final" ? [category] : [category, category],
+  dances: { Standard: [...DANCES.Standard], Latin: [...DANCES.Latin] },
 });
 
 export const createDefaultConfig = (): PerformanceConfig => ({

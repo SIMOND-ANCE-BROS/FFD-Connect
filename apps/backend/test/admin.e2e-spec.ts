@@ -2,6 +2,7 @@ import { ExecutionContext, INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { UserRole } from "@prisma/client";
 import request from "supertest";
+import { AdminClubsQueryService } from "../src/admin/admin-clubs.query-service";
 import { AppModule } from "../src/app.module";
 import { JwtAuthGuard } from "../src/auth/jwt-auth.guard";
 import { PrismaService } from "../src/prisma/prisma.service";
@@ -15,6 +16,7 @@ const ADMIN_ROUTES: Array<
 > = [
   ["get", "/api/v1/admin/reference-data"],
   ["get", "/api/v1/admin/clubs"],
+  ["post", "/api/v1/admin/clubs"],
   ["get", "/api/v1/admin/clubs/options"],
   ["get", "/api/v1/admin/clubs/00000000-0000-4000-8000-000000000000"],
   ["patch", "/api/v1/admin/clubs/00000000-0000-4000-8000-000000000000"],
@@ -36,9 +38,10 @@ const ADMIN_ROUTES: Array<
 describe("Admin routes (e2e) — role matrix", () => {
   let app: INestApplication;
   let currentRole: UserRole | null = UserRole.ADMIN;
+  let prisma: ReturnType<typeof createMockPrismaService>;
 
   beforeAll(async () => {
-    const prisma = createMockPrismaService();
+    prisma = createMockPrismaService();
     const moduleRef = await applyE2EOverrides(
       Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(PrismaService)
@@ -103,6 +106,52 @@ describe("Admin routes (e2e) — role matrix", () => {
       .get("/api/v1/admin/reference-data")
       .expect(200);
     expect(res.body.roles).toEqual(["LICENSEE", "CLUB", "STAFF", "ADMIN"]);
+  });
+
+  it("admin creates a club (201) and a duplicate name is a 409", async () => {
+    currentRole = UserRole.ADMIN;
+    const detail = {
+      id: "c-new",
+      name: "Club Neuf",
+      registrationMode: "MEMBERS_AUTO_CONFIRM",
+      disabledAt: null,
+      createdAt: new Date(),
+      competitionCount: 0,
+      partnershipCount: 0,
+      soloTeamCount: 0,
+      members: [],
+    };
+    prisma.$transaction.mockImplementation(((fn: (tx: unknown) => unknown) =>
+      fn(prisma)) as never);
+    prisma.club.findFirst.mockResolvedValueOnce(null);
+    prisma.club.create.mockResolvedValue({ id: "c-new" } as never);
+    prisma.adminAuditLog.create.mockResolvedValue({} as never);
+    const detailSpy = jest
+      .spyOn(AdminClubsQueryService.prototype, "detail")
+      .mockResolvedValue(detail as never);
+    const res = await request(server())
+      .post("/api/v1/admin/clubs")
+      .send({ name: "Club Neuf" });
+    expect(res.status).toBe(201);
+    expect(res.body.id).toBe("c-new");
+
+    prisma.club.findFirst.mockResolvedValueOnce({
+      id: "c-new",
+      name: "Club Neuf",
+    } as never);
+    await request(server())
+      .post("/api/v1/admin/clubs")
+      .send({ name: "club neuf" })
+      .expect(409);
+    detailSpy.mockRestore();
+  });
+
+  it("rejects an invalid club body with 400", async () => {
+    currentRole = UserRole.ADMIN;
+    await request(server())
+      .post("/api/v1/admin/clubs")
+      .send({ name: "   " })
+      .expect(400);
   });
 
   it("the former club-accounts route is gone", async () => {

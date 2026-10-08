@@ -3,6 +3,9 @@ import Tts from "../../../../services/TtsService";
 import {
   createRound,
   usePerformanceStore,
+  type Category,
+  type RoundConfig,
+  type RoundType,
   type PerformanceConfig,
 } from "../../../../stores/performance.store";
 import TrackPlayer, { State } from "../../../../utils/TrackPlayerWrapper";
@@ -64,6 +67,7 @@ const t = (id: string, style: string): TrackData => ({
 
 const SAMBA = t("s1", "Samba");
 const JIVE = t("j1", "Jive");
+const RUMBA = t("r1", "Rumba");
 const AMBIANCE = { ...t("a1", "Ambiance"), title: "Ambiance lounge" };
 
 const deps = {
@@ -78,10 +82,19 @@ const deps = {
 
 const store = () => usePerformanceStore.getState();
 
+/** Round of one category (2 groups, 1 for a Final) dancing `dances`. */
+const roundOf = (
+  category: Category,
+  type: RoundType,
+  dances: string[],
+): RoundConfig => {
+  const round = createRound(category, type);
+  return { ...round, dances: { ...round.dances, [category]: dances } };
+};
+
 const setProgram = (patch: Partial<PerformanceConfig> = {}) => {
-  const round = createRound("Latin", "Final");
   store().setConfig({
-    rounds: [{ ...round, selectedDances: ["Samba"] }],
+    rounds: [roundOf("Latin", "Final", ["Samba"])],
     duration: 4,
     pauseDuration: 3,
     pasoClashes: 2,
@@ -118,7 +131,7 @@ describe("competitionController", () => {
     setProgram();
     jest.spyOn(Alert, "alert").mockImplementation(jest.fn());
     (loadCompetitionLibrary as jest.Mock).mockResolvedValue({
-      tracks: [SAMBA, JIVE],
+      tracks: [SAMBA, RUMBA, JIVE],
       ambiance: [AMBIANCE],
     });
     (cacheTrack as jest.Mock).mockImplementation((track: TrackData) =>
@@ -140,12 +153,7 @@ describe("competitionController", () => {
   describe("loading", () => {
     it("downloads every track, the ambiance and every announcement BEFORE leaving loading", async () => {
       setProgram({
-        rounds: [
-          {
-            ...createRound("Latin", "Round"),
-            selectedDances: ["Samba", "Jive"],
-          },
-        ],
+        rounds: [roundOf("Latin", "Round", ["Samba", "Jive"])],
       });
       const pending: (() => void)[] = [];
       (cacheTrack as jest.Mock).mockImplementation(
@@ -225,12 +233,7 @@ describe("competitionController", () => {
 
     it("lists missing dances instead of starting", async () => {
       setProgram({
-        rounds: [
-          {
-            ...createRound("Standard", "Final"),
-            selectedDances: ["Tango", "Quickstep"],
-          },
-        ],
+        rounds: [roundOf("Standard", "Final", ["Tango", "Quickstep"])],
       });
       await expect(engine.startPerformance()).resolves.toBe(false);
       expect(Alert.alert).toHaveBeenCalledWith(
@@ -242,7 +245,7 @@ describe("competitionController", () => {
 
     it("rejects a round without dance", async () => {
       setProgram({
-        rounds: [{ ...createRound("Latin", "Round"), selectedDances: [] }],
+        rounds: [roundOf("Latin", "Round", [])],
       });
       await expect(engine.startPerformance()).resolves.toBe(false);
       expect(Alert.alert).toHaveBeenCalledWith(
@@ -453,12 +456,7 @@ describe("competitionController", () => {
 
     it("runs a whole programme to finished with the closing line", async () => {
       setProgram({
-        rounds: [
-          {
-            ...createRound("Latin", "Final"),
-            selectedDances: ["Samba", "Jive"],
-          },
-        ],
+        rounds: [roundOf("Latin", "Final", ["Samba", "Jive"])],
         duration: 3,
         pauseDuration: 2,
       });
@@ -501,18 +499,90 @@ describe("competitionController", () => {
       expect(Tts.speak).not.toHaveBeenCalled();
     });
 
-    it("skips to the next dance on demand", async () => {
-      await engine.startPerformance();
-      const skipping = engine.nextDance();
-      await advance(3000); // duck + fade ramps
-      await skipping;
-      expect(Tts.speak).toHaveBeenCalledTimes(1);
-      expect(store().status).toBe("playing");
+    describe("⏭ next step", () => {
+      beforeEach(() => {
+        setProgram({
+          rounds: [roundOf("Latin", "Final", ["Samba", "Jive"])],
+          duration: 20,
+          pauseDuration: 10,
+        });
+      });
+
+      it("from the get-ready break: announcement then first dance", async () => {
+        await engine.startPerformance();
+        const step = engine.nextStep();
+        await advance(3000);
+        await step;
+        expect(Tts.speak).toHaveBeenCalledTimes(1);
+        expect(store().status).toBe("playing");
+        expect(store().currentDanceIndex).toBe(0);
+      });
+
+      it("during a dance: fades it out then starts the pause (nothing skipped)", async () => {
+        await engine.startPerformance();
+        const first = engine.nextStep();
+        await advance(3000);
+        await first;
+        const step = engine.nextStep();
+        await advance(500);
+        expect(store().status).toBe("playing"); // still fading
+        await advance(1000);
+        await step;
+        expect(store().status).toBe("break");
+        expect(store().timeRemaining).toBe(10);
+        expect(store().currentDanceIndex).toBe(0);
+        expect(Tts.speak).toHaveBeenCalledTimes(1); // next announcement not yet
+      });
+
+      it("during the pause: announcement then next dance", async () => {
+        await engine.startPerformance();
+        const first = engine.nextStep();
+        await advance(3000);
+        await first;
+        const toBreak = engine.nextStep();
+        await advance(1500);
+        await toBreak;
+        const toDance = engine.nextStep();
+        await advance(3000);
+        await toDance;
+        expect(Tts.speak).toHaveBeenCalledTimes(2);
+        expect(store().status).toBe("playing");
+        expect(store().currentDanceIndex).toBe(1);
+      });
+
+      it("from pause (paused dance): goes to the break", async () => {
+        await engine.startPerformance();
+        const first = engine.nextStep();
+        await advance(3000);
+        await first;
+        await engine.togglePlayPause();
+        expect(store().status).toBe("paused");
+        const step = engine.nextStep();
+        await advance(1500);
+        await step;
+        expect(store().status).toBe("break");
+      });
+
+      it("after the last dance: finishes", async () => {
+        setProgram({
+          rounds: [roundOf("Latin", "Final", ["Samba"])],
+          duration: 20,
+          pauseDuration: 10,
+        });
+        await engine.startPerformance();
+        const first = engine.nextStep();
+        await advance(3000);
+        await first;
+        const step = engine.nextStep();
+        await advance(4000);
+        await step;
+        expect(store().status).toBe("finished");
+      });
     });
 
     it("resets the tempo to 1x before every competition track", async () => {
       await engine.startPerformance();
-      const skipping = engine.nextDance();
+      const skipping = engine.nextStep();
       await advance(3000);
       await skipping;
       const rateOrder = (TrackPlayer.setRate as jest.Mock).mock
@@ -525,91 +595,103 @@ describe("competitionController", () => {
     });
 
     it("ignores ⏭ / ⏮ before the competition started", async () => {
-      await engine.nextDance();
-      await engine.previousDance();
+      await engine.nextStep();
+      engine.previousStep();
+      await advance(2000);
       expect(Tts.speak).not.toHaveBeenCalled();
       expect(store().status).toBe("idle");
     });
 
     it("⏮ does nothing during the initial get-ready break", async () => {
       await engine.startPerformance();
-      await engine.previousDance();
+      engine.previousStep();
+      await advance(2000);
       expect(Tts.speak).not.toHaveBeenCalled();
       expect(store().status).toBe("break");
     });
 
-    describe("⏮ previous", () => {
+    describe("⏮ restart / previous", () => {
       beforeEach(() => {
         setProgram({
-          rounds: [
-            {
-              ...createRound("Latin", "Final"),
-              selectedDances: ["Samba", "Jive"],
-            },
-          ],
+          rounds: [roundOf("Latin", "Final", ["Samba", "Rumba", "Jive"])],
           duration: 20,
           pauseDuration: 2,
         });
       });
 
-      const goTo = async (index: number) => {
-        const skipping = engine.nextDance();
+      /** From the get-ready break, plays dance 0 then dance 1. */
+      const reachSecondDance = async () => {
+        await engine.startPerformance();
+        const a = engine.nextStep();
         await advance(3000);
-        await skipping;
-        expect(store().currentDanceIndex).toBe(index);
+        await a;
+        const toBreak = engine.nextStep();
+        await advance(1500);
+        await toBreak;
+        const b = engine.nextStep();
+        await advance(3000);
+        await b;
+        expect(store().currentDanceIndex).toBe(1);
+      };
+      const lastSpoken = () => {
+        const spoken = (Tts.speak as jest.Mock).mock.calls.map((c) => c[0]);
+        return spoken[spoken.length - 1] as string;
       };
 
-      it("restarts the current dance once it is under way", async () => {
-        await engine.startPerformance();
-        await goTo(0);
-        await goTo(1);
+      it("one tap restarts the current dance from the top, announcement included", async () => {
+        await reachSecondDance();
         await advance(8000);
-        const back = engine.previousDance();
-        await advance(3000);
-        await back;
+        const before = (Tts.speak as jest.Mock).mock.calls.length;
+        engine.previousStep();
+        await advance(engine.DOUBLE_TAP_MS + 3000);
         expect(store().currentDanceIndex).toBe(1);
         expect(store().status).toBe("playing");
-        // Restarted from the top (a few seconds already counted since).
         expect(store().timeRemaining).toBeGreaterThan(15);
+        expect(Tts.speak).toHaveBeenCalledTimes(before + 1);
+        expect(lastSpoken()).toMatch(/Rumba/);
       });
 
-      it("goes back one dance at the very start of a dance", async () => {
-        await engine.startPerformance();
-        await goTo(0);
-        await goTo(1);
-        const back = engine.previousDance();
-        await advance(3000);
-        await back;
+      it("a double tap goes back to the previous dance", async () => {
+        await reachSecondDance();
+        engine.previousStep();
+        await advance(200);
+        engine.previousStep();
+        await advance(engine.DOUBLE_TAP_MS + 3000);
         expect(store().currentDanceIndex).toBe(0);
-        const spoken = (Tts.speak as jest.Mock).mock.calls.map((c) => c[0]);
-        expect(spoken[spoken.length - 1]).toMatch(/Samba/);
+        expect(lastSpoken()).toMatch(/Samba/);
       });
 
-      it("replays the dance that just ended during the break", async () => {
-        await engine.startPerformance();
-        await goTo(0);
-        for (let i = 0; i < 30 && store().status !== "break"; i++) {
-          await advance(1000); // dance over → break
-        }
+      it("one tap during the break replays the dance that just ended", async () => {
+        await reachSecondDance();
+        const toBreak = engine.nextStep();
+        await advance(1500);
+        await toBreak;
         expect(store().status).toBe("break");
-        const back = engine.previousDance();
-        await advance(3000);
-        await back;
-        expect(store().currentDanceIndex).toBe(0);
+        engine.previousStep();
+        await advance(engine.DOUBLE_TAP_MS + 3000);
+        expect(store().currentDanceIndex).toBe(1);
         expect(store().status).toBe("playing");
       });
 
       it("works from pause and resumes playing", async () => {
-        await engine.startPerformance();
-        await goTo(0);
-        await goTo(1);
+        await reachSecondDance();
         await engine.togglePlayPause();
         expect(store().status).toBe("paused");
-        const back = engine.previousDance();
-        await advance(3000);
-        await back;
+        engine.previousStep();
+        engine.previousStep();
+        await advance(engine.DOUBLE_TAP_MS + 3000);
         expect(store().currentDanceIndex).toBe(0);
         expect(store().status).toBe("playing");
+      });
+
+      it("a stop cancels a pending ⏮", async () => {
+        await reachSecondDance();
+        engine.previousStep();
+        await engine.stopPerformance();
+        const calls = (Tts.speak as jest.Mock).mock.calls.length;
+        await advance(engine.DOUBLE_TAP_MS + 3000);
+        expect(Tts.speak).toHaveBeenCalledTimes(calls);
+        expect(store().status).toBe("idle");
       });
     });
 

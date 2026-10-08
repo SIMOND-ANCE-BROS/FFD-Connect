@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -20,6 +21,8 @@ import {
   notificationPreferenceExportSelect,
   trackCorrectionExportSelect,
 } from "../utils/prisma-selects";
+import { WdsfService } from "../wdsf/wdsf.service";
+import { wdsfNameMatches } from "../wdsf/wdsf.utils";
 import { AccountDeletionService } from "./account-deletion.service";
 
 /** Champs de base récupérés pour tout utilisateur. */
@@ -105,6 +108,7 @@ export class UsersService {
     private accountDeletion: AccountDeletionService,
     private licenseQrService: LicenseQrService,
     private appleWalletPassGenerator: AppleWalletPassGenerator,
+    private wdsfService: WdsfService,
   ) {}
 
   /**
@@ -322,6 +326,8 @@ export class UsersService {
       throw new Error("Invalid wdsf.expiresOn date");
     }
 
+    await this.assertWdsfNameMatchesAccount(userId, data.min.trim());
+
     await this.prisma.user.update({
       where: { id: userId },
       data: {
@@ -333,6 +339,33 @@ export class UsersService {
       },
     });
     return this.findOne(userId);
+  }
+
+  /**
+   * Refuse de lier un MIN WDSF dont le titulaire ne porte pas le nom du compte
+   * (celui de la licence FFD). Le MIN est relu côté serveur auprès de la WDSF :
+   * on ne fait jamais confiance au nom envoyé par le client.
+   */
+  private async assertWdsfNameMatchesAccount(
+    userId: string,
+    min: string,
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true },
+    });
+    if (!user) {
+      throw new NotFoundException("Utilisateur non trouvé");
+    }
+    const athlete = await this.wdsfService.getAthleteByMin(min);
+    const wdsfName = `${athlete.firstName} ${athlete.lastName}`;
+    if (!wdsfNameMatches(wdsfName, user.firstName, user.lastName)) {
+      throw new BadRequestException({
+        message:
+          "Cette licence WDSF n'est pas à votre nom : le nom et le prénom doivent correspondre à ceux de votre licence FFD.",
+        code: "WDSF_NAME_MISMATCH",
+      });
+    }
   }
 
   /**

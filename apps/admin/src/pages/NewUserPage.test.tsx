@@ -152,4 +152,57 @@ describe('NewUserPage', () => {
       await screen.findByText('Serveur injoignable, réessayez dans un instant.'),
     ).toBeInTheDocument();
   });
+
+  it('offers every role but the main one and Admin as extra roles', async () => {
+    renderPage();
+    await fillIdentity();
+    expect(screen.getByRole('checkbox', { name: 'Club' })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'Staff' })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: 'Licencié' })).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: 'Admin' })).toBeNull();
+  });
+
+  it('drops a role from the extras when it becomes the main role', async () => {
+    renderPage();
+    await fillIdentity();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Staff' }));
+    expect(screen.getByRole('checkbox', { name: 'Staff' })).toBeChecked();
+    await userEvent.click(screen.getByRole('radio', { name: 'Staff' }));
+    expect(screen.queryByRole('checkbox', { name: 'Staff' })).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Licencié' })).not.toBeChecked();
+    await userEvent.click(screen.getByRole('radio', { name: 'Licencié' }));
+    expect(screen.getByRole('checkbox', { name: 'Staff' })).not.toBeChecked();
+  });
+
+  it('sends the extra roles in the body', async () => {
+    const create = vi.spyOn(sdk, 'adminControllerCreateUser').mockResolvedValue({
+      data: { userId: 'u-new', clubId: null, invitationSent: true },
+      error: undefined,
+    } as never);
+    renderPage();
+    await fillIdentity();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Staff' }));
+    await submit();
+    expect(create).toHaveBeenCalledWith({
+      body: {
+        email: 'jeanne@x.fr',
+        firstName: 'Jeanne',
+        lastName: 'Martin',
+        role: 'LICENSEE',
+        extraRoles: ['STAFF'],
+      },
+    });
+  });
+
+  it('requires a club before an extra Club role is sent', async () => {
+    const create = vi.spyOn(sdk, 'adminControllerCreateUser');
+    renderPage();
+    await fillIdentity();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Club' }));
+    await submit();
+    expect(
+      await screen.findByText('Un rôle Club supplémentaire nécessite un club'),
+    ).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+  });
 });

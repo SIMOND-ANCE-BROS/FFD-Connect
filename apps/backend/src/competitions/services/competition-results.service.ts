@@ -9,7 +9,13 @@ import * as crypto from "crypto";
 import { LicenseQrService } from "../../licenses/qr/license-qr.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
-import { userNameSelect } from "../../utils/prisma-selects";
+import {
+  idOnlySelect,
+  userNameSelect,
+  volunteerTokenAuthSelect,
+  volunteerTokenIssuedSelect,
+} from "../../utils/prisma-selects";
+import { hashToken } from "../../utils/token-hash.util";
 import { CompetitionCacheService } from "./competition-cache.service";
 
 @Injectable()
@@ -239,6 +245,7 @@ export class CompetitionResultsService {
   async generateVolunteerToken(competitionId: string, name?: string) {
     const competition = await this.prisma.competition.findUnique({
       where: { id: competitionId },
+      select: idOnlySelect,
     });
     if (!competition) {
       throw new NotFoundException("Compétition non trouvée");
@@ -248,17 +255,21 @@ export class CompetitionResultsService {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24); // Token valid for 24h
 
+    // Only the SHA-256 hash is persisted; the plain token is returned once,
+    // here, and cannot be read back afterwards.
     const volunteerToken = await this.prisma.volunteerToken.create({
       data: {
-        token,
+        token: hashToken(token),
         competitionId,
         expiresAt,
         name: name ?? "Bénévole",
       },
+      select: volunteerTokenIssuedSelect,
     });
 
     return {
       ...volunteerToken,
+      token,
       accessUrl: `https://ffd-connect.fr/volunteer/checkin?token=${token}&id=${competitionId}`,
     };
   }
@@ -269,7 +280,8 @@ export class CompetitionResultsService {
     qrData: string,
   ) {
     const volunteerToken = await this.prisma.volunteerToken.findUnique({
-      where: { token },
+      where: { token: hashToken(token) },
+      select: volunteerTokenAuthSelect,
     });
 
     if (

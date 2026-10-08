@@ -68,12 +68,10 @@ export const usePerformanceEngine = () => {
     stopPerformance: () => {
       engine.stopPerformance().catch(() => {});
     },
-    nextDance: () => {
-      engine.nextDance().catch(() => {});
+    nextStep: () => {
+      engine.nextStep().catch(() => {});
     },
-    previousDance: () => {
-      engine.previousDance().catch(() => {});
-    },
+    previousStep: engine.previousStep,
     togglePlayPause: () => {
       engine.togglePlayPause().catch(() => {});
     },

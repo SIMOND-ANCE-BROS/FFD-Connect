@@ -132,6 +132,7 @@ model PasswordResetToken {
 
 model VolunteerToken {
   id            String      @id @default(uuid())
+  /// SHA-256 hex of the volunteer link token (the plain token is never stored).
   token         String      @unique
   competitionId String
   competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)

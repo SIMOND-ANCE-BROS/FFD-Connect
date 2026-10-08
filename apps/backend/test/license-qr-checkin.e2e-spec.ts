@@ -12,6 +12,7 @@ import { AppModule } from "./../src/app.module";
 import { LicenseQrService } from "./../src/licenses/qr/license-qr.service";
 import { PrismaService } from "./../src/prisma/prisma.service";
 import { RedisService } from "./../src/redis/redis.service";
+import { hashToken } from "./../src/utils/token-hash.util";
 import { applyE2EOverrides, configureTestApp } from "./test-app.factory";
 
 /**
@@ -126,7 +127,7 @@ describe("Signed license QR check-in (e2e)", () => {
     });
     await prisma.volunteerToken.create({
       data: {
-        token: "qr-volunteer-token",
+        token: hashToken("qr-volunteer-token"),
         competitionId,
         expiresAt: new Date(Date.now() + 3_600_000),
         name: "Bénévole",

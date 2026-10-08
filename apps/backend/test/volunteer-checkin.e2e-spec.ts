@@ -10,6 +10,7 @@ import request from "supertest";
 import { AppModule } from "./../src/app.module";
 import { PrismaService } from "./../src/prisma/prisma.service";
 import { RedisService } from "./../src/redis/redis.service";
+import { hashToken } from "./../src/utils/token-hash.util";
 import { applyE2EOverrides, configureTestApp } from "./test-app.factory";
 
 describe("Volunteer Check-in (e2e)", () => {
@@ -281,7 +282,7 @@ describe("Volunteer Check-in (e2e)", () => {
       });
       await prisma.volunteerToken.create({
         data: {
-          token: "other-comp-token",
+          token: hashToken("other-comp-token"),
           competitionId: otherComp.id,
           expiresAt: new Date(Date.now() + 3600000),
           name: "Bénévole",
@@ -302,7 +303,7 @@ describe("Volunteer Check-in (e2e)", () => {
       // 1. Generate token
       await prisma.volunteerToken.create({
         data: {
-          token: "valid-token",
+          token: hashToken("valid-token"),
           competitionId,
           expiresAt: new Date(Date.now() + 3600000),
           name: "Bénévole",
@@ -331,6 +332,49 @@ describe("Volunteer Check-in (e2e)", () => {
       expect(reg?.checkedIn).toBe(true);
     });
 
+    it("stores only the hash of a generated token, which then works end to end", async () => {
+      const generated = await request(
+        app.getHttpServer() as Parameters<typeof request>[0],
+      )
+        .post(`/api/v1/competitions/${competitionId}/volunteer/token`)
+        .set("Authorization", `Bearer ${organizerToken}`)
+        .send({ name: "Bénévole 1" })
+        .expect(201);
+      const plainToken = generated.body.token as string;
+
+      const stored = await prisma.volunteerToken.findMany({
+        select: { token: true },
+        take: 10,
+      });
+      expect(stored).toEqual([{ token: hashToken(plainToken) }]);
+      expect(stored[0].token).not.toBe(plainToken);
+
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post("/api/v1/competitions/checkin/volunteer")
+        .send({ competitionId, token: plainToken, qrData: participantId })
+        .expect(201);
+    });
+
+    it("should NOT accept the stored hash as a token", async () => {
+      await prisma.volunteerToken.create({
+        data: {
+          token: hashToken("valid-token"),
+          competitionId,
+          expiresAt: new Date(Date.now() + 3600000),
+          name: "Bénévole",
+        },
+      });
+
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post("/api/v1/competitions/checkin/volunteer")
+        .send({
+          competitionId,
+          token: hashToken("valid-token"),
+          qrData: participantId,
+        })
+        .expect(401);
+    });
+
     it("should NOT allow check-in with an invalid token", async () => {
       await request(app.getHttpServer() as Parameters<typeof request>[0])
         .post("/api/v1/competitions/checkin/volunteer")
@@ -345,7 +389,7 @@ describe("Volunteer Check-in (e2e)", () => {
     it("should NOT allow check-in with an expired token", async () => {
       await prisma.volunteerToken.create({
         data: {
-          token: "expired-token",
+          token: hashToken("expired-token"),
           competitionId,
           expiresAt: new Date(Date.now() - 3600000),
           name: "Bénévole",

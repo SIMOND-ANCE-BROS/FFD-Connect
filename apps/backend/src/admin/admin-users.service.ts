@@ -11,7 +11,7 @@ import { normalizeExtraRoles, rolesOf } from "../auth/roles";
 import { PrismaService } from "../prisma/prisma.service";
 import { AccountDeletionService } from "../users/account-deletion.service";
 import {
-  adminClubOptionSelect,
+  adminClubAttachSelect,
   adminUserDeletionTargetSelect,
   adminUserEditableSelect,
   adminUserStatusSelect,
@@ -65,9 +65,12 @@ export class AdminUsersService {
         } else {
           const club = await tx.club.findUnique({
             where: { id: dto.clubId },
-            select: adminClubOptionSelect,
+            select: adminClubAttachSelect,
           });
           if (!club) throw new BadRequestException("Club introuvable");
+          if (club.disabledAt && dto.clubId !== current.clubId) {
+            throw new BadRequestException("Ce club est désactivé");
+          }
           requested.clubName = club.name;
         }
       }

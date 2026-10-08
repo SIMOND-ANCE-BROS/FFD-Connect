@@ -19,7 +19,7 @@ jest.mock("react-native-safe-area-context", () => ({
 jest.mock("lucide-react-native", () => ({
   Award: () => null,
   CreditCard: () => null,
-  ScanLine: () => null,
+  IdCard: () => null,
 }));
 jest.mock("../../../license/components/LicenseExpiryBanner", () => ({
   LicenseExpiryBanner: () => null,
@@ -59,24 +59,26 @@ describe("ProfileScreen", () => {
     mockUseTheme.mockReturnValue({ theme } as unknown as ThemeContextType);
   });
 
-  it("shows the empty state + scan CTA when there is no license", async () => {
+  it("shows the empty state + add-license CTA when there is no license", async () => {
     mockGet.mockImplementation((url: string) =>
       url === "/licenses/my"
         ? Promise.resolve({ data: null })
         : Promise.resolve({ data: { results: [] } }),
     );
 
-    const { findByText, getByText } = await render(
+    const { findByText, getByText, queryByText } = await render(
       <ProfileScreen navigation={mockNavigation} route={route} />,
     );
 
     expect(await findByText("Aucune licence associée")).toBeTruthy();
     expect(getByText("Aucun résultat pour le moment")).toBeTruthy();
 
-    await fireEvent.press(getByText("Scanner ma licence"));
-    expect(
-      (mockNavigation as unknown as { navigate: jest.Mock }).navigate,
-    ).toHaveBeenCalledWith("Scanner");
+    await fireEvent.press(getByText("Ajouter ma licence"));
+    const { navigate } = mockNavigation as unknown as { navigate: jest.Mock };
+    expect(navigate).toHaveBeenCalledWith("LicenseRenewal");
+    // The check-in scanner is organizer-only (403 for licensees since #174).
+    expect(navigate).not.toHaveBeenCalledWith("Scanner");
+    expect(queryByText("Scanner ma licence")).toBeNull();
   });
 
   it("renders the license when the user has one", async () => {

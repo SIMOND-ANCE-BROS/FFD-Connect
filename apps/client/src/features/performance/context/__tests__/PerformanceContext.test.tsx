@@ -12,7 +12,8 @@ jest.mock("../../engine/competitionController", () => ({
   setEngineDeps: jest.fn(),
   startPerformance: jest.fn(() => Promise.resolve(true)),
   stopPerformance: jest.fn(() => Promise.resolve()),
-  nextDance: jest.fn(() => Promise.resolve()),
+  nextStep: jest.fn(() => Promise.resolve()),
+  previousStep: jest.fn(),
   togglePlayPause: jest.fn(() => Promise.resolve()),
   fadeNow: jest.fn(),
   generatePlaylist: jest.fn(),
@@ -69,7 +70,7 @@ describe("usePerformanceEngine (binding)", () => {
     });
     expect(result.current.status).toBe("loading");
     expect(result.current.loadingProgress).toEqual({ done: 1, total: 4 });
-    expect(result.current.config.rounds[0].heats).toBe(2);
+    expect(result.current.config.rounds[0].groups).toHaveLength(2);
     await act(() => {
       usePerformanceStore.getState().setStatus("idle");
       usePerformanceStore.getState().setLoadingProgress(null);
@@ -80,12 +81,14 @@ describe("usePerformanceEngine (binding)", () => {
     const { result } = await renderHook(() => usePerformanceEngine());
     await expect(result.current.startPerformance()).resolves.toBe(true);
     result.current.togglePlayPause();
-    result.current.nextDance();
+    result.current.nextStep();
+    result.current.previousStep();
     result.current.stopPerformance();
     result.current.fadeNow();
     result.current.generatePlaylist();
     expect(engine.togglePlayPause).toHaveBeenCalled();
-    expect(engine.nextDance).toHaveBeenCalled();
+    expect(engine.nextStep).toHaveBeenCalled();
+    expect(engine.previousStep).toHaveBeenCalled();
     expect(engine.stopPerformance).toHaveBeenCalled();
     expect(engine.fadeNow).toHaveBeenCalled();
     expect(engine.generatePlaylist).toHaveBeenCalled();
