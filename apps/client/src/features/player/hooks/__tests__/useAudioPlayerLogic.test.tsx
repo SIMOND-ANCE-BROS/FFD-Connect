@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react-native";
 import { mockNavigation } from "../../../../__tests__/mocks/mockNavigation";
 import { ContextRepeatMode, usePlayer } from "../../context/PlayerContext";
+import { usePlayerStore } from "../../../../stores/player.store";
 import { useAudioPlayerLogic } from "../useAudioPlayerLogic";
 
 jest.mock("../../context/PlayerContext");
@@ -25,6 +26,7 @@ jest.mock("@react-navigation/native", () => ({
 describe("useAudioPlayerLogic", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    usePlayerStore.getState()._resetForTests();
     const TrackPlayer = require("../../../../utils/TrackPlayerWrapper").default;
     TrackPlayer.setRate.mockResolvedValue?.(undefined);
     TrackPlayer.seekTo.mockResolvedValue?.(undefined);
@@ -162,7 +164,7 @@ describe("useAudioPlayerLogic", () => {
     const { result } = await renderHook(() => useAudioPlayerLogic());
 
     expect(result.current.state.currentTrack.title).toBe("No Track");
-    expect(result.current.state.bpm).toBe(123);
+    expect(result.current.state.bpm).toBe(120);
     expect(result.current.state.baseMpm).toBe(120);
   });
 
@@ -512,7 +514,8 @@ describe("useAudioPlayerLogic", () => {
       await result.current.actions.changeBpm(140);
     });
 
-    expect(result.current.state.bpm).toBe(140);
+    // Nothing applied → the display stays on the real tempo.
+    expect(result.current.state.bpm).toBe(120);
     const TrackPlayer = require("../../../../utils/TrackPlayerWrapper").default;
     expect(TrackPlayer.setRate).not.toHaveBeenCalled();
   });
@@ -609,5 +612,122 @@ describe("useAudioPlayerLogic", () => {
       expect.objectContaining({ id: "2" }),
       expect.arrayContaining([expect.objectContaining({ id: "2" })]),
     );
+  });
+
+  describe("tempo lock", () => {
+    const trackA = { id: "a", title: "A", artist: "X", url: "", baseBpm: 30 };
+    const trackB = { id: "b", title: "B", artist: "X", url: "", baseBpm: 28 };
+    const playerWith = (currentTrack: typeof trackA) => ({
+      currentTrack,
+      isPlaying: true,
+      togglePlayback: jest.fn(),
+      isPlayerReady: true,
+      playTrack: jest.fn(),
+      resetPlayer: jest.fn(),
+      isLiked: jest.fn(() => false),
+      toggleLike: jest.fn(),
+      repeatMode: ContextRepeatMode.Off,
+      toggleRepeat: jest.fn(),
+      isShuffle: false,
+      toggleShuffle: jest.fn(),
+      queueTracks: [trackA, trackB],
+      setQueueTracks: jest.fn(),
+    });
+    const TrackPlayer = () =>
+      require("../../../../utils/TrackPlayerWrapper").default as {
+        setRate: jest.Mock;
+      };
+
+    it("plays the next track at the locked MPM, slider included", async () => {
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(trackA));
+      const { result, rerender } = await renderHook(() =>
+        useAudioPlayerLogic(),
+      );
+      await act(async () => {
+        await result.current.actions.changeBpm(27);
+      });
+      await act(async () => {
+        result.current.actions.toggleTempoLock();
+      });
+
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(trackB));
+      await act(async () => {
+        await rerender({});
+      });
+
+      expect(result.current.state.isTempoLocked).toBe(true);
+      expect(result.current.state.bpm).toBe(27);
+      expect(result.current.state.bpmDiff).toBe(-1);
+      expect(TrackPlayer().setRate).toHaveBeenLastCalledWith(27 / 28);
+    });
+
+    it("clamps the locked MPM to the new track's ±50% range", async () => {
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(trackA));
+      const { result, rerender } = await renderHook(() =>
+        useAudioPlayerLogic(),
+      );
+      await act(async () => {
+        await result.current.actions.changeBpm(44);
+      });
+      await act(async () => {
+        result.current.actions.toggleTempoLock();
+      });
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(trackB));
+      await act(async () => {
+        await rerender({});
+      });
+      expect(result.current.state.bpm).toBe(42);
+    });
+
+    it("without the lock, a new track starts at its original tempo", async () => {
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(trackA));
+      const { result, rerender } = await renderHook(() =>
+        useAudioPlayerLogic(),
+      );
+      await act(async () => {
+        await result.current.actions.changeBpm(25);
+      });
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(trackB));
+      await act(async () => {
+        await rerender({});
+      });
+      expect(result.current.state.bpm).toBe(28);
+      expect(TrackPlayer().setRate).toHaveBeenLastCalledWith(1);
+    });
+
+    it("keeps the tempo and the lock when the screen is reopened", async () => {
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(trackA));
+      const first = await renderHook(() => useAudioPlayerLogic());
+      await act(async () => {
+        await first.result.current.actions.changeBpm(33);
+      });
+      await act(async () => {
+        first.result.current.actions.toggleTempoLock();
+      });
+      await first.unmount();
+      TrackPlayer().setRate.mockClear();
+
+      const { result } = await renderHook(() => useAudioPlayerLogic());
+      expect(result.current.state.bpm).toBe(33);
+      expect(result.current.state.isTempoLocked).toBe(true);
+      expect(TrackPlayer().setRate).not.toHaveBeenCalled();
+    });
+
+    it("toggling the lock never changes the tempo", async () => {
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(trackA));
+      const { result } = await renderHook(() => useAudioPlayerLogic());
+      await act(async () => {
+        await result.current.actions.changeBpm(32);
+      });
+      TrackPlayer().setRate.mockClear();
+      await act(async () => {
+        result.current.actions.toggleTempoLock();
+      });
+      await act(async () => {
+        result.current.actions.toggleTempoLock();
+      });
+      expect(result.current.state.bpm).toBe(32);
+      expect(TrackPlayer().setRate).not.toHaveBeenCalled();
+    });
   });
 });

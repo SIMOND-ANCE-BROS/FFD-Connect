@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useErrorHandler } from "../../../hooks/useErrorHandler";
 import TrackPlayer, { useProgress } from "../../../utils/TrackPlayerWrapper";
 import { usePerformanceStore } from "../../../stores/performance.store";
@@ -68,16 +68,14 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
 
   const [isQueueVisible, setIsQueueVisible] = useState(false);
 
-  // BPM State
-  const [bpm, setBpm] = useState(123);
+  // BPM State — lives in the player store so it survives closing/reopening
+  // this screen. Tempo lock: the locked MPM itself is kept across track
+  // changes — each new track plays at that MPM (clamped to its ±50% range).
   const [isBpmVisible, setIsBpmVisible] = useState(false);
-  // Tempo lock: when on, the tempo OFFSET (e.g. -5 MPM) is kept across track
-  // changes — each new track plays at its own base tempo plus that offset,
-  // NOT at a fixed absolute MPM.
-  const [isTempoLocked, setIsTempoLocked] = useState(false);
-  // Last user-set offset (bpm - baseMpm), captured against the track it was set
-  // on. Read (not a dep) in the track-change effect so it re-applies on lock.
-  const bpmDiffRef = useRef(0);
+  const isTempoLocked = usePlayerStore((s) => s.tempoLocked);
+  const tempo = usePlayerStore((s) => s.tempo);
+  const setTempo = usePlayerStore((s) => s.setTempo);
+  const setTempoLocked = usePlayerStore((s) => s.setTempoLocked);
   const setPlaybackRate = usePlayerStore((s) => s.setPlaybackRate);
 
   useEffect(() => {
@@ -88,27 +86,41 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
     setQueueTracks([currentTrack]);
   }, [currentTrack, queueTracks.length, setQueueTracks]);
 
+  // Applies the tempo once per new track (not on remount, not on lock toggle).
+  const currentTrackId = currentTrack?.id;
+  const currentTrackBase = currentTrack?.baseBpm;
   useEffect(() => {
-    if (!currentTrack) return;
-    const newBase = Math.round(currentTrack.baseBpm || 123);
-    // A competition plays on the same player at the original tempo: never
-    // carry the library's locked offset onto its tracks.
+    if (!currentTrackId || !isPlayerReady) return;
+    const st = usePlayerStore.getState();
+    if (st.tempo?.trackId === currentTrackId) return;
+    const newBase =
+      currentTrackBase && currentTrackBase > 0
+        ? Math.round(currentTrackBase)
+        : 123;
+    // A competition plays on the same player at the original tempo (it resets
+    // the rate itself): never carry the library tempo onto its tracks.
     const competition = usePerformanceStore.getState().status;
-    const competitionRunning =
-      competition !== "idle" && competition !== "finished";
-    if (isTempoLocked && newBase > 0 && !competitionRunning) {
-      // Preserve the OFFSET: new MPM = this track's base + locked diff, clamped
-      // to the ±50% range, then re-apply the matching playback rate.
-      const target = Math.max(
-        Math.round(newBase * 0.5),
-        Math.min(newBase + bpmDiffRef.current, Math.round(newBase * 1.5)),
-      );
-      setBpm(target);
-      if (isPlayerReady) void setPlaybackRate(target / newBase);
-    } else {
-      setBpm(newBase);
+    if (competition !== "idle" && competition !== "finished") {
+      setTempo(currentTrackId, newBase);
+      return;
     }
-  }, [currentTrack, isTempoLocked, isPlayerReady, setPlaybackRate]);
+    const target =
+      st.tempoLocked && st.lockedMpm !== null
+        ? Math.max(
+            Math.round(newBase * 0.5),
+            Math.min(st.lockedMpm, Math.round(newBase * 1.5)),
+          )
+        : newBase;
+    setTempo(currentTrackId, target);
+    // Always set: the player re-applies its last rate to every new track.
+    void setPlaybackRate(target / newBase);
+  }, [
+    currentTrackId,
+    currentTrackBase,
+    isPlayerReady,
+    setPlaybackRate,
+    setTempo,
+  ]);
 
   const displayTrack: TrackData = currentTrack ?? {
     id: "empty",
@@ -120,6 +132,7 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
   };
 
   const baseMpm = displayTrack.baseBpm ? Math.round(displayTrack.baseBpm) : 30;
+  const bpm = tempo?.trackId === displayTrack.id ? tempo.mpm : baseMpm;
   const minMpm = baseMpm * 0.5;
   const maxMpm = baseMpm * 1.5;
   const bpmDiff = bpm - baseMpm;
@@ -255,13 +268,12 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
   };
 
   const changeBpm = async (value: number) => {
-    setBpm(value);
-    // Remember the offset from THIS track's base so the lock can re-apply it
-    // (e.g. -5) to other tracks.
-    bpmDiffRef.current = value - baseMpm;
-    if (!isPlayerReady) {
+    if (!isPlayerReady || !currentTrack) {
       return;
     }
+    setTempo(currentTrack.id, value);
+    // A locked MPM follows the last value set by hand.
+    if (isTempoLocked) setTempoLocked(true, value);
     const rate = value / baseMpm;
     await setPlaybackRate(rate);
   };
@@ -313,7 +325,8 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
       handlePrev,
       changeBpm,
       resetBpm,
-      toggleTempoLock: () => setIsTempoLocked((v) => !v),
+      // Locking captures the MPM on screen.
+      toggleTempoLock: () => setTempoLocked(!isTempoLocked, bpm),
       setIsBpmVisible,
       seekTo,
       toggleLike: () => toggleLike(displayTrack.id),
