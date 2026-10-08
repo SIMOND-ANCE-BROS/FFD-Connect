@@ -31,8 +31,8 @@ describe("CreateAdminClubDto", () => {
   });
 
   it("rejects an unknown registration mode", async () => {
-    expect(await errorsOf({ name: "A", registrationMode: "NOPE" })).toEqual([
-      "registrationMode",
-    ]);
+    expect(
+      await errorsOf({ name: "Club A", registrationMode: "NOPE" }),
+    ).toEqual(["registrationMode"]);
   });
 });
