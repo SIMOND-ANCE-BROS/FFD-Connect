@@ -136,7 +136,9 @@ export const PerformancePlayerScreen = () => {
               {hasCurrentItem && currentItem
                 ? currentItem.roundType === "Final"
                   ? "FINALE"
-                  : `PASSAGE ${currentItem.heatIndex}/${currentItem.totalHeats}`
+                  : currentItem.totalHeats <= 1
+                    ? "PASSAGE UNIQUE"
+                    : `PASSAGE ${currentItem.heatIndex}/${currentItem.totalHeats}`
                 : "PRÉPARATION"}
             </AppText>
           </View>

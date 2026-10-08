@@ -7,6 +7,7 @@ import type { TrackData } from "../../player/context/PlayerContext";
 import {
   createRound,
   DANCES,
+  DEFAULT_ROUND_HEATS,
   MAX_ROUND_HEATS,
   MIN_ROUND_HEATS,
   type Category,
@@ -150,7 +151,8 @@ export const setRoundType = (id: string, type: RoundConfig["type"]) =>
   patchRound(id, (r) => ({
     ...r,
     type,
-    heats: type === "Final" ? 1 : Math.max(MIN_ROUND_HEATS, r.heats),
+    heats:
+      type === "Final" ? 1 : r.type === "Final" ? DEFAULT_ROUND_HEATS : r.heats,
   }));
 
 export const stepRoundHeats = (id: string, delta: number) =>
@@ -404,7 +406,10 @@ const choose = (item: AnnouncementItem, templates: string[]): string => {
  */
 export const getAnnouncementText = (item: AnnouncementItem): string => {
   const a = articles(item.style);
-  const isFinal = item.roundType === "Final" || item.totalHeats <= 1;
+  const isFinal = item.roundType === "Final";
+  // One group per dance: no « premier passage » to announce.
+  const single = item.totalHeats <= 1;
+  const firstHeat = single ? " !" : ", premier passage !";
   const firstOfRound = item.danceIndex === 0 && item.heatIndex === 1;
   const lastDance =
     item.danceIndex === item.dancesInRound - 1 && item.dancesInRound > 1;
@@ -423,14 +428,14 @@ export const getAnnouncementText = (item: AnnouncementItem): string => {
       // Mixed block: name the category, the floor alternates between rounds.
       const cat = item.category === "Latin" ? "en latines" : "en standard";
       return choose(item, [
-        `Mesdames et messieurs, ${roundOrd} tour ${cat}… on commence avec ${a.the}, premier passage !`,
-        `Place au ${roundOrd} tour ${cat} ! ${capitalize(a.name)}, premier passage !`,
+        `Mesdames et messieurs, ${roundOrd} tour ${cat}… on commence avec ${a.the}${firstHeat}`,
+        `Place au ${roundOrd} tour ${cat} ! ${capitalize(a.name)}${firstHeat}`,
       ]);
     }
     return choose(item, [
-      `Mesdames et messieurs, place au ${roundOrd} tour… on commence avec ${a.the}, premier passage !`,
-      `Bienvenue pour le ${roundOrd} tour ! On ouvre avec ${a.the}… premier passage !`,
-      `Mesdames et messieurs, ${roundOrd} tour ! ${capitalize(a.name)}, premier passage, à vous !`,
+      `Mesdames et messieurs, place au ${roundOrd} tour… on commence avec ${a.the}${firstHeat}`,
+      `Bienvenue pour le ${roundOrd} tour ! On ouvre avec ${a.the}${firstHeat}`,
+      `Mesdames et messieurs, ${roundOrd} tour ! ${capitalize(a.name)}, à vous !`,
     ]);
   }
 
@@ -465,14 +470,14 @@ export const getAnnouncementText = (item: AnnouncementItem): string => {
   }
   if (lastDance) {
     return choose(item, [
-      `Dernière danse du tour : ${a.the}… premier passage !`,
-      `Et pour finir ce tour… ${a.the}, premier passage !`,
+      `Dernière danse du tour : ${a.the}${firstHeat}`,
+      `Et pour finir ce tour… ${a.the}${firstHeat}`,
     ]);
   }
   return choose(item, [
-    `On enchaîne avec ${a.the}… premier passage !`,
-    `Place ${a.to}, premier passage !`,
-    `Et maintenant, ${a.the} ! Premier passage, à vous !`,
+    `On enchaîne avec ${a.the}${firstHeat}`,
+    `Place ${a.to}${firstHeat}`,
+    `Et maintenant, ${a.the} ! ${single ? "À vous !" : "Premier passage, à vous !"}`,
   ]);
 };
 
@@ -487,7 +492,9 @@ export const describeItem = (item: PlaylistItem): string => {
     danceLabel(item.style),
     item.roundType === "Final"
       ? "Finale"
-      : `Passage ${item.heatIndex}/${item.totalHeats}`,
+      : item.totalHeats <= 1
+        ? "Passage unique"
+        : `Passage ${item.heatIndex}/${item.totalHeats}`,
   ];
   return parts.join(" · ");
 };

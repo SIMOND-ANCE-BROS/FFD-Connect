@@ -95,19 +95,55 @@ describe("heats rules", () => {
     });
   });
 
-  it("clamps a Passage to at least 2 heats and a Final to exactly 1", () => {
-    expect(clampHeats({ type: "Round" }, 1)).toBe(2);
-    expect(clampHeats({ type: "Round" }, 0)).toBe(2);
+  it("clamps a Passage to at least 1 heat and a Final to exactly 1", () => {
+    expect(clampHeats({ type: "Round" }, 1)).toBe(1);
+    expect(clampHeats({ type: "Round" }, 0)).toBe(1);
     expect(clampHeats({ type: "Round" }, 4)).toBe(4);
     expect(clampHeats({ type: "Round" }, 99)).toBe(10);
     expect(clampHeats({ type: "Final" }, 3)).toBe(1);
   });
 
-  it("stepper never goes below 2", () => {
+  it("stepper goes down to a single group, never below", () => {
     const r = round({ heats: 2 });
-    const next = stepRoundHeats(r.id, -1)(cfg([r]));
-    expect(next.rounds[0].heats).toBe(2);
-    expect(stepRoundHeats(r.id, 1)(next).rounds[0].heats).toBe(3);
+    const one = stepRoundHeats(r.id, -1)(cfg([r]));
+    expect(one.rounds[0].heats).toBe(1);
+    expect(stepRoundHeats(r.id, -1)(one).rounds[0].heats).toBe(1);
+    expect(stepRoundHeats(r.id, 1)(one).rounds[0].heats).toBe(2);
+  });
+
+  it("keeps a single-group Passage a Passage (not a Final)", () => {
+    const r = round({ heats: 1, selectedDances: ["Samba", "Jive"] });
+    const list = buildPlaylist(cfg([r]), LIBRARY, () => 0.3);
+    expect(list.map((i) => i.style)).toEqual(["Samba", "Jive"]);
+    expect(list[0].announcementText).not.toMatch(/finale|passage/i);
+    expect(list[1].announcementText).not.toMatch(/finale|passage/i);
+    expect(describeItem(list[0])).toBe(
+      "Tour 1 · Latines · Samba · Passage unique",
+    );
+  });
+
+  it("mixes 2 Standard groups with 1 Latin group: Valse, Samba, Valse", () => {
+    const std = round({
+      category: "Standard",
+      selectedDances: ["Valse Lente", "Tango"],
+      heats: 2,
+    });
+    const lat = round({
+      category: "Latin",
+      selectedDances: ["Samba", "Cha-Cha-Cha"],
+      heats: 1,
+      mixWithPrevious: true,
+    });
+    const list = buildPlaylist(cfg([std, lat]), LIBRARY, () => 0.3);
+    expect(list.map((i) => `${i.style}:${i.heatIndex}`)).toEqual([
+      "Valse Lente:1",
+      "Samba:1",
+      "Valse Lente:2",
+      "Tango:1",
+      "Cha-Cha-Cha:1",
+      "Tango:2",
+    ]);
+    expect(list[1].announcementText).not.toMatch(/passage|finale/i);
   });
 
   it("switching to Final forces 1 heat and back to Passage restores 2", () => {

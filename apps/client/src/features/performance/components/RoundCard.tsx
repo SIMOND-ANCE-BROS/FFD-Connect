@@ -135,7 +135,7 @@ export const RoundCard: React.FC<RoundCardProps> = ({
               testID={`${prefix}-heats-minus`}
               accessibilityRole="button"
               accessibilityLabel="Retirer un passage"
-              accessibilityHint={`Minimum ${MIN_ROUND_HEATS} passages`}
+              accessibilityHint={`Minimum ${MIN_ROUND_HEATS} passage`}
               accessibilityState={{ disabled: round.heats <= MIN_ROUND_HEATS }}
             >
               <Minus color={theme.text} size={16} />

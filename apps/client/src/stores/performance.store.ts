@@ -20,7 +20,10 @@ export const DANCES: Record<Category, readonly string[]> = {
   Latin: ["Samba", "Cha-Cha-Cha", "Rumba", "Paso Doble", "Jive"],
 };
 
-export const MIN_ROUND_HEATS = 2;
+/** A single group per dance is allowed (e.g. one Latin group mixed in). */
+export const MIN_ROUND_HEATS = 1;
+/** Heats of a new round. */
+export const DEFAULT_ROUND_HEATS = 2;
 export const MAX_ROUND_HEATS = 10;
 
 /** One round (« tour ») of the competition programme. */
@@ -92,7 +95,7 @@ export const createRound = (
   id: createRoundId(),
   category,
   type,
-  heats: type === "Final" ? 1 : MIN_ROUND_HEATS,
+  heats: type === "Final" ? 1 : DEFAULT_ROUND_HEATS,
   selectedDances: [...DANCES[category]],
 });
 
