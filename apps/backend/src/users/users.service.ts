@@ -10,10 +10,12 @@ import * as bcrypt from "bcrypt";
 import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
+import { LicenseQrService } from "../licenses/qr/license-qr.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { publicTrackName } from "../tracks/track-visibility.util";
 import {
   deviceTokenExportSelect,
+  licenseBaseSelect,
   notificationPreferenceExportSelect,
   trackCorrectionExportSelect,
 } from "../utils/prisma-selects";
@@ -100,6 +102,7 @@ export class UsersService {
   constructor(
     private prisma: PrismaService,
     private accountDeletion: AccountDeletionService,
+    private licenseQrService: LicenseQrService,
   ) {}
 
   /**
@@ -252,18 +255,7 @@ export class UsersService {
         birthDate: true,
         nationalRanking: true,
         club: { select: { disabledAt: true } },
-        license: {
-          select: {
-            id: true,
-            number: true,
-            validUntil: true,
-            category: true,
-            clubName: true,
-            qrCodeSignature: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
+        license: { select: licenseBaseSelect },
         // Exclure le password explicitement
       },
     });
@@ -275,7 +267,19 @@ export class UsersService {
     // The club status only feeds rolesOf; it must not leak into the payload.
     const { club, ...profile } = user;
     const wdsf = buildWdsfFromUser(profile);
-    return { ...profile, roles: rolesOf({ ...profile, club }), wdsf };
+    // Signed QR content of the license (#168) — null when signing is off.
+    const license = profile.license
+      ? {
+          ...profile.license,
+          qrCode: this.licenseQrService.buildQrCode(profile.license),
+        }
+      : null;
+    return {
+      ...profile,
+      license,
+      roles: rolesOf({ ...profile, club }),
+      wdsf,
+    };
   }
 
   /**

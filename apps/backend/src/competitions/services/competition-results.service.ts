@@ -1,12 +1,15 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
 import * as crypto from "crypto";
+import { LicenseQrService } from "../../licenses/qr/license-qr.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
+import { userNameSelect } from "../../utils/prisma-selects";
 import { CompetitionCacheService } from "./competition-cache.service";
 
 @Injectable()
@@ -19,6 +22,7 @@ export class CompetitionResultsService {
     private readonly prisma: PrismaService,
     private readonly redisService: RedisService,
     private readonly cacheService: CompetitionCacheService,
+    private readonly licenseQrService: LicenseQrService,
   ) {}
 
   async getResults(competitionId: string): Promise<unknown> {
@@ -113,27 +117,42 @@ export class CompetitionResultsService {
   }
 
   async checkIn(competitionId: string, qrData: string) {
-    let userId = qrData;
-    try {
-      const parsed = JSON.parse(qrData) as { id?: string };
-      if (parsed.id) userId = parsed.id;
-    } catch {
-      // Raw ID
+    // Signature check first (#168): in `enforce` mode an unsigned, forged or
+    // expired QR never reaches the lookup; in `warn` mode it goes through but
+    // the response carries a warning for the staff screen.
+    const qrCheck = this.licenseQrService.verify(qrData);
+    if (!qrCheck.accepted) {
+      this.logger.warn(
+        `Check-in refused for competition ${competitionId}: QR ${qrCheck.status}`,
+      );
+      throw new BadRequestException(qrCheck.warning ?? "QR Code non vérifié");
     }
+    if (qrCheck.warning) {
+      this.logger.warn(
+        `Check-in with unverified QR for competition ${competitionId}: ${qrCheck.status}`,
+      );
+    }
+    const qrVerification = {
+      mode: qrCheck.mode,
+      status: qrCheck.status,
+      warning: qrCheck.warning,
+    };
+    const identifier = qrCheck.identifier;
 
-    let user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, firstName: true, lastName: true },
-    });
+    // A verified QR carries a license NUMBER: never resolve it as a user id.
+    let user = qrCheck.signedLicenseNumber
+      ? null
+      : await this.prisma.user.findUnique({
+          where: { id: identifier },
+          select: userNameSelect,
+        });
     // Le QR licence de l'app encode le NUMÉRO de licence (cf. LicenseCard :
     // qrData.id = licenseNumber), pas l'id utilisateur. Si la résolution directe
     // par id échoue, on retombe sur une résolution par numéro de licence.
     if (!user) {
       const license = await this.prisma.license.findUnique({
-        where: { number: userId },
-        select: {
-          user: { select: { id: true, firstName: true, lastName: true } },
-        },
+        where: { number: identifier },
+        select: { user: { select: userNameSelect } },
       });
       user = license?.user ?? null;
     }
@@ -213,6 +232,7 @@ export class CompetitionResultsService {
     return {
       user: { firstName: user.firstName, lastName: user.lastName },
       registrations: checkInResults,
+      qrVerification,
     };
   }
 

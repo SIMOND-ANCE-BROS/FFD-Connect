@@ -16,6 +16,21 @@ export interface CheckinResponse {
     bibNumber?: number;
     partner?: string;
   }[];
+  /**
+   * Vérification du QR signé (#168). `warning` non nul = QR accepté mais non
+   * vérifié (ancien QR, signature invalide, licence expirée) : à montrer au
+   * staff. Absent sur un backend ancien.
+   */
+  qrVerification?: {
+    mode: "off" | "warn" | "enforce";
+    status:
+      | "NOT_CHECKED"
+      | "VALID"
+      | "UNSIGNED"
+      | "INVALID_SIGNATURE"
+      | "EXPIRED";
+    warning: string | null;
+  };
 }
 
 export interface VolunteerTokenResponse {

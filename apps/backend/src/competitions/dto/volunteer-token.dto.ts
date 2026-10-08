@@ -1,5 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsOptional, IsString } from "class-validator";
+import { IsOptional, IsString, MaxLength } from "class-validator";
+import { CHECK_IN_QR_DATA_MAX_LENGTH } from "./checkin.dto";
 
 export class GenerateVolunteerTokenDto {
   @ApiProperty({
@@ -45,7 +46,11 @@ export class VolunteerCheckInDto {
   @IsString()
   competitionId!: string;
 
-  @ApiProperty({ description: "Données du QR code du participant" })
+  @ApiProperty({
+    description: "Données du QR code du participant",
+    maxLength: CHECK_IN_QR_DATA_MAX_LENGTH,
+  })
   @IsString()
+  @MaxLength(CHECK_IN_QR_DATA_MAX_LENGTH)
   qrData!: string;
 }

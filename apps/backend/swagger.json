@@ -5440,6 +5440,46 @@
                       "type": "string",
                       "nullable": true
                     },
+                    "license": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "number": {
+                          "type": "string",
+                          "example": "FFD-123456"
+                        },
+                        "validUntil": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "category": {
+                          "type": "string"
+                        },
+                        "clubName": {
+                          "type": "string"
+                        },
+                        "qrCodeSignature": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "qrCode": {
+                          "type": "string",
+                          "nullable": true,
+                          "description": "Contenu du QR de licence signé par le serveur, à afficher tel quel. Null si la signature est désactivée."
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "updatedAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -16219,29 +16259,18 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Check-in réussi",
+          "201": {
+            "description": "Check-in effectué. `qrVerification` indique si le QR signé a été vérifié (#168) : `warning` non nul = QR accepté mais non vérifié (mode warn), à afficher au staff.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "registration": {
-                      "type": "object"
-                    }
-                  }
+                  "$ref": "#/components/schemas/CheckInResponseDto"
                 }
               }
             }
           },
           "400": {
-            "description": "Données QR code invalides"
+            "description": "Données QR code invalides, ou QR non vérifié refusé (mode enforce : non signé, signature invalide ou licence expirée)"
           },
           "401": {
             "description": "Non authentifié - Token manquant ou invalide",
@@ -16606,7 +16635,14 @@
         },
         "responses": {
           "201": {
-            "description": "Check-in réussi"
+            "description": "Check-in effectué (même réponse que le check-in staff). En mode enforce, un QR non vérifié est refusé en 400.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckInResponseDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Requête invalide - Erreur de validation",
@@ -19249,6 +19285,12 @@
                     "qrCodeSignature": {
                       "type": "string",
                       "nullable": true
+                    },
+                    "qrCode": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Contenu du QR de licence signé par le serveur, à afficher tel quel (valable jusqu'à la fin de validité de la licence). Null si la signature est désactivée.",
+                      "example": "{\"v\":1,\"id\":\"FFD-123456\",\"exp\":\"2026-08-31\",\"sig\":\"…\"}"
                     },
                     "createdAt": {
                       "type": "string",
@@ -22738,11 +22780,94 @@
         "properties": {
           "qrData": {
             "type": "string",
-            "description": "Données QR code du participant à checker",
-            "example": "{\"userId\":\"user-123\",\"eventId\":\"event-456\"}"
+            "description": "Contenu du QR de licence scanné : QR signé (#168), ancien JSON non signé, ou identifiant brut",
+            "example": "{\"v\":1,\"id\":\"FFD-123456\",\"exp\":\"2026-08-31\",\"sig\":\"…\"}",
+            "maxLength": 512
           }
         },
         "required": ["qrData"]
+      },
+      "CheckInUserDto": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          }
+        },
+        "required": ["firstName", "lastName"]
+      },
+      "CheckInRegistrationResultDto": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": "string",
+            "description": "Catégorie de l'épreuve"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["SUCCESS", "ALREADY_CHECKED_IN", "ERROR"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "bibNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "partner": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": ["event", "status"]
+      },
+      "CheckInQrVerificationDto": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["off", "warn", "enforce"],
+            "description": "Mode effectif (off si la signature est désactivée)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NOT_CHECKED",
+              "VALID",
+              "UNSIGNED",
+              "INVALID_SIGNATURE",
+              "EXPIRED"
+            ]
+          },
+          "warning": {
+            "type": "string",
+            "nullable": true,
+            "description": "Avertissement à afficher au staff (QR accepté mais non vérifié), null sinon",
+            "example": "QR non vérifié : ancien QR non signé"
+          }
+        },
+        "required": ["mode", "status", "warning"]
+      },
+      "CheckInResponseDto": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/CheckInUserDto"
+          },
+          "registrations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckInRegistrationResultDto"
+            }
+          },
+          "qrVerification": {
+            "$ref": "#/components/schemas/CheckInQrVerificationDto"
+          }
+        },
+        "required": ["user", "registrations", "qrVerification"]
       },
       "GenerateVolunteerTokenDto": {
         "type": "object",
@@ -22767,7 +22892,8 @@
           },
           "qrData": {
             "type": "string",
-            "description": "Données du QR code du participant"
+            "description": "Données du QR code du participant",
+            "maxLength": 512
           }
         },
         "required": ["token", "competitionId", "qrData"]
