@@ -431,11 +431,17 @@ jobs:
     # Record only, no reviewer — this is the internal preview channel.
     environment:
       name: preview
+    # contents: write — tag + GitHub Release of the preview OTA.
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          # Tags + history: the release notes list the commits since the
+          # previous preview OTA.
+          fetch-depth: 0
 
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm
@@ -459,6 +465,41 @@ jobs:
             --json --non-interactive > "$RUNNER_TEMP/eas-update.json"
           # Avertit seulement : build-staging tourne peut-être en parallèle.
           ../../scripts/check-ota-reach.sh preview "$RUNNER_TEMP/eas-update.json"
+
+      # One prerelease per preview OTA, so every bundle shipped to the preview
+      # app is traceable (commit + changes since the previous preview OTA). The
+      # `preview-*` tag never matches `beta-*`: the beta notes base is untouched.
+      - name: Tag & GitHub Release (preview OTA, prerelease)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse HEAD)
+          VERSION=$(sed -nE 's/.*version: "([^"]+)", \/\/ x-release-please-version.*/\1/p' apps/client/app.config.js)
+          if [ -z "$VERSION" ]; then
+            echo "::error::version not found in apps/client/app.config.js (x-release-please-version annotation)"
+            exit 1
+          fi
+          TAG="preview-$VERSION-ota-$(date -u +%Y%m%d)-${SHA:0:7}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::notice::Release $TAG already exists (re-run) - nothing to do."
+            exit 0
+          fi
+          # Base = previous preview OTA, else the generator's default (last beta-* tag).
+          SINCE=()
+          if PREV=$(git describe --tags --match 'preview-*-ota-*' --abbrev=0 "$SHA^" 2> /dev/null); then
+            SINCE=(--since "$PREV")
+          fi
+          {
+            printf 'OTA update on the preview channel (iOS and Android), commit %s.\n\n' "${SHA:0:7}"
+            node scripts/generate-changelog.mjs "${SINCE[@]}" --format markdown --heading none
+          } > "$RUNNER_TEMP/release-notes.md"
+          gh release create "$TAG" \
+            --title "Preview OTA $VERSION — ${SHA:0:7}" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --prerelease \
+            --target "$SHA"
+          echo "🏷️ Tag \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
 
   # ============================================================
   # PROMOTION MANUELLE — staging → bêta testeurs, iOS ET Android
@@ -491,7 +532,7 @@ jobs:
   # commande de reprise si la chaîne n'est pas allée au bout.
   #
   # Nommage identique sur les deux stores : tag `beta-<version>-<ios|android>-<n°>`
-  # et release « Bêta iOS 1.0.0 (18) » / « Bêta Android 1.0.0 (12) », où n° est
+  # et release « Beta iOS 1.0.0 (18) » / « Beta Android 1.0.0 (12) », où n° est
   # le numéro que le store affiche (CFBundleVersion / versionCode).
   #
   # Chaque attente a sa propre borne (incident 2026-10-06 : la soumission EAS
@@ -556,11 +597,11 @@ jobs:
               NOTES_TITLE='TestFlight « What to Test »'
               ;;
             android)
-              NAME=Android EAS_PLATFORM=ANDROID ICON=🤖 STORE='Google Play (test fermé)'
+              NAME=Android EAS_PLATFORM=ANDROID ICON=🤖 STORE='Google Play (closed testing)'
               NOTES_TITLE='Google Play « Notes de version » (500 car. max)'
               ;;
             *)
-              NAME=OTA EAS_PLATFORM='' ICON=📲 STORE='canal beta (OTA)'
+              NAME=OTA EAS_PLATFORM='' ICON=📲 STORE='beta channel (OTA)'
               NOTES_TITLE='OTA'
               ;;
           esac
@@ -680,7 +721,7 @@ jobs:
             printf '%s\n' "$NOTES" > beta-notes.md
             cp beta-notes.md beta-notes.txt
           else
-            # Sans titre : la release porte déjà « Bêta iOS 1.0.0 (19) ».
+            # Sans titre : la release porte déjà « Beta iOS 1.0.0 (19) ».
             node scripts/generate-changelog.mjs "${BASE[@]}" --format markdown --heading none > beta-notes.md
             node scripts/generate-changelog.mjs "${BASE[@]}" --format testers > beta-notes.txt
           fi
@@ -688,7 +729,7 @@ jobs:
             # Un point par élément séparé par « ; », espaces de bord retirés.
             mapfile -t ITEMS < <(printf '%s' "$TO_TEST" | tr ';' '\n' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' | grep -v '^$')
             if [ "${#ITEMS[@]}" -gt 0 ]; then
-              { echo '### 🎯 À tester en priorité'; printf -- '- %s\n' "${ITEMS[@]}"; echo; cat beta-notes.md; } > "$RUNNER_TEMP/notes.md"
+              { echo '### 🎯 Test first'; printf -- '- %s\n' "${ITEMS[@]}"; echo; cat beta-notes.md; } > "$RUNNER_TEMP/notes.md"
               { echo 'À tester en priorité'; printf '• %s\n' "${ITEMS[@]}"; echo; cat beta-notes.txt; } > "$RUNNER_TEMP/notes.txt"
               mv "$RUNNER_TEMP/notes.md" beta-notes.md
               mv "$RUNNER_TEMP/notes.txt" beta-notes.txt
@@ -836,12 +877,12 @@ jobs:
           fi
           if [ "$ACTION" = "ota" ]; then
             TAG="beta-$VERSION-ota-$(date +%Y%m%d)-${SHA:0:7}"
-            TITLE="Bêta OTA $VERSION — ${SHA:0:7}"
-            HEADER="Mise à jour OTA du canal beta (iOS et Android), commit ${SHA:0:7}."
+            TITLE="Beta OTA $VERSION — ${SHA:0:7}"
+            HEADER="OTA update on the beta channel (iOS and Android), commit ${SHA:0:7}."
           else
             TAG="beta-$VERSION-$PLATFORM-$BUILD_NUMBER"
-            TITLE="Bêta $PLATFORM_NAME $VERSION ($BUILD_NUMBER)"
-            HEADER="Build $PLATFORM_NAME $VERSION ($BUILD_NUMBER) — $STORE_NAME, commit ${SHA:0:7}."
+            TITLE="Beta $PLATFORM_NAME $VERSION ($BUILD_NUMBER)"
+            HEADER="$PLATFORM_NAME build $VERSION ($BUILD_NUMBER) — $STORE_NAME, commit ${SHA:0:7}."
           fi
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "::notice::Release $TAG déjà présente (relance) — rien à faire."
