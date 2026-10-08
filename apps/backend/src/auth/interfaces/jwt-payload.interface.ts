@@ -1,3 +1,4 @@
+import { UserRole } from "@prisma/client";
 import { Request } from "express";
 
 export interface JwtPayload {
@@ -14,6 +15,8 @@ export interface RequestWithUser extends Request {
     userId: string;
     email: string;
     role: string;
+    /** Every effective role, read from the database on each request (lot 1c). */
+    roles: UserRole[];
     /** Non-null si la session est une impersonation (#545) → bloque le destructif. */
     impersonatedBy?: string;
   };

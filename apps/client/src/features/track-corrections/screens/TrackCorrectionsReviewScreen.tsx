@@ -56,8 +56,7 @@ export const TrackCorrectionsReviewScreen = ({ navigation, route }: Props) => {
   const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [headerH, setHeaderH] = useState(insets.top + 110);
-  const role = useAuthStore((s) => s.role);
-  const isAdmin = role === "ADMIN";
+  const isAdmin = useAuthStore((s) => s.hasRole("ADMIN"));
   const focusedId = route.params?.correctionId;
   const [status, setStatus] = useState<TrackCorrectionStatus>("PENDING");
 

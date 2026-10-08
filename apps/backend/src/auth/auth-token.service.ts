@@ -4,6 +4,7 @@ import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { accountStatusSelect } from "../utils/prisma-selects";
 import { ACCOUNT_DISABLED_MESSAGE, accountBlockReason } from "./account-status";
+import { rolesOf } from "./roles";
 import { LoginResponse } from "./auth.service";
 
 @Injectable()
@@ -126,6 +127,7 @@ export class AuthTokenService {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        roles: rolesOf(user),
         clubId: user.clubId,
         clubName: user.clubName,
         licenseNumber: user.license?.number,

@@ -7,6 +7,7 @@ import type { TrackData } from "../../player/context/PlayerContext";
 import {
   createRound,
   DANCES,
+  DEFAULT_ROUND_HEATS,
   MAX_ROUND_HEATS,
   MIN_ROUND_HEATS,
   type Category,
@@ -150,11 +151,15 @@ export const setRoundType = (id: string, type: RoundConfig["type"]) =>
   patchRound(id, (r) => ({
     ...r,
     type,
-    heats: type === "Final" ? 1 : Math.max(MIN_ROUND_HEATS, r.heats),
+    heats:
+      type === "Final" ? 1 : r.type === "Final" ? DEFAULT_ROUND_HEATS : r.heats,
   }));
 
 export const stepRoundHeats = (id: string, delta: number) =>
   patchRound(id, (r) => ({ ...r, heats: r.heats + delta }));
+
+export const setRoundMix = (id: string, mixWithPrevious: boolean) =>
+  patchRound(id, (r) => ({ ...r, mixWithPrevious }));
 
 export const toggleRoundDance = (id: string, dance: string) =>
   patchRound(id, (r) => ({
@@ -248,10 +253,27 @@ export const describeValidation = (v: ProgramValidation): string | null => {
 };
 
 /**
+ * Splits the programme into blocks of 0-based round indexes: a round flagged
+ * `mixWithPrevious` joins the previous round's block (the first round always
+ * opens one).
+ */
+export const groupRounds = (rounds: RoundConfig[]): number[][] => {
+  const blocks: number[][] = [];
+  rounds.forEach((round, i) => {
+    // i > 0 ⇒ a previous block exists.
+    if (i > 0 && round.mixWithPrevious) blocks[blocks.length - 1].push(i);
+    else blocks.push([i]);
+  });
+  return blocks;
+};
+
+/**
  * Builds the competition playlist: for each round, for each dance (canonical
- * order), for each heat — dance-major, like a real competition. A track is
- * picked per heat, cycling through a shuffled pool so consecutive heats of the
- * same dance get different music whenever the library allows it.
+ * order), for each heat — dance-major, like a real competition. Rounds of a
+ * mixed block alternate heat by heat (Valse Std 1, Samba Lat 1, Valse Std 2,
+ * Samba Lat 2… then Tango / Cha-cha-cha). A track is picked per heat, cycling
+ * through a shuffled pool so consecutive heats of the same dance get different
+ * music whenever the library allows it.
  */
 export const buildPlaylist = (
   cfg: PerformanceConfig,
@@ -284,29 +306,48 @@ export const buildPlaylist = (
     return track;
   };
 
-  cfg.rounds.forEach((rawRound, r) => {
-    const round = normalizeRound(rawRound);
+  const rounds = cfg.rounds.map(normalizeRound);
+
+  const push = (r: number, d: number, h: number, mixed: boolean) => {
+    const round = rounds[r];
     const dances = round.selectedDances;
-    dances.forEach((dance, d) => {
-      for (let h = 1; h <= round.heats; h++) {
-        const track = pick(dance);
-        if (!track) continue;
-        items.push({
-          track,
-          style: dance,
-          duration: danceDuration(dance, cfg),
-          isPaso: isPasoDoble(dance),
-          heatIndex: h,
-          totalHeats: round.heats,
-          roundIndex: r + 1,
-          totalRounds,
-          roundType: round.type,
-          category: round.category,
-          danceIndex: d,
-          dancesInRound: dances.length,
-        });
-      }
+    const dance = dances[d];
+    const track = pick(dance);
+    if (!track) return;
+    items.push({
+      track,
+      style: dance,
+      duration: danceDuration(dance, cfg),
+      isPaso: isPasoDoble(dance),
+      heatIndex: h,
+      totalHeats: round.heats,
+      roundIndex: r + 1,
+      totalRounds,
+      roundType: round.type,
+      category: round.category,
+      danceIndex: d,
+      dancesInRound: dances.length,
+      ...(mixed ? { mixed } : {}),
     });
+  };
+
+  groupRounds(rounds).forEach((block) => {
+    const mixed = block.length > 1;
+    const maxDances = Math.max(
+      ...block.map((r) => rounds[r].selectedDances.length),
+    );
+    const maxHeats = Math.max(...block.map((r) => rounds[r].heats));
+    // Single round: the loop degenerates to dance → heat (dance-major).
+    for (let d = 0; d < maxDances; d++) {
+      for (let h = 1; h <= maxHeats; h++) {
+        for (const r of block) {
+          const round = rounds[r];
+          if (d < round.selectedDances.length && h <= round.heats) {
+            push(r, d, h, mixed);
+          }
+        }
+      }
+    }
   });
 
   return items.map((item) => ({
@@ -327,6 +368,8 @@ type AnnouncementItem = Pick<
   | "roundType"
   | "danceIndex"
   | "dancesInRound"
+  | "category"
+  | "mixed"
 >;
 
 interface Articles {
@@ -363,7 +406,10 @@ const choose = (item: AnnouncementItem, templates: string[]): string => {
  */
 export const getAnnouncementText = (item: AnnouncementItem): string => {
   const a = articles(item.style);
-  const isFinal = item.roundType === "Final" || item.totalHeats <= 1;
+  const isFinal = item.roundType === "Final";
+  // One group per dance: no « premier passage » to announce.
+  const single = item.totalHeats <= 1;
+  const firstHeat = single ? " !" : ", premier passage !";
   const firstOfRound = item.danceIndex === 0 && item.heatIndex === 1;
   const lastDance =
     item.danceIndex === item.dancesInRound - 1 && item.dancesInRound > 1;
@@ -378,10 +424,18 @@ export const getAnnouncementText = (item: AnnouncementItem): string => {
       ]);
     }
     const roundOrd = ordinal(item.roundIndex);
+    if (item.mixed) {
+      // Mixed block: name the category, the floor alternates between rounds.
+      const cat = item.category === "Latin" ? "en latines" : "en standard";
+      return choose(item, [
+        `Mesdames et messieurs, ${roundOrd} tour ${cat}… on commence avec ${a.the}${firstHeat}`,
+        `Place au ${roundOrd} tour ${cat} ! ${capitalize(a.name)}${firstHeat}`,
+      ]);
+    }
     return choose(item, [
-      `Mesdames et messieurs, place au ${roundOrd} tour… on commence avec ${a.the}, premier passage !`,
-      `Bienvenue pour le ${roundOrd} tour ! On ouvre avec ${a.the}… premier passage !`,
-      `Mesdames et messieurs, ${roundOrd} tour ! ${capitalize(a.name)}, premier passage, à vous !`,
+      `Mesdames et messieurs, place au ${roundOrd} tour… on commence avec ${a.the}${firstHeat}`,
+      `Bienvenue pour le ${roundOrd} tour ! On ouvre avec ${a.the}${firstHeat}`,
+      `Mesdames et messieurs, ${roundOrd} tour ! ${capitalize(a.name)}, à vous !`,
     ]);
   }
 
@@ -416,14 +470,14 @@ export const getAnnouncementText = (item: AnnouncementItem): string => {
   }
   if (lastDance) {
     return choose(item, [
-      `Dernière danse du tour : ${a.the}… premier passage !`,
-      `Et pour finir ce tour… ${a.the}, premier passage !`,
+      `Dernière danse du tour : ${a.the}${firstHeat}`,
+      `Et pour finir ce tour… ${a.the}${firstHeat}`,
     ]);
   }
   return choose(item, [
-    `On enchaîne avec ${a.the}… premier passage !`,
-    `Place ${a.to}, premier passage !`,
-    `Et maintenant, ${a.the} ! Premier passage, à vous !`,
+    `On enchaîne avec ${a.the}${firstHeat}`,
+    `Place ${a.to}${firstHeat}`,
+    `Et maintenant, ${a.the} ! ${single ? "À vous !" : "Premier passage, à vous !"}`,
   ]);
 };
 
@@ -438,7 +492,9 @@ export const describeItem = (item: PlaylistItem): string => {
     danceLabel(item.style),
     item.roundType === "Final"
       ? "Finale"
-      : `Passage ${item.heatIndex}/${item.totalHeats}`,
+      : item.totalHeats <= 1
+        ? "Passage unique"
+        : `Passage ${item.heatIndex}/${item.totalHeats}`,
   ];
   return parts.join(" · ");
 };

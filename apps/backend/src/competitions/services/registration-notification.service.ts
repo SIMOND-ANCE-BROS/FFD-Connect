@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { NotificationType, RegistrationStatus, UserRole } from "@prisma/client";
+import { withActiveRole } from "../../auth/roles";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
 
@@ -236,7 +237,7 @@ export class RegistrationNotificationService {
         };
 
     const organizers = await this.prisma.user.findMany({
-      where: { role: UserRole.CLUB, ...sameClubCondition },
+      where: { AND: [withActiveRole(UserRole.CLUB), sameClubCondition] },
       select: { id: true },
       take: 50,
     });

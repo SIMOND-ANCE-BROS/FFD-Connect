@@ -393,6 +393,7 @@ export const adminUserListSelect = {
   firstName: true,
   lastName: true,
   role: true,
+  extraRoles: true,
   clubId: true,
   clubName: true,
   category: true,
@@ -435,6 +436,7 @@ export const adminUserEditableSelect = {
   competitionLevel: true,
   nationalRanking: true,
   role: true,
+  extraRoles: true,
 } as const;
 
 /** Admin invitation resend: who to mail and whether they ever logged in. */
@@ -443,6 +445,8 @@ export const adminInvitationTargetSelect = {
   email: true,
   firstName: true,
   role: true,
+  // An extra ADMIN role blocks the invitation too (hasRole).
+  extraRoles: true,
   lastLoginAt: true,
   disabledAt: true,
   // A CLUB account of a disabled club cannot log in: no invitation either.
@@ -455,6 +459,7 @@ export const adminInvitationTargetSelect = {
  */
 export const accountStatusSelect = {
   role: true,
+  extraRoles: true,
   disabledAt: true,
   club: { select: { disabledAt: true } },
 } as const;
@@ -482,6 +487,7 @@ export const adminClubMemberSelect = {
   lastName: true,
   email: true,
   role: true,
+  extraRoles: true,
   disabledAt: true,
 } as const;
 
@@ -500,4 +506,13 @@ export const adminClubAttachSelect = {
   id: true,
   name: true,
   disabledAt: true,
+} as const;
+
+/** Caller of a club-representative action: roles, club, club status (lot 1c). */
+export const userRolesClubSelect = {
+  role: true,
+  extraRoles: true,
+  clubId: true,
+  clubName: true,
+  club: { select: { disabledAt: true } },
 } as const;

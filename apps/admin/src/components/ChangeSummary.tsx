@@ -13,6 +13,7 @@ const LABELS: Record<string, string> = {
   competitionLevel: 'Niveau compétition',
   nationalRanking: 'Classement national',
   role: 'Rôle',
+  extraRoles: 'Rôles supplémentaires',
   email: 'Email',
   name: 'Nom du club',
   registrationMode: "Mode d'inscription",
@@ -20,11 +21,17 @@ const LABELS: Record<string, string> = {
 
 const VALUE_LABELS: Record<string, Record<string, string>> = {
   role: ROLE_LABELS,
+  extraRoles: ROLE_LABELS,
   registrationMode: REGISTRATION_MODE_LABELS,
 };
 
 function display(key: string, value: unknown): string {
   if (value === null || value === undefined) return '—';
+  if (Array.isArray(value)) {
+    return value.length
+      ? value.map((v) => VALUE_LABELS[key]?.[String(v)] ?? String(v)).join(', ')
+      : '—';
+  }
   const text = String(value);
   return VALUE_LABELS[key]?.[text] ?? text;
 }

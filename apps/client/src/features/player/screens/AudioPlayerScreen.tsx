@@ -50,7 +50,7 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
   const [clashEditorMode, setClashEditorMode] =
     useState<PasoClashEditorMode | null>(null);
   const [correctionVisible, setCorrectionVisible] = useState(false);
-  const isAdmin = role === "ADMIN";
+  const isAdmin = useAuthStore((s) => s.hasRole("ADMIN"));
   // Tout compte connecté peut proposer une correction ; pas un invité.
   const canPropose = role !== null && role !== "GUEST" && !isGuest;
   const isPaso = isPasoDoble(state.currentTrack.style);

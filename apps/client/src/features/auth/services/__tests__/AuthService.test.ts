@@ -1,7 +1,12 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../../../../services/api";
 import { createLogger } from "../../../../utils/logger";
-import { AuthService, DEFAULT_CONFIG } from "../AuthService";
+import {
+  AuthService,
+  DEFAULT_CONFIG,
+  resolveSpace,
+  type UserRole,
+} from "../AuthService";
 
 jest.mock("../../../../services/api", () => ({
   post: jest.fn(),
@@ -780,5 +785,315 @@ describe("AuthService — câblage des notifications push", () => {
 
     expect(mockClearTokens).toHaveBeenCalledTimes(1);
     expect(mockClearOfflineQueue).not.toHaveBeenCalled();
+  });
+});
+
+describe("resolveSpace", () => {
+  const base = {
+    user: "a@x.fr",
+    mainRole: "ADMIN" as const,
+    roles: ["ADMIN", "LICENSEE"] as UserRole[],
+  };
+
+  it("defaults to the main role", () => {
+    expect(resolveSpace(base)).toBe("ADMIN");
+  });
+
+  it("keeps the previous space of the same account", () => {
+    expect(
+      resolveSpace({
+        ...base,
+        previousUser: "a@x.fr",
+        previousSpace: "LICENSEE",
+      }),
+    ).toBe("LICENSEE");
+  });
+
+  it("ignores the previous space of another account", () => {
+    expect(
+      resolveSpace({
+        ...base,
+        previousUser: "b@x.fr",
+        previousSpace: "LICENSEE",
+      }),
+    ).toBe("ADMIN");
+  });
+
+  it("falls back to the main role when the space was removed", () => {
+    expect(
+      resolveSpace({ ...base, previousUser: "a@x.fr", previousSpace: "CLUB" }),
+    ).toBe("ADMIN");
+  });
+});
+
+describe("AuthService — multi-role", () => {
+  const lastSaved = () => {
+    const calls = (AsyncStorage.setItem as jest.Mock).mock.calls;
+    return JSON.parse(calls[calls.length - 1][1] as string) as Record<
+      string,
+      unknown
+    >;
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+  });
+
+  it("login stores every role and the main role, and keeps role = active space", async () => {
+    (api.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        access_token: "t",
+        refresh_token: "r",
+        user: { email: "a@x.fr", role: "ADMIN", roles: ["ADMIN", "LICENSEE"] },
+      },
+    });
+    await AuthService.login("a@x.fr", "pw");
+    expect(lastSaved()).toMatchObject({
+      role: "ADMIN",
+      mainRole: "ADMIN",
+      roles: ["ADMIN", "LICENSEE"],
+    });
+  });
+
+  it("login keeps the previous space of the same account", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+      JSON.stringify({ username: "a@x.fr", role: "LICENSEE" }),
+    );
+    (api.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        access_token: "t",
+        refresh_token: "r",
+        user: { email: "a@x.fr", role: "ADMIN", roles: ["ADMIN", "LICENSEE"] },
+      },
+    });
+    await AuthService.login("a@x.fr", "pw");
+    expect(lastSaved()).toMatchObject({ role: "LICENSEE", mainRole: "ADMIN" });
+  });
+
+  it("login against an older backend without roles stores [role]", async () => {
+    (api.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        access_token: "t",
+        refresh_token: "r",
+        user: { email: "a@x.fr", role: "LICENSEE" },
+      },
+    });
+    await AuthService.login("a@x.fr", "pw");
+    expect(lastSaved()).toMatchObject({
+      role: "LICENSEE",
+      roles: ["LICENSEE"],
+    });
+  });
+
+  it("impersonate opens on the target's main role with its roles", async () => {
+    (api.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        access_token: "t",
+        user: { email: "c@x.fr", role: "CLUB", roles: ["CLUB", "LICENSEE"] },
+      },
+    });
+    await AuthService.impersonate("u1", "Club Name");
+    expect(lastSaved()).toMatchObject({
+      role: "CLUB",
+      mainRole: "CLUB",
+      roles: ["CLUB", "LICENSEE"],
+      impersonating: true,
+    });
+  });
+
+  it("setActiveSpace switches to a held role", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+      JSON.stringify({ role: "ADMIN", roles: ["ADMIN", "LICENSEE"] }),
+    );
+    await AuthService.setActiveSpace("LICENSEE");
+    expect(lastSaved()).toMatchObject({ role: "LICENSEE" });
+  });
+
+  it("setActiveSpace is a no-op for a role the account does not hold", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+      JSON.stringify({ role: "ADMIN", roles: ["ADMIN", "LICENSEE"] }),
+    );
+    await AuthService.setActiveSpace("CLUB");
+    expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  it("logout clears roles and mainRole", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+      JSON.stringify({
+        role: "ADMIN",
+        mainRole: "ADMIN",
+        roles: ["ADMIN", "LICENSEE"],
+      }),
+    );
+    await AuthService.logout();
+    const saved = lastSaved();
+    expect(saved.roles).toBeUndefined();
+    expect(saved.mainRole).toBeUndefined();
+    expect(saved.role).toBe("LICENSEE");
+  });
+
+  describe("syncRolesFromProfile", () => {
+    const loggedIn = {
+      isLoggedIn: true,
+      username: "a@x.fr",
+      role: "LICENSEE",
+      roles: ["LICENSEE"],
+      mainRole: "LICENSEE",
+    };
+
+    it("adds a role granted meanwhile and keeps the current space", async () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify(loggedIn),
+      );
+      const next = await AuthService.syncRolesFromProfile({
+        email: "a@x.fr",
+        role: "LICENSEE",
+        roles: ["LICENSEE", "CLUB"],
+      });
+      expect(lastSaved()).toMatchObject({
+        role: "LICENSEE",
+        roles: ["LICENSEE", "CLUB"],
+        mainRole: "LICENSEE",
+      });
+      expect(next.roles).toEqual(["LICENSEE", "CLUB"]);
+    });
+
+    it("falls back to the main role when the active space was removed", async () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify({
+          ...loggedIn,
+          role: "CLUB",
+          roles: ["LICENSEE", "CLUB"],
+        }),
+      );
+      await AuthService.syncRolesFromProfile({
+        email: "a@x.fr",
+        role: "LICENSEE",
+        roles: ["LICENSEE"],
+      });
+      expect(lastSaved()).toMatchObject({
+        role: "LICENSEE",
+        roles: ["LICENSEE"],
+      });
+    });
+
+    it("follows a main role change and an older backend without roles", async () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify(loggedIn),
+      );
+      await AuthService.syncRolesFromProfile({
+        email: "a@x.fr",
+        role: "CLUB",
+      });
+      expect(lastSaved()).toMatchObject({
+        role: "CLUB",
+        roles: ["CLUB"],
+        mainRole: "CLUB",
+      });
+    });
+
+    it("writes nothing when logged out or browsing as a guest", async () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify({ isLoggedIn: true, isGuest: true, role: "GUEST" }),
+      );
+      await AuthService.syncRolesFromProfile({
+        email: "a@x.fr",
+        role: "LICENSEE",
+      });
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify({ isLoggedIn: false, role: "LICENSEE" }),
+      );
+      await AuthService.syncRolesFromProfile({
+        email: "a@x.fr",
+        role: "LICENSEE",
+      });
+      expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+    });
+
+    it("writes nothing when the roles did not change (no extra work on each visit)", async () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify(loggedIn),
+      );
+      await AuthService.syncRolesFromProfile({
+        email: "a@x.fr",
+        role: "LICENSEE",
+        roles: ["LICENSEE"],
+      });
+      expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("space memory across logout", () => {
+    const dualUser = {
+      email: "a@x.fr",
+      role: "LICENSEE",
+      roles: ["LICENSEE", "CLUB"],
+    };
+    const loginAs = (user: object) =>
+      (api.post as jest.Mock).mockResolvedValueOnce({
+        data: { access_token: "t", refresh_token: "r", user },
+      });
+
+    it("logout keeps the last account and its space", async () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify({
+          isLoggedIn: true,
+          username: "a@x.fr",
+          role: "CLUB",
+          roles: ["LICENSEE", "CLUB"],
+          mainRole: "LICENSEE",
+        }),
+      );
+      await AuthService.logout();
+      const saved = lastSaved();
+      expect(saved.username).toBeUndefined();
+      expect(saved).toMatchObject({ lastUser: "a@x.fr", lastSpace: "CLUB" });
+    });
+
+    it("a logout without an account (guest) keeps the previous memory", async () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify({
+          isLoggedIn: true,
+          isGuest: true,
+          role: "GUEST",
+          lastUser: "a@x.fr",
+          lastSpace: "CLUB",
+        }),
+      );
+      await AuthService.logout();
+      expect(lastSaved()).toMatchObject({
+        lastUser: "a@x.fr",
+        lastSpace: "CLUB",
+      });
+    });
+
+    it("the next login of the same account reopens the last space", async () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify({
+          isLoggedIn: false,
+          role: "LICENSEE",
+          lastUser: "a@x.fr",
+          lastSpace: "CLUB",
+        }),
+      );
+      loginAs(dualUser);
+      await AuthService.login("a@x.fr", "pw");
+      expect(lastSaved()).toMatchObject({ role: "CLUB", mainRole: "LICENSEE" });
+    });
+
+    it("another account opens on its own main role", async () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify({
+          isLoggedIn: false,
+          role: "LICENSEE",
+          lastUser: "b@x.fr",
+          lastSpace: "CLUB",
+        }),
+      );
+      loginAs(dualUser);
+      await AuthService.login("a@x.fr", "pw");
+      expect(lastSaved()).toMatchObject({ role: "LICENSEE" });
+    });
   });
 });

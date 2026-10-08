@@ -116,6 +116,28 @@ describe("AuthTokenService", () => {
       );
     });
 
+    it("returns the main role and every role on refresh", async () => {
+      mockPrismaService.refreshToken.findUnique.mockResolvedValue({
+        id: "tok-1",
+        revoked: false,
+        expiresAt: new Date(Date.now() + 86400000),
+        user: {
+          id: "u1",
+          email: "u@test.com",
+          role: UserRole.LICENSEE,
+          extraRoles: [UserRole.CLUB],
+          club: { disabledAt: null },
+        },
+      });
+      mockPrismaService.$transaction.mockResolvedValue([{}, {}, {}]);
+      mockJwtService.sign.mockReturnValue("new-access");
+
+      const result = await service.refreshAccessToken("old-refresh-plain");
+
+      expect(result.user.role).toBe(UserRole.LICENSEE);
+      expect(result.user.roles).toEqual([UserRole.LICENSEE, UserRole.CLUB]);
+    });
+
     it("records lastLoginAt in the rotation transaction", async () => {
       mockPrismaService.refreshToken.findUnique.mockResolvedValue({
         id: "tok-1",

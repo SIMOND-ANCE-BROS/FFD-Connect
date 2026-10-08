@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { Pause, Play, X } from "lucide-react-native";
+import { Pause, Play, SkipBack, SkipForward, X } from "lucide-react-native";
 import React, { useCallback, useEffect, useRef } from "react";
 import {
   Alert,
@@ -28,6 +28,8 @@ export const PerformancePlayerScreen = () => {
     isAnnouncing,
     togglePlayPause,
     stopPerformance,
+    nextDance,
+    previousDance,
   } = usePerformanceEngine();
   const navigation = useNavigation<{ goBack: () => void }>();
 
@@ -96,6 +98,11 @@ export const PerformancePlayerScreen = () => {
   const nextItem = playlist[currentDanceIndex + 1] as PlaylistItem | undefined;
   const isPreparation =
     !hasCurrentItem && status !== "loading" && status !== "finished";
+  // Skips are refused while the MC speaks (the engine ignores them anyway).
+  const isRunning =
+    status === "playing" || status === "break" || status === "paused";
+  const canSkipForward = isRunning && !isAnnouncing;
+  const canSkipBack = canSkipForward && hasCurrentItem;
 
   return (
     <SafeAreaView
@@ -129,7 +136,9 @@ export const PerformancePlayerScreen = () => {
               {hasCurrentItem && currentItem
                 ? currentItem.roundType === "Final"
                   ? "FINALE"
-                  : `PASSAGE ${currentItem.heatIndex}/${currentItem.totalHeats}`
+                  : currentItem.totalHeats <= 1
+                    ? "PASSAGE UNIQUE"
+                    : `PASSAGE ${currentItem.heatIndex}/${currentItem.totalHeats}`
                 : "PRÉPARATION"}
             </AppText>
           </View>
@@ -256,6 +265,23 @@ export const PerformancePlayerScreen = () => {
 
       {/* Controls */}
       <View style={styles.controlsContainer}>
+        <TouchableOpacity
+          style={[
+            styles.skipBtn,
+            { backgroundColor: currentTheme.surface },
+            !canSkipBack && styles.disabled,
+          ]}
+          onPress={previousDance}
+          disabled={!canSkipBack}
+          testID="performance-player-previous-button"
+          accessibilityRole="button"
+          accessibilityLabel="Danse précédente"
+          accessibilityHint="Relance la danse en cours, ou revient à la précédente si elle vient de commencer"
+          accessibilityState={{ disabled: !canSkipBack }}
+        >
+          <SkipBack color={currentTheme.text} size={28} />
+        </TouchableOpacity>
+
         {/* Main Play/Pause */}
         <TouchableOpacity
           style={[styles.playBtn, { backgroundColor: currentTheme.primary }]}
@@ -281,6 +307,23 @@ export const PerformancePlayerScreen = () => {
               style={styles.playIconPlay}
             />
           )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.skipBtn,
+            { backgroundColor: currentTheme.surface },
+            !canSkipForward && styles.disabled,
+          ]}
+          onPress={nextDance}
+          disabled={!canSkipForward}
+          testID="performance-player-next-button"
+          accessibilityRole="button"
+          accessibilityLabel="Danse suivante"
+          accessibilityHint="Passe directement à l'annonce de la danse suivante"
+          accessibilityState={{ disabled: !canSkipForward }}
+        >
+          <SkipForward color={currentTheme.text} size={28} />
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -344,9 +387,27 @@ const styles = StyleSheet.create({
   },
   controlsContainer: {
     paddingBottom: 40,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 32,
     height: 150, // Fixed height for controls area
+  },
+  skipBtn: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  disabled: {
+    opacity: 0.4,
   },
   playBtn: {
     width: 90,

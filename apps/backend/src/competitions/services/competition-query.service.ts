@@ -1,5 +1,7 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Prisma, RegistrationStatus, UserRole } from "@prisma/client";
+import { hasRole } from "../../auth/roles";
+import { userRolesClubSelect } from "../../utils/prisma-selects";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../../common/utils/pagination.util";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -133,16 +135,15 @@ export class CompetitionQueryService {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         select: {
+          ...userRolesClubSelect,
           category: true,
           ageGroup: true,
-          role: true,
-          clubId: true,
-          clubName: true,
         },
       });
       result = enrichCompetitionsForUser(competitions, user);
       if (
-        user?.role === "CLUB" &&
+        user &&
+        hasRole(user, UserRole.CLUB) &&
         (user.clubId || (user.clubName && typeof user.clubName === "string"))
       ) {
         result = await this.enrichCompetitionsForOrganizer(result, {
@@ -329,9 +330,9 @@ export class CompetitionQueryService {
   async getPendingRegistrationsForClub(organizerUserId: string) {
     const organizer = await this.prisma.user.findUnique({
       where: { id: organizerUserId },
-      select: { role: true, clubId: true, clubName: true },
+      select: userRolesClubSelect,
     });
-    if (organizer?.role !== UserRole.CLUB) return [];
+    if (!organizer || !hasRole(organizer, UserRole.CLUB)) return [];
 
     const sameClubCondition = organizer.clubId
       ? { clubId: organizer.clubId }

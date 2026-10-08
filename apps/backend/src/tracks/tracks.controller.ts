@@ -24,6 +24,7 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { UserRole } from "@prisma/client";
+import { hasRole } from "../auth/roles";
 import type { Response } from "express";
 import * as fs from "fs";
 import { createReadStream } from "fs";
@@ -65,7 +66,10 @@ export class TracksController {
     @Query() pagination: PaginationParamsDto,
     @Req() req: RequestWithUser,
   ) {
-    return this.tracksService.findAll(pagination, req.user.role === "ADMIN");
+    return this.tracksService.findAll(
+      pagination,
+      hasRole(req.user, UserRole.ADMIN),
+    );
   }
 
   // Déclaré AVANT @Get(":id") : sinon "ambiance" serait capturé comme un id.
@@ -82,7 +86,7 @@ export class TracksController {
     type: [TrackResponseDto],
   })
   async findAmbiance(@Req() req: RequestWithUser): Promise<TrackResponseDto[]> {
-    return this.tracksService.findAmbiance(req.user.role === "ADMIN");
+    return this.tracksService.findAmbiance(hasRole(req.user, UserRole.ADMIN));
   }
 
   @Get("download/:token")
@@ -130,7 +134,7 @@ export class TracksController {
   @ApiResponse({ status: 200, description: "Musique trouvée" })
   @ApiResponse({ status: 404, description: "Musique non trouvée" })
   async findOne(@Param("id") id: string, @Req() req: RequestWithUser) {
-    return this.tracksService.findOne(id, req.user.role === "ADMIN");
+    return this.tracksService.findOne(id, hasRole(req.user, UserRole.ADMIN));
   }
 
   @Patch(":id")
@@ -158,10 +162,10 @@ export class TracksController {
     await this.tracksService.updateTrack(
       id,
       req.user.userId,
-      req.user.role === "ADMIN",
+      hasRole(req.user, UserRole.ADMIN),
       dto,
     );
-    return this.tracksService.findOne(id, req.user.role === "ADMIN");
+    return this.tracksService.findOne(id, hasRole(req.user, UserRole.ADMIN));
   }
 
   @Delete(":id")

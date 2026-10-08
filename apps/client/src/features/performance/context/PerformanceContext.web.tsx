@@ -46,6 +46,7 @@ const PerformanceContext = createContext<
       startPerformance: () => Promise<boolean>;
       stopPerformance: () => void;
       nextDance: () => void;
+      previousDance: () => void;
       togglePlayPause: () => void;
       fadeNow: () => void;
     }
@@ -80,6 +81,7 @@ export const PerformanceProvider: React.FC<{ children: React.ReactNode }> = ({
     startPerformance: () => Promise.resolve(false),
     stopPerformance: () => {},
     nextDance: () => {},
+    previousDance: () => {},
     togglePlayPause: () => {},
     fadeNow: () => {},
   };

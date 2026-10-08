@@ -18,6 +18,7 @@ import {
 } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { UserRole } from "@prisma/client";
+import { hasRole } from "../auth/roles";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
@@ -71,7 +72,7 @@ export class TrackReportController {
       dto.reason,
       dto.message,
       req.user.userId,
-      req.user.role === UserRole.ADMIN,
+      hasRole(req.user, UserRole.ADMIN),
     );
   }
 }

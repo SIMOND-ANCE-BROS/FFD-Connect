@@ -1,5 +1,5 @@
 import { useNavigation } from "@react-navigation/native";
-import { render } from "@testing-library/react-native";
+import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 import { useTheme } from "../../../../context/ThemeContext";
 import { usePerformanceEngine } from "../../hooks/usePerformanceEngine";
@@ -100,6 +100,7 @@ describe("PerformancePlayerScreen", () => {
     isAnnouncing: false,
     togglePlayPause: jest.fn(),
     nextDance: jest.fn(),
+    previousDance: jest.fn(),
     stopPerformance: jest.fn(),
     config: {} as never,
     setConfig: jest.fn(),
@@ -120,6 +121,42 @@ describe("PerformancePlayerScreen", () => {
       toggleAnimations: jest.fn(),
     });
     mockUsePerformance.mockReturnValue(mockPerformanceData);
+  });
+
+  describe("⏮ / ⏭ skip buttons", () => {
+    it("skips forward and back while a dance plays", async () => {
+      const { getByTestId } = await render(<PerformancePlayerScreen />);
+      await fireEvent.press(getByTestId("performance-player-next-button"));
+      expect(mockPerformanceData.nextDance).toHaveBeenCalled();
+      await fireEvent.press(getByTestId("performance-player-previous-button"));
+      expect(mockPerformanceData.previousDance).toHaveBeenCalled();
+    });
+
+    it("disables both while the announcement is spoken", async () => {
+      mockUsePerformance.mockReturnValue({
+        ...mockPerformanceData,
+        isAnnouncing: true,
+      });
+      const { getByTestId } = await render(<PerformancePlayerScreen />);
+      await fireEvent.press(getByTestId("performance-player-next-button"));
+      await fireEvent.press(getByTestId("performance-player-previous-button"));
+      expect(mockPerformanceData.nextDance).not.toHaveBeenCalled();
+      expect(mockPerformanceData.previousDance).not.toHaveBeenCalled();
+    });
+
+    it("allows only ⏭ during the initial get-ready break", async () => {
+      mockUsePerformance.mockReturnValue({
+        ...mockPerformanceData,
+        status: "break",
+        activePhase: "break",
+        currentDanceIndex: -1,
+      });
+      const { getByTestId } = await render(<PerformancePlayerScreen />);
+      await fireEvent.press(getByTestId("performance-player-previous-button"));
+      expect(mockPerformanceData.previousDance).not.toHaveBeenCalled();
+      await fireEvent.press(getByTestId("performance-player-next-button"));
+      expect(mockPerformanceData.nextDance).toHaveBeenCalled();
+    });
   });
 
   describe("React Hooks Order (Regression Test)", () => {

@@ -503,6 +503,37 @@ describe("CompetitionQueryService", () => {
       expect(result).toEqual([]);
     });
 
+    it("accepts a licensee whose CLUB role is an extra role", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "LICENSEE",
+        extraRoles: ["CLUB"],
+        clubId: "club-1",
+        clubName: null,
+        club: { disabledAt: null },
+      });
+      mockPrismaService.registration.findMany.mockResolvedValue([]);
+
+      const result = await service.getPendingRegistrationsForClub("user-1");
+
+      expect(result).toEqual([]);
+      expect(mockPrismaService.registration.findMany).toHaveBeenCalled();
+    });
+
+    it("returns empty array for an extra CLUB role of a disabled club", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "LICENSEE",
+        extraRoles: ["CLUB"],
+        clubId: "club-1",
+        clubName: null,
+        club: { disabledAt: new Date() },
+      });
+
+      const result = await service.getPendingRegistrationsForClub("user-1");
+
+      expect(result).toEqual([]);
+      expect(mockPrismaService.registration.findMany).not.toHaveBeenCalled();
+    });
+
     it("returns empty array when organizer has no club", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({
         role: "CLUB",

@@ -11,6 +11,7 @@ const base = {
   competitionLevel: null,
   nationalRanking: 12,
   role: 'LICENSEE',
+  extraRoles: [] as string[],
 };
 
 describe('changedFields', () => {
@@ -27,6 +28,15 @@ describe('changedFields', () => {
   });
   it('is empty when nothing changed (legacy value untouched)', () => {
     expect(changedFields(base, { ...base })).toEqual({});
+  });
+
+  it('treats extra roles as a set compared by value', () => {
+    const a = { ...base, extraRoles: ['CLUB'] };
+    expect(changedFields(a, { ...a, extraRoles: ['CLUB'] })).toEqual({});
+    expect(changedFields(a, { ...a, extraRoles: ['STAFF', 'CLUB'] })).toEqual({
+      extraRoles: ['STAFF', 'CLUB'],
+    });
+    expect(changedFields(a, { ...a, extraRoles: [] })).toEqual({ extraRoles: [] });
   });
 });
 

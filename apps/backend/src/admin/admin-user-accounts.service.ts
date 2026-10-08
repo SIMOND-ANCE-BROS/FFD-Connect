@@ -10,6 +10,7 @@ import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import { AuthPasswordService } from "../auth/auth-password.service";
 import { EmailService, InvitationRole } from "../auth/email.service";
+import { hasRole } from "../auth/roles";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   adminClubAttachSelect,
@@ -137,7 +138,7 @@ export class AdminUserAccountsService {
       select: adminInvitationTargetSelect,
     });
     if (!user) throw new NotFoundException("Utilisateur introuvable");
-    if (user.role === UserRole.ADMIN) {
+    if (hasRole(user, UserRole.ADMIN)) {
       throw new BadRequestException(
         "Un compte administrateur ne reçoit pas d'invitation",
       );
@@ -157,7 +158,8 @@ export class AdminUserAccountsService {
     if (user.role === UserRole.CLUB && user.club?.disabledAt) {
       throw new BadRequestException(CLUB_DISABLED);
     }
-    const role: InvitationRole = user.role;
+    // hasRole(ADMIN) above already refused an ADMIN main role.
+    const role = user.role as InvitationRole;
     await this.prisma.$transaction(async (tx) => {
       await this.audit.record(tx, {
         actorId,

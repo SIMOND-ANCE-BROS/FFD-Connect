@@ -102,7 +102,7 @@ export const NOTIFICATION_CATALOG: Readonly<
     defaultEnabled: true,
     configurable: true,
     // CompetitionEventNotificationService.notifyNewCompetition interroge
-    // `where: { role: LICENSEE }` : aucun autre rôle ne peut la recevoir.
+    // `withActiveRole(LICENSEE)` : aucun autre rôle ne peut la recevoir.
     roles: [UserRole.LICENSEE],
     label: "Nouvelles compétitions",
     description:
@@ -115,7 +115,7 @@ export const NOTIFICATION_CATALOG: Readonly<
     defaultEnabled: false,
     configurable: true,
     // RegistrationNotificationService.notifyClubOrganizers interroge
-    // `where: { role: CLUB }`.
+    // `withActiveRole(CLUB)`.
     roles: [UserRole.CLUB],
     label: "Inscriptions des licenciés de mon club",
     description:
@@ -127,7 +127,7 @@ export const NOTIFICATION_CATALOG: Readonly<
     defaultEnabled: true,
     configurable: true,
     // PartnershipService.notifyClubOrganizersForClub interroge
-    // `where: { role: "CLUB" }`.
+    // `withActiveRole(CLUB)`.
     roles: [UserRole.CLUB],
     label: "Couples inter-club",
     description:
@@ -136,7 +136,7 @@ export const NOTIFICATION_CATALOG: Readonly<
   [NotificationType.TRACK_REPORT]: {
     defaultEnabled: true,
     configurable: true,
-    // TrackCorrectionsService.notifyAdmins interroge `where: { role: ADMIN }`.
+    // TrackCorrectionsService.notifyAdmins interroge `withActiveRole(ADMIN)`.
     roles: [UserRole.ADMIN],
     label: "Signalements de musique",
     description:
@@ -194,28 +194,30 @@ export const isConfigurable = (type: NotificationType): boolean =>
   NOTIFICATION_CATALOG[type].configurable;
 
 /**
- * Ce type s'adresse-t-il au rôle donné ?
+ * Ce type s'adresse-t-il à au moins l'un des rôles donnés ?
  *
- * `role` arrive du JWT en `string` (cf. `RequestWithUser`), pas en `UserRole` :
- * la comparaison est volontairement faite sur la valeur. Un rôle inconnu —
- * token d'une version antérieure, rôle retiré de l'enum — ne correspond à
- * aucune entrée et ne se voit donc proposer que… rien. C'est le sens fermé :
- * mieux vaut un écran vide qu'un interrupteur sans effet ou qu'une écriture
- * qu'on ne pourra plus relire.
+ * Les rôles arrivent de `req.user.roles` en `string` (cf. `RequestWithUser`),
+ * pas en `UserRole` : la comparaison est volontairement faite sur la valeur.
+ * Un rôle inconnu — token d'une version antérieure, rôle retiré de l'enum — ne
+ * correspond à aucune entrée et ne se voit donc proposer que… rien. C'est le
+ * sens fermé : mieux vaut un écran vide qu'un interrupteur sans effet ou
+ * qu'une écriture qu'on ne pourra plus relire.
  */
-export const isApplicableToRole = (
+export const isApplicableToRoles = (
   type: NotificationType,
-  role: string,
+  roles: readonly string[],
 ): boolean =>
-  (NOTIFICATION_CATALOG[type].roles as readonly string[]).includes(role);
+  roles.some((role) =>
+    (NOTIFICATION_CATALOG[type].roles as readonly string[]).includes(role),
+  );
 
 /**
- * Les interrupteurs à présenter à un rôle : les types réglables qui le
- * concernent, dans l'ordre de déclaration de l'enum.
+ * Les interrupteurs à présenter à un compte : les types réglables qui
+ * concernent au moins un de ses rôles, dans l'ordre de déclaration de l'enum.
  */
-export const configurableTypesForRole = (
-  role: string,
+export const configurableTypesForRoles = (
+  roles: readonly string[],
 ): readonly NotificationType[] =>
   CONFIGURABLE_NOTIFICATION_TYPES.filter((type) =>
-    isApplicableToRole(type, role),
+    isApplicableToRoles(type, roles),
   );

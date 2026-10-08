@@ -324,6 +324,11 @@ describe("AdminUserAccountsService", () => {
         "Un compte administrateur ne reçoit pas d'invitation",
       ],
       [
+        "a LICENSEE account with an extra ADMIN role",
+        { role: UserRole.LICENSEE, extraRoles: [UserRole.ADMIN] },
+        "Un compte administrateur ne reçoit pas d'invitation",
+      ],
+      [
         "an account that has logged in",
         { lastLoginAt: new Date() },
         "Ce compte s'est déjà connecté",

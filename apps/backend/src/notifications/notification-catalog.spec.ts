@@ -1,8 +1,8 @@
 import { NotificationType, UserRole } from "@prisma/client";
 import {
   CONFIGURABLE_NOTIFICATION_TYPES,
-  configurableTypesForRole,
-  isApplicableToRole,
+  configurableTypesForRoles,
+  isApplicableToRoles,
   isConfigurable,
   isEnabledByDefault,
   NOTIFICATION_CATALOG,
@@ -169,14 +169,16 @@ describe("catalogue des notifications", () => {
       }
     });
 
-    it("isApplicableToRole répond non à un rôle inconnu", () => {
+    it("isApplicableToRoles répond non à un rôle inconnu", () => {
       expect(
-        isApplicableToRole(NotificationType.REGISTRATION_STATUS, "SUPERVISOR"),
+        isApplicableToRoles(NotificationType.REGISTRATION_STATUS, [
+          "SUPERVISOR",
+        ]),
       ).toBe(false);
     });
 
-    it("configurableTypesForRole conserve l'ordre d'affichage", () => {
-      const forLicensee = configurableTypesForRole(UserRole.LICENSEE);
+    it("configurableTypesForRoles conserve l'ordre d'affichage", () => {
+      const forLicensee = configurableTypesForRoles([UserRole.LICENSEE]);
 
       expect(forLicensee).toEqual([
         NotificationType.REGISTRATION_STATUS,
@@ -192,9 +194,22 @@ describe("catalogue des notifications", () => {
       );
     });
 
+    it("offers the switches of every role the account holds", () => {
+      const types = configurableTypesForRoles([
+        UserRole.LICENSEE,
+        UserRole.ADMIN,
+      ]);
+      expect(types).toEqual(
+        expect.arrayContaining([
+          ...configurableTypesForRoles([UserRole.LICENSEE]),
+          ...configurableTypesForRoles([UserRole.ADMIN]),
+        ]),
+      );
+    });
+
     it("n'expose jamais un type non réglable, quel que soit le rôle", () => {
       for (const role of Object.values(UserRole)) {
-        expect(configurableTypesForRole(role)).not.toContain(
+        expect(configurableTypesForRoles([role])).not.toContain(
           NotificationType.DIAGNOSTIC_TEST,
         );
       }
@@ -203,7 +218,7 @@ describe("catalogue des notifications", () => {
     it("couvre chaque rôle par au moins un interrupteur", () => {
       // Un rôle sans aucun type verrait un écran de réglages vide.
       for (const role of Object.values(UserRole)) {
-        expect(configurableTypesForRole(role).length).toBeGreaterThan(0);
+        expect(configurableTypesForRoles([role]).length).toBeGreaterThan(0);
       }
     });
   });

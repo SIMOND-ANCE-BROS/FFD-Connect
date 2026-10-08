@@ -41,7 +41,16 @@ export interface AuthConfig {
   authToken?: string;
   /** Refresh token (30 j) pour le refresh silencieux de l'access token. */
   refreshToken?: string;
+  /** Active space (lot 1c): drives the tabs and each screen's variant. */
   role: UserRole;
+  /** Every role of the account. Missing on old configs: falls back to [role]. */
+  roles?: UserRole[];
+  /** Main role of the account, the default space. */
+  mainRole?: UserRole;
+  /** Account of the last session, kept across logout (space memory). */
+  lastUser?: string;
+  /** Space of the last session, reopened at the next login of `lastUser`. */
+  lastSpace?: UserRole;
   isGuest?: boolean;
   username?: string;
   clubName?: string;
@@ -88,6 +97,8 @@ export interface UserProfile {
   firstName: string;
   lastName: string;
   role: UserRole;
+  /** Every role of the account; absent on an older backend. */
+  roles?: UserRole[];
   clubName?: string;
   birthDate?: string;
   category?: string | null;
@@ -131,6 +142,7 @@ interface ApiErrorData {
 
 interface LoginResponseUser {
   role: UserRole;
+  roles?: UserRole[];
   clubName?: string;
   category?: string;
   ageGroup?: string;
@@ -144,6 +156,40 @@ interface LoginResponse {
   refresh_token: string;
   user: LoginResponseUser;
 }
+
+/** Which space to open: the previous one of the same account if still held, else the main role. */
+export function resolveSpace(o: {
+  previousSpace?: UserRole;
+  previousUser?: string;
+  user: string;
+  mainRole: UserRole;
+  roles: UserRole[];
+}): UserRole {
+  return o.previousUser === o.user &&
+    o.previousSpace &&
+    o.roles.includes(o.previousSpace)
+    ? o.previousSpace
+    : o.mainRole;
+}
+
+const rolesFrom = (u: { role: UserRole; roles?: UserRole[] }): UserRole[] =>
+  u.roles?.length ? u.roles : [u.role];
+
+/**
+ * The session `resolveSpace` compares with: the current one while logged in,
+ * else the one logout kept in `lastUser` / `lastSpace`.
+ */
+export function previousSession(c: AuthConfig): {
+  previousUser?: string;
+  previousSpace?: UserRole;
+} {
+  return c.username
+    ? { previousUser: c.username, previousSpace: c.role }
+    : { previousUser: c.lastUser, previousSpace: c.lastSpace };
+}
+
+const sameRoles = (a: readonly UserRole[] | undefined, b: UserRole[]) =>
+  !!a && a.length === b.length && a.every((r, i) => r === b[i]);
 
 export const DEFAULT_CONFIG: AuthConfig = {
   isLoggedIn: false,
@@ -208,13 +254,21 @@ export const AuthService = {
       // ... (rest of logic)
 
       const currentConfig = await AuthService.getAuthConfig();
+      const roles = rolesFrom(user);
 
       const newConfig: AuthConfig = {
         ...currentConfig,
         isLoggedIn: true,
         authToken: access_token,
         refreshToken: refresh_token,
-        role: user.role, // Backend returns 'LICENSEE' | 'CLUB' | 'STAFF' | 'ADMIN'
+        role: resolveSpace({
+          ...previousSession(currentConfig),
+          user: user.email,
+          mainRole: user.role,
+          roles,
+        }),
+        roles,
+        mainRole: user.role,
         clubName: user.clubName, // Save clubName
         category: user.category ?? undefined,
         ageGroup: user.ageGroup ?? undefined,
@@ -273,13 +327,21 @@ export const AuthService = {
       const { access_token, refresh_token, user } = response.data;
 
       const currentConfig = await AuthService.getAuthConfig();
+      const roles = rolesFrom(user);
 
       const newConfig: AuthConfig = {
         ...currentConfig,
         isLoggedIn: true,
         authToken: access_token,
         refreshToken: refresh_token,
-        role: user.role,
+        role: resolveSpace({
+          ...previousSession(currentConfig),
+          user: user.email,
+          mainRole: user.role,
+          roles,
+        }),
+        roles,
+        mainRole: user.role,
         clubName: user.clubName,
         category: user.category ?? undefined,
         ageGroup: user.ageGroup ?? undefined,
@@ -358,6 +420,7 @@ export const AuthService = {
       access_token: string;
       user: {
         role: UserRole;
+        roles?: UserRole[];
         email: string;
         clubName?: string | null;
         firstName?: string;
@@ -374,7 +437,10 @@ export const AuthService = {
       isLoggedIn: true,
       authToken: access_token,
       refreshToken: undefined,
+      // An impersonation always opens on the target's main role.
       role: user.role,
+      roles: rolesFrom(user),
+      mainRole: user.role,
       clubName: user.clubName ?? undefined,
       username: user.email,
       isGuest: false,
@@ -427,8 +493,16 @@ export const AuthService = {
           ? currentConfig.refreshToken
           : undefined,
         role: "LICENSEE",
+        roles: undefined,
+        mainRole: undefined,
         isGuest: false,
         username: undefined,
+        // Space memory: the next login of this account (password or
+        // biometrics) reopens this space. A guest logout keeps the previous.
+        lastUser: currentConfig.username ?? currentConfig.lastUser,
+        lastSpace: currentConfig.username
+          ? currentConfig.role
+          : currentConfig.lastSpace,
       };
       if (!keepTokensForBiometrics) {
         // Before clearTokens(): the unregister call is authenticated, so it
@@ -459,6 +533,45 @@ export const AuthService = {
     } catch (error) {
       logger.error("Failed to logout", error);
     }
+  },
+
+  /** Switch the active space (display only; the server checks every role). */
+  setActiveSpace: async (space: UserRole): Promise<void> => {
+    const config = await AuthService.getAuthConfig();
+    if (!(config.roles ?? [config.role]).includes(space)) return;
+    await AuthService.saveAuthConfig({ ...config, role: space });
+  },
+
+  /**
+   * Picks up a role change made in the back-office without a re-login, from a
+   * `/users/me` profile the caller already fetched (no request of its own).
+   * Keeps the active space if still held, else opens the main role. The
+   * caller then refreshAuth(). No-op when logged out, as a guest, or when
+   * nothing changed.
+   */
+  syncRolesFromProfile: async (
+    profile: Pick<UserProfile, "email" | "role" | "roles">,
+  ): Promise<AuthConfig> => {
+    const config = await AuthService.getAuthConfig();
+    if (!config.isLoggedIn || config.isGuest) return config;
+    const roles = rolesFrom(profile);
+    const role = resolveSpace({
+      previousSpace: config.role,
+      previousUser: config.username,
+      user: profile.email,
+      mainRole: profile.role,
+      roles,
+    });
+    if (
+      sameRoles(config.roles, roles) &&
+      config.mainRole === profile.role &&
+      config.role === role
+    ) {
+      return config;
+    }
+    const next: AuthConfig = { ...config, roles, mainRole: profile.role, role };
+    await AuthService.saveAuthConfig(next);
+    return next;
   },
 
   /**

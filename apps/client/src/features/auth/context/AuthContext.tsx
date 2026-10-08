@@ -41,6 +41,10 @@ export interface AuthRepository {
   setRegistrationPolicy(policy: RegistrationPolicy): Promise<void>;
   setClubLogo(uri: string | null): Promise<void>;
   getProfile(): Promise<UserProfile>;
+  /** Applies the roles of a fetched `/users/me` profile (no request). */
+  syncRolesFromProfile(
+    profile: Pick<UserProfile, "email" | "role" | "roles">,
+  ): Promise<AuthConfig>;
   verifyWdsfLicense(min: string): Promise<WdsfVerifyResponse>;
   /** Enregistre la licence WDSF sur le profil backend (après vérification). */
   saveWdsfToBackend(

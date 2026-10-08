@@ -3,6 +3,7 @@ import { ConflictException, UnauthorizedException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { ClubRegistrationMode, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
+import { AdminClubsQueryService } from "../src/admin/admin-clubs.query-service";
 import { AdminClubsService } from "../src/admin/admin-clubs.service";
 import { AdminUserAccountsService } from "../src/admin/admin-user-accounts.service";
 import { AdminUsersQueryService } from "../src/admin/admin-users.query-service";
@@ -496,5 +497,48 @@ describe("Admin (integration, real DB)", () => {
     await expect(
       auth.validateUser(licensee.email, PASSWORD),
     ).resolves.toMatchObject({ id: licensee.id });
+  });
+
+  it("an extra CLUB role is granted by the back-office, counted on the club and dropped while the club is disabled", async () => {
+    const admin = await create({ role: UserRole.ADMIN });
+    const club = await newClub();
+    const licensee = await create({ clubId: club.id, clubName: club.name });
+
+    await service.update(admin.id, licensee.id, {
+      extraRoles: [UserRole.CLUB],
+    });
+
+    const detail = await moduleRef
+      .get(AdminUsersQueryService)
+      .detail(licensee.id);
+    expect(detail.extraRoles).toEqual([UserRole.CLUB]);
+    expect(detail.roles).toEqual([UserRole.LICENSEE, UserRole.CLUB]);
+    await expect(
+      strategy.validate({
+        sub: licensee.id,
+        email: licensee.email,
+        role: licensee.role,
+      }),
+    ).resolves.toMatchObject({ roles: [UserRole.LICENSEE, UserRole.CLUB] });
+    await expect(
+      moduleRef.get(AdminClubsQueryService).detail(club.id),
+    ).resolves.toMatchObject({
+      memberCount: 0,
+      clubAccountCount: 1,
+    });
+
+    await clubs.setStatus(admin.id, club.id, false);
+
+    await expect(
+      strategy.validate({
+        sub: licensee.id,
+        email: licensee.email,
+        role: licensee.role,
+      }),
+    ).resolves.toMatchObject({ roles: [UserRole.LICENSEE] });
+    // The back-office keeps showing the stored role.
+    await expect(
+      moduleRef.get(AdminUsersQueryService).detail(licensee.id),
+    ).resolves.toMatchObject({ roles: [UserRole.LICENSEE, UserRole.CLUB] });
   });
 });

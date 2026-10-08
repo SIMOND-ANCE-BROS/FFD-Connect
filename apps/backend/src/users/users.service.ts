@@ -4,6 +4,8 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Prisma, RegistrationStatus, UserRole } from "@prisma/client";
+import { hasRole, rolesOf, withActiveRole } from "../auth/roles";
+import { userRolesClubSelect } from "../utils/prisma-selects";
 import * as bcrypt from "bcrypt";
 import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
@@ -127,10 +129,10 @@ export class UsersService {
     // 1. Fetch Organizer to get their club (clubId or clubName)
     const organizer = await this.prisma.user.findUnique({
       where: { id: organizerId },
-      select: { role: true, clubId: true, clubName: true },
+      select: userRolesClubSelect,
     });
 
-    if (organizer?.role !== UserRole.CLUB) {
+    if (!organizer || !hasRole(organizer, UserRole.CLUB)) {
       throw new NotFoundException("Organizer not found or invalid role");
     }
 
@@ -148,13 +150,13 @@ export class UsersService {
       this.prisma.user.count({
         where: {
           ...sameClubCondition,
-          role: UserRole.LICENSEE,
+          ...withActiveRole(UserRole.LICENSEE),
         },
       }),
       this.prisma.user.findMany({
         where: {
           ...sameClubCondition,
-          role: UserRole.LICENSEE, // Only fetch dancers/members
+          ...withActiveRole(UserRole.LICENSEE), // Only fetch dancers/members
         },
         skip,
         take,
@@ -244,8 +246,12 @@ export class UsersService {
       where: { id },
       select: {
         ...USER_BASE_SELECT,
+        // Own data only: never in USER_BASE_SELECT, which also feeds the
+        // club members list (data minimisation).
+        extraRoles: true,
         birthDate: true,
         nationalRanking: true,
+        club: { select: { disabledAt: true } },
         license: {
           select: {
             id: true,
@@ -266,8 +272,10 @@ export class UsersService {
       throw new NotFoundException("User not found");
     }
 
-    const wdsf = buildWdsfFromUser(user);
-    return { ...user, wdsf };
+    // The club status only feeds rolesOf; it must not leak into the payload.
+    const { club, ...profile } = user;
+    const wdsf = buildWdsfFromUser(profile);
+    return { ...profile, roles: rolesOf({ ...profile, club }), wdsf };
   }
 
   /**
@@ -360,6 +368,7 @@ export class UsersService {
       where: { id: userId },
       select: {
         ...USER_BASE_SELECT,
+        extraRoles: true,
         birthDate: true,
         license: {
           select: {

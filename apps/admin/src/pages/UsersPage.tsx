@@ -21,7 +21,12 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { UserRole } from '../api/generated/types.gen';
 import { apiErrorMessage } from '../lib/apiError';
-import { ROLE_LABELS, STATUS_FILTER_OPTIONS, type StatusChoice } from '../lib/labels';
+import {
+  extraRoleLabels,
+  ROLE_LABELS,
+  STATUS_FILTER_OPTIONS,
+  type StatusChoice,
+} from '../lib/labels';
 import { clubOptionsQuery, referenceQuery, usersQuery, type UsersFilter } from '../api/queries';
 
 const PAGE_SIZE = 50;
@@ -162,7 +167,14 @@ export function UsersPage() {
                   </Table.Td>
                   <Table.Td>{u.email}</Table.Td>
                   <Table.Td>
-                    <Badge variant="light">{ROLE_LABELS[u.role]}</Badge>
+                    <Group gap={4}>
+                      <Badge variant="light">{ROLE_LABELS[u.role]}</Badge>
+                      {extraRoleLabels(u.extraRoles).map((l) => (
+                        <Badge key={l} variant="outline" size="sm">
+                          {l}
+                        </Badge>
+                      ))}
+                    </Group>
                   </Table.Td>
                   <Table.Td>{u.clubName ?? '—'}</Table.Td>
                   <Table.Td>{u.category ?? '—'}</Table.Td>

@@ -3,6 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import React from "react";
 import { Alert } from "react-native";
 import { BackendService } from "../../../../services/BackendService";
+import { AuthService } from "../../../auth/services/AuthService";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { SettingsScreen } from "../SettingsScreen";
 
@@ -98,6 +99,7 @@ jest.mock("lucide-react-native", () => {
   return {
     AlertTriangle: MockIcon,
     Camera: MockIcon,
+    Check: MockIcon,
     ChevronRight: MockIcon,
     Download: MockIcon,
     FileText: MockIcon,
@@ -229,9 +231,25 @@ jest.mock("../../components/HelloAssoModal", () => {
 
 // Mock the Zustand auth store for logout flow
 const mockRefreshAuth = jest.fn().mockResolvedValue(undefined);
+const mockStoreRoles: { current: string[] } = { current: [] };
 jest.mock("../../../../stores/auth.store", () => ({
   useAuthStore: (selector: (s: Record<string, unknown>) => unknown) =>
-    selector({ refreshAuth: mockRefreshAuth }),
+    selector({
+      refreshAuth: mockRefreshAuth,
+      roles: mockStoreRoles.current,
+      hasRole: () => false,
+    }),
+}));
+
+const mockLoggerError = jest.fn();
+jest.mock("../../../../utils/logger", () => ({
+  createLogger: () => ({
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    // Called at import time, before mockLoggerError exists: defer the lookup.
+    error: (...args: unknown[]) => mockLoggerError(...args) as unknown,
+  }),
 }));
 
 jest.mock("../../../../stores/club.store", () => ({
@@ -330,6 +348,36 @@ describe("SettingsScreen", () => {
     });
     (biometricsAdapter.simplePrompt as jest.Mock).mockResolvedValue({
       success: true,
+    });
+  });
+
+  describe("space switch", () => {
+    afterEach(() => {
+      mockStoreRoles.current = [];
+    });
+
+    it("logs the failure and tells the user instead of swallowing it", async () => {
+      mockStoreRoles.current = ["LICENSEE", "CLUB"];
+      const boom = new Error("storage full");
+      jest.spyOn(AuthService, "setActiveSpace").mockRejectedValueOnce(boom);
+      const { getByTestId } = await render(
+        <SettingsScreen {...createTestProps()} />,
+      );
+
+      await act(async () => {
+        await fireEvent.press(getByTestId("settings-space-CLUB"));
+      });
+
+      await waitFor(() =>
+        expect(Alert.alert).toHaveBeenCalledWith(
+          "Erreur",
+          "Impossible de changer d'espace.",
+        ),
+      );
+      expect(mockLoggerError).toHaveBeenCalledWith(
+        expect.stringContaining("space"),
+        boom,
+      );
     });
   });
 
