@@ -85,6 +85,12 @@ export class LicensesController {
             "Contenu du QR de licence signé par le serveur, à afficher tel quel (valable jusqu'à la fin de validité de la licence). Null si la signature est désactivée.",
           example: '{"v":1,"id":"FFD-123456","exp":"2026-08-31","sig":"…"}',
         },
+        appleWalletAvailable: {
+          type: "boolean",
+          description:
+            "Vrai si le serveur peut produire le pass Apple Wallet (pass configuré et QR signés) : l'app n'affiche le bouton « Ajouter à Apple Wallet » que dans ce cas.",
+          example: true,
+        },
         createdAt: { type: "string", format: "date-time" },
         updatedAt: { type: "string", format: "date-time" },
       },

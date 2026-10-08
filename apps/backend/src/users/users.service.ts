@@ -11,6 +11,7 @@ import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { LicenseQrService } from "../licenses/qr/license-qr.service";
+import { AppleWalletPassGenerator } from "../licenses/wallet/apple-wallet-pass.generator";
 import { PrismaService } from "../prisma/prisma.service";
 import { publicTrackName } from "../tracks/track-visibility.util";
 import {
@@ -103,6 +104,7 @@ export class UsersService {
     private prisma: PrismaService,
     private accountDeletion: AccountDeletionService,
     private licenseQrService: LicenseQrService,
+    private appleWalletPassGenerator: AppleWalletPassGenerator,
   ) {}
 
   /**
@@ -272,6 +274,8 @@ export class UsersService {
       ? {
           ...profile.license,
           qrCode: this.licenseQrService.buildQrCode(profile.license),
+          // The app shows "Add to Apple Wallet" only when true (#162).
+          appleWalletAvailable: this.appleWalletPassGenerator.isAvailable(),
         }
       : null;
     return {

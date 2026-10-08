@@ -73,3 +73,24 @@ model LicenseRenewalDocument {
   // un DROP, et les migrations restent strictement additives (ADR-0017).
   @@index([type, purgeDueAt])
 }
+
+/// Jeton de téléchargement d'un pass Apple Wallet de la licence (#162).
+///
+/// L'app (authentifiée) obtient une URL contenant ce jeton puis l'ouvre dans
+/// Safari, qui n'a pas le JWT : le jeton remplace l'authentification pour UN
+/// téléchargement. Court (quelques minutes) et à usage unique — la ligne est
+/// supprimée à la consommation (DELETE atomique : deux requêtes concurrentes ne
+/// peuvent pas le consommer toutes les deux). Seul le SHA-256 du jeton est
+/// stocké. Au plus une ligne vivante par utilisateur : l'émission d'un jeton
+/// supprime les précédents, sans tâche planifiée (backend scale-to-zero).
+model WalletPassDownloadToken {
+  id        String   @id @default(uuid())
+  /// SHA-256 hex du jeton (le jeton en clair n'est jamais stocké).
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

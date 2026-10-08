@@ -7,6 +7,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { OcrService } from "../utils/ocr.service";
 import { licenseBaseSelect } from "../utils/prisma-selects";
 import { LicenseQrService } from "./qr/license-qr.service";
+import { AppleWalletPassGenerator } from "./wallet/apple-wallet-pass.generator";
 
 @Injectable()
 export class LicensesService {
@@ -14,11 +15,13 @@ export class LicensesService {
     private prisma: PrismaService,
     private ocrService: OcrService,
     private licenseQrService: LicenseQrService,
+    private appleWalletPassGenerator: AppleWalletPassGenerator,
   ) {}
 
   /**
    * Récupère la licence d'un utilisateur, avec le contenu de son QR signé
-   * (`qrCode`, null si la signature est désactivée — #168).
+   * (`qrCode`, null si la signature est désactivée — #168) et la
+   * disponibilité du pass Apple Wallet (`appleWalletAvailable` — #162).
    */
   async getLicense(userId: string) {
     const license = await this.prisma.license.findUnique({
@@ -26,7 +29,11 @@ export class LicensesService {
       select: licenseBaseSelect,
     });
     if (!license) throw new NotFoundException("License non trouvée");
-    return { ...license, qrCode: this.licenseQrService.buildQrCode(license) };
+    return {
+      ...license,
+      qrCode: this.licenseQrService.buildQrCode(license),
+      appleWalletAvailable: this.appleWalletPassGenerator.isAvailable(),
+    };
   }
 
   /**

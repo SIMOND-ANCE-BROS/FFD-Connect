@@ -243,6 +243,30 @@ class EnvironmentVariables {
   @IsOptional()
   QR_SIGNATURE_MODE?: string;
 
+  // Pass Apple Wallet de la licence (#162). Les cinq sont requises pour activer
+  // la fonctionnalité ; une seule absente ou invalide ⇒ fonctionnalité
+  // désactivée (503 + `appleWalletAvailable: false`), le backend démarre.
+  // Contenus PEM (les `\n` littéraux sont acceptés), clé privée NON chiffrée.
+  @IsString()
+  @IsOptional()
+  WALLET_APPLE_PASS_CERT?: string;
+
+  @IsString()
+  @IsOptional()
+  WALLET_APPLE_PASS_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  WALLET_APPLE_WWDR_CERT?: string;
+
+  @IsString()
+  @IsOptional()
+  WALLET_APPLE_PASS_TYPE_ID?: string;
+
+  @IsString()
+  @IsOptional()
+  WALLET_APPLE_TEAM_ID?: string;
+
   // Fonctionnalités optionnelles
   @IsString()
   @IsOptional()

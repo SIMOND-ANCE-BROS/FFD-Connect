@@ -109,6 +109,22 @@ describe("LicenseQrService", () => {
     });
   });
 
+  describe("canSign", () => {
+    it("is true with a usable secret, whatever the verification mode", () => {
+      expect(
+        makeService({
+          QR_SIGNING_SECRET: SECRET,
+          QR_SIGNATURE_MODE: "off",
+        }).canSign(),
+      ).toBe(true);
+    });
+
+    it("is false without a secret or with a too short one", () => {
+      expect(makeService({}).canSign()).toBe(false);
+      expect(makeService({ QR_SIGNING_SECRET: "short" }).canSign()).toBe(false);
+    });
+  });
+
   describe("buildQrCode", () => {
     it("returns the signed QR content when a secret is configured", () => {
       const service = makeService({ QR_SIGNING_SECRET: SECRET });

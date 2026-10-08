@@ -172,6 +172,11 @@ export class UsersController {
               description:
                 "Contenu du QR de licence signé par le serveur, à afficher tel quel. Null si la signature est désactivée.",
             },
+            appleWalletAvailable: {
+              type: "boolean",
+              description:
+                "Vrai si le serveur peut produire le pass Apple Wallet : l'app n'affiche le bouton « Ajouter à Apple Wallet » que dans ce cas.",
+            },
             createdAt: { type: "string", format: "date-time" },
             updatedAt: { type: "string", format: "date-time" },
           },

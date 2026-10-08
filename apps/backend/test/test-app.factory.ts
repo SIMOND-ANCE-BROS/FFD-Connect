@@ -7,6 +7,7 @@ import {
 } from "@nestjs/throttler";
 import { TestingModuleBuilder } from "@nestjs/testing";
 import { SessionCleanupService } from "./../src/auth/session-cleanup.service";
+import { API_GLOBAL_PREFIX } from "./../src/common/api-prefix";
 import { HEALTH_PREFIX_EXCLUDE } from "./../src/health/health.controller";
 import { ThrottlerUserGuard } from "./../src/common/guards/throttler-user.guard";
 import { MetricsService } from "./../src/common/metrics/metrics.service";
@@ -26,7 +27,7 @@ export async function configureTestApp(app: INestApplication): Promise<void> {
       transform: true,
     }),
   );
-  app.setGlobalPrefix("api/v1", {
+  app.setGlobalPrefix(API_GLOBAL_PREFIX, {
     exclude: [...HEALTH_PREFIX_EXCLUDE, UPLOADS_FALLBACK_PREFIX_EXCLUDE],
   });
 }

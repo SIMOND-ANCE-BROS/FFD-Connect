@@ -29,7 +29,7 @@
       "id": "GHSA-86w9-cpqp-85rv",
       "package": "node-forge",
       "expires": "2027-01-05",
-      "reason": "La verification de signature RSA PKCS#1 v1.5 accepte des elements DigestAlgorithm imbriques supplementaires (CVSS 7.5, publie le 2026-09-03). Aucun correctif amont : l'avis couvre <= 1.4.0, derniere version publiee, et le plancher pnpm est deja sur cette version. Transitif via @expo/cli et @expo/code-signing-certificates, tires par le paquet expo : outillage de build et de signature des mises a jour, que Metro n'inclut pas dans le bundle. Le code applicatif ne verifie aucune signature RSA avec node-forge a l'execution. A reexaminer au plus tard le 2027-01-05."
+      "reason": "La verification de signature RSA PKCS#1 v1.5 accepte des elements DigestAlgorithm imbriques supplementaires (CVSS 7.5, publie le 2026-09-03). Aucun correctif amont : l'avis couvre <= 1.4.0, derniere version publiee, et le plancher pnpm est deja sur cette version. Transitif via @expo/cli et @expo/code-signing-certificates, tires par le paquet expo : outillage de build et de signature des mises a jour, que Metro n'inclut pas dans le bundle. Depuis #162, aussi transitif cote backend via passkit-generator, qui l'utilise uniquement pour SIGNER le pass Apple Wallet (PKCS#7) avec notre propre cle : aucune signature tierce n'est verifiee. Le code applicatif ne verifie aucune signature RSA avec node-forge a l'execution. A reexaminer au plus tard le 2027-01-05."
     }
   ]
 }

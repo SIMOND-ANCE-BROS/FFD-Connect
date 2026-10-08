@@ -4,6 +4,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { OcrService } from "../utils/ocr.service";
 import { LicensesService } from "./licenses.service";
 import { LicenseQrService } from "./qr/license-qr.service";
+import { AppleWalletPassGenerator } from "./wallet/apple-wallet-pass.generator";
 
 /** Buffer factice du certificat uploadé en mémoire (OCR uniquement). */
 const CERT_BUFFER = Buffer.from("fake-certificate-bytes");
@@ -45,6 +46,8 @@ describe("LicensesService", () => {
     buildQrCode: jest.fn(),
   };
 
+  const mockWallet = { isAvailable: jest.fn() };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -52,6 +55,7 @@ describe("LicensesService", () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: OcrService, useValue: mockOcr },
         { provide: LicenseQrService, useValue: mockLicenseQr },
+        { provide: AppleWalletPassGenerator, useValue: mockWallet },
       ],
     }).compile();
 
@@ -68,9 +72,14 @@ describe("LicensesService", () => {
       };
       mockPrisma.license.findUnique.mockResolvedValue(mockLicense);
       mockLicenseQr.buildQrCode.mockReturnValue("signed-qr");
+      mockWallet.isAvailable.mockReturnValue(true);
 
       const result = await service.getLicense("1");
-      expect(result).toEqual({ ...mockLicense, qrCode: "signed-qr" });
+      expect(result).toEqual({
+        ...mockLicense,
+        qrCode: "signed-qr",
+        appleWalletAvailable: true,
+      });
       expect(mockLicenseQr.buildQrCode).toHaveBeenCalledWith(mockLicense);
     });
 
@@ -78,8 +87,11 @@ describe("LicensesService", () => {
       mockPrisma.license.findUnique.mockResolvedValue({ number: "123" });
       mockLicenseQr.buildQrCode.mockReturnValue(null);
 
+      mockWallet.isAvailable.mockReturnValue(false);
+
       const result = await service.getLicense("1");
       expect(result.qrCode).toBeNull();
+      expect(result.appleWalletAvailable).toBe(false);
     });
 
     it("should throw NotFound if not found", async () => {

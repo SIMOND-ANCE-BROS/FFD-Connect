@@ -12,6 +12,7 @@ import compression from "compression";
 import helmet from "helmet";
 import { Logger } from "nestjs-pino";
 import { AppModule } from "./app.module";
+import { API_GLOBAL_PREFIX } from "./common/api-prefix";
 import { HEALTH_PREFIX_EXCLUDE } from "./health/health.controller";
 import { UPLOADS_FALLBACK_PREFIX_EXCLUDE } from "./tracks/uploads-fallback.controller";
 import { requireProductionEnv } from "./utils/require-production-env";
@@ -158,7 +159,7 @@ async function bootstrap() {
   );
 
   // API versioning — all routes are prefixed with /api/v1 (health excluded for monitoring)
-  app.setGlobalPrefix("api/v1", {
+  app.setGlobalPrefix(API_GLOBAL_PREFIX, {
     exclude: [...HEALTH_PREFIX_EXCLUDE, UPLOADS_FALLBACK_PREFIX_EXCLUDE],
   });
 
