@@ -1,13 +1,32 @@
-import { Alert, Anchor, Loader, Pagination, Stack, Table, Title } from '@mantine/core';
+import { Alert, Anchor, Loader, Pagination, Stack, Table, Text, Title } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link } from 'react-router';
+import type { AuditLogEntryDto } from '../api/generated/types.gen';
 import { auditQuery } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
 import { ACTION_LABELS } from '../lib/auditLabels';
 
 const PAGE_SIZE = 50;
+
+const DELETIONS: AuditLogEntryDto['action'][] = ['USER_DELETE', 'CLUB_DELETE'];
+
+function Target({ entry }: { entry: AuditLogEntryDto }) {
+  if (DELETIONS.includes(entry.action)) {
+    return (
+      <Text size="sm" c="dimmed">
+        Supprimé
+      </Text>
+    );
+  }
+  const isUser = entry.targetType === 'USER';
+  return (
+    <Anchor component={Link} to={`/${isUser ? 'users' : 'clubs'}/${entry.targetId}`}>
+      {isUser ? 'Voir la fiche' : 'Voir le club'}
+    </Anchor>
+  );
+}
 
 export function AuditLogPage() {
   const [pageIndex, setPageIndex] = useState(1);
@@ -43,13 +62,7 @@ export function AuditLogPage() {
               <Table.Td>{e.actorName ?? 'admin supprimé'}</Table.Td>
               <Table.Td>{ACTION_LABELS[e.action] ?? e.action}</Table.Td>
               <Table.Td>
-                {e.targetType === 'USER' ? (
-                  <Anchor component={Link} to={`/users/${e.targetId}`}>
-                    Voir la fiche
-                  </Anchor>
-                ) : (
-                  e.targetId
-                )}
+                <Target entry={e} />
               </Table.Td>
               <Table.Td>
                 {e.after && <ChangeSummary before={e.before ?? {}} after={e.after} />}

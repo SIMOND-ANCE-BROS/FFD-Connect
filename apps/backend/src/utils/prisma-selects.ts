@@ -398,6 +398,7 @@ export const adminUserListSelect = {
   category: true,
   ageGroup: true,
   createdAt: true,
+  disabledAt: true,
   license: { select: { number: true, validUntil: true } },
 } as const;
 
@@ -413,7 +414,12 @@ export const adminUserDetailSelect = {
   wdsfExpiresOn: true,
   lastLoginAt: true,
   updatedAt: true,
+  // Why a CLUB account may be blocked although the account itself is active.
+  club: { select: { disabledAt: true } },
 } as const;
+
+/** Back-office status toggle: current state only. */
+export const adminUserStatusSelect = { id: true, disabledAt: true } as const;
 
 /** Back-office: the editable fields of a user, for the audit diff. */
 export const adminUserEditableSelect = {
@@ -438,4 +444,60 @@ export const adminInvitationTargetSelect = {
   firstName: true,
   role: true,
   lastLoginAt: true,
+  disabledAt: true,
+  // A CLUB account of a disabled club cannot log in: no invitation either.
+  club: { select: { disabledAt: true } },
+} as const;
+
+/**
+ * Account status, read at login, at refresh and on every authenticated
+ * request (JwtStrategy). Indexed lookup by primary key, three columns.
+ */
+export const accountStatusSelect = {
+  role: true,
+  disabledAt: true,
+  club: { select: { disabledAt: true } },
+} as const;
+
+/** Back-office deletion: what the confirmation and the audit row need. */
+export const adminUserDeletionTargetSelect = {
+  id: true,
+  email: true,
+  role: true,
+} as const;
+
+/** Back-office clubs table. Never select HelloAsso credentials. */
+export const adminClubListSelect = {
+  id: true,
+  name: true,
+  registrationMode: true,
+  disabledAt: true,
+  createdAt: true,
+} as const;
+
+/** Back-office club page: one member row. */
+export const adminClubMemberSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  email: true,
+  role: true,
+  disabledAt: true,
+} as const;
+
+/** Back-office club edit: the editable fields, for the audit diff. */
+export const adminClubEditableSelect = {
+  id: true,
+  name: true,
+  registrationMode: true,
+} as const;
+
+/** Back-office club status toggle: current state only. */
+export const adminClubStatusSelect = { id: true, disabledAt: true } as const;
+
+/** Existing club an admin attaches a new account to (refused when disabled). */
+export const adminClubAttachSelect = {
+  id: true,
+  name: true,
+  disabledAt: true,
 } as const;

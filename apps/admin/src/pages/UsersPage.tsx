@@ -5,6 +5,7 @@ import {
   Group,
   Loader,
   Pagination,
+  SegmentedControl,
   Select,
   Stack,
   Table,
@@ -19,7 +20,9 @@ import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { UserRole } from '../api/generated/types.gen';
-import { clubsQuery, referenceQuery, usersQuery, type UsersFilter } from '../api/queries';
+import { apiErrorMessage } from '../lib/apiError';
+import { ROLE_LABELS, STATUS_FILTER_OPTIONS, type StatusChoice } from '../lib/labels';
+import { clubOptionsQuery, referenceQuery, usersQuery, type UsersFilter } from '../api/queries';
 
 const PAGE_SIZE = 50;
 
@@ -35,6 +38,7 @@ export function UsersPage() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [clubId, setClubId] = useState<string | null>(null);
   const [category, setCategory] = useState<string | null>(null);
+  const [status, setStatus] = useState<StatusChoice>('all');
   const [range, setRange] = useState<[string | null, string | null]>([null, null]);
   const [pageIndex, setPageIndex] = useState(1);
 
@@ -43,6 +47,7 @@ export function UsersPage() {
     ...(role && { role }),
     ...(clubId && { clubId }),
     ...(category && { category }),
+    ...(status !== 'all' && { status }),
     ...(range[0] && { createdFrom: dayjs(range[0]).format('YYYY-MM-DD') }),
     ...(range[1] && { createdTo: dayjs(range[1]).format('YYYY-MM-DD') }),
   };
@@ -62,16 +67,16 @@ export function UsersPage() {
     }),
     placeholderData: keepPreviousData,
   });
-  const clubs = useQuery(clubsQuery);
+  const clubs = useQuery(clubOptionsQuery(clubId));
   const reference = useQuery(referenceQuery);
   const total = users.data?.meta.total ?? 0;
 
   return (
     <Stack>
       <Group justify="space-between">
-        <Title order={2}>Inscrits</Title>
-        <Button component={Link} to="/club-accounts/new">
-          Nouveau compte Club
+        <Title order={2}>Utilisateurs</Title>
+        <Button component={Link} to="/users/new">
+          Nouvel utilisateur
         </Button>
       </Group>
       <Group grow>
@@ -110,13 +115,22 @@ export function UsersPage() {
           onChange={setRange}
         />
       </Group>
-      {users.isError && <Alert color="red">Impossible de charger les inscrits.</Alert>}
-      {users.isPending ? (
+      <SegmentedControl
+        w="fit-content"
+        data={STATUS_FILTER_OPTIONS}
+        value={status}
+        onChange={(v) => setStatus(v as StatusChoice)}
+      />
+      {users.isError ? (
+        <Alert color="red">
+          {apiErrorMessage(users.error, 'Impossible de charger les utilisateurs.')}
+        </Alert>
+      ) : users.isPending ? (
         <Loader />
       ) : (
         <>
           <Text size="sm" c="dimmed">
-            {total} inscrit{total > 1 ? 's' : ''}
+            {total} utilisateur{total > 1 ? 's' : ''}
           </Text>
           <Table striped highlightOnHover>
             <Table.Thead>
@@ -140,10 +154,15 @@ export function UsersPage() {
                 >
                   <Table.Td>
                     {u.lastName} {u.firstName}
+                    {u.disabledAt && (
+                      <Badge color="red" variant="light" ml="xs">
+                        Désactivé
+                      </Badge>
+                    )}
                   </Table.Td>
                   <Table.Td>{u.email}</Table.Td>
                   <Table.Td>
-                    <Badge variant="light">{u.role}</Badge>
+                    <Badge variant="light">{ROLE_LABELS[u.role]}</Badge>
                   </Table.Td>
                   <Table.Td>{u.clubName ?? '—'}</Table.Td>
                   <Table.Td>{u.category ?? '—'}</Table.Td>

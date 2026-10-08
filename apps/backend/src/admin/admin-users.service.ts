@@ -7,9 +7,12 @@ import {
 } from "@nestjs/common";
 import { AuthTokenService } from "../auth/auth-token.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { AccountDeletionService } from "../users/account-deletion.service";
 import {
   adminClubOptionSelect,
+  adminUserDeletionTargetSelect,
   adminUserEditableSelect,
+  adminUserStatusSelect,
 } from "../utils/prisma-selects";
 import { AdminAuditService } from "./admin-audit.service";
 import { diffFields } from "./admin-audit.util";
@@ -27,6 +30,7 @@ export class AdminUsersService {
     private readonly audit: AdminAuditService,
     private readonly query: AdminUsersQueryService,
     private readonly tokens: AuthTokenService,
+    private readonly deletion: AccountDeletionService,
   ) {}
 
   async update(
@@ -92,6 +96,86 @@ export class AdminUsersService {
     if (roleChanged) await this.revokeSessions(userId);
 
     return this.query.detail(userId);
+  }
+
+  /**
+   * Reversible measure. Deactivation revokes every refresh token in the same
+   * transaction; live access tokens are refused by JwtStrategy right away.
+   * Asking for the state already in place writes and audits nothing.
+   */
+  async setStatus(
+    actorId: string,
+    userId: string,
+    active: boolean,
+  ): Promise<AdminUserDetailDto> {
+    if (actorId === userId) {
+      throw new ForbiddenException(
+        "Un administrateur ne peut pas changer le statut de son propre compte",
+      );
+    }
+    await this.prisma.$transaction(async (tx) => {
+      const current = await tx.user.findUnique({
+        where: { id: userId },
+        select: adminUserStatusSelect,
+      });
+      if (!current) throw new NotFoundException("Utilisateur introuvable");
+      if ((current.disabledAt === null) === active) return;
+
+      await tx.user.update({
+        where: { id: userId },
+        data: { disabledAt: active ? null : new Date() },
+        select: { id: true },
+      });
+      if (!active) {
+        await tx.refreshToken.updateMany({
+          where: { userId, revoked: false },
+          data: { revoked: true, revokedAt: new Date() },
+        });
+      }
+      await this.audit.record(tx, {
+        actorId,
+        action: active ? "USER_ENABLE" : "USER_DISABLE",
+        targetType: "USER",
+        targetId: userId,
+      });
+    });
+    return this.query.detail(userId);
+  }
+
+  /**
+   * Final RGPD deletion, same core as the in-app self-service deletion.
+   * The admin re-types the email; the audit row keeps only the role and is
+   * appended to the core's transaction, after the purge of rows about the user.
+   */
+  async delete(
+    actorId: string,
+    userId: string,
+    confirmEmail: string,
+  ): Promise<void> {
+    if (actorId === userId) {
+      throw new ForbiddenException(
+        "Un administrateur ne peut pas supprimer son propre compte",
+      );
+    }
+    const target = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: adminUserDeletionTargetSelect,
+    });
+    if (!target) throw new NotFoundException("Utilisateur introuvable");
+    if (target.email.toLowerCase() !== confirmEmail.trim().toLowerCase()) {
+      throw new BadRequestException(
+        "L'email saisi ne correspond pas au compte",
+      );
+    }
+    await this.deletion.deleteAccount(userId, [
+      this.audit.recordOp({
+        actorId,
+        action: "USER_DELETE",
+        targetType: "USER",
+        targetId: userId,
+        after: { role: target.role },
+      }),
+    ]);
   }
 
   private async revokeSessions(userId: string): Promise<void> {

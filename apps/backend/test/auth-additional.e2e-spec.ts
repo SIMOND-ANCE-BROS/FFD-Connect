@@ -65,6 +65,8 @@ describe("AuthController - Additional Scenarios (e2e)", () => {
         id: "test-uuid",
         email: "test@example.com",
         password: hashedPassword,
+        disabledAt: null,
+        club: null,
       };
 
       (prismaService.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
@@ -179,6 +181,30 @@ describe("AuthController - Additional Scenarios (e2e)", () => {
           expect(bodyStr).not.toContain("password");
           expect(bodyStr).not.toContain("hash");
         });
+    });
+  });
+
+  describe("Disabled accounts", () => {
+    it("never tells a wrong-password caller that the account is disabled", async () => {
+      const hashedPassword = await bcrypt.hash("password123", 10);
+      (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+        id: "test-uuid",
+        email: "test@example.com",
+        password: hashedPassword,
+        role: "CLUB",
+        disabledAt: null,
+        club: { disabledAt: new Date() },
+      });
+
+      for (let i = 0; i < 3; i++) {
+        const res = await request(
+          app.getHttpServer() as Parameters<typeof request>[0],
+        )
+          .post("/api/v1/auth/login")
+          .send({ username: "test@example.com", password: "wrongpassword" })
+          .expect(401);
+        expect(JSON.stringify(res.body)).not.toContain("désactivé");
+      }
     });
   });
 });

@@ -18,14 +18,24 @@ import { notifications } from '@mantine/notifications';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router';
+import { useNavigate, useParams } from 'react-router';
 import {
+  adminControllerDeleteUser,
   adminControllerResendInvitation,
+  adminControllerSetUserStatus,
   adminControllerUpdateUser,
 } from '../api/generated/sdk.gen';
 import type { AdminControllerUpdateUserData } from '../api/generated/types.gen';
-import { auditQuery, clubsQuery, referenceQuery, unwrap, userQuery } from '../api/queries';
+import {
+  auditQuery,
+  clubOptionsQuery,
+  ensureOk,
+  referenceQuery,
+  unwrap,
+  userQuery,
+} from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
+import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { changedFields, type EditableFields, withLegacy } from '../lib/diff';
 import { useSession } from '../session/sessionStore';
@@ -47,10 +57,14 @@ export function UserDetailPage() {
   const me = useSession((s) => s.user);
   const qc = useQueryClient();
   const user = useQuery(userQuery(id));
-  const clubs = useQuery(clubsQuery);
+  const clubs = useQuery(clubOptionsQuery(user.data?.clubId));
   const ref = useQuery(referenceQuery);
   const history = useQuery(auditQuery({ targetType: 'USER', targetId: id, skip: 0, take: 20 }));
   const [pending, setPending] = useState<Partial<EditableFields> | null>(null);
+  const navigate = useNavigate();
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [typedEmail, setTypedEmail] = useState('');
 
   const initial = useMemo<EditableFields | null>(() => {
     const u = user.data;
@@ -120,12 +134,60 @@ export function UserDetailPage() {
     onError: () => notifications.show({ color: 'red', message: 'Renvoi impossible' }),
   });
 
+  const setStatus = useMutation({
+    mutationFn: (active: boolean) =>
+      unwrap(adminControllerSetUserStatus({ path: { id }, body: { active } })),
+    onSuccess: (updated) => {
+      qc.setQueryData(userQuery(id).queryKey, updated);
+      void qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'audit'] });
+      setStatusOpen(false);
+      notifications.show({
+        color: 'green',
+        message: updated.disabledAt ? 'Compte désactivé' : 'Compte réactivé',
+      });
+    },
+    onError: (e) =>
+      notifications.show({
+        color: 'red',
+        message: apiErrorMessage(e, 'Changement de statut impossible'),
+      }),
+  });
+
+  const remove = useMutation({
+    mutationFn: (confirmEmail: string) =>
+      ensureOk(adminControllerDeleteUser({ path: { id }, body: { confirmEmail } })),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['admin', 'users'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'audit'] });
+      notifications.show({ color: 'green', message: 'Compte supprimé' });
+      navigate('/users', { replace: true });
+      qc.removeQueries({ queryKey: userQuery(id).queryKey });
+    },
+  });
+
   if (user.isError) {
     return <Alert color="red">Utilisateur introuvable ou erreur serveur.</Alert>;
   }
   if (!user.data || !initial || !ref.data) return <Loader />;
   const u = user.data;
   const isSelf = me?.id === u.id;
+  const disabled = u.disabledAt != null;
+  // lastLoginAt is recorded at login and refresh since lot 1; null = never used.
+  // Only back-office accounts get an invitation; a CLUB account of a disabled
+  // club could not log in anyway (the server refuses both cases too).
+  const canResend =
+    u.createdByAdmin &&
+    u.role !== 'ADMIN' &&
+    u.lastLoginAt === null &&
+    !disabled &&
+    !(u.role === 'CLUB' && u.clubDisabledAt !== null);
+  const emailMatches = typedEmail.trim().toLowerCase() === u.email.toLowerCase();
+  const closeDelete = () => {
+    setDeleteOpen(false);
+    setTypedEmail('');
+    remove.reset();
+  };
   const clubName = (cid: unknown) =>
     clubs.data?.find((c) => c.id === cid)?.name ?? (cid ? String(cid) : null);
   const displayBefore = (k: string): unknown =>
@@ -142,14 +204,35 @@ export function UserDetailPage() {
         <Title order={2}>
           {u.firstName} {u.lastName}
         </Title>
-        {/* Pre-existing accounts never had lastLoginAt recorded, so only an
-            admin-created CLUB account is a meaningful invitation target. */}
-        {u.role === 'CLUB' && u.lastLoginAt === null && (
-          <Button variant="light" loading={resend.isPending} onClick={() => resend.mutate()}>
-            Renvoyer l'invitation
-          </Button>
-        )}
+        <Group>
+          {canResend && (
+            <Button variant="light" loading={resend.isPending} onClick={() => resend.mutate()}>
+              Renvoyer l'invitation
+            </Button>
+          )}
+          {!isSelf && (
+            <Button
+              variant="light"
+              color={disabled ? 'green' : 'red'}
+              onClick={() => setStatusOpen(true)}
+            >
+              {disabled ? 'Réactiver' : 'Désactiver'}
+            </Button>
+          )}
+        </Group>
       </Group>
+      {disabled && (
+        <Alert color="red" title="Compte désactivé">
+          Désactivé le {dayjs(u.disabledAt).format('DD/MM/YYYY HH:mm')} : connexion et accès
+          refusés. Les données restent intactes.
+        </Alert>
+      )}
+      {!disabled && u.role === 'CLUB' && u.clubDisabledAt && (
+        <Alert color="orange" title="Club désactivé">
+          Le club de ce compte est désactivé : la connexion est refusée tant que le club n'est pas
+          réactivé.
+        </Alert>
+      )}
       <Card withBorder>
         <SimpleGrid cols={3}>
           <Text size="sm">Email : {u.email}</Text>
@@ -251,6 +334,82 @@ export function UserDetailPage() {
             </Group>
           </Stack>
         )}
+      </Modal>
+
+      {!isSelf && (
+        <Card withBorder style={{ borderColor: 'var(--mantine-color-red-6)' }}>
+          <Stack gap="xs">
+            <Title order={4} c="red">
+              Zone dangereuse
+            </Title>
+            <Text size="sm">
+              La suppression efface définitivement le compte et ses données personnelles (droit à
+              l'oubli). Pour une mesure réversible, désactivez le compte.
+            </Text>
+            <Group>
+              <Button color="red" variant="outline" onClick={() => setDeleteOpen(true)}>
+                Supprimer le compte
+              </Button>
+            </Group>
+          </Stack>
+        </Card>
+      )}
+
+      <Modal
+        opened={statusOpen}
+        onClose={() => setStatusOpen(false)}
+        title={disabled ? 'Réactiver ce compte' : 'Désactiver ce compte'}
+      >
+        <Stack>
+          <Text size="sm">
+            {disabled
+              ? "L'utilisateur pourra de nouveau se connecter."
+              : "L'utilisateur est déconnecté immédiatement et ne peut plus se connecter. Ses données restent intactes ; la désactivation est réversible."}
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setStatusOpen(false)}>
+              Annuler
+            </Button>
+            <Button
+              color={disabled ? 'green' : 'red'}
+              loading={setStatus.isPending}
+              onClick={() => setStatus.mutate(disabled)}
+            >
+              {disabled ? 'Réactiver' : 'Désactiver'}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal opened={deleteOpen} onClose={closeDelete} title="Supprimer définitivement ce compte">
+        <Stack>
+          <Text size="sm">
+            Toutes les données de {u.firstName} {u.lastName} seront effacées : inscriptions,
+            réservations, notifications, documents. Cette action est irréversible.
+          </Text>
+          {remove.isError && (
+            <Alert color="red">{apiErrorMessage(remove.error, 'Suppression impossible')}</Alert>
+          )}
+          <TextInput
+            label="Recopiez l'email du compte pour confirmer"
+            placeholder={u.email}
+            value={typedEmail}
+            onChange={(e) => setTypedEmail(e.currentTarget.value)}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeDelete}>
+              Annuler
+            </Button>
+            <Button
+              color="red"
+              disabled={!emailMatches}
+              loading={remove.isPending}
+              onClick={() => remove.mutate(typedEmail.trim())}
+            >
+              Supprimer définitivement
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
 
       <Title order={4}>Historique admin</Title>

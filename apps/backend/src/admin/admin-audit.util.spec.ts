@@ -1,4 +1,8 @@
-import { diffFields } from "./admin-audit.util";
+import {
+  createMockPrismaService,
+  MockPrismaService,
+} from "../../test/mocks/prisma.mock";
+import { diffFields, isCreatedByAdmin } from "./admin-audit.util";
 
 describe("diffFields", () => {
   it("keeps only the keys whose value changed", () => {
@@ -22,5 +26,31 @@ describe("diffFields", () => {
       before: { nationalRanking: null },
       after: { nationalRanking: 3 },
     });
+  });
+});
+
+describe("isCreatedByAdmin", () => {
+  let prisma: MockPrismaService;
+
+  beforeEach(() => {
+    prisma = createMockPrismaService();
+  });
+
+  it("looks for a creation row targeting the user (lot 1 and lot 1b actions)", async () => {
+    prisma.adminAuditLog.findFirst.mockResolvedValue({ id: "a1" } as never);
+    await expect(isCreatedByAdmin(prisma, "u1")).resolves.toBe(true);
+    expect(prisma.adminAuditLog.findFirst).toHaveBeenCalledWith({
+      where: {
+        targetType: "USER",
+        targetId: "u1",
+        action: { in: ["USER_CREATE", "CLUB_ACCOUNT_CREATE"] },
+      },
+      select: { id: true },
+    });
+  });
+
+  it("is false without such a row (self-registered account)", async () => {
+    prisma.adminAuditLog.findFirst.mockResolvedValue(null);
+    await expect(isCreatedByAdmin(prisma, "u1")).resolves.toBe(false);
   });
 });

@@ -1,6 +1,31 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { UserRole } from "@prisma/client";
 import { Resend } from "resend";
+
+/** Roles an admin can create and invite. ADMIN is granted afterwards, never invited. */
+export type InvitationRole = Exclude<UserRole, "ADMIN">;
+
+const INVITATION_COPY: Record<
+  InvitationRole,
+  { subject: string; intro: string; next: string }
+> = {
+  LICENSEE: {
+    subject: "Votre compte FFD Connect",
+    intro: "Un compte licencié vient d'être créé pour vous sur FFD Connect.",
+    next: "Vous pourrez ensuite vous connecter à l'application avec cet email.",
+  },
+  CLUB: {
+    subject: "Votre accès club FFD Connect",
+    intro: "Un compte club vient d'être créé pour vous sur FFD Connect.",
+    next: "Vous pourrez ensuite gérer votre club depuis l'application.",
+  },
+  STAFF: {
+    subject: "Votre accès staff FFD Connect",
+    intro: "Un compte staff vient d'être créé pour vous sur FFD Connect.",
+    next: "Vous pourrez ensuite accéder aux outils de la fédération dans l'application.",
+  },
+};
 
 /**
  * Service d'envoi d'email pour la réinitialisation de mot de passe
@@ -86,15 +111,17 @@ export class EmailService {
     }
   }
 
-  /** Invitation of a Club account created from the admin back-office. */
+  /** Invitation of an account created from the admin back-office. */
   async sendInvitationEmail(
     email: string,
     token: string,
     firstName: string,
+    role: InvitationRole,
   ): Promise<void> {
     const url = `${
       this.configService.get<string>("FRONTEND_URL") ?? "http://localhost:3000"
     }/reset-password?token=${token}`;
+    const copy = INVITATION_COPY[role];
 
     if (!this.resend) {
       this.logger.log(
@@ -106,8 +133,8 @@ export class EmailService {
     const { data, error } = await this.resend.emails.send({
       from: this.fromEmail,
       to: email,
-      subject: "Votre accès club FFD Connect",
-      html: this.getInvitationEmailTemplate(url, firstName),
+      subject: copy.subject,
+      html: this.getInvitationEmailTemplate(url, firstName, copy),
     });
     if (error) {
       this.logger.error(`Failed to send invitation email: ${error.message}`);
@@ -116,18 +143,23 @@ export class EmailService {
     this.logger.log(`Invitation email sent to ${email} (ID: ${data.id})`);
   }
 
-  private getInvitationEmailTemplate(url: string, firstName: string): string {
+  private getInvitationEmailTemplate(
+    url: string,
+    firstName: string,
+    copy: { subject: string; intro: string; next: string },
+  ): string {
     const safeName = firstName.replace(/[<>&"']/g, "");
     return `
       <!DOCTYPE html>
       <html>
-        <head><meta charset="utf-8"><title>Votre accès club FFD Connect</title></head>
+        <head><meta charset="utf-8"><title>${copy.subject}</title></head>
         <body style="font-family: Arial, sans-serif; color: #222; max-width: 560px; margin: auto;">
           <p>Bonjour ${safeName},</p>
-          <p>Un compte club vient d'être créé pour vous sur FFD Connect.</p>
+          <p>${copy.intro}</p>
           <p>Pour l'activer, choisissez votre mot de passe :</p>
           <p><a href="${url}" style="display:inline-block;padding:12px 20px;background:#1d4ed8;color:#fff;border-radius:6px;text-decoration:none;">Définir mon mot de passe</a></p>
           <p>Ce lien est valable 7 jours et ne peut servir qu'une fois.</p>
+          <p>${copy.next}</p>
           <p>Si vous n'attendiez pas cet email, ignorez-le.</p>
         </body>
       </html>`;

@@ -4,12 +4,21 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
-import { PrismaClient, RegistrationStatus, UserRole } from "@prisma/client";
+import {
+  Prisma,
+  PrismaClient,
+  RegistrationStatus,
+  UserRole,
+} from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { mockDeep, MockProxy } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
-import { MAX_RENEWAL_DOCUMENTS_TO_PURGE, UsersService } from "./users.service";
+import {
+  AccountDeletionService,
+  MAX_RENEWAL_DOCUMENTS_TO_PURGE,
+} from "./account-deletion.service";
+import { UsersService } from "./users.service";
 
 jest.mock("bcrypt", () => ({
   compare: jest.fn(),
@@ -68,6 +77,7 @@ describe("UsersService", () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
+        AccountDeletionService,
         { provide: PrismaService, useValue: prisma },
         {
           provide: RenewalDocumentFileCleaner,
@@ -725,13 +735,15 @@ describe("UsersService", () => {
       });
     });
 
-    it("purges admin audit rows that target the deleted user", async () => {
+    it("anonymises admin audit rows that target the deleted user instead of deleting them", async () => {
       compare.mockResolvedValue(true);
 
       await service.deleteMyAccount("u1", "correct-password");
 
-      expect(prisma.adminAuditLog.deleteMany).toHaveBeenCalledWith({
+      expect(prisma.adminAuditLog.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.adminAuditLog.updateMany).toHaveBeenCalledWith({
         where: { targetType: "USER", targetId: "u1" },
+        data: { before: Prisma.DbNull, after: Prisma.DbNull },
       });
     });
 
@@ -746,7 +758,7 @@ describe("UsersService", () => {
         marker("trackCorrectionAnon"),
       );
       prisma.bugReport.deleteMany.mockReturnValue(marker("bugReports"));
-      prisma.adminAuditLog.deleteMany.mockReturnValue(marker("adminAudit"));
+      prisma.adminAuditLog.updateMany.mockReturnValue(marker("adminAudit"));
       prisma.user.delete.mockReturnValue(marker("user"));
 
       await service.deleteMyAccount("u1", "correct-password");

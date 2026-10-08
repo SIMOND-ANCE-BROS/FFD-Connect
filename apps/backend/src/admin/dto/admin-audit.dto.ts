@@ -4,8 +4,17 @@ import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
 
 export const AUDIT_ACTIONS = [
   "USER_UPDATE",
+  // Lot 1 rows only; accounts created since lot 1b are logged as USER_CREATE.
   "CLUB_ACCOUNT_CREATE",
   "INVITATION_RESEND",
+  "USER_CREATE",
+  "USER_DISABLE",
+  "USER_ENABLE",
+  "USER_DELETE",
+  "CLUB_UPDATE",
+  "CLUB_DISABLE",
+  "CLUB_ENABLE",
+  "CLUB_DELETE",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const AUDIT_TARGET_TYPES = ["USER", "CLUB"] as const;

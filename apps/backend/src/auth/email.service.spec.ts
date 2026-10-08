@@ -74,7 +74,7 @@ describe("EmailService", () => {
 
     it("only logs when Resend is not configured", async () => {
       await expect(
-        service.sendInvitationEmail("c@x.fr", "tok", "Jo"),
+        service.sendInvitationEmail("c@x.fr", "tok", "Jo", "CLUB"),
       ).resolves.toBeUndefined();
       expect(mockSend).not.toHaveBeenCalled();
     });
@@ -85,6 +85,7 @@ describe("EmailService", () => {
       mockConfigService.get.mockImplementation((key: string) => {
         if (key === "RESEND_API_KEY") return "re_test_key";
         if (key === "RESEND_FROM_EMAIL") return "noreply@test.com";
+        if (key === "FRONTEND_URL") return "https://ffd.gabin-simond.fr";
         return undefined;
       });
       mockSend.mockResolvedValue({ data: { id: "msg_123" }, error: null });
@@ -135,30 +136,52 @@ describe("EmailService", () => {
     });
 
     describe("sendInvitationEmail", () => {
-      it("sends the invitation with a reset-password link carrying the token", async () => {
+      it("sends a club invitation whose link opens the web reset page with the token", async () => {
         await service.sendInvitationEmail(
           "club@example.fr",
           "tok123",
           "Jeanne",
+          "CLUB",
         );
 
         const arg = mockSend.mock.calls[0][0];
         expect(arg.to).toBe("club@example.fr");
         expect(arg.subject).toBe("Votre accès club FFD Connect");
-        expect(arg.html).toContain("/reset-password?token=tok123");
+        expect(arg.html).toContain(
+          "https://ffd.gabin-simond.fr/reset-password?token=tok123",
+        );
         expect(arg.html).toContain("Bonjour Jeanne");
         expect(arg.html).toContain("7 jours");
       });
 
+      it.each([
+        ["LICENSEE", "Votre compte FFD Connect", "Un compte licencié"],
+        ["CLUB", "Votre accès club FFD Connect", "Un compte club"],
+        ["STAFF", "Votre accès staff FFD Connect", "Un compte staff"],
+      ] as const)(
+        "words the %s invitation for that role",
+        async (role, subject, intro) => {
+          await service.sendInvitationEmail("a@x.fr", "t", "Jo", role);
+          const arg = mockSend.mock.calls[0][0];
+          expect(arg.subject).toBe(subject);
+          expect(arg.html).toContain(intro);
+        },
+      );
+
       it("strips HTML from the first name", async () => {
-        await service.sendInvitationEmail("c@x.fr", "t", "<b>Jo</b>");
+        await service.sendInvitationEmail("c@x.fr", "t", "<b>Jo</b>", "CLUB");
         expect(mockSend.mock.calls[0][0].html).toContain("Bonjour bJo/b");
       });
 
       it("throws when the provider returns an error", async () => {
         mockSend.mockResolvedValue({ data: null, error: { message: "boom" } });
         await expect(
-          service.sendInvitationEmail("club@example.fr", "tok123", "Jeanne"),
+          service.sendInvitationEmail(
+            "club@example.fr",
+            "tok123",
+            "Jeanne",
+            "LICENSEE",
+          ),
         ).rejects.toThrow("Failed to send email: boom");
       });
     });

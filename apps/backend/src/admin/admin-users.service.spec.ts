@@ -12,6 +12,7 @@ import {
 } from "../../test/mocks/prisma.mock";
 import { AuthTokenService } from "../auth/auth-token.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { AccountDeletionService } from "../users/account-deletion.service";
 import { AdminAuditService } from "./admin-audit.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
@@ -34,7 +35,7 @@ const current = {
 describe("AdminUsersService.update", () => {
   let service: AdminUsersService;
   let prisma: MockPrismaService;
-  let audit: { record: jest.Mock };
+  let audit: { record: jest.Mock; recordOp: jest.Mock };
   let query: { detail: jest.Mock };
   let tokens: { revokeAllUserTokens: jest.Mock };
 
@@ -44,7 +45,7 @@ describe("AdminUsersService.update", () => {
       fn(prisma)) as never);
     prisma.user.findUnique.mockResolvedValue(current as never);
     prisma.user.update.mockResolvedValue({} as never);
-    audit = { record: jest.fn() };
+    audit = { record: jest.fn(), recordOp: jest.fn() };
     query = { detail: jest.fn().mockResolvedValue({ id: "u1" }) };
     tokens = { revokeAllUserTokens: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
@@ -54,6 +55,10 @@ describe("AdminUsersService.update", () => {
         { provide: AdminAuditService, useValue: audit },
         { provide: AdminUsersQueryService, useValue: query },
         { provide: AuthTokenService, useValue: tokens },
+        {
+          provide: AccountDeletionService,
+          useValue: { deleteAccount: jest.fn() },
+        },
       ],
     }).compile();
     service = moduleRef.get(AdminUsersService);
@@ -169,5 +174,195 @@ describe("AdminUsersService.update", () => {
     expect(message).toContain("u1");
     expect(message).toContain("connection reset");
     warn.mockRestore();
+  });
+});
+
+describe("AdminUsersService.setStatus", () => {
+  let service: AdminUsersService;
+  let prisma: MockPrismaService;
+  let audit: { record: jest.Mock; recordOp: jest.Mock };
+  let query: { detail: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = createMockPrismaService();
+    prisma.$transaction.mockImplementation(((fn: (tx: unknown) => unknown) =>
+      fn(prisma)) as never);
+    prisma.user.update.mockResolvedValue({} as never);
+    prisma.refreshToken.updateMany.mockResolvedValue({ count: 2 });
+    audit = { record: jest.fn(), recordOp: jest.fn() };
+    query = { detail: jest.fn().mockResolvedValue({ id: "u1" }) };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        AdminUsersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AdminAuditService, useValue: audit },
+        { provide: AdminUsersQueryService, useValue: query },
+        {
+          provide: AuthTokenService,
+          useValue: { revokeAllUserTokens: jest.fn() },
+        },
+        {
+          provide: AccountDeletionService,
+          useValue: { deleteAccount: jest.fn() },
+        },
+      ],
+    }).compile();
+    service = moduleRef.get(AdminUsersService);
+  });
+
+  it("deactivates, revokes every session and audits, in one transaction", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "u1",
+      disabledAt: null,
+    } as never);
+
+    await expect(service.setStatus("admin-1", "u1", false)).resolves.toEqual({
+      id: "u1",
+    });
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { disabledAt: expect.any(Date) as unknown },
+      select: { id: true },
+    });
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+      where: { userId: "u1", revoked: false },
+      data: { revoked: true, revokedAt: expect.any(Date) as unknown },
+    });
+    expect(audit.record).toHaveBeenCalledWith(prisma, {
+      actorId: "admin-1",
+      action: "USER_DISABLE",
+      targetType: "USER",
+      targetId: "u1",
+    });
+  });
+
+  it("reactivates without touching sessions", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "u1",
+      disabledAt: new Date(),
+    } as never);
+
+    await service.setStatus("admin-1", "u1", true);
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { disabledAt: null },
+      select: { id: true },
+    });
+    expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({ action: "USER_ENABLE" }),
+    );
+  });
+
+  it.each([
+    [false, new Date()],
+    [true, null],
+  ])(
+    "is idempotent: active=%s on an account already in that state writes nothing",
+    async (active, disabledAt) => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "u1",
+        disabledAt,
+      } as never);
+
+      await expect(service.setStatus("admin-1", "u1", active)).resolves.toEqual(
+        { id: "u1" },
+      );
+
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    },
+  );
+
+  it("refuses the admin's own account before reading anything", async () => {
+    await expect(service.setStatus("u1", "u1", false)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("404s on an unknown user", async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    await expect(
+      service.setStatus("admin-1", "nope", false),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe("AdminUsersService.delete", () => {
+  let service: AdminUsersService;
+  let prisma: MockPrismaService;
+  let audit: { record: jest.Mock; recordOp: jest.Mock };
+  let deletion: { deleteAccount: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = createMockPrismaService();
+    prisma.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "jeanne@x.fr",
+      role: UserRole.LICENSEE,
+    } as never);
+    audit = {
+      record: jest.fn(),
+      recordOp: jest.fn().mockReturnValue("audit-op"),
+    };
+    deletion = { deleteAccount: jest.fn().mockResolvedValue(undefined) };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        AdminUsersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AdminAuditService, useValue: audit },
+        { provide: AdminUsersQueryService, useValue: { detail: jest.fn() } },
+        {
+          provide: AuthTokenService,
+          useValue: { revokeAllUserTokens: jest.fn() },
+        },
+        { provide: AccountDeletionService, useValue: deletion },
+      ],
+    }).compile();
+    service = moduleRef.get(AdminUsersService);
+  });
+
+  it("deletes through the shared core, with a role-only audit row in the same transaction", async () => {
+    await service.delete("admin-1", "u1", "jeanne@x.fr");
+
+    expect(audit.recordOp).toHaveBeenCalledWith({
+      actorId: "admin-1",
+      action: "USER_DELETE",
+      targetType: "USER",
+      targetId: "u1",
+      after: { role: UserRole.LICENSEE },
+    });
+    expect(deletion.deleteAccount).toHaveBeenCalledWith("u1", ["audit-op"]);
+  });
+
+  it("accepts the email whatever its case and surrounding spaces", async () => {
+    await service.delete("admin-1", "u1", "  JEANNE@X.fr ");
+    expect(deletion.deleteAccount).toHaveBeenCalled();
+  });
+
+  it("400s when the typed email does not match, deleting nothing", async () => {
+    await expect(service.delete("admin-1", "u1", "paul@x.fr")).rejects.toThrow(
+      new BadRequestException("L'email saisi ne correspond pas au compte"),
+    );
+    expect(deletion.deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it("refuses the admin's own account before reading anything", async () => {
+    await expect(
+      service.delete("u1", "u1", "jeanne@x.fr"),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("404s on an unknown user", async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    await expect(
+      service.delete("admin-1", "nope", "a@b.fr"),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

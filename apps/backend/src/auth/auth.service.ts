@@ -13,7 +13,12 @@ import { User } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { extractBirthDateFromLicenseNumber } from "../common/birth-date/license-birth-date.util";
 import { PrismaService } from "../prisma/prisma.service";
-import { licenseIdSelect } from "../utils/prisma-selects";
+import { accountStatusSelect, licenseIdSelect } from "../utils/prisma-selects";
+import {
+  ACCOUNT_DISABLED_MESSAGE,
+  AccountStatusFields,
+  accountBlockReason,
+} from "./account-status";
 import { AuthTokenService } from "./auth-token.service";
 import { LICENSE_NUMBER_MAX_LENGTH } from "./dto/register.dto";
 import { PasswordValidator } from "./password-validator";
@@ -70,6 +75,7 @@ export class AuthService {
     pass: string,
   ): Promise<Omit<User, "password"> | null> {
     const fullSelect = {
+      ...accountStatusSelect,
       id: true,
       email: true,
       password: true,
@@ -101,7 +107,9 @@ export class AuthService {
       },
     } as const;
 
-    let user: { password: string; [k: string]: unknown } | null = null;
+    let user:
+      | (AccountStatusFields & { password: string; [k: string]: unknown })
+      | null = null;
     try {
       user = await this.prisma.user.findUnique({
         where: { email },
@@ -135,6 +143,11 @@ export class AuthService {
     }
 
     if (user && (await bcrypt.compare(pass, user.password))) {
+      // Status only after the password: a stranger learns nothing about the
+      // account, its owner learns why they cannot get in.
+      if (accountBlockReason(user)) {
+        throw new ForbiddenException(ACCOUNT_DISABLED_MESSAGE);
+      }
       // Rehash silencieux si le hash existant a été généré avec < 12 rounds
       const currentRounds = bcrypt.getRounds(user.password);
       if (currentRounds < BCRYPT_ROUNDS) {
@@ -154,7 +167,7 @@ export class AuthService {
           });
       }
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { password, ...result } = user;
+      const { password, club, ...result } = user;
       return result as Omit<User, "password">;
     }
     return null;
@@ -418,15 +431,18 @@ export class AuthService {
       select: {
         id: true,
         email: true,
-        role: true,
         firstName: true,
         lastName: true,
         clubId: true,
         clubName: true,
+        ...accountStatusSelect, // includes role
       },
     });
     if (!targetUser) {
       throw new NotFoundException("Utilisateur cible introuvable.");
+    }
+    if (accountBlockReason(targetUser)) {
+      throw new ForbiddenException("Ce compte est désactivé.");
     }
     if (actorId === targetUser.id) {
       throw new BadRequestException("Impossible de s'impersonner soi-même.");

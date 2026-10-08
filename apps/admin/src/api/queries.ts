@@ -1,17 +1,21 @@
 import { queryOptions } from '@tanstack/react-query';
 import {
   adminControllerAuditLog,
-  adminControllerClubs,
+  adminControllerClubOptions,
+  adminControllerGetClub,
   adminControllerGetUser,
+  adminControllerListClubs,
   adminControllerListUsers,
   adminControllerReferenceData,
 } from './generated/sdk.gen';
 import type {
   AdminControllerAuditLogData,
+  AdminControllerListClubsData,
   AdminControllerListUsersData,
 } from './generated/types.gen';
 
 export type UsersFilter = NonNullable<AdminControllerListUsersData['query']>;
+export type ClubsFilter = NonNullable<AdminControllerListClubsData['query']>;
 export type AuditFilter = NonNullable<AdminControllerAuditLogData['query']>;
 
 /** Throws so React Query surfaces the error state (the generated client never throws). */
@@ -35,11 +39,14 @@ export const userQuery = (id: string) =>
     queryFn: () => unwrap(adminControllerGetUser({ path: { id } })),
   });
 
-export const clubsQuery = queryOptions({
-  queryKey: ['admin', 'clubs'],
-  queryFn: () => unwrap(adminControllerClubs()),
-  staleTime: 5 * 60_000,
-});
+/** Active clubs for selects, plus `includeId` (the current value) even if disabled. */
+export const clubOptionsQuery = (includeId?: string | null) =>
+  queryOptions({
+    queryKey: ['admin', 'clubs', 'options', includeId ?? null],
+    queryFn: () =>
+      unwrap(adminControllerClubOptions(includeId ? { query: { includeId } } : undefined)),
+    staleTime: 5 * 60_000,
+  });
 
 export const referenceQuery = queryOptions({
   queryKey: ['admin', 'reference'],
@@ -51,4 +58,26 @@ export const auditQuery = (q: AuditFilter) =>
   queryOptions({
     queryKey: ['admin', 'audit', q],
     queryFn: () => unwrap(adminControllerAuditLog({ query: q })),
+  });
+
+/** For endpoints answering 204 (no body): rejects with the parsed error body, resolves otherwise. */
+export async function ensureOk(
+  p: Promise<{ error?: unknown; response?: Response }>,
+): Promise<void> {
+  const { error, response } = await p;
+  if (error !== undefined || !response?.ok) {
+    throw error ?? new Error('Requête refusée');
+  }
+}
+
+export const clubsQuery = (q: ClubsFilter) =>
+  queryOptions({
+    queryKey: ['admin', 'clubs', 'list', q],
+    queryFn: () => unwrap(adminControllerListClubs({ query: q })),
+  });
+
+export const clubQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['admin', 'club', id],
+    queryFn: () => unwrap(adminControllerGetClub({ path: { id } })),
   });
