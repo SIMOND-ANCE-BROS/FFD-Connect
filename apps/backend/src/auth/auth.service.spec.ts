@@ -181,6 +181,81 @@ describe("AuthService", () => {
         service.validateUser("test@example.com", "password"),
       ).rejects.toThrow("Network timeout");
     });
+
+    it("throws 403 with the federation message once the password is valid on a disabled account", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: "u1",
+        email: "test@example.com",
+        password: "hashedpassword",
+        role: UserRole.LICENSEE,
+        disabledAt: new Date("2026-10-07T10:00:00Z"),
+        club: null,
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      await expect(
+        service.validateUser("test@example.com", "password"),
+      ).rejects.toThrow(
+        new ForbiddenException("Compte désactivé. Contactez la fédération."),
+      );
+    });
+
+    it("throws 403 for a CLUB account whose club is disabled", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: "u1",
+        email: "club@example.com",
+        password: "hashedpassword",
+        role: UserRole.CLUB,
+        disabledAt: null,
+        club: { disabledAt: new Date("2026-10-07T10:00:00Z") },
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      await expect(
+        service.validateUser("club@example.com", "password"),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it("does not reveal the status when the password is wrong", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: "u1",
+        password: "hashedpassword",
+        role: UserRole.LICENSEE,
+        disabledAt: new Date(),
+        club: null,
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.validateUser("test@example.com", "wrong"),
+      ).resolves.toBeNull();
+    });
+
+    it("reads the account status and strips the club relation from the result", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: "u1",
+        email: "test@example.com",
+        password: "hashedpassword",
+        role: UserRole.LICENSEE,
+        disabledAt: null,
+        club: { disabledAt: null },
+      });
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      (bcrypt.getRounds as jest.Mock).mockReturnValue(12);
+
+      const result = await service.validateUser("test@example.com", "pw");
+
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            disabledAt: true,
+            club: { select: { disabledAt: true } },
+          }) as unknown,
+        }),
+      );
+      expect(result).not.toHaveProperty("club");
+      expect(result).not.toHaveProperty("password");
+    });
   });
 
   describe("login", () => {
@@ -410,6 +485,24 @@ describe("AuthService", () => {
           }),
         }),
       );
+    });
+
+    it("refuse d'impersonner un compte désactivé", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        ...licenseeTarget,
+        disabledAt: new Date(),
+        club: null,
+      });
+      await expect(
+        service.impersonate(
+          "admin-1",
+          "ADMIN",
+          { userId: "target-1" },
+          undefined,
+          undefined,
+        ),
+      ).rejects.toThrow(new ForbiddenException("Ce compte est désactivé."));
+      expect(mockJwtService.sign).not.toHaveBeenCalled();
     });
 
     it("refuse d'impersonner un admin", async () => {

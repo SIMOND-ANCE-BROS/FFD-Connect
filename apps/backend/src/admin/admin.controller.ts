@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -27,10 +28,21 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { AdminAuditService } from "./admin-audit.service";
-import { AdminClubAccountsService } from "./admin-club-accounts.service";
+import { AdminClubsQueryService } from "./admin-clubs.query-service";
+import { AdminClubsService } from "./admin-clubs.service";
+import { AdminUserAccountsService } from "./admin-user-accounts.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminReferenceService } from "./admin-reference.service";
+import {
+  AdminClubDetailDto,
+  AdminClubsPageDto,
+  ClubNotEmptyDto,
+  ClubOptionsQueryDto,
+  ListAdminClubsQueryDto,
+  UpdateAdminClubDto,
+} from "./dto/admin-clubs.dto";
+import { DeleteAdminUserDto, SetActiveDto } from "./dto/admin-actions.dto";
 import { AuditLogPageDto, ListAuditLogQueryDto } from "./dto/admin-audit.dto";
 import {
   AdminUserDetailDto,
@@ -38,10 +50,10 @@ import {
   ListAdminUsersQueryDto,
 } from "./dto/admin-users.dto";
 import {
-  ClubAccountCreatedDto,
-  CreateClubAccountDto,
+  AdminUserCreatedDto,
+  CreateAdminUserDto,
   InvitationResultDto,
-} from "./dto/club-account.dto";
+} from "./dto/admin-user-accounts.dto";
 import { UpdateAdminUserDto } from "./dto/update-admin-user.dto";
 import {
   AdminClubOptionDto,
@@ -64,7 +76,9 @@ export class AdminController {
     private readonly reference: AdminReferenceService,
     private readonly usersQuery: AdminUsersQueryService,
     private readonly users: AdminUsersService,
-    private readonly clubAccounts: AdminClubAccountsService,
+    private readonly userAccounts: AdminUserAccountsService,
+    private readonly clubsQuery: AdminClubsQueryService,
+    private readonly clubs: AdminClubsService,
   ) {}
 
   @Get("reference-data")
@@ -75,10 +89,72 @@ export class AdminController {
   }
 
   @Get("clubs")
-  @ApiOperation({ summary: "Clubs (id + nom) pour les listes déroulantes" })
+  @ApiOperation({ summary: "Liste paginée des clubs" })
+  @ApiResponse({ status: 200, type: AdminClubsPageDto })
+  listClubs(
+    @Query() query: ListAdminClubsQueryDto,
+  ): Promise<AdminClubsPageDto> {
+    return this.clubsQuery.list(query);
+  }
+
+  @Get("clubs/options")
+  @ApiOperation({
+    summary: "Clubs actifs (id + nom) pour les listes déroulantes",
+  })
   @ApiResponse({ status: 200, type: [AdminClubOptionDto] })
-  clubs(): Promise<AdminClubOptionDto[]> {
-    return this.reference.clubs();
+  clubOptions(
+    @Query() query: ClubOptionsQueryDto,
+  ): Promise<AdminClubOptionDto[]> {
+    return this.clubsQuery.options(query.includeId);
+  }
+
+  @Get("clubs/:id")
+  @ApiOperation({ summary: "Fiche d'un club" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, type: AdminClubDetailDto })
+  getClub(@Param("id", ParseUUIDPipe) id: string): Promise<AdminClubDetailDto> {
+    return this.clubsQuery.detail(id);
+  }
+
+  @Patch("clubs/:id")
+  @ApiOperation({
+    summary: "Modifier un club (renommage répercuté partout)",
+  })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, type: AdminClubDetailDto })
+  @ApiResponse({ status: 409, description: "Nom déjà utilisé" })
+  updateClub(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: UpdateAdminClubDto,
+    @Req() req: RequestWithUser,
+  ): Promise<AdminClubDetailDto> {
+    return this.clubs.update(req.user.userId, id, dto);
+  }
+
+  @Post("clubs/:id/status")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Activer ou désactiver un club" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, type: AdminClubDetailDto })
+  setClubStatus(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: SetActiveDto,
+    @Req() req: RequestWithUser,
+  ): Promise<AdminClubDetailDto> {
+    return this.clubs.setStatus(req.user.userId, id, dto.active);
+  }
+
+  @Delete("clubs/:id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Supprimer un club vide" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 204, description: "Club supprimé" })
+  @ApiResponse({ status: 409, type: ClubNotEmptyDto })
+  deleteClub(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Req() req: RequestWithUser,
+  ): Promise<void> {
+    return this.clubs.delete(req.user.userId, id);
   }
 
   @Get("audit-log")
@@ -89,7 +165,7 @@ export class AdminController {
   }
 
   @Get("users")
-  @ApiOperation({ summary: "Liste paginée des inscrits" })
+  @ApiOperation({ summary: "Liste paginée des utilisateurs" })
   @ApiResponse({ status: 200, type: AdminUsersPageDto })
   listUsers(
     @Query() query: ListAdminUsersQueryDto,
@@ -98,7 +174,7 @@ export class AdminController {
   }
 
   @Get("users/:id")
-  @ApiOperation({ summary: "Fiche d'un inscrit" })
+  @ApiOperation({ summary: "Fiche d'un utilisateur" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: AdminUserDetailDto })
   getUser(@Param("id", ParseUUIDPipe) id: string): Promise<AdminUserDetailDto> {
@@ -106,7 +182,7 @@ export class AdminController {
   }
 
   @Patch("users/:id")
-  @ApiOperation({ summary: "Modifier la fiche d'un inscrit" })
+  @ApiOperation({ summary: "Modifier la fiche d'un utilisateur" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: AdminUserDetailDto })
   updateUser(
@@ -117,26 +193,58 @@ export class AdminController {
     return this.users.update(req.user.userId, id, dto);
   }
 
-  @Post("club-accounts")
+  @Post("users/:id/status")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Activer ou désactiver un utilisateur" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, type: AdminUserDetailDto })
+  @ApiResponse({ status: 403, description: "Son propre compte" })
+  setUserStatus(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: SetActiveDto,
+    @Req() req: RequestWithUser,
+  ): Promise<AdminUserDetailDto> {
+    return this.users.setStatus(req.user.userId, id, dto.active);
+  }
+
+  @Delete("users/:id")
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: "Supprimer définitivement un utilisateur (RGPD)" })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 204, description: "Compte supprimé" })
+  @ApiResponse({ status: 400, description: "L'email saisi ne correspond pas" })
+  @ApiResponse({ status: 403, description: "Son propre compte" })
+  deleteUser(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: DeleteAdminUserDto,
+    @Req() req: RequestWithUser,
+  ): Promise<void> {
+    return this.users.delete(req.user.userId, id, dto.confirmEmail);
+  }
+
+  @Post("users")
   @Throttle({ default: { ttl: 60000, limit: 10 } })
-  @ApiOperation({ summary: "Créer un compte Club et envoyer l'invitation" })
-  @ApiResponse({ status: 201, type: ClubAccountCreatedDto })
+  @ApiOperation({
+    summary: "Créer un utilisateur (licencié, club ou staff) et l'inviter",
+  })
+  @ApiResponse({ status: 201, type: AdminUserCreatedDto })
   @ApiResponse({
     status: 409,
     description: "Email ou nom de club déjà utilisé",
   })
-  createClubAccount(
-    @Body() dto: CreateClubAccountDto,
+  createUser(
+    @Body() dto: CreateAdminUserDto,
     @Req() req: RequestWithUser,
-  ): Promise<ClubAccountCreatedDto> {
-    return this.clubAccounts.create(req.user.userId, dto);
+  ): Promise<AdminUserCreatedDto> {
+    return this.userAccounts.create(req.user.userId, dto);
   }
 
   @Post("users/:id/resend-invitation")
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiOperation({
-    summary: "Renvoyer l'invitation d'un compte jamais connecté",
+    summary:
+      "Renvoyer l'invitation d'un compte jamais connecté (hors administrateurs)",
   })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: InvitationResultDto })
@@ -144,6 +252,6 @@ export class AdminController {
     @Param("id", ParseUUIDPipe) id: string,
     @Req() req: RequestWithUser,
   ): Promise<InvitationResultDto> {
-    return this.clubAccounts.resendInvitation(req.user.userId, id);
+    return this.userAccounts.resendInvitation(req.user.userId, id);
   }
 }

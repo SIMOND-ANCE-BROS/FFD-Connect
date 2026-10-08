@@ -6,20 +6,10 @@ import {
   SOLO_AGE_GROUPS,
 } from "../common/age-group";
 import { USER_CATEGORIES } from "../common/user-categories";
-import { PrismaService } from "../prisma/prisma.service";
-import { adminClubOptionSelect } from "../utils/prisma-selects";
-import {
-  AdminClubOptionDto,
-  AdminReferenceDataDto,
-} from "./dto/admin-reference.dto";
-
-/** Clubs are a small, federation-wide list; 1000 is a safety bound. */
-const MAX_CLUBS = 1000;
+import { AdminReferenceDataDto } from "./dto/admin-reference.dto";
 
 @Injectable()
 export class AdminReferenceService {
-  constructor(private readonly prisma: PrismaService) {}
-
   referenceData(): AdminReferenceDataDto {
     return {
       categories: [...USER_CATEGORIES],
@@ -28,13 +18,5 @@ export class AdminReferenceService {
       passportLevels: Object.values(PassportLevel),
       roles: Object.values(UserRole),
     };
-  }
-
-  clubs(): Promise<AdminClubOptionDto[]> {
-    return this.prisma.club.findMany({
-      orderBy: { name: "asc" },
-      take: MAX_CLUBS,
-      select: adminClubOptionSelect,
-    });
   }
 }

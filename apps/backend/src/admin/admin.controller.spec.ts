@@ -5,27 +5,33 @@ import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { AdminAuditService } from "./admin-audit.service";
-import { AdminClubAccountsService } from "./admin-club-accounts.service";
+import { AdminClubsQueryService } from "./admin-clubs.query-service";
+import { AdminClubsService } from "./admin-clubs.service";
 import { AdminReferenceService } from "./admin-reference.service";
+import { AdminUserAccountsService } from "./admin-user-accounts.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminController } from "./admin.controller";
-import type { CreateClubAccountDto } from "./dto/club-account.dto";
+import type { CreateAdminUserDto } from "./dto/admin-user-accounts.dto";
 import type { UpdateAdminUserDto } from "./dto/update-admin-user.dto";
 
 describe("AdminController", () => {
   const audit = { list: jest.fn() };
-  const reference = { referenceData: jest.fn(), clubs: jest.fn() };
+  const reference = { referenceData: jest.fn() };
   const usersQuery = { list: jest.fn(), detail: jest.fn() };
-  const users = { update: jest.fn() };
-  const clubAccounts = { create: jest.fn(), resendInvitation: jest.fn() };
+  const users = { update: jest.fn(), setStatus: jest.fn(), delete: jest.fn() };
+  const userAccounts = { create: jest.fn(), resendInvitation: jest.fn() };
+  const clubsQuery = { list: jest.fn(), options: jest.fn(), detail: jest.fn() };
+  const clubs = { update: jest.fn(), setStatus: jest.fn(), delete: jest.fn() };
 
   const controller = new AdminController(
     audit as unknown as AdminAuditService,
-    reference as unknown as AdminReferenceService,
+    reference,
     usersQuery as unknown as AdminUsersQueryService,
     users as unknown as AdminUsersService,
-    clubAccounts as unknown as AdminClubAccountsService,
+    userAccounts as unknown as AdminUserAccountsService,
+    clubsQuery as unknown as AdminClubsQueryService,
+    clubs as unknown as AdminClubsService,
   );
 
   const req = {
@@ -49,11 +55,35 @@ describe("AdminController", () => {
     expect(controller.referenceData()).toEqual({ roles: [] });
   });
 
-  it("lists clubs", async () => {
-    reference.clubs.mockResolvedValue([{ id: "c1", name: "Club" }]);
-    await expect(controller.clubs()).resolves.toEqual([
+  it("delegates the clubs list", async () => {
+    clubsQuery.list.mockResolvedValue({ data: [] });
+    const query = { skip: 0, take: 10 };
+    await controller.listClubs(query);
+    expect(clubsQuery.list).toHaveBeenCalledWith(query);
+  });
+
+  it("passes the selected club through to the options", async () => {
+    clubsQuery.options.mockResolvedValue([{ id: "c1", name: "Club" }]);
+    await expect(controller.clubOptions({ includeId: "c1" })).resolves.toEqual([
       { id: "c1", name: "Club" },
     ]);
+    expect(clubsQuery.options).toHaveBeenCalledWith("c1");
+  });
+
+  it("delegates the club detail", async () => {
+    clubsQuery.detail.mockResolvedValue({ id: "c1" });
+    await expect(controller.getClub("c1")).resolves.toEqual({ id: "c1" });
+  });
+
+  it("passes the acting admin id to every club write", async () => {
+    await controller.updateClub("c1", { name: "Club Z" }, req);
+    expect(clubs.update).toHaveBeenCalledWith("admin-1", "c1", {
+      name: "Club Z",
+    });
+    await controller.setClubStatus("c1", { active: false }, req);
+    expect(clubs.setStatus).toHaveBeenCalledWith("admin-1", "c1", false);
+    await controller.deleteClub("c1", req);
+    expect(clubs.delete).toHaveBeenCalledWith("admin-1", "c1");
   });
 
   it("delegates the audit log query", async () => {
@@ -83,16 +113,28 @@ describe("AdminController", () => {
     expect(users.update).toHaveBeenCalledWith("admin-1", "u1", dto);
   });
 
-  it("passes the acting admin id when creating a club account", async () => {
-    clubAccounts.create.mockResolvedValue({ id: "u2" });
-    const dto = { email: "c@test.com" } as CreateClubAccountDto;
-    await controller.createClubAccount(dto, req);
-    expect(clubAccounts.create).toHaveBeenCalledWith("admin-1", dto);
+  it("passes the acting admin id when changing a user's status", async () => {
+    users.setStatus.mockResolvedValue({ id: "u1" });
+    await controller.setUserStatus("u1", { active: false }, req);
+    expect(users.setStatus).toHaveBeenCalledWith("admin-1", "u1", false);
+  });
+
+  it("passes the acting admin id when creating a user", async () => {
+    userAccounts.create.mockResolvedValue({ userId: "u2" });
+    const dto = { email: "c@test.com", role: "CLUB" } as CreateAdminUserDto;
+    await controller.createUser(dto, req);
+    expect(userAccounts.create).toHaveBeenCalledWith("admin-1", dto);
   });
 
   it("passes the acting admin id when resending an invitation", async () => {
-    clubAccounts.resendInvitation.mockResolvedValue({ sent: true });
+    userAccounts.resendInvitation.mockResolvedValue({ invitationSent: true });
     await controller.resendInvitation("u1", req);
-    expect(clubAccounts.resendInvitation).toHaveBeenCalledWith("admin-1", "u1");
+    expect(userAccounts.resendInvitation).toHaveBeenCalledWith("admin-1", "u1");
+  });
+
+  it("passes the acting admin id and the typed email when deleting a user", async () => {
+    users.delete.mockResolvedValue(undefined);
+    await controller.deleteUser("u1", { confirmEmail: "j@x.fr" }, req);
+    expect(users.delete).toHaveBeenCalledWith("admin-1", "u1", "j@x.fr");
   });
 });

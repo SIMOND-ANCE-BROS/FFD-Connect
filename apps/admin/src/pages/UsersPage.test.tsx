@@ -21,6 +21,7 @@ const page = (n: number) => ({
         category: 'Latin',
         ageGroup: 'Adulte',
         licenseStatus: 'ACTIVE',
+        disabledAt: null,
         createdAt: '2026-09-01T00:00:00.000Z',
       },
       {
@@ -34,6 +35,7 @@ const page = (n: number) => ({
         category: null,
         ageGroup: null,
         licenseStatus: null,
+        disabledAt: '2026-10-01T00:00:00.000Z',
         createdAt: '2026-09-02T00:00:00.000Z',
       },
     ],
@@ -59,7 +61,7 @@ function renderPage() {
 describe('UsersPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.spyOn(sdk, 'adminControllerClubs').mockResolvedValue({
+    vi.spyOn(sdk, 'adminControllerClubOptions').mockResolvedValue({
       data: [{ id: 'c1', name: 'Club A' }],
       error: undefined,
     } as never);
@@ -79,7 +81,8 @@ describe('UsersPage', () => {
     vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(2) as never);
     renderPage();
     expect(await screen.findByText('jeanne@x.fr')).toBeInTheDocument();
-    expect(screen.getByText('2 inscrits')).toBeInTheDocument();
+    expect(screen.getByText('2 utilisateurs')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Utilisateurs' })).toBeInTheDocument();
   });
 
   it('renders a dash for null club, category, age group and license', async () => {
@@ -107,6 +110,29 @@ describe('UsersPage', () => {
       error: { message: 'x' },
     } as never);
     renderPage();
-    expect(await screen.findByText(/impossible de charger/i)).toBeInTheDocument();
+    expect(await screen.findByText('x')).toBeInTheDocument();
+    expect(screen.queryByText(/\d+ utilisateurs?$/)).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('flags a disabled user with a red badge', async () => {
+    vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(2) as never);
+    renderPage();
+    const row = (await screen.findByText('paul@x.fr')).closest('tr') as HTMLElement;
+    expect(within(row).getByText('Désactivé')).toBeInTheDocument();
+    const other = screen.getByText('jeanne@x.fr').closest('tr') as HTMLElement;
+    expect(within(other).queryByText('Désactivé')).toBeNull();
+  });
+
+  it('filters on the status, from the first page', async () => {
+    const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(1) as never);
+    renderPage();
+    await screen.findByText('jeanne@x.fr');
+    await userEvent.click(screen.getByText('Désactivés'));
+    await waitFor(() =>
+      expect(spy).toHaveBeenLastCalledWith({
+        query: expect.objectContaining({ status: 'disabled', skip: 0 }),
+      }),
+    );
   });
 });

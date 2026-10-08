@@ -29,8 +29,9 @@ export function AppLayout() {
         </Group>
       </AppShell.Header>
       <AppShell.Navbar p="sm">
-        <NavLink component={RouterLink} to="/users" label="Inscrits" />
-        <NavLink component={RouterLink} to="/club-accounts/new" label="Nouveau compte Club" />
+        <NavLink component={RouterLink} to="/users" label="Utilisateurs" />
+        <NavLink component={RouterLink} to="/users/new" label="Nouvel utilisateur" />
+        <NavLink component={RouterLink} to="/clubs" label="Clubs" />
         <NavLink component={RouterLink} to="/audit-log" label="Journal d'audit" />
       </AppShell.Navbar>
       <AppShell.Main>

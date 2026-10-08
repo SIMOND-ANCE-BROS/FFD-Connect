@@ -4,6 +4,7 @@ import {
   ThrottlerStorage,
   ThrottlerStorageService,
 } from "@nestjs/throttler";
+import { JwtService } from "@nestjs/jwt";
 import { Test, TestingModule } from "@nestjs/testing";
 import * as bcrypt from "bcrypt";
 import request from "supertest";
@@ -17,6 +18,7 @@ import { applyE2EOverrides, configureTestApp } from "./test-app.factory";
 describe("AuthController (e2e)", () => {
   let app: INestApplication;
   let prismaService: PrismaService;
+  let jwtService: JwtService;
 
   beforeAll(async () => {
     const mockPrisma = {
@@ -45,6 +47,9 @@ describe("AuthController (e2e)", () => {
       },
       session: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      impersonationLog: {
+        findFirst: jest.fn().mockResolvedValue(null),
       },
     };
 
@@ -101,6 +106,7 @@ describe("AuthController (e2e)", () => {
     await configureTestApp(app);
     await app.init();
     prismaService = moduleFixture.get<PrismaService>(PrismaService);
+    jwtService = moduleFixture.get<JwtService>(JwtService);
   });
 
   afterAll(async () => {
@@ -114,6 +120,8 @@ describe("AuthController (e2e)", () => {
       id: "test-uuid",
       email: "test@example.com",
       password: hashedPassword,
+      disabledAt: null,
+      club: null,
       firstName: "John",
       lastName: "Doe",
       role: "LICENSEE",
@@ -141,6 +149,8 @@ describe("AuthController (e2e)", () => {
       id: "test-uuid",
       email: "test@example.com",
       password: hashedPassword,
+      disabledAt: null,
+      club: null,
     };
 
     (prismaService.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
@@ -184,6 +194,8 @@ describe("AuthController (e2e)", () => {
       id: "test-uuid",
       email: "test@example.com",
       password: hashedPassword,
+      disabledAt: null,
+      club: null,
       firstName: "John",
       lastName: "Doe",
       role: "LICENSEE",
@@ -201,5 +213,85 @@ describe("AuthController (e2e)", () => {
         expect(res.body.user).toHaveProperty("email", "test@example.com");
         expect(res.body.user.licenseNumber).toBeUndefined();
       });
+  });
+
+  it("/api/v1/auth/login (POST) - refuses a disabled account with 403 after a valid password", async () => {
+    const password = "password123";
+    const hashedPassword = await bcrypt.hash(password, 10);
+    (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+      id: "test-uuid",
+      email: "test@example.com",
+      password: hashedPassword,
+      firstName: "John",
+      lastName: "Doe",
+      role: "LICENSEE",
+      disabledAt: new Date(),
+      club: null,
+      license: null,
+    });
+
+    const res = await request(
+      app.getHttpServer() as Parameters<typeof request>[0],
+    )
+      .post("/api/v1/auth/login")
+      .send({ username: "test@example.com", password })
+      .expect(403);
+    expect(res.body.message).toBe("Compte désactivé. Contactez la fédération.");
+  });
+
+  it("/api/v1/auth/login (POST) - a disabled account with a wrong password stays a plain 401", async () => {
+    const hashedPassword = await bcrypt.hash("password123", 10);
+    (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+      id: "test-uuid",
+      email: "test@example.com",
+      password: hashedPassword,
+      role: "LICENSEE",
+      disabledAt: new Date(),
+      club: null,
+    });
+
+    const res = await request(
+      app.getHttpServer() as Parameters<typeof request>[0],
+    )
+      .post("/api/v1/auth/login")
+      .send({ username: "test@example.com", password: "wrongpassword" })
+      .expect(401);
+    expect(JSON.stringify(res.body)).not.toContain("désactivé");
+  });
+
+  it("rejects a live access token once the account is disabled (JwtStrategy)", async () => {
+    const token = jwtService.sign({
+      sub: "test-uuid",
+      email: "test@example.com",
+      role: "LICENSEE",
+    });
+    (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+      role: "LICENSEE",
+      disabledAt: new Date(),
+      club: null,
+    });
+
+    await request(app.getHttpServer() as Parameters<typeof request>[0])
+      .post("/api/v1/auth/impersonate/stop")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(401);
+  });
+
+  it("lets a live access token of an active account through (JwtStrategy)", async () => {
+    const token = jwtService.sign({
+      sub: "test-uuid",
+      email: "test@example.com",
+      role: "LICENSEE",
+    });
+    (prismaService.user.findUnique as jest.Mock).mockResolvedValue({
+      role: "LICENSEE",
+      disabledAt: null,
+      club: null,
+    });
+
+    await request(app.getHttpServer() as Parameters<typeof request>[0])
+      .post("/api/v1/auth/impersonate/stop")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(201);
   });
 });

@@ -4,6 +4,7 @@ import { Transform } from "class-transformer";
 import {
   IsDateString,
   IsEnum,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -14,6 +15,9 @@ import { AdminPageMetaDto } from "./admin-audit.dto";
 
 export const LICENSE_STATUSES = ["ACTIVE", "EXPIRED"] as const;
 export type LicenseStatus = (typeof LICENSE_STATUSES)[number];
+
+export const ACCOUNT_STATUSES = ["active", "disabled"] as const;
+export type AccountStatusFilter = (typeof ACCOUNT_STATUSES)[number];
 
 export class ListAdminUsersQueryDto extends PaginationParamsDto {
   @ApiPropertyOptional({ description: "Nom, prénom ou email" })
@@ -41,6 +45,11 @@ export class ListAdminUsersQueryDto extends PaginationParamsDto {
   @MaxLength(50)
   category?: string;
 
+  @ApiPropertyOptional({ enum: ACCOUNT_STATUSES })
+  @IsOptional()
+  @IsIn(ACCOUNT_STATUSES)
+  status?: AccountStatusFilter;
+
   @ApiPropertyOptional({ description: "Inclus, AAAA-MM-JJ" })
   @IsOptional()
   @IsDateString()
@@ -65,6 +74,7 @@ export class AdminUserListItemDto {
   @ApiProperty({ enum: [...LICENSE_STATUSES, null], nullable: true })
   licenseStatus!: LicenseStatus | null;
   @ApiProperty() createdAt!: Date;
+  @ApiProperty({ nullable: true, type: Date }) disabledAt!: Date | null;
 }
 
 export class AdminUserDetailDto extends AdminUserListItemDto {
@@ -92,6 +102,17 @@ export class AdminUserDetailDto extends AdminUserListItemDto {
   @ApiProperty({ nullable: true, type: String }) licenseNumber!: string | null;
   @ApiProperty({ nullable: true, type: Date }) licenseValidUntil!: Date | null;
   @ApiProperty({ nullable: true, type: Date }) lastLoginAt!: Date | null;
+  @ApiProperty({
+    nullable: true,
+    type: Date,
+    description: "Désactivation du club rattaché (bloque un compte CLUB)",
+  })
+  clubDisabledAt!: Date | null;
+  @ApiProperty({
+    description:
+      "Compte créé depuis le back-office (seul cas où l'invitation peut être renvoyée)",
+  })
+  createdByAdmin!: boolean;
   @ApiProperty() updatedAt!: Date;
 }
 

@@ -1,3 +1,4 @@
+import { UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { Test, TestingModule } from "@nestjs/testing";
 import { UserRole } from "@prisma/client";
@@ -158,6 +159,62 @@ describe("AuthTokenService", () => {
       });
       await expect(service.refreshAccessToken("revoked-token")).rejects.toThrow(
         "Invalid or expired refresh token",
+      );
+    });
+
+    it("refuses a disabled account with 401 and rotates nothing", async () => {
+      mockPrismaService.refreshToken.findUnique.mockResolvedValue({
+        id: "tok-1",
+        revoked: false,
+        expiresAt: new Date(Date.now() + 86400000),
+        user: {
+          id: "u1",
+          email: "u@test.com",
+          role: UserRole.LICENSEE,
+          disabledAt: new Date(),
+          club: null,
+        },
+      });
+
+      await expect(service.refreshAccessToken("plain")).rejects.toThrow(
+        new UnauthorizedException("Compte désactivé. Contactez la fédération."),
+      );
+      expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("refuses a CLUB account whose club is disabled", async () => {
+      mockPrismaService.refreshToken.findUnique.mockResolvedValue({
+        id: "tok-1",
+        revoked: false,
+        expiresAt: new Date(Date.now() + 86400000),
+        user: {
+          id: "u1",
+          email: "c@test.com",
+          role: UserRole.CLUB,
+          disabledAt: null,
+          club: { disabledAt: new Date() },
+        },
+      });
+
+      await expect(service.refreshAccessToken("plain")).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it("reads the account status together with the token", async () => {
+      mockPrismaService.refreshToken.findUnique.mockResolvedValue(null);
+      await expect(service.refreshAccessToken("x")).rejects.toThrow();
+      expect(mockPrismaService.refreshToken.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: {
+            user: {
+              select: expect.objectContaining({
+                disabledAt: true,
+                club: { select: { disabledAt: true } },
+              }) as unknown,
+            },
+          },
+        }),
       );
     });
   });
