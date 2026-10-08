@@ -186,7 +186,7 @@ export const ClubCompetitionsScreen = ({ navigation }: Props) => {
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
           styles.listContent,
-          { paddingTop: headerH + 8, paddingBottom: insets.bottom + 20 },
+          { paddingTop: headerH, paddingBottom: insets.bottom + 20 },
         ]}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>

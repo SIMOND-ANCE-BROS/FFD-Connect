@@ -85,7 +85,7 @@ export const ClubSoloTeamsScreen = () => {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {isLoading ? (
-        <View style={[styles.centered, { paddingTop: headerH + 8 }]}>
+        <View style={[styles.centered, { paddingTop: headerH }]}>
           <ActivityIndicator size="large" color={theme.primary} />
         </View>
       ) : (
@@ -96,7 +96,7 @@ export const ClubSoloTeamsScreen = () => {
           refreshing={isLoading}
           contentContainerStyle={[
             styles.listContent,
-            { paddingTop: headerH + 8, paddingBottom: insets.bottom + 100 },
+            { paddingTop: headerH, paddingBottom: insets.bottom + 100 },
           ]}
           renderItem={({ item }) => (
             <TouchableOpacity
