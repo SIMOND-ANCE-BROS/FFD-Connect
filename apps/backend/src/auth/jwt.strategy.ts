@@ -7,6 +7,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { accountStatusSelect } from "../utils/prisma-selects";
 import { ACCOUNT_DISABLED_MESSAGE, accountBlockReason } from "./account-status";
 import { JwtPayload } from "./interfaces/jwt-payload.interface";
+import { hasRole, rolesOf } from "./roles";
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -45,7 +46,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       if (
         !impersonator ||
         accountBlockReason(impersonator) ||
-        impersonator.role !== UserRole.ADMIN
+        !hasRole(impersonator, UserRole.ADMIN)
       ) {
         throw new UnauthorizedException();
       }
@@ -53,8 +54,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return {
       userId: payload.sub,
       email: payload.email,
-      // The database role, not the (possibly stale) token claim.
+      // The database roles, not the (possibly stale) token claim.
       role: account.role,
+      roles: rolesOf(account),
       impersonatedBy: payload.impersonatedBy,
     };
   }

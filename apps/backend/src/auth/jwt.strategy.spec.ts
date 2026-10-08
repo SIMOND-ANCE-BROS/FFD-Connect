@@ -42,6 +42,7 @@ describe("JwtStrategy", () => {
       userId: "user-1",
       email: "test@example.com",
       role: "LICENSEE",
+      roles: [UserRole.LICENSEE],
     });
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { id: "user-1" },
@@ -129,5 +130,44 @@ describe("JwtStrategy", () => {
         UnauthorizedException,
       );
     });
+  });
+
+  it("returns every effective role from the database", async () => {
+    prisma.user.findUnique.mockResolvedValueOnce({
+      role: UserRole.ADMIN,
+      extraRoles: [UserRole.LICENSEE],
+      disabledAt: null,
+      club: null,
+    } as never);
+    await expect(
+      strategy.validate({ sub: "u1", email: "a@x.fr", role: "ADMIN" }),
+    ).resolves.toMatchObject({
+      role: UserRole.ADMIN,
+      roles: [UserRole.ADMIN, UserRole.LICENSEE],
+    });
+  });
+
+  it("accepts an impersonator whose ADMIN role is an extra role", async () => {
+    prisma.user.findUnique
+      .mockResolvedValueOnce({
+        role: UserRole.LICENSEE,
+        extraRoles: [],
+        disabledAt: null,
+        club: null,
+      } as never)
+      .mockResolvedValueOnce({
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.ADMIN],
+        disabledAt: null,
+        club: null,
+      } as never);
+    await expect(
+      strategy.validate({
+        sub: "t1",
+        email: "t@x.fr",
+        role: "LICENSEE",
+        impersonatedBy: "a1",
+      }),
+    ).resolves.toMatchObject({ userId: "t1", impersonatedBy: "a1" });
   });
 });

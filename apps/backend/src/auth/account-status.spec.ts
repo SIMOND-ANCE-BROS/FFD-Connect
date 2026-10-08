@@ -53,4 +53,14 @@ describe("accountBlockReason", () => {
   it("treats missing fields (legacy fallback select, partial mocks) as active", () => {
     expect(accountBlockReason({})).toBeNull();
   });
+
+  it("does not block an account whose CLUB role is only an extra role", () => {
+    expect(
+      accountBlockReason({
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.CLUB],
+        club: { disabledAt: new Date() },
+      }),
+    ).toBeNull();
+  });
 });

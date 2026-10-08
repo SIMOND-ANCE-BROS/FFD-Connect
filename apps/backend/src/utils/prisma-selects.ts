@@ -455,6 +455,7 @@ export const adminInvitationTargetSelect = {
  */
 export const accountStatusSelect = {
   role: true,
+  extraRoles: true,
   disabledAt: true,
   club: { select: { disabledAt: true } },
 } as const;
