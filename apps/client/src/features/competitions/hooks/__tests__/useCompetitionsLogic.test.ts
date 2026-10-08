@@ -319,10 +319,13 @@ describe("useCompetitionsLogic", () => {
   // ── 6. onLoadMore calls fetchNextPage when there is a next page ─────────────
 
   it("calls fetchNextPage when hasNextPage=true via onLoadMore", async () => {
-    // First page has more results
+    // First page has more results — and is full (10 matching items), so the
+    // auto-fetch of short filtered lists does not kick in on its own.
     mockGetCompetitions
       .mockResolvedValueOnce({
-        data: [makeCompetition({ id: "c1" })],
+        data: Array.from({ length: 10 }, (_, i) =>
+          makeCompetition({ id: `c1-${i}` }),
+        ),
         meta: { hasMore: true },
       })
       .mockResolvedValueOnce({
@@ -335,6 +338,7 @@ describe("useCompetitionsLogic", () => {
     });
 
     await waitFor(() => expect(result.current.state.hasMore).toBe(true));
+    expect(mockGetCompetitions).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       await result.current.actions.onLoadMore();
@@ -450,10 +454,9 @@ describe("useCompetitionsLogic", () => {
   it("flattens competitions from multiple query pages", async () => {
     mockGetCompetitions
       .mockResolvedValueOnce({
-        data: [
-          makeCompetition({ id: "p1-c1" }),
-          makeCompetition({ id: "p1-c2" }),
-        ],
+        data: Array.from({ length: 10 }, (_, i) =>
+          makeCompetition({ id: `p1-c${i}` }),
+        ),
         meta: { hasMore: true },
       })
       .mockResolvedValueOnce({
@@ -474,8 +477,8 @@ describe("useCompetitionsLogic", () => {
     });
 
     await waitFor(() => {
-      // All three competitions from both pages should appear
-      expect(result.current.state.competitions).toHaveLength(3);
+      // All competitions from both pages should appear
+      expect(result.current.state.competitions).toHaveLength(11);
     });
   });
 

@@ -7,6 +7,7 @@ import { useCompetitionRepository } from "../../context/CompetitionContext";
 import {
   isValidCompetitionScope,
   isValidCompetitionStatusFilter,
+  MAX_AUTO_PAGES,
   toCompetitionScope,
   toCompetitionStatusFilter,
   useCompetitionsLogic,
@@ -300,6 +301,183 @@ describe("useCompetitionsLogic", () => {
 
     await waitFor(() => {
       expect(result.current.state.scope).toBe("FOR_ME");
+    });
+  });
+
+  describe("pagination when the default filter hides the first pages", () => {
+    // Backend pages are ordered by date ascending → the first pages are PAST
+    // competitions, all hidden by the default "UPCOMING" filter.
+    const pastPage = Array.from({ length: 10 }, (_, i) => ({
+      id: `past-${i}`,
+      title: `Past ${i}`,
+      status: "PAST",
+      date: "2020-01-01T10:00:00.000Z",
+      events: [],
+    }));
+    const upcoming = {
+      id: "upcoming-1",
+      title: "Upcoming",
+      status: "UPCOMING",
+      date: "2099-01-01T10:00:00.000Z",
+      events: [],
+    };
+
+    it("fetches the next pages automatically until matches are found", async () => {
+      const getCompetitions = jest.fn((skip: number) =>
+        Promise.resolve(
+          skip === 0
+            ? { data: pastPage, meta: { hasMore: true } }
+            : { data: [upcoming], meta: { hasMore: false } },
+        ),
+      );
+      (useCompetitionRepository as jest.Mock).mockReturnValue({
+        ...mockActions,
+        getCompetitions,
+      });
+
+      const { result } = await renderHook(() => useCompetitionsLogic(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => {
+        expect(result.current.state.competitions.map((c) => c.id)).toEqual([
+          "upcoming-1",
+        ]);
+      });
+      expect(getCompetitions).toHaveBeenCalledWith(0, 10);
+      expect(getCompetitions).toHaveBeenCalledWith(10, 10);
+      expect(result.current.state.isLoading).toBe(false);
+      expect(result.current.state.hasMore).toBe(false);
+    });
+
+    it("keeps the full-screen loader (not the footer one) while pages are scanned", async () => {
+      const getCompetitions = jest.fn((skip: number) =>
+        skip === 0
+          ? Promise.resolve({ data: pastPage, meta: { hasMore: true } })
+          : // Next page never resolves: the scan is still in progress.
+            new Promise(() => {}),
+      );
+      (useCompetitionRepository as jest.Mock).mockReturnValue({
+        ...mockActions,
+        getCompetitions,
+      });
+
+      const { result } = await renderHook(() => useCompetitionsLogic(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => {
+        expect(getCompetitions).toHaveBeenCalledWith(10, 10);
+      });
+      expect(result.current.state.competitions).toHaveLength(0);
+      expect(result.current.state.isLoading).toBe(true);
+      expect(result.current.state.isLoadingMore).toBe(false);
+    });
+
+    it("stops fetching once the filtered list can fill the screen", async () => {
+      const upcomingPage = Array.from({ length: 10 }, (_, i) => ({
+        ...upcoming,
+        id: `up-${i}`,
+      }));
+      const getCompetitions = jest.fn(() =>
+        Promise.resolve({ data: upcomingPage, meta: { hasMore: true } }),
+      );
+      (useCompetitionRepository as jest.Mock).mockReturnValue({
+        ...mockActions,
+        getCompetitions,
+      });
+
+      const { result } = await renderHook(() => useCompetitionsLogic(), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => {
+        expect(result.current.state.competitions).toHaveLength(10);
+      });
+      expect(getCompetitions).toHaveBeenCalledTimes(1);
+      expect(result.current.state.isLoading).toBe(false);
+      expect(result.current.state.hasMore).toBe(true);
+    });
+
+    describe("auto-fetch budget", () => {
+      // An endless catalogue of past competitions: nothing ever matches.
+      const endlessPast = () =>
+        jest.fn((skip: number) =>
+          Promise.resolve({
+            data: pastPage.map((c) => ({ ...c, id: `${c.id}-${skip}` })),
+            meta: { hasMore: true },
+          }),
+        );
+      // The initial page is not an auto-fetch.
+      const CAPPED_CALLS = 1 + MAX_AUTO_PAGES;
+
+      const renderUntilCapped = async (
+        getCompetitions: ReturnType<typeof endlessPast>,
+      ) => {
+        (useCompetitionRepository as jest.Mock).mockReturnValue({
+          ...mockActions,
+          getCompetitions,
+        });
+        const rendered = await renderHook(() => useCompetitionsLogic(), {
+          wrapper: createWrapper(),
+        });
+        await waitFor(() => {
+          expect(rendered.result.current.state.canLoadMoreManually).toBe(true);
+        });
+        return rendered;
+      };
+
+      it("stops after MAX_AUTO_PAGES when nothing matches and shows the empty state", async () => {
+        const getCompetitions = endlessPast();
+        const { result } = await renderUntilCapped(getCompetitions);
+
+        await act(async () => {
+          await new Promise((r) => setTimeout(r, 50));
+        });
+        expect(getCompetitions).toHaveBeenCalledTimes(CAPPED_CALLS);
+        expect(result.current.state.competitions).toHaveLength(0);
+        expect(result.current.state.isLoading).toBe(false);
+        expect(result.current.state.hasMore).toBe(true);
+      });
+
+      it("renews the budget when a filter changes", async () => {
+        const getCompetitions = endlessPast();
+        const { result } = await renderUntilCapped(getCompetitions);
+        expect(getCompetitions).toHaveBeenCalledTimes(CAPPED_CALLS);
+
+        await act(() => {
+          result.current.actions.setSearchQuery("introuvable");
+        });
+
+        await waitFor(() => {
+          expect(getCompetitions).toHaveBeenCalledTimes(
+            CAPPED_CALLS + MAX_AUTO_PAGES,
+          );
+        });
+        await waitFor(() => {
+          expect(result.current.state.canLoadMoreManually).toBe(true);
+        });
+        expect(result.current.state.isLoading).toBe(false);
+      });
+
+      it("renews the budget on an explicit load more", async () => {
+        const getCompetitions = endlessPast();
+        const { result } = await renderUntilCapped(getCompetitions);
+
+        await act(async () => {
+          await result.current.actions.onLoadMore();
+        });
+
+        // The manual page + a fresh auto-fetch budget.
+        await waitFor(() => {
+          expect(getCompetitions).toHaveBeenCalledTimes(
+            CAPPED_CALLS + 1 + MAX_AUTO_PAGES,
+          );
+        });
+        await waitFor(() => {
+          expect(result.current.state.canLoadMoreManually).toBe(true);
+        });
+      });
     });
   });
 });

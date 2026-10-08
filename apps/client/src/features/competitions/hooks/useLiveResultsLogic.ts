@@ -75,10 +75,22 @@ export const useLiveResultsLogic = ({
     return () => clearInterval(interval);
   }, [loadResults]);
 
-  const eventLabel =
-    sections.length > 0 && sections[0].data.length > 0
-      ? `${sections[0].data[0].event?.category} - ${sections[0].data[0].event?.level}`.toUpperCase()
-      : "";
+  // The label names THE event being shown — only meaningful when every result
+  // belongs to a single event (results of a whole competition are merged here;
+  // the screen falls back to a generic title otherwise). The results endpoint
+  // returns category + ageGroup (no level): join only the parts that exist,
+  // otherwise the title read "LATIN - UNDEFINED".
+  const eventIds = new Set(
+    sections.flatMap((section) => section.data.map((r) => r.eventId)),
+  );
+  const firstEvent =
+    eventIds.size === 1 ? sections[0]?.data[0]?.event : undefined;
+  const eventLabel = firstEvent
+    ? [firstEvent.category, firstEvent.level ?? firstEvent.ageGroup]
+        .filter((part): part is string => !!part)
+        .join(" - ")
+        .toUpperCase()
+    : "";
 
   return {
     state: {

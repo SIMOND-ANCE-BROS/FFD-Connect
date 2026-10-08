@@ -96,7 +96,8 @@ export const EventRegistrantsScreen = ({ route, navigation }: Props) => {
         keyExtractor={(item: Registrant, index: number) =>
           item.user?.id ?? index.toString()
         }
-        contentContainerStyle={{ ...styles.list, paddingTop: headerH + 8 }}
+        // headerH already includes the header's fade tail: no extra offset.
+        contentContainerStyle={{ ...styles.list, paddingTop: headerH }}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <User
@@ -189,7 +190,7 @@ const styles = StyleSheet.create({
   },
   infoContainer: { flex: 1, paddingLeft: 16 },
   emptyContainer: {
-    marginTop: 50,
+    marginTop: 24,
     padding: 20,
   },
   header: {

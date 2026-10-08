@@ -284,6 +284,49 @@ describe("useLiveResultsLogic", () => {
     expect(result.current.state.eventLabel).toBe("STANDARD - D");
   });
 
+  it("falls back to the ageGroup when the event has no level (no 'UNDEFINED')", async () => {
+    mockGetResults.mockResolvedValue([
+      makeResult({
+        eventId: "ev-latin",
+        event: { category: "Latin", ageGroup: "Adult" },
+      }),
+    ]);
+
+    const { result } = await renderHook(() =>
+      useLiveResultsLogic({ competitionId: "comp-1" }),
+    );
+
+    await waitFor(() => expect(result.current.state.refreshing).toBe(false));
+
+    expect(result.current.state.eventLabel).toBe("LATIN - ADULT");
+  });
+
+  it("leaves eventLabel empty when results span several events", async () => {
+    mockGetResults.mockResolvedValue([
+      makeResult({
+        id: "r1",
+        eventId: "ev-latin",
+        round: "Latines — Finale",
+        event: { category: "Latin", ageGroup: "Adult" },
+      }),
+      makeResult({
+        id: "r2",
+        eventId: "ev-std",
+        round: "Standard — Demi-finale",
+        event: { category: "Standard", ageGroup: "Adult" },
+      }),
+    ]);
+
+    const { result } = await renderHook(() =>
+      useLiveResultsLogic({ competitionId: "comp-1" }),
+    );
+
+    await waitFor(() => expect(result.current.state.refreshing).toBe(false));
+
+    expect(result.current.state.sections).toHaveLength(2);
+    expect(result.current.state.eventLabel).toBe("");
+  });
+
   // ── 12. loadResults action re-fetches results on demand ─────────────────────
 
   it("re-fetches results when loadResults action is called manually", async () => {

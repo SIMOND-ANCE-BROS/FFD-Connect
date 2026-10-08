@@ -41,6 +41,9 @@ type Tab = "EVENTS" | "TIMING";
 
 type Props = NativeStackScreenProps<RootStackParamList, "CompetitionDetail">;
 
+/** Top margin of the first card (`infoCard` in competition-detail.styles). */
+const FIRST_CARD_TOP_MARGIN = 16;
+
 export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
   const { competitionId } = route.params;
   const { state, actions } = useCompetitionDetailLogic(
@@ -156,7 +159,7 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
             { backgroundColor: currentTheme.background },
           ]}
         >
-          <View style={[styles.loadingContainer, { paddingTop: headerH + 8 }]}>
+          <View style={[styles.loadingContainer, { paddingTop: headerH }]}>
             <ActivityIndicator
               color={currentTheme.primary}
               testID="competition-detail-loading"
@@ -181,7 +184,12 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
             styles.container,
             { backgroundColor: currentTheme.background },
           ]}
-          contentContainerStyle={{ paddingTop: headerH + 8 }}
+          // headerH already includes the header's fade tail and the first card
+          // (CompetitionInfoCard) carries its own top margin: adding both on top
+          // of headerH left a large empty band under the header.
+          contentContainerStyle={{
+            paddingTop: Math.max(0, headerH - FIRST_CARD_TOP_MARGIN),
+          }}
           testID="competition-detail-scroll-view"
         >
           <CompetitionInfoCard
