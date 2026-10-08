@@ -17,6 +17,8 @@ describe("Volunteer Check-in (e2e)", () => {
   let prisma: PrismaService;
   let jwtService: JwtService;
   let organizerToken: string;
+  let otherClubToken: string;
+  let staffToken: string;
   let userToken: string;
   let competitionId: string;
   let participantId: string;
@@ -73,12 +75,45 @@ describe("Volunteer Check-in (e2e)", () => {
         firstName: "Org",
         lastName: "Anizer",
         role: UserRole.CLUB,
+        clubName: "Club Organisateur",
       },
     });
     organizerToken = jwtService.sign({
       sub: organizer.id,
       email: organizer.email,
       role: organizer.role,
+    });
+
+    // CLUB account of a club that does not organize the competition
+    const otherClub = await prisma.user.create({
+      data: {
+        email: "other.club@ffd.com",
+        password: "hash",
+        firstName: "Other",
+        lastName: "Club",
+        role: UserRole.CLUB,
+        clubName: "Autre Club",
+      },
+    });
+    otherClubToken = jwtService.sign({
+      sub: otherClub.id,
+      email: otherClub.email,
+      role: otherClub.role,
+    });
+
+    const staff = await prisma.user.create({
+      data: {
+        email: "staff@ffd.com",
+        password: "hash",
+        firstName: "Staff",
+        lastName: "Member",
+        role: UserRole.STAFF,
+      },
+    });
+    staffToken = jwtService.sign({
+      sub: staff.id,
+      email: staff.email,
+      role: staff.role,
     });
 
     // Create Normal User
@@ -116,6 +151,7 @@ describe("Volunteer Check-in (e2e)", () => {
         date: new Date(),
         location: "Paris",
         status: CompetitionStatus.UPCOMING,
+        organizer: "Club Organisateur",
       },
     });
     competitionId = comp.id;
@@ -170,9 +206,98 @@ describe("Volunteer Check-in (e2e)", () => {
       }
       expect(response.status).toBe(403);
     });
+
+    it("should NOT allow a club that does not organize the competition", async () => {
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post(`/api/v1/competitions/${competitionId}/volunteer/token`)
+        .set("Authorization", `Bearer ${otherClubToken}`)
+        .send({ name: "Bénévole 1" })
+        .expect(403);
+
+      expect(await prisma.volunteerToken.count()).toBe(0);
+    });
+
+    it("should allow staff to generate a volunteer token", async () => {
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post(`/api/v1/competitions/${competitionId}/volunteer/token`)
+        .set("Authorization", `Bearer ${staffToken}`)
+        .send({ name: "Bénévole 1" })
+        .expect(201);
+    });
+  });
+
+  describe("Post /competitions/:id/checkin", () => {
+    it("should allow the organizing club to check a participant in", async () => {
+      const response = await request(
+        app.getHttpServer() as Parameters<typeof request>[0],
+      )
+        .post(`/api/v1/competitions/${competitionId}/checkin`)
+        .set("Authorization", `Bearer ${organizerToken}`)
+        .send({ qrData: participantId })
+        .expect(201);
+
+      expect(response.body.registrations[0].status).toBe("SUCCESS");
+    });
+
+    it("should allow staff to check a participant in", async () => {
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post(`/api/v1/competitions/${competitionId}/checkin`)
+        .set("Authorization", `Bearer ${staffToken}`)
+        .send({ qrData: participantId })
+        .expect(201);
+    });
+
+    it("should NOT allow a club that does not organize the competition", async () => {
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post(`/api/v1/competitions/${competitionId}/checkin`)
+        .set("Authorization", `Bearer ${otherClubToken}`)
+        .send({ qrData: participantId })
+        .expect(403);
+    });
+
+    it("should NOT allow a licensee", async () => {
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post(`/api/v1/competitions/${competitionId}/checkin`)
+        .set("Authorization", `Bearer ${userToken}`)
+        .send({ qrData: participantId })
+        .expect(403);
+
+      const reg = await prisma.registration.findFirst({
+        where: { userId: participantId },
+      });
+      expect(reg?.checkedIn).toBe(false);
+    });
   });
 
   describe("Post /competitions/checkin/volunteer", () => {
+    it("should NOT accept a token issued for another competition", async () => {
+      const otherComp = await prisma.competition.create({
+        data: {
+          title: "Other Comp",
+          date: new Date(),
+          location: "Lyon",
+          status: CompetitionStatus.UPCOMING,
+        },
+      });
+      await prisma.volunteerToken.create({
+        data: {
+          token: "other-comp-token",
+          competitionId: otherComp.id,
+          expiresAt: new Date(Date.now() + 3600000),
+          name: "Bénévole",
+        },
+      });
+
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post("/api/v1/competitions/checkin/volunteer")
+        .send({
+          competitionId,
+          token: "other-comp-token",
+          qrData: participantId,
+        })
+        .expect(401);
+    });
+
     it("should allow check-in with a valid volunteer token", async () => {
       // 1. Generate token
       await prisma.volunteerToken.create({

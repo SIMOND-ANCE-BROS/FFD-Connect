@@ -516,3 +516,12 @@ export const userRolesClubSelect = {
   clubName: true,
   club: { select: { disabledAt: true } },
 } as const;
+
+/** Check-in operator: roles plus every club name it can be matched on. */
+export const userRolesClubNameSelect = {
+  ...userRolesClubSelect,
+  club: { select: { disabledAt: true, name: true } },
+} as const;
+
+/** Competition ownership check: the organizing club's name. */
+export const competitionOrganizerSelect = { organizer: true } as const;

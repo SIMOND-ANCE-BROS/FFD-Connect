@@ -171,9 +171,25 @@ describe("CompetitionsController (e2e)", () => {
         },
       });
 
+      // The scanner is operated by staff, not by the participant.
+      const staff = await prisma.user.create({
+        data: {
+          email: "staff.e2e@ffd.com",
+          password: "$2b$10$EpIxQi0q.7.a.b.c", // Dummy hash
+          firstName: "Staff",
+          lastName: "User",
+          role: UserRole.STAFF,
+        },
+      });
+      const staffToken = jwtService.sign({
+        sub: staff.id,
+        email: staff.email,
+        role: staff.role,
+      });
+
       return request(app.getHttpServer() as Parameters<typeof request>[0])
         .post(`/api/v1/competitions/${comp.id}/checkin`)
-        .set("Authorization", `Bearer ${authToken}`)
+        .set("Authorization", `Bearer ${staffToken}`)
         .send({ qrData: userId })
         .expect(201)
         .expect((res) => {
@@ -181,6 +197,23 @@ describe("CompetitionsController (e2e)", () => {
           expect(res.body.registrations[0].status).toBe("SUCCESS");
           expect(res.body.registrations[0].bibNumber).toBeDefined();
         });
+    });
+
+    it("should refuse a licensee (403)", async () => {
+      const comp = await prisma.competition.create({
+        data: {
+          title: "C1",
+          date: new Date(),
+          location: "Loc",
+          status: CompetitionStatus.UPCOMING,
+        },
+      });
+
+      return request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post(`/api/v1/competitions/${comp.id}/checkin`)
+        .set("Authorization", `Bearer ${authToken}`)
+        .send({ qrData: userId })
+        .expect(403);
     });
   });
 

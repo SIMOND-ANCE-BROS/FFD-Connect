@@ -8,6 +8,7 @@ import { LicenseQrModule } from "../licenses/qr/license-qr.module";
 import { RedisModule } from "../redis/redis.module";
 import { CompetitionsController } from "./competitions.controller";
 import { LiveGateway } from "./live.gateway";
+import { CompetitionAccessService } from "./services/competition-access.service";
 import { CompetitionCacheService } from "./services/competition-cache.service";
 import { CompetitionManagementService } from "./services/competition-management.service";
 import { CompetitionQueryService } from "./services/competition-query.service";
@@ -42,6 +43,7 @@ import { SyncProcessor } from "./sync.processor";
   ],
   controllers: [CompetitionsController],
   providers: [
+    CompetitionAccessService,
     CompetitionManagementService,
     CompetitionQueryService,
     CompetitionRegistrationService,
