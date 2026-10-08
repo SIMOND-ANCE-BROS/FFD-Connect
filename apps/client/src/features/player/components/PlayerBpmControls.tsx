@@ -1,11 +1,14 @@
 import Slider from "@react-native-community/slider";
 import { Lock, Unlock } from "lucide-react-native";
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { AppText } from "../../../components/AppText";
 import { AppTheme } from "../../../context/ThemeContext";
 import { theme } from "../../../theme";
 import { audioPlayerStyles as styles } from "./audio-player.styles";
+
+/** Minimum delay between two playback-rate updates while dragging. */
+export const BPM_DRAG_THROTTLE_MS = 120;
 
 interface PlayerBpmControlsProps {
   currentTheme: AppTheme;
@@ -33,6 +36,54 @@ export const PlayerBpmControls = ({
   locked,
   onToggleLock,
 }: PlayerBpmControlsProps) => {
+  // While dragging, the slider owns its value: feeding the store value back
+  // through `value` on every tick made the thumb lag behind the finger, and
+  // each tick re-rendered the player and crossed the native bridge (setRate).
+  // The displayed MPM follows the finger; the rate is applied at most every
+  // BPM_DRAG_THROTTLE_MS and committed exactly on release.
+  const [dragValue, setDragValue] = useState<number | null>(null);
+  // Value handed to the native slider, frozen for the whole drag so the
+  // throttled store updates never yank the thumb back.
+  const frozenValueRef = useRef(bpm);
+  const lastApplyRef = useRef(0);
+  const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (pendingRef.current) clearTimeout(pendingRef.current);
+    },
+    [],
+  );
+
+  const applyThrottled = (value: number) => {
+    const now = Date.now();
+    const wait = BPM_DRAG_THROTTLE_MS - (now - lastApplyRef.current);
+    if (pendingRef.current) clearTimeout(pendingRef.current);
+    if (wait <= 0) {
+      lastApplyRef.current = now;
+      changeBpm(value).catch(() => {});
+      return;
+    }
+    pendingRef.current = setTimeout(() => {
+      pendingRef.current = null;
+      lastApplyRef.current = Date.now();
+      changeBpm(value).catch(() => {});
+    }, wait);
+  };
+
+  const commit = (value: number) => {
+    if (pendingRef.current) {
+      clearTimeout(pendingRef.current);
+      pendingRef.current = null;
+    }
+    setDragValue(null);
+    if (locked) return;
+    changeBpm(value).catch(() => {});
+  };
+
+  const shownBpm = dragValue ?? bpm;
+  const shownDiff = dragValue === null ? bpmDiff : bpmDiff + (dragValue - bpm);
+
   return (
     <View
       style={[
@@ -52,7 +103,7 @@ export const PlayerBpmControls = ({
         </AppText>
         <View style={styles.rowBaseline}>
           <Text style={[styles.bpmValueSmall, { color: currentTheme.primary }]}>
-            {bpm.toFixed(1)}
+            {shownBpm.toFixed(1)}
           </Text>
           <AppText
             variant="caption"
@@ -66,16 +117,16 @@ export const PlayerBpmControls = ({
               styles.bpmDiff,
               {
                 color:
-                  bpmDiff > 0
+                  shownDiff > 0
                     ? theme.colors.success
-                    : bpmDiff < 0
+                    : shownDiff < 0
                       ? theme.colors.error
                       : currentTheme.textSecondary,
               },
             ]}
           >
-            {bpmDiff > 0 ? "+" : ""}
-            {bpmDiff.toFixed(1)}
+            {shownDiff > 0 ? "+" : ""}
+            {shownDiff.toFixed(1)}
           </AppText>
         </View>
         <TouchableOpacity
@@ -98,7 +149,8 @@ export const PlayerBpmControls = ({
 
       <Slider
         style={styles.speedSliderSmall}
-        value={bpm}
+        testID="audio-player-bpm-slider"
+        value={dragValue === null ? bpm : frozenValueRef.current}
         minimumValue={minMpm}
         maximumValue={maxMpm}
         step={0.1}
@@ -112,8 +164,11 @@ export const PlayerBpmControls = ({
         maximumTrackTintColor={currentTheme.border}
         onValueChange={(value: number) => {
           if (locked) return;
-          changeBpm(value).catch(() => {});
+          if (dragValue === null) frozenValueRef.current = bpm;
+          setDragValue(value);
+          applyThrottled(value);
         }}
+        onSlidingComplete={commit}
       />
 
       <View style={styles.speedMarkersSmall}>
