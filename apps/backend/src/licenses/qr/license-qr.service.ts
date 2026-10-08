@@ -104,6 +104,15 @@ export class LicenseQrService {
   }
 
   /**
+   * True when QR codes can be signed (a usable secret is configured),
+   * whatever the check-in verification mode. A Wallet pass is only issued
+   * when this is true: a static pass must never carry an unsigned QR.
+   */
+  canSign(): boolean {
+    return this.secret !== null;
+  }
+
+  /**
    * Signed QR content for a license, or null when signing is disabled
    * (the client then falls back to its legacy content).
    */

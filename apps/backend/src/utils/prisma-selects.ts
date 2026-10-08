@@ -154,6 +154,27 @@ export const licenseBaseSelect = {
 } as const;
 
 /**
+ * Champs d'une licence nécessaires au pass Apple Wallet (#162) : contenu du
+ * pass + nom du titulaire. Rien d'autre (minimisation).
+ */
+export const licenseWalletPassSelect = {
+  id: true,
+  number: true,
+  validUntil: true,
+  category: true,
+  user: { select: { firstName: true, lastName: true } },
+} as const;
+
+/**
+ * Jeton de téléchargement de pass Wallet (#162) : à qui il appartient et
+ * jusqu'à quand il vaut.
+ */
+export const walletPassTokenSelect = {
+  userId: true,
+  expiresAt: true,
+} as const;
+
+/**
  * Sélecteur minimal pour une licence : seul l'identifiant (ex. retour d'une
  * création dont on connaît déjà les champs).
  */

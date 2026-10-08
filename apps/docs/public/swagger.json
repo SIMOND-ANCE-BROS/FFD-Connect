@@ -5587,6 +5587,10 @@
                           "nullable": true,
                           "description": "Contenu du QR de licence signé par le serveur, à afficher tel quel. Null si la signature est désactivée."
                         },
+                        "appleWalletAvailable": {
+                          "type": "boolean",
+                          "description": "Vrai si le serveur peut produire le pass Apple Wallet : l'app n'affiche le bouton « Ajouter à Apple Wallet » que dans ce cas."
+                        },
                         "createdAt": {
                           "type": "string",
                           "format": "date-time"
@@ -6283,6 +6287,98 @@
         ],
         "summary": "Export RGPD des données personnelles (portabilité)",
         "tags": ["users"]
+      }
+    },
+    "/licenses/my/wallet/apple": {
+      "post": {
+        "description": "Émet un lien à usage unique (5 minutes) vers le pass `.pkpass` de la licence de l'utilisateur connecté, à ouvrir dans Safari. Émettre un lien invalide les précédents.",
+        "operationId": "AppleWalletController_createDownloadLink",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Lien émis",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppleWalletPassLinkDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié"
+          },
+          "404": {
+            "description": "Aucune licence pour ce compte"
+          },
+          "422": {
+            "description": "Licence expirée"
+          },
+          "429": {
+            "description": "Trop de demandes"
+          },
+          "503": {
+            "description": "Fonctionnalité indisponible (pass non configuré ou signature des QR désactivée)"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Lien de téléchargement du pass Apple Wallet de ma licence",
+        "tags": ["licenses"]
+      }
+    },
+    "/licenses/wallet/apple/{token}": {
+      "get": {
+        "description": "Route publique : le jeton émis par `POST /licenses/my/wallet/apple` tient lieu d'authentification, une seule fois.",
+        "operationId": "AppleWalletController_downloadPass",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "description": "Jeton de téléchargement à usage unique (43 caractères)",
+            "schema": {
+              "example": "q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pass signé",
+            "content": {
+              "application/vnd.apple.pkpass": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Jeton mal formé"
+          },
+          "404": {
+            "description": "Lien invalide ou déjà utilisé, ou licence introuvable"
+          },
+          "410": {
+            "description": "Lien expiré"
+          },
+          "422": {
+            "description": "Licence expirée"
+          },
+          "429": {
+            "description": "Trop de demandes"
+          },
+          "503": {
+            "description": "Fonctionnalité indisponible"
+          }
+        },
+        "summary": "Télécharge le pass Apple Wallet (lien à usage unique)",
+        "tags": ["licenses"]
       }
     },
     "/wdsf/athlete/{min}": {
@@ -19213,6 +19309,11 @@
                       "description": "Contenu du QR de licence signé par le serveur, à afficher tel quel (valable jusqu'à la fin de validité de la licence). Null si la signature est désactivée.",
                       "example": "{\"v\":1,\"id\":\"FFD-123456\",\"exp\":\"2026-08-31\",\"sig\":\"…\"}"
                     },
+                    "appleWalletAvailable": {
+                      "type": "boolean",
+                      "description": "Vrai si le serveur peut produire le pass Apple Wallet (pass configuré et QR signés) : l'app n'affiche le bouton « Ajouter à Apple Wallet » que dans ce cas.",
+                      "example": true
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -21897,6 +21998,27 @@
           }
         },
         "required": ["password"]
+      },
+      "AppleWalletPassLinkDto": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "URL absolue du pass, à ouvrir dans Safari (qui propose « Ajouter à Apple Wallet »). Usage unique, quelques minutes.",
+            "example": "https://api.example.org/api/v1/licenses/wallet/apple/q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW"
+          },
+          "path": {
+            "type": "string",
+            "description": "Même lien, relatif à la racine de l'API (sans préfixe), si l'app préfère le recomposer avec son URL d'API.",
+            "example": "licenses/wallet/apple/q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "Fin de validité du lien",
+            "format": "date-time"
+          }
+        },
+        "required": ["url", "path", "expiresAt"]
       },
       "TrackResponseDto": {
         "type": "object",

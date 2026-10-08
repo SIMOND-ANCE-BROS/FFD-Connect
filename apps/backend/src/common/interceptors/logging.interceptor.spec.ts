@@ -122,4 +122,25 @@ describe("LoggingInterceptor", () => {
       },
     });
   });
+
+  it("never logs a Wallet pass token from the URL", (done) => {
+    const token = "q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW";
+    const originalUrl = mockRequest.url;
+    mockRequest.url = `/api/v1/licenses/wallet/apple/${token}`;
+    mockResponse.statusCode = 429;
+    (mockCallHandler.handle as jest.Mock).mockReturnValue(of("data"));
+
+    interceptor.intercept(mockExecutionContext, mockCallHandler).subscribe({
+      next: () => {
+        mockRequest.url = originalUrl;
+        const logged = JSON.stringify([
+          mockLogger.debug.mock.calls,
+          mockLogger.warn.mock.calls,
+        ]);
+        expect(logged).not.toContain(token);
+        expect(logged).toContain("/api/v1/licenses/wallet/apple/[REDACTED]");
+        done();
+      },
+    });
+  });
 });

@@ -22,6 +22,7 @@ import {
   MAX_RENEWAL_DOCUMENTS_TO_PURGE,
 } from "./account-deletion.service";
 import { LicenseQrService } from "../licenses/qr/license-qr.service";
+import { AppleWalletPassGenerator } from "../licenses/wallet/apple-wallet-pass.generator";
 import { UsersService } from "./users.service";
 
 jest.mock("bcrypt", () => ({
@@ -97,6 +98,10 @@ describe("UsersService", () => {
           },
         },
         {
+          provide: AppleWalletPassGenerator,
+          useValue: { isAvailable: () => true },
+        },
+        {
           provide: RenewalDocumentFileCleaner,
           useValue: renewalDocumentFiles,
         },
@@ -162,7 +167,11 @@ describe("UsersService", () => {
 
       const result = await service.findOne("u1");
 
-      expect(result.license).toEqual({ ...license, qrCode: "signed:FFD-1" });
+      expect(result.license).toEqual({
+        ...license,
+        qrCode: "signed:FFD-1",
+        appleWalletAvailable: true,
+      });
     });
 
     it("keeps license null when the user has none", async () => {

@@ -43,6 +43,7 @@ model User {
   soloTeamMemberships  SoloTeamMember[]
   license              License?
   licenseRenewalRequests LicenseRenewalRequest[]
+  walletPassDownloadTokens WalletPassDownloadToken[]
   notifications        Notification[]
   notificationPrefs    NotificationPreference[]
   deviceTokens         DeviceToken[]

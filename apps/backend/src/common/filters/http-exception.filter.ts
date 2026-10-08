@@ -8,6 +8,11 @@ import {
 import * as Sentry from "@sentry/nestjs";
 import { PinoLogger } from "nestjs-pino";
 import { Request, Response } from "express";
+import {
+  redactSecretsDeep,
+  redactSecretsInText,
+  redactUrl,
+} from "../logger/redact-url";
 
 /**
  * Filtre global d'exceptions HTTP pour une gestion cohérente des erreurs
@@ -37,13 +42,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+    // One-shot tokens in the path (Wallet pass link) never reach logs.
+    const safeUrl = redactUrl(request.url);
 
     const status =
       exception instanceof HttpException
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const message =
+    // Nest's own 404 ("Cannot GET /…") echoes the path: redact it too.
+    const message = redactSecretsDeep(
       exception instanceof HttpException
         ? typeof exception.getResponse() === "string"
           ? exception.getResponse()
@@ -51,7 +59,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
             exception.message)
         : exception instanceof Error
           ? exception.message
-          : "Internal server error";
+          : "Internal server error",
+    );
 
     // Admin 409s carry details the back-office needs: the clashing club
     // (create / rename) or what still points at a club (delete). Whitelisted
@@ -76,7 +85,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const errorResponse = {
       statusCode: status,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: safeUrl,
       method: request.method,
       message,
       ...conflictDetails,
@@ -101,20 +110,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.error(
         {
           method: request.method,
-          url: request.url,
+          url: safeUrl,
           statusCode: status,
           message: logMessage,
           error:
             exception instanceof Error
               ? {
                   name: exception.name,
-                  message: exception.message,
-                  stack: exception.stack,
+                  message: redactSecretsInText(exception.message),
+                  stack:
+                    exception.stack && redactSecretsInText(exception.stack),
                 }
-              : exception,
+              : redactSecretsDeep(exception),
           context: "HttpExceptionFilter",
         },
-        `${request.method} ${request.url} - ${logMessage}`,
+        `${request.method} ${safeUrl} - ${logMessage}`,
       );
     } else if (status >= 400) {
       const logMessage =
@@ -123,12 +133,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.warn(
         {
           method: request.method,
-          url: request.url,
+          url: safeUrl,
           statusCode: status,
           message: logMessage,
           context: "HttpExceptionFilter",
         },
-        `${request.method} ${request.url} - ${logMessage}`,
+        `${request.method} ${safeUrl} - ${logMessage}`,
       );
     }
 
