@@ -110,6 +110,7 @@ const requireDeps = (): EngineDeps => {
 /** Test helper: forget every piece of session state. */
 export const resetEngineForTests = (): void => {
   stopTimer();
+  clearBackTaps();
   deps = null;
   session = 0;
   transitioning = false;
@@ -434,6 +435,7 @@ async function handleTtsFailure(message?: string): Promise<void> {
 
 export async function stopPerformance(): Promise<void> {
   session += 1;
+  clearBackTaps();
   transitioning = false;
   holdTimer = false;
   previousStatus = null;
@@ -621,46 +623,81 @@ export async function togglePlayPause(): Promise<void> {
   }
 }
 
-/** Skips to the next dance (announcement first). */
-export async function nextDance(): Promise<void> {
-  if (transitioning) return;
-  const s = store();
-  if (s.status === "idle" || s.status === "loading" || s.status === "finished")
-    return;
-  previousStatus = null;
-  const nextIndex = s.currentDanceIndex + 1;
-  if (nextIndex < s.playlist.length) {
-    await transitionToDance(nextIndex);
-  } else {
-    await finishPerformance();
-  }
-}
+/** Fade applied when ⏭ cuts a dance short. */
+export const SKIP_FADE_MS = 1000;
+/** A second ⏮ within this delay means « previous dance ». */
+export const DOUBLE_TAP_MS = 600;
 
-/** Below this many seconds into a dance, ⏮ goes to the previous one. */
-export const RESTART_THRESHOLD_S = 5;
+/** Phase the session is in, looking through a pause. */
+const currentPhase = (): "playing" | "break" | null => {
+  const s = store();
+  const status = s.status === "paused" ? previousStatus : s.status;
+  return status === "playing" || status === "break" ? status : null;
+};
 
 /**
- * ⏮ — transport convention: a dance already under way restarts (announcement
- * included); at its very start, or during the break that follows it, ⏮ goes
- * back one dance. Does nothing during the initial "get ready" break.
+ * ⏭ — moves to the next step of the normal flow, skipping nothing:
+ * dance → (short fade) → pause → announcement → next dance.
  */
-export async function previousDance(): Promise<void> {
+export async function nextStep(): Promise<void> {
   if (transitioning) return;
+  const phase = currentPhase();
+  if (!phase) return;
   const s = store();
-  const current = s.currentDanceIndex;
-  if (current < 0) return;
-  const phase =
-    s.status === "paused" ? (previousStatus ?? "playing") : s.status;
-  let target = current;
+  if (s.status === "paused") {
+    s.setStatus(phase);
+    previousStatus = null;
+  }
   if (phase === "playing") {
-    const item = s.playlist[current] as PlaylistItem | undefined;
-    const elapsed = item ? item.duration - s.timeRemaining : 0;
-    if (elapsed < RESTART_THRESHOLD_S) target = Math.max(0, current - 1);
-  } else if (phase !== "break") {
+    const token = session;
+    transitioning = true;
+    holdTimer = true;
+    try {
+      await rampVolume(0, SKIP_FADE_MS, token);
+    } finally {
+      if (alive(token)) {
+        transitioning = false;
+        holdTimer = false;
+      }
+    }
+    if (!alive(token)) return;
+  }
+  handleTimerComplete();
+}
+
+let backTaps = 0;
+let backTimer: ReturnType<typeof setTimeout> | null = null;
+
+const clearBackTaps = (): void => {
+  if (backTimer) clearTimeout(backTimer);
+  backTimer = null;
+  backTaps = 0;
+};
+
+/**
+ * ⏮ — one tap restarts the current dance from the beginning (announcement
+ * included; during a pause, the dance that just ended). A double tap goes
+ * back to the previous dance. Taps are collected for DOUBLE_TAP_MS first.
+ */
+export function previousStep(): void {
+  if (transitioning || store().currentDanceIndex < 0 || !currentPhase()) {
     return;
   }
+  backTaps += 1;
+  if (backTimer) return;
+  backTimer = setTimeout(() => {
+    const twice = backTaps >= 2;
+    clearBackTaps();
+    goBack(twice).catch((e) => logger.warn("Previous failed", e));
+  }, DOUBLE_TAP_MS);
+}
+
+async function goBack(twice: boolean): Promise<void> {
+  if (transitioning || !currentPhase()) return;
+  const current = store().currentDanceIndex;
+  if (current < 0) return;
   previousStatus = null;
-  await transitionToDance(target);
+  await transitionToDance(twice ? Math.max(0, current - 1) : current);
 }
 
 /** Ends the current phase now (with its normal transition). */

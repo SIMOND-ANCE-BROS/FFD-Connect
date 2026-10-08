@@ -6,14 +6,13 @@ import {
 } from "../performance.store";
 
 describe("performance.store", () => {
-  it("defaults to one Latin Passage round with 2 heats and all dances", () => {
+  it("defaults to one Passage round of 2 Latin groups and all dances", () => {
     const { config } = usePerformanceStore.getState();
     expect(config.rounds).toHaveLength(1);
     expect(config.rounds[0]).toMatchObject({
-      category: "Latin",
       type: "Round",
-      heats: 2,
-      selectedDances: [...DANCES.Latin],
+      groups: ["Latin", "Latin"],
+      dances: { Standard: [...DANCES.Standard], Latin: [...DANCES.Latin] },
     });
     expect(config).toMatchObject({
       duration: 90,
@@ -22,18 +21,20 @@ describe("performance.store", () => {
     });
   });
 
-  it("creates rounds with unique ids and Final = 1 heat", () => {
+  it("creates rounds with unique ids and a Final with a single group", () => {
     const a = createRound("Standard", "Final");
     const b = createRound("Standard", "Final");
     expect(a.id).not.toBe(b.id);
-    expect(a.heats).toBe(1);
-    expect(a.selectedDances).toEqual([...DANCES.Standard]);
+    expect(a.groups).toEqual(["Standard"]);
+    expect(a.dances.Standard).toEqual([...DANCES.Standard]);
   });
 
   it("returns fresh default configs (no shared mutable state)", () => {
     const a = createDefaultConfig();
-    a.rounds[0].selectedDances.pop();
-    expect(createDefaultConfig().rounds[0].selectedDances).toHaveLength(5);
+    a.rounds[0].dances.Latin.pop();
+    a.rounds[0].groups.pop();
+    expect(createDefaultConfig().rounds[0].dances.Latin).toHaveLength(5);
+    expect(createDefaultConfig().rounds[0].groups).toHaveLength(2);
   });
 
   it("exposes loading progress and announcing setters", () => {

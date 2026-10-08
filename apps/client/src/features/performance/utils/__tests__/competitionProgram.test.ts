@@ -3,24 +3,27 @@ import {
   createDefaultConfig,
   createRound,
   DANCES,
+  MAX_ROUND_GROUPS,
+  type Category,
   type PerformanceConfig,
   type RoundConfig,
 } from "../../../../stores/performance.store";
 import {
+  addGroup,
   addRound,
   buildPlaylist,
-  clampHeats,
+  describeGroup,
   describeItem,
   describeValidation,
   getAnnouncementText,
-  groupRounds,
   normalizeRound,
   ordinal,
+  removeGroup,
   removeRound,
-  setRoundCategory,
-  setRoundMix,
+  roundCategories,
+  roundSequence,
+  setGroupCategory,
   setRoundType,
-  stepRoundHeats,
   toggleRoundDance,
   trackMatchesDance,
   validateProgram,
@@ -51,10 +54,21 @@ const LIBRARY: TrackData[] = [
   track("j1", "Jive"),
 ];
 
-const round = (patch: Partial<RoundConfig>): RoundConfig => ({
-  ...createRound(patch.category ?? "Latin", patch.type ?? "Round"),
-  ...patch,
-});
+/** Round with the given groups; dances default to every dance. */
+const round = (
+  groups: Category[],
+  patch: Partial<Omit<RoundConfig, "dances">> & {
+    dances?: Partial<RoundConfig["dances"]>;
+  } = {},
+): RoundConfig => {
+  const base = createRound("Latin", patch.type ?? "Round");
+  return {
+    ...base,
+    ...patch,
+    groups,
+    dances: { ...base.dances, ...patch.dances },
+  };
+};
 
 const cfg = (rounds: RoundConfig[]): PerformanceConfig => ({
   ...createDefaultConfig(),
@@ -83,303 +97,228 @@ describe("trackMatchesDance", () => {
   });
 });
 
-describe("heats rules", () => {
-  it("defaults to one Latin round, Passage, 2 heats, all 5 dances", () => {
+describe("rounds and groups", () => {
+  it("defaults to one Passage round of 2 Latin groups, every dance", () => {
     const def = createDefaultConfig();
     expect(def.rounds).toHaveLength(1);
     expect(def.rounds[0]).toMatchObject({
-      category: "Latin",
       type: "Round",
-      heats: 2,
-      selectedDances: [...DANCES.Latin],
+      groups: ["Latin", "Latin"],
+      dances: { Standard: [...DANCES.Standard], Latin: [...DANCES.Latin] },
     });
   });
 
-  it("clamps a Passage to at least 1 heat and a Final to exactly 1", () => {
-    expect(clampHeats({ type: "Round" }, 1)).toBe(1);
-    expect(clampHeats({ type: "Round" }, 0)).toBe(1);
-    expect(clampHeats({ type: "Round" }, 4)).toBe(4);
-    expect(clampHeats({ type: "Round" }, 99)).toBe(10);
-    expect(clampHeats({ type: "Final" }, 3)).toBe(1);
+  it("a new Final starts with a single group", () => {
+    expect(createRound("Standard", "Final").groups).toEqual(["Standard"]);
   });
 
-  it("stepper goes down to a single group, never below", () => {
-    const r = round({ heats: 2 });
-    const one = stepRoundHeats(r.id, -1)(cfg([r]));
-    expect(one.rounds[0].heats).toBe(1);
-    expect(stepRoundHeats(r.id, -1)(one).rounds[0].heats).toBe(1);
-    expect(stepRoundHeats(r.id, 1)(one).rounds[0].heats).toBe(2);
+  it("adds groups (same category as the last) up to the maximum", () => {
+    let program = cfg([round(["Standard", "Latin"])]);
+    const id = program.rounds[0].id;
+    program = addGroup(id)(program);
+    expect(program.rounds[0].groups).toEqual(["Standard", "Latin", "Latin"]);
+    for (let i = 0; i < 20; i++) program = addGroup(id)(program);
+    expect(program.rounds[0].groups).toHaveLength(MAX_ROUND_GROUPS);
   });
 
-  it("keeps a single-group Passage a Passage (not a Final)", () => {
-    const r = round({ heats: 1, selectedDances: ["Samba", "Jive"] });
-    const list = buildPlaylist(cfg([r]), LIBRARY, () => 0.3);
-    expect(list.map((i) => i.style)).toEqual(["Samba", "Jive"]);
-    expect(list[0].announcementText).not.toMatch(/finale|passage/i);
-    expect(list[1].announcementText).not.toMatch(/finale|passage/i);
-    expect(describeItem(list[0])).toBe(
-      "Tour 1 · Latines · Samba · Passage unique",
-    );
+  it("removes a group but always keeps one", () => {
+    const r = round(["Standard", "Latin", "Standard"]);
+    const two = removeGroup(r.id, 1)(cfg([r]));
+    expect(two.rounds[0].groups).toEqual(["Standard", "Standard"]);
+    const one = removeGroup(r.id, 0)(two);
+    expect(removeGroup(r.id, 0)(one).rounds[0].groups).toEqual(["Standard"]);
   });
 
-  it("mixes 2 Standard groups with 1 Latin group: Valse, Samba, Valse", () => {
-    const std = round({
-      category: "Standard",
-      selectedDances: ["Valse Lente", "Tango"],
-      heats: 2,
-    });
-    const lat = round({
-      category: "Latin",
-      selectedDances: ["Samba", "Cha-Cha-Cha"],
-      heats: 1,
-      mixWithPrevious: true,
-    });
-    const list = buildPlaylist(cfg([std, lat]), LIBRARY, () => 0.3);
-    expect(list.map((i) => `${i.style}:${i.heatIndex}`)).toEqual([
-      "Valse Lente:1",
-      "Samba:1",
-      "Valse Lente:2",
-      "Tango:1",
-      "Cha-Cha-Cha:1",
-      "Tango:2",
-    ]);
-    expect(list[1].announcementText).not.toMatch(/passage|finale/i);
+  it("changes the category of one group only", () => {
+    const r = round(["Standard", "Standard", "Standard"]);
+    const next = setGroupCategory(r.id, 1, "Latin")(cfg([r]));
+    expect(next.rounds[0].groups).toEqual(["Standard", "Latin", "Standard"]);
   });
 
-  it("switching to Final forces 1 heat and back to Passage restores 2", () => {
-    const r = round({ heats: 3 });
+  it("switching to Final keeps the groups (wording only)", () => {
+    const r = round(["Latin", "Latin"]);
     const final = setRoundType(r.id, "Final")(cfg([r]));
-    expect(final.rounds[0].heats).toBe(1);
-    const back = setRoundType(r.id, "Round")(final);
-    expect(back.rounds[0].heats).toBe(2);
-  });
-});
-
-describe("programme edition", () => {
-  it("adds a round copying the previous category, Passage, 2 heats, all dances", () => {
-    const std = round({ category: "Standard", type: "Final", heats: 1 });
-    const next = addRound(cfg([std]));
-    expect(next.rounds).toHaveLength(2);
-    expect(next.rounds[1]).toMatchObject({
-      category: "Standard",
-      type: "Round",
-      heats: 2,
-      selectedDances: [...DANCES.Standard],
+    expect(final.rounds[0]).toMatchObject({
+      type: "Final",
+      groups: ["Latin", "Latin"],
     });
-    expect(next.rounds[1].id).not.toBe(std.id);
+  });
+
+  it("new round copies the previous round's groups and dances", () => {
+    const r = round(["Standard", "Latin"], {
+      type: "Final",
+      dances: { Latin: ["Jive"] },
+    });
+    const next = addRound(cfg([r]));
+    expect(next.rounds[1]).toMatchObject({
+      type: "Round",
+      groups: ["Standard", "Latin"],
+      dances: { Standard: [...DANCES.Standard], Latin: ["Jive"] },
+    });
+    expect(next.rounds[1].id).not.toBe(r.id);
+    // A copy, not a shared reference.
+    next.rounds[1].groups.push("Latin");
+    expect(r.groups).toHaveLength(2);
   });
 
   it("never removes the last round", () => {
-    const r = round({});
+    const r = round(["Latin"]);
     expect(removeRound(r.id)(cfg([r])).rounds).toHaveLength(1);
-    const r2 = round({});
+    const r2 = round(["Latin"]);
     expect(removeRound(r.id)(cfg([r, r2])).rounds).toEqual([r2]);
   });
 
-  it("changing category resets dances to the new category", () => {
-    const r = round({ selectedDances: ["Samba"] });
-    const next = setRoundCategory(r.id, "Standard")(cfg([r]));
-    expect(next.rounds[0].selectedDances).toEqual([...DANCES.Standard]);
-  });
-
-  it("toggling dances keeps the canonical order", () => {
-    const r = round({ selectedDances: ["Jive"] });
-    const next = toggleRoundDance(r.id, "Samba")(cfg([r]));
-    expect(next.rounds[0].selectedDances).toEqual(["Samba", "Jive"]);
+  it("toggles dances per category, in canonical order", () => {
+    const r = round(["Latin"], { dances: { Latin: ["Jive"] } });
+    const next = toggleRoundDance(r.id, "Latin", "Samba")(cfg([r]));
+    expect(next.rounds[0].dances.Latin).toEqual(["Samba", "Jive"]);
     expect(
-      toggleRoundDance(r.id, "Jive")(next).rounds[0].selectedDances,
+      toggleRoundDance(r.id, "Latin", "Jive")(next).rounds[0].dances.Latin,
     ).toEqual(["Samba"]);
+    expect(next.rounds[0].dances.Standard).toEqual([...DANCES.Standard]);
   });
 
   it("normalizeRound drops dances of another category", () => {
-    expect(
-      normalizeRound(round({ selectedDances: ["Tango", "Rumba"] }))
-        .selectedDances,
-    ).toEqual(["Rumba"]);
+    const r = round(["Latin"], { dances: { Latin: ["Tango", "Rumba"] } });
+    expect(normalizeRound(r).dances.Latin).toEqual(["Rumba"]);
+  });
+
+  it("lists the categories danced, in order of appearance", () => {
+    expect(roundCategories(round(["Latin", "Standard", "Latin"]))).toEqual([
+      "Latin",
+      "Standard",
+    ]);
   });
 });
 
-describe("buildPlaylist — mixed programme", () => {
-  const program = cfg([
-    round({
-      category: "Standard",
-      type: "Round",
-      heats: 2,
-      selectedDances: ["Valse Lente", "Tango"],
-    }),
-    round({
-      category: "Latin",
-      type: "Round",
-      heats: 3,
-      selectedDances: ["Samba", "Jive"],
-    }),
-    round({
-      category: "Standard",
-      type: "Final",
-      heats: 1,
-      selectedDances: ["Tango", "Quickstep"],
-    }),
-  ]);
+describe("roundSequence / buildPlaylist", () => {
+  const steps = (r: RoundConfig) =>
+    roundSequence(r).map((s) => `${s.dance}:G${s.groupIndex}`);
 
-  const list = buildPlaylist(program, LIBRARY, () => 0.42);
-
-  it("orders round → dance → heat (dance-major) with correct counts", () => {
-    expect(
-      list.map((i) => `${i.roundIndex}:${i.style}:${i.heatIndex}`),
-    ).toEqual([
-      "1:Valse Lente:1",
-      "1:Valse Lente:2",
-      "1:Tango:1",
-      "1:Tango:2",
-      "2:Samba:1",
-      "2:Samba:2",
-      "2:Samba:3",
-      "2:Jive:1",
-      "2:Jive:2",
-      "2:Jive:3",
-      "3:Tango:1",
-      "3:Quickstep:1",
+  it("2 Standard groups and 1 Latin group: Valse, Samba, Valse, then Tango…", () => {
+    const r = round(["Standard", "Latin", "Standard"], {
+      dances: {
+        Standard: ["Valse Lente", "Tango"],
+        Latin: ["Samba", "Cha-Cha-Cha"],
+      },
+    });
+    expect(steps(r)).toEqual([
+      "Valse Lente:G1",
+      "Samba:G2",
+      "Valse Lente:G3",
+      "Tango:G1",
+      "Cha-Cha-Cha:G2",
+      "Tango:G3",
     ]);
   });
 
-  it("a Final has exactly one heat per dance", () => {
-    const finals = list.filter((i) => i.roundIndex === 3);
-    expect(finals.every((i) => i.totalHeats === 1)).toBe(true);
-    expect(finals.every((i) => i.roundType === "Final")).toBe(true);
+  it("a single-category round is dance-major, groups in order", () => {
+    const r = round(["Latin", "Latin"], {
+      dances: { Latin: ["Samba", "Jive"] },
+    });
+    expect(steps(r)).toEqual(["Samba:G1", "Samba:G2", "Jive:G1", "Jive:G2"]);
   });
 
-  it("picks tracks of the right dance and rotates between heats", () => {
-    const tangoHeats = list.filter(
-      (i) => i.roundIndex === 1 && i.style === "Tango",
-    );
-    expect(tangoHeats.map((i) => i.track.style)).toEqual(["Tango", "Tango"]);
-    expect(tangoHeats[0].track.id).not.toBe(tangoHeats[1].track.id);
+  it("a category with fewer dances drops out", () => {
+    const r = round(["Standard", "Latin"], {
+      dances: { Standard: ["Valse Lente", "Tango"], Latin: ["Samba"] },
+    });
+    expect(steps(r)).toEqual(["Valse Lente:G1", "Samba:G2", "Tango:G1"]);
+  });
+
+  const program = cfg([
+    round(["Standard", "Standard"], {
+      dances: { Standard: ["Valse Lente", "Tango"] },
+    }),
+    round(["Standard", "Latin", "Standard"], {
+      dances: { Standard: ["Tango"], Latin: ["Samba"] },
+    }),
+    round(["Latin"], { type: "Final", dances: { Latin: ["Samba", "Jive"] } }),
+  ]);
+  const list = buildPlaylist(program, LIBRARY, () => 0.42);
+
+  it("chains rounds with group numbers and counts", () => {
+    expect(
+      list.map(
+        (i) => `${i.roundIndex}:${i.style}:${i.groupIndex}/${i.totalGroups}`,
+      ),
+    ).toEqual([
+      "1:Valse Lente:1/2",
+      "1:Valse Lente:2/2",
+      "1:Tango:1/2",
+      "1:Tango:2/2",
+      "2:Tango:1/3",
+      "2:Samba:2/3",
+      "2:Tango:3/3",
+      "3:Samba:1/1",
+      "3:Jive:1/1",
+    ]);
+  });
+
+  it("flags mixed rounds and the group opening a category", () => {
+    expect(list.filter((i) => i.mixed).map((i) => i.roundIndex)).toEqual([
+      2, 2, 2,
+    ]);
+    expect(list.filter((i) => i.opensCategory).map((i) => i.style)).toEqual([
+      "Samba",
+    ]);
+  });
+
+  it("picks tracks of the right dance and rotates between groups", () => {
+    const tango = list.filter((i) => i.roundIndex === 1 && i.style === "Tango");
+    expect(tango.map((i) => i.track.style)).toEqual(["Tango", "Tango"]);
+    expect(tango[0].track.id).not.toBe(tango[1].track.id);
   });
 
   it("uses the clash setting for the Paso Doble duration", () => {
     const paso = buildPlaylist(
       {
-        ...cfg([round({ selectedDances: ["Paso Doble"] })]),
+        ...cfg([round(["Latin"], { dances: { Latin: ["Paso Doble"] } })]),
         pasoClashes: 3,
       },
       LIBRARY,
     );
-    expect(paso[0]).toMatchObject({ isPaso: true, duration: 120 });
+    expect(paso[0].duration).toBe(120);
   });
 
-  it("attaches a deterministic French announcement to every item", () => {
-    const again = buildPlaylist(program, LIBRARY, () => 0.1);
-    expect(list.map((i) => i.announcementText)).toEqual(
-      again.map((i) => i.announcementText),
-    );
-    expect(list.every((i) => i.announcementText.length > 0)).toBe(true);
+  it("is reproducible with the same random source", () => {
+    const again = buildPlaylist(program, LIBRARY, () => 0.42);
+    expect(again.map((i) => i.track.id)).toEqual(list.map((i) => i.track.id));
   });
 
-  it("describes an item for the player screen", () => {
-    expect(describeItem(list[2])).toBe(
-      "Tour 1 · Standard · Tango · Passage 1/2",
-    );
-    expect(describeItem(list[11])).toBe(
-      "Tour 3 · Standard · Quickstep · Finale",
-    );
-  });
-});
-
-describe("buildPlaylist — passages mixés", () => {
-  const std = round({
-    category: "Standard",
-    selectedDances: ["Valse Lente", "Tango"],
-    heats: 2,
-  });
-  const lat = round({
-    category: "Latin",
-    selectedDances: ["Samba", "Cha-Cha-Cha"],
-    heats: 2,
-    mixWithPrevious: true,
-  });
-  const seq = (rounds: RoundConfig[]) =>
-    buildPlaylist(cfg(rounds), LIBRARY, () => 0.3).map(
-      (i) => `${i.roundIndex}:${i.style}:${i.heatIndex}`,
-    );
-
-  it("groups a round flagged mixWithPrevious with the previous one", () => {
-    expect(groupRounds([std, lat])).toEqual([[0, 1]]);
-    expect(groupRounds([std, { ...lat, mixWithPrevious: false }])).toEqual([
-      [0],
-      [1],
-    ]);
-    // Meaningless on the first round.
-    expect(groupRounds([{ ...std, mixWithPrevious: true }, lat])).toEqual([
-      [0, 1],
-    ]);
-  });
-
-  it("alternates heats between the two rounds, dance by dance", () => {
-    expect(seq([std, lat])).toEqual([
-      "1:Valse Lente:1",
-      "2:Samba:1",
-      "1:Valse Lente:2",
-      "2:Samba:2",
-      "1:Tango:1",
-      "2:Cha-Cha-Cha:1",
-      "1:Tango:2",
-      "2:Cha-Cha-Cha:2",
-    ]);
-  });
-
-  it("finishes the longer round alone when sizes differ", () => {
-    const bigStd = { ...std, heats: 3, selectedDances: [...DANCES.Standard] };
-    const order = seq([bigStd, { ...lat, selectedDances: ["Samba"] }]);
-    expect(order.slice(0, 4)).toEqual([
-      "1:Valse Lente:1",
-      "2:Samba:1",
-      "1:Valse Lente:2",
-      "2:Samba:2",
-    ]);
-    expect(order[4]).toBe("1:Valse Lente:3");
-    expect(order.filter((o) => o.startsWith("2:"))).toHaveLength(2);
-    expect(order).toHaveLength(5 * 3 + 2);
-  });
-
-  it("leaves unmixed rounds dance-major and flags mixed items", () => {
-    const solo = round({ category: "Latin", selectedDances: ["Jive"] });
-    const list = buildPlaylist(cfg([std, lat, solo]), LIBRARY, () => 0.3);
-    expect(list.slice(-2).map((i) => i.style)).toEqual(["Jive", "Jive"]);
-    expect(list.slice(-2).every((i) => !i.mixed)).toBe(true);
-    expect(list.slice(0, 8).every((i) => i.mixed)).toBe(true);
-  });
-
-  it("names the category when a mixed round opens", () => {
-    const list = buildPlaylist(cfg([std, lat]), LIBRARY, () => 0.3);
-    expect(list[0].announcementText).toMatch(/premier tour en standard/);
-    expect(list[1].announcementText).toMatch(/deuxième tour en latines/);
-    expect(list[2].announcementText).toMatch(/Valse lente|valse lente/);
-  });
-
-  it("toggles the flag with setRoundMix", () => {
-    const program = cfg([std, { ...lat, mixWithPrevious: false }]);
-    const next = setRoundMix(lat.id, true)(program);
-    expect(next.rounds[1].mixWithPrevious).toBe(true);
-    expect(setRoundMix(lat.id, false)(next).rounds[1].mixWithPrevious).toBe(
-      false,
+  it("describes items for the player screen", () => {
+    expect(describeItem(list[5])).toBe("Tour 2 · Latines · Samba · Groupe 2/3");
+    expect(describeItem(list[7])).toBe("Tour 3 · Latines · Samba · Finale");
+    expect(describeGroup({ groupIndex: 1, totalGroups: 1 })).toBe(
+      "Groupe unique",
     );
   });
 });
 
 describe("validateProgram", () => {
-  it("reports empty rounds", () => {
-    const v = validateProgram(cfg([round({ selectedDances: [] })]), LIBRARY);
-    expect(v.emptyRounds).toEqual([1]);
-    expect(describeValidation(v)).toContain("tour 1");
+  it("reports a danced category without any dance", () => {
+    const v = validateProgram(
+      cfg([round(["Standard", "Latin"], { dances: { Latin: [] } })]),
+      LIBRARY,
+    );
+    expect(v.emptyRounds).toEqual([{ roundIndex: 1, category: "Latin" }]);
+    expect(describeValidation(v)).toContain("tour 1 (Latines)");
+  });
+
+  it("ignores the dances of a category no group dances", () => {
+    const v = validateProgram(
+      cfg([round(["Latin"], { dances: { Standard: [] } })]),
+      LIBRARY,
+    );
+    expect(v.emptyRounds).toEqual([]);
   });
 
   it("lists missing dances per round with French names", () => {
     const v = validateProgram(
       cfg([
-        round({ category: "Latin", selectedDances: ["Samba"] }),
-        round({
-          category: "Standard",
-          selectedDances: ["Tango", "Valse Viennoise"],
+        round(["Latin"], { dances: { Latin: ["Samba"] } }),
+        round(["Standard"], {
+          dances: { Standard: ["Tango", "Valse Viennoise"] },
         }),
       ]),
       LIBRARY.filter((t) => t.style !== "Valse Viennoise"),
@@ -402,40 +341,60 @@ describe("validateProgram", () => {
 describe("getAnnouncementText", () => {
   const base = {
     style: "Samba",
-    heatIndex: 1,
-    totalHeats: 2,
+    groupIndex: 1,
+    totalGroups: 2,
     roundIndex: 1,
     totalRounds: 2,
     roundType: "Round" as const,
+    category: "Latin" as const,
+    mixed: false,
+    opensCategory: false,
     danceIndex: 0,
     dancesInRound: 5,
   };
 
-  it("opens a round like an MC, in French", () => {
+  it("opens a round like an MC, in French, naming the group", () => {
     const text = getAnnouncementText(base);
     expect(text).toMatch(/premier tour/);
     expect(text).toMatch(/Samba/);
-    expect(text).not.toMatch(/Heat|First/);
+    expect(text).toMatch(/premier groupe/);
   });
 
-  it("announces later heats with French ordinals", () => {
-    const text = getAnnouncementText({ ...base, heatIndex: 2, danceIndex: 1 });
-    expect(text).toMatch(/deuxième passage/i);
+  it("does not name the group when the round has only one", () => {
+    const text = getAnnouncementText({ ...base, totalGroups: 1 });
+    expect(text).not.toMatch(/groupe|passage|finale/i);
   });
 
-  it("announces the last heat of a 3-heat dance as the last one", () => {
+  it("announces later groups with French ordinals", () => {
+    const text = getAnnouncementText({ ...base, groupIndex: 2, danceIndex: 1 });
+    expect(text).toMatch(/deuxième groupe/i);
+  });
+
+  it("announces the last group of 3 as the last one", () => {
     const text = getAnnouncementText({
       ...base,
-      heatIndex: 3,
-      totalHeats: 3,
+      groupIndex: 3,
+      totalGroups: 3,
       danceIndex: 2,
       style: "Rumba",
     });
-    expect(text).toMatch(/dernier passage/i);
+    expect(text).toMatch(/dernier groupe/i);
+  });
+
+  it("introduces the other category in a mixed round", () => {
+    const text = getAnnouncementText({
+      ...base,
+      mixed: true,
+      opensCategory: true,
+      groupIndex: 2,
+      totalGroups: 3,
+    });
+    expect(text).toMatch(/latines/);
+    expect(text).toMatch(/deuxième groupe/);
   });
 
   it("announces a final and its last dance with proper articles", () => {
-    const final = { ...base, roundType: "Final" as const, totalHeats: 1 };
+    const final = { ...base, roundType: "Final" as const, totalGroups: 1 };
     expect(getAnnouncementText({ ...final, style: "Valse Lente" })).toMatch(
       /finale/i,
     );
@@ -450,8 +409,7 @@ describe("getAnnouncementText", () => {
   it("uses French dance names and articles in transitions", () => {
     const text = getAnnouncementText({
       ...base,
-      roundType: "Final",
-      totalHeats: 1,
+      totalGroups: 1,
       style: "Cha-Cha-Cha",
       danceIndex: 1,
     });

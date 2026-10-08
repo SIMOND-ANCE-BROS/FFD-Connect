@@ -49,8 +49,10 @@ describe("PerformancePlayerScreen", () => {
     status: "playing" as const,
     playlist: [
       {
-        heatIndex: 1,
-        totalHeats: 5,
+        groupIndex: 1,
+        totalGroups: 5,
+        mixed: false,
+        opensCategory: false,
         roundIndex: 1,
         totalRounds: 2,
         roundType: "Round" as const,
@@ -71,8 +73,10 @@ describe("PerformancePlayerScreen", () => {
         },
       },
       {
-        heatIndex: 2,
-        totalHeats: 5,
+        groupIndex: 2,
+        totalGroups: 5,
+        mixed: false,
+        opensCategory: false,
         roundIndex: 1,
         totalRounds: 2,
         roundType: "Round" as const,
@@ -99,8 +103,8 @@ describe("PerformancePlayerScreen", () => {
     loadingProgress: null,
     isAnnouncing: false,
     togglePlayPause: jest.fn(),
-    nextDance: jest.fn(),
-    previousDance: jest.fn(),
+    nextStep: jest.fn(),
+    previousStep: jest.fn(),
     stopPerformance: jest.fn(),
     config: {} as never,
     setConfig: jest.fn(),
@@ -127,9 +131,9 @@ describe("PerformancePlayerScreen", () => {
     it("skips forward and back while a dance plays", async () => {
       const { getByTestId } = await render(<PerformancePlayerScreen />);
       await fireEvent.press(getByTestId("performance-player-next-button"));
-      expect(mockPerformanceData.nextDance).toHaveBeenCalled();
+      expect(mockPerformanceData.nextStep).toHaveBeenCalled();
       await fireEvent.press(getByTestId("performance-player-previous-button"));
-      expect(mockPerformanceData.previousDance).toHaveBeenCalled();
+      expect(mockPerformanceData.previousStep).toHaveBeenCalled();
     });
 
     it("disables both while the announcement is spoken", async () => {
@@ -140,8 +144,8 @@ describe("PerformancePlayerScreen", () => {
       const { getByTestId } = await render(<PerformancePlayerScreen />);
       await fireEvent.press(getByTestId("performance-player-next-button"));
       await fireEvent.press(getByTestId("performance-player-previous-button"));
-      expect(mockPerformanceData.nextDance).not.toHaveBeenCalled();
-      expect(mockPerformanceData.previousDance).not.toHaveBeenCalled();
+      expect(mockPerformanceData.nextStep).not.toHaveBeenCalled();
+      expect(mockPerformanceData.previousStep).not.toHaveBeenCalled();
     });
 
     it("allows only ⏭ during the initial get-ready break", async () => {
@@ -153,9 +157,9 @@ describe("PerformancePlayerScreen", () => {
       });
       const { getByTestId } = await render(<PerformancePlayerScreen />);
       await fireEvent.press(getByTestId("performance-player-previous-button"));
-      expect(mockPerformanceData.previousDance).not.toHaveBeenCalled();
+      expect(mockPerformanceData.previousStep).not.toHaveBeenCalled();
       await fireEvent.press(getByTestId("performance-player-next-button"));
-      expect(mockPerformanceData.nextDance).toHaveBeenCalled();
+      expect(mockPerformanceData.nextStep).toHaveBeenCalled();
     });
   });
 
@@ -288,10 +292,10 @@ describe("PerformancePlayerScreen", () => {
       );
 
       // Assert
-      expect(getByText("PASSAGE 1/5")).toBeTruthy();
+      expect(getByText("GROUPE 1/5")).toBeTruthy();
       expect(getByText("TOUR 1/2")).toBeTruthy();
       expect(getByTestId("performance-player-context")).toHaveTextContent(
-        "Tour 1 · Latines · Samba · Passage 1/5",
+        "Tour 1 · Latines · Samba · Groupe 1/5",
       );
     });
 
@@ -317,7 +321,7 @@ describe("PerformancePlayerScreen", () => {
       // Assert
       expect(getByText("PAUSE")).toBeTruthy();
       expect(
-        getByText("Suivant : Tour 1 · Latines · Cha-cha-cha · Passage 2/5"),
+        getByText("Suivant : Tour 1 · Latines · Cha-cha-cha · Groupe 2/5"),
       ).toBeTruthy();
     });
 
@@ -338,8 +342,8 @@ describe("PerformancePlayerScreen", () => {
         playlist: mockPerformanceData.playlist.map((i) => ({
           ...i,
           roundType: "Final" as const,
-          totalHeats: 1,
-          heatIndex: 1,
+          totalGroups: 1,
+          groupIndex: 1,
         })),
       });
       const { getByText } = await render(<PerformancePlayerScreen />);
