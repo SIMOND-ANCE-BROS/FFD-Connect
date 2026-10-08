@@ -69,4 +69,53 @@ describe("LicenseCard", () => {
     expect(getByText("John Doe")).toBeTruthy();
     expect(getAllByText("12345678").length).toBeGreaterThanOrEqual(1);
   });
+  it("shows every WDSF field in the compact layout", async () => {
+    const { getByText } = await render(
+      <ThemeContext.Provider value={themeMock as never}>
+        <LicenseCard
+          type="WDSF"
+          user={{
+            ...mockUser,
+            country: "FRA",
+            ageGroup: "Adult",
+            partnerName: "Jane Roe",
+            partnerAgeGroup: "Adult",
+            structure: "FFD",
+            administrator: "DTN",
+          }}
+          photoUri={null}
+          onShowQr={mockOnShowQr}
+          onOptions={jest.fn()}
+        />
+      </ThemeContext.Provider>,
+    );
+
+    expect(getByText("Nationality")).toBeTruthy();
+    expect(getByText("FRA")).toBeTruthy();
+    expect(getByText("Age group")).toBeTruthy();
+    expect(getByText("My partner")).toBeTruthy();
+    expect(getByText("Jane Roe")).toBeTruthy();
+    expect(getByText("My federation")).toBeTruthy();
+    expect(getByText("DTN")).toBeTruthy();
+    expect(getByText("License expires on")).toBeTruthy();
+    expect(getByText("2026-08-31")).toBeTruthy();
+    expect(getByText("Contact my federation")).toBeTruthy();
+  });
+
+  it("shows FFD structure, insurance and validity", async () => {
+    const { getByText } = await render(
+      <ThemeContext.Provider value={themeMock as never}>
+        <LicenseCard
+          type="FFD"
+          user={{ ...mockUser, structure: "Club A", insurance: "MAIF" }}
+          photoUri={null}
+          onShowQr={mockOnShowQr}
+        />
+      </ThemeContext.Provider>,
+    );
+
+    expect(getByText("Club A")).toBeTruthy();
+    expect(getByText("MAIF")).toBeTruthy();
+    expect(getByText("Licence valable jusqu'au")).toBeTruthy();
+  });
 });

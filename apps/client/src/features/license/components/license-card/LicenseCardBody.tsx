@@ -15,6 +15,29 @@ interface LicenseCardBodyProps {
   onShowQr: () => void;
 }
 
+interface InfoField {
+  label: string;
+  value: string;
+}
+
+/**
+ * Identity fields shown next to the photo. They are laid out as a two-column
+ * grid (instead of one field per line) so the whole card stays short enough
+ * to fit on a phone screen without scrolling.
+ */
+const buildInfoFields = (isFFD: boolean, user: LicenseUser): InfoField[] => {
+  const fields: InfoField[] = [
+    { label: isFFD ? "Numéro" : "MIN", value: user.licenseNumber },
+    {
+      label: isFFD ? "Date de naissance" : "Date of birth",
+      value: user.birthDate,
+    },
+  ];
+  if (user.country) fields.push({ label: "Nationality", value: user.country });
+  if (user.ageGroup) fields.push({ label: "Age group", value: user.ageGroup });
+  return fields;
+};
+
 export const LicenseCardBody: React.FC<LicenseCardBodyProps> = ({
   isFFD,
   config,
@@ -28,80 +51,35 @@ export const LicenseCardBody: React.FC<LicenseCardBodyProps> = ({
       <View style={styles.nameContainer}>
         <AppText
           variant="h2"
+          numberOfLines={2}
           style={[styles.nameValue, { color: config.nameColor }]}
         >
           {user.firstName} {user.lastName}
         </AppText>
       </View>
 
-      <View style={styles.infoRow}>
-        <View style={styles.infoGroup}>
-          <AppText
-            variant="caption"
-            style={[styles.label, { color: config.labelColor }]}
-          >
-            {isFFD ? "Numéro :" : "MIN"}
-          </AppText>
-          <AppText
-            variant="body"
-            weight="600"
-            style={{ color: config.textColor }}
-          >
-            {user.licenseNumber}
-          </AppText>
-        </View>
+      <View style={styles.infoGrid}>
+        {buildInfoFields(isFFD, user).map((field) => (
+          <View key={field.label} style={styles.infoCell}>
+            <AppText
+              variant="caption"
+              numberOfLines={1}
+              style={[styles.label, { color: config.labelColor }]}
+            >
+              {field.label}
+            </AppText>
+            <AppText
+              variant="body"
+              weight="600"
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              style={[styles.cellValue, { color: config.textColor }]}
+            >
+              {field.value}
+            </AppText>
+          </View>
+        ))}
       </View>
-
-      <View style={styles.infoGroup}>
-        <AppText
-          variant="caption"
-          style={[styles.label, { color: config.labelColor }]}
-        >
-          {isFFD ? "Date de naissance :" : "Date of birth"}
-        </AppText>
-        <AppText
-          variant="body"
-          weight="600"
-          style={{ color: config.textColor }}
-        >
-          {user.birthDate}
-        </AppText>
-      </View>
-
-      {user.country && (
-        <View style={styles.infoGroup}>
-          <AppText
-            variant="caption"
-            style={[styles.label, { color: config.labelColor }]}
-          >
-            Nationality
-          </AppText>
-          <AppText
-            variant="body"
-            weight="600"
-            style={{ color: config.textColor }}
-          >
-            {user.country}
-          </AppText>
-        </View>
-      )}
-      {user.ageGroup && (
-        <View style={styles.infoGroup}>
-          <AppText
-            variant="caption"
-            style={[styles.label, { color: config.labelColor }]}
-          >
-            Age group
-          </AppText>
-          <AppText
-            variant="body"
-            weight="600"
-            style={{ color: config.textColor }}
-          >
-            {user.ageGroup}
-          </AppText>
-        </View>
-      )}
     </View>
 
     <View style={styles.photoColumn}>
@@ -127,7 +105,7 @@ export const LicenseCardBody: React.FC<LicenseCardBodyProps> = ({
           onPress={onShowQr}
           style={styles.qrThumbnail}
         >
-          <QRCodeView value={qrData} size={60} />
+          <QRCodeView value={qrData} size={56} />
         </TouchableOpacity>
       ) : (
         <TouchableOpacity
@@ -136,7 +114,7 @@ export const LicenseCardBody: React.FC<LicenseCardBodyProps> = ({
           style={styles.barcodeWrapper}
           activeOpacity={0.7}
         >
-          <Barcode value={user.licenseNumber} width={90} />
+          <Barcode value={user.licenseNumber} width={80} />
         </TouchableOpacity>
       )}
     </View>
