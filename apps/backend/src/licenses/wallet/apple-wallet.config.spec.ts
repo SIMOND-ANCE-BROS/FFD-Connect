@@ -21,6 +21,9 @@ function reasonOf(env: Record<string, string | undefined>, now?: Date) {
   return result.reason;
 }
 
+// Throwaway RSA keys are generated with openssl on first use.
+jest.setTimeout(30_000);
+
 describe("loadAppleWalletConfig", () => {
   const certs = createTestPassCertificates();
 

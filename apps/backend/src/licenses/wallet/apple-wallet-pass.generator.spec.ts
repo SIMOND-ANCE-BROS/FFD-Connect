@@ -24,6 +24,11 @@ import {
 
 jest.mock("@sentry/nestjs", () => ({ captureException: jest.fn() }));
 
+// Real RSA key generation (openssl) and PKCS#7 signing (node-forge, much
+// slower under Jest's sandbox than in plain Node): keep clear of the 5 s
+// default when the machine is busy (pre-push runs suites in parallel).
+jest.setTimeout(30_000);
+
 const QR_SECRET = "unit-test-qr-signing-secret-0123456789";
 
 function config(values: Record<string, string | undefined>): ConfigService {
