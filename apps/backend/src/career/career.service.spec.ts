@@ -3,6 +3,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaClient, UserRole } from "@prisma/client";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
+import { withRole } from "../auth/roles";
 import { CareerQueryService } from "./career-query.service";
 import { CareerService } from "./career.service";
 
@@ -92,7 +93,9 @@ describe("CareerService", () => {
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
-            role: UserRole.LICENSEE,
+            AND: expect.arrayContaining([
+              withRole(UserRole.LICENSEE),
+            ]) as unknown,
           }) as unknown,
         }),
       );
@@ -144,7 +147,9 @@ describe("CareerService", () => {
       )[0];
       expect(callArg.where).not.toHaveProperty("clubId");
       expect(callArg.where).not.toHaveProperty("clubName");
-      expect(callArg.where).toMatchObject({ role: UserRole.LICENSEE });
+      expect(callArg.where).toMatchObject({
+        AND: expect.arrayContaining([withRole(UserRole.LICENSEE)]) as unknown,
+      });
     });
 
     it("should map returned users to the expected shape", async () => {
@@ -182,10 +187,14 @@ describe("CareerService", () => {
         ]
       )[0];
       expect(callArg.where).toMatchObject({
-        OR: [
-          { firstName: { contains: "ali", mode: "insensitive" } },
-          { lastName: { contains: "ali", mode: "insensitive" } },
-        ],
+        AND: expect.arrayContaining([
+          {
+            OR: [
+              { firstName: { contains: "ali", mode: "insensitive" } },
+              { lastName: { contains: "ali", mode: "insensitive" } },
+            ],
+          },
+        ]) as unknown,
       });
     });
   });

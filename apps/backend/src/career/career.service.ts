@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
+import { withRole } from "../auth/roles";
 import { PrismaService } from "../prisma/prisma.service";
 import { CareerQueryService } from "./career-query.service";
 
@@ -33,11 +34,15 @@ export class CareerService {
 
     const users = await this.prisma.user.findMany({
       where: {
-        OR: [
-          { firstName: { contains: q, mode: "insensitive" as const } },
-          { lastName: { contains: q, mode: "insensitive" as const } },
+        AND: [
+          withRole(UserRole.LICENSEE),
+          {
+            OR: [
+              { firstName: { contains: q, mode: "insensitive" as const } },
+              { lastName: { contains: q, mode: "insensitive" as const } },
+            ],
+          },
         ],
-        role: UserRole.LICENSEE,
       },
       take: this.SEARCH_MEMBERS_LIMIT,
       select: {

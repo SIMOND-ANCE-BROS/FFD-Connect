@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtService } from "@nestjs/jwt";
-import { Prisma } from "@prisma/client";
+import { Prisma, UserRole } from "@prisma/client";
 import { User } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { extractBirthDateFromLicenseNumber } from "../common/birth-date/license-birth-date.util";
@@ -22,6 +22,7 @@ import {
 import { AuthTokenService } from "./auth-token.service";
 import { LICENSE_NUMBER_MAX_LENGTH } from "./dto/register.dto";
 import { PasswordValidator } from "./password-validator";
+import { hasRole } from "./roles";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -412,12 +413,13 @@ export class AuthService {
    */
   async impersonate(
     actorId: string,
-    actorRole: string,
+    actorRoles: readonly UserRole[],
     target: { userId?: string; email?: string },
     reason: string | undefined,
     ip: string | undefined,
   ): Promise<{ access_token: string; user: Record<string, unknown> }> {
-    if (actorRole !== "ADMIN" && actorRole !== "STAFF") {
+    const actorIsAdmin = actorRoles.includes(UserRole.ADMIN);
+    if (!actorIsAdmin && !actorRoles.includes(UserRole.STAFF)) {
       throw new ForbiddenException("Impersonation réservée à l'admin/staff.");
     }
     if (!target.userId && !target.email) {
@@ -447,13 +449,13 @@ export class AuthService {
     if (actorId === targetUser.id) {
       throw new BadRequestException("Impossible de s'impersonner soi-même.");
     }
-    if (targetUser.role === "ADMIN") {
+    if (hasRole(targetUser, UserRole.ADMIN)) {
       throw new ForbiddenException(
         "Impossible d'impersonner un administrateur.",
       );
     }
-    if (actorRole === "STAFF") {
-      if (targetUser.role === "STAFF") {
+    if (!actorIsAdmin) {
+      if (hasRole(targetUser, UserRole.STAFF)) {
         throw new ForbiddenException(
           "Un staff ne peut cibler qu'un licencié ou un club.",
         );
@@ -498,7 +500,7 @@ export class AuthService {
     });
 
     this.logger.warn(
-      `Impersonation START — actor=${actorId} (${actorRole}) → target=${targetUser.id} (${targetUser.role})`,
+      `Impersonation START — actor=${actorId} (${actorRoles.join("+")}) → target=${targetUser.id} (${targetUser.role})`,
     );
 
     return {

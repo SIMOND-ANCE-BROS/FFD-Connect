@@ -7,7 +7,7 @@ import {
 } from "../utils/prisma-selects";
 import {
   CONFIGURABLE_NOTIFICATION_TYPES,
-  configurableTypesForRole,
+  configurableTypesForRoles,
   isConfigurable,
   isEnabledByDefault,
   NOTIFICATION_CATALOG,
@@ -50,12 +50,12 @@ export class NotificationPreferencesQueryService {
    * laissés.
    *
    * @param userId - Utilisateur authentifié
-   * @param role - Rôle porté par le JWT de l'appelant
+   * @param roles - Rôles effectifs de l'appelant (`req.user.roles`)
    * @returns Le catalogue applicable, dans l'ordre de déclaration de l'enum
    */
   async getCatalogForUser(
     userId: string,
-    role: string,
+    roles: readonly string[],
   ): Promise<ResolvedNotificationPreference[]> {
     const stored = await this.prisma.notificationPreference.findMany({
       where: { userId },
@@ -71,7 +71,7 @@ export class NotificationPreferencesQueryService {
       stored.map((preference) => [preference.type, preference.enabled]),
     );
 
-    return configurableTypesForRole(role).map((type) => ({
+    return configurableTypesForRoles(roles).map((type) => ({
       type,
       enabled: explicit.get(type) ?? isEnabledByDefault(type),
       label: NOTIFICATION_CATALOG[type].label,

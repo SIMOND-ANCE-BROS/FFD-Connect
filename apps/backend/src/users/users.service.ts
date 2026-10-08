@@ -4,7 +4,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Prisma, RegistrationStatus, UserRole } from "@prisma/client";
-import { hasRole } from "../auth/roles";
+import { hasRole, withRole } from "../auth/roles";
 import { userRolesClubSelect } from "../utils/prisma-selects";
 import * as bcrypt from "bcrypt";
 import { computeSoloAgeGroup, getReferenceYear } from "../common/age-group";
@@ -150,13 +150,13 @@ export class UsersService {
       this.prisma.user.count({
         where: {
           ...sameClubCondition,
-          role: UserRole.LICENSEE,
+          ...withRole(UserRole.LICENSEE),
         },
       }),
       this.prisma.user.findMany({
         where: {
           ...sameClubCondition,
-          role: UserRole.LICENSEE, // Only fetch dancers/members
+          ...withRole(UserRole.LICENSEE), // Only fetch dancers/members
         },
         skip,
         take,
