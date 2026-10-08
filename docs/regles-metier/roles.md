@@ -94,10 +94,10 @@ Règles métier du lot 1c : un même compte peut tenir plusieurs rôles.
   son club est désactivé).
 - **Rôles supplémentaires :** l'administration peut en ajouter ; les droits se
   cumulent avec ceux du rôle principal. Le serveur les applique dès la requête
-  suivante ; l'app mobile ne les relit qu'à la prochaine connexion ou au
-  prochain déverrouillage biométrique.
+  suivante ; l'app mobile les relit à l'ouverture des Réglages, sans
+  reconnexion.
 - **Espaces et actions :** avec 2 rôles ou plus, l'utilisateur choisit un
-  **espace** (Licencié, Club, Staff, Admin) dans les Réglages : il change
+  **espace** (Danseur, Club, Staff, Admin) dans les Réglages : il change
   l'affichage et la navigation. Les **actions** (boutons) restent permises
   selon l'ensemble des rôles détenus, pas selon l'espace actif.
 - **Club supplémentaire :** le rôle Club exige un club et représente ce même
