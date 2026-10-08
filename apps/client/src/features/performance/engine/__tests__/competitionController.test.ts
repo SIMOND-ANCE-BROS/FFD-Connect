@@ -266,6 +266,70 @@ describe("competitionController", () => {
     });
   });
 
+  describe("paso doble et réglage « 3 clashs »", () => {
+    const PASO_2 = { ...t("p2", "Paso Doble"), clashTimecodes: [40, 80] };
+    const PASO_3 = {
+      ...t("p3", "Paso Doble"),
+      clashTimecodes: [40, 80, 120],
+    };
+    const pasoProgram = (pasoClashes: 2 | 3) =>
+      setProgram({
+        // 4 Latin groups dancing only the paso doble → 4 paso items.
+        rounds: [
+          {
+            ...roundOf("Latin", "Round", ["Paso Doble"]),
+            groups: ["Latin", "Latin", "Latin", "Latin"],
+          },
+        ],
+        pasoClashes,
+      });
+
+    it("« 3 clashs » : ne tire jamais un paso à 2 clashs, joué 120 s", async () => {
+      pasoProgram(3);
+      (loadCompetitionLibrary as jest.Mock).mockResolvedValue({
+        tracks: [PASO_2, PASO_3],
+        ambiance: [],
+      });
+
+      await expect(engine.startPerformance()).resolves.toBe(true);
+
+      const pasos = store().playlist;
+      expect(pasos.length).toBe(4);
+      expect(pasos.every((i) => i.track.id === "p3")).toBe(true);
+      expect(pasos.every((i) => i.duration === 120)).toBe(true);
+    });
+
+    it("« 3 clashs » avec seulement des pasos à 2 clashs : musique manquante", async () => {
+      pasoProgram(3);
+      (loadCompetitionLibrary as jest.Mock).mockResolvedValue({
+        tracks: [PASO_2],
+        ambiance: [],
+      });
+
+      await expect(engine.startPerformance()).resolves.toBe(false);
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Musiques manquantes",
+        expect.stringContaining("Paso"),
+      );
+    });
+
+    it("« 2 clashs » : les deux coupes sont éligibles, coupées à 80 s", async () => {
+      pasoProgram(2);
+      (loadCompetitionLibrary as jest.Mock).mockResolvedValue({
+        tracks: [PASO_2, PASO_3],
+        ambiance: [],
+      });
+
+      await expect(engine.startPerformance()).resolves.toBe(true);
+
+      const pasos = store().playlist;
+      expect(new Set(pasos.map((i) => i.track.id))).toEqual(
+        new Set(["p2", "p3"]),
+      );
+      expect(pasos.every((i) => i.duration === 80)).toBe(true);
+    });
+  });
+
   describe("stop / restart races", () => {
     const deferred = <T>() => {
       let resolve: (v: T) => void = () => {};

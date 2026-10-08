@@ -11,6 +11,7 @@ import {
   MaxLength,
   Min,
 } from "class-validator";
+import { PASO_MAX_CLASHES } from "../paso-clashes";
 
 /**
  * DTO pour la mise à jour d'une track (édition par l'utilisateur depuis la modale d'ajout).
@@ -62,13 +63,14 @@ export class UpdateTrackDto {
 
   @ApiPropertyOptional({
     description:
-      "Paso doble (ADMIN) — timecodes (secondes) des appels/coups affichés sur le lecteur. Remplace entièrement la liste existante.",
+      "Paso doble (ADMIN) — timecodes (secondes) des appels/coups affichés sur le lecteur. Remplace entièrement la liste existante. Un paso doble comporte au plus 3 clashs.",
     type: [Number],
-    example: [12.5, 40.0, 68.3],
+    maxItems: PASO_MAX_CLASHES,
+    example: [40.0, 80.0, 120.0],
   })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(10)
+  @ArrayMaxSize(PASO_MAX_CLASHES)
   @IsNumber({}, { each: true })
   @Min(0, { each: true })
   clashTimecodes?: number[];

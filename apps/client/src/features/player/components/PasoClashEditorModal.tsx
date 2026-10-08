@@ -14,23 +14,25 @@ import { AppButton } from "../../../components/AppButton";
 import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
 import { BackendService } from "../../../services/BackendService";
+import { markLibraryStale } from "../../../stores/librarySync.store";
 import { createLogger } from "../../../utils/logger";
 import {
   CORRECTION_SENT_MESSAGE,
   CORRECTION_SENT_TITLE,
 } from "../../track-corrections/components/TrackCorrectionModal";
 import { useCreateTrackCorrection } from "../../track-corrections/hooks/useTrackCorrections";
-import {
-  CLASH_MAX_COUNT,
-  MESSAGE_MAX_LENGTH,
-} from "../../track-corrections/utils/trackCorrections";
+import { MESSAGE_MAX_LENGTH } from "../../track-corrections/utils/trackCorrections";
 import { formatTime } from "./audio-player.styles";
 import {
   computeDefaultPasoClashes,
   getEffectiveClashes,
+  PASO_MAX_CLASHES,
 } from "../utils/pasoClashes";
 
 const logger = createLogger("PasoClashEditor");
+
+const TOO_MANY_TITLE = "Trop d'appels";
+const TOO_MANY_MESSAGE = `Un paso doble comporte au plus ${PASO_MAX_CLASHES} clashs. Supprime un appel avant d'en poser un autre.`;
 
 /**
  * `edit` : un admin enregistre directement les appels sur la piste.
@@ -45,6 +47,8 @@ interface PasoClashEditorModalProps {
   trackId: string;
   style?: string;
   clashTimecodes?: number[];
+  /** Tempo de la piste (MPM) : cale le calcul auto sur les phrases musicales. */
+  mpm?: number;
   /** Position/durée de lecture en direct (secondes). */
   position: number;
   duration: number;
@@ -59,7 +63,8 @@ interface PasoClashEditorModalProps {
 /**
  * Éditeur des appels/coups paso doble (#paso-clashes).
  * On écoute la piste en cours et on « pose un point » à la position voulue ;
- * bouton calcul auto (estimation depuis la durée), suppression, puis
+ * bouton calcul auto (estimation calée sur les phrases musicales depuis le
+ * tempo), suppression — au plus PASO_MAX_CLASHES appels —, puis
  * sauvegarde (admin) ou proposition aux administrateurs (autres utilisateurs).
  */
 export const PasoClashEditorModal = ({
@@ -68,6 +73,7 @@ export const PasoClashEditorModal = ({
   trackId,
   style,
   clashTimecodes,
+  mpm,
   position,
   duration,
   isPlaying,
@@ -78,18 +84,27 @@ export const PasoClashEditorModal = ({
 }: PasoClashEditorModalProps) => {
   const { theme } = useTheme();
   const [points, setPoints] = useState<number[]>(() =>
-    getEffectiveClashes(style, clashTimecodes, duration),
+    getEffectiveClashes(style, clashTimecodes, duration, mpm),
   );
   const [saving, setSaving] = useState(false);
   const [comment, setComment] = useState("");
   const createCorrection = useCreateTrackCorrection();
   const isPropose = mode === "propose";
+  // getEffectiveClashes ne garde que les PASO_MAX_CLASHES premiers appels
+  // enregistrés : le signaler plutôt que de perdre les autres en silence.
+  const droppedStoredCount = Math.max(
+    0,
+    (clashTimecodes?.length ?? 0) - PASO_MAX_CLASHES,
+  );
 
   const addPoint = () => {
     const t = Math.round(position * 10) / 10;
-    setPoints((prev) =>
-      prev.includes(t) ? prev : [...prev, t].sort((a, b) => a - b),
-    );
+    if (points.includes(t)) return;
+    if (points.length >= PASO_MAX_CLASHES) {
+      Alert.alert(TOO_MANY_TITLE, TOO_MANY_MESSAGE);
+      return;
+    }
+    setPoints([...points, t].sort((a, b) => a - b));
   };
 
   const removePoint = (t: number) => {
@@ -97,13 +112,19 @@ export const PasoClashEditorModal = ({
   };
 
   const autoCompute = () => {
-    setPoints(computeDefaultPasoClashes(duration));
+    setPoints(computeDefaultPasoClashes(duration, mpm));
   };
 
   const handleSave = async () => {
+    if (points.length > PASO_MAX_CLASHES) {
+      Alert.alert(TOO_MANY_TITLE, TOO_MANY_MESSAGE);
+      return;
+    }
     setSaving(true);
     try {
       await BackendService.updateTrack(trackId, { clashTimecodes: points });
+      // La bibliothèque garde sa copie des pistes : elle doit se recharger.
+      markLibraryStale();
       onSaved?.(points);
       onClose();
     } catch (e) {
@@ -115,11 +136,8 @@ export const PasoClashEditorModal = ({
   };
 
   const handlePropose = async () => {
-    if (points.length > CLASH_MAX_COUNT) {
-      Alert.alert(
-        "Trop d'appels",
-        `Proposez au plus ${CLASH_MAX_COUNT} appels.`,
-      );
+    if (points.length > PASO_MAX_CLASHES) {
+      Alert.alert(TOO_MANY_TITLE, TOO_MANY_MESSAGE);
       return;
     }
     setSaving(true);
@@ -165,12 +183,25 @@ export const PasoClashEditorModal = ({
             {isPropose ? "Proposer les appels" : "Appels du paso doble"}
           </AppText>
           <AppText variant="caption" color={theme.textSecondary}>
-            Écoute le morceau et pose un point à chaque appel.
+            Écoute le morceau et pose un point à chaque appel (2 ou{" "}
+            {PASO_MAX_CLASHES} selon la coupe).
             {isPropose
               ? " Ta proposition sera validée par un administrateur."
               : ""}{" "}
             Position actuelle : {formatTime(position)} / {formatTime(duration)}
           </AppText>
+          {droppedStoredCount > 0 ? (
+            <AppText
+              variant="caption"
+              color={theme.warning}
+              style={styles.notice}
+              testID="paso-truncated-notice"
+            >
+              Cette piste comptait {clashTimecodes?.length ?? 0} appels : seuls
+              les {PASO_MAX_CLASHES} premiers sont conservés et seront
+              enregistrés.
+            </AppText>
+          ) : null}
 
           {/* Transport minimal */}
           <View style={styles.transport}>
@@ -266,7 +297,7 @@ export const PasoClashEditorModal = ({
             onPress={autoCompute}
             accessibilityRole="button"
             accessibilityLabel="Calcul automatique des appels"
-            accessibilityHint="Remplit les appels avec une estimation depuis la durée"
+            accessibilityHint="Remplit les appels avec une estimation calée sur les phrases musicales du morceau"
             testID="paso-auto-compute"
             style={styles.autoRow}
           >
@@ -348,6 +379,7 @@ const styles = StyleSheet.create({
     maxHeight: "82%",
   },
   title: { marginBottom: 4 },
+  notice: { marginTop: 6 },
   transport: {
     flexDirection: "row",
     alignItems: "center",

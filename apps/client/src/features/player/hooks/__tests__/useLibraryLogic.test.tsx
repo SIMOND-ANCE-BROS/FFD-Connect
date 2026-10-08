@@ -1,4 +1,8 @@
 import { act, renderHook } from "@testing-library/react-native";
+import {
+  LIBRARY_MAX_AGE_MS,
+  useLibrarySyncStore,
+} from "../../../../stores/librarySync.store";
 import { createMockNavigation } from "../../../../utils/testUtils";
 import { useLibraryLogic } from "../useLibraryLogic";
 
@@ -6,6 +10,7 @@ const mockPlayTrack = jest.fn().mockResolvedValue(undefined);
 const mockSetGroupBy = jest.fn();
 const mockSetSearchQuery = jest.fn();
 const mockGetAuthConfig = jest.fn();
+const mockReloadLibrary = jest.fn().mockResolvedValue(undefined);
 
 jest.mock("../../../auth/context/AuthContext", () => ({
   useAuthRepository: () => ({
@@ -70,6 +75,7 @@ jest.mock("../../context/LibraryContext", () => ({
     setGroupBy: mockSetGroupBy,
     searchQuery: "",
     setSearchQuery: mockSetSearchQuery,
+    reloadLibrary: mockReloadLibrary,
   }),
 }));
 
@@ -101,6 +107,7 @@ describe("useLibraryLogic", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetAuthConfig.mockResolvedValue({});
+    useLibrarySyncStore.setState({ version: 0, loadedVersion: 0, loadedAt: 0 });
   });
 
   it("returns initial state with default tab", async () => {
@@ -295,5 +302,37 @@ describe("useLibraryLogic", () => {
     expect(result.current.state.sections).toHaveLength(2);
     expect(result.current.state.sections[0].title).toBe("Latin");
     expect(result.current.state.sections[1].title).toBe("Standard");
+  });
+
+  describe("fraîcheur de la bibliothèque au retour sur l'onglet", () => {
+    it("ne recharge pas une bibliothèque fraîche déjà affichée", async () => {
+      useLibrarySyncStore.setState({
+        version: 1,
+        loadedVersion: 1,
+        loadedAt: Date.now(),
+      });
+      await renderHook(() => useLibraryLogic({ navigation: mockNavigation }));
+      expect(mockReloadLibrary).not.toHaveBeenCalled();
+    });
+
+    it("recharge quand une piste a été corrigée depuis le chargement", async () => {
+      useLibrarySyncStore.setState({
+        version: 2,
+        loadedVersion: 1,
+        loadedAt: Date.now(),
+      });
+      await renderHook(() => useLibraryLogic({ navigation: mockNavigation }));
+      expect(mockReloadLibrary).toHaveBeenCalled();
+    });
+
+    it("recharge une bibliothèque trop ancienne", async () => {
+      useLibrarySyncStore.setState({
+        version: 1,
+        loadedVersion: 1,
+        loadedAt: Date.now() - LIBRARY_MAX_AGE_MS - 1,
+      });
+      await renderHook(() => useLibraryLogic({ navigation: mockNavigation }));
+      expect(mockReloadLibrary).toHaveBeenCalled();
+    });
   });
 });

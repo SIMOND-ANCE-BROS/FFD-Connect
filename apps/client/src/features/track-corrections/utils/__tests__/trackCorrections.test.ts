@@ -54,11 +54,12 @@ describe("formatage des clashs", () => {
     expect(parseClashList("  ")).toEqual([]);
   });
 
-  it("refuse l'illisible, le hors-bornes et plus de 10 appels", () => {
+  it("refuse l'illisible, le hors-bornes et plus de 3 appels (paso doble)", () => {
     expect(parseClashList("abc")).toBeNull();
     expect(parseClashList("1:75")).toBeNull();
     expect(parseClashList("3601")).toBeNull();
-    expect(parseClashList("1,2,3,4,5,6,7,8,9,10,11")).toBeNull();
+    expect(parseClashList("0:40, 1:20, 2:00, 2:40")).toBeNull();
+    expect(parseClashList("0:40, 1:20, 2:00")).toEqual([40, 80, 120]);
   });
 });
 

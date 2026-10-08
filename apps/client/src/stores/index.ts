@@ -30,6 +30,13 @@ export type {
   CompetitionRepository,
 } from "./competition.store";
 
+export {
+  isLibraryStale,
+  LIBRARY_MAX_AGE_MS,
+  markLibraryStale,
+  useLibrarySyncStore,
+} from "./librarySync.store";
+
 export { usePerformanceStore } from "./performance.store";
 export type {
   Category,

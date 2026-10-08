@@ -109,7 +109,7 @@ export const PerformanceSetupScreen = () => {
       <ScrollView
         contentContainerStyle={{
           ...styles.content,
-          paddingTop: headerH + 8,
+          paddingTop: headerH,
         }}
       >
         {/* Programme de tours */}

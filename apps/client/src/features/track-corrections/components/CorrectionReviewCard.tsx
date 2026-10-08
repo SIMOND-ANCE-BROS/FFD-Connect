@@ -19,6 +19,7 @@ import {
 import { useReviewTrackCorrection } from "../hooks/useTrackCorrections";
 import {
   buildCorrectionDiff,
+  CLASH_MAX_COUNT,
   formatClashListForEdit,
   formatCorrectionDate,
   isDanceOnlyChange,
@@ -37,6 +38,11 @@ interface CorrectionReviewCardProps {
   item: TrackCorrectionAdminDto;
   /** Mise en avant (ouverte depuis une notification). */
   focused?: boolean;
+  /**
+   * Appelé quand la proposition est tranchée (par cet admin, ou déjà par un
+   * autre : 409). Permet à la file de la retirer sans attendre le rechargement.
+   */
+  onDecided?: (id: string) => void;
 }
 
 interface Draft {
@@ -104,7 +110,7 @@ export function buildApproveOverrides(
   if (proposed.clashTimecodes !== null) {
     const clashes = parseClashList(draft.clashes);
     if (clashes === null) {
-      return "Clashs illisibles : saisissez des temps « m:ss » séparés par des virgules (10 au plus).";
+      return `Clashs illisibles : saisissez des temps « m:ss » séparés par des virgules (${CLASH_MAX_COUNT} au plus).`;
     }
     // N'envoyer que si la liste diffère réellement de la proposition.
     if (!sameClashes(clashes, proposed.clashTimecodes)) {
@@ -123,6 +129,7 @@ export function buildApproveOverrides(
 export const CorrectionReviewCard = ({
   item,
   focused = false,
+  onDecided,
 }: CorrectionReviewCardProps) => {
   const { theme } = useTheme();
   const review = useReviewTrackCorrection();
@@ -139,6 +146,7 @@ export const CorrectionReviewCard = ({
 
   const handleError = (error: unknown) => {
     if (error instanceof TrackCorrectionApiError && error.status === 409) {
+      onDecided?.(item.id);
       Alert.alert(
         "Déjà traitée",
         "Cette proposition a déjà été traitée par un autre administrateur. La liste a été actualisée.",
@@ -160,7 +168,10 @@ export const CorrectionReviewCard = ({
           decision: "reject",
           comment: trimmed || undefined,
         })
-        .then(() => Alert.alert("Proposition refusée", "L'auteur est prévenu."))
+        .then(() => {
+          onDecided?.(item.id);
+          Alert.alert("Proposition refusée", "L'auteur est prévenu.");
+        })
         .catch(handleError);
       return;
     }
@@ -179,12 +190,13 @@ export const CorrectionReviewCard = ({
         decision: "approve",
         body: { ...overrides, ...(trimmed ? { comment: trimmed } : {}) },
       })
-      .then(() =>
+      .then(() => {
+        onDecided?.(item.id);
         Alert.alert(
           "Proposition validée",
           "La musique est corrigée et l'auteur est prévenu.",
-        ),
-      )
+        );
+      })
       .catch(handleError);
   };
 
@@ -369,7 +381,7 @@ export const CorrectionReviewCard = ({
                   onChangeText={(clashes) =>
                     setDraft((d) => ({ ...d, clashes }))
                   }
-                  placeholder="ex. 0:45, 1:30, 2:10"
+                  placeholder="ex. 0:40, 1:20, 2:00"
                   placeholderTextColor={theme.textSecondary}
                 />
               )}

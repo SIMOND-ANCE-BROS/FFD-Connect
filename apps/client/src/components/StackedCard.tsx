@@ -9,6 +9,14 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 
+/**
+ * Vertical offset of the active card, so the inactive card behind it peeks out.
+ * It is applied with `top` on a relatively positioned view, which moves the card
+ * visually WITHOUT growing its parent: containers must reserve this much extra
+ * bottom space or the end of the active card is unreachable when scrolling.
+ */
+export const STACKED_CARD_ACTIVE_OFFSET = 85;
+
 interface StackedCardProps {
   index: number;
   isActive: boolean;
@@ -30,12 +38,12 @@ export const StackedCard: React.FC<StackedCardProps> = ({
   children,
   testID,
 }) => {
-  const top = useSharedValue(isActive ? 85 : 0);
+  const top = useSharedValue(isActive ? STACKED_CARD_ACTIVE_OFFSET : 0);
   const scale = useSharedValue(isActive ? 1 : 0.96);
 
   useEffect(() => {
     const config = { duration: 350, easing: Easing.inOut(Easing.quad) };
-    top.value = withTiming(isActive ? 85 : 0, config);
+    top.value = withTiming(isActive ? STACKED_CARD_ACTIVE_OFFSET : 0, config);
     scale.value = withTiming(isActive ? 1 : 0.96, config);
   }, [isActive, top, scale]);
 

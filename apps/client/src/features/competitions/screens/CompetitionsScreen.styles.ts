@@ -52,6 +52,10 @@ export const styles = StyleSheet.create({
   emptySubtitle: {
     marginTop: 8,
   },
+  loadMoreButton: {
+    marginTop: 16,
+    alignSelf: "center",
+  },
   // Scope Tabs (All / For Me)
   scopeTabsContainer: {
     flexDirection: "row",

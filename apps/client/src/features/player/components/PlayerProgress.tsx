@@ -14,6 +14,8 @@ interface PlayerProgressProps {
   /** Paso doble : marqueurs des appels/coups sur la barre (#paso-clashes). */
   style?: string;
   clashTimecodes?: number[];
+  /** Tempo de la piste (MPM) : cale l'estimation des clashs sur les phrases. */
+  mpm?: number;
 }
 
 // The slider reserves a small horizontal inset for the thumb; align markers to
@@ -27,9 +29,15 @@ export const PlayerProgress = ({
   seekTo,
   style,
   clashTimecodes,
+  mpm,
 }: PlayerProgressProps) => {
   const [barWidth, setBarWidth] = useState(0);
-  const clashes = getEffectiveClashes(style, clashTimecodes, progress.duration);
+  const clashes = getEffectiveClashes(
+    style,
+    clashTimecodes,
+    progress.duration,
+    mpm,
+  );
   const upcoming =
     clashes.length > 0 ? nextClash(progress.position, clashes) : null;
 

@@ -210,6 +210,7 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
           seekTo={actions.seekTo}
           style={state.currentTrack.style}
           clashTimecodes={state.currentTrack.clashTimecodes}
+          mpm={state.currentTrack.baseBpm}
         />
 
         <View style={styles.playerActionsRow}>
@@ -293,6 +294,7 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
           trackId={state.currentTrack.id}
           style={state.currentTrack.style}
           clashTimecodes={state.currentTrack.clashTimecodes}
+          mpm={state.currentTrack.baseBpm}
           position={state.progress.position}
           duration={state.progress.duration}
           isPlaying={state.isPlaying}

@@ -1,6 +1,6 @@
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Inbox } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -59,6 +59,17 @@ export const TrackCorrectionsReviewScreen = ({ navigation, route }: Props) => {
   const isAdmin = useAuthStore((s) => s.hasRole("ADMIN"));
   const focusedId = route.params?.correctionId;
   const [status, setStatus] = useState<TrackCorrectionStatus>("PENDING");
+  // Propositions tranchées depuis cet écran. Retirées de la file « En
+  // attente » tout de suite : sans cela elles y restaient jusqu'au retour sur
+  // l'écran — le temps du rechargement, et indéfiniment pour la proposition
+  // ouverte depuis une notification (réinjectée en tête par le repli
+  // `useFocusedTrackCorrection`, qui la retrouve parmi les validées).
+  const [decidedIds, setDecidedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const markDecided = useCallback((id: string) => {
+    setDecidedIds((prev) => new Set(prev).add(id));
+  }, []);
 
   const {
     data,
@@ -87,9 +98,12 @@ export const TrackCorrectionsReviewScreen = ({ navigation, route }: Props) => {
 
   const items = useMemo<TrackCorrectionAdminDto[]>(() => {
     const focused = focusedInList ?? focusedFallback ?? undefined;
-    if (!focused) return loaded;
-    return [focused, ...loaded.filter((c) => c.id !== focused.id)];
-  }, [loaded, focusedInList, focusedFallback]);
+    const ordered = focused
+      ? [focused, ...loaded.filter((c) => c.id !== focused.id)]
+      : loaded;
+    if (status !== "PENDING" || decidedIds.size === 0) return ordered;
+    return ordered.filter((c) => !decidedIds.has(c.id));
+  }, [loaded, focusedInList, focusedFallback, status, decidedIds]);
 
   const loadMore = () => {
     if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
@@ -123,7 +137,7 @@ export const TrackCorrectionsReviewScreen = ({ navigation, route }: Props) => {
   let body: React.ReactNode;
   if (!isAdmin) {
     body = (
-      <View style={[styles.center, { paddingTop: headerH + 24 }]}>
+      <View style={[styles.center, { paddingTop: headerH }]}>
         <AppText variant="body" color={theme.textSecondary} align="center">
           Accès réservé aux administrateurs.
         </AppText>
@@ -131,13 +145,13 @@ export const TrackCorrectionsReviewScreen = ({ navigation, route }: Props) => {
     );
   } else if (isLoading) {
     body = (
-      <View style={[styles.center, { paddingTop: headerH + 24 }]}>
+      <View style={[styles.center, { paddingTop: headerH }]}>
         <ActivityIndicator color={theme.primary} size="large" />
       </View>
     );
   } else if (isError) {
     body = (
-      <View style={[styles.center, { paddingTop: headerH + 24 }]}>
+      <View style={[styles.center, { paddingTop: headerH }]}>
         <AppText
           variant="body"
           color={theme.textSecondary}
@@ -163,11 +177,15 @@ export const TrackCorrectionsReviewScreen = ({ navigation, route }: Props) => {
         data={items}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <CorrectionReviewCard item={item} focused={item.id === focusedId} />
+          <CorrectionReviewCard
+            item={item}
+            focused={item.id === focusedId}
+            onDecided={markDecided}
+          />
         )}
         contentContainerStyle={[
           styles.list,
-          { paddingTop: headerH + 8, paddingBottom: insets.bottom + 40 },
+          { paddingTop: headerH, paddingBottom: insets.bottom + 40 },
         ]}
         keyboardShouldPersistTaps="handled"
         onEndReached={loadMore}

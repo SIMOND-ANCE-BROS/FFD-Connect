@@ -136,10 +136,7 @@ export const CareerScreen = ({ navigation }: Props) => {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingTop: headerH + 8 },
-        ]}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: headerH }]}
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl

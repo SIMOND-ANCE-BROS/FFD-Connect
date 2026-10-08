@@ -9,6 +9,51 @@ interface LicenseCardFooterProps {
   user: LicenseUser;
 }
 
+interface FooterColumnProps {
+  title: string;
+  value?: string;
+  detail?: string;
+  titleColor: string;
+  config: LicenseConfig;
+  bold?: boolean;
+}
+
+/** One titled block of the footer; blocks sit side by side to save height. */
+const FooterColumn: React.FC<FooterColumnProps> = ({
+  title,
+  value,
+  detail,
+  titleColor,
+  config,
+  bold = false,
+}) => (
+  <View style={styles.footerColumn}>
+    <AppText
+      variant="caption"
+      weight={bold ? "bold" : undefined}
+      style={[styles.sectionTitle, { color: titleColor }]}
+    >
+      {title}
+    </AppText>
+    <AppText
+      variant="body"
+      numberOfLines={2}
+      style={[styles.value, styles.valueWrap, { color: config.textColor }]}
+    >
+      {value}
+    </AppText>
+    {detail ? (
+      <AppText
+        variant="caption"
+        numberOfLines={1}
+        style={{ color: config.labelColor }}
+      >
+        {detail}
+      </AppText>
+    ) : null}
+  </View>
+);
+
 export const LicenseCardFooter: React.FC<LicenseCardFooterProps> = ({
   isFFD,
   config,
@@ -16,137 +61,76 @@ export const LicenseCardFooter: React.FC<LicenseCardFooterProps> = ({
 }) => (
   <View style={styles.cardFooter}>
     {!isFFD && (
-      <>
-        {user.partnerName && (
-          <View style={styles.sectionBlock}>
-            <AppText
-              variant="caption"
-              weight="bold"
-              style={[styles.sectionTitle, { color: config.highlightColor }]}
-            >
-              My partner
-            </AppText>
-            <View style={styles.rowBetween}>
-              <AppText variant="caption" style={{ color: config.labelColor }}>
-                Name
-              </AppText>
-              <AppText
-                variant="body"
-                style={[styles.valueRight, { color: config.textColor }]}
-              >
-                {user.partnerName}
-              </AppText>
-            </View>
-            {user.partnerAgeGroup && (
-              <View style={styles.rowBetween}>
-                <AppText variant="caption" style={{ color: config.labelColor }}>
-                  Our age group
-                </AppText>
-                <AppText
-                  variant="body"
-                  style={[styles.valueRight, { color: config.textColor }]}
-                >
-                  {user.partnerAgeGroup}
-                </AppText>
-              </View>
-            )}
-          </View>
-        )}
-
-        <View style={styles.sectionBlock}>
-          <AppText
-            variant="caption"
-            weight="bold"
-            style={[styles.sectionTitle, { color: config.highlightColor }]}
-          >
-            My federation
-          </AppText>
-          <AppText
-            variant="body"
-            style={[styles.federationName, { color: config.textColor }]}
-          >
-            {user.structure}
-          </AppText>
-          {user.administrator && (
-            <View style={styles.rowBetween}>
-              <AppText variant="caption" style={{ color: config.labelColor }}>
-                Administrator
-              </AppText>
-              <AppText variant="body" style={{ color: config.textColor }}>
-                {user.administrator}
-              </AppText>
-            </View>
-          )}
-        </View>
-
-        {/* Contact Button */}
-        <TouchableOpacity
-          accessibilityRole="button"
-          style={[
-            styles.contactButton,
-            { backgroundColor: config.highlightColor },
-          ]}
-          onPress={() => {
-            Linking.openURL("mailto:secretariat.dtn@ffdanse.fr").catch(
-              () => {},
-            );
-          }}
-        >
-          <AppText
-            variant="button"
-            style={[styles.contactButtonText, { color: config.cardBackground }]}
-          >
-            Contact my federation
-          </AppText>
-        </TouchableOpacity>
-      </>
-    )}
-
-    {isFFD && user.structure && (
-      <View style={styles.infoGroup}>
-        <AppText
-          variant="caption"
-          style={[styles.label, { color: config.labelColor }]}
-        >
-          Structure :
-        </AppText>
-        <AppText
-          variant="body"
-          style={[styles.value, styles.valueWrap, { color: config.textColor }]}
-        >
-          {user.structure}
-        </AppText>
+      <View style={styles.footerColumns}>
+        {user.partnerName ? (
+          <FooterColumn
+            title="My partner"
+            value={user.partnerName}
+            detail={user.partnerAgeGroup}
+            titleColor={config.highlightColor}
+            config={config}
+            bold
+          />
+        ) : null}
+        <FooterColumn
+          title="My federation"
+          value={user.structure}
+          detail={user.administrator}
+          titleColor={config.highlightColor}
+          config={config}
+          bold
+        />
       </View>
     )}
 
-    {isFFD && user.insurance && (
-      <View style={styles.infoGroup}>
-        <AppText
-          variant="caption"
-          style={[styles.label, { color: config.labelColor }]}
-        >
-          Assurance :
-        </AppText>
-        <AppText
-          variant="body"
-          style={[styles.value, { color: config.textColor }]}
-        >
-          {user.insurance}
-        </AppText>
+    {isFFD && (user.structure || user.insurance) ? (
+      <View style={styles.footerColumns}>
+        {user.structure ? (
+          <FooterColumn
+            title="Structure"
+            value={user.structure}
+            titleColor={config.labelColor}
+            config={config}
+          />
+        ) : null}
+        {user.insurance ? (
+          <FooterColumn
+            title="Assurance"
+            value={user.insurance}
+            titleColor={config.labelColor}
+            config={config}
+          />
+        ) : null}
       </View>
-    )}
+    ) : null}
 
     <View style={styles.validityContainer}>
       <AppText variant="caption" style={{ color: config.labelColor }}>
         {isFFD ? "Licence valable jusqu'au" : "License expires on"}
       </AppText>
-      <AppText
-        variant="body"
-        weight="bold"
-        style={[styles.validityDate, { color: config.textColor }]}
-      >
+      <AppText variant="body" weight="bold" style={{ color: config.textColor }}>
         {user.validUntil}
       </AppText>
     </View>
+
+    {!isFFD && (
+      <TouchableOpacity
+        accessibilityRole="button"
+        style={[
+          styles.contactButton,
+          { backgroundColor: config.highlightColor },
+        ]}
+        onPress={() => {
+          Linking.openURL("mailto:secretariat.dtn@ffdanse.fr").catch(() => {});
+        }}
+      >
+        <AppText
+          variant="button"
+          style={[styles.contactButtonText, { color: config.cardBackground }]}
+        >
+          Contact my federation
+        </AppText>
+      </TouchableOpacity>
+    )}
   </View>
 );
