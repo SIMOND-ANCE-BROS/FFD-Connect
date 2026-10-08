@@ -17,7 +17,7 @@
  *   --version  Étiquette de version affichée en tête. Défaut : date du jour.
  *   --format   markdown (défaut) | testflight | json | testers
  *   --heading  `none` : pas de titre « ## <version> — <date> » en markdown (la
- *              promotion bêta titre elle-même la release : « Bêta iOS 1.0.0 (19) »).
+ *              promotion bêta titre elle-même la release : « Beta iOS 1.0.0 (19) »).
  *   --platform Base = dernier tag de CETTE plateforme (`beta-*-<platform>-*`) ou
  *              d'une OTA (`beta-*-ota-*`, commune aux deux) : une promotion
  *              iOS seule ne doit pas déplacer la base des notes Android, et
@@ -40,12 +40,12 @@ import { extractTesterSection, prNumber, renderTesterNotes } from './tester-note
 // Types de commit exposés aux testeurs, dans l'ordre d'affichage. Tout le reste
 // (chore, test, docs, ci, build, style, refactor) est du bruit interne : exclu.
 const SECTIONS = [
-  { type: 'feat', title: '✨ Nouveautés' },
-  { type: 'fix', title: '🐛 Corrections' },
-  { type: 'perf', title: '⚡ Améliorations' },
-  { type: 'security', title: '🔒 Sécurité' },
+  { type: 'feat', title: '✨ Features' },
+  { type: 'fix', title: '🐛 Fixes' },
+  { type: 'perf', title: '⚡ Performance' },
+  { type: 'security', title: '🔒 Security' },
 ];
-const BREAKING_TITLE = '⚠️ Changements importants';
+const BREAKING_TITLE = '⚠️ Breaking changes';
 
 // Périmètres (scope) sans effet visible pour un testeur, même typés feat/fix :
 // pipeline, build EAS, site vitrine, dépendances, outillage, infra, docs.
@@ -199,8 +199,8 @@ function render(sections, version, date, format, heading = true) {
   }
   if (sections.length === 0) {
     return format === 'testflight'
-      ? 'Corrections et améliorations diverses.'
-      : `${heading ? `## ${version} — ${date}\n\n` : ''}_Aucun changement destiné aux testeurs._`;
+      ? 'Bug fixes and improvements.'
+      : `${heading ? `## ${version} — ${date}\n\n` : ''}_No user-facing changes._`;
   }
   if (format === 'testflight') {
     // Texte brut, sans markdown (TestFlight n'affiche pas le markdown).
