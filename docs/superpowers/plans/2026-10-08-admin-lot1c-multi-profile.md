@@ -1773,7 +1773,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 **Files:**
 
-- Modify: the exploitation runbook section on admin user management that lot 1b updated (find it: `grep -rln "Utilisateurs" docs/exploitation`), in French
+- Modify: `docs/exploitation/backoffice-admin.md` (the runbook lot 1b updated), in French
 - Modify: `docs/regles-metier/roles.md` (referenced by `AuthService.ts`; add the multi-profile rules), in French
 - Modify: `CLAUDE.md` "What NOT to do": add `- Don't compare user.role directly in the backend — use hasRole / withRole from src/auth/roles.ts (multi-profile, lot 1c)`; and fix the stale `userRoleClubSelect` mention in the Prisma-selects bullet to real constants (`userRolesClubSelect`, …), checking each name exists with grep first
 
