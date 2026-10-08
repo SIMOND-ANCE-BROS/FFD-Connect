@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { TestingModule } from "@nestjs/testing";
 import { UserRole } from "@prisma/client";
-import { withRole } from "../src/auth/roles";
+import { withActiveRole, withRole } from "../src/auth/roles";
 import { PartnershipQueryService } from "../src/clubs/partnership-query.service";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { buildServiceModule } from "./integration-app.builder";
@@ -65,6 +65,37 @@ describe("Multi-role (integration, real DB)", () => {
       take: 10,
     });
     expect(found.map((u) => u.id).sort()).toEqual([main, extra].sort());
+  });
+
+  it("withActiveRole ignores an extra CLUB role while its club is disabled", async () => {
+    const club = await prisma.club.create({
+      data: { name: `Club ${randomUUID()}` },
+      select: { id: true },
+    });
+    clubIds.push(club.id);
+    const main = await user({ role: UserRole.CLUB, clubId: club.id });
+    const extra = await user({
+      role: UserRole.LICENSEE,
+      extraRoles: [UserRole.CLUB],
+      clubId: club.id,
+    });
+    await prisma.club.update({
+      where: { id: club.id },
+      data: { disabledAt: new Date() },
+    });
+    const ids = { id: { in: [main, extra] } };
+    const active = await prisma.user.findMany({
+      where: { AND: [withActiveRole(UserRole.CLUB), ids] },
+      select: { id: true },
+      take: 10,
+    });
+    const stored = await prisma.user.findMany({
+      where: { AND: [withRole(UserRole.CLUB), ids] },
+      select: { id: true },
+      take: 10,
+    });
+    expect(active.map((u) => u.id)).toEqual([main]);
+    expect(stored.map((u) => u.id).sort()).toEqual([main, extra].sort());
   });
 
   it("a licensee with an extra CLUB role lists their club's dancers, themselves included", async () => {

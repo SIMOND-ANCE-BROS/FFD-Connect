@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { NotificationType, UserRole } from "@prisma/client";
-import { withRole } from "../../auth/roles";
+import { withActiveRole } from "../../auth/roles";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { getErrorMessage, getErrorStack } from "../../utils/error.utils";
@@ -88,7 +88,7 @@ export class CompetitionEventNotificationService {
       }
 
       const licensees = await this.prisma.user.findMany({
-        where: withRole(UserRole.LICENSEE),
+        where: withActiveRole(UserRole.LICENSEE),
         select: {
           id: true,
           category: true,

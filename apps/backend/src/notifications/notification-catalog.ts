@@ -102,7 +102,7 @@ export const NOTIFICATION_CATALOG: Readonly<
     defaultEnabled: true,
     configurable: true,
     // CompetitionEventNotificationService.notifyNewCompetition interroge
-    // `withRole(LICENSEE)` : aucun autre rôle ne peut la recevoir.
+    // `withActiveRole(LICENSEE)` : aucun autre rôle ne peut la recevoir.
     roles: [UserRole.LICENSEE],
     label: "Nouvelles compétitions",
     description:
@@ -115,7 +115,7 @@ export const NOTIFICATION_CATALOG: Readonly<
     defaultEnabled: false,
     configurable: true,
     // RegistrationNotificationService.notifyClubOrganizers interroge
-    // `withRole(CLUB)`.
+    // `withActiveRole(CLUB)`.
     roles: [UserRole.CLUB],
     label: "Inscriptions des licenciés de mon club",
     description:
@@ -127,7 +127,7 @@ export const NOTIFICATION_CATALOG: Readonly<
     defaultEnabled: true,
     configurable: true,
     // PartnershipService.notifyClubOrganizersForClub interroge
-    // `withRole(CLUB)`.
+    // `withActiveRole(CLUB)`.
     roles: [UserRole.CLUB],
     label: "Couples inter-club",
     description:
@@ -136,7 +136,7 @@ export const NOTIFICATION_CATALOG: Readonly<
   [NotificationType.TRACK_REPORT]: {
     defaultEnabled: true,
     configurable: true,
-    // TrackCorrectionsService.notifyAdmins interroge `withRole(ADMIN)`.
+    // TrackCorrectionsService.notifyAdmins interroge `withActiveRole(ADMIN)`.
     roles: [UserRole.ADMIN],
     label: "Signalements de musique",
     description:

@@ -3,7 +3,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaClient, UserRole } from "@prisma/client";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
-import { withRole } from "../auth/roles";
+import { withActiveRole } from "../auth/roles";
 import { CareerQueryService } from "./career-query.service";
 import { CareerService } from "./career.service";
 
@@ -94,7 +94,7 @@ describe("CareerService", () => {
         expect.objectContaining({
           where: expect.objectContaining({
             AND: expect.arrayContaining([
-              withRole(UserRole.LICENSEE),
+              withActiveRole(UserRole.LICENSEE),
             ]) as unknown,
           }) as unknown,
         }),
@@ -148,7 +148,9 @@ describe("CareerService", () => {
       expect(callArg.where).not.toHaveProperty("clubId");
       expect(callArg.where).not.toHaveProperty("clubName");
       expect(callArg.where).toMatchObject({
-        AND: expect.arrayContaining([withRole(UserRole.LICENSEE)]) as unknown,
+        AND: expect.arrayContaining([
+          withActiveRole(UserRole.LICENSEE),
+        ]) as unknown,
       });
     });
 

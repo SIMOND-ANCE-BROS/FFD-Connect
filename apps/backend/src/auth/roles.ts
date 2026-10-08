@@ -53,6 +53,22 @@ export function withRole(role: UserRole): Prisma.UserWhereInput {
   return { OR: [{ role }, { extraRoles: { has: role } }] };
 }
 
+/**
+ * Prisma filter on EFFECTIVE roles, the DB counterpart of `rolesOf`: an extra
+ * CLUB role counts only while the account's club is not disabled. A main CLUB
+ * role always matches (such accounts are blocked at the account level). Use it
+ * for recipients and access lists; `withRole` = stored roles, for admin counts.
+ */
+export function withActiveRole(role: UserRole): Prisma.UserWhereInput {
+  if (role !== UserRole.CLUB) return withRole(role);
+  return {
+    OR: [
+      { role: UserRole.CLUB },
+      { extraRoles: { has: UserRole.CLUB }, club: { disabledAt: null } },
+    ],
+  };
+}
+
 /** The only shape `extraRoles` is ever written in. */
 export function normalizeExtraRoles(
   main: UserRole,

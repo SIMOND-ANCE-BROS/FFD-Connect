@@ -10,7 +10,7 @@ import {
   PartnershipStatus,
   UserRole,
 } from "@prisma/client";
-import { withRole } from "../auth/roles";
+import { withActiveRole } from "../auth/roles";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ClubsService } from "./clubs.service";
@@ -374,7 +374,7 @@ export class PartnershipService {
     const organizers = await this.prisma.user.findMany({
       where: {
         AND: [
-          withRole(UserRole.CLUB),
+          withActiveRole(UserRole.CLUB),
           {
             OR: [
               { clubId: club.id },

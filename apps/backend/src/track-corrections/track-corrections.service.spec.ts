@@ -23,7 +23,7 @@ import {
   TrackRow,
   useTrackTable,
 } from "../../test/mocks/track-where.mock";
-import { withRole } from "../auth/roles";
+import { withActiveRole } from "../auth/roles";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { TracksService } from "../tracks/tracks.service";
@@ -459,7 +459,7 @@ describe("TrackCorrectionsService", () => {
       });
 
       expect(prisma.user.findMany).toHaveBeenCalledWith({
-        where: withRole(UserRole.ADMIN),
+        where: withActiveRole(UserRole.ADMIN),
         select: { id: true },
         take: MAX_ADMINS_NOTIFIED,
       });

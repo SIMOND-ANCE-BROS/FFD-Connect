@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { PartnershipStatus, Prisma, UserRole } from "@prisma/client";
-import { hasRole, withRole } from "../auth/roles";
+import { hasRole, withActiveRole } from "../auth/roles";
 import { userRolesClubSelect } from "../utils/prisma-selects";
 import { PrismaService } from "../prisma/prisma.service";
 import { ClubsService } from "./clubs.service";
@@ -83,7 +83,7 @@ export class PartnershipQueryService {
 
     const members = await this.prisma.user.findMany({
       where: {
-        AND: [withRole(UserRole.LICENSEE), { OR: orConditions }],
+        AND: [withActiveRole(UserRole.LICENSEE), { OR: orConditions }],
       },
       select: {
         id: true,

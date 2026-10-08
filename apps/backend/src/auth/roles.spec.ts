@@ -1,5 +1,11 @@
 import { UserRole } from "@prisma/client";
-import { hasRole, normalizeExtraRoles, rolesOf, withRole } from "./roles";
+import {
+  hasRole,
+  normalizeExtraRoles,
+  rolesOf,
+  withActiveRole,
+  withRole,
+} from "./roles";
 
 describe("roles", () => {
   describe("rolesOf", () => {
@@ -58,6 +64,21 @@ describe("roles", () => {
     expect(withRole(UserRole.CLUB)).toEqual({
       OR: [{ role: UserRole.CLUB }, { extraRoles: { has: UserRole.CLUB } }],
     });
+  });
+
+  it("withActiveRole(CLUB) drops an extra CLUB role of a disabled club", () => {
+    expect(withActiveRole(UserRole.CLUB)).toEqual({
+      OR: [
+        { role: UserRole.CLUB },
+        { extraRoles: { has: UserRole.CLUB }, club: { disabledAt: null } },
+      ],
+    });
+  });
+
+  it("withActiveRole equals withRole for the other roles", () => {
+    expect(withActiveRole(UserRole.LICENSEE)).toEqual(
+      withRole(UserRole.LICENSEE),
+    );
   });
 
   it("normalizeExtraRoles removes the main role and duplicates, in enum order", () => {

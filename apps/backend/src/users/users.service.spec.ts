@@ -13,7 +13,7 @@ import {
 import * as bcrypt from "bcrypt";
 import { mockDeep, MockProxy } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
-import { withRole } from "../auth/roles";
+import { withActiveRole } from "../auth/roles";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import {
   AccountDeletionService,
@@ -284,7 +284,10 @@ describe("UsersService", () => {
 
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { clubName: "DanceClub", ...withRole(UserRole.LICENSEE) },
+          where: {
+            clubName: "DanceClub",
+            ...withActiveRole(UserRole.LICENSEE),
+          },
         }),
       );
     });
@@ -303,7 +306,7 @@ describe("UsersService", () => {
 
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { clubId: "club-42", ...withRole(UserRole.LICENSEE) },
+          where: { clubId: "club-42", ...withActiveRole(UserRole.LICENSEE) },
         }),
       );
     });
