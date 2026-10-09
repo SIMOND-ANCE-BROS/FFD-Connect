@@ -3,6 +3,7 @@ import {
   getReferenceYear,
   computeSoloAgeGroup,
   computeCoupleAgeGroup,
+  isCoupleEspoirEligible,
   getAllowedLevelsForAgeGroup,
   COMPETITION_LEVELS,
 } from "./age-group.util";
@@ -403,6 +404,34 @@ describe("age-group.util", () => {
       expect(
         computeCoupleAgeGroup(birthForAge(70), birthForAge(69), refYear),
       ).toBe("Senior IV");
+    });
+  });
+
+  describe("Espoir (under 21)", () => {
+    it("accepts a couple whose older partner is 20 at most on Dec 31", () => {
+      expect(
+        isCoupleEspoirEligible(
+          new Date(2006, 5, 1),
+          new Date(2008, 0, 1),
+          2026,
+        ),
+      ).toBe(true);
+    });
+
+    it("rejects a couple whose older partner turns 21", () => {
+      expect(
+        isCoupleEspoirEligible(
+          new Date(2008, 0, 1),
+          new Date(2005, 11, 31),
+          2026,
+        ),
+      ).toBe(false);
+    });
+
+    it("allows the same levels as Adulte", () => {
+      expect(getAllowedLevelsForAgeGroup("COUPLE", "Espoir")).toEqual(
+        getAllowedLevelsForAgeGroup("COUPLE", "Adulte"),
+      );
     });
   });
 });

@@ -269,9 +269,12 @@ describe("mapAgeToken", () => {
     ).toEqual([]);
   });
 
-  it("drops Espoir, which has no age class in the app", () => {
+  it("maps Espoir (under 21) to a couple-only event class", () => {
     expect(
       mapAgeToken({ keyword: "espoir", numbers: [] }, "COUPLE", false),
+    ).toEqual(["Espoir"]);
+    expect(
+      mapAgeToken({ keyword: "espoir", numbers: [] }, "SOLO", false),
     ).toEqual([]);
   });
 });
@@ -340,6 +343,7 @@ describe("parseFfdEvents", () => {
       "MAJEURE | COUPLE | Standard | Junior I | -",
       "MAJEURE | COUPLE | Latin | Junior II | -",
       "MAJEURE | COUPLE | Standard | Youth | -",
+      "MAJEURE | COUPLE | Standard | Espoir | -",
       "MAJEURE | COUPLE | Latin | Adulte | -",
       "MAJEURE | COUPLE | Latin | Senior I | -",
       "MAJEURE | COUPLE | Standard | Senior II | -",

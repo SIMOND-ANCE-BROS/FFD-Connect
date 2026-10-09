@@ -326,6 +326,59 @@ describe("CompetitionRegistrationService", () => {
       expect(result.id).toBe("r1");
     });
 
+    const espoirEvent = {
+      id: "e1",
+      competitionId: "c1",
+      eventType: "COUPLE",
+      competition: {
+        title: "Championnat",
+        date: new Date(2026, 5, 1),
+        competitionType: "MAJEURE",
+      },
+      category: "Standard",
+      ageGroup: "Espoir",
+      eventKind: "MAJEURE",
+      level: null,
+    };
+
+    it("rejects an Espoir registration when the older partner is 21 or more", async () => {
+      mockPrismaService.event.findUnique.mockResolvedValue(espoirEvent);
+      mockPrismaService.registration.findFirst.mockResolvedValue(null);
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce({ birthDate: new Date(2005, 0, 1) })
+        .mockResolvedValueOnce({
+          birthDate: new Date(2007, 0, 1),
+          firstName: "A",
+          lastName: "B",
+        });
+
+      await expect(
+        service.register("e1", "u1", "A B", {
+          byOrganizer: true,
+          partnerUserId: "p1",
+        }),
+      ).rejects.toThrow(/moins de 21 ans/);
+    });
+
+    it("accepts an Espoir registration for an under-21 Adulte couple", async () => {
+      mockPrismaService.event.findUnique.mockResolvedValue(espoirEvent);
+      mockPrismaService.registration.findFirst.mockResolvedValue(null);
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce({ birthDate: new Date(2006, 3, 1) })
+        .mockResolvedValueOnce({
+          birthDate: new Date(2007, 0, 1),
+          firstName: "A",
+          lastName: "B",
+        });
+
+      const result = await service.register("e1", "u1", "A B", {
+        byOrganizer: true,
+        partnerUserId: "p1",
+      });
+
+      expect(result.id).toBe("r1");
+    });
+
     it("should throw BadRequestException for second MAJEURE registration in same specialty", async () => {
       mockPrismaService.event.findUnique.mockResolvedValue({
         id: "e1",

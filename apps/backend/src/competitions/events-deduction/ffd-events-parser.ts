@@ -22,7 +22,7 @@ import { getAllowedLevelsForAgeGroup } from "../../common/age-group";
  * Bump when the parsing rules change: it is part of the stored fingerprint, so
  * a new version re-processes every competition on the next sync.
  */
-export const FFD_EVENTS_PARSER_VERSION = 1;
+export const FFD_EVENTS_PARSER_VERSION = 2;
 
 export type DeducedEventKind = "CLASSIFICATRICE" | "OPEN" | "MAJEURE";
 export type DeducedEventType = "COUPLE" | "SOLO";
@@ -357,8 +357,8 @@ export function mapAgeToken(
         ? ["Solo Juvénile", "Solo Junior 1", "Solo Junior 2"]
         : ["Juvénile I", "Juvénile II", "Junior I", "Junior II"];
     case "espoir":
-      // "Espoir" (under 21) has no age class of its own in the app.
-      return [];
+      // "Espoir" (under 21) is a couple-only event class.
+      return solo ? [] : ["Espoir"];
   }
 }
 
