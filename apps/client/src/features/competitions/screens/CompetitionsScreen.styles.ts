@@ -52,6 +52,10 @@ export const styles = StyleSheet.create({
   emptySubtitle: {
     marginTop: 8,
   },
+  betaNotice: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
   loadMoreButton: {
     marginTop: 16,
     alignSelf: "center",

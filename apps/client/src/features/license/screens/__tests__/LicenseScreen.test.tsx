@@ -3,6 +3,7 @@ import React from "react";
 import { StyleSheet } from "react-native";
 import type { ReactTestRendererJSON } from "react-test-renderer";
 import { STACKED_CARD_ACTIVE_OFFSET } from "../../../../components/StackedCard";
+import { BETA_NOTICES } from "../../../../constants/betaNotices";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useLicenseLogic } from "../../hooks/useLicenseLogic";
 import { LicenseScreen } from "../LicenseScreen";
@@ -267,10 +268,14 @@ describe("LicenseScreen Integration", () => {
       actions: mockActions,
     });
 
-    const { getByTestId, getByText } = await render(<LicenseScreen />);
+    const { getByTestId, getByText, queryByTestId } = await render(
+      <LicenseScreen />,
+    );
 
     expect(getByTestId("license-screen-guest-card")).toBeTruthy();
     expect(getByText("Mode Invité")).toBeTruthy();
+    // No license displayed for a guest → no beta license notice.
+    expect(queryByTestId("license-beta-notice")).toBeNull();
   });
 
   it("handles WDSF Add interactions", async () => {
@@ -651,6 +656,22 @@ describe("LicenseScreen Integration", () => {
 
       const { getByTestId } = await render(<LicenseScreen />);
       expect(getByTestId("apple-wallet-slot").props.children).toBe("123:true");
+    });
+
+    it("is preceded by the beta notice (license not accepted at competitions)", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: { ...mockState, listItems: [ffd] },
+        actions: mockActions,
+      });
+
+      const { getByText, toJSON } = await render(<LicenseScreen />);
+      expect(getByText(BETA_NOTICES.license.message)).toBeTruthy();
+
+      const tree = JSON.stringify(toJSON());
+      const noticeAt = tree.indexOf('"license-beta-notice"');
+      const walletAt = tree.indexOf('"apple-wallet-slot"');
+      expect(noticeAt).toBeGreaterThan(-1);
+      expect(walletAt).toBeGreaterThan(noticeAt);
     });
 
     it("is absent without an FFD license (guest)", async () => {

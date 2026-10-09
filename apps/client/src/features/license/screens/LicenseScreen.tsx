@@ -19,6 +19,8 @@ import {
 import { QRCodeView } from "../components/QRCodeView.native";
 
 import { AppText } from "../../../components/AppText";
+import { BetaNotice } from "../../../components/BetaNotice";
+import { BETA_NOTICES } from "../../../constants/betaNotices";
 import {
   GlassHeader,
   GLASS_HEADER_HEIGHT,
@@ -131,6 +133,7 @@ export const LicenseScreen: React.FC = () => {
   };
 
   const activeItemType = state.listItems[state.activeCardIndex]?.type;
+  const isGuest = state.listItems.some((item) => item.type === "GUEST");
 
   return (
     <SafeAreaView
@@ -229,6 +232,17 @@ export const LicenseScreen: React.FC = () => {
           validUntil={ffdValidUntilRaw}
           onPress={() => navigation.getParent()?.navigate("LicenseRenewal")}
         />
+        {/* Beta: the displayed license (and its Wallet pass) is not yet
+            accepted at competitions — shown above the cards and the
+            Apple Wallet button. */}
+        {isGuest ? null : (
+          <BetaNotice
+            title={BETA_NOTICES.license.title}
+            message={BETA_NOTICES.license.message}
+            style={styles.betaNotice}
+            testID="license-beta-notice"
+          />
+        )}
         <View style={styles.walletContainer} testID="license-screen-wallet">
           {state.listItems.map((item, index) => {
             const isActive = index === state.activeCardIndex;
@@ -430,6 +444,10 @@ const styles = StyleSheet.create({
   seasonSubtitle: {
     paddingHorizontal: 20,
     marginBottom: 10,
+  },
+  betaNotice: {
+    marginHorizontal: 20,
+    marginBottom: 12,
   },
   headerActions: {
     flexDirection: "row",
