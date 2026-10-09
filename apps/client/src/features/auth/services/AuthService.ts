@@ -103,6 +103,12 @@ export interface UserProfile {
   birthDate?: string;
   category?: string | null;
   ageGroup?: string | null;
+  /** Competition level in Latin; absent on an older backend. */
+  competitionLevelLatin?: string | null;
+  /** Competition level in Standard; absent on an older backend. */
+  competitionLevelStandard?: string | null;
+  /** @deprecated single legacy level, read only as a fallback. */
+  competitionLevel?: string | null;
   passportLevelLatin?: string | null;
   passportLevelStandard?: string | null;
   license?: {
