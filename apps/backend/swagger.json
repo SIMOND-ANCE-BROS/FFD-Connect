@@ -5622,6 +5622,44 @@
                       "nullable": true,
                       "example": "Club de Danse Paris"
                     },
+                    "category": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": ["Latin", "Standard", "Ten Dance"],
+                      "description": "Discipline déclarée (valeur stockée, non traduite)"
+                    },
+                    "ageGroup": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "competitionLevelLatin": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": [
+                        "Débutant",
+                        "Intermédiaire",
+                        "Avancé",
+                        "International"
+                      ],
+                      "description": "Niveau de compétition en Latines"
+                    },
+                    "competitionLevelStandard": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": [
+                        "Débutant",
+                        "Intermédiaire",
+                        "Avancé",
+                        "International"
+                      ],
+                      "description": "Niveau de compétition en Standards"
+                    },
+                    "competitionLevel": {
+                      "type": "string",
+                      "nullable": true,
+                      "deprecated": true,
+                      "description": "Ancien niveau unique, conservé pour les anciennes versions de l'app. Préférer les niveaux par discipline."
+                    },
                     "licenseNumber": {
                       "type": "string",
                       "nullable": true
@@ -22270,6 +22308,16 @@
           },
           "competitionLevel": {
             "type": "string",
+            "nullable": true,
+            "deprecated": true,
+            "description": "Ancien niveau unique (repli) — préférer les niveaux par discipline"
+          },
+          "competitionLevelLatin": {
+            "type": "string",
+            "nullable": true
+          },
+          "competitionLevelStandard": {
+            "type": "string",
             "nullable": true
           },
           "wdsfMin": {
@@ -22330,6 +22378,8 @@
           "passportLevelLatin",
           "passportLevelStandard",
           "competitionLevel",
+          "competitionLevelLatin",
+          "competitionLevelStandard",
           "wdsfMin",
           "wdsfExpiresOn",
           "licenseNumber",
@@ -22407,7 +22457,33 @@
               "Intermédiaire",
               "Débutant",
               null
-            ]
+            ],
+            "deprecated": true,
+            "description": "Ancien niveau unique. Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard."
+          },
+          "competitionLevelLatin": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "International",
+              "Avancé",
+              "Intermédiaire",
+              "Débutant",
+              null
+            ],
+            "description": "Niveau de compétition en Latines"
+          },
+          "competitionLevelStandard": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "International",
+              "Avancé",
+              "Intermédiaire",
+              "Débutant",
+              null
+            ],
+            "description": "Niveau de compétition en Standards"
           },
           "nationalRanking": {
             "type": "number",
@@ -22497,7 +22573,33 @@
               "Intermédiaire",
               "Débutant",
               null
-            ]
+            ],
+            "deprecated": true,
+            "description": "Ancien niveau unique. Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard."
+          },
+          "competitionLevelLatin": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "International",
+              "Avancé",
+              "Intermédiaire",
+              "Débutant",
+              null
+            ],
+            "description": "Niveau de compétition en Latines"
+          },
+          "competitionLevelStandard": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "International",
+              "Avancé",
+              "Intermédiaire",
+              "Débutant",
+              null
+            ],
+            "description": "Niveau de compétition en Standards"
           },
           "nationalRanking": {
             "type": "number",
@@ -23332,7 +23434,7 @@
           },
           "registrantLevel": {
             "type": "string",
-            "description": "Niveau du couple/solo (obligatoire pour épreuves classificatrices)",
+            "description": "Niveau du couple/solo dans la discipline de l'épreuve. Absent : niveau du profil du membre pour cette discipline. Ignoré pour les 10 danses.",
             "enum": ["International", "Avancé", "Intermédiaire", "Débutant"]
           }
         },
@@ -23386,7 +23488,7 @@
           },
           "registrantLevel": {
             "type": "string",
-            "description": "Niveau du couple/solo (obligatoire pour épreuves classificatrices : International, Avancé, Intermédiaire, Débutant)",
+            "description": "Niveau du couple/solo dans la discipline de l'épreuve (International, Avancé, Intermédiaire, Débutant). Absent : niveau du profil pour cette discipline. Ignoré pour les 10 danses.",
             "enum": ["International", "Avancé", "Intermédiaire", "Débutant"]
           }
         },

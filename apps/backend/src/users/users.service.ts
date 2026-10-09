@@ -16,6 +16,7 @@ import { AppleWalletPassGenerator } from "../licenses/wallet/apple-wallet-pass.g
 import { PrismaService } from "../prisma/prisma.service";
 import { publicTrackName } from "../tracks/track-visibility.util";
 import {
+  competitionLevelsSelect,
   deviceTokenExportSelect,
   licenseBaseSelect,
   notificationPreferenceExportSelect,
@@ -34,7 +35,8 @@ const USER_BASE_SELECT = {
   role: true,
   category: true,
   ageGroup: true,
-  competitionLevel: true,
+  // Per-discipline levels + deprecated single level (kept for older clients).
+  ...competitionLevelsSelect,
   clubName: true,
   createdAt: true,
   updatedAt: true,

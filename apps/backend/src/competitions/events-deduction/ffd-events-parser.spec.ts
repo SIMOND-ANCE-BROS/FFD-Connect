@@ -433,7 +433,34 @@ describe("parseFfdEvents", () => {
 
   it("uses specialities named anywhere in the document", () => {
     expect(keys(parseFfdEvents("Adulte<br />Compétition 10 danses"))).toEqual([
-      "- | COUPLE | Ten Dance | Adulte | -",
+      "MAJEURE | COUPLE | Ten Dance | Adulte | -",
+    ]);
+  });
+
+  it("deduces 10 danses épreuves as majeures without level", () => {
+    const events = keys(
+      parseFfdEvents(
+        "Classificatrices Latine 10 danses Adulte Débutant Intermédiaire",
+      ),
+    );
+    expect(events).toContain("MAJEURE | COUPLE | Ten Dance | Adulte | -");
+    expect(events.filter((e) => e.includes("Ten Dance"))).toEqual([
+      "MAJEURE | COUPLE | Ten Dance | Adulte | -",
+    ]);
+    expect(events).toContain(
+      "CLASSIFICATRICE | COUPLE | Latin | Adulte | Intermédiaire",
+    );
+  });
+
+  it("keeps a 10 danses épreuve already deduced as majeure", () => {
+    expect(keys(parseFfdEvents("Championnat 10 danses Adulte"))).toEqual([
+      "MAJEURE | COUPLE | Ten Dance | Adulte | -",
+    ]);
+  });
+
+  it("deduces 10 danses opens as majeures too", () => {
+    expect(keys(parseFfdEvents("Open 10 danses Youth"))).toEqual([
+      "MAJEURE | COUPLE | Ten Dance | Youth | -",
     ]);
   });
 

@@ -1,30 +1,34 @@
-# Niveaux des couples – Conditions d'accession (Règlement Sportif FFDanse)
+# Niveaux de compétition – par discipline (Règlement Sportif FFDanse)
 
-Ce document décrit les règles implémentées et à compléter pour l'accession aux niveaux supérieurs (Intermédiaire, Avancé, International).
+Ce document décrit comment l'application gère le **niveau de compétition** (Débutant, Intermédiaire, Avancé, International) et ce qui reste à compléter pour l'accession aux niveaux supérieurs.
 
 ---
 
-## 1. Implémenté dans l’application
+## 1. Principe : un niveau par discipline
 
-### 1.1 Couleurs Passeport Danse (ordre)
+- Le niveau de compétition est **propre à chaque discipline** : un danseur peut être Débutant en Standards et International en Latines.
+- Il est stocké sur l'utilisateur dans `competitionLevelLatin` et `competitionLevelStandard`.
+- L'ancien champ unique `competitionLevel` est **déprécié** : il n'est plus lu qu'en repli (anciennes versions de l'app, rollback) et sera supprimé dans une migration ultérieure. La migration `20261009150000_user_competition_level_per_discipline` l'a recopié au mieux : discipline déclarée Latin → niveau Latines seulement, Standard → niveau Standards seulement, sinon (10 danses ou inconnue) les deux.
+- Un back-office qui n'envoie que l'ancien champ voit sa valeur recopiée dans les deux disciplines.
+- Toute règle qui dépend du niveau le lit via `getCompetitionLevelForCategory(user, disciplineDeLÉpreuve)` (`apps/backend/src/common/competition-level`).
 
-Ordre des couleurs du Passeport Danse (du plus bas au plus haut) :  
-**BLANC → BEIGE → JAUNE → ORANGE → VERT → VIOLET → BLEU → ROUGE → NOIR**.
+### 1.1 10 danses
 
-- Utilisé dans : `apps/backend/src/common/level-accession/level-accession.util.ts`.
-- Pour chaque partenaire, on retient le **meilleur** des deux (Latine et Standard) pour vérifier « au moins X ».
+- Les épreuves 10 danses sont **uniquement des majeures**, ouvertes aux danseurs qui pratiquent **les deux disciplines** (Latines **et** Standards), **sans condition de niveau** (décision produit, révisable).
+- « Pratique une discipline » = un niveau renseigné dans cette discipline **ou** la discipline déclarée (`category`, « Ten Dance » valant les deux). Profil sans aucune information de discipline : non bloquant.
+- La déduction des épreuves depuis les documents FFD classe toute épreuve 10 danses en majeure, sans niveau.
 
-### 1.2 Accession au niveau Intermédiaire (2.1)
+### 1.2 Indépendance vis-à-vis du Passeport Danse
 
-- **Règle** : Les couples de niveau Débutant peuvent passer en Intermédiaire à tout moment dans la saison, sur demande du responsable technique, **à condition que les deux partenaires aient validé au moins la couleur « orange »** du Passeport Danse.
-- **Implémenté** : Vérification passeport (les deux au moins orange). La « demande du responsable technique » relève du workflow métier (non automatisé ici).
-- **Utilisation** : Lors de la **création d’un couple**, le niveau conseillé et la liste des niveaux autorisés sont calculés en tenant compte de la classe d’âge, du plafond éventuel (art. 3) et **des couleurs de passeport** (art. 2.1, 2.2, 2.3). Un niveau n’est proposé que si les deux partenaires ont la couleur minimale requise.
+- Le niveau de compétition **n'est pas déduit** des couleurs du Passeport Danse (`passportLevelLatin` / `passportLevelStandard`, concept distinct).
+- Le calcul du niveau conseillé à la création d'un couple ne filtre plus les niveaux selon le passeport (il le faisait auparavant).
+- L'ordre des couleurs (`PASSPORT_LEVEL_ORDER`, `hasAtLeastPassport`) reste utilisé pour les niveaux **solo** Novice / Confirmé / Expérimenté (`solo-rules`), autre concept.
 
-### 1.3 Plafond de niveau selon la classe d’âge (3.1–3.5)
+### 1.3 Plafond de niveau selon la classe d'âge (3.1–3.5)
 
-En cas de changement de classe d’âge, le niveau maximum autorisé est plafonné :
+En cas de changement de classe d'âge, le niveau maximum autorisé est plafonné :
 
-| Classe d’âge du couple | Niveau maximum |
+| Classe d'âge du couple | Niveau maximum |
 | ---------------------- | -------------- |
 | Juvénile I             | Intermédiaire  |
 | Juvénile II            | Intermédiaire  |
@@ -33,49 +37,35 @@ En cas de changement de classe d’âge, le niveau maximum autorisé est plafonn
 | Youth                  | Avancé         |
 | Adulte, Senior I–V     | International  |
 
-- **Implémenté** : `getMaxLevelForCoupleAgeGroup()` et prise en compte dans `getAllowedLevelsForCouple()`.
+- **Implémenté** : `getMaxLevelForCoupleAgeGroup()` et `getAllowedLevelsForCouple(classeDÂge)`.
 
-### 1.4 Niveau Débutant
+### 1.4 Où le niveau par discipline est utilisé
 
-- Aucune couleur de passeport exigée pour le niveau Débutant (règlement : licence C minimum).
+- Éligibilité aux épreuves (liste des compétitions, écran de détail, inscription) : une seule règle, `evaluateEventEligibility`, pour que le badge « Inéligible » de la liste corresponde au détail.
+- Inscription : sans niveau fourni, le niveau du profil dans la discipline de l'épreuve est utilisé.
+- Notifications « Nouvelle compétition ».
+- Niveau conseillé à la création d'un couple : un niveau par discipline (le plus bas des deux partenaires, borné par la classe d'âge).
+- Niveau d'une Solo Team : le plus haut niveau de chaque membre, toutes disciplines confondues.
 
 ---
 
-## 2. À compléter avec les données de participation
+## 2. Accession aux niveaux supérieurs (à compléter)
 
-### 2.2 Accession au niveau Avancé (2.2)
-
-Les couples sont classés en **Avancé au 1er septembre** si, après **au moins 2 saisons** (complètes ou non), les **3 conditions** suivantes sont réunies :
-
-1. Participation à **2 Critériums Nationaux** (sauf si aucun Critérium n’est organisé dans une saison).
-2. **8 épreuves classificatrices** validées, en plus des 2 Critériums Nationaux.
-3. **Les deux partenaires** sont titulaires au moins de la couleur **« violet »** du Passeport Danse.
-
-- **Implémenté** : condition passeport (violet) uniquement : `meetsPassportForAvance()`.
-- **À faire** : lier les inscriptions / résultats aux compétitions (type MAJEURE, nature Critérium National vs épreuve classificatrice) et compter les saisons, les 2 Critériums et les 8 épreuves classificatrices pour décider de l’accession automatique ou de la proposition de passage Avancé.
-
-### 2.3 Accession au niveau International (2.3)
-
-Les couples **Adulte et Seniors** sont classés en **International au 1er septembre** si, **dans la saison en cours**, les **3 conditions** suivantes sont réunies :
-
-1. Participation aux **2 derniers Critériums Nationaux** (sauf si aucun n’est proposé).
-2. **750 points** obtenus sur les **deux dernières saisons**.
-3. **Les deux partenaires** sont titulaires au moins de la couleur **« rouge »** du Passeport Danse.
-
-- **Implémenté** : condition passeport (rouge) uniquement : `meetsPassportForInternational()`.
-- **À faire** : calcul des points (règles WDSF/FFDanse), suivi des participations aux 2 derniers Critériums, et mise à jour du niveau au 1er septembre (batch ou procédure).
+Le règlement prévoit des conditions d'accession (2.1 Intermédiaire, 2.2 Avancé, 2.3 International : Critériums, épreuves classificatrices, points). Elles ne sont **pas automatisées** : le niveau de chaque discipline est saisi (back-office). Les conditions liées au Passeport Danse ne sont pas appliquées (décision produit, cf. 1.2).
 
 ---
 
 ## 3. Reclassement (3.6)
 
-Le **reclassement** permet de gérer les cas exceptionnels : le responsable technique peut proposer un niveau et effectuer une demande de **« Validation du niveau d’un couple »** selon la procédure de l’Article 5. Ce flux n’est pas encore implémenté (validation manuelle / workflow à définir).
+Le **reclassement** permet de gérer les cas exceptionnels : le responsable technique peut proposer un niveau et effectuer une demande de **« Validation du niveau d'un couple »** selon la procédure de l'Article 5. Ce flux n'est pas encore implémenté (validation manuelle / workflow à définir).
 
 ---
 
 ## 4. Fichiers concernés
 
 - **Backend**
-  - `apps/backend/src/common/level-accession/level-accession.util.ts` : ordre passeport, conditions 2.1–2.3 (passeport), plafonds 3.1–3.5, `getAllowedLevelsForCouple()`.
-  - `apps/backend/src/clubs/clubs.service.ts` : création de couple → utilisation de `getAllowedLevelsForCouple()` pour le niveau conseillé (passeport + âge + niveau des partenaires).
-- **Schéma** : `User.passportLevelLatin`, `User.passportLevelStandard` (enum `PassportLevel`).
+  - `apps/backend/src/common/competition-level/` : niveau par discipline, double pratique (10 danses), libellés français des disciplines.
+  - `apps/backend/src/common/level-accession/level-accession.util.ts` : plafonds 3.1–3.5, ordre des couleurs du passeport (solo).
+  - `apps/backend/src/competitions/services/competition-query.utils.ts` : éligibilité partagée liste / détail.
+  - `apps/backend/src/clubs/partnership-suggestion.util.ts` : niveau conseillé par discipline.
+- **Schéma** : `User.competitionLevelLatin`, `User.competitionLevelStandard` (+ `competitionLevel` déprécié), `User.passportLevelLatin`, `User.passportLevelStandard` (enum `PassportLevel`).

@@ -4,10 +4,37 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import {
+  competitionLevelRank,
+  getHighestCompetitionLevel,
+  type CompetitionLevelProfile,
+} from "../common/competition-level";
 import { PrismaService } from "../prisma/prisma.service";
 import { handlePrismaError } from "../utils/prisma-errors.util";
+import {
+  competitionLevelsSelect,
+  soloTeamMemberUserSelect,
+} from "../utils/prisma-selects";
 import type { CreateSoloTeamDto } from "./dto/create-soloteam.dto";
 import { ClubsService } from "./clubs.service";
+
+/**
+ * Solo Team level (Débutant | Intermédiaire): an équipe is Intermédiaire as
+ * soon as one member is Intermédiaire or above. A Solo Team épreuve has no
+ * Latin/Standard discipline, so each member counts with their HIGHEST
+ * per-discipline level (legacy single level as fallback).
+ */
+export function computeSoloTeamLevel(
+  members: CompetitionLevelProfile[],
+): "Débutant" | "Intermédiaire" {
+  const intermediateRank = competitionLevelRank("Intermédiaire");
+  return members.some(
+    (m) =>
+      competitionLevelRank(getHighestCompetitionLevel(m)) >= intermediateRank,
+  )
+    ? "Intermédiaire"
+    : "Débutant";
+}
 
 @Injectable()
 export class SoloTeamService {
@@ -24,14 +51,7 @@ export class SoloTeamService {
       include: {
         members: {
           include: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                competitionLevel: true,
-              },
-            },
+            user: { select: soloTeamMemberUserSelect },
           },
         },
       },
@@ -61,13 +81,7 @@ export class SoloTeamService {
         members: {
           include: {
             user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                competitionLevel: true,
-                birthDate: true,
-              },
+              select: { ...soloTeamMemberUserSelect, birthDate: true },
             },
           },
         },
@@ -131,30 +145,18 @@ export class SoloTeamService {
   async recalculateSoloTeamLevel(teamId: string) {
     const members = await this.prisma.soloTeamMember.findMany({
       where: { teamId },
-      include: { user: { select: { competitionLevel: true } } },
+      include: { user: { select: competitionLevelsSelect } },
+      // A Solo Team is a handful of dancers; bound the read anyway.
+      take: 200,
     });
-    const levels = members
-      .map((m) => m.user.competitionLevel?.trim())
-      .filter(Boolean);
-    const level = levels.some((l) =>
-      ["Intermédiaire", "Avancé", "International"].includes(l!),
-    )
-      ? "Intermédiaire"
-      : "Débutant";
+    const level = computeSoloTeamLevel(members.map((m) => m.user));
     return this.prisma.soloTeam.update({
       where: { id: teamId },
       data: { level },
       include: {
         members: {
           include: {
-            user: {
-              select: {
-                id: true,
-                firstName: true,
-                lastName: true,
-                competitionLevel: true,
-              },
-            },
+            user: { select: soloTeamMemberUserSelect },
           },
         },
       },
