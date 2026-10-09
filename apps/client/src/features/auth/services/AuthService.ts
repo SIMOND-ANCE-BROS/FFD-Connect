@@ -111,6 +111,8 @@ export interface UserProfile {
     type?: string;
     /** QR signé par le serveur (#168) — absent/null si backend ancien ou signature désactivée. */
     qrCode?: string | null;
+    /** Server can issue the Apple Wallet pass (#163) — absent on an older backend. */
+    appleWalletAvailable?: boolean;
   } | null;
   wdsf?: {
     min: string;

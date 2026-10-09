@@ -167,6 +167,8 @@ export const useLicenseLogic = (): {
               validUntilRaw: profile.license?.validUntil ?? undefined,
               // QR signé par le serveur (#168), mis en cache avec le snapshot.
               qrCode: profile.license?.qrCode ?? undefined,
+              appleWalletAvailable:
+                profile.license?.appleWalletAvailable === true,
               season: "2025/2026",
               birthDate: profile.birthDate
                 ? new Date(profile.birthDate).toLocaleDateString("fr-FR")
