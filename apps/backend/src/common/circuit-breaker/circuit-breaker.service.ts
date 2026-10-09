@@ -12,7 +12,8 @@ type BreakerKey =
   | "wdsf"
   | "helloasso"
   | "fcm"
-  | "azure-blob";
+  | "azure-blob"
+  | "azure-blob-write";
 
 interface BreakerConfig {
   errorThresholdPercentage: number;
@@ -66,6 +67,14 @@ const BREAKER_CONFIGS: Record<BreakerKey, BreakerConfig> = {
   "azure-blob": {
     errorThresholdPercentage: 50,
     timeout: 10_000,
+    resetTimeout: 30_000,
+    volumeThreshold: 5,
+  },
+  // Track file uploads of the back-office import (up to 20 MB each): their own
+  // breaker, so their longer budget does not loosen the /uploads reads.
+  "azure-blob-write": {
+    errorThresholdPercentage: 50,
+    timeout: 45_000,
     resetTimeout: 30_000,
     volumeThreshold: 5,
   },
