@@ -29,6 +29,7 @@ export const useLibraryLogic = ({ navigation }: UseLibraryLogicProps) => {
     loadMore,
     hasMore,
     isLoadingMore,
+    isInitialLoading,
   } = useLibrary();
 
   const [isModalVisible, setModalVisible] = useState(false);
@@ -179,6 +180,7 @@ export const useLibraryLogic = ({ navigation }: UseLibraryLogicProps) => {
       displayData: getDisplayData(),
       hasMore,
       isLoadingMore,
+      isInitialLoading,
     },
     actions: {
       setModalVisible,
