@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   PayloadTooLargeException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { Prisma, TrackStatus } from "@prisma/client";
 import { createHash, randomUUID } from "crypto";
@@ -35,6 +36,16 @@ export const TRACK_IMPORT_MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 export const TRACK_IMPORT_MAX_ARTWORK_BYTES = 2 * 1024 * 1024;
 export const TRACK_IMPORT_JOB_ID = "admin-import";
 export const TRACK_TEMPO_ANALYSIS_TIMEOUT_MS = 60_000;
+/**
+ * Backstop past BpmService's own kill: the kill fires first and the queue
+ * slot is only released once ffmpeg is really stopped.
+ */
+export const TRACK_TEMPO_ANALYSIS_OUTER_TIMEOUT_MS =
+  TRACK_TEMPO_ANALYSIS_TIMEOUT_MS + 15_000;
+/** Analyses allowed to wait behind the running one before a 503. */
+export const TRACK_TEMPO_ANALYSIS_MAX_WAITING = 4;
+export const TRACK_TEMPO_ANALYSIS_SATURATED_MESSAGE =
+  "Analyse du tempo saturée, réessayez dans un instant.";
 export const TRACK_DUPLICATE_MESSAGE =
   "Cette musique est déjà dans la bibliothèque.";
 
@@ -74,6 +85,8 @@ export class TrackImportService {
   private readonly logger = new Logger(TrackImportService.name);
   /** Tail of the tempo-analysis queue (see `analyze`). */
   private analysisQueue: Promise<void> = Promise.resolve();
+  /** Analyses running or queued (each holds its upload in memory). */
+  private analysesInFlight = 0;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -270,7 +283,9 @@ export class TrackImportService {
    * fails. One analysis at a time per replica: a bulk import sends several
    * files at once, and parallel ffmpeg + music-tempo passes would starve a
    * small replica into timeouts. The wait in the queue does not count
-   * against the timeout.
+   * against the timeout. With TRACK_TEMPO_ANALYSIS_MAX_WAITING analyses
+   * already waiting, a new one is refused (503, retryable by the SPA): each
+   * waiting import keeps its upload in memory.
    */
   private analyze(audio: Buffer): Promise<number> {
     return this.oneAnalysisAtATime(async () => {
@@ -278,13 +293,14 @@ export class TrackImportService {
       const file = path.join(dir, "audio.mp3");
       try {
         await fsp.writeFile(file, audio);
-        // BpmService kills ffmpeg at the timeout; withTimeout stays as the
-        // backstop for the decoding that follows the conversion.
+        // BpmService kills ffmpeg at the timeout; withTimeout, 15 s later,
+        // stays as the backstop for the decoding that follows the conversion
+        // (equal timeouts could release the queue slot before the kill).
         const bpm = await withTimeout(
           this.bpm.analyzeBpm(file, {
             timeoutMs: TRACK_TEMPO_ANALYSIS_TIMEOUT_MS,
           }),
-          TRACK_TEMPO_ANALYSIS_TIMEOUT_MS,
+          TRACK_TEMPO_ANALYSIS_OUTER_TIMEOUT_MS,
           "tempo analysis",
         );
         return Number.isFinite(bpm) && bpm > 0 ? bpm : 0;
@@ -299,7 +315,16 @@ export class TrackImportService {
 
   /** Promise-chain semaphore of size 1: `task` starts once the previous one settled. */
   private oneAnalysisAtATime<T>(task: () => Promise<T>): Promise<T> {
-    const run = this.analysisQueue.then(task);
+    // In flight = the running analysis + the waiting ones.
+    if (this.analysesInFlight >= 1 + TRACK_TEMPO_ANALYSIS_MAX_WAITING) {
+      throw new ServiceUnavailableException(
+        TRACK_TEMPO_ANALYSIS_SATURATED_MESSAGE,
+      );
+    }
+    this.analysesInFlight += 1;
+    const run = this.analysisQueue.then(task).finally(() => {
+      this.analysesInFlight -= 1;
+    });
     this.analysisQueue = run.then(
       () => undefined,
       () => undefined,

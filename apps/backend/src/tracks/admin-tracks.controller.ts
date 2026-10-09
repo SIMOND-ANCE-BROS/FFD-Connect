@@ -23,12 +23,14 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
+import { Throttle } from "@nestjs/throttler";
 import { UserRole } from "@prisma/client";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { createMemoryUploadStorage } from "../utils/upload-storage.util";
 import { AdminTracksQueryService } from "./admin-tracks.query-service";
 import { TRACK_STYLE_OPTIONS } from "./dance-labels";
@@ -96,6 +98,10 @@ export class AdminTracksController {
   }
 
   @Post()
+  // Per admin: two parallel uploads of small files stay below; a runaway
+  // client cannot pile 20 MB bodies into memory.
+  @UseGuards(ThrottlerUserGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -182,6 +188,11 @@ export class AdminTracksController {
   @ApiResponse({
     status: 413,
     description: "Fichier audio > 20 Mo ou pochette > 2 Mo",
+  })
+  @ApiResponse({
+    status: 503,
+    description:
+      "Analyse du tempo saturée ou stockage indisponible : réessayer dans un instant",
   })
   create(
     @Req() req: RequestWithUser,

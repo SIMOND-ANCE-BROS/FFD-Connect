@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   PayloadTooLargeException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { Prisma, TrackStatus } from "@prisma/client";
 import { createHash } from "crypto";
@@ -15,6 +16,7 @@ import { mp3Bytes } from "../../test/fixtures/mp3.fixture";
 import { AdminAuditService } from "../admin/admin-audit.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { idOnlySelect, trackDuplicateSelect } from "../utils/prisma-selects";
+import * as timeoutUtils from "../utils/timeout.utils";
 import { AdminTracksQueryService } from "./admin-tracks.query-service";
 import { BpmService } from "./bpm.service";
 import { ImportTrackDto } from "./dto/track-import.dto";
@@ -23,6 +25,8 @@ import {
   TRACK_DUPLICATE_MESSAGE,
   TRACK_IMPORT_MAX_ARTWORK_BYTES,
   TRACK_IMPORT_MAX_AUDIO_BYTES,
+  TRACK_TEMPO_ANALYSIS_MAX_WAITING,
+  TRACK_TEMPO_ANALYSIS_SATURATED_MESSAGE,
   TRACK_TEMPO_ANALYSIS_TIMEOUT_MS,
   TrackImportService,
 } from "./track-import.service";
@@ -391,6 +395,66 @@ describe("TrackImportService", () => {
       expect(analyze).toHaveBeenCalledWith(expect.any(String), {
         timeoutMs: TRACK_TEMPO_ANALYSIS_TIMEOUT_MS,
       });
+    });
+
+    it("keeps the outer timeout 15 s past ffmpeg's kill, so the kill fires first", async () => {
+      const spy = jest.spyOn(timeoutUtils, "withTimeout");
+      analyze.mockResolvedValue(100);
+      await service.importTrack(
+        "admin-1",
+        dto({ rawBpm: undefined }),
+        file(MP3),
+        undefined,
+      );
+      expect(spy).toHaveBeenCalledWith(
+        expect.any(Promise),
+        TRACK_TEMPO_ANALYSIS_TIMEOUT_MS + 15_000,
+        "tempo analysis",
+      );
+      spy.mockRestore();
+    });
+
+    it("refuses (503) a new analysis while 4 are already waiting", async () => {
+      expect(TRACK_TEMPO_ANALYSIS_MAX_WAITING).toBe(4);
+      const pending: Array<(bpm: number) => void> = [];
+      analyze.mockImplementation(
+        () => new Promise<number>((resolve) => pending.push(resolve)),
+      );
+      const start = (i: number) => {
+        const bytes = mp3Bytes(`queued file ${i}`);
+        return service.importTrack(
+          "admin-1",
+          dto({
+            rawBpm: undefined,
+            sourceKey: `apple:q${i}`,
+            sha256: sha(bytes),
+          }),
+          file(bytes),
+          undefined,
+        );
+      };
+      // One analysis running, four waiting.
+      const accepted = [0, 1, 2, 3, 4].map(start);
+      await until(() => analyze.mock.calls.length === 1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const refused = await start(5).catch((e: unknown) => e);
+      expect(refused).toBeInstanceOf(ServiceUnavailableException);
+      expect((refused as ServiceUnavailableException).message).toBe(
+        TRACK_TEMPO_ANALYSIS_SATURATED_MESSAGE,
+      );
+
+      // The queue drains, then accepts again.
+      for (let i = 0; i < 5; i++) {
+        await until(() => pending.length === i + 1);
+        pending[i](100);
+      }
+      await Promise.all(accepted);
+      const again = start(6);
+      await until(() => pending.length === 6);
+      pending[5](100);
+      await again;
+      expect(prisma.track.create).toHaveBeenCalledTimes(6);
     });
 
     it("runs the analyses of concurrent imports one at a time", async () => {

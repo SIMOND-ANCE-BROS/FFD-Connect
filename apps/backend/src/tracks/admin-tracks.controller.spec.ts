@@ -3,6 +3,7 @@ import { UserRole } from "@prisma/client";
 import { ROLES_KEY } from "../auth/decorators/roles.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { AdminTracksController } from "./admin-tracks.controller";
 import { AdminTracksQueryService } from "./admin-tracks.query-service";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
@@ -30,6 +31,17 @@ describe("AdminTracksController", () => {
     );
     expect(Reflect.getMetadata(ROLES_KEY, AdminTracksController)).toEqual([
       UserRole.ADMIN,
+    ]);
+  });
+
+  it("limits imports to 30 per minute and per admin", () => {
+    // Two parallel uploads of small files stay well below; a runaway client
+    // or script cannot pile 20 MB bodies into memory.
+    const handler = AdminTracksController.prototype.create;
+    expect(Reflect.getMetadata("THROTTLER:LIMITdefault", handler)).toBe(30);
+    expect(Reflect.getMetadata("THROTTLER:TTLdefault", handler)).toBe(60_000);
+    expect(Reflect.getMetadata(GUARDS_METADATA, handler)).toEqual([
+      ThrottlerUserGuard,
     ]);
   });
 
