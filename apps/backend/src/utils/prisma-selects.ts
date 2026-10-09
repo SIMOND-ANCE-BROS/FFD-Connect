@@ -3,6 +3,8 @@
  * Utilise `select` au lieu de `include` pour limiter les champs récupérés
  */
 
+import { TrackCorrectionStatus } from "@prisma/client";
+
 /**
  * Sélecteur pour les informations utilisateur de base (sans mot de passe)
  */
@@ -415,6 +417,67 @@ export const trackCorrectionAuditTrackSelect = {
   style: true,
   bpm: true,
   clashTimecodes: true,
+} as const;
+
+/**
+ * Track fields of a TRACK_UPDATE audit row: read by the write guard and
+ * returned by the update itself, inside the same transaction.
+ */
+export const trackAuditSelect = {
+  title: true,
+  artist: true,
+  style: true,
+  bpm: true,
+  titleMasked: true,
+  blacklisted: true,
+  clashTimecodes: true,
+  status: true,
+} as const;
+
+/** Guard read of TracksService.updateTrack: owner, raw tempo, audited fields. */
+export const trackUpdateTargetSelect = {
+  submittedById: true,
+  rawBpm: true,
+  ...trackAuditSelect,
+} as const;
+
+/** What a track deletion audits (metadata only) and which files it removes. */
+export const trackDeletionSelect = {
+  title: true,
+  artist: true,
+  sourceKey: true,
+  filename: true,
+  artwork: true,
+} as const;
+
+/** Back-office catalogue: every field of AdminTrackDto, plus the pending corrections. */
+export const adminTrackSelect = {
+  id: true,
+  title: true,
+  artist: true,
+  style: true,
+  bpm: true,
+  rawBpm: true,
+  clashTimecodes: true,
+  titleMasked: true,
+  blacklisted: true,
+  status: true,
+  sourceKey: true,
+  filename: true,
+  artwork: true,
+  createdAt: true,
+  _count: {
+    select: {
+      corrections: { where: { status: TrackCorrectionStatus.PENDING } },
+    },
+  },
+} as const;
+
+/** Duplicate lookup of the import: a hit by content hash or by source key. */
+export const trackDuplicateSelect = {
+  id: true,
+  sourceKey: true,
+  contentHash: true,
 } as const;
 
 /**

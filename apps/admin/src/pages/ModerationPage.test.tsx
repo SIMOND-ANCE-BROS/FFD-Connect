@@ -219,4 +219,23 @@ describe('ModerationPage', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('table')).toBeNull();
   });
+
+  it("shows one track's proposals from the track page link, and widens to every track", async () => {
+    const id = '4f1c2a8e-1b2c-4d5e-8f90-123456789abc';
+    const list = vi
+      .spyOn(sdk, 'trackCorrectionsControllerList')
+      .mockResolvedValue(page([item()]) as never);
+    renderPage(`/moderation?track=${id}`);
+    expect(await screen.findByText("Propositions d'une seule musique")).toBeInTheDocument();
+    expect(list).toHaveBeenLastCalledWith({
+      query: { status: 'PENDING', trackId: id, skip: 0, take: 50 },
+    });
+    expect(screen.getByRole('link', { name: 'Voir la musique' })).toHaveAttribute(
+      'href',
+      `/tracks/${id}`,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Toutes les musiques' }));
+    await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/moderation'));
+    expect(list).toHaveBeenLastCalledWith({ query: { status: 'PENDING', skip: 0, take: 50 } });
+  });
 });

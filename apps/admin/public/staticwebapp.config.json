@@ -4,7 +4,7 @@
     "exclude": ["/assets/*"]
   },
   "globalHeaders": {
-    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api-staging.ffd.gabin-simond.fr https://api.ffd.gabin-simond.fr; media-src 'self' https://api-staging.ffd.gabin-simond.fr https://api.ffd.gabin-simond.fr; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://api-staging.ffd.gabin-simond.fr https://api.ffd.gabin-simond.fr; font-src 'self'; connect-src 'self' https://api-staging.ffd.gabin-simond.fr https://api.ffd.gabin-simond.fr; media-src 'self' https://api-staging.ffd.gabin-simond.fr https://api.ffd.gabin-simond.fr; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     "X-Frame-Options": "DENY",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",

@@ -10,12 +10,13 @@ import { ACTION_LABELS } from '../lib/auditLabels';
 
 const PAGE_SIZE = 50;
 
-const DELETIONS: AuditLogEntryDto['action'][] = ['USER_DELETE', 'CLUB_DELETE'];
+const DELETIONS: AuditLogEntryDto['action'][] = ['USER_DELETE', 'CLUB_DELETE', 'TRACK_DELETE'];
 
 const TARGET_LINKS: Record<AuditLogEntryDto['targetType'], { path: string; label: string }> = {
   USER: { path: 'users', label: 'Voir la fiche' },
   CLUB: { path: 'clubs', label: 'Voir le club' },
   TRACK_CORRECTION: { path: 'moderation', label: 'Voir la proposition' },
+  TRACK: { path: 'tracks', label: 'Voir la musique' },
 };
 
 /**
@@ -32,6 +33,10 @@ function visibleChange(entry: AuditLogEntryDto) {
       delete before.trackId;
       delete after.trackId;
     }
+  }
+  // A deletion only records `before`: show what was deleted against "—".
+  if (DELETIONS.includes(entry.action) && Object.keys(after).length === 0) {
+    for (const key of Object.keys(before)) after[key] = null;
   }
   return Object.keys(after).length > 0 ? { before, after } : null;
 }

@@ -1,4 +1,4 @@
-import { correctionQuery, ensureOk } from './queries';
+import { correctionQuery, ensureOk, trackQuery, tracksQuery } from './queries';
 
 describe('ensureOk', () => {
   it('resolves on a 204', async () => {
@@ -30,5 +30,20 @@ describe('correctionQuery', () => {
       refetchOnReconnect: false,
       retry: false,
     });
+  });
+});
+
+describe('track queries', () => {
+  it('never wake the scale-to-zero backend on a refocus, a reconnect or a retry', () => {
+    const flags = { refetchOnWindowFocus: false, refetchOnReconnect: false, retry: false };
+    expect(tracksQuery({ skip: 0, take: 50 })).toMatchObject({
+      queryKey: ['admin', 'tracks', 'list', { skip: 0, take: 50 }],
+      ...flags,
+    });
+    expect(trackQuery('t1')).toMatchObject({
+      queryKey: ['admin', 'tracks', 'item', 't1'],
+      ...flags,
+    });
+    expect(tracksQuery({}).refetchInterval).toBeUndefined();
   });
 });

@@ -22,7 +22,7 @@ describe('Static Web App CSP', () => {
       'default-src': "'self'",
       'script-src': "'self'",
       'style-src': "'self' 'unsafe-inline'",
-      'img-src': "'self' data:",
+      'img-src': `'self' data: ${API_ORIGINS}`,
       'font-src': "'self'",
       'connect-src': `'self' ${API_ORIGINS}`,
       'media-src': `'self' ${API_ORIGINS}`,
@@ -30,6 +30,10 @@ describe('Static Web App CSP', () => {
       'base-uri': "'self'",
       'form-action': "'self'",
     });
+  });
+
+  it('lets <img> load track artwork from both API origins', () => {
+    expect(directives['img-src']).toBe(`'self' data: ${API_ORIGINS}`);
   });
 
   it('lets <audio> load track files from both API origins', () => {

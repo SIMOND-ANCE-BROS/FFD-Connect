@@ -42,6 +42,9 @@ describe('AppLayout', () => {
     renderLayout();
     expect(screen.getByRole('link', { name: 'Utilisateurs' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Clubs' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Musiques' })).toHaveAttribute('href', '/tracks');
+    const order = screen.getAllByRole('link').map((link) => link.textContent);
+    expect(order.indexOf('Musiques')).toBe(order.indexOf('Clubs') + 1);
     expect(screen.getByRole('link', { name: 'Modération' })).toHaveAttribute('href', '/moderation');
     expect(screen.getByRole('link', { name: "Journal d'audit" })).toBeInTheDocument();
     expect(screen.queryByText('Nouvel utilisateur')).toBeNull();

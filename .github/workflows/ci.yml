@@ -89,6 +89,8 @@ jobs:
             admin:
               - 'apps/admin/**'
               - 'apps/backend/swagger.json'
+              # Shared MPM parity fixture, read by apps/admin/src/lib/mpm.test.ts.
+              - 'apps/backend/test/fixtures/mpm-cases.json'
               - 'packages/eslint-config/**'
               - 'pnpm-lock.yaml'
               - 'package.json'

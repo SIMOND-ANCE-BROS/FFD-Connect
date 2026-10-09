@@ -32,6 +32,10 @@ const CONFLICT_DETAIL_KEYS = [
   "competitionCount",
   "partnershipCount",
   "soloTeamCount",
+  // Track library: the existing track of a duplicate import, and the pending
+  // corrections that block a deletion.
+  "existingTrackId",
+  "pendingCorrections",
 ] as const;
 
 @Catch()
@@ -63,7 +67,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
     );
 
     // Admin 409s carry details the back-office needs: the clashing club
-    // (create / rename) or what still points at a club (delete). Whitelisted
+    // (create / rename), what still points at a club (delete), the existing
+    // track of a duplicate import, or the corrections that block a track
+    // deletion. Whitelisted
     // keys and primitive values only.
     const body =
       exception instanceof HttpException ? exception.getResponse() : null;

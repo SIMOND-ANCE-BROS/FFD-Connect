@@ -3402,7 +3402,7 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["USER", "CLUB", "TRACK_CORRECTION"]
+              "enum": ["USER", "CLUB", "TRACK_CORRECTION", "TRACK"]
             }
           },
           {
@@ -7367,7 +7367,7 @@
         "tags": ["tracks"]
       },
       "patch": {
-        "description": "Réservé aux administrateurs. Permet de corriger titre, artiste, style et BPM après ajout. Champs absents = inchangés.",
+        "description": "Réservé aux administrateurs. Permet de corriger titre, artiste, style et BPM après ajout. Champs absents = inchangés. Chaque modification appliquée est tracée dans le journal d'audit (TRACK_UPDATE). Une musique en erreur (tempo non détecté) passe en READY quand un MPM > 0 est saisi.",
         "operationId": "TracksController_update",
         "parameters": [
           {
@@ -7376,6 +7376,7 @@
             "in": "path",
             "description": "UUID de la musique",
             "schema": {
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -7533,7 +7534,7 @@
         "tags": ["tracks"]
       },
       "delete": {
-        "description": "Réservé aux administrateurs. Supprime définitivement la piste de la bibliothèque partagée ainsi que son fichier audio associé.",
+        "description": "Réservé aux administrateurs. Supprime définitivement la piste de la bibliothèque partagée, puis son fichier audio et sa pochette. Refusé (409) tant que des propositions de correction sont en attente sur la musique. Tracé dans le journal d'audit (TRACK_DELETE).",
         "operationId": "TracksController_remove",
         "parameters": [
           {
@@ -7542,6 +7543,7 @@
             "in": "path",
             "description": "UUID de la musique",
             "schema": {
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -7606,6 +7608,262 @@
           },
           "404": {
             "description": "Track non trouvée"
+          },
+          "409": {
+            "description": "Propositions de correction en attente (pendingCorrections) : les traiter ou blacklister la musique"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Supprime une musique (modération)",
+        "tags": ["tracks"]
+      }
+    },
+    "/admin/tracks": {
+      "get": {
+        "description": "Toutes les musiques, y compris blacklistées, en attente, en erreur et d'ambiance (pas de filtre bibliothèque). Plus récentes d'abord. Filtres : q (titre ou artiste, 2 à 100 caractères), status, blacklisted, titleMasked, style, ambiance.",
+        "operationId": "AdminTracksController_list",
+        "parameters": [
+          {
+            "name": "skip",
+            "required": false,
+            "in": "query",
+            "description": "Number of items to skip",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "take",
+            "required": false,
+            "in": "query",
+            "description": "Number of items to take",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Recherche dans le titre ou l'artiste, sans tenir compte de la casse",
+            "schema": {
+              "minLength": 2,
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/TrackStatus"
+            }
+          },
+          {
+            "name": "blacklisted",
+            "required": false,
+            "in": "query",
+            "description": "true : seulement les musiques blacklistées ; false : seulement les autres",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "titleMasked",
+            "required": false,
+            "in": "query",
+            "description": "true : seulement les titres masqués ; false : seulement les autres",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "style",
+            "required": false,
+            "in": "query",
+            "description": "Danse (libellé exact, sans tenir compte de la casse)",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "ambiance",
+            "required": false,
+            "in": "query",
+            "description": "true : seulement l'ambiance (style ou artiste « Ambiance ») ; false : tout sauf l'ambiance",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTracksPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
           },
           "409": {
             "description": "Conflit - La ressource existe déjà",
@@ -7685,8 +7943,628 @@
             "JWT-auth": []
           }
         ],
-        "summary": "Supprime une musique (modération)",
-        "tags": ["tracks"]
+        "summary": "Catalogue des musiques (vue administrateur)",
+        "tags": ["admin"]
+      },
+      "post": {
+        "description": "Un fichier par requête. MP3 reconnu par son contenu ; noms de stockage générés par le serveur ; tempo analysé si rawBpm est absent ; statut ERROR si aucun tempo n'est connu. Tracé dans le journal d'audit (TRACK_CREATE).",
+        "operationId": "AdminTracksController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["audio", "title", "artist", "sha256"],
+                "properties": {
+                  "audio": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "MP3, 20 Mo au plus"
+                  },
+                  "artwork": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Pochette JPEG ou PNG, 2 Mo au plus"
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "artist": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "style": {
+                    "type": "string",
+                    "enum": [
+                      "Valse Lente",
+                      "Tango",
+                      "Valse Viennoise",
+                      "Quickstep",
+                      "Slow Fox",
+                      "Samba",
+                      "Cha-cha",
+                      "Rumba",
+                      "Paso Doble",
+                      "Jive",
+                      "Ambiance"
+                    ],
+                    "description": "Danse (libellé canonique) ou « Ambiance »"
+                  },
+                  "mpm": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 400,
+                    "description": "Tempo dansé (MPM) ; sinon calculé selon la danse"
+                  },
+                  "rawBpm": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 400,
+                    "description": "Tempo brut (BPM) ; sinon détecté par le serveur"
+                  },
+                  "sourceKey": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "description": "Source track-prep (ex. apple:1091542189)"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                    "description": "SHA-256 du fichier audio (hexadécimal), recalculé par le serveur"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTrackDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Fichier ou champ invalide, empreinte SHA-256 différente"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Doublon (même source ou même fichier) : existingTrackId"
+          },
+          "413": {
+            "description": "Fichier audio > 20 Mo ou pochette > 2 Mo"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Analyse du tempo saturée ou stockage indisponible : réessayer dans un instant"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Importer une musique",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/tracks/check": {
+      "post": {
+        "description": "Pour chaque élément (200 au plus), indique si une musique existe déjà avec la même source (sourceKey) ou le même fichier audio (SHA-256). Réponses dans l’ordre de la requête.",
+        "operationId": "AdminTracksController_check",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckTracksDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckTracksResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Doublons avant import",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/tracks/{id}": {
+      "get": {
+        "operationId": "AdminTracksController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTrackDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Musique introuvable"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Une musique (vue administrateur)",
+        "tags": ["admin"]
       }
     },
     "/track-corrections": {
@@ -7909,6 +8787,16 @@
             "schema": {
               "minLength": 2,
               "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "trackId",
+            "required": false,
+            "in": "query",
+            "description": "Propositions d'une seule musique (lien depuis la fiche musique)",
+            "schema": {
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -21704,12 +22592,15 @@
               "CLUB_ENABLE",
               "CLUB_DELETE",
               "TRACK_CORRECTION_APPROVE",
-              "TRACK_CORRECTION_REJECT"
+              "TRACK_CORRECTION_REJECT",
+              "TRACK_CREATE",
+              "TRACK_UPDATE",
+              "TRACK_DELETE"
             ]
           },
           "targetType": {
             "type": "string",
-            "enum": ["USER", "CLUB", "TRACK_CORRECTION"]
+            "enum": ["USER", "CLUB", "TRACK_CORRECTION", "TRACK"]
           },
           "targetId": {
             "type": "string"
@@ -22465,6 +23356,169 @@
             }
           }
         }
+      },
+      "TrackStatus": {
+        "type": "string",
+        "enum": ["PENDING", "READY", "ERROR"]
+      },
+      "AdminTrackDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "Titre réel, même masqué"
+          },
+          "artist": {
+            "type": "string"
+          },
+          "style": {
+            "type": "string",
+            "nullable": true,
+            "description": "Danse (texte libre ; « Ambiance » pour la musique de pause)"
+          },
+          "bpm": {
+            "type": "number",
+            "description": "Tempo en MPM (mesures par minute)"
+          },
+          "rawBpm": {
+            "type": "number",
+            "description": "Tempo brut détecté (BPM), 0 si inconnu"
+          },
+          "clashTimecodes": {
+            "description": "Paso doble : timecodes (secondes) des clashs",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "titleMasked": {
+            "type": "boolean"
+          },
+          "blacklisted": {
+            "type": "boolean"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TrackStatus"
+              }
+            ]
+          },
+          "sourceKey": {
+            "type": "string",
+            "nullable": true,
+            "description": "Source track-prep (ex. apple:1091542189)"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Fichier audio, servi par GET /uploads/{filename} (hors préfixe /api/v1)"
+          },
+          "artwork": {
+            "type": "string",
+            "nullable": true,
+            "description": "Pochette, servie par GET /uploads/{artwork}"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pendingCorrections": {
+            "type": "number",
+            "description": "Propositions de correction en attente"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "artist",
+          "style",
+          "bpm",
+          "rawBpm",
+          "clashTimecodes",
+          "titleMasked",
+          "blacklisted",
+          "status",
+          "sourceKey",
+          "filename",
+          "artwork",
+          "createdAt",
+          "pendingCorrections"
+        ]
+      },
+      "AdminTracksPageDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminTrackDto"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AdminPageMetaDto"
+          }
+        },
+        "required": ["data", "meta"]
+      },
+      "CheckTrackItemDto": {
+        "type": "object",
+        "properties": {
+          "sourceKey": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "apple:1091542189"
+          },
+          "sha256": {
+            "type": "string",
+            "description": "SHA-256 du fichier audio (hexadécimal)",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": ["sha256"]
+      },
+      "CheckTracksDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckTrackItemDto"
+            }
+          }
+        },
+        "required": ["items"]
+      },
+      "TrackCheckResultDto": {
+        "type": "object",
+        "properties": {
+          "exists": {
+            "type": "boolean",
+            "description": "Une musique existe déjà (même source ou même fichier)"
+          },
+          "trackId": {
+            "type": "string",
+            "description": "La musique existante"
+          }
+        },
+        "required": ["exists"]
+      },
+      "CheckTracksResultDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Une réponse par élément, dans l'ordre de la requête",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrackCheckResultDto"
+            }
+          }
+        },
+        "required": ["items"]
       },
       "TrackCorrectionReason": {
         "type": "string",

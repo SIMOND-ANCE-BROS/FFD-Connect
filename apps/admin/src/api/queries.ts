@@ -7,6 +7,8 @@ import {
   adminControllerListClubs,
   adminControllerListUsers,
   adminControllerReferenceData,
+  adminTracksControllerFindOne,
+  adminTracksControllerList,
   trackCorrectionsControllerFindOne,
   trackCorrectionsControllerList,
   trackCorrectionsControllerPendingCount,
@@ -15,6 +17,7 @@ import type {
   AdminControllerAuditLogData,
   AdminControllerListClubsData,
   AdminControllerListUsersData,
+  AdminTracksControllerListData,
   TrackCorrectionsControllerListData,
 } from './generated/types.gen';
 
@@ -22,6 +25,7 @@ export type UsersFilter = NonNullable<AdminControllerListUsersData['query']>;
 export type ClubsFilter = NonNullable<AdminControllerListClubsData['query']>;
 export type AuditFilter = NonNullable<AdminControllerAuditLogData['query']>;
 export type ModerationFilter = NonNullable<TrackCorrectionsControllerListData['query']>;
+export type TracksFilter = NonNullable<AdminTracksControllerListData['query']>;
 
 /** Throws so React Query surfaces the error state (the generated client never throws). */
 export async function unwrap<T>(p: Promise<{ data?: T; error?: unknown }>): Promise<T> {
@@ -111,6 +115,28 @@ export const correctionQuery = (id: string) =>
     queryKey: ['admin', 'moderation', 'item', id],
     queryFn: () => unwrap(trackCorrectionsControllerFindOne({ path: { id } })),
     // Same as the badge: a refocus, a reconnect or a retry would wake the scale-to-zero backend.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/**
+ * Track catalogue. Same rule as the moderation queries: a refocus, a
+ * reconnect or a retry would wake the scale-to-zero backend.
+ */
+export const tracksQuery = (q: TracksFilter) =>
+  queryOptions({
+    queryKey: ['admin', 'tracks', 'list', q],
+    queryFn: () => unwrap(adminTracksControllerList({ query: q })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+export const trackQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['admin', 'tracks', 'item', id],
+    queryFn: () => unwrap(adminTracksControllerFindOne({ path: { id } })),
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: false,

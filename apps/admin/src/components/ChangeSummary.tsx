@@ -27,16 +27,24 @@ const LABELS: Record<string, string> = {
   bpm: 'MPM',
   clashTimecodes: 'Clashes paso',
   trackId: 'Musique',
+  titleMasked: 'Titre masqué',
+  blacklisted: 'Blacklistée',
+  status: 'Statut',
+  sourceKey: 'Source',
+  filename: 'Fichier',
 };
 
 const VALUE_LABELS: Record<string, Record<string, string>> = {
   role: ROLE_LABELS,
   extraRoles: ROLE_LABELS,
   registrationMode: REGISTRATION_MODE_LABELS,
+  // Track status (audit rows of the track catalogue).
+  status: { READY: 'Prête', PENDING: 'En attente', ERROR: 'En erreur' },
 };
 
 function display(key: string, value: unknown): string {
   if (value === null || value === undefined) return '—';
+  if (typeof value === 'boolean') return value ? 'Oui' : 'Non';
   if (key === 'clashTimecodes' && Array.isArray(value)) {
     return value.length
       ? value.map((v) => (typeof v === 'number' ? formatTimecode(v) : String(v))).join(', ')
