@@ -5,6 +5,7 @@ import type {
   MockComponentProps,
   MockFluidSegmentedTabProps,
 } from "../../../../__tests__/mocks/types";
+import { BETA_NOTICES } from "../../../../constants/betaNotices";
 import { useTheme } from "../../../../context/ThemeContext";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useCompetitionDetailLogic } from "../../hooks/useCompetitionDetailLogic";
@@ -181,6 +182,20 @@ describe("CompetitionDetailScreen", () => {
     expect(getByText("Championnat de France")).toBeTruthy();
     expect(getByText("Lyon")).toBeTruthy();
     expect(getByText("Latin")).toBeTruthy();
+  });
+
+  it("shows the beta notice (informative only, FFD registrations not shown)", async () => {
+    mockUseLogic.mockReturnValue({
+      state: baseState,
+      actions: baseActions,
+    });
+
+    const { getByTestId, getByText } = await render(
+      <CompetitionDetailScreen {...createTestProps()} />,
+    );
+
+    expect(getByTestId("competition-detail-beta-notice")).toBeTruthy();
+    expect(getByText(BETA_NOTICES.competitions.message)).toBeTruthy();
   });
 
   it("switches tabs", async () => {

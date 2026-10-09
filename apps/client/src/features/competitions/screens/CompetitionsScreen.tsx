@@ -25,6 +25,8 @@ import {
 } from "react-native-safe-area-context";
 import { AppButton } from "../../../components/AppButton";
 import { AppText } from "../../../components/AppText";
+import { BetaNotice } from "../../../components/BetaNotice";
+import { BETA_NOTICES } from "../../../constants/betaNotices";
 import { PinnedHeader } from "../../../components/PinnedHeader";
 import { NotificationBell } from "../../../components/NotificationBell";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
@@ -275,9 +277,12 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
               </View>
             )}
             <StatusBadge status={effectiveStatus} />
+            {/* No "not registered" badge: the beta doesn't see registrations
+                made with the federation, so it would mislead registered dancers. */}
             {effectiveStatus === "UPCOMING" &&
               !state.isGuest &&
-              role !== "CLUB" && (
+              role !== "CLUB" &&
+              (!!item.isRegistered || !item.isEligible) && (
                 <View style={styles.badgeMargin}>
                   {item.isRegistered ? (
                     <AppText
@@ -287,21 +292,13 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
                     >
                       Inscrit
                     </AppText>
-                  ) : !item.isEligible ? (
-                    <AppText
-                      variant="caption"
-                      weight="600"
-                      color={theme.textSecondary}
-                    >
-                      Inéligible
-                    </AppText>
                   ) : (
                     <AppText
                       variant="caption"
                       weight="600"
                       color={theme.textSecondary}
                     >
-                      Non inscrit
+                      Inéligible
                     </AppText>
                   )}
                 </View>
@@ -587,6 +584,16 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
             paddingTop: headerH,
           }}
           showsVerticalScrollIndicator={false}
+          ListHeaderComponent={
+            // Beta: competitions are informative only, the app is not
+            // connected to the federation registrations yet.
+            <BetaNotice
+              title={BETA_NOTICES.competitions.title}
+              message={BETA_NOTICES.competitions.message}
+              style={styles.betaNotice}
+              testID="competitions-beta-notice"
+            />
+          }
           ListEmptyComponent={
             // While pages may still hold matches, the loader above is shown
             // instead of a premature "no competition" message.
@@ -606,6 +613,19 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
                 >
                   {emptyState.subtitle}
                 </AppText>
+                {scope === "FOR_ME" && role !== "CLUB" ? (
+                  <AppText
+                    variant="caption"
+                    align="center"
+                    style={[
+                      styles.emptySubtitle,
+                      { color: theme.textSecondary },
+                    ]}
+                    testID="competitions-empty-beta-hint"
+                  >
+                    {BETA_NOTICES.competitionsEmptyHint}
+                  </AppText>
+                ) : null}
                 {canLoadMoreManually ? (
                   <LoadMoreButton onLoadMore={onLoadMore} />
                 ) : null}

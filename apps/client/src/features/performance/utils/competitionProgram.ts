@@ -6,7 +6,6 @@
 import type { TrackData } from "../../player/context/PlayerContext";
 import {
   createRound,
-  DANCES,
   MAX_ROUND_GROUPS,
   MIN_ROUND_GROUPS,
   type Category,
@@ -14,6 +13,11 @@ import {
   type PlaylistItem,
   type RoundConfig,
 } from "../../../stores/performance.store";
+import {
+  OFFICIAL_DANCE_ORDER,
+  resolveCategoryOrder,
+  type DanceOrder,
+} from "../../../stores/danceOrder.store";
 import { fnv1aHash } from "../../../utils/stableHash";
 
 // --- Dances -----------------------------------------------------------------
@@ -91,24 +95,53 @@ export const isAmbianceTrack = (t: TrackData): boolean =>
 
 // --- Rounds -----------------------------------------------------------------
 
-/** Keeps dances in the canonical order of their category. */
-export const sortDances = (category: Category, dances: string[]): string[] =>
-  DANCES[category].filter((d) => dances.includes(d));
+/**
+ * Keeps the dances of the category, sorted by the configured order of the
+ * category (official order by default). Unknown dances are dropped.
+ */
+export const sortDances = (
+  category: Category,
+  dances: readonly string[],
+  order: DanceOrder = OFFICIAL_DANCE_ORDER,
+): string[] =>
+  resolveCategoryOrder(category, order[category]).filter((d) =>
+    dances.includes(d),
+  );
+
+/** Moves the dance at `from` to `to` (clamped) — pure, for the order editor. */
+export const moveDance = (
+  order: readonly string[],
+  from: number,
+  to: number,
+): string[] => {
+  const next = [...order];
+  if (from < 0 || from >= next.length) return next;
+  const target = Math.max(0, Math.min(next.length - 1, to));
+  const [dance] = next.splice(from, 1);
+  next.splice(target, 0, dance);
+  return next;
+};
 
 /** Categories danced in the round, in order of first appearance. */
 export const roundCategories = (round: Pick<RoundConfig, "groups">) =>
   round.groups.filter((c, i) => round.groups.indexOf(c) === i);
 
-/** Enforces the round invariants (group count bounds, canonical dances). */
-export const normalizeRound = (round: RoundConfig): RoundConfig => ({
+/**
+ * Enforces the round invariants (group count bounds, known dances sorted by
+ * the category's configured order — official order by default).
+ */
+export const normalizeRound = (
+  round: RoundConfig,
+  order: DanceOrder = OFFICIAL_DANCE_ORDER,
+): RoundConfig => ({
   ...round,
   groups:
     round.groups.length >= MIN_ROUND_GROUPS
       ? round.groups.slice(0, MAX_ROUND_GROUPS)
       : ["Latin"],
   dances: {
-    Standard: sortDances("Standard", round.dances.Standard),
-    Latin: sortDances("Latin", round.dances.Latin),
+    Standard: sortDances("Standard", round.dances.Standard, order),
+    Latin: sortDances("Latin", round.dances.Latin, order),
   },
 });
 
@@ -245,11 +278,12 @@ export interface ProgramValidation {
 export const validateProgram = (
   cfg: PerformanceConfig,
   tracks: TrackData[],
+  order: DanceOrder = OFFICIAL_DANCE_ORDER,
 ): ProgramValidation => {
   const emptyRounds: RoundCategoryProblem[] = [];
   const missing: MissingDances[] = [];
   cfg.rounds.forEach((raw, i) => {
-    const round = normalizeRound(raw);
+    const round = normalizeRound(raw, order);
     for (const category of roundCategories(round)) {
       const dances = round.dances[category];
       if (dances.length === 0) {
@@ -297,43 +331,66 @@ export interface RoundStep {
 }
 
 /**
- * Floor order of a round: for every dance position, the groups in order, each
- * dancing its category's dance (a category with fewer dances drops out).
+ * Floor order of a round. Dances follow the category's configured order.
+ *
+ * - Preliminary rounds are dance-major: for every dance position, the groups
+ *   take the floor in order, each dancing its category's dance (a category
+ *   with fewer dances drops out): Samba G1, Samba G2, Cha-cha-cha G1…
+ * - A Final is group-major: each group dances all its dances back-to-back
+ *   before the next group takes the floor: G1 Samba, Cha-cha-cha, Rumba,
+ *   Paso doble, Jive, then G2… With a single group both orders are the same.
  */
-export const roundSequence = (raw: RoundConfig): RoundStep[] => {
-  const round = normalizeRound(raw);
+export const roundSequence = (
+  raw: RoundConfig,
+  order: DanceOrder = OFFICIAL_DANCE_ORDER,
+): RoundStep[] => {
+  const round = normalizeRound(raw, order);
   const steps: RoundStep[] = [];
+  const step = (g: number, d: number): RoundStep => {
+    const category = round.groups[g];
+    return {
+      dance: round.dances[category][d],
+      category,
+      groupIndex: g + 1,
+      danceIndex: d,
+    };
+  };
+  if (round.type === "Final") {
+    round.groups.forEach((category, g) => {
+      round.dances[category].forEach((_, d) => steps.push(step(g, d)));
+    });
+    return steps;
+  }
   const maxDances = Math.max(
     ...round.groups.map((c) => round.dances[c].length),
   );
   for (let d = 0; d < maxDances; d++) {
     round.groups.forEach((category, g) => {
-      const dances = round.dances[category];
-      if (d < dances.length) {
-        steps.push({
-          dance: dances[d],
-          category,
-          groupIndex: g + 1,
-          danceIndex: d,
-        });
-      }
+      if (d < round.dances[category].length) steps.push(step(g, d));
     });
   }
   return steps;
 };
 
 /**
- * Builds the competition playlist. In each round, for every dance position,
- * the groups take the floor in order, each dancing its category's dance:
- * groups Standard, Latines, Standard → Valse lente, Samba, Valse lente, then
- * Tango, Cha-cha-cha, Tango… A category with fewer dances simply drops out.
- * A track is picked per group, cycling through a shuffled pool so consecutive
- * groups of the same dance get different music whenever the library allows it.
+ * Builds the competition playlist, following each round's floor order (see
+ * roundSequence). In a preliminary round, for every dance position, the groups
+ * take the floor in order, each dancing its category's dance: groups Standard,
+ * Latines, Standard → Valse lente, Samba, Valse lente, then Tango,
+ * Cha-cha-cha, Tango… (a category with fewer dances simply drops out). In a
+ * Final, each group dances all its dances in a row before the next group.
+ * A track is picked per group, cycling through a shuffled pool so groups of
+ * the same dance get different music whenever the library allows it.
+ * `opensCategory` marks the first group of another category taking the floor
+ * in a mixed round — always on its first dance, in both orders.
+ * Dances follow `order` (the user's per-category order, official by default):
+ * every round — finals included — and its announcements honour it.
  */
 export const buildPlaylist = (
   cfg: PerformanceConfig,
   tracks: TrackData[],
   random: () => number = Math.random,
+  order: DanceOrder = OFFICIAL_DANCE_ORDER,
 ): PlaylistItem[] => {
   const items: Omit<PlaylistItem, "announcementText">[] = [];
   const totalRounds = cfg.rounds.length;
@@ -362,9 +419,9 @@ export const buildPlaylist = (
   };
 
   cfg.rounds.forEach((raw, r) => {
-    const round = normalizeRound(raw);
+    const round = normalizeRound(raw, order);
     const mixed = roundCategories(round).length > 1;
-    for (const step of roundSequence(round)) {
+    for (const step of roundSequence(round, order)) {
       const track = pick(step.dance);
       if (!track) continue;
       items.push({
@@ -494,7 +551,9 @@ const floorCall = (item: AnnouncementItem): string => {
  * NEXT dance at the start of the preparation break (« préparez-vous… »), not
  * a "here it is" line. Punctuation and ellipses are deliberate: they give the
  * neural TTS voice its breathing and its rising intonation. The group is only
- * named when the round has several.
+ * named when the round has several. In a Final (group-major order, see
+ * roundSequence) a group is announced when it takes the floor on its first
+ * dance; its next dances are announced as dance changes.
  */
 export const getAnnouncementText = (item: AnnouncementItem): string => {
   const a = articles(item.style);
@@ -529,9 +588,47 @@ export const getAnnouncementText = (item: AnnouncementItem): string => {
     ]);
   }
 
+  const lastGroup =
+    item.groupIndex === item.totalGroups && item.totalGroups > 2;
+
+  if (isFinal) {
+    // Group-major: a new group takes the floor on its first dance, then the
+    // announcements only follow the dance changes within that group.
+    if (item.danceIndex === 0) {
+      return lastGroup
+        ? choose(item, [
+            `Et maintenant, le dernier groupe de la finale ! On commence avec ${a.the}… en piste !`,
+            `Place au ${groupOrd} et dernier groupe ! Préparez-vous pour ${a.the}… à vous la piste !`,
+          ])
+        : choose(item, [
+            `Au tour du ${groupOrd} groupe de la finale ! On ouvre avec ${a.the}… en piste !`,
+            `Place au ${groupOrd} groupe ! Préparez-vous pour ${a.the}… à vous la piste !`,
+          ]);
+    }
+    if (lastDance) {
+      // « Pour terminer » only rings true for the very last group.
+      const end = item.totalGroups <= 1 || item.groupIndex === item.totalGroups;
+      return choose(
+        item,
+        end
+          ? [
+              `Et voici la dernière danse de cette finale… ${a.the} ! ${call}`,
+              `Pour terminer en beauté… ${a.the} ! ${call}`,
+            ]
+          : [
+              `Dernière danse pour ce groupe… préparez-vous pour ${a.the} ! ${call}`,
+              `Et pour finir ce passage en beauté… ${a.the} ! ${call}`,
+            ],
+      );
+    }
+    return choose(item, [
+      `On enchaîne avec ${a.the}… ${call}`,
+      `Préparez-vous pour ${a.the} ! ${call}`,
+      `Danse suivante… ${a.the} ! ${call}`,
+    ]);
+  }
+
   if (item.groupIndex > 1) {
-    const lastGroup =
-      item.groupIndex === item.totalGroups && item.totalGroups > 2;
     // In a mixed round the previous group danced another category: no
     // « toujours / encore » wording then.
     if (item.mixed) {
@@ -560,18 +657,10 @@ export const getAnnouncementText = (item: AnnouncementItem): string => {
 
   // First group of a dance that is not the first of the round.
   if (lastDance) {
-    return choose(
-      item,
-      isFinal
-        ? [
-            `Et voici la dernière danse de cette finale… ${a.the} ! ${call}`,
-            `Pour terminer en beauté… ${a.the} ! ${call}`,
-          ]
-        : [
-            `Dernière danse de ce tour… préparez-vous pour ${a.the} ! ${call}`,
-            `Et pour finir ce tour en beauté… ${a.the} ! ${call}`,
-          ],
-    );
+    return choose(item, [
+      `Dernière danse de ce tour… préparez-vous pour ${a.the} ! ${call}`,
+      `Et pour finir ce tour en beauté… ${a.the} ! ${call}`,
+    ]);
   }
   return choose(item, [
     `On enchaîne avec ${a.the}… ${call}`,

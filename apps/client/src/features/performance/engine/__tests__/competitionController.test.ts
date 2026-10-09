@@ -1,6 +1,10 @@
 import { Alert } from "react-native";
 import Tts from "../../../../services/TtsService";
 import {
+  OFFICIAL_DANCE_ORDER,
+  useDanceOrderStore,
+} from "../../../../stores/danceOrder.store";
+import {
   createRound,
   usePerformanceStore,
   type Category,
@@ -135,6 +139,7 @@ describe("competitionController", () => {
       isAnnouncing: false,
     });
     setProgram();
+    useDanceOrderStore.setState({ danceOrder: OFFICIAL_DANCE_ORDER });
     jest.spyOn(Alert, "alert").mockImplementation(jest.fn());
     (loadCompetitionLibrary as jest.Mock).mockResolvedValue({
       tracks: [SAMBA, RUMBA, JIVE],
@@ -235,6 +240,31 @@ describe("competitionController", () => {
         "TTS indisponible",
         "TTS indisponible (500)",
       );
+    });
+
+    it("plays the dances in the order chosen by the user", async () => {
+      useDanceOrderStore
+        .getState()
+        .setCategoryOrder("Latin", ["Jive", "Rumba", "Samba"]);
+      setProgram({
+        rounds: [roundOf("Latin", "Final", ["Samba", "Jive", "Rumba"])],
+      });
+      await expect(engine.startPerformance()).resolves.toBe(true);
+      const list = store().playlist;
+      expect(list.map((i) => i.style)).toEqual(["Jive", "Rumba", "Samba"]);
+      expect(list[0].announcementText).toMatch(/Jive/);
+    });
+
+    it("previews the playlist in the user's order", () => {
+      useDanceOrderStore
+        .getState()
+        .setCategoryOrder("Latin", ["Jive", "Samba"]);
+      engine.setEngineDeps({ ...deps, allTracks: [SAMBA, JIVE] });
+      setProgram({
+        rounds: [roundOf("Latin", "Final", ["Samba", "Jive"])],
+      });
+      engine.generatePlaylist();
+      expect(store().playlist.map((i) => i.style)).toEqual(["Jive", "Samba"]);
     });
 
     it("lists missing dances instead of starting", async () => {
@@ -829,6 +859,70 @@ describe("competitionController", () => {
       await advance(2000);
       expect(Tts.speak).toHaveBeenCalledTimes(1); // the break call only
       expect(store().status).toBe("break");
+    });
+
+    describe("⏭ / ⏮ in a multi-group Final (group-major)", () => {
+      beforeEach(() => {
+        setProgram({
+          rounds: [
+            {
+              ...roundOf("Latin", "Final", ["Samba", "Jive"]),
+              groups: ["Latin", "Latin"],
+            },
+          ],
+          duration: 20,
+          pauseDuration: 2,
+        });
+      });
+
+      const current = () => {
+        const item = store().playlist[store().currentDanceIndex];
+        return `${item.style}:G${item.groupIndex}`;
+      };
+      /** From the current dance: fade → pause → announcement → next dance. */
+      const toNextDance = async () => {
+        const toBreak = engine.nextStep();
+        await advance(1500);
+        await toBreak;
+        await advance(BREAK_CALL_MS);
+        const toDance = engine.nextStep();
+        await advance(3000);
+        await toDance;
+      };
+
+      it("⏭ goes through all the dances of a group before the next group", async () => {
+        await engine.startPerformance();
+        expect(
+          store().playlist.map((i) => `${i.style}:G${i.groupIndex}`),
+        ).toEqual(["Samba:G1", "Jive:G1", "Samba:G2", "Jive:G2"]);
+        await advance(BREAK_CALL_MS);
+        const first = engine.nextStep();
+        await advance(3000);
+        await first;
+        expect(current()).toBe("Samba:G1");
+        await toNextDance();
+        expect(current()).toBe("Jive:G1");
+        await toNextDance();
+        expect(current()).toBe("Samba:G2");
+        const spoken = (Tts.speak as jest.Mock).mock.calls.map((c) => c[0]);
+        expect(spoken[spoken.length - 1]).toMatch(/deuxième groupe/i);
+      });
+
+      it("a double ⏮ from the next group's first dance goes back to the previous group's last dance", async () => {
+        await engine.startPerformance();
+        await advance(BREAK_CALL_MS);
+        const first = engine.nextStep();
+        await advance(3000);
+        await first;
+        await toNextDance();
+        await toNextDance();
+        expect(current()).toBe("Samba:G2");
+        engine.previousStep();
+        await advance(200);
+        engine.previousStep();
+        await advance(engine.DOUBLE_TAP_MS + 3000);
+        expect(current()).toBe("Jive:G1");
+      });
     });
 
     describe("⏮ restart / previous", () => {

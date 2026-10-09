@@ -79,6 +79,45 @@ describe("PlayerBpmControls slider", () => {
     expect(changeBpm).toHaveBeenCalledTimes(3);
   });
 
+  it("remounts the slider on a range change and drops the in-flight drag", async () => {
+    const { getByTestId, getByText, queryByText, changeBpm, rerender } =
+      await renderControls();
+    const slider = getByTestId("audio-player-bpm-slider");
+
+    await fireEvent(slider, "valueChange", 30.1);
+    await fireEvent(slider, "valueChange", 33);
+    expect(changeBpm).toHaveBeenCalledTimes(1);
+
+    // Track change: new range, new tempo (e.g. Paso -> Rumba).
+    await rerender(
+      <PlayerBpmControls
+        currentTheme={currentTheme}
+        isDark={false}
+        bpm={18}
+        bpmDiff={-5}
+        minMpm={11.5}
+        maxMpm={34.5}
+        changeBpm={changeBpm}
+        resetBpm={jest.fn().mockResolvedValue(undefined)}
+        locked
+        onToggleLock={jest.fn()}
+      />,
+    );
+    await act(() => {
+      jest.advanceTimersByTime(BPM_DRAG_THROTTLE_MS * 2);
+    });
+
+    const next = getByTestId("audio-player-bpm-slider");
+    expect(next).not.toBe(slider);
+    expect(next.props.value).toBe(18);
+    expect(next.props.minimumValue).toBe(11.5);
+    expect(next.props.maximumValue).toBe(34.5);
+    expect(getByText("18.0")).toBeTruthy();
+    expect(queryByText("33.0")).toBeNull();
+    // The pending throttled drag value is never applied to the new track.
+    expect(changeBpm).toHaveBeenCalledTimes(1);
+  });
+
   it("ignores the slider when the tempo is locked", async () => {
     const { getByTestId, changeBpm } = await renderControls({ locked: true });
     const slider = getByTestId("audio-player-bpm-slider");

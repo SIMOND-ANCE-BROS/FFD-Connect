@@ -5,7 +5,10 @@ import { AppText } from "../../../components/AppText";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import { useTheme } from "../../../context/ThemeContext";
 import {
-  DANCES,
+  OFFICIAL_DANCE_ORDER,
+  type DanceOrder,
+} from "../../../stores/danceOrder.store";
+import {
   MAX_ROUND_GROUPS,
   MIN_ROUND_GROUPS,
   type Category,
@@ -30,6 +33,8 @@ interface RoundCardProps {
   onGroupCategoryChange: (groupIndex: number, category: Category) => void;
   onToggleDance: (category: Category, dance: string) => void;
   onDelete: () => void;
+  /** Per-category dance order (chips and floor-order preview follow it). */
+  danceOrder?: DanceOrder;
 }
 
 const slug = (s: string) => s.replace(/\s+/g, "-").toLowerCase();
@@ -48,12 +53,13 @@ export const RoundCard: React.FC<RoundCardProps> = ({
   onGroupCategoryChange,
   onToggleDance,
   onDelete,
+  danceOrder = OFFICIAL_DANCE_ORDER,
 }) => {
   const { theme } = useTheme();
   const prefix = `performance-round-${index}`;
   const canRemoveGroup = round.groups.length > MIN_ROUND_GROUPS;
   const canAddGroup = round.groups.length < MAX_ROUND_GROUPS;
-  const sequence = roundSequence(round);
+  const sequence = roundSequence(round, danceOrder);
   const preview = sequence
     .slice(0, PREVIEW_STEPS)
     .map((s) =>
@@ -200,7 +206,7 @@ export const RoundCard: React.FC<RoundCardProps> = ({
             Danses {CATEGORY_LABELS[category]}
           </AppText>
           <View style={styles.dancesGrid}>
-            {DANCES[category].map((dance) => {
+            {danceOrder[category].map((dance) => {
               const isActive = round.dances[category].includes(dance);
               return (
                 <TouchableOpacity

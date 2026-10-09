@@ -6,7 +6,7 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
 import { RedisService } from "../redis/redis.service";
-import { buildSsml, TtsService } from "./tts.service";
+import { buildSsml, TtsService, voiceCapabilities } from "./tts.service";
 
 // axios est mocké pour tester le vrai `synthesize` (appel REST Speech) sans réseau.
 jest.mock("axios", () => ({
@@ -62,6 +62,25 @@ describe("TtsService", () => {
       ...overrides,
     };
     return { get: jest.fn((k: string) => base[k]) };
+  };
+
+  // Service construit avec une config surchargée et un seam `synthesize` mocké.
+  const makeSvcWith = async (
+    overrides: Record<string, string | undefined>,
+  ): Promise<{ svc: TtsService; synth: jest.Mock }> => {
+    const mod = await Test.createTestingModule({
+      providers: [
+        TtsService,
+        { provide: RedisService, useValue: mockRedisService },
+        { provide: ConfigService, useValue: configFor(overrides) },
+        { provide: CircuitBreakerService, useValue: mockCircuitBreakerService },
+      ],
+    }).compile();
+    const svc = mod.get<TtsService>(TtsService);
+    svc.onModuleInit();
+    const synth = jest.fn().mockResolvedValue(Buffer.from("mock-audio"));
+    (svc as unknown as TtsInternals).synthesize = synth;
+    return { svc, synth };
   };
 
   beforeEach(async () => {
@@ -156,8 +175,7 @@ describe("TtsService", () => {
 
       expect(mockSynthesize).toHaveBeenCalledTimes(1);
       expect(mockSynthesize).toHaveBeenCalledWith(
-        announcement,
-        "fr-FR-DeniseNeural",
+        buildSsml(announcement, "fr-FR-DeniseNeural", "excited"),
       );
       // Seul l'appel Azure passe par le circuit breaker (plus de Gemini).
       expect(mockCircuitBreakerService.fire).toHaveBeenCalledTimes(1);
@@ -167,24 +185,51 @@ describe("TtsService", () => {
       );
     });
 
-    it("uses a cache key salted with azure-v2 so old rewritten audio is not served", async () => {
+    it("keys the cache on the full SSML salted with azure-v3, so v2 audio is not re-served", async () => {
       (fs.existsSync as jest.Mock).mockReturnValue(false);
       mockRedisService.get.mockResolvedValue(null);
       const text = "Finale, valse lente";
+      const v3 = crypto
+        .createHash("md5")
+        .update(buildSsml(text, "fr-FR-DeniseNeural", "excited") + "azure-v3")
+        .digest("hex");
       const v2 = crypto
         .createHash("md5")
         .update(text + "fr-FR-DeniseNeural" + "azure-v2")
         .digest("hex");
-      const v1 = crypto
-        .createHash("md5")
-        .update(text + "fr-FR-DeniseNeural" + "azure-v1")
-        .digest("hex");
 
       const result = await service.getTtsAudio(text);
 
-      expect(result).toContain(`${v2}.mp3`);
-      expect(result).not.toContain(v1);
-      expect(mockRedisService.get).toHaveBeenCalledWith(`tts:${v2}`);
+      expect(result).toContain(`${v3}.mp3`);
+      expect(result).not.toContain(v2);
+      expect(mockRedisService.get).toHaveBeenCalledWith(`tts:${v3}`);
+    });
+
+    it("changes the cache key when the style changes (style is part of the SSML)", async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      mockRedisService.get.mockResolvedValue(null);
+      const cheerful = await makeSvcWith({ AZURE_SPEECH_STYLE: "cheerful" });
+
+      const a = await service.getTtsAudio("Samba !");
+      const b = await cheerful.svc.getTtsAudio("Samba !");
+
+      expect(a).not.toBe(b);
+      expect(cheerful.synth).toHaveBeenCalledWith(
+        expect.stringContaining("<mstts:express-as style='cheerful'>"),
+      );
+    });
+
+    it("applies no style when AZURE_SPEECH_STYLE is 'none'", async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      mockRedisService.get.mockResolvedValue(null);
+      const { svc, synth } = await makeSvcWith({ AZURE_SPEECH_STYLE: "none" });
+
+      await svc.getTtsAudio("Samba !");
+
+      expect(synth).toHaveBeenCalledWith(
+        buildSsml("Samba !", "fr-FR-DeniseNeural"),
+      );
+      expect(synth.mock.calls[0][0]).not.toContain("express-as");
     });
 
     it("uses the voice from AZURE_SPEECH_VOICE when configured", async () => {
@@ -211,7 +256,9 @@ describe("TtsService", () => {
 
       await svc.getTtsAudio("Bonjour");
 
-      expect(synth).toHaveBeenCalledWith("Bonjour", "fr-FR-HenriNeural");
+      expect(synth).toHaveBeenCalledWith(
+        buildSsml("Bonjour", "fr-FR-HenriNeural", "excited"),
+      );
     });
 
     it("should throw when synthesis returns no audio", async () => {
@@ -264,7 +311,69 @@ describe("TtsService", () => {
 
       const result = await svc.getTtsAudio("test");
       expect(result).toBeDefined();
-      expect(synth).toHaveBeenCalledWith("test", "fr-FR-DeniseNeural");
+      // Défaut = voix multilingue (la plus naturelle servie en northeurope),
+      // accent français forcé par <lang>.
+      expect(synth).toHaveBeenCalledWith(
+        buildSsml("test", "fr-FR-VivienneMultilingualNeural", "excited"),
+      );
+      expect(synth.mock.calls[0][0]).toContain(
+        "<voice name='fr-FR-VivienneMultilingualNeural'><lang xml:lang='fr-FR'>",
+      );
+    });
+  });
+
+  describe("voice fallback (graceful degradation)", () => {
+    const rejected400 = { isAxiosError: true, response: { status: 400 } };
+
+    it("falls back to Denise when the configured voice is rejected (400), then skips it", async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      mockRedisService.get.mockResolvedValue(null);
+      const { svc, synth } = await makeSvcWith({
+        AZURE_SPEECH_VOICE: "fr-FR-Vivienne:DragonHDLatestNeural",
+      });
+      synth
+        .mockRejectedValueOnce(rejected400)
+        .mockResolvedValue(Buffer.from("mock-audio"));
+
+      const first = await svc.getTtsAudio("Rumba !");
+      expect(first).toContain("tts_cache");
+      expect(synth).toHaveBeenCalledTimes(2);
+      expect(synth.mock.calls[0][0]).toContain(
+        "fr-FR-Vivienne:DragonHDLatestNeural",
+      );
+      expect(synth.mock.calls[1][0]).toBe(
+        buildSsml("Rumba !", "fr-FR-DeniseNeural", "excited"),
+      );
+
+      // La voix refusée est mémorisée : plus de tentative inutile.
+      await svc.getTtsAudio("Jive !");
+      expect(synth).toHaveBeenCalledTimes(3);
+      expect(synth.mock.calls[2][0]).toContain("fr-FR-DeniseNeural");
+    });
+
+    it("does not fall back on a non-400 error", async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      mockRedisService.get.mockResolvedValue(null);
+      const { svc, synth } = await makeSvcWith({
+        AZURE_SPEECH_VOICE: "fr-FR-RemyMultilingualNeural",
+      });
+      synth.mockRejectedValueOnce({
+        isAxiosError: true,
+        response: { status: 500 },
+      });
+
+      await expect(svc.getTtsAudio("Tango !")).rejects.toBeDefined();
+      expect(synth).toHaveBeenCalledTimes(1);
+    });
+
+    it("rethrows when the fallback voice itself is rejected", async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      mockRedisService.get.mockResolvedValue(null);
+      mockSynthesize.mockRejectedValueOnce(rejected400);
+
+      // `service` est configuré avec Denise = la voix de repli.
+      await expect(service.getTtsAudio("Valse !")).rejects.toBe(rejected400);
+      expect(mockSynthesize).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -311,7 +420,7 @@ describe("TtsService", () => {
 
     type SpeechInternals = {
       credential: { getToken: jest.Mock };
-      synthesize: (text: string, voice: string) => Promise<Buffer>;
+      synthesize: (ssml: string) => Promise<Buffer>;
     };
 
     const makeService = async (
@@ -348,7 +457,7 @@ describe("TtsService", () => {
       text = "Chauffez la piste & <dansez> !",
       voice = "fr-FR-DeniseNeural",
     ): Promise<Buffer> =>
-      (svc as unknown as SpeechInternals).synthesize(text, voice);
+      (svc as unknown as SpeechInternals).synthesize(buildSsml(text, voice));
 
     beforeEach(() => mockedPost.mockReset());
 
@@ -467,6 +576,85 @@ describe("TtsService", () => {
       );
       expect(buildSsml("Hi", "en-GB-SoniaNeural")).toContain(
         "<voice name='en-GB-SoniaNeural'>",
+      );
+    });
+
+    it("wraps a styled neural voice in express-as (outside prosody)", () => {
+      expect(buildSsml("Samba !", "fr-FR-DeniseNeural", "excited")).toContain(
+        "<voice name='fr-FR-DeniseNeural'>" +
+          "<mstts:express-as style='excited'>" +
+          "<prosody rate='-5%'>Samba !</prosody>" +
+          "</mstts:express-as></voice>",
+      );
+    });
+
+    it("ignores a style the voice does not support", () => {
+      const ssml = buildSsml("Samba !", "fr-FR-AlainNeural", "excited");
+      expect(ssml).not.toContain("express-as");
+      expect(ssml).toContain("<prosody rate='-5%'>Samba !</prosody>");
+    });
+
+    it("multilingual voice: forces French via <lang>, keeps prosody, no style", () => {
+      expect(
+        buildSsml("Quickstep !", "fr-FR-RemyMultilingualNeural", "excited"),
+      ).toContain(
+        "<voice name='fr-FR-RemyMultilingualNeural'>" +
+          "<lang xml:lang='fr-FR'><prosody rate='-5%'>Quickstep !</prosody></lang>" +
+          "</voice>",
+      );
+    });
+
+    it("DragonHD voice: no prosody, no express-as (unsupported), <lang> kept", () => {
+      const ssml = buildSsml(
+        "Paso doble & cha-cha",
+        "fr-FR-Vivienne:DragonHDLatestNeural",
+        "excited",
+      );
+      expect(ssml).toContain(
+        "<voice name='fr-FR-Vivienne:DragonHDLatestNeural'>" +
+          "<lang xml:lang='fr-FR'>Paso doble &amp; cha-cha</lang></voice>",
+      );
+      expect(ssml).toContain("xml:lang='fr-FR'>");
+      expect(ssml).not.toContain("prosody");
+      expect(ssml).not.toContain("express-as");
+    });
+
+    it("MAI voice: express-as allowed, no prosody, no <lang>", () => {
+      const ssml = buildSsml("Jive !", "fr-FR-Marc:MAI-Voice-2", "excited");
+      expect(ssml).toContain(
+        "<voice name='fr-FR-Marc:MAI-Voice-2'>" +
+          "<mstts:express-as style='excited'>Jive !</mstts:express-as></voice>",
+      );
+      expect(ssml).not.toContain("prosody");
+      expect(ssml).not.toContain("<lang");
+    });
+  });
+
+  describe("voiceCapabilities", () => {
+    it.each([
+      ["fr-FR-DeniseNeural", "neural", true, true],
+      ["fr-FR-HenriNeural", "neural", true, true],
+      ["fr-FR-AlainNeural", "neural", true, false],
+      ["fr-FR-VivienneMultilingualNeural", "multilingual", true, false],
+      ["fr-FR-Remy:DragonHDLatestNeural", "dragon-hd", false, false],
+      ["fr-FR-Denise:DragonHDOmniLatestNeural", "dragon-hd-omni", false, false],
+      ["fr-FR-Soleil:MAI-Voice-2-Flash", "mai", false, true],
+    ])(
+      "%s → family %s, prosody %s, supports 'excited' %s",
+      (voice, family, prosody, excited) => {
+        const caps = voiceCapabilities(voice);
+        expect(caps.family).toBe(family);
+        expect(caps.prosody).toBe(prosody);
+        expect(caps.styles.includes("excited")).toBe(excited);
+      },
+    );
+
+    it("is case-insensitive on the voice name", () => {
+      expect(voiceCapabilities("fr-fr-Remy:DragonHDLatestNeural").family).toBe(
+        "dragon-hd",
+      );
+      expect(voiceCapabilities("FR-FR-DENISENEURAL").styles).toContain(
+        "cheerful",
       );
     });
   });

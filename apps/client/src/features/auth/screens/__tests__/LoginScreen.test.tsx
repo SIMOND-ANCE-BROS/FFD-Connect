@@ -1,6 +1,7 @@
 import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 import { mockUseTheme } from "../../../../__tests__/mocks/mockTheme";
+import { BETA_NOTICES } from "../../../../constants/betaNotices";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useLoginLogic } from "../../hooks/useLoginLogic";
 import { LoginScreen } from "../LoginScreen";
@@ -90,6 +91,23 @@ describe("LoginScreen", () => {
     expect(getByTestId("login-email-input")).toBeTruthy();
     expect(getByTestId("login-password-input")).toBeTruthy();
     expect(getByText("FFD Connect")).toBeTruthy();
+  });
+
+  it("shows the beta independence notice", async () => {
+    const { getByTestId, getByText } = await render(
+      <LoginScreen {...createTestProps()} />,
+    );
+
+    expect(getByTestId("login-beta-notice")).toBeTruthy();
+    expect(getByText(BETA_NOTICES.login.message)).toBeTruthy();
+  });
+
+  it("navigates to Register from the create-account button", async () => {
+    const props = createTestProps();
+    const { getByTestId } = await render(<LoginScreen {...props} />);
+
+    await fireEvent.press(getByTestId("login-register-link"));
+    expect(props.navigation.navigate).toHaveBeenCalledWith("Register");
   });
 
   it("calls setUsername when text changes", async () => {
