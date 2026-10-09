@@ -4,8 +4,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ClubRegistrationMode, Prisma, UserRole } from "@prisma/client";
+import { assertClubNotStoreReview } from "../auth/store-review/store-review-protection";
 import { PrismaService } from "../prisma/prisma.service";
 import {
+  adminClubDeletionTargetSelect,
   adminClubEditableSelect,
   adminClubOptionSelect,
   adminClubStatusSelect,
@@ -201,6 +203,7 @@ export class AdminClubsService {
         select: adminClubStatusSelect,
       });
       if (!current) throw new NotFoundException("Club introuvable");
+      if (!active) assertClubNotStoreReview(current, "disable");
       if ((current.disabledAt === null) === active) return;
 
       await tx.club.update({
@@ -229,9 +232,10 @@ export class AdminClubsService {
     await this.prisma.$transaction(async (tx) => {
       const club = await tx.club.findUnique({
         where: { id: clubId },
-        select: adminClubOptionSelect,
+        select: adminClubDeletionTargetSelect,
       });
       if (!club) throw new NotFoundException("Club introuvable");
+      assertClubNotStoreReview(club, "delete");
       // Serialises against a concurrent attach (member, account) to this club.
       await tx.$queryRaw(
         Prisma.sql`SELECT id FROM "Club" WHERE id = ${clubId} FOR UPDATE`,

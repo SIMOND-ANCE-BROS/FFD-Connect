@@ -23,6 +23,7 @@ model User {
   updatedAt            DateTime       @updatedAt
   lastLoginAt          DateTime?      // Dernière connexion réussie (back-office : « renvoyer l'invitation » tant que null)
   disabledAt           DateTime?      // Désactivé par un admin (null = actif) : connexion, refresh et requêtes refusés
+  isStoreReview        Boolean        @default(false) // Compte de validation App Store / Google Play : écritures simulées, ni supprimable ni désactivable
   ageGroup             String?        // 1 seule classe d'âge par licencié
   category             String?        // discipline(s) : Latin, Standard, Ten Dance
   clubId               String?

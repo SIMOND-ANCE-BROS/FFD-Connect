@@ -36,6 +36,15 @@ import {
 } from "../utils/upload-storage.util";
 import { LicenseRenewalService } from "./license-renewal.service";
 import { LicensesService } from "./licenses.service";
+import {
+  StoreReviewOwnData,
+  StoreReviewSimulation,
+} from "../auth/store-review/store-review.decorator";
+import {
+  simulatedRenewalDocument,
+  simulatedRenewalStart,
+  simulatedRenewalSubmit,
+} from "../auth/store-review/store-review-responses";
 
 interface RequestWithUser extends ExpressRequest {
   user: {
@@ -55,6 +64,7 @@ export class LicensesController {
     private readonly licenseRenewalService: LicenseRenewalService,
   ) {}
 
+  @StoreReviewOwnData()
   @Get("my")
   @ApiOperation({
     summary: "Récupère la licence de l'utilisateur connecté",
@@ -245,6 +255,7 @@ export class LicensesController {
 
   // --- Demande de renouvellement (workflow documents + OCR) ---
 
+  @StoreReviewSimulation(simulatedRenewalStart)
   @Post("renewal/start")
   @ApiOperation({
     summary: "Démarrer une demande de renouvellement",
@@ -257,6 +268,7 @@ export class LicensesController {
     return this.licenseRenewalService.startRenewalRequest(req.user.userId);
   }
 
+  @StoreReviewOwnData()
   @Get("renewal/my")
   @ApiOperation({
     summary: "Ma demande de renouvellement en cours",
@@ -269,6 +281,7 @@ export class LicensesController {
     return this.licenseRenewalService.getMyRenewalRequest(req.user.userId);
   }
 
+  @StoreReviewSimulation(simulatedRenewalDocument)
   @Post("renewal/:id/documents")
   @ApiOperation({
     summary: "Déposer un document sur une demande (OCR automatique)",
@@ -335,6 +348,7 @@ export class LicensesController {
     );
   }
 
+  @StoreReviewSimulation(simulatedRenewalSubmit)
   @Post("renewal/:id/submit")
   @ApiOperation({
     summary: "Soumettre la demande de renouvellement",

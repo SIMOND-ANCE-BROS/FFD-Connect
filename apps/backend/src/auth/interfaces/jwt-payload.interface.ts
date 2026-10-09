@@ -19,5 +19,7 @@ export interface RequestWithUser extends Request {
     roles: UserRole[];
     /** Non-null si la session est une impersonation (#545) → bloque le destructif. */
     impersonatedBy?: string;
+    /** Store-review account (or an impersonation it opened): writes are simulated. */
+    storeReview?: boolean;
   };
 }

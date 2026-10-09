@@ -84,6 +84,11 @@ export class AdminUserListItemDto {
   licenseStatus!: LicenseStatus | null;
   @ApiProperty() createdAt!: Date;
   @ApiProperty({ nullable: true, type: Date }) disabledAt!: Date | null;
+  @ApiProperty({
+    description:
+      "Compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable",
+  })
+  isStoreReview!: boolean;
 }
 
 export class AdminUserDetailDto extends AdminUserListItemDto {

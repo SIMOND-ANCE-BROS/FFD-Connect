@@ -1,12 +1,16 @@
 /**
- * Seed de données de CARRIÈRE pour un bêta-testeur — staging/beta uniquement.
+ * Seed de données de CARRIÈRE du compte de validation des stores
+ * (`isStoreReview`, licensee@test.com) — staging/beta uniquement.
  *
- * Peuple compétitions + épreuves + inscriptions + résultats rattachés au compte
- * du testeur, pour visualiser le rendu des écrans Profil / Carrière (qui sont
- * vides tant qu'aucune inscription/résultat n'existe).
+ * Peuple compétitions + épreuves + inscriptions + résultats rattachés à ce
+ * compte, pour que les relecteurs App Store / Google Play voient les écrans
+ * Profil / Carrière remplis. Ce seed visait autrefois le compte de démo
+ * beta@test.com, supprimé avec les autres comptes de test
+ * (purge-test-accounts.ts) ; les partenariats de démo (qui exigeaient des
+ * comptes partenaires factices et le « Club Démo Bêta ») ont disparu avec eux.
  *
- * Nécessite que le testeur se soit DÉJÀ inscrit (la licence doit être réclamée,
- * cf. seed-beta-testers.ts). Sinon on saute (rien à rattacher).
+ * Nécessite que le compte existe (seed-profile-test-accounts.ts, lancé avant).
+ * Sinon on saute (rien à rattacher).
  *
  * Idempotent : IDs fixes → upsert (relançable à chaque démarrage sans doublon).
  * Lancé au boot (docker-entrypoint.sh) si SEED_TEST_TRACKS=true — jamais en prod.
@@ -21,24 +25,23 @@ const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
-const BETA_EMAIL = "beta@test.com"; // compte de démo bêta
-
 async function main() {
-  const betaUser = await prisma.user.findUnique({
-    where: { email: BETA_EMAIL },
-    select: { id: true, firstName: true, lastName: true },
+  const reviewUser = await prisma.user.findFirst({
+    where: { isStoreReview: true },
+    select: { id: true, email: true, firstName: true, lastName: true },
+    orderBy: { createdAt: "asc" },
   });
-  if (!betaUser) {
+  if (!reviewUser) {
     console.warn(
-      `ℹ️  Career seed skipped: compte ${BETA_EMAIL} introuvable (créer le compte d'abord).`,
+      "ℹ️  Career seed skipped: compte de validation des stores introuvable (seed-profile-test-accounts d'abord).",
     );
     return;
   }
-  const userId = betaUser.id;
+  const userId = reviewUser.id;
   // getResultsForUser ne renvoie un résultat que si result.details.participant
   // contient le nom du licencié → on doit le renseigner.
   const participant =
-    `${betaUser.firstName} ${betaUser.lastName}`.trim() || "Beta Testeur";
+    `${reviewUser.firstName} ${reviewUser.lastName}`.trim() || "Beta Testeur";
 
   // 1) Compétitions (passées) — upsert par ffdId (unique) via id fixe.
   const competitions = [
@@ -126,7 +129,7 @@ async function main() {
   for (const r of registrations) {
     await prisma.registration.upsert({
       where: { id: r.id },
-      update: { status: "CONFIRMED", bibNumber: r.bibNumber },
+      update: { userId, status: "CONFIRMED", bibNumber: r.bibNumber },
       create: {
         id: r.id,
         eventId: r.eventId,
@@ -168,7 +171,7 @@ async function main() {
     const details = { participant, totalParticipants: res.total };
     await prisma.result.upsert({
       where: { id: res.id },
-      update: { round: res.round, ranking: res.ranking, details },
+      update: { userId, round: res.round, ranking: res.ranking, details },
       create: {
         id: res.id,
         eventId: res.eventId,
@@ -180,72 +183,8 @@ async function main() {
     });
   }
 
-  // 5) Partenariats : 1 couple ACTIF + 2 anciens (endDate renseigné → historique,
-  // isCurrent=false). Chacun a besoin d'un club + d'un 2e licencié.
-  const demoClub = await prisma.club.upsert({
-    where: { name: "Club Démo Bêta" },
-    update: {},
-    create: { name: "Club Démo Bêta" },
-  });
-
-  const partnerships = [
-    {
-      id: "seed-eva-partnership-1",
-      email: "partner-demo@test.com",
-      firstName: "Léa",
-      lastName: "Martin",
-      startDate: new Date("2024-01-01"),
-      endDate: null as Date | null,
-    },
-    {
-      id: "seed-eva-partnership-2",
-      email: "partner-old1@test.com",
-      firstName: "Camille",
-      lastName: "Rousseau",
-      startDate: new Date("2021-09-01"),
-      endDate: new Date("2023-06-30"),
-    },
-    {
-      id: "seed-eva-partnership-3",
-      email: "partner-old2@test.com",
-      firstName: "Hugo",
-      lastName: "Lefèvre",
-      startDate: new Date("2019-01-01"),
-      endDate: new Date("2021-08-31"),
-    },
-  ];
-
-  for (const p of partnerships) {
-    const partnerUser = await prisma.user.upsert({
-      where: { email: p.email },
-      update: {},
-      create: {
-        email: p.email,
-        password: "seed-no-login",
-        firstName: p.firstName,
-        lastName: p.lastName,
-        role: "LICENSEE",
-        clubName: demoClub.name,
-        clubId: demoClub.id,
-      },
-    });
-    await prisma.partnership.upsert({
-      where: { id: p.id },
-      update: { status: "ACTIVE", startDate: p.startDate, endDate: p.endDate },
-      create: {
-        id: p.id,
-        clubId: demoClub.id,
-        user1Id: userId,
-        user2Id: partnerUser.id,
-        status: "ACTIVE",
-        startDate: p.startDate,
-        endDate: p.endDate,
-      },
-    });
-  }
-
   console.warn(
-    `✅ Career seed: ${competitions.length} compétitions, ${registrations.length} inscriptions, ${results.length} résultats, ${partnerships.length} partenariats (1 actif + 2 anciens) pour ${BETA_EMAIL}.`,
+    `✅ Career seed: ${competitions.length} compétitions, ${registrations.length} inscriptions, ${results.length} résultats pour ${reviewUser.email}.`,
   );
 }
 
