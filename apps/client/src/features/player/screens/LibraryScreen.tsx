@@ -8,9 +8,12 @@ import React, {
   useState,
 } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
+  Alert,
   Animated,
   FlatList,
+  Platform,
   StatusBar,
   TextInput,
   TouchableOpacity,
@@ -45,10 +48,13 @@ import {
   LibraryEmptyState,
   LibraryGridItem,
   LibraryTrackItem,
+  TrackActionsSheet,
+  type TrackSheetExtraAction,
 } from "../components/library";
 import { libraryStyles as styles } from "../components/library/library.styles";
 import { TrackData } from "../context/PlayerContext";
 import { useLibraryLogic } from "../hooks/useLibraryLogic";
+import { queueFeedbackMessage, type QueueAddKind } from "../utils/queueOps";
 
 type LibraryScreenProps = NativeStackScreenProps<RootStackParamList, "Library">;
 
@@ -88,6 +94,8 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
     setActiveTab,
     setSearchQuery,
     handleTrackPress,
+    handlePlayNext,
+    handleAddToQueue,
     handleSectionPress,
     handleBackPress,
     loadMore,
@@ -146,12 +154,19 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
       .filter((s) => s.data.length > 0);
   }, [sections, matchesFilter, activeFilterCount]);
 
-  // Long-press behaviour depends on the role:
+  // Long-press opens the track sheet: queue actions for everyone, plus an
+  // extra action that depends on the role:
   //  • Admins edit the track's metadata (dance, MPM…). Fetches the full track
   //    (rawBpm, filename) before opening the edit modal.
   //  • Other signed-in users propose a correction (→ reviewed by an admin).
-  //  • Guests have no account to propose with: nothing happens.
-  const handleTrackLongPress = useCallback(
+  //  • Guests have no account to propose with: no extra action.
+  const extraAction: TrackSheetExtraAction | null = isAdmin
+    ? "edit"
+    : isGuest || role === "GUEST"
+      ? null
+      : "report";
+
+  const openTrackExtraAction = useCallback(
     async (item: TrackData) => {
       if (!isAdmin) {
         if (isGuest || role === "GUEST") return;
@@ -183,6 +198,76 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
     },
     [isAdmin, isGuest, role, setModalVisible],
   );
+
+  // --- Track sheet (long-press) + queue confirmation ---
+  const [sheetTrack, setSheetTrack] = useState<TrackData | null>(null);
+  const [sheetVisible, setSheetVisible] = useState(false);
+  // iOS cannot present a modal while another is still sliding out: the
+  // edit / correction modal opens once the sheet reports it is dismissed.
+  const afterSheetDismiss = useRef<(() => void) | null>(null);
+  const [queueNotice, setQueueNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    },
+    [],
+  );
+
+  const showQueueNotice = useCallback((message: string) => {
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    setQueueNotice(message);
+    AccessibilityInfo.announceForAccessibility(message);
+    noticeTimer.current = setTimeout(() => setQueueNotice(null), 2500);
+  }, []);
+
+  const handleTrackLongPress = useCallback((item: TrackData) => {
+    setSheetTrack(item);
+    setSheetVisible(true);
+  }, []);
+
+  const closeSheet = () => setSheetVisible(false);
+
+  const handleSheetDismiss = () => {
+    const action = afterSheetDismiss.current;
+    afterSheetDismiss.current = null;
+    action?.();
+  };
+
+  const runAfterSheet = (action: () => void) => {
+    closeSheet();
+    if (Platform.OS === "ios") {
+      afterSheetDismiss.current = action;
+      // Fallback in case onDismiss never fires (idempotent).
+      setTimeout(handleSheetDismiss, 600);
+    } else {
+      action();
+    }
+  };
+
+  const handleQueueAction = (track: TrackData, kind: QueueAddKind) => {
+    // Same rule as a tap: offline, only downloaded copies can play (#416).
+    if (!isOnline && !track.isDownloaded) {
+      runAfterSheet(() =>
+        Alert.alert(
+          "Non disponible hors ligne",
+          "Ajoutez ce titre aux favoris ❤️ pour qu'il soit téléchargé et écoutable sans connexion.",
+        ),
+      );
+      return;
+    }
+    closeSheet();
+    const add = kind === "next" ? handlePlayNext : handleAddToQueue;
+    add(track)
+      .then((result) =>
+        showQueueNotice(queueFeedbackMessage(result, kind, track.title)),
+      )
+      .catch((error: unknown) => {
+        logger.warn("[Library] Queue action failed", error);
+        showQueueNotice(queueFeedbackMessage("failed", kind, track.title));
+      });
+  };
 
   const bar1 = useRef(new Animated.Value(8)).current;
   const bar2 = useRef(new Animated.Value(12)).current;
@@ -267,7 +352,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
         bar2={bar2}
         bar3={bar3}
         onPress={handleTrackPress}
-        onLongPress={(track) => void handleTrackLongPress(track)}
+        onLongPress={handleTrackLongPress}
       />
     ),
     [
@@ -468,6 +553,45 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
       >
         {pinnedContent}
       </PinnedHeader>
+
+      {queueNotice !== null && (
+        <View
+          pointerEvents="none"
+          style={[styles.queueNotice, { top: headerH + 8 }]}
+        >
+          <View
+            testID="library-queue-notice"
+            accessibilityLiveRegion="polite"
+            style={[
+              styles.queueNoticePill,
+              { backgroundColor: currentTheme.text },
+            ]}
+          >
+            <AppText
+              variant="caption"
+              weight="600"
+              color={currentTheme.background}
+              numberOfLines={2}
+            >
+              {queueNotice}
+            </AppText>
+          </View>
+        </View>
+      )}
+
+      <TrackActionsSheet
+        visible={sheetVisible}
+        track={sheetTrack}
+        currentTheme={currentTheme}
+        extraAction={extraAction}
+        onPlayNext={(track) => handleQueueAction(track, "next")}
+        onAddToQueue={(track) => handleQueueAction(track, "end")}
+        onExtraAction={(track) =>
+          runAfterSheet(() => void openTrackExtraAction(track))
+        }
+        onClose={closeSheet}
+        onDismiss={handleSheetDismiss}
+      />
 
       <AddTrackModal
         visible={isModalVisible}
