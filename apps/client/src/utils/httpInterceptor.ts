@@ -33,6 +33,11 @@ export interface HttpRequestOptions extends RequestInit {
    */
   logErrors?: boolean;
   /**
+   * Statuts HTTP attendus (ex. 409 métier) : l'HttpError est levée sans être
+   * loguée (ni Sentry), même avec `logErrors`.
+   */
+  quietStatuses?: readonly number[];
+  /**
    * Message d'erreur personnalisé
    */
   errorMessage?: string;
@@ -114,6 +119,7 @@ export async function httpRequest<T = unknown>(
 ): Promise<T> {
   const {
     logErrors = true,
+    quietStatuses = [],
     errorMessage,
     timeout = 30000,
     retry: retryOptions,
@@ -165,7 +171,7 @@ export async function httpRequest<T = unknown>(
           message,
         );
 
-        if (logErrors) {
+        if (logErrors && !quietStatuses.includes(response.status)) {
           logger.error(`HTTP ${response.status}: ${response.statusText}`, {
             url,
             status: response.status,
