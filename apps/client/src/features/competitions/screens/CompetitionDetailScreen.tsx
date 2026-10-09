@@ -13,6 +13,8 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { AppText } from "../../../components/AppText";
+import { BetaNotice } from "../../../components/BetaNotice";
+import { BETA_NOTICES } from "../../../constants/betaNotices";
 import { BackButton } from "../../../components/BackButton";
 import { PinnedHeader } from "../../../components/PinnedHeader";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
@@ -195,6 +197,15 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
           <CompetitionInfoCard
             currentTheme={currentTheme}
             details={state.details}
+          />
+
+          {/* Beta: informative only, not connected to the federation
+              registrations yet. */}
+          <BetaNotice
+            title={BETA_NOTICES.competitions.title}
+            message={BETA_NOTICES.competitions.message}
+            style={styles.betaNotice}
+            testID="competition-detail-beta-notice"
           />
 
           <CompetitionMapCard

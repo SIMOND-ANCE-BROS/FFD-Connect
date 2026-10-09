@@ -24,9 +24,11 @@ import {
   useTrackTable,
 } from "../../test/mocks/track-where.mock";
 import { withActiveRole } from "../auth/roles";
+import { AdminAuditService } from "../admin/admin-audit.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { TracksService } from "../tracks/tracks.service";
+import { trackCorrectionAuditTrackSelect } from "../utils/prisma-selects";
 import {
   MAX_ADMINS_NOTIFIED,
   MAX_PENDING_CORRECTIONS_PER_USER,
@@ -109,6 +111,7 @@ describe("TrackCorrectionsService", () => {
     sendToUsers: jest.Mock;
   };
   let queryService: { findOneForAdmin: jest.Mock };
+  let audit: { record: jest.Mock };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -126,6 +129,7 @@ describe("TrackCorrectionsService", () => {
     queryService = {
       findOneForAdmin: jest.fn().mockResolvedValue({ id: "c1" }),
     };
+    audit = { record: jest.fn().mockResolvedValue(undefined) };
     tx = createMockPrismaService();
     // Transaction interactive : le callback reçoit un client de transaction
     // distinct du client principal.
@@ -140,6 +144,7 @@ describe("TrackCorrectionsService", () => {
         { provide: TracksService, useValue: tracks },
         { provide: NotificationsService, useValue: notifications },
         { provide: TrackCorrectionsQueryService, useValue: queryService },
+        { provide: AdminAuditService, useValue: audit },
       ],
     }).compile();
 
@@ -810,7 +815,7 @@ describe("TrackCorrectionsService", () => {
           },
         }) as never,
       );
-      prisma.trackCorrection.updateMany.mockResolvedValue({ count: 1 });
+      tx.trackCorrection.updateMany.mockResolvedValue({ count: 1 });
       await service.reject("c1", "admin-1", {});
       expect(notifications.sendToUser).toHaveBeenCalledWith(
         "u1",
@@ -852,6 +857,116 @@ describe("TrackCorrectionsService", () => {
         id: "c1",
       });
     });
+
+    const trackFields = (overrides: Record<string, unknown> = {}) => ({
+      title: "España Cañí",
+      artist: "Orchestre",
+      style: "Paso Doble",
+      bpm: 60,
+      clashTimecodes: [12.5, 40],
+      ...overrides,
+    });
+
+    it("audits the applied change inside the decision transaction", async () => {
+      tx.track.findUnique
+        .mockResolvedValueOnce(trackFields() as never)
+        .mockResolvedValueOnce(
+          trackFields({ title: "Espana Cani", bpm: 62 }) as never,
+        );
+
+      await service.approve("c1", "admin-1", { comment: "merci" });
+
+      expect(tx.track.findUnique).toHaveBeenCalledTimes(2);
+      expect(tx.track.findUnique).toHaveBeenCalledWith({
+        where: { id: "t1" },
+        select: trackCorrectionAuditTrackSelect,
+      });
+      expect(prisma.track.findUnique).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledTimes(1);
+      expect(audit.record).toHaveBeenCalledWith(tx, {
+        actorId: "admin-1",
+        action: "TRACK_CORRECTION_APPROVE",
+        targetType: "TRACK_CORRECTION",
+        targetId: "c1",
+        before: { trackId: "t1", title: "España Cañí", bpm: 60 },
+        after: { trackId: "t1", title: "Espana Cani", bpm: 62 },
+      });
+    });
+
+    it("audits the MPM silently recalculated by a dance-only change", async () => {
+      prisma.trackCorrection.findUnique.mockResolvedValue(
+        decisionRow({
+          proposedTitle: null,
+          proposedBpm: null,
+          proposedStyle: "Rumba",
+        }) as never,
+      );
+      tx.track.findUnique
+        .mockResolvedValueOnce(trackFields() as never)
+        .mockResolvedValueOnce(
+          trackFields({ style: "Rumba", bpm: 25 }) as never,
+        );
+
+      await service.approve("c1", "admin-1", {});
+
+      expect(audit.record.mock.calls[0][1]).toMatchObject({
+        before: { trackId: "t1", style: "Paso Doble", bpm: 60 },
+        after: { trackId: "t1", style: "Rumba", bpm: 25 },
+      });
+    });
+
+    it("logs the trackId alone when the approval changes nothing on the track", async () => {
+      tx.track.findUnique.mockResolvedValue(trackFields() as never);
+
+      await service.approve("c1", "admin-1", {});
+
+      expect(audit.record.mock.calls[0][1]).toMatchObject({
+        before: { trackId: "t1" },
+        after: { trackId: "t1" },
+      });
+    });
+
+    it("tolerates a track that vanished from the audit reads", async () => {
+      tx.track.findUnique.mockResolvedValue(null);
+
+      await service.approve("c1", "admin-1", {});
+
+      expect(audit.record.mock.calls[0][1]).toMatchObject({
+        before: { trackId: "t1" },
+        after: { trackId: "t1" },
+      });
+    });
+
+    it("never copies the review comment into the audit row", async () => {
+      tx.track.findUnique.mockResolvedValue(trackFields() as never);
+
+      await service.approve("c1", "admin-1", {
+        comment: "écrire à jeanne@x.fr",
+      });
+
+      expect(JSON.stringify(audit.record.mock.calls[0][1])).not.toContain(
+        "jeanne",
+      );
+    });
+
+    it("writes no audit row when the decision fails", async () => {
+      tx.trackCorrection.updateMany.mockResolvedValueOnce({ count: 0 });
+      await expect(service.approve("c1", "admin-1", {})).rejects.toThrow(
+        ConflictException,
+      );
+
+      tracks.updateTrack.mockRejectedValueOnce(new BadRequestException());
+      await expect(service.approve("c1", "admin-1", {})).rejects.toThrow(
+        BadRequestException,
+      );
+
+      prisma.trackCorrection.findUnique.mockResolvedValue(null);
+      await expect(service.approve("c1", "admin-1", {})).rejects.toThrow(
+        NotFoundException,
+      );
+
+      expect(audit.record).not.toHaveBeenCalled();
+    });
   });
 
   // ── reject ────────────────────────────────────────────────────────────────
@@ -861,13 +976,15 @@ describe("TrackCorrectionsService", () => {
       prisma.trackCorrection.findUnique.mockResolvedValue(
         decisionRow() as never,
       );
-      prisma.trackCorrection.updateMany.mockResolvedValue({ count: 1 });
+      tx.trackCorrection.updateMany.mockResolvedValue({ count: 1 });
     });
 
     it("marque REJECTED sans toucher à la piste et notifie l'auteur", async () => {
       await service.reject("c1", "admin-1", { comment: "déjà correct" });
 
-      expect(prisma.trackCorrection.updateMany).toHaveBeenCalledWith({
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.trackCorrection.updateMany).not.toHaveBeenCalled();
+      expect(tx.trackCorrection.updateMany).toHaveBeenCalledWith({
         where: { id: "c1", status: TrackCorrectionStatus.PENDING },
         data: {
           status: TrackCorrectionStatus.REJECTED,
@@ -893,7 +1010,7 @@ describe("TrackCorrectionsService", () => {
 
     it("sans commentaire : reviewComment null et corps sans commentaire", async () => {
       await service.reject("c1", "admin-1", {});
-      expect(prisma.trackCorrection.updateMany).toHaveBeenCalledWith(
+      expect(tx.trackCorrection.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ reviewComment: null }),
         }),
@@ -907,12 +1024,29 @@ describe("TrackCorrectionsService", () => {
       );
     });
 
+    it("audits the rejection in the same transaction, with the trackId only", async () => {
+      await service.reject("c1", "admin-1", { comment: "voir jeanne@x.fr" });
+
+      expect(audit.record).toHaveBeenCalledTimes(1);
+      expect(audit.record).toHaveBeenCalledWith(tx, {
+        actorId: "admin-1",
+        action: "TRACK_CORRECTION_REJECT",
+        targetType: "TRACK_CORRECTION",
+        targetId: "c1",
+        after: { trackId: "t1" },
+      });
+      expect(JSON.stringify(audit.record.mock.calls[0][1])).not.toContain(
+        "jeanne",
+      );
+    });
+
     it("409 en cas de double décision concurrente", async () => {
-      prisma.trackCorrection.updateMany.mockResolvedValue({ count: 0 });
+      tx.trackCorrection.updateMany.mockResolvedValue({ count: 0 });
       await expect(service.reject("c1", "admin-1", {})).rejects.toThrow(
         ConflictException,
       );
       expect(notifications.sendToUser).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
     });
 
     it("409 si déjà validée", async () => {
@@ -922,7 +1056,8 @@ describe("TrackCorrectionsService", () => {
       await expect(service.reject("c1", "admin-1", {})).rejects.toThrow(
         ConflictException,
       );
-      expect(prisma.trackCorrection.updateMany).not.toHaveBeenCalled();
+      expect(tx.trackCorrection.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
     });
   });
 
@@ -947,6 +1082,7 @@ describe("TrackCorrectionsService", () => {
         realTracks,
         notifications as unknown as NotificationsService,
         queryService as unknown as TrackCorrectionsQueryService,
+        audit as unknown as AdminAuditService,
       );
       tx.trackCorrection.updateMany.mockResolvedValue({ count: 1 });
       tx.track.findUnique.mockResolvedValue({

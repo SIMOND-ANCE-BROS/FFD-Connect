@@ -3,6 +3,10 @@ import { fireEvent, render } from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
 import { useTheme } from "../../../../context/ThemeContext";
 import {
+  OFFICIAL_DANCE_ORDER,
+  useDanceOrderStore,
+} from "../../../../stores/danceOrder.store";
+import {
   createRound,
   usePerformanceStore,
   type PerformanceConfig,
@@ -91,6 +95,7 @@ describe("PerformanceSetupScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     usePerformanceStore.getState().setStatus("idle");
+    useDanceOrderStore.setState({ danceOrder: OFFICIAL_DANCE_ORDER });
     (useTheme as jest.Mock).mockReturnValue({ theme: mockTheme });
     (useNavigation as jest.Mock).mockReturnValue(navigation);
     mockEngine();
@@ -102,7 +107,9 @@ describe("PerformanceSetupScreen", () => {
     expect(getByTestId("performance-round-0-card")).toBeTruthy();
     expect(getByTestId("performance-round-1-card")).toBeTruthy();
     expect(getByText("Tour 2")).toBeTruthy();
-    expect(getByText("Valse viennoise")).toBeTruthy();
+    expect(
+      getByTestId("performance-round-1-dance-valse-viennoise"),
+    ).toHaveTextContent("Valse viennoise");
   });
 
   it("adds a round copying the previous round's groups", async () => {
@@ -177,6 +184,20 @@ describe("PerformanceSetupScreen", () => {
     expect(getByText("Danses Latines")).toBeTruthy();
     expect(getByTestId("performance-round-0-preview")).toHaveTextContent(
       "Déroulé : Valse lente (G1) → Samba (G2) → Valse lente (G3) → Tango (G1) → Tango (G3)",
+    );
+  });
+
+  it("previews a multi-group Final group by group", async () => {
+    const final: RoundConfig = {
+      ...latin,
+      type: "Final",
+      groups: ["Standard", "Latin", "Standard"],
+      dances: { Standard: ["Valse Lente", "Tango"], Latin: ["Samba"] },
+    };
+    mockEngine({ config: { ...baseConfig, rounds: [final] } });
+    const { getByTestId } = await render(<PerformanceSetupScreen />);
+    expect(getByTestId("performance-round-0-preview")).toHaveTextContent(
+      "Déroulé : Valse lente (G1) → Tango (G1) → Samba (G2) → Valse lente (G3) → Tango (G3)",
     );
   });
 
@@ -306,5 +327,66 @@ describe("PerformanceSetupScreen", () => {
     const { getByTestId } = await render(<PerformanceSetupScreen />);
     await fireEvent.press(getByTestId("back-button"));
     expect(navigation.goBack).toHaveBeenCalled();
+  });
+
+  describe("dance order", () => {
+    const latinOrder = () => useDanceOrderStore.getState().danceOrder.Latin;
+
+    it("only lists the categories danced in the programme", async () => {
+      const { getByTestId, queryByTestId } = await render(
+        <PerformanceSetupScreen />,
+      );
+      expect(getByTestId("performance-dance-order-latin")).toBeTruthy();
+      expect(queryByTestId("performance-dance-order-standard")).toBeNull();
+    });
+
+    it("moves a dance with the arrows and the floor order follows", async () => {
+      const { getByTestId } = await render(<PerformanceSetupScreen />);
+      await fireEvent.press(
+        getByTestId("performance-dance-order-latin-cha-cha-cha-up"),
+      );
+      expect(latinOrder()).toEqual([
+        "Cha-Cha-Cha",
+        "Samba",
+        "Rumba",
+        "Paso Doble",
+        "Jive",
+      ]);
+      expect(getByTestId("performance-round-0-preview")).toHaveTextContent(
+        /^Déroulé : Cha-cha-cha \(G1\) → Cha-cha-cha \(G2\) → Samba \(G1\)/,
+      );
+      // First / last positions cannot move further.
+      expect(
+        getByTestId("performance-dance-order-latin-cha-cha-cha-up"),
+      ).toBeDisabled();
+      expect(
+        getByTestId("performance-dance-order-latin-jive-down"),
+      ).toBeDisabled();
+    });
+
+    it("resets to the official order", async () => {
+      useDanceOrderStore
+        .getState()
+        .setCategoryOrder("Latin", ["Jive", "Rumba", "Samba"]);
+      const { getByTestId } = await render(<PerformanceSetupScreen />);
+      const reset = getByTestId("performance-dance-order-reset");
+      expect(reset).not.toBeDisabled();
+
+      await fireEvent.press(reset);
+
+      expect(latinOrder()).toEqual([
+        "Samba",
+        "Cha-Cha-Cha",
+        "Rumba",
+        "Paso Doble",
+        "Jive",
+      ]);
+      expect(getByTestId("performance-dance-order-reset")).toBeDisabled();
+    });
+
+    it("disables the reset while the order is already official", async () => {
+      const { getByTestId } = await render(<PerformanceSetupScreen />);
+      expect(getByTestId("performance-dance-order-reset")).toBeDisabled();
+    });
   });
 });

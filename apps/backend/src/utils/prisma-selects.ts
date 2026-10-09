@@ -284,6 +284,8 @@ export const trackCorrectionTrackSnapshotSelect = {
   clashTimecodes: true,
   titleMasked: true,
   blacklisted: true,
+  // Audio file, for the back-office player (`/uploads/<filename>`).
+  filename: true,
 } as const;
 
 /**
@@ -366,6 +368,19 @@ export const trackCorrectionDecisionSelect = {
   track: {
     select: { title: true, artist: true, titleMasked: true, blacklisted: true },
   },
+} as const;
+
+/**
+ * Track fields an approved correction may change, read just before and just
+ * after the update inside the decision transaction: the audit row then holds
+ * what was really applied (MPM recalculated on a dance change, sorted clashes).
+ */
+export const trackCorrectionAuditTrackSelect = {
+  title: true,
+  artist: true,
+  style: true,
+  bpm: true,
+  clashTimecodes: true,
 } as const;
 
 /**

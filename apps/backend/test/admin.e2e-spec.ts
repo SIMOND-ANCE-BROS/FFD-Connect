@@ -33,6 +33,9 @@ const ADMIN_ROUTES: Array<
     "post",
     "/api/v1/admin/users/00000000-0000-4000-8000-000000000000/resend-invitation",
   ],
+  // Moderation queue: ADMIN-only per method on the shared track-corrections controller.
+  ["get", "/api/v1/track-corrections?status=PENDING&reason=MPM&q=paso"],
+  ["get", "/api/v1/track-corrections/00000000-0000-4000-8000-000000000000"],
 ];
 
 describe("Admin routes (e2e) — role matrix", () => {
@@ -160,5 +163,74 @@ describe("Admin routes (e2e) — role matrix", () => {
       .post("/api/v1/admin/club-accounts")
       .send({})
       .expect(404);
+  });
+
+  it("serves /pending-count and /mine before /:id", async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.trackCorrection.count.mockResolvedValue(4);
+    prisma.trackCorrection.findMany.mockResolvedValue([]);
+    const count = await request(server()).get(
+      "/api/v1/track-corrections/pending-count",
+    );
+    expect(count.status).toBe(200);
+    expect(count.body).toEqual({ count: 4 });
+
+    currentRole = UserRole.LICENSEE;
+    await request(server()).get("/api/v1/track-corrections/mine").expect(200);
+  });
+
+  it("parses repeated and comma-separated reasons and trims the search", async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.trackCorrection.count.mockResolvedValue(0);
+    prisma.trackCorrection.findMany.mockResolvedValue([]);
+    await request(server())
+      .get(
+        "/api/v1/track-corrections?status=PENDING&reason=MPM&reason=TITLE,DANCE&q=%20paso%20",
+      )
+      .expect(200);
+    expect(prisma.trackCorrection.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          status: "PENDING",
+          reason: { in: ["MPM", "TITLE", "DANCE"] },
+          track: {
+            OR: [
+              { title: { contains: "paso", mode: "insensitive" } },
+              { artist: { contains: "paso", mode: "insensitive" } },
+            ],
+          },
+        },
+      }),
+    );
+  });
+
+  it.each(["reason=NOPE", "q=p", "q=%20%20p%20"])(
+    "refuses the moderation filter %s (400)",
+    async (qs) => {
+      currentRole = UserRole.ADMIN;
+      await request(server())
+        .get(`/api/v1/track-corrections?${qs}`)
+        .expect(400);
+    },
+  );
+
+  it("GET /track-corrections/:id answers 404 for an unknown proposal", async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.trackCorrection.findUnique.mockResolvedValue(null);
+    await request(server())
+      .get("/api/v1/track-corrections/00000000-0000-4000-8000-000000000000")
+      .expect(404);
+  });
+
+  it("admin can filter the audit log on moderation decisions", async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.adminAuditLog.count.mockResolvedValue(0);
+    prisma.adminAuditLog.findMany.mockResolvedValue([]);
+    await request(server())
+      .get("/api/v1/admin/audit-log?targetType=TRACK_CORRECTION")
+      .expect(200);
+    expect(prisma.adminAuditLog.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { targetType: "TRACK_CORRECTION" } }),
+    );
   });
 });

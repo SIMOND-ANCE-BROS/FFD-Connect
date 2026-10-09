@@ -57,6 +57,7 @@ describe("useAudioPlayerLogic", () => {
 
     const playTrack = jest.fn();
     const setQueueTracks = jest.fn();
+    const removeFromQueue = jest.fn();
 
     (usePlayer as jest.Mock).mockReturnValue({
       currentTrack: queueTracks[0],
@@ -73,6 +74,7 @@ describe("useAudioPlayerLogic", () => {
       toggleShuffle: jest.fn(),
       queueTracks,
       setQueueTracks,
+      removeFromQueue,
     });
 
     // Act
@@ -287,6 +289,7 @@ describe("useAudioPlayerLogic", () => {
       { id: "2", title: "B", artist: "X", url: "", baseBpm: 124 },
     ];
     const setQueueTracks = jest.fn();
+    const removeFromQueue = jest.fn();
 
     (usePlayer as jest.Mock).mockReturnValue({
       currentTrack: queueTracks[1],
@@ -303,13 +306,14 @@ describe("useAudioPlayerLogic", () => {
       toggleShuffle: jest.fn(),
       queueTracks,
       setQueueTracks,
+      removeFromQueue,
     });
 
     const { result } = await renderHook(() => useAudioPlayerLogic());
 
     await act(() => result.current.actions.removeQueueTrack("2"));
 
-    expect(setQueueTracks).toHaveBeenCalled();
+    expect(removeFromQueue).toHaveBeenCalledWith("2");
   });
 
   it("handleNext with repeat Track stays on same track", async () => {
@@ -554,6 +558,7 @@ describe("useAudioPlayerLogic", () => {
     ];
     const resetPlayer = jest.fn().mockResolvedValue(undefined);
     const setQueueTracks = jest.fn();
+    const removeFromQueue = jest.fn();
 
     (usePlayer as jest.Mock).mockReturnValue({
       currentTrack: queueTracks[0],
@@ -570,12 +575,13 @@ describe("useAudioPlayerLogic", () => {
       toggleShuffle: jest.fn(),
       queueTracks,
       setQueueTracks,
+      removeFromQueue,
     });
 
     const { result } = await renderHook(() => useAudioPlayerLogic());
     await act(() => result.current.actions.removeQueueTrack("1"));
 
-    expect(setQueueTracks).toHaveBeenCalled();
+    expect(removeFromQueue).toHaveBeenCalledWith("1");
     expect(resetPlayer).toHaveBeenCalled();
   });
 
@@ -586,6 +592,7 @@ describe("useAudioPlayerLogic", () => {
     ];
     const playTrack = jest.fn();
     const setQueueTracks = jest.fn();
+    const removeFromQueue = jest.fn();
 
     (usePlayer as jest.Mock).mockReturnValue({
       currentTrack: queueTracks[0],
@@ -602,22 +609,63 @@ describe("useAudioPlayerLogic", () => {
       toggleShuffle: jest.fn(),
       queueTracks,
       setQueueTracks,
+      removeFromQueue,
     });
 
     const { result } = await renderHook(() => useAudioPlayerLogic());
     await act(() => result.current.actions.removeQueueTrack("1"));
 
-    expect(setQueueTracks).toHaveBeenCalled();
+    expect(removeFromQueue).toHaveBeenCalledWith("1");
     expect(playTrack).toHaveBeenCalledWith(
       expect.objectContaining({ id: "2" }),
       expect.arrayContaining([expect.objectContaining({ id: "2" })]),
     );
   });
 
+  it("moveQueueTrack forwards the reorder to the player store", async () => {
+    const queueTracks = [
+      { id: "1", title: "A", artist: "X", url: "", baseBpm: 120 },
+      { id: "2", title: "B", artist: "X", url: "", baseBpm: 124 },
+    ];
+    const moveQueueTrack = jest.fn();
+
+    (usePlayer as jest.Mock).mockReturnValue({
+      currentTrack: queueTracks[0],
+      isPlaying: false,
+      togglePlayback: jest.fn(),
+      isPlayerReady: true,
+      playTrack: jest.fn(),
+      resetPlayer: jest.fn(),
+      isLiked: jest.fn(() => false),
+      toggleLike: jest.fn(),
+      repeatMode: ContextRepeatMode.Off,
+      toggleRepeat: jest.fn(),
+      isShuffle: false,
+      toggleShuffle: jest.fn(),
+      queueTracks,
+      setQueueTracks: jest.fn(),
+      moveQueueTrack,
+    });
+
+    const { result } = await renderHook(() => useAudioPlayerLogic());
+    await act(() => result.current.actions.moveQueueTrack(1, 0));
+
+    expect(moveQueueTrack).toHaveBeenCalledWith(1, 0);
+  });
+
   describe("tempo lock", () => {
-    const trackA = { id: "a", title: "A", artist: "X", url: "", baseBpm: 30 };
-    const trackB = { id: "b", title: "B", artist: "X", url: "", baseBpm: 28 };
-    const playerWith = (currentTrack: typeof trackA) => ({
+    // Same style: a lock carries over from one to the other.
+    const trackA = {
+      id: "a",
+      title: "A",
+      artist: "X",
+      url: "",
+      baseBpm: 30,
+      style: "Waltz",
+    };
+    const trackB = { ...trackA, id: "b", title: "B", baseBpm: 28 };
+    type LockTrack = Omit<typeof trackA, "style"> & { style?: string };
+    const playerWith = (currentTrack: LockTrack | null) => ({
       currentTrack,
       isPlaying: true,
       togglePlayback: jest.fn(),
@@ -711,6 +759,228 @@ describe("useAudioPlayerLogic", () => {
       expect(result.current.state.bpm).toBe(33);
       expect(result.current.state.isTempoLocked).toBe(true);
       expect(TrackPlayer().setRate).not.toHaveBeenCalled();
+    });
+
+    describe("per dance style", () => {
+      const rumbaA = {
+        id: "r1",
+        title: "Rumba 1",
+        artist: "X",
+        url: "",
+        baseBpm: 23,
+        style: "Rumba",
+      };
+      const rumbaB = { ...rumbaA, id: "r2", title: "Rumba 2", baseBpm: 30 };
+      const paso = {
+        id: "p1",
+        title: "Paso",
+        artist: "X",
+        url: "",
+        baseBpm: 55,
+        style: "Paso Doble",
+      };
+      type StyledTrack = typeof rumbaA;
+      const show = async (
+        rerender: (props: object) => Promise<void> | void,
+        track: StyledTrack,
+      ) => {
+        (usePlayer as jest.Mock).mockReturnValue(playerWith(track));
+        await act(async () => {
+          await rerender({});
+        });
+      };
+      const expectConsistent = (state: {
+        bpm: number;
+        baseMpm: number;
+        minMpm: number;
+        maxMpm: number;
+        bpmDiff: number;
+      }) => {
+        expect(state.bpm).toBeGreaterThanOrEqual(state.minMpm);
+        expect(state.bpm).toBeLessThanOrEqual(state.maxMpm);
+        expect(state.bpmDiff).toBeCloseTo(state.bpm - state.baseMpm);
+        expect(TrackPlayer().setRate).toHaveBeenLastCalledWith(
+          state.bpm / state.baseMpm,
+        );
+      };
+
+      it("Rumba (locked 18) -> Paso -> Rumba keeps 18 and a consistent rate", async () => {
+        (usePlayer as jest.Mock).mockReturnValue(playerWith(rumbaA));
+        const { result, rerender } = await renderHook(() =>
+          useAudioPlayerLogic(),
+        );
+        await act(async () => {
+          await result.current.actions.changeBpm(18);
+        });
+        await act(async () => {
+          result.current.actions.toggleTempoLock();
+        });
+
+        // Paso has no lock of its own: unlocked, original tempo, never 18
+        // clamped to Min.
+        await show(rerender, paso);
+        expect(result.current.state.isTempoLocked).toBe(false);
+        expect(result.current.state.bpm).toBe(55);
+        expect(result.current.state.bpmDiff).toBe(0);
+        expectConsistent(result.current.state);
+
+        await show(rerender, rumbaA);
+        expect(result.current.state.isTempoLocked).toBe(true);
+        expect(result.current.state.bpm).toBe(18);
+        expect(result.current.state.bpmDiff).toBe(-5);
+        expect(result.current.state.minMpm).toBe(11.5);
+        expect(result.current.state.maxMpm).toBe(34.5);
+        expectConsistent(result.current.state);
+      });
+
+      it("keeps a separate lock for each style", async () => {
+        (usePlayer as jest.Mock).mockReturnValue(playerWith(rumbaA));
+        const { result, rerender } = await renderHook(() =>
+          useAudioPlayerLogic(),
+        );
+        await act(async () => {
+          await result.current.actions.changeBpm(20);
+        });
+        await act(async () => {
+          result.current.actions.toggleTempoLock();
+        });
+        await show(rerender, paso);
+        await act(async () => {
+          await result.current.actions.changeBpm(60);
+        });
+        await act(async () => {
+          result.current.actions.toggleTempoLock();
+        });
+        expect(usePlayerStore.getState().lockedMpmByStyle).toEqual({
+          rumba: 20,
+          "paso doble": 60,
+        });
+        await show(rerender, rumbaA);
+        expect(result.current.state.bpm).toBe(20);
+        await show(rerender, { ...paso, id: "p2" });
+        expect(result.current.state.bpm).toBe(60);
+        expectConsistent(result.current.state);
+      });
+
+      it("clamps a locked MPM outside the new track's range without overwriting the lock", async () => {
+        (usePlayer as jest.Mock).mockReturnValue(playerWith(rumbaB));
+        const { result, rerender } = await renderHook(() =>
+          useAudioPlayerLogic(),
+        );
+        await act(async () => {
+          await result.current.actions.changeBpm(44);
+        });
+        await act(async () => {
+          result.current.actions.toggleTempoLock();
+        });
+
+        // Same style, narrower range (11.5..34.5): played and shown at the max.
+        await show(rerender, rumbaA);
+        expect(result.current.state.bpm).toBe(34.5);
+        expectConsistent(result.current.state);
+
+        // The stored lock is intact: back on the wider track, 44 again.
+        await show(rerender, { ...rumbaB, id: "r3" });
+        expect(result.current.state.bpm).toBe(44);
+        expectConsistent(result.current.state);
+      });
+
+      it("unlocking one style keeps the other styles' locks", async () => {
+        (usePlayer as jest.Mock).mockReturnValue(playerWith(rumbaA));
+        const { result, rerender } = await renderHook(() =>
+          useAudioPlayerLogic(),
+        );
+        await act(async () => {
+          await result.current.actions.changeBpm(18);
+        });
+        await act(async () => {
+          result.current.actions.toggleTempoLock();
+        });
+        await show(rerender, paso);
+        await act(async () => {
+          await result.current.actions.changeBpm(58);
+        });
+        await act(async () => {
+          result.current.actions.toggleTempoLock();
+        });
+        // Unlock Paso only.
+        await act(async () => {
+          result.current.actions.toggleTempoLock();
+        });
+        expect(result.current.state.isTempoLocked).toBe(false);
+        expect(result.current.state.bpm).toBe(58);
+        expect(usePlayerStore.getState().lockedMpmByStyle).toEqual({
+          rumba: 18,
+        });
+
+        await show(rerender, { ...rumbaA, id: "r4" });
+        expect(result.current.state.isTempoLocked).toBe(true);
+        expect(result.current.state.bpm).toBe(18);
+      });
+
+      it("an unlocked style stays adjustable while another style is locked", async () => {
+        (usePlayer as jest.Mock).mockReturnValue(playerWith(rumbaA));
+        const { result, rerender } = await renderHook(() =>
+          useAudioPlayerLogic(),
+        );
+        await act(async () => {
+          await result.current.actions.changeBpm(18);
+        });
+        await act(async () => {
+          result.current.actions.toggleTempoLock();
+        });
+        await show(rerender, paso);
+        await act(async () => {
+          await result.current.actions.changeBpm(62);
+        });
+        expect(result.current.state.isTempoLocked).toBe(false);
+        expect(result.current.state.bpm).toBe(62);
+        expectConsistent(result.current.state);
+        // Adjusting Paso by hand never touches the Rumba lock (nor locks Paso).
+        expect(usePlayerStore.getState().lockedMpmByStyle).toEqual({
+          rumba: 18,
+        });
+        // A new Paso track starts at its original tempo again.
+        await show(rerender, { ...paso, id: "p3" });
+        expect(result.current.state.bpm).toBe(55);
+      });
+    });
+
+    it("never shares a lock between two tracks without a style", async () => {
+      const { style: _a, ...bareA } = trackA;
+      const { style: _b, ...bareB } = trackB;
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(bareA));
+      const { result, rerender } = await renderHook(() =>
+        useAudioPlayerLogic(),
+      );
+      await act(async () => {
+        await result.current.actions.changeBpm(27);
+      });
+      await act(async () => {
+        result.current.actions.toggleTempoLock();
+      });
+      expect(result.current.state.isTempoLocked).toBe(true);
+      expect(usePlayerStore.getState().lockedMpmByStyle).toEqual({
+        "track:a": 27,
+      });
+
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(bareB));
+      await act(async () => {
+        await rerender({});
+      });
+      expect(result.current.state.isTempoLocked).toBe(false);
+      expect(result.current.state.bpm).toBe(28);
+      expect(TrackPlayer().setRate).toHaveBeenLastCalledWith(1);
+    });
+
+    it("toggleTempoLock is a no-op when no track is loaded", async () => {
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(null));
+      const { result } = await renderHook(() => useAudioPlayerLogic());
+      await act(async () => {
+        result.current.actions.toggleTempoLock();
+      });
+      expect(usePlayerStore.getState().lockedMpmByStyle).toEqual({});
+      expect(result.current.state.isTempoLocked).toBe(false);
     });
 
     it("toggling the lock never changes the tempo", async () => {

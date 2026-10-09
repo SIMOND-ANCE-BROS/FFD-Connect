@@ -71,7 +71,7 @@ export function CompetitionDetail({
             </section>
             <a
               className="native-detail-guide"
-              href={sitePath('documentation/architecture/modules/competitions')}
+              href={sitePath('documentation/utilisateurs/danseurs/')}
             >
               Comprendre le module compétitions ↗
             </a>

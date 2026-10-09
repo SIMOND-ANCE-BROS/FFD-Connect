@@ -6,9 +6,16 @@ import { createLogger } from "../utils/logger";
 import { hasExtendedTrackData } from "../utils/typeGuards";
 import { setupPlayer } from "../features/player/services/TrackPlayerService";
 import { PlayerRepeatMode, TrackData } from "../features/player/types";
+import {
+  appendTrack,
+  insertNext,
+  moveTrack,
+  removeTrackById,
+  type QueueAddResult,
+} from "../features/player/utils/queueOps";
 
 export { PlayerRepeatMode };
-export type { TrackData };
+export type { QueueAddResult, TrackData };
 
 const logger = createLogger("player.store");
 
@@ -33,6 +40,34 @@ const reportPlaybackIssue = (where: string, detail?: unknown) => {
   }
 };
 
+const toTrackPlayerObject = (t: TrackData): TrackPlayerUtils.Track =>
+  ({
+    id: t.id,
+    url: t.url,
+    title: t.title,
+    artist: t.artist,
+    artwork: t.artwork ?? undefined,
+    pitchAlgorithm: TrackPlayerUtils.PitchAlgorithm.Music,
+    baseBpm: t.baseBpm,
+    style: t.style,
+    playlist: t.playlist,
+  }) as TrackPlayerUtils.Track;
+
+/**
+ * Pushes an edited queue (add / move / remove) to the native player WITHOUT
+ * reloading it: the current track keeps playing, only the upcoming order (used
+ * by natural advance, lock-screen ⏮ ⏭ and repeat-queue) changes.
+ */
+const syncNativeQueue = (queue: TrackData[], currentId: string): void => {
+  const currentIndex = queue.findIndex((t) => t.id === currentId);
+  if (currentIndex === -1) return;
+  void TrackPlayer.setQueue(queue.map(toTrackPlayerObject), currentIndex).catch(
+    (e: unknown) => {
+      logger.error("Failed to sync edited queue", e);
+    },
+  );
+};
+
 interface PlayerState {
   currentTrack: TrackData | null;
   isPlaying: boolean;
@@ -46,10 +81,14 @@ interface PlayerState {
    * Tempo (MPM) state, kept here — not in the player screen — so it survives
    * closing/reopening that screen. `tempo` = the MPM the given track plays at.
    */
-  tempoLocked: boolean;
-  lockedMpm: number | null;
+  /**
+   * Tempo lock, PER DANCE STYLE (see tempoStyleKey): a style is locked iff it
+   * has an entry. Not persisted (in-memory for the session).
+   */
+  lockedMpmByStyle: Partial<Record<string, number>>;
   tempo: { trackId: string; mpm: number } | null;
-  setTempoLocked: (locked: boolean, mpm?: number) => void;
+  /** Locks `style` at `mpm`, or removes only that style's lock with `null`. */
+  setStyleLock: (style: string, mpm: number | null) => void;
   setTempo: (trackId: string, mpm: number) => void;
 
   // Internal setters for PlayerStoreSync
@@ -64,6 +103,18 @@ interface PlayerState {
     playlist?: TrackData[],
     forceRestart?: boolean,
   ) => Promise<void>;
+  /** « Lire ensuite » — inserts the track right after the current one. */
+  playNext: (track: TrackData) => Promise<QueueAddResult>;
+  /** « Ajouter à la file » — appends the track at the end of the queue. */
+  addToQueue: (track: TrackData) => Promise<QueueAddResult>;
+  /** Drag-and-drop reorder of the queue (indexes in `queueTracks`). */
+  moveQueueTrack: (from: number, to: number) => void;
+  /**
+   * Removes a track from the queue (and the pre-shuffle order). The native
+   * queue is re-synced unless the removed track is the current one — the
+   * caller then decides what plays instead (see useAudioPlayerLogic).
+   */
+  removeFromQueue: (trackId: string) => void;
   togglePlayback: () => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
@@ -77,6 +128,41 @@ interface PlayerState {
   _resetForTests: () => void;
 }
 
+type QueueInsert = (
+  queue: TrackData[],
+  track: TrackData,
+  currentId: string | null,
+) => TrackData[];
+
+// Shared by playNext / addToQueue. With nothing loaded, adding starts a fresh
+// queue with that track instead of silently queueing it.
+const enqueue = async (
+  get: () => PlayerState,
+  set: (partial: Partial<PlayerState>) => void,
+  track: TrackData,
+  insert: QueueInsert,
+): Promise<QueueAddResult> => {
+  const { currentTrack, queueTracks, isShuffle, _originalQueue } = get();
+  if (!currentTrack) {
+    await get().playTrack(track, [track], true);
+    return get().currentTrack?.id === track.id ? "started" : "failed";
+  }
+  if (track.id === currentTrack.id) return "unchanged";
+
+  const base = queueTracks.length > 0 ? queueTracks : [currentTrack];
+  const next = insert(base, track, currentTrack.id);
+  set({
+    queueTracks: next,
+    // Keep the pre-shuffle order coherent: turning shuffle off must not drop
+    // the tracks added meanwhile.
+    ...(isShuffle
+      ? { _originalQueue: insert(_originalQueue, track, currentTrack.id) }
+      : {}),
+  });
+  syncNativeQueue(next, currentTrack.id);
+  return "queued";
+};
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTrack: null,
   isPlaying: false,
@@ -86,15 +172,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   likedTrackIds: [],
   repeatMode: PlayerRepeatMode.Off,
   isShuffle: false,
-  tempoLocked: false,
-  lockedMpm: null,
+  lockedMpmByStyle: {},
   tempo: null,
 
-  setTempoLocked: (locked, mpm) =>
-    set((st) => ({
-      tempoLocked: locked,
-      lockedMpm: locked && mpm !== undefined ? mpm : st.lockedMpm,
-    })),
+  setStyleLock: (style, mpm) =>
+    set((st) => {
+      const next = { ...st.lockedMpmByStyle };
+      if (mpm === null) delete next[style];
+      else next[style] = mpm;
+      return { lockedMpmByStyle: next };
+    }),
   setTempo: (trackId, mpm) => set({ tempo: { trackId, mpm } }),
 
   setIsPlaying: (v) => set({ isPlaying: v }),
@@ -156,19 +243,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       await TrackPlayer.setRepeatMode(trackPlayerMode);
     };
 
-    const toTrackPlayerObject = (t: TrackData): TrackPlayerUtils.Track =>
-      ({
-        id: t.id,
-        url: t.url,
-        title: t.title,
-        artist: t.artist,
-        artwork: t.artwork ?? undefined,
-        pitchAlgorithm: TrackPlayerUtils.PitchAlgorithm.Music,
-        baseBpm: t.baseBpm,
-        style: t.style,
-        playlist: t.playlist,
-      }) as TrackPlayerUtils.Track;
-
     if (playlist && playlist.length > 0) {
       try {
         set({ queueTracks: playlist });
@@ -207,6 +281,30 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       } catch (error) {
         reportPlaybackIssue("Erreur lecture piste", error);
       }
+    }
+  },
+
+  playNext: (track) => enqueue(get, set, track, insertNext),
+
+  addToQueue: (track) => enqueue(get, set, track, appendTrack),
+
+  moveQueueTrack: (from, to) => {
+    const { queueTracks, currentTrack } = get();
+    const next = moveTrack(queueTracks, from, to);
+    if (next === queueTracks) return;
+    set({ queueTracks: next });
+    if (currentTrack) syncNativeQueue(next, currentTrack.id);
+  },
+
+  removeFromQueue: (trackId) => {
+    const { queueTracks, _originalQueue, currentTrack } = get();
+    const next = removeTrackById(queueTracks, trackId);
+    set({
+      queueTracks: next,
+      _originalQueue: removeTrackById(_originalQueue, trackId),
+    });
+    if (currentTrack && currentTrack.id !== trackId) {
+      syncNativeQueue(next, currentTrack.id);
     }
   },
 
@@ -311,19 +409,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
 
       // Sync TrackPlayer native queue
-      const toTrackPlayerObject = (t: TrackData): TrackPlayerUtils.Track =>
-        ({
-          id: t.id,
-          url: t.url,
-          title: t.title,
-          artist: t.artist,
-          artwork: t.artwork ?? undefined,
-          pitchAlgorithm: TrackPlayerUtils.PitchAlgorithm.Music,
-          baseBpm: t.baseBpm,
-          style: t.style,
-          playlist: t.playlist,
-        }) as TrackPlayerUtils.Track;
-
       // Reorder the queue WITHOUT restarting the current track: it stays at
       // index 0 and keeps playing; only the upcoming order changes.
       void TrackPlayer.setQueue(shuffled.map(toTrackPlayerObject), 0).catch(
@@ -342,19 +427,6 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
 
       // Sync TrackPlayer native queue
-      const toTrackPlayerObject = (t: TrackData): TrackPlayerUtils.Track =>
-        ({
-          id: t.id,
-          url: t.url,
-          title: t.title,
-          artist: t.artist,
-          artwork: t.artwork ?? undefined,
-          pitchAlgorithm: TrackPlayerUtils.PitchAlgorithm.Music,
-          baseBpm: t.baseBpm,
-          style: t.style,
-          playlist: t.playlist,
-        }) as TrackPlayerUtils.Track;
-
       const currentIdx = currentTrack
         ? restored.findIndex((t) => t.id === currentTrack.id)
         : 0;
@@ -380,8 +452,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       likedTrackIds: [],
       repeatMode: PlayerRepeatMode.Off,
       isShuffle: false,
-      tempoLocked: false,
-      lockedMpm: null,
+      lockedMpmByStyle: {},
       tempo: null,
     });
   },

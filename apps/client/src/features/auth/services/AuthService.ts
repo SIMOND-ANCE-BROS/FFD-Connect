@@ -436,6 +436,9 @@ export const AuthService = {
     // Bascule : on efface les tokens admin (dont le refresh, pour éviter un
     // refresh silencieux qui reviendrait admin) puis on pose le token court.
     await clearTokens();
+    // The offline license snapshot belongs to the admin's session: it must
+    // neither be shown in the target's session nor survive the switch.
+    await clearLicenseSnapshot();
     const impConfig: AuthConfig = {
       ...currentConfig,
       isLoggedIn: true,
@@ -464,6 +467,9 @@ export const AuthService = {
     }
     const backup = await AsyncStorage.getItem(IMPERSONATION_BACKUP_KEY);
     await clearTokens();
+    // Session switch: no offline license snapshot crosses it (it is rebuilt at
+    // the admin's next online load).
+    await clearLicenseSnapshot();
     if (backup) {
       try {
         const cfg = JSON.parse(backup) as AuthConfig;

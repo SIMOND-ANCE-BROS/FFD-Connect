@@ -4,6 +4,12 @@ import TrackPlayer, { useProgress } from "../../../utils/TrackPlayerWrapper";
 import { usePerformanceStore } from "../../../stores/performance.store";
 import { usePlayerStore } from "../../../stores/player.store";
 import { ContextRepeatMode, TrackData, usePlayer } from "../context";
+import {
+  clampMpm,
+  mpmRange,
+  resolveBaseMpm,
+  tempoStyleKey,
+} from "../utils/tempo";
 
 export interface UseAudioPlayerLogicReturn {
   state: {
@@ -42,6 +48,7 @@ export interface UseAudioPlayerLogicReturn {
     closeQueue: () => void;
     playQueueTrack: (trackId: string) => Promise<void>;
     removeQueueTrack: (trackId: string) => void;
+    moveQueueTrack: (from: number, to: number) => void;
   };
 }
 
@@ -61,6 +68,8 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
     toggleShuffle,
     queueTracks,
     setQueueTracks,
+    moveQueueTrack,
+    removeFromQueue,
   } = usePlayer();
   const { handleError } = useErrorHandler();
   const [isLoading] = useState(false);
@@ -69,13 +78,16 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
   const [isQueueVisible, setIsQueueVisible] = useState(false);
 
   // BPM State — lives in the player store so it survives closing/reopening
-  // this screen. Tempo lock: the locked MPM itself is kept across track
-  // changes — each new track plays at that MPM (clamped to its ±50% range).
+  // this screen. Tempo lock is PER DANCE STYLE: the lock button locks or
+  // unlocks the current track's style only. A new track plays at its style's
+  // locked MPM (clamped to its own ±50% range, without overwriting the stored
+  // lock), or at its original tempo — freely adjustable — when its style is
+  // not locked. A Rumba lock (18 MPM) thus never drags a Paso Doble (~60 MPM)
+  // to the bottom of its range, and coming back to Rumba restores 18 exactly.
   const [isBpmVisible, setIsBpmVisible] = useState(false);
-  const isTempoLocked = usePlayerStore((s) => s.tempoLocked);
   const tempo = usePlayerStore((s) => s.tempo);
   const setTempo = usePlayerStore((s) => s.setTempo);
-  const setTempoLocked = usePlayerStore((s) => s.setTempoLocked);
+  const setStyleLock = usePlayerStore((s) => s.setStyleLock);
   const setPlaybackRate = usePlayerStore((s) => s.setPlaybackRate);
 
   useEffect(() => {
@@ -89,14 +101,15 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
   // Applies the tempo once per new track (not on remount, not on lock toggle).
   const currentTrackId = currentTrack?.id;
   const currentTrackBase = currentTrack?.baseBpm;
+  const currentStyleKey = tempoStyleKey(currentTrack?.style, currentTrack?.id);
+  const isTempoLocked = usePlayerStore(
+    (s) => s.lockedMpmByStyle[currentStyleKey] !== undefined,
+  );
   useEffect(() => {
     if (!currentTrackId || !isPlayerReady) return;
     const st = usePlayerStore.getState();
     if (st.tempo?.trackId === currentTrackId) return;
-    const newBase =
-      currentTrackBase && currentTrackBase > 0
-        ? Math.round(currentTrackBase)
-        : 123;
+    const newBase = resolveBaseMpm(currentTrackBase);
     // A competition plays on the same player at the original tempo (it resets
     // the rate itself): never carry the library tempo onto its tracks.
     const competition = usePerformanceStore.getState().status;
@@ -104,19 +117,15 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
       setTempo(currentTrackId, newBase);
       return;
     }
-    const target =
-      st.tempoLocked && st.lockedMpm !== null
-        ? Math.max(
-            Math.round(newBase * 0.5),
-            Math.min(st.lockedMpm, Math.round(newBase * 1.5)),
-          )
-        : newBase;
+    const locked = st.lockedMpmByStyle[currentStyleKey];
+    const target = locked === undefined ? newBase : clampMpm(locked, newBase);
     setTempo(currentTrackId, target);
     // Always set: the player re-applies its last rate to every new track.
     void setPlaybackRate(target / newBase);
   }, [
     currentTrackId,
     currentTrackBase,
+    currentStyleKey,
     isPlayerReady,
     setPlaybackRate,
     setTempo,
@@ -131,10 +140,14 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
     playlist: "Lecteur",
   };
 
-  const baseMpm = displayTrack.baseBpm ? Math.round(displayTrack.baseBpm) : 30;
-  const bpm = tempo?.trackId === displayTrack.id ? tempo.mpm : baseMpm;
-  const minMpm = baseMpm * 0.5;
-  const maxMpm = baseMpm * 1.5;
+  const baseMpm = resolveBaseMpm(displayTrack.baseBpm);
+  const { min: minMpm, max: maxMpm } = mpmRange(baseMpm);
+  // Clamped defensively so the label, the diff and the slider thumb can never
+  // disagree with the slider bounds (the rate is derived from the same value).
+  const bpm = clampMpm(
+    tempo?.trackId === displayTrack.id ? tempo.mpm : baseMpm,
+    baseMpm,
+  );
   const bpmDiff = bpm - baseMpm;
 
   // Navigation Logic
@@ -168,7 +181,9 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
     }
 
     const next = queueTracks.filter((track) => track.id !== trackId);
-    setQueueTracks(next);
+    // Updates the queue + pre-shuffle order and re-syncs the native queue when
+    // the removed track is not the one playing.
+    removeFromQueue(trackId);
 
     if (currentTrack?.id === trackId) {
       if (next.length === 0) {
@@ -271,11 +286,11 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
     if (!isPlayerReady || !currentTrack) {
       return;
     }
-    setTempo(currentTrack.id, value);
-    // A locked MPM follows the last value set by hand.
-    if (isTempoLocked) setTempoLocked(true, value);
-    const rate = value / baseMpm;
-    await setPlaybackRate(rate);
+    const mpm = clampMpm(value, baseMpm);
+    setTempo(currentTrack.id, mpm);
+    // A locked MPM follows the last value set by hand (for this style).
+    if (isTempoLocked) setStyleLock(currentStyleKey, mpm);
+    await setPlaybackRate(mpm / baseMpm);
   };
 
   const resetBpm = async () => {
@@ -325,8 +340,13 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
       handlePrev,
       changeBpm,
       resetBpm,
-      // Locking captures the MPM on screen.
-      toggleTempoLock: () => setTempoLocked(!isTempoLocked, bpm),
+      // Locks the current style at the MPM on screen, or removes only that
+      // style's lock; other styles' locks are untouched.
+      toggleTempoLock: () => {
+        // No track loaded: the screen shows a placeholder, nothing to lock.
+        if (!currentTrack) return;
+        setStyleLock(currentStyleKey, isTempoLocked ? null : bpm);
+      },
       setIsBpmVisible,
       seekTo,
       toggleLike: () => toggleLike(displayTrack.id),
@@ -336,6 +356,7 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
       closeQueue: () => setIsQueueVisible(false),
       playQueueTrack,
       removeQueueTrack,
+      moveQueueTrack,
     },
   };
 };

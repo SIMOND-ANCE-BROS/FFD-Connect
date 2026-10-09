@@ -302,6 +302,25 @@ jest.mock("react-native-draggable-flatlist", () => ({
   ShadowDecorator: ({ children }) => children,
   OpacityDecorator: ({ children }) => children,
   useOnCellActiveAnimation: jest.fn(),
+  // Nestable variants: a plain ScrollView, and every item rendered in order
+  // (drag is a no-op — tests reorder through the accessible controls).
+  NestableScrollContainer: (props) => {
+    const { ScrollView } = require("react-native");
+    return <ScrollView {...props} />;
+  },
+  NestableDraggableFlatList: ({ data, renderItem, keyExtractor }) => {
+    const { Fragment } = require("react");
+    return data.map((item, index) => (
+      <Fragment key={keyExtractor ? keyExtractor(item, index) : index}>
+        {renderItem({
+          item,
+          drag: jest.fn(),
+          isActive: false,
+          getIndex: () => index,
+        })}
+      </Fragment>
+    ));
+  },
 }));
 
 jest.mock("react-native-safe-area-context", () => {

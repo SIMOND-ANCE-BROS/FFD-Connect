@@ -18,6 +18,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { FadeInView } from "../../../components/AnimatedComponents";
 import { AppButton } from "../../../components/AppButton";
 import { AppText } from "../../../components/AppText";
+import { BetaNotice } from "../../../components/BetaNotice";
+import { BETA_NOTICES } from "../../../constants/betaNotices";
 import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
 import { theme } from "../../../theme";
@@ -86,6 +88,13 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                 Votre numéro de licence FFD est requis
               </AppText>
             </FadeInView>
+
+            <BetaNotice
+              title={BETA_NOTICES.register.title}
+              message={BETA_NOTICES.register.message}
+              style={styles.betaNotice}
+              testID="register-beta-notice"
+            />
 
             <View style={styles.formContainer}>
               {/* License Number */}
@@ -443,7 +452,10 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     alignItems: "center",
-    marginBottom: 32,
+    marginBottom: 24,
+  },
+  betaNotice: {
+    marginBottom: 24,
   },
   title: {
     marginBottom: 8,

@@ -92,4 +92,77 @@ describe('AuditLogPage', () => {
     expect(screen.getByText('Supprimé')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /voir la fiche/i })).toBeNull();
   });
+
+  it('links a moderation decision to its proposal, with a French label', async () => {
+    vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 'l4',
+            action: 'TRACK_CORRECTION_REJECT',
+            targetType: 'TRACK_CORRECTION',
+            targetId: 'c1',
+            before: null,
+            after: { trackId: 't1' },
+            actorId: 'a1',
+            actorName: 'Gabin S',
+            createdAt: '2026-10-09T10:00:00.000Z',
+          },
+        ],
+        meta: { total: 1, skip: 0, take: 50, hasMore: false },
+      },
+      error: undefined,
+    } as never);
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <AuditLogPage />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    expect(await screen.findByText('Proposition refusée')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Voir la proposition' })).toHaveAttribute(
+      'href',
+      '/moderation/c1',
+    );
+    // trackId alone is no change: the proposal link already gives the context.
+    expect(screen.queryByText('Musique')).toBeNull();
+    expect(screen.queryByText('Champ')).toBeNull();
+  });
+
+  it('hides the unchanged trackId of an approval but keeps the real changes', async () => {
+    vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 'l5',
+            action: 'TRACK_CORRECTION_APPROVE',
+            targetType: 'TRACK_CORRECTION',
+            targetId: 'c2',
+            before: { trackId: 't1', bpm: 60 },
+            after: { trackId: 't1', bpm: 62 },
+            actorId: 'a1',
+            actorName: 'Gabin S',
+            createdAt: '2026-10-09T10:00:00.000Z',
+          },
+        ],
+        meta: { total: 1, skip: 0, take: 50, hasMore: false },
+      },
+      error: undefined,
+    } as never);
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <AuditLogPage />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    expect(await screen.findByText('Proposition approuvée')).toBeInTheDocument();
+    expect(screen.getByText('MPM')).toBeInTheDocument();
+    expect(screen.queryByText('Musique')).toBeNull();
+  });
 });

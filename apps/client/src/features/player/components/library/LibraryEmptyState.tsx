@@ -1,4 +1,4 @@
-import { Heart, Music, Search } from "lucide-react-native";
+import { Heart, Music, Search, WifiOff } from "lucide-react-native";
 import React from "react";
 import { View } from "react-native";
 import { AppText } from "../../../../components/AppText";
@@ -9,13 +9,24 @@ interface LibraryEmptyStateProps {
   currentTheme: AppTheme;
   activeTab: "default" | "style" | "likes";
   searchQuery: string;
+  /** Offline with nothing loaded: say so instead of "bibliothèque vide". */
+  isOffline?: boolean;
 }
 
 const getEmptyMessage = (
   activeTab: string,
   searchQuery: string,
   currentTheme: AppTheme,
+  isOffline: boolean,
 ) => {
+  if (isOffline && activeTab !== "likes" && !searchQuery) {
+    return {
+      title: "Hors ligne",
+      subtitle:
+        "La bibliothèque n'a pas pu être chargée. Reconnectez-vous pour l'afficher.",
+      icon: <WifiOff size={48} color={currentTheme.textSecondary} />,
+    };
+  }
   if (searchQuery) {
     return {
       title: "Aucun résultat",
@@ -50,8 +61,14 @@ export const LibraryEmptyState = ({
   currentTheme,
   activeTab,
   searchQuery,
+  isOffline = false,
 }: LibraryEmptyStateProps) => {
-  const emptyState = getEmptyMessage(activeTab, searchQuery, currentTheme);
+  const emptyState = getEmptyMessage(
+    activeTab,
+    searchQuery,
+    currentTheme,
+    isOffline,
+  );
 
   return (
     <View style={styles.emptyContainer}>

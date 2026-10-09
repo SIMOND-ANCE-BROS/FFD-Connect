@@ -1,13 +1,8 @@
 import { useNavigation } from "@react-navigation/native";
 import { Plus } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
+import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -18,9 +13,17 @@ import { BackButton } from "../../../components/BackButton";
 import { PinnedHeader } from "../../../components/PinnedHeader";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import { useTheme } from "../../../context/ThemeContext";
+import { DanceOrderEditor } from "../components/DanceOrderEditor";
 import { RoundCard } from "../components/RoundCard";
 import { usePerformanceEngine } from "../hooks/usePerformanceEngine";
-import { usePerformanceStore } from "../../../stores/performance.store";
+import {
+  isOfficialOrder,
+  useDanceOrderStore,
+} from "../../../stores/danceOrder.store";
+import {
+  usePerformanceStore,
+  type Category,
+} from "../../../stores/performance.store";
 import {
   addGroup,
   addRound,
@@ -31,6 +34,8 @@ import {
   setRoundType,
   toggleRoundDance,
 } from "../utils/competitionProgram";
+
+const CATEGORIES: Category[] = ["Standard", "Latin"];
 
 export const PerformanceSetupScreen = () => {
   const { theme: currentTheme, isDark } = useTheme();
@@ -71,6 +76,14 @@ export const PerformanceSetupScreen = () => {
     setConfig((prev) => ({ ...prev, [key]: value }));
   };
 
+  const danceOrder = useDanceOrderStore((s) => s.danceOrder);
+  const setCategoryOrder = useDanceOrderStore((s) => s.setCategoryOrder);
+  const resetDanceOrder = useDanceOrderStore((s) => s.resetDanceOrder);
+  // Only the categories danced somewhere in the programme are reorderable.
+  const programCategories = CATEGORIES.filter((c) =>
+    config.rounds.some((r) => r.groups.includes(c)),
+  );
+
   const hasPaso = config.rounds.some(
     (r) => r.groups.includes("Latin") && r.dances.Latin.some(isPasoDoble),
   );
@@ -106,7 +119,7 @@ export const PerformanceSetupScreen = () => {
       style={[styles.container, { backgroundColor: currentTheme.background }]}
       edges={["left", "right"]}
     >
-      <ScrollView
+      <NestableScrollContainer
         contentContainerStyle={{
           ...styles.content,
           paddingTop: headerH,
@@ -138,6 +151,7 @@ export const PerformanceSetupScreen = () => {
                 setConfig(toggleRoundDance(round.id, category, dance))
               }
               onDelete={() => setConfig(removeRound(round.id))}
+              danceOrder={danceOrder}
             />
           ))}
           <TouchableOpacity
@@ -156,6 +170,25 @@ export const PerformanceSetupScreen = () => {
               Ajouter un tour
             </AppText>
           </TouchableOpacity>
+        </View>
+
+        {/* Dance order (per category, every round), persisted on the device */}
+        <View style={styles.section}>
+          <AppText
+            variant="caption"
+            weight="600"
+            color={currentTheme.textSecondary}
+            style={styles.sectionLabel}
+          >
+            Ordre des danses
+          </AppText>
+          <DanceOrderEditor
+            categories={programCategories}
+            danceOrder={danceOrder}
+            isOfficial={isOfficialOrder(danceOrder)}
+            onChange={setCategoryOrder}
+            onReset={() => resetDanceOrder()}
+          />
         </View>
 
         {/* Durations */}
@@ -288,7 +321,7 @@ export const PerformanceSetupScreen = () => {
             </AppText>
           )}
         </View>
-      </ScrollView>
+      </NestableScrollContainer>
 
       <PinnedHeader
         theme={currentTheme}

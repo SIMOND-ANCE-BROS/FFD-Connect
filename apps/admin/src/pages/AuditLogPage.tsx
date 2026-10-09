@@ -12,6 +12,30 @@ const PAGE_SIZE = 50;
 
 const DELETIONS: AuditLogEntryDto['action'][] = ['USER_DELETE', 'CLUB_DELETE'];
 
+const TARGET_LINKS: Record<AuditLogEntryDto['targetType'], { path: string; label: string }> = {
+  USER: { path: 'users', label: 'Voir la fiche' },
+  CLUB: { path: 'clubs', label: 'Voir le club' },
+  TRACK_CORRECTION: { path: 'moderation', label: 'Voir la proposition' },
+};
+
+/**
+ * Moderation rows carry the track id for the audit trail only: shown as a raw
+ * `uuid → uuid` line it says nothing (the proposal link gives the context), so
+ * it is hidden when unchanged or when it is the only key (a rejection).
+ */
+function visibleChange(entry: AuditLogEntryDto) {
+  const before = { ...(entry.before ?? {}) };
+  const after = { ...(entry.after ?? {}) };
+  if (entry.targetType === 'TRACK_CORRECTION') {
+    const sole = Object.keys(after).length === 1;
+    if (sole || before.trackId === after.trackId) {
+      delete before.trackId;
+      delete after.trackId;
+    }
+  }
+  return Object.keys(after).length > 0 ? { before, after } : null;
+}
+
 function Target({ entry }: { entry: AuditLogEntryDto }) {
   if (DELETIONS.includes(entry.action)) {
     return (
@@ -20,10 +44,10 @@ function Target({ entry }: { entry: AuditLogEntryDto }) {
       </Text>
     );
   }
-  const isUser = entry.targetType === 'USER';
+  const link = TARGET_LINKS[entry.targetType];
   return (
-    <Anchor component={Link} to={`/${isUser ? 'users' : 'clubs'}/${entry.targetId}`}>
-      {isUser ? 'Voir la fiche' : 'Voir le club'}
+    <Anchor component={Link} to={`/${link.path}/${entry.targetId}`}>
+      {link.label}
     </Anchor>
   );
 }
@@ -56,19 +80,22 @@ export function AuditLogPage() {
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {log.data.data.map((e) => (
-            <Table.Tr key={e.id}>
-              <Table.Td>{dayjs(e.createdAt).format('DD/MM/YYYY HH:mm')}</Table.Td>
-              <Table.Td>{e.actorName ?? 'admin supprimé'}</Table.Td>
-              <Table.Td>{ACTION_LABELS[e.action] ?? e.action}</Table.Td>
-              <Table.Td>
-                <Target entry={e} />
-              </Table.Td>
-              <Table.Td>
-                {e.after && <ChangeSummary before={e.before ?? {}} after={e.after} />}
-              </Table.Td>
-            </Table.Tr>
-          ))}
+          {log.data.data.map((e) => {
+            const change = visibleChange(e);
+            return (
+              <Table.Tr key={e.id}>
+                <Table.Td>{dayjs(e.createdAt).format('DD/MM/YYYY HH:mm')}</Table.Td>
+                <Table.Td>{e.actorName ?? 'admin supprimé'}</Table.Td>
+                <Table.Td>{ACTION_LABELS[e.action] ?? e.action}</Table.Td>
+                <Table.Td>
+                  <Target entry={e} />
+                </Table.Td>
+                <Table.Td>
+                  {change && <ChangeSummary before={change.before} after={change.after} />}
+                </Table.Td>
+              </Table.Tr>
+            );
+          })}
         </Table.Tbody>
       </Table>
       {total > PAGE_SIZE && (

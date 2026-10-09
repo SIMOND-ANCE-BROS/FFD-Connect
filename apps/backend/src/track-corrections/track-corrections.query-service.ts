@@ -23,6 +23,14 @@ import {
 const DEFAULT_SKIP = 0;
 const DEFAULT_TAKE = 10;
 
+/** Case-insensitive search on the track title OR artist (admin view: real title). */
+const trackSearchWhere = (q: string): Prisma.TrackWhereInput => ({
+  OR: [
+    { title: { contains: q, mode: "insensitive" } },
+    { artist: { contains: q, mode: "insensitive" } },
+  ],
+});
+
 /**
  * Lectures des propositions de correction : file de modération (ADMIN),
  * propositions de l'appelant et compteur pour le badge admin.
@@ -57,9 +65,13 @@ export class TrackCorrectionsQueryService {
   ): Promise<TrackCorrectionAdminPageDto> {
     const skip = query.skip ?? DEFAULT_SKIP;
     const take = query.take ?? DEFAULT_TAKE;
-    const where: Prisma.TrackCorrectionWhereInput = query.status
-      ? { status: query.status }
-      : {};
+    // Without reason/q the where is exactly the one of lot 1 (mobile contract).
+    const where: Prisma.TrackCorrectionWhereInput = {
+      ...(query.status && { status: query.status }),
+      ...(query.reason &&
+        query.reason.length > 0 && { reason: { in: query.reason } }),
+      ...(query.q && { track: trackSearchWhere(query.q) }),
+    };
     const orderBy: Prisma.TrackCorrectionOrderByWithRelationInput = {
       createdAt:
         query.status === TrackCorrectionStatus.PENDING ? "asc" : "desc",

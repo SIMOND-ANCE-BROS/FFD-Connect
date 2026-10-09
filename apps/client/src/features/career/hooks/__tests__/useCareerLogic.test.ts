@@ -123,6 +123,100 @@ describe("useCareerLogic", () => {
 
       expect(mockGetMyCareer.mock.calls.length).toBe(callsBefore + 1);
     });
+
+    it("never flags the first load as a pull-to-refresh", async () => {
+      mockGetMyCareer.mockResolvedValue(mockCareerData);
+
+      const { result } = await renderHook(() => useCareerLogic());
+
+      // First load: the screen's own loader, not the RefreshControl spinner.
+      expect(result.current.refreshing).toBe(false);
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.refreshing).toBe(false);
+    });
+
+    it("flags refreshing only while a pull-to-refresh is in flight", async () => {
+      mockGetMyCareer.mockResolvedValue(mockCareerData);
+      const { result } = await renderHook(() => useCareerLogic());
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      let resolveFetch: (v: typeof mockCareerData) => void = () => {};
+      mockGetMyCareer.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFetch = resolve;
+          }),
+      );
+
+      let pending: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pending = result.current.refresh();
+      });
+      await waitFor(() => expect(result.current.refreshing).toBe(true));
+
+      await act(async () => {
+        resolveFetch(mockCareerData);
+        await pending;
+      });
+      expect(result.current.refreshing).toBe(false);
+    });
+  });
+
+  describe("first load vs pull-to-refresh", () => {
+    const emptyCareer = { partnerships: [], registrations: [], results: [] };
+
+    beforeEach(() => {
+      mockAuth.getAuthConfig.mockResolvedValue({
+        authToken: "token-abc",
+        isLoggedIn: true,
+      });
+    });
+
+    it("flags only the very first load as isFirstLoad", async () => {
+      let resolveFetch: (v: typeof emptyCareer) => void = () => {};
+      mockGetMyCareer.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFetch = resolve;
+          }),
+      );
+      const { result } = await renderHook(() => useCareerLogic());
+      await waitFor(() => expect(mockGetMyCareer).toHaveBeenCalled());
+      expect(result.current.isFirstLoad).toBe(true);
+
+      await act(async () => {
+        resolveFetch(emptyCareer);
+      });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.isFirstLoad).toBe(false);
+    });
+
+    it("never flags a pull-to-refresh on an empty career as isFirstLoad", async () => {
+      mockGetMyCareer.mockResolvedValue(emptyCareer);
+      const { result } = await renderHook(() => useCareerLogic());
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      let resolveFetch: (v: typeof emptyCareer) => void = () => {};
+      mockGetMyCareer.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFetch = resolve;
+          }),
+      );
+      let pending: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pending = result.current.refresh();
+      });
+      await waitFor(() => expect(result.current.loading).toBe(true));
+      expect(result.current.refreshing).toBe(true);
+      expect(result.current.isFirstLoad).toBe(false);
+
+      await act(async () => {
+        resolveFetch(emptyCareer);
+        await pending;
+      });
+      expect(result.current.isFirstLoad).toBe(false);
+    });
   });
 
   describe("when fetch fails", () => {
