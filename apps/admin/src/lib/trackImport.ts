@@ -1,7 +1,7 @@
 import type { AdminTracksControllerCreateData } from '../api/generated/types.gen';
 import { apiErrorMessage, isConflict } from './apiError';
 import { readText } from './files';
-import type { Id3Tags } from './id3';
+import type { Id3Picture, Id3Tags } from './id3';
 import { calculateMpm, type DanceKey, normalizeDance } from './mpm';
 import { AMBIANCE, type StyleOption } from './tracks';
 
@@ -135,12 +135,15 @@ export async function sortFiles(files: readonly File[]): Promise<PickedFiles> {
   for (const file of files) {
     const name = nfc(file.name);
     const lower = name.toLowerCase();
+    // macOS archives carry AppleDouble companions (`._song.mp3`, `__MACOSX/`):
+    // metadata, not audio, whatever their extension says.
+    if (name.startsWith('.') || nfc(file.webkitRelativePath || '').includes('__MACOSX/')) continue;
     if (lower.endsWith('.mp3')) picked.audio.push(file);
     else if (/\.(jpe?g|png)$/.test(lower)) picked.images.set(name, file);
     else if (lower === 'manifest.json') {
       picked.manifest = parseManifest(await readText(file));
       picked.manifestInvalid = picked.manifest === null;
-    } else if (!name.startsWith('.')) picked.ignored.push(name);
+    } else picked.ignored.push(name);
   }
   picked.audio.sort((a, b) => nfc(a.name).localeCompare(nfc(b.name)));
   return picked;
@@ -189,6 +192,21 @@ function siblingImage(base: string, images: Map<string, File>): File | undefined
 }
 
 /**
+ * Embedded covers in JPEG or PNG; some taggers write the non-standard
+ * `image/jpg`. The server sniffs the bytes anyway, so the MIME only filters.
+ */
+const COVER_MIMES: Record<string, string> = {
+  'image/jpeg': 'image/jpeg',
+  'image/jpg': 'image/jpeg',
+  'image/png': 'image/png',
+};
+
+function embeddedCover(picture: Id3Picture | undefined): Blob | null {
+  const type = picture ? COVER_MIMES[picture.mime.toLowerCase()] : undefined;
+  return picture && type ? new Blob([picture.data], { type }) : null;
+}
+
+/**
  * Pre-fill of one row, in the browser (nothing is sent): the manifest entry
  * when it lists the file; otherwise the ID3 tags, completed by the track-prep
  * file name; otherwise the file name without extension as title.
@@ -230,10 +248,7 @@ export async function buildRow(
   const tags = await sources.readTags(file);
   const fromName = parseTrackPrepName(name);
   const base = name.replace(/\.mp3$/i, '');
-  const picture =
-    tags?.picture && (tags.picture.mime === 'image/jpeg' || tags.picture.mime === 'image/png')
-      ? new Blob([tags.picture.data], { type: tags.picture.mime })
-      : null;
+  const picture = embeddedCover(tags?.picture);
   return {
     ...row,
     title: tags?.title ?? fromName?.title ?? base,

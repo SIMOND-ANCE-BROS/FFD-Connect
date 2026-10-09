@@ -215,6 +215,32 @@ describe('TrackImportPage', () => {
     expect((create.mock.calls[2][0] as CreateOptions).body.title).toBe('A');
   });
 
+  it('treats a saturated tempo analysis (503) as a failure the retry re-sends', async () => {
+    checkAnswers({ exists: false });
+    let firstTry = true;
+    const create = createImpl((options) => {
+      if (firstTry) {
+        firstTry = false;
+        return failure({
+          statusCode: 503,
+          message: 'Analyse du tempo saturée, réessayez dans un instant.',
+        });
+      }
+      return ok({ id: `new-${options.body.title}` });
+    });
+    renderPage();
+    pick([tagged('a.mp3', 'A', 'X', 'Rumba')]);
+    await waitFor(() => expect(importButton()).toBeEnabled());
+
+    await userEvent.click(importButton());
+
+    expect(await screen.findByText('0 importées, 0 doublons, 1 échecs')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Réessayer les échecs' }));
+
+    expect(await screen.findByText('1 importées, 0 doublons, 0 échecs')).toBeInTheDocument();
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
   it('counts a 409 during the send as a duplicate, with a link to the existing track', async () => {
     checkAnswers({ exists: false });
     createImpl(() =>

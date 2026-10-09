@@ -151,6 +151,26 @@ describe('building the rows', () => {
     expect((await sortFiles([broken])).manifestInvalid).toBe(true);
   });
 
+  it('skips AppleDouble files and anything under __MACOSX/', async () => {
+    const inMacosx = (name: string, path: string) => {
+      const file = new File(['x'], name);
+      Object.defineProperty(file, 'webkitRelativePath', { value: path });
+      return file;
+    };
+    const picked = await sortFiles([
+      new File(['x'], '._song.mp3'),
+      new File(['x'], '._song.jpg'),
+      new File(['x'], '._manifest.json'),
+      inMacosx('song.mp3', 'export/__MACOSX/song.mp3'),
+      inMacosx('cover.jpg', '__MACOSX/export/cover.jpg'),
+      inMacosx('song.mp3', 'export/song.mp3'),
+    ]);
+    expect(picked.audio.map((f) => f.webkitRelativePath)).toEqual(['export/song.mp3']);
+    expect(picked.images.size).toBe(0);
+    expect(picked.manifest).toBeNull();
+    expect(picked.ignored).toEqual([]);
+  });
+
   it('takes everything from the manifest when it lists the file', async () => {
     const audio = new File(['x'], '01-JIVE ｜ E - M (42 MPM).mp3');
     const cover = new File(['x'], '01.jpg');
@@ -198,6 +218,13 @@ describe('building the rows', () => {
     expect(built).toMatchObject({ title: 'Banto', artist: 'DJ Maksy', style: 'Samba', mpm: 51 });
     expect(built.rawBpm).toBeUndefined();
     expect(built.sourceKey).toBeUndefined();
+    expect(built.artwork?.type).toBe('image/jpeg');
+  });
+
+  it('accepts an embedded cover declared as image/jpg', async () => {
+    const audio = mp3File('song.mp3', mp3Bytes([pictureFrame('image/jpg', JPEG_BYTES)]));
+    const built = await buildRow(audio, await sortFiles([audio]), sources);
+    expect(built.artwork).not.toBeNull();
     expect(built.artwork?.type).toBe('image/jpeg');
   });
 
@@ -351,6 +378,12 @@ describe('upload', () => {
       state: 'failed',
       error: "Le fichier audio n'est pas un MP3.",
     });
+    for (const statusCode of [429, 503]) {
+      expect(uploadOutcome({ error: { statusCode, message: 'Réessayez' } })).toEqual({
+        state: 'failed',
+        error: 'Réessayez',
+      });
+    }
   });
 
   it('never runs more uploads at once than the limit, and runs them all', async () => {
