@@ -78,11 +78,37 @@ export class UpdateAdminUserDto {
   @IsEnum(PassportLevel)
   passportLevelStandard?: PassportLevel | null;
 
-  @ApiPropertyOptional({ nullable: true, enum: [...COMPETITION_LEVELS, null] })
+  @ApiPropertyOptional({
+    nullable: true,
+    enum: [...COMPETITION_LEVELS, null],
+    deprecated: true,
+    description:
+      "Ancien niveau unique. Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard.",
+  })
   @ValidateIf(notNull)
   @IsOptional()
   @IsIn(COMPETITION_LEVELS)
   competitionLevel?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    enum: [...COMPETITION_LEVELS, null],
+    description: "Niveau de compétition en Latines",
+  })
+  @ValidateIf(notNull)
+  @IsOptional()
+  @IsIn(COMPETITION_LEVELS)
+  competitionLevelLatin?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    enum: [...COMPETITION_LEVELS, null],
+    description: "Niveau de compétition en Standards",
+  })
+  @ValidateIf(notNull)
+  @IsOptional()
+  @IsIn(COMPETITION_LEVELS)
+  competitionLevelStandard?: string | null;
 
   @ApiPropertyOptional({ nullable: true, type: Number })
   @ValidateIf(notNull)

@@ -1,7 +1,10 @@
 import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Prisma, RegistrationStatus, UserRole } from "@prisma/client";
 import { hasRole } from "../../auth/roles";
-import { userRolesClubSelect } from "../../utils/prisma-selects";
+import {
+  userEligibilityProfileSelect,
+  userRolesClubSelect,
+} from "../../utils/prisma-selects";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../../common/utils/pagination.util";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -140,8 +143,7 @@ export class CompetitionQueryService {
         where: { id: userId },
         select: {
           ...userRolesClubSelect,
-          category: true,
-          ageGroup: true,
+          ...userEligibilityProfileSelect,
         },
       });
       result = enrichCompetitionsForUser(competitions, user);
@@ -244,17 +246,13 @@ export class CompetitionQueryService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { ageGroup: true, category: true },
+      select: userEligibilityProfileSelect,
     });
-
-    const registrantAgeGroup = user?.ageGroup?.trim() ?? null;
-    const registrantCategory = user?.category?.trim() ?? null;
 
     const eventsWithEligibility = mapEventsWithEligibility(
       competition.events,
       competition,
-      registrantAgeGroup,
-      registrantCategory,
+      user,
     );
 
     return { ...competition, events: eventsWithEligibility };

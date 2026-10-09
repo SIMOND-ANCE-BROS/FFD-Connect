@@ -22,7 +22,7 @@ import { getAllowedLevelsForAgeGroup } from "../../common/age-group";
  * Bump when the parsing rules change: it is part of the stored fingerprint, so
  * a new version re-processes every competition on the next sync.
  */
-export const FFD_EVENTS_PARSER_VERSION = 2;
+export const FFD_EVENTS_PARSER_VERSION = 3;
 
 export type DeducedEventKind = "CLASSIFICATRICE" | "OPEN" | "MAJEURE";
 export type DeducedEventType = "COUPLE" | "SOLO";
@@ -440,9 +440,13 @@ class EventCollector {
     category: DeducedCategory,
     levels: DeducedLevel[],
   ): void {
-    // Levels define classificatrices; opens and majeures group all levels.
+    // 10 danses épreuves are only majeures (both disciplines, no level).
+    // Otherwise levels define classificatrices; opens and majeures group all
+    // levels.
     const eventKind: DeducedEventKind | null =
-      kind ?? (levels.length > 0 ? "CLASSIFICATRICE" : null);
+      category === "Ten Dance"
+        ? "MAJEURE"
+        : (kind ?? (levels.length > 0 ? "CLASSIFICATRICE" : null));
     const effectiveLevels: (DeducedLevel | null)[] =
       eventKind === "OPEN" || eventKind === "MAJEURE" || levels.length === 0
         ? [null]

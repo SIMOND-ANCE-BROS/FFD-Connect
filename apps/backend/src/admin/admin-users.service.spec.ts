@@ -28,6 +28,8 @@ const current = {
   passportLevelLatin: null,
   passportLevelStandard: null,
   competitionLevel: null,
+  competitionLevelLatin: null,
+  competitionLevelStandard: null,
   nationalRanking: 12,
   role: UserRole.LICENSEE,
   extraRoles: [] as UserRole[],
@@ -82,6 +84,28 @@ describe("AdminUsersService.update", () => {
       after: { lastName: "Durand" },
     });
     expect(query.detail).toHaveBeenCalledWith("u1");
+  });
+
+  it("stores a different competition level per discipline", async () => {
+    await service.update("admin-1", "u1", {
+      competitionLevelLatin: "International",
+      competitionLevelStandard: "Débutant",
+    });
+
+    expect(prisma.user.update.mock.calls[0][0].data).toEqual({
+      competitionLevelLatin: "International",
+      competitionLevelStandard: "Débutant",
+    });
+  });
+
+  it("mirrors a legacy single level (older back-office) to both disciplines", async () => {
+    await service.update("admin-1", "u1", { competitionLevel: "Avancé" });
+
+    expect(prisma.user.update.mock.calls[0][0].data).toEqual({
+      competitionLevel: "Avancé",
+      competitionLevelLatin: "Avancé",
+      competitionLevelStandard: "Avancé",
+    });
   });
 
   it("syncs clubName when clubId changes", async () => {

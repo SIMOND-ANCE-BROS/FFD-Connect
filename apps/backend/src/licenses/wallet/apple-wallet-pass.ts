@@ -1,3 +1,4 @@
+import { disciplineLabel } from "../../common/competition-level";
 import { LICENSE_QR_TIME_ZONE, toLicenseQrExpiry } from "../qr/license-qr";
 
 /**
@@ -155,7 +156,11 @@ export function buildApplePassJson(input: BuildApplePassInput): ApplePassJson {
       primaryFields: [{ key: "holder", label: "Titulaire", value: holder }],
       secondaryFields: [
         { key: "number", label: "N° de licence", value: license.number },
-        { key: "category", label: "Type", value: license.category },
+        {
+          key: "category",
+          label: "Type",
+          value: disciplineLabel(license.category),
+        },
       ],
       auxiliaryFields: [
         {

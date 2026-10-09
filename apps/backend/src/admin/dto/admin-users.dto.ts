@@ -103,9 +103,18 @@ export class AdminUserDetailDto extends AdminUserListItemDto {
     nullable: true,
   })
   passportLevelStandard!: PassportLevel | null;
-  @ApiProperty({ nullable: true, type: String }) competitionLevel!:
-    | string
-    | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    deprecated: true,
+    description:
+      "Ancien niveau unique (repli) — préférer les niveaux par discipline",
+  })
+  competitionLevel!: string | null;
+  @ApiProperty({ nullable: true, type: String })
+  competitionLevelLatin!: string | null;
+  @ApiProperty({ nullable: true, type: String })
+  competitionLevelStandard!: string | null;
   @ApiProperty({ nullable: true, type: String }) wdsfMin!: string | null;
   @ApiProperty({ nullable: true, type: Date }) wdsfExpiresOn!: Date | null;
   @ApiProperty({ nullable: true, type: String }) licenseNumber!: string | null;

@@ -514,6 +514,108 @@ describe("CompetitionQueryService (integration with real DB)", () => {
       await prisma.user.delete({ where: { id: userWrongCat.id } });
     });
 
+    it("Reads the competition level of the EVENT discipline, Ten Dance needs both disciplines", async () => {
+      const comp = await prisma.competition.create({
+        data: {
+          title: `Query Per-Discipline ${suffix}`,
+          date: new Date(Date.now() + 30 * 86_400_000),
+          location: "Lyon",
+          competitionType: "NATIONALE",
+        },
+      });
+      const [latinAvance, standardAvance, tenDance] = await Promise.all([
+        prisma.event.create({
+          data: {
+            competitionId: comp.id,
+            category: "Latin",
+            ageGroup: "Adulte",
+            eventType: "COUPLE",
+            eventKind: "CLASSIFICATRICE",
+            level: "Avancé",
+          },
+        }),
+        prisma.event.create({
+          data: {
+            competitionId: comp.id,
+            category: "Standard",
+            ageGroup: "Adulte",
+            eventType: "COUPLE",
+            eventKind: "CLASSIFICATRICE",
+            level: "Avancé",
+          },
+        }),
+        prisma.event.create({
+          data: {
+            competitionId: comp.id,
+            category: "Ten Dance",
+            ageGroup: "Adulte",
+            eventType: "COUPLE",
+            eventKind: "MAJEURE",
+          },
+        }),
+      ]);
+      const [bothDisciplines, latinOnly] = await Promise.all([
+        prisma.user.create({
+          data: {
+            email: `perdiscipline-both-${suffix}@test.com`,
+            password: "hashed",
+            firstName: "Both",
+            lastName: `Query${suffix}`,
+            role: UserRole.LICENSEE,
+            ageGroup: "Adulte",
+            category: "Latin",
+            competitionLevelLatin: "International",
+            competitionLevelStandard: "Débutant",
+          },
+        }),
+        prisma.user.create({
+          data: {
+            email: `perdiscipline-latin-${suffix}@test.com`,
+            password: "hashed",
+            firstName: "Latin",
+            lastName: `Query${suffix}`,
+            role: UserRole.LICENSEE,
+            ageGroup: "Adulte",
+            category: "Latin",
+            competitionLevelLatin: "International",
+          },
+        }),
+      ]);
+
+      try {
+        const eligibilityOf = async (userId: string, eventId: string) => {
+          const result = await queryService.findOneForUser(comp.id, userId);
+          const event = result.events.find(
+            (e: { id: string }) => e.id === eventId,
+          );
+          return event!.eligibility;
+        };
+
+        expect(
+          (await eligibilityOf(bothDisciplines.id, latinAvance.id)).eligible,
+        ).toBe(true);
+        const standard = await eligibilityOf(
+          bothDisciplines.id,
+          standardAvance.id,
+        );
+        expect(standard.eligible).toBe(false);
+        expect(standard.reason).toContain("Débutant");
+        expect(
+          (await eligibilityOf(bothDisciplines.id, tenDance.id)).eligible,
+        ).toBe(true);
+        expect(await eligibilityOf(latinOnly.id, tenDance.id)).toEqual({
+          eligible: false,
+          reason: "WRONG_CATEGORY",
+        });
+      } finally {
+        await prisma.event.deleteMany({ where: { competitionId: comp.id } });
+        await prisma.competition.delete({ where: { id: comp.id } });
+        await prisma.user.deleteMany({
+          where: { id: { in: [bothDisciplines.id, latinOnly.id] } },
+        });
+      }
+    });
+
     it("Returns schedule alongside events", async () => {
       const result = await queryService.findOneForUser(comp1Id, licenseeUserId);
       expect(result).toHaveProperty("schedule");

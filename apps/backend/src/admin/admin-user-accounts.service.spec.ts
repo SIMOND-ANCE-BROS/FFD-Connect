@@ -144,6 +144,31 @@ describe("AdminUserAccountsService", () => {
     expect(res.clubId).toBeNull();
   });
 
+  it("creates a licensee with a competition level per discipline", async () => {
+    await service.create(
+      "admin-1",
+      dto({
+        competitionLevelLatin: "International",
+        competitionLevelStandard: "Débutant",
+      }),
+    );
+
+    expect(prisma.user.create.mock.calls[0][0].data).toMatchObject({
+      competitionLevelLatin: "International",
+      competitionLevelStandard: "Débutant",
+    });
+  });
+
+  it("mirrors a legacy single level to both disciplines on creation", async () => {
+    await service.create("admin-1", dto({ competitionLevel: "Avancé" }));
+
+    expect(prisma.user.create.mock.calls[0][0].data).toMatchObject({
+      competitionLevel: "Avancé",
+      competitionLevelLatin: "Avancé",
+      competitionLevelStandard: "Avancé",
+    });
+  });
+
   describe("extraRoles at creation", () => {
     it("stores the list normalised against the main role and audits it", async () => {
       await service.create(
