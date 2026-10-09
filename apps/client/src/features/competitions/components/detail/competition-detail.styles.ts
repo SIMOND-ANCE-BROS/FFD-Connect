@@ -68,6 +68,10 @@ export const styles = StyleSheet.create({
   headerRightSpacer: {
     width: 40,
   },
+  betaNotice: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
   infoCard: {
     margin: 16,
     padding: 16,

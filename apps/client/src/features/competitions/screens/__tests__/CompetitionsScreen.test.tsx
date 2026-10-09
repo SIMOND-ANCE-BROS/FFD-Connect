@@ -1,5 +1,6 @@
 import { act, fireEvent, render } from "@testing-library/react-native";
 import React from "react";
+import { BETA_NOTICES } from "../../../../constants/betaNotices";
 import { useWakeStore } from "../../../../stores/wake.store";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useCompetitionsLogic } from "../../hooks/useCompetitionsLogic";
@@ -142,6 +143,20 @@ describe("CompetitionsScreen", () => {
     expect(getByText("À venir (Active)")).toBeTruthy(); // Status Tab
   });
 
+  it("shows the beta notice (informative only) with or without results", async () => {
+    (useCompetitionsLogic as jest.Mock).mockReturnValue({
+      state: mockState,
+      actions: mockActions,
+    });
+
+    const { getByTestId, getByText } = await render(
+      <CompetitionsScreen {...createTestProps()} />,
+    );
+
+    expect(getByTestId("competitions-beta-notice")).toBeTruthy();
+    expect(getByText(BETA_NOTICES.competitions.message)).toBeTruthy();
+  });
+
   it("offers « Charger plus » in the empty state once the auto-fetch budget is spent", async () => {
     (useCompetitionsLogic as jest.Mock).mockReturnValue({
       state: {
@@ -239,12 +254,14 @@ describe("CompetitionsScreen", () => {
       state: { ...mockState, scope: "FOR_ME", competitions: [] },
       actions: mockActions,
     });
-    const { getByText, rerender } = await render(
+    const { getByText, queryByTestId, rerender } = await render(
       <CompetitionsScreen {...createTestProps()} />,
     );
     expect(
       getByText("Aucune compétition à venir ne correspond à votre profil."),
     ).toBeTruthy();
+    // Bêta : rappelle que les inscriptions FFD ne remontent pas dans l'app.
+    expect(getByText(BETA_NOTICES.competitionsEmptyHint)).toBeTruthy();
 
     // Club « Les nôtres » vide → message dédié club.
     (useCompetitionsLogic as jest.Mock).mockReturnValue({
@@ -255,6 +272,7 @@ describe("CompetitionsScreen", () => {
     expect(
       getByText("Votre club n'organise aucune compétition pour ce filtre."),
     ).toBeTruthy();
+    expect(queryByTestId("competitions-empty-beta-hint")).toBeNull();
   });
 
   it("rend les cartes LIVE + club (badge organisateur, membres, distance)", async () => {

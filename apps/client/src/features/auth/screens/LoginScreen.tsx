@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   TextInput,
@@ -18,6 +19,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { FadeInView } from "../../../components/AnimatedComponents";
 import { AppButton } from "../../../components/AppButton";
 import { AppText } from "../../../components/AppText";
+import { BetaNotice } from "../../../components/BetaNotice";
+import { BETA_NOTICES } from "../../../constants/betaNotices";
 import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
 import { theme } from "../../../theme";
@@ -45,7 +48,10 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
         style={styles.keyboardView}
       >
         <TouchableWithoutFeedback accessible={false} onPress={Keyboard.dismiss}>
-          <View style={styles.innerContainer}>
+          <ScrollView
+            contentContainerStyle={styles.innerContainer}
+            keyboardShouldPersistTaps="handled"
+          >
             <FadeInView style={styles.logoContainer} delay={200} duration={600}>
               <Image
                 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -61,14 +67,14 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
               >
                 FFD Connect
               </AppText>
-              <AppText
-                variant="body"
-                color={currentTheme.textSecondary}
-                align="center"
-              >
-                Espace Fédéral
-              </AppText>
             </FadeInView>
+
+            <BetaNotice
+              title={BETA_NOTICES.login.title}
+              message={BETA_NOTICES.login.message}
+              style={styles.betaNotice}
+              testID="login-beta-notice"
+            />
 
             <View style={styles.formContainer}>
               {/* Username Field */}
@@ -78,7 +84,7 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                   style={styles.label}
                   color={currentTheme.textSecondary}
                 >
-                  IDENTIFIANT FÉDÉRAL
+                  E-MAIL
                 </AppText>
                 <Pressable
                   accessible={false}
@@ -89,7 +95,7 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                     ref={usernameRef}
                     testID="login-email-input"
                     accessibilityLabel="login-email-input"
-                    accessibilityHint="Saisissez votre identifiant ou adresse email"
+                    accessibilityHint="Saisissez l'e-mail de votre compte FFD-Connect"
                     style={[
                       styles.input,
                       {
@@ -102,7 +108,7 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                         ? styles.inputFocused
                         : styles.inputUnfocused,
                     ]}
-                    placeholder="Numéro de licence ou Email"
+                    placeholder="E-mail de votre compte FFD-Connect"
                     placeholderTextColor={
                       isDark ? theme.colors.slate500 : theme.colors.slate400
                     }
@@ -159,7 +165,7 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                           color: currentTheme.text,
                         },
                       ]}
-                      placeholder="Votre mot de passe Extranet"
+                      placeholder="Mot de passe de votre compte FFD-Connect"
                       placeholderTextColor={
                         isDark ? theme.colors.slate500 : theme.colors.slate400
                       }
@@ -236,6 +242,18 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                 </AppText>
               </TouchableOpacity>
 
+              {/* Beta: an account must be created in the app first (not
+                  connected to the federation) — keep this entry prominent. */}
+              <AppButton
+                variant="outline"
+                title="CRÉER UN COMPTE"
+                accessibilityLabel="Créer un compte"
+                accessibilityHint="Ouvre l'inscription avec votre numéro de licence"
+                onPress={() => navigation.navigate("Register")}
+                testID="login-register-link"
+                style={styles.registerButton}
+              />
+
               <View style={styles.dividerContainer}>
                 <View
                   style={[
@@ -279,23 +297,8 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                   Continuer en tant qu'invité
                 </AppText>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                accessibilityRole="button"
-                style={styles.linkButton}
-                onPress={() => navigation.navigate("Register")}
-                testID="login-register-link"
-              >
-                <AppText
-                  variant="caption"
-                  weight="600"
-                  color={currentTheme.primary}
-                >
-                  Pas encore de compte ? S'inscrire
-                </AppText>
-              </TouchableOpacity>
             </View>
-          </View>
+          </ScrollView>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -310,13 +313,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   innerContainer: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: "center",
     paddingHorizontal: theme.spacing.xl,
+    paddingVertical: theme.spacing.l,
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: theme.spacing.xxl,
+    marginBottom: theme.spacing.l,
+  },
+  betaNotice: {
+    marginBottom: theme.spacing.l,
+  },
+  registerButton: {
+    marginTop: theme.spacing.s,
   },
   logo: {
     width: 100,
