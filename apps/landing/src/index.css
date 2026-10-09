@@ -4406,3 +4406,69 @@ html[data-motion='ready'] [data-reveal]:not([data-revealed='true']) {
     font-size: 1rem;
   }
 }
+
+/* Separate documentation audiences without requiring client JavaScript. */
+.doc-audiences {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+.doc-audiences a {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 0.875rem;
+  color: #496579;
+}
+.doc-audiences a[aria-current='page'] {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.doc-audiences a:hover {
+  border-color: var(--primary);
+}
+.doc-portal-cards {
+  gap: 24px;
+}
+.doc-portal-cards .doc-card {
+  padding: clamp(24px, 4vw, 42px);
+  background: #eaf3fa;
+  border: 1px solid #cbdfea;
+  border-radius: 12px;
+}
+.doc-portal-cards .doc-card:last-child {
+  background: #f5f7fa;
+}
+.doc-start {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 28px;
+  background: #eaf3fa;
+  border: 1px solid #cbdfea;
+  border-radius: 12px;
+  margin-block: 24px;
+}
+.doc-start h2 {
+  font-size: 1.65rem;
+  margin-block: 10px;
+}
+.doc-start p {
+  line-height: 1.6;
+}
+.doc-start .button {
+  flex-shrink: 0;
+}
+@media (max-width: 700px) {
+  .doc-start {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 22px;
+  }
+  .doc-audiences a {
+    padding: 9px 12px;
+  }
+}
