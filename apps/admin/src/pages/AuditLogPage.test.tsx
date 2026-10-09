@@ -216,4 +216,46 @@ describe('AuditLogPage', () => {
     expect(screen.getByText('Blacklistée')).toBeInTheDocument();
     expect(screen.getByText('Oui')).toBeInTheDocument();
   });
+  it('shows the details of a deleted track against empty values', async () => {
+    vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 'l7',
+            action: 'TRACK_DELETE',
+            targetType: 'TRACK',
+            targetId: 't2',
+            before: {
+              title: 'Rumba lente',
+              artist: 'Orchestre',
+              sourceKey: 'k-12',
+              filename: 'a.mp3',
+            },
+            after: null,
+            actorId: 'a1',
+            actorName: 'Gabin S',
+            createdAt: '2026-10-09T10:05:00.000Z',
+          },
+        ],
+        meta: { total: 1, skip: 0, take: 50, hasMore: false },
+      },
+      error: undefined,
+    } as never);
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <AuditLogPage />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    expect(await screen.findByText('Suppression de musique')).toBeInTheDocument();
+    expect(screen.getByText('Titre')).toBeInTheDocument();
+    expect(screen.getByText('Rumba lente')).toBeInTheDocument();
+    expect(screen.getByText('Orchestre')).toBeInTheDocument();
+    expect(screen.getByText('k-12')).toBeInTheDocument();
+    expect(screen.getByText('a.mp3')).toBeInTheDocument();
+    expect(screen.getAllByText('—')).toHaveLength(4);
+  });
 });

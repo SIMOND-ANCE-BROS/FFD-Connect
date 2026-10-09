@@ -34,6 +34,10 @@ function visibleChange(entry: AuditLogEntryDto) {
       delete after.trackId;
     }
   }
+  // A deletion only records `before`: show what was deleted against "—".
+  if (DELETIONS.includes(entry.action) && Object.keys(after).length === 0) {
+    for (const key of Object.keys(before)) after[key] = null;
+  }
   return Object.keys(after).length > 0 ? { before, after } : null;
 }
 
