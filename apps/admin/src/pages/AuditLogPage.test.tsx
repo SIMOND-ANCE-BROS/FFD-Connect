@@ -165,4 +165,55 @@ describe('AuditLogPage', () => {
     expect(screen.getByText('MPM')).toBeInTheDocument();
     expect(screen.queryByText('Musique')).toBeNull();
   });
+
+  it('links a track row to the track page, and shows a deleted track as deleted', async () => {
+    vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 'l5',
+            action: 'TRACK_UPDATE',
+            targetType: 'TRACK',
+            targetId: 't1',
+            before: { blacklisted: false },
+            after: { blacklisted: true },
+            actorId: 'a1',
+            actorName: 'Gabin S',
+            createdAt: '2026-10-09T10:00:00.000Z',
+          },
+          {
+            id: 'l6',
+            action: 'TRACK_DELETE',
+            targetType: 'TRACK',
+            targetId: 't2',
+            before: { title: 'Rumba', artist: 'Orchestre', sourceKey: null, filename: 'a.mp3' },
+            after: null,
+            actorId: 'a1',
+            actorName: 'Gabin S',
+            createdAt: '2026-10-09T10:05:00.000Z',
+          },
+        ],
+        meta: { total: 2, skip: 0, take: 50, hasMore: false },
+      },
+      error: undefined,
+    } as never);
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <AuditLogPage />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    expect(await screen.findByText('Modification de musique')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Voir la musique' })).toHaveAttribute(
+      'href',
+      '/tracks/t1',
+    );
+    expect(screen.getByText('Suppression de musique')).toBeInTheDocument();
+    expect(screen.getByText('Supprimé')).toBeInTheDocument();
+    expect(screen.getByText('Blacklistée')).toBeInTheDocument();
+    expect(screen.getByText('Oui')).toBeInTheDocument();
+  });
 });

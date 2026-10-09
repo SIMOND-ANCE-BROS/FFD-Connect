@@ -50,4 +50,24 @@ describe('ChangeSummary', () => {
     expect(screen.getByText('0:40, 1:20')).toBeInTheDocument();
     expect(screen.getByText('Aucun clash')).toBeInTheDocument();
   });
+
+  it('labels the track moderation flags, the status and the source, booleans in French', () => {
+    render(
+      <MantineProvider>
+        <ChangeSummary
+          before={{ titleMasked: false, blacklisted: true, status: 'ERROR', sourceKey: null }}
+          after={{ titleMasked: true, blacklisted: false, status: 'READY', sourceKey: 'apple:1' }}
+        />
+      </MantineProvider>,
+    );
+    expect(screen.getByText('Titre masqué')).toBeInTheDocument();
+    expect(screen.getByText('Blacklistée')).toBeInTheDocument();
+    expect(screen.getByText('Statut')).toBeInTheDocument();
+    expect(screen.getByText('Source')).toBeInTheDocument();
+    expect(screen.getAllByText('Oui')).toHaveLength(2);
+    expect(screen.getAllByText('Non')).toHaveLength(2);
+    expect(screen.getByText('En erreur')).toBeInTheDocument();
+    expect(screen.getByText('Prête')).toBeInTheDocument();
+    expect(screen.getByText('apple:1')).toBeInTheDocument();
+  });
 });
