@@ -175,6 +175,7 @@ Précisions :
 - Un échec de signature à l'exécution répond 503 et remonte dans Sentry (message expurgé des blocs PEM).
 - Le certificat de pass expire (1 an) : le renouveler côté Apple puis mettre à jour les deux premières variables. Les pass déjà installés restent valides.
 - Aucune requête planifiée : le pass est généré à la demande, sans web service de mise à jour (#167).
+- Le lien de téléchargement remis à l'app vaut **5 minutes et 5 téléchargements au plus** (pas un seul : Firefox iOS et d'autres navigateurs récupèrent le fichier plusieurs fois avant de le passer à Wallet). Émettre un nouveau lien remplace le précédent et remet le compteur à zéro. Une requête `HEAD` ne décompte rien.
 
 ## Azure AI Vision (OCR licences)
 

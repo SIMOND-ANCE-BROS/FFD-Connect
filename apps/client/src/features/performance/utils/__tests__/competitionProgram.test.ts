@@ -232,6 +232,104 @@ describe("roundSequence / buildPlaylist", () => {
     expect(steps(r)).toEqual(["Valse Lente:G1", "Samba:G2", "Tango:G1"]);
   });
 
+  it("a Final is group-major: each group dances all its dances in a row", () => {
+    const dances = { Latin: ["Samba", "Cha-Cha-Cha", "Jive"] };
+    const prelim = round(["Latin", "Latin"], { dances });
+    const final = round(["Latin", "Latin"], { type: "Final", dances });
+    expect(steps(prelim)).toEqual([
+      "Samba:G1",
+      "Samba:G2",
+      "Cha-Cha-Cha:G1",
+      "Cha-Cha-Cha:G2",
+      "Jive:G1",
+      "Jive:G2",
+    ]);
+    expect(steps(final)).toEqual([
+      "Samba:G1",
+      "Cha-Cha-Cha:G1",
+      "Jive:G1",
+      "Samba:G2",
+      "Cha-Cha-Cha:G2",
+      "Jive:G2",
+    ]);
+    expect(roundSequence(final)[3]).toEqual({
+      dance: "Samba",
+      category: "Latin",
+      groupIndex: 2,
+      danceIndex: 0,
+    });
+  });
+
+  it("a mixed Final keeps each group's own dances, in group order", () => {
+    const r = round(["Standard", "Latin"], {
+      type: "Final",
+      dances: { Standard: ["Valse Lente", "Tango"], Latin: ["Samba"] },
+    });
+    expect(steps(r)).toEqual(["Valse Lente:G1", "Tango:G1", "Samba:G2"]);
+  });
+
+  it("a single-group Final keeps the plain dance order", () => {
+    const r = round(["Latin"], {
+      type: "Final",
+      dances: { Latin: ["Samba", "Rumba", "Jive"] },
+    });
+    expect(steps(r)).toEqual(["Samba:G1", "Rumba:G1", "Jive:G1"]);
+  });
+
+  describe("multi-group Final playlist", () => {
+    const finalList = buildPlaylist(
+      cfg([
+        round(["Standard", "Latin", "Latin"], {
+          type: "Final",
+          dances: { Standard: ["Valse Lente"], Latin: ["Samba", "Jive"] },
+        }),
+      ]),
+      LIBRARY,
+      () => 0.42,
+    );
+
+    it("plays the groups one after the other", () => {
+      expect(
+        finalList.map((i) => `${i.style}:${i.groupIndex}:${i.danceIndex}`),
+      ).toEqual([
+        "Valse Lente:1:0",
+        "Samba:2:0",
+        "Jive:2:1",
+        "Samba:3:0",
+        "Jive:3:1",
+      ]);
+    });
+
+    it("flags only the first Latin group as opening the category", () => {
+      expect(finalList.map((i) => i.opensCategory)).toEqual([
+        false,
+        true,
+        false,
+        false,
+        false,
+      ]);
+    });
+
+    it("announces each group as it takes the floor, then the dance changes", () => {
+      const texts = finalList.map((i) => i.announcementText);
+      expect(texts[0]).toMatch(/finale/i);
+      expect(texts[1]).toMatch(/latines/);
+      expect(texts[1]).toMatch(/deuxième groupe/);
+      // Last dance of group 2: not the end of the final yet.
+      expect(texts[2]).toMatch(/le Jive/);
+      expect(texts[2]).not.toMatch(/terminer|dernier groupe/i);
+      expect(texts[3]).toMatch(/troisième et dernier groupe|dernier groupe/);
+      expect(texts[3]).toMatch(/la Samba/);
+      expect(texts[4]).toMatch(/le Jive/);
+      expect(texts[4]).toMatch(/troisième groupe/);
+    });
+
+    it("rotates the music between the groups of a dance", () => {
+      const samba = finalList.filter((i) => i.style === "Samba");
+      expect(samba[0].track.id).not.toBe(samba[1].track.id);
+    });
+  });
+
   const program = cfg([
     round(["Standard", "Standard"], {
       dances: { Standard: ["Valse Lente", "Tango"] },
@@ -410,6 +508,57 @@ describe("getAnnouncementText", () => {
       danceIndex: 4,
     });
     expect(last).toMatch(/le Jive/);
+  });
+
+  describe("in a multi-group Final (group-major)", () => {
+    const final = {
+      ...base,
+      roundType: "Final" as const,
+      totalGroups: 3,
+      dancesInRound: 3,
+      style: "Samba",
+    };
+
+    it("announces a new group on its first dance", () => {
+      const text = getAnnouncementText({ ...final, groupIndex: 2 });
+      expect(text).toMatch(/deuxième groupe/);
+      expect(text).toMatch(/la Samba/);
+      expect(text).not.toMatch(/dernier/);
+    });
+
+    it("announces the last group of the final as the last one", () => {
+      const text = getAnnouncementText({ ...final, groupIndex: 3 });
+      expect(text).toMatch(/dernier groupe/);
+    });
+
+    it("announces the dance changes within a group, naming it", () => {
+      const text = getAnnouncementText({
+        ...final,
+        groupIndex: 2,
+        danceIndex: 1,
+        style: "Rumba",
+      });
+      expect(text).toMatch(/la Rumba, deuxième groupe/);
+      expect(text).not.toMatch(/dernier groupe/);
+    });
+
+    it("only says « pour terminer » on the last dance of the last group", () => {
+      const lastOfG1 = getAnnouncementText({
+        ...final,
+        groupIndex: 1,
+        danceIndex: 2,
+        style: "Jive",
+      });
+      expect(lastOfG1).toMatch(/ce groupe|ce passage/);
+      expect(lastOfG1).toMatch(/premier groupe/);
+      const lastOfFinal = getAnnouncementText({
+        ...final,
+        groupIndex: 3,
+        danceIndex: 2,
+        style: "Jive",
+      });
+      expect(lastOfFinal).toMatch(/Dernière danse : le Jive|pour terminer/);
+    });
   });
 
   it("uses French dance names and articles in transitions", () => {

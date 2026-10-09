@@ -1,6 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Share, User } from "lucide-react-native";
+import { AlertCircle, Share, User, WifiOff } from "lucide-react-native";
 import React, { useRef, useState } from "react";
 import {
   Animated,
@@ -19,6 +19,8 @@ import {
 import { QRCodeView } from "../components/QRCodeView.native";
 
 import { AppText } from "../../../components/AppText";
+import { BetaNotice } from "../../../components/BetaNotice";
+import { BETA_NOTICES } from "../../../constants/betaNotices";
 import {
   GlassHeader,
   GLASS_HEADER_HEIGHT,
@@ -131,6 +133,7 @@ export const LicenseScreen: React.FC = () => {
   };
 
   const activeItemType = state.listItems[state.activeCardIndex]?.type;
+  const isGuest = state.listItems.some((item) => item.type === "GUEST");
 
   return (
     <SafeAreaView
@@ -225,10 +228,60 @@ export const LicenseScreen: React.FC = () => {
             </AppText>
           </View>
         ) : null}
+        {/* License could not be loaded and no local snapshot of this account
+            exists: say so explicitly instead of an empty wallet. Licensees
+            only — STAFF/CLUB keep their placeholder card. */}
+        {state.licenseUnavailable && !ffdUser && state.role === "LICENSEE" ? (
+          <View
+            style={[
+              offlineStyles.unavailable,
+              {
+                backgroundColor: currentTheme.surface,
+                borderColor: currentTheme.border,
+              },
+            ]}
+            testID="license-unavailable"
+            accessibilityRole="alert"
+          >
+            {state.licenseUnavailableReason === "offline" ? (
+              <WifiOff size={36} color={currentTheme.textSecondary} />
+            ) : (
+              <AlertCircle size={36} color={currentTheme.textSecondary} />
+            )}
+            <AppText
+              variant="h3"
+              align="center"
+              color={currentTheme.text}
+              style={offlineStyles.unavailableTitle}
+            >
+              Licence indisponible
+            </AppText>
+            <AppText
+              variant="body"
+              align="center"
+              color={currentTheme.textSecondary}
+            >
+              {state.licenseUnavailableReason === "offline"
+                ? "Impossible de charger votre licence et aucune copie n'est enregistrée sur cet appareil. Connectez-vous à internet puis rouvrez cet écran : elle restera ensuite consultable hors ligne."
+                : "Impossible de charger votre licence pour le moment. Réessayez plus tard."}
+            </AppText>
+          </View>
+        ) : null}
         <LicenseExpiryBanner
           validUntil={ffdValidUntilRaw}
           onPress={() => navigation.getParent()?.navigate("LicenseRenewal")}
         />
+        {/* Beta: the displayed license (and its Wallet pass) is not yet
+            accepted at competitions — shown above the cards and the
+            Apple Wallet button. */}
+        {isGuest ? null : (
+          <BetaNotice
+            title={BETA_NOTICES.license.title}
+            message={BETA_NOTICES.license.message}
+            style={styles.betaNotice}
+            testID="license-beta-notice"
+          />
+        )}
         <View style={styles.walletContainer} testID="license-screen-wallet">
           {state.listItems.map((item, index) => {
             const isActive = index === state.activeCardIndex;
@@ -431,6 +484,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 10,
   },
+  betaNotice: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+  },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -523,4 +580,14 @@ const offlineStyles = StyleSheet.create({
     marginBottom: 10,
   },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  unavailable: {
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  unavailableTitle: { marginTop: 4 },
 });

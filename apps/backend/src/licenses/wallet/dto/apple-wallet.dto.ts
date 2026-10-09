@@ -5,7 +5,8 @@ import { WALLET_PASS_TOKEN_PATTERN } from "../apple-wallet-pass.service";
 /** Path parameter of the public `.pkpass` download route. */
 export class WalletPassTokenParamDto {
   @ApiProperty({
-    description: "Jeton de téléchargement à usage unique (43 caractères)",
+    description:
+      "Jeton de téléchargement (43 caractères), valable quelques minutes",
     example: "q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW",
   })
   @Matches(WALLET_PASS_TOKEN_PATTERN, {
@@ -18,7 +19,7 @@ export class WalletPassTokenParamDto {
 export class AppleWalletPassLinkDto {
   @ApiProperty({
     description:
-      "URL absolue du pass, à ouvrir dans Safari (qui propose « Ajouter à Apple Wallet »). Usage unique, quelques minutes.",
+      "URL absolue du pass, à ouvrir dans le navigateur (qui propose « Ajouter à Apple Wallet »). Valable quelques minutes, pour quelques téléchargements.",
     example:
       "https://api.example.org/api/v1/licenses/wallet/apple/q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW",
   })
