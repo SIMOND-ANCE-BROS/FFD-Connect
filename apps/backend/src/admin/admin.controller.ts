@@ -60,6 +60,8 @@ import {
   AdminClubOptionDto,
   AdminReferenceDataDto,
 } from "./dto/admin-reference.dto";
+import { StoreReviewRead } from "../auth/store-review/store-review.decorator";
+import { simulatedEmptyPage } from "../auth/store-review/store-review-responses";
 
 /**
  * Admin back-office API. Guards and role are set on the CLASS so that no
@@ -179,6 +181,7 @@ export class AdminController {
     return this.clubs.delete(req.user.userId, id);
   }
 
+  @StoreReviewRead(simulatedEmptyPage)
   @Get("audit-log")
   @ApiOperation({ summary: "Journal des actions admin" })
   @ApiResponse({ status: 200, type: AuditLogPageDto })
@@ -186,6 +189,7 @@ export class AdminController {
     return this.audit.list(query);
   }
 
+  @StoreReviewRead(simulatedEmptyPage)
   @Get("users")
   @ApiOperation({ summary: "Liste paginée des utilisateurs" })
   @ApiResponse({ status: 200, type: AdminUsersPageDto })

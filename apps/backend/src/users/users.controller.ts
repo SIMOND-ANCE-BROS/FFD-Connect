@@ -26,6 +26,7 @@ import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { DeleteAccountDto } from "./dto/delete-account.dto";
 import { UpdateWdsfDto } from "./dto/update-wdsf.dto";
 import { UsersService } from "./users.service";
+import { StoreReviewOwnData } from "../auth/store-review/store-review.decorator";
 
 @ApiTags("users")
 @ApiCommonErrorResponses()
@@ -127,6 +128,7 @@ export class UsersController {
     return this.usersService.searchUsers(q ?? "");
   }
 
+  @StoreReviewOwnData()
   @Get("me")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
@@ -239,6 +241,7 @@ export class UsersController {
     return this.usersService.updateWdsf(req.user.userId, payload.wdsf ?? null);
   }
 
+  @StoreReviewOwnData()
   @Get("me/export")
   @UseGuards(JwtAuthGuard, NoImpersonationGuard)
   @ApiBearerAuth("JWT-auth")

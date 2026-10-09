@@ -13,7 +13,9 @@ import { map } from "rxjs/operators";
 import { maskPersonalData } from "./store-review-masking";
 import { genericSimulatedResponse } from "./store-review-responses";
 import {
+  STORE_REVIEW_OWN_DATA_KEY,
   STORE_REVIEW_PASSTHROUGH_KEY,
+  STORE_REVIEW_READ_KEY,
   STORE_REVIEW_SIMULATION_KEY,
   SimulatedResponseBuilder,
 } from "./store-review.decorator";
@@ -62,28 +64,32 @@ export class StoreReviewInterceptor implements NestInterceptor {
     const user = req.user;
     if (!user?.storeReview) return next.handle();
     const ownerId = user.userId ?? "";
-    // Reads (and passthrough writes) really run, but other people's personal
-    // data is masked: the account is ADMIN with a password shared with the
-    // stores (see store-review-masking.ts).
-    const maskedHandle = () =>
-      next
-        .handle()
-        .pipe(map((body: unknown) => maskPersonalData(body, ownerId)));
-    if (!MUTATING_METHODS.has(req.method)) return maskedHandle();
     const targets = [context.getHandler(), context.getClass()];
-    if (
-      this.reflector.getAllAndOverride<boolean>(
-        STORE_REVIEW_PASSTHROUGH_KEY,
-        targets,
-      )
-    ) {
-      return maskedHandle();
+    const meta = <T>(key: string) =>
+      this.reflector.getAllAndOverride<T | undefined>(key, targets);
+
+    let builder: SimulatedResponseBuilder | undefined;
+    if (MUTATING_METHODS.has(req.method)) {
+      if (!meta<boolean>(STORE_REVIEW_PASSTHROUGH_KEY)) {
+        builder =
+          meta<SimulatedResponseBuilder>(STORE_REVIEW_SIMULATION_KEY) ??
+          genericSimulatedResponse;
+      }
+    } else {
+      // Reads that cannot be masked field by field are not served at all.
+      builder = meta<SimulatedResponseBuilder>(STORE_REVIEW_READ_KEY);
     }
-    const builder =
-      this.reflector.getAllAndOverride<SimulatedResponseBuilder | undefined>(
-        STORE_REVIEW_SIMULATION_KEY,
-        targets,
-      ) ?? genericSimulatedResponse;
+
+    if (!builder) {
+      // Really runs, but other people's personal data is masked: the account
+      // is ADMIN with a password shared with the stores.
+      const ownedRoot = meta<boolean>(STORE_REVIEW_OWN_DATA_KEY) === true;
+      return next
+        .handle()
+        .pipe(
+          map((body: unknown) => maskPersonalData(body, ownerId, ownedRoot)),
+        );
+    }
 
     http
       .getResponse<Response>()

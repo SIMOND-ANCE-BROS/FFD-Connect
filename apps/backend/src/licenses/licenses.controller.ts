@@ -36,7 +36,10 @@ import {
 } from "../utils/upload-storage.util";
 import { LicenseRenewalService } from "./license-renewal.service";
 import { LicensesService } from "./licenses.service";
-import { StoreReviewSimulation } from "../auth/store-review/store-review.decorator";
+import {
+  StoreReviewOwnData,
+  StoreReviewSimulation,
+} from "../auth/store-review/store-review.decorator";
 import {
   simulatedRenewalDocument,
   simulatedRenewalStart,
@@ -61,6 +64,7 @@ export class LicensesController {
     private readonly licenseRenewalService: LicenseRenewalService,
   ) {}
 
+  @StoreReviewOwnData()
   @Get("my")
   @ApiOperation({
     summary: "Récupère la licence de l'utilisateur connecté",
@@ -264,6 +268,7 @@ export class LicensesController {
     return this.licenseRenewalService.startRenewalRequest(req.user.userId);
   }
 
+  @StoreReviewOwnData()
   @Get("renewal/my")
   @ApiOperation({
     summary: "Ma demande de renouvellement en cours",

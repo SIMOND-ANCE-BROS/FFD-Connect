@@ -47,7 +47,10 @@ import {
   GenerateVolunteerTokenDto,
   VolunteerCheckInDto,
 } from "./dto/volunteer-token.dto";
-import { StoreReviewSimulation } from "../auth/store-review/store-review.decorator";
+import {
+  StoreReviewOwnData,
+  StoreReviewSimulation,
+} from "../auth/store-review/store-review.decorator";
 import {
   simulatedCheckIn,
   simulatedVolunteerToken,
@@ -314,6 +317,7 @@ export class CompetitionsController {
     return this.managementService.getRegulationConstants();
   }
 
+  @StoreReviewOwnData()
   @Get("user/registrations")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")

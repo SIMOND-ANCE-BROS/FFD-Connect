@@ -44,6 +44,7 @@ import {
 } from "./dto/track-correction.dto";
 import { TrackCorrectionsQueryService } from "./track-corrections.query-service";
 import { TrackCorrectionsService } from "./track-corrections.service";
+import { StoreReviewOwnData } from "../auth/store-review/store-review.decorator";
 
 /**
  * Propositions de correction des métadonnées des musiques. Préfixe distinct
@@ -112,6 +113,7 @@ export class TrackCorrectionsController {
     return this.queryService.listForAdmin(query);
   }
 
+  @StoreReviewOwnData()
   @Get("mine")
   @UseGuards(JwtAuthGuard)
   @ApiOperation({

@@ -144,3 +144,10 @@ export const simulatedPartnership: SimulatedResponseBuilder = (ctx) => ({
   suggestedLevel: null,
   simulated: true,
 });
+
+/** Admin paginated reads refused to the store-review account: an empty page. */
+export const simulatedEmptyPage: SimulatedResponseBuilder = () => ({
+  data: [],
+  meta: { total: 0, skip: 0, take: 0, hasMore: false },
+  simulated: true,
+});

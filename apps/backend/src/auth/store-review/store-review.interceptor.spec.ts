@@ -4,7 +4,9 @@ import { lastValueFrom, of } from "rxjs";
 import {
   STORE_REVIEW_PASSTHROUGH_KEY,
   STORE_REVIEW_SIMULATION_KEY,
+  StoreReviewOwnData,
   StoreReviewPassthrough,
+  StoreReviewRead,
   StoreReviewSimulation,
 } from "./store-review.decorator";
 import {
@@ -12,7 +14,10 @@ import {
   DEMO_MODE_SIMULATED,
   StoreReviewInterceptor,
 } from "./store-review.interceptor";
-import { simulatedDeleteCount } from "./store-review-responses";
+import {
+  simulatedDeleteCount,
+  simulatedEmptyPage,
+} from "./store-review-responses";
 
 interface FakeReq {
   method: string;
@@ -31,6 +36,12 @@ class Routes {
   custom(): void {}
 
   plain(): void {}
+
+  @StoreReviewRead(simulatedEmptyPage)
+  refusedRead(): void {}
+
+  @StoreReviewOwnData()
+  ownData(): void {}
 }
 
 describe("StoreReviewInterceptor", () => {
@@ -121,6 +132,50 @@ describe("StoreReviewInterceptor", () => {
         { id: "review-1", email: "licensee@test.com", lastName: "Licencié" },
       ],
     });
+  });
+
+  it("serves an empty page instead of an unmaskable read, without running it", async () => {
+    await expect(
+      run(
+        context(
+          { method: "GET", path: "/admin/audit-log", user: reviewer },
+          Routes.prototype.refusedRead,
+        ),
+      ),
+    ).resolves.toEqual({
+      data: [],
+      meta: { total: 0, skip: 0, take: 0, hasMore: false },
+      simulated: true,
+    });
+    expect(handle).not.toHaveBeenCalled();
+    expect(setHeader).toHaveBeenCalledWith(
+      DEMO_MODE_HEADER,
+      DEMO_MODE_SIMULATED,
+    );
+  });
+
+  it("runs an unmaskable read normally for a regular account", async () => {
+    await expect(
+      run(
+        context(
+          { method: "GET", path: "/admin/audit-log", user: { userId: "a1" } },
+          Routes.prototype.refusedRead,
+        ),
+      ),
+    ).resolves.toBe(handled);
+  });
+
+  it("keeps the account's own data whole on an own-data route", async () => {
+    const own = [{ id: "n1", body: "Écrire à me@x.fr" }];
+    handle = jest.fn(() => of(own));
+    await expect(
+      run(
+        context(
+          { method: "GET", path: "/notifications", user: reviewer },
+          Routes.prototype.ownData,
+        ),
+      ),
+    ).resolves.toEqual(own);
   });
 
   it("does not mask the reads of a regular account", async () => {

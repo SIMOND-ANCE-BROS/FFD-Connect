@@ -141,6 +141,22 @@ describe("Store-review account (integration, real DB)", () => {
     });
   });
 
+  it("serves an empty page for the admin user list and audit log", async () => {
+    const reviewer = await createUser({
+      role: UserRole.ADMIN,
+      isStoreReview: true,
+    });
+    await createUser({ role: UserRole.LICENSEE });
+    for (const path of ["/api/v1/admin/users", "/api/v1/admin/audit-log"]) {
+      const res = await request(app.getHttpServer())
+        .get(path)
+        .set("Authorization", bearer(reviewer))
+        .expect(200);
+      expect(res.headers["x-demo-mode"]).toBe("simulated");
+      expect(res.body).toMatchObject({ data: [], meta: { total: 0 } });
+    }
+  });
+
   it("refuses to open an impersonation", async () => {
     const reviewer = await createUser({
       role: UserRole.ADMIN,

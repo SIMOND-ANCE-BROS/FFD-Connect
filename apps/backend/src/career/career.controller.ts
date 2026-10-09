@@ -23,6 +23,7 @@ import {
   CareerSearchMember,
   CareerService,
 } from "./career.service";
+import { StoreReviewOwnData } from "../auth/store-review/store-review.decorator";
 
 @ApiTags("career")
 @ApiCommonErrorResponses()
@@ -32,6 +33,7 @@ import {
 export class CareerController {
   constructor(private readonly careerService: CareerService) {}
 
+  @StoreReviewOwnData()
   @Get("me")
   @ApiOperation({
     summary: "Ma carrière",

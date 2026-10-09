@@ -7,6 +7,8 @@ import { SetMetadata } from "@nestjs/common";
  */
 export const STORE_REVIEW_PASSTHROUGH_KEY = "storeReviewPassthrough";
 export const STORE_REVIEW_SIMULATION_KEY = "storeReviewSimulation";
+export const STORE_REVIEW_READ_KEY = "storeReviewRead";
+export const STORE_REVIEW_OWN_DATA_KEY = "storeReviewOwnData";
 
 /** What a simulated-response builder knows about the request. */
 export interface SimulationContext {
@@ -32,3 +34,19 @@ export const StoreReviewPassthrough = () =>
  */
 export const StoreReviewSimulation = (builder: SimulatedResponseBuilder) =>
   SetMetadata(STORE_REVIEW_SIMULATION_KEY, builder);
+
+/**
+ * A READ whose data cannot be masked field by field (lists of every account,
+ * audit log with free-form before/after JSON): a store-review account gets
+ * this simulated body instead and the handler never runs.
+ */
+export const StoreReviewRead = (builder: SimulatedResponseBuilder) =>
+  SetMetadata(STORE_REVIEW_READ_KEY, builder);
+
+/**
+ * The route serves the requester's own data (built from `req.user.userId`):
+ * for a store-review account its records stay unmasked, except nested person
+ * records of other people.
+ */
+export const StoreReviewOwnData = () =>
+  SetMetadata(STORE_REVIEW_OWN_DATA_KEY, true);
