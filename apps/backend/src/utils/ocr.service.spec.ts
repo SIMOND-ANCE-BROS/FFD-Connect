@@ -1,4 +1,4 @@
-import { ServiceUnavailableException } from "@nestjs/common";
+import { Logger, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
 import axios from "axios";
@@ -536,6 +536,77 @@ describe("OcrService", () => {
         expect(result.doctorName).toBe("Durand");
         expect(result.rawText).toBeDefined();
       });
+    });
+  });
+
+  // Regression #140: OCR text from uploaded certificates is health / identity
+  // data (GDPR art. 9) and must never reach the logs.
+  describe("never logs OCR content (#140)", () => {
+    const SENTINEL = "SENTINEL-HEALTH-7f3a9c";
+    const loggedText = (spies: jest.SpyInstance[]): string =>
+      spies
+        .flatMap((spy) => spy.mock.calls)
+        .flat()
+        .map((arg) => String(arg))
+        .join("\n");
+
+    let spies: jest.SpyInstance[];
+
+    beforeEach(() => {
+      spies = (
+        ["log", "warn", "error", "debug", "verbose", "fatal"] as const
+      ).map((method) =>
+        jest
+          .spyOn(Logger.prototype, method)
+          .mockImplementation(() => undefined),
+      );
+    });
+
+    afterEach(() => {
+      spies.forEach((spy) => spy.mockRestore());
+    });
+
+    it("does not log the medical certificate text, only diagnostics", async () => {
+      mockDetectText.mockResolvedValue(
+        `${SENTINEL} Je soussigné Docteur ${SENTINEL}Martin certifie que ${SENTINEL} Jean Dupont né le 01/02/1990 est apte à la pratique de la danse. Fait le 15/01/2025`,
+      );
+
+      const result = await service.extractMedicalCertificateInfo(
+        Buffer.from("img"),
+      );
+
+      expect(result.isApte).toBe(true);
+      const logs = loggedText(spies);
+      expect(logs).not.toContain(SENTINEL);
+      expect(logs).not.toContain("Dupont");
+      expect(logs).not.toContain("01/02/1990");
+      expect(logs).toContain("OCR medical:");
+      expect(logs).toMatch(/\d+ chars/);
+    });
+
+    it("does not log the licence certificate text, only diagnostics", async () => {
+      mockDetectText.mockResolvedValue(
+        `${SENTINEL} Licence N° 98765432 ${SENTINEL} Jean Dupont valable jusqu'au 31/12/2026`,
+      );
+
+      const result = await service.extractLicenseInfo(Buffer.from("img"));
+
+      expect(result.licenseNumber).toBe("98765432");
+      const logs = loggedText(spies);
+      expect(logs).not.toContain(SENTINEL);
+      expect(logs).not.toContain("98765432");
+      expect(logs).not.toContain("Dupont");
+      expect(logs).toContain("OCR license:");
+      expect(logs).toContain("licenseNumber=true");
+    });
+
+    it("does not log the text when nothing could be parsed", async () => {
+      mockDetectText.mockResolvedValue(`${SENTINEL} illisible`);
+
+      await service.extractMedicalCertificateInfo(Buffer.from("img"));
+      await service.extractLicenseInfo(Buffer.from("img"));
+
+      expect(loggedText(spies)).not.toContain(SENTINEL);
     });
   });
 });
