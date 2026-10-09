@@ -67,6 +67,8 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
   const [exporting, setExporting] = React.useState(false);
   // Impersonation admin (#545) — remplace l'ancien switch de profil preview.
   const [impersonationVisible, setImpersonationVisible] = useState(false);
+  // The store-review account is ADMIN but the API refuses its impersonation.
+  const canImpersonate = isAdminAccount && state.isStoreReview === false;
 
   const {
     currentTheme,
@@ -307,7 +309,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
           { useNativeDriver: true },
         )}
       >
-        {isAdminAccount && (
+        {canImpersonate && (
           <TouchableOpacity
             onPress={() => setImpersonationVisible(true)}
             accessibilityRole="button"
@@ -315,7 +317,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
             accessibilityHint="Ouvre la recherche d'utilisateur pour l'impersonation"
             testID="settings-impersonation-button"
             style={[
-              profileSwitchStyles.banner,
+              impersonationStyles.banner,
               { backgroundColor: "#8e44ad18" },
             ]}
           >
@@ -323,7 +325,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
             <AppText
               variant="body"
               color="#8e44ad"
-              style={profileSwitchStyles.text}
+              style={impersonationStyles.text}
             >
               Se connecter en tant que (impersonation)
             </AppText>
@@ -472,7 +474,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
           still bubble through its React ancestors, so a parent ScrollView with
           the default keyboardShouldPersistTaps="never" captured the first tap
           (keyboard dismiss only) — every tap in the search sheet needed two. */}
-      {isAdminAccount && (
+      {canImpersonate && (
         <ImpersonationModal
           visible={impersonationVisible}
           onClose={() => setImpersonationVisible(false)}
@@ -505,7 +507,7 @@ const headerStyles = StyleSheet.create({
   },
 });
 
-const profileSwitchStyles = StyleSheet.create({
+const impersonationStyles = StyleSheet.create({
   banner: {
     flexDirection: "row",
     alignItems: "center",

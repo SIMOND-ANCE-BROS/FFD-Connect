@@ -9,6 +9,7 @@ import {
   unregisterDeviceTokenForPush,
 } from "../../settings/services/pushRegistration";
 import { createLogger } from "../../../utils/logger";
+import type { UsersControllerGetProfileResponse } from "../../../api/generated/types.gen";
 
 const logger = createLogger("AuthService");
 
@@ -121,6 +122,11 @@ export interface UserProfile {
     ageGroup?: string | null;
     expiresOn?: string | null;
   } | null;
+  /**
+   * Account handed to the App Store / Google Play reviewers (#212): it may
+   * not impersonate anyone. Absent on an older backend.
+   */
+  isStoreReview?: UsersControllerGetProfileResponse["isStoreReview"];
 }
 
 export interface WdsfVerifyResponse {

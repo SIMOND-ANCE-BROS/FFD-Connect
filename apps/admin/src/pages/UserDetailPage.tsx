@@ -36,10 +36,12 @@ import {
   userQuery,
 } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
+import { StoreReviewBlockedModal, StoreReviewNotice } from '../components/StoreReview';
 import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { ROLE_LABELS } from '../lib/labels';
 import { changedFields, type EditableFields, withLegacy } from '../lib/diff';
+import { protectedActionError, type ProtectedAction } from '../lib/storeReview';
 import { useSession } from '../session/sessionStore';
 
 type UpdateBody = AdminControllerUpdateUserData['body'];
@@ -67,6 +69,7 @@ export function UserDetailPage() {
   const [statusOpen, setStatusOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [typedEmail, setTypedEmail] = useState('');
+  const [blocked, setBlocked] = useState<ProtectedAction | null>(null);
 
   const initial = useMemo<EditableFields | null>(() => {
     const u = user.data;
@@ -158,7 +161,11 @@ export function UserDetailPage() {
     onError: (e) =>
       notifications.show({
         color: 'red',
-        message: apiErrorMessage(e, 'Changement de statut impossible'),
+        message: protectedActionError(
+          e,
+          { isStoreReview: user.data?.isStoreReview === true, target: 'user', action: 'disable' },
+          'Changement de statut impossible',
+        ),
       }),
   });
 
@@ -181,6 +188,11 @@ export function UserDetailPage() {
   const u = user.data;
   const isSelf = me?.id === u.id;
   const disabled = u.disabledAt != null;
+  const storeReview = u.isStoreReview;
+  // The store-review account can be neither deleted nor disabled: explain it
+  // instead of opening a flow the API would refuse. Reactivation stays open.
+  const openStatus = () => (storeReview && !disabled ? setBlocked('disable') : setStatusOpen(true));
+  const openDelete = () => (storeReview ? setBlocked('delete') : setDeleteOpen(true));
   // lastLoginAt is recorded at login and refresh since lot 1; null = never used.
   // Only back-office accounts get an invitation; a CLUB account of a disabled
   // club could not log in anyway (the server refuses both cases too).
@@ -219,16 +231,13 @@ export function UserDetailPage() {
             </Button>
           )}
           {!isSelf && (
-            <Button
-              variant="light"
-              color={disabled ? 'green' : 'red'}
-              onClick={() => setStatusOpen(true)}
-            >
+            <Button variant="light" color={disabled ? 'green' : 'red'} onClick={openStatus}>
               {disabled ? 'Réactiver' : 'Désactiver'}
             </Button>
           )}
         </Group>
       </Group>
+      {storeReview && <StoreReviewNotice target="user" />}
       {disabled && (
         <Alert color="red" title="Compte désactivé">
           Désactivé le {dayjs(u.disabledAt).format('DD/MM/YYYY HH:mm')} : connexion et accès
@@ -380,7 +389,7 @@ export function UserDetailPage() {
               l'oubli). Pour une mesure réversible, désactivez le compte.
             </Text>
             <Group>
-              <Button color="red" variant="outline" onClick={() => setDeleteOpen(true)}>
+              <Button color="red" variant="outline" onClick={openDelete}>
                 Supprimer le compte
               </Button>
             </Group>
@@ -421,7 +430,13 @@ export function UserDetailPage() {
             réservations, notifications, documents. Cette action est irréversible.
           </Text>
           {remove.isError && (
-            <Alert color="red">{apiErrorMessage(remove.error, 'Suppression impossible')}</Alert>
+            <Alert color="red">
+              {protectedActionError(
+                remove.error,
+                { isStoreReview: storeReview, target: 'user', action: 'delete' },
+                'Suppression impossible',
+              )}
+            </Alert>
           )}
           <TextInput
             label="Recopiez l'email du compte pour confirmer"
@@ -444,6 +459,8 @@ export function UserDetailPage() {
           </Group>
         </Stack>
       </Modal>
+
+      <StoreReviewBlockedModal target="user" action={blocked} onClose={() => setBlocked(null)} />
 
       <Title order={4}>Historique admin</Title>
       {history.data?.data.length ? (

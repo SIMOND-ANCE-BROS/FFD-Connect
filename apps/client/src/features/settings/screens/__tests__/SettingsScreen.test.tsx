@@ -27,6 +27,8 @@ type MockAuthContext = {
   setBiometricsEnabled: jest.Mock;
   setLicensePhoto: jest.Mock;
   logout: jest.Mock;
+  getProfile?: jest.Mock;
+  syncRolesFromProfile?: jest.Mock;
 };
 type MockThemeContext = {
   theme: Record<string, string | boolean>;
@@ -116,6 +118,7 @@ jest.mock("lucide-react-native", () => {
     Shield: MockIcon,
     Trophy: MockIcon,
     User: MockIcon,
+    UserCog: MockIcon,
     Users: MockIcon,
     Zap: MockIcon,
     Key: MockIcon,
@@ -220,6 +223,10 @@ jest.mock("../../services/PrivacyService", () => ({
   deleteMyAccount: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.mock("../../components/ImpersonationModal", () => ({
+  ImpersonationModal: () => null,
+}));
+
 jest.mock("../../components/HelloAssoModal", () => {
   const { View } = require("react-native");
   return {
@@ -233,12 +240,13 @@ jest.mock("../../components/HelloAssoModal", () => {
 // Mock the Zustand auth store for logout flow
 const mockRefreshAuth = jest.fn().mockResolvedValue(undefined);
 const mockStoreRoles: { current: string[] } = { current: [] };
+const mockIsAdmin: { current: boolean } = { current: false };
 jest.mock("../../../../stores/auth.store", () => ({
   useAuthStore: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
       refreshAuth: mockRefreshAuth,
       roles: mockStoreRoles.current,
-      hasRole: () => false,
+      hasRole: (r: string) => r === "ADMIN" && mockIsAdmin.current,
     }),
 }));
 
@@ -349,6 +357,47 @@ describe("SettingsScreen", () => {
     });
     (biometricsAdapter.simplePrompt as jest.Mock).mockResolvedValue({
       success: true,
+    });
+  });
+
+  describe("impersonation entry", () => {
+    const withProfile = (isStoreReview?: boolean) => {
+      mockIsAdmin.current = true;
+      mockAuthStore.current.getProfile = jest.fn().mockResolvedValue({
+        email: "a@x.fr",
+        role: "ADMIN",
+        roles: ["ADMIN"],
+        ...(isStoreReview === undefined ? {} : { isStoreReview }),
+      });
+      mockAuthStore.current.syncRolesFromProfile = jest
+        .fn()
+        .mockResolvedValue({ role: "ADMIN" });
+    };
+
+    afterEach(() => {
+      mockIsAdmin.current = false;
+      delete mockAuthStore.current.getProfile;
+      delete mockAuthStore.current.syncRolesFromProfile;
+    });
+
+    it("is offered to an admin", async () => {
+      withProfile(false);
+      const { findByTestId } = await render(
+        <SettingsScreen {...createTestProps()} />,
+      );
+      expect(await findByTestId("settings-impersonation-button")).toBeTruthy();
+    });
+
+    it("is hidden from the store-review account, which the API refuses", async () => {
+      withProfile(true);
+      const { queryByTestId } = await render(
+        <SettingsScreen {...createTestProps()} />,
+      );
+      await waitFor(() =>
+        expect(mockAuthStore.current.getProfile).toHaveBeenCalled(),
+      );
+      await act(async () => {});
+      expect(queryByTestId("settings-impersonation-button")).toBeNull();
     });
   });
 

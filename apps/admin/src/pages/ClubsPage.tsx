@@ -18,6 +18,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link } from 'react-router';
+import { StoreReviewBadge } from '../components/StoreReview';
 import { apiErrorMessage } from '../lib/apiError';
 import { clubsQuery, type ClubsFilter } from '../api/queries';
 import { REGISTRATION_MODE_LABELS, STATUS_FILTER_OPTIONS, type StatusChoice } from '../lib/labels';
@@ -102,6 +103,7 @@ export function ClubsPage() {
                         Désactivé
                       </Badge>
                     )}
+                    {c.isStoreReview && <StoreReviewBadge />}
                   </Table.Td>
                   <Table.Td>{c.memberCount}</Table.Td>
                   <Table.Td>{c.clubAccountCount}</Table.Td>
