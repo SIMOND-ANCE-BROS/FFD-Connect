@@ -335,9 +335,19 @@ export class TracksService {
           filename: track.filename,
         },
       });
-      return [track.filename, track.artwork].filter((name): name is string =>
-        Boolean(name),
-      );
+      // Only the files no remaining track references: legacy rows may share
+      // an artwork (an album cover) or even an audio file.
+      const unused = async (
+        field: "filename" | "artwork",
+        name: string | null,
+      ): Promise<string[]> =>
+        name && (await tx.track.count({ where: { [field]: name } })) === 0
+          ? [name]
+          : [];
+      return [
+        ...(await unused("filename", track.filename)),
+        ...(await unused("artwork", track.artwork)),
+      ];
     });
     await this.files.remove(names);
     this.logger.log(`Deleted track ${id}`);

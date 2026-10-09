@@ -190,6 +190,19 @@ describe("Tracks (integration, real DB)", () => {
     ]);
   });
 
+  it("keeps an artwork another track still uses when deleting a track", async () => {
+    const admin = await adminUser();
+    const cover = `${randomUUID()}.jpg`;
+    const deleted = await track("Shared cover A", { artwork: cover });
+    await track("Shared cover B", { artwork: cover });
+
+    await tracks.deleteTrack(deleted, admin);
+
+    expect(files.remove).toHaveBeenCalledWith([
+      expect.stringMatching(/\.mp3$/),
+    ]);
+  });
+
   it("lists every track for the admin and filters them; ambiance=false keeps a null style", async () => {
     const queries = moduleRef.get(AdminTracksQueryService);
     const token = `zt${randomUUID().slice(0, 6)}`;

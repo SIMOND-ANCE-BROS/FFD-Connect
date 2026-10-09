@@ -720,6 +720,7 @@ describe("TracksService", () => {
     it("deletes the row with its audit row in one transaction, then both files", async () => {
       prisma.track.findUnique.mockResolvedValue(row as never);
       prisma.trackCorrection.count.mockResolvedValue(0);
+      prisma.track.count.mockResolvedValue(0);
       prisma.track.delete.mockResolvedValue({ id: "t1" } as never);
 
       await service.deleteTrack("t1", "admin-1");
@@ -750,11 +751,46 @@ describe("TracksService", () => {
         artwork: null,
       } as never);
       prisma.trackCorrection.count.mockResolvedValue(0);
+      prisma.track.count.mockResolvedValue(0);
       prisma.track.delete.mockResolvedValue({ id: "t1" } as never);
 
       await service.deleteTrack("t1", "admin-1");
 
       expect(files.remove).toHaveBeenCalledWith(["a.mp3"]);
+      expect(prisma.track.count).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps an artwork another track still uses, and removes the unshared audio", async () => {
+      prisma.track.findUnique.mockResolvedValue(row as never);
+      prisma.trackCorrection.count.mockResolvedValue(0);
+      prisma.track.delete.mockResolvedValue({ id: "t1" } as never);
+      prisma.track.count.mockImplementation((async (args: {
+        where: { artwork?: string; filename?: string };
+      }) => (args.where.artwork === "a.jpg" ? 1 : 0)) as never);
+
+      await service.deleteTrack("t1", "admin-1");
+
+      // Counted inside the transaction, after the row is gone: the remaining tracks.
+      expect(prisma.track.count).toHaveBeenCalledWith({
+        where: { artwork: "a.jpg" },
+      });
+      expect(prisma.track.count).toHaveBeenCalledWith({
+        where: { filename: "a.mp3" },
+      });
+      expect(files.remove).toHaveBeenCalledWith(["a.mp3"]);
+    });
+
+    it("keeps an audio file another track still uses", async () => {
+      prisma.track.findUnique.mockResolvedValue(row as never);
+      prisma.trackCorrection.count.mockResolvedValue(0);
+      prisma.track.delete.mockResolvedValue({ id: "t1" } as never);
+      prisma.track.count.mockImplementation((async (args: {
+        where: { artwork?: string; filename?: string };
+      }) => (args.where.filename === "a.mp3" ? 2 : 0)) as never);
+
+      await service.deleteTrack("t1", "admin-1");
+
+      expect(files.remove).toHaveBeenCalledWith(["a.jpg"]);
     });
 
     it("leaves the files and writes no audit row when the deletion fails", async () => {
