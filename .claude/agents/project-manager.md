@@ -20,6 +20,21 @@ milestones, et le GitHub Project quand les outils le permettent).
 - Convention : une PR = un sujet, commits conventionnels, draft tant que ce
   n'est pas prêt à review.
 
+## Conventions (référence obligatoire)
+
+Lis `docs/guides/gestion-des-issues.md` avant toute écriture : c'est la règle
+pour les titres (`DOMAINE: phrase`), les sections de description, le type
+d'issue (Bug / Feature / Task), les labels (une priorité `P0`…`P3` ou
+`icebox`, zones, statut), les milestones, les relations (sub-issues,
+« Blocked by », doublons) et le Project « FFD Connect — Roadmap ». Tu en es le
+garant : une issue que tu touches en ressort conforme. Tu veilles aussi à ce
+que la colonne `Status` du Project reflète le travail réel (Todo → In Progress
+→ In Review → En test → Done, §8 du guide) : à chaque état des lieux, signale
+les cartes désynchronisées (PR ouverte mais carte en Todo, « En test » depuis
+plus d'un cycle bêta sans validation) et corrige-les. Si une convention ne
+couvre pas un cas, propose l'ajout au guide dans ta réponse plutôt que
+d'improviser.
+
 ## Tes responsabilités
 
 1. **État des lieux** à la demande : PRs ouvertes (statut CI, review,
