@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/require-await */
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import * as fs from "fs";
 import { getErrorMessage } from "../utils/error.utils";
 
@@ -122,6 +122,8 @@ function normalizeToRange(bpm: number, [min, max]: [number, number]): number {
 
 @Injectable()
 export class BpmService {
+  private readonly logger = new Logger(BpmService.name);
+
   protected async loadMusicTempo(): Promise<MusicTempoModule> {
     return require("music-tempo") as MusicTempoModule;
   }
@@ -152,9 +154,18 @@ export class BpmService {
     ffmpeg.setFfmpegPath(ffmpegPath);
 
     const tempWav = filePath.replace(/\.[^.]+$/, ".temp.wav");
+    // Best-effort, after the promise is settled: a failing cleanup must
+    // neither keep the caller waiting nor throw inside an ffmpeg handler or
+    // the kill timer.
     const removeTempWav = () => {
-      if (fs.existsSync(tempWav)) {
-        fs.unlinkSync(tempWav);
+      try {
+        if (fs.existsSync(tempWav)) {
+          fs.unlinkSync(tempWav);
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Could not remove ${tempWav}: ${getErrorMessage(err)}`,
+        );
       }
     };
 
@@ -185,33 +196,37 @@ export class BpmService {
             const MT = MusicTempo.default ?? MusicTempo;
             const tempo = new MT(audioData.channelData[0]);
 
-            removeTempWav();
             settle(() => resolve(parseFloat(tempo.tempo)));
           } catch (err) {
-            removeTempWav();
             settle(() =>
               reject(err instanceof Error ? err : new Error(String(err))),
             );
           }
+          removeTempWav();
         })
         .on("error", (err: unknown) => {
-          removeTempWav();
           const errorMessage = getErrorMessage(err);
           settle(() => reject(new Error(errorMessage)));
+          removeTempWav();
         });
 
       const { timeoutMs } = options;
       if (timeoutMs !== undefined) {
+        // settle() clears this timer: it only fires while ffmpeg still runs.
         timer = setTimeout(() => {
-          settle(() => {
-            // Stop the process, not just the wait: an orphan ffmpeg keeps
-            // its memory and CPU on a small replica.
-            command.kill("SIGKILL");
-            removeTempWav();
+          settle(() =>
             reject(
               new Error(`ffmpeg tempo analysis timed out after ${timeoutMs}ms`),
-            );
-          });
+            ),
+          );
+          // Stop the process, not just the wait: an orphan ffmpeg keeps its
+          // memory and CPU on a small replica.
+          try {
+            command.kill("SIGKILL");
+          } catch (err) {
+            this.logger.warn(`Could not kill ffmpeg: ${getErrorMessage(err)}`);
+          }
+          removeTempWav();
         }, timeoutMs);
       }
     });

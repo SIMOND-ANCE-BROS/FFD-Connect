@@ -132,6 +132,59 @@ describe("BpmService", () => {
     });
   });
 
+  describe("analyzeBpm when the temp cleanup throws", () => {
+    afterEach(() => {
+      (fs.unlinkSync as jest.Mock).mockReset();
+    });
+
+    it("still rejects with the ffmpeg error, and nothing escapes the handler", async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      (fs.unlinkSync as jest.Mock).mockImplementation(() => {
+        throw new Error("EBUSY: resource busy");
+      });
+      const promise = service.analyzeBpm("test.mp3");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const command = mockFfmpeg.mock.results[0].value as MockFfmpegInstance;
+
+      expect(() =>
+        command._errorCallback?.(new Error("ffmpeg failed")),
+      ).not.toThrow();
+      await expect(promise).rejects.toThrow("ffmpeg failed");
+    });
+
+    it("still resolves the tempo after a successful analysis", async () => {
+      (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from("mock"));
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      (fs.unlinkSync as jest.Mock).mockImplementation(() => {
+        throw new Error("EBUSY: resource busy");
+      });
+      const promise = service.analyzeBpm("test.mp3");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const command = mockFfmpeg.mock.results[0].value as MockFfmpegInstance;
+
+      await expect(command._endCallback?.()).resolves.toBeUndefined();
+      await expect(promise).resolves.toBe(120.5);
+    });
+
+    it("still rejects with the decoding error", async () => {
+      const WavDecoder = require("wav-decoder");
+      jest
+        .spyOn(WavDecoder.default, "decode")
+        .mockRejectedValueOnce(new Error("decode failed"));
+      (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from("mock"));
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      (fs.unlinkSync as jest.Mock).mockImplementation(() => {
+        throw new Error("EBUSY: resource busy");
+      });
+      const promise = service.analyzeBpm("test.mp3");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const command = mockFfmpeg.mock.results[0].value as MockFfmpegInstance;
+
+      await expect(command._endCallback?.()).resolves.toBeUndefined();
+      await expect(promise).rejects.toThrow("decode failed");
+    });
+  });
+
   describe("analyzeBpm with a timeout", () => {
     afterEach(() => jest.useRealTimers());
 
@@ -187,6 +240,42 @@ describe("BpmService", () => {
       await expect(promise).rejects.toThrow("ffmpeg failed");
       await jest.advanceTimersByTimeAsync(5_000);
       expect(command.kill).not.toHaveBeenCalled();
+    });
+
+    it("still rejects on timeout when the temp cleanup throws, and nothing escapes the timer", async () => {
+      jest.useFakeTimers();
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      (fs.unlinkSync as jest.Mock).mockImplementationOnce(() => {
+        throw new Error("EBUSY: resource busy");
+      });
+      const promise = service.analyzeBpm("test.mp3", { timeoutMs: 1_000 });
+      const rejection = expect(promise).rejects.toThrow(
+        "timed out after 1000ms",
+      );
+      const command = await started();
+
+      await expect(
+        jest.advanceTimersByTimeAsync(1_000),
+      ).resolves.toBeUndefined();
+      await rejection;
+      expect(command.kill).toHaveBeenCalledWith("SIGKILL");
+      expect(fs.unlinkSync).toHaveBeenCalledWith("test.temp.wav");
+    });
+
+    it("still rejects on timeout when the kill itself throws", async () => {
+      jest.useFakeTimers();
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      const promise = service.analyzeBpm("test.mp3", { timeoutMs: 1_000 });
+      const rejection = expect(promise).rejects.toThrow("timed out");
+      const command = await started();
+      command.kill.mockImplementationOnce(() => {
+        throw new Error("ESRCH: no such process");
+      });
+
+      await expect(
+        jest.advanceTimersByTimeAsync(1_000),
+      ).resolves.toBeUndefined();
+      await rejection;
     });
 
     it("arms no timer without the option (behaviour unchanged)", async () => {
