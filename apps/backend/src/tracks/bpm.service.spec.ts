@@ -24,6 +24,8 @@ jest.mock("wav-decoder", () => ({
 
 // Mock fluent-ffmpeg
 interface MockFfmpegInstance {
+  inputFormat: jest.Mock;
+  inputOptions: jest.Mock;
   setStartTime: jest.Mock;
   setDuration: jest.Mock;
   toFormat: jest.Mock;
@@ -36,6 +38,8 @@ interface MockFfmpegInstance {
 
 const mockFfmpeg = jest.fn((): MockFfmpegInstance => {
   const instance: MockFfmpegInstance = {
+    inputFormat: jest.fn().mockReturnThis(),
+    inputOptions: jest.fn().mockReturnThis(),
     setStartTime: jest.fn().mockReturnThis(),
     setDuration: jest.fn().mockReturnThis(),
     toFormat: jest.fn().mockReturnThis(),
@@ -93,6 +97,23 @@ describe("BpmService", () => {
       const result = await promise;
       expect(result).toBe(120.5);
       expect(fs.readFileSync).toHaveBeenCalled();
+    });
+
+    it("reads the input as MP3 from a local file only, whatever its content", async () => {
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+
+      const promise = service.analyzeBpm("upload.mp3");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const ffmpegInstance = mockFfmpeg.mock.results[0]
+        .value as MockFfmpegInstance;
+      expect(ffmpegInstance.inputFormat).toHaveBeenCalledWith("mp3");
+      expect(ffmpegInstance.inputOptions).toHaveBeenCalledWith([
+        "-protocol_whitelist",
+        "file",
+      ]);
+      void ffmpegInstance._errorCallback?.(new Error("stop"));
+      await expect(promise).rejects.toThrow("stop");
     });
 
     it("should reject on ffmpeg error", async () => {

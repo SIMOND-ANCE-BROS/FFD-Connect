@@ -22,6 +22,8 @@ interface MusicTempoModule {
 }
 
 interface FfmpegCommand {
+  inputFormat(format: string): this;
+  inputOptions(options: string[]): this;
   setStartTime(time: number): this;
   setDuration(duration: number): this;
   toFormat(format: string): this;
@@ -133,7 +135,7 @@ export class BpmService {
   }
 
   /**
-   * Analyzes the BPM of an audio file
+   * Analyzes the BPM of an MP3 file (read as MP3 whatever its content)
    */
   async analyzeBpm(
     filePath: string,
@@ -180,7 +182,12 @@ export class BpmService {
         finish();
       };
 
+      // The only caller analyses uploaded MP3s (validated by their magic
+      // bytes): force the demuxer instead of letting ffmpeg sniff the content
+      // (HLS playlists, concat lists…), and allow local files only.
       const command = ffmpeg(filePath)
+        .inputFormat("mp3")
+        .inputOptions(["-protocol_whitelist", "file"])
         .setStartTime(10)
         .setDuration(15)
         .toFormat("wav")
