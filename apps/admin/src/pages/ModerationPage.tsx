@@ -78,6 +78,23 @@ export function ModerationPage() {
   return (
     <Stack>
       <Title order={2}>Modération</Title>
+      {state.trackId && (
+        <Alert color="blue" title="Propositions d'une seule musique">
+          <Group gap="md">
+            <Anchor component={Link} to={`/tracks/${state.trackId}`} size="sm">
+              Voir la musique
+            </Anchor>
+            <Anchor
+              component="button"
+              type="button"
+              size="sm"
+              onClick={() => update({ trackId: undefined })}
+            >
+              Toutes les musiques
+            </Anchor>
+          </Group>
+        </Alert>
+      )}
       <SegmentedControl
         w="fit-content"
         data={STATUS_OPTIONS}
