@@ -7352,6 +7352,7 @@
             "in": "path",
             "description": "UUID de la musique",
             "schema": {
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -7518,6 +7519,7 @@
             "in": "path",
             "description": "UUID de la musique",
             "schema": {
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -8135,6 +8137,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Analyse du tempo saturée ou stockage indisponible : réessayer dans un instant"
           }
         },
         "security": [
