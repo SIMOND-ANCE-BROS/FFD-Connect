@@ -47,6 +47,12 @@ describe('withLegacy', () => {
       { value: 'Standard', label: 'Standard' },
     ]);
   });
+  it('formats labels while keeping raw values', () => {
+    expect(withLegacy(['Latin'], 'latin', (v) => v.toUpperCase())).toEqual([
+      { value: 'Latin', label: 'LATIN' },
+      { value: 'latin', label: 'LATIN (valeur historique)' },
+    ]);
+  });
   it('appends an unknown current value so the select is not blank', () => {
     expect(withLegacy(['Latin'], 'Latine')).toContainEqual({
       value: 'Latine',

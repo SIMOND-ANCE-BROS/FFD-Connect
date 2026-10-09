@@ -6,6 +6,13 @@
 import React, { createContext, ReactNode, useContext, useState } from "react";
 
 import { PlayerRepeatMode, TrackData } from "../types";
+import {
+  appendTrack,
+  insertNext,
+  moveTrack,
+  removeTrackById,
+  type QueueAddResult,
+} from "../utils/queueOps";
 export { PlayerRepeatMode as ContextRepeatMode };
 export type { TrackData };
 
@@ -20,6 +27,10 @@ interface PlayerContextType {
     playlist?: TrackData[],
     forceRestart?: boolean,
   ) => Promise<void>;
+  playNext: (track: TrackData) => Promise<QueueAddResult>;
+  addToQueue: (track: TrackData) => Promise<QueueAddResult>;
+  moveQueueTrack: (from: number, to: number) => void;
+  removeFromQueue: (trackId: string) => void;
   togglePlayback: () => Promise<void>;
   pause: () => Promise<void>;
   resume: () => Promise<void>;
@@ -48,6 +59,18 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
   );
   const [isShuffle, setIsShuffle] = useState(false);
 
+  // No audio on the web: queue edits only reorder the displayed list, using
+  // the same pure operations as the native store.
+  const currentId = currentTrack?.id ?? null;
+  const editQueue = (
+    track: TrackData,
+    insert: typeof insertNext,
+  ): Promise<QueueAddResult> => {
+    if (track.id === currentId) return Promise.resolve("unchanged");
+    setQueueTracks((prev) => insert(prev, track, currentId));
+    return Promise.resolve("queued");
+  };
+
   const value: PlayerContextType = {
     currentTrack,
     isPlaying: false,
@@ -55,6 +78,12 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
     queueTracks,
     setQueueTracks,
     playTrack: noop,
+    playNext: (track) => editQueue(track, insertNext),
+    addToQueue: (track) => editQueue(track, appendTrack),
+    moveQueueTrack: (from, to) =>
+      setQueueTracks((prev) => moveTrack(prev, from, to)),
+    removeFromQueue: (trackId) =>
+      setQueueTracks((prev) => removeTrackById(prev, trackId)),
     togglePlayback: noop,
     pause: noop,
     resume: noop,

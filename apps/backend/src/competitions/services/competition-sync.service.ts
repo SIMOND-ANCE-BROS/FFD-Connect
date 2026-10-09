@@ -10,6 +10,11 @@ import {
 } from "../interfaces/ffd-competition.interface";
 import { CompetitionCacheService } from "./competition-cache.service";
 import { CompetitionEventNotificationService } from "./competition-event-notification.service";
+import {
+  CompetitionEventsDeductionService,
+  FfdDocumentTooLargeError,
+  MAX_FFD_DOCUMENT_BYTES,
+} from "./competition-events-deduction.service";
 
 @Injectable()
 export class CompetitionSyncService {
@@ -26,6 +31,7 @@ export class CompetitionSyncService {
   // Pages of competitions to pull (newest first), itemsPerPage each. Bounds the
   // sync to upcoming + recent past instead of the full ~390-item history.
   private readonly FFD_MAX_PAGES = 4;
+  private readonly FFD_DOCUMENT_TIMEOUT_MS = 20_000;
   private botCookie: string | null = null;
 
   constructor(
@@ -34,6 +40,7 @@ export class CompetitionSyncService {
     private readonly configService: ConfigService,
     private readonly cacheService: CompetitionCacheService,
     private readonly eventNotificationService: CompetitionEventNotificationService,
+    private readonly eventsDeductionService: CompetitionEventsDeductionService,
   ) {}
 
   async syncFFDCompetitions() {
@@ -109,6 +116,14 @@ export class CompetitionSyncService {
       // registration + the career/results views. The real FFD programme stays
       // available via competition.eventsDescription/programUrl.
       await this.ensureDefaultEventsBatch(syncedIds);
+
+      // TEMPORARY: replace those generic events by the real épreuves deduced
+      // from the FFD description / circular PDF (once per document, never
+      // when registrations exist). Never throws.
+      await this.eventsDeductionService.deduceForCompetitions(
+        syncedIds,
+        (url) => this.downloadFfdDocument(url),
+      );
 
       // In-app notifications (never throw — they must not break the sync):
       //  - newly-created competitions → eligible licensees
@@ -262,6 +277,29 @@ export class CompetitionSyncService {
    * cached on the instance and reused for the list + every detail request.
    */
   private async ffdGet<T>(startUrl: string): Promise<T> {
+    return this.ffdRequest<T>(startUrl, "json");
+  }
+
+  /**
+   * Download an FFD document (circular PDF) through the same anti-bot flow as
+   * the API: a plain request only gets the HTML redirect page.
+   */
+  async downloadFfdDocument(url: string): Promise<Buffer> {
+    try {
+      return await this.ffdRequest<Buffer>(url, "binary");
+    } catch (error: unknown) {
+      // axios aborts the stream past maxContentLength with this message.
+      if (getErrorMessage(error).includes("maxContentLength")) {
+        throw new FfdDocumentTooLargeError(url);
+      }
+      throw error;
+    }
+  }
+
+  private async ffdRequest<T>(
+    startUrl: string,
+    mode: "json" | "binary",
+  ): Promise<T> {
     const baseUrl = this.configService.get<string>("ffd.apiBaseUrl") ?? "";
     let target = startUrl;
 
@@ -279,6 +317,14 @@ export class CompetitionSyncService {
           headers,
           validateStatus: () => true,
           maxRedirects: 0,
+          ...(mode === "binary"
+            ? {
+                responseType: "arraybuffer" as const,
+                // Streamed cap: the transfer is aborted past this size.
+                maxContentLength: MAX_FFD_DOCUMENT_BYTES,
+                timeout: this.FFD_DOCUMENT_TIMEOUT_MS,
+              }
+            : {}),
         }),
       );
       this.captureCookie(response.headers?.["set-cookie"]);
@@ -288,6 +334,21 @@ export class CompetitionSyncService {
       if (status >= 300 && status < 400 && location) {
         target = new URL(location, baseUrl).toString();
         continue;
+      }
+
+      if (mode === "binary") {
+        const body = Buffer.from(response.data as unknown as ArrayBuffer);
+        const jsRedirect = this.extractJsRedirect(
+          body.subarray(0, 8192).toString("latin1"),
+        );
+        if (jsRedirect) {
+          target = new URL(jsRedirect, baseUrl).toString();
+          continue;
+        }
+        if (status >= 400) {
+          throw new Error(`FFD document request failed with HTTP ${status}`);
+        }
+        return body as T;
       }
 
       const jsRedirect = this.extractJsRedirect(response.data);
@@ -383,9 +444,12 @@ export class CompetitionSyncService {
   private async ensureDefaultEventsBatch(competitionIds: string[]) {
     if (competitionIds.length === 0) return;
 
+    // One row per competition (deduced programmes can hold hundreds of events).
     const competitionsWithEvents = await this.prisma.event.findMany({
       where: { competitionId: { in: competitionIds } },
       select: { competitionId: true },
+      distinct: ["competitionId"],
+      take: competitionIds.length,
     });
 
     const idsWithEvents = new Set(
@@ -423,6 +487,10 @@ export class CompetitionSyncService {
     ]);
 
     await this.prisma.event.createMany({ data: defaultEvents });
+    await this.prisma.competition.updateMany({
+      where: { id: { in: idsToSeed } },
+      data: { eventsSource: "GENERIC" },
+    });
 
     this.logger.debug(
       `Seeded default events for ${idsToSeed.length} competitions`,

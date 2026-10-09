@@ -8,8 +8,10 @@ import {
   type AudioPlayer,
   type AudioStatus,
 } from "expo-audio";
+import * as Sentry from "@sentry/react-native";
 import { Platform } from "react-native";
 import { BACKEND_URL } from "../config";
+import { warmBackend } from "../utils/backendWake";
 import { createLogger } from "../utils/logger";
 import { stableCacheKey } from "../utils/stableHash";
 
@@ -42,8 +44,12 @@ export const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
   return result;
 };
 
-/** Bump when the cache naming scheme or the backend voice changes. */
-const TTS_CACHE_VERSION = "v2";
+/**
+ * Bump when the cache naming scheme or the backend voice changes: the key is
+ * the text only, so a device keeps replaying clips of the previous voice
+ * otherwise. v3 = backend voice change (Vivienne, #196).
+ */
+const TTS_CACHE_VERSION = "v3";
 
 /**
  * Deterministic cache filename for an announcement. Hash of the FULL text (+
@@ -102,6 +108,43 @@ const fetchAudioOnce = async (
   }
 };
 
+/** A successful readiness check is trusted for this long (no /health spam). */
+const BACKEND_READY_TTL_MS = 60000;
+let backendReadyAt = 0;
+let backendReadyCheck: Promise<void> | null = null;
+
+/**
+ * Waits for the scale-to-zero backend to be up before generating audio.
+ * The request timeout (30 s × 2 attempts) is shorter than a cold start
+ * (60-120 s), and an aborted fetch is NOT treated as a sleeping backend by
+ * the global wake interceptor: without this, a preload on a sleeping backend
+ * failed with « TTS indisponible ». Goes through the shared wake mechanism
+ * (utils/backendWake: /health probe, wake + poll only when asleep); shared
+ * between concurrent downloads.
+ */
+const ensureBackendReady = (): Promise<void> => {
+  if (Date.now() - backendReadyAt < BACKEND_READY_TTL_MS) {
+    return Promise.resolve();
+  }
+  backendReadyCheck ??= warmBackend()
+    .then(() => {
+      backendReadyAt = Date.now();
+    })
+    .catch((e: unknown) => {
+      logger.warn("[TtsService] Backend wake check failed", e);
+    })
+    .finally(() => {
+      backendReadyCheck = null;
+    });
+  return backendReadyCheck;
+};
+
+/** Test helper: forget the backend readiness memo. */
+export const resetTtsServiceForTests = (): void => {
+  backendReadyAt = 0;
+  backendReadyCheck = null;
+};
+
 /**
  * Downloads audio from backend and saves it to the local cache (retried
  * once). Returns the absolute path to the file.
@@ -117,7 +160,8 @@ const downloadAudio = async (text: string): Promise<string> => {
     /* unreadable = absent */
   }
 
-  // 2. Backend (Redis cache + generation if needed).
+  // 2. Backend (Redis cache + generation if needed), once it is awake.
+  await ensureBackendReady();
   let lastError: unknown;
   for (let attempt = 1; attempt <= TTS_DOWNLOAD_ATTEMPTS; attempt++) {
     try {
@@ -144,11 +188,30 @@ const UNKNOWN_DURATION_TIMEOUT_MS = 20000;
 /** Extra time after the known clip duration before giving up waiting. */
 const COMPLETION_MARGIN_MS = 1500;
 
+/**
+ * How an announcement ended:
+ * - `spoken`: played to the end (or started and ran its full length);
+ * - `not-played`: the clip never started (never loaded / never reached the
+ *   playing state) before the safety timeout — nothing was heard;
+ * - `interrupted`: cut by a newer clip or by stop().
+ * Only `spoken` means the dancers heard it: callers retry otherwise.
+ */
+export type SpeakOutcome = "spoken" | "not-played" | "interrupted";
+
+type CancelReason = "superseded" | "stopped";
+
 let announcer: AudioPlayer | null = null;
-let cancelCurrent: (() => void) | null = null;
+let cancelCurrent: ((reason: CancelReason) => void) | null = null;
 
 const getAnnouncer = (): AudioPlayer => {
-  announcer ??= createAudioPlayer(null, { updateInterval: 250 });
+  // keepAudioSessionActive: otherwise expo-audio (iOS) deactivates the shared
+  // audio session 100 ms after this player pauses or finishes unless another
+  // player is ALREADY playing — a dance track or a new clip still loading at
+  // that instant then starts on an inactive session.
+  announcer ??= createAudioPlayer(null, {
+    updateInterval: 250,
+    keepAudioSessionActive: true,
+  });
   return announcer;
 };
 
@@ -157,48 +220,84 @@ const toPlayableUri = (path: string): string => {
   return /^[a-z]+:\/\//i.test(path) ? path : `file://${path}`;
 };
 
+/** Makes a lost announcement visible on testers' devices (Sentry). */
+const reportNotSpoken = (outcome: SpeakOutcome, detail: string): void => {
+  logger.warn(`[TtsService] Announcement not spoken (${outcome}: ${detail})`);
+  try {
+    Sentry.captureMessage(`TTS announcement not spoken: ${outcome}`, {
+      level: "warning",
+      tags: { feature: "competition-tts", outcome },
+      extra: { detail },
+    });
+  } catch {
+    /* reporting is best-effort */
+  }
+};
+
 /**
  * Plays a local clip on the announcement player and resolves ONLY when it has
  * really finished (didJustFinish), was stopped, or the safety timeout
  * (clip duration + margin) expired. In particular it does NOT resolve on the
  * initial "loaded but paused" status emitted right after replace() — that
  * early resolution is what cut announcements short.
+ * The outcome says whether the clip was actually heard (see SpeakOutcome):
+ * a safety timeout on a clip that never started used to resolve like a
+ * success, and the announcement was silently lost.
  * Rejects when the clip cannot be played (status error / native exception),
  * so the caller can stop the competition instead of skipping announcements.
  */
-const playClip = (uri: string): Promise<void> => {
+const playClip = (uri: string): Promise<SpeakOutcome> => {
   // A new clip supersedes any clip still playing.
-  cancelCurrent?.();
+  cancelCurrent?.("superseded");
   const p = getAnnouncer();
 
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<SpeakOutcome>((resolve, reject) => {
     let settled = false;
     let durationArmed = false;
+    /** The clip was seen playing (or progressing) at least once. */
+    let started = false;
     let safety: ReturnType<typeof setTimeout> | null = null;
     let subscription: { remove: () => void } | null = null;
 
-    const settle = (error?: Error) => {
+    const settle = (outcome: SpeakOutcome, error?: Error) => {
       if (settled) return;
       settled = true;
       if (safety) clearTimeout(safety);
       subscription?.remove();
       if (cancelCurrent === cancel) cancelCurrent = null;
       if (error) reject(error);
-      else resolve();
+      else resolve(outcome);
     };
-    const cancel = () => {
+    const silence = () => {
       try {
         p.pause();
       } catch {
         /* best-effort */
       }
-      settle();
+    };
+    const cancel = (reason: CancelReason) => {
+      silence();
+      if (reason === "superseded") {
+        reportNotSpoken("interrupted", "superseded by a newer announcement");
+      }
+      settle("interrupted");
     };
     const arm = (ms: number) => {
       if (safety) clearTimeout(safety);
       safety = setTimeout(() => {
-        logger.warn("[TtsService] Announcement completion timeout");
-        settle();
+        if (started) {
+          // It played: only the end-of-clip event was missed.
+          logger.warn("[TtsService] Announcement completion timeout");
+          settle("spoken");
+          return;
+        }
+        // Never started: make sure it cannot start late (over the dance).
+        silence();
+        reportNotSpoken(
+          "not-played",
+          durationArmed ? "loaded but never played" : "never loaded",
+        );
+        settle("not-played");
       }, ms);
     };
 
@@ -207,16 +306,18 @@ const playClip = (uri: string): Promise<void> => {
       (status: AudioStatus) => {
         if (settled) return;
         if (status.didJustFinish) {
-          settle();
+          settle("spoken");
           return;
         }
         if (status.error) {
           logger.warn("[TtsService] Announcement playback error", status.error);
           settle(
+            "not-played",
             new Error(`Lecture de l'annonce impossible (${status.error})`),
           );
           return;
         }
+        if (status.playing || status.currentTime > 0) started = true;
         if (!durationArmed && status.isLoaded && status.duration > 0) {
           durationArmed = true;
           const remaining = Math.max(0, status.duration - status.currentTime);
@@ -235,6 +336,7 @@ const playClip = (uri: string): Promise<void> => {
     } catch (e) {
       logger.warn("[TtsService] Announcement play failed", e);
       settle(
+        "not-played",
         new Error(
           `Lecture de l'annonce impossible (${e instanceof Error ? e.message : String(e)})`,
         ),
@@ -286,12 +388,13 @@ const TtsService = {
 
   /**
    * Speaks `text` on the dedicated announcement player, at full volume, and
-   * resolves when the announcement has been fully spoken.
+   * resolves when the announcement is over — with whether it was really
+   * heard (see SpeakOutcome). Rejects when the clip cannot be played.
    */
-  speak: async (text: string, forcePath?: string): Promise<void> => {
+  speak: async (text: string, forcePath?: string): Promise<SpeakOutcome> => {
     try {
       const path = forcePath ?? (await downloadAudio(text));
-      await playClip(toPlayableUri(path));
+      return await playClip(toPlayableUri(path));
     } catch (error) {
       logger.warn("[TtsService] Speak Critical Error:", error);
       throw error;
@@ -301,7 +404,7 @@ const TtsService = {
   /** Stops the announcement in progress (pending speak() resolves). */
   stop: (): Promise<void> => {
     if (cancelCurrent) {
-      cancelCurrent();
+      cancelCurrent("stopped");
     } else {
       announcer?.pause();
     }

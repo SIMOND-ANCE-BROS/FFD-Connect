@@ -9,6 +9,7 @@ import { createLogger } from "../../../utils/logger";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 import { useLibrary } from "../context/LibraryContext";
 import { TrackData, usePlayer } from "../context/PlayerContext";
+import type { QueueAddResult } from "../utils/queueOps";
 
 const logger = createLogger("useLibraryLogic");
 
@@ -18,7 +19,8 @@ interface UseLibraryLogicProps {
 
 export const useLibraryLogic = ({ navigation }: UseLibraryLogicProps) => {
   const auth = useAuthRepository();
-  const { playTrack, currentTrack, isPlaying, isLiked } = usePlayer();
+  const { playTrack, playNext, addToQueue, currentTrack, isPlaying, isLiked } =
+    usePlayer();
   const {
     sections,
     allTracks,
@@ -150,6 +152,23 @@ export const useLibraryLogic = ({ navigation }: UseLibraryLogicProps) => {
     navigation.navigate("AudioPlayer");
   };
 
+  // Queue actions from the long-press sheet. A track keeps the playlist label
+  // of the view it was picked from (shown on the player screen).
+  const withPlaylist = (track: TrackData): TrackData => ({
+    ...track,
+    playlist: track.playlist ?? getPlaylistLabel(),
+  });
+
+  const handlePlayNext = (track: TrackData): Promise<QueueAddResult> => {
+    logger.info(`[Library] Play next: ${track.title} (${track.id})`);
+    return playNext(withPlaylist(track));
+  };
+
+  const handleAddToQueue = (track: TrackData): Promise<QueueAddResult> => {
+    logger.info(`[Library] Add to queue: ${track.title} (${track.id})`);
+    return addToQueue(withPlaylist(track));
+  };
+
   const handleSectionPress = (section: {
     title: string;
     data: TrackData[];
@@ -189,6 +208,8 @@ export const useLibraryLogic = ({ navigation }: UseLibraryLogicProps) => {
       setAddButtonOrigin,
       setSearchQuery,
       handleTrackPress,
+      handlePlayNext,
+      handleAddToQueue,
       handleSectionPress,
       handleBackPress,
       loadMore,

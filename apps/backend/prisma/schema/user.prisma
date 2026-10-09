@@ -38,6 +38,7 @@ model User {
   wdsfLicenseType     String?
   wdsfAgeGroup        String?
   wdsfExpiresOn       DateTime?
+  wdsfFederation      String?        // Fédération nationale (member body) relue auprès de la WDSF à la liaison
   club                 Club?          @relation(fields: [clubId], references: [id], onDelete: SetNull)
   partnershipsAsUser1  Partnership[]  @relation("PartnershipUser1")
   partnershipsAsUser2  Partnership[]  @relation("PartnershipUser2")

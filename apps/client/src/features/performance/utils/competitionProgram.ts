@@ -19,12 +19,19 @@ import {
   type DanceOrder,
 } from "../../../stores/danceOrder.store";
 import { fnv1aHash } from "../../../utils/stableHash";
+import { formatDiscipline } from "../../../utils/discipline";
 
 // --- Dances -----------------------------------------------------------------
 
 interface DanceInfo {
-  /** French display/spoken name. */
+  /** French display name (also spoken, unless `spoken` overrides it). */
   label: string;
+  /**
+   * Spelling fed to the TTS when the label is mispronounced by the French
+   * neural voice (e.g. « Jive » spelled out J-I-V-E). Speech only: never
+   * displayed.
+   */
+  spoken?: string;
   /** Grammatical gender of the dance name in French ("la Samba", "le Tango"). */
   feminine: boolean;
   /** Matches a track `style` coming from the library. */
@@ -57,16 +64,20 @@ const DANCE_INFO: Partial<Record<string, DanceInfo>> = {
   },
   Rumba: { label: "Rumba", feminine: true, pattern: /rumba/ },
   "Paso Doble": { label: "Paso doble", feminine: false, pattern: /paso/ },
-  Jive: { label: "Jive", feminine: false, pattern: /jive/ },
+  Jive: { label: "Jive", spoken: "Jaïve", feminine: false, pattern: /jive/ },
 };
 
 export const CATEGORY_LABELS: Record<Category, string> = {
-  Standard: "Standard",
-  Latin: "Latines",
+  Standard: formatDiscipline("Standard"),
+  Latin: formatDiscipline("Latin"),
 };
 
 export const danceLabel = (dance: string): string =>
   DANCE_INFO[dance]?.label ?? dance;
+
+/** Name of the dance as the announcer must say it (TTS input only). */
+export const spokenDanceName = (dance: string): string =>
+  DANCE_INFO[dance]?.spoken ?? danceLabel(dance);
 
 export const isPasoDoble = (dance: string): boolean =>
   dance.toLowerCase().includes("paso");
@@ -481,8 +492,9 @@ interface Articles {
   name: string;
 }
 
+/** Spoken forms: announcements are TTS input only, never displayed. */
 const articles = (dance: string): Articles => {
-  const name = danceLabel(dance);
+  const name = spokenDanceName(dance);
   const feminine = DANCE_INFO[dance]?.feminine ?? false;
   return feminine
     ? { the: `la ${name}`, of: `de la ${name}`, to: `à la ${name}`, name }

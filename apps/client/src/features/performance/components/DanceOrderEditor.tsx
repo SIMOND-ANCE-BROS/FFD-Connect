@@ -6,8 +6,7 @@ import {
 } from "lucide-react-native";
 import React from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
-import {
-  NestableDraggableFlatList,
+import DraggableFlatList, {
   ScaleDecorator as ScaleDecoratorBase,
   type RenderItemParams,
 } from "react-native-draggable-flatlist";
@@ -36,7 +35,15 @@ interface DanceOrderEditorProps {
   isOfficial: boolean;
   onChange: (category: Category, order: string[]) => void;
   onReset: () => void;
+  /**
+   * A row is being dragged: the parent must freeze its ScrollView meanwhile
+   * (the finger moves the row, not the page).
+   */
+  onDragActiveChange?: (active: boolean) => void;
 }
+
+/** Same as the nestable variant: a vertical swipe on a row still scrolls. */
+const DRAG_ACTIVATION_DISTANCE = 20;
 
 const slug = (s: string) => s.replace(/\s+/g, "-").toLowerCase();
 
@@ -51,6 +58,7 @@ export const DanceOrderEditor: React.FC<DanceOrderEditorProps> = ({
   isOfficial,
   onChange,
   onReset,
+  onDragActiveChange,
 }) => {
   const { theme } = useTheme();
 
@@ -149,11 +157,25 @@ export const DanceOrderEditor: React.FC<DanceOrderEditorProps> = ({
         >
           {CATEGORY_LABELS[category]}
         </AppText>
-        <NestableDraggableFlatList
+        {/*
+          Plain, non-scrolling draggable list (≤ 5 dances, always fully
+          visible). NOT NestableDraggableFlatList: its auto-scroll measures the
+          list position with measureLayout(findNodeHandle(…)), which silently
+          does nothing on the New Architecture → offset stuck at 0 → as soon
+          as a row is picked up on a scrolled page, the row looks "above the
+          top edge" and the page scrolls up at full speed.
+        */}
+        <DraggableFlatList
           data={[...order]}
           keyExtractor={(d) => d}
           renderItem={renderItem}
-          onDragEnd={({ data }) => onChange(category, data)}
+          scrollEnabled={false}
+          activationDistance={DRAG_ACTIVATION_DISTANCE}
+          onDragBegin={() => onDragActiveChange?.(true)}
+          onDragEnd={({ data }) => {
+            onDragActiveChange?.(false);
+            onChange(category, data);
+          }}
         />
       </View>
     );

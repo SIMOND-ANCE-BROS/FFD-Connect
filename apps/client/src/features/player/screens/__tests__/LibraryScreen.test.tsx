@@ -1,5 +1,6 @@
-import { fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import React from "react";
+import { Alert } from "react-native";
 import { useTheme } from "../../../../context/ThemeContext";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useLibraryLogic } from "../../hooks/useLibraryLogic";
@@ -11,6 +12,13 @@ jest.mock("../../hooks/useLibraryLogic");
 let mockIsOnline = true;
 jest.mock("../../../../hooks/useIsOnline", () => ({
   useIsOnline: () => mockIsOnline,
+}));
+
+const mockGetTrack = jest.fn();
+jest.mock("../../../../services/BackendService", () => ({
+  BackendService: {
+    getTrack: (...args: unknown[]) => mockGetTrack(...args) as unknown,
+  },
 }));
 
 // Mock the auth store so we can drive the current user's role. The add-track
@@ -141,6 +149,8 @@ describe("LibraryScreen", () => {
     setAddButtonOrigin: jest.fn(),
     setSearchQuery: jest.fn(),
     handleTrackPress: jest.fn(),
+    handlePlayNext: jest.fn().mockResolvedValue("queued"),
+    handleAddToQueue: jest.fn().mockResolvedValue("queued"),
     handleSectionPress: jest.fn(),
     handleBackPress: jest.fn(),
   };
@@ -166,6 +176,7 @@ describe("LibraryScreen", () => {
     mockAuthState.role = null;
     mockAuthState.roles = [];
     mockAuthState.isGuest = false;
+    mockIsOnline = true;
     mockIngestionEnabled = true;
     (useLibraryLogic as jest.Mock).mockReturnValue({
       state: defaultState,
@@ -299,114 +310,206 @@ describe("LibraryScreen", () => {
     expect(queryByText("Votre bibliothèque est vide.")).toBeNull();
   });
 
-  it("opens the report modal on long-press for a non-admin", async () => {
-    mockAuthState.role = "LICENSEE";
-    (useLibraryLogic as jest.Mock).mockReturnValue({
-      state: {
-        ...defaultState,
-        displayData: [
-          { id: "t1", title: "Track 1", artist: "Artist 1", baseBpm: 120 },
-        ],
-      },
-      actions: defaultActions,
+  describe("long-press track sheet", () => {
+    const withTrack = (actions: Record<string, unknown> = {}) =>
+      (useLibraryLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...defaultState,
+          displayData: [
+            { id: "t1", title: "Track 1", artist: "Artist 1", baseBpm: 120 },
+          ],
+        },
+        actions: { ...defaultActions, ...actions },
+      });
+
+    // The extra action runs once the sheet has slid out (iOS: onDismiss, with
+    // a timer fallback — the one exercised here).
+    const pressExtraAction = async (action: "report" | "edit") => {
+      await fireEvent.press(screen.getByTestId(`track-action-${action}`));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      });
+    };
+
+    it("opens the sheet with the queue actions", async () => {
+      withTrack();
+      const { getByTestId, getByText } = await render(
+        <LibraryScreen {...createTestProps()} />,
+      );
+
+      await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+
+      expect(getByTestId("track-actions-sheet")).toBeTruthy();
+      expect(getByText("Lire ensuite")).toBeTruthy();
+      expect(getByText("Ajouter à la file")).toBeTruthy();
     });
 
-    const { getByTestId } = await render(
-      <LibraryScreen {...createTestProps()} />,
-    );
+    it("« Lire ensuite » queues the track and confirms it", async () => {
+      const handlePlayNext = jest.fn().mockResolvedValue("queued");
+      withTrack({ handlePlayNext });
+      const { getByTestId, findByText } = await render(
+        <LibraryScreen {...createTestProps()} />,
+      );
 
-    await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      await fireEvent.press(getByTestId("track-action-play-next"));
 
-    expect(getByTestId("report-modal")).toBeTruthy();
-    expect(getByTestId("report-modal").props.children).toBe("Track 1");
-  });
-
-  it("does not open the correction modal on long-press for a guest", async () => {
-    mockAuthState.role = "GUEST";
-    mockAuthState.isGuest = true;
-    (useLibraryLogic as jest.Mock).mockReturnValue({
-      state: {
-        ...defaultState,
-        displayData: [
-          { id: "t1", title: "Track 1", artist: "Artist 1", baseBpm: 120 },
-        ],
-      },
-      actions: defaultActions,
+      expect(handlePlayNext).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "t1" }),
+      );
+      expect(await findByText("« Track 1 » sera lu ensuite")).toBeTruthy();
     });
 
-    const { getByTestId, queryByTestId } = await render(
-      <LibraryScreen {...createTestProps()} />,
-    );
+    it("« Ajouter à la file » appends the track and confirms it", async () => {
+      const handleAddToQueue = jest.fn().mockResolvedValue("started");
+      withTrack({ handleAddToQueue });
+      const { getByTestId, findByText } = await render(
+        <LibraryScreen {...createTestProps()} />,
+      );
 
-    await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      await fireEvent.press(getByTestId("track-action-add-to-queue"));
 
-    expect(queryByTestId("report-modal")).toBeNull();
-  });
-
-  it("does not open the report modal on long-press for an admin", async () => {
-    mockAuthState.role = "ADMIN";
-    mockAuthState.roles = ["ADMIN"];
-    (useLibraryLogic as jest.Mock).mockReturnValue({
-      state: {
-        ...defaultState,
-        displayData: [
-          { id: "t1", title: "Track 1", artist: "Artist 1", baseBpm: 120 },
-        ],
-      },
-      actions: defaultActions,
+      expect(handleAddToQueue).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "t1" }),
+      );
+      expect(await findByText("Lecture de « Track 1 »")).toBeTruthy();
     });
 
-    const { getByTestId, queryByTestId } = await render(
-      <LibraryScreen {...createTestProps()} />,
-    );
+    it("shows a failure notice when the queue action throws", async () => {
+      const handleAddToQueue = jest.fn().mockRejectedValue(new Error("boom"));
+      withTrack({ handleAddToQueue });
+      const { getByTestId, findByText } = await render(
+        <LibraryScreen {...createTestProps()} />,
+      );
 
-    await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      await fireEvent.press(getByTestId("track-action-add-to-queue"));
 
-    expect(queryByTestId("report-modal")).toBeNull();
-  });
-
-  it("keeps the admin edit action in another space when the account holds ADMIN", async () => {
-    mockAuthState.role = "LICENSEE";
-    mockAuthState.roles = ["ADMIN", "LICENSEE"];
-    (useLibraryLogic as jest.Mock).mockReturnValue({
-      state: {
-        ...defaultState,
-        displayData: [
-          { id: "t1", title: "Track 1", artist: "Artist 1", baseBpm: 120 },
-        ],
-      },
-      actions: defaultActions,
+      expect(await findByText("Impossible de lire « Track 1 »")).toBeTruthy();
     });
 
-    const { getByTestId, queryByTestId } = await render(
-      <LibraryScreen {...createTestProps()} />,
-    );
+    it("blocks queueing a non-downloaded track offline", async () => {
+      mockIsOnline = false;
+      const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+      const handlePlayNext = jest.fn();
+      withTrack({ handlePlayNext });
+      const { getByTestId } = await render(
+        <LibraryScreen {...createTestProps()} />,
+      );
 
-    await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      await fireEvent.press(getByTestId("track-action-play-next"));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      });
 
-    expect(queryByTestId("report-modal")).toBeNull();
-  });
-
-  it("opens the report modal in the LICENSEE space when the account is not admin", async () => {
-    mockAuthState.role = "LICENSEE";
-    mockAuthState.roles = ["LICENSEE", "CLUB"];
-    (useLibraryLogic as jest.Mock).mockReturnValue({
-      state: {
-        ...defaultState,
-        displayData: [
-          { id: "t1", title: "Track 1", artist: "Artist 1", baseBpm: 120 },
-        ],
-      },
-      actions: defaultActions,
+      expect(handlePlayNext).not.toHaveBeenCalled();
+      expect(alertSpy).toHaveBeenCalledWith(
+        "Non disponible hors ligne",
+        expect.any(String),
+      );
+      alertSpy.mockRestore();
     });
 
-    const { getByTestId } = await render(
-      <LibraryScreen {...createTestProps()} />,
-    );
+    it("opens the report modal from the sheet for a non-admin", async () => {
+      mockAuthState.role = "LICENSEE";
+      withTrack();
+      const { getByTestId, queryByTestId } = await render(
+        <LibraryScreen {...createTestProps()} />,
+      );
 
-    await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      expect(queryByTestId("track-action-edit")).toBeNull();
+      await pressExtraAction("report");
 
-    expect(getByTestId("report-modal")).toBeTruthy();
+      expect(getByTestId("report-modal")).toBeTruthy();
+      expect(getByTestId("report-modal").props.children).toBe("Track 1");
+    });
+
+    it("offers no correction action to a guest", async () => {
+      mockAuthState.role = "GUEST";
+      mockAuthState.isGuest = true;
+      withTrack();
+      const { getByTestId, queryByTestId } = await render(
+        <LibraryScreen {...createTestProps()} />,
+      );
+
+      await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+
+      expect(getByTestId("track-action-play-next")).toBeTruthy();
+      expect(queryByTestId("track-action-report")).toBeNull();
+      expect(queryByTestId("track-action-edit")).toBeNull();
+      expect(queryByTestId("report-modal")).toBeNull();
+    });
+
+    it("offers the edit action (not the report one) to an admin", async () => {
+      mockAuthState.role = "ADMIN";
+      mockAuthState.roles = ["ADMIN"];
+      mockGetTrack.mockResolvedValue({
+        id: "t1",
+        title: "Track 1",
+        artist: "Artist 1",
+        bpm: 120,
+        rawBpm: 120,
+        style: "Rumba",
+        filename: "t1.mp3",
+      });
+      const setModalVisible = jest.fn();
+      withTrack({ setModalVisible });
+      const { getByTestId, queryByTestId } = await render(
+        <LibraryScreen {...createTestProps()} />,
+      );
+
+      await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      expect(queryByTestId("track-action-report")).toBeNull();
+      await pressExtraAction("edit");
+
+      expect(mockGetTrack).toHaveBeenCalledWith("t1");
+      expect(setModalVisible).toHaveBeenCalledWith(true);
+      expect(queryByTestId("report-modal")).toBeNull();
+    });
+
+    it("keeps the admin edit action in another space when the account holds ADMIN", async () => {
+      mockAuthState.role = "LICENSEE";
+      mockAuthState.roles = ["ADMIN", "LICENSEE"];
+      withTrack();
+      const { getByTestId, queryByTestId } = await render(
+        <LibraryScreen {...createTestProps()} />,
+      );
+
+      await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+
+      expect(getByTestId("track-action-edit")).toBeTruthy();
+      expect(queryByTestId("track-action-report")).toBeNull();
+    });
+
+    it("opens the report modal in the LICENSEE space when the account is not admin", async () => {
+      mockAuthState.role = "LICENSEE";
+      mockAuthState.roles = ["LICENSEE", "CLUB"];
+      withTrack();
+      const { getByTestId } = await render(
+        <LibraryScreen {...createTestProps()} />,
+      );
+
+      await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      await pressExtraAction("report");
+
+      expect(getByTestId("report-modal")).toBeTruthy();
+    });
+
+    it("closes the sheet from the backdrop", async () => {
+      withTrack();
+      const { getByTestId } = await render(
+        <LibraryScreen {...createTestProps()} />,
+      );
+
+      await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      expect(getByTestId("track-actions-sheet")).toBeTruthy();
+      await fireEvent.press(getByTestId("track-actions-backdrop"));
+
+      expect(screen.queryByTestId("track-actions-sheet")).toBeNull();
+    });
   });
 
   it("calls handleSectionPress in grid view", async () => {

@@ -5,6 +5,7 @@ import { AppText } from "../../../../components/AppText";
 import type { AppTheme } from "../../../../context/ThemeContext";
 import type { Event } from "../../context/CompetitionContext";
 import { getEligibilityReasonLabel, styles } from "./competition-detail.styles";
+import { formatDiscipline } from "../../../../utils/discipline";
 
 interface CompetitionEventCardProps {
   currentTheme: AppTheme;
@@ -48,7 +49,7 @@ export function CompetitionEventCard({
       <View style={styles.eventCardBody}>
         <View style={styles.eventInfo}>
           <AppText variant="h3" color={currentTheme.text}>
-            {event.category}
+            {formatDiscipline(event.category)}
           </AppText>
           <AppText
             variant="caption"

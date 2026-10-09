@@ -13,6 +13,7 @@ import {
   type EventKind,
 } from "../../hooks/useClubCompetitionEditorLogic";
 import { styles } from "./competition-editor.styles";
+import { formatDiscipline } from "../../../../utils/discipline";
 
 interface Props {
   theme: AppTheme;
@@ -121,7 +122,7 @@ export const CompetitionEventsTab: React.FC<Props> = ({
                   weight="600"
                   style={{ color: theme.text }}
                 >
-                  {event.category}
+                  {formatDiscipline(event.category)}
                 </AppText>
               )}
             </View>
@@ -262,8 +263,11 @@ export const CompetitionEventsTab: React.FC<Props> = ({
                     testID="event-editor-category-tabs"
                     onChange={(v) => setNewEventCategory(v)}
                     options={[
-                      { label: "Latine", value: "Latine" },
-                      { label: "Standard", value: "Standard" },
+                      { label: formatDiscipline("Latine"), value: "Latine" },
+                      {
+                        label: formatDiscipline("Standard"),
+                        value: "Standard",
+                      },
                     ]}
                   />
                 </View>
@@ -277,14 +281,14 @@ export const CompetitionEventsTab: React.FC<Props> = ({
                   color={theme.textSecondary}
                   style={styles.mb8}
                 >
-                  Catégorie (Latine / Standard)
+                  Catégorie (Latines / Standards)
                 </AppText>
                 <FluidSegmentedTab
                   activeValue={newEventCategory}
                   onChange={(v) => setNewEventCategory(v)}
                   options={[
-                    { label: "Latine", value: "Latine" },
-                    { label: "Standard", value: "Standard" },
+                    { label: formatDiscipline("Latine"), value: "Latine" },
+                    { label: formatDiscipline("Standard"), value: "Standard" },
                   ]}
                 />
               </View>

@@ -603,3 +603,31 @@ export const volunteerTokenAuthSelect = {
   expiresAt: true,
   name: true,
 } as const;
+
+/**
+ * TEMPORARY — what the FFD épreuves deduction needs to decide whether a
+ * synced competition's events may be replaced: its documents, the stored
+ * fingerprint, and each event's shape + dependants (registrations, results,
+ * schedule). The event list is bounded (`take`), a deduced set never exceeds
+ * MAX_DEDUCED_EVENTS (400).
+ */
+export const competitionEventsDeductionSelect = {
+  id: true,
+  eventsDescription: true,
+  circularUrl: true,
+  eventsSource: true,
+  eventsFingerprint: true,
+  events: {
+    select: {
+      category: true,
+      ageGroup: true,
+      eventType: true,
+      level: true,
+      eventKind: true,
+      _count: {
+        select: { registrations: true, results: true, scheduleItems: true },
+      },
+    },
+    take: 500,
+  },
+} as const;

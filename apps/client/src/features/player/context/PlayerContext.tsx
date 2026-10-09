@@ -31,6 +31,10 @@ export const usePlayer = () => {
   const repeatMode = usePlayerStore((s) => s.repeatMode);
   const isShuffle = usePlayerStore((s) => s.isShuffle);
   const playTrack = usePlayerStore((s) => s.playTrack);
+  const playNext = usePlayerStore((s) => s.playNext);
+  const addToQueue = usePlayerStore((s) => s.addToQueue);
+  const moveQueueTrack = usePlayerStore((s) => s.moveQueueTrack);
+  const removeFromQueue = usePlayerStore((s) => s.removeFromQueue);
   const togglePlayback = usePlayerStore((s) => s.togglePlayback);
   const pause = usePlayerStore((s) => s.pause);
   const resume = usePlayerStore((s) => s.resume);
@@ -55,6 +59,10 @@ export const usePlayer = () => {
     repeatMode,
     isShuffle,
     playTrack,
+    playNext,
+    addToQueue,
+    moveQueueTrack,
+    removeFromQueue,
     togglePlayback,
     pause,
     resume,

@@ -216,6 +216,47 @@ describe("useCompetitionDetailLogic", () => {
         expect(eligibility.eligible).toBe(true);
       });
     });
+
+    it("tolerates legacy and canonical age-class spellings", async () => {
+      // Default profile ageGroup is « Adulte ».
+      const { result } = await renderHook(
+        () =>
+          useCompetitionDetailLogic(mockCompetitionId, mockNavigation as never),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.state.loading).toBe(false));
+
+      await waitFor(() => {
+        expect(
+          result.current.actions.isEligible(
+            createPartialEvent({
+              id: "evt-1",
+              category: "A",
+              ageGroup: "Adult",
+            }),
+          ).eligible,
+        ).toBe(true);
+      });
+      const senior = result.current.actions.isEligible(
+        createPartialEvent({
+          id: "evt-2",
+          category: "A",
+          ageGroup: "Senior II",
+        }),
+      );
+      expect(senior.eligible).toBe(false);
+      expect(senior.reason).toBe("WRONG_AGE_GROUP");
+      expect(
+        result.current.actions.isEligible(
+          createPartialEvent({
+            id: "evt-3",
+            category: "A",
+            ageGroup: "Espoir",
+          }),
+        ).eligible,
+      ).toBe(true);
+    });
   });
 
   describe("handleRegister", () => {

@@ -243,8 +243,10 @@ export const useLicenseLogic = (): {
 
             if (config.hasWdsfLicense) {
               if (profile.wdsf?.min) {
+                // No expiry date: empty, the card shows the status instead
+                // ("License status: Active", not "expires on: Active").
                 const formatDate = (iso: string | null | undefined): string => {
-                  if (!iso) return "Active";
+                  if (!iso) return "";
                   const d = new Date(iso);
                   return Number.isNaN(d.getTime())
                     ? iso
@@ -259,8 +261,12 @@ export const useLicenseLogic = (): {
                   lastName: profile.lastName,
                   licenseNumber: profile.wdsf.min,
                   type: profile.wdsf.licenseType ?? "Athlete's License",
-                  structure: "WDSF",
+                  // National federation (FFD...) read from WDSF by the server.
+                  // Never "WDSF": the international body is not the holder's
+                  // federation. Unknown (older backend) => the field is hidden.
+                  structure: profile.wdsf.federation ?? undefined,
                   validUntil: formatDate(profile.wdsf.expiresOn),
+                  status: profile.wdsf.expiresOn ? undefined : "Active",
                   season: new Date().getFullYear().toString(),
                   birthDate: mappedFfdUser.birthDate,
                   country: profile.wdsf.nationality ?? undefined,
@@ -272,8 +278,8 @@ export const useLicenseLogic = (): {
                   lastName: profile.lastName,
                   licenseNumber: "WDSF-PENDING",
                   type: "Athlete",
-                  structure: "WDSF",
-                  validUntil: "Active",
+                  validUntil: "",
+                  status: "Active",
                   season: "2025",
                   birthDate: mappedFfdUser.birthDate,
                 };
@@ -405,9 +411,11 @@ export const useLicenseLogic = (): {
                 : null,
           });
 
-          // Map WDSF API response to LicenseUser
+          // Map WDSF API response to LicenseUser. The API puts "Active" in
+          // validUntil when there is no expiry date: that is a status, shown
+          // under its own label (see getLicenseValidityRow), not a date.
           const formatDate = (isoOrLabel: string): string => {
-            if (isoOrLabel === "Active") return isoOrLabel;
+            if (!isoOrLabel || isoOrLabel === "Active") return "";
             const d = new Date(isoOrLabel);
             if (Number.isNaN(d.getTime())) return isoOrLabel;
             return d.toLocaleDateString("fr-FR", {
@@ -421,7 +429,8 @@ export const useLicenseLogic = (): {
             lastName: wdsfData.lastName,
             licenseNumber: wdsfData.licenseNumber,
             type: wdsfData.type,
-            structure: wdsfData.structure,
+            // National federation ("" when WDSF does not know it).
+            structure: wdsfData.structure || undefined,
             validUntil: formatDate(wdsfData.validUntil),
             season: new Date().getFullYear().toString(),
             birthDate: wdsfData.birthDate
@@ -544,7 +553,9 @@ export const useLicenseLogic = (): {
             licenseNumber: "STAFF-001",
             type: "STAFF / ORGANISATEUR",
             structure: "Fédération Française de Danse",
-            validUntil: "PERMANENT",
+            // A permanent card has no expiry date: shown as a status.
+            validUntil: "",
+            status: "Permanente",
             season: "2025/2026",
             birthDate: "",
           } as LicenseUser,
@@ -561,7 +572,9 @@ export const useLicenseLogic = (): {
             licenseNumber: "CLUB-001",
             type: "CLUB / ASSOCIATION",
             structure: "Fédération Française de Danse",
-            validUntil: "2025/2026",
+            // A season is not an expiry date: shown as a status.
+            validUntil: "",
+            status: "Active",
             season: "2025/2026",
             birthDate: "",
           } as LicenseUser,

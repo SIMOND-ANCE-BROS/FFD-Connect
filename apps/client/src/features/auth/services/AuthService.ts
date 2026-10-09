@@ -120,6 +120,11 @@ export interface UserProfile {
     licenseType?: string | null;
     ageGroup?: string | null;
     expiresOn?: string | null;
+    /**
+     * National federation of the holder, read from WDSF by the server (never
+     * "WDSF"). Null when unknown, absent on an older backend.
+     */
+    federation?: string | null;
   } | null;
 }
 

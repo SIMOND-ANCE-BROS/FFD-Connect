@@ -4,6 +4,7 @@ import { AppButton } from "../../../../components/AppButton";
 import { AppText } from "../../../../components/AppText";
 import type { AppTheme } from "../../../../context/ThemeContext";
 import { styles } from "./competition-detail.styles";
+import { formatDiscipline } from "../../../../utils/discipline";
 
 interface PendingRegistration {
   id: string;
@@ -56,7 +57,7 @@ export function CompetitionPendingSection({
               variant="caption"
               style={{ color: currentTheme.textSecondary }}
             >
-              {reg.event.category} {reg.event.ageGroup}
+              {formatDiscipline(reg.event.category)} {reg.event.ageGroup}
             </AppText>
           </View>
           <View style={styles.rowGap8}>

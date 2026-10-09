@@ -1,4 +1,5 @@
 import api from "../../../services/api";
+import { isAgeGroupAllowedForEvent } from "../../../utils/ageGroup";
 
 /** Mode d'inscription du club (backend: ClubRegistrationMode) */
 export type ClubRegistrationMode =
@@ -140,7 +141,7 @@ export const ClubService = {
     if (
       filter.ageGroup != null &&
       filter.ageGroup !== "" &&
-      member.ageGroup !== filter.ageGroup
+      !isAgeGroupAllowedForEvent(filter.ageGroup, member.ageGroup)
     ) {
       return false;
     }

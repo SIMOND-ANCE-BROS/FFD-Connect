@@ -65,6 +65,21 @@ describe("getAllowedCoupleAgeClassesForEvent", () => {
     expect(result).toContain("Youth");
   });
 
+  it("upward choice: Youth and Adulte couples can dance in Espoir (under 21)", () => {
+    expect(getAllowedCoupleAgeClassesForEvent("Youth", "", "")).toContain(
+      "Espoir",
+    );
+    expect(getAllowedCoupleAgeClassesForEvent("Adulte", "", "")).toContain(
+      "Espoir",
+    );
+    expect(
+      getAllowedCoupleAgeClassesForEvent("Senior I", "", ""),
+    ).not.toContain("Espoir");
+    expect(
+      getAllowedCoupleAgeClassesForEvent("Junior II", "", ""),
+    ).not.toContain("Espoir");
+  });
+
   it("upward choice: Senior II can dance in Senior I", () => {
     const result = getAllowedCoupleAgeClassesForEvent("Senior II", "", "");
     expect(result).toContain("Senior I");
