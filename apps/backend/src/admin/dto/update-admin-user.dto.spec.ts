@@ -37,6 +37,31 @@ describe("UpdateAdminUserDto", () => {
     expect(await errorsOf({ extraRoles: null })).toContain("extraRoles");
   });
 
+  it("accepts one of the 4 levels (or null) per discipline", async () => {
+    expect(
+      await errorsOf({
+        competitionLevelLatin: "International",
+        competitionLevelStandard: "Débutant",
+        competitionLevel: null,
+      }),
+    ).toEqual([]);
+    expect(
+      await errorsOf({
+        competitionLevelLatin: null,
+        competitionLevelStandard: null,
+      }),
+    ).toEqual([]);
+  });
+
+  it("rejects an unknown level or a passport colour as a level", async () => {
+    expect(
+      await errorsOf({
+        competitionLevelLatin: "Expert",
+        competitionLevelStandard: "ROUGE",
+      }),
+    ).toEqual(["competitionLevelLatin", "competitionLevelStandard"]);
+  });
+
   it("accepts an empty body", async () => {
     expect(await errorsOf({})).toEqual([]);
   });

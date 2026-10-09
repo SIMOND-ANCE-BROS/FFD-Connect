@@ -7,6 +7,7 @@ import {
   type CompetitionLevel,
   getAllowedLevelsForAgeGroup,
 } from "../age-group";
+import { normalizeDiscipline } from "../competition-level";
 
 /** Type de compétition (Article 8). */
 export const COMPETITION_TYPES = [
@@ -246,6 +247,11 @@ export interface ParticipationParams {
   eventKind?: EventKindValue | null;
   competitionType?: CompetitionTypeValue | null;
   registrantAgeGroup: string;
+  /**
+   * Level of the couple/solo IN THE EVENT'S DISCIPLINE: resolve it with
+   * getCompetitionLevelForCategory(user, eventCategory), never with a single
+   * cross-discipline level. Ignored for Ten Dance events.
+   */
   registrantLevel?: string | null;
 }
 
@@ -281,6 +287,13 @@ export function checkParticipationEligibility(
     eventCategory,
   );
   if (!ageCheck.allowed) return ageCheck;
+
+  // 10 danses : épreuves majeures ouvertes aux danseurs pratiquant les deux
+  // disciplines, sans condition de niveau. La double pratique se vérifie avec
+  // practisesDiscipline() (données du profil, hors de cette fonction pure).
+  if (normalizeDiscipline(eventCategory) === "Ten Dance") {
+    return { allowed: true };
+  }
 
   if (eventKind === "CLASSIFICATRICE") {
     return isLevelEligibleForClassificatriceEvent(
