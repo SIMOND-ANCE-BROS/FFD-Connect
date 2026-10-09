@@ -277,9 +277,12 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
               </View>
             )}
             <StatusBadge status={effectiveStatus} />
+            {/* No "not registered" badge: the beta doesn't see registrations
+                made with the federation, so it would mislead registered dancers. */}
             {effectiveStatus === "UPCOMING" &&
               !state.isGuest &&
-              role !== "CLUB" && (
+              role !== "CLUB" &&
+              (!!item.isRegistered || !item.isEligible) && (
                 <View style={styles.badgeMargin}>
                   {item.isRegistered ? (
                     <AppText
@@ -289,21 +292,13 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
                     >
                       Inscrit
                     </AppText>
-                  ) : !item.isEligible ? (
-                    <AppText
-                      variant="caption"
-                      weight="600"
-                      color={theme.textSecondary}
-                    >
-                      Inéligible
-                    </AppText>
                   ) : (
                     <AppText
                       variant="caption"
                       weight="600"
                       color={theme.textSecondary}
                     >
-                      Non inscrit
+                      Inéligible
                     </AppText>
                   )}
                 </View>
