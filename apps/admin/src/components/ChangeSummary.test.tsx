@@ -34,4 +34,20 @@ describe('ChangeSummary', () => {
     expect(screen.getByText('Licencié')).toBeInTheDocument();
     expect(screen.getByText('Staff')).toBeInTheDocument();
   });
+
+  it('labels track fields and shows clashes as m:ss', () => {
+    render(
+      <MantineProvider>
+        <ChangeSummary
+          before={{ bpm: 60, clashTimecodes: [40, 80], style: 'Paso Doble' }}
+          after={{ bpm: 62, clashTimecodes: [], style: 'Rumba' }}
+        />
+      </MantineProvider>,
+    );
+    expect(screen.getByText('MPM')).toBeInTheDocument();
+    expect(screen.getByText('Clashes paso')).toBeInTheDocument();
+    expect(screen.getByText('Danse')).toBeInTheDocument();
+    expect(screen.getByText('0:40, 1:20')).toBeInTheDocument();
+    expect(screen.getByText('Aucun clash')).toBeInTheDocument();
+  });
 });

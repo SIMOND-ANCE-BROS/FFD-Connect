@@ -1,5 +1,6 @@
 import { Table } from '@mantine/core';
 import { REGISTRATION_MODE_LABELS, ROLE_LABELS } from '../lib/labels';
+import { formatTimecode } from '../lib/moderation';
 
 const LABELS: Record<string, string> = {
   firstName: 'Prénom',
@@ -17,6 +18,12 @@ const LABELS: Record<string, string> = {
   email: 'Email',
   name: 'Nom du club',
   registrationMode: "Mode d'inscription",
+  title: 'Titre',
+  artist: 'Artiste',
+  style: 'Danse',
+  bpm: 'MPM',
+  clashTimecodes: 'Clashes paso',
+  trackId: 'Musique',
 };
 
 const VALUE_LABELS: Record<string, Record<string, string>> = {
@@ -27,6 +34,11 @@ const VALUE_LABELS: Record<string, Record<string, string>> = {
 
 function display(key: string, value: unknown): string {
   if (value === null || value === undefined) return '—';
+  if (key === 'clashTimecodes' && Array.isArray(value)) {
+    return value.length
+      ? value.map((v) => (typeof v === 'number' ? formatTimecode(v) : String(v))).join(', ')
+      : 'Aucun clash';
+  }
   if (Array.isArray(value)) {
     return value.length
       ? value.map((v) => VALUE_LABELS[key]?.[String(v)] ?? String(v)).join(', ')

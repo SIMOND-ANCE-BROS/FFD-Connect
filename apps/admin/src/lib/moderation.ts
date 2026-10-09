@@ -1,9 +1,11 @@
 import type {
+  ApproveTrackCorrectionDto,
   TrackCorrectionAdminDto,
   TrackCorrectionReason,
   TrackCorrectionStatus,
 } from '../api/generated/types.gen';
 import type { ModerationFilter } from '../api/queries';
+import { API_ORIGIN } from '../config';
 
 export const REASON_LABELS: Record<TrackCorrectionReason, string> = {
   TITLE: 'Titre',
@@ -138,3 +140,108 @@ export function proposalSummary(p: TrackCorrectionAdminDto['proposed']): string 
   }
   return parts.length > 0 ? parts.join(' · ') : 'Message seul';
 }
+
+/** Reply templates: inserted in the comment, still editable. Not stored server-side. */
+export const REJECT_TEMPLATES = [
+  'Déjà corrigé',
+  'Valeur incorrecte',
+  "Doublon d'une autre proposition",
+] as const;
+export const APPROVE_TEMPLATES = ["Merci, c'est corrigé"] as const;
+
+/** Fills an empty comment with the template, or appends it on a new line. */
+export const insertTemplate = (comment: string, template: string): string =>
+  comment.trim() ? `${comment.trimEnd()}\n${template}` : template;
+
+/** Editable values of a pending proposal (`bpm` is '' while the input is empty). */
+export interface ReviewValues {
+  title: string;
+  artist: string;
+  style: string;
+  bpm: number | string;
+  clashes: number[];
+}
+
+/** The proposed value of each field, or the current one when nothing is proposed. */
+export function initialReviewValues(c: TrackCorrectionAdminDto): ReviewValues {
+  return {
+    title: c.proposed.title ?? c.track.title,
+    artist: c.proposed.artist ?? c.track.artist,
+    style: c.proposed.style ?? c.track.style ?? '',
+    bpm: c.proposed.bpm ?? c.resultingBpm,
+    clashes: c.proposed.clashTimecodes ?? c.track.clashTimecodes,
+  };
+}
+
+export type ApproveOverrides = Pick<
+  ApproveTrackCorrectionDto,
+  'title' | 'artist' | 'style' | 'bpm' | 'clashTimecodes'
+>;
+
+const sortedNumbers = (values: readonly number[]): number[] => [...values].sort((a, b) => a - b);
+
+const sameNumbers = (a: readonly number[], b: readonly number[]): boolean => {
+  const x = sortedNumbers(a);
+  const y = sortedNumbers(b);
+  return x.length === y.length && x.every((v, i) => v === y[i]);
+};
+
+/**
+ * Approve body: only what the admin changed. An absent field keeps the
+ * proposal's value server-side; an emptied clash list is sent as `[]`
+ * (« aucun clash »), an untouched one is not sent; a blanked text field or an
+ * empty MPM is never sent.
+ */
+export function approveOverrides(initial: ReviewValues, values: ReviewValues): ApproveOverrides {
+  const body: ApproveOverrides = {};
+  for (const key of ['title', 'artist', 'style'] as const) {
+    const text = values[key].trim();
+    if (text && text !== initial[key]) body[key] = text;
+  }
+  if (typeof values.bpm === 'number' && values.bpm !== initial.bpm) body.bpm = values.bpm;
+  if (!sameNumbers(values.clashes, initial.clashes)) {
+    body.clashTimecodes = sortedNumbers(values.clashes);
+  }
+  return body;
+}
+
+const RECOMPUTED_BPM = 'recalculé selon la danse';
+
+/**
+ * Before → after of the track if approved with these overrides, changed
+ * fields only. A dance override without an MPM makes the server recalculate
+ * the MPM from the raw tempo, which the SPA cannot know.
+ */
+export function approvalPreview(
+  c: TrackCorrectionAdminDto,
+  overrides: ApproveOverrides,
+): { before: Record<string, unknown>; after: Record<string, unknown> } {
+  const { track: t, proposed: p } = c;
+  const current: Record<string, unknown> = {
+    title: t.title,
+    artist: t.artist,
+    style: t.style,
+    bpm: t.bpm,
+    clashTimecodes: t.clashTimecodes,
+  };
+  const result: Record<string, unknown> = {
+    title: overrides.title ?? p.title ?? t.title,
+    artist: overrides.artist ?? p.artist ?? t.artist,
+    style: overrides.style ?? p.style ?? t.style,
+    bpm: overrides.bpm ?? (overrides.style !== undefined ? RECOMPUTED_BPM : c.resultingBpm),
+    clashTimecodes: overrides.clashTimecodes ?? p.clashTimecodes ?? t.clashTimecodes,
+  };
+  const before: Record<string, unknown> = {};
+  const after: Record<string, unknown> = {};
+  for (const key of Object.keys(result)) {
+    if (JSON.stringify(result[key]) !== JSON.stringify(current[key])) {
+      before[key] = current[key];
+      after[key] = result[key];
+    }
+  }
+  return { before, after };
+}
+
+/** Same URL as the mobile player: `/uploads` is served outside `/api/v1`. */
+export const trackAudioUrl = (filename: string): string =>
+  `${API_ORIGIN}/uploads/${encodeURIComponent(filename)}`;

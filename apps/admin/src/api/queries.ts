@@ -7,6 +7,7 @@ import {
   adminControllerListClubs,
   adminControllerListUsers,
   adminControllerReferenceData,
+  trackCorrectionsControllerFindOne,
   trackCorrectionsControllerList,
   trackCorrectionsControllerPendingCount,
 } from './generated/sdk.gen';
@@ -104,3 +105,9 @@ export const pendingCountQuery = queryOptions({
   refetchOnReconnect: false,
   retry: false,
 });
+
+export const correctionQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['admin', 'moderation', 'item', id],
+    queryFn: () => unwrap(trackCorrectionsControllerFindOne({ path: { id } })),
+  });
