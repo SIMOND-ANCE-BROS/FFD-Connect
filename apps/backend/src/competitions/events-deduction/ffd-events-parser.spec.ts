@@ -4,6 +4,8 @@ import {
   htmlToPlainText,
   mapAgeToken,
   MAX_DEDUCED_EVENTS,
+  MAX_LINE_LENGTH,
+  MAX_PARSED_TEXT_LENGTH,
   mergeDeducedEvents,
   normalizeForMatch,
   parseFfdEvents,
@@ -508,5 +510,49 @@ describe("mergeDeducedEvents", () => {
     expect(mergeDeducedEvents(primary, [event("Other")])).toHaveLength(
       MAX_DEDUCED_EVENTS,
     );
+  });
+});
+
+describe("hostile input", () => {
+  // Each case is quadratic (or worse) with a naive pattern: tens of seconds
+  // on 50k characters. Linear patterns finish in a few milliseconds.
+  const fast = (run: () => unknown) => {
+    const start = performance.now();
+    run();
+    return performance.now() - start;
+  };
+
+  it.each([
+    ["age class + separators", `senior${" ,".repeat(25_000)}x`],
+    ["age class + 'a' separators", `senior ${"a ".repeat(25_000)}x`],
+    ["age class + dots", `juniors${".".repeat(50_000)}`],
+    ["unknown words", "abc ".repeat(12_500)],
+  ])("analyses a pathological line linearly (%s)", (_label, line) => {
+    expect(fast(() => analyzeLine(line))).toBeLessThan(500);
+  });
+
+  it.each([
+    ["unclosed tags", "<".repeat(50_000)],
+    ["unterminated entity", `&${"a".repeat(50_000)}`],
+    ["unterminated numeric entity", `&#${"1".repeat(50_000)}`],
+    ["unclosed br", `<br${" ".repeat(50_000)}`],
+  ])("strips HTML linearly (%s)", (_label, raw) => {
+    expect(fast(() => htmlToPlainText(raw))).toBeLessThan(500);
+  });
+
+  it("only reads the first MAX_PARSED_TEXT_LENGTH characters", () => {
+    const padding = "x\n".repeat(MAX_PARSED_TEXT_LENGTH);
+    let events: unknown[] = [];
+    const elapsed = fast(() => {
+      events = parseFfdEvents(`${padding}Opens Latine\nYouth`);
+    });
+    expect(events).toEqual([]);
+    expect(elapsed).toBeLessThan(2_000);
+  });
+
+  it("ignores lines longer than MAX_LINE_LENGTH", () => {
+    const longLine = `Opens Latine Youth ${"x".repeat(MAX_LINE_LENGTH)}`;
+    expect(parseFfdEvents(longLine)).toEqual([]);
+    expect(parseFfdEvents("Opens Latine Youth")).toHaveLength(1);
   });
 });

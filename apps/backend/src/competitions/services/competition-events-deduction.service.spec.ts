@@ -8,6 +8,8 @@ import { extractPdfText } from "../events-deduction/pdf-text.util";
 import {
   CompetitionEventsDeductionService,
   type FfdDocumentDownloader,
+  FfdDocumentTooLargeError,
+  MAX_FFD_DOCUMENT_BYTES,
 } from "./competition-events-deduction.service";
 
 jest.mock("../events-deduction/pdf-text.util", () => ({
@@ -430,6 +432,63 @@ describe("CompetitionEventsDeductionService", () => {
       await service.deduceForCompetitions(["comp-1"], download);
 
       expect(prisma.competition.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("resource bounds", () => {
+    it("keeps generic events and never retries an oversized circular", async () => {
+      const candidate = makeCandidate({
+        eventsDescription: null,
+        circularUrl: CIRCULAR_URL,
+      });
+      givenCandidates(candidate);
+      download.mockRejectedValue(new FfdDocumentTooLargeError(CIRCULAR_URL));
+
+      await service.deduceForCompetitions(["comp-1"], download);
+
+      expect(mockedExtractPdfText).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.competition.update).toHaveBeenCalledWith({
+        where: { id: "comp-1" },
+        data: { eventsFingerprint: service.fingerprint(candidate) },
+        select: { id: true },
+      });
+    });
+
+    it("ignores a received buffer above the cap without parsing it", async () => {
+      givenCandidates(
+        makeCandidate({ eventsDescription: null, circularUrl: CIRCULAR_URL }),
+      );
+      const huge = Buffer.alloc(MAX_FFD_DOCUMENT_BYTES + 1);
+      huge.write("%PDF");
+      download.mockResolvedValue(huge);
+
+      await service.deduceForCompetitions(["comp-1"], download);
+
+      expect(mockedExtractPdfText).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("downloads and parses one document at a time", async () => {
+      givenCandidates(
+        makeCandidate({ id: "a", circularUrl: CIRCULAR_URL }),
+        makeCandidate({ id: "b", circularUrl: CIRCULAR_URL }),
+        makeCandidate({ id: "c", circularUrl: CIRCULAR_URL }),
+      );
+      let inFlight = 0;
+      let maxInFlight = 0;
+      download.mockImplementation(async () => {
+        inFlight++;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight--;
+        return PDF_BYTES;
+      });
+
+      await service.deduceForCompetitions(["a", "b", "c"], download);
+
+      expect(download).toHaveBeenCalledTimes(3);
+      expect(maxInFlight).toBe(1);
     });
   });
 });

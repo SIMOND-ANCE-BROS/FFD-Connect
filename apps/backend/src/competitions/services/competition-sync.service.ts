@@ -10,7 +10,11 @@ import {
 } from "../interfaces/ffd-competition.interface";
 import { CompetitionCacheService } from "./competition-cache.service";
 import { CompetitionEventNotificationService } from "./competition-event-notification.service";
-import { CompetitionEventsDeductionService } from "./competition-events-deduction.service";
+import {
+  CompetitionEventsDeductionService,
+  FfdDocumentTooLargeError,
+  MAX_FFD_DOCUMENT_BYTES,
+} from "./competition-events-deduction.service";
 
 @Injectable()
 export class CompetitionSyncService {
@@ -27,8 +31,7 @@ export class CompetitionSyncService {
   // Pages of competitions to pull (newest first), itemsPerPage each. Bounds the
   // sync to upcoming + recent past instead of the full ~390-item history.
   private readonly FFD_MAX_PAGES = 4;
-  // Circulars are 0.2–2 MB; anything far larger is not a circular.
-  private readonly FFD_MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+  private readonly FFD_DOCUMENT_TIMEOUT_MS = 20_000;
   private botCookie: string | null = null;
 
   constructor(
@@ -282,7 +285,15 @@ export class CompetitionSyncService {
    * the API: a plain request only gets the HTML redirect page.
    */
   async downloadFfdDocument(url: string): Promise<Buffer> {
-    return this.ffdRequest<Buffer>(url, "binary");
+    try {
+      return await this.ffdRequest<Buffer>(url, "binary");
+    } catch (error: unknown) {
+      // axios aborts the stream past maxContentLength with this message.
+      if (getErrorMessage(error).includes("maxContentLength")) {
+        throw new FfdDocumentTooLargeError(url);
+      }
+      throw error;
+    }
   }
 
   private async ffdRequest<T>(
@@ -309,7 +320,9 @@ export class CompetitionSyncService {
           ...(mode === "binary"
             ? {
                 responseType: "arraybuffer" as const,
-                maxContentLength: this.FFD_MAX_DOCUMENT_BYTES,
+                // Streamed cap: the transfer is aborted past this size.
+                maxContentLength: MAX_FFD_DOCUMENT_BYTES,
+                timeout: this.FFD_DOCUMENT_TIMEOUT_MS,
               }
             : {}),
         }),

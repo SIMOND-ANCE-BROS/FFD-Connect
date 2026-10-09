@@ -8,7 +8,10 @@ import { of, throwError } from "rxjs";
 import { CompetitionSyncService } from "./competition-sync.service";
 import { CompetitionCacheService } from "./competition-cache.service";
 import { CompetitionEventNotificationService } from "./competition-event-notification.service";
-import { CompetitionEventsDeductionService } from "./competition-events-deduction.service";
+import {
+  CompetitionEventsDeductionService,
+  FfdDocumentTooLargeError,
+} from "./competition-events-deduction.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { FFDCompetitionItem } from "../interfaces/ffd-competition.interface";
 
@@ -454,11 +457,34 @@ describe("CompetitionSyncService", () => {
         expect.objectContaining({
           responseType: "arraybuffer",
           maxContentLength: 10 * 1024 * 1024,
+          timeout: 20_000,
           headers: expect.objectContaining({
             Cookie: "bot_mitigation_cookie=AAA",
           }) as object,
         }),
       );
+    });
+
+    it("turns an aborted oversized transfer into FfdDocumentTooLargeError", async () => {
+      httpService.get.mockReturnValueOnce(
+        throwError(
+          () => new Error("maxContentLength size of 10485760 exceeded"),
+        ),
+      );
+
+      await expect(
+        service.downloadFfdDocument("https://api.ffd.fr/uploads/huge.pdf"),
+      ).rejects.toBeInstanceOf(FfdDocumentTooLargeError);
+    });
+
+    it("propagates other download errors unchanged", async () => {
+      httpService.get.mockReturnValueOnce(
+        throwError(() => new Error("socket hang up")),
+      );
+
+      await expect(
+        service.downloadFfdDocument("https://api.ffd.fr/uploads/c.pdf"),
+      ).rejects.toThrow("socket hang up");
     });
 
     it("rejects an HTTP error instead of returning the error page", async () => {

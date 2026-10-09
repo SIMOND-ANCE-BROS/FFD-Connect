@@ -47,6 +47,14 @@ export const MAX_DEDUCED_EVENTS = 400;
 /** Words of prose (not vocabulary, not filler) above which a line is ignored. */
 const MAX_UNKNOWN_WORDS = 4;
 
+/**
+ * Input bounds (third-party text): descriptions are < 1k chars and circulars
+ * 3–12k, épreuves lines < 150. Every regex below is also linear (no nested
+ * or overlapping quantifiers), these caps only bound the total work.
+ */
+export const MAX_PARSED_TEXT_LENGTH = 50_000;
+export const MAX_LINE_LENGTH = 300;
+
 const ALL_CATEGORIES_FALLBACK: readonly DeducedCategory[] = [
   "Latin",
   "Standard",
@@ -90,16 +98,19 @@ const HTML_ENTITIES: Record<string, string> = {
   agrave: "à",
 };
 
-/** FFD descriptions are HTML fragments (`<br />`, `&amp;`): make them lines. */
+/**
+ * FFD descriptions are HTML fragments (`<br />`, `&amp;`): make them lines.
+ * Patterns are bounded so an unclosed `<` or `&` cannot rescan the input.
+ */
 export function htmlToPlainText(raw: string): string {
   return raw
-    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<br\s{0,10}\/?>/gi, "\n")
     .replace(/<\/(p|div|li)>/gi, "\n")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&#(\d+);/g, (_, code: string) =>
+    .replace(/<[^<>]{0,200}>/g, " ")
+    .replace(/&#(\d{1,6});/g, (_, code: string) =>
       String.fromCharCode(Number(code)),
     )
-    .replace(/&([a-z]+);/gi, (match, name: string) => {
+    .replace(/&([a-z]{1,10});/gi, (match, name: string) => {
       return HTML_ENTITIES[name.toLowerCase()] ?? match;
     });
 }
@@ -118,7 +129,9 @@ export function normalizeForMatch(text: string): string {
 // ---------------------------------------------------------------------------
 
 const NUM = String.raw`(?:[1-5]|iv|v|i{1,3})`;
-const NUM_SEPARATOR = String.raw`[\s,\/.\-]*(?:(?:et|a)\b)?[\s,\/.\-]*`;
+// Linear on purpose: the second separator run sits inside the optional group
+// after a letter, so two `*` never compete for the same characters.
+const NUM_SEPARATOR = String.raw`[\s,\/.\-]*(?:(?:et|a)\b[\s,\/.\-]*)?`;
 const AGE_REGEX = new RegExp(
   String.raw`\b(juveniles?|juniors?|youths?|adultes?|adults?|seniors?|jeunes|jeune|espoirs?)\b((?:${NUM_SEPARATOR}\b${NUM}\b)*)`,
   "g",
@@ -477,10 +490,11 @@ class EventCollector {
  * Returns [] when nothing reliable is recognised (no age class anywhere).
  */
 export function parseFfdEvents(text: string): DeducedEvent[] {
-  const lines = htmlToPlainText(text)
+  const lines = htmlToPlainText(text.slice(0, MAX_PARSED_TEXT_LENGTH))
     .split(/\r?\n/)
     .map((line) => normalizeForMatch(line).trim())
-    .filter((line) => line.length > 0);
+    // Épreuves lines are short: a huge line is prose (or hostile), skip it.
+    .filter((line) => line.length > 0 && line.length <= MAX_LINE_LENGTH);
 
   const infos = lines
     .filter((line) => !NOISE_MARKERS.test(line))

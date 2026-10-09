@@ -18,11 +18,28 @@ import { extractPdfText, isPdf } from "../events-deduction/pdf-text.util";
 /** Downloads an FFD document (anti-bot aware) as raw bytes. */
 export type FfdDocumentDownloader = (url: string) => Promise<Buffer>;
 
+/**
+ * Hard cap on a downloaded FFD document. Circulars weigh 0.2–2 MB; the
+ * downloader enforces it while streaming (axios `maxContentLength` aborts the
+ * transfer) and this service re-checks the received buffer.
+ */
+export const MAX_FFD_DOCUMENT_BYTES = 10 * 1024 * 1024;
+
+/** Thrown by a downloader when the document exceeds MAX_FFD_DOCUMENT_BYTES. */
+export class FfdDocumentTooLargeError extends Error {
+  constructor(url: string) {
+    super(`FFD document exceeds ${MAX_FFD_DOCUMENT_BYTES} bytes: ${url}`);
+    this.name = "FfdDocumentTooLargeError";
+  }
+}
+
 type DeductionCandidate = Prisma.CompetitionGetPayload<{
   select: typeof competitionEventsDeductionSelect;
 }>;
 
 const DOWNLOAD_TIMEOUT_MS = 20_000;
+/** Text extraction runs on the event loop: bound how long we wait for it. */
+const EXTRACTION_TIMEOUT_MS = 15_000;
 
 /** Sources whose events were written by the sync itself (safe to replace). */
 const SYNC_OWNED_SOURCES: readonly EventsSource[] = [
@@ -92,6 +109,8 @@ export class CompetitionEventsDeductionService {
       return;
     }
 
+    // Strictly sequential (concurrency 1): at most one document downloaded
+    // and parsed at a time, so a sync batch never holds several PDFs in memory.
     for (const competition of candidates) {
       try {
         await this.deduceOne(competition, download);
@@ -198,17 +217,28 @@ export class CompetitionEventsDeductionService {
         ),
       );
     } catch (error: unknown) {
+      // An oversized document will not shrink: no retry. Anything else
+      // (timeout, 5xx, open breaker) is retried on the next sync.
+      const tooLarge = error instanceof FfdDocumentTooLargeError;
       this.logger.warn(
         `Circular download failed (${circularUrl}): ${getErrorMessage(error)}`,
       );
-      return { events: [], failed: true };
+      return { events: [], failed: !tooLarge };
     }
 
+    if (data.length > MAX_FFD_DOCUMENT_BYTES) {
+      this.logger.warn(`Circular too large, ignored (${circularUrl})`);
+      return { events: [], failed: false };
+    }
     if (!isPdf(data)) return { events: [], failed: false };
 
     let text: string;
     try {
-      text = await extractPdfText(new Uint8Array(data));
+      text = await withTimeout(
+        extractPdfText(new Uint8Array(data)),
+        EXTRACTION_TIMEOUT_MS,
+        "FFD circular text extraction",
+      );
     } catch (error: unknown) {
       // A malformed PDF will not get better: no retry, description only.
       this.logger.warn(
