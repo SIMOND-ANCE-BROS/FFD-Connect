@@ -6,7 +6,6 @@
 import type { TrackData } from "../../player/context/PlayerContext";
 import {
   createRound,
-  DANCES,
   MAX_ROUND_GROUPS,
   MIN_ROUND_GROUPS,
   type Category,
@@ -14,6 +13,11 @@ import {
   type PlaylistItem,
   type RoundConfig,
 } from "../../../stores/performance.store";
+import {
+  OFFICIAL_DANCE_ORDER,
+  resolveCategoryOrder,
+  type DanceOrder,
+} from "../../../stores/danceOrder.store";
 import { fnv1aHash } from "../../../utils/stableHash";
 
 // --- Dances -----------------------------------------------------------------
@@ -91,24 +95,53 @@ export const isAmbianceTrack = (t: TrackData): boolean =>
 
 // --- Rounds -----------------------------------------------------------------
 
-/** Keeps dances in the canonical order of their category. */
-export const sortDances = (category: Category, dances: string[]): string[] =>
-  DANCES[category].filter((d) => dances.includes(d));
+/**
+ * Keeps the dances of the category, sorted by the configured order of the
+ * category (official order by default). Unknown dances are dropped.
+ */
+export const sortDances = (
+  category: Category,
+  dances: readonly string[],
+  order: DanceOrder = OFFICIAL_DANCE_ORDER,
+): string[] =>
+  resolveCategoryOrder(category, order[category]).filter((d) =>
+    dances.includes(d),
+  );
+
+/** Moves the dance at `from` to `to` (clamped) — pure, for the order editor. */
+export const moveDance = (
+  order: readonly string[],
+  from: number,
+  to: number,
+): string[] => {
+  const next = [...order];
+  if (from < 0 || from >= next.length) return next;
+  const target = Math.max(0, Math.min(next.length - 1, to));
+  const [dance] = next.splice(from, 1);
+  next.splice(target, 0, dance);
+  return next;
+};
 
 /** Categories danced in the round, in order of first appearance. */
 export const roundCategories = (round: Pick<RoundConfig, "groups">) =>
   round.groups.filter((c, i) => round.groups.indexOf(c) === i);
 
-/** Enforces the round invariants (group count bounds, canonical dances). */
-export const normalizeRound = (round: RoundConfig): RoundConfig => ({
+/**
+ * Enforces the round invariants (group count bounds, known dances sorted by
+ * the category's configured order — official order by default).
+ */
+export const normalizeRound = (
+  round: RoundConfig,
+  order: DanceOrder = OFFICIAL_DANCE_ORDER,
+): RoundConfig => ({
   ...round,
   groups:
     round.groups.length >= MIN_ROUND_GROUPS
       ? round.groups.slice(0, MAX_ROUND_GROUPS)
       : ["Latin"],
   dances: {
-    Standard: sortDances("Standard", round.dances.Standard),
-    Latin: sortDances("Latin", round.dances.Latin),
+    Standard: sortDances("Standard", round.dances.Standard, order),
+    Latin: sortDances("Latin", round.dances.Latin, order),
   },
 });
 
@@ -245,11 +278,12 @@ export interface ProgramValidation {
 export const validateProgram = (
   cfg: PerformanceConfig,
   tracks: TrackData[],
+  order: DanceOrder = OFFICIAL_DANCE_ORDER,
 ): ProgramValidation => {
   const emptyRounds: RoundCategoryProblem[] = [];
   const missing: MissingDances[] = [];
   cfg.rounds.forEach((raw, i) => {
-    const round = normalizeRound(raw);
+    const round = normalizeRound(raw, order);
     for (const category of roundCategories(round)) {
       const dances = round.dances[category];
       if (dances.length === 0) {
@@ -299,9 +333,13 @@ export interface RoundStep {
 /**
  * Floor order of a round: for every dance position, the groups in order, each
  * dancing its category's dance (a category with fewer dances drops out).
+ * Dances follow the category's configured order.
  */
-export const roundSequence = (raw: RoundConfig): RoundStep[] => {
-  const round = normalizeRound(raw);
+export const roundSequence = (
+  raw: RoundConfig,
+  order: DanceOrder = OFFICIAL_DANCE_ORDER,
+): RoundStep[] => {
+  const round = normalizeRound(raw, order);
   const steps: RoundStep[] = [];
   const maxDances = Math.max(
     ...round.groups.map((c) => round.dances[c].length),
@@ -329,11 +367,14 @@ export const roundSequence = (raw: RoundConfig): RoundStep[] => {
  * Tango, Cha-cha-cha, Tango… A category with fewer dances simply drops out.
  * A track is picked per group, cycling through a shuffled pool so consecutive
  * groups of the same dance get different music whenever the library allows it.
+ * Dances follow `order` (the user's per-category order, official by default):
+ * every round — finals included — and its announcements honour it.
  */
 export const buildPlaylist = (
   cfg: PerformanceConfig,
   tracks: TrackData[],
   random: () => number = Math.random,
+  order: DanceOrder = OFFICIAL_DANCE_ORDER,
 ): PlaylistItem[] => {
   const items: Omit<PlaylistItem, "announcementText">[] = [];
   const totalRounds = cfg.rounds.length;
@@ -362,9 +403,9 @@ export const buildPlaylist = (
   };
 
   cfg.rounds.forEach((raw, r) => {
-    const round = normalizeRound(raw);
+    const round = normalizeRound(raw, order);
     const mixed = roundCategories(round).length > 1;
-    for (const step of roundSequence(round)) {
+    for (const step of roundSequence(round, order)) {
       const track = pick(step.dance);
       if (!track) continue;
       items.push({

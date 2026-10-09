@@ -16,6 +16,7 @@ import {
   describeItem,
   describeValidation,
   getAnnouncementText,
+  moveDance,
   normalizeRound,
   ordinal,
   removeGroup,
@@ -24,10 +25,15 @@ import {
   roundSequence,
   setGroupCategory,
   setRoundType,
+  sortDances,
   toggleRoundDance,
   trackMatchesDance,
   validateProgram,
 } from "../competitionProgram";
+import {
+  OFFICIAL_DANCE_ORDER,
+  type DanceOrder,
+} from "../../../../stores/danceOrder.store";
 
 const track = (id: string, style: string): TrackData => ({
   id,
@@ -428,5 +434,129 @@ describe("getAnnouncementText", () => {
     expect(getAnnouncementText({ ...base, roundIndex: 2 })).toMatch(
       /deuxième tour/,
     );
+  });
+});
+
+describe("custom dance order (per category, every round)", () => {
+  const ORDER: DanceOrder = {
+    Standard: [
+      "Tango",
+      "Valse Lente",
+      "Valse Viennoise",
+      "Slow Fox",
+      "Quickstep",
+    ],
+    Latin: ["Cha-Cha-Cha", "Samba", "Rumba", "Paso Doble", "Jive"],
+  };
+
+  it("sortDances follows the configured order, official by default", () => {
+    expect(sortDances("Latin", ["Samba", "Cha-Cha-Cha"])).toEqual([
+      "Samba",
+      "Cha-Cha-Cha",
+    ]);
+    expect(sortDances("Latin", ["Samba", "Cha-Cha-Cha"], ORDER)).toEqual([
+      "Cha-Cha-Cha",
+      "Samba",
+    ]);
+    // Dances of another category are still dropped.
+    expect(sortDances("Latin", ["Tango", "Jive"], ORDER)).toEqual(["Jive"]);
+  });
+
+  it("sortDances tolerates an incomplete order (missing dances appended)", () => {
+    const partial: DanceOrder = { ...OFFICIAL_DANCE_ORDER, Latin: ["Jive"] };
+    expect(sortDances("Latin", ["Samba", "Jive", "Rumba"], partial)).toEqual([
+      "Jive",
+      "Samba",
+      "Rumba",
+    ]);
+  });
+
+  it("normalizeRound sorts both categories with the order", () => {
+    const r = round(["Standard", "Latin"], {
+      dances: {
+        Standard: ["Valse Lente", "Tango"],
+        Latin: ["Samba", "Cha-Cha-Cha"],
+      },
+    });
+    expect(normalizeRound(r, ORDER).dances).toEqual({
+      Standard: ["Tango", "Valse Lente"],
+      Latin: ["Cha-Cha-Cha", "Samba"],
+    });
+  });
+
+  it("roundSequence interleaves groups in the custom order", () => {
+    const r = round(["Standard", "Latin"], {
+      dances: {
+        Standard: ["Valse Lente", "Tango"],
+        Latin: ["Samba", "Cha-Cha-Cha"],
+      },
+    });
+    expect(
+      roundSequence(r, ORDER).map((s) => `${s.dance}:G${s.groupIndex}`),
+    ).toEqual(["Tango:G1", "Cha-Cha-Cha:G2", "Valse Lente:G1", "Samba:G2"]);
+  });
+
+  it("buildPlaylist applies the order to every round, finals included", () => {
+    const program = cfg([
+      round(["Latin", "Latin"], {
+        dances: { Latin: ["Samba", "Cha-Cha-Cha", "Jive"] },
+      }),
+      round(["Latin"], {
+        type: "Final",
+        dances: { Latin: ["Samba", "Cha-Cha-Cha"] },
+      }),
+    ]);
+    const list = buildPlaylist(program, LIBRARY, () => 0.42, ORDER);
+    expect(
+      list.map((i) => `${i.roundIndex}:${i.style}:${i.groupIndex}`),
+    ).toEqual([
+      "1:Cha-Cha-Cha:1",
+      "1:Cha-Cha-Cha:2",
+      "1:Samba:1",
+      "1:Samba:2",
+      "1:Jive:1",
+      "1:Jive:2",
+      "2:Cha-Cha-Cha:1",
+      "2:Samba:1",
+    ]);
+    // Positions and MC announcements follow the custom order too.
+    expect(list[0].danceIndex).toBe(0);
+    expect(list[0].announcementText).toMatch(/Cha-cha-cha/);
+    expect(list[2].danceIndex).toBe(1);
+    expect(list[6].announcementText).toMatch(/finale/);
+    expect(list[6].announcementText).toMatch(/Cha-cha-cha/);
+    expect(list[7].danceIndex).toBe(1);
+    expect(list[7].announcementText).toMatch(/Samba/);
+    expect(list[7].announcementText).toMatch(/Dernière danse|pour terminer/);
+  });
+
+  it("validateProgram lists missing dances in the custom order", () => {
+    const v = validateProgram(
+      cfg([round(["Latin"], { dances: { Latin: ["Samba", "Cha-Cha-Cha"] } })]),
+      [],
+      ORDER,
+    );
+    expect(v.missing[0].dances).toEqual(["Cha-Cha-Cha", "Samba"]);
+  });
+
+  it("moveDance moves an item and clamps the target", () => {
+    const latin = [...DANCES.Latin];
+    expect(moveDance(latin, 1, 0)).toEqual([
+      "Cha-Cha-Cha",
+      "Samba",
+      "Rumba",
+      "Paso Doble",
+      "Jive",
+    ]);
+    expect(moveDance(latin, 0, 99)).toEqual([
+      "Cha-Cha-Cha",
+      "Rumba",
+      "Paso Doble",
+      "Jive",
+      "Samba",
+    ]);
+    expect(moveDance(latin, 9, 0)).toEqual(latin);
+    // Pure: the input is untouched.
+    expect(latin).toEqual([...DANCES.Latin]);
   });
 });

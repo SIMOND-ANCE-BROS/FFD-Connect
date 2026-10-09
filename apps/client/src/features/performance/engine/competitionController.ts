@@ -20,6 +20,7 @@
  */
 import { Alert } from "react-native";
 import Tts from "../../../services/TtsService";
+import { useDanceOrderStore } from "../../../stores/danceOrder.store";
 import {
   usePerformanceStore,
   type PlaylistItem,
@@ -490,9 +491,10 @@ export async function startPerformance(): Promise<boolean> {
     if (!alive(token)) return false;
 
     const cfg = store().config;
+    const order = useDanceOrderStore.getState().danceOrder;
     // Paso doble : réglage « 3 clashs » → seules les pistes à 3 clashs.
     const pool = selectPasoPool(library.tracks, cfg.pasoClashes);
-    const validation = validateProgram(cfg, pool);
+    const validation = validateProgram(cfg, pool, order);
     const problem = describeValidation(validation);
     if (problem) {
       return await abort(
@@ -504,7 +506,10 @@ export async function startPerformance(): Promise<boolean> {
     }
 
     // Paso doble : joué jusqu'au clash choisi, jamais au-delà de ceux de la piste.
-    const list = capPasoClashes(buildPlaylist(cfg, pool), cfg);
+    const list = capPasoClashes(
+      buildPlaylist(cfg, pool, Math.random, order),
+      cfg,
+    );
     if (list.length === 0) {
       return await abort(
         "Erreur",
@@ -714,7 +719,10 @@ export function generatePlaylist(): void {
   const d = requireDeps();
   const s = store();
   const pool = selectPasoPool(d.allTracks, s.config.pasoClashes);
-  s.setPlaylist(capPasoClashes(buildPlaylist(s.config, pool), s.config));
+  const order = useDanceOrderStore.getState().danceOrder;
+  s.setPlaylist(
+    capPasoClashes(buildPlaylist(s.config, pool, Math.random, order), s.config),
+  );
   s.setCurrentDanceIndex(0);
   s.setStatus("idle");
 }
