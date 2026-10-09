@@ -22,6 +22,34 @@ jest.mock("../../../../context/ThemeContext", () => ({
   ThemeProvider: ({ children }: PropsWithChildren) => <>{children}</>,
   useTheme: jest.fn(),
 }));
+// The dance order editor uses a plain DraggableFlatList: render every row in
+// order (drag is a no-op — tests reorder through the accessible arrows).
+jest.mock("react-native-draggable-flatlist", () => {
+  const { Fragment } = jest.requireActual<typeof import("react")>("react");
+  return {
+    __esModule: true,
+    ScaleDecorator: ({ children }: PropsWithChildren) => <>{children}</>,
+    default: ({
+      data,
+      renderItem,
+      keyExtractor,
+    }: {
+      data: string[];
+      renderItem: (p: object) => React.ReactNode;
+      keyExtractor: (d: string) => string;
+    }) =>
+      data.map((item, index) => (
+        <Fragment key={keyExtractor(item)}>
+          {renderItem({
+            item,
+            drag: jest.fn(),
+            isActive: false,
+            getIndex: () => index,
+          })}
+        </Fragment>
+      )),
+  };
+});
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
   useNavigation: jest.fn(),

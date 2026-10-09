@@ -72,7 +72,10 @@ export interface PlaylistItem {
   /** 0-based position of the dance in its category + dance count. */
   danceIndex: number;
   dancesInRound: number;
-  /** French MC announcement spoken before this item (deterministic). */
+  /**
+   * French MC announcement spoken before this item (deterministic). TTS input
+   * only — never displayed (dance names use their spoken spelling).
+   */
   announcementText: string;
   announcementPath?: string;
 }

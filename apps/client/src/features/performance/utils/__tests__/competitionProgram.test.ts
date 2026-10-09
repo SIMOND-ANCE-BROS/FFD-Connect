@@ -14,6 +14,7 @@ import {
   buildPlaylist,
   describeGroup,
   describeItem,
+  danceLabel,
   describeValidation,
   getAnnouncementText,
   moveDance,
@@ -26,6 +27,7 @@ import {
   setGroupCategory,
   setRoundType,
   sortDances,
+  spokenDanceName,
   toggleRoundDance,
   trackMatchesDance,
   validateProgram,
@@ -316,11 +318,11 @@ describe("roundSequence / buildPlaylist", () => {
       expect(texts[1]).toMatch(/latines/);
       expect(texts[1]).toMatch(/deuxième groupe/i);
       // Last dance of group 2: not the end of the final yet.
-      expect(texts[2]).toMatch(/le Jive/);
+      expect(texts[2]).toMatch(/le Jaïve/);
       expect(texts[2]).not.toMatch(/terminer|dernier groupe/i);
       expect(texts[3]).toMatch(/troisième et dernier groupe|dernier groupe/);
       expect(texts[3]).toMatch(/la Samba/);
-      expect(texts[4]).toMatch(/le Jive/);
+      expect(texts[4]).toMatch(/le Jaïve/);
       expect(texts[4]).toMatch(/troisième groupe/);
     });
 
@@ -464,6 +466,34 @@ describe("getAnnouncementText", () => {
     expect(text).toMatch(/premier groupe/i);
   });
 
+  it("says « Jaïve » (the voice spelled out J-I-V-E) but keeps the label", () => {
+    expect(spokenDanceName("Jive")).toBe("Jaïve");
+    expect(danceLabel("Jive")).toBe("Jive");
+    for (const danceIndex of [0, 1, 2, 4]) {
+      const text = getAnnouncementText({ ...base, style: "Jive", danceIndex });
+      expect(text).toMatch(/Jaïve/);
+      expect(text).not.toMatch(/Jive/);
+    }
+    // The player screen still shows the real name.
+    expect(
+      describeItem({
+        ...base,
+        style: "Jive",
+        track: { id: "j", title: "J", artist: "A", url: "u", style: "Jive" },
+        duration: 90,
+        isPaso: false,
+        announcementText: "",
+      }),
+    ).toMatch(/Jive/);
+  });
+
+  it("speaks the other dances by their display name", () => {
+    for (const dance of ["Samba", "Rumba", "Paso Doble", "Quickstep"]) {
+      expect(spokenDanceName(dance)).toBe(danceLabel(dance));
+    }
+    expect(spokenDanceName("Inconnue")).toBe("Inconnue");
+  });
+
   it("does not name the group when the round has only one", () => {
     const text = getAnnouncementText({ ...base, totalGroups: 1 });
     expect(text).not.toMatch(/groupe|passage|finale/i);
@@ -507,7 +537,7 @@ describe("getAnnouncementText", () => {
       style: "Jive",
       danceIndex: 4,
     });
-    expect(last).toMatch(/le Jive/);
+    expect(last).toMatch(/le Jaïve/);
   });
 
   describe("in a multi-group Final (group-major)", () => {
