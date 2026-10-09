@@ -15,6 +15,7 @@ import { ListAdminTracksQueryDto } from "../src/tracks/dto/admin-track.dto";
 import { TrackFilesService } from "../src/tracks/track-files.service";
 import { TrackImportService } from "../src/tracks/track-import.service";
 import { TracksService } from "../src/tracks/tracks.service";
+import { mp3Bytes } from "./fixtures/mp3.fixture";
 import { buildServiceModule } from "./integration-app.builder";
 
 describe("Tracks (integration, real DB)", () => {
@@ -240,8 +241,7 @@ describe("Tracks (integration, real DB)", () => {
   it("imports a track, then refuses the same file and the same source (409)", async () => {
     const importer = moduleRef.get(TrackImportService);
     const admin = await adminUser();
-    const mp3 = () =>
-      Buffer.concat([Buffer.from("ID3"), Buffer.from(randomUUID())]);
+    const mp3 = () => mp3Bytes(randomUUID());
     const sha = (buffer: Buffer) =>
       createHash("sha256").update(buffer).digest("hex");
     const part = (buffer: Buffer) => ({ buffer, size: buffer.length });

@@ -28,6 +28,15 @@ interface FfmpegCommand {
   save(path: string): this;
   on(event: "end", callback: () => void | Promise<void>): this;
   on(event: "error", callback: (err: unknown) => void): this;
+  kill(signal: string): this;
+}
+
+export interface AnalyzeBpmOptions {
+  /**
+   * Kills ffmpeg (SIGKILL) and rejects when the conversion runs longer than
+   * this. Without it the analysis waits for ffmpeg as before.
+   */
+  timeoutMs?: number;
 }
 
 interface FfmpegStatic {
@@ -124,7 +133,10 @@ export class BpmService {
   /**
    * Analyzes the BPM of an audio file
    */
-  async analyzeBpm(filePath: string): Promise<number> {
+  async analyzeBpm(
+    filePath: string,
+    options: AnalyzeBpmOptions = {},
+  ): Promise<number> {
     const MusicTempo = await this.loadMusicTempo();
     const WavDecoder = await this.loadWavDecoder();
 
@@ -140,14 +152,32 @@ export class BpmService {
     ffmpeg.setFfmpegPath(ffmpegPath);
 
     const tempWav = filePath.replace(/\.[^.]+$/, ".temp.wav");
+    const removeTempWav = () => {
+      if (fs.existsSync(tempWav)) {
+        fs.unlinkSync(tempWav);
+      }
+    };
 
     return new Promise((resolve, reject) => {
-      ffmpeg(filePath)
+      let settled = false;
+      let timer: NodeJS.Timeout | undefined;
+      // Exactly once: a killed ffmpeg still emits "error" afterwards.
+      const settle = (finish: () => void) => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        finish();
+      };
+
+      const command = ffmpeg(filePath)
         .setStartTime(10)
         .setDuration(15)
         .toFormat("wav")
         .save(tempWav)
         .on("end", async () => {
+          // ffmpeg is done: the timeout no longer applies to the decoding.
+          if (timer) clearTimeout(timer);
+          if (settled) return;
           try {
             const buffer = fs.readFileSync(tempWav);
             const decoder = WavDecoder.default ?? WavDecoder;
@@ -155,25 +185,35 @@ export class BpmService {
             const MT = MusicTempo.default ?? MusicTempo;
             const tempo = new MT(audioData.channelData[0]);
 
-            if (fs.existsSync(tempWav)) {
-              fs.unlinkSync(tempWav);
-            }
-
-            resolve(parseFloat(tempo.tempo));
+            removeTempWav();
+            settle(() => resolve(parseFloat(tempo.tempo)));
           } catch (err) {
-            if (fs.existsSync(tempWav)) {
-              fs.unlinkSync(tempWav);
-            }
-            reject(err instanceof Error ? err : new Error(String(err)));
+            removeTempWav();
+            settle(() =>
+              reject(err instanceof Error ? err : new Error(String(err))),
+            );
           }
         })
         .on("error", (err: unknown) => {
-          if (fs.existsSync(tempWav)) {
-            fs.unlinkSync(tempWav);
-          }
+          removeTempWav();
           const errorMessage = getErrorMessage(err);
-          reject(new Error(errorMessage));
+          settle(() => reject(new Error(errorMessage)));
         });
+
+      const { timeoutMs } = options;
+      if (timeoutMs !== undefined) {
+        timer = setTimeout(() => {
+          settle(() => {
+            // Stop the process, not just the wait: an orphan ffmpeg keeps
+            // its memory and CPU on a small replica.
+            command.kill("SIGKILL");
+            removeTempWav();
+            reject(
+              new Error(`ffmpeg tempo analysis timed out after ${timeoutMs}ms`),
+            );
+          });
+        }, timeoutMs);
+      }
     });
   }
 

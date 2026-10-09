@@ -11,6 +11,7 @@ import {
   createMockPrismaService,
   MockPrismaService,
 } from "../../test/mocks/prisma.mock";
+import { mp3Bytes } from "../../test/fixtures/mp3.fixture";
 import { AdminAuditService } from "../admin/admin-audit.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { idOnlySelect, trackDuplicateSelect } from "../utils/prisma-selects";
@@ -22,11 +23,12 @@ import {
   TRACK_DUPLICATE_MESSAGE,
   TRACK_IMPORT_MAX_ARTWORK_BYTES,
   TRACK_IMPORT_MAX_AUDIO_BYTES,
+  TRACK_TEMPO_ANALYSIS_TIMEOUT_MS,
   TrackImportService,
 } from "./track-import.service";
 import { TracksService } from "./tracks.service";
 
-const MP3 = Buffer.concat([Buffer.from("ID3"), Buffer.alloc(64, 1)]);
+const MP3 = mp3Bytes(Buffer.alloc(64, 1));
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
 const sha = (buffer: Buffer) =>
@@ -366,6 +368,93 @@ describe("TrackImportService", () => {
         bpm: 52,
         status: TrackStatus.READY,
       });
+    });
+  });
+
+  describe("tempo analysis", () => {
+    /** Resolves once `predicate` holds, polling the event loop (real fs I/O runs meanwhile). */
+    const until = async (predicate: () => boolean): Promise<void> => {
+      for (let i = 0; i < 500 && !predicate(); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+      }
+      expect(predicate()).toBe(true);
+    };
+
+    it("asks BpmService to kill ffmpeg at the tempo timeout", async () => {
+      analyze.mockResolvedValue(100);
+      await service.importTrack(
+        "admin-1",
+        dto({ rawBpm: undefined }),
+        file(MP3),
+        undefined,
+      );
+      expect(analyze).toHaveBeenCalledWith(expect.any(String), {
+        timeoutMs: TRACK_TEMPO_ANALYSIS_TIMEOUT_MS,
+      });
+    });
+
+    it("runs the analyses of concurrent imports one at a time", async () => {
+      const pending: Array<(bpm: number) => void> = [];
+      analyze.mockImplementation(
+        () => new Promise<number>((resolve) => pending.push(resolve)),
+      );
+      const other = mp3Bytes("another file");
+      const first = service.importTrack(
+        "admin-1",
+        dto({ rawBpm: undefined, sourceKey: "apple:1" }),
+        file(MP3),
+        undefined,
+      );
+      const second = service.importTrack(
+        "admin-1",
+        dto({ rawBpm: undefined, sourceKey: "apple:2", sha256: sha(other) }),
+        file(other),
+        undefined,
+      );
+
+      await until(() => analyze.mock.calls.length === 1);
+      // The second import waits, however long the first analysis takes.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(analyze).toHaveBeenCalledTimes(1);
+
+      pending[0](100);
+      await until(() => analyze.mock.calls.length === 2);
+      pending[1](120);
+      await Promise.all([first, second]);
+      expect(prisma.track.create).toHaveBeenCalledTimes(2);
+    });
+
+    it("lets the next analysis run after one fails", async () => {
+      analyze
+        .mockRejectedValueOnce(new Error("ffmpeg tempo analysis timed out"))
+        .mockResolvedValueOnce(100);
+      const other = mp3Bytes("another file");
+
+      await Promise.all([
+        service.importTrack(
+          "admin-1",
+          dto({ rawBpm: undefined, mpm: undefined }),
+          file(MP3),
+          undefined,
+        ),
+        service.importTrack(
+          "admin-1",
+          dto({
+            rawBpm: undefined,
+            mpm: undefined,
+            sourceKey: "apple:2",
+            sha256: sha(other),
+          }),
+          file(other),
+          undefined,
+        ),
+      ]);
+
+      expect(analyze).toHaveBeenCalledTimes(2);
+      const statuses = prisma.track.create.mock.calls.map(
+        (call) => (call[0] as { data: { status: TrackStatus } }).data.status,
+      );
+      expect(statuses.sort()).toEqual([TrackStatus.ERROR, TrackStatus.READY]);
     });
   });
 

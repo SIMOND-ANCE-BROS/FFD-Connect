@@ -29,6 +29,7 @@ interface MockFfmpegInstance {
   toFormat: jest.Mock;
   save: jest.Mock;
   on: jest.Mock;
+  kill: jest.Mock;
   _endCallback?: () => void | Promise<void>;
   _errorCallback?: (err?: Error) => void | Promise<void>;
 }
@@ -39,6 +40,7 @@ const mockFfmpeg = jest.fn((): MockFfmpegInstance => {
     setDuration: jest.fn().mockReturnThis(),
     toFormat: jest.fn().mockReturnThis(),
     save: jest.fn().mockReturnThis(),
+    kill: jest.fn().mockReturnThis(),
     on: jest.fn().mockImplementation(function (
       this: MockFfmpegInstance,
       event: string,
@@ -127,6 +129,73 @@ describe("BpmService", () => {
       await ffmpegInstance._endCallback();
 
       await expect(promise).rejects.toThrow("decode failed");
+    });
+  });
+
+  describe("analyzeBpm with a timeout", () => {
+    afterEach(() => jest.useRealTimers());
+
+    const started = async (): Promise<MockFfmpegInstance> => {
+      // Let the async loaders run so the command is built.
+      await jest.advanceTimersByTimeAsync(0);
+      return mockFfmpeg.mock.results[0].value as MockFfmpegInstance;
+    };
+
+    it("kills ffmpeg with SIGKILL and rejects when the timeout fires", async () => {
+      jest.useFakeTimers();
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      const promise = service.analyzeBpm("test.mp3", { timeoutMs: 1_000 });
+      const rejection = expect(promise).rejects.toThrow(
+        "ffmpeg tempo analysis timed out after 1000ms",
+      );
+      const command = await started();
+
+      await jest.advanceTimersByTimeAsync(999);
+      expect(command.kill).not.toHaveBeenCalled();
+      await jest.advanceTimersByTimeAsync(1);
+
+      expect(command.kill).toHaveBeenCalledWith("SIGKILL");
+      await rejection;
+      expect(fs.unlinkSync).toHaveBeenCalledWith("test.temp.wav");
+      // The "error" fluent-ffmpeg emits after the kill changes nothing.
+      void command._errorCallback?.(
+        new Error("ffmpeg was killed with signal SIGKILL"),
+      );
+      await expect(promise).rejects.toThrow("timed out");
+    });
+
+    it("does not kill ffmpeg once it has finished", async () => {
+      jest.useFakeTimers();
+      (fs.readFileSync as jest.Mock).mockReturnValue(Buffer.from("mock"));
+      (fs.existsSync as jest.Mock).mockReturnValue(true);
+      const promise = service.analyzeBpm("test.mp3", { timeoutMs: 1_000 });
+      const command = await started();
+
+      await command._endCallback?.();
+      await expect(promise).resolves.toBe(120.5);
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(command.kill).not.toHaveBeenCalled();
+    });
+
+    it("does not kill ffmpeg after it failed on its own", async () => {
+      jest.useFakeTimers();
+      (fs.existsSync as jest.Mock).mockReturnValue(false);
+      const promise = service.analyzeBpm("test.mp3", { timeoutMs: 1_000 });
+      const command = await started();
+
+      void command._errorCallback?.(new Error("ffmpeg failed"));
+      await expect(promise).rejects.toThrow("ffmpeg failed");
+      await jest.advanceTimersByTimeAsync(5_000);
+      expect(command.kill).not.toHaveBeenCalled();
+    });
+
+    it("arms no timer without the option (behaviour unchanged)", async () => {
+      jest.useFakeTimers();
+      const promise = service.analyzeBpm("test.mp3");
+      const command = await started();
+      expect(jest.getTimerCount()).toBe(0);
+      void command._errorCallback?.(new Error("ffmpeg failed"));
+      await expect(promise).rejects.toThrow("ffmpeg failed");
     });
   });
 

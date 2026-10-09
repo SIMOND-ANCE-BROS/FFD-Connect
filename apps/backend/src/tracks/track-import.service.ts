@@ -72,6 +72,8 @@ const isUniqueViolation = (error: unknown): boolean =>
 @Injectable()
 export class TrackImportService {
   private readonly logger = new Logger(TrackImportService.name);
+  /** Tail of the tempo-analysis queue (see `analyze`). */
+  private analysisQueue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -263,23 +265,45 @@ export class TrackImportService {
     return { rawBpm: 0, bpm: 0, status: TrackStatus.ERROR };
   }
 
-  /** Raw BPM detected by ffmpeg + music-tempo on a temp copy, or 0 when it fails. */
-  private async analyze(audio: Buffer): Promise<number> {
-    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "track-import-"));
-    const file = path.join(dir, "audio.mp3");
-    try {
-      await fsp.writeFile(file, audio);
-      const bpm = await withTimeout(
-        this.bpm.analyzeBpm(file),
-        TRACK_TEMPO_ANALYSIS_TIMEOUT_MS,
-        "tempo analysis",
-      );
-      return Number.isFinite(bpm) && bpm > 0 ? bpm : 0;
-    } catch (error) {
-      this.logger.warn(`Tempo analysis failed: ${getErrorMessage(error)}`);
-      return 0;
-    } finally {
-      await fsp.rm(dir, { recursive: true, force: true });
-    }
+  /**
+   * Raw BPM detected by ffmpeg + music-tempo on a temp copy, or 0 when it
+   * fails. One analysis at a time per replica: a bulk import sends several
+   * files at once, and parallel ffmpeg + music-tempo passes would starve a
+   * small replica into timeouts. The wait in the queue does not count
+   * against the timeout.
+   */
+  private analyze(audio: Buffer): Promise<number> {
+    return this.oneAnalysisAtATime(async () => {
+      const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "track-import-"));
+      const file = path.join(dir, "audio.mp3");
+      try {
+        await fsp.writeFile(file, audio);
+        // BpmService kills ffmpeg at the timeout; withTimeout stays as the
+        // backstop for the decoding that follows the conversion.
+        const bpm = await withTimeout(
+          this.bpm.analyzeBpm(file, {
+            timeoutMs: TRACK_TEMPO_ANALYSIS_TIMEOUT_MS,
+          }),
+          TRACK_TEMPO_ANALYSIS_TIMEOUT_MS,
+          "tempo analysis",
+        );
+        return Number.isFinite(bpm) && bpm > 0 ? bpm : 0;
+      } catch (error) {
+        this.logger.warn(`Tempo analysis failed: ${getErrorMessage(error)}`);
+        return 0;
+      } finally {
+        await fsp.rm(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
+  /** Promise-chain semaphore of size 1: `task` starts once the previous one settled. */
+  private oneAnalysisAtATime<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.analysisQueue.then(task);
+    this.analysisQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 }
