@@ -47,8 +47,7 @@ import { PerformanceSetupScreen } from "../features/performance/screens/Performa
 
 // --- Other screens ---
 import { ViewCareerScreen } from "../features/career/screens/ViewCareerScreen";
-import { OfflineBanner } from "../components/OfflineBanner";
-import { ImpersonationLayout } from "../components/ImpersonationBanner";
+import { TopBannersLayout } from "../components/TopBannersLayout";
 import { CguAcceptanceModal } from "../features/legal/CguAcceptanceModal";
 import { LegalScreen } from "../features/legal/LegalScreen";
 
@@ -133,9 +132,9 @@ export const AppNavigator = () => {
   };
 
   return (
-    // Impersonation banner (#545) sits ABOVE the navigator in the layout flow
-    // and pushes it down instead of overlaying screen headers.
-    <ImpersonationLayout>
+    // Impersonation (#545) and offline (#416) banners sit ABOVE the navigator
+    // in the layout flow and push it down instead of overlaying headers.
+    <TopBannersLayout>
       <NavigationContainer
         theme={NavigationTheme}
         ref={navigationRef}
@@ -312,9 +311,7 @@ export const AppNavigator = () => {
         {/* Acceptation CGU au premier lancement (#424) — autonome, ne rend
           rien si la version courante est déjà acceptée. */}
         <CguAcceptanceModal />
-        {/* Bandeau hors-ligne global (#416) */}
-        <OfflineBanner />
       </NavigationContainer>
-    </ImpersonationLayout>
+    </TopBannersLayout>
   );
 };
