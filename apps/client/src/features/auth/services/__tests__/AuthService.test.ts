@@ -678,6 +678,10 @@ describe("AuthService", () => {
       };
       expect(saved.impersonating).toBe(true);
       expect(saved.role).toBe("CLUB");
+      // The admin's offline license snapshot does not cross the switch.
+      expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
+        "license_snapshot_v1",
+      );
     });
 
     it("stopImpersonation restaure la sauvegarde et appelle /stop", async () => {
@@ -695,6 +699,10 @@ describe("AuthService", () => {
       expect(api.post).toHaveBeenCalledWith("/auth/impersonate/stop", {});
       expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
         "impersonation_backup",
+      );
+      // Nor does the target's (never saved, but purged defensively).
+      expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
+        "license_snapshot_v1",
       );
     });
   });

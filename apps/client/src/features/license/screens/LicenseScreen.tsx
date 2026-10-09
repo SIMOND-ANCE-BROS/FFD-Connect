@@ -1,6 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Share, User, WifiOff } from "lucide-react-native";
+import { AlertCircle, Share, User, WifiOff } from "lucide-react-native";
 import React, { useRef, useState } from "react";
 import {
   Animated,
@@ -228,9 +228,10 @@ export const LicenseScreen: React.FC = () => {
             </AppText>
           </View>
         ) : null}
-        {/* No network and no local snapshot (never loaded online on this
-            device): say so explicitly instead of an empty wallet. */}
-        {state.licenseUnavailable && !ffdUser ? (
+        {/* License could not be loaded and no local snapshot of this account
+            exists: say so explicitly instead of an empty wallet. Licensees
+            only — STAFF/CLUB keep their placeholder card. */}
+        {state.licenseUnavailable && !ffdUser && state.role === "LICENSEE" ? (
           <View
             style={[
               offlineStyles.unavailable,
@@ -242,7 +243,11 @@ export const LicenseScreen: React.FC = () => {
             testID="license-unavailable"
             accessibilityRole="alert"
           >
-            <WifiOff size={36} color={currentTheme.textSecondary} />
+            {state.licenseUnavailableReason === "offline" ? (
+              <WifiOff size={36} color={currentTheme.textSecondary} />
+            ) : (
+              <AlertCircle size={36} color={currentTheme.textSecondary} />
+            )}
             <AppText
               variant="h3"
               align="center"
@@ -256,9 +261,9 @@ export const LicenseScreen: React.FC = () => {
               align="center"
               color={currentTheme.textSecondary}
             >
-              Impossible de charger votre licence et aucune copie n'est
-              enregistrée sur cet appareil. Connectez-vous à internet puis
-              rouvrez cet écran : elle restera ensuite consultable hors ligne.
+              {state.licenseUnavailableReason === "offline"
+                ? "Impossible de charger votre licence et aucune copie n'est enregistrée sur cet appareil. Connectez-vous à internet puis rouvrez cet écran : elle restera ensuite consultable hors ligne."
+                : "Impossible de charger votre licence pour le moment. Réessayez plus tard."}
             </AppText>
           </View>
         ) : null}

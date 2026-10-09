@@ -1,4 +1,5 @@
 import { useFocusEffect } from "@react-navigation/native";
+import axios from "axios";
 import * as Sharing from "expo-sharing";
 import { useCallback, useState } from "react";
 import { Alert, Platform } from "react-native";
@@ -17,6 +18,7 @@ import { isDeviceOffline } from "../../../utils/connectivity";
 import { createLogger } from "../../../utils/logger";
 import { PDFAdapter, ShareAdapter } from "../../../utils/platform-adapters";
 import { useAuthRepository, UserRole } from "../../auth/context/AuthContext";
+import type { AuthConfig } from "../../auth/services/AuthService";
 import { LicenseUser } from "../components/LicenseCard";
 import {
   loadLicenseSnapshot,
@@ -24,6 +26,19 @@ import {
 } from "../utils/licenseSnapshot";
 
 const logger = createLogger("useLicenseLogic");
+
+/** Why the license cannot be shown (see `licenseUnavailable`). */
+export type LicenseUnavailableReason = "offline" | "error";
+
+/**
+ * The request never got an HTTP answer (no network, DNS, timeout, backend
+ * still asleep after the global wake gave up). A 4xx/5xx is a server answer.
+ */
+function isNetworkFailure(err: unknown): boolean {
+  return (
+    axios.isAxiosError(err) && !err.response && err.code !== "ERR_CANCELED"
+  );
+}
 
 interface LicenseLogicState {
   loadingPdf: boolean;
@@ -52,6 +67,12 @@ interface LicenseLogicState {
    * of an empty wallet.
    */
   licenseUnavailable: boolean;
+  /**
+   * Wording of the unavailable state: "offline" (no network — connect then
+   * reopen) or "error" (online but the load failed — try again later). Null
+   * when the license is available.
+   */
+  licenseUnavailableReason: LicenseUnavailableReason | null;
   pullY: SharedValue<number>;
   pullGesture: PanGesture;
 }
@@ -140,7 +161,9 @@ export const useLicenseLogic = (): {
   // Non-null = licence affichée depuis le snapshot local (pas de réseau) ;
   // contient la date ISO de la dernière synchro réussie (#416).
   const [offlineSince, setOfflineSince] = useState<string | null>(null);
-  const [licenseUnavailable, setLicenseUnavailable] = useState(false);
+  const [licenseUnavailableReason, setLicenseUnavailableReason] =
+    useState<LicenseUnavailableReason | null>(null);
+  const licenseUnavailable = licenseUnavailableReason !== null;
 
   // Shared Value for Animation
   const pullY = useSharedValue(0);
@@ -151,22 +174,33 @@ export const useLicenseLogic = (): {
       // Pas de réseau (gymnase, mode avion) : la licence et son QR restent
       // consultables depuis le dernier snapshot local (#416). Sans snapshot
       // (jamais chargée en ligne sur cet appareil), état vide explicite.
-      const serveSnapshot = async () => {
-        const snapshot = await loadLicenseSnapshot();
+      //
+      // The snapshot is only served to the account that saved it (owner =
+      // session username), and never during an impersonation: an admin acting
+      // as B must not see — nor overwrite — the device owner's license.
+      const serveSnapshot = async (
+        config: AuthConfig | null,
+        reasonIfMissing: LicenseUnavailableReason,
+      ) => {
+        const snapshot =
+          config && !config.impersonating
+            ? await loadLicenseSnapshot(config.username)
+            : null;
         if (snapshot) {
           setFfdUser(snapshot.ffdUser);
           if (snapshot.wdsfUser) setWdsfUser(snapshot.wdsfUser);
           setOfflineSince(snapshot.savedAt);
-          setLicenseUnavailable(false);
+          setLicenseUnavailableReason(null);
         } else {
-          setLicenseUnavailable(true);
+          setLicenseUnavailableReason(reasonIfMissing);
         }
       };
 
       const loadData = async () => {
+        let config: AuthConfig | null = null;
         try {
           // 1. Load Local Config
-          const config = await auth.getAuthConfig();
+          config = await auth.getAuthConfig();
           setPhotoUri(config.licensePhotoUri ?? null);
           setShowWdsf(config.hasWdsfLicense ?? false);
           setRole(config.role);
@@ -177,7 +211,7 @@ export const useLicenseLogic = (): {
             // instead of leaving the wallet empty until the request times out
             // (up to API_TIMEOUT_MS on a captive / dead network).
             if (await isDeviceOffline()) {
-              await serveSnapshot();
+              await serveSnapshot(config, "offline");
               return;
             }
             const profile = await auth.getProfile();
@@ -250,12 +284,23 @@ export const useLicenseLogic = (): {
             // Synchro réussie : rafraîchit le snapshot hors-ligne (#416) et
             // sort du mode dégradé le cas échéant.
             setOfflineSince(null);
-            setLicenseUnavailable(false);
-            void saveLicenseSnapshot(mappedFfdUser, nextWdsfUser);
+            setLicenseUnavailableReason(null);
+            if (!config.impersonating) {
+              void saveLicenseSnapshot(
+                config.username,
+                mappedFfdUser,
+                nextWdsfUser,
+              );
+            }
           }
         } catch (err) {
           logger.error("Failed to load data", err);
-          await serveSnapshot();
+          // The snapshot is served whatever the failure (license usable even
+          // when the server errors). Without one, only a real network failure
+          // gets the "connect to the internet" wording; an online failure
+          // (401, 5xx, unexpected payload) gets a neutral "try again later".
+          const offline = isNetworkFailure(err) || (await isDeviceOffline());
+          await serveSnapshot(config, offline ? "offline" : "error");
         }
       };
       loadData().catch(() => {});
@@ -532,7 +577,9 @@ export const useLicenseLogic = (): {
 
     if (showWdsf && wdsfUser) {
       items.push({ type: "WDSF", data: wdsfUser });
-    } else if (!showWdsf) {
+    } else if (!showWdsf && !(licenseUnavailable && !ffdUser)) {
+      // No pull-to-add WDSF card on the "license unavailable" state: adding a
+      // WDSF license needs the network and the FFD card it stacks on.
       items.push({ type: "ADD_WDSF", data: null });
     }
 
@@ -563,6 +610,7 @@ export const useLicenseLogic = (): {
       pullGesture,
       offlineSince,
       licenseUnavailable,
+      licenseUnavailableReason,
     },
     actions: {
       setWdsfModalVisible,

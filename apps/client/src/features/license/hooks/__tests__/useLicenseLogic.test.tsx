@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
+import { AxiosError, AxiosHeaders } from "axios";
 import {
   mockAuthRepository,
   mockUserRole,
@@ -566,8 +567,38 @@ describe("useLicenseLogic", () => {
         hasWdsfLicense: true,
         licensePhotoUri: null,
         isLoggedIn: true,
+        username: "alice@ffd.fr",
       });
     });
+
+    const profile = {
+      firstName: "Jean",
+      lastName: "Dupont",
+      license: { number: "12345", validUntil: "2026-08-31" },
+      clubName: "Club FFD",
+      birthDate: "1990-05-15",
+      role: "LICENSEE",
+    };
+
+    const networkError = () =>
+      new AxiosError("Network Error", "ERR_NETWORK", {
+        headers: new AxiosHeaders(),
+      });
+
+    const serverError = () =>
+      new AxiosError(
+        "Request failed with status code 500",
+        "ERR_BAD_RESPONSE",
+        { headers: new AxiosHeaders() },
+        null,
+        {
+          status: 500,
+          statusText: "Internal Server Error",
+          headers: {},
+          config: { headers: new AxiosHeaders() },
+          data: {},
+        },
+      );
 
     afterEach(() => {
       mockIsDeviceOffline.mockImplementation(() => Promise.resolve(false));
@@ -589,6 +620,137 @@ describe("useLicenseLogic", () => {
       expect(result.current.state.offlineSince).toBe(snapshot.savedAt);
       expect(result.current.state.licenseUnavailable).toBe(false);
       expect(mockAuthRepository.getProfile).not.toHaveBeenCalled();
+      // Only the current account's snapshot is asked for.
+      expect(mockLoadSnapshot).toHaveBeenCalledWith("alice@ffd.fr");
+    });
+
+    it("shows nothing when no snapshot belongs to the current account", async () => {
+      // A's snapshot on the device, C logged in: the (real) loader answers
+      // null for a foreign owner — the hook must fall to the unavailable state.
+      mockIsDeviceOffline.mockResolvedValue(true);
+      mockLoadSnapshot.mockImplementation((owner) =>
+        Promise.resolve(owner === "alice@ffd.fr" ? snapshot : null),
+      );
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "LICENSEE",
+        hasWdsfLicense: false,
+        isLoggedIn: true,
+        username: "charlie@ffd.fr",
+      });
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(result.current.state.licenseUnavailable).toBe(true);
+      });
+      expect(mockLoadSnapshot).toHaveBeenCalledWith("charlie@ffd.fr");
+      expect(result.current.state.offlineSince).toBeNull();
+      expect(result.current.state.listItems).toEqual([]);
+    });
+
+    describe("while impersonating", () => {
+      beforeEach(() => {
+        mockAuthRepository.getAuthConfig.mockResolvedValue({
+          role: "LICENSEE",
+          hasWdsfLicense: false,
+          isLoggedIn: true,
+          username: "bob@ffd.fr",
+          impersonating: true,
+        });
+        mockLoadSnapshot.mockResolvedValue(snapshot);
+      });
+
+      it("never serves a snapshot offline", async () => {
+        mockIsDeviceOffline.mockResolvedValue(true);
+
+        const { result } = await renderHook(() => useLicenseLogic());
+
+        await waitFor(() => {
+          expect(result.current.state.licenseUnavailable).toBe(true);
+        });
+        expect(mockLoadSnapshot).not.toHaveBeenCalled();
+        expect(result.current.state.offlineSince).toBeNull();
+      });
+
+      it("never serves a snapshot when the profile request fails", async () => {
+        mockAuthRepository.getProfile.mockRejectedValueOnce(networkError());
+
+        const { result } = await renderHook(() => useLicenseLogic());
+
+        await waitFor(() => {
+          expect(result.current.state.licenseUnavailable).toBe(true);
+        });
+        expect(mockLoadSnapshot).not.toHaveBeenCalled();
+      });
+
+      it("never saves a snapshot after a successful load", async () => {
+        mockAuthRepository.getProfile.mockResolvedValue(profile);
+
+        const { result } = await renderHook(() => useLicenseLogic());
+
+        await waitFor(() => {
+          expect(
+            result.current.state.listItems.find((i) => i.type === "FFD"),
+          ).toBeDefined();
+        });
+        expect(saveLicenseSnapshot).not.toHaveBeenCalled();
+      });
+    });
+
+    it("uses the offline wording when the request fails on a network error", async () => {
+      mockAuthRepository.getProfile.mockRejectedValueOnce(networkError());
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(result.current.state.licenseUnavailableReason).toBe("offline");
+      });
+      expect(result.current.state.licenseUnavailable).toBe(true);
+    });
+
+    it("uses the neutral wording when the request fails online (5xx)", async () => {
+      mockAuthRepository.getProfile.mockRejectedValueOnce(serverError());
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(result.current.state.licenseUnavailableReason).toBe("error");
+      });
+      expect(result.current.state.licenseUnavailable).toBe(true);
+    });
+
+    it("uses the offline wording when NetInfo reports offline after a failure", async () => {
+      // Online at first check, the request then fails without being an axios
+      // network error; NetInfo now confirms the device is offline.
+      mockIsDeviceOffline
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true);
+      mockAuthRepository.getProfile.mockRejectedValueOnce(new Error("boom"));
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(result.current.state.licenseUnavailableReason).toBe("offline");
+      });
+    });
+
+    it("does not offer the pull-to-add WDSF card when the license is unavailable", async () => {
+      mockIsDeviceOffline.mockResolvedValue(true);
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "LICENSEE",
+        hasWdsfLicense: false,
+        isLoggedIn: true,
+        username: "alice@ffd.fr",
+      });
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(result.current.state.licenseUnavailable).toBe(true);
+      });
+      expect(
+        result.current.state.listItems.find((i) => i.type === "ADD_WDSF"),
+      ).toBeUndefined();
     });
 
     it("flags the license as unavailable when offline without a snapshot", async () => {
@@ -633,6 +795,11 @@ describe("useLicenseLogic", () => {
       await waitFor(() => {
         expect(saveLicenseSnapshot).toHaveBeenCalled();
       });
+      expect(saveLicenseSnapshot).toHaveBeenCalledWith(
+        "alice@ffd.fr",
+        expect.objectContaining({ licenseNumber: "12345" }),
+        expect.objectContaining({ structure: "WDSF" }),
+      );
       expect(result.current.state.licenseUnavailable).toBe(false);
       expect(result.current.state.offlineSince).toBeNull();
     });

@@ -7,6 +7,7 @@ const mockRefreshAuth = jest.fn();
 const mockGetTokens = jest.fn();
 const mockSetTokens = jest.fn();
 const mockClearTokens = jest.fn();
+const mockClearLicenseSnapshot = jest.fn();
 
 jest.mock("axios", () => ({
   __esModule: true,
@@ -30,6 +31,10 @@ jest.mock("../tokenStore", () => ({
   getTokens: () => mockGetTokens(),
   setTokens: (t: unknown) => mockSetTokens(t),
   clearTokens: () => mockClearTokens(),
+}));
+
+jest.mock("../../features/license/utils/licenseSnapshot", () => ({
+  clearLicenseSnapshot: () => mockClearLicenseSnapshot() as unknown,
 }));
 
 const post = axios.post as jest.Mock;
@@ -77,9 +82,21 @@ describe("refreshSession", () => {
     await expect(refreshSession()).resolves.toBeNull();
 
     expect(mockClearTokens).toHaveBeenCalledTimes(1);
+    // The offline license snapshot (PII) ends with the session.
+    expect(mockClearLicenseSnapshot).toHaveBeenCalledTimes(1);
     expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
     const saved = JSON.parse(setItem.mock.calls[0][1] as string);
     expect(saved.isLoggedIn).toBe(false);
+  });
+
+  it("also ends the session (and purges the snapshot) on a 403", async () => {
+    mockGetTokens.mockResolvedValue({ refreshToken: "r1" });
+    post.mockRejectedValue({ response: { status: 403 } });
+
+    await expect(refreshSession()).resolves.toBeNull();
+
+    expect(mockClearTokens).toHaveBeenCalledTimes(1);
+    expect(mockClearLicenseSnapshot).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the session on a network error (no response) — does not clear", async () => {
@@ -89,6 +106,7 @@ describe("refreshSession", () => {
     await expect(refreshSession()).resolves.toBeNull();
 
     expect(mockClearTokens).not.toHaveBeenCalled();
+    expect(mockClearLicenseSnapshot).not.toHaveBeenCalled();
     expect(mockRefreshAuth).not.toHaveBeenCalled();
   });
 

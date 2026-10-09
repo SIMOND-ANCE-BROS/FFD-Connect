@@ -725,6 +725,7 @@ describe("LicenseScreen Integration", () => {
         state: {
           ...mockState,
           licenseUnavailable: true,
+          licenseUnavailableReason: "offline",
           showWdsf: true,
           listItems: [],
         },
@@ -734,7 +735,46 @@ describe("LicenseScreen Integration", () => {
       const { getByTestId, getByText } = await render(<LicenseScreen />);
       expect(getByTestId("license-unavailable")).toBeTruthy();
       expect(getByText("Licence indisponible")).toBeTruthy();
+      expect(getByText(/Connectez-vous à internet/)).toBeTruthy();
     });
+
+    it("uses a neutral 'try again later' wording when the load failed online", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          licenseUnavailable: true,
+          licenseUnavailableReason: "error",
+          listItems: [],
+        },
+        actions: mockActions,
+      });
+
+      const { getByTestId, getByText, queryByText } = await render(
+        <LicenseScreen />,
+      );
+      expect(getByTestId("license-unavailable")).toBeTruthy();
+      expect(getByText(/Réessayez plus tard/)).toBeTruthy();
+      expect(queryByText(/Connectez-vous à internet/)).toBeNull();
+    });
+
+    it.each(["STAFF", "CLUB"])(
+      "is not shown to the %s space (placeholder card only)",
+      async (role) => {
+        (useLicenseLogic as jest.Mock).mockReturnValue({
+          state: {
+            ...mockState,
+            role,
+            licenseUnavailable: true,
+            licenseUnavailableReason: "offline",
+            listItems: [],
+          },
+          actions: mockActions,
+        });
+
+        const { queryByTestId } = await render(<LicenseScreen />);
+        expect(queryByTestId("license-unavailable")).toBeNull();
+      },
+    );
 
     it("is hidden as soon as an FFD license is shown", async () => {
       (useLicenseLogic as jest.Mock).mockReturnValue({
