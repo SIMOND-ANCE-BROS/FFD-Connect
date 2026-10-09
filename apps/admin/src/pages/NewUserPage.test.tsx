@@ -1,11 +1,19 @@
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { NewUserPage } from './NewUserPage';
+
+/** Picks an option in a Mantine Select (every listbox stays mounted in jsdom). */
+async function pickOption(input: HTMLElement, name: string) {
+  await userEvent.click(input);
+  const listbox = document.getElementById(input.getAttribute('aria-controls') ?? '');
+  if (!listbox) throw new Error('listbox not found');
+  await userEvent.click(within(listbox).getByRole('option', { name, hidden: true }));
+}
 
 function renderPage() {
   return render(
@@ -70,6 +78,29 @@ describe('NewUserPage', () => {
       },
     });
     expect(await screen.findByText('user page')).toBeInTheDocument();
+  });
+
+  it('sends a competition level per discipline, never the legacy single level', async () => {
+    const create = vi.spyOn(sdk, 'adminControllerCreateUser').mockResolvedValue({
+      data: { userId: 'u-new', clubId: null, invitationSent: true },
+      error: undefined,
+    } as never);
+    renderPage();
+    await fillIdentity();
+    await pickOption(
+      await screen.findByLabelText('Niveau Latines', { selector: 'input' }),
+      'Débutant',
+    );
+    await submit();
+    expect(create).toHaveBeenCalledWith({
+      body: {
+        email: 'jeanne@x.fr',
+        firstName: 'Jeanne',
+        lastName: 'Martin',
+        role: 'LICENSEE',
+        competitionLevelLatin: 'Débutant',
+      },
+    });
   });
 
   it('offers a new club only for the Club role, where a club becomes required', async () => {
