@@ -9,6 +9,7 @@ import { UserDetailPage } from './pages/UserDetailPage';
 import { ClubDetailPage } from './pages/ClubDetailPage';
 import { ClubsPage } from './pages/ClubsPage';
 import { TrackDetailPage } from './pages/TrackDetailPage';
+import { TrackImportPage } from './pages/TrackImportPage';
 import { TracksPage } from './pages/TracksPage';
 import { NewClubPage } from './pages/NewClubPage';
 import { UsersPage } from './pages/UsersPage';
@@ -34,6 +35,7 @@ export const router = createBrowserRouter([
       { path: 'moderation', element: <ModerationPage /> },
       { path: 'moderation/:id', element: <ModerationDetailPage /> },
       { path: 'tracks', element: <TracksPage /> },
+      { path: 'tracks/import', element: <TrackImportPage /> },
       { path: 'tracks/:id', element: <TrackDetailPage /> },
       { path: 'audit-log', element: <AuditLogPage /> },
     ],
