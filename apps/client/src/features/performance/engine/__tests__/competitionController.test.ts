@@ -1,6 +1,10 @@
 import { Alert } from "react-native";
 import Tts from "../../../../services/TtsService";
 import {
+  OFFICIAL_DANCE_ORDER,
+  useDanceOrderStore,
+} from "../../../../stores/danceOrder.store";
+import {
   createRound,
   usePerformanceStore,
   type Category,
@@ -129,6 +133,7 @@ describe("competitionController", () => {
       isAnnouncing: false,
     });
     setProgram();
+    useDanceOrderStore.setState({ danceOrder: OFFICIAL_DANCE_ORDER });
     jest.spyOn(Alert, "alert").mockImplementation(jest.fn());
     (loadCompetitionLibrary as jest.Mock).mockResolvedValue({
       tracks: [SAMBA, RUMBA, JIVE],
@@ -229,6 +234,31 @@ describe("competitionController", () => {
         "TTS indisponible",
         "TTS indisponible (500)",
       );
+    });
+
+    it("plays the dances in the order chosen by the user", async () => {
+      useDanceOrderStore
+        .getState()
+        .setCategoryOrder("Latin", ["Jive", "Rumba", "Samba"]);
+      setProgram({
+        rounds: [roundOf("Latin", "Final", ["Samba", "Jive", "Rumba"])],
+      });
+      await expect(engine.startPerformance()).resolves.toBe(true);
+      const list = store().playlist;
+      expect(list.map((i) => i.style)).toEqual(["Jive", "Rumba", "Samba"]);
+      expect(list[0].announcementText).toMatch(/Jive/);
+    });
+
+    it("previews the playlist in the user's order", () => {
+      useDanceOrderStore
+        .getState()
+        .setCategoryOrder("Latin", ["Jive", "Samba"]);
+      engine.setEngineDeps({ ...deps, allTracks: [SAMBA, JIVE] });
+      setProgram({
+        rounds: [roundOf("Latin", "Final", ["Samba", "Jive"])],
+      });
+      engine.generatePlaylist();
+      expect(store().playlist.map((i) => i.style)).toEqual(["Jive", "Samba"]);
     });
 
     it("lists missing dances instead of starting", async () => {
