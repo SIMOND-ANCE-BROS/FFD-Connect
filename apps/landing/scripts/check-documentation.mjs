@@ -23,6 +23,16 @@ for (const doc of docs) {
     if (index >= 0) assert(existsSync(resolve(root, asset.slice(index + 1))), asset + ' missing');
   }
 }
+for (const audience of ['utilisateurs', 'technique']) {
+  const html = readFileSync(resolve(root, 'documentation', audience, 'index.html'), 'utf8');
+  assert(html.includes('data-doc-search'), audience + ' directory must be searchable');
+  const listed = [...html.matchAll(/data-doc-audience="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(listed.length, docs.filter((doc) => doc.audience === audience).length);
+  assert(
+    listed.every((value) => value === audience),
+    'Audience directories must not mix articles',
+  );
+}
 for (const path of [
   'beta',
   'confidentialite',
