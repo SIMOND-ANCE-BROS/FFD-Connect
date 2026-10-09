@@ -117,6 +117,7 @@ describe('ModerationDetailPage', () => {
     const audio = audioOf(container);
     expect(audio).toHaveAttribute('src', `${API_ORIGIN}/uploads/Espa%C3%B1a%20Ca%C3%B1%C3%AD.mp3`);
     expect(audio).toHaveAttribute('crossorigin', 'anonymous');
+    expect(audio).toHaveAttribute('aria-label', 'Lecteur de la musique');
     expect(audio.getAttribute('src')).not.toContain('/api/v');
     expect(screen.getByText('Compté au métronome')).toBeInTheDocument();
     expect(screen.getByText(/Eva Martin/)).toBeInTheDocument();

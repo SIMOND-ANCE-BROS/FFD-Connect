@@ -197,9 +197,35 @@ describe('approvalPreview', () => {
   });
 
   it('warns that the MPM is recalculated when only the dance is overridden', () => {
-    expect(approvalPreview(correction, { style: 'Rumba' }).after).toEqual({
+    const noBpm = { ...correction, proposed: { ...correction.proposed, bpm: null } };
+    expect(approvalPreview(noBpm, { style: 'Rumba' }).after).toEqual({
       style: 'Rumba',
       bpm: 'recalculé selon la danse',
+    });
+  });
+});
+
+describe('approvalPreview, proposed MPM and clashes', () => {
+  it('keeps the proposed MPM when the dance is overridden too', () => {
+    const c = {
+      ...correction,
+      proposed: { ...correction.proposed, style: 'Rumba', bpm: 62 },
+    };
+    expect(approvalPreview(c, { style: 'Samba' }).after).toMatchObject({
+      style: 'Samba',
+      bpm: 62,
+    });
+  });
+
+  it('shows the clashes sorted and deduped, as the server stores them', () => {
+    const c = {
+      ...correction,
+      proposed: { ...correction.proposed, bpm: null, clashTimecodes: [80, 40, 80] },
+    };
+    // [80, 40, 80] is the track's [40, 80] once stored: not a change.
+    expect(approvalPreview(c, {}).after).toEqual({ bpm: 62 });
+    expect(approvalPreview(c, { clashTimecodes: [90, 10, 90] }).after).toMatchObject({
+      clashTimecodes: [10, 90],
     });
   });
 });

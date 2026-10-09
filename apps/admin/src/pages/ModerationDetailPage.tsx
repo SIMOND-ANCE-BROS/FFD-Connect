@@ -149,6 +149,7 @@ function CorrectionReview({ id }: { id: string }) {
         <Stack gap="xs">
           <audio
             ref={audioRef}
+            aria-label="Lecteur de la musique"
             controls
             preload="metadata"
             // CORS load: helmet's Cross-Origin-Resource-Policy: same-origin

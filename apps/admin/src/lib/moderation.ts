@@ -180,6 +180,10 @@ export type ApproveOverrides = Pick<
 
 const sortedNumbers = (values: readonly number[]): number[] => [...values].sort((a, b) => a - b);
 
+/** Same normalisation as the server on write: sorted, no duplicate. */
+export const sortedUnique = (values: readonly number[]): number[] =>
+  [...new Set(values)].sort((a, b) => a - b);
+
 const sameNumbers = (a: readonly number[], b: readonly number[]): boolean => {
   const x = sortedNumbers(a);
   const y = sortedNumbers(b);
@@ -209,8 +213,9 @@ const RECOMPUTED_BPM = 'recalculé selon la danse';
 
 /**
  * Before → after of the track if approved with these overrides, changed
- * fields only. A dance override without an MPM makes the server recalculate
- * the MPM from the raw tempo, which the SPA cannot know.
+ * fields only. A dance override with neither an admin nor a proposed MPM makes
+ * the server recalculate the MPM from the raw tempo, which the SPA cannot know
+ * (nor whether the track has one: then the MPM simply stays).
  */
 export function approvalPreview(
   c: TrackCorrectionAdminDto,
@@ -228,8 +233,11 @@ export function approvalPreview(
     title: overrides.title ?? p.title ?? t.title,
     artist: overrides.artist ?? p.artist ?? t.artist,
     style: overrides.style ?? p.style ?? t.style,
-    bpm: overrides.bpm ?? (overrides.style !== undefined ? RECOMPUTED_BPM : c.resultingBpm),
-    clashTimecodes: overrides.clashTimecodes ?? p.clashTimecodes ?? t.clashTimecodes,
+    // Server: `dto.bpm ?? proposedBpm` is applied as is; only a dance override
+    // with no MPM anywhere makes it recalculate from the raw tempo.
+    bpm:
+      overrides.bpm ?? p.bpm ?? (overrides.style !== undefined ? RECOMPUTED_BPM : c.resultingBpm),
+    clashTimecodes: sortedUnique(overrides.clashTimecodes ?? p.clashTimecodes ?? t.clashTimecodes),
   };
   const before: Record<string, unknown> = {};
   const after: Record<string, unknown> = {};

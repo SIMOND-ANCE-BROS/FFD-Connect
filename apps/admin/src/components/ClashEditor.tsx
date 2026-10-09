@@ -1,11 +1,15 @@
 import { Button, Group, Stack, Text, TextInput } from '@mantine/core';
 import { type RefObject, useState } from 'react';
-import { formatTimecode, MAX_CLASHES, parseTimecode, roundTenth } from '../lib/moderation';
+import {
+  formatTimecode,
+  MAX_CLASHES,
+  parseTimecode,
+  roundTenth,
+  sortedUnique,
+} from '../lib/moderation';
 
 /** Lead-in before a clash when it is played, to hear it coming. */
 export const CLASH_LEAD_IN_SECONDS = 3;
-
-const sortedUnique = (values: number[]): number[] => [...new Set(values)].sort((a, b) => a - b);
 
 interface ClashEditorProps {
   value: number[];
