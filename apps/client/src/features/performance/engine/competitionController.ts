@@ -20,12 +20,14 @@
  *   transition (status unchanged, timer held):
  *              end of break → fade the pause music out → dance track (no
  *              second announcement). Without a break (`pauseDuration <= 0`)
- *              or on ⏮ the announcement is spoken right before the dance.
+ *              or on ⏮ the announcement is spoken right before the dance —
+ *              and so is a break call that was not heard (clip never
+ *              started / cut), instead of being lost.
  *   playing  — the countdown only starts once the track is really playing.
  *   … repeat, then an optional closing line and status "finished".
  */
 import { Alert } from "react-native";
-import Tts from "../../../services/TtsService";
+import Tts, { type SpeakOutcome } from "../../../services/TtsService";
 import { useDanceOrderStore } from "../../../stores/danceOrder.store";
 import {
   usePerformanceStore,
@@ -65,6 +67,13 @@ export const BREAK_FADE_IN_MS = 1000;
 export const AMBIANCE_RISE_MS = 1500;
 /** Max wait for the dance track to report Playing before starting anyway. */
 export const PLAYBACK_START_TIMEOUT_MS = 8000;
+/**
+ * Wait between pausing the music player and speaking. expo-audio (iOS)
+ * deactivates the shared audio session 100 ms after a pause when no player
+ * is playing yet: an announcement still loading at that instant would start
+ * on a dead session. Speaking after that check lets play() re-activate it.
+ */
+export const AUDIO_SESSION_SETTLE_MS = 250;
 const DANCE_FADE_OUT_S = 5;
 const FADE_STEP_MS = 100;
 const DOWNLOAD_CONCURRENCY = 3;
@@ -363,18 +372,31 @@ async function announceBreak(index: number, token: number): Promise<void> {
   try {
     if (item) {
       store().setIsAnnouncing(true);
-      if (ambianceTrack)
+      if (ambianceTrack) {
         await rampVolume(DUCKED_VOLUME, BREAK_FADE_IN_MS, token);
+      } else {
+        // Silent break: the music player was just paused (playAmbiance).
+        await sleep(AUDIO_SESSION_SETTLE_MS);
+      }
       if (!alive(token)) return;
+      let outcome: SpeakOutcome;
       try {
-        await Tts.speak(item.announcementText, item.announcementPath);
+        outcome = await Tts.speak(item.announcementText, item.announcementPath);
       } catch (e) {
         logger.warn("TTS Speak Error", e);
         await handleTtsFailure(e instanceof Error ? e.message : undefined);
         return;
       }
       if (!alive(token)) return;
-      announcedIndex = index;
+      if (outcome === "spoken") {
+        announcedIndex = index;
+      } else {
+        // Not heard: left unmarked so it is called again right before the
+        // dance (handleTimerComplete → transitionToDance(…, announce)).
+        logger.warn(
+          `Break announcement not heard (${outcome}) — retried before the dance`,
+        );
+      }
       store().setIsAnnouncing(false);
     }
     if (ambianceTrack)
@@ -434,17 +456,23 @@ async function transitionToDance(
         await rampVolume(DUCKED_VOLUME, 600, token);
       } else {
         await requireDeps().pause();
+        await sleep(AUDIO_SESSION_SETTLE_MS);
       }
       if (!alive(token)) return;
 
+      let outcome: SpeakOutcome;
       try {
-        await Tts.speak(item.announcementText, item.announcementPath);
+        outcome = await Tts.speak(item.announcementText, item.announcementPath);
       } catch (e) {
         logger.warn("TTS Speak Error", e);
         await handleTtsFailure(e instanceof Error ? e.message : undefined);
         return;
       }
       if (!alive(token)) return;
+      if (outcome !== "spoken") {
+        // Already reported by the TTS service; the dance must not wait.
+        logger.warn(`Dance announcement not heard (${outcome})`);
+      }
       store().setIsAnnouncing(false);
     }
 
