@@ -19,6 +19,10 @@ export function useCareerLogic() {
   // spinner never shows on top of the screen's own first-load loader (two
   // stacked spinners on the Career tab, beta feedback).
   const [refreshing, setRefreshing] = useState(false);
+  // Flips once the first load settles (data, empty career or error). Later
+  // loads (pull-to-refresh) never bring the full-screen loader back, even on
+  // an empty career: the RefreshControl spinner is enough.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const load = useCallback(async () => {
     const config = await auth.getAuthConfig();
@@ -27,6 +31,7 @@ export function useCareerLogic() {
       setRegistrations([]);
       setResults([]);
       setLoading(false);
+      setHasLoadedOnce(true);
       return;
     }
     setLoading(true);
@@ -44,6 +49,7 @@ export function useCareerLogic() {
       },
     );
     setLoading(false);
+    setHasLoadedOnce(true);
   }, [auth, withErrorHandling]);
 
   useEffect(() => {
@@ -64,6 +70,8 @@ export function useCareerLogic() {
     registrations,
     results,
     loading,
+    /** Full-screen loader: only until the first load settles. */
+    isFirstLoad: loading && !hasLoadedOnce,
     refreshing,
     refresh,
   };

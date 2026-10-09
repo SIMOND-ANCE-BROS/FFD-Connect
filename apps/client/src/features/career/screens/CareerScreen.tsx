@@ -66,10 +66,14 @@ export const CareerScreen = ({ navigation }: Props) => {
   // paddingTop du contenu. Estimation initiale avant onLayout.
   const [headerH, setHeaderH] = useState(insets.top + 120);
   const auth = useAuthRepository();
-  const { partnerships, registrations, results, loading, refreshing, refresh } =
-    useCareerLogic();
-  const isFirstLoad =
-    loading && !partnerships.length && !registrations.length && !results.length;
+  const {
+    partnerships,
+    registrations,
+    results,
+    isFirstLoad,
+    refreshing,
+    refresh,
+  } = useCareerLogic();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CareerSearchMember[]>([]);

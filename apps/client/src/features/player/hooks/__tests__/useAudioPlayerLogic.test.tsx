@@ -615,9 +615,18 @@ describe("useAudioPlayerLogic", () => {
   });
 
   describe("tempo lock", () => {
-    const trackA = { id: "a", title: "A", artist: "X", url: "", baseBpm: 30 };
-    const trackB = { id: "b", title: "B", artist: "X", url: "", baseBpm: 28 };
-    const playerWith = (currentTrack: typeof trackA & { style?: string }) => ({
+    // Same style: a lock carries over from one to the other.
+    const trackA = {
+      id: "a",
+      title: "A",
+      artist: "X",
+      url: "",
+      baseBpm: 30,
+      style: "Waltz",
+    };
+    const trackB = { ...trackA, id: "b", title: "B", baseBpm: 28 };
+    type LockTrack = Omit<typeof trackA, "style"> & { style?: string };
+    const playerWith = (currentTrack: LockTrack | null) => ({
       currentTrack,
       isPlaying: true,
       togglePlayback: jest.fn(),
@@ -896,6 +905,43 @@ describe("useAudioPlayerLogic", () => {
         await show(rerender, { ...paso, id: "p3" });
         expect(result.current.state.bpm).toBe(55);
       });
+    });
+
+    it("never shares a lock between two tracks without a style", async () => {
+      const { style: _a, ...bareA } = trackA;
+      const { style: _b, ...bareB } = trackB;
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(bareA));
+      const { result, rerender } = await renderHook(() =>
+        useAudioPlayerLogic(),
+      );
+      await act(async () => {
+        await result.current.actions.changeBpm(27);
+      });
+      await act(async () => {
+        result.current.actions.toggleTempoLock();
+      });
+      expect(result.current.state.isTempoLocked).toBe(true);
+      expect(usePlayerStore.getState().lockedMpmByStyle).toEqual({
+        "track:a": 27,
+      });
+
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(bareB));
+      await act(async () => {
+        await rerender({});
+      });
+      expect(result.current.state.isTempoLocked).toBe(false);
+      expect(result.current.state.bpm).toBe(28);
+      expect(TrackPlayer().setRate).toHaveBeenLastCalledWith(1);
+    });
+
+    it("toggleTempoLock is a no-op when no track is loaded", async () => {
+      (usePlayer as jest.Mock).mockReturnValue(playerWith(null));
+      const { result } = await renderHook(() => useAudioPlayerLogic());
+      await act(async () => {
+        result.current.actions.toggleTempoLock();
+      });
+      expect(usePlayerStore.getState().lockedMpmByStyle).toEqual({});
+      expect(result.current.state.isTempoLocked).toBe(false);
     });
 
     it("toggling the lock never changes the tempo", async () => {

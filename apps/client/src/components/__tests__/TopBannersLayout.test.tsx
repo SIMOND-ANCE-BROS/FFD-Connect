@@ -2,6 +2,7 @@ import { render } from "@testing-library/react-native";
 import React, { useContext } from "react";
 import { Text } from "react-native";
 import { SafeAreaInsetsContext } from "react-native-safe-area-context";
+import { OfflineBanner } from "../OfflineBanner";
 import { TopBannersLayout } from "../TopBannersLayout";
 import { useAuthStore } from "../../stores/auth.store";
 
@@ -103,5 +104,24 @@ describe("TopBannersLayout", () => {
     });
     expect(getByTestId("offline-banner")).toHaveStyle({ paddingTop: 0 });
     expect(getByTestId("probe")).toHaveTextContent("0/34");
+  });
+
+  // Review finding: each banner used to subscribe to the network on its own,
+  // so "banner shown" and "insets zeroed" could drift. One subscription, here.
+  it("decides the offline banner's visibility in the layout only", async () => {
+    mockIsOnline = false;
+    const { queryByTestId } = await render(<OfflineBanner visible={false} />);
+    // The banner follows the layout's decision, not its own subscription.
+    expect(queryByTestId("offline-banner")).toBeNull();
+  });
+
+  it("always renders the impersonation banner above the offline one", async () => {
+    setImpersonating(true);
+    mockIsOnline = false;
+    const { toJSON } = await renderLayout();
+    const order = JSON.stringify(toJSON()).match(
+      /impersonation-banner|offline-banner/g,
+    );
+    expect(order).toEqual(["impersonation-banner", "offline-banner"]);
   });
 });

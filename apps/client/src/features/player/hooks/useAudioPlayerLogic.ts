@@ -98,7 +98,7 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
   // Applies the tempo once per new track (not on remount, not on lock toggle).
   const currentTrackId = currentTrack?.id;
   const currentTrackBase = currentTrack?.baseBpm;
-  const currentStyleKey = tempoStyleKey(currentTrack?.style);
+  const currentStyleKey = tempoStyleKey(currentTrack?.style, currentTrack?.id);
   const isTempoLocked = usePlayerStore(
     (s) => s.lockedMpmByStyle[currentStyleKey] !== undefined,
   );
@@ -337,8 +337,11 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
       resetBpm,
       // Locks the current style at the MPM on screen, or removes only that
       // style's lock; other styles' locks are untouched.
-      toggleTempoLock: () =>
-        setStyleLock(currentStyleKey, isTempoLocked ? null : bpm),
+      toggleTempoLock: () => {
+        // No track loaded: the screen shows a placeholder, nothing to lock.
+        if (!currentTrack) return;
+        setStyleLock(currentStyleKey, isTempoLocked ? null : bpm);
+      },
       setIsBpmVisible,
       seekTo,
       toggleLike: () => toggleLike(displayTrack.id),

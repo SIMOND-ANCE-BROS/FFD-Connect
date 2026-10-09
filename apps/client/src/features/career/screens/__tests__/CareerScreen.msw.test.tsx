@@ -104,6 +104,7 @@ const makeCareerState = (overrides = {}) => ({
   registrations: mockCareer.registrations,
   results: mockCareer.results,
   loading: false,
+  isFirstLoad: false,
   refreshing: false,
   refresh: jest.fn(),
   ...overrides,
@@ -152,6 +153,7 @@ describe("CareerScreen (MSW)", () => {
     useCareerLogic.mockReturnValue(
       makeCareerState({
         loading: true,
+        isFirstLoad: true,
         partnerships: [],
         registrations: [],
         results: [],
@@ -172,6 +174,7 @@ describe("CareerScreen (MSW)", () => {
     useCareerLogic.mockReturnValue(
       makeCareerState({
         loading: true,
+        isFirstLoad: true,
         partnerships: [],
         registrations: [],
         results: [],
@@ -201,11 +204,36 @@ describe("CareerScreen (MSW)", () => {
     expect(queryByTestId("career-loading")).toBeNull();
   });
 
+  // Review finding: pull-to-refresh on an empty career used to show both the
+  // RefreshControl spinner and the full-screen loader.
+  it("n'affiche pas le loader plein écran sur un pull-to-refresh d'une carrière vide", async () => {
+    useCareerLogic.mockReturnValue(
+      makeCareerState({
+        loading: true,
+        isFirstLoad: false,
+        refreshing: true,
+        partnerships: [],
+        registrations: [],
+        results: [],
+      }),
+    );
+
+    const { getByTestId, queryByTestId } = await render(
+      <CareerScreen {...props} />,
+    );
+
+    expect(queryByTestId("career-loading")).toBeNull();
+    expect(
+      getByTestId("career-scroll").props.refreshControl.props.refreshing,
+    ).toBe(true);
+  });
+
   it("masque son loader pendant l'overlay de réveil du backend", async () => {
     useWakeStore.setState({ waking: true, visible: true });
     useCareerLogic.mockReturnValue(
       makeCareerState({
         loading: true,
+        isFirstLoad: true,
         partnerships: [],
         registrations: [],
         results: [],

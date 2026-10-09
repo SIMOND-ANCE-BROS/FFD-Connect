@@ -32,10 +32,13 @@ interface TopBannersLayoutProps {
  * modal currently relies on the top inset.
  */
 export const TopBannersLayout = ({ children }: TopBannersLayoutProps) => {
+  // Visibility is decided here, once, and passed down: the banners never
+  // subscribe on their own, so "banner shown" and "top inset zeroed" can't
+  // drift apart.
   const impersonating = useAuthStore((s) => s.impersonating);
-  const isOnline = useIsOnline();
+  const offline = !useIsOnline();
   const insets = useSafeAreaInsets();
-  const anyBanner = impersonating || !isOnline;
+  const anyBanner = impersonating || offline;
   const appInsets = useMemo(
     () => (anyBanner ? { ...insets, top: 0 } : insets),
     [anyBanner, insets],
@@ -43,8 +46,12 @@ export const TopBannersLayout = ({ children }: TopBannersLayoutProps) => {
 
   return (
     <View style={styles.layout}>
-      <ImpersonationBanner topInset={insets.top} />
-      <OfflineBanner topInset={impersonating ? 0 : insets.top} />
+      {/* Impersonation always first: it absorbs the status-bar inset. */}
+      <ImpersonationBanner visible={impersonating} topInset={insets.top} />
+      <OfflineBanner
+        visible={offline}
+        topInset={impersonating ? 0 : insets.top}
+      />
       <View style={styles.layout}>
         <SafeAreaInsetsContext.Provider value={appInsets}>
           {children}

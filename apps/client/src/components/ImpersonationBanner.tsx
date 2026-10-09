@@ -14,19 +14,24 @@ const logger = createLogger("ImpersonationBanner");
  * « en tant que » un tiers et permet de sortir à tout moment. Rendu dans le
  * flux de mise en page par `TopBannersLayout` (jamais en surimpression).
  *
+ * `visible` : décidé par `TopBannersLayout` (seule source de vérité, pour
+ * que le bandeau affiché et les marges remises à zéro ne divergent jamais).
  * `topInset` : marge haute à absorber (barre de statut). Fournie par
  * `TopBannersLayout`, qui la donne au premier bandeau visible de la pile.
  */
 export const ImpersonationBanner = ({
+  visible,
   topInset,
-}: { topInset?: number } = {}) => {
-  const impersonating = useAuthStore((s) => s.impersonating);
+}: {
+  visible: boolean;
+  topInset?: number;
+}) => {
   const name = useAuthStore((s) => s.impersonatedName);
   const refreshAuth = useAuthStore((s) => s.refreshAuth);
   const insets = useSafeAreaInsets();
   const [stopping, setStopping] = useState(false);
 
-  if (!impersonating) return null;
+  if (!visible) return null;
 
   const handleStop = () => {
     setStopping(true);

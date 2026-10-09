@@ -3,7 +3,6 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../context/ThemeContext";
-import { useIsOnline } from "../hooks/useIsOnline";
 import { AppText } from "./AppText";
 
 /**
@@ -13,15 +12,22 @@ import { AppText } from "./AppText";
  *
  * Rendu dans le flux de mise en page par `TopBannersLayout` (jamais en
  * surimpression : en position absolue il masquait les titres et boutons des
- * en-têtes d'écran). `topInset` : marge haute à absorber (barre de statut),
- * 0 quand un autre bandeau au-dessus l'absorbe déjà.
+ * en-têtes d'écran). `visible` : décidé par `TopBannersLayout` (seule
+ * source de vérité, pour que le bandeau affiché et les marges remises à zéro
+ * ne divergent jamais). `topInset` : marge haute à absorber (barre de
+ * statut), 0 quand un autre bandeau au-dessus l'absorbe déjà.
  */
-export const OfflineBanner = ({ topInset }: { topInset?: number } = {}) => {
-  const isOnline = useIsOnline();
+export const OfflineBanner = ({
+  visible,
+  topInset,
+}: {
+  visible: boolean;
+  topInset?: number;
+}) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
 
-  if (isOnline) return null;
+  if (!visible) return null;
 
   return (
     <View

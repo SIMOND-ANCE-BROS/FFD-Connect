@@ -1,5 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import React from "react";
+import { runSessionEndCleanups } from "../../../../services/sessionCleanup";
+import { useAuthStore } from "../../../../stores/auth.store";
 import { useLibrarySyncStore } from "../../../../stores/librarySync.store";
 import { TrackRepository } from "../../services/TrackRepository";
 import { LibraryProvider, useLibrary } from "../LibraryContext";
@@ -405,6 +407,70 @@ describe("LibraryContext", () => {
 
       expect(mockRepo.getTracksPage).not.toHaveBeenCalled();
       expect(result.current.isLoadingMore).toBe(false);
+    });
+  });
+
+  // Review finding: hasLoadedOnce survived a logout, so the next user briefly
+  // saw the empty state instead of the initial loader.
+  describe("fin de session", () => {
+    const loadOnce = async () => {
+      const hook = await renderHook(() => useLibrary(), { wrapper });
+      await act(async () => {
+        await hook.result.current.reloadLibrary();
+      });
+      await waitFor(() =>
+        expect(hook.result.current.allTracks).toHaveLength(2),
+      );
+      expect(hook.result.current.isInitialLoading).toBe(false);
+      return hook;
+    };
+
+    afterEach(() => {
+      useAuthStore.setState({ isLoggedIn: null });
+    });
+
+    it("is initially loading again after a logout (session-end cleanups)", async () => {
+      const { result } = await loadOnce();
+      await act(async () => {
+        await runSessionEndCleanups();
+      });
+      expect(result.current.isInitialLoading).toBe(true);
+      expect(result.current.allTracks).toHaveLength(0);
+      expect(result.current.sections).toHaveLength(0);
+    });
+
+    it("is initially loading again when the session expires (logged out in the store)", async () => {
+      useAuthStore.setState({ isLoggedIn: true });
+      const { result } = await loadOnce();
+      await act(async () => {
+        useAuthStore.setState({ isLoggedIn: false });
+      });
+      expect(result.current.isInitialLoading).toBe(true);
+      expect(result.current.allTracks).toHaveLength(0);
+    });
+
+    it("drops a load still in flight for the previous session", async () => {
+      const { result } = await renderHook(() => useLibrary(), { wrapper });
+      let resolvePage: (v: unknown) => void = () => {};
+      (mockRepo.getTracksPage as jest.Mock).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolvePage = resolve;
+          }),
+      );
+      let pending: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pending = result.current.reloadLibrary();
+      });
+      await act(async () => {
+        await runSessionEndCleanups();
+      });
+      await act(async () => {
+        resolvePage({ tracks: mockTracks, hasMore: false, total: 2 });
+        await pending;
+      });
+      expect(result.current.isInitialLoading).toBe(true);
+      expect(result.current.allTracks).toHaveLength(0);
     });
   });
 

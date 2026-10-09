@@ -36,14 +36,18 @@ beforeEach(() => jest.clearAllMocks());
 
 describe("ImpersonationBanner", () => {
   it("ne rend rien hors impersonation", async () => {
-    setStore({ impersonating: false, impersonatedName: null });
-    const { queryByTestId } = await render(<ImpersonationBanner />);
+    setStore({ impersonatedName: null });
+    const { queryByTestId } = await render(
+      <ImpersonationBanner visible={false} />,
+    );
     expect(queryByTestId("impersonation-banner")).toBeNull();
   });
 
   it("affiche le nom de la cible et permet de quitter", async () => {
-    setStore({ impersonating: true, impersonatedName: "Test Club" });
-    const { getByTestId, getByText } = await render(<ImpersonationBanner />);
+    setStore({ impersonatedName: "Test Club" });
+    const { getByTestId, getByText } = await render(
+      <ImpersonationBanner visible />,
+    );
 
     expect(getByTestId("impersonation-banner")).toBeTruthy();
     expect(getByText(/Test Club/)).toBeTruthy();
@@ -58,8 +62,10 @@ describe("ImpersonationBanner", () => {
   });
 
   it("absorbe la marge haute fournie par la mise en page", async () => {
-    setStore({ impersonating: true, impersonatedName: "Test Club" });
-    const { getByTestId } = await render(<ImpersonationBanner topInset={0} />);
+    setStore({ impersonatedName: "Test Club" });
+    const { getByTestId } = await render(
+      <ImpersonationBanner visible topInset={0} />,
+    );
     expect(getByTestId("impersonation-banner")).toHaveStyle({ paddingTop: 0 });
   });
 });

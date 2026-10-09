@@ -25,6 +25,16 @@ export const clampMpm = (mpm: number, baseMpm: number): number => {
  * Key under which a tempo lock is stored. Dance styles have very different
  * MPM ranges (Rumba ~25, Paso Doble ~60): a lock is kept per style so a
  * Rumba lock never drags a Paso track to the bottom of its range.
+ *
+ * A track without a style gets its own bucket keyed by its id: unrelated
+ * style-less tracks must not share one lock (their tempos have nothing in
+ * common), but the lock still works for that track.
  */
-export const tempoStyleKey = (style?: string | null): string =>
-  style?.trim().toLowerCase() ?? "";
+export const tempoStyleKey = (
+  style?: string | null,
+  trackId?: string | null,
+): string => {
+  const normalized = style?.trim().toLowerCase() ?? "";
+  if (normalized) return normalized;
+  return trackId ? `track:${trackId}` : "";
+};

@@ -24,4 +24,12 @@ describe("tempo helpers", () => {
     expect(tempoStyleKey(" Rumba ")).toBe("rumba");
     expect(tempoStyleKey(undefined)).toBe("");
   });
+
+  it("keys style-less tracks by track id so they never share a lock", () => {
+    expect(tempoStyleKey(undefined, "t1")).toBe("track:t1");
+    expect(tempoStyleKey("  ", "t2")).toBe("track:t2");
+    expect(tempoStyleKey(null, "t1")).not.toBe(tempoStyleKey(null, "t2"));
+    // A real style always wins over the track id.
+    expect(tempoStyleKey("Rumba", "t1")).toBe("rumba");
+  });
 });

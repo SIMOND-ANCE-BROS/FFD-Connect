@@ -162,6 +162,63 @@ describe("useCareerLogic", () => {
     });
   });
 
+  describe("first load vs pull-to-refresh", () => {
+    const emptyCareer = { partnerships: [], registrations: [], results: [] };
+
+    beforeEach(() => {
+      mockAuth.getAuthConfig.mockResolvedValue({
+        authToken: "token-abc",
+        isLoggedIn: true,
+      });
+    });
+
+    it("flags only the very first load as isFirstLoad", async () => {
+      let resolveFetch: (v: typeof emptyCareer) => void = () => {};
+      mockGetMyCareer.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFetch = resolve;
+          }),
+      );
+      const { result } = await renderHook(() => useCareerLogic());
+      await waitFor(() => expect(mockGetMyCareer).toHaveBeenCalled());
+      expect(result.current.isFirstLoad).toBe(true);
+
+      await act(async () => {
+        resolveFetch(emptyCareer);
+      });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.isFirstLoad).toBe(false);
+    });
+
+    it("never flags a pull-to-refresh on an empty career as isFirstLoad", async () => {
+      mockGetMyCareer.mockResolvedValue(emptyCareer);
+      const { result } = await renderHook(() => useCareerLogic());
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      let resolveFetch: (v: typeof emptyCareer) => void = () => {};
+      mockGetMyCareer.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFetch = resolve;
+          }),
+      );
+      let pending: Promise<void> = Promise.resolve();
+      await act(async () => {
+        pending = result.current.refresh();
+      });
+      await waitFor(() => expect(result.current.loading).toBe(true));
+      expect(result.current.refreshing).toBe(true);
+      expect(result.current.isFirstLoad).toBe(false);
+
+      await act(async () => {
+        resolveFetch(emptyCareer);
+        await pending;
+      });
+      expect(result.current.isFirstLoad).toBe(false);
+    });
+  });
+
   describe("when fetch fails", () => {
     it("stops loading even when withErrorHandling swallows the error", async () => {
       mockAuth.getAuthConfig.mockResolvedValue({

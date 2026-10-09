@@ -9,6 +9,8 @@ import React, {
 import * as Sentry from "@sentry/react-native";
 import { BACKEND_URL, DEBUG_PLAYER } from "../../../config";
 import { useIsOnline } from "../../../hooks/useIsOnline";
+import { onSessionEnd } from "../../../services/sessionCleanup";
+import { useAuthStore } from "../../../stores/auth.store";
 import { useLibrarySyncStore } from "../../../stores/librarySync.store";
 import { usePlayerStore } from "../../../stores/player.store";
 import { createLogger } from "../../../utils/logger";
@@ -261,6 +263,24 @@ export const LibraryProvider = ({
       setIsLoadingMore(false);
     }
   }, [trackRepo, rawTracks.length, hasMore, isLoadingMore, hasLoadedOnce]);
+
+  // Session over (logout, or the refresh token expired): forget the library
+  // and its "already loaded" flag, so the next user gets the initial loader
+  // again instead of a flash of "Votre bibliothèque est vide". Bumping the
+  // generation drops any load still in flight for the previous session.
+  const resetLibrary = useCallback(() => {
+    generationRef.current += 1;
+    setRawTracks([]);
+    setHasMore(true);
+    setHasLoadedOnce(false);
+  }, []);
+  useEffect(() => onSessionEnd(resetLibrary), [resetLibrary]);
+  // The expired-refresh-token path doesn't run the session-end cleanups (they
+  // also run on the biometric lock): catch it through the auth store.
+  const isLoggedIn = useAuthStore((s) => s.isLoggedIn);
+  useEffect(() => {
+    if (isLoggedIn === false) resetLibrary();
+  }, [isLoggedIn, resetLibrary]);
 
   // Une piste a changé (proposition validée, clashs édités) : recharge en
   // arrière-plan une bibliothèque DÉJÀ chargée. Jamais chargée → rien (le
