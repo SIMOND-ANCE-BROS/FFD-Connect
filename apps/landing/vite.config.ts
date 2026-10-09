@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { legalPages } from './legal-plugin';
+import { documentationPages } from './documentation-plugin';
 
 // GitHub Pages serves a project site under /<repo>/, so assets must be
 // prefixed. BASE_PATH lets the deploy workflow set it without hardcoding the
@@ -10,7 +11,7 @@ const base = process.env.BASE_PATH ?? '/';
 
 export default defineConfig({
   base,
-  plugins: [react(), legalPages()],
+  plugins: [react(), legalPages(), documentationPages()],
   server: {
     port: 5174,
     fs: {
@@ -22,6 +23,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
+        documentation: resolve(__dirname, 'documentation/index.html'),
         confidentialite: resolve(__dirname, 'confidentialite/index.html'),
         cgu: resolve(__dirname, 'cgu/index.html'),
         mentions: resolve(__dirname, 'mentions-legales/index.html'),

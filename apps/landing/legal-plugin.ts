@@ -49,7 +49,7 @@ function renderPage(slug: Slug, base: string): string {
   return `<div class="legal">
       <header class="legal__header">
         <a class="legal__brand" href="${base}">
-          <img src="${base}ffd-logo.svg" alt="" width="28" height="28" />
+          <img src="${base}app-logo.png" alt="" width="28" height="28" />
           <span>FFD Connect</span>
         </a>
         <nav class="legal__nav" aria-label="Documents légaux">
