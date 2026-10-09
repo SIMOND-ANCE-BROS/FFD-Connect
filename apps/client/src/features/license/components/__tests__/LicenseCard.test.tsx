@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react-native";
+import { render, within } from "@testing-library/react-native";
 import React from "react";
 import { ThemeContext } from "../../../../context/ThemeContext";
 import { LicenseCard, LicenseUser } from "../LicenseCard";
@@ -52,6 +52,55 @@ describe("LicenseCard", () => {
     expect(getByText("John Doe")).toBeTruthy();
     // Using getAllByText because it might appear twice (info and barcode/QR label)
     expect(getAllByText("12345678").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("puts the FFD birth date right under the licence number", async () => {
+    const { getByTestId, queryByTestId } = await render(
+      <ThemeContext.Provider value={themeMock as never}>
+        <LicenseCard
+          type="FFD"
+          user={mockUser}
+          photoUri={null}
+          onShowQr={mockOnShowQr}
+        />
+      </ThemeContext.Provider>,
+    );
+
+    // Same column, next row: number then birth date, in this order.
+    const column = getByTestId("license-card-identity-column-0");
+    const texts = within(column)
+      .getAllByText(/.+/)
+      .map((node) => node.props.children as string);
+    expect(texts).toEqual([
+      "Numéro",
+      "12345678",
+      "Date de naissance",
+      "1990-01-01",
+    ]);
+    expect(queryByTestId("license-card-identity-column-1")).toBeNull();
+  });
+
+  it("extra FFD fields go to a second column — puts the FFD birth date right under the licence number", async () => {
+    const { getByTestId, queryByTestId } = await render(
+      <ThemeContext.Provider value={themeMock as never}>
+        <LicenseCard
+          type="FFD"
+          user={{ ...mockUser, country: "FRA", ageGroup: "Adult" }}
+          photoUri={null}
+          onShowQr={mockOnShowQr}
+        />
+      </ThemeContext.Provider>,
+    );
+
+    expect(
+      within(getByTestId("license-card-identity-column-1")).getByText("FRA"),
+    ).toBeTruthy();
+    expect(
+      within(getByTestId("license-card-identity-column-0")).getByText(
+        "1990-01-01",
+      ),
+    ).toBeTruthy();
+    expect(queryByTestId("license-card-identity-column-1")).not.toBeNull();
   });
 
   it("renders correctly for WDSF", async () => {

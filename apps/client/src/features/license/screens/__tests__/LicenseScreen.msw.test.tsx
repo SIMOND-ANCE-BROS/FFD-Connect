@@ -250,7 +250,7 @@ describe("LicenseScreen MSW Integration", () => {
       { type: "WDSF", data: { min: "12345" } },
     ];
 
-    // FFD + WDSF ⇒ segmented switch, one card at a time: WDSF selected here.
+    // FFD + WDSF ⇒ stacked wallet, WDSF card in front here.
     (useLicenseLogic as jest.Mock).mockReturnValue({
       state: { ...baseState, listItems: licenseItems, activeCardIndex: 1 },
       actions: mockActions,
@@ -260,7 +260,8 @@ describe("LicenseScreen MSW Integration", () => {
 
     await waitFor(() => {
       expect(getByTestId("license-screen-card-WDSF")).toBeTruthy();
-      expect(getByTestId("license-screen-type-switch")).toBeTruthy();
+      expect(getByTestId("license-screen-card-FFD")).toBeTruthy();
+      expect(getByTestId("license-screen-wallet")).toBeTruthy();
     });
   });
 
