@@ -60,6 +60,9 @@ jobs:
               - 'apps/client/package.json'
               - 'apps/landing/package.json'
               - 'apps/admin/package.json'
+              # Service containers and the buildx setup of backend-test /
+              # docker-build-check live here: an edit must exercise them.
+              - '.github/workflows/ci.yml'
             client:
               - 'apps/client/**'
               - 'packages/shared/**'
