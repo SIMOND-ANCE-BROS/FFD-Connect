@@ -7,6 +7,8 @@ import { createMockNavigation } from "../../../../utils/testUtils";
 import { useLibraryLogic } from "../useLibraryLogic";
 
 const mockPlayTrack = jest.fn().mockResolvedValue(undefined);
+const mockPlayNext = jest.fn().mockResolvedValue("queued");
+const mockAddToQueue = jest.fn().mockResolvedValue("queued");
 const mockSetGroupBy = jest.fn();
 const mockSetSearchQuery = jest.fn();
 const mockGetAuthConfig = jest.fn();
@@ -82,6 +84,8 @@ jest.mock("../../context/LibraryContext", () => ({
 jest.mock("../../context/PlayerContext", () => ({
   usePlayer: () => ({
     playTrack: mockPlayTrack,
+    playNext: mockPlayNext,
+    addToQueue: mockAddToQueue,
     currentTrack: null,
     isPlaying: false,
     isLiked: jest.fn((id: string) => id === "1"),
@@ -190,6 +194,41 @@ describe("useLibraryLogic", () => {
 
     expect(mockPlayTrack).toHaveBeenCalled();
     expect(mockNavigation.navigate).toHaveBeenCalledWith("AudioPlayer");
+  });
+
+  it("handlePlayNext / handleAddToQueue queue the track with the view's playlist label", async () => {
+    const { result } = await renderHook(() =>
+      useLibraryLogic({ navigation: mockNavigation }),
+    );
+    const track = {
+      id: "9",
+      title: "Samba",
+      url: "http://foo",
+      artist: "Artist",
+      baseBpm: 100,
+    };
+
+    let next: string | undefined;
+    let end: string | undefined;
+    await act(async () => {
+      next = await result.current.actions.handlePlayNext(track);
+      end = await result.current.actions.handleAddToQueue({
+        ...track,
+        playlist: "Favoris",
+      });
+    });
+
+    expect(next).toBe("queued");
+    expect(end).toBe("queued");
+    expect(mockPlayNext).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "9", playlist: "Tout" }),
+    );
+    // An existing label is kept.
+    expect(mockAddToQueue).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "9", playlist: "Favoris" }),
+    );
+    // Queueing never opens the player screen.
+    expect(mockNavigation.navigate).not.toHaveBeenCalled();
   });
 
   it("handleSectionPress sets selectedSection", async () => {

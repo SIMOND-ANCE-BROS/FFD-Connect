@@ -22,6 +22,7 @@ import { Link, useNavigate } from 'react-router';
 import type { UserRole } from '../api/generated/types.gen';
 import { StoreReviewBadge } from '../components/StoreReview';
 import { apiErrorMessage } from '../lib/apiError';
+import { disciplineOptions, formatDiscipline } from '../lib/discipline';
 import {
   extraRoleLabels,
   ROLE_LABELS,
@@ -109,7 +110,7 @@ export function UsersPage() {
         <Select
           placeholder="Catégorie"
           clearable
-          data={reference.data?.categories ?? []}
+          data={disciplineOptions(reference.data?.categories ?? [])}
           value={category}
           onChange={setCategory}
         />
@@ -186,7 +187,7 @@ export function UsersPage() {
                     )}
                   </Table.Td>
                   <Table.Td>{u.clubName ?? '—'}</Table.Td>
-                  <Table.Td>{u.category ?? '—'}</Table.Td>
+                  <Table.Td>{u.category ? formatDiscipline(u.category) : '—'}</Table.Td>
                   <Table.Td>{u.ageGroup ?? '—'}</Table.Td>
                   <Table.Td>{u.licenseStatus ? LICENSE_LABEL[u.licenseStatus] : '—'}</Table.Td>
                   <Table.Td>{dayjs(u.createdAt).format('DD/MM/YYYY')}</Table.Td>

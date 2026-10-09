@@ -92,7 +92,7 @@ describe("ClubRegistrationsScreen", () => {
       expect(getByText("Eelef Testeur")).toBeTruthy();
     });
     expect(getByText("Gala Latin E2E Connect")).toBeTruthy();
-    expect(getByText("Latine - Adulte")).toBeTruthy();
+    expect(getByText("Latines - Adulte")).toBeTruthy();
   });
 
   it("confirms an approval against the confirm endpoint with the registration id", async () => {

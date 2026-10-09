@@ -145,9 +145,19 @@ export const simulatedPartnership: SimulatedResponseBuilder = (ctx) => ({
   simulated: true,
 });
 
-/** Admin paginated reads refused to the store-review account: an empty page. */
+/** Paginated read the store-review account may not do: an empty page. */
 export const simulatedEmptyPage: SimulatedResponseBuilder = () => ({
   data: [],
   meta: { total: 0, skip: 0, take: 0, hasMore: false },
   simulated: true,
+});
+
+/** List read the store-review account may not do: empty. */
+export const simulatedEmptyList: SimulatedResponseBuilder = () => [];
+
+/** Someone else's career: nothing. */
+export const simulatedEmptyCareer: SimulatedResponseBuilder = () => ({
+  partnerships: [],
+  registrations: [],
+  results: [],
 });

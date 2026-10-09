@@ -123,7 +123,7 @@ describe("Store-review account (integration, real DB)", () => {
     });
   });
 
-  it("masks other people's personal data in admin reads", async () => {
+  it("returns an empty object for a non-allowlisted GET (admin user detail)", async () => {
     const reviewer = await createUser({
       role: UserRole.ADMIN,
       isStoreReview: true,
@@ -133,12 +133,8 @@ describe("Store-review account (integration, real DB)", () => {
       .get(`/api/v1/admin/users/${other.id}`)
       .set("Authorization", bearer(reviewer))
       .expect(200);
-    expect(res.body).toMatchObject({
-      id: other.id,
-      email: "masque@exemple.invalid",
-      lastName: "T.",
-      birthDate: null,
-    });
+    expect(res.headers["x-demo-mode"]).toBe("simulated");
+    expect(res.body).toEqual({});
   });
 
   it("serves an empty page for the admin user list and audit log", async () => {

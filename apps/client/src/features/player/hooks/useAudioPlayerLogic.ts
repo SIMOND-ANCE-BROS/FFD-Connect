@@ -48,6 +48,7 @@ export interface UseAudioPlayerLogicReturn {
     closeQueue: () => void;
     playQueueTrack: (trackId: string) => Promise<void>;
     removeQueueTrack: (trackId: string) => void;
+    moveQueueTrack: (from: number, to: number) => void;
   };
 }
 
@@ -67,6 +68,8 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
     toggleShuffle,
     queueTracks,
     setQueueTracks,
+    moveQueueTrack,
+    removeFromQueue,
   } = usePlayer();
   const { handleError } = useErrorHandler();
   const [isLoading] = useState(false);
@@ -178,7 +181,9 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
     }
 
     const next = queueTracks.filter((track) => track.id !== trackId);
-    setQueueTracks(next);
+    // Updates the queue + pre-shuffle order and re-syncs the native queue when
+    // the removed track is not the one playing.
+    removeFromQueue(trackId);
 
     if (currentTrack?.id === trackId) {
       if (next.length === 0) {
@@ -351,6 +356,7 @@ export const useAudioPlayerLogic = (): UseAudioPlayerLogicReturn => {
       closeQueue: () => setIsQueueVisible(false),
       playQueueTrack,
       removeQueueTrack,
+      moveQueueTrack,
     },
   };
 };

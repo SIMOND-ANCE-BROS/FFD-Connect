@@ -4,6 +4,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import type { TrackCorrectionStatus } from "../../../services/api/track-correction-api";
 import { DANCE_GROUPS } from "../../player/utils/danceTempo";
 import { STATUS_LABELS } from "../utils/trackCorrections";
+import { formatDiscipline } from "../../../utils/discipline";
 
 interface ChoiceChipProps {
   label: string;
@@ -72,7 +73,7 @@ export const DanceChips = ({
       {DANCE_GROUPS.map((group) => (
         <View key={group.label}>
           <Text style={[styles.groupLabel, { color: theme.textSecondary }]}>
-            {group.label}
+            {formatDiscipline(group.label)}
           </Text>
           <View style={styles.grid}>
             {group.dances.map((dance) => (

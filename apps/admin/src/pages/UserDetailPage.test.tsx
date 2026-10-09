@@ -92,7 +92,7 @@ describe('UserDetailPage', () => {
 
   it('shows a legacy category instead of a blank select', async () => {
     renderPage();
-    expect(await screen.findByDisplayValue('Latine (valeur historique)')).toBeInTheDocument();
+    expect(await screen.findByDisplayValue('Latines (valeur historique)')).toBeInTheDocument();
   });
 
   it('confirms a before → after summary then PATCHes only the changed field', async () => {

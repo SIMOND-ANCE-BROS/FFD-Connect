@@ -151,7 +151,7 @@ describe("competitionController", () => {
     (Tts.preload as jest.Mock).mockImplementation((text: string) =>
       Promise.resolve(`file:///cache/tts_${text.length}.mp3`),
     );
-    (Tts.speak as jest.Mock).mockResolvedValue(undefined);
+    (Tts.speak as jest.Mock).mockResolvedValue("spoken");
     (Tts.stop as jest.Mock).mockResolvedValue(undefined);
     (TrackPlayer.getState as jest.Mock).mockResolvedValue(State.Playing);
   });
@@ -252,7 +252,7 @@ describe("competitionController", () => {
       await expect(engine.startPerformance()).resolves.toBe(true);
       const list = store().playlist;
       expect(list.map((i) => i.style)).toEqual(["Jive", "Rumba", "Samba"]);
-      expect(list[0].announcementText).toMatch(/Jive/);
+      expect(list[0].announcementText).toMatch(/Jaïve/);
     });
 
     it("previews the playlist in the user's order", () => {
@@ -466,7 +466,7 @@ describe("competitionController", () => {
         volumeWhenSpeaking = lastVolume();
         playCallsWhenSpeaking = deps.playTrack.mock.calls.length;
         remainingWhenSpeaking = store().timeRemaining;
-        return Promise.resolve();
+        return Promise.resolve("spoken");
       });
 
       await engine.startPerformance();
@@ -523,8 +523,8 @@ describe("competitionController", () => {
       let finishSpeak: () => void = () => {};
       (Tts.speak as jest.Mock).mockImplementation(
         () =>
-          new Promise<void>((resolve) => {
-            finishSpeak = resolve;
+          new Promise<string>((resolve) => {
+            finishSpeak = () => resolve("spoken");
           }),
       );
       await engine.startPerformance();
@@ -540,6 +540,67 @@ describe("competitionController", () => {
       expect(store().timeRemaining).toBe(2);
     });
 
+    it.each(["not-played", "interrupted"])(
+      "a break call that was not heard (%s) is called again right before the dance",
+      async (outcome) => {
+        (Tts.speak as jest.Mock)
+          .mockResolvedValueOnce(outcome)
+          .mockResolvedValue("spoken");
+        let volumeAtRetry: number | undefined;
+        let statusAtRetry = "";
+        await engine.startPerformance();
+        await advance(BREAK_CALL_MS);
+        expect(Tts.speak).toHaveBeenCalledTimes(1);
+        (Tts.speak as jest.Mock).mockImplementation(() => {
+          volumeAtRetry = lastVolume();
+          statusAtRetry = store().status;
+          return Promise.resolve("spoken");
+        });
+
+        // Break countdown (3 s), then the retry over ducked pause music.
+        await advance(3000 + 1000);
+        expect(Tts.speak).toHaveBeenCalledTimes(2);
+        expect(spokenTexts()[1]).toBe(spokenTexts()[0]);
+        expect(statusAtRetry).toBe("break");
+        expect(volumeAtRetry).toBeCloseTo(engine.DUCKED_VOLUME);
+
+        await advance(2000);
+        expect(store().status).toBe("playing");
+        expect(store().currentDanceIndex).toBe(0);
+        expect(Tts.speak).toHaveBeenCalledTimes(2);
+        expect(Alert.alert).not.toHaveBeenCalled();
+      },
+    );
+
+    it("a dance announcement that was not heard never blocks the dance", async () => {
+      setProgram({ pauseDuration: 0, duration: 10 });
+      (Tts.speak as jest.Mock).mockResolvedValue("not-played");
+      await engine.startPerformance();
+      await advance(2000);
+      expect(Tts.speak).toHaveBeenCalledTimes(1);
+      expect(store().status).toBe("playing");
+      expect(Alert.alert).not.toHaveBeenCalled();
+    });
+
+    it("without a break, speaks only once the paused music player let the audio session settle", async () => {
+      setProgram({ pauseDuration: 0, duration: 10 });
+      (loadCompetitionLibrary as jest.Mock).mockResolvedValue({
+        tracks: [SAMBA],
+        ambiance: [],
+      });
+      let pausedBeforeSpeak = false;
+      (Tts.speak as jest.Mock).mockImplementation(() => {
+        pausedBeforeSpeak = deps.pause.mock.calls.length > 0;
+        return Promise.resolve("spoken");
+      });
+      await engine.startPerformance();
+      await advance(engine.AUDIO_SESSION_SETTLE_MS - 50);
+      expect(Tts.speak).not.toHaveBeenCalled();
+      await advance(100);
+      expect(Tts.speak).toHaveBeenCalledTimes(1);
+      expect(pausedBeforeSpeak).toBe(true);
+    });
+
     it("calls the next dance at the start of each break, never again before the dance", async () => {
       setProgram({
         rounds: [roundOf("Latin", "Final", ["Samba", "Jive"])],
@@ -552,7 +613,7 @@ describe("competitionController", () => {
           remaining: store().timeRemaining,
           status: store().status,
         });
-        return Promise.resolve();
+        return Promise.resolve("spoken");
       });
       await engine.startPerformance();
       await advance(BREAK_CALL_MS + 4000 + 2000); // break 1 → Samba playing
@@ -563,7 +624,7 @@ describe("competitionController", () => {
       expect(store().status).toBe("break");
       await advance(BREAK_CALL_MS);
       expect(spokenTexts()).toHaveLength(2);
-      expect(spokenTexts()[1]).toMatch(/Jive/);
+      expect(spokenTexts()[1]).toMatch(/Jaïve/);
       expect(store().currentDanceIndex).toBe(0);
       // Both calls made at the very start of their break, full time ahead.
       expect(atSpeak).toEqual([
@@ -591,7 +652,7 @@ describe("competitionController", () => {
 
       await advance(3000 + 2000);
       expect(spokenTexts()).toHaveLength(2);
-      expect(spokenTexts()[1]).toMatch(/Jive/);
+      expect(spokenTexts()[1]).toMatch(/Jaïve/);
       expect(store().currentDanceIndex).toBe(1);
       // Pause music never played: only the two dance tracks.
       expect(deps.playTrack.mock.calls.map((c) => (c as unknown[])[0])).toEqual(
@@ -609,6 +670,11 @@ describe("competitionController", () => {
       });
       await engine.startPerformance();
       await advance(0);
+      // The music player was just paused: the voice waits for the audio
+      // session to settle (expo-audio deactivates it 100 ms after a pause).
+      expect(deps.pause).toHaveBeenCalled();
+      expect(spokenTexts()).toHaveLength(0);
+      await advance(engine.AUDIO_SESSION_SETTLE_MS);
       expect(spokenTexts()).toHaveLength(1);
       expect(store().timeRemaining).toBe(3);
       await advance(3000 + 1000);
@@ -646,8 +712,8 @@ describe("competitionController", () => {
       let finishSpeak: () => void = () => {};
       (Tts.speak as jest.Mock).mockImplementation(
         () =>
-          new Promise<void>((resolve) => {
-            finishSpeak = resolve;
+          new Promise<string>((resolve) => {
+            finishSpeak = () => resolve("spoken");
           }),
       );
       await engine.startPerformance();
@@ -682,7 +748,7 @@ describe("competitionController", () => {
       const spoken = (Tts.speak as jest.Mock).mock.calls.map((c) => c[0]);
       expect(spoken).toHaveLength(3);
       expect(spoken[0]).toMatch(/Samba/);
-      expect(spoken[1]).toMatch(/Jive/);
+      expect(spoken[1]).toMatch(/Jaïve/);
       expect(spoken[2]).toBe(CLOSING_ANNOUNCEMENT);
       expect(deps.resetPlayer).toHaveBeenCalled();
     });
@@ -737,8 +803,8 @@ describe("competitionController", () => {
         let finishSpeak: () => void = () => {};
         (Tts.speak as jest.Mock).mockImplementation(
           () =>
-            new Promise<void>((resolve) => {
-              finishSpeak = resolve;
+            new Promise<string>((resolve) => {
+              finishSpeak = () => resolve("spoken");
             }),
         );
         await engine.startPerformance();
@@ -774,7 +840,7 @@ describe("competitionController", () => {
         expect(store().currentDanceIndex).toBe(0);
         await advance(BREAK_CALL_MS);
         expect(Tts.speak).toHaveBeenCalledTimes(2);
-        expect(spokenTexts()[1]).toMatch(/Jive/);
+        expect(spokenTexts()[1]).toMatch(/Jaïve/);
         // The whole break is still ahead once the call is over.
         expect(store().timeRemaining).toBe(10);
       });
@@ -985,7 +1051,7 @@ describe("competitionController", () => {
         await toBreak;
         await advance(BREAK_CALL_MS);
         expect(store().status).toBe("break");
-        expect(lastSpoken()).toMatch(/Jive/); // next dance called
+        expect(lastSpoken()).toMatch(/Jaïve/); // next dance called
         engine.previousStep();
         await advance(engine.DOUBLE_TAP_MS + 3000);
         expect(store().currentDanceIndex).toBe(1);
@@ -999,7 +1065,7 @@ describe("competitionController", () => {
         await toNextBreak;
         await advance(BREAK_CALL_MS);
         expect(store().status).toBe("break");
-        expect(lastSpoken()).toMatch(/Jive/);
+        expect(lastSpoken()).toMatch(/Jaïve/);
       });
 
       it("works from pause and resumes playing", async () => {

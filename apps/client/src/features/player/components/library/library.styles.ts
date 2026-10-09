@@ -75,6 +75,20 @@ export const libraryStyles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  // Queue confirmation (« Lire ensuite » / « Ajouter à la file »)
+  queueNotice: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    alignItems: "center",
+  },
+  queueNoticePill: {
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    maxWidth: "100%",
+  },
+
   // Grid list
   gridList: {
     paddingHorizontal: 15,

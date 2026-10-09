@@ -41,6 +41,7 @@ import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { ROLE_LABELS } from '../lib/labels';
 import { changedFields, type EditableFields, withLegacy } from '../lib/diff';
+import { formatDiscipline } from '../lib/discipline';
 import { protectedActionError, type ProtectedAction } from '../lib/storeReview';
 import { useSession } from '../session/sessionStore';
 
@@ -280,7 +281,7 @@ export function UserDetailPage() {
           <Select
             label="Catégorie"
             clearable
-            data={withLegacy(ref.data.categories, initial.category)}
+            data={withLegacy(ref.data.categories, initial.category, formatDiscipline)}
             {...form.getInputProps('category')}
           />
           <Select

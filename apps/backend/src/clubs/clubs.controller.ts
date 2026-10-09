@@ -35,8 +35,15 @@ import { ValidatePartnershipDto } from "./dto/validate-partnership.dto";
 import { CreateSoloTeamDto } from "./dto/create-soloteam.dto";
 import { AddSoloTeamMemberDto } from "./dto/add-soloteam-member.dto";
 import { SetRegistrationModeDto } from "./dto/registration-mode.dto";
-import { StoreReviewSimulation } from "../auth/store-review/store-review.decorator";
-import { simulatedPartnership } from "../auth/store-review/store-review-responses";
+import {
+  StoreReviewRead,
+  StoreReviewReadable,
+  StoreReviewSimulation,
+} from "../auth/store-review/store-review.decorator";
+import {
+  simulatedEmptyList,
+  simulatedPartnership,
+} from "../auth/store-review/store-review-responses";
 
 @ApiTags("clubs")
 @ApiCommonErrorResponses()
@@ -51,6 +58,7 @@ export class ClubsController {
     private readonly soloTeamService: SoloTeamService,
   ) {}
 
+  @StoreReviewReadable()
   @Get("me/registration-mode")
   @ApiOperation({
     summary: "Mode d'inscription du club du licencié",
@@ -83,6 +91,7 @@ export class ClubsController {
     return { registrationMode: mode };
   }
 
+  @StoreReviewReadable()
   @Get("me/helloasso")
   @UseGuards(RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
@@ -147,6 +156,7 @@ export class ClubsController {
     );
   }
 
+  @StoreReviewReadable()
   @Get("me/partnerships")
   @UseGuards(RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
@@ -209,6 +219,7 @@ export class ClubsController {
     );
   }
 
+  @StoreReviewRead(simulatedEmptyList)
   @Get("me/partnerships/clubs")
   @UseGuards(RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
@@ -217,6 +228,7 @@ export class ClubsController {
     return this.partnershipQueryService.getClubsForPartnership(req.user.userId);
   }
 
+  @StoreReviewRead(simulatedEmptyList)
   @Get("me/partnerships/members")
   @UseGuards(RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
@@ -240,6 +252,7 @@ export class ClubsController {
     );
   }
 
+  @StoreReviewReadable()
   @Get("me/solo-teams")
   @UseGuards(RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
@@ -259,6 +272,7 @@ export class ClubsController {
     return this.soloTeamService.createSoloTeam(req.user.userId, body);
   }
 
+  @StoreReviewReadable()
   @Get("me/solo-teams/:id")
   @UseGuards(RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)

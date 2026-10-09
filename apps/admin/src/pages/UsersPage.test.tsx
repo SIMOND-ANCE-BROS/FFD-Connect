@@ -89,6 +89,14 @@ describe('UsersPage', () => {
     expect(screen.getByRole('heading', { name: 'Utilisateurs' })).toBeInTheDocument();
   });
 
+  it('shows the discipline in French', async () => {
+    vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(2) as never);
+    renderPage();
+    const row = (await screen.findByText('jeanne@x.fr')).closest('tr') as HTMLElement;
+    expect(within(row).getByText('Latines')).toBeInTheDocument();
+    expect(within(row).queryByText('Latin')).not.toBeInTheDocument();
+  });
+
   it('renders a dash for null club, category, age group and license', async () => {
     vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(2) as never);
     renderPage();

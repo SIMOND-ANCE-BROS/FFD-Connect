@@ -281,7 +281,7 @@ describe("useLiveResultsLogic", () => {
 
     await waitFor(() => expect(result.current.state.refreshing).toBe(false));
 
-    expect(result.current.state.eventLabel).toBe("STANDARD - D");
+    expect(result.current.state.eventLabel).toBe("STANDARDS - D");
   });
 
   it("falls back to the ageGroup when the event has no level (no 'UNDEFINED')", async () => {
@@ -298,7 +298,7 @@ describe("useLiveResultsLogic", () => {
 
     await waitFor(() => expect(result.current.state.refreshing).toBe(false));
 
-    expect(result.current.state.eventLabel).toBe("LATIN - ADULT");
+    expect(result.current.state.eventLabel).toBe("LATINES - ADULT");
   });
 
   it("leaves eventLabel empty when results span several events", async () => {

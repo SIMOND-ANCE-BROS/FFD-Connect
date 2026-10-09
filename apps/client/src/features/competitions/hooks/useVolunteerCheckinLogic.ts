@@ -5,6 +5,7 @@ import {
   CheckinResponse,
   CheckinService,
 } from "../../license/services/CheckinService";
+import { formatDiscipline } from "../../../utils/discipline";
 
 const logger = createLogger("useVolunteerCheckinLogic");
 
@@ -34,7 +35,7 @@ export const useVolunteerCheckinLogic = (
           "Check-in réussi",
           `Participant: ${response.user.firstName} ${response.user.lastName}\n` +
             response.registrations
-              .map((r) => `• ${r.event}: ${r.status}`)
+              .map((r) => `• ${formatDiscipline(r.event)}: ${r.status}`)
               .join("\n"),
         );
       } catch (error) {

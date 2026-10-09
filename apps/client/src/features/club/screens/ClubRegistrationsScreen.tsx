@@ -27,6 +27,7 @@ import {
   ClubService,
   type ClubRegistrationMode,
 } from "../services/ClubService";
+import { formatDiscipline } from "../../../utils/discipline";
 
 interface RegistrationRequest {
   id: string;
@@ -70,7 +71,7 @@ const mapRow = (row: PendingRegistrationRow): RegistrationRequest => ({
   userId: row.userId,
   dancerName: `${row.user.firstName} ${row.user.lastName}`.trim(),
   competitionName: row.competition?.title ?? "Compétition",
-  category: `${row.event.category} - ${row.event.ageGroup}`,
+  category: `${formatDiscipline(row.event.category)} - ${row.event.ageGroup}`,
   date: formatRelativeDate(row.createdAt),
   status: "PENDING",
 });

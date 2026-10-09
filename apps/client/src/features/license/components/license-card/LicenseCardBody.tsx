@@ -55,9 +55,10 @@ const InfoCell: React.FC<{
   fullWidth?: boolean;
 }> = ({ field, config, fullWidth = false }) => (
   <View style={[styles.infoCell, fullWidth && styles.infoCellFullWidth]}>
+    {/* No line limit: a label wraps rather than being cut with an ellipsis
+        (narrow phones, large accessibility font sizes). */}
     <AppText
       variant="caption"
-      numberOfLines={1}
       style={[styles.label, { color: config.labelColor }]}
     >
       {field.label}

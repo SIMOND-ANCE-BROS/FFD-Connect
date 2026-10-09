@@ -121,6 +121,11 @@ export interface UserProfile {
     licenseType?: string | null;
     ageGroup?: string | null;
     expiresOn?: string | null;
+    /**
+     * National federation of the holder, read from WDSF by the server (never
+     * "WDSF"). Null when unknown, absent on an older backend.
+     */
+    federation?: string | null;
   } | null;
   /**
    * Account handed to the App Store / Google Play reviewers (#212): it may

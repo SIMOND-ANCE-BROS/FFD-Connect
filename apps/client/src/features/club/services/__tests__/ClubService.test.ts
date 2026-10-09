@@ -140,6 +140,27 @@ describe("ClubService", () => {
       );
     });
 
+    it("matches canonical and legacy age-class spellings", () => {
+      // Legacy member class « Adult » vs canonical deduced event « Adulte ».
+      expect(ClubService.checkEligibility(member, { ageGroup: "Adulte" })).toBe(
+        true,
+      );
+      const senior = { ...member, ageGroup: "Senior II" };
+      expect(ClubService.checkEligibility(senior, { ageGroup: "Senior" })).toBe(
+        true,
+      );
+      expect(
+        ClubService.checkEligibility(senior, { ageGroup: "Senior III" }),
+      ).toBe(false);
+      // « Espoir » (under 21) is open to Youth and Adulte couples.
+      expect(ClubService.checkEligibility(member, { ageGroup: "Espoir" })).toBe(
+        true,
+      );
+      expect(ClubService.checkEligibility(senior, { ageGroup: "Espoir" })).toBe(
+        false,
+      );
+    });
+
     it("ignores category filter when filter.category is empty string", () => {
       expect(ClubService.checkEligibility(member, { category: "" })).toBe(true);
     });

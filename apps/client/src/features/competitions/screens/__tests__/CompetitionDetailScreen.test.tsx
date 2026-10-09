@@ -5,7 +5,10 @@ import type {
   MockComponentProps,
   MockFluidSegmentedTabProps,
 } from "../../../../__tests__/mocks/types";
-import { BETA_NOTICES } from "../../../../constants/betaNotices";
+import {
+  BETA_NOTICES,
+  EVENTS_SOURCE_NOTICES,
+} from "../../../../constants/betaNotices";
 import { useTheme } from "../../../../context/ThemeContext";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useCompetitionDetailLogic } from "../../hooks/useCompetitionDetailLogic";
@@ -181,7 +184,7 @@ describe("CompetitionDetailScreen", () => {
 
     expect(getByText("Championnat de France")).toBeTruthy();
     expect(getByText("Lyon")).toBeTruthy();
-    expect(getByText("Latin")).toBeTruthy();
+    expect(getByText("Latines")).toBeTruthy();
   });
 
   it("shows the beta notice (informative only, FFD registrations not shown)", async () => {
@@ -196,6 +199,84 @@ describe("CompetitionDetailScreen", () => {
 
     expect(getByTestId("competition-detail-beta-notice")).toBeTruthy();
     expect(getByText(BETA_NOTICES.competitions.message)).toBeTruthy();
+  });
+
+  describe("events source notice", () => {
+    const CIRCULAR = "https://example.org/circulaire.pdf";
+    const renderWith = async (extra: Record<string, unknown>) => {
+      mockUseLogic.mockReturnValue({
+        state: {
+          ...baseState,
+          details: { ...mockCompetition, ffdId: "ffd-1", ...extra },
+        },
+        actions: baseActions,
+      });
+      return render(<CompetitionDetailScreen {...createTestProps()} />);
+    };
+
+    it("flags events deduced from the circular and opens it", async () => {
+      const { getByText, getByTestId } = await renderWith({
+        eventsSource: "CIRCULAR",
+        circularUrl: CIRCULAR,
+      });
+
+      expect(
+        getByText(EVENTS_SOURCE_NOTICES.deducedFromCircular.message),
+      ).toBeTruthy();
+      await fireEvent.press(
+        getByTestId("competition-events-source-open-circular"),
+      );
+      expect(Linking.openURL).toHaveBeenCalledWith(CIRCULAR);
+    });
+
+    it("flags events deduced from the description", async () => {
+      const { getByText, getByTestId } = await renderWith({
+        eventsSource: "DESCRIPTION",
+        circularUrl: CIRCULAR,
+      });
+
+      expect(
+        getByText(EVENTS_SOURCE_NOTICES.deducedFromDescription.message),
+      ).toBeTruthy();
+      expect(
+        getByTestId("competition-events-source-open-circular"),
+      ).toBeTruthy();
+    });
+
+    it("points to the circular when its events could not be read", async () => {
+      const { getByText, getByTestId } = await renderWith({
+        eventsSource: "GENERIC",
+        circularUrl: CIRCULAR,
+      });
+
+      expect(
+        getByText(EVENTS_SOURCE_NOTICES.circularUnreadable.message),
+      ).toBeTruthy();
+      expect(
+        getByTestId("competition-events-source-open-circular"),
+      ).toBeTruthy();
+    });
+
+    it("says events are not published yet when there is no circular (field absent)", async () => {
+      const { getByText, queryByTestId } = await renderWith({});
+
+      expect(
+        getByText(EVENTS_SOURCE_NOTICES.notYetPublished.message),
+      ).toBeTruthy();
+      expect(
+        queryByTestId("competition-events-source-open-circular"),
+      ).toBeNull();
+    });
+
+    it("shows no notice for a competition not synced from the federation", async () => {
+      mockUseLogic.mockReturnValue({ state: baseState, actions: baseActions });
+
+      const { queryByTestId } = await render(
+        <CompetitionDetailScreen {...createTestProps()} />,
+      );
+
+      expect(queryByTestId("competition-events-source-notice")).toBeNull();
+    });
   });
 
   it("switches tabs", async () => {
