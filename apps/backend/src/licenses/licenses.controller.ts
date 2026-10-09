@@ -21,9 +21,11 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
-import { LicenseRenewalDocumentType } from "@prisma/client";
+import { LicenseRenewalDocumentType, UserRole } from "@prisma/client";
 import { Request as ExpressRequest } from "express";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
+import { Roles } from "../auth/decorators/roles.decorator";
+import { RolesGuard } from "../auth/guards/roles.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import {
   createFileFilter,
@@ -370,11 +372,16 @@ export class LicensesController {
     return this.licenseRenewalService.submitRenewalRequest(req.user.userId, id);
   }
 
+  // Admin-only: approving renews someone else's license. The licensee's own
+  // flow auto-approves through LicenseRenewalService.submitRenewalRequest,
+  // which calls the service directly and never goes through this route.
   @Post("renewal/:id/approve")
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN)
   @ApiOperation({
     summary: "Approuver une demande (renouvelle la licence)",
     description:
-      "Réservé au processus métier ou admin. Passe la demande en APPROVED et renouvelle la licence jusqu’au 31 août N+1.",
+      "Réservé aux administrateurs. Passe la demande en APPROVED et renouvelle la licence jusqu’au 31 août N+1.",
   })
   @ApiParam({ name: "id", description: "ID de la demande" })
   @ApiResponse({
