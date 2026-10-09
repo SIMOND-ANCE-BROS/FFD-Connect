@@ -47,6 +47,7 @@ export function AppLayout() {
       <AppShell.Navbar p="sm">
         <NavLink component={RouterLink} to="/users" label="Utilisateurs" />
         <NavLink component={RouterLink} to="/clubs" label="Clubs" />
+        <NavLink component={RouterLink} to="/tracks" label="Musiques" />
         <NavLink
           component={RouterLink}
           to="/moderation"
