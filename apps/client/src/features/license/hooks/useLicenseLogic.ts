@@ -13,6 +13,7 @@ import {
 import { ERROR_MESSAGES } from "../../../constants/errorMessages";
 import { useErrorHandler } from "../../../hooks/useErrorHandler";
 import { useLoadingState } from "../../../hooks/useLoadingState";
+import { isDeviceOffline } from "../../../utils/connectivity";
 import { createLogger } from "../../../utils/logger";
 import { PDFAdapter, ShareAdapter } from "../../../utils/platform-adapters";
 import { useAuthRepository, UserRole } from "../../auth/context/AuthContext";
@@ -45,6 +46,12 @@ interface LicenseLogicState {
   listItems: Array<{ type: string; data: LicenseUser | null }>;
   /** Non-null = licence servie depuis le snapshot local (ISO de la dernière synchro). */
   offlineSince: string | null;
+  /**
+   * The license could not be loaded (no network) and no local snapshot exists
+   * on this device: the screen shows an explicit offline empty state instead
+   * of an empty wallet.
+   */
+  licenseUnavailable: boolean;
   pullY: SharedValue<number>;
   pullGesture: PanGesture;
 }
@@ -133,6 +140,7 @@ export const useLicenseLogic = (): {
   // Non-null = licence affichée depuis le snapshot local (pas de réseau) ;
   // contient la date ISO de la dernière synchro réussie (#416).
   const [offlineSince, setOfflineSince] = useState<string | null>(null);
+  const [licenseUnavailable, setLicenseUnavailable] = useState(false);
 
   // Shared Value for Animation
   const pullY = useSharedValue(0);
@@ -140,6 +148,21 @@ export const useLicenseLogic = (): {
   // Load Config & Profile
   useFocusEffect(
     useCallback(() => {
+      // Pas de réseau (gymnase, mode avion) : la licence et son QR restent
+      // consultables depuis le dernier snapshot local (#416). Sans snapshot
+      // (jamais chargée en ligne sur cet appareil), état vide explicite.
+      const serveSnapshot = async () => {
+        const snapshot = await loadLicenseSnapshot();
+        if (snapshot) {
+          setFfdUser(snapshot.ffdUser);
+          if (snapshot.wdsfUser) setWdsfUser(snapshot.wdsfUser);
+          setOfflineSince(snapshot.savedAt);
+          setLicenseUnavailable(false);
+        } else {
+          setLicenseUnavailable(true);
+        }
+      };
+
       const loadData = async () => {
         try {
           // 1. Load Local Config
@@ -150,6 +173,13 @@ export const useLicenseLogic = (): {
 
           // 2. Fetch Real Profile if logged in
           if (config.isLoggedIn && config.role !== "GUEST") {
+            // Offline confirmed by NetInfo: serve the snapshot right away
+            // instead of leaving the wallet empty until the request times out
+            // (up to API_TIMEOUT_MS on a captive / dead network).
+            if (await isDeviceOffline()) {
+              await serveSnapshot();
+              return;
+            }
             const profile = await auth.getProfile();
 
             // Map Backend User to LicenseUser interface
@@ -220,18 +250,12 @@ export const useLicenseLogic = (): {
             // Synchro réussie : rafraîchit le snapshot hors-ligne (#416) et
             // sort du mode dégradé le cas échéant.
             setOfflineSince(null);
+            setLicenseUnavailable(false);
             void saveLicenseSnapshot(mappedFfdUser, nextWdsfUser);
           }
         } catch (err) {
           logger.error("Failed to load data", err);
-          // Pas de réseau (gymnase, mode avion) : la licence et son QR
-          // restent consultables depuis le dernier snapshot local (#416).
-          const snapshot = await loadLicenseSnapshot();
-          if (snapshot) {
-            setFfdUser(snapshot.ffdUser);
-            if (snapshot.wdsfUser) setWdsfUser(snapshot.wdsfUser);
-            setOfflineSince(snapshot.savedAt);
-          }
+          await serveSnapshot();
         }
       };
       loadData().catch(() => {});
@@ -538,6 +562,7 @@ export const useLicenseLogic = (): {
       pullY,
       pullGesture,
       offlineSince,
+      licenseUnavailable,
     },
     actions: {
       setWdsfModalVisible,

@@ -718,4 +718,41 @@ describe("LicenseScreen Integration", () => {
       expect(getByTestId("apple-wallet-slot").props.children).toBe("123:false");
     });
   });
+
+  describe("licence indisponible hors ligne", () => {
+    it("shows an explicit empty state instead of an empty wallet", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          licenseUnavailable: true,
+          showWdsf: true,
+          listItems: [],
+        },
+        actions: mockActions,
+      });
+
+      const { getByTestId, getByText } = await render(<LicenseScreen />);
+      expect(getByTestId("license-unavailable")).toBeTruthy();
+      expect(getByText("Licence indisponible")).toBeTruthy();
+    });
+
+    it("is hidden as soon as an FFD license is shown", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          licenseUnavailable: true,
+          listItems: [
+            {
+              type: "FFD",
+              data: { firstName: "John", lastName: "Doe", licenseNumber: "1" },
+            },
+          ],
+        },
+        actions: mockActions,
+      });
+
+      const { queryByTestId } = await render(<LicenseScreen />);
+      expect(queryByTestId("license-unavailable")).toBeNull();
+    });
+  });
 });

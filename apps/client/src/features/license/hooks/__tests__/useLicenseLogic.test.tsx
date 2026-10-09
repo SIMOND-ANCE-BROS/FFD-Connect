@@ -4,7 +4,28 @@ import {
   mockUserRole,
 } from "../../../../__tests__/mocks/mockAuthRepository";
 import { mockNavigation } from "../../../../__tests__/mocks/mockNavigation";
+import { isDeviceOffline } from "../../../../utils/connectivity";
+import {
+  loadLicenseSnapshot,
+  saveLicenseSnapshot,
+} from "../../utils/licenseSnapshot";
 import { useLicenseLogic } from "../useLicenseLogic";
+
+jest.mock("../../../../utils/connectivity", () => ({
+  isDeviceOffline: jest.fn(() => Promise.resolve(false)),
+}));
+
+jest.mock("../../utils/licenseSnapshot", () => ({
+  loadLicenseSnapshot: jest.fn(() => Promise.resolve(null)),
+  saveLicenseSnapshot: jest.fn(() => Promise.resolve()),
+}));
+
+const mockIsDeviceOffline = isDeviceOffline as jest.MockedFunction<
+  typeof isDeviceOffline
+>;
+const mockLoadSnapshot = loadLicenseSnapshot as jest.MockedFunction<
+  typeof loadLicenseSnapshot
+>;
 
 // Mock navigation
 jest.mock("@react-navigation/native", () => {
@@ -520,6 +541,100 @@ describe("useLicenseLogic", () => {
         (i) => i.type === "FFD",
       );
       expect(ffdItem?.data?.qrCode).toBe(qrCode);
+    });
+  });
+
+  describe("hors ligne (#416)", () => {
+    const snapshot = {
+      savedAt: "2026-10-01T10:00:00.000Z",
+      ffdUser: {
+        firstName: "Jean",
+        lastName: "Dupont",
+        licenseNumber: "12345",
+        type: "Athlète",
+        structure: "Club FFD",
+        validUntil: "31/08/2026",
+        season: "2025/2026",
+        birthDate: "15/05/1990",
+      },
+      wdsfUser: null,
+    };
+
+    beforeEach(() => {
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "LICENSEE",
+        hasWdsfLicense: true,
+        licensePhotoUri: null,
+        isLoggedIn: true,
+      });
+    });
+
+    afterEach(() => {
+      mockIsDeviceOffline.mockImplementation(() => Promise.resolve(false));
+      mockLoadSnapshot.mockImplementation(() => Promise.resolve(null));
+    });
+
+    it("serves the snapshot at once when offline, without waiting for the network", async () => {
+      mockIsDeviceOffline.mockResolvedValue(true);
+      mockLoadSnapshot.mockResolvedValue(snapshot);
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(
+          result.current.state.listItems.find((i) => i.type === "FFD")?.data
+            ?.licenseNumber,
+        ).toBe("12345");
+      });
+      expect(result.current.state.offlineSince).toBe(snapshot.savedAt);
+      expect(result.current.state.licenseUnavailable).toBe(false);
+      expect(mockAuthRepository.getProfile).not.toHaveBeenCalled();
+    });
+
+    it("flags the license as unavailable when offline without a snapshot", async () => {
+      mockIsDeviceOffline.mockResolvedValue(true);
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(result.current.state.licenseUnavailable).toBe(true);
+      });
+      expect(
+        result.current.state.listItems.find((i) => i.type === "FFD"),
+      ).toBeUndefined();
+    });
+
+    it("falls back to the snapshot when the profile request fails", async () => {
+      mockAuthRepository.getProfile.mockRejectedValueOnce(
+        new Error("Network Error"),
+      );
+      mockLoadSnapshot.mockResolvedValue(snapshot);
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(result.current.state.offlineSince).toBe(snapshot.savedAt);
+      });
+      expect(result.current.state.licenseUnavailable).toBe(false);
+    });
+
+    it("clears the unavailable flag and saves a snapshot once online", async () => {
+      mockAuthRepository.getProfile.mockResolvedValue({
+        firstName: "Jean",
+        lastName: "Dupont",
+        license: { number: "12345", validUntil: "2026-08-31" },
+        clubName: "Club FFD",
+        birthDate: "1990-05-15",
+        role: "LICENSEE",
+      });
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(saveLicenseSnapshot).toHaveBeenCalled();
+      });
+      expect(result.current.state.licenseUnavailable).toBe(false);
+      expect(result.current.state.offlineSince).toBeNull();
     });
   });
 });

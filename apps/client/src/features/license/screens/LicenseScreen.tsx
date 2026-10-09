@@ -1,6 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Share, User } from "lucide-react-native";
+import { Share, User, WifiOff } from "lucide-react-native";
 import React, { useRef, useState } from "react";
 import {
   Animated,
@@ -225,6 +225,40 @@ export const LicenseScreen: React.FC = () => {
             <AppText variant="caption" color={currentTheme.textSecondary}>
               Hors ligne — licence enregistrée le{" "}
               {new Date(state.offlineSince).toLocaleDateString("fr-FR")}
+            </AppText>
+          </View>
+        ) : null}
+        {/* No network and no local snapshot (never loaded online on this
+            device): say so explicitly instead of an empty wallet. */}
+        {state.licenseUnavailable && !ffdUser ? (
+          <View
+            style={[
+              offlineStyles.unavailable,
+              {
+                backgroundColor: currentTheme.surface,
+                borderColor: currentTheme.border,
+              },
+            ]}
+            testID="license-unavailable"
+            accessibilityRole="alert"
+          >
+            <WifiOff size={36} color={currentTheme.textSecondary} />
+            <AppText
+              variant="h3"
+              align="center"
+              color={currentTheme.text}
+              style={offlineStyles.unavailableTitle}
+            >
+              Licence indisponible
+            </AppText>
+            <AppText
+              variant="body"
+              align="center"
+              color={currentTheme.textSecondary}
+            >
+              Impossible de charger votre licence et aucune copie n'est
+              enregistrée sur cet appareil. Connectez-vous à internet puis
+              rouvrez cet écran : elle restera ensuite consultable hors ligne.
             </AppText>
           </View>
         ) : null}
@@ -541,4 +575,14 @@ const offlineStyles = StyleSheet.create({
     marginBottom: 10,
   },
   dot: { width: 8, height: 8, borderRadius: 4 },
+  unavailable: {
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  unavailableTitle: { marginTop: 4 },
 });
