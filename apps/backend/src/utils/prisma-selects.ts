@@ -370,6 +370,19 @@ export const trackCorrectionDecisionSelect = {
 } as const;
 
 /**
+ * Track fields an approved correction may change, read just before and just
+ * after the update inside the decision transaction: the audit row then holds
+ * what was really applied (MPM recalculated on a dance change, sorted clashes).
+ */
+export const trackCorrectionAuditTrackSelect = {
+  title: true,
+  artist: true,
+  style: true,
+  bpm: true,
+  clashTimecodes: true,
+} as const;
+
+/**
  * Export RGPD (art. 15/20) des propositions de correction : le contenu soumis
  * par l'utilisateur et la décision, sans l'identité de l'administrateur
  * (donnée d'un tiers). Les drapeaux de modération sont lus pour que l'export

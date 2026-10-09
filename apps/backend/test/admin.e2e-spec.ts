@@ -221,4 +221,16 @@ describe("Admin routes (e2e) — role matrix", () => {
       .get("/api/v1/track-corrections/00000000-0000-4000-8000-000000000000")
       .expect(404);
   });
+
+  it("admin can filter the audit log on moderation decisions", async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.adminAuditLog.count.mockResolvedValue(0);
+    prisma.adminAuditLog.findMany.mockResolvedValue([]);
+    await request(server())
+      .get("/api/v1/admin/audit-log?targetType=TRACK_CORRECTION")
+      .expect(200);
+    expect(prisma.adminAuditLog.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { targetType: "TRACK_CORRECTION" } }),
+    );
+  });
 });
