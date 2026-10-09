@@ -11,7 +11,8 @@ export type AnalyticsEventName =
   | "competition_view"
   | "license_scan"
   | "register"
-  | "registration_start";
+  | "registration_start"
+  | "license_wallet_add";
 
 export type AnalyticsEventParams = {
   screen_name?: string;

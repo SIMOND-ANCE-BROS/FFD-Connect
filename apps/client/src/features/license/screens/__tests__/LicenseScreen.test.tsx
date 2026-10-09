@@ -59,6 +59,20 @@ jest.mock("../../components/LicenseCard", () => ({
   LicenseType: {},
 }));
 
+jest.mock("../../components/AddToAppleWalletButton", () => ({
+  AddToAppleWalletButton: (props: {
+    license: { licenseNumber: string };
+    servedFromSnapshot: boolean;
+  }) => {
+    const { Text } = require("react-native");
+    return (
+      <Text testID="apple-wallet-slot">
+        {`${props.license.licenseNumber}:${String(props.servedFromSnapshot)}`}
+      </Text>
+    );
+  },
+}));
+
 // Mock Reanimated & Gesture Handler
 jest.mock("react-native-reanimated", () =>
   require("../../../../__tests__/mocks/mockReanimated"),
@@ -506,6 +520,75 @@ describe("LicenseScreen Integration", () => {
 
       await fireEvent.press(getByTestId("license-screen-type-switch-FFD"));
       expect(mockActions.handleCardPress).toHaveBeenCalledWith(0);
+    });
+  });
+
+  describe("Apple Wallet button (#163)", () => {
+    const ffd = {
+      type: "FFD",
+      data: { firstName: "John", lastName: "Doe", licenseNumber: "123" },
+    };
+    const wdsf = {
+      type: "WDSF",
+      data: { firstName: "John", lastName: "Doe", licenseNumber: "MIN-1" },
+    };
+
+    it("is placed under the FFD license with the snapshot flag", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          offlineSince: "2026-10-01T10:00:00.000Z",
+          listItems: [ffd, { type: "ADD_WDSF", data: null }],
+        },
+        actions: mockActions,
+      });
+
+      const { getByTestId } = await render(<LicenseScreen />);
+      expect(getByTestId("apple-wallet-slot").props.children).toBe("123:true");
+    });
+
+    it("is absent without an FFD license (guest)", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          role: "GUEST",
+          listItems: [{ type: "GUEST", data: null }],
+        },
+        actions: mockActions,
+      });
+
+      const { queryByTestId } = await render(<LicenseScreen />);
+      expect(queryByTestId("apple-wallet-slot")).toBeNull();
+    });
+
+    it("follows the FFD/WDSF switch with two licenses", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          offlineSince: null,
+          showWdsf: true,
+          activeCardIndex: 1,
+          listItems: [ffd, wdsf],
+        },
+        actions: mockActions,
+      });
+      const { queryByTestId } = await render(<LicenseScreen />);
+      expect(queryByTestId("apple-wallet-slot")).toBeNull();
+    });
+
+    it("shows it while the FFD card is the active one of two", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          offlineSince: null,
+          showWdsf: true,
+          activeCardIndex: 0,
+          listItems: [ffd, wdsf],
+        },
+        actions: mockActions,
+      });
+      const { getByTestId } = await render(<LicenseScreen />);
+      expect(getByTestId("apple-wallet-slot").props.children).toBe("123:false");
     });
   });
 });

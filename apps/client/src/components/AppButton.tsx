@@ -165,6 +165,8 @@ const AppButtonComponent: React.FC<AppButtonProps> = ({
         onPressOut={handlePressOut}
         disabled={disabled || loading}
         testID={testID ?? `button-${variant}`}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: disabled || loading, busy: loading }}
         accessibilityLabel={accessibilityLabel}
         accessibilityHint={accessibilityHint}
       >

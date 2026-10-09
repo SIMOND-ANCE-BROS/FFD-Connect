@@ -28,6 +28,11 @@ export interface LicenseUser {
    * le snapshot hors ligne. Absent ⇒ repli sur l'ancien contenu (backend ancien).
    */
   qrCode?: string;
+  /**
+   * The server can issue an Apple Wallet pass for this license (#163). Kept in
+   * the offline snapshot so the button stays visible (disabled) offline.
+   */
+  appleWalletAvailable?: boolean;
 }
 
 export interface LicenseConfig {

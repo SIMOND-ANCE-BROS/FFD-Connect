@@ -30,6 +30,7 @@ import {
   STACKED_CARD_ACTIVE_OFFSET,
 } from "../../../components/StackedCard";
 import { AddLicenseCard } from "../components/AddLicenseCard";
+import { AddToAppleWalletButton } from "../components/AddToAppleWalletButton";
 import { BigBarcode } from "../components/BigBarcode";
 import {
   LicenseCard,
@@ -76,9 +77,9 @@ export const LicenseScreen: React.FC = () => {
     height: number;
   } | null>(null);
 
-  const ffdValidUntilRaw =
-    state.listItems.find((item) => item.type === "FFD")?.data?.validUntilRaw ??
-    null;
+  const ffdUser =
+    state.listItems.find((item) => item.type === "FFD")?.data ?? null;
+  const ffdValidUntilRaw = ffdUser?.validUntilRaw ?? null;
 
   // FFD/WDSF card (WDSF wrapped for swipe-to-remove). Shared by the stacked
   // wallet and the dual-license segmented view.
@@ -387,6 +388,14 @@ export const LicenseScreen: React.FC = () => {
             })}
           </View>
         )}
+        {/* Apple Wallet (#163): FFD license only — hidden while the WDSF
+            card is the one shown. */}
+        {ffdUser && (!hasDualLicense || dualActiveItem.type === "FFD") ? (
+          <AddToAppleWalletButton
+            license={ffdUser}
+            servedFromSnapshot={Boolean(state.offlineSince)}
+          />
+        ) : null}
       </Animated.ScrollView>
 
       <WdsfEntryModal
