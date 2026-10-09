@@ -81,10 +81,14 @@ interface PlayerState {
    * Tempo (MPM) state, kept here — not in the player screen — so it survives
    * closing/reopening that screen. `tempo` = the MPM the given track plays at.
    */
-  tempoLocked: boolean;
-  lockedMpm: number | null;
+  /**
+   * Tempo lock, PER DANCE STYLE (see tempoStyleKey): a style is locked iff it
+   * has an entry. Not persisted (in-memory for the session).
+   */
+  lockedMpmByStyle: Partial<Record<string, number>>;
   tempo: { trackId: string; mpm: number } | null;
-  setTempoLocked: (locked: boolean, mpm?: number) => void;
+  /** Locks `style` at `mpm`, or removes only that style's lock with `null`. */
+  setStyleLock: (style: string, mpm: number | null) => void;
   setTempo: (trackId: string, mpm: number) => void;
 
   // Internal setters for PlayerStoreSync
@@ -168,15 +172,16 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   likedTrackIds: [],
   repeatMode: PlayerRepeatMode.Off,
   isShuffle: false,
-  tempoLocked: false,
-  lockedMpm: null,
+  lockedMpmByStyle: {},
   tempo: null,
 
-  setTempoLocked: (locked, mpm) =>
-    set((st) => ({
-      tempoLocked: locked,
-      lockedMpm: locked && mpm !== undefined ? mpm : st.lockedMpm,
-    })),
+  setStyleLock: (style, mpm) =>
+    set((st) => {
+      const next = { ...st.lockedMpmByStyle };
+      if (mpm === null) delete next[style];
+      else next[style] = mpm;
+      return { lockedMpmByStyle: next };
+    }),
   setTempo: (trackId, mpm) => set({ tempo: { trackId, mpm } }),
 
   setIsPlaying: (v) => set({ isPlaying: v }),
@@ -447,8 +452,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       likedTrackIds: [],
       repeatMode: PlayerRepeatMode.Off,
       isShuffle: false,
-      tempoLocked: false,
-      lockedMpm: null,
+      lockedMpmByStyle: {},
       tempo: null,
     });
   },

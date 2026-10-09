@@ -7,16 +7,21 @@ import {
   adminControllerListClubs,
   adminControllerListUsers,
   adminControllerReferenceData,
+  trackCorrectionsControllerFindOne,
+  trackCorrectionsControllerList,
+  trackCorrectionsControllerPendingCount,
 } from './generated/sdk.gen';
 import type {
   AdminControllerAuditLogData,
   AdminControllerListClubsData,
   AdminControllerListUsersData,
+  TrackCorrectionsControllerListData,
 } from './generated/types.gen';
 
 export type UsersFilter = NonNullable<AdminControllerListUsersData['query']>;
 export type ClubsFilter = NonNullable<AdminControllerListClubsData['query']>;
 export type AuditFilter = NonNullable<AdminControllerAuditLogData['query']>;
+export type ModerationFilter = NonNullable<TrackCorrectionsControllerListData['query']>;
 
 /** Throws so React Query surfaces the error state (the generated client never throws). */
 export async function unwrap<T>(p: Promise<{ data?: T; error?: unknown }>): Promise<T> {
@@ -80,4 +85,33 @@ export const clubQuery = (id: string) =>
   queryOptions({
     queryKey: ['admin', 'club', id],
     queryFn: () => unwrap(adminControllerGetClub({ path: { id } })),
+  });
+
+export const moderationListQuery = (q: ModerationFilter) =>
+  queryOptions({
+    queryKey: ['admin', 'moderation', 'list', q],
+    queryFn: () => unwrap(trackCorrectionsControllerList({ query: q })),
+  });
+
+/**
+ * Pending proposals, for the menu badge. Refetched on navigation and after a
+ * decision only: no refetchInterval, the backend scales to zero.
+ */
+export const pendingCountQuery = queryOptions({
+  queryKey: ['admin', 'moderation', 'pending-count'],
+  queryFn: () => unwrap(trackCorrectionsControllerPendingCount()),
+  // Never wake the scale-to-zero backend on a refocus, a reconnect or a retry.
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+  retry: false,
+});
+
+export const correctionQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['admin', 'moderation', 'item', id],
+    queryFn: () => unwrap(trackCorrectionsControllerFindOne({ path: { id } })),
+    // Same as the badge: a refocus, a reconnect or a retry would wake the scale-to-zero backend.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
   });

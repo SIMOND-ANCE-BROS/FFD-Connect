@@ -56,3 +56,33 @@ The landing lazily reads public open GitHub issues from
 `SIMOND-ANCE-BROS/FFD-Connect`. It excludes pull requests and shows an honest
 fallback if GitHub is unavailable or rate-limited. This is independent of the
 static documentation build and never wakes the application backend.
+
+## Documentation audiences and authoring
+
+`/documentation/` is the audience chooser. Each space has its own directory,
+search and article navigation:
+
+- `/documentation/utilisateurs/`: usage guides from `docs/utilisateurs/**/*.md`.
+- `/documentation/technique/`: all other published project Markdown and READMEs.
+
+Existing technical article URLs are retained. Add a French Markdown file under
+`docs/utilisateurs/` to publish a user guide automatically, including nested
+folders. Keep developer setup, infrastructure and API details in the technical
+space. The two index slugs (`utilisateurs` and `technique`) are reserved; do not
+create root Markdown files or folder READMEs that generate either exact slug.
+
+User guides should state the required role, entry screen, numbered steps,
+expected result and what to do when an action is unavailable. Describe the app's
+actual visible controls; do not describe roadmap items as released features.
+The role cards point to maintained starting guides; new task guides appear in
+the directory automatically. Front matter is optional and is not used to decide
+an article's audience.
+
+Initial guides were checked against app/admin source at `e6807db` on 9 October
+2026: `MainTabs`, `SpaceSelector`/`SpaceSheet`, `SettingsScreen`,
+`ClubDashboardScreen`, `CompetitionDetailScreen`, `LicenseScreen`,
+`ScannerScreen`/`useScannerLogic`, and the admin user/club pages. These are
+source-reviewed walkthroughs, not a claim of authenticated device testing.
+The older Astro MDX guides are not imported: they use a separate renderer and
+some describe earlier navigation. Their application remains unchanged; the
+canonical source for this landing's user guides is `docs/utilisateurs/`.

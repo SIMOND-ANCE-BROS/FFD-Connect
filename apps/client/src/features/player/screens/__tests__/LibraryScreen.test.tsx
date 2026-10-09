@@ -172,6 +172,7 @@ describe("LibraryScreen", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsOnline = true;
     mockAuthState.role = null;
     mockAuthState.roles = [];
     mockAuthState.isGuest = false;
@@ -246,6 +247,67 @@ describe("LibraryScreen", () => {
       <LibraryScreen {...createTestProps()} />,
     );
     expect(getByText("Votre bibliothèque est vide.")).toBeTruthy();
+  });
+
+  // Beta feedback: on first load the empty state and the "Chargement…"
+  // footer were shown together. One centered loader instead.
+  it("shows a single loader, no empty state, during the first load", async () => {
+    (useLibraryLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...defaultState,
+        displayData: [],
+        isInitialLoading: true,
+        isLoadingMore: true,
+        hasMore: true,
+      },
+      actions: { ...defaultActions, loadMore: jest.fn() },
+    });
+
+    const { getAllByTestId, queryByText, queryByTestId } = await render(
+      <LibraryScreen {...createTestProps()} />,
+    );
+
+    expect(getAllByTestId("library-loading")).toHaveLength(1);
+    expect(queryByText("Votre bibliothèque est vide.")).toBeNull();
+    expect(queryByText("Chargement…")).toBeNull();
+    expect(queryByTestId("library-loading-more")).toBeNull();
+  });
+
+  it("shows the next-page spinner under loaded tracks", async () => {
+    (useLibraryLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...defaultState,
+        displayData: [
+          { id: "t1", title: "Track 1", artist: "Artist 1", baseBpm: 120 },
+        ],
+        isInitialLoading: false,
+        isLoadingMore: true,
+        hasMore: true,
+      },
+      actions: { ...defaultActions, loadMore: jest.fn() },
+    });
+
+    const { getByTestId, queryByTestId } = await render(
+      <LibraryScreen {...createTestProps()} />,
+    );
+
+    expect(getByTestId("library-loading-more")).toBeTruthy();
+    expect(queryByTestId("library-loading")).toBeNull();
+  });
+
+  it("says the library is unavailable offline instead of empty", async () => {
+    mockIsOnline = false;
+    (useLibraryLogic as jest.Mock).mockReturnValue({
+      state: { ...defaultState, displayData: [], isInitialLoading: false },
+      actions: defaultActions,
+    });
+
+    const { getByText, queryByText } = await render(
+      <LibraryScreen {...createTestProps()} />,
+    );
+
+    expect(getByText("Hors ligne")).toBeTruthy();
+    expect(queryByText("Votre bibliothèque est vide.")).toBeNull();
   });
 
   describe("long-press track sheet", () => {

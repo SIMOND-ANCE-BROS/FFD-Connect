@@ -7,7 +7,10 @@ import request from "supertest";
 import { AppModule } from "./../src/app.module";
 import { LicenseQrService } from "./../src/licenses/qr/license-qr.service";
 import { AppleWalletPassGenerator } from "./../src/licenses/wallet/apple-wallet-pass.generator";
-import { hashWalletPassToken } from "./../src/licenses/wallet/apple-wallet-pass.service";
+import {
+  hashWalletPassToken,
+  WALLET_PASS_MAX_DOWNLOADS,
+} from "./../src/licenses/wallet/apple-wallet-pass.service";
 import {
   readPkpassEntries,
   testAppleWalletEnv,
@@ -18,8 +21,8 @@ import { applyE2EOverrides, configureTestApp } from "./test-app.factory";
 
 /**
  * Apple Wallet license pass, end to end (#162): authenticated POST issues a
- * single-use link, the public GET exchanges it for a signed `.pkpass` whose
- * QR is exactly the one the app shows.
+ * short-lived link, the public GET exchanges it (a few times at most) for a
+ * signed `.pkpass` whose QR is exactly the one the app shows.
  */
 describe("Apple Wallet license pass (e2e)", () => {
   let app: INestApplication;
@@ -47,6 +50,17 @@ describe("Apple Wallet license pass (e2e)", () => {
 
   const download = (path: string) =>
     request(server()).get(`/api/v1/${path}`).buffer(true).parse(binary);
+
+  const probe = (path: string) => request(server()).head(`/api/v1/${path}`);
+
+  const downloadCountOf = async (path: string) => {
+    const token = path.split("/").pop() as string;
+    const row = await prisma.walletPassDownloadToken.findUnique({
+      where: { tokenHash: hashWalletPassToken(token) },
+      select: { downloadCount: true },
+    });
+    return row?.downloadCount;
+  };
 
   beforeAll(async () => {
     const config = (values: Record<string, string>) =>
@@ -172,7 +186,7 @@ describe("Apple Wallet license pass (e2e)", () => {
     await issueLink(expiredToken).expect(422);
   });
 
-  it("POST → GET returns the signed pass of the caller, exactly once", async () => {
+  it("POST → GET returns the signed pass of the caller", async () => {
     const link = await issueLink(aliceToken).expect(201);
     const { url, path } = link.body as { url: string; path: string };
     expect(url).toMatch(
@@ -205,9 +219,77 @@ describe("Apple Wallet license pass (e2e)", () => {
       .expect(200);
     expect(passJson.barcodes[0].message).toBe(me.body.license.qrCode);
     expect(passJson.generic.secondaryFields[0].value).toBe("FFD-WALLET-A");
+  });
 
-    // Single use.
+  it("serves the same link several times, up to the quota", async () => {
+    const { path } = (await issueLink(aliceToken).expect(201)).body as {
+      path: string;
+    };
+    // Firefox iOS: its own GET, then CFNetwork, then its FxA client.
+    for (let i = 0; i < 3; i++) {
+      const res = await download(path).expect(200);
+      expect(res.headers["content-type"]).toBe("application/vnd.apple.pkpass");
+    }
+    expect(await downloadCountOf(path)).toBe(3);
+
+    for (let i = 3; i < WALLET_PASS_MAX_DOWNLOADS; i++) {
+      await download(path).expect(200);
+    }
+    // 6th download: quota spent.
     await download(path).expect(404);
+    expect(await downloadCountOf(path)).toBe(WALLET_PASS_MAX_DOWNLOADS);
+  });
+
+  it("never serves more than the quota to concurrent downloads", async () => {
+    const { path } = (await issueLink(bobToken).expect(201)).body as {
+      path: string;
+    };
+    const statuses = await Promise.all(
+      Array.from(
+        { length: WALLET_PASS_MAX_DOWNLOADS + 2 },
+        async () => (await download(path)).status,
+      ),
+    );
+    expect(statuses.filter((s) => s === 200)).toHaveLength(
+      WALLET_PASS_MAX_DOWNLOADS,
+    );
+    expect(statuses.filter((s) => s === 404)).toHaveLength(2);
+    expect(await downloadCountOf(path)).toBe(WALLET_PASS_MAX_DOWNLOADS);
+  });
+
+  it("HEAD reports the link status without spending a download", async () => {
+    const { path } = (await issueLink(aliceToken).expect(201)).body as {
+      path: string;
+    };
+    for (let i = 0; i < WALLET_PASS_MAX_DOWNLOADS + 1; i++) {
+      const res = await probe(path).expect(200);
+      expect(res.headers["content-type"]).toContain(
+        "application/vnd.apple.pkpass",
+      );
+      expect(res.headers["cache-control"]).toBe("no-store");
+    }
+    expect(await downloadCountOf(path)).toBe(0);
+    await download(path).expect(200);
+    expect(await downloadCountOf(path)).toBe(1);
+
+    await probe("licenses/wallet/apple/" + "A".repeat(43)).expect(404);
+  });
+
+  it("a new link resets the quota", async () => {
+    const first = (await issueLink(aliceToken).expect(201)).body as {
+      path: string;
+    };
+    for (let i = 0; i < WALLET_PASS_MAX_DOWNLOADS; i++) {
+      await download(first.path).expect(200);
+    }
+    await download(first.path).expect(404);
+
+    const second = (await issueLink(aliceToken).expect(201)).body as {
+      path: string;
+    };
+    expect(await downloadCountOf(second.path)).toBe(0);
+    await download(second.path).expect(200);
+    await download(first.path).expect(404);
   });
 
   it("a token only ever yields its issuer's pass", async () => {
@@ -246,7 +328,9 @@ describe("Apple Wallet license pass (e2e)", () => {
       data: { expiresAt: new Date(Date.now() - 1000) },
     });
     await download(path).expect(410);
-    await download(path).expect(404);
+    await download(path).expect(410);
+    await probe(path).expect(410);
+    expect(await downloadCountOf(path)).toBe(0);
   });
 
   it("400 for a malformed token", async () => {

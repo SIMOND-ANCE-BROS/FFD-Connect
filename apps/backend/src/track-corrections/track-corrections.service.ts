@@ -14,6 +14,9 @@ import {
   TrackCorrectionStatus,
   UserRole,
 } from "@prisma/client";
+import { AdminAuditService } from "../admin/admin-audit.service";
+import { diffFields } from "../admin/admin-audit.util";
+import type { AuditEntry } from "../admin/dto/admin-audit.dto";
 import { withActiveRole } from "../auth/roles";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -26,6 +29,7 @@ import {
 import { TracksService } from "../tracks/tracks.service";
 import {
   idOnlySelect,
+  trackCorrectionAuditTrackSelect,
   trackCorrectionDecisionSelect,
   trackCorrectionMineSelect,
   trackCorrectionTargetSelect,
@@ -81,6 +85,10 @@ type CorrectionForDecision = Prisma.TrackCorrectionGetPayload<{
   select: typeof trackCorrectionDecisionSelect;
 }>;
 
+type TrackAuditFields = Prisma.TrackGetPayload<{
+  select: typeof trackCorrectionAuditTrackSelect;
+}>;
+
 /** Valeurs réellement proposées (null = pas de proposition sur ce champ). */
 interface ProposedValues {
   proposedTitle: string | null;
@@ -122,6 +130,7 @@ export class TrackCorrectionsService {
     private readonly tracksService: TracksService,
     private readonly notificationsService: NotificationsService,
     private readonly queryService: TrackCorrectionsQueryService,
+    private readonly audit: AdminAuditService,
   ) {}
 
   /**
@@ -231,6 +240,9 @@ export class TrackCorrectionsService {
    * MÊME transaction (updateTrack reçoit `tx`) : si l'application échoue, la
    * proposition reste en attente, et inversement.
    * La garde `updateMany … status: PENDING` refuse une double décision (409).
+   *
+   * The audit row (same transaction) holds the track fields really changed,
+   * read back after updateTrack; nothing is logged if any step fails.
    */
   async approve(
     id: string,
@@ -249,12 +261,30 @@ export class TrackCorrectionsService {
         TrackCorrectionStatus.APPROVED,
         comment,
       );
+      const before = await tx.track.findUnique({
+        where: { id: correction.trackId },
+        select: trackCorrectionAuditTrackSelect,
+      });
       await this.tracksService.updateTrack(
         correction.trackId,
         adminId,
         true,
         patch,
         tx,
+      );
+      const after = await tx.track.findUnique({
+        where: { id: correction.trackId },
+        select: trackCorrectionAuditTrackSelect,
+      });
+      await this.audit.record(
+        tx,
+        TrackCorrectionsService.approvalAudit(
+          id,
+          adminId,
+          correction.trackId,
+          before,
+          after,
+        ),
       );
     });
 
@@ -277,13 +307,24 @@ export class TrackCorrectionsService {
     const correction = await this.findPendingForDecision(id);
     const comment = normalizeText(dto.comment) ?? null;
 
-    await TrackCorrectionsService.claim(
-      this.prisma,
-      id,
-      adminId,
-      TrackCorrectionStatus.REJECTED,
-      comment,
-    );
+    // Claim and audit row are atomic: a 409 leaves no trace.
+    await this.prisma.$transaction(async (tx) => {
+      await TrackCorrectionsService.claim(
+        tx,
+        id,
+        adminId,
+        TrackCorrectionStatus.REJECTED,
+        comment,
+      );
+      await this.audit.record(tx, {
+        actorId: adminId,
+        action: "TRACK_CORRECTION_REJECT",
+        targetType: "TRACK_CORRECTION",
+        targetId: id,
+        // Track metadata only: never the proposer's message nor the comment.
+        after: { trackId: correction.trackId },
+      });
+    });
 
     await this.notifyProposer(
       correction,
@@ -496,6 +537,29 @@ export class TrackCorrectionsService {
 
   private static alreadyDecided(): ConflictException {
     return new ConflictException("Cette proposition a déjà été traitée.");
+  }
+
+  /**
+   * Audit row of an approval: the track fields the approval actually changed
+   * plus trackId. Never the proposer's message nor the review comment (free
+   * text that may hold personal data).
+   */
+  private static approvalAudit(
+    id: string,
+    adminId: string,
+    trackId: string,
+    before: TrackAuditFields | null,
+    after: TrackAuditFields | null,
+  ): AuditEntry {
+    const changes = diffFields(before ?? {}, after ?? {});
+    return {
+      actorId: adminId,
+      action: "TRACK_CORRECTION_APPROVE",
+      targetType: "TRACK_CORRECTION",
+      targetId: id,
+      before: { trackId, ...changes?.before },
+      after: { trackId, ...changes?.after },
+    };
   }
 
   /** Résumé lisible des valeurs proposées, pour la notification admin. */

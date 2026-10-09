@@ -15,6 +15,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 
 import { API_TIMEOUT_MS, API_URL } from "../config";
+import { clearLicenseSnapshot } from "../features/license/utils/licenseSnapshot";
 import { useAuthStore } from "../stores/auth.store";
 import { createLogger } from "../utils/logger";
 import { clearTokens, getTokens, setTokens } from "./tokenStore";
@@ -71,6 +72,10 @@ async function performRefresh(): Promise<string | null> {
     if (status === 401 || status === 403) {
       logger.warn("Refresh token invalide/expiré — déconnexion");
       await clearTokens();
+      // Session over: the offline license snapshot (PII + signed QR) goes with
+      // it, like on an explicit logout. Not via runSessionEndCleanups — that
+      // registry also runs on the biometric lock, which keeps the snapshot.
+      await clearLicenseSnapshot();
       await setLoggedInFlag(false);
       // Notifie le store pour que l'UI reflète la déconnexion (au lieu de rester
       // "connectée" avec un token mort).

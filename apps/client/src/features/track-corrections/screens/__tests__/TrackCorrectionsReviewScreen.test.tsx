@@ -75,6 +75,7 @@ const correction = (
     clashTimecodes: [40, 80],
     titleMasked: false,
     blacklisted: false,
+    filename: "espana-cani.mp3",
   },
   proposer: { id: "u1", name: "Eva Martin" },
   reviewer: null,

@@ -323,7 +323,7 @@ export const PerformancePlayerScreen = () => {
           testID="performance-player-next-button"
           accessibilityRole="button"
           accessibilityLabel="Étape suivante"
-          accessibilityHint="Termine la danse et lance la pause, ou termine la pause et annonce la danse suivante"
+          accessibilityHint="Termine la danse et lance la pause (la danse suivante y est annoncée), ou termine la pause et lance la danse suivante"
           accessibilityState={{ disabled: !canSkipForward }}
         >
           <SkipForward color={currentTheme.text} size={28} />

@@ -89,6 +89,26 @@ const TabScreenTransition = ({ children }: { children: React.ReactNode }) => {
 const ITEM_WIDTH = 96;
 const PILL_HEIGHT = 58;
 const ANDROID_PILL_GAP = 12;
+/**
+ * Horizontal gap between the selection capsule and its tab slot. Smaller than
+ * the vertical inset (6) so the capsule is as wide as the slot allows: with 5
+ * tabs on a phone, "Bibliothèque" used to spill past a narrower capsule.
+ */
+const INDICATOR_INSET_X = 3;
+/** Breathing room kept between the label and the capsule's edges. */
+const LABEL_PADDING_X = 4;
+
+/** Capsule + label widths for one tab slot (exported for tests). */
+export function getTabItemMetrics(itemWidth: number): {
+  indicatorWidth: number;
+  labelWidth: number;
+} {
+  const indicatorWidth = Math.max(0, itemWidth - INDICATOR_INSET_X * 2);
+  return {
+    indicatorWidth,
+    labelWidth: Math.max(0, indicatorWidth - LABEL_PADDING_X * 2),
+  };
+}
 
 const FloatingGlassTabBar = ({
   state,
@@ -107,9 +127,9 @@ const FloatingGlassTabBar = ({
   const count = state.routes.length;
   const pillWidth = Math.min(count * ITEM_WIDTH + 16, screenWidth - 32);
   const itemWidth = pillWidth / count;
-  // Inset horizontal = inset vertical (6px, cf. styles.indicator top/bottom) →
-  // gap uniforme autour de l'indicateur, concentrique avec le pill extérieur.
-  const indicatorWidth = itemWidth - 12;
+  // The label box is always narrower than the capsule (see getTabItemMetrics),
+  // so a label can never exceed the selection highlight.
+  const { indicatorWidth, labelWidth } = getTabItemMetrics(itemWidth);
   const indicatorTarget =
     state.index * itemWidth + (itemWidth - indicatorWidth) / 2;
 
@@ -320,20 +340,30 @@ const FloatingGlassTabBar = ({
               >
                 {options.tabBarIcon?.({ focused, color, size: 24 })}
                 {typeof labelValue === "string" && labelValue.length > 0 ? (
-                  <Text
-                    numberOfLines={1}
-                    // adjustsFontSizeToFit does NOT shrink text under this RN /
-                    // New Arch build, so we don't rely on it. A small fixed font
-                    // (see tabLabel) fits the longest labels ("Bibliothèque",
-                    // "Compétitions") inside the pill; maxWidth + ellipsis is a
-                    // hard backstop so a label can never spill past the selector.
-                    style={[
-                      styles.tabLabel,
-                      { color, maxWidth: indicatorWidth, textAlign: "center" },
-                    ]}
+                  // Fixed-width, clipping box: a Text maxWidth alone did not
+                  // stop "Bibliothèque" from spilling past the capsule on
+                  // device (beta feedback), notably with a larger system text
+                  // size. The box hard-bounds the label inside the capsule.
+                  <View
+                    testID={`tab-label-box-${route.key}`}
+                    style={[styles.tabLabelBox, { width: labelWidth }]}
                   >
-                    {labelValue}
-                  </Text>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      // Tab labels keep a fixed size (like the native iOS tab
+                      // bar): Dynamic Type would push them past the capsule.
+                      allowFontScaling={false}
+                      // Best effort only: adjustsFontSizeToFit does not shrink
+                      // text under this RN / New Arch build; the box above is
+                      // the real guarantee.
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.8}
+                      style={[styles.tabLabel, { color }]}
+                    >
+                      {labelValue}
+                    </Text>
+                  </View>
                 ) : null}
               </Pressable>
             );
@@ -390,9 +420,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 3,
-    paddingHorizontal: 3,
+    paddingHorizontal: INDICATOR_INSET_X,
+  },
+  tabLabelBox: {
+    // No alignItems: the Text stretches to the box width, so it ellipsizes
+    // (textAlign centers it) instead of overflowing its own measured width.
+    overflow: "hidden",
   },
   tabLabel: {
+    textAlign: "center",
     // 8px so the longest labels ("Bibliothèque", "Compétitions") fit the
     // selection pill without relying on adjustsFontSizeToFit (broken on New Arch).
     fontSize: 8,

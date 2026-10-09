@@ -77,19 +77,24 @@ model LicenseRenewalDocument {
 /// Jeton de téléchargement d'un pass Apple Wallet de la licence (#162).
 ///
 /// L'app (authentifiée) obtient une URL contenant ce jeton puis l'ouvre dans
-/// Safari, qui n'a pas le JWT : le jeton remplace l'authentification pour UN
-/// téléchargement. Court (quelques minutes) et à usage unique — la ligne est
-/// supprimée à la consommation (DELETE atomique : deux requêtes concurrentes ne
-/// peuvent pas le consommer toutes les deux). Seul le SHA-256 du jeton est
-/// stocké. Une seule ligne par utilisateur (`userId` unique, émission par
-/// upsert) : un nouveau jeton remplace le précédent, même si deux demandes
-/// arrivent en même temps, sans tâche planifiée (backend scale-to-zero).
+/// Safari, qui n'a pas le JWT : le jeton remplace l'authentification le temps
+/// du téléchargement. Court (quelques minutes) et réutilisable dans cette
+/// fenêtre, mais borné à quelques téléchargements : certains navigateurs iOS
+/// (Firefox…) récupèrent l'URL plusieurs fois avant de la passer à Wallet.
+/// Chaque téléchargement incrémente `downloadCount` par un UPDATE conditionnel
+/// atomique (deux requêtes concurrentes ne peuvent pas dépasser le quota). Seul
+/// le SHA-256 du jeton est stocké. Une seule ligne par utilisateur (`userId`
+/// unique, émission par upsert) : un nouveau jeton remplace le précédent et
+/// remet le compteur à zéro, même si deux demandes arrivent en même temps, sans
+/// tâche planifiée (backend scale-to-zero).
 model WalletPassDownloadToken {
-  id        String   @id @default(uuid())
+  id            String   @id @default(uuid())
   /// SHA-256 hex du jeton (le jeton en clair n'est jamais stocké).
-  tokenHash String   @unique
-  userId    String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash     String   @unique
+  userId        String   @unique
+  expiresAt     DateTime
+  /// Téléchargements déjà servis avec ce jeton (remis à 0 à chaque émission).
+  downloadCount Int      @default(0)
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

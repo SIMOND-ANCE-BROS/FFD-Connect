@@ -11,3 +11,12 @@ export function apiErrorMessage(body: unknown, fallback: string): string {
     : message;
   return typeof text === 'string' && text ? text : fallback;
 }
+
+/** True for a 409 error body (the backend's global filter always sets statusCode). */
+export function isConflict(body: unknown): boolean {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    (body as { statusCode?: unknown }).statusCode === 409
+  );
+}

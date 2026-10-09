@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   collectDocs,
+  audienceForPath,
+  renderIndex,
   renderArticle,
   renderMarkdown,
   rewriteLink,
@@ -36,6 +38,7 @@ describe('repository-backed static documentation', () => {
         'patches/PATCHES.md',
         'docs/README.md',
         'docs/guides/new.md',
+        'docs/utilisateurs/nouveau-parcours.md',
         'docs/archives/old.md',
         'docs/legal/cgu.md',
       ];
@@ -45,6 +48,9 @@ describe('repository-backed static documentation', () => {
       }
       const docs = collectDocs(root);
       expect(docs.some((d) => d.slug === 'guides/new')).toBe(true);
+      const added = docs.find((d) => d.slug === 'utilisateurs/nouveau-parcours');
+      expect(added).toBeDefined();
+      expect(audienceForPath(added!.path)).toBe('utilisateurs');
       expect(docs.some((d) => d.path.includes('archives'))).toBe(false);
       expect(docs.some((d) => d.path.includes('legal'))).toBe(false);
       mkdirSync(join(root, 'docs/new-folder'));
@@ -61,7 +67,7 @@ describe('repository-backed static documentation', () => {
       );
       expect(rewriteLink('../legal/cgu.md', one.path, [one, two], base)).toBe(base + 'cgu/');
       expect(rewriteLink('./', one.path, [one, two], base)).toBe(
-        base + 'documentation/?q=docs%2Fguides#articles',
+        base + 'documentation/technique/?q=docs%2Fguides#articles',
       );
     }
   });
@@ -92,4 +98,35 @@ describe('repository-backed static documentation', () => {
     expect(html).not.toContain('href="javascript:');
     expect(html).not.toContain('src="data:');
   });
+});
+
+const userGuide: Doc = {
+  path: 'docs/utilisateurs/danseurs.md',
+  slug: 'utilisateurs/danseurs',
+  title: 'Mon parcours danseur',
+  markdown: '# Mon parcours danseur\n\n## Licence\nVoici les étapes.',
+};
+it('keeps audience directories and article navigation separate', () => {
+  const docs = [one, userGuide];
+  for (const base of ['/', '/FFD-Connect/']) {
+    const userIndex = renderIndex(docs, base, 'utilisateurs');
+    const technicalIndex = renderIndex(docs, base, 'technique');
+    expect(userIndex).toContain('Mon parcours danseur');
+    expect(userIndex).not.toContain('>First<');
+    expect(technicalIndex).toContain('>First<');
+    expect(technicalIndex).not.toContain('Mon parcours danseur');
+    const hub = renderIndex(docs, base);
+    expect(hub).toContain(base + 'documentation/utilisateurs/');
+    expect(hub).toContain(base + 'documentation/technique/');
+    expect(hub).not.toContain('data-doc-search');
+    const userPage = renderArticle(userGuide, docs, base);
+    expect(userPage).toContain(base + 'documentation/utilisateurs/#articles');
+    expect(userPage).not.toContain(base + 'documentation/architecture/');
+    expect(rewriteLink('./', userGuide.path, docs, base)).toBe(
+      base + 'documentation/utilisateurs/?q=docs%2Futilisateurs#articles',
+    );
+    expect(rewriteLink('../guides/first.md', userGuide.path, docs, base)).toBe(
+      base + 'documentation/guides/first/',
+    );
+  }
 });

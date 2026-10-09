@@ -99,7 +99,7 @@ export class TrackCorrectionsController {
   @ApiOperation({
     summary: "File de modération des propositions de correction",
     description:
-      "Réservé aux administrateurs. Chaque proposition est accompagnée des valeurs ACTUELLES de la musique (diff), du nom de son auteur et du relecteur. En attente : de la plus ancienne à la plus récente ; sinon de la plus récente à la plus ancienne.",
+      "Réservé aux administrateurs. Chaque proposition est accompagnée des valeurs ACTUELLES de la musique (diff), du nom de son auteur et du relecteur. En attente : de la plus ancienne à la plus récente ; sinon de la plus récente à la plus ancienne. Filtres optionnels : `reason` (un ou plusieurs motifs, répétés ou séparés par des virgules) et `q` (titre ou artiste, 2 à 100 caractères, sans tenir compte de la casse).",
   })
   @ApiResponse({
     status: 200,
@@ -146,6 +146,31 @@ export class TrackCorrectionsController {
   })
   async pendingCount(): Promise<TrackCorrectionPendingCountDto> {
     return { count: await this.queryService.countPending() };
+  }
+
+  /**
+   * Declared after `mine` and `pending-count`: Nest matches routes in
+   * declaration order, and ParseUUIDPipe would answer 400 to those paths.
+   */
+  @Get(":id")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: "Une proposition de correction (vue administrateur)",
+    description:
+      "Réservé aux administrateurs. Même contenu qu'un élément de la file de modération.",
+  })
+  @ApiParam({ name: "id", description: "UUID de la proposition" })
+  @ApiResponse({
+    status: 200,
+    description: "Proposition",
+    type: TrackCorrectionAdminDto,
+  })
+  @ApiResponse({ status: 404, description: "Proposition non trouvée" })
+  async findOne(
+    @Param("id", ParseUUIDPipe) id: string,
+  ): Promise<TrackCorrectionAdminDto> {
+    return this.queryService.findOneForAdmin(id);
   }
 
   @Post(":id/approve")

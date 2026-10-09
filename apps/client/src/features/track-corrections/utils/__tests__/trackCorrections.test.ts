@@ -25,6 +25,7 @@ const track: TrackCorrectionAdminDto["track"] = {
   clashTimecodes: [40, 80],
   titleMasked: false,
   blacklisted: false,
+  filename: "espana-cani.mp3",
 };
 
 const noChange = {

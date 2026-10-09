@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import {
   AccessibilityInfo,
+  ActivityIndicator,
   Alert,
   Animated,
   FlatList,
@@ -26,9 +27,10 @@ import { AppText } from "../../../components/AppText";
 import { BackButton } from "../../../components/BackButton";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import { PinnedHeader } from "../../../components/PinnedHeader";
+import { ScreenLoader } from "../../../components/ScreenLoader";
+import { useIsOnline } from "../../../hooks/useIsOnline";
 import { NotificationBell } from "../../../components/NotificationBell";
 import { useTheme } from "../../../context/ThemeContext";
-import { useIsOnline } from "../../../hooks/useIsOnline";
 import { RootStackParamList } from "../../../navigation/types";
 import { BackendService } from "../../../services/BackendService";
 import { useAuthStore } from "../../../stores/auth.store";
@@ -82,7 +84,10 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
     displayData,
     hasMore,
     isLoadingMore,
+    isInitialLoading,
+    allTracks,
   } = state;
+  const isOnline = useIsOnline();
 
   const {
     setModalVisible,
@@ -195,7 +200,6 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
   );
 
   // --- Track sheet (long-press) + queue confirmation ---
-  const isOnline = useIsOnline();
   const [sheetTrack, setSheetTrack] = useState<TrackData | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
   // iOS cannot present a modal while another is still sliding out: the
@@ -379,29 +383,36 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
   const isGridView = activeTab === "style" && !searchQuery && !selectedSection;
 
   const handleEndReached = () => {
-    if (hasMore && !isLoadingMore) {
+    if (!isInitialLoading && hasMore && !isLoadingMore) {
       loadMore().catch(() => {});
     }
   };
 
+  // Next-page spinner, under tracks already shown (never during the first
+  // load: that one has the single ScreenLoader below).
   const renderListFooter = () => {
-    if (!isLoadingMore) return null;
+    if (isInitialLoading || !isLoadingMore) return null;
     return (
-      <View style={styles.loadingMore}>
-        <AppText variant="caption" color={currentTheme.textSecondary}>
-          Chargement…
-        </AppText>
+      <View style={styles.loadingMore} testID="library-loading-more">
+        <ActivityIndicator color={currentTheme.primary} />
       </View>
     );
   };
 
-  const renderEmptyComponent = () => (
-    <LibraryEmptyState
-      currentTheme={currentTheme}
-      activeTab={activeTab}
-      searchQuery={searchQuery}
-    />
-  );
+  // First load: one centered loader (same as Career / Competitions) instead
+  // of a premature "Votre bibliothèque est vide".
+  const renderEmptyComponent = () =>
+    isInitialLoading ? (
+      <ScreenLoader testID="library-loading" />
+    ) : (
+      <LibraryEmptyState
+        currentTheme={currentTheme}
+        activeTab={activeTab}
+        searchQuery={searchQuery}
+        // Only when nothing at all is loaded (not a filter with no match).
+        isOffline={!isOnline && allTracks.length === 0}
+      />
+    );
 
   const pinnedContent = (
     <>

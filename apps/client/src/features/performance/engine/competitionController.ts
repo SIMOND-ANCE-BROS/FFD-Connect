@@ -11,15 +11,22 @@
  *   loading  — fetch the full catalogue + ambiance, build the playlist, then
  *              download EVERY track, the pause music and every announcement
  *              to the local cache (progress in store.loadingProgress).
- *   break    — pause music (looped, faded in) for `pauseDuration` seconds.
+ *   break    — the MC calls the NEXT dance at the very start of the break:
+ *              pause music (looped) fades in under the voice, announcement
+ *              fully spoken (dedicated player, full volume), pause music
+ *              back up. The countdown is held meanwhile, so dancers always
+ *              get the full `pauseDuration` of preparation AFTER hearing which
+ *              dance comes next (as on a real competition floor).
  *   transition (status unchanged, timer held):
- *              duck the pause music → announcement fully spoken (dedicated
- *              player, full volume) → fade the pause music out → dance track.
+ *              end of break → fade the pause music out → dance track (no
+ *              second announcement). Without a break (`pauseDuration <= 0`)
+ *              or on ⏮ the announcement is spoken right before the dance.
  *   playing  — the countdown only starts once the track is really playing.
  *   … repeat, then an optional closing line and status "finished".
  */
 import { Alert } from "react-native";
 import Tts from "../../../services/TtsService";
+import { useDanceOrderStore } from "../../../stores/danceOrder.store";
 import {
   usePerformanceStore,
   type PlaylistItem,
@@ -52,9 +59,12 @@ const logger = createLogger("competitionController");
 export const AMBIANCE_VOLUME = 0.7;
 /** Pause music level under the announcement. */
 export const DUCKED_VOLUME = 0.25;
+/** Fade-in of the pause music (to the ducked level) before the break call. */
+export const BREAK_FADE_IN_MS = 1000;
+/** Rise of the pause music back to its normal level after the break call. */
+export const AMBIANCE_RISE_MS = 1500;
 /** Max wait for the dance track to report Playing before starting anyway. */
 export const PLAYBACK_START_TIMEOUT_MS = 8000;
-const AMBIANCE_FADE_IN_S = 3;
 const DANCE_FADE_OUT_S = 5;
 const FADE_STEP_MS = 100;
 const DOWNLOAD_CONCURRENCY = 3;
@@ -90,6 +100,11 @@ let ambianceTrack: TrackData | null = null;
 let closingPath: string | null = null;
 let previousStatus: "playing" | "break" | null = null;
 let ttsFailureHandled = false;
+/**
+ * Playlist index already announced at the start of the current break: the
+ * dance that follows starts directly, without a second announcement.
+ */
+let announcedIndex: number | null = null;
 let volume = 1;
 let interval: ReturnType<typeof setInterval> | null = null;
 /** Serialises calls to playTrack so a stale call can never land after a newer one. */
@@ -120,6 +135,7 @@ export const resetEngineForTests = (): void => {
   closingPath = null;
   previousStatus = null;
   ttsFailureHandled = false;
+  announcedIndex = null;
   volume = 1;
   playChain = Promise.resolve();
 };
@@ -248,16 +264,6 @@ export function tick(): void {
     // Dance fade-out over the last seconds.
     setVolume(next / DANCE_FADE_OUT_S, token).catch(() => {});
   }
-  if (s.status === "break" && ambianceTrack) {
-    const elapsed = s.config.pauseDuration - next;
-    if (elapsed <= AMBIANCE_FADE_IN_S) {
-      setVolume(
-        (AMBIANCE_VOLUME * Math.min(elapsed, AMBIANCE_FADE_IN_S)) /
-          AMBIANCE_FADE_IN_S,
-        token,
-      ).catch(() => {});
-    }
-  }
 
   if (next === 0) handleTimerComplete();
 }
@@ -274,13 +280,15 @@ function handleTimerComplete(): void {
     } else if (s.config.pauseDuration > 0) {
       startBreak().catch((e) => logger.warn("Break failed", e));
     } else {
-      transitionToDance(nextIndex).catch((e) =>
+      transitionToDance(nextIndex, true).catch((e) =>
         logger.warn("Transition failed", e),
       );
     }
   } else if (s.status === "break") {
     if (hasNext) {
-      transitionToDance(nextIndex).catch((e) =>
+      // Already called at the start of the break → straight into the dance.
+      const announce = announcedIndex !== nextIndex;
+      transitionToDance(nextIndex, announce).catch((e) =>
         logger.warn("Transition failed", e),
       );
     } else {
@@ -303,31 +311,81 @@ async function playAmbiance(token: number): Promise<void> {
   await TrackPlayer.setRepeatMode(RepeatMode.Track);
 }
 
+/**
+ * Starts a break (or the initial "get ready" one). Resolves once the pause
+ * music is loaded; the call of the next dance then runs on its own (see
+ * announceBreak) so the setup screen is not kept waiting for it.
+ */
 async function startBreak(): Promise<void> {
   const token = session;
   const s = store();
   const pauseDuration = s.config.pauseDuration;
+  const nextIndex = s.currentDanceIndex + 1;
   s.setStatus("break");
   s.setActivePhase("break");
   s.setTimeRemaining(pauseDuration);
+  announcedIndex = null;
   // While the pause music loads, a play/pause tap must not be overridden by
   // the track starting afterwards → treat it as a transition.
   transitioning = true;
   holdTimer = true;
+  let announcing = false;
   try {
     if (pauseDuration > 0) {
       await playAmbiance(token);
+      if (alive(token)) {
+        // Keeps transitioning/holdTimer until the call is over.
+        announcing = true;
+        announceBreak(nextIndex, token).catch((e) =>
+          logger.warn("Break announcement failed", e),
+        );
+      }
     } else {
       await requireDeps().pause();
     }
   } finally {
-    if (alive(token)) {
+    if (alive(token) && !announcing) {
       transitioning = false;
       holdTimer = false;
     }
   }
   // No break: go straight to the announcement of the next dance.
   if (alive(token) && pauseDuration <= 0) handleTimerComplete();
+}
+
+/**
+ * Start of a break: the MC calls the next dance over the ducked pause music,
+ * then the music comes back up and only then does the countdown run — the
+ * whole break is left to the dancers to get ready.
+ */
+async function announceBreak(index: number, token: number): Promise<void> {
+  const item = store().playlist[index] as PlaylistItem | undefined;
+  try {
+    if (item) {
+      store().setIsAnnouncing(true);
+      if (ambianceTrack)
+        await rampVolume(DUCKED_VOLUME, BREAK_FADE_IN_MS, token);
+      if (!alive(token)) return;
+      try {
+        await Tts.speak(item.announcementText, item.announcementPath);
+      } catch (e) {
+        logger.warn("TTS Speak Error", e);
+        await handleTtsFailure(e instanceof Error ? e.message : undefined);
+        return;
+      }
+      if (!alive(token)) return;
+      announcedIndex = index;
+      store().setIsAnnouncing(false);
+    }
+    if (ambianceTrack)
+      await rampVolume(AMBIANCE_VOLUME, AMBIANCE_RISE_MS, token);
+  } finally {
+    if (alive(token)) {
+      transitioning = false;
+      holdTimer = false;
+      store().setIsAnnouncing(false);
+    }
+  }
 }
 
 async function playDance(index: number, token: number): Promise<void> {
@@ -350,10 +408,15 @@ async function playDance(index: number, token: number): Promise<void> {
 }
 
 /**
- * Break (or end of dance) → announcement → dance. Nothing else may touch the
- * audio meanwhile: the timer is held and play/pause presses are ignored.
+ * Break (or end of dance) → [announcement] → dance. The announcement is
+ * skipped when it was already made at the start of the break. Nothing else
+ * may touch the audio meanwhile: the timer is held and play/pause presses are
+ * ignored.
  */
-async function transitionToDance(index: number): Promise<void> {
+async function transitionToDance(
+  index: number,
+  announce: boolean,
+): Promise<void> {
   if (transitioning) return;
   const item = store().playlist[index] as PlaylistItem | undefined;
   if (!item) {
@@ -365,23 +428,25 @@ async function transitionToDance(index: number): Promise<void> {
   holdTimer = true;
   try {
     const fromBreak = store().status === "break" && ambianceTrack !== null;
-    store().setIsAnnouncing(true);
-    if (fromBreak) {
-      await rampVolume(DUCKED_VOLUME, 600, token);
-    } else {
-      await requireDeps().pause();
-    }
-    if (!alive(token)) return;
+    if (announce) {
+      store().setIsAnnouncing(true);
+      if (fromBreak) {
+        await rampVolume(DUCKED_VOLUME, 600, token);
+      } else {
+        await requireDeps().pause();
+      }
+      if (!alive(token)) return;
 
-    try {
-      await Tts.speak(item.announcementText, item.announcementPath);
-    } catch (e) {
-      logger.warn("TTS Speak Error", e);
-      await handleTtsFailure(e instanceof Error ? e.message : undefined);
-      return;
+      try {
+        await Tts.speak(item.announcementText, item.announcementPath);
+      } catch (e) {
+        logger.warn("TTS Speak Error", e);
+        await handleTtsFailure(e instanceof Error ? e.message : undefined);
+        return;
+      }
+      if (!alive(token)) return;
+      store().setIsAnnouncing(false);
     }
-    if (!alive(token)) return;
-    store().setIsAnnouncing(false);
 
     if (fromBreak) await rampVolume(0, 1000, token);
     if (!alive(token)) return;
@@ -440,6 +505,7 @@ export async function stopPerformance(): Promise<void> {
   transitioning = false;
   holdTimer = false;
   previousStatus = null;
+  announcedIndex = null;
   stopTimer();
   const s = store();
   s.setStatus("idle");
@@ -473,6 +539,7 @@ export async function startPerformance(): Promise<boolean> {
   ambianceTrack = null;
   closingPath = null;
   previousStatus = null;
+  announcedIndex = null;
 
   const s = store();
   s.setStatus("loading");
@@ -490,9 +557,10 @@ export async function startPerformance(): Promise<boolean> {
     if (!alive(token)) return false;
 
     const cfg = store().config;
+    const order = useDanceOrderStore.getState().danceOrder;
     // Paso doble : réglage « 3 clashs » → seules les pistes à 3 clashs.
     const pool = selectPasoPool(library.tracks, cfg.pasoClashes);
-    const validation = validateProgram(cfg, pool);
+    const validation = validateProgram(cfg, pool, order);
     const problem = describeValidation(validation);
     if (problem) {
       return await abort(
@@ -504,7 +572,10 @@ export async function startPerformance(): Promise<boolean> {
     }
 
     // Paso doble : joué jusqu'au clash choisi, jamais au-delà de ceux de la piste.
-    const list = capPasoClashes(buildPlaylist(cfg, pool), cfg);
+    const list = capPasoClashes(
+      buildPlaylist(cfg, pool, Math.random, order),
+      cfg,
+    );
     if (list.length === 0) {
       return await abort(
         "Erreur",
@@ -641,7 +712,7 @@ const currentPhase = (): "playing" | "break" | null => {
 
 /**
  * ⏭ — moves to the next step of the normal flow, skipping nothing:
- * dance → (short fade) → pause → announcement → next dance.
+ * dance → (short fade) → pause with the call of the next dance → next dance.
  */
 export async function nextStep(): Promise<void> {
   if (transitioning) return;
@@ -701,7 +772,8 @@ async function goBack(twice: boolean): Promise<void> {
   const current = store().currentDanceIndex;
   if (current < 0) return;
   previousStatus = null;
-  await transitionToDance(twice ? Math.max(0, current - 1) : current);
+  // No break in between: the dance is announced right before it restarts.
+  await transitionToDance(twice ? Math.max(0, current - 1) : current, true);
 }
 
 /** Ends the current phase now (with its normal transition). */
@@ -714,7 +786,10 @@ export function generatePlaylist(): void {
   const d = requireDeps();
   const s = store();
   const pool = selectPasoPool(d.allTracks, s.config.pasoClashes);
-  s.setPlaylist(capPasoClashes(buildPlaylist(s.config, pool), s.config));
+  const order = useDanceOrderStore.getState().danceOrder;
+  s.setPlaylist(
+    capPasoClashes(buildPlaylist(s.config, pool, Math.random, order), s.config),
+  );
   s.setCurrentDanceIndex(0);
   s.setStatus("idle");
 }
