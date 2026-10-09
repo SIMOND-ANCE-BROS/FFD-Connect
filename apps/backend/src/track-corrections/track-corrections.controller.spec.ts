@@ -253,6 +253,26 @@ describe("DTO de proposition", () => {
     },
   );
 
+  it("dedupes a long repeated reason list", async () => {
+    const plain = { reason: Array(500).fill("MPM,TITLE").join(",") };
+    expect(plainToInstance(ListTrackCorrectionsQueryDto, plain).reason).toEqual(
+      ["MPM", "TITLE"],
+    );
+    await expect(
+      errorsOf(ListTrackCorrectionsQueryDto, plain),
+    ).resolves.toEqual([]);
+  });
+
+  it("refuses more distinct reasons than the enum has values", async () => {
+    const tooMany = Array.from(
+      { length: Object.keys(TrackCorrectionReason).length + 1 },
+      (_, i) => `R${i}`,
+    ).join(",");
+    await expect(
+      errorsOf(ListTrackCorrectionsQueryDto, { reason: tooMany }),
+    ).resolves.toContain("reason");
+  });
+
   it("refuses an unknown reason", async () => {
     await expect(
       errorsOf(ListTrackCorrectionsQueryDto, { reason: "MPM,NOPE" }),

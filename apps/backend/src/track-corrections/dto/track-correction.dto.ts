@@ -42,10 +42,13 @@ export const TRACK_CORRECTION_SEARCH_MAX_LENGTH = 100;
 const toReasonList = ({ value }: { value: unknown }): unknown => {
   if (value === undefined || value === null) return value;
   const items: unknown[] = Array.isArray(value) ? value : [value];
-  return items
+  const flat = items
     .flatMap((item) => (typeof item === "string" ? item.split(",") : [item]))
     .map((item) => (typeof item === "string" ? item.trim() : item))
     .filter((item) => item !== "");
+  // A repeated value adds nothing to an `IN` filter: dedupe, so the length
+  // bound below is the number of distinct reasons.
+  return [...new Set(flat)];
 };
 
 /**
@@ -184,6 +187,7 @@ export class ListTrackCorrectionsQueryDto extends PaginationParamsDto {
   @IsOptional()
   @Transform(toReasonList)
   @IsArray()
+  @ArrayMaxSize(Object.keys(TrackCorrectionReason).length)
   @IsEnum(TrackCorrectionReason, { each: true })
   reason?: TrackCorrectionReason[];
 
