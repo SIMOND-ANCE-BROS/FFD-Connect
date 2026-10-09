@@ -1,6 +1,6 @@
 import { getDocumentProxy } from "unpdf";
 
-/** Circulars are 2–10 pages: anything beyond is not read. */
+/** Circulars are 2–10 pages; pages beyond this cap are not read. */
 export const MAX_PDF_PAGES = 20;
 /** Circulars hold 3–12k characters of text: stop reading beyond this. */
 export const MAX_PDF_TEXT_LENGTH = 50_000;
