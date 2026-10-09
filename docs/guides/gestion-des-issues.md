@@ -12,7 +12,7 @@ le fait respecter.
 
 | Situation                                                                     | Règle                                                                                                                                                                                                                                 |
 | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Une PR                                                                        | Référence au moins une issue : `Closes #N` / `Fixes #N` si elle la termine, `Refs #N` si elle n'en fait qu'une partie.                                                                                                                |
+| Une PR                                                                        | Référence au moins une issue : `Refs #N` pour un changement visible (validé ensuite en bêta), `Closes #N` sinon — voir §8.                                                                                                            |
 | Pas encore d'issue                                                            | La créer **avant** d'ouvrir la PR (après recherche de doublon).                                                                                                                                                                       |
 | Découverte en cours de route (bug, dette, faille, test instable, doc périmée) | Ne pas corriger en silence ni la laisser dans la conversation : ouvrir une issue (ou commenter l'existante) avec la preuve. La corriger dans la PR courante seulement si c'est petit et dans le sujet — en la référençant quand même. |
 | Décision structurante                                                         | ADR dans `docs/adr/` **et** issue qui la porte.                                                                                                                                                                                       |
@@ -125,7 +125,7 @@ On travaille d'abord dans le milestone ouvert le plus haut de la liste.
 | Appartient à un thème    | **Sub-issue** de l'epic (Relationships → Parent) | Un seul parent. L'epic tient à jour sa liste de livrables quand un enfant se ferme.                    |
 | Dépend d'une autre issue | **Blocked by** (Relationships)                   | + label `blocked` tant que le bloquant est ouvert.                                                     |
 | Doublon                  | Fermeture `duplicate`                            | Commentaire « Fusionnée dans #X » ; le contenu utile est recopié dans l'issue gardée.                  |
-| Résolue par une PR       | `Closes #N` dans la PR                           | Sur une base autre que `develop`, la fermeture automatique ne joue pas : fermer à la main après merge. |
+| Résolue par une PR       | `Closes #N` ou `Refs #N` (voir §8)               | Sur une base autre que `develop`, la fermeture automatique ne joue pas : fermer à la main après merge. |
 | Mentionne sans dépendre  | `#N` dans le texte                               | —                                                                                                      |
 
 Une epic ne porte pas de code : elle se ferme quand toutes ses sub-issues sont
@@ -133,13 +133,31 @@ fermées (ou sorties du périmètre, avec mention).
 
 ## 8. Project « FFD Connect — Roadmap »
 
-Toute issue ouverte est dans le Project de l'organisation.
+Toute issue ouverte est dans le Project de l'organisation. Sa colonne
+`Status` suit le cycle de vie de la tâche ; le workflow
+`.github/workflows/project-status.yml` la fait avancer tout seul à partir des
+PR vers `develop` et des issues :
 
-| `Status`      | Quand                                          |
-| ------------- | ---------------------------------------------- |
-| `Todo`        | Issue triée (type, priorité, milestone posés). |
-| `In Progress` | Une branche ou une PR existe.                  |
-| `Done`        | Issue fermée (automatique).                    |
+| `Status`      | Quand                                                        | Déclencheur automatique                          |
+| ------------- | ------------------------------------------------------------ | ------------------------------------------------ |
+| `Todo`        | Issue triée (type, priorité, milestone posés), pas commencée | issue ouverte / rouverte, PR fermée sans merge   |
+| `In Progress` | On travaille dessus (branche, PR draft)                      | PR **draft** qui référence l'issue               |
+| `In Review`   | PR prête à relire                                            | PR passée « Ready for review »                   |
+| `En test`     | Mergée sur `develop`, à valider en preview / bêta            | PR mergée avec `Refs #N`                         |
+| `Done`        | Validée, issue fermée                                        | issue fermée (à la main après test, ou `Closes`) |
+
+**`Refs` ou `Closes` dans la PR ?**
+
+- Changement **visible par un utilisateur** (écran, parcours, notification…) :
+  `Refs #N`. L'issue passe `En test` au merge ; on la ferme (`completed`) à la
+  main une fois validée sur la preview ou la bêta, ce qui la passe `Done`.
+- Changement **sans effet visible** (CI, infra, doc, refactor, tests,
+  dépendances) : `Closes #N`. Merge ⇒ issue fermée ⇒ `Done`.
+
+Quand on commence une tâche sans PR (investigation, test sur appareil), on la
+passe `In Progress` à la main :
+`gh project item-edit` ou `.github/scripts/project-status.sh "In Progress" N`
+(avec un `GH_TOKEN` ayant le scope `project`).
 
 Les champs `Milestone`, `Labels`, `Parent issue` et `Sub-issues progress` du
 Project se lisent depuis l'issue : on ne les double pas.

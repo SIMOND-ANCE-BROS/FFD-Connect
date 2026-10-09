@@ -1,9 +1,11 @@
 ## Issue
 
-<!-- Obligatoire : Closes #N si la PR termine l'issue, Refs #N sinon.
+<!-- Obligatoire. Fait avancer la carte du Project automatiquement.
+     Refs #N   : changement visible → « En test » au merge, issue fermée après validation bêta.
+     Closes #N : CI / infra / doc / refactor → issue fermée au merge.
      Pas d'issue ? La créer d'abord (docs/guides/gestion-des-issues.md). -->
 
-Closes #
+Refs #
 
 ## Summary
 

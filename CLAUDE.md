@@ -104,7 +104,8 @@ The backend runs on Azure Container Apps with `minReplicas=0` (see `docs/exploit
 
 GitHub issues are the single source of truth for work. Full conventions (titles, description sections, types, labels, milestones, relations, Project): **`docs/guides/gestion-des-issues.md`** — follow it whenever you create, edit or close an issue.
 
-- **Code → issue.** Every PR references at least one issue (`Closes #N` / `Refs #N`). No issue yet → create it first, after searching for duplicates.
+- **Code → issue.** Every PR references at least one issue. No issue yet → create it first, after searching for duplicates. User-visible change → `Refs #N` (card goes « En test » on merge; close the issue by hand once validated on preview/beta). No visible effect (CI, infra, docs, refactor) → `Closes #N`.
+- **Project status follows the work** (Todo → In Progress → In Review → En test → Done): `.github/workflows/project-status.yml` moves cards from PR/issue events; work started without a PR (investigation, device test) is moved to « In Progress » by hand (`.github/scripts/project-status.sh`).
 - **Discoveries → issue.** A bug, debt, security/RGPD gap, flaky test or stale doc found while doing something else is never fixed silently nor left in the chat: open an issue (or comment on the existing one) with evidence (`file:line`, PR, output), and mention it in your final report.
 - **Every open issue** has an issue type (Bug / Feature / Task), exactly one priority label (`P0`…`P3`) or `icebox`, area labels, a milestone (unless `icebox`), its epic as parent when it belongs to a theme, and sits in the « FFD Connect — Roadmap » Project.
 - **Closing** always sets `state_reason` and a one-line comment citing the PR or the reason.
