@@ -22,6 +22,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
 import { ClubService, type ClubMember } from "../services/ClubService";
 import { TeamIcon } from "../../../components/icons/TeamIcon";
+import { formatCompetitionLevels } from "../../../utils/competitionLevel";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ClubSoloTeamDetail">;
 
@@ -160,12 +161,12 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
                   <AppText variant="body" style={{ color: theme.text }}>
                     {item.user.firstName} {item.user.lastName}
                   </AppText>
-                  {item.user.competitionLevel && (
+                  {formatCompetitionLevels(item.user) && (
                     <AppText
                       variant="caption"
                       style={{ color: theme.textSecondary }}
                     >
-                      {item.user.competitionLevel}
+                      {formatCompetitionLevels(item.user)}
                     </AppText>
                   )}
                 </View>
@@ -238,12 +239,12 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
                     <AppText variant="body" style={{ color: theme.text }}>
                       {m.firstName} {m.lastName}
                     </AppText>
-                    {m.competitionLevel && (
+                    {formatCompetitionLevels(m) && (
                       <AppText
                         variant="caption"
                         style={{ color: theme.textSecondary }}
                       >
-                        {m.competitionLevel}
+                        {formatCompetitionLevels(m)}
                       </AppText>
                     )}
                   </TouchableOpacity>

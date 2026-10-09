@@ -1,10 +1,13 @@
 ---
 name: Tâche Client (App/Web)
 about: Décrire une tâche technique spécifique au côté client (écran, hook, composant...)
-title: "ID: [Titre court]"
-labels: "client, task"
-assignees: ""
+title: 'DOMAINE: [résultat attendu]'
+labels: 'client'
+type: Task
+assignees: ''
 ---
+
+<!-- Conventions : docs/guides/gestion-des-issues.md — type d'issue, une priorité (P0…P3 ou icebox), labels de zone, milestone, epic parente. -->
 
 ## Contexte
 

@@ -26,7 +26,8 @@ import {
   type ClubRegistrationMode,
 } from "../../club/services/ClubService";
 import { useOfflineQueueStore } from "../../../stores/offlineQueue.store";
-import { isAgeGroupAllowedForEvent } from "../../../utils/ageGroup";
+import type { CompetitionLevelProfile } from "../../../utils/competitionLevel";
+import { evaluateLocalEligibility } from "../utils/localEligibility";
 import {
   applyPendingRegistrations,
   getPendingRegistrationActions,
@@ -64,7 +65,10 @@ export const useCompetitionDetailLogic = (
 
   const queryClient = useQueryClient();
 
-  const [userProfile, setUserProfile] = useState<AuthConfig | null>(null);
+  /** Stored session + per-discipline levels (from /users/me) for the local eligibility fallback. */
+  const [userProfile, setUserProfile] = useState<
+    (AuthConfig & CompetitionLevelProfile) | null
+  >(null);
   const [userRole, setUserRole] = useState<UserRole>("GUEST");
   const [selectedEventForRegistration, setSelectedEventForRegistration] =
     useState<Event | null>(null);
@@ -175,17 +179,19 @@ export const useCompetitionDetailLogic = (
       try {
         const config = await auth.getAuthConfig();
         setUserRole(config.role);
-        // Si le profil stocké n'a pas category/ageGroup (ex. ancien login), charger /users/me pour l'éligibilité
-        if (
-          config.role === "LICENSEE" &&
-          (config.category == null || config.ageGroup == null)
-        ) {
+        // Licencié : charger /users/me pour l'éligibilité locale — les niveaux
+        // par discipline ne sont pas stockés dans la session, et category/
+        // ageGroup peuvent manquer (ancien login).
+        if (config.role === "LICENSEE") {
           try {
             const profile = await auth.getProfile();
             setUserProfile({
               ...config,
               category: profile.category ?? config.category,
               ageGroup: profile.ageGroup ?? config.ageGroup,
+              competitionLevelLatin: profile.competitionLevelLatin,
+              competitionLevelStandard: profile.competitionLevelStandard,
+              competitionLevel: profile.competitionLevel,
             });
           } catch {
             setUserProfile(config);
@@ -212,23 +218,8 @@ export const useCompetitionDetailLogic = (
       }
       if (!userProfile) return { eligible: false, reason: "LOADING" };
 
-      const norm = (s: string | null | undefined) =>
-        s?.trim().toLowerCase() ?? "";
-      const isCorrectCategory =
-        !event.category || norm(event.category) === norm(userProfile.category);
-      if (!isCorrectCategory)
-        return { eligible: false, reason: "WRONG_CATEGORY" };
-
-      // Tolerant: deduced events use canonical classes (« Senior II »,
-      // « Juvénile I », « Espoir »…) while legacy placeholders say « Adult »/
-      // « Senior ».
-      const isCorrectAgeGroup =
-        !event.ageGroup ||
-        isAgeGroupAllowedForEvent(event.ageGroup, userProfile.ageGroup);
-      if (!isCorrectAgeGroup)
-        return { eligible: false, reason: "WRONG_AGE_GROUP" };
-
-      return { eligible: true };
+      // Same discipline rule as the backend (Ten Dance = both disciplines).
+      return evaluateLocalEligibility(event, userProfile);
     },
     [userRole, userProfile],
   );

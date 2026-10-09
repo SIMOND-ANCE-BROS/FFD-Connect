@@ -25,6 +25,7 @@ import { useTheme } from "../../../context/ThemeContext";
 
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../../navigation/types";
+import { formatCompetitionLevels } from "../../../utils/competitionLevel";
 import { formatDiscipline } from "../../../utils/discipline";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ClubMemberEditor">;
@@ -69,7 +70,9 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
   const licenseValidUntil = member?.license?.validUntil;
   const category = member?.category ?? null;
   const ageGroup = member?.ageGroup ?? null;
-  const competitionLevel = member?.competitionLevel ?? null;
+  // Per-discipline level (« Latines : Avancé · Standards : Débutant »),
+  // legacy single level as a fallback. Read-only: not editable from the app.
+  const competitionLevels = formatCompetitionLevels(member);
   const passportLatin = member?.passportLevelLatin ?? null;
   const passportStandard = member?.passportLevelStandard ?? null;
   const partnerName = member?.partnerName ?? null;
@@ -269,10 +272,10 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
         <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
           <View style={styles.readOnlyContent}>
             <AppText variant="caption" style={{ color: theme.textSecondary }}>
-              Niveau de danse
+              Niveau de compétition
             </AppText>
             <AppText variant="body" style={{ color: theme.text }}>
-              {fieldValue(competitionLevel)}
+              {fieldValue(competitionLevels)}
             </AppText>
           </View>
         </View>

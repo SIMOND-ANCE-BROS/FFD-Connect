@@ -40,7 +40,12 @@ import { StoreReviewBlockedModal, StoreReviewNotice } from '../components/StoreR
 import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { ROLE_LABELS } from '../lib/labels';
-import { changedFields, type EditableFields, withLegacy } from '../lib/diff';
+import {
+  changedFields,
+  type EditableFields,
+  legacyCompetitionLevelHint,
+  withLegacy,
+} from '../lib/diff';
 import { formatDiscipline } from '../lib/discipline';
 import { protectedActionError, type ProtectedAction } from '../lib/storeReview';
 import { useSession } from '../session/sessionStore';
@@ -83,7 +88,8 @@ export function UserDetailPage() {
       ageGroup: u.ageGroup,
       passportLevelLatin: u.passportLevelLatin ?? null,
       passportLevelStandard: u.passportLevelStandard ?? null,
-      competitionLevel: u.competitionLevel,
+      competitionLevelLatin: u.competitionLevelLatin ?? null,
+      competitionLevelStandard: u.competitionLevelStandard ?? null,
       nationalRanking: u.nationalRanking,
       role: u.role,
       extraRoles: u.extraRoles,
@@ -99,7 +105,8 @@ export function UserDetailPage() {
       ageGroup: null,
       passportLevelLatin: null,
       passportLevelStandard: null,
-      competitionLevel: null,
+      competitionLevelLatin: null,
+      competitionLevelStandard: null,
       nationalRanking: null,
       role: '',
       extraRoles: [],
@@ -203,6 +210,9 @@ export function UserDetailPage() {
     u.lastLoginAt === null &&
     !disabled &&
     !(u.role === 'CLUB' && u.clubDisabledAt !== null);
+  // Before the per-discipline levels, a single level was stored: show it as a
+  // read-only hint while neither discipline level is set.
+  const legacyLevelHint = legacyCompetitionLevelHint(u);
   const emailMatches = typedEmail.trim().toLowerCase() === u.email.toLowerCase();
   const closeDelete = () => {
     setDeleteOpen(false);
@@ -292,10 +302,18 @@ export function UserDetailPage() {
             {...form.getInputProps('ageGroup')}
           />
           <Select
-            label="Niveau compétition"
+            label="Niveau Latines"
             clearable
-            data={withLegacy(ref.data.competitionLevels, initial.competitionLevel)}
-            {...form.getInputProps('competitionLevel')}
+            data={withLegacy(ref.data.competitionLevels, initial.competitionLevelLatin)}
+            description={legacyLevelHint}
+            {...form.getInputProps('competitionLevelLatin')}
+          />
+          <Select
+            label="Niveau Standards"
+            clearable
+            data={withLegacy(ref.data.competitionLevels, initial.competitionLevelStandard)}
+            description={legacyLevelHint}
+            {...form.getInputProps('competitionLevelStandard')}
           />
           <Select
             label="Passeport Latine"

@@ -1,4 +1,4 @@
-import { changedFields, withLegacy } from './diff';
+import { changedFields, legacyCompetitionLevelHint, withLegacy } from './diff';
 
 const base = {
   firstName: 'Jeanne',
@@ -8,7 +8,8 @@ const base = {
   ageGroup: 'Adulte',
   passportLevelLatin: null,
   passportLevelStandard: null,
-  competitionLevel: null,
+  competitionLevelLatin: null,
+  competitionLevelStandard: null,
   nationalRanking: 12,
   role: 'LICENSEE',
   extraRoles: [] as string[],
@@ -58,5 +59,39 @@ describe('withLegacy', () => {
       value: 'Latine',
       label: 'Latine (valeur historique)',
     });
+  });
+});
+
+describe('changedFields — per-discipline levels', () => {
+  it('sends only the discipline level that changed', () => {
+    const a = { ...base, competitionLevelLatin: 'Avancé', competitionLevelStandard: 'Débutant' };
+    expect(changedFields(a, { ...a, competitionLevelStandard: 'Intermédiaire' })).toEqual({
+      competitionLevelStandard: 'Intermédiaire',
+    });
+  });
+});
+
+describe('legacyCompetitionLevelHint', () => {
+  it('shows the legacy single level when no discipline level is set', () => {
+    expect(
+      legacyCompetitionLevelHint({
+        competitionLevel: 'Avancé',
+        competitionLevelLatin: null,
+        competitionLevelStandard: null,
+      }),
+    ).toBe('Ancien niveau unique : Avancé');
+  });
+  it('hides it as soon as one discipline level is set', () => {
+    expect(
+      legacyCompetitionLevelHint({
+        competitionLevel: 'Avancé',
+        competitionLevelLatin: 'Avancé',
+        competitionLevelStandard: null,
+      }),
+    ).toBeUndefined();
+  });
+  it('is undefined when there is no legacy level either', () => {
+    expect(legacyCompetitionLevelHint({ competitionLevel: '  ' })).toBeUndefined();
+    expect(legacyCompetitionLevelHint({})).toBeUndefined();
   });
 });
