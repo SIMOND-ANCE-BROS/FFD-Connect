@@ -24,7 +24,8 @@ interface TextItemLike {
 /**
  * Extract the text layer of a PDF (free, local — no cloud call), bounded to
  * the first MAX_PDF_PAGES pages and MAX_PDF_TEXT_LENGTH characters: the
- * document comes from a third party. Scanned PDFs have no text layer and
+ * document comes from a third party. pdf.js parses pages lazily (on
+ * `getPage`), so pages past the cap are never parsed. Scanned PDFs have no text layer and
  * return an empty string. Line breaks follow pdf.js `hasEOL`, like unpdf's
  * own `extractText`.
  */
@@ -43,11 +44,13 @@ export async function extractPdfText(data: Uint8Array): Promise<string> {
       for (const item of content.items as TextItemLike[]) {
         if (item.str === undefined) continue;
         text += item.str + (item.hasEOL ? "\n" : "");
+        // Cut off as soon as the cap is reached: no further item or page is
+        // read, and callers never see more than MAX_PDF_TEXT_LENGTH chars.
+        if (text.length >= MAX_PDF_TEXT_LENGTH) {
+          return text.slice(0, MAX_PDF_TEXT_LENGTH);
+        }
       }
       text += "\n";
-      if (text.length >= MAX_PDF_TEXT_LENGTH) {
-        return text.slice(0, MAX_PDF_TEXT_LENGTH);
-      }
     }
     return text;
   } finally {

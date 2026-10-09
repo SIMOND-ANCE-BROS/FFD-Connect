@@ -86,6 +86,25 @@ describe("extractPdfText", () => {
     expect(getPage).toHaveBeenCalledTimes(1);
   });
 
+  it("stops reading items within a page once the cap is reached", async () => {
+    let itemsRead = 0;
+    const items = Array.from({ length: 1_000 }, () => ({
+      get str() {
+        itemsRead++;
+        return "b".repeat(1_000);
+      },
+      hasEOL: false,
+    }));
+    fakePdf([items, [{ str: "never read" }]]);
+
+    const text = await extractPdfText(new Uint8Array([1]));
+
+    expect(text).toHaveLength(MAX_PDF_TEXT_LENGTH);
+    // 50 items of 1k chars reach the cap; the 950 others are never touched.
+    expect(itemsRead).toBeLessThanOrEqual(2 * (MAX_PDF_TEXT_LENGTH / 1_000));
+    expect(text).not.toContain("never read");
+  });
+
   it("releases the document when extraction fails", async () => {
     const { destroy, getPage } = fakePdf([[{ str: "x" }]]);
     getPage.mockRejectedValueOnce(new Error("bad xref"));
