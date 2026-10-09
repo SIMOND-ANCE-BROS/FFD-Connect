@@ -55,6 +55,21 @@ export const PlayerBpmControls = ({
     [],
   );
 
+  // A new range means a new track: drop any in-flight drag so its frozen
+  // value and its pending throttled update never leak onto the new track.
+  const rangeKey = `${minMpm}:${maxMpm}`;
+  const [lastRangeKey, setLastRangeKey] = useState(rangeKey);
+  if (lastRangeKey !== rangeKey) {
+    setLastRangeKey(rangeKey);
+    setDragValue(null);
+  }
+  useEffect(() => {
+    if (pendingRef.current) {
+      clearTimeout(pendingRef.current);
+      pendingRef.current = null;
+    }
+  }, [rangeKey]);
+
   const applyThrottled = (value: number) => {
     const now = Date.now();
     const wait = BPM_DRAG_THROTTLE_MS - (now - lastApplyRef.current);
@@ -147,7 +162,12 @@ export const PlayerBpmControls = ({
         </TouchableOpacity>
       </View>
 
+      {/* Keyed on the range: the native slider applies `value` before new
+          min/max bounds (clamping it to the old ones) and ignores a `value`
+          that did not change, so its thumb went stale when switching to a
+          track with another range and back. Remounting resyncs it. */}
       <Slider
+        key={rangeKey}
         style={styles.speedSliderSmall}
         testID="audio-player-bpm-slider"
         value={dragValue === null ? bpm : frozenValueRef.current}
