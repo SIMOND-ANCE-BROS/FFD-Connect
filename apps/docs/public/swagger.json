@@ -20649,7 +20649,7 @@
     },
     "/licenses/renewal/{id}/approve": {
       "post": {
-        "description": "Réservé au processus métier ou admin. Passe la demande en APPROVED et renouvelle la licence jusqu’au 31 août N+1.",
+        "description": "Réservé aux administrateurs. Passe la demande en APPROVED et renouvelle la licence jusqu’au 31 août N+1.",
         "operationId": "LicensesController_approveRenewal",
         "parameters": [
           {
