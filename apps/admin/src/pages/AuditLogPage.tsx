@@ -12,6 +12,12 @@ const PAGE_SIZE = 50;
 
 const DELETIONS: AuditLogEntryDto['action'][] = ['USER_DELETE', 'CLUB_DELETE'];
 
+const TARGET_LINKS: Record<AuditLogEntryDto['targetType'], { path: string; label: string }> = {
+  USER: { path: 'users', label: 'Voir la fiche' },
+  CLUB: { path: 'clubs', label: 'Voir le club' },
+  TRACK_CORRECTION: { path: 'moderation', label: 'Voir la proposition' },
+};
+
 function Target({ entry }: { entry: AuditLogEntryDto }) {
   if (DELETIONS.includes(entry.action)) {
     return (
@@ -20,10 +26,10 @@ function Target({ entry }: { entry: AuditLogEntryDto }) {
       </Text>
     );
   }
-  const isUser = entry.targetType === 'USER';
+  const link = TARGET_LINKS[entry.targetType];
   return (
-    <Anchor component={Link} to={`/${isUser ? 'users' : 'clubs'}/${entry.targetId}`}>
-      {isUser ? 'Voir la fiche' : 'Voir le club'}
+    <Anchor component={Link} to={`/${link.path}/${entry.targetId}`}>
+      {link.label}
     </Anchor>
   );
 }
