@@ -1,10 +1,13 @@
 ---
 name: Bug Report
 about: Create a report to help us improve
-title: "[BUG] "
+title: 'DOMAINE: symptôme observé'
 labels: bug
-assignees: ""
+type: Bug
+assignees: ''
 ---
+
+<!-- Conventions : docs/guides/gestion-des-issues.md — type d'issue, une priorité (P0…P3 ou icebox), labels de zone, milestone, epic parente. -->
 
 **Affected Module**
 

@@ -1,3 +1,10 @@
+## Issue
+
+<!-- Obligatoire : Closes #N si la PR termine l'issue, Refs #N sinon.
+     Pas d'issue ? La créer d'abord (docs/guides/gestion-des-issues.md). -->
+
+Closes #
+
 ## Summary
 
 <!-- 1-3 bullet points describing what this PR does -->
