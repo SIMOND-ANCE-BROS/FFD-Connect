@@ -1,5 +1,6 @@
 import {
   Alert,
+  Anchor,
   Badge,
   Chip,
   Group,
@@ -15,8 +16,8 @@ import {
 import { useDebouncedValue } from '@mantine/hooks';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { useEffect, useState } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import type { TrackCorrectionReason, TrackCorrectionStatus } from '../api/generated/types.gen';
 import { moderationListQuery } from '../api/queries';
 import { apiErrorMessage } from '../lib/apiError';
@@ -42,12 +43,28 @@ export function ModerationPage() {
   const [search, setSearch] = useState(state.q);
   const [debounced] = useDebouncedValue(search.trim(), 300);
 
-  // The search reaches the URL (and the API) once debounced and long enough.
+  // The search reaches the URL (and the API) once debounced and long enough,
+  // and only when the debounced input itself changed.
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+  const setParamsRef = useRef(setParams);
+  setParamsRef.current = setParams;
+  const written = useRef(state.q);
   useEffect(() => {
     const next = debounced.length >= MIN_SEARCH_LENGTH ? debounced : '';
-    if (next === readModerationParams(params).q) return;
-    setParams(writeModerationParams(params, { q: next }), { replace: true });
-  }, [debounced, params, setParams]);
+    if (next === readModerationParams(paramsRef.current).q) return;
+    written.current = next;
+    setParamsRef.current(writeModerationParams(paramsRef.current, { q: next }), {
+      replace: true,
+    });
+  }, [debounced]);
+
+  // Back/Forward (or any outside change of `q`) moves the input with it.
+  useEffect(() => {
+    if (state.q === written.current) return;
+    written.current = state.q;
+    setSearch(state.q);
+  }, [state.q]);
 
   const update = (patch: Partial<ModerationUrlState>) =>
     setParams(writeModerationParams(params, patch));
@@ -107,6 +124,11 @@ export function ModerationPage() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
+              {total === 0 && (
+                <Table.Tr>
+                  <Table.Td colSpan={5}>Aucune proposition</Table.Td>
+                </Table.Tr>
+              )}
               {(list.data?.data ?? []).map((c) => (
                 <Table.Tr
                   key={c.id}
@@ -115,9 +137,15 @@ export function ModerationPage() {
                 >
                   <Table.Td>
                     <Group gap="xs">
-                      <Text size="sm" fw={500}>
+                      <Anchor
+                        component={Link}
+                        to={`/moderation/${c.id}${locationSearch}`}
+                        size="sm"
+                        fw={500}
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {c.track.title}
-                      </Text>
+                      </Anchor>
                       {c.track.titleMasked && (
                         <Badge size="xs" color="gray" variant="light">
                           Titre masqué

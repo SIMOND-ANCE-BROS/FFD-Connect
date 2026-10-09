@@ -99,4 +99,8 @@ export const moderationListQuery = (q: ModerationFilter) =>
 export const pendingCountQuery = queryOptions({
   queryKey: ['admin', 'moderation', 'pending-count'],
   queryFn: () => unwrap(trackCorrectionsControllerPendingCount()),
+  // Never wake the scale-to-zero backend on a refocus, a reconnect or a retry.
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+  retry: false,
 });

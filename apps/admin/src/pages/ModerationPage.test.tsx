@@ -2,7 +2,7 @@ import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { ModerationPage } from './ModerationPage';
@@ -58,6 +58,8 @@ function renderPage(path = '/moderation') {
                 <>
                   <ModerationPage />
                   <Probe />
+                  <Nav to="/moderation?q=zzz" />
+                  <Nav to="/moderation?status=APPROVED" />
                 </>
               }
             />
@@ -67,6 +69,11 @@ function renderPage(path = '/moderation') {
       </QueryClientProvider>
     </MantineProvider>,
   );
+}
+
+function Nav({ to }: { to: string }) {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate(to)}>go {to}</button>;
 }
 
 const location = () => screen.getByTestId('location').textContent;
@@ -160,6 +167,45 @@ describe('ModerationPage', () => {
     renderPage('/moderation?reason=MPM');
     await userEvent.click(await screen.findByText('España Cañí'));
     expect(location()).toBe('/moderation/c1?reason=MPM');
+  });
+
+  it('exposes each row as a keyboard-reachable link, keeping the filters', async () => {
+    vi.spyOn(sdk, 'trackCorrectionsControllerList').mockResolvedValue(page([item()]) as never);
+    renderPage('/moderation?reason=MPM');
+    const link = await screen.findByRole('link', { name: 'España Cañí' });
+    expect(link).toHaveAttribute('href', '/moderation/c1?reason=MPM');
+    await userEvent.tab();
+    link.focus();
+    expect(link).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    expect(location()).toBe('/moderation/c1?reason=MPM');
+  });
+
+  it('follows an outside change of the search without overwriting the URL', async () => {
+    const spy = vi
+      .spyOn(sdk, 'trackCorrectionsControllerList')
+      .mockResolvedValue(page([item()]) as never);
+    renderPage('/moderation?q=paso');
+    await screen.findByText('España Cañí');
+    const input = screen.getByPlaceholderText('Titre ou artiste');
+    expect(input).toHaveValue('paso');
+    await userEvent.click(screen.getByText('go /moderation?q=zzz'));
+    await waitFor(() => expect(input).toHaveValue('zzz'));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(location()).toBe('/moderation?q=zzz');
+    await userEvent.click(screen.getByText('go /moderation?status=APPROVED'));
+    await waitFor(() => expect(input).toHaveValue(''));
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    expect(location()).toBe('/moderation?status=APPROVED');
+    expect(spy).not.toHaveBeenCalledWith({
+      query: expect.objectContaining({ q: 'paso', status: 'APPROVED' }),
+    });
+  });
+
+  it('says so when nothing matches', async () => {
+    vi.spyOn(sdk, 'trackCorrectionsControllerList').mockResolvedValue(page([]) as never);
+    renderPage();
+    expect(await screen.findByText('Aucune proposition')).toBeInTheDocument();
   });
 
   it('shows only the shared alert when the server is unreachable', async () => {

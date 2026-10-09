@@ -72,5 +72,8 @@ describe('AppLayout', () => {
     expect(await screen.findByText('clubs page')).toBeInTheDocument();
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     expect(pendingCountQuery.refetchInterval).toBeUndefined();
+    expect(pendingCountQuery.refetchOnWindowFocus).toBe(false);
+    expect(pendingCountQuery.refetchOnReconnect).toBe(false);
+    expect(pendingCountQuery.retry).toBe(false);
   });
 });
