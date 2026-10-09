@@ -181,6 +181,29 @@ export class UsersController {
             updatedAt: { type: "string", format: "date-time" },
           },
         },
+        wdsf: {
+          type: "object",
+          nullable: true,
+          description: "Licence WDSF liée au compte (null si aucune).",
+          properties: {
+            min: { type: "string", example: "10117265" },
+            nationality: { type: "string", nullable: true },
+            licenseType: { type: "string", nullable: true },
+            ageGroup: { type: "string", nullable: true },
+            expiresOn: {
+              type: "string",
+              format: "date-time",
+              nullable: true,
+            },
+            federation: {
+              type: "string",
+              nullable: true,
+              example: "FFD - Fédération Française de Danse",
+              description:
+                "Fédération nationale du titulaire (jamais « WDSF »). Null si inconnue.",
+            },
+          },
+        },
         createdAt: { type: "string", format: "date-time" },
         updatedAt: { type: "string", format: "date-time" },
       },
