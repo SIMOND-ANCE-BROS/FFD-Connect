@@ -3,12 +3,15 @@ import { TestingModule } from "@nestjs/testing";
 import {
   Prisma,
   TrackCorrectionReason,
+  TrackCorrectionStatus,
   TrackStatus,
   UserRole,
 } from "@prisma/client";
 import { randomUUID } from "crypto";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { TrackCorrectionsService } from "../src/track-corrections/track-corrections.service";
+import { AdminTracksQueryService } from "../src/tracks/admin-tracks.query-service";
+import { ListAdminTracksQueryDto } from "../src/tracks/dto/admin-track.dto";
 import { TrackFilesService } from "../src/tracks/track-files.service";
 import { TracksService } from "../src/tracks/tracks.service";
 import { buildServiceModule } from "./integration-app.builder";
@@ -183,5 +186,53 @@ describe("Tracks (integration, real DB)", () => {
       expect.stringMatching(/\.mp3$/),
       expect.stringMatching(/\.jpg$/),
     ]);
+  });
+
+  it("lists every track for the admin and filters them; ambiance=false keeps a null style", async () => {
+    const queries = moduleRef.get(AdminTracksQueryService);
+    const token = `zt${randomUUID().slice(0, 6)}`;
+    const a = await track(`Rumba ${token}`, {
+      style: "Rumba",
+      status: TrackStatus.READY,
+    });
+    const b = await track(`${token} pause`, {
+      artist: "Ambiance",
+      status: TrackStatus.READY,
+    });
+    const c = await track(`Nuit ${token}`, {
+      blacklisted: true,
+      status: TrackStatus.ERROR,
+    });
+    const d = await track(`Jour ${token}`, {
+      style: "ambiance",
+      titleMasked: true,
+    });
+    await correction(a, TrackCorrectionReason.MPM, { proposedBpm: 26 });
+    await correction(a, TrackCorrectionReason.TITLE, {
+      status: TrackCorrectionStatus.REJECTED,
+    });
+
+    const ids = async (filter: Partial<ListAdminTracksQueryDto>) =>
+      (await queries.list({ q: token, skip: 0, take: 100, ...filter })).data
+        .map((t) => t.id)
+        .sort();
+
+    expect(await ids({})).toEqual([a, b, c, d].sort());
+    expect(await ids({ status: TrackStatus.ERROR })).toEqual([c]);
+    expect(await ids({ blacklisted: true })).toEqual([c]);
+    expect(await ids({ blacklisted: false })).toEqual([a, b, d].sort());
+    expect(await ids({ titleMasked: true })).toEqual([d]);
+    expect(await ids({ style: "RUMBA" })).toEqual([a]);
+    expect(await ids({ ambiance: true })).toEqual([b, d].sort());
+    // c has no style: a NOT (… OR …) filter would have dropped it.
+    expect(await ids({ ambiance: false })).toEqual([a, c].sort());
+
+    const page = await queries.list({ q: token, skip: 0, take: 100 });
+    expect(page.meta.total).toBe(4);
+    expect(page.data.find((t) => t.id === a)?.pendingCorrections).toBe(1);
+    expect(page.data.find((t) => t.id === d)).toMatchObject({
+      titleMasked: true,
+      title: `Jour ${token}`,
+    });
   });
 });

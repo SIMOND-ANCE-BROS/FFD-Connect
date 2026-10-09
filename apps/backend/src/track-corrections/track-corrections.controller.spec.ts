@@ -293,4 +293,15 @@ describe("DTO de proposition", () => {
       errorsOf(ListTrackCorrectionsQueryDto, { q: "x".repeat(101) }),
     ).resolves.toContain("q");
   });
+
+  it("accepts a track filter by UUID only", async () => {
+    await expect(
+      errorsOf(ListTrackCorrectionsQueryDto, {
+        trackId: "4f1c2a8e-1b2c-4d5e-8f90-123456789abc",
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      errorsOf(ListTrackCorrectionsQueryDto, { trackId: "t1" }),
+    ).resolves.toContain("trackId");
+  });
 });

@@ -3,6 +3,8 @@
  * Utilise `select` au lieu de `include` pour limiter les champs récupérés
  */
 
+import { TrackCorrectionStatus } from "@prisma/client";
+
 /**
  * Sélecteur pour les informations utilisateur de base (sans mot de passe)
  */
@@ -412,6 +414,29 @@ export const trackDeletionSelect = {
   sourceKey: true,
   filename: true,
   artwork: true,
+} as const;
+
+/** Back-office catalogue: every field of AdminTrackDto, plus the pending corrections. */
+export const adminTrackSelect = {
+  id: true,
+  title: true,
+  artist: true,
+  style: true,
+  bpm: true,
+  rawBpm: true,
+  clashTimecodes: true,
+  titleMasked: true,
+  blacklisted: true,
+  status: true,
+  sourceKey: true,
+  filename: true,
+  artwork: true,
+  createdAt: true,
+  _count: {
+    select: {
+      corrections: { where: { status: TrackCorrectionStatus.PENDING } },
+    },
+  },
 } as const;
 
 /**

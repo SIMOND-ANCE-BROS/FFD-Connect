@@ -7,6 +7,7 @@ import { AppModule } from "../src/app.module";
 import { JwtAuthGuard } from "../src/auth/jwt-auth.guard";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { RedisService } from "../src/redis/redis.service";
+import { NOT_AMBIANCE_TRACK_WHERE } from "../src/tracks/track-visibility.util";
 import { createMockPrismaService } from "./mocks/prisma.mock";
 import { applyE2EOverrides, configureTestApp } from "./test-app.factory";
 
@@ -36,6 +37,9 @@ const ADMIN_ROUTES: Array<
   // Moderation queue: ADMIN-only per method on the shared track-corrections controller.
   ["get", "/api/v1/track-corrections?status=PENDING&reason=MPM&q=paso"],
   ["get", "/api/v1/track-corrections/00000000-0000-4000-8000-000000000000"],
+  // Track catalogue (lot 3): ADMIN-only at class level.
+  ["get", "/api/v1/admin/tracks"],
+  ["get", "/api/v1/admin/tracks/00000000-0000-4000-8000-000000000000"],
 ];
 
 describe("Admin routes (e2e) — role matrix", () => {
@@ -231,6 +235,70 @@ describe("Admin routes (e2e) — role matrix", () => {
       .expect(200);
     expect(prisma.adminAuditLog.findMany).toHaveBeenLastCalledWith(
       expect.objectContaining({ where: { targetType: "TRACK_CORRECTION" } }),
+    );
+  });
+
+  it('parses the catalogue flags as booleans, "false" included', async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.track.count.mockResolvedValue(0);
+    prisma.track.findMany.mockResolvedValue([]);
+    await request(server())
+      .get(
+        "/api/v1/admin/tracks?blacklisted=false&titleMasked=true&ambiance=false&status=ERROR&q=%20paso%20&style=Rumba&take=50",
+      )
+      .expect(200);
+    expect(prisma.track.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            {
+              OR: [
+                { title: { contains: "paso", mode: "insensitive" } },
+                { artist: { contains: "paso", mode: "insensitive" } },
+              ],
+            },
+            { status: "ERROR" },
+            { blacklisted: false },
+            { titleMasked: true },
+            { style: { equals: "Rumba", mode: "insensitive" } },
+            NOT_AMBIANCE_TRACK_WHERE,
+          ],
+        },
+        take: 50,
+      }),
+    );
+  });
+
+  it.each(["blacklisted=yes", "ambiance=1", "status=DONE", "q=p", "take=101"])(
+    "refuses the catalogue filter %s (400)",
+    async (qs) => {
+      currentRole = UserRole.ADMIN;
+      await request(server()).get(`/api/v1/admin/tracks?${qs}`).expect(400);
+    },
+  );
+
+  it("GET /admin/tracks/:id answers 404 for an unknown track and 400 for a non-UUID", async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.track.findUnique.mockResolvedValue(null);
+    await request(server())
+      .get("/api/v1/admin/tracks/00000000-0000-4000-8000-000000000000")
+      .expect(404);
+    await request(server()).get("/api/v1/admin/tracks/not-a-uuid").expect(400);
+  });
+
+  it("filters the moderation queue on one track", async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.trackCorrection.count.mockResolvedValue(0);
+    prisma.trackCorrection.findMany.mockResolvedValue([]);
+    await request(server())
+      .get(
+        "/api/v1/track-corrections?trackId=00000000-0000-4000-8000-000000000000",
+      )
+      .expect(200);
+    expect(prisma.trackCorrection.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { trackId: "00000000-0000-4000-8000-000000000000" },
+      }),
     );
   });
 });
