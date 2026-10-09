@@ -89,6 +89,7 @@ export const toAdminDto = (
     clashTimecodes: row.track.clashTimecodes,
     titleMasked: row.track.titleMasked,
     blacklisted: row.track.blacklisted,
+    filename: row.track.filename,
   },
   resultingBpm,
   proposer: toUser(row.proposedBy),

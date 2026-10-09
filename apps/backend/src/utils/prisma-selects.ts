@@ -283,6 +283,8 @@ export const trackCorrectionTrackSnapshotSelect = {
   clashTimecodes: true,
   titleMasked: true,
   blacklisted: true,
+  // Audio file, for the back-office player (`/uploads/<filename>`).
+  filename: true,
 } as const;
 
 /**

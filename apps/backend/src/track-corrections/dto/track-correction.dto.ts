@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { TrackCorrectionReason, TrackCorrectionStatus } from "@prisma/client";
+import { Transform } from "class-transformer";
 import {
   ArrayMaxSize,
   IsArray,
@@ -11,6 +12,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
 } from "class-validator";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
 import { PASO_MAX_CLASHES } from "../../tracks/paso-clashes";
@@ -27,6 +29,24 @@ export const TRACK_CORRECTION_MAX_CLASHES = PASO_MAX_CLASHES;
 
 /** Timecode maximal d'un clash (secondes) : une musique de compétition dure ~2 min. */
 export const TRACK_CORRECTION_MAX_CLASH_SECONDS = 3600;
+
+/** Bounds of the moderation queue search (track title or artist). */
+export const TRACK_CORRECTION_SEARCH_MIN_LENGTH = 2;
+export const TRACK_CORRECTION_SEARCH_MAX_LENGTH = 100;
+
+/**
+ * `reason` arrives as a string for a single value and as an array when
+ * repeated (`reason=A&reason=B`, what the generated clients send); each item
+ * may itself be comma-separated (`reason=A,B`). Normalised to a flat list.
+ */
+const toReasonList = ({ value }: { value: unknown }): unknown => {
+  if (value === undefined || value === null) return value;
+  const items: unknown[] = Array.isArray(value) ? value : [value];
+  return items
+    .flatMap((item) => (typeof item === "string" ? item.split(",") : [item]))
+    .map((item) => (typeof item === "string" ? item.trim() : item))
+    .filter((item) => item !== "");
+};
 
 /**
  * Valeurs de métadonnées proposables pour une piste. Partagé par la
@@ -140,8 +160,9 @@ export class RejectTrackCorrectionDto {
 
 /**
  * Filtre + pagination de la file de modération. Sans statut : toutes les
- * propositions. Hérite de la pagination plutôt que de la combiner en second
- * `@Query()` : `forbidNonWhitelisted` rejetterait alors les champs de l'autre.
+ * propositions ; sans `reason` ni `q` : tous les motifs, toutes les pistes.
+ * Hérite de la pagination plutôt que de la combiner en second `@Query()` :
+ * `forbidNonWhitelisted` rejetterait alors les champs de l'autre.
  */
 export class ListTrackCorrectionsQueryDto extends PaginationParamsDto {
   @ApiPropertyOptional({
@@ -152,4 +173,32 @@ export class ListTrackCorrectionsQueryDto extends PaginationParamsDto {
   @IsOptional()
   @IsEnum(TrackCorrectionStatus)
   status?: TrackCorrectionStatus;
+
+  @ApiPropertyOptional({
+    enum: TrackCorrectionReason,
+    enumName: "TrackCorrectionReason",
+    isArray: true,
+    description:
+      "Motif(s) à afficher : paramètre répété ou valeurs séparées par des virgules",
+  })
+  @IsOptional()
+  @Transform(toReasonList)
+  @IsArray()
+  @IsEnum(TrackCorrectionReason, { each: true })
+  reason?: TrackCorrectionReason[];
+
+  @ApiPropertyOptional({
+    description:
+      "Recherche dans le titre ou l'artiste de la musique, sans tenir compte de la casse",
+    minLength: TRACK_CORRECTION_SEARCH_MIN_LENGTH,
+    maxLength: TRACK_CORRECTION_SEARCH_MAX_LENGTH,
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === "string" ? value.trim() : value,
+  )
+  @IsString()
+  @MinLength(TRACK_CORRECTION_SEARCH_MIN_LENGTH)
+  @MaxLength(TRACK_CORRECTION_SEARCH_MAX_LENGTH)
+  q?: string;
 }

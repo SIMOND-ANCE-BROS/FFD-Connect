@@ -51,6 +51,12 @@ export class TrackCorrectionTrackSnapshotDto {
 
   @ApiProperty()
   blacklisted!: boolean;
+
+  @ApiProperty({
+    description:
+      "Fichier audio, servi par GET /uploads/{filename} (hors préfixe /api/v1)",
+  })
+  filename!: string;
 }
 
 /** Utilisateur nommé (auteur ou relecteur), sans e-mail. */
