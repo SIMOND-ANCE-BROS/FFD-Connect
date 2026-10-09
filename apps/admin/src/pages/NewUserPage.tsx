@@ -58,7 +58,8 @@ interface Values {
   clubName: string;
   category: string | null;
   ageGroup: string | null;
-  competitionLevel: string | null;
+  competitionLevelLatin: string | null;
+  competitionLevelStandard: string | null;
   passportLevelLatin: string | null;
   passportLevelStandard: string | null;
   nationalRanking: number | string;
@@ -90,7 +91,8 @@ function toBody(v: Values): CreateBody {
           Object.entries({
             category: v.category,
             ageGroup: v.ageGroup,
-            competitionLevel: v.competitionLevel,
+            competitionLevelLatin: v.competitionLevelLatin,
+            competitionLevelStandard: v.competitionLevelStandard,
             passportLevelLatin: v.passportLevelLatin,
             passportLevelStandard: v.passportLevelStandard,
             nationalRanking: ranking,
@@ -127,7 +129,8 @@ export function NewUserPage() {
       clubName: '',
       category: null,
       ageGroup: null,
-      competitionLevel: null,
+      competitionLevelLatin: null,
+      competitionLevelStandard: null,
       passportLevelLatin: null,
       passportLevelStandard: null,
       nationalRanking: '',
@@ -299,10 +302,16 @@ export function NewUserPage() {
                   {...form.getInputProps('ageGroup')}
                 />
                 <Select
-                  label="Niveau compétition"
+                  label="Niveau Latines"
                   clearable
                   data={ref.data.competitionLevels}
-                  {...form.getInputProps('competitionLevel')}
+                  {...form.getInputProps('competitionLevelLatin')}
+                />
+                <Select
+                  label="Niveau Standards"
+                  clearable
+                  data={ref.data.competitionLevels}
+                  {...form.getInputProps('competitionLevelStandard')}
                 />
                 <Select
                   label="Passeport Latine"

@@ -17,6 +17,8 @@ import { CreateCoupleModal } from "../components/couples/CreateCoupleModal";
 import { EndCoupleModal } from "../components/couples/EndCoupleModal";
 import { styles } from "../components/couples/club-couples.styles";
 import { ClubService, type Partnership } from "../services/ClubService";
+import { formatSuggestedCoupleLevels } from "../../../utils/competitionLevel";
+import { formatDiscipline } from "../../../utils/discipline";
 
 type Tab = "active" | "history";
 
@@ -172,9 +174,11 @@ export const ClubCouplesScreen = () => {
       refresh();
       const ageLabel =
         res.coupleAgeGroup ?? "Non calculée (dates de naissance requises)";
-      const levelLabel = res.suggestedLevel ?? "—";
+      const levelLabel = formatSuggestedCoupleLevels(res);
+      // Already French since the per-discipline levels; formatDiscipline keeps
+      // an older backend ("Latine", "Standard") consistent.
       const catLabel = res.suggestedCategories.length
-        ? res.suggestedCategories.join(", ")
+        ? res.suggestedCategories.map((c) => formatDiscipline(c)).join(", ")
         : "—";
       const msg =
         res.partnership.status === "PENDING_SECOND_CLUB"

@@ -41,4 +41,51 @@ describe("ClubMemberEditorScreen", () => {
       "Veuillez remplir les champs obligatoires (Nom, Prénom).",
     );
   });
+
+  const member = {
+    id: "m1",
+    email: "jeanne@x.fr",
+    firstName: "Jeanne",
+    lastName: "Martin",
+    role: "LICENSEE",
+    category: "Ten Dance",
+  };
+
+  it("shows the competition level of each discipline", async () => {
+    const { getByText } = await render(
+      <ClubMemberEditorScreen
+        navigation={navigation as never}
+        route={
+          {
+            params: {
+              member: {
+                ...member,
+                competitionLevelLatin: "Avancé",
+                competitionLevelStandard: "Débutant",
+                competitionLevel: "Intermédiaire",
+              },
+            },
+          } as never
+        }
+      />,
+    );
+
+    expect(getByText("Niveau de compétition")).toBeTruthy();
+    expect(getByText("Latines : Avancé · Standards : Débutant")).toBeTruthy();
+  });
+
+  it("falls back to the legacy single level", async () => {
+    const { getByText } = await render(
+      <ClubMemberEditorScreen
+        navigation={navigation as never}
+        route={
+          {
+            params: { member: { ...member, competitionLevel: "Avancé" } },
+          } as never
+        }
+      />,
+    );
+
+    expect(getByText("Avancé")).toBeTruthy();
+  });
 });

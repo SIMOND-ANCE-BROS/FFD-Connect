@@ -101,4 +101,58 @@ describe("ProfileScreen", () => {
 
     expect(await findByText("20011125-pit-ev38")).toBeTruthy();
   });
+
+  it("shows the competition level of each discipline", async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url === "/users/me") {
+        return Promise.resolve({
+          data: {
+            competitionLevelLatin: "Avancé",
+            competitionLevelStandard: "Débutant",
+            competitionLevel: "Intermédiaire",
+          },
+        });
+      }
+      return url === "/licenses/my"
+        ? Promise.resolve({ data: null })
+        : Promise.resolve({ data: { results: [] } });
+    });
+
+    const { findByText } = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+
+    expect(await findByText("Niveau de compétition")).toBeTruthy();
+    expect(
+      await findByText("Latines : Avancé · Standards : Débutant"),
+    ).toBeTruthy();
+  });
+
+  it("falls back to the legacy single level, and hides the row without any level", async () => {
+    mockGet.mockImplementation((url: string) =>
+      url === "/users/me"
+        ? Promise.resolve({ data: { competitionLevel: "Avancé" } })
+        : Promise.resolve({
+            data: url === "/licenses/my" ? null : { results: [] },
+          }),
+    );
+    const first = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+    expect(await first.findByText("Avancé")).toBeTruthy();
+    await first.unmount();
+
+    mockGet.mockImplementation((url: string) =>
+      url === "/users/me"
+        ? Promise.reject(new Error("offline"))
+        : Promise.resolve({
+            data: url === "/licenses/my" ? null : { results: [] },
+          }),
+    );
+    const second = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+    expect(await second.findByText("Aucune licence associée")).toBeTruthy();
+    expect(second.queryByText("Niveau de compétition")).toBeNull();
+  });
 });
