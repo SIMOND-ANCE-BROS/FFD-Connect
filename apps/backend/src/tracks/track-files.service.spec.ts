@@ -1,9 +1,13 @@
+import { Logger, ServiceUnavailableException } from "@nestjs/common";
 import { promises as fsp } from "fs";
 import * as os from "os";
 import * as path from "path";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
-import { TrackFilesService } from "./track-files.service";
+import {
+  TRACK_FILE_UPLOAD_TIMEOUT_MS,
+  TrackFilesService,
+} from "./track-files.service";
 
 describe("TrackFilesService", () => {
   let blob: {
@@ -101,5 +105,35 @@ describe("TrackFilesService", () => {
   it("does nothing for an empty list", async () => {
     await build().remove([]);
     expect(breaker.fire).not.toHaveBeenCalled();
+  });
+
+  it("times out a hanging upload through the real withTimeout", async () => {
+    jest.useFakeTimers();
+    try {
+      blob.uploadBuffer.mockReturnValue(new Promise(() => undefined));
+      const saving = build().save("a.mp3", Buffer.from("x"));
+      const assertion = expect(saving).rejects.toThrow("[Timeout]");
+      await jest.advanceTimersByTimeAsync(TRACK_FILE_UPLOAD_TIMEOUT_MS);
+      await assertion;
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("propagates a breaker-open error on save", async () => {
+    breaker.fire.mockRejectedValue(new ServiceUnavailableException());
+    await expect(
+      build().save("a.mp3", Buffer.from("x")),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(blob.uploadBuffer).not.toHaveBeenCalled();
+  });
+
+  it("swallows a breaker-open error on remove and logs the orphan name", async () => {
+    breaker.fire.mockRejectedValue(new ServiceUnavailableException());
+    const warn = jest
+      .spyOn(Logger.prototype, "warn")
+      .mockImplementation(() => undefined);
+    await expect(build().remove(["orphan.mp3"])).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("orphan.mp3"));
   });
 });
