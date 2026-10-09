@@ -82,6 +82,11 @@ class EnvironmentVariables {
   @IsOptional()
   FFD_ITEMS_PER_PAGE?: number = 100;
 
+  // TEMPORAIRE : déduction des épreuves depuis la description / la circulaire FFD
+  @IsIn(["true", "false"])
+  @IsOptional()
+  FFD_DEDUCE_EVENTS?: string;
+
   // Sentry (optionnel — si absent, le tracking est désactivé)
   @IsString()
   @IsOptional()

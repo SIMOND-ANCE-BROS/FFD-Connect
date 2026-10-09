@@ -38,6 +38,9 @@ export const COMPETITION_BASE_SELECT = {
   layout: true,
   imageUrl: true,
   registrationDeadline: true,
+  // TEMPORARY: GENERIC | DESCRIPTION | CIRCULAR — lets the client flag
+  // épreuves deduced from FFD documents as "à vérifier".
+  eventsSource: true,
   status: true,
   delayMinutes: true,
   createdAt: true,
