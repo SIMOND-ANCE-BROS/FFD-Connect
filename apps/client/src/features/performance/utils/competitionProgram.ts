@@ -19,6 +19,7 @@ import {
   type DanceOrder,
 } from "../../../stores/danceOrder.store";
 import { fnv1aHash } from "../../../utils/stableHash";
+import { formatDiscipline } from "../../../utils/discipline";
 
 // --- Dances -----------------------------------------------------------------
 
@@ -67,8 +68,8 @@ const DANCE_INFO: Partial<Record<string, DanceInfo>> = {
 };
 
 export const CATEGORY_LABELS: Record<Category, string> = {
-  Standard: "Standard",
-  Latin: "Latines",
+  Standard: formatDiscipline("Standard"),
+  Latin: formatDiscipline("Latin"),
 };
 
 export const danceLabel = (dance: string): string =>

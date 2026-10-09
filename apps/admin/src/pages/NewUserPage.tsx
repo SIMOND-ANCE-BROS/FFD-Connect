@@ -20,6 +20,7 @@ import { adminControllerCreateUser } from '../api/generated/sdk.gen';
 import type { AdminControllerCreateUserData, UserRole } from '../api/generated/types.gen';
 import { clubOptionsQuery, referenceQuery } from '../api/queries';
 import { apiErrorMessage, UNAVAILABLE_MESSAGE } from '../lib/apiError';
+import { disciplineOptions } from '../lib/discipline';
 import { ROLE_LABELS } from '../lib/labels';
 
 type CreateBody = AdminControllerCreateUserData['body'];
@@ -287,7 +288,7 @@ export function NewUserPage() {
                 <Select
                   label="Catégorie"
                   clearable
-                  data={ref.data.categories}
+                  data={disciplineOptions(ref.data.categories)}
                   {...form.getInputProps('category')}
                 />
                 <Select

@@ -17,6 +17,7 @@ import { RootStackParamList } from "../../../navigation/types";
 import api from "../../../services/api";
 import type { CareerResult } from "../../../services/BackendService";
 import { LicenseExpiryBanner } from "../../license/components/LicenseExpiryBanner";
+import { formatDiscipline } from "../../../utils/discipline";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Profile">;
 
@@ -134,7 +135,7 @@ export const ProfileScreen = ({ navigation }: Props) => {
               color={currentTheme.textSecondary}
               style={styles.licenseDetail}
             >
-              {license.category} — {license.clubName}
+              {formatDiscipline(license.category)} — {license.clubName}
             </AppText>
             <View style={styles.expiryRow}>
               <AppText variant="caption" color={currentTheme.textSecondary}>
@@ -208,7 +209,8 @@ export const ProfileScreen = ({ navigation }: Props) => {
                 </AppText>
               </View>
               <AppText variant="caption" color={currentTheme.textSecondary}>
-                {result.event?.category} — {result.event?.ageGroup}
+                {formatDiscipline(result.event?.category)} —{" "}
+                {result.event?.ageGroup}
               </AppText>
               {result.ranking != null && (
                 <AppText

@@ -184,7 +184,7 @@ describe("CompetitionDetailScreen", () => {
 
     expect(getByText("Championnat de France")).toBeTruthy();
     expect(getByText("Lyon")).toBeTruthy();
-    expect(getByText("Latin")).toBeTruthy();
+    expect(getByText("Latines")).toBeTruthy();
   });
 
   it("shows the beta notice (informative only, FFD registrations not shown)", async () => {
