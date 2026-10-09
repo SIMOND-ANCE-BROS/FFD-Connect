@@ -135,6 +135,13 @@ describe('TracksPage', () => {
     );
   });
 
+  it('caps the search at the API limit, so the input and the URL never disagree', async () => {
+    vi.spyOn(sdk, 'adminTracksControllerList').mockResolvedValue(page([]) as never);
+    renderPage();
+    await screen.findByText('Aucune musique');
+    expect(screen.getByRole('textbox', { name: 'Rechercher' })).toHaveAttribute('maxlength', '100');
+  });
+
   it('shows only the shared alert when the server is unreachable', async () => {
     vi.spyOn(sdk, 'adminTracksControllerList').mockResolvedValue({
       data: undefined,

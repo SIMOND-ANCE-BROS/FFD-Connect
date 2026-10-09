@@ -253,6 +253,93 @@ describe('TrackDetailPage', () => {
     expect(dialog).toHaveTextContent('Prête');
   });
 
+  it('keeps unsaved edits when a switch save refreshes the track', async () => {
+    vi.spyOn(sdk, 'tracksControllerUpdate').mockResolvedValue(ok({}) as never);
+    renderPage();
+    // Every refetch after the first load answers the toggled track.
+    vi.mocked(sdk.adminTracksControllerFindOne).mockResolvedValue(
+      ok({ ...base, titleMasked: true }) as never,
+    );
+    const title = await screen.findByLabelText('Titre');
+    await userEvent.clear(title);
+    await userEvent.type(title, 'Nouveau titre');
+    await userEvent.click(screen.getByLabelText('Masquer le titre'));
+    const dialog = await screen.findByRole('dialog', { name: 'Masquer le titre' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Masquer' }));
+    await waitFor(() => expect(screen.getByLabelText('Masquer le titre')).toBeChecked());
+    expect(screen.getByLabelText('Titre')).toHaveValue('Nouveau titre');
+    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeEnabled();
+  });
+
+  it('keeps unsaved edits when a refused deletion refreshes the track', async () => {
+    vi.spyOn(sdk, 'tracksControllerRemove').mockResolvedValue({
+      data: undefined,
+      error: { statusCode: 409, message: 'En attente', pendingCorrections: 1 },
+      response: new Response(null, { status: 409 }),
+    } as never);
+    renderPage();
+    vi.mocked(sdk.adminTracksControllerFindOne).mockResolvedValue(
+      ok({ ...base, pendingCorrections: 1 }) as never,
+    );
+    const title = await screen.findByLabelText('Titre');
+    await userEvent.clear(title);
+    await userEvent.type(title, 'Nouveau titre');
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer la musique' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Supprimer cette musique' });
+    await userEvent.type(
+      within(dialog).getByLabelText('Recopiez le titre pour confirmer'),
+      'España Cañí',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Supprimer la musique' })).toBeDisabled(),
+    );
+    expect(screen.getByLabelText('Titre')).toHaveValue('Nouveau titre');
+    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeEnabled();
+  });
+
+  it('links the pending proposals from the refused deletion', async () => {
+    vi.spyOn(sdk, 'tracksControllerRemove').mockResolvedValue({
+      data: undefined,
+      error: { statusCode: 409, message: 'traitez-les dans Modération', pendingCorrections: 1 },
+      response: new Response(null, { status: 409 }),
+    } as never);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer la musique' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Supprimer cette musique' });
+    await userEvent.type(
+      within(dialog).getByLabelText('Recopiez le titre pour confirmer'),
+      'España Cañí',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
+    expect(
+      await within(dialog).findByRole('link', { name: 'Voir les propositions dans Modération' }),
+    ).toHaveAttribute('href', '/moderation?track=t1');
+  });
+
+  it('offers no retry of a refused deletion on a track already blacklisted', async () => {
+    const remove = vi.spyOn(sdk, 'tracksControllerRemove').mockResolvedValue({
+      data: undefined,
+      error: { statusCode: 409, message: 'En attente', pendingCorrections: 1 },
+      response: new Response(null, { status: 409 }),
+    } as never);
+    renderPage({ ...base, blacklisted: true });
+    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer la musique' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Supprimer cette musique' });
+    await userEvent.type(
+      within(dialog).getByLabelText('Recopiez le titre pour confirmer'),
+      'España Cañí',
+    );
+    const confirm = within(dialog).getByRole('button', { name: 'Supprimer définitivement' });
+    await userEvent.click(confirm);
+    expect(
+      await within(dialog).findByRole('link', { name: 'Voir les propositions dans Modération' }),
+    ).toHaveAttribute('href', '/moderation?track=t1');
+    expect(confirm).toBeDisabled();
+    expect(within(dialog).queryByRole('button', { name: 'Blacklister à la place' })).toBeNull();
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
   it('shows the shared alert when the server is unreachable', async () => {
     vi.spyOn(sdk, 'adminTracksControllerFindOne').mockResolvedValue({
       data: undefined,

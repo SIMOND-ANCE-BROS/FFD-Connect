@@ -106,9 +106,14 @@ function TrackEditor({ id }: { id: string }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [typedTitle, setTypedTitle] = useState('');
 
-  // The form follows the server after each save.
+  // The form starts from the server on the first load and after the admin's
+  // own form save only: a switch save or a refused deletion refetches the
+  // track too, and must not wipe unsaved edits (trackPatch diffs them against
+  // the fresh track, and the switch fields are not part of the form).
+  const resync = useRef(true);
   useEffect(() => {
-    if (track.data) {
+    if (track.data && resync.current) {
+      resync.current = false;
       setValues(initialEditValues(track.data));
       setBpmTouched(false);
     }
@@ -122,7 +127,8 @@ function TrackEditor({ id }: { id: string }) {
 
   const save = useMutation({
     mutationFn: (body: UpdateTrackDto) => ensureOk(tracksControllerUpdate({ path: { id }, body })),
-    onSuccess: () => {
+    onSuccess: (_, body) => {
+      if (!('titleMasked' in body) && !('blacklisted' in body)) resync.current = true;
       refresh();
       setPending(null);
       setToggle(null);
@@ -460,6 +466,11 @@ function TrackEditor({ id }: { id: string }) {
           {remove.isError && (
             <Alert color="red">{apiErrorMessage(remove.error, 'Suppression impossible')}</Alert>
           )}
+          {deleteConflict && (
+            <Anchor component={Link} to={`/moderation?track=${t.id}`} size="sm">
+              Voir les propositions dans Modération
+            </Anchor>
+          )}
           <TextInput
             label="Recopiez le titre pour confirmer"
             placeholder={t.title}
@@ -485,7 +496,8 @@ function TrackEditor({ id }: { id: string }) {
             ) : (
               <Button
                 color="red"
-                disabled={!titleConfirms(typedTitle, t.title)}
+                // After a 409 on a blacklisted track, a retry can only 409 again.
+                disabled={deleteConflict || !titleConfirms(typedTitle, t.title)}
                 loading={removing}
                 onClick={() => !removing && remove.mutate()}
               >

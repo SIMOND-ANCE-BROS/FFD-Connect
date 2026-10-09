@@ -26,6 +26,7 @@ import { apiErrorMessage } from '../lib/apiError';
 import { MIN_SEARCH_LENGTH } from '../lib/moderation';
 import {
   DANCE_LABELS,
+  MAX_SEARCH_LENGTH,
   readTracksParams,
   TRACK_STATUS_BADGES,
   TRACK_STATUS_FILTERS,
@@ -125,6 +126,7 @@ export function TracksPage() {
       </Group>
       <TextInput
         aria-label="Rechercher"
+        maxLength={MAX_SEARCH_LENGTH}
         placeholder="Titre ou artiste"
         value={search}
         onChange={(e) => setSearch(e.currentTarget.value)}
