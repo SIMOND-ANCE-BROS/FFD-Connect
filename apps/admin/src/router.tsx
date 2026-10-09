@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router';
 import { AppLayout } from './components/AppLayout';
 import { AuditLogPage } from './pages/AuditLogPage';
 import { LoginPage } from './pages/LoginPage';
+import { ModerationPage } from './pages/ModerationPage';
 import { NewUserPage } from './pages/NewUserPage';
 import { UserDetailPage } from './pages/UserDetailPage';
 import { ClubDetailPage } from './pages/ClubDetailPage';
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
       { path: 'clubs', element: <ClubsPage /> },
       { path: 'clubs/new', element: <NewClubPage /> },
       { path: 'clubs/:id', element: <ClubDetailPage /> },
+      { path: 'moderation', element: <ModerationPage /> },
       { path: 'audit-log', element: <AuditLogPage /> },
     ],
   },
