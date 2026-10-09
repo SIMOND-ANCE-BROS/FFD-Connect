@@ -55,6 +55,7 @@ import { libraryStyles as styles } from "../components/library/library.styles";
 import { TrackData } from "../context/PlayerContext";
 import { useLibraryLogic } from "../hooks/useLibraryLogic";
 import { queueFeedbackMessage, type QueueAddKind } from "../utils/queueOps";
+import { formatDiscipline } from "../../../utils/discipline";
 
 type LibraryScreenProps = NativeStackScreenProps<RootStackParamList, "Library">;
 
@@ -633,7 +634,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
               color={currentTheme.textSecondary}
               style={styles.filterGroupLabel}
             >
-              {group.label === "Latin" ? "Latine" : group.label}
+              {formatDiscipline(group.label)}
             </AppText>
             <View style={styles.filterChips}>
               {group.dances.map((dance) => (

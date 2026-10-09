@@ -431,7 +431,7 @@ describe("validateProgram", () => {
       { roundIndex: 2, category: "Standard", dances: ["Valse Viennoise"] },
     ]);
     expect(describeValidation(v)).toContain(
-      "Tour 2 (Standard) : Valse viennoise",
+      "Tour 2 (Standards) : Valse viennoise",
     );
   });
 

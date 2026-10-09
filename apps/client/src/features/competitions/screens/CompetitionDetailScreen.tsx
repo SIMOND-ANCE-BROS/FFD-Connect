@@ -39,6 +39,7 @@ import {
   deadlineStorageKey,
   scheduleDeadlineNotification,
 } from "../../../utils/scheduleDeadlineNotification";
+import { formatDiscipline } from "../../../utils/discipline";
 
 type Tab = "EVENTS" | "TIMING";
 
@@ -345,7 +346,7 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
       {state.partnerInputEvent && (
         <PartnerInputModal
           visible={!!state.partnerInputEvent}
-          eventLabel={`${state.partnerInputEvent.category} ${state.partnerInputEvent.ageGroup}`}
+          eventLabel={`${formatDiscipline(state.partnerInputEvent.category)} ${state.partnerInputEvent.ageGroup}`}
           onConfirm={actions.handleConfirmPartnerRegistration}
           onClose={actions.clearPartnerInput}
           theme={currentTheme}

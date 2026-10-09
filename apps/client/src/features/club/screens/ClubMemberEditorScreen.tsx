@@ -25,6 +25,7 @@ import { useTheme } from "../../../context/ThemeContext";
 
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../../navigation/types";
+import { formatDiscipline } from "../../../utils/discipline";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ClubMemberEditor">;
 
@@ -261,7 +262,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
               Catégorie de danse
             </AppText>
             <AppText variant="body" style={{ color: theme.text }}>
-              {fieldValue(category)}
+              {fieldValue(category ? formatDiscipline(category) : null)}
             </AppText>
           </View>
         </View>

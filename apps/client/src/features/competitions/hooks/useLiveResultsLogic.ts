@@ -4,6 +4,7 @@ import {
   Result,
   useCompetitionRepository,
 } from "../context/CompetitionContext";
+import { formatDiscipline } from "../../../utils/discipline";
 
 const logger = createLogger("useLiveResultsLogic");
 
@@ -86,7 +87,10 @@ export const useLiveResultsLogic = ({
   const firstEvent =
     eventIds.size === 1 ? sections[0]?.data[0]?.event : undefined;
   const eventLabel = firstEvent
-    ? [firstEvent.category, firstEvent.level ?? firstEvent.ageGroup]
+    ? [
+        formatDiscipline(firstEvent.category),
+        firstEvent.level ?? firstEvent.ageGroup,
+      ]
         .filter((part): part is string => !!part)
         .join(" - ")
         .toUpperCase()

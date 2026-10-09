@@ -23,6 +23,7 @@ import { RootStackParamList } from "../../../navigation/types";
 import type { CareerPartnership } from "../../../services/BackendService";
 import { getPodiumStyle } from "../../../utils/podium";
 import { useCareerUserLogic } from "../hooks/useCareerUserLogic";
+import { formatDiscipline } from "../../../utils/discipline";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ViewCareer">;
 
@@ -258,7 +259,7 @@ export const ViewCareerScreen = ({ navigation, route }: Props) => {
                         { color: currentTheme.textSecondary },
                       ]}
                     >
-                      {r.event.category} · {r.event.ageGroup}
+                      {formatDiscipline(r.event.category)} · {r.event.ageGroup}
                       {r.bibNumber != null ? ` · Dossard ${r.bibNumber}` : ""}
                       {r.partnerName ? ` · ${r.partnerName}` : ""}
                     </AppText>
@@ -342,7 +343,8 @@ export const ViewCareerScreen = ({ navigation, route }: Props) => {
                             variant="caption"
                             style={{ color: currentTheme.textSecondary }}
                           >
-                            {r.event.category} · {r.event.ageGroup}
+                            {formatDiscipline(r.event.category)} ·{" "}
+                            {r.event.ageGroup}
                             {r.round ? ` · ${r.round}` : ""} ·{" "}
                             {formatDate(r.competition.date)}
                           </AppText>

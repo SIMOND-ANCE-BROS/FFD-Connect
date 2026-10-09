@@ -180,7 +180,7 @@ describe("PerformanceSetupScreen", () => {
     };
     mockEngine({ config: { ...baseConfig, rounds: [mixed] } });
     const { getByText, getByTestId } = await render(<PerformanceSetupScreen />);
-    expect(getByText("Danses Standard")).toBeTruthy();
+    expect(getByText("Danses Standards")).toBeTruthy();
     expect(getByText("Danses Latines")).toBeTruthy();
     expect(getByTestId("performance-round-0-preview")).toHaveTextContent(
       "Déroulé : Valse lente (G1) → Samba (G2) → Valse lente (G3) → Tango (G1) → Tango (G3)",
