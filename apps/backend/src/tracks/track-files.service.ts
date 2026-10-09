@@ -1,4 +1,8 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { promises as fsp } from "fs";
 import * as path from "path";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
@@ -9,6 +13,9 @@ import { isFlatMediaFilename } from "./media-response.util";
 
 /** One upload of at most 20 MB to the blob `tracks` container. */
 export const TRACK_FILE_UPLOAD_TIMEOUT_MS = 30_000;
+/** Storage timeout or open breaker on upload: a 503 the SPA retries. */
+export const TRACK_STORAGE_UNAVAILABLE_MESSAGE =
+  "Stockage des musiques indisponible, réessayez dans un instant.";
 /** One best-effort blob delete. */
 export const TRACK_FILE_DELETE_TIMEOUT_MS = 8_000;
 
@@ -42,12 +49,32 @@ export class TrackFilesService {
       await fsp.writeFile(path.join(this.uploadsRoot, name), buffer);
       return;
     }
-    await this.circuitBreaker.fire("azure-blob-write", () =>
-      withTimeout(
-        this.blobStorage.uploadBuffer(buffer, name),
-        TRACK_FILE_UPLOAD_TIMEOUT_MS,
-        "blob upload (track)",
-      ),
+    try {
+      await this.circuitBreaker.fire("azure-blob-write", () =>
+        withTimeout(
+          this.blobStorage.uploadBuffer(buffer, name),
+          TRACK_FILE_UPLOAD_TIMEOUT_MS,
+          "blob upload (track)",
+        ),
+      );
+    } catch (error) {
+      if (TrackFilesService.isUnavailable(error)) {
+        this.logger.warn(`Track upload unavailable: ${getErrorMessage(error)}`);
+        throw new ServiceUnavailableException(
+          TRACK_STORAGE_UNAVAILABLE_MESSAGE,
+        );
+      }
+      throw error;
+    }
+  }
+
+  /** Open breaker, our timeout, or the breaker's own timeout (opossum ETIMEDOUT). */
+  private static isUnavailable(error: unknown): boolean {
+    if (error instanceof ServiceUnavailableException) return true;
+    if (!(error instanceof Error)) return false;
+    return (
+      error.message.startsWith("[Timeout]") ||
+      (error as { code?: unknown }).code === "ETIMEDOUT"
     );
   }
 

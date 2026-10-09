@@ -6,6 +6,7 @@ import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker
 import { BlobStorageService } from "../storage/blob-storage.service";
 import {
   TRACK_FILE_UPLOAD_TIMEOUT_MS,
+  TRACK_STORAGE_UNAVAILABLE_MESSAGE,
   TrackFilesService,
 } from "./track-files.service";
 
@@ -112,7 +113,10 @@ describe("TrackFilesService", () => {
     try {
       blob.uploadBuffer.mockReturnValue(new Promise(() => undefined));
       const saving = build().save("a.mp3", Buffer.from("x"));
-      const assertion = expect(saving).rejects.toThrow("[Timeout]");
+      // A storage timeout is a 503 (runbook « Disponibilité du stockage »).
+      const assertion = expect(saving).rejects.toThrow(
+        new ServiceUnavailableException(TRACK_STORAGE_UNAVAILABLE_MESSAGE),
+      );
       await jest.advanceTimersByTimeAsync(TRACK_FILE_UPLOAD_TIMEOUT_MS);
       await assertion;
     } finally {
@@ -120,12 +124,23 @@ describe("TrackFilesService", () => {
     }
   });
 
-  it("propagates a breaker-open error on save", async () => {
+  it("turns a breaker-open error on save into a French 503", async () => {
     breaker.fire.mockRejectedValue(new ServiceUnavailableException());
+    await expect(build().save("a.mp3", Buffer.from("x"))).rejects.toThrow(
+      new ServiceUnavailableException(TRACK_STORAGE_UNAVAILABLE_MESSAGE),
+    );
+    expect(blob.uploadBuffer).not.toHaveBeenCalled();
+  });
+
+  it("turns the breaker's own timeout on save into a 503", async () => {
+    breaker.fire.mockRejectedValue(
+      Object.assign(new Error("Timed out after 45000ms"), {
+        code: "ETIMEDOUT",
+      }),
+    );
     await expect(
       build().save("a.mp3", Buffer.from("x")),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
-    expect(blob.uploadBuffer).not.toHaveBeenCalled();
   });
 
   it("swallows a breaker-open error on remove and logs the orphan name", async () => {
