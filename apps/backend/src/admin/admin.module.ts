@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AuthModule } from "../auth/auth.module";
 import { UsersModule } from "../users/users.module";
-import { AdminAuditService } from "./admin-audit.service";
+import { AdminAuditModule } from "./admin-audit.module";
 import { AdminClubsQueryService } from "./admin-clubs.query-service";
 import { AdminClubsService } from "./admin-clubs.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
@@ -11,10 +11,9 @@ import { AdminReferenceService } from "./admin-reference.service";
 import { AdminUserAccountsService } from "./admin-user-accounts.service";
 
 @Module({
-  imports: [AuthModule, UsersModule],
+  imports: [AdminAuditModule, AuthModule, UsersModule],
   controllers: [AdminController],
   providers: [
-    AdminAuditService,
     AdminClubsQueryService,
     AdminClubsService,
     AdminReferenceService,

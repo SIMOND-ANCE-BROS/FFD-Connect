@@ -13,4 +13,6 @@ export const ACTION_LABELS: Record<AuditLogEntryDto['action'], string> = {
   CLUB_DISABLE: 'Désactivation de club',
   CLUB_ENABLE: 'Réactivation de club',
   CLUB_DELETE: 'Suppression de club',
+  TRACK_CORRECTION_APPROVE: 'Proposition approuvée',
+  TRACK_CORRECTION_REJECT: 'Proposition refusée',
 };

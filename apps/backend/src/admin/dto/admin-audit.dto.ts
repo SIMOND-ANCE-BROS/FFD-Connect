@@ -16,9 +16,12 @@ export const AUDIT_ACTIONS = [
   "CLUB_DISABLE",
   "CLUB_ENABLE",
   "CLUB_DELETE",
+  // Moderation decisions (lot 2), taken from the back-office or the mobile app.
+  "TRACK_CORRECTION_APPROVE",
+  "TRACK_CORRECTION_REJECT",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
-export const AUDIT_TARGET_TYPES = ["USER", "CLUB"] as const;
+export const AUDIT_TARGET_TYPES = ["USER", "CLUB", "TRACK_CORRECTION"] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 export interface AuditEntry {

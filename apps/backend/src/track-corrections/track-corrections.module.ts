@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { AdminAuditModule } from "../admin/admin-audit.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { TracksModule } from "../tracks/tracks.module";
 import { TrackCorrectionsController } from "./track-corrections.controller";
@@ -8,10 +9,11 @@ import { TrackReportController } from "./track-report.controller";
 
 /**
  * Propositions de correction des métadonnées des musiques (file de
- * modération admin). NotificationsModule est global.
+ * modération admin). NotificationsModule est global ; les décisions sont
+ * tracées dans le journal d'audit du back-office (AdminAuditModule).
  */
 @Module({
-  imports: [PrismaModule, TracksModule],
+  imports: [PrismaModule, TracksModule, AdminAuditModule],
   controllers: [TrackCorrectionsController, TrackReportController],
   providers: [TrackCorrectionsService, TrackCorrectionsQueryService],
 })

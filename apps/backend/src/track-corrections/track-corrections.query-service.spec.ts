@@ -43,6 +43,7 @@ const adminRow = {
     clashTimecodes: [10],
     titleMasked: false,
     blacklisted: false,
+    filename: "espana-cani.mp3",
   },
   proposedBy: { id: "u1", firstName: "Jeanne", lastName: "Martin" },
   reviewedBy: null,
@@ -123,6 +124,7 @@ describe("TrackCorrectionsQueryService", () => {
           clashTimecodes: [10],
           titleMasked: false,
           blacklisted: false,
+          filename: "espana-cani.mp3",
         },
         // Rien ne touche au tempo : le MPM actuel est conservé.
         resultingBpm: 60,
@@ -166,6 +168,51 @@ describe("TrackCorrectionsQueryService", () => {
       expect(page.data[0].proposed.clashTimecodes).toBeNull();
       expect(page.data[0].proposer).toBeNull();
       expect(page.data[0].reviewer).toEqual({ id: "a1", name: "Admin" });
+    });
+
+    it("filters on one or more reasons and searches the track title OR artist, case-insensitively", async () => {
+      prisma.trackCorrection.count.mockResolvedValue(0);
+      prisma.trackCorrection.findMany.mockResolvedValue([]);
+
+      await service.listForAdmin({
+        status: TrackCorrectionStatus.PENDING,
+        reason: [TrackCorrectionReason.MPM, TrackCorrectionReason.TITLE],
+        q: "paso",
+        skip: 0,
+        take: 20,
+      });
+
+      const where = {
+        status: TrackCorrectionStatus.PENDING,
+        reason: {
+          in: [TrackCorrectionReason.MPM, TrackCorrectionReason.TITLE],
+        },
+        track: {
+          OR: [
+            { title: { contains: "paso", mode: "insensitive" } },
+            { artist: { contains: "paso", mode: "insensitive" } },
+          ],
+        },
+      };
+      expect(prisma.trackCorrection.count).toHaveBeenCalledWith({ where });
+      expect(prisma.trackCorrection.findMany).toHaveBeenCalledWith({
+        where,
+        orderBy: { createdAt: "asc" },
+        skip: 0,
+        take: 20,
+        select: trackCorrectionAdminSelect,
+      });
+    });
+
+    it("an empty reason list does not filter", async () => {
+      prisma.trackCorrection.count.mockResolvedValue(0);
+      prisma.trackCorrection.findMany.mockResolvedValue([]);
+
+      await service.listForAdmin({ reason: [], skip: 0, take: 10 });
+
+      expect(prisma.trackCorrection.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: {} }),
+      );
     });
   });
 

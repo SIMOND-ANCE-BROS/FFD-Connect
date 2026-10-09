@@ -35,6 +35,7 @@ describe("TrackCorrectionsController", () => {
     listForAdmin: jest.fn(),
     listMine: jest.fn(),
     countPending: jest.fn(),
+    findOneForAdmin: jest.fn(),
   };
   const controller = new TrackCorrectionsController(
     service as unknown as TrackCorrectionsService,
@@ -79,6 +80,12 @@ describe("TrackCorrectionsController", () => {
     });
   });
 
+  it("findOne returns the admin view of one proposal", async () => {
+    queryService.findOneForAdmin.mockResolvedValue({ id: "c1" });
+    await expect(controller.findOne("c1")).resolves.toEqual({ id: "c1" });
+    expect(queryService.findOneForAdmin).toHaveBeenCalledWith("c1");
+  });
+
   it("pendingCount renvoie un objet typé", async () => {
     queryService.countPending.mockResolvedValue(3);
     await expect(controller.pendingCount()).resolves.toEqual({ count: 3 });
@@ -93,7 +100,7 @@ describe("TrackCorrectionsController", () => {
     expect(service.reject).toHaveBeenCalledWith("c1", "a1", {});
   });
 
-  it.each(["list", "pendingCount", "approve", "reject"] as const)(
+  it.each(["list", "findOne", "pendingCount", "approve", "reject"] as const)(
     "%s est réservé aux administrateurs",
     (method) => {
       const handler = TrackCorrectionsController.prototype[method];
@@ -225,5 +232,65 @@ describe("DTO de proposition", () => {
     await expect(
       errorsOf(ListTrackCorrectionsQueryDto, { status: "DONE" }),
     ).resolves.toContain("status");
+  });
+
+  const reasonCases: Array<[string, Record<string, unknown>, string[]]> = [
+    ["single", { reason: "MPM" }, ["MPM"]],
+    ["repeated", { reason: ["MPM", "TITLE"] }, ["MPM", "TITLE"]],
+    ["comma-separated", { reason: "MPM, TITLE" }, ["MPM", "TITLE"]],
+    ["mixed", { reason: ["MPM,DANCE", "OTHER"] }, ["MPM", "DANCE", "OTHER"]],
+  ];
+
+  it.each(reasonCases)(
+    "accepts a %s reason filter",
+    async (_label, plain, expected) => {
+      expect(
+        plainToInstance(ListTrackCorrectionsQueryDto, plain).reason,
+      ).toEqual(expected);
+      await expect(
+        errorsOf(ListTrackCorrectionsQueryDto, plain),
+      ).resolves.toEqual([]);
+    },
+  );
+
+  it("dedupes a long repeated reason list", async () => {
+    const plain = { reason: Array(500).fill("MPM,TITLE").join(",") };
+    expect(plainToInstance(ListTrackCorrectionsQueryDto, plain).reason).toEqual(
+      ["MPM", "TITLE"],
+    );
+    await expect(
+      errorsOf(ListTrackCorrectionsQueryDto, plain),
+    ).resolves.toEqual([]);
+  });
+
+  it("refuses more distinct reasons than the enum has values", async () => {
+    const tooMany = Array.from(
+      { length: Object.keys(TrackCorrectionReason).length + 1 },
+      (_, i) => `R${i}`,
+    ).join(",");
+    await expect(
+      errorsOf(ListTrackCorrectionsQueryDto, { reason: tooMany }),
+    ).resolves.toContain("reason");
+  });
+
+  it("refuses an unknown reason", async () => {
+    await expect(
+      errorsOf(ListTrackCorrectionsQueryDto, { reason: "MPM,NOPE" }),
+    ).resolves.toContain("reason");
+  });
+
+  it("trims the search, then requires 2 to 100 characters", async () => {
+    expect(
+      plainToInstance(ListTrackCorrectionsQueryDto, { q: "  pa  " }).q,
+    ).toBe("pa");
+    await expect(
+      errorsOf(ListTrackCorrectionsQueryDto, { q: "  pa  " }),
+    ).resolves.toEqual([]);
+    await expect(
+      errorsOf(ListTrackCorrectionsQueryDto, { q: " p " }),
+    ).resolves.toContain("q");
+    await expect(
+      errorsOf(ListTrackCorrectionsQueryDto, { q: "x".repeat(101) }),
+    ).resolves.toContain("q");
   });
 });
