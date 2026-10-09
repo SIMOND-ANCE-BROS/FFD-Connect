@@ -116,7 +116,45 @@ describe("Store-review account (integration, real DB)", () => {
       .set("Authorization", bearer(reviewer))
       .expect(200);
     expect(res.headers["x-demo-mode"]).toBeUndefined();
-    expect(res.body).toMatchObject({ id: reviewer.id, isStoreReview: true });
+    expect(res.body).toMatchObject({
+      id: reviewer.id,
+      email: reviewer.email,
+      isStoreReview: true,
+    });
+  });
+
+  it("masks other people's personal data in admin reads", async () => {
+    const reviewer = await createUser({
+      role: UserRole.ADMIN,
+      isStoreReview: true,
+    });
+    const other = await createUser({ role: UserRole.LICENSEE });
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/admin/users/${other.id}`)
+      .set("Authorization", bearer(reviewer))
+      .expect(200);
+    expect(res.body).toMatchObject({
+      id: other.id,
+      email: "masque@exemple.invalid",
+      lastName: "T.",
+      birthDate: null,
+    });
+  });
+
+  it("refuses to open an impersonation", async () => {
+    const reviewer = await createUser({
+      role: UserRole.ADMIN,
+      isStoreReview: true,
+    });
+    const other = await createUser({ role: UserRole.LICENSEE });
+    await request(app.getHttpServer())
+      .post("/api/v1/auth/impersonate")
+      .set("Authorization", bearer(reviewer))
+      .send({ targetUserId: other.id })
+      .expect(403);
+    await expect(
+      prisma.impersonationLog.count({ where: { actorId: reviewer.id } }),
+    ).resolves.toBe(0);
   });
 
   describe("back-office protection", () => {

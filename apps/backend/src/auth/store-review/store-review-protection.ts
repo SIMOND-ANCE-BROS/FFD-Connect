@@ -36,3 +36,7 @@ export function assertClubNotStoreReview(
     throw new ForbiddenException(storeReviewClubMessage(action));
   }
 }
+
+/** POST /auth/impersonate by the store-review account. */
+export const STORE_REVIEW_IMPERSONATION_MESSAGE =
+  "Le compte de démonstration ne peut pas se connecter en tant qu'un autre utilisateur.";

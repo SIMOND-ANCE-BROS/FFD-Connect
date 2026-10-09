@@ -98,10 +98,44 @@ describe("StoreReviewInterceptor", () => {
     async (method) => {
       await expect(
         run(context({ method, path: "/x", user: reviewer })),
-      ).resolves.toBe(handled);
+      ).resolves.toEqual(handled);
+      expect(handle).toHaveBeenCalled();
       expect(setHeader).not.toHaveBeenCalled();
     },
   );
+
+  it("masks other people's personal data in what the account reads", async () => {
+    handle = jest.fn(() =>
+      of({
+        data: [
+          { id: "u2", email: "jane@x.fr", lastName: "Doe" },
+          { id: "review-1", email: "licensee@test.com", lastName: "Licencié" },
+        ],
+      }),
+    );
+    await expect(
+      run(context({ method: "GET", path: "/admin/users", user: reviewer })),
+    ).resolves.toEqual({
+      data: [
+        { id: "u2", email: "masque@exemple.invalid", lastName: "D." },
+        { id: "review-1", email: "licensee@test.com", lastName: "Licencié" },
+      ],
+    });
+  });
+
+  it("does not mask the reads of a regular account", async () => {
+    const body = { id: "u2", email: "jane@x.fr" };
+    handle = jest.fn(() => of(body));
+    await expect(
+      run(
+        context({
+          method: "GET",
+          path: "/admin/users/u2",
+          user: { userId: "admin-1", storeReview: false },
+        }),
+      ),
+    ).resolves.toBe(body);
+  });
 
   it("lets a regular account write", async () => {
     await expect(
@@ -141,7 +175,8 @@ describe("StoreReviewInterceptor", () => {
           Routes.prototype.passthrough,
         ),
       ),
-    ).resolves.toBe(handled);
+    ).resolves.toEqual(handled);
+    expect(handle).toHaveBeenCalled();
     expect(setHeader).not.toHaveBeenCalled();
   });
 

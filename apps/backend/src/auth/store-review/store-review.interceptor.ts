@@ -9,6 +9,8 @@ import { Reflector } from "@nestjs/core";
 import { randomUUID } from "crypto";
 import type { Request, Response } from "express";
 import { Observable, of } from "rxjs";
+import { map } from "rxjs/operators";
+import { maskPersonalData } from "./store-review-masking";
 import { genericSimulatedResponse } from "./store-review-responses";
 import {
   STORE_REVIEW_PASSTHROUGH_KEY,
@@ -43,6 +45,9 @@ interface MaybeStoreReviewRequest extends Request {
  * logout, register, password reset, TTS, webhooks) have no `req.user` and run
  * normally. A route opts out with @StoreReviewPassthrough(); a route whose
  * client reads specific fields declares its body with @StoreReviewSimulation().
+ *
+ * Every response that really runs for such an account (reads, passthrough
+ * writes) has other people's personal data masked (store-review-masking.ts).
  */
 @Injectable()
 export class StoreReviewInterceptor implements NestInterceptor {
@@ -55,9 +60,16 @@ export class StoreReviewInterceptor implements NestInterceptor {
     const http = context.switchToHttp();
     const req = http.getRequest<MaybeStoreReviewRequest>();
     const user = req.user;
-    if (!user?.storeReview || !MUTATING_METHODS.has(req.method)) {
-      return next.handle();
-    }
+    if (!user?.storeReview) return next.handle();
+    const ownerId = user.userId ?? "";
+    // Reads (and passthrough writes) really run, but other people's personal
+    // data is masked: the account is ADMIN with a password shared with the
+    // stores (see store-review-masking.ts).
+    const maskedHandle = () =>
+      next
+        .handle()
+        .pipe(map((body: unknown) => maskPersonalData(body, ownerId)));
+    if (!MUTATING_METHODS.has(req.method)) return maskedHandle();
     const targets = [context.getHandler(), context.getClass()];
     if (
       this.reflector.getAllAndOverride<boolean>(
@@ -65,7 +77,7 @@ export class StoreReviewInterceptor implements NestInterceptor {
         targets,
       )
     ) {
-      return next.handle();
+      return maskedHandle();
     }
     const builder =
       this.reflector.getAllAndOverride<SimulatedResponseBuilder | undefined>(
@@ -82,7 +94,7 @@ export class StoreReviewInterceptor implements NestInterceptor {
     );
     return of(
       builder({
-        userId: user.userId ?? "",
+        userId: ownerId,
         params: req.params as Record<string, string | undefined>,
         body: req.body as unknown,
         now: new Date(),

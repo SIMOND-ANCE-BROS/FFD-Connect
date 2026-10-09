@@ -11,16 +11,17 @@
  *   (StoreReviewInterceptor, réponse 2xx sans écriture en base) et le
  *   back-office refuse de le supprimer ou de le désactiver.
  *
- * Son mot de passe est le secret partagé PROFILE_TEST_PASSWORD (connu des
- * stores) : ne JAMAIS changer l'email ni le mot de passe. Le hash n'est écrit
- * qu'à la création (un compte existant garde son mot de passe).
+ * Son mot de passe est le secret partagé PROFILE_TEST_PASSWORD (variable
+ * d'environnement de staging, connue des stores) : ne JAMAIS changer l'email
+ * ni le mot de passe. Le hash n'est écrit qu'à la création (un compte existant
+ * garde son mot de passe) ; sans la variable, un compte absent n'est pas créé.
  *
  * Idempotent (upsert par email). Lancé au démarrage du conteneur
  * (docker-entrypoint.sh) UNIQUEMENT si SEED_TEST_TRACKS=true — jamais en prod —
  * APRÈS purge-test-accounts.
  */
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, UserRole } from "@prisma/client";
+import { Prisma, PrismaClient, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import "dotenv/config";
 import { Pool } from "pg";
@@ -35,8 +36,12 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 const BCRYPT_ROUNDS = 12;
-/** Mot de passe partagé du compte de validation (staging). */
-const TEST_PASSWORD = process.env.PROFILE_TEST_PASSWORD ?? "TestProfil2026!";
+/**
+ * Mot de passe partagé du compte de validation : variable d'environnement
+ * UNIQUEMENT (secret de la Container App staging), jamais de valeur par défaut
+ * dans le dépôt (public). Lu seulement pour CRÉER le compte.
+ */
+const TEST_PASSWORD = process.env.PROFILE_TEST_PASSWORD?.trim();
 const LICENSE_NUMBER = "TEST-LICENSEE-001";
 const CATEGORY = "Latin";
 /** La licence doit rester valide pendant toute la durée des validations. */
@@ -45,6 +50,31 @@ const LICENSE_VALID_UNTIL = new Date("2030-12-31");
 /** ADMIN principal + tous les autres rôles, dans l'ordre de l'enum. */
 const MAIN_ROLE = UserRole.ADMIN;
 const EXTRA_ROLES = Object.values(UserRole).filter((r) => r !== MAIN_ROLE);
+
+async function createAccount(
+  profile: Omit<
+    Prisma.UserUncheckedCreateInput,
+    "email" | "password" | "firstName" | "lastName"
+  >,
+): Promise<{ id: string } | null> {
+  if (!TEST_PASSWORD) {
+    console.error(
+      `seed-profile-test-accounts: ${STORE_REVIEW_EMAIL} is missing and PROFILE_TEST_PASSWORD is not set — account not created.`,
+    );
+    process.exitCode = 1;
+    return null;
+  }
+  return prisma.user.create({
+    data: {
+      email: STORE_REVIEW_EMAIL,
+      password: await bcrypt.hash(TEST_PASSWORD, BCRYPT_ROUNDS),
+      firstName: "Test",
+      lastName: "Licencié",
+      ...profile,
+    },
+    select: { id: true },
+  });
+}
 
 async function main() {
   // Le club du compte : retrouvé par drapeau d'abord (un admin a pu le
@@ -80,18 +110,19 @@ async function main() {
     // Un compte de validation désactivé = rejet du store.
     disabledAt: null,
   };
-  const user = await prisma.user.upsert({
+  const existing = await prisma.user.findUnique({
     where: { email: STORE_REVIEW_EMAIL },
-    update: profile,
-    create: {
-      email: STORE_REVIEW_EMAIL,
-      password: await bcrypt.hash(TEST_PASSWORD, BCRYPT_ROUNDS),
-      firstName: "Test",
-      lastName: "Licencié",
-      ...profile,
-    },
     select: { id: true },
   });
+  // An existing account keeps its password: the seed never rewrites it.
+  const user = existing
+    ? await prisma.user.update({
+        where: { id: existing.id },
+        data: profile,
+        select: { id: true },
+      })
+    : await createAccount(profile);
+  if (!user) return;
 
   // Licence rattachée (écran E-Licence, QR, Wallet), valide longtemps.
   await prisma.license.upsert({
