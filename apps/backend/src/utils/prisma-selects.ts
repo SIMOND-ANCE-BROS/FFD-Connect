@@ -166,12 +166,13 @@ export const licenseWalletPassSelect = {
 } as const;
 
 /**
- * Jeton de téléchargement de pass Wallet (#162) : à qui il appartient et
- * jusqu'à quand il vaut.
+ * Jeton de téléchargement de pass Wallet (#162) : à qui il appartient,
+ * jusqu'à quand il vaut et combien de téléchargements il a déjà servis.
  */
 export const walletPassTokenSelect = {
   userId: true,
   expiresAt: true,
+  downloadCount: true,
 } as const;
 
 /**
