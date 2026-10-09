@@ -20,6 +20,7 @@ export function getLicenseConfig(
         cardBackground: "#1E1E1E",
         borderColor: "#333",
         nameColor: "#FFFFFF",
+        headerTextColor: "white",
       };
     }
     return {
@@ -33,6 +34,7 @@ export function getLicenseConfig(
       cardBackground: "white",
       borderColor: "#E0E0E0",
       nameColor: "#000000",
+      headerTextColor: "white",
     };
   }
 
@@ -47,6 +49,7 @@ export function getLicenseConfig(
       cardBackground: "#1E1E1E",
       borderColor: "#333",
       nameColor: "#FFD700",
+      headerTextColor: "white",
     };
   }
   return {
@@ -59,5 +62,7 @@ export function getLicenseConfig(
     cardBackground: "#FFF",
     borderColor: "#CCC",
     nameColor: "#B8860B",
+    // The light WDSF header is light grey: white text vanished on it.
+    headerTextColor: "#333",
   };
 }

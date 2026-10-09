@@ -1,7 +1,7 @@
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { AlertCircle, Share, User, WifiOff } from "lucide-react-native";
-import React, { useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   Animated,
   Modal,
@@ -26,10 +26,7 @@ import {
   GLASS_HEADER_HEIGHT,
 } from "../../../components/GlassHeader";
 import { NotificationBell } from "../../../components/NotificationBell";
-import {
-  StackedCard,
-  STACKED_CARD_ACTIVE_OFFSET,
-} from "../../../components/StackedCard";
+import { getStackLayout, StackedCard } from "../../../components/StackedCard";
 import { AddLicenseCard } from "../components/AddLicenseCard";
 import { AddToAppleWalletButton } from "../components/AddToAppleWalletButton";
 import { BigBarcode } from "../components/BigBarcode";
@@ -64,6 +61,20 @@ const FLOATING_TAB_BAR_CLEARANCE = 120;
 
 type LicenseListItem = { type: string; data: LicenseUser | null };
 
+/** Screen reader label of a card behind the front one (brings it forward). */
+const stackedCardLabel = (type: string): string => {
+  switch (type) {
+    case "FFD":
+      return "Licence FFD";
+    case "WDSF":
+      return "Licence WDSF";
+    case "ADD_WDSF":
+      return "Ajouter la licence WDSF";
+    default:
+      return "Licence";
+  }
+};
+
 export const LicenseScreen: React.FC = () => {
   const { state, actions } = useLicenseLogic();
   const { theme: currentTheme, isDark } = useTheme();
@@ -82,14 +93,39 @@ export const LicenseScreen: React.FC = () => {
     state.listItems.find((item) => item.type === "FFD")?.data ?? null;
   const ffdValidUntilRaw = ffdUser?.validUntilRaw ?? null;
 
+  // Measured height of each wallet card (by list index): sizes the stack,
+  // whose cards are absolutely positioned.
+  const [cardHeights, setCardHeights] = useState<Record<number, number>>({});
+  const handleCardHeight = useCallback((index: number, height: number) => {
+    setCardHeights((previous) =>
+      previous[index] === height ? previous : { ...previous, [index]: height },
+    );
+  }, []);
+  const stack = getStackLayout(
+    state.listItems.length,
+    state.activeCardIndex,
+    state.listItems.map((_, index) => cardHeights[index]),
+  );
+  const stackProps = (index: number) => ({
+    index,
+    isActive: index === state.activeCardIndex,
+    offset: stack.offsets[index] ?? 0,
+    clipHeight: stack.clipHeights[index],
+    onHeightChange: handleCardHeight,
+    pullY: state.pullY,
+    pullGesture: state.pullGesture,
+    backCardLabel: stackedCardLabel(state.listItems[index]?.type ?? ""),
+  });
+
   // FFD/WDSF card (WDSF wrapped for swipe-to-remove) in the stacked wallet.
-  const renderLicenseCard = (item: LicenseListItem, collapsed: boolean) => {
+  // Every card is rendered in full, even behind the front one.
+  const renderLicenseCard = (item: LicenseListItem, isActive: boolean) => {
     const user = item.data as LicenseUser;
     if (item.type === "WDSF") {
       return (
         <SwipeableLicenseCard
           onRemove={actions.handleRemoveWdsfWithConfirm}
-          enabled={!collapsed}
+          enabled={isActive}
           theme={currentTheme}
         >
           <LicenseCard
@@ -106,7 +142,6 @@ export const LicenseScreen: React.FC = () => {
               )
             }
             themeOverride={isDark ? "dark" : "light"}
-            collapsed={collapsed}
             onOptions={actions.handleRemoveWdsfWithConfirm}
             testID="license-card-WDSF"
           />
@@ -126,7 +161,6 @@ export const LicenseScreen: React.FC = () => {
           )
         }
         themeOverride={isDark ? "dark" : "light"}
-        collapsed={collapsed}
         testID={`license-card-${item.type}`}
       />
     );
@@ -282,7 +316,10 @@ export const LicenseScreen: React.FC = () => {
             testID="license-beta-notice"
           />
         )}
-        <View style={styles.walletContainer} testID="license-screen-wallet">
+        <View
+          style={[styles.walletContainer, { height: stack.height }]}
+          testID="license-screen-wallet"
+        >
           {state.listItems.map((item, index) => {
             const isActive = index === state.activeCardIndex;
 
@@ -290,10 +327,7 @@ export const LicenseScreen: React.FC = () => {
               return (
                 <StackedCard
                   key="add-wdsf"
-                  index={index}
-                  isActive={isActive}
-                  pullY={state.pullY}
-                  pullGesture={state.pullGesture}
+                  {...stackProps(index)}
                   isPullable={false}
                   onPress={actions.handleAddWdsf}
                   testID="license-screen-add-wdsf-card"
@@ -311,10 +345,7 @@ export const LicenseScreen: React.FC = () => {
               return (
                 <StackedCard
                   key="guest"
-                  index={index}
-                  isActive={isActive}
-                  pullY={state.pullY}
-                  pullGesture={state.pullGesture}
+                  {...stackProps(index)}
                   isPullable={false}
                   onPress={() => {}}
                   testID="license-screen-guest-card"
@@ -359,10 +390,7 @@ export const LicenseScreen: React.FC = () => {
               return (
                 <StackedCard
                   key="staff"
-                  index={index}
-                  isActive={isActive}
-                  pullY={state.pullY}
-                  pullGesture={state.pullGesture}
+                  {...stackProps(index)}
                   isPullable={false}
                   onPress={() => actions.handleCardPress(index)}
                   testID="license-screen-staff-card"
@@ -382,7 +410,6 @@ export const LicenseScreen: React.FC = () => {
                       )
                     }
                     themeOverride={isDark ? "dark" : "light"}
-                    collapsed={!isActive}
                     testID={`license-card-${index}`}
                   />
                 </StackedCard>
@@ -395,15 +422,12 @@ export const LicenseScreen: React.FC = () => {
             return (
               <StackedCard
                 key={index}
-                index={index}
-                isActive={isActive}
-                pullY={state.pullY}
-                pullGesture={state.pullGesture}
+                {...stackProps(index)}
                 isPullable={isPullable}
                 onPress={() => actions.handleCardPress(index)}
                 testID={`license-screen-card-${item.type}`}
               >
-                {renderLicenseCard(item, !isActive)}
+                {renderLicenseCard(item, isActive)}
               </StackedCard>
             );
           })}
@@ -495,12 +519,11 @@ const styles = StyleSheet.create({
   },
   walletContainer: {
     marginTop: 10,
-    paddingHorizontal: 20,
-    // The active StackedCard is shifted down with `top`, which does not grow
-    // this container: reserve that offset so its bottom stays scrollable.
-    // Its height then follows the (compact) active card instead of a fixed
-    // minimum, so the Apple Wallet button sits right under the stack.
-    paddingBottom: STACKED_CARD_ACTIVE_OFFSET,
+    marginBottom: 10,
+    // Margins, not padding: the stacked cards are absolutely positioned and
+    // would ignore a padding. The height comes from the stack layout, so the
+    // Apple Wallet button sits right under the front card.
+    marginHorizontal: 20,
   },
   modalOverlay: {
     flex: 1,

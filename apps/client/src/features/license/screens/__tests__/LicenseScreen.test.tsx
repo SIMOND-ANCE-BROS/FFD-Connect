@@ -2,7 +2,7 @@ import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import React from "react";
 import { StyleSheet } from "react-native";
 import type { ReactTestRendererJSON } from "react-test-renderer";
-import { STACKED_CARD_ACTIVE_OFFSET } from "../../../../components/StackedCard";
+import { STACKED_CARD_PEEK } from "../../../../components/StackedCard";
 import { BETA_NOTICES } from "../../../../constants/betaNotices";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useLicenseLogic } from "../../hooks/useLicenseLogic";
@@ -55,16 +55,11 @@ jest.mock("../../components/LicenseCard", () => ({
   LicenseCard: (props: {
     testID?: string;
     onShowQr?: () => void;
-    collapsed?: boolean;
     onOptions?: () => void;
   }) => {
     const { Text } = require("react-native");
     return (
-      <Text
-        testID={props.testID}
-        onPress={props.onShowQr}
-        accessibilityHint={props.collapsed ? "collapsed" : "expanded"}
-      >
+      <Text testID={props.testID} onPress={props.onShowQr}>
         {props.testID}
         {props.onOptions ? (
           <Text testID={`${props.testID}-options`} onPress={props.onOptions}>
@@ -509,41 +504,35 @@ describe("LicenseScreen Integration", () => {
       expect(contentStyle.paddingBottom).toBeGreaterThanOrEqual(90);
     });
 
-    it("reserves the stacked card offset under the wallet", async () => {
-      (useLicenseLogic as jest.Mock).mockReturnValue({
-        state: {
-          ...mockState,
-          listItems: [
-            { type: "FFD", data: { licenseNumber: "123" } },
-            { type: "ADD_WDSF", data: null },
-          ],
-        },
-        actions: mockActions,
-      });
-
-      const { getByTestId } = await render(<LicenseScreen />);
-      const walletStyle = StyleSheet.flatten(
-        getByTestId("license-screen-wallet").props.style as object,
-      ) as { paddingBottom?: number };
-
-      expect(walletStyle.paddingBottom).toBe(STACKED_CARD_ACTIVE_OFFSET);
-    });
-
-    it("lets the wallet height follow the compact active card", async () => {
+    it("sizes the wallet from the measured cards: peek + front card", async () => {
       (useLicenseLogic as jest.Mock).mockReturnValue({
         state: { ...mockState, showWdsf: true, listItems: dualItems },
         actions: mockActions,
       });
 
       const { getByTestId } = await render(<LicenseScreen />);
+      const layout = (height: number) => ({
+        nativeEvent: { layout: { x: 0, y: 0, width: 335, height } },
+      });
+      await fireEvent(
+        getByTestId("license-screen-card-FFD"),
+        "layout",
+        layout(320),
+      );
+      await fireEvent(
+        getByTestId("license-screen-card-WDSF"),
+        "layout",
+        layout(300),
+      );
+
       const walletStyle = StyleSheet.flatten(
         getByTestId("license-screen-wallet").props.style as object,
-      ) as { minHeight?: number; paddingBottom?: number };
+      ) as { minHeight?: number; height?: number };
 
       // No fixed minimum that would push the content under the tab bar: the
-      // stack is the active card + the reserved offset of the peeking card.
+      // stack is the peeking header of the WDSF card + the front FFD card.
       expect(walletStyle.minHeight).toBeUndefined();
-      expect(walletStyle.paddingBottom).toBe(STACKED_CARD_ACTIVE_OFFSET);
+      expect(walletStyle.height).toBe(STACKED_CARD_PEEK + 320);
     });
   });
 
@@ -581,17 +570,25 @@ describe("LicenseScreen Integration", () => {
       expect(getByTestId("license-screen-card-WDSF")).toBeTruthy();
     });
 
-    it("expands the active FFD card and collapses the WDSF one", async () => {
-      const { getByTestId } = await renderDual(0);
+    it("renders the card behind in full, as one labelled button", async () => {
+      const { getByTestId, getByLabelText } = await renderDual(0);
 
-      expect(getByTestId("license-card-FFD").props.accessibilityHint).toBe(
-        "expanded",
-      );
-      expect(getByTestId("license-card-WDSF").props.accessibilityHint).toBe(
-        "collapsed",
+      // Both cards are full cards (no compact variant): bringing one forward
+      // only moves it, it never changes its size.
+      expect(getByTestId("license-card-FFD")).toBeTruthy();
+      expect(
+        getByTestId("license-card-WDSF", { includeHiddenElements: true }),
+      ).toBeTruthy();
+      // The WDSF card behind is a single button that brings it forward; its
+      // content is hidden from screen readers and from touches.
+      const backCard = getByLabelText("Licence WDSF");
+      expect(backCard.props.accessibilityHint).toBe(
+        "Affiche cette carte au premier plan",
       );
       // Swipe-to-remove only works on the active WDSF card.
-      expect(getByTestId("swipeable-wdsf-disabled")).toBeTruthy();
+      expect(
+        getByTestId("swipeable-wdsf-disabled", { includeHiddenElements: true }),
+      ).toBeTruthy();
     });
 
     it("brings the WDSF card forward when tapped", async () => {
@@ -601,15 +598,13 @@ describe("LicenseScreen Integration", () => {
       expect(mockActions.handleCardPress).toHaveBeenCalledWith(1);
     });
 
-    it("expands the active WDSF card with swipe-to-remove and its menu", async () => {
-      const { getByTestId } = await renderDual(1);
+    it("brings the WDSF card forward with swipe-to-remove and its menu", async () => {
+      const { getByTestId, getByLabelText, queryByLabelText } =
+        await renderDual(1);
 
-      expect(getByTestId("license-card-WDSF").props.accessibilityHint).toBe(
-        "expanded",
-      );
-      expect(getByTestId("license-card-FFD").props.accessibilityHint).toBe(
-        "collapsed",
-      );
+      // The FFD card is now the one behind; the WDSF card is not a button.
+      expect(getByLabelText("Licence FFD")).toBeTruthy();
+      expect(queryByLabelText("Licence WDSF")).toBeNull();
       expect(getByTestId("swipeable-wdsf-enabled")).toBeTruthy();
 
       await fireEvent.press(getByTestId("license-card-WDSF-options"));

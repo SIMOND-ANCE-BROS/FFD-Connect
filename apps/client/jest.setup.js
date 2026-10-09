@@ -179,6 +179,8 @@ jest.mock("react-native-reanimated", () => {
     Layout: {},
     SlideInDown: {},
     SlideOutUp: {},
+    ReduceMotion: { System: "system", Always: "always", Never: "never" },
+    Easing: { inOut: jest.fn((e) => e), quad: jest.fn(), linear: jest.fn() },
     Extrapolation: {
       CLAMP: "clamp",
       IDENTITY: "identity",

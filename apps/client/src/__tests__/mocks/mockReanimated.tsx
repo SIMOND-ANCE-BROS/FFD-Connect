@@ -10,6 +10,11 @@ export const runOnJS = jest.fn(
 );
 export const interpolate = jest.fn();
 export const Extrapolation = { CLAMP: "CLAMP" };
+export const ReduceMotion = {
+  System: "system",
+  Always: "always",
+  Never: "never",
+};
 export const SharedValue = {};
 export const Easing = {
   inOut: jest.fn(),
@@ -48,6 +53,7 @@ const ReanimatedMock = {
   runOnJS,
   interpolate,
   Extrapolation,
+  ReduceMotion,
   SharedValue,
   Easing,
   FadeIn,
@@ -65,6 +71,7 @@ const ReanimatedMock = {
     runOnJS,
     interpolate,
     Extrapolation,
+    ReduceMotion,
     SharedValue,
     Easing,
     FadeIn,
