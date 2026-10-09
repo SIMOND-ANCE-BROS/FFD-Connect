@@ -439,6 +439,13 @@ export const adminTrackSelect = {
   },
 } as const;
 
+/** Duplicate lookup of the import: a hit by content hash or by source key. */
+export const trackDuplicateSelect = {
+  id: true,
+  sourceKey: true,
+  contentHash: true,
+} as const;
+
 /**
  * Export RGPD (art. 15/20) des propositions de correction : le contenu soumis
  * par l'utilisateur et la décision, sans l'identité de l'administrateur

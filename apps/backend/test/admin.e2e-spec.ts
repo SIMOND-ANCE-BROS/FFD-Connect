@@ -40,6 +40,8 @@ const ADMIN_ROUTES: Array<
   // Track catalogue (lot 3): ADMIN-only at class level.
   ["get", "/api/v1/admin/tracks"],
   ["get", "/api/v1/admin/tracks/00000000-0000-4000-8000-000000000000"],
+  ["post", "/api/v1/admin/tracks/check"],
+  ["post", "/api/v1/admin/tracks"],
 ];
 
 describe("Admin routes (e2e) — role matrix", () => {
@@ -300,5 +302,56 @@ describe("Admin routes (e2e) — role matrix", () => {
         where: { trackId: "00000000-0000-4000-8000-000000000000" },
       }),
     );
+  });
+
+  const postImport = () =>
+    request(server())
+      .post("/api/v1/admin/tracks")
+      .field("title", "T")
+      .field("artist", "A")
+      .field("sha256", "a".repeat(64));
+
+  it("refuses an audio file over 20 MB (413) at the multer limit of the route, and stores nothing", async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.track.create.mockClear();
+    const res = await postImport().attach(
+      "audio",
+      Buffer.alloc(20 * 1024 * 1024 + 1, 0xff),
+      "big.mp3",
+    );
+    expect(res.status).toBe(413);
+    // multer's own message: the route limit fired while reading, not the service after buffering.
+    expect(res.body.message).toBe("File too large");
+    expect(prisma.track.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a file that is not an MP3, whatever its name and declared type (400)", async () => {
+    currentRole = UserRole.ADMIN;
+    const res = await postImport().attach(
+      "audio",
+      Buffer.from("RIFF\u0000\u0000\u0000\u0000WAVEfmt "),
+      {
+        filename: "song.mp3",
+        contentType: "audio/mpeg",
+      },
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe("Le fichier audio n'est pas un MP3.");
+  });
+
+  it("refuses an unexpected file part (400)", async () => {
+    currentRole = UserRole.ADMIN;
+    const res = await postImport().attach("image", Buffer.from("ID3"), "x.mp3");
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a duplicate check of more than 200 items (400)", async () => {
+    currentRole = UserRole.ADMIN;
+    await request(server())
+      .post("/api/v1/admin/tracks/check")
+      .send({
+        items: Array.from({ length: 201 }, () => ({ sha256: "a".repeat(64) })),
+      })
+      .expect(400);
   });
 });

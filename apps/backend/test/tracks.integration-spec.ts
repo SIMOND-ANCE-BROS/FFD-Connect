@@ -7,12 +7,13 @@ import {
   TrackStatus,
   UserRole,
 } from "@prisma/client";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { TrackCorrectionsService } from "../src/track-corrections/track-corrections.service";
 import { AdminTracksQueryService } from "../src/tracks/admin-tracks.query-service";
 import { ListAdminTracksQueryDto } from "../src/tracks/dto/admin-track.dto";
 import { TrackFilesService } from "../src/tracks/track-files.service";
+import { TrackImportService } from "../src/tracks/track-import.service";
 import { TracksService } from "../src/tracks/tracks.service";
 import { buildServiceModule } from "./integration-app.builder";
 
@@ -234,5 +235,126 @@ describe("Tracks (integration, real DB)", () => {
       titleMasked: true,
       title: `Jour ${token}`,
     });
+  });
+
+  it("imports a track, then refuses the same file and the same source (409)", async () => {
+    const importer = moduleRef.get(TrackImportService);
+    const admin = await adminUser();
+    const mp3 = () =>
+      Buffer.concat([Buffer.from("ID3"), Buffer.from(randomUUID())]);
+    const sha = (buffer: Buffer) =>
+      createHash("sha256").update(buffer).digest("hex");
+    const part = (buffer: Buffer) => ({ buffer, size: buffer.length });
+    const existingOf = (promise: Promise<unknown>) =>
+      promise.then(
+        () => null,
+        (e: unknown) =>
+          (e as { getResponse(): { existingTrackId?: string } }).getResponse()
+            .existingTrackId,
+      );
+    const audio = mp3();
+    const sourceKey = `test:${randomUUID()}`;
+
+    const created = await importer.importTrack(
+      admin,
+      {
+        title: "Import",
+        artist: "Test",
+        style: "Rumba",
+        rawBpm: 100,
+        sha256: sha(audio),
+        sourceKey,
+      },
+      part(audio),
+      undefined,
+    );
+    trackIds.push(created.id);
+    expect(created).toMatchObject({
+      bpm: 25,
+      rawBpm: 100,
+      status: "READY",
+      sourceKey,
+      pendingCorrections: 0,
+    });
+    expect(
+      await prisma.track.findUniqueOrThrow({
+        where: { id: created.id },
+        select: { contentHash: true, jobId: true, submittedById: true },
+      }),
+    ).toEqual({
+      contentHash: sha(audio),
+      jobId: "admin-import",
+      submittedById: admin,
+    });
+
+    // Same file, another source.
+    await expect(
+      existingOf(
+        importer.importTrack(
+          admin,
+          {
+            title: "X",
+            artist: "Y",
+            sha256: sha(audio),
+            sourceKey: `test:${randomUUID()}`,
+          },
+          part(audio),
+          undefined,
+        ),
+      ),
+    ).resolves.toBe(created.id);
+    // Another file, same source.
+    const other = mp3();
+    await expect(
+      existingOf(
+        importer.importTrack(
+          admin,
+          {
+            title: "X",
+            artist: "Y",
+            rawBpm: 100,
+            sha256: sha(other),
+            sourceKey,
+          },
+          part(other),
+          undefined,
+        ),
+      ),
+    ).resolves.toBe(created.id);
+
+    await expect(
+      importer.check([
+        { sha256: sha(audio) },
+        { sha256: sha(other), sourceKey },
+        { sha256: "0".repeat(64) },
+      ]),
+    ).resolves.toEqual({
+      items: [
+        { exists: true, trackId: created.id },
+        { exists: true, trackId: created.id },
+        { exists: false },
+      ],
+    });
+    expect(
+      await prisma.adminAuditLog.findMany({
+        where: { targetType: "TRACK", targetId: created.id },
+        select: { action: true, after: true },
+        take: 10,
+      }),
+    ).toEqual([
+      {
+        action: "TRACK_CREATE",
+        after: {
+          title: "Import",
+          artist: "Test",
+          style: "Rumba",
+          bpm: 25,
+          sourceKey,
+          status: "READY",
+        },
+      },
+    ]);
+    // Only the first import reached the file store.
+    expect(files.save).toHaveBeenCalledTimes(1);
   });
 });
