@@ -38,6 +38,42 @@ const buildInfoFields = (isFFD: boolean, user: LicenseUser): InfoField[] => {
   return fields;
 };
 
+/**
+ * FFD identity grid as explicit columns: the left one stacks the licence
+ * number and the birth date; any extra field goes to the right column.
+ */
+const buildFfdColumns = (user: LicenseUser): InfoField[][] => {
+  const [licenseNumber, birthDate, ...extra] = buildInfoFields(true, user);
+  return extra.length > 0
+    ? [[licenseNumber, birthDate], extra]
+    : [[licenseNumber, birthDate]];
+};
+
+const InfoCell: React.FC<{
+  field: InfoField;
+  config: LicenseConfig;
+  fullWidth?: boolean;
+}> = ({ field, config, fullWidth = false }) => (
+  <View style={[styles.infoCell, fullWidth && styles.infoCellFullWidth]}>
+    <AppText
+      variant="caption"
+      numberOfLines={1}
+      style={[styles.label, { color: config.labelColor }]}
+    >
+      {field.label}
+    </AppText>
+    <AppText
+      variant="body"
+      weight="600"
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      style={[styles.cellValue, { color: config.textColor }]}
+    >
+      {field.value}
+    </AppText>
+  </View>
+);
+
 export const LicenseCardBody: React.FC<LicenseCardBodyProps> = ({
   isFFD,
   config,
@@ -58,28 +94,33 @@ export const LicenseCardBody: React.FC<LicenseCardBodyProps> = ({
         </AppText>
       </View>
 
-      <View style={styles.infoGrid}>
-        {buildInfoFields(isFFD, user).map((field) => (
-          <View key={field.label} style={styles.infoCell}>
-            <AppText
-              variant="caption"
-              numberOfLines={1}
-              style={[styles.label, { color: config.labelColor }]}
+      {isFFD ? (
+        // FFD: birth date sits right under the licence number (same column).
+        <View style={styles.infoGrid} testID="license-card-identity">
+          {buildFfdColumns(user).map((column, columnIndex) => (
+            <View
+              key={columnIndex === 0 ? "primary" : "secondary"}
+              style={styles.infoGridColumn}
+              testID={`license-card-identity-column-${columnIndex}`}
             >
-              {field.label}
-            </AppText>
-            <AppText
-              variant="body"
-              weight="600"
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              style={[styles.cellValue, { color: config.textColor }]}
-            >
-              {field.value}
-            </AppText>
-          </View>
-        ))}
-      </View>
+              {column.map((field) => (
+                <InfoCell
+                  key={field.label}
+                  field={field}
+                  config={config}
+                  fullWidth
+                />
+              ))}
+            </View>
+          ))}
+        </View>
+      ) : (
+        <View style={styles.infoGrid} testID="license-card-identity">
+          {buildInfoFields(isFFD, user).map((field) => (
+            <InfoCell key={field.label} field={field} config={config} />
+          ))}
+        </View>
+      )}
     </View>
 
     <View style={styles.photoColumn}>

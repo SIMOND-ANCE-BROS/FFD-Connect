@@ -16,13 +16,17 @@ jest.mock("../../../../components/NotificationBell", () => ({
 jest.mock("../../components/SwipeableLicenseCard", () => ({
   SwipeableLicenseCard: ({
     children,
-    testID,
+    enabled,
   }: {
     children: React.ReactNode;
-    testID: string;
+    enabled: boolean;
   }) => {
     const { View } = require("react-native");
-    return <View testID={testID}>{children}</View>;
+    return (
+      <View testID={`swipeable-wdsf-${enabled ? "enabled" : "disabled"}`}>
+        {children}
+      </View>
+    );
   },
 }));
 
@@ -47,11 +51,25 @@ jest.mock("@react-navigation/native", () => ({
 // Mock Child Components to simplify test
 jest.mock("react-native-qrcode-svg", () => "QRCode");
 jest.mock("../../components/LicenseCard", () => ({
-  LicenseCard: (props: { testID?: string; onShowQr?: () => void }) => {
+  LicenseCard: (props: {
+    testID?: string;
+    onShowQr?: () => void;
+    collapsed?: boolean;
+    onOptions?: () => void;
+  }) => {
     const { Text } = require("react-native");
     return (
-      <Text testID={props.testID} onPress={props.onShowQr}>
+      <Text
+        testID={props.testID}
+        onPress={props.onShowQr}
+        accessibilityHint={props.collapsed ? "collapsed" : "expanded"}
+      >
         {props.testID}
+        {props.onOptions ? (
+          <Text testID={`${props.testID}-options`} onPress={props.onOptions}>
+            ...
+          </Text>
+        ) : null}
       </Text>
     );
   },
@@ -348,6 +366,28 @@ describe("LicenseScreen Integration", () => {
     expect(getByTestId("license-screen-staff-card")).toBeTruthy();
   });
 
+  it("brings the Staff card forward and shows its staff QR", async () => {
+    const staffItems = [
+      {
+        type: "STAFF",
+        data: { firstName: "Staff", lastName: "Member", licenseNumber: "S1" },
+      },
+    ];
+    (useLicenseLogic as jest.Mock).mockReturnValue({
+      state: { ...mockState, listItems: staffItems, role: "STAFF" },
+      actions: mockActions,
+    });
+
+    const { getByTestId } = await render(<LicenseScreen />);
+    await fireEvent.press(getByTestId("license-screen-staff-card"));
+    expect(mockActions.handleCardPress).toHaveBeenCalledWith(0);
+
+    await fireEvent.press(getByTestId("license-card-0"));
+    expect(mockActions.handleShowQr).toHaveBeenCalledWith(
+      JSON.stringify({ id: "S1", valid: true, type: "STAFF", role: "STAFF" }),
+    );
+  });
+
   it("handles card press", async () => {
     const userItems = [{ type: "FFD", data: { licenseNumber: "123" } }];
     (useLicenseLogic as jest.Mock).mockReturnValue({
@@ -484,42 +524,108 @@ describe("LicenseScreen Integration", () => {
       expect(walletStyle.paddingBottom).toBe(STACKED_CARD_ACTIVE_OFFSET);
     });
 
-    it("shows an FFD/WDSF switch and a single card with both licenses", async () => {
+    it("lets the wallet height follow the compact active card", async () => {
       (useLicenseLogic as jest.Mock).mockReturnValue({
         state: { ...mockState, showWdsf: true, listItems: dualItems },
         actions: mockActions,
       });
 
-      const { getByTestId, queryByTestId } = await render(<LicenseScreen />);
+      const { getByTestId } = await render(<LicenseScreen />);
+      const walletStyle = StyleSheet.flatten(
+        getByTestId("license-screen-wallet").props.style as object,
+      ) as { minHeight?: number; paddingBottom?: number };
 
-      expect(getByTestId("license-screen-type-switch")).toBeTruthy();
-      expect(getByTestId("license-card-FFD")).toBeTruthy();
-      expect(queryByTestId("license-card-WDSF")).toBeNull();
-      // No stacked wallet in this mode.
-      expect(queryByTestId("license-screen-wallet")).toBeNull();
-
-      await fireEvent.press(getByTestId("license-screen-type-switch-WDSF"));
-      expect(mockActions.handleCardPress).toHaveBeenCalledWith(1);
+      // No fixed minimum that would push the content under the tab bar: the
+      // stack is the active card + the reserved offset of the peeking card.
+      expect(walletStyle.minHeight).toBeUndefined();
+      expect(walletStyle.paddingBottom).toBe(STACKED_CARD_ACTIVE_OFFSET);
     });
+  });
 
-    it("shows only the WDSF card when it is the selected license", async () => {
+  describe("stacked wallet with FFD + WDSF", () => {
+    const dualItems = [
+      {
+        type: "FFD",
+        data: { firstName: "John", lastName: "Doe", licenseNumber: "123" },
+      },
+      {
+        type: "WDSF",
+        data: { firstName: "John", lastName: "Doe", licenseNumber: "1000" },
+      },
+    ];
+
+    const renderDual = async (activeCardIndex: number) => {
       (useLicenseLogic as jest.Mock).mockReturnValue({
         state: {
           ...mockState,
           showWdsf: true,
           listItems: dualItems,
-          activeCardIndex: 1,
+          activeCardIndex,
+        },
+        actions: mockActions,
+      });
+      return render(<LicenseScreen />);
+    };
+
+    it("stacks both cards in the wallet, without a type switch", async () => {
+      const { getByTestId, queryByTestId } = await renderDual(0);
+
+      expect(queryByTestId("license-screen-type-switch")).toBeNull();
+      expect(getByTestId("license-screen-wallet")).toBeTruthy();
+      expect(getByTestId("license-screen-card-FFD")).toBeTruthy();
+      expect(getByTestId("license-screen-card-WDSF")).toBeTruthy();
+    });
+
+    it("expands the active FFD card and collapses the WDSF one", async () => {
+      const { getByTestId } = await renderDual(0);
+
+      expect(getByTestId("license-card-FFD").props.accessibilityHint).toBe(
+        "expanded",
+      );
+      expect(getByTestId("license-card-WDSF").props.accessibilityHint).toBe(
+        "collapsed",
+      );
+      // Swipe-to-remove only works on the active WDSF card.
+      expect(getByTestId("swipeable-wdsf-disabled")).toBeTruthy();
+    });
+
+    it("brings the WDSF card forward when tapped", async () => {
+      const { getByTestId } = await renderDual(0);
+
+      await fireEvent.press(getByTestId("license-screen-card-WDSF"));
+      expect(mockActions.handleCardPress).toHaveBeenCalledWith(1);
+    });
+
+    it("expands the active WDSF card with swipe-to-remove and its menu", async () => {
+      const { getByTestId } = await renderDual(1);
+
+      expect(getByTestId("license-card-WDSF").props.accessibilityHint).toBe(
+        "expanded",
+      );
+      expect(getByTestId("license-card-FFD").props.accessibilityHint).toBe(
+        "collapsed",
+      );
+      expect(getByTestId("swipeable-wdsf-enabled")).toBeTruthy();
+
+      await fireEvent.press(getByTestId("license-card-WDSF-options"));
+      expect(mockActions.handleRemoveWdsfWithConfirm).toHaveBeenCalled();
+
+      await fireEvent.press(getByTestId("license-screen-card-FFD"));
+      expect(mockActions.handleCardPress).toHaveBeenCalledWith(0);
+    });
+
+    it("offers the pull-to-add card when there is no WDSF license", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          listItems: [dualItems[0], { type: "ADD_WDSF", data: null }],
         },
         actions: mockActions,
       });
 
-      const { getByTestId, queryByTestId } = await render(<LicenseScreen />);
-
-      expect(getByTestId("license-screen-card-WDSF")).toBeTruthy();
-      expect(queryByTestId("license-card-FFD")).toBeNull();
-
-      await fireEvent.press(getByTestId("license-screen-type-switch-FFD"));
-      expect(mockActions.handleCardPress).toHaveBeenCalledWith(0);
+      const { getByTestId } = await render(<LicenseScreen />);
+      await fireEvent.press(getByTestId("license-screen-add-wdsf-card"));
+      expect(mockActions.handleAddWdsf).toHaveBeenCalled();
     });
   });
 
@@ -561,7 +667,7 @@ describe("LicenseScreen Integration", () => {
       expect(queryByTestId("apple-wallet-slot")).toBeNull();
     });
 
-    it("follows the FFD/WDSF switch with two licenses", async () => {
+    it("is hidden while the WDSF card is the active one of the stack", async () => {
       (useLicenseLogic as jest.Mock).mockReturnValue({
         state: {
           ...mockState,

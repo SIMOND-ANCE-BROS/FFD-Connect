@@ -1,21 +1,58 @@
-# FFD Connect — Landing
+# FFD Connect — Landing and documentation
 
-Landing page pour la beta de FFD Connect (Vite + React + Framer Motion).
+Vite/React landing deployed to GitHub Pages. Existing beta, legal and password-reset
+routes are retained. See [APP_PREVIEW.md](APP_PREVIEW.md) for app screen references
+and [ASSETS.md](ASSETS.md) for image/font credits.
 
-## Roadmap GitHub
+## Development
 
-La section « Feuille de route » affiche les **milestones** et **issues** du dépôt GitHub en temps réel.
+```sh
+pnpm install --frozen-lockfile --filter landing...
+pnpm --filter landing dev
+pnpm --filter landing lint
+pnpm --filter landing test
+pnpm --filter landing build
+node apps/landing/scripts/check-documentation.mjs
+```
 
-### Configuration
+`BASE_PATH` defaults to `/`; set `/FFD-Connect/` for project-site hosting.
+`VITE_API_URL` is used by the existing password-reset page. Documentation and
+the app preview do not call the backend or require GitHub credentials.
 
-1. Créez un label `roadmap` dans le dépôt :  
-   [github.com/GabinSMD/FFD-Connect/labels](https://github.com/GabinSMD/FFD-Connect/labels)
+## Automatic documentation
 
-2. Créez des **milestones** (ex. « Beta v1 », « Q2 2025 ») avec dates éventuelles.
+The repository is the source of truth. Add or edit a Markdown file in `docs/`,
+open a PR against `develop`, and use the normal promotion to `staging`.
+The `Deploy landing (GitHub Pages)` workflow automatically rebuilds and publishes
+the site when the change reaches `staging`. A PR validates the build but does
+not publish it. No second copy of article content or manual navigation entry is needed.
 
-3. Créez des **issues** avec le label `roadmap` et assignez-les aux bons milestones.
+For example, `docs/guides/ma-licence.md` becomes
+`/documentation/guides/ma-licence/`. Its first H1 supplies the page title.
+The article appears in the searchable directory automatically; H2 headings
+populate its table of contents. Relative links to published Markdown files
+are rewritten to site URLs. Folder `README.md` files become folder routes.
 
-### Variables d'environnement
+The generator also includes the root README, CONTRIBUTING and KNOWN_ISSUES,
+the client README/UPGRADES/Firebase README, scripts README and patches guide.
+`docs/archives`, `docs/references` and `docs/superpowers` are excluded.
+`docs/legal` remains handled by the existing legal-page plugin.
+The separate Astro application in `apps/docs` is unchanged.
 
-- `VITE_APP_URL` — URL de l'application (ex. `/` ou `https://app.example.com`)
-- `VITE_GITHUB_REPO` — Dépôt GitHub au format `owner/repo` (défaut : `GabinSMD/FFD-Connect`)
+Pages are physical HTML files and remain readable without JavaScript. Search
+is progressive enhancement. Raw HTML is escaped, unsafe URL schemes are
+rejected, and duplicate routes fail the build. Markdown tables and code blocks
+are supported; MDX and Mermaid diagrams are not executed. Relative images use
+their raw GitHub URL on `staging`; links to unpublished source files open GitHub.
+
+The legacy `/docs/` entry redirects to `/documentation/`. There is no scheduled
+sync, runtime GitHub dependency for articles, token, or additional hosted service.
+Documentation changes and relevant PR updates use one scoped Actions build;
+billing depends on the repository plan and actual job duration.
+
+## Project activity
+
+The landing lazily reads public open GitHub issues from
+`SIMOND-ANCE-BROS/FFD-Connect`. It excludes pull requests and shows an honest
+fallback if GitHub is unavailable or rate-limited. This is independent of the
+static documentation build and never wakes the application backend.

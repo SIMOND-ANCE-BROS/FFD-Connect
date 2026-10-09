@@ -8,8 +8,10 @@ import { BlurView } from "expo-blur";
 import { GlassView, isLiquidGlassAvailable } from "expo-glass-effect";
 import React, { createContext, useContext, useEffect, useRef } from "react";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Animated,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -86,6 +88,7 @@ const TabScreenTransition = ({ children }: { children: React.ReactNode }) => {
 
 const ITEM_WIDTH = 96;
 const PILL_HEIGHT = 58;
+const ANDROID_PILL_GAP = 12;
 
 const FloatingGlassTabBar = ({
   state,
@@ -94,6 +97,12 @@ const FloatingGlassTabBar = ({
 }: BottomTabBarProps) => {
   const { theme, isDark } = useTheme();
   const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  // Android draws edge-to-edge: a fixed offset left the pill on top of the
+  // 3-button navigation bar. Anchor it above the system inset there; iOS keeps
+  // its validated 24px offset (the home indicator sits under the pill).
+  const bottomOffset =
+    Platform.OS === "android" ? insets.bottom + ANDROID_PILL_GAP : 24;
 
   const count = state.routes.length;
   const pillWidth = Math.min(count * ITEM_WIDTH + 16, screenWidth - 32);
@@ -209,7 +218,11 @@ const FloatingGlassTabBar = ({
   ).current;
 
   return (
-    <View style={styles.tabBarContainer} pointerEvents="box-none">
+    <View
+      testID="floating-tab-bar"
+      style={[styles.tabBarContainer, { bottom: bottomOffset }]}
+      pointerEvents="box-none"
+    >
       <GestureDetector gesture={panGesture}>
         <View style={[styles.pill, { width: pillWidth }]}>
           {isLiquidGlassAvailable() ? (
@@ -217,8 +230,21 @@ const FloatingGlassTabBar = ({
               glassEffectStyle="regular"
               style={styles.pillBackground}
             />
+          ) : Platform.OS === "android" ? (
+            // expo-blur has no real blur on Android: "systemChromeMaterial" is
+            // an iOS material and falls back to a light translucent veil that
+            // ignores the theme and lets content bleed through. Use an opaque
+            // themed surface instead.
+            <View
+              testID="tab-bar-surface"
+              style={[
+                styles.pillBackground,
+                { backgroundColor: theme.surface },
+              ]}
+            />
           ) : (
             <BlurView
+              testID="tab-bar-blur"
               tint="systemChromeMaterial"
               intensity={80}
               style={styles.pillBackground}
@@ -326,7 +352,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 24,
     alignItems: "center",
   },
   pill: {

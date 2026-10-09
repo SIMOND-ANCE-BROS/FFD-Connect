@@ -115,9 +115,9 @@ export function buildAppleWalletPassUrl(
 
 export const LicenseApi = {
   /**
-   * Asks for a short-lived, single-use download link to the Apple Wallet pass
-   * of the signed-in user's license (#163), and returns the URL to open in
-   * Safari, rebuilt from the app's API URL.
+   * Asks for a short-lived download link (a few downloads at most) to the
+   * Apple Wallet pass of the signed-in user's license (#163), and returns the
+   * URL to open in the browser, rebuilt from the app's API URL.
    */
   async createAppleWalletPassUrl(): Promise<string> {
     let result: Awaited<
