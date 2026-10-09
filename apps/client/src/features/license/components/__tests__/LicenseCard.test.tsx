@@ -80,6 +80,29 @@ describe("LicenseCard", () => {
     expect(queryByTestId("license-card-identity-column-1")).toBeNull();
   });
 
+  it("extra FFD fields go to a second column — puts the FFD birth date right under the licence number", async () => {
+    const { getByTestId, queryByTestId } = await render(
+      <ThemeContext.Provider value={themeMock as never}>
+        <LicenseCard
+          type="FFD"
+          user={{ ...mockUser, country: "FRA", ageGroup: "Adult" }}
+          photoUri={null}
+          onShowQr={mockOnShowQr}
+        />
+      </ThemeContext.Provider>,
+    );
+
+    expect(
+      within(getByTestId("license-card-identity-column-1")).getByText("FRA"),
+    ).toBeTruthy();
+    expect(
+      within(getByTestId("license-card-identity-column-0")).getByText(
+        "1990-01-01",
+      ),
+    ).toBeTruthy();
+    expect(queryByTestId("license-card-identity-column-1")).not.toBeNull();
+  });
+
   it("renders correctly for WDSF", async () => {
     const { getByText, getAllByText } = await render(
       <ThemeContext.Provider value={themeMock as never}>

@@ -366,6 +366,28 @@ describe("LicenseScreen Integration", () => {
     expect(getByTestId("license-screen-staff-card")).toBeTruthy();
   });
 
+  it("brings the Staff card forward and shows its staff QR", async () => {
+    const staffItems = [
+      {
+        type: "STAFF",
+        data: { firstName: "Staff", lastName: "Member", licenseNumber: "S1" },
+      },
+    ];
+    (useLicenseLogic as jest.Mock).mockReturnValue({
+      state: { ...mockState, listItems: staffItems, role: "STAFF" },
+      actions: mockActions,
+    });
+
+    const { getByTestId } = await render(<LicenseScreen />);
+    await fireEvent.press(getByTestId("license-screen-staff-card"));
+    expect(mockActions.handleCardPress).toHaveBeenCalledWith(0);
+
+    await fireEvent.press(getByTestId("license-card-0"));
+    expect(mockActions.handleShowQr).toHaveBeenCalledWith(
+      JSON.stringify({ id: "S1", valid: true, type: "STAFF", role: "STAFF" }),
+    );
+  });
+
   it("handles card press", async () => {
     const userItems = [{ type: "FFD", data: { licenseNumber: "123" } }];
     (useLicenseLogic as jest.Mock).mockReturnValue({
