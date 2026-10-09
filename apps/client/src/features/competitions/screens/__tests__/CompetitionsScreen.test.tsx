@@ -248,6 +248,34 @@ describe("CompetitionsScreen", () => {
     );
   });
 
+  it("never claims « Non inscrit » (federation registrations are not visible)", async () => {
+    const date = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+    const base = { date, location: "Paris", status: "UPCOMING" };
+    const competitions = [
+      { ...base, id: "c1", title: "Open", isEligible: true },
+      {
+        ...base,
+        id: "c2",
+        title: "Mine",
+        isEligible: true,
+        isRegistered: true,
+      },
+      { ...base, id: "c3", title: "Closed", isEligible: false },
+    ];
+    (useCompetitionsLogic as jest.Mock).mockReturnValue({
+      state: { ...mockState, competitions },
+      actions: mockActions,
+    });
+
+    const { getByText, queryByText } = await render(
+      <CompetitionsScreen {...createTestProps()} />,
+    );
+
+    expect(queryByText("Non inscrit")).toBeNull();
+    expect(getByText("Inscrit")).toBeTruthy();
+    expect(getByText("Inéligible")).toBeTruthy();
+  });
+
   it("message vide « Pour moi » (licencié) et « Les nôtres » (club)", async () => {
     // Licencié « Pour moi » vide → parle du profil, pas d'inscription.
     (useCompetitionsLogic as jest.Mock).mockReturnValue({
