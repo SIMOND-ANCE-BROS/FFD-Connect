@@ -24,6 +24,7 @@ import { analytics } from "../../../services/analytics";
 import { ClubEventRegistrationModal } from "../../club/components/ClubEventRegistrationModal";
 import { ClubService } from "../../club/services/ClubService";
 import { CompetitionEventCard } from "../components/detail/CompetitionEventCard";
+import { CompetitionEventsSourceNotice } from "../components/detail/CompetitionEventsSourceNotice";
 import { CompetitionInfoCard } from "../components/detail/CompetitionInfoCard";
 import { CompetitionMapCard } from "../components/detail/CompetitionMapCard";
 import { CompetitionPendingSection } from "../components/detail/CompetitionPendingSection";
@@ -262,6 +263,11 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
                 eventsDescription={state.details.eventsDescription}
                 programUrl={state.details.programUrl}
                 registrationUrl={state.details.registrationUrl}
+                circularUrl={state.details.circularUrl ?? undefined}
+              />
+              <CompetitionEventsSourceNotice
+                ffdId={state.details.ffdId}
+                eventsSource={state.details.eventsSource}
                 circularUrl={state.details.circularUrl}
               />
               <View
