@@ -4472,3 +4472,177 @@ html[data-motion='ready'] [data-reveal]:not([data-revealed='true']) {
     padding: 9px 12px;
   }
 }
+
+/* Help pages put the task before the editorial introduction. */
+.docs-compact {
+  padding-top: 28px;
+}
+.docs-compact .doc-audiences {
+  margin-bottom: 20px;
+}
+.docs-compact .docs-heading {
+  padding-bottom: 20px;
+}
+.docs-compact .docs-heading h1 {
+  font-size: clamp(2rem, 3.5vw, 3.25rem);
+  margin-block: 12px;
+}
+.docs-compact .docs-lede {
+  font-size: 1rem;
+  line-height: 1.6;
+  max-width: 780px;
+}
+.docs-compact .doc-start {
+  padding: 18px 22px;
+  margin-block: 20px;
+}
+.docs-compact .doc-start .eyebrow {
+  display: none;
+}
+.docs-compact .doc-start h2 {
+  font-size: 1.25rem;
+  margin-block: 0 4px;
+}
+.docs-compact .docs-grid {
+  gap: 16px;
+  margin-block: 20px 32px;
+}
+.docs-compact .doc-card {
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f4f8fc;
+}
+.docs-compact .doc-card-heading {
+  display: none;
+}
+.docs-compact .doc-card h2 {
+  font-size: 1.4rem;
+  margin-bottom: 8px;
+}
+.docs-compact .doc-card p {
+  line-height: 1.6;
+}
+.doc-prose .guide-route {
+  list-style: none;
+  padding: 0;
+  margin-block: 24px;
+  display: grid;
+  gap: 12px;
+}
+.guide-route li {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  border: 1px solid #cbdfea;
+  background: #f0f7fc;
+  border-radius: 12px;
+  padding: 18px;
+}
+.guide-route-number {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  height: 32px;
+  background: var(--primary);
+  color: white;
+  border-radius: 50%;
+  font-weight: 700;
+}
+.doc-prose .guide-route p {
+  margin: 4px 0 0;
+}
+.doc-prose .guide-route .guide-route-screen {
+  color: #496579;
+  font-size: 0.875rem;
+  margin: 0 0 4px;
+}
+.guide-demo {
+  border: 1px solid #cbdfea;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 24px 0;
+  background: #f4f8fc;
+}
+.guide-demo summary {
+  cursor: pointer;
+  font-weight: 650;
+  color: var(--primary);
+  padding: 4px;
+}
+.guide-demo > p {
+  font-size: 0.875rem;
+}
+.guide-preview {
+  display: grid;
+  justify-items: center;
+  gap: 20px;
+  padding-block: 12px;
+}
+.guide-preview .phone-shell {
+  width: min(100%, 370px);
+  max-width: 100%;
+}
+.guide-preview .phone-screen {
+  height: 640px;
+}
+.guide-preview .native-app {
+  text-align: left;
+}
+.doc-prose .guide-preview p {
+  margin: 0;
+}
+.doc-prose .guide-preview h4,
+.doc-prose .guide-preview h5 {
+  margin: 0;
+}
+.doc-prose .guide-preview img {
+  margin: 0;
+  border-radius: 0;
+}
+.demo-mission {
+  margin-block: 24px;
+  padding: 20px;
+  border-left: 3px solid var(--electric);
+  background: #edf5fb;
+}
+.demo-mission ol {
+  margin: 12px 0 18px;
+  padding-left: 24px;
+}
+.demo-mission li {
+  margin-block: 8px;
+  line-height: 1.6;
+}
+@media (max-width: 600px) {
+  .docs-compact .docs-grid {
+    grid-template-columns: 1fr;
+  }
+  .docs-compact .doc-card {
+    padding: 18px;
+  }
+  .guide-demo {
+    padding: 10px;
+  }
+  .guide-route li {
+    padding: 14px;
+    gap: 12px;
+  }
+}
+@media (max-width: 760px) {
+  .header-inner:has(.docs-mobile-menu) {
+    flex-wrap: wrap;
+  }
+  .header-inner:has(.docs-mobile-menu) .brand {
+    flex-shrink: 0;
+    max-width: 100%;
+  }
+  .docs-mobile-menu {
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+  .docs-mobile-menu nav {
+    top: 100%;
+    max-width: calc(100vw - 32px);
+  }
+}

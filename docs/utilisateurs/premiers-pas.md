@@ -2,6 +2,14 @@
 
 Ce parcours vous accompagne de l’installation à vos premiers écrans. FFD Connect est un projet indépendant en bêta : les fonctions visibles dépendent de la version installée et des accès de votre compte.
 
+## Le parcours en un regard
+
+```ffd-parcours
+Page bêta | Suivre les instructions de votre plateforme | Installer la version de test proposée.
+Application | Se connecter avec son compte | Retrouver les fonctionnalités accessibles.
+Réglages | Vérifier son espace | Choisir le guide correspondant à son rôle.
+```
+
 ## 1. Installer la bêta
 
 Ouvrez la [page d’inscription à la bêta](https://ffd.gabin-simond.fr/beta) et suivez les indications correspondant à votre appareil : TestFlight sur iPhone ou iPad, test fermé Google Play sur Android. Installez ensuite la version proposée.

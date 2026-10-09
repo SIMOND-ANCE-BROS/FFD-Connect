@@ -437,15 +437,45 @@ export default function App() {
                         </li>
                       ))}
                     </ul>
-                    <p className="preview-help">
-                      {module.id === 'competitions'
-                        ? 'Ouvrez une compétition, consultez sa fiche puis son programme et son timing.'
-                        : module.id === 'audio'
-                          ? 'Ouvrez une danse, recherchez un titre et ajoutez-le aux favoris.'
-                          : module.id === 'licence'
-                            ? 'Touchez la carte pour la replier. Explorez les informations de licence.'
-                            : 'Découvrez les raccourcis et les rubriques de l’espace club.'}
-                    </p>
+                    <div className="demo-mission">
+                      <p className="eyebrow">À ESSAYER DANS CET APERÇU</p>
+                      <ol>
+                        {(module.id === 'competitions'
+                          ? [
+                              'Recherchez « Lyon ».',
+                              'Ouvrez « Open de Lyon ».',
+                              'Consultez les onglets Épreuves puis Timing.',
+                            ]
+                          : module.id === 'audio'
+                            ? [
+                                'Dans Danses, ouvrez « Samba ».',
+                                'Ajoutez le titre aux favoris avec le cœur.',
+                                'Ouvrez Favoris pour le retrouver.',
+                              ]
+                            : module.id === 'licence'
+                              ? [
+                                  'Vérifiez l’identité et la saison sur la carte.',
+                                  'Touchez le QR pour comprendre son utilisation.',
+                                  'Repliez puis rouvrez la carte FFD.',
+                                ]
+                              : [
+                                  'Repérez le nombre de membres.',
+                                  'Ouvrez « Gestion des Membres » pour lire son rôle.',
+                                  'Découvrez les raccourcis Couples et Solo Teams.',
+                                ]
+                        ).map((step) => (
+                          <li key={step}>{step}</li>
+                        ))}
+                      </ol>
+                      <a
+                        className="text-link"
+                        href={sitePath(
+                          `documentation/utilisateurs/${module.id === 'organisation' ? 'clubs' : 'danseurs'}/`,
+                        )}
+                      >
+                        Consulter le guide pas à pas →
+                      </a>
+                    </div>
                     <a href={betaUrl} className="text-link">
                       Passer à l’application : rejoindre la bêta
                     </a>

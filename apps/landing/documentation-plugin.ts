@@ -125,6 +125,30 @@ export function renderMarkdown(doc: Doc, docs: Doc[], base: string) {
       ? `<img loading="lazy" src="${escapeHtml(href)}" alt="${escapeHtml(token.text)}" />`
       : '';
   };
+  renderer.code = function (token) {
+    if (token.lang === 'ffd-demo') {
+      const view = token.text.trim();
+      const labels: Record<string, string> = {
+        licence: 'Retrouver sa licence',
+        competitions: 'Préparer une compétition',
+        audio: 'Retrouver sa musique',
+        organisation: 'Découvrir l’espace club',
+      };
+      if (!Object.prototype.hasOwnProperty.call(labels, view))
+        throw new Error(`Unknown ffd-demo view in ${doc.path}: ${view}`);
+      return `<details class="guide-demo" data-guide-demo="${view}"><summary>${labels[view]} · Ouvrir l’aperçu interactif</summary><p>Adaptation web des écrans de l’app · Données fictives · Aucun compte connecté.</p><div data-guide-demo-root></div><p data-guide-demo-status role="status">L’aperçu se charge à l’ouverture avec JavaScript. Les étapes du guide restent disponibles ci-dessous.</p></details>`;
+    }
+    if (token.lang === 'ffd-parcours') {
+      const rows = token.text
+        .trim()
+        .split('\n')
+        .map((line) => line.split('|').map((cell) => cell.trim()));
+      if (rows.length < 2 || rows.some((row) => row.length !== 3 || row.some((cell) => !cell)))
+        throw new Error(`ffd-parcours requires Screen | Action | Result rows in ${doc.path}`);
+      return `<ol class="guide-route" aria-label="Le parcours en un regard">${rows.map(([screen, action, result], i) => `<li><span class="guide-route-number" aria-hidden="true">${i + 1}</span><div><p class="guide-route-screen">${escapeHtml(screen)}</p><strong>${escapeHtml(action)}</strong><p>${escapeHtml(result)}</p></div></li>`).join('')}</ol>`;
+    }
+    return Renderer.prototype.code.call(this, token);
+  };
   renderer.table = function (token) {
     return `<div class="doc-table-scroll" tabindex="0" role="region" aria-label="Tableau défilant">${Renderer.prototype.table.call(this, token)}</div>`;
   };
@@ -177,10 +201,10 @@ export function renderIndex(docs: Doc[], base: string, audience?: Audience) {
   const users = audience === 'utilisateurs';
   const selected = docs.filter((doc) => audienceForPath(doc.path) === audience);
   const title = !audience
-    ? 'À chaque besoin,<br /><em>son guide.</em>'
+    ? 'Trouvez le bon guide.'
     : users
-      ? 'Votre app,<br /><em>pas à pas.</em>'
-      : 'Le projet,<br /><em>côté technique.</em>';
+      ? 'Comment pouvons-nous vous aider ?'
+      : 'La documentation technique.';
   const lede = !audience
     ? 'Apprendre à utiliser l’application ou comprendre sa construction : choisissez votre espace.'
     : users
@@ -216,7 +240,7 @@ export function renderIndex(docs: Doc[], base: string, audience?: Audience) {
     : '';
   return (
     header(base) +
-    `<main id="contenu" tabindex="-1" class="docs-main section-width">${audienceNavigation(base, audience)}<div class="docs-heading"><p class="eyebrow">${!audience ? 'LES RESSOURCES FFD CONNECT' : users ? 'DOCUMENTATION UTILISATEURS' : 'DÉVELOPPEMENT & EXPLOITATION'}</p><h1>${title}</h1><p class="docs-lede">${lede}</p>${audience ? '<a class="text-link" href="#articles">Voir tous les articles de cet espace ↓</a>' : ''}</div>${users ? `<section class="doc-start"><div><p class="eyebrow">VOTRE PREMIÈRE VISITE</p><h2>De la bêta à votre premier écran.</h2><p>Installer l’app, se connecter et comprendre les espaces.</p></div><a class="button button-primary" href="${base}documentation/utilisateurs/premiers-pas/">Commencer ici →</a></section>` : ''}<section class="docs-grid${!audience ? ' doc-portal-cards' : ''}" aria-label="${!audience ? 'Deux espaces de documentation' : users ? 'Choisir son parcours' : 'Repères techniques'}">${cardsHtml(cards, base)}</section>${directory}${audience !== 'technique' ? `<section class="doc-testing"><div><p class="eyebrow">PASSER À LA PRATIQUE</p><h2>Prêt à essayer ?</h2></div><div><p>La bêta est accessible via TestFlight sur iPhone et iPad, et le test fermé Google Play sur Android. La page d’inscription vous accompagne.</p><a href="${base}beta/" class="button button-primary">Rejoindre la bêta</a></div></section>` : ''}</main>` +
+    `<main id="contenu" tabindex="-1" class="docs-main docs-compact section-width">${audienceNavigation(base, audience)}<div class="docs-heading"><p class="eyebrow">${!audience ? 'LES RESSOURCES FFD CONNECT' : users ? 'DOCUMENTATION UTILISATEURS' : 'DÉVELOPPEMENT & EXPLOITATION'}</p><h1>${title}</h1><p class="docs-lede">${lede}</p>${audience ? '<a class="text-link" href="#articles">Voir tous les articles de cet espace ↓</a>' : ''}</div>${users ? `<section class="doc-start"><div><p class="eyebrow">VOTRE PREMIÈRE VISITE</p><h2>Vous découvrez l’app ?</h2><p>Installer l’app, se connecter et comprendre les espaces.</p></div><a class="button button-primary" href="${base}documentation/utilisateurs/premiers-pas/">Commencer ici →</a></section>` : ''}<section class="docs-grid${!audience ? ' doc-portal-cards' : ''}" aria-label="${!audience ? 'Deux espaces de documentation' : users ? 'Choisir son parcours' : 'Repères techniques'}">${cardsHtml(cards, base)}</section>${directory}${audience !== 'technique' ? `<section class="doc-testing"><div><p class="eyebrow">PASSER À LA PRATIQUE</p><h2>Prêt à essayer ?</h2></div><div><p>La bêta est accessible via TestFlight sur iPhone et iPad, et le test fermé Google Play sur Android. La page d’inscription vous accompagne.</p><a href="${base}beta/" class="button button-primary">Rejoindre la bêta</a></div></section>` : ''}</main>` +
     footer(base)
   );
 }
