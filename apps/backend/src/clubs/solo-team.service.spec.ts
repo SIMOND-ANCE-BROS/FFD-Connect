@@ -5,7 +5,7 @@ import { PrismaClient } from "@prisma/client";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
 import { ClubsService } from "./clubs.service";
-import { SoloTeamService } from "./solo-team.service";
+import { computeSoloTeamLevel, SoloTeamService } from "./solo-team.service";
 
 type MockPrisma = DeepMockProxy<PrismaClient>;
 
@@ -154,5 +154,45 @@ describe("SoloTeamService", () => {
         expect.objectContaining({ data: { level: "Intermédiaire" } }),
       );
     });
+
+    it("bounds the member read", async () => {
+      prisma.soloTeamMember.findMany.mockResolvedValue([]);
+      prisma.soloTeam.update.mockResolvedValue({} as never);
+
+      await service.recalculateSoloTeamLevel("team-1");
+      expect(prisma.soloTeamMember.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 200 }),
+      );
+    });
+  });
+});
+
+describe("computeSoloTeamLevel", () => {
+  it("is Débutant for an empty team or Débutant-only members", () => {
+    expect(computeSoloTeamLevel([])).toBe("Débutant");
+    expect(
+      computeSoloTeamLevel([
+        { competitionLevelLatin: "Débutant", competitionLevelStandard: null },
+        { competitionLevel: "Débutant" },
+        {},
+      ]),
+    ).toBe("Débutant");
+  });
+
+  it("uses the HIGHEST per-discipline level of each member", () => {
+    expect(
+      computeSoloTeamLevel([
+        {
+          competitionLevelLatin: "Débutant",
+          competitionLevelStandard: "Avancé",
+        },
+      ]),
+    ).toBe("Intermédiaire");
+  });
+
+  it("falls back to the legacy single level", () => {
+    expect(computeSoloTeamLevel([{ competitionLevel: "International" }])).toBe(
+      "Intermédiaire",
+    );
   });
 });

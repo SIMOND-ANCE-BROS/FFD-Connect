@@ -163,6 +163,32 @@ export class UsersController {
           nullable: true,
           example: "Club de Danse Paris",
         },
+        category: {
+          type: "string",
+          nullable: true,
+          enum: ["Latin", "Standard", "Ten Dance"],
+          description: "Discipline déclarée (valeur stockée, non traduite)",
+        },
+        ageGroup: { type: "string", nullable: true },
+        competitionLevelLatin: {
+          type: "string",
+          nullable: true,
+          enum: ["Débutant", "Intermédiaire", "Avancé", "International"],
+          description: "Niveau de compétition en Latines",
+        },
+        competitionLevelStandard: {
+          type: "string",
+          nullable: true,
+          enum: ["Débutant", "Intermédiaire", "Avancé", "International"],
+          description: "Niveau de compétition en Standards",
+        },
+        competitionLevel: {
+          type: "string",
+          nullable: true,
+          deprecated: true,
+          description:
+            "Ancien niveau unique, conservé pour les anciennes versions de l'app. Préférer les niveaux par discipline.",
+        },
         licenseNumber: { type: "string", nullable: true },
         license: {
           type: "object",

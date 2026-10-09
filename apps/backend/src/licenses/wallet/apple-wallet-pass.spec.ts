@@ -78,6 +78,20 @@ describe("buildApplePassJson", () => {
     expect(pass.expirationDate).toBe("2026-12-31T23:00:00.000Z");
   });
 
+  it.each([
+    ["Latin", "Latines"],
+    ["Standard", "Standards"],
+    ["Ten Dance", "10 danses"],
+  ])("shows the %s discipline in French", (category, label) => {
+    const translated = buildApplePassJson({
+      passTypeIdentifier: "pass.org.example.test",
+      teamIdentifier: "TEST000000",
+      license: { ...license, category },
+      qrMessage: "x",
+    });
+    expect(translated.generic.secondaryFields[1].value).toBe(label);
+  });
+
   it("has a serial number stable per license", () => {
     expect(pass.serialNumber).toBe(applePassSerialNumber("lic-1"));
     expect(

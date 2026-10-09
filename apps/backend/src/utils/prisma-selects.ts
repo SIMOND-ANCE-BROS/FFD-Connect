@@ -25,6 +25,40 @@ export const userBaseSelect = {
 } as const;
 
 /**
+ * Niveaux de compétition d'un utilisateur : un par discipline + l'ancien
+ * niveau unique (déprécié, lu en repli). À lire via
+ * getCompetitionLevelForCategory (src/common/competition-level).
+ */
+export const competitionLevelsSelect = {
+  competitionLevel: true,
+  competitionLevelLatin: true,
+  competitionLevelStandard: true,
+} as const;
+
+/** Champs du profil dont dépend l'éligibilité à une épreuve. */
+export const userEligibilityProfileSelect = {
+  ...competitionLevelsSelect,
+  category: true,
+  ageGroup: true,
+} as const;
+
+/** Membre d'une Solo Team : identité + niveaux (calcul du niveau d'équipe). */
+export const soloTeamMemberUserSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  ...competitionLevelsSelect,
+} as const;
+
+/** Création d'un couple : appartenance au club + données de suggestion (âge, disciplines, niveaux). */
+export const partnershipCandidateSelect = {
+  clubId: true,
+  clubName: true,
+  birthDate: true,
+  ...userEligibilityProfileSelect,
+} as const;
+
+/**
  * Sélecteur pour les informations utilisateur avec licence
  */
 export const userWithLicenseSelect = {
@@ -448,7 +482,7 @@ export const adminUserDetailSelect = {
   nationalRanking: true,
   passportLevelLatin: true,
   passportLevelStandard: true,
-  competitionLevel: true,
+  ...competitionLevelsSelect,
   wdsfMin: true,
   wdsfExpiresOn: true,
   lastLoginAt: true,
@@ -475,7 +509,7 @@ export const adminUserEditableSelect = {
   ageGroup: true,
   passportLevelLatin: true,
   passportLevelStandard: true,
-  competitionLevel: true,
+  ...competitionLevelsSelect,
   nationalRanking: true,
   role: true,
   extraRoles: true,
