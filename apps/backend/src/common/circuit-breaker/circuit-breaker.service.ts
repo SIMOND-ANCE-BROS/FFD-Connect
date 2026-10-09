@@ -12,7 +12,8 @@ type BreakerKey =
   | "wdsf"
   | "helloasso"
   | "fcm"
-  | "azure-blob";
+  | "azure-blob"
+  | "ffd-documents";
 
 interface BreakerConfig {
   errorThresholdPercentage: number;
@@ -67,6 +68,14 @@ const BREAKER_CONFIGS: Record<BreakerKey, BreakerConfig> = {
     errorThresholdPercentage: 50,
     timeout: 10_000,
     resetTimeout: 30_000,
+    volumeThreshold: 5,
+  },
+  // FFD circular PDFs downloaded by the sync (temporary épreuves deduction).
+  // The call is also bounded by withTimeout(20s); this is the outer guard.
+  "ffd-documents": {
+    errorThresholdPercentage: 50,
+    timeout: 25_000,
+    resetTimeout: 60_000,
     volumeThreshold: 5,
   },
 };

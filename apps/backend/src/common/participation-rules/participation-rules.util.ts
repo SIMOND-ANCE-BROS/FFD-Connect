@@ -103,8 +103,10 @@ function isSoloAgeGroupAllowedInEvent(
 // ----- Article 9 §1.3 – Couple : choix de danser dans une classe supérieure -----
 const COUPLE_UPWARD_CHOICES: Record<string, string[]> = {
   "Junior II": ["Youth"],
-  Youth: ["Adulte"], // Espoir = Under 21, on simplifie en Adulte
-  Adulte: [], // Espoir si conditions d'âge (non géré ici)
+  // Espoir = moins de 21 ans : la borne d'âge exacte est vérifiée à
+  // l'inscription quand les dates de naissance sont connues.
+  Youth: ["Adulte", "Espoir"],
+  Adulte: ["Espoir"],
   "Senior I": ["Adulte"],
   "Senior II": ["Senior I"],
   "Senior III": ["Senior II"],

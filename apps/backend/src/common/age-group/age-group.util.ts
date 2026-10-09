@@ -30,6 +30,15 @@ export const SOLO_AGE_GROUPS = [
 ] as const;
 
 export type CoupleAgeGroup = (typeof COUPLE_AGE_GROUPS)[number];
+
+/**
+ * « Espoir » (moins de 21 ans) : classe d'ÉPREUVE couple, pas une classe d'âge
+ * individuelle — un couple Youth ou Adulte peut s'y inscrire si les deux
+ * partenaires ont entre 16 et 20 ans au 31 décembre.
+ */
+export const ESPOIR_AGE_GROUP = "Espoir";
+export const ESPOIR_MIN_AGE = 16;
+export const ESPOIR_MAX_AGE = 20;
 export type SoloAgeGroup = (typeof SOLO_AGE_GROUPS)[number];
 
 /** Niveaux de compétition (table Niveaux – règlement technique). */
@@ -58,6 +67,7 @@ const ALLOWED_LEVELS_BY_COUPLE_AGE_GROUP: Record<
   "Junior II": ["Avancé", "Intermédiaire", "Débutant"],
   Youth: ["Avancé", "Intermédiaire", "Débutant"],
   Adulte: ["International", "Avancé", "Intermédiaire"],
+  [ESPOIR_AGE_GROUP]: ["International", "Avancé", "Intermédiaire"],
   "Senior I": ["International", "Avancé", "Intermédiaire"],
   "Senior II": ["International", "Avancé", "Intermédiaire"],
   "Senior III": ["International", "Avancé", "Intermédiaire", "Débutant"],
@@ -167,6 +177,18 @@ export function computeCoupleAgeGroup(
   if (ageOlder >= 19) return "Adulte";
 
   return null;
+}
+
+/** Vrai si le couple a l'âge Espoir : les deux partenaires ont 16 à 20 ans au 31 décembre. */
+export function isCoupleEspoirEligible(
+  birthDateA: Date,
+  birthDateB: Date,
+  referenceYear: number,
+): boolean {
+  return [birthDateA, birthDateB].every((birthDate) => {
+    const age = getAgeAtReferenceDate(birthDate, referenceYear);
+    return age >= ESPOIR_MIN_AGE && age <= ESPOIR_MAX_AGE;
+  });
 }
 
 /**

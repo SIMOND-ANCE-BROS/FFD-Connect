@@ -15,7 +15,11 @@ import {
 import {
   computeCoupleAgeGroup,
   computeSoloAgeGroup,
+  ESPOIR_AGE_GROUP,
+  ESPOIR_MAX_AGE,
+  ESPOIR_MIN_AGE,
   getReferenceYear,
+  isCoupleEspoirEligible,
 } from "../../common/age-group";
 import { checkParticipationEligibility } from "../../common/participation-rules";
 import { handlePrismaError } from "../../utils/prisma-errors.util";
@@ -196,6 +200,18 @@ export class CompetitionRegistrationService {
           partner.birthDate,
           referenceYear,
         );
+        if (
+          event.ageGroup === ESPOIR_AGE_GROUP &&
+          !isCoupleEspoirEligible(
+            registrant.birthDate,
+            partner.birthDate,
+            referenceYear,
+          )
+        ) {
+          throw new BadRequestException(
+            `Les épreuves Espoir sont réservées aux couples de moins de 21 ans (partenaires de ${ESPOIR_MIN_AGE} à ${ESPOIR_MAX_AGE} ans au 31 décembre).`,
+          );
+        }
       }
       if (!partnerDisplayName && partner?.firstName != null) {
         partnerDisplayName = `${partner.firstName} ${partner.lastName}`.trim();
