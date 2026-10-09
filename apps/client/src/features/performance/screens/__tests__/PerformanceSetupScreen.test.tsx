@@ -180,6 +180,20 @@ describe("PerformanceSetupScreen", () => {
     );
   });
 
+  it("previews a multi-group Final group by group", async () => {
+    const final: RoundConfig = {
+      ...latin,
+      type: "Final",
+      groups: ["Standard", "Latin", "Standard"],
+      dances: { Standard: ["Valse Lente", "Tango"], Latin: ["Samba"] },
+    };
+    mockEngine({ config: { ...baseConfig, rounds: [final] } });
+    const { getByTestId } = await render(<PerformanceSetupScreen />);
+    expect(getByTestId("performance-round-0-preview")).toHaveTextContent(
+      "Déroulé : Valse lente (G1) → Tango (G1) → Samba (G2) → Valse lente (G3) → Tango (G3)",
+    );
+  });
+
   it("hides the dances of a category no group dances", async () => {
     mockEngine();
     const { queryByText } = await render(<PerformanceSetupScreen />);

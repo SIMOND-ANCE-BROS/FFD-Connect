@@ -297,38 +297,55 @@ export interface RoundStep {
 }
 
 /**
- * Floor order of a round: for every dance position, the groups in order, each
- * dancing its category's dance (a category with fewer dances drops out).
+ * Floor order of a round.
+ *
+ * - Preliminary rounds are dance-major: for every dance position, the groups
+ *   take the floor in order, each dancing its category's dance (a category
+ *   with fewer dances drops out): Samba G1, Samba G2, Cha-cha-cha G1…
+ * - A Final is group-major: each group dances all its dances back-to-back
+ *   before the next group takes the floor: G1 Samba, Cha-cha-cha, Rumba,
+ *   Paso doble, Jive, then G2… With a single group both orders are the same.
  */
 export const roundSequence = (raw: RoundConfig): RoundStep[] => {
   const round = normalizeRound(raw);
   const steps: RoundStep[] = [];
+  const step = (g: number, d: number): RoundStep => {
+    const category = round.groups[g];
+    return {
+      dance: round.dances[category][d],
+      category,
+      groupIndex: g + 1,
+      danceIndex: d,
+    };
+  };
+  if (round.type === "Final") {
+    round.groups.forEach((category, g) => {
+      round.dances[category].forEach((_, d) => steps.push(step(g, d)));
+    });
+    return steps;
+  }
   const maxDances = Math.max(
     ...round.groups.map((c) => round.dances[c].length),
   );
   for (let d = 0; d < maxDances; d++) {
     round.groups.forEach((category, g) => {
-      const dances = round.dances[category];
-      if (d < dances.length) {
-        steps.push({
-          dance: dances[d],
-          category,
-          groupIndex: g + 1,
-          danceIndex: d,
-        });
-      }
+      if (d < round.dances[category].length) steps.push(step(g, d));
     });
   }
   return steps;
 };
 
 /**
- * Builds the competition playlist. In each round, for every dance position,
- * the groups take the floor in order, each dancing its category's dance:
- * groups Standard, Latines, Standard → Valse lente, Samba, Valse lente, then
- * Tango, Cha-cha-cha, Tango… A category with fewer dances simply drops out.
- * A track is picked per group, cycling through a shuffled pool so consecutive
- * groups of the same dance get different music whenever the library allows it.
+ * Builds the competition playlist, following each round's floor order (see
+ * roundSequence). In a preliminary round, for every dance position, the groups
+ * take the floor in order, each dancing its category's dance: groups Standard,
+ * Latines, Standard → Valse lente, Samba, Valse lente, then Tango,
+ * Cha-cha-cha, Tango… (a category with fewer dances simply drops out). In a
+ * Final, each group dances all its dances in a row before the next group.
+ * A track is picked per group, cycling through a shuffled pool so groups of
+ * the same dance get different music whenever the library allows it.
+ * `opensCategory` marks the first group of another category taking the floor
+ * in a mixed round — always on its first dance, in both orders.
  */
 export const buildPlaylist = (
   cfg: PerformanceConfig,
@@ -455,7 +472,9 @@ const choose = (item: AnnouncementItem, templates: string[]): string => {
 /**
  * Natural French announcement, in the voice of a ballroom MC. Punctuation and
  * ellipses are deliberate: they drive the prosody of the neural TTS voice.
- * The group is only named when the round has several.
+ * The group is only named when the round has several. In a Final (group-major
+ * order, see roundSequence) a group is announced when it takes the floor on
+ * its first dance; its next dances are announced as dance changes.
  */
 export const getAnnouncementText = (item: AnnouncementItem): string => {
   const a = articles(item.style);
@@ -490,9 +509,47 @@ export const getAnnouncementText = (item: AnnouncementItem): string => {
     ]);
   }
 
+  const lastGroup =
+    item.groupIndex === item.totalGroups && item.totalGroups > 2;
+
+  if (isFinal) {
+    // Group-major: a new group takes the floor on its first dance, then the
+    // announcements only follow the dance changes within that group.
+    if (item.danceIndex === 0) {
+      return lastGroup
+        ? choose(item, [
+            `Place au ${groupOrd} et dernier groupe… on commence avec ${a.the} !`,
+            `Et maintenant, le dernier groupe de la finale… ${a.the} !`,
+          ])
+        : choose(item, [
+            `Au tour du ${groupOrd} groupe… on commence avec ${a.the} !`,
+            `Place au ${groupOrd} groupe de la finale ! On ouvre avec ${a.the} !`,
+          ]);
+    }
+    if (lastDance) {
+      // « Pour terminer » only rings true for the very last group.
+      const end = single || item.groupIndex === item.totalGroups;
+      return choose(
+        item,
+        end
+          ? [
+              `Dernière danse : ${a.the}${group}`,
+              `Et pour terminer… ${a.the}${group}`,
+            ]
+          : [
+              `Dernière danse pour ce groupe : ${a.the}${group}`,
+              `Et pour finir ce passage… ${a.the}${group}`,
+            ],
+      );
+    }
+    return choose(item, [
+      `On enchaîne avec ${a.the}${group}`,
+      `Place ${a.to}${group}`,
+      `Et maintenant… ${a.the}${group}`,
+    ]);
+  }
+
   if (item.groupIndex > 1) {
-    const lastGroup =
-      item.groupIndex === item.totalGroups && item.totalGroups > 2;
     if (lastGroup) {
       return choose(item, [
         `${capitalize(a.name)}, ${groupOrd} et dernier groupe !`,
@@ -507,18 +564,10 @@ export const getAnnouncementText = (item: AnnouncementItem): string => {
 
   // First group of a dance that is not the first of the round.
   if (lastDance) {
-    return choose(
-      item,
-      isFinal
-        ? [
-            `Dernière danse : ${a.the}${group}`,
-            `Et pour terminer… ${a.the}${group}`,
-          ]
-        : [
-            `Dernière danse du tour : ${a.the}${group}`,
-            `Et pour finir ce tour… ${a.the}${group}`,
-          ],
-    );
+    return choose(item, [
+      `Dernière danse du tour : ${a.the}${group}`,
+      `Et pour finir ce tour… ${a.the}${group}`,
+    ]);
   }
   return choose(item, [
     `On enchaîne avec ${a.the}${group}`,
