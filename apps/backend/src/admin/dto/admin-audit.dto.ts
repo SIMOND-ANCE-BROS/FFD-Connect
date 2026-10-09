@@ -19,9 +19,19 @@ export const AUDIT_ACTIONS = [
   // Moderation decisions (lot 2), taken from the back-office or the mobile app.
   "TRACK_CORRECTION_APPROVE",
   "TRACK_CORRECTION_REJECT",
+  // Track library (lot 3): back-office import, and edits / deletions from the
+  // back-office or the mobile app.
+  "TRACK_CREATE",
+  "TRACK_UPDATE",
+  "TRACK_DELETE",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
-export const AUDIT_TARGET_TYPES = ["USER", "CLUB", "TRACK_CORRECTION"] as const;
+export const AUDIT_TARGET_TYPES = [
+  "USER",
+  "CLUB",
+  "TRACK_CORRECTION",
+  "TRACK",
+] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
 export interface AuditEntry {

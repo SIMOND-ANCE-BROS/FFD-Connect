@@ -384,6 +384,37 @@ export const trackCorrectionAuditTrackSelect = {
 } as const;
 
 /**
+ * Track fields of a TRACK_UPDATE audit row: read by the write guard and
+ * returned by the update itself, inside the same transaction.
+ */
+export const trackAuditSelect = {
+  title: true,
+  artist: true,
+  style: true,
+  bpm: true,
+  titleMasked: true,
+  blacklisted: true,
+  clashTimecodes: true,
+  status: true,
+} as const;
+
+/** Guard read of TracksService.updateTrack: owner, raw tempo, audited fields. */
+export const trackUpdateTargetSelect = {
+  submittedById: true,
+  rawBpm: true,
+  ...trackAuditSelect,
+} as const;
+
+/** What a track deletion audits (metadata only) and which files it removes. */
+export const trackDeletionSelect = {
+  title: true,
+  artist: true,
+  sourceKey: true,
+  filename: true,
+  artwork: true,
+} as const;
+
+/**
  * Export RGPD (art. 15/20) des propositions de correction : le contenu soumis
  * par l'utilisateur et la décision, sans l'identité de l'administrateur
  * (donnée d'un tiers). Les drapeaux de modération sont lus pour que l'export

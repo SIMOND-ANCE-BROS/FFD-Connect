@@ -265,12 +265,14 @@ export class TrackCorrectionsService {
         where: { id: correction.trackId },
         select: trackCorrectionAuditTrackSelect,
       });
+      // skipAudit: this decision is logged once, as TRACK_CORRECTION_APPROVE.
       await this.tracksService.updateTrack(
         correction.trackId,
         adminId,
         true,
         patch,
         tx,
+        { skipAudit: true },
       );
       const after = await tx.track.findUnique({
         where: { id: correction.trackId },

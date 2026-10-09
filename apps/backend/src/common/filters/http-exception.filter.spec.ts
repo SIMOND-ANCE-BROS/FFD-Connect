@@ -234,6 +234,36 @@ describe("HttpExceptionFilter", () => {
     expect(body).not.toHaveProperty("internal");
   });
 
+  it("carries the track 409 details (duplicate import, pending corrections)", () => {
+    filter.catch(
+      new HttpException(
+        {
+          message: "Cette musique est déjà dans la bibliothèque.",
+          existingTrackId: "t1",
+        },
+        HttpStatus.CONFLICT,
+      ),
+      mockArgumentsHost,
+    );
+    expect(mockResponse.json.mock.lastCall?.[0]).toMatchObject({
+      existingTrackId: "t1",
+    });
+
+    filter.catch(
+      new HttpException(
+        {
+          message: "Des propositions de correction sont en attente",
+          pendingCorrections: 2,
+        },
+        HttpStatus.CONFLICT,
+      ),
+      mockArgumentsHost,
+    );
+    expect(mockResponse.json.mock.lastCall?.[0]).toMatchObject({
+      pendingCorrections: 2,
+    });
+  });
+
   it("does not copy those details on other statuses", () => {
     const exception = new HttpException(
       { message: "x", memberCount: 2, existingClubId: "c1" },

@@ -144,7 +144,7 @@ export class TracksController {
   @ApiOperation({
     summary: "Met à jour les métadonnées d'une musique",
     description:
-      "Réservé aux administrateurs. Permet de corriger titre, artiste, style et BPM après ajout. Champs absents = inchangés.",
+      "Réservé aux administrateurs. Permet de corriger titre, artiste, style et BPM après ajout. Champs absents = inchangés. Chaque modification appliquée est tracée dans le journal d'audit (TRACK_UPDATE). Une musique en erreur (tempo non détecté) passe en READY quand un MPM > 0 est saisi.",
   })
   @ApiParam({ name: "id", description: "UUID de la musique" })
   @ApiBody({ type: UpdateTrackDto })
@@ -176,13 +176,21 @@ export class TracksController {
   @ApiOperation({
     summary: "Supprime une musique (modération)",
     description:
-      "Réservé aux administrateurs. Supprime définitivement la piste de la bibliothèque partagée ainsi que son fichier audio associé.",
+      "Réservé aux administrateurs. Supprime définitivement la piste de la bibliothèque partagée, puis son fichier audio et sa pochette. Refusé (409) tant que des propositions de correction sont en attente sur la musique. Tracé dans le journal d'audit (TRACK_DELETE).",
   })
   @ApiParam({ name: "id", description: "UUID de la musique" })
   @ApiResponse({ status: 204, description: "Track supprimée" })
   @ApiResponse({ status: 403, description: "Non autorisé" })
   @ApiResponse({ status: 404, description: "Track non trouvée" })
-  async remove(@Param("id") id: string): Promise<void> {
-    await this.tracksService.deleteTrack(id);
+  @ApiResponse({
+    status: 409,
+    description:
+      "Propositions de correction en attente (pendingCorrections) : les traiter ou blacklister la musique",
+  })
+  async remove(
+    @Param("id") id: string,
+    @Req() req: RequestWithUser,
+  ): Promise<void> {
+    await this.tracksService.deleteTrack(id, req.user.userId);
   }
 }

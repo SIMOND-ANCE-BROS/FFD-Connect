@@ -1,26 +1,45 @@
 import {
   BadRequestException,
+  ConflictException,
   HttpException,
   HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
 } from "@nestjs/common";
-import { Prisma, TrackStatus } from "@prisma/client";
-import * as fs from "fs";
-import * as path from "path";
+import { Prisma, TrackCorrectionStatus, TrackStatus } from "@prisma/client";
+import { AdminAuditService } from "../admin/admin-audit.service";
+import { diffFields } from "../admin/admin-audit.util";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
-import { BlobStorageService } from "../storage/blob-storage.service";
+import {
+  idOnlySelect,
+  trackAuditSelect,
+  trackDeletionSelect,
+  trackUpdateTargetSelect,
+} from "../utils/prisma-selects";
 import { BpmService } from "./bpm.service";
 import { UpdateTrackDto } from "./dto/update-track.dto";
 import { PASO_MAX_CLASHES, PASO_MAX_CLASHES_MESSAGE } from "./paso-clashes";
+import { TrackFilesService } from "./track-files.service";
 import {
   LIBRARY_TRACK_WHERE,
   MASKED_TITLE_LABEL,
   trackByIdWhere,
 } from "./track-visibility.util";
+
+/** 409 of DELETE /tracks/:id while correction proposals wait for a decision. */
+export const TRACK_HAS_PENDING_CORRECTIONS_MESSAGE =
+  "Des propositions de correction sont en attente sur cette musique : traitez-les dans Modération, ou blacklistez la musique.";
+
+export interface UpdateTrackOptions {
+  /**
+   * No TRACK_UPDATE row: the caller writes its own audit row in the same
+   * transaction (a correction approval logs TRACK_CORRECTION_APPROVE).
+   */
+  skipAudit?: boolean;
+}
 
 /** Champs de base récupérés pour toute piste audio. Ne pas exposer status/jobId dans les listes. */
 const TRACK_BASE_SELECT = {
@@ -53,7 +72,8 @@ export class TracksService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly bpmService: BpmService,
-    private readonly blobStorage: BlobStorageService,
+    private readonly files: TrackFilesService,
+    private readonly audit: AdminAuditService,
   ) {}
 
   /** Nombre maximal de pistes d'ambiance renvoyées (requête bornée). */
@@ -148,22 +168,40 @@ export class TracksService {
   /**
    * Met à jour les champs éditables d'une track (titre, artiste, style, bpm).
    * Seul le submitter ou un admin peut éditer. Les champs non fournis sont préservés.
+   *
+   * Every applied change is audited (TRACK_UPDATE) in the same transaction,
+   * whoever calls: back-office or mobile app. `client` is the caller's
+   * interactive transaction when the update must be atomic with other writes
+   * (correction approval); otherwise a transaction is opened here.
    */
   async updateTrack(
     id: string,
     userId: string,
     isAdmin: boolean,
     patch: UpdateTrackDto,
-    /**
-     * Client Prisma à utiliser : celui d'une transaction interactive quand la
-     * mise à jour doit être atomique avec d'autres écritures (validation d'une
-     * proposition de correction), le client par défaut sinon.
-     */
-    client: Prisma.TransactionClient = this.prisma,
+    client?: Prisma.TransactionClient,
+    options: UpdateTrackOptions = {},
   ): Promise<void> {
-    const existing = await client.track.findUnique({
+    if (client) {
+      await this.applyUpdate(client, id, userId, isAdmin, patch, options);
+      return;
+    }
+    await this.prisma.$transaction((tx) =>
+      this.applyUpdate(tx, id, userId, isAdmin, patch, options),
+    );
+  }
+
+  private async applyUpdate(
+    tx: Prisma.TransactionClient,
+    id: string,
+    userId: string,
+    isAdmin: boolean,
+    patch: UpdateTrackDto,
+    options: UpdateTrackOptions,
+  ): Promise<void> {
+    const existing = await tx.track.findUnique({
       where: { id },
-      select: { submittedById: true, rawBpm: true },
+      select: trackUpdateTargetSelect,
     });
     if (!existing) {
       throw new NotFoundException(`Track ${id} not found`);
@@ -205,11 +243,38 @@ export class TracksService {
     }
     const bpm = this.bpmForPatch(existing.rawBpm, patch);
     if (bpm !== undefined) data.bpm = bpm;
+    // A back-office import without a detectable tempo creates the track in
+    // ERROR (out of the library): the admin who sets its MPM publishes it.
+    if (
+      isAdmin &&
+      existing.status === TrackStatus.ERROR &&
+      bpm !== undefined &&
+      bpm > 0
+    ) {
+      data.status = TrackStatus.READY;
+    }
     if (Object.keys(data).length === 0) return;
-    await client.track.update({ where: { id }, data });
+    const after = await tx.track.update({
+      where: { id },
+      data,
+      select: trackAuditSelect,
+    });
     this.logger.log(
       `Updated track ${id} (fields: ${Object.keys(data).join(",")})`,
     );
+    if (options.skipAudit) return;
+    // Read back inside the transaction: the row holds what was really applied
+    // (MPM recalculated on a dance change, sorted clashes), not the request.
+    const changes = diffFields(existing, after);
+    if (!changes) return;
+    await this.audit.record(tx, {
+      actorId: userId,
+      action: "TRACK_UPDATE",
+      targetType: "TRACK",
+      targetId: id,
+      before: changes.before,
+      after: changes.after,
+    });
   }
 
   /**
@@ -233,44 +298,48 @@ export class TracksService {
   }
 
   /**
-   * Supprime définitivement une piste (modération admin). Retire la ligne DB
-   * et, si possible, le fichier audio associé (blob ou disque local). L'échec
-   * de suppression du fichier n'empêche pas la suppression de la ligne.
+   * Deletes a track for good (admin moderation, web or mobile). Refused (409)
+   * while correction proposals wait for a decision: the deletion would cascade
+   * them away unanswered. The row and its audit row share one transaction; the
+   * audio and artwork files go afterwards, best-effort.
    */
-  async deleteTrack(id: string): Promise<void> {
-    const track = await this.prisma.track.findUnique({
-      where: { id },
-      select: { filename: true },
-    });
-    if (!track) {
-      throw new NotFoundException(`Track ${id} not found`);
-    }
-
-    await this.prisma.track.delete({ where: { id } });
-
-    if (track.filename) {
-      await this.deleteAudioFile(track.filename);
-    }
-    this.logger.log(`Deleted track ${id}`);
-  }
-
-  /** Best-effort suppression du fichier audio (blob Azure ou disque local). */
-  private async deleteAudioFile(filename: string): Promise<void> {
-    const safeName = path.basename(filename);
-    try {
-      if (this.blobStorage.isEnabled()) {
-        await this.blobStorage.deleteFile(safeName);
-        return;
+  async deleteTrack(id: string, actorId: string): Promise<void> {
+    const names = await this.prisma.$transaction(async (tx) => {
+      const track = await tx.track.findUnique({
+        where: { id },
+        select: trackDeletionSelect,
+      });
+      if (!track) {
+        throw new NotFoundException(`Track ${id} not found`);
       }
-      const filePath = path.join(__dirname, "../../uploads", safeName);
-      await fs.promises.rm(filePath, { force: true });
-    } catch (error) {
-      // Non-fatal : la ligne DB est déjà supprimée, on ne bloque pas la modération.
-      this.logger.warn(
-        `Failed to delete audio file ${safeName}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+      const pendingCorrections = await tx.trackCorrection.count({
+        where: { trackId: id, status: TrackCorrectionStatus.PENDING },
+      });
+      if (pendingCorrections > 0) {
+        throw new ConflictException({
+          message: TRACK_HAS_PENDING_CORRECTIONS_MESSAGE,
+          pendingCorrections,
+        });
+      }
+      await tx.track.delete({ where: { id }, select: idOnlySelect });
+      await this.audit.record(tx, {
+        actorId,
+        action: "TRACK_DELETE",
+        targetType: "TRACK",
+        targetId: id,
+        // Track metadata only.
+        before: {
+          title: track.title,
+          artist: track.artist,
+          sourceKey: track.sourceKey,
+          filename: track.filename,
+        },
+      });
+      return [track.filename, track.artwork].filter((name): name is string =>
+        Boolean(name),
       );
-    }
+    });
+    await this.files.remove(names);
+    this.logger.log(`Deleted track ${id}`);
   }
 }
