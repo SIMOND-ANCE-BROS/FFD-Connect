@@ -26,6 +26,7 @@ import {
   type ClubRegistrationMode,
 } from "../../club/services/ClubService";
 import { useOfflineQueueStore } from "../../../stores/offlineQueue.store";
+import { isAgeGroupAllowedForEvent } from "../../../utils/ageGroup";
 import {
   applyPendingRegistrations,
   getPendingRegistrationActions,
@@ -218,8 +219,12 @@ export const useCompetitionDetailLogic = (
       if (!isCorrectCategory)
         return { eligible: false, reason: "WRONG_CATEGORY" };
 
+      // Tolerant: deduced events use canonical classes (« Senior II »,
+      // « Juvénile I », « Espoir »…) while legacy placeholders say « Adult »/
+      // « Senior ».
       const isCorrectAgeGroup =
-        !event.ageGroup || norm(event.ageGroup) === norm(userProfile.ageGroup);
+        !event.ageGroup ||
+        isAgeGroupAllowedForEvent(event.ageGroup, userProfile.ageGroup);
       if (!isCorrectAgeGroup)
         return { eligible: false, reason: "WRONG_AGE_GROUP" };
 
