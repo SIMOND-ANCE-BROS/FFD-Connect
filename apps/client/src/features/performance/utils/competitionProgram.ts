@@ -502,27 +502,64 @@ const CATEGORY_THE: Record<Category, string> = {
   Latin: "les latines",
 };
 
-/** Deterministic template choice: same item → same text (preload == playback). */
-const choose = (item: AnnouncementItem, templates: string[]): string => {
-  const key = `${item.roundIndex}|${item.style}|${item.groupIndex}|${item.danceIndex}`;
+/**
+ * Deterministic template choice: same item → same text (preload == playback).
+ * `salt` lets two parts of one sentence vary independently.
+ */
+const choose = (
+  item: AnnouncementItem,
+  templates: string[],
+  salt = "",
+): string => {
+  const key = `${item.roundIndex}|${item.style}|${item.groupIndex}|${item.danceIndex}${salt}`;
   const idx = parseInt(fnv1aHash(key), 16) % templates.length;
   return templates[idx];
 };
 
 /**
- * Natural French announcement, in the voice of a ballroom MC. Punctuation and
- * ellipses are deliberate: they drive the prosody of the neural TTS voice.
- * The group is only named when the round has several. In a Final (group-major
- * order, see roundSequence) a group is announced when it takes the floor on
- * its first dance; its next dances are announced as dance changes.
+ * Closing call of an announcement, sending the couples to the floor:
+ * « Deuxième groupe, en piste ! » — or, with a single group, the couples (the
+ * finalists in a final) without naming any group.
+ */
+const floorCall = (item: AnnouncementItem): string => {
+  if (item.totalGroups <= 1) {
+    return choose(
+      item,
+      item.roundType === "Final"
+        ? ["Les finalistes, en piste !", "Finalistes… à vous la piste !"]
+        : [
+            "Les couples, en piste !",
+            "Tous les couples, en piste, s'il vous plaît !",
+          ],
+      "|call",
+    );
+  }
+  const groupOrd = ordinal(item.groupIndex);
+  return choose(
+    item,
+    [
+      `${capitalize(groupOrd)} groupe, en piste !`,
+      `${capitalize(groupOrd)} groupe, à vous la piste !`,
+      `On attend le ${groupOrd} groupe sur la piste !`,
+    ],
+    "|call",
+  );
+};
+
+/**
+ * Natural French announcement, in the voice of a ballroom MC calling the
+ * NEXT dance at the start of the preparation break (« préparez-vous… »), not
+ * a "here it is" line. Punctuation and ellipses are deliberate: they give the
+ * neural TTS voice its breathing and its rising intonation. The group is only
+ * named when the round has several. In a Final (group-major order, see
+ * roundSequence) a group is announced when it takes the floor on its first
+ * dance; its next dances are announced as dance changes.
  */
 export const getAnnouncementText = (item: AnnouncementItem): string => {
   const a = articles(item.style);
   const isFinal = item.roundType === "Final";
-  const single = item.totalGroups <= 1;
+  const call = floorCall(item);
   const groupOrd = ordinal(item.groupIndex);
-  /** « , deuxième groupe ! » — or just « ! » with a single group. */
-  const group = single ? " !" : `, ${groupOrd} groupe !`;
   const firstOfRound = item.danceIndex === 0 && item.groupIndex === 1;
   const lastDance =
     item.danceIndex === item.dancesInRound - 1 && item.dancesInRound > 1;
@@ -530,22 +567,24 @@ export const getAnnouncementText = (item: AnnouncementItem): string => {
   if (firstOfRound) {
     if (isFinal) {
       return choose(item, [
-        `Et voici la finale… on commence avec ${a.the}${group}`,
-        `Mesdames et messieurs, place à la finale… ${a.name}${group}`,
+        `Mesdames et messieurs… voici la finale ! Nous commençons avec ${a.the}. ${call}`,
+        `Place à la grande finale ! Préparez-vous pour ${a.the}… ${call}`,
+        `Et voici le moment tant attendu… la finale ! On ouvre avec ${a.the}. ${call}`,
       ]);
     }
     const roundOrd = ordinal(item.roundIndex);
     return choose(item, [
-      `Mesdames et messieurs, place au ${roundOrd} tour… on commence avec ${a.the}${group}`,
-      `Bienvenue pour le ${roundOrd} tour ! On ouvre avec ${a.the}${group}`,
+      `Mesdames et messieurs, bienvenue pour le ${roundOrd} tour ! Préparez-vous pour ${a.the}… ${call}`,
+      `Le ${roundOrd} tour va commencer… et on ouvre avec ${a.the} ! ${call}`,
+      `C'est parti pour le ${roundOrd} tour ! Première danse… ${a.the}. ${call}`,
     ]);
   }
 
   if (item.opensCategory) {
     // Mixed round: the first group of the other category takes the floor.
     return choose(item, [
-      `Place ${CATEGORY_TO[item.category]} ! ${capitalize(a.the)}${group}`,
-      `Et maintenant ${CATEGORY_THE[item.category]}… ${a.the}${group}`,
+      `Et maintenant, place ${CATEGORY_TO[item.category]}… on commence avec ${a.the} ! ${call}`,
+      `On change d'ambiance… voici ${CATEGORY_THE[item.category]}, avec ${a.the} ! ${call}`,
     ]);
   }
 
@@ -558,61 +597,76 @@ export const getAnnouncementText = (item: AnnouncementItem): string => {
     if (item.danceIndex === 0) {
       return lastGroup
         ? choose(item, [
-            `Place au ${groupOrd} et dernier groupe… on commence avec ${a.the} !`,
-            `Et maintenant, le dernier groupe de la finale… ${a.the} !`,
+            `Et maintenant, le dernier groupe de la finale ! On commence avec ${a.the}… en piste !`,
+            `Place au ${groupOrd} et dernier groupe ! Préparez-vous pour ${a.the}… à vous la piste !`,
           ])
         : choose(item, [
-            `Au tour du ${groupOrd} groupe… on commence avec ${a.the} !`,
-            `Place au ${groupOrd} groupe de la finale ! On ouvre avec ${a.the} !`,
+            `Au tour du ${groupOrd} groupe de la finale ! On ouvre avec ${a.the}… en piste !`,
+            `Place au ${groupOrd} groupe ! Préparez-vous pour ${a.the}… à vous la piste !`,
           ]);
     }
     if (lastDance) {
       // « Pour terminer » only rings true for the very last group.
-      const end = single || item.groupIndex === item.totalGroups;
+      const end = item.totalGroups <= 1 || item.groupIndex === item.totalGroups;
       return choose(
         item,
         end
           ? [
-              `Dernière danse : ${a.the}${group}`,
-              `Et pour terminer… ${a.the}${group}`,
+              `Et voici la dernière danse de cette finale… ${a.the} ! ${call}`,
+              `Pour terminer en beauté… ${a.the} ! ${call}`,
             ]
           : [
-              `Dernière danse pour ce groupe : ${a.the}${group}`,
-              `Et pour finir ce passage… ${a.the}${group}`,
+              `Dernière danse pour ce groupe… préparez-vous pour ${a.the} ! ${call}`,
+              `Et pour finir ce passage en beauté… ${a.the} ! ${call}`,
             ],
       );
     }
     return choose(item, [
-      `On enchaîne avec ${a.the}${group}`,
-      `Place ${a.to}${group}`,
-      `Et maintenant… ${a.the}${group}`,
+      `On enchaîne avec ${a.the}… ${call}`,
+      `Préparez-vous pour ${a.the} ! ${call}`,
+      `Danse suivante… ${a.the} ! ${call}`,
     ]);
   }
 
   if (item.groupIndex > 1) {
+    // In a mixed round the previous group danced another category: no
+    // « toujours / encore » wording then.
+    if (item.mixed) {
+      return lastGroup
+        ? choose(item, [
+            `Et pour finir… ${a.the}, avec le ${groupOrd} et dernier groupe !`,
+            `${capitalize(a.the)}… ${groupOrd} et dernier groupe, en piste !`,
+          ])
+        : choose(item, [
+            `Au tour du ${groupOrd} groupe… avec ${a.the} !`,
+            `${capitalize(a.the)}… ${groupOrd} groupe, en piste !`,
+          ]);
+    }
     if (lastGroup) {
       return choose(item, [
-        `${capitalize(a.name)}, ${groupOrd} et dernier groupe !`,
-        `Dernier groupe ${a.of}… à vous !`,
+        `Toujours ${a.the}… ${groupOrd} et dernier groupe, en piste !`,
+        `Et pour terminer ${a.the}… le dernier groupe, à vous !`,
       ]);
     }
     return choose(item, [
-      `${capitalize(a.name)}, ${groupOrd} groupe !`,
-      `${capitalize(groupOrd)} groupe ${a.of}, à vous !`,
+      `Toujours ${a.the}… ${groupOrd} groupe, préparez-vous !`,
+      `On reste sur ${a.the}… au tour du ${groupOrd} groupe !`,
+      `${capitalize(a.the)}, encore une fois… ${groupOrd} groupe, en piste !`,
     ]);
   }
 
   // First group of a dance that is not the first of the round.
   if (lastDance) {
     return choose(item, [
-      `Dernière danse du tour : ${a.the}${group}`,
-      `Et pour finir ce tour… ${a.the}${group}`,
+      `Dernière danse de ce tour… préparez-vous pour ${a.the} ! ${call}`,
+      `Et pour finir ce tour en beauté… ${a.the} ! ${call}`,
     ]);
   }
   return choose(item, [
-    `On enchaîne avec ${a.the}${group}`,
-    `Place ${a.to}${group}`,
-    `Et maintenant… ${a.the}${group}`,
+    `On enchaîne avec ${a.the}… ${call}`,
+    `Préparez-vous pour ${a.the} ! ${call}`,
+    `Danse suivante… ${a.the} ! ${call}`,
+    `Et maintenant, place ${a.to}… ${call}`,
   ]);
 };
 

@@ -314,7 +314,7 @@ describe("roundSequence / buildPlaylist", () => {
       const texts = finalList.map((i) => i.announcementText);
       expect(texts[0]).toMatch(/finale/i);
       expect(texts[1]).toMatch(/latines/);
-      expect(texts[1]).toMatch(/deuxième groupe/);
+      expect(texts[1]).toMatch(/deuxième groupe/i);
       // Last dance of group 2: not the end of the final yet.
       expect(texts[2]).toMatch(/le Jive/);
       expect(texts[2]).not.toMatch(/terminer|dernier groupe/i);
@@ -461,7 +461,7 @@ describe("getAnnouncementText", () => {
     const text = getAnnouncementText(base);
     expect(text).toMatch(/premier tour/);
     expect(text).toMatch(/Samba/);
-    expect(text).toMatch(/premier groupe/);
+    expect(text).toMatch(/premier groupe/i);
   });
 
   it("does not name the group when the round has only one", () => {
@@ -494,7 +494,7 @@ describe("getAnnouncementText", () => {
       totalGroups: 3,
     });
     expect(text).toMatch(/latines/);
-    expect(text).toMatch(/deuxième groupe/);
+    expect(text).toMatch(/deuxième groupe/i);
   });
 
   it("announces a final and its last dance with proper articles", () => {
@@ -538,7 +538,8 @@ describe("getAnnouncementText", () => {
         danceIndex: 1,
         style: "Rumba",
       });
-      expect(text).toMatch(/la Rumba, deuxième groupe/);
+      expect(text).toMatch(/la Rumba/);
+      expect(text).toMatch(/deuxième groupe/i);
       expect(text).not.toMatch(/dernier groupe/);
     });
 
@@ -550,14 +551,14 @@ describe("getAnnouncementText", () => {
         style: "Jive",
       });
       expect(lastOfG1).toMatch(/ce groupe|ce passage/);
-      expect(lastOfG1).toMatch(/premier groupe/);
+      expect(lastOfG1).toMatch(/premier groupe/i);
       const lastOfFinal = getAnnouncementText({
         ...final,
         groupIndex: 3,
         danceIndex: 2,
         style: "Jive",
       });
-      expect(lastOfFinal).toMatch(/Dernière danse : le Jive|pour terminer/);
+      expect(lastOfFinal).toMatch(/dernière danse|pour terminer/i);
     });
   });
 
@@ -583,6 +584,91 @@ describe("getAnnouncementText", () => {
     expect(getAnnouncementText({ ...base, roundIndex: 2 })).toMatch(
       /deuxième tour/,
     );
+  });
+
+  describe("MC style (spoken at the start of the preparation break)", () => {
+    /** Every announcement of a 2-round programme: 3 groups, then a final. */
+    const programme = () => {
+      const texts: string[] = [];
+      const latin = DANCES.Latin;
+      for (const roundType of ["Round", "Final"] as const) {
+        const totalGroups = roundType === "Final" ? 1 : 3;
+        latin.forEach((style, danceIndex) => {
+          for (let g = 1; g <= totalGroups; g++) {
+            texts.push(
+              getAnnouncementText({
+                ...base,
+                style,
+                roundType,
+                roundIndex: roundType === "Final" ? 2 : 1,
+                groupIndex: g,
+                totalGroups,
+                danceIndex,
+                dancesInRound: latin.length,
+              }),
+            );
+          }
+        });
+      }
+      return texts;
+    };
+
+    it("never sounds like a robotic label (« Dernière danse : … »)", () => {
+      for (const text of programme()) {
+        expect(text).not.toMatch(/ : /);
+        expect(text).not.toMatch(/^Dernière danse :/);
+        // Ends like a spoken call, for the TTS falling intonation.
+        expect(text).toMatch(/[!.]$/);
+      }
+    });
+
+    it("varies its wording along a programme", () => {
+      const openings = new Set(
+        programme().map((text) => text.split(/[…,!.]/)[0]),
+      );
+      expect(openings.size).toBeGreaterThanOrEqual(6);
+    });
+
+    it("calls the dancers to the floor", () => {
+      expect(
+        getAnnouncementText({ ...base, danceIndex: 2, groupIndex: 1 }),
+      ).toMatch(/premier groupe/i);
+      const final = getAnnouncementText({
+        ...base,
+        roundType: "Final",
+        totalGroups: 1,
+        danceIndex: 2,
+      });
+      expect(final).toMatch(/finalistes/i);
+      expect(final).not.toMatch(/groupe/);
+    });
+
+    it("never says « toujours / encore » after another category in a mixed round", () => {
+      for (const groupIndex of [2, 3]) {
+        for (const style of ["Tango", "Samba", "Jive"]) {
+          const text = getAnnouncementText({
+            ...base,
+            style,
+            mixed: true,
+            groupIndex,
+            totalGroups: 3,
+            danceIndex: 1,
+          });
+          expect(text).not.toMatch(/toujours|encore|on reste/i);
+          expect(text).toMatch(/groupe/);
+        }
+      }
+    });
+
+    it("announces the last dance as coming up, with its article", () => {
+      const text = getAnnouncementText({
+        ...base,
+        style: "Paso Doble",
+        danceIndex: 4,
+      });
+      expect(text).toMatch(/le Paso doble/);
+      expect(text).toMatch(/finir|dernière/i);
+    });
   });
 });
 
@@ -676,7 +762,7 @@ describe("custom dance order (per category, every round)", () => {
     expect(list[6].announcementText).toMatch(/Cha-cha-cha/);
     expect(list[7].danceIndex).toBe(1);
     expect(list[7].announcementText).toMatch(/Samba/);
-    expect(list[7].announcementText).toMatch(/Dernière danse|pour terminer/);
+    expect(list[7].announcementText).toMatch(/dernière danse|pour terminer/i);
   });
 
   it("validateProgram lists missing dances in the custom order", () => {
