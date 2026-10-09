@@ -266,9 +266,16 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
 
   const set = <K extends keyof ReviewValues>(key: K, value: ReviewValues[K]) =>
     setValues((prev) => ({ ...prev, [key]: value }));
+  // A decision in flight (up to 2 min on a cold start) locks the form and the
+  // modal: no second request, whatever the admin clicks.
+  const pending = decide.isPending;
   const open = (decision: Decision) => {
+    if (pending) return;
     decide.reset();
     setConfirm(decision);
+  };
+  const close = () => {
+    if (!pending) setConfirm(null);
   };
   const template = (text: string) => (
     <Button
@@ -335,10 +342,10 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
             {APPROVE_TEMPLATES.map(template)}
           </Group>
           <Group justify="flex-end">
-            <Button color="red" variant="light" onClick={() => open('reject')}>
+            <Button color="red" variant="light" disabled={pending} onClick={() => open('reject')}>
               Refuser
             </Button>
-            <Button color="green" onClick={() => open('approve')}>
+            <Button color="green" disabled={pending} onClick={() => open('approve')}>
               Approuver
             </Button>
           </Group>
@@ -346,7 +353,10 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
       </Card>
       <Modal
         opened={confirm !== null}
-        onClose={() => setConfirm(null)}
+        onClose={close}
+        closeOnEscape={!pending}
+        closeOnClickOutside={!pending}
+        withCloseButton={!pending}
         title={confirm === 'approve' ? 'Confirmer la validation' : 'Confirmer le refus'}
       >
         <Stack>
@@ -362,10 +372,10 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
             <Alert color="red">{apiErrorMessage(decide.error, 'Décision impossible.')}</Alert>
           )}
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setConfirm(null)}>
+            <Button variant="default" disabled={pending} onClick={close}>
               Annuler
             </Button>
-            <Button loading={decide.isPending} onClick={() => confirm && decide.mutate(confirm)}>
+            <Button loading={pending} onClick={() => confirm && !pending && decide.mutate(confirm)}>
               Confirmer
             </Button>
           </Group>

@@ -213,6 +213,27 @@ describe('ModerationDetailPage', () => {
     expect(screen.getByText('3 clashes au maximum')).toBeInTheDocument();
   });
 
+  it('sends a single decision while one is pending, whatever the admin clicks', async () => {
+    // Stays pending, like a decision sent during a cold start.
+    const reject = vi
+      .spyOn(sdk, 'trackCorrectionsControllerReject')
+      .mockReturnValue(new Promise(() => undefined) as never);
+    const approve = vi.spyOn(sdk, 'trackCorrectionsControllerApprove');
+    renderPage(pendingMpm);
+    await screen.findByLabelText('MPM');
+    const dialog = await submitDecision('Refuser');
+    await waitFor(() => expect(reject).toHaveBeenCalledTimes(1));
+    // Neither Escape nor « Annuler » closes the modal while the request runs.
+    await userEvent.keyboard('{Escape}');
+    expect(within(dialog).getByRole('button', { name: 'Annuler' })).toBeDisabled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    expect(screen.getByRole('button', { name: 'Refuser', hidden: true })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Approuver', hidden: true })).toBeDisabled();
+    expect(reject).toHaveBeenCalledTimes(1);
+    expect(approve).not.toHaveBeenCalled();
+  });
+
   it('says « Déjà traitée » on a 409 and reloads the proposal', async () => {
     vi.spyOn(sdk, 'trackCorrectionsControllerApprove').mockResolvedValue({
       data: undefined,

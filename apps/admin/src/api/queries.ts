@@ -110,4 +110,8 @@ export const correctionQuery = (id: string) =>
   queryOptions({
     queryKey: ['admin', 'moderation', 'item', id],
     queryFn: () => unwrap(trackCorrectionsControllerFindOne({ path: { id } })),
+    // Same as the badge: a refocus, a reconnect or a retry would wake the scale-to-zero backend.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
   });
