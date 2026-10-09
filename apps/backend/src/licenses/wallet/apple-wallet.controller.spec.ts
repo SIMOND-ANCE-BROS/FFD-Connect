@@ -66,12 +66,13 @@ describe("AppleWalletController", () => {
   const service = {
     issueDownloadToken: jest.fn(),
     consumeAndGeneratePass: jest.fn(),
+    checkDownloadToken: jest.fn(),
   };
   const controller = new AppleWalletController(
     service as unknown as AppleWalletPassService,
   );
 
-  it("returns an absolute single-use URL for the caller's own license", async () => {
+  it("returns an absolute download URL for the caller's own license", async () => {
     const token = "t".repeat(43);
     service.issueDownloadToken.mockResolvedValue({
       token,
@@ -111,5 +112,23 @@ describe("AppleWalletController", () => {
       length: 3,
     });
     expect(service.consumeAndGeneratePass).toHaveBeenCalledWith("abc");
+  });
+
+  it("answers HEAD without spending a download or signing a pass", async () => {
+    service.consumeAndGeneratePass.mockClear();
+    service.checkDownloadToken.mockResolvedValue(undefined);
+    await expect(
+      controller.checkPassLink({ token: "abc" }),
+    ).resolves.toBeUndefined();
+    expect(service.checkDownloadToken).toHaveBeenCalledWith("abc");
+    expect(service.consumeAndGeneratePass).not.toHaveBeenCalled();
+  });
+
+  it("declares the HEAD route before GET (Express would route HEAD to GET)", () => {
+    const methods = Object.getOwnPropertyNames(AppleWalletController.prototype);
+    expect(methods.indexOf("checkPassLink")).toBeGreaterThanOrEqual(0);
+    expect(methods.indexOf("checkPassLink")).toBeLessThan(
+      methods.indexOf("downloadPass"),
+    );
   });
 });
