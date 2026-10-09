@@ -2,13 +2,14 @@ import { SetMetadata } from "@nestjs/common";
 
 /**
  * Store-review account (App Store / Google Play validation, `isStoreReview`):
- * its authenticated writes are SIMULATED by StoreReviewInterceptor. These
- * decorators tune that per route.
+ * StoreReviewInterceptor SIMULATES its authenticated writes and serves its
+ * authenticated reads from an ALLOWLIST only. These decorators tune that per
+ * route.
  */
 export const STORE_REVIEW_PASSTHROUGH_KEY = "storeReviewPassthrough";
 export const STORE_REVIEW_SIMULATION_KEY = "storeReviewSimulation";
 export const STORE_REVIEW_READ_KEY = "storeReviewRead";
-export const STORE_REVIEW_OWN_DATA_KEY = "storeReviewOwnData";
+export const STORE_REVIEW_READABLE_KEY = "storeReviewReadable";
 
 /** What a simulated-response builder knows about the request. */
 export interface SimulationContext {
@@ -36,17 +37,34 @@ export const StoreReviewSimulation = (builder: SimulatedResponseBuilder) =>
   SetMetadata(STORE_REVIEW_SIMULATION_KEY, builder);
 
 /**
- * A READ whose data cannot be masked field by field (lists of every account,
- * audit log with free-form before/after JSON): a store-review account gets
- * this simulated body instead and the handler never runs.
+ * Simulated body of a GET the store-review account may NOT read (not on the
+ * read allowlist), when the default empty value inferred from the route's
+ * Swagger response (`[]` for an array, `{}` otherwise) is not the shape the
+ * client expects (paginated pages, career…).
  */
 export const StoreReviewRead = (builder: SimulatedResponseBuilder) =>
   SetMetadata(STORE_REVIEW_READ_KEY, builder);
 
+export interface StoreReviewReadableOptions {
+  /** The route serves the requester's own data (built from req.user). */
+  ownData?: boolean;
+  /** Real data only when this holds (e.g. the route targets the account). */
+  when?: (ctx: SimulationContext) => boolean;
+}
+
 /**
- * The route serves the requester's own data (built from `req.user.userId`):
- * for a store-review account its records stay unmasked, except nested person
- * records of other people.
+ * READ ALLOWLIST of the store-review account. Its authenticated GETs are DENY
+ * BY DEFAULT: only a route carrying this decorator returns real data to it
+ * (its own profile, license, career, notifications; its flagged club; the
+ * public catalog). Every other GET returns an empty result, so a new endpoint
+ * is empty for that account until it is reviewed and allowlisted here.
+ * Allowlisted responses still go through the personal-data masking (defense
+ * in depth); `ownData` keeps the account's own records unmasked.
  */
-export const StoreReviewOwnData = () =>
-  SetMetadata(STORE_REVIEW_OWN_DATA_KEY, true);
+export const StoreReviewReadable = (options: StoreReviewReadableOptions = {}) =>
+  SetMetadata(STORE_REVIEW_READABLE_KEY, options);
+
+/** Allowlisted read of the requester's own data (shorthand). */
+export const StoreReviewOwnData = (
+  options: Omit<StoreReviewReadableOptions, "ownData"> = {},
+) => StoreReviewReadable({ ...options, ownData: true });

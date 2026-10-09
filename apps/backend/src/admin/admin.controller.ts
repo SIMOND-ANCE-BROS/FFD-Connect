@@ -60,7 +60,10 @@ import {
   AdminClubOptionDto,
   AdminReferenceDataDto,
 } from "./dto/admin-reference.dto";
-import { StoreReviewRead } from "../auth/store-review/store-review.decorator";
+import {
+  StoreReviewRead,
+  StoreReviewReadable,
+} from "../auth/store-review/store-review.decorator";
 import { simulatedEmptyPage } from "../auth/store-review/store-review-responses";
 
 /**
@@ -84,6 +87,7 @@ export class AdminController {
     private readonly clubs: AdminClubsService,
   ) {}
 
+  @StoreReviewReadable()
   @Get("reference-data")
   @ApiOperation({ summary: "Listes de valeurs du back-office" })
   @ApiResponse({ status: 200, type: AdminReferenceDataDto })
@@ -91,6 +95,7 @@ export class AdminController {
     return this.reference.referenceData();
   }
 
+  @StoreReviewRead(simulatedEmptyPage)
   @Get("clubs")
   @ApiOperation({ summary: "Liste paginée des clubs" })
   @ApiResponse({ status: 200, type: AdminClubsPageDto })
@@ -111,6 +116,7 @@ export class AdminController {
     return this.clubs.create(req.user.userId, dto);
   }
 
+  @StoreReviewReadable()
   @Get("clubs/options")
   @ApiOperation({
     summary: "Clubs actifs (id + nom) pour les listes déroulantes",

@@ -7,8 +7,10 @@ import {
   StoreReviewOwnData,
   StoreReviewPassthrough,
   StoreReviewRead,
+  StoreReviewReadable,
   StoreReviewSimulation,
 } from "./store-review.decorator";
+import { ApiOkResponse, ApiResponse } from "@nestjs/swagger";
 import {
   DEMO_MODE_HEADER,
   DEMO_MODE_SIMULATED,
@@ -16,6 +18,7 @@ import {
 } from "./store-review.interceptor";
 import {
   simulatedDeleteCount,
+  simulatedEmptyCareer,
   simulatedEmptyPage,
 } from "./store-review-responses";
 
@@ -42,6 +45,19 @@ class Routes {
 
   @StoreReviewOwnData()
   ownData(): void {}
+
+  @StoreReviewReadable()
+  catalog(): void {}
+
+  @ApiOkResponse({ type: [String] })
+  deniedList(): void {}
+
+  @ApiResponse({ status: 200, schema: { type: "array" } })
+  deniedSchemaList(): void {}
+
+  @StoreReviewOwnData({ when: (ctx) => ctx.params.userId === ctx.userId })
+  @StoreReviewRead(simulatedEmptyCareer)
+  careerOf(): void {}
 }
 
 describe("StoreReviewInterceptor", () => {
@@ -105,10 +121,15 @@ describe("StoreReviewInterceptor", () => {
   );
 
   it.each(["GET", "HEAD", "OPTIONS"])(
-    "lets a %s of the store-review account run",
+    "lets an allowlisted %s of the store-review account run",
     async (method) => {
       await expect(
-        run(context({ method, path: "/x", user: reviewer })),
+        run(
+          context(
+            { method, path: "/tracks", user: reviewer },
+            Routes.prototype.catalog,
+          ),
+        ),
       ).resolves.toEqual(handled);
       expect(handle).toHaveBeenCalled();
       expect(setHeader).not.toHaveBeenCalled();
@@ -125,12 +146,78 @@ describe("StoreReviewInterceptor", () => {
       }),
     );
     await expect(
-      run(context({ method: "GET", path: "/admin/users", user: reviewer })),
+      run(
+        context(
+          { method: "GET", path: "/clubs/me/partnerships", user: reviewer },
+          Routes.prototype.catalog,
+        ),
+      ),
     ).resolves.toEqual({
       data: [
         { id: "u2", email: "masque@exemple.invalid", lastName: "D." },
         { id: "review-1", email: "licensee@test.com", lastName: "Licencié" },
       ],
+    });
+  });
+
+  describe("deny by default: a GET that is not allowlisted", () => {
+    it("returns {} without running the handler (new endpoint, detail)", async () => {
+      await expect(
+        run(context({ method: "GET", path: "/new-endpoint", user: reviewer })),
+      ).resolves.toEqual({});
+      expect(handle).not.toHaveBeenCalled();
+      expect(setHeader).toHaveBeenCalledWith(
+        DEMO_MODE_HEADER,
+        DEMO_MODE_SIMULATED,
+      );
+    });
+
+    it.each([
+      ["type: [Dto]", Routes.prototype.deniedList],
+      ["schema.type array", Routes.prototype.deniedSchemaList],
+    ])(
+      "returns [] when Swagger documents an array (%s)",
+      async (_label, handler) => {
+        await expect(
+          run(
+            context({ method: "GET", path: "/list", user: reviewer }, handler),
+          ),
+        ).resolves.toEqual([]);
+        expect(handle).not.toHaveBeenCalled();
+      },
+    );
+
+    it("uses the declared empty shape when the `when` condition fails", async () => {
+      await expect(
+        run(
+          context(
+            {
+              method: "GET",
+              path: "/career/user/u2",
+              params: { userId: "u2" },
+              user: reviewer,
+            },
+            Routes.prototype.careerOf,
+          ),
+        ),
+      ).resolves.toEqual({ partnerships: [], registrations: [], results: [] });
+      expect(handle).not.toHaveBeenCalled();
+    });
+
+    it("serves real data when the `when` condition holds", async () => {
+      await expect(
+        run(
+          context(
+            {
+              method: "GET",
+              path: "/career/user/review-1",
+              params: { userId: "review-1" },
+              user: reviewer,
+            },
+            Routes.prototype.careerOf,
+          ),
+        ),
+      ).resolves.toEqual(handled);
     });
   });
 

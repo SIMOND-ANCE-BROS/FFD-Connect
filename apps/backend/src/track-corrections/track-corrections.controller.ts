@@ -44,7 +44,12 @@ import {
 } from "./dto/track-correction.dto";
 import { TrackCorrectionsQueryService } from "./track-corrections.query-service";
 import { TrackCorrectionsService } from "./track-corrections.service";
-import { StoreReviewOwnData } from "../auth/store-review/store-review.decorator";
+import {
+  StoreReviewOwnData,
+  StoreReviewRead,
+  StoreReviewReadable,
+} from "../auth/store-review/store-review.decorator";
+import { simulatedEmptyPage } from "../auth/store-review/store-review-responses";
 
 /**
  * Propositions de correction des métadonnées des musiques. Préfixe distinct
@@ -94,6 +99,7 @@ export class TrackCorrectionsController {
     );
   }
 
+  @StoreReviewRead(simulatedEmptyPage)
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
@@ -133,6 +139,7 @@ export class TrackCorrectionsController {
     return this.queryService.listMine(req.user.userId, pagination);
   }
 
+  @StoreReviewReadable()
   @Get("pending-count")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)

@@ -26,7 +26,11 @@ import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { DeleteAccountDto } from "./dto/delete-account.dto";
 import { UpdateWdsfDto } from "./dto/update-wdsf.dto";
 import { UsersService } from "./users.service";
-import { StoreReviewOwnData } from "../auth/store-review/store-review.decorator";
+import {
+  StoreReviewOwnData,
+  StoreReviewRead,
+} from "../auth/store-review/store-review.decorator";
+import { simulatedEmptyList } from "../auth/store-review/store-review-responses";
 
 @ApiTags("users")
 @ApiCommonErrorResponses()
@@ -34,6 +38,7 @@ import { StoreReviewOwnData } from "../auth/store-review/store-review.decorator"
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  @StoreReviewRead(simulatedEmptyList)
   @Get("members")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
@@ -113,6 +118,7 @@ export class UsersController {
     return this.usersService.findClubMembers(req.user.userId, pagination);
   }
 
+  @StoreReviewRead(simulatedEmptyList)
   @Get("search")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.STAFF)
