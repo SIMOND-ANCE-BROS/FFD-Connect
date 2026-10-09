@@ -6,6 +6,7 @@ export {
   isCoupleEspoirEligible,
   ESPOIR_AGE_GROUP,
   ESPOIR_MAX_AGE,
+  ESPOIR_MIN_AGE,
   getAllowedLevelsForAgeGroup,
   COUPLE_AGE_GROUPS,
   SOLO_AGE_GROUPS,

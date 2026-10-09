@@ -17,6 +17,7 @@ import {
   computeSoloAgeGroup,
   ESPOIR_AGE_GROUP,
   ESPOIR_MAX_AGE,
+  ESPOIR_MIN_AGE,
   getReferenceYear,
   isCoupleEspoirEligible,
 } from "../../common/age-group";
@@ -208,7 +209,7 @@ export class CompetitionRegistrationService {
           )
         ) {
           throw new BadRequestException(
-            `Les épreuves Espoir sont réservées aux couples de moins de 21 ans (${ESPOIR_MAX_AGE} ans au plus au 31 décembre).`,
+            `Les épreuves Espoir sont réservées aux couples de moins de 21 ans (partenaires de ${ESPOIR_MIN_AGE} à ${ESPOIR_MAX_AGE} ans au 31 décembre).`,
           );
         }
       }

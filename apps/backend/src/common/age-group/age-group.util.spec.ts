@@ -428,6 +428,26 @@ describe("age-group.util", () => {
       ).toBe(false);
     });
 
+    it("rejects a couple with a partner under 16", () => {
+      expect(
+        isCoupleEspoirEligible(
+          new Date(2007, 0, 1),
+          new Date(2011, 0, 1),
+          2026,
+        ),
+      ).toBe(false);
+    });
+
+    it("accepts a couple whose younger partner turns 16 this year", () => {
+      expect(
+        isCoupleEspoirEligible(
+          new Date(2007, 0, 1),
+          new Date(2010, 11, 31),
+          2026,
+        ),
+      ).toBe(true);
+    });
+
     it("allows the same levels as Adulte", () => {
       expect(getAllowedLevelsForAgeGroup("COUPLE", "Espoir")).toEqual(
         getAllowedLevelsForAgeGroup("COUPLE", "Adulte"),

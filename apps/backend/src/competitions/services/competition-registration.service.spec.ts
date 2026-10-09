@@ -360,6 +360,25 @@ describe("CompetitionRegistrationService", () => {
       ).rejects.toThrow(/moins de 21 ans/);
     });
 
+    it("rejects an Espoir registration when a partner is under 16", async () => {
+      mockPrismaService.event.findUnique.mockResolvedValue(espoirEvent);
+      mockPrismaService.registration.findFirst.mockResolvedValue(null);
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce({ birthDate: new Date(2009, 0, 1) })
+        .mockResolvedValueOnce({
+          birthDate: new Date(2012, 0, 1),
+          firstName: "A",
+          lastName: "B",
+        });
+
+      await expect(
+        service.register("e1", "u1", "A B", {
+          byOrganizer: true,
+          partnerUserId: "p1",
+        }),
+      ).rejects.toThrow(/moins de 21 ans/);
+    });
+
     it("accepts an Espoir registration for an under-21 Adulte couple", async () => {
       mockPrismaService.event.findUnique.mockResolvedValue(espoirEvent);
       mockPrismaService.registration.findFirst.mockResolvedValue(null);

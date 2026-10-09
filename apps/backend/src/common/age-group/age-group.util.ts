@@ -33,10 +33,11 @@ export type CoupleAgeGroup = (typeof COUPLE_AGE_GROUPS)[number];
 
 /**
  * « Espoir » (moins de 21 ans) : classe d'ÉPREUVE couple, pas une classe d'âge
- * individuelle — un couple Youth ou Adulte peut s'y inscrire si le plus âgé
- * des partenaires a 20 ans au plus au 31 décembre.
+ * individuelle — un couple Youth ou Adulte peut s'y inscrire si les deux
+ * partenaires ont entre 16 et 20 ans au 31 décembre.
  */
 export const ESPOIR_AGE_GROUP = "Espoir";
+export const ESPOIR_MIN_AGE = 16;
 export const ESPOIR_MAX_AGE = 20;
 export type SoloAgeGroup = (typeof SOLO_AGE_GROUPS)[number];
 
@@ -178,17 +179,16 @@ export function computeCoupleAgeGroup(
   return null;
 }
 
-/** Vrai si le couple a l'âge Espoir : le plus âgé a 20 ans au plus au 31 décembre. */
+/** Vrai si le couple a l'âge Espoir : les deux partenaires ont 16 à 20 ans au 31 décembre. */
 export function isCoupleEspoirEligible(
   birthDateA: Date,
   birthDateB: Date,
   referenceYear: number,
 ): boolean {
-  const older = Math.max(
-    getAgeAtReferenceDate(birthDateA, referenceYear),
-    getAgeAtReferenceDate(birthDateB, referenceYear),
-  );
-  return older <= ESPOIR_MAX_AGE;
+  return [birthDateA, birthDateB].every((birthDate) => {
+    const age = getAgeAtReferenceDate(birthDate, referenceYear);
+    return age >= ESPOIR_MIN_AGE && age <= ESPOIR_MAX_AGE;
+  });
 }
 
 /**
