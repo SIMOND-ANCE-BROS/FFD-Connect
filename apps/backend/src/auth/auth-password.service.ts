@@ -51,7 +51,9 @@ export class AuthPasswordService {
       where: { email },
     });
 
-    if (!user) {
+    // The store-review account's password is shared with Apple / Google: no
+    // reset link is ever issued for it (same generic answer as an unknown email).
+    if (!user || user.isStoreReview) {
       return { success: true };
     }
 

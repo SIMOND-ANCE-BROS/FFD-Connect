@@ -31,6 +31,7 @@ import { RolesGuard } from "./guards/roles.guard";
 import type { RequestWithUser } from "./interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 import { NoImpersonationGuard } from "./no-impersonation.guard";
+import { StoreReviewPassthrough } from "./store-review/store-review.decorator";
 
 @ApiTags("auth")
 @Controller("auth")
@@ -377,6 +378,7 @@ export class AuthController {
     );
   }
 
+  @StoreReviewPassthrough()
   @Post("impersonate")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
@@ -403,6 +405,7 @@ export class AuthController {
     );
   }
 
+  @StoreReviewPassthrough()
   @Post("impersonate/stop")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")

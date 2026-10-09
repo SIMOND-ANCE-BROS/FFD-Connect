@@ -35,6 +35,8 @@ import { ValidatePartnershipDto } from "./dto/validate-partnership.dto";
 import { CreateSoloTeamDto } from "./dto/create-soloteam.dto";
 import { AddSoloTeamMemberDto } from "./dto/add-soloteam-member.dto";
 import { SetRegistrationModeDto } from "./dto/registration-mode.dto";
+import { StoreReviewSimulation } from "../auth/store-review/store-review.decorator";
+import { simulatedPartnership } from "../auth/store-review/store-review-responses";
 
 @ApiTags("clubs")
 @ApiCommonErrorResponses()
@@ -165,6 +167,7 @@ export class ClubsController {
     );
   }
 
+  @StoreReviewSimulation(simulatedPartnership)
   @Post("me/partnerships")
   @UseGuards(RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)

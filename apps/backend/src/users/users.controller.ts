@@ -181,6 +181,11 @@ export class UsersController {
             updatedAt: { type: "string", format: "date-time" },
           },
         },
+        isStoreReview: {
+          type: "boolean",
+          description:
+            "Compte de validation App Store / Google Play : ses écritures sont simulées (réponse 2xx, en-tête X-Demo-Mode: simulated, rien n'est enregistré).",
+        },
         createdAt: { type: "string", format: "date-time" },
         updatedAt: { type: "string", format: "date-time" },
       },

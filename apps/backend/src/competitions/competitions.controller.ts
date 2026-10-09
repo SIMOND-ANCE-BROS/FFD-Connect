@@ -47,6 +47,11 @@ import {
   GenerateVolunteerTokenDto,
   VolunteerCheckInDto,
 } from "./dto/volunteer-token.dto";
+import { StoreReviewSimulation } from "../auth/store-review/store-review.decorator";
+import {
+  simulatedCheckIn,
+  simulatedVolunteerToken,
+} from "../auth/store-review/store-review-responses";
 
 @ApiTags("competitions")
 @ApiCommonErrorResponses()
@@ -710,6 +715,7 @@ export class CompetitionsController {
     );
   }
 
+  @StoreReviewSimulation(simulatedCheckIn)
   @Post(":id/checkin")
   @UseGuards(JwtAuthGuard, RolesGuard, ThrottlerUserGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
@@ -743,6 +749,7 @@ export class CompetitionsController {
     return this.resultsService.checkIn(competitionId, body.qrData);
   }
 
+  @StoreReviewSimulation(simulatedVolunteerToken)
   @Post(":id/volunteer/token")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)

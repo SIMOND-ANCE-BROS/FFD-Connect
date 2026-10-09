@@ -36,6 +36,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (accountBlockReason(account)) {
       throw new UnauthorizedException(ACCOUNT_DISABLED_MESSAGE);
     }
+    // Store-review account (App Store / Google Play): its writes are simulated
+    // (StoreReviewInterceptor). An impersonation it opens inherits the flag,
+    // so the target's data cannot be changed through it either.
+    let storeReview = account.isStoreReview === true;
     if (payload.impersonatedBy) {
       // "Never impersonate an admin" holds for the whole session: promoting
       // the target to ADMIN (main or extra role) ends it.
@@ -55,6 +59,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       ) {
         throw new UnauthorizedException();
       }
+      storeReview ||= impersonator.isStoreReview === true;
     }
     return {
       userId: payload.sub,
@@ -63,6 +68,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: account.role,
       roles: rolesOf(account),
       impersonatedBy: payload.impersonatedBy,
+      storeReview,
     };
   }
 }

@@ -437,6 +437,7 @@ export const adminUserListSelect = {
   ageGroup: true,
   createdAt: true,
   disabledAt: true,
+  isStoreReview: true,
   license: { select: { number: true, validUntil: true } },
 } as const;
 
@@ -456,8 +457,12 @@ export const adminUserDetailSelect = {
   club: { select: { disabledAt: true } },
 } as const;
 
-/** Back-office status toggle: current state only. */
-export const adminUserStatusSelect = { id: true, disabledAt: true } as const;
+/** Back-office status toggle: current state + store-review protection. */
+export const adminUserStatusSelect = {
+  id: true,
+  disabledAt: true,
+  isStoreReview: true,
+} as const;
 
 /** Back-office: the editable fields of a user, for the audit diff. */
 export const adminUserEditableSelect = {
@@ -492,12 +497,15 @@ export const adminInvitationTargetSelect = {
 
 /**
  * Account status, read at login, at refresh and on every authenticated
- * request (JwtStrategy). Indexed lookup by primary key, three columns.
+ * request (JwtStrategy). Indexed lookup by primary key, four columns.
+ * `isStoreReview` rides along so the store-review simulated-write mode costs
+ * no extra query (StoreReviewInterceptor).
  */
 export const accountStatusSelect = {
   role: true,
   extraRoles: true,
   disabledAt: true,
+  isStoreReview: true,
   club: { select: { disabledAt: true } },
 } as const;
 
@@ -506,6 +514,7 @@ export const adminUserDeletionTargetSelect = {
   id: true,
   email: true,
   role: true,
+  isStoreReview: true,
 } as const;
 
 /** Back-office clubs table. Never select HelloAsso credentials. */
@@ -514,6 +523,7 @@ export const adminClubListSelect = {
   name: true,
   registrationMode: true,
   disabledAt: true,
+  isStoreReview: true,
   createdAt: true,
 } as const;
 
@@ -535,8 +545,19 @@ export const adminClubEditableSelect = {
   registrationMode: true,
 } as const;
 
-/** Back-office club status toggle: current state only. */
-export const adminClubStatusSelect = { id: true, disabledAt: true } as const;
+/** Back-office club status toggle: current state + store-review protection. */
+export const adminClubStatusSelect = {
+  id: true,
+  disabledAt: true,
+  isStoreReview: true,
+} as const;
+
+/** Back-office club deletion: name for the audit row + store-review protection. */
+export const adminClubDeletionTargetSelect = {
+  id: true,
+  name: true,
+  isStoreReview: true,
+} as const;
 
 /** Existing club an admin attaches a new account to (refused when disabled). */
 export const adminClubAttachSelect = {

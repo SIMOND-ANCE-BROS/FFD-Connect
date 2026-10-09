@@ -72,6 +72,20 @@ describe("AuthPasswordService", () => {
       expect(mockEmailService.sendPasswordResetEmail).not.toHaveBeenCalled();
     });
 
+    it("never issues a reset link for the store-review account (shared password)", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        id: "review-1",
+        email: "licensee@test.com",
+        isStoreReview: true,
+      });
+      const result = await service.forgotPassword("licensee@test.com");
+      expect(result).toEqual({ success: true });
+      expect(
+        mockPrismaService.passwordResetToken.create,
+      ).not.toHaveBeenCalled();
+      expect(mockEmailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
     it("should store hashed token and send plain token via email", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({
         id: "u1",

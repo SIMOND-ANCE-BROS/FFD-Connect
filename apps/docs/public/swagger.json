@@ -3072,28 +3072,7 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Permissions insuffisantes, ou club de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -3274,28 +3253,7 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Permissions insuffisantes, ou club de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -4585,7 +4543,7 @@
             }
           },
           "403": {
-            "description": "Son propre compte"
+            "description": "Son propre compte, ou compte de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -4780,7 +4738,7 @@
             }
           },
           "403": {
-            "description": "Son propre compte"
+            "description": "Son propre compte, ou compte de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -5600,6 +5558,10 @@
                           "format": "date-time"
                         }
                       }
+                    },
+                    "isStoreReview": {
+                      "type": "boolean",
+                      "description": "Compte de validation App Store / Google Play : ses écritures sont simulées (réponse 2xx, en-tête X-Demo-Mode: simulated, rien n'est enregistré)."
                     },
                     "createdAt": {
                       "type": "string",
@@ -21389,6 +21351,10 @@
             "type": "string",
             "nullable": true
           },
+          "isStoreReview": {
+            "type": "boolean",
+            "description": "Club du compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable"
+          },
           "memberCount": {
             "type": "number",
             "description": "Membres hors comptes Club"
@@ -21410,6 +21376,7 @@
           "name",
           "registrationMode",
           "disabledAt",
+          "isStoreReview",
           "memberCount",
           "clubAccountCount",
           "helloAssoConfigured",
@@ -21529,6 +21496,10 @@
             "type": "string",
             "nullable": true
           },
+          "isStoreReview": {
+            "type": "boolean",
+            "description": "Club du compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable"
+          },
           "memberCount": {
             "type": "number",
             "description": "Membres hors comptes Club"
@@ -21567,6 +21538,7 @@
           "name",
           "registrationMode",
           "disabledAt",
+          "isStoreReview",
           "memberCount",
           "clubAccountCount",
           "helloAssoConfigured",
@@ -21784,6 +21756,10 @@
             "format": "date-time",
             "type": "string",
             "nullable": true
+          },
+          "isStoreReview": {
+            "type": "boolean",
+            "description": "Compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable"
           }
         },
         "required": [
@@ -21800,7 +21776,8 @@
           "ageGroup",
           "licenseStatus",
           "createdAt",
-          "disabledAt"
+          "disabledAt",
+          "isStoreReview"
         ]
       },
       "AdminUsersPageDto": {
@@ -21887,6 +21864,10 @@
             "type": "string",
             "nullable": true
           },
+          "isStoreReview": {
+            "type": "boolean",
+            "description": "Compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable"
+          },
           "birthDate": {
             "format": "date-time",
             "type": "string",
@@ -21969,6 +21950,7 @@
           "licenseStatus",
           "createdAt",
           "disabledAt",
+          "isStoreReview",
           "birthDate",
           "nationalRanking",
           "passportLevelLatin",

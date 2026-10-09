@@ -148,6 +148,11 @@ export class AdminController {
   @ApiOperation({ summary: "Activer ou désactiver un club" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: AdminClubDetailDto })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Permissions insuffisantes, ou club de validation App Store / Google Play",
+  })
   setClubStatus(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: SetActiveDto,
@@ -162,6 +167,11 @@ export class AdminController {
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 204, description: "Club supprimé" })
   @ApiResponse({ status: 409, type: ClubNotEmptyDto })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Permissions insuffisantes, ou club de validation App Store / Google Play",
+  })
   deleteClub(
     @Param("id", ParseUUIDPipe) id: string,
     @Req() req: RequestWithUser,
@@ -210,7 +220,11 @@ export class AdminController {
   @ApiOperation({ summary: "Activer ou désactiver un utilisateur" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: AdminUserDetailDto })
-  @ApiResponse({ status: 403, description: "Son propre compte" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Son propre compte, ou compte de validation App Store / Google Play",
+  })
   setUserStatus(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: SetActiveDto,
@@ -225,7 +239,11 @@ export class AdminController {
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 204, description: "Compte supprimé" })
   @ApiResponse({ status: 400, description: "L'email saisi ne correspond pas" })
-  @ApiResponse({ status: 403, description: "Son propre compte" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Son propre compte, ou compte de validation App Store / Google Play",
+  })
   deleteUser(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: DeleteAdminUserDto,

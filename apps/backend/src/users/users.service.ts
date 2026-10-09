@@ -260,6 +260,8 @@ export class UsersService {
         extraRoles: true,
         birthDate: true,
         nationalRanking: true,
+        // Store-review account: the app may tell the reviewer writes are simulated.
+        isStoreReview: true,
         club: { select: { disabledAt: true } },
         license: { select: licenseBaseSelect },
         // Exclure le password explicitement
