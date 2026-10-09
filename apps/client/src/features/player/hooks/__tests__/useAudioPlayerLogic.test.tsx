@@ -57,6 +57,7 @@ describe("useAudioPlayerLogic", () => {
 
     const playTrack = jest.fn();
     const setQueueTracks = jest.fn();
+    const removeFromQueue = jest.fn();
 
     (usePlayer as jest.Mock).mockReturnValue({
       currentTrack: queueTracks[0],
@@ -73,6 +74,7 @@ describe("useAudioPlayerLogic", () => {
       toggleShuffle: jest.fn(),
       queueTracks,
       setQueueTracks,
+      removeFromQueue,
     });
 
     // Act
@@ -287,6 +289,7 @@ describe("useAudioPlayerLogic", () => {
       { id: "2", title: "B", artist: "X", url: "", baseBpm: 124 },
     ];
     const setQueueTracks = jest.fn();
+    const removeFromQueue = jest.fn();
 
     (usePlayer as jest.Mock).mockReturnValue({
       currentTrack: queueTracks[1],
@@ -303,13 +306,14 @@ describe("useAudioPlayerLogic", () => {
       toggleShuffle: jest.fn(),
       queueTracks,
       setQueueTracks,
+      removeFromQueue,
     });
 
     const { result } = await renderHook(() => useAudioPlayerLogic());
 
     await act(() => result.current.actions.removeQueueTrack("2"));
 
-    expect(setQueueTracks).toHaveBeenCalled();
+    expect(removeFromQueue).toHaveBeenCalledWith("2");
   });
 
   it("handleNext with repeat Track stays on same track", async () => {
@@ -554,6 +558,7 @@ describe("useAudioPlayerLogic", () => {
     ];
     const resetPlayer = jest.fn().mockResolvedValue(undefined);
     const setQueueTracks = jest.fn();
+    const removeFromQueue = jest.fn();
 
     (usePlayer as jest.Mock).mockReturnValue({
       currentTrack: queueTracks[0],
@@ -570,12 +575,13 @@ describe("useAudioPlayerLogic", () => {
       toggleShuffle: jest.fn(),
       queueTracks,
       setQueueTracks,
+      removeFromQueue,
     });
 
     const { result } = await renderHook(() => useAudioPlayerLogic());
     await act(() => result.current.actions.removeQueueTrack("1"));
 
-    expect(setQueueTracks).toHaveBeenCalled();
+    expect(removeFromQueue).toHaveBeenCalledWith("1");
     expect(resetPlayer).toHaveBeenCalled();
   });
 
@@ -586,6 +592,7 @@ describe("useAudioPlayerLogic", () => {
     ];
     const playTrack = jest.fn();
     const setQueueTracks = jest.fn();
+    const removeFromQueue = jest.fn();
 
     (usePlayer as jest.Mock).mockReturnValue({
       currentTrack: queueTracks[0],
@@ -602,16 +609,48 @@ describe("useAudioPlayerLogic", () => {
       toggleShuffle: jest.fn(),
       queueTracks,
       setQueueTracks,
+      removeFromQueue,
     });
 
     const { result } = await renderHook(() => useAudioPlayerLogic());
     await act(() => result.current.actions.removeQueueTrack("1"));
 
-    expect(setQueueTracks).toHaveBeenCalled();
+    expect(removeFromQueue).toHaveBeenCalledWith("1");
     expect(playTrack).toHaveBeenCalledWith(
       expect.objectContaining({ id: "2" }),
       expect.arrayContaining([expect.objectContaining({ id: "2" })]),
     );
+  });
+
+  it("moveQueueTrack forwards the reorder to the player store", async () => {
+    const queueTracks = [
+      { id: "1", title: "A", artist: "X", url: "", baseBpm: 120 },
+      { id: "2", title: "B", artist: "X", url: "", baseBpm: 124 },
+    ];
+    const moveQueueTrack = jest.fn();
+
+    (usePlayer as jest.Mock).mockReturnValue({
+      currentTrack: queueTracks[0],
+      isPlaying: false,
+      togglePlayback: jest.fn(),
+      isPlayerReady: true,
+      playTrack: jest.fn(),
+      resetPlayer: jest.fn(),
+      isLiked: jest.fn(() => false),
+      toggleLike: jest.fn(),
+      repeatMode: ContextRepeatMode.Off,
+      toggleRepeat: jest.fn(),
+      isShuffle: false,
+      toggleShuffle: jest.fn(),
+      queueTracks,
+      setQueueTracks: jest.fn(),
+      moveQueueTrack,
+    });
+
+    const { result } = await renderHook(() => useAudioPlayerLogic());
+    await act(() => result.current.actions.moveQueueTrack(1, 0));
+
+    expect(moveQueueTrack).toHaveBeenCalledWith(1, 0);
   });
 
   describe("tempo lock", () => {

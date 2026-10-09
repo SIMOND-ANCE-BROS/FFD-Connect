@@ -283,6 +283,7 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
         closeQueue={actions.closeQueue}
         playQueueTrack={actions.playQueueTrack}
         removeQueueTrack={actions.removeQueueTrack}
+        moveQueueTrack={actions.moveQueueTrack}
       />
 
       {/* Monté seulement à l'ouverture : les appels de départ sont calculés à

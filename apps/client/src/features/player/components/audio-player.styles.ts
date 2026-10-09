@@ -261,6 +261,23 @@ export const audioPlayerStyles = StyleSheet.create({
     paddingVertical: 24,
     alignItems: "center",
   },
+  queueList: {
+    flexShrink: 1,
+  },
+  queueHint: {
+    marginTop: -8,
+    marginBottom: 8,
+  },
+  queueHandle: {
+    paddingVertical: 8,
+    paddingRight: 10,
+  },
+  queueItemDragging: {
+    opacity: 0.7,
+  },
+  queueIconButton: {
+    padding: 6,
+  },
   loadingText: {
     marginTop: 10,
   },
