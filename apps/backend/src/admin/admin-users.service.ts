@@ -8,6 +8,8 @@ import {
 import { UserRole } from "@prisma/client";
 import { AuthTokenService } from "../auth/auth-token.service";
 import { normalizeExtraRoles, rolesOf } from "../auth/roles";
+import { assertUserNotStoreReview } from "../auth/store-review/store-review-protection";
+import { mirrorLegacyCompetitionLevel } from "../common/competition-level";
 import { PrismaService } from "../prisma/prisma.service";
 import { AccountDeletionService } from "../users/account-deletion.service";
 import {
@@ -55,8 +57,11 @@ export class AdminUsersService {
       if (!current) throw new NotFoundException("Utilisateur introuvable");
 
       // Only keys actually present in the body (null = clear).
+      // A legacy single level is mirrored to both disciplines (older back-office).
       const requested: Record<string, unknown> = Object.fromEntries(
-        Object.entries(dto).filter(([, v]) => v !== undefined),
+        Object.entries(mirrorLegacyCompetitionLevel(dto)).filter(
+          ([, v]) => v !== undefined,
+        ),
       );
 
       if (dto.clubId !== undefined) {
@@ -155,6 +160,7 @@ export class AdminUsersService {
         select: adminUserStatusSelect,
       });
       if (!current) throw new NotFoundException("Utilisateur introuvable");
+      if (!active) assertUserNotStoreReview(current, "disable");
       if ((current.disabledAt === null) === active) return;
 
       await tx.user.update({
@@ -198,6 +204,7 @@ export class AdminUsersService {
       select: adminUserDeletionTargetSelect,
     });
     if (!target) throw new NotFoundException("Utilisateur introuvable");
+    assertUserNotStoreReview(target, "delete");
     if (target.email.toLowerCase() !== confirmEmail.trim().toLowerCase()) {
       throw new BadRequestException(
         "L'email saisi ne correspond pas au compte",

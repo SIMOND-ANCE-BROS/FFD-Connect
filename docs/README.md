@@ -44,6 +44,7 @@ voir le [README racine](../README.md).
 
 - [Gestion des erreurs](guides/gestion-erreurs.md) — format API, retry, messages centralisés
 - [Hooks](guides/hooks.md) — index des hooks utilitaires et métier
+- [Gestion des issues](guides/gestion-des-issues.md) — titres, descriptions, types, labels, milestones, epics, Project
 
 ## ⚖️ Légal
 

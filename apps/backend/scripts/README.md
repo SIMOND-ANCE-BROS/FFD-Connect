@@ -9,7 +9,8 @@
 Le seed ne fait plus que :
 
 - Vider la base
-- Créer les comptes de base : admin, E2E, CVDS (club + couple de dev, direction@cvds.com)
+- Créer les comptes de dev CVDS (club + couple de dev, direction@cvds.com)
+- Les comptes de test (admin, licencié E2E, club, staff) viennent de `pnpm --filter backend seed:e2e` (`prisma/seed-e2e.ts`), utilisés par les flows Maestro
 - Alimenter les **tracks** depuis le dossier `uploads/` (analyse BPM, style)
 
 **Couple de dev** : un couple de licenciés CVDS (cavalier + cavalière) défini dans
@@ -71,13 +72,13 @@ pnpm run sync:compete -- --help    # Aide
 
 ### Différence entre `seed.ts` et `sync-licensees-from-compete.ts`
 
-|                             | **seed.ts**                                                                                                                   | **sync-licensees-from-compete.ts**                                                                                                                                                               |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Objectif**                | **Bootstrap** : vider la base, créer admin, E2E, CVDS (couple de dev, direction), et les tracks.                              | Charger / mettre à jour **uniquement** les données compete (licenciés, clubs, compétitions, résultats) en gardant le couple de dev, CVDS.                                                        |
-| **Nettoyage**               | Tout supprime (users, tracks, competitions, etc.).                                                                            | Supprime seulement licenciés, clubs, compétitions/events/résultats/inscriptions. **Ne touche pas** aux tracks ni à admin / E2E / couple de dev / CVDS.                                           |
-| **Création**                | Admin, E2E, CVDS (club + couple de dev, direction@cvds.com), **tracks** (dossier `uploads` + BPM). **Aucune** donnée compete. | Recrée clubs, licenciés, partenariats, compétitions/résultats à partir de `scraped_data.json` ou du scrape (`--scrape`). **Prérequis** : avoir déjà exécuté le seed (CVDS et comptes conservés). |
-| **Source des compétitions** | Aucune. Le seed affiche la commande à lancer pour charger les résultats.                                                      | `--scrape` = scrape depuis l’index puis sync ; sans `--scrape` = lecture de `scraped_data.json` uniquement.                                                                                      |
-| **Quand l’utiliser**        | Première install ou reset complet (base + tracks).                                                                            | Après le seed, ou pour rafraîchir les résultats compete sans refaire un bootstrap.                                                                                                               |
+|                             | **seed.ts**                                                                                                       | **sync-licensees-from-compete.ts**                                                                                                                                                               |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Objectif**                | **Bootstrap** : vider la base, créer admin, E2E, CVDS (couple de dev, direction), et les tracks.                  | Charger / mettre à jour **uniquement** les données compete (licenciés, clubs, compétitions, résultats) en gardant le couple de dev, CVDS.                                                        |
+| **Nettoyage**               | Tout supprime (users, tracks, competitions, etc.).                                                                | Supprime seulement licenciés, clubs, compétitions/events/résultats/inscriptions. **Ne touche pas** aux tracks ni à admin / E2E / couple de dev / CVDS.                                           |
+| **Création**                | CVDS (club + couple de dev, direction@cvds.com), **tracks** (dossier `uploads` + BPM). **Aucune** donnée compete. | Recrée clubs, licenciés, partenariats, compétitions/résultats à partir de `scraped_data.json` ou du scrape (`--scrape`). **Prérequis** : avoir déjà exécuté le seed (CVDS et comptes conservés). |
+| **Source des compétitions** | Aucune. Le seed affiche la commande à lancer pour charger les résultats.                                          | `--scrape` = scrape depuis l’index puis sync ; sans `--scrape` = lecture de `scraped_data.json` uniquement.                                                                                      |
+| **Quand l’utiliser**        | Première install ou reset complet (base + tracks).                                                                | Après le seed, ou pour rafraîchir les résultats compete sans refaire un bootstrap.                                                                                                               |
 
 En résumé : **seed** = bootstrap (comptes + tracks) ; **sync:compete** = source unique pour toutes les données compete (licenciés, clubs, partenariats, résultats).
 
@@ -144,3 +145,14 @@ Les sauvegardes sont stockées dans `../../backups/` (à la racine du projet).
 ---
 
 **Dernière mise à jour:** 12 Février 2026
+
+### Seeds staging (`docker-entrypoint.sh`, `SEED_TEST_TRACKS=true`)
+
+Ordre au boot, tous non bloquants :
+
+1. `purge-test-tracks.ts` — pistes métronome « FFD Test ».
+2. `purge-test-accounts.ts` — comptes `@test.com` / ids `seed-*` et clubs de démo (« Club Démo Bêta »), sauf le compte de validation des stores. `--dry-run` liste sans supprimer. Règles : `purge-test-accounts.utils.ts`.
+3. `seed-beta-testers.ts` — licences des vrais bêta-testeurs.
+4. `seed-profile-test-accounts.ts` — compte de validation des stores `licensee@test.com` (ADMIN + tous les rôles, club « Club Test FFD », `isStoreReview`).
+5. `seed-beta-career.ts` — carrière de démo du compte de validation.
+6. `seed-checkin-test.ts` — compétition en direct de démo où le compte de validation est inscrit.

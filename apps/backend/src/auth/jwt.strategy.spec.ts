@@ -43,6 +43,7 @@ describe("JwtStrategy", () => {
       email: "test@example.com",
       role: "LICENSEE",
       roles: [UserRole.LICENSEE],
+      storeReview: false,
     });
     expect(prisma.user.findUnique).toHaveBeenCalledWith({
       where: { id: "user-1" },
@@ -90,6 +91,20 @@ describe("JwtStrategy", () => {
     ).resolves.toMatchObject({ role: UserRole.LICENSEE });
   });
 
+  it("flags the store-review account from the same status lookup", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      role: UserRole.ADMIN,
+      extraRoles: [UserRole.LICENSEE, UserRole.CLUB, UserRole.STAFF],
+      disabledAt: null,
+      isStoreReview: true,
+      club: { disabledAt: null },
+    } as never);
+    await expect(strategy.validate(payload)).resolves.toMatchObject({
+      storeReview: true,
+    });
+    expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
+  });
+
   describe("impersonation", () => {
     const imp = { ...payload, impersonatedBy: "admin-1" };
     const target = { role: UserRole.LICENSEE, disabledAt: null, club: null };
@@ -107,6 +122,27 @@ describe("JwtStrategy", () => {
       expect(prisma.user.findUnique).toHaveBeenCalledWith({
         where: { id: "admin-1" },
         select: accountStatusSelect,
+      });
+    });
+
+    it("keeps writes simulated in an impersonation opened by the store-review account", async () => {
+      mockLookups({
+        role: UserRole.ADMIN,
+        disabledAt: null,
+        isStoreReview: true,
+        club: null,
+      });
+      await expect(strategy.validate(imp)).resolves.toMatchObject({
+        userId: "user-1",
+        impersonatedBy: "admin-1",
+        storeReview: true,
+      });
+    });
+
+    it("does not flag an impersonation opened by a regular admin", async () => {
+      mockLookups({ role: UserRole.ADMIN, disabledAt: null, club: null });
+      await expect(strategy.validate(imp)).resolves.toMatchObject({
+        storeReview: false,
       });
     });
 

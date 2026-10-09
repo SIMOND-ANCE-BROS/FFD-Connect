@@ -44,6 +44,7 @@ import {
 } from "./media-response.util";
 import { UpdateTrackDto } from "./dto/update-track.dto";
 import { TracksService } from "./tracks.service";
+import { StoreReviewReadable } from "../auth/store-review/store-review.decorator";
 
 @ApiTags("tracks")
 @ApiCommonErrorResponses()
@@ -54,6 +55,7 @@ export class TracksController {
     private readonly blobStorage: BlobStorageService,
   ) {}
 
+  @StoreReviewReadable()
   @Get()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
@@ -74,6 +76,7 @@ export class TracksController {
   }
 
   // Déclaré AVANT @Get(":id") : sinon "ambiance" serait capturé comme un id.
+  @StoreReviewReadable()
   @Get("ambiance")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
@@ -127,6 +130,7 @@ export class TracksController {
     return new StreamableFile(file);
   }
 
+  @StoreReviewReadable()
   @Get(":id")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")

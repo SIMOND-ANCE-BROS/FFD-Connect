@@ -47,6 +47,11 @@ export class AdminClubListItemDto {
   @ApiProperty({ enum: ClubRegistrationMode, enumName: "ClubRegistrationMode" })
   registrationMode!: ClubRegistrationMode;
   @ApiProperty({ nullable: true, type: Date }) disabledAt!: Date | null;
+  @ApiProperty({
+    description:
+      "Club du compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable",
+  })
+  isStoreReview!: boolean;
   @ApiProperty({ description: "Membres hors comptes Club" })
   memberCount!: number;
   @ApiProperty() clubAccountCount!: number;

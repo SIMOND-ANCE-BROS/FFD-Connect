@@ -6,7 +6,8 @@ export interface EditableFields {
   ageGroup: string | null;
   passportLevelLatin: string | null;
   passportLevelStandard: string | null;
-  competitionLevel: string | null;
+  competitionLevelLatin: string | null;
+  competitionLevelStandard: string | null;
   nationalRanking: number | null;
   role: string;
   extraRoles: string[];
@@ -35,10 +36,26 @@ export function changedFields(
 export function withLegacy(
   options: string[],
   value: string | null,
+  format: (raw: string) => string = (raw) => raw,
 ): { value: string; label: string }[] {
-  const list = options.map((o) => ({ value: o, label: o }));
+  const list = options.map((o) => ({ value: o, label: format(o) }));
   if (value && !options.includes(value)) {
-    list.push({ value, label: `${value} (valeur historique)` });
+    list.push({ value, label: `${format(value)} (valeur historique)` });
   }
   return list;
+}
+
+/**
+ * Read-only hint for the deprecated single competition level: shown only
+ * while neither per-discipline level is set (the backend backfilled them, so
+ * this is a leftover from an older write).
+ */
+export function legacyCompetitionLevelHint(user: {
+  competitionLevel?: string | null;
+  competitionLevelLatin?: string | null;
+  competitionLevelStandard?: string | null;
+}): string | undefined {
+  if (user.competitionLevelLatin || user.competitionLevelStandard) return undefined;
+  const legacy = user.competitionLevel?.trim();
+  return legacy ? `Ancien niveau unique : ${legacy}` : undefined;
 }

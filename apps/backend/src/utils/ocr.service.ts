@@ -106,9 +106,13 @@ export class OcrService implements OnModuleInit {
         return {};
       }
 
-      this.logger.log(`OCR detected text: ${fullText.substring(0, 100)}...`);
-
-      return this.parseText(fullText);
+      // Never log the extracted text: it carries identity and licence data
+      // (GDPR, #140). Only non-identifying diagnostics.
+      const parsed = this.parseText(fullText);
+      this.logger.log(
+        `OCR license: ${fullText.length} chars, licenseNumber=${Boolean(parsed.licenseNumber)}, expiryDate=${Boolean(parsed.expiryDate)}`,
+      );
+      return parsed;
     } catch (error) {
       if (error instanceof ServiceUnavailableException) throw error;
       const errorMessage =
@@ -169,8 +173,14 @@ export class OcrService implements OnModuleInit {
       if (!fullText) {
         return { rawText: "" };
       }
-      this.logger.log(`OCR medical: ${fullText.substring(0, 150)}...`);
-      return this.parseMedicalCertificateText(fullText);
+      // Never log the extracted text: a medical certificate is health data
+      // (GDPR art. 9, #140) and logs escape the certificate purge. Only
+      // non-identifying diagnostics.
+      const parsed = this.parseMedicalCertificateText(fullText);
+      this.logger.log(
+        `OCR medical: ${fullText.length} chars, isApte=${String(parsed.isApte)}, date=${Boolean(parsed.date)}, doctorName=${Boolean(parsed.doctorName)}`,
+      );
+      return parsed;
     } catch (error) {
       if (error instanceof ServiceUnavailableException) throw error;
       const errorMessage =

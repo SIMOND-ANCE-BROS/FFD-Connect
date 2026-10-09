@@ -1,10 +1,13 @@
 ---
 name: Tâche Backend
 about: Décrire une tâche technique spécifique au backend (endpoint, service...)
-title: "ID: [Titre court]"
-labels: "backend, task"
-assignees: ""
+title: 'DOMAINE: [résultat attendu]'
+labels: 'backend'
+type: Task
+assignees: ''
 ---
+
+<!-- Conventions : docs/guides/gestion-des-issues.md — type d'issue, une priorité (P0…P3 ou icebox), labels de zone, milestone, epic parente. -->
 
 ## Contexte
 

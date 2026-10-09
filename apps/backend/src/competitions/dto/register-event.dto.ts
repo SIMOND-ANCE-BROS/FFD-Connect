@@ -68,7 +68,7 @@ export class RegisterEventDto {
 
   @ApiProperty({
     description:
-      "Niveau du couple/solo (obligatoire pour épreuves classificatrices : International, Avancé, Intermédiaire, Débutant)",
+      "Niveau du couple/solo dans la discipline de l'épreuve (International, Avancé, Intermédiaire, Débutant). Absent : niveau du profil pour cette discipline. Ignoré pour les 10 danses.",
     required: false,
     enum: ["International", "Avancé", "Intermédiaire", "Débutant"],
   })

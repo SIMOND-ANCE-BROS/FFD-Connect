@@ -27,6 +27,40 @@ export const userBaseSelect = {
 } as const;
 
 /**
+ * Niveaux de compétition d'un utilisateur : un par discipline + l'ancien
+ * niveau unique (déprécié, lu en repli). À lire via
+ * getCompetitionLevelForCategory (src/common/competition-level).
+ */
+export const competitionLevelsSelect = {
+  competitionLevel: true,
+  competitionLevelLatin: true,
+  competitionLevelStandard: true,
+} as const;
+
+/** Champs du profil dont dépend l'éligibilité à une épreuve. */
+export const userEligibilityProfileSelect = {
+  ...competitionLevelsSelect,
+  category: true,
+  ageGroup: true,
+} as const;
+
+/** Membre d'une Solo Team : identité + niveaux (calcul du niveau d'équipe). */
+export const soloTeamMemberUserSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  ...competitionLevelsSelect,
+} as const;
+
+/** Création d'un couple : appartenance au club + données de suggestion (âge, disciplines, niveaux). */
+export const partnershipCandidateSelect = {
+  clubId: true,
+  clubName: true,
+  birthDate: true,
+  ...userEligibilityProfileSelect,
+} as const;
+
+/**
  * Sélecteur pour les informations utilisateur avec licence
  */
 export const userWithLicenseSelect = {
@@ -500,6 +534,7 @@ export const adminUserListSelect = {
   ageGroup: true,
   createdAt: true,
   disabledAt: true,
+  isStoreReview: true,
   license: { select: { number: true, validUntil: true } },
 } as const;
 
@@ -510,7 +545,7 @@ export const adminUserDetailSelect = {
   nationalRanking: true,
   passportLevelLatin: true,
   passportLevelStandard: true,
-  competitionLevel: true,
+  ...competitionLevelsSelect,
   wdsfMin: true,
   wdsfExpiresOn: true,
   lastLoginAt: true,
@@ -519,8 +554,12 @@ export const adminUserDetailSelect = {
   club: { select: { disabledAt: true } },
 } as const;
 
-/** Back-office status toggle: current state only. */
-export const adminUserStatusSelect = { id: true, disabledAt: true } as const;
+/** Back-office status toggle: current state + store-review protection. */
+export const adminUserStatusSelect = {
+  id: true,
+  disabledAt: true,
+  isStoreReview: true,
+} as const;
 
 /** Back-office: the editable fields of a user, for the audit diff. */
 export const adminUserEditableSelect = {
@@ -533,7 +572,7 @@ export const adminUserEditableSelect = {
   ageGroup: true,
   passportLevelLatin: true,
   passportLevelStandard: true,
-  competitionLevel: true,
+  ...competitionLevelsSelect,
   nationalRanking: true,
   role: true,
   extraRoles: true,
@@ -555,12 +594,15 @@ export const adminInvitationTargetSelect = {
 
 /**
  * Account status, read at login, at refresh and on every authenticated
- * request (JwtStrategy). Indexed lookup by primary key, three columns.
+ * request (JwtStrategy). Indexed lookup by primary key, four columns.
+ * `isStoreReview` rides along so the store-review simulated-write mode costs
+ * no extra query (StoreReviewInterceptor).
  */
 export const accountStatusSelect = {
   role: true,
   extraRoles: true,
   disabledAt: true,
+  isStoreReview: true,
   club: { select: { disabledAt: true } },
 } as const;
 
@@ -569,6 +611,7 @@ export const adminUserDeletionTargetSelect = {
   id: true,
   email: true,
   role: true,
+  isStoreReview: true,
 } as const;
 
 /** Back-office clubs table. Never select HelloAsso credentials. */
@@ -577,6 +620,7 @@ export const adminClubListSelect = {
   name: true,
   registrationMode: true,
   disabledAt: true,
+  isStoreReview: true,
   createdAt: true,
 } as const;
 
@@ -598,8 +642,19 @@ export const adminClubEditableSelect = {
   registrationMode: true,
 } as const;
 
-/** Back-office club status toggle: current state only. */
-export const adminClubStatusSelect = { id: true, disabledAt: true } as const;
+/** Back-office club status toggle: current state + store-review protection. */
+export const adminClubStatusSelect = {
+  id: true,
+  disabledAt: true,
+  isStoreReview: true,
+} as const;
+
+/** Back-office club deletion: name for the audit row + store-review protection. */
+export const adminClubDeletionTargetSelect = {
+  id: true,
+  name: true,
+  isStoreReview: true,
+} as const;
 
 /** Existing club an admin attaches a new account to (refused when disabled). */
 export const adminClubAttachSelect = {
@@ -644,4 +699,32 @@ export const volunteerTokenAuthSelect = {
   competitionId: true,
   expiresAt: true,
   name: true,
+} as const;
+
+/**
+ * TEMPORARY — what the FFD épreuves deduction needs to decide whether a
+ * synced competition's events may be replaced: its documents, the stored
+ * fingerprint, and each event's shape + dependants (registrations, results,
+ * schedule). The event list is bounded (`take`), a deduced set never exceeds
+ * MAX_DEDUCED_EVENTS (400).
+ */
+export const competitionEventsDeductionSelect = {
+  id: true,
+  eventsDescription: true,
+  circularUrl: true,
+  eventsSource: true,
+  eventsFingerprint: true,
+  events: {
+    select: {
+      category: true,
+      ageGroup: true,
+      eventType: true,
+      level: true,
+      eventKind: true,
+      _count: {
+        select: { registrations: true, results: true, scheduleItems: true },
+      },
+    },
+    take: 500,
+  },
 } as const;

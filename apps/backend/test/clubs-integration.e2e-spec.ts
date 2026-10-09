@@ -124,7 +124,10 @@ describe("ClubsService (integration with real DB)", () => {
           role: UserRole.LICENSEE,
           clubId: clubAId,
           birthDate: new Date("2000-01-01"),
-          competitionLevel: "Débutant",
+          category: "Ten Dance",
+          // A different level in each discipline.
+          competitionLevelLatin: "International",
+          competitionLevelStandard: "Débutant",
         },
       }),
       prisma.user.create({
@@ -136,7 +139,9 @@ describe("ClubsService (integration with real DB)", () => {
           role: UserRole.LICENSEE,
           clubId: clubAId,
           birthDate: new Date("1998-06-15"),
-          competitionLevel: "Intermédiaire",
+          category: "Ten Dance",
+          competitionLevelLatin: "Avancé",
+          competitionLevelStandard: "Intermédiaire",
         },
       }),
       prisma.user.create({
@@ -279,7 +284,17 @@ describe("ClubsService (integration with real DB)", () => {
         user1Id: licensee1Id,
         user2Id: licensee2Id,
       });
-      expect(result.coupleAgeGroup).toBeDefined();
+      expect(result.coupleAgeGroup).toBe("Adulte");
+      // Per discipline: lower partner level in each (Latin: International vs
+      // Avancé; Standard: Débutant vs Intermédiaire, Adulte starts at Inter.).
+      expect(result.suggestedLevelLatin).toBe("Avancé");
+      expect(result.suggestedLevelStandard).toBe("Intermédiaire");
+      expect(result.suggestedLevel).toBe("Intermédiaire");
+      expect(result.suggestedCategories).toEqual([
+        "Latines",
+        "Standards",
+        "10 danses",
+      ]);
       await prisma.partnership.delete({ where: { id: result.partnership.id } });
     });
   });
@@ -492,7 +507,7 @@ describe("ClubsService (integration with real DB)", () => {
       const team = await soloTeamService.addSoloTeamMember(
         organizerAId,
         teamId,
-        licensee2Id, // competitionLevel: Intermédiaire
+        licensee2Id, // Latin Avancé / Standard Intermédiaire → highest counts
       );
       expect(team.level).toBe("Intermédiaire");
     });

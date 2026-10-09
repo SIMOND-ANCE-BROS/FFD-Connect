@@ -1,4 +1,10 @@
 import api from "../../../services/api";
+import { isAgeGroupAllowedForEvent } from "../../../utils/ageGroup";
+import {
+  getCompetitionLevelForCategory,
+  normalizeDiscipline,
+  practisesDiscipline,
+} from "../../../utils/competitionLevel";
 
 /** Mode d'inscription du club (backend: ClubRegistrationMode) */
 export type ClubRegistrationMode =
@@ -27,6 +33,11 @@ export interface ClubMember {
   role: string;
   category?: string;
   ageGroup?: string;
+  /** Competition level in Latin (Débutant…International), per discipline. */
+  competitionLevelLatin?: string | null;
+  /** Competition level in Standard (Débutant…International), per discipline. */
+  competitionLevelStandard?: string | null;
+  /** @deprecated single legacy level, read only as a fallback. */
   competitionLevel?: string | null;
   clubName?: string | null;
   license?: { number: string | null; validUntil: Date | null };
@@ -76,6 +87,9 @@ export interface SoloTeamMember {
     id: string;
     firstName: string;
     lastName: string;
+    competitionLevelLatin?: string | null;
+    competitionLevelStandard?: string | null;
+    /** @deprecated single legacy level, read only as a fallback. */
     competitionLevel?: string | null;
   };
 }
@@ -86,6 +100,20 @@ export interface SoloTeam {
   name: string;
   level: string;
   members: SoloTeamMember[];
+}
+
+/** Couple creation: the partnership + age class and level/discipline advice. */
+export interface CreatePartnershipResult {
+  partnership: Partnership;
+  coupleAgeGroup: string | null;
+  /** Suggested level in Latin (null if the couple does not dance Latin). Absent on an older backend. */
+  suggestedLevelLatin?: string | null;
+  /** Suggested level in Standard (null if the couple does not dance Standard). Absent on an older backend. */
+  suggestedLevelStandard?: string | null;
+  /** @deprecated single level (lower of the two), kept for older backends. */
+  suggestedLevel: string | null;
+  /** Disciplines the couple can dance, already in French (Latines, Standards, 10 danses). */
+  suggestedCategories: string[];
 }
 
 interface MembersResponse {
@@ -130,17 +158,24 @@ export const ClubService = {
       eventKind?: string;
     },
   ): boolean {
-    if (
-      filter.category != null &&
-      filter.category !== "" &&
-      member.category !== filter.category
-    ) {
-      return false;
+    if (filter.category != null && filter.category !== "") {
+      // Same rule as the backend: the member practises the event discipline
+      // (a level in it, or the declared category; Ten Dance = both).
+      const practises = practisesDiscipline(member, filter.category);
+      if (practises === false) return false;
+      // Unknown event discipline: fall back to a plain category comparison.
+      if (
+        practises === null &&
+        normalizeDiscipline(filter.category) === null &&
+        member.category !== filter.category
+      ) {
+        return false;
+      }
     }
     if (
       filter.ageGroup != null &&
       filter.ageGroup !== "" &&
-      member.ageGroup !== filter.ageGroup
+      !isAgeGroupAllowedForEvent(filter.ageGroup, member.ageGroup)
     ) {
       return false;
     }
@@ -148,7 +183,9 @@ export const ClubService = {
       filter.eventKind === "CLASSIFICATRICE" &&
       filter.level != null &&
       filter.level !== "" &&
-      member.competitionLevel !== filter.level
+      // Level of the member IN THE EVENT DISCIPLINE (none for Ten Dance).
+      normalizeDiscipline(filter.category) !== "Ten Dance" &&
+      getCompetitionLevelForCategory(member, filter.category) !== filter.level
     ) {
       return false;
     }
@@ -210,19 +247,9 @@ export const ClubService = {
     secondaryClubId?: string;
     managementMode?: PartnershipManagementMode;
     startDate?: string;
-  }): Promise<{
-    partnership: Partnership;
-    coupleAgeGroup: string | null;
-    suggestedLevel: string | null;
-    suggestedCategories: string[];
-  }> {
+  }): Promise<CreatePartnershipResult> {
     return api
-      .post<{
-        partnership: Partnership;
-        coupleAgeGroup: string | null;
-        suggestedLevel: string | null;
-        suggestedCategories: string[];
-      }>("/clubs/me/partnerships", data)
+      .post<CreatePartnershipResult>("/clubs/me/partnerships", data)
       .then((r) => r.data);
   },
 

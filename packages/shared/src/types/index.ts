@@ -13,6 +13,7 @@ export type {
   ApiRegistration,
   ApiResult,
   ApiScheduleItem,
+  CompetitionEventsSource,
   CompetitionStatus,
   PaginatedResponse,
   RegistrationStatus,

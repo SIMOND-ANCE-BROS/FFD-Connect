@@ -518,6 +518,120 @@ describe("useLicenseLogic", () => {
     });
   });
 
+  describe("linked WDSF license (beta feedback)", () => {
+    const loadWdsf = async (wdsf: Record<string, unknown>) => {
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "LICENSEE",
+        hasWdsfLicense: true,
+        licensePhotoUri: null,
+        isLoggedIn: true,
+      });
+      mockAuthRepository.getProfile.mockResolvedValue({
+        firstName: "Jean",
+        lastName: "Dupont",
+        license: { number: "12345", validUntil: "2026-08-31" },
+        clubName: "Club FFD",
+        birthDate: "1990-05-15",
+        role: "LICENSEE",
+        wdsf: { min: "10117265", nationality: "France", ...wdsf },
+      });
+      const { result } = await renderHook(() => useLicenseLogic());
+      await waitFor(() => {
+        expect(
+          result.current.state.listItems.find((i) => i.type === "WDSF"),
+        ).toBeDefined();
+      });
+      return result.current.state.listItems.find((i) => i.type === "WDSF")
+        ?.data;
+    };
+
+    it("shows the national federation returned by the server, not WDSF", async () => {
+      const wdsfUser = await loadWdsf({
+        federation: "FFD - Fédération Française de Danse",
+      });
+      expect(wdsfUser?.structure).toBe("FFD - Fédération Française de Danse");
+    });
+
+    it("never invents WDSF as the federation when the server does not know it", async () => {
+      const wdsfUser = await loadWdsf({ federation: null });
+      expect(wdsfUser?.structure).toBeUndefined();
+    });
+
+    it("keeps the status out of the expiry date when there is none", async () => {
+      const wdsfUser = await loadWdsf({ expiresOn: null });
+      expect(wdsfUser?.validUntil).toBe("");
+      expect(wdsfUser?.status).toBe("Active");
+    });
+
+    it("formats a real expiry date and sets no status", async () => {
+      const wdsfUser = await loadWdsf({
+        expiresOn: "2026-12-31T00:00:00.000Z",
+      });
+      expect(wdsfUser?.validUntil).toMatch(/2026/);
+      expect(wdsfUser?.status).toBeUndefined();
+    });
+  });
+
+  it("maps a freshly verified WDSF license without an expiry date to a status", async () => {
+    mockAuthRepository.getAuthConfig.mockResolvedValue({
+      role: "LICENSEE",
+      authToken: "token",
+      isLoggedIn: true,
+    });
+    mockAuthRepository.getProfile.mockResolvedValue({
+      firstName: "Jean",
+      lastName: "Dupont",
+      role: "LICENSEE",
+    });
+    mockAuthRepository.verifyWdsfLicense.mockResolvedValue({
+      firstName: "Jean",
+      lastName: "Dupont",
+      licenseNumber: "10117265",
+      type: "Athlete's License",
+      structure: "",
+      validUntil: "Active",
+      status: "Active",
+      birthDate: "1990-05-15",
+    });
+
+    const { result } = await renderHook(() => useLicenseLogic());
+    await waitFor(() =>
+      expect(mockAuthRepository.getAuthConfig).toHaveBeenCalled(),
+    );
+    await act(async () => {
+      await result.current.actions.handleVerifyWdsf("10117265");
+    });
+
+    const wdsfUser = result.current.state.listItems.find(
+      (i) => i.type === "WDSF",
+    )?.data;
+    expect(wdsfUser?.validUntil).toBe("");
+    expect(wdsfUser?.status).toBe("Active");
+    expect(wdsfUser?.structure).toBeUndefined();
+  });
+
+  it("gives the staff and club cards a status, not a fake expiry date", async () => {
+    mockAuthRepository.getAuthConfig.mockResolvedValue({ role: "STAFF" });
+    const staff = await renderHook(() => useLicenseLogic());
+    await waitFor(() => {
+      expect(staff.result.current.state.role).toBe("STAFF");
+    });
+    expect(staff.result.current.state.listItems[0].data).toMatchObject({
+      validUntil: "",
+      status: "Permanente",
+    });
+
+    mockAuthRepository.getAuthConfig.mockResolvedValue({ role: "CLUB" });
+    const club = await renderHook(() => useLicenseLogic());
+    await waitFor(() => {
+      expect(club.result.current.state.role).toBe("CLUB");
+    });
+    expect(club.result.current.state.listItems[0].data).toMatchObject({
+      validUntil: "",
+      status: "Active",
+    });
+  });
+
   it("keeps the server-signed QR on the FFD license (#168)", async () => {
     const qrCode = '{"v":1,"id":"FFD-12345","exp":"2026-08-31","sig":"abc"}';
     mockAuthRepository.getAuthConfig.mockResolvedValue({
@@ -798,7 +912,7 @@ describe("useLicenseLogic", () => {
       expect(saveLicenseSnapshot).toHaveBeenCalledWith(
         "alice@ffd.fr",
         expect.objectContaining({ licenseNumber: "12345" }),
-        expect.objectContaining({ structure: "WDSF" }),
+        expect.objectContaining({ licenseNumber: "WDSF-PENDING" }),
       );
       expect(result.current.state.licenseUnavailable).toBe(false);
       expect(result.current.state.offlineSince).toBeNull();

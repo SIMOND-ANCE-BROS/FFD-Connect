@@ -1,5 +1,4 @@
 import { View } from "react-native";
-import { theme } from "../../../../theme";
 import { buildLicenseQrData } from "../../utils/licenseQrData";
 import { LicenseCardBody } from "./LicenseCardBody";
 import { LicenseCardFooter } from "./LicenseCardFooter";
@@ -14,7 +13,6 @@ export const LicenseCard: React.FC<LicenseCardProps> = ({
   photoUri,
   onShowQr,
   themeOverride,
-  collapsed = false,
   onOptions,
   style,
   testID,
@@ -26,14 +24,7 @@ export const LicenseCard: React.FC<LicenseCardProps> = ({
   const qrData = buildLicenseQrData(user, type);
 
   return (
-    <View
-      testID={testID}
-      style={[
-        styles.cardContainer,
-        style,
-        collapsed && { marginBottom: -theme.spacing.xl },
-      ]}
-    >
+    <View testID={testID} style={[styles.cardContainer, style]}>
       <View
         style={[
           styles.card,
@@ -41,7 +32,6 @@ export const LicenseCard: React.FC<LicenseCardProps> = ({
             backgroundColor: config.cardBackground,
             borderColor: config.borderColor,
           },
-          collapsed && styles.collapsedCardHeight,
           style,
         ]}
       >
@@ -52,19 +42,17 @@ export const LicenseCard: React.FC<LicenseCardProps> = ({
           onOptions={onOptions}
         />
 
-        {!collapsed && (
-          <>
-            <LicenseCardBody
-              isFFD={isFFD}
-              config={config}
-              user={user}
-              photoUri={photoUri}
-              qrData={qrData}
-              onShowQr={onShowQr}
-            />
-            <LicenseCardFooter isFFD={isFFD} config={config} user={user} />
-          </>
-        )}
+        {/* Always the full card, even behind another one in the wallet: the
+            stack only offsets it, so bringing it forward never resizes it. */}
+        <LicenseCardBody
+          isFFD={isFFD}
+          config={config}
+          user={user}
+          photoUri={photoUri}
+          qrData={qrData}
+          onShowQr={onShowQr}
+        />
+        <LicenseCardFooter isFFD={isFFD} config={config} user={user} />
       </View>
     </View>
   );

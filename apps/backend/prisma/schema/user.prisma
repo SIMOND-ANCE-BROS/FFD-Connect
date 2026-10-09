@@ -23,6 +23,7 @@ model User {
   updatedAt            DateTime       @updatedAt
   lastLoginAt          DateTime?      // Dernière connexion réussie (back-office : « renvoyer l'invitation » tant que null)
   disabledAt           DateTime?      // Désactivé par un admin (null = actif) : connexion, refresh et requêtes refusés
+  isStoreReview        Boolean        @default(false) // Compte de validation App Store / Google Play : écritures simulées, ni supprimable ni désactivable
   ageGroup             String?        // 1 seule classe d'âge par licencié
   category             String?        // discipline(s) : Latin, Standard, Ten Dance
   clubId               String?
@@ -31,12 +32,15 @@ model User {
   nationalRanking      Int?
   passportLevelLatin   PassportLevel? // Niveau Passeport Danse en Latine (à partir de Vert évalué séparément)
   passportLevelStandard PassportLevel? // Niveau Passeport Danse en Standard
-  competitionLevel     String?        // Niveau compétition : Débutant, Intermédiaire, Avancé, International (pour éligibilité / calcul niveau Solo Team)
+  competitionLevel     String?        // DEPRECATED : niveau unique historique, repli en lecture (anciens clients, rollback) ; à supprimer plus tard
+  competitionLevelLatin String?       // Niveau compétition en Latine : Débutant, Intermédiaire, Avancé, International (indépendant du Passeport Danse)
+  competitionLevelStandard String?    // Niveau compétition en Standard (mêmes valeurs ; un danseur peut avoir deux niveaux différents)
   wdsfMin              String?        // Numéro MIN WDSF (Member Identification Number) si licence WDSF liée
   wdsfNationality      String?
   wdsfLicenseType     String?
   wdsfAgeGroup        String?
   wdsfExpiresOn       DateTime?
+  wdsfFederation      String?        // Fédération nationale (member body) relue auprès de la WDSF à la liaison
   club                 Club?          @relation(fields: [clubId], references: [id], onDelete: SetNull)
   partnershipsAsUser1  Partnership[]  @relation("PartnershipUser1")
   partnershipsAsUser2  Partnership[]  @relation("PartnershipUser2")

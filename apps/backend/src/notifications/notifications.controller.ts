@@ -35,6 +35,11 @@ import {
 import { NotificationPreferencesQueryService } from "./notification-preferences.query-service";
 import { NotificationPreferencesService } from "./notification-preferences.service";
 import { NotificationsService } from "./notifications.service";
+import {
+  StoreReviewOwnData,
+  StoreReviewSimulation,
+} from "../auth/store-review/store-review.decorator";
+import { simulatedDeleteCount } from "../auth/store-review/store-review-responses";
 
 @ApiCommonErrorResponses()
 @Controller("notifications")
@@ -46,6 +51,7 @@ export class NotificationsController {
     private readonly preferencesService: NotificationPreferencesService,
   ) {}
 
+  @StoreReviewOwnData()
   @Get()
   async getMyNotifications(@Request() req: RequestWithUser) {
     return this.notificationsService.getAllForUser(req.user.userId);
@@ -115,6 +121,7 @@ export class NotificationsController {
    * les rôles. Un type ajouté plus tard, ou un périmètre modifié, s'applique
    * sans publier de nouvelle version de l'application mobile.
    */
+  @StoreReviewOwnData()
   @Get("preferences")
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
@@ -232,6 +239,7 @@ export class NotificationsController {
    * Sur la collection, donc sans `:id` : n'entre pas en concurrence avec les
    * routes nommées ci-dessus.
    */
+  @StoreReviewSimulation(simulatedDeleteCount)
   @Delete()
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({

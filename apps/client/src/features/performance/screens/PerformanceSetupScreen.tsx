@@ -2,7 +2,8 @@ import { useNavigation } from "@react-navigation/native";
 import { Plus } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
-import { NestableScrollContainer } from "react-native-draggable-flatlist";
+// Gesture-handler ScrollView: cooperates with the draggable rows' pan gesture.
+import { ScrollView } from "react-native-gesture-handler";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -41,6 +42,8 @@ export const PerformanceSetupScreen = () => {
   const { theme: currentTheme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [headerH, setHeaderH] = useState(insets.top + 56);
+  /** A dance row is being dragged: the page must not scroll meanwhile. */
+  const [isDraggingDance, setIsDraggingDance] = useState(false);
   const {
     config,
     setConfig,
@@ -119,7 +122,9 @@ export const PerformanceSetupScreen = () => {
       style={[styles.container, { backgroundColor: currentTheme.background }]}
       edges={["left", "right"]}
     >
-      <NestableScrollContainer
+      <ScrollView
+        scrollEnabled={!isDraggingDance}
+        testID="performance-setup-scroll"
         contentContainerStyle={{
           ...styles.content,
           paddingTop: headerH,
@@ -188,6 +193,7 @@ export const PerformanceSetupScreen = () => {
             isOfficial={isOfficialOrder(danceOrder)}
             onChange={setCategoryOrder}
             onReset={() => resetDanceOrder()}
+            onDragActiveChange={setIsDraggingDance}
           />
         </View>
 
@@ -321,7 +327,7 @@ export const PerformanceSetupScreen = () => {
             </AppText>
           )}
         </View>
-      </NestableScrollContainer>
+      </ScrollView>
 
       <PinnedHeader
         theme={currentTheme}

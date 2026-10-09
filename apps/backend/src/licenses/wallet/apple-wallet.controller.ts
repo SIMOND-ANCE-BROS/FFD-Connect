@@ -29,6 +29,7 @@ import {
   AppleWalletPassLinkDto,
   WalletPassTokenParamDto,
 } from "./dto/apple-wallet.dto";
+import { StoreReviewPassthrough } from "../../auth/store-review/store-review.decorator";
 
 interface RequestWithUser extends ExpressRequest {
   user: { userId: string };
@@ -69,6 +70,7 @@ export function publicOrigin(req: ExpressRequest): string {
 export class AppleWalletController {
   constructor(private readonly walletPassService: AppleWalletPassService) {}
 
+  @StoreReviewPassthrough()
   @Post("my/wallet/apple")
   @UseGuards(JwtAuthGuard, ThrottlerUserGuard)
   @Throttle({ default: { ttl: 60_000, limit: 5 } })

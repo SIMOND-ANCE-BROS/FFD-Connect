@@ -234,8 +234,8 @@ describe("ClubCompetitionFormScreen", () => {
     // Add event
     await fireEvent.press(getByText("Ajouter"));
 
-    // Event should be added to the list - at least 1 occurrence of Standard (in event list)
-    expect(getAllByText("Standard").length).toBeGreaterThanOrEqual(1);
+    // Event should be added to the list - at least 1 occurrence of Standards (in event list)
+    expect(getAllByText("Standards").length).toBeGreaterThanOrEqual(1);
     // The event is added with age "Junior II"
     expect(
       getAllByText(/Junior II/, { exact: false }).length,

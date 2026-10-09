@@ -1,10 +1,13 @@
 ---
 name: Epic
 about: Décrire un objectif de haut-niveau et son périmètre métier
-title: "EPIC-N: [Nom Court]"
-labels: "epic"
-assignees: ""
+title: 'EPIC: [thème]'
+labels: 'epic'
+type: Feature
+assignees: ''
 ---
+
+<!-- Conventions : docs/guides/gestion-des-issues.md — type d'issue, une priorité (P0…P3 ou icebox), labels de zone, milestone, epic parente. -->
 
 ## Objectif
 
@@ -12,10 +15,10 @@ assignees: ""
 
 ## Périmètre
 
-| Élément              | Détail |
-| -------------------- | ------ |
+| Élément              | Détail                                                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | **Module / Feature** | ex. `auth`, `competitions`, `license`, `tracks` (backend) — `auth`, `competitions`, `club`, `player`, `settings` (client) |
-| **Stack**            | Backend (NestJS) / Client (Expo) / Transverse |
+| **Stack**            | Backend (NestJS) / Client (Expo) / Transverse                                                                             |
 
 ## Livrables (tâches liées)
 

@@ -1,7 +1,10 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { PartnershipStatus, Prisma, UserRole } from "@prisma/client";
 import { hasRole, withActiveRole } from "../auth/roles";
-import { userRolesClubSelect } from "../utils/prisma-selects";
+import {
+  competitionLevelsSelect,
+  userRolesClubSelect,
+} from "../utils/prisma-selects";
 import { PrismaService } from "../prisma/prisma.service";
 import { ClubsService } from "./clubs.service";
 
@@ -93,7 +96,7 @@ export class PartnershipQueryService {
         role: true,
         category: true,
         ageGroup: true,
-        competitionLevel: true,
+        ...competitionLevelsSelect,
         clubName: true,
         passportLevelLatin: true,
         passportLevelStandard: true,

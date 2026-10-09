@@ -3111,28 +3111,7 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Permissions insuffisantes, ou club de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -3316,28 +3295,7 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Permissions insuffisantes, ou club de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -4642,7 +4600,7 @@
             }
           },
           "403": {
-            "description": "Son propre compte"
+            "description": "Son propre compte, ou compte de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -4840,7 +4798,7 @@
             }
           },
           "403": {
-            "description": "Son propre compte"
+            "description": "Son propre compte, ou compte de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -5622,6 +5580,44 @@
                       "nullable": true,
                       "example": "Club de Danse Paris"
                     },
+                    "category": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": ["Latin", "Standard", "Ten Dance"],
+                      "description": "Discipline déclarée (valeur stockée, non traduite)"
+                    },
+                    "ageGroup": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "competitionLevelLatin": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": [
+                        "Débutant",
+                        "Intermédiaire",
+                        "Avancé",
+                        "International"
+                      ],
+                      "description": "Niveau de compétition en Latines"
+                    },
+                    "competitionLevelStandard": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": [
+                        "Débutant",
+                        "Intermédiaire",
+                        "Avancé",
+                        "International"
+                      ],
+                      "description": "Niveau de compétition en Standards"
+                    },
+                    "competitionLevel": {
+                      "type": "string",
+                      "nullable": true,
+                      "deprecated": true,
+                      "description": "Ancien niveau unique, conservé pour les anciennes versions de l'app. Préférer les niveaux par discipline."
+                    },
                     "licenseNumber": {
                       "type": "string",
                       "nullable": true
@@ -5667,6 +5663,44 @@
                         "updatedAt": {
                           "type": "string",
                           "format": "date-time"
+                        }
+                      }
+                    },
+                    "isStoreReview": {
+                      "type": "boolean",
+                      "description": "Compte de validation App Store / Google Play : ses écritures sont simulées (réponse 2xx, en-tête X-Demo-Mode: simulated, rien n'est enregistré)."
+                    },
+                    "wdsf": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Licence WDSF liée au compte (null si aucune).",
+                      "properties": {
+                        "min": {
+                          "type": "string",
+                          "example": "10117265"
+                        },
+                        "nationality": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "licenseType": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "ageGroup": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "expiresOn": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "federation": {
+                          "type": "string",
+                          "nullable": true,
+                          "example": "FFD - Fédération Française de Danse",
+                          "description": "Fédération nationale du titulaire (jamais « WDSF »). Null si inconnue."
                         }
                       }
                     },
@@ -22582,6 +22616,10 @@
             "type": "string",
             "nullable": true
           },
+          "isStoreReview": {
+            "type": "boolean",
+            "description": "Club du compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable"
+          },
           "memberCount": {
             "type": "number",
             "description": "Membres hors comptes Club"
@@ -22603,6 +22641,7 @@
           "name",
           "registrationMode",
           "disabledAt",
+          "isStoreReview",
           "memberCount",
           "clubAccountCount",
           "helloAssoConfigured",
@@ -22730,6 +22769,10 @@
             "type": "string",
             "nullable": true
           },
+          "isStoreReview": {
+            "type": "boolean",
+            "description": "Club du compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable"
+          },
           "memberCount": {
             "type": "number",
             "description": "Membres hors comptes Club"
@@ -22768,6 +22811,7 @@
           "name",
           "registrationMode",
           "disabledAt",
+          "isStoreReview",
           "memberCount",
           "clubAccountCount",
           "helloAssoConfigured",
@@ -22996,6 +23040,10 @@
             "format": "date-time",
             "type": "string",
             "nullable": true
+          },
+          "isStoreReview": {
+            "type": "boolean",
+            "description": "Compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable"
           }
         },
         "required": [
@@ -23012,7 +23060,8 @@
           "ageGroup",
           "licenseStatus",
           "createdAt",
-          "disabledAt"
+          "disabledAt",
+          "isStoreReview"
         ]
       },
       "AdminUsersPageDto": {
@@ -23109,6 +23158,10 @@
             "type": "string",
             "nullable": true
           },
+          "isStoreReview": {
+            "type": "boolean",
+            "description": "Compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable"
+          },
           "birthDate": {
             "format": "date-time",
             "type": "string",
@@ -23135,6 +23188,16 @@
             ]
           },
           "competitionLevel": {
+            "type": "string",
+            "nullable": true,
+            "deprecated": true,
+            "description": "Ancien niveau unique (repli) — préférer les niveaux par discipline"
+          },
+          "competitionLevelLatin": {
+            "type": "string",
+            "nullable": true
+          },
+          "competitionLevelStandard": {
             "type": "string",
             "nullable": true
           },
@@ -23191,11 +23254,14 @@
           "licenseStatus",
           "createdAt",
           "disabledAt",
+          "isStoreReview",
           "birthDate",
           "nationalRanking",
           "passportLevelLatin",
           "passportLevelStandard",
           "competitionLevel",
+          "competitionLevelLatin",
+          "competitionLevelStandard",
           "wdsfMin",
           "wdsfExpiresOn",
           "licenseNumber",
@@ -23273,7 +23339,33 @@
               "Intermédiaire",
               "Débutant",
               null
-            ]
+            ],
+            "deprecated": true,
+            "description": "Ancien niveau unique. Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard."
+          },
+          "competitionLevelLatin": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "International",
+              "Avancé",
+              "Intermédiaire",
+              "Débutant",
+              null
+            ],
+            "description": "Niveau de compétition en Latines"
+          },
+          "competitionLevelStandard": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "International",
+              "Avancé",
+              "Intermédiaire",
+              "Débutant",
+              null
+            ],
+            "description": "Niveau de compétition en Standards"
           },
           "nationalRanking": {
             "type": "number",
@@ -23363,7 +23455,33 @@
               "Intermédiaire",
               "Débutant",
               null
-            ]
+            ],
+            "deprecated": true,
+            "description": "Ancien niveau unique. Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard."
+          },
+          "competitionLevelLatin": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "International",
+              "Avancé",
+              "Intermédiaire",
+              "Débutant",
+              null
+            ],
+            "description": "Niveau de compétition en Latines"
+          },
+          "competitionLevelStandard": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "International",
+              "Avancé",
+              "Intermédiaire",
+              "Débutant",
+              null
+            ],
+            "description": "Niveau de compétition en Standards"
           },
           "nationalRanking": {
             "type": "number",
@@ -24361,7 +24479,7 @@
           },
           "registrantLevel": {
             "type": "string",
-            "description": "Niveau du couple/solo (obligatoire pour épreuves classificatrices)",
+            "description": "Niveau du couple/solo dans la discipline de l'épreuve. Absent : niveau du profil du membre pour cette discipline. Ignoré pour les 10 danses.",
             "enum": ["International", "Avancé", "Intermédiaire", "Débutant"]
           }
         },
@@ -24415,7 +24533,7 @@
           },
           "registrantLevel": {
             "type": "string",
-            "description": "Niveau du couple/solo (obligatoire pour épreuves classificatrices : International, Avancé, Intermédiaire, Débutant)",
+            "description": "Niveau du couple/solo dans la discipline de l'épreuve (International, Avancé, Intermédiaire, Débutant). Absent : niveau du profil pour cette discipline. Ignoré pour les 10 danses.",
             "enum": ["International", "Avancé", "Intermédiaire", "Débutant"]
           }
         },

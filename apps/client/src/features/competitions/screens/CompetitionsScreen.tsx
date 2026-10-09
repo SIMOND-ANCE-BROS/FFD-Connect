@@ -55,6 +55,7 @@ import {
   shouldShowParisLabel,
 } from "../utils/competitionCard";
 import { styles } from "./CompetitionsScreen.styles";
+import { formatDiscipline } from "../../../utils/discipline";
 
 /**
  * Calcule la distance en km entre deux coordonnées GPS (formule de Haversine).
@@ -727,8 +728,8 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
         <View style={styles.filterChips}>
           {(
             [
-              { label: "Latine", value: "Latin" },
-              { label: "Standard", value: "Standard" },
+              { label: formatDiscipline("Latin"), value: "Latin" },
+              { label: formatDiscipline("Standard"), value: "Standard" },
             ] as const satisfies { label: string; value: CompetitionStyle }[]
           ).map((opt) => (
             <FilterChip

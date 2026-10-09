@@ -65,6 +65,21 @@ describe("getAllowedCoupleAgeClassesForEvent", () => {
     expect(result).toContain("Youth");
   });
 
+  it("upward choice: Youth and Adulte couples can dance in Espoir (under 21)", () => {
+    expect(getAllowedCoupleAgeClassesForEvent("Youth", "", "")).toContain(
+      "Espoir",
+    );
+    expect(getAllowedCoupleAgeClassesForEvent("Adulte", "", "")).toContain(
+      "Espoir",
+    );
+    expect(
+      getAllowedCoupleAgeClassesForEvent("Senior I", "", ""),
+    ).not.toContain("Espoir");
+    expect(
+      getAllowedCoupleAgeClassesForEvent("Junior II", "", ""),
+    ).not.toContain("Espoir");
+  });
+
   it("upward choice: Senior II can dance in Senior I", () => {
     const result = getAllowedCoupleAgeClassesForEvent("Senior II", "", "");
     expect(result).toContain("Senior I");
@@ -260,6 +275,47 @@ describe("isLevelEligibleForClassificatriceEvent", () => {
 // checkParticipationEligibility
 // ---------------------------------------------------------------------------
 describe("checkParticipationEligibility", () => {
+  describe("Ten Dance (10 danses): no level requirement", () => {
+    it("ignores the level of a levelled classificatrice row", () => {
+      expect(
+        checkParticipationEligibility({
+          eventType: "COUPLE",
+          eventAgeGroup: "Adulte",
+          eventCategory: "Ten Dance",
+          eventKind: "CLASSIFICATRICE",
+          eventLevel: "International",
+          registrantAgeGroup: "Adulte",
+          registrantLevel: "Débutant",
+        }),
+      ).toEqual({ allowed: true });
+    });
+
+    it("ignores a missing level", () => {
+      expect(
+        checkParticipationEligibility({
+          eventType: "COUPLE",
+          eventAgeGroup: "Adulte",
+          eventCategory: "10 danses",
+          eventKind: "MAJEURE",
+          eventLevel: "Avancé",
+          registrantAgeGroup: "Adulte",
+        }).allowed,
+      ).toBe(true);
+    });
+
+    it("still checks the age class", () => {
+      expect(
+        checkParticipationEligibility({
+          eventType: "COUPLE",
+          eventAgeGroup: "Junior I",
+          eventCategory: "Ten Dance",
+          eventKind: "MAJEURE",
+          registrantAgeGroup: "Adulte",
+        }).allowed,
+      ).toBe(false);
+    });
+  });
+
   it("SOLO_TEAM always allowed", () => {
     expect(
       checkParticipationEligibility({

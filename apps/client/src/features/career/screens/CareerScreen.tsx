@@ -41,6 +41,7 @@ import type {
 import { BackendService } from "../../../services/BackendService";
 import { getPodiumStyle } from "../../../utils/podium";
 import { useCareerLogic } from "../hooks/useCareerLogic";
+import { formatDiscipline } from "../../../utils/discipline";
 
 type Props = CompositeScreenProps<
   BottomTabScreenProps<TabParamList, "Career">,
@@ -283,7 +284,8 @@ export const CareerScreen = ({ navigation }: Props) => {
                           { color: currentTheme.textSecondary },
                         ]}
                       >
-                        {r.event.category} · {r.event.ageGroup}
+                        {formatDiscipline(r.event.category)} ·{" "}
+                        {r.event.ageGroup}
                         {r.bibNumber != null ? ` · Dossard ${r.bibNumber}` : ""}
                         {r.partnerName ? ` · ${r.partnerName}` : ""}
                       </AppText>
@@ -372,7 +374,8 @@ export const CareerScreen = ({ navigation }: Props) => {
                               variant="caption"
                               style={{ color: currentTheme.textSecondary }}
                             >
-                              {r.event.category} · {r.event.ageGroup}
+                              {formatDiscipline(r.event.category)} ·{" "}
+                              {r.event.ageGroup}
                               {r.round ? ` · ${r.round}` : ""} ·{" "}
                               {formatDate(r.competition.date)}
                             </AppText>

@@ -7,6 +7,7 @@ import {
   type CompetitionLevel,
   getAllowedLevelsForAgeGroup,
 } from "../age-group";
+import { normalizeDiscipline } from "../competition-level";
 
 /** Type de compétition (Article 8). */
 export const COMPETITION_TYPES = [
@@ -103,8 +104,10 @@ function isSoloAgeGroupAllowedInEvent(
 // ----- Article 9 §1.3 – Couple : choix de danser dans une classe supérieure -----
 const COUPLE_UPWARD_CHOICES: Record<string, string[]> = {
   "Junior II": ["Youth"],
-  Youth: ["Adulte"], // Espoir = Under 21, on simplifie en Adulte
-  Adulte: [], // Espoir si conditions d'âge (non géré ici)
+  // Espoir = moins de 21 ans : la borne d'âge exacte est vérifiée à
+  // l'inscription quand les dates de naissance sont connues.
+  Youth: ["Adulte", "Espoir"],
+  Adulte: ["Espoir"],
   "Senior I": ["Adulte"],
   "Senior II": ["Senior I"],
   "Senior III": ["Senior II"],
@@ -244,6 +247,11 @@ export interface ParticipationParams {
   eventKind?: EventKindValue | null;
   competitionType?: CompetitionTypeValue | null;
   registrantAgeGroup: string;
+  /**
+   * Level of the couple/solo IN THE EVENT'S DISCIPLINE: resolve it with
+   * getCompetitionLevelForCategory(user, eventCategory), never with a single
+   * cross-discipline level. Ignored for Ten Dance events.
+   */
   registrantLevel?: string | null;
 }
 
@@ -279,6 +287,13 @@ export function checkParticipationEligibility(
     eventCategory,
   );
   if (!ageCheck.allowed) return ageCheck;
+
+  // 10 danses : épreuves majeures ouvertes aux danseurs pratiquant les deux
+  // disciplines, sans condition de niveau. La double pratique se vérifie avec
+  // practisesDiscipline() (données du profil, hors de cette fonction pure).
+  if (normalizeDiscipline(eventCategory) === "Ten Dance") {
+    return { allowed: true };
+  }
 
   if (eventKind === "CLASSIFICATRICE") {
     return isLevelEligibleForClassificatriceEvent(

@@ -165,50 +165,9 @@ async function main() {
 
   const passwordHash = await bcrypt.hash(PASSWORD, 10);
 
-  // 2. CREATE ADMIN (upsert to avoid duplicates)
-  console.warn("👤 Creating Admin...");
-  await prisma.user.upsert({
-    where: { email: "admin@ffd.com" },
-    update: {}, // Don't update if exists
-    create: {
-      email: "admin@ffd.com",
-      password: passwordHash,
-      firstName: "Super",
-      lastName: "Admin",
-      role: UserRole.ADMIN,
-    },
-  });
-
-  // 2.5 CREATE E2E TEST USER (upsert to avoid duplicates)
-  console.warn("🧪 Creating E2E Test User...");
-  const e2eUser = await prisma.user.upsert({
-    where: { email: "test.e2e@ffd.com" },
-    update: {}, // Don't update if exists
-    create: {
-      email: "test.e2e@ffd.com",
-      password: passwordHash,
-      firstName: "Test",
-      lastName: "E2E",
-      role: UserRole.LICENSEE,
-      clubName: "FFD Test Club",
-      category: "Standard",
-      ageGroup: "Adult",
-      birthDate: new Date("1995-01-01"),
-    },
-  });
-
-  // Create license for E2E user if it doesn't exist
-  await prisma.license.upsert({
-    where: { number: "19950101-e2e-te01" },
-    update: {}, // Don't update if exists
-    create: {
-      number: "19950101-e2e-te01",
-      validUntil: new Date("2026-12-31"),
-      category: "Standard",
-      clubName: "FFD Test Club",
-      userId: e2eUser.id,
-    },
-  });
+  // 2. Test accounts (admin, E2E licensee, club, staff) are NOT created
+  // here any more: `pnpm --filter backend seed:e2e` (prisma/seed-e2e.ts) owns
+  // them, with the exact profiles the Maestro flows log in with.
 
   // 2.6 CLUB CVDS (Club Villeurbannais de Danse Sportive) — pour le couple de dev (voir seed-owner-couple.ts)
   const CVDS_NAME = "Club Villeurbannais de Danse Sportive";

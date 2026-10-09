@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Post,
   Request,
   UnauthorizedException,
@@ -31,6 +32,8 @@ import { RolesGuard } from "./guards/roles.guard";
 import type { RequestWithUser } from "./interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "./jwt-auth.guard";
 import { NoImpersonationGuard } from "./no-impersonation.guard";
+import { STORE_REVIEW_IMPERSONATION_MESSAGE } from "./store-review/store-review-protection";
+import { StoreReviewPassthrough } from "./store-review/store-review.decorator";
 
 @ApiTags("auth")
 @Controller("auth")
@@ -377,6 +380,9 @@ export class AuthController {
     );
   }
 
+  // Runs for real so that the refusal below reaches the store-review account
+  // (a simulated body would hand the client a token-less session).
+  @StoreReviewPassthrough()
   @Post("impersonate")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
@@ -394,6 +400,11 @@ export class AuthController {
     @Request() req: RequestWithUser,
     @Body() body: ImpersonateDto,
   ) {
+    // The store-review account is ADMIN with a password shared with Apple /
+    // Google: it must never open another person's session.
+    if (req.user.storeReview) {
+      throw new ForbiddenException(STORE_REVIEW_IMPERSONATION_MESSAGE);
+    }
     return this.authService.impersonate(
       req.user.userId,
       req.user.roles,
@@ -403,6 +414,7 @@ export class AuthController {
     );
   }
 
+  @StoreReviewPassthrough()
   @Post("impersonate/stop")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")

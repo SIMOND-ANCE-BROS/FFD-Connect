@@ -60,6 +60,11 @@ import {
   AdminClubOptionDto,
   AdminReferenceDataDto,
 } from "./dto/admin-reference.dto";
+import {
+  StoreReviewRead,
+  StoreReviewReadable,
+} from "../auth/store-review/store-review.decorator";
+import { simulatedEmptyPage } from "../auth/store-review/store-review-responses";
 
 /**
  * Admin back-office API. Guards and role are set on the CLASS so that no
@@ -82,6 +87,7 @@ export class AdminController {
     private readonly clubs: AdminClubsService,
   ) {}
 
+  @StoreReviewReadable()
   @Get("reference-data")
   @ApiOperation({ summary: "Listes de valeurs du back-office" })
   @ApiResponse({ status: 200, type: AdminReferenceDataDto })
@@ -89,6 +95,7 @@ export class AdminController {
     return this.reference.referenceData();
   }
 
+  @StoreReviewRead(simulatedEmptyPage)
   @Get("clubs")
   @ApiOperation({ summary: "Liste paginée des clubs" })
   @ApiResponse({ status: 200, type: AdminClubsPageDto })
@@ -109,6 +116,7 @@ export class AdminController {
     return this.clubs.create(req.user.userId, dto);
   }
 
+  @StoreReviewReadable()
   @Get("clubs/options")
   @ApiOperation({
     summary: "Clubs actifs (id + nom) pour les listes déroulantes",
@@ -148,6 +156,11 @@ export class AdminController {
   @ApiOperation({ summary: "Activer ou désactiver un club" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: AdminClubDetailDto })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Permissions insuffisantes, ou club de validation App Store / Google Play",
+  })
   setClubStatus(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: SetActiveDto,
@@ -162,6 +175,11 @@ export class AdminController {
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 204, description: "Club supprimé" })
   @ApiResponse({ status: 409, type: ClubNotEmptyDto })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Permissions insuffisantes, ou club de validation App Store / Google Play",
+  })
   deleteClub(
     @Param("id", ParseUUIDPipe) id: string,
     @Req() req: RequestWithUser,
@@ -169,6 +187,7 @@ export class AdminController {
     return this.clubs.delete(req.user.userId, id);
   }
 
+  @StoreReviewRead(simulatedEmptyPage)
   @Get("audit-log")
   @ApiOperation({ summary: "Journal des actions admin" })
   @ApiResponse({ status: 200, type: AuditLogPageDto })
@@ -176,6 +195,7 @@ export class AdminController {
     return this.audit.list(query);
   }
 
+  @StoreReviewRead(simulatedEmptyPage)
   @Get("users")
   @ApiOperation({ summary: "Liste paginée des utilisateurs" })
   @ApiResponse({ status: 200, type: AdminUsersPageDto })
@@ -210,7 +230,11 @@ export class AdminController {
   @ApiOperation({ summary: "Activer ou désactiver un utilisateur" })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: AdminUserDetailDto })
-  @ApiResponse({ status: 403, description: "Son propre compte" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Son propre compte, ou compte de validation App Store / Google Play",
+  })
   setUserStatus(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: SetActiveDto,
@@ -225,7 +249,11 @@ export class AdminController {
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 204, description: "Compte supprimé" })
   @ApiResponse({ status: 400, description: "L'email saisi ne correspond pas" })
-  @ApiResponse({ status: 403, description: "Son propre compte" })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Son propre compte, ou compte de validation App Store / Google Play",
+  })
   deleteUser(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: DeleteAdminUserDto,

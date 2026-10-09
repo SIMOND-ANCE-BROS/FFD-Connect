@@ -13,6 +13,7 @@ import {
 import { withActiveRole } from "../auth/roles";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { partnershipCandidateSelect } from "../utils/prisma-selects";
 import { ClubsService } from "./clubs.service";
 import type { CreatePartnershipDto } from "./dto/create-partnership.dto";
 import type { EndPartnershipDto } from "./dto/end-partnership.dto";
@@ -37,29 +38,11 @@ export class PartnershipService {
     const [u1, u2] = await Promise.all([
       this.prisma.user.findUnique({
         where: { id: dto.user1Id },
-        select: {
-          clubId: true,
-          clubName: true,
-          birthDate: true,
-          ageGroup: true,
-          category: true,
-          competitionLevel: true,
-          passportLevelLatin: true,
-          passportLevelStandard: true,
-        },
+        select: partnershipCandidateSelect,
       }),
       this.prisma.user.findUnique({
         where: { id: dto.user2Id },
-        select: {
-          clubId: true,
-          clubName: true,
-          birthDate: true,
-          ageGroup: true,
-          category: true,
-          competitionLevel: true,
-          passportLevelLatin: true,
-          passportLevelStandard: true,
-        },
+        select: partnershipCandidateSelect,
       }),
     ]);
     if (!u1 || !u2) throw new NotFoundException("One or both users not found");
@@ -153,8 +136,13 @@ export class PartnershipService {
       },
     });
 
-    const { coupleAgeGroup, suggestedLevel, suggestedCategories } =
-      computePartnershipSuggestion(u1, u2, startDate);
+    const {
+      coupleAgeGroup,
+      suggestedLevel,
+      suggestedLevelLatin,
+      suggestedLevelStandard,
+      suggestedCategories,
+    } = computePartnershipSuggestion(u1, u2, startDate);
 
     // Notification au club partenaire lorsqu'un couple inter-club est créé
     if (secondaryClub && status === PartnershipStatus.PENDING_SECOND_CLUB) {
@@ -203,7 +191,10 @@ export class PartnershipService {
     return {
       partnership,
       coupleAgeGroup,
+      // Deprecated single level (older clients): lower of the two below.
       suggestedLevel: suggestedLevel ?? null,
+      suggestedLevelLatin,
+      suggestedLevelStandard,
       suggestedCategories,
     };
   }

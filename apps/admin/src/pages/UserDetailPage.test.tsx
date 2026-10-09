@@ -28,6 +28,8 @@ const detail = {
   passportLevelLatin: null,
   passportLevelStandard: null,
   competitionLevel: null,
+  competitionLevelLatin: null,
+  competitionLevelStandard: null,
   wdsfMin: null,
   wdsfExpiresOn: null,
   licenseNumber: 'L1',
@@ -37,6 +39,14 @@ const detail = {
   clubDisabledAt: null,
   createdByAdmin: true,
 };
+
+/** Picks an option in a Mantine Select (every listbox stays mounted in jsdom). */
+async function pickOption(input: HTMLElement, name: string) {
+  await userEvent.click(input);
+  const listbox = document.getElementById(input.getAttribute('aria-controls') ?? '');
+  if (!listbox) throw new Error('listbox not found');
+  await userEvent.click(within(listbox).getByRole('option', { name, hidden: true }));
+}
 
 function renderPage() {
   return render(
@@ -92,7 +102,7 @@ describe('UserDetailPage', () => {
 
   it('shows a legacy category instead of a blank select', async () => {
     renderPage();
-    expect(await screen.findByDisplayValue('Latine (valeur historique)')).toBeInTheDocument();
+    expect(await screen.findByDisplayValue('Latines (valeur historique)')).toBeInTheDocument();
   });
 
   it('confirms a before → after summary then PATCHes only the changed field', async () => {
@@ -113,6 +123,38 @@ describe('UserDetailPage', () => {
       path: { id: 'u1' },
       body: { lastName: 'Durand' },
     });
+  });
+
+  it('edits the Latin and Standard levels separately, never the legacy single level', async () => {
+    vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+      data: { ...detail, competitionLevelLatin: 'Débutant' },
+      error: undefined,
+    } as never);
+    const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
+      data: { ...detail, competitionLevelLatin: 'Débutant', competitionLevelStandard: 'Débutant' },
+      error: undefined,
+    } as never);
+    renderPage();
+    const standard = await screen.findByLabelText('Niveau Standards', { selector: 'input' });
+    expect(screen.getByLabelText('Niveau Latines', { selector: 'input' })).toHaveValue('Débutant');
+    await pickOption(standard, 'Débutant');
+    await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Niveau Standards');
+    await userEvent.click(within(dialog).getByRole('button', { name: /confirmer/i }));
+    expect(patch).toHaveBeenCalledWith({
+      path: { id: 'u1' },
+      body: { competitionLevelStandard: 'Débutant' },
+    });
+  });
+
+  it('shows the legacy single level as a read-only hint when no discipline level is set', async () => {
+    vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+      data: { ...detail, competitionLevel: 'Avancé' },
+      error: undefined,
+    } as never);
+    renderPage();
+    expect(await screen.findAllByText('Ancien niveau unique : Avancé')).toHaveLength(2);
   });
 
   it('blocks the save when a required name is cleared', async () => {

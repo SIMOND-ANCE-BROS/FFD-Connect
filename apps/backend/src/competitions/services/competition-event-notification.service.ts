@@ -1,9 +1,16 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { NotificationType, UserRole } from "@prisma/client";
 import { withActiveRole } from "../../auth/roles";
+import {
+  getCompetitionLevelForCategory,
+  normalizeDiscipline,
+  practisesDiscipline,
+  type CompetitionLevelProfile,
+} from "../../common/competition-level";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { getErrorMessage, getErrorStack } from "../../utils/error.utils";
+import { userEligibilityProfileSelect } from "../../utils/prisma-selects";
 
 /** Payload `kind` discriminator stored in Notification.data. */
 export const NEW_COMPETITION_KIND = "NEW_COMPETITION";
@@ -26,10 +33,8 @@ export interface CompetitionWithEvents {
 }
 
 /** Profil licencié réduit aux champs d'éligibilité. */
-interface LicenseeProfile {
+interface LicenseeProfile extends CompetitionLevelProfile {
   id: string;
-  category: string | null;
-  competitionLevel: string | null;
   ageGroup: string | null;
 }
 
@@ -56,7 +61,12 @@ export class CompetitionEventNotificationService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  /** Vrai si le profil du licencié correspond à l'épreuve (champ vide = joker). */
+  /**
+   * Vrai si le profil du licencié correspond à l'épreuve (champ vide = joker).
+   * Discipline : le licencié la pratique (10 danses = Latines ET Standards).
+   * Niveau : celui du licencié DANS LA DISCIPLINE de l'épreuve ; aucune
+   * condition de niveau pour les 10 danses.
+   */
   private matchesEvent(
     profile: LicenseeProfile,
     event: EligibilityEvent,
@@ -64,10 +74,15 @@ export class CompetitionEventNotificationService {
     const norm = (s: string | null | undefined) =>
       s?.trim().toLowerCase() ?? "";
     const categoryOk =
-      !profile.category || norm(event.category) === norm(profile.category);
+      !event.category || practisesDiscipline(profile, event.category) !== false;
+    const profileLevel = getCompetitionLevelForCategory(
+      profile,
+      event.category,
+    );
     const levelOk =
-      !profile.competitionLevel ||
-      norm(event.level) === norm(profile.competitionLevel);
+      normalizeDiscipline(event.category) === "Ten Dance" ||
+      !profileLevel ||
+      norm(event.level) === norm(profileLevel);
     const ageGroupOk =
       !profile.ageGroup || norm(event.ageGroup) === norm(profile.ageGroup);
     return categoryOk && levelOk && ageGroupOk;
@@ -89,12 +104,7 @@ export class CompetitionEventNotificationService {
 
       const licensees = await this.prisma.user.findMany({
         where: withActiveRole(UserRole.LICENSEE),
-        select: {
-          id: true,
-          category: true,
-          competitionLevel: true,
-          ageGroup: true,
-        },
+        select: { id: true, ...userEligibilityProfileSelect },
         take: this.MAX_RECIPIENTS,
       });
 

@@ -17,6 +17,11 @@ import { RootStackParamList } from "../../../navigation/types";
 import api from "../../../services/api";
 import type { CareerResult } from "../../../services/BackendService";
 import { LicenseExpiryBanner } from "../../license/components/LicenseExpiryBanner";
+import {
+  type CompetitionLevelProfile,
+  formatCompetitionLevels,
+} from "../../../utils/competitionLevel";
+import { formatDiscipline } from "../../../utils/discipline";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Profile">;
 
@@ -32,10 +37,14 @@ export const ProfileScreen = ({ navigation }: Props) => {
     clubName: string;
   } | null>(null);
   const [results, setResults] = useState<CareerResult[]>([]);
+  /** « Latines : Avancé · Standards : Débutant » (legacy single level as fallback). */
+  const [competitionLevels, setCompetitionLevels] = useState<string | null>(
+    null,
+  );
 
   const loadData = useCallback(async () => {
     try {
-      const [licenseRes, careerRes] = await Promise.all([
+      const [licenseRes, careerRes, meRes] = await Promise.all([
         api
           .get<{
             number: string;
@@ -47,11 +56,15 @@ export const ProfileScreen = ({ navigation }: Props) => {
         api.get<{ results: CareerResult[] }>("/career/me").catch(() => ({
           data: { results: [] as CareerResult[] },
         })),
+        api
+          .get<CompetitionLevelProfile>("/users/me")
+          .catch(() => ({ data: null })),
       ]);
       const licenseData = licenseRes.data;
       const careerData = careerRes.data;
       setLicense(licenseData);
       setResults(careerData.results ?? []);
+      setCompetitionLevels(formatCompetitionLevels(meRes.data));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -134,7 +147,7 @@ export const ProfileScreen = ({ navigation }: Props) => {
               color={currentTheme.textSecondary}
               style={styles.licenseDetail}
             >
-              {license.category} — {license.clubName}
+              {formatDiscipline(license.category)} — {license.clubName}
             </AppText>
             <View style={styles.expiryRow}>
               <AppText variant="caption" color={currentTheme.textSecondary}>
@@ -168,6 +181,29 @@ export const ProfileScreen = ({ navigation }: Props) => {
               accessibilityLabel="Ajouter ma licence"
               accessibilityHint="Déposer vos certificats pour associer votre licence"
             />
+          </View>
+        )}
+
+        {competitionLevels && (
+          <View
+            style={[
+              styles.levelCard,
+              {
+                backgroundColor: currentTheme.surface,
+                borderColor: currentTheme.border,
+              },
+            ]}
+          >
+            <AppText variant="caption" color={currentTheme.textSecondary}>
+              Niveau de compétition
+            </AppText>
+            <AppText
+              variant="body"
+              color={currentTheme.text}
+              style={styles.licenseDetail}
+            >
+              {competitionLevels}
+            </AppText>
           </View>
         )}
 
@@ -208,7 +244,8 @@ export const ProfileScreen = ({ navigation }: Props) => {
                 </AppText>
               </View>
               <AppText variant="caption" color={currentTheme.textSecondary}>
-                {result.event?.category} — {result.event?.ageGroup}
+                {formatDiscipline(result.event?.category)} —{" "}
+                {result.event?.ageGroup}
               </AppText>
               {result.ranking != null && (
                 <AppText
@@ -259,6 +296,12 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   licenseDetail: { marginTop: 4 },
+  levelCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 16,
+    marginTop: 12,
+  },
   expiryRow: { flexDirection: "row", alignItems: "center", marginTop: 8 },
   emptyCard: {
     borderRadius: 12,

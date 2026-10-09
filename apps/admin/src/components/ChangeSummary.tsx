@@ -1,5 +1,6 @@
 import { Table } from '@mantine/core';
 import { REGISTRATION_MODE_LABELS, ROLE_LABELS } from '../lib/labels';
+import { formatDiscipline } from '../lib/discipline';
 import { formatTimecode } from '../lib/moderation';
 
 const LABELS: Record<string, string> = {
@@ -11,7 +12,9 @@ const LABELS: Record<string, string> = {
   ageGroup: "Classe d'âge",
   passportLevelLatin: 'Passeport Latine',
   passportLevelStandard: 'Passeport Standard',
-  competitionLevel: 'Niveau compétition',
+  competitionLevel: 'Niveau compétition (ancien)',
+  competitionLevelLatin: 'Niveau Latines',
+  competitionLevelStandard: 'Niveau Standards',
   nationalRanking: 'Classement national',
   role: 'Rôle',
   extraRoles: 'Rôles supplémentaires',
@@ -53,6 +56,7 @@ function display(key: string, value: unknown): string {
       : '—';
   }
   const text = String(value);
+  if (key === 'category') return formatDiscipline(text);
   return VALUE_LABELS[key]?.[text] ?? text;
 }
 

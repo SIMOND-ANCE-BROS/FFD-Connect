@@ -57,6 +57,7 @@ function makeUser(overrides: Record<string, unknown> = {}) {
     wdsfLicenseType: null,
     wdsfAgeGroup: null,
     wdsfExpiresOn: null,
+    wdsfFederation: null,
     birthDate: new Date("1995-06-15"),
     nationalRanking: null,
     license: null,
@@ -231,6 +232,42 @@ describe("UsersService", () => {
       expect(result.wdsf).not.toBeNull();
       expect(result.wdsf?.min).toBe("12345");
       expect(result.wdsf?.nationality).toBe("FRA");
+    });
+
+    it("returns the stored national federation of the WDSF license", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({
+          wdsfMin: "12345",
+          wdsfNationality: "Germany",
+          wdsfFederation: "DTV",
+        }),
+      );
+
+      const result = await service.findOne("u1");
+
+      expect(result.wdsf?.federation).toBe("DTV");
+    });
+
+    it("derives the FFD for a French WDSF license linked before the federation was stored", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ wdsfMin: "12345", wdsfNationality: "France" }),
+      );
+
+      const result = await service.findOne("u1");
+
+      expect(result.wdsf?.federation).toBe(
+        "FFD - Fédération Française de Danse",
+      );
+    });
+
+    it("never reports WDSF as the federation when it is unknown", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeUser({ wdsfMin: "12345", wdsfNationality: "Germany" }),
+      );
+
+      const result = await service.findOne("u1");
+
+      expect(result.wdsf?.federation).toBeNull();
     });
 
     it("passes the correct select shape to prisma", async () => {
@@ -569,6 +606,44 @@ describe("UsersService", () => {
 
       expect(wdsfService.getAthleteByMin).toHaveBeenCalledWith("12345");
       expect(prisma.user.update).toHaveBeenCalled();
+    });
+
+    it("stores the national federation read from WDSF, not from the client", async () => {
+      wdsfService.getAthleteByMin.mockResolvedValue({
+        firstName: "Alice",
+        lastName: "Dupont",
+        structure: "FFD - Fédération Française de Danse",
+      });
+      prisma.user.update.mockResolvedValue(makeUser());
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+
+      await service.updateWdsf("u1", { min: "12345" });
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            wdsfFederation: "FFD - Fédération Française de Danse",
+          }),
+        }),
+      );
+    });
+
+    it("stores no federation when WDSF does not know it", async () => {
+      wdsfService.getAthleteByMin.mockResolvedValue({
+        firstName: "Alice",
+        lastName: "Dupont",
+        structure: "",
+      });
+      prisma.user.update.mockResolvedValue(makeUser());
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+
+      await service.updateWdsf("u1", { min: "12345" });
+
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ wdsfFederation: null }),
+        }),
+      );
     });
 
     it("rejects a MIN whose WDSF holder is not the account holder", async () => {

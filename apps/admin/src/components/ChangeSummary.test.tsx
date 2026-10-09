@@ -18,6 +18,17 @@ describe('ChangeSummary', () => {
     expect(screen.queryByText(/11111111|22222222/)).not.toBeInTheDocument();
   });
 
+  it('shows disciplines in French', () => {
+    render(
+      <MantineProvider>
+        <ChangeSummary before={{ category: 'Latin' }} after={{ category: 'Ten Dance' }} />
+      </MantineProvider>,
+    );
+    expect(screen.getByText('Catégorie')).toBeInTheDocument();
+    expect(screen.getByText('Latines')).toBeInTheDocument();
+    expect(screen.getByText('10 danses')).toBeInTheDocument();
+  });
+
   it('labels club fields and shows registration modes and roles in French', () => {
     render(
       <MantineProvider>
