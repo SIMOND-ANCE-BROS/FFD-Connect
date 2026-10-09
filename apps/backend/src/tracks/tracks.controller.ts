@@ -7,6 +7,7 @@ import {
   HttpStatus,
   NotFoundException,
   Param,
+  ParseUUIDPipe,
   Patch,
   Query,
   Req,
@@ -146,7 +147,7 @@ export class TracksController {
     description:
       "Réservé aux administrateurs. Permet de corriger titre, artiste, style et BPM après ajout. Champs absents = inchangés. Chaque modification appliquée est tracée dans le journal d'audit (TRACK_UPDATE). Une musique en erreur (tempo non détecté) passe en READY quand un MPM > 0 est saisi.",
   })
-  @ApiParam({ name: "id", description: "UUID de la musique" })
+  @ApiParam({ name: "id", description: "UUID de la musique", format: "uuid" })
   @ApiBody({ type: UpdateTrackDto })
   @ApiResponse({ status: 200, description: "Track mise à jour" })
   @ApiResponse({
@@ -155,7 +156,7 @@ export class TracksController {
   })
   @ApiResponse({ status: 404, description: "Track non trouvée" })
   async update(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: UpdateTrackDto,
     @Req() req: RequestWithUser,
   ) {
@@ -178,7 +179,7 @@ export class TracksController {
     description:
       "Réservé aux administrateurs. Supprime définitivement la piste de la bibliothèque partagée, puis son fichier audio et sa pochette. Refusé (409) tant que des propositions de correction sont en attente sur la musique. Tracé dans le journal d'audit (TRACK_DELETE).",
   })
-  @ApiParam({ name: "id", description: "UUID de la musique" })
+  @ApiParam({ name: "id", description: "UUID de la musique", format: "uuid" })
   @ApiResponse({ status: 204, description: "Track supprimée" })
   @ApiResponse({ status: 403, description: "Non autorisé" })
   @ApiResponse({ status: 404, description: "Track non trouvée" })
@@ -188,7 +189,7 @@ export class TracksController {
       "Propositions de correction en attente (pendingCorrections) : les traiter ou blacklister la musique",
   })
   async remove(
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Req() req: RequestWithUser,
   ): Promise<void> {
     await this.tracksService.deleteTrack(id, req.user.userId);

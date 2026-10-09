@@ -20,6 +20,8 @@ describe("TracksController (e2e)", () => {
     const mockTracksService = {
       findAll: jest.fn(),
       findOne: jest.fn(),
+      updateTrack: jest.fn(),
+      deleteTrack: jest.fn(),
     };
 
     const moduleFixture: TestingModule = await applyE2EOverrides(
@@ -83,6 +85,17 @@ describe("TracksController (e2e)", () => {
       .patch("/api/v1/tracks/track-1")
       .send({ title: "New Title" })
       .expect(403);
+  });
+
+  it("/api/v1/tracks/:id (PATCH, DELETE) refuses a non-UUID id (400) before the service", async () => {
+    const server = app.getHttpServer() as Parameters<typeof request>[0];
+    await request(server)
+      .patch("/api/v1/tracks/not-a-uuid")
+      .send({ title: "New Title" })
+      .expect(400);
+    await request(server).delete("/api/v1/tracks/not-a-uuid").expect(400);
+    expect(tracksService.updateTrack).not.toHaveBeenCalled();
+    expect(tracksService.deleteTrack).not.toHaveBeenCalled();
   });
 
   it("/api/v1/tracks/download/:token (GET) should 404 for missing file", () => {
