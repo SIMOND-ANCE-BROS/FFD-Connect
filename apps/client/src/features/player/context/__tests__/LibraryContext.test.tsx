@@ -353,6 +353,61 @@ describe("LibraryContext", () => {
     });
   });
 
+  describe("premier chargement (isInitialLoading)", () => {
+    it("is initially loading until the first load lands", async () => {
+      let resolvePage: (v: unknown) => void = () => {};
+      (mockRepo.getTracksPage as jest.Mock).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolvePage = resolve;
+          }),
+      );
+      const { result } = await renderHook(() => useLibrary(), { wrapper });
+      // Deferred first load (Library tab not opened yet): still "loading",
+      // so the screen never flashes "Votre bibliothèque est vide".
+      expect(result.current.isInitialLoading).toBe(true);
+
+      let pending: Promise<void> = Promise.resolve();
+      await act(() => {
+        pending = result.current.reloadLibrary();
+      });
+      expect(result.current.isInitialLoading).toBe(true);
+
+      await act(async () => {
+        resolvePage({ tracks: mockTracks, hasMore: false, total: 2 });
+        await pending;
+      });
+      expect(result.current.isInitialLoading).toBe(false);
+      expect(result.current.allTracks).toHaveLength(2);
+    });
+
+    it("stops initial loading when the first load fails (offline)", async () => {
+      (mockRepo.getTracksPage as jest.Mock).mockRejectedValueOnce(
+        new Error("Network Error"),
+      );
+      const { result } = await renderHook(() => useLibrary(), { wrapper });
+
+      await act(async () => {
+        await result.current.reloadLibrary();
+      });
+
+      expect(result.current.isInitialLoading).toBe(false);
+      expect(result.current.allTracks).toHaveLength(0);
+    });
+
+    it("does not fetch a next page before the first load landed", async () => {
+      const { result } = await renderHook(() => useLibrary(), { wrapper });
+
+      // onEndReached fires on an empty list's layout: must be a no-op.
+      await act(async () => {
+        await result.current.loadMore();
+      });
+
+      expect(mockRepo.getTracksPage).not.toHaveBeenCalled();
+      expect(result.current.isLoadingMore).toBe(false);
+    });
+  });
+
   it("useLibrary throws when outside provider", async () => {
     await expect(renderHook(() => useLibrary())).rejects.toThrow(
       "useLibrary must be used within a LibraryProvider",

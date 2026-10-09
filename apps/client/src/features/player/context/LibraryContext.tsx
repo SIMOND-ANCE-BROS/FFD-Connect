@@ -43,6 +43,12 @@ export interface LibraryContextType {
   loadMore: () => Promise<void>;
   hasMore: boolean;
   isLoadingMore: boolean;
+  /**
+   * True until the first library load has settled (success or failure). While
+   * true the screen shows a single loader instead of the empty state, and no
+   * "load more" page is requested.
+   */
+  isInitialLoading: boolean;
 }
 
 const LibraryContext = createContext<LibraryContextType | undefined>(undefined);
@@ -67,6 +73,10 @@ export const LibraryProvider = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // The first load is deferred to the Library tab's focus, so the library is
+  // "initially loading" from mount until that first load settles: the screen
+  // never flashes "Votre bibliothèque est vide" before the first response.
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   // Bumped when a (re)load starts AND when it commits: a loadMore that was in
   // flight across a reload carries a stale generation and is dropped, instead
   // of appending its page after the freshly reloaded list (gap/duplicates).
@@ -186,6 +196,7 @@ export const LibraryProvider = ({
       generationRef.current += 1;
       setRawTracks(tracks);
       setHasMore(more);
+      setHasLoadedOnce(true);
       useLibrarySyncStore.getState().markLoaded(version);
       Sentry.addBreadcrumb({
         category: "library",
@@ -206,6 +217,7 @@ export const LibraryProvider = ({
       });
       Sentry.captureException(e);
       if (generation !== generationRef.current) return;
+      setHasLoadedOnce(true);
       // Rafraîchissement d'une bibliothèque déjà affichée : on garde la liste
       // plutôt que de la vider sur un échec réseau passager.
       if (rawTracksRef.current.length > 0) return;
@@ -217,7 +229,10 @@ export const LibraryProvider = ({
   }, [trackRepo]);
 
   const loadMore = useCallback(async () => {
-    if (!hasMore || isLoadingMore) return;
+    // No "load more" before the first page landed: on an empty list
+    // onEndReached fires on layout, which used to show the "Chargement…"
+    // footer on top of the empty state during the first load.
+    if (!hasLoadedOnce || !hasMore || isLoadingMore) return;
     setIsLoadingMore(true);
     const generation = generationRef.current;
     try {
@@ -245,7 +260,7 @@ export const LibraryProvider = ({
     } finally {
       setIsLoadingMore(false);
     }
-  }, [trackRepo, rawTracks.length, hasMore, isLoadingMore]);
+  }, [trackRepo, rawTracks.length, hasMore, isLoadingMore, hasLoadedOnce]);
 
   // Une piste a changé (proposition validée, clashs édités) : recharge en
   // arrière-plan une bibliothèque DÉJÀ chargée. Jamais chargée → rien (le
@@ -312,6 +327,7 @@ export const LibraryProvider = ({
         loadMore,
         hasMore,
         isLoadingMore,
+        isInitialLoading: !hasLoadedOnce,
       }}
     >
       {children}

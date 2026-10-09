@@ -15,6 +15,10 @@ export function useCareerLogic() {
   const [registrations, setRegistrations] = useState<CareerRegistration[]>([]);
   const [results, setResults] = useState<CareerResult[]>([]);
   const [loading, setLoading] = useState(true);
+  // Pull-to-refresh only. Kept apart from `loading` so the RefreshControl
+  // spinner never shows on top of the screen's own first-load loader (two
+  // stacked spinners on the Career tab, beta feedback).
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
     const config = await auth.getAuthConfig();
@@ -46,11 +50,21 @@ export function useCareerLogic() {
     load().catch(() => {});
   }, [load]);
 
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [load]);
+
   return {
     partnerships,
     registrations,
     results,
     loading,
-    refresh: load,
+    refreshing,
+    refresh,
   };
 }

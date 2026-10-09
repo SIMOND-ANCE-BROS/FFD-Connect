@@ -15,6 +15,7 @@ import { server } from "../../../../mocks/msw/server";
 import { mockCareer } from "../../../../mocks/msw/handlers";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { CareerScreen } from "../CareerScreen";
+import { useWakeStore } from "../../../../stores/wake.store";
 
 // ─── Mock hooks & contexts ────────────────────────────────────────────────────
 
@@ -103,6 +104,7 @@ const makeCareerState = (overrides = {}) => ({
   registrations: mockCareer.registrations,
   results: mockCareer.results,
   loading: false,
+  refreshing: false,
   refresh: jest.fn(),
   ...overrides,
 });
@@ -162,6 +164,60 @@ describe("CareerScreen (MSW)", () => {
     await waitFor(() => {
       expect(getByTestId("career-loading")).toBeTruthy();
     });
+  });
+
+  // Beta feedback: two stacked spinners on first load (the RefreshControl
+  // was bound to `loading` on top of the screen loader).
+  it("n'affiche qu'un seul loader au premier chargement", async () => {
+    useCareerLogic.mockReturnValue(
+      makeCareerState({
+        loading: true,
+        partnerships: [],
+        registrations: [],
+        results: [],
+      }),
+    );
+
+    const { getAllByTestId, getByTestId } = await render(
+      <CareerScreen {...props} />,
+    );
+
+    expect(getAllByTestId("career-loading")).toHaveLength(1);
+    expect(
+      getByTestId("career-scroll").props.refreshControl.props.refreshing,
+    ).toBe(false);
+  });
+
+  it("lie le RefreshControl au pull-to-refresh uniquement", async () => {
+    useCareerLogic.mockReturnValue(makeCareerState({ refreshing: true }));
+
+    const { getByTestId, queryByTestId } = await render(
+      <CareerScreen {...props} />,
+    );
+
+    expect(
+      getByTestId("career-scroll").props.refreshControl.props.refreshing,
+    ).toBe(true);
+    expect(queryByTestId("career-loading")).toBeNull();
+  });
+
+  it("masque son loader pendant l'overlay de réveil du backend", async () => {
+    useWakeStore.setState({ waking: true, visible: true });
+    useCareerLogic.mockReturnValue(
+      makeCareerState({
+        loading: true,
+        partnerships: [],
+        registrations: [],
+        results: [],
+      }),
+    );
+
+    try {
+      const { queryByTestId } = await render(<CareerScreen {...props} />);
+      expect(queryByTestId("career-loading")).toBeNull();
+    } finally {
+      useWakeStore.setState({ waking: false, visible: false });
+    }
   });
 
   it("affiche les sections vides si l'API retourne une carrière vide", async () => {

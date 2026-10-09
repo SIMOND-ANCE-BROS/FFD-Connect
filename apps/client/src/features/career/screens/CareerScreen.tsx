@@ -15,7 +15,6 @@ import {
 } from "lucide-react-native";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -30,6 +29,7 @@ import {
 import { AppText } from "../../../components/AppText";
 import { NotificationBell } from "../../../components/NotificationBell";
 import { PinnedHeader } from "../../../components/PinnedHeader";
+import { ScreenLoader } from "../../../components/ScreenLoader";
 import { SearchBar } from "../../../components/SearchBar";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 import { useTheme } from "../../../context/ThemeContext";
@@ -66,8 +66,10 @@ export const CareerScreen = ({ navigation }: Props) => {
   // paddingTop du contenu. Estimation initiale avant onLayout.
   const [headerH, setHeaderH] = useState(insets.top + 120);
   const auth = useAuthRepository();
-  const { partnerships, registrations, results, loading, refresh } =
+  const { partnerships, registrations, results, loading, refreshing, refresh } =
     useCareerLogic();
+  const isFirstLoad =
+    loading && !partnerships.length && !registrations.length && !results.length;
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<CareerSearchMember[]>([]);
@@ -135,12 +137,15 @@ export const CareerScreen = ({ navigation }: Props) => {
       />
 
       <ScrollView
+        testID="career-scroll"
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingTop: headerH }]}
         scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
-            refreshing={loading}
+            // Pull-to-refresh only: the first load uses the single
+            // ScreenLoader below (no second, stacked spinner).
+            refreshing={refreshing}
             progressViewOffset={headerH}
             onRefresh={() => {
               refresh().catch(() => {});
@@ -150,10 +155,8 @@ export const CareerScreen = ({ navigation }: Props) => {
         }
       >
         <View style={styles.sectionsWrapper}>
-          {loading && !partnerships.length && !registrations.length ? (
-            <View testID="career-loading" style={styles.centered}>
-              <ActivityIndicator size="large" color={currentTheme.primary} />
-            </View>
+          {isFirstLoad ? (
+            <ScreenLoader testID="career-loading" />
           ) : (
             <>
               {/* Partenariats */}
@@ -557,7 +560,6 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 40 },
   sectionsWrapper: { paddingHorizontal: 20, paddingTop: 8 },
-  centered: { paddingVertical: 40, alignItems: "center" },
   section: { marginBottom: 28 },
   sectionHeader: {
     flexDirection: "row",
