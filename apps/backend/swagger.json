@@ -3486,7 +3486,7 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["USER", "CLUB"]
+              "enum": ["USER", "CLUB", "TRACK_CORRECTION"]
             }
           },
           {
@@ -7897,7 +7897,7 @@
         "tags": ["track-corrections"]
       },
       "get": {
-        "description": "Réservé aux administrateurs. Chaque proposition est accompagnée des valeurs ACTUELLES de la musique (diff), du nom de son auteur et du relecteur. En attente : de la plus ancienne à la plus récente ; sinon de la plus récente à la plus ancienne.",
+        "description": "Réservé aux administrateurs. Chaque proposition est accompagnée des valeurs ACTUELLES de la musique (diff), du nom de son auteur et du relecteur. En attente : de la plus ancienne à la plus récente ; sinon de la plus récente à la plus ancienne. Filtres optionnels : `reason` (un ou plusieurs motifs, répétés ou séparés par des virgules) et `q` (titre ou artiste, 2 à 100 caractères, sans tenir compte de la casse).",
         "operationId": "TrackCorrectionsController_list",
         "parameters": [
           {
@@ -7930,6 +7930,29 @@
             "description": "Statut à afficher (PENDING pour la file à traiter)",
             "schema": {
               "$ref": "#/components/schemas/TrackCorrectionStatus"
+            }
+          },
+          {
+            "name": "reason",
+            "required": false,
+            "in": "query",
+            "description": "Motif(s) à afficher : paramètre répété ou valeurs séparées par des virgules",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/TrackCorrectionReason"
+              }
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Recherche dans le titre ou l'artiste de la musique, sans tenir compte de la casse",
+            "schema": {
+              "minLength": 2,
+              "maxLength": 100,
+              "type": "string"
             }
           }
         ],
@@ -8549,6 +8572,195 @@
           }
         ],
         "summary": "Nombre de propositions en attente",
+        "tags": ["track-corrections"]
+      }
+    },
+    "/track-corrections/{id}": {
+      "get": {
+        "description": "Réservé aux administrateurs. Même contenu qu'un élément de la file de modération.",
+        "operationId": "TrackCorrectionsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "UUID de la proposition",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackCorrectionAdminDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Proposition non trouvée"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Une proposition de correction (vue administrateur)",
         "tags": ["track-corrections"]
       }
     },
@@ -21722,12 +21934,14 @@
               "CLUB_UPDATE",
               "CLUB_DISABLE",
               "CLUB_ENABLE",
-              "CLUB_DELETE"
+              "CLUB_DELETE",
+              "TRACK_CORRECTION_APPROVE",
+              "TRACK_CORRECTION_REJECT"
             ]
           },
           "targetType": {
             "type": "string",
-            "enum": ["USER", "CLUB"]
+            "enum": ["USER", "CLUB", "TRACK_CORRECTION"]
           },
           "targetId": {
             "type": "string"
@@ -22656,6 +22870,10 @@
           },
           "blacklisted": {
             "type": "boolean"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Fichier audio, servi par GET /uploads/{filename} (hors préfixe /api/v1)"
           }
         },
         "required": [
@@ -22666,7 +22884,8 @@
           "bpm",
           "clashTimecodes",
           "titleMasked",
-          "blacklisted"
+          "blacklisted",
+          "filename"
         ]
       },
       "TrackCorrectionUserDto": {
