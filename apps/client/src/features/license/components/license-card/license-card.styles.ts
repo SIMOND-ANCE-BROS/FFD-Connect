@@ -114,6 +114,12 @@ export const styles = StyleSheet.create({
     paddingRight: 6,
     marginBottom: 8,
   },
+  infoGridColumn: {
+    width: "50%",
+  },
+  infoCellFullWidth: {
+    width: "100%",
+  },
   infoGroup: {
     marginBottom: 6,
   },
