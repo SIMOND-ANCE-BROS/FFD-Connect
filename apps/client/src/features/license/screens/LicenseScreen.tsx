@@ -265,7 +265,7 @@ export const LicenseScreen: React.FC = () => {
         ) : null}
         {/* License could not be loaded and no local snapshot of this account
             exists: say so explicitly instead of an empty wallet. Licensees
-            only — STAFF/CLUB keep their placeholder card. */}
+            only — STAFF/CLUB keep their account card. */}
         {state.licenseUnavailable && !ffdUser && state.role === "LICENSEE" ? (
           <View
             style={[
@@ -400,16 +400,8 @@ export const LicenseScreen: React.FC = () => {
                     type="FFD"
                     user={item.data as LicenseUser}
                     photoUri={state.photoUri}
-                    onShowQr={() =>
-                      actions.handleShowQr(
-                        JSON.stringify({
-                          id: item.data?.licenseNumber,
-                          valid: true,
-                          type: "STAFF",
-                          role: "STAFF",
-                        }),
-                      )
-                    }
+                    // No QR: a STAFF/CLUB account holds no license to scan,
+                    // and an unsigned « valid » QR would be invented (#234).
                     themeOverride={isDark ? "dark" : "light"}
                     testID={`license-card-${index}`}
                   />

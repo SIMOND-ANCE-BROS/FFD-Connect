@@ -7,6 +7,10 @@ import {
 import { mockNavigation } from "../../../../__tests__/mocks/mockNavigation";
 import { isDeviceOffline } from "../../../../utils/connectivity";
 import {
+  ACCOUNT_CLUB_UNKNOWN,
+  ACCOUNT_NAME_UNKNOWN,
+} from "../../utils/accountCard";
+import {
   loadLicenseSnapshot,
   saveLicenseSnapshot,
 } from "../../utils/licenseSnapshot";
@@ -699,6 +703,147 @@ describe("useLicenseLogic", () => {
     expect(wdsfUser?.validUntil).toBe("");
     expect(wdsfUser?.status).toBe("Active");
     expect(wdsfUser?.structure).toBeUndefined();
+  });
+
+  describe("STAFF / CLUB account card (#234)", () => {
+    const loadAccountCard = async (
+      role: "STAFF" | "CLUB",
+      profile: Record<string, unknown> | null,
+      config: Record<string, unknown> = {},
+    ) => {
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role,
+        isLoggedIn: true,
+        username: "account@test.com",
+        ...config,
+      });
+      if (profile) {
+        mockAuthRepository.getProfile.mockResolvedValue(profile);
+      } else {
+        mockAuthRepository.getProfile.mockRejectedValue(new Error("boom"));
+      }
+      const { result } = await renderHook(() => useLicenseLogic());
+      await waitFor(() => {
+        expect(mockAuthRepository.getProfile).toHaveBeenCalled();
+      });
+      return result;
+    };
+
+    it("STAFF card carries the profile's name and club, no demo value", async () => {
+      const result = await loadAccountCard("STAFF", {
+        firstName: "Marie",
+        lastName: "Curie",
+        role: "STAFF",
+        clubName: "Club de Danse Lyon",
+        birthDate: "1990-05-15",
+      });
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe("Curie");
+      });
+      const card = result.current.state.listItems[0];
+      expect(card.type).toBe("STAFF");
+      expect(card.data).toMatchObject({
+        firstName: "Marie",
+        lastName: "Curie",
+        structure: "Club de Danse Lyon",
+        licenseNumber: "",
+        type: "STAFF / ORGANISATEUR",
+      });
+      expect(card.data?.birthDate).toBe(
+        new Date("1990-05-15").toLocaleDateString("fr-FR"),
+      );
+      const serialized = JSON.stringify(card.data);
+      expect(serialized).not.toMatch(
+        /OFFICIEL|STAFF-001|Fédération Française de Danse/,
+      );
+    });
+
+    it("CLUB card carries the account's club name", async () => {
+      const result = await loadAccountCard("CLUB", {
+        firstName: "Jean",
+        lastName: "Gérant",
+        role: "CLUB",
+        clubName: "Danse Passion Nantes",
+      });
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe(
+          "Danse Passion Nantes",
+        );
+      });
+      const card = result.current.state.listItems[0].data;
+      expect(card).toMatchObject({
+        firstName: "",
+        licenseNumber: "",
+        birthDate: "",
+        type: "CLUB / ASSOCIATION",
+      });
+      expect(card?.structure).toBeUndefined();
+      expect(JSON.stringify(card)).not.toMatch(
+        /EXAMPLE|CLUB-001|Fédération Française de Danse/,
+      );
+    });
+
+    it("CLUB card falls back to the session club name when the profile fails", async () => {
+      const result = await loadAccountCard("CLUB", null, {
+        clubName: "Club Session",
+      });
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe(
+          "Club Session",
+        );
+      });
+    });
+
+    it.each([
+      ["STAFF", ACCOUNT_NAME_UNKNOWN],
+      ["CLUB", ACCOUNT_CLUB_UNKNOWN],
+    ] as const)(
+      "%s card shows a neutral label when the data is missing",
+      async (role, label) => {
+        const result = await loadAccountCard(role, {
+          firstName: "",
+          lastName: "",
+          role,
+        });
+        await waitFor(() => {
+          expect(result.current.state.listItems[0].data?.lastName).toBe(label);
+        });
+        expect(result.current.state.listItems[0].data).toMatchObject({
+          firstName: "",
+          licenseNumber: "",
+        });
+        expect(
+          result.current.state.listItems[0].data?.structure,
+        ).toBeUndefined();
+      },
+    );
+
+    it("STAFF card offline uses the account's own snapshot name", async () => {
+      mockIsDeviceOffline.mockResolvedValueOnce(true);
+      mockLoadSnapshot.mockResolvedValueOnce({
+        ffdUser: {
+          firstName: "Marie",
+          lastName: "Curie",
+          licenseNumber: "Non renseigné",
+          birthDate: "",
+          validUntil: "",
+          type: "Athlète",
+        },
+        wdsfUser: null,
+        savedAt: "2026-10-01T10:00:00.000Z",
+      });
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "STAFF",
+        isLoggedIn: true,
+        username: "staff@test.com",
+      });
+      const { result } = await renderHook(() => useLicenseLogic());
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe("Curie");
+      });
+      expect(result.current.state.listItems[0].data?.firstName).toBe("Marie");
+      expect(result.current.state.listItems[0].data?.licenseNumber).toBe("");
+    });
   });
 
   it("gives the staff and club cards a status, not a fake expiry date", async () => {

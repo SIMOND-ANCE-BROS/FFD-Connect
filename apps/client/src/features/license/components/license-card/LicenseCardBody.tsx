@@ -12,7 +12,8 @@ interface LicenseCardBodyProps {
   user: LicenseUser;
   photoUri: string | null;
   qrData: string;
-  onShowQr: () => void;
+  /** Absent ⇒ no QR code on the card. */
+  onShowQr?: () => void;
 }
 
 interface InfoField {
@@ -25,29 +26,41 @@ interface InfoField {
  * grid (instead of one field per line) so the whole card stays short enough
  * to fit on a phone screen without scrolling.
  */
-const buildInfoFields = (isFFD: boolean, user: LicenseUser): InfoField[] => {
-  const fields: InfoField[] = [
+const buildPrimaryFields = (isFFD: boolean, user: LicenseUser): InfoField[] =>
+  [
     { label: isFFD ? "Numéro" : "MIN", value: user.licenseNumber },
     {
       label: isFFD ? "Date de naissance" : "Date of birth",
       value: user.birthDate,
     },
-  ];
+    // An empty value is a field the holder does not have (no license number
+    // on a STAFF/CLUB card, #234): the row is hidden, never invented.
+  ].filter((field) => field.value);
+
+const buildExtraFields = (user: LicenseUser): InfoField[] => {
+  const fields: InfoField[] = [];
   if (user.country) fields.push({ label: "Nationality", value: user.country });
   if (user.ageGroup) fields.push({ label: "Age group", value: user.ageGroup });
   return fields;
 };
 
+const buildInfoFields = (isFFD: boolean, user: LicenseUser): InfoField[] => [
+  ...buildPrimaryFields(isFFD, user),
+  ...buildExtraFields(user),
+];
+
 /**
  * FFD identity grid as explicit columns: the left one stacks the licence
  * number and the birth date; any extra field goes to the right column.
  */
-const buildFfdColumns = (user: LicenseUser): InfoField[][] => {
-  const [licenseNumber, birthDate, ...extra] = buildInfoFields(true, user);
-  return extra.length > 0
-    ? [[licenseNumber, birthDate], extra]
-    : [[licenseNumber, birthDate]];
-};
+const buildFfdColumns = (user: LicenseUser): InfoField[][] =>
+  [buildPrimaryFields(true, user), buildExtraFields(user)].filter(
+    (column) => column.length > 0,
+  );
+
+/** Holder name; a CLUB card has only a last name (the club's). */
+const holderName = (user: LicenseUser): string =>
+  [user.firstName, user.lastName].filter(Boolean).join(" ");
 
 const InfoCell: React.FC<{
   field: InfoField;
@@ -91,7 +104,7 @@ export const LicenseCardBody: React.FC<LicenseCardBodyProps> = ({
           numberOfLines={2}
           style={[styles.nameValue, { color: config.nameColor }]}
         >
-          {user.firstName} {user.lastName}
+          {holderName(user)}
         </AppText>
       </View>
 
@@ -141,7 +154,7 @@ export const LicenseCardBody: React.FC<LicenseCardBodyProps> = ({
         )}
       </View>
 
-      {isFFD ? (
+      {!onShowQr ? null : isFFD ? (
         <TouchableOpacity
           accessibilityRole="button"
           onPress={onShowQr}

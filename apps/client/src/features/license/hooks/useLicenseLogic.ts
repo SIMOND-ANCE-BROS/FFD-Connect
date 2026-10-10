@@ -20,7 +20,8 @@ import { PDFAdapter, ShareAdapter } from "../../../utils/platform-adapters";
 import { useAuthRepository, UserRole } from "../../auth/context/AuthContext";
 import type { AuthConfig } from "../../auth/services/AuthService";
 import { LicenseUser } from "../components/LicenseCard";
-import { ffdValidityFields, getFfdSeason } from "../utils/licenseSeason";
+import { AccountHolder, buildAccountCard } from "../utils/accountCard";
+import { ffdValidityFields } from "../utils/licenseSeason";
 import {
   loadLicenseSnapshot,
   saveLicenseSnapshot,
@@ -159,6 +160,10 @@ export const useLicenseLogic = (): {
   const [role, setRole] = useState<UserRole>("LICENSEE");
   const [ffdUser, setFfdUser] = useState<LicenseUser | null>(null);
   const [wdsfUser, setWdsfUser] = useState<LicenseUser | null>(null);
+  // Real holder of a STAFF/CLUB account (#234): drives their card.
+  const [accountHolder, setAccountHolder] = useState<AccountHolder | null>(
+    null,
+  );
   // Non-null = licence affichée depuis le snapshot local (pas de réseau) ;
   // contient la date ISO de la dernière synchro réussie (#416).
   const [offlineSince, setOfflineSince] = useState<string | null>(null);
@@ -188,6 +193,12 @@ export const useLicenseLogic = (): {
             ? await loadLicenseSnapshot(config.username)
             : null;
         if (snapshot) {
+          // Same account (owner check above): its last known name.
+          setAccountHolder((previous) => ({
+            ...previous,
+            firstName: snapshot.ffdUser.firstName,
+            lastName: snapshot.ffdUser.lastName,
+          }));
           // Older versions saved an invented "31/08/2026" / "2025/2026" when
           // the license had no date: re-derive from the raw date (#211).
           setFfdUser({
@@ -210,6 +221,8 @@ export const useLicenseLogic = (): {
           setPhotoUri(config.licensePhotoUri ?? null);
           setShowWdsf(config.hasWdsfLicense ?? false);
           setRole(config.role);
+          // Session club name: known before (and without) the profile.
+          setAccountHolder({ clubName: config.clubName ?? null });
 
           // 2. Fetch Real Profile if logged in
           if (config.isLoggedIn && config.role !== "GUEST") {
@@ -221,6 +234,12 @@ export const useLicenseLogic = (): {
               return;
             }
             const profile = await auth.getProfile();
+            setAccountHolder({
+              firstName: profile.firstName,
+              lastName: profile.lastName,
+              clubName: profile.clubName ?? config.clubName ?? null,
+              birthDate: profile.birthDate ?? null,
+            });
 
             // Map Backend User to LicenseUser interface
             const mappedFfdUser: LicenseUser = {
@@ -542,43 +561,9 @@ export const useLicenseLogic = (): {
     if (role === "GUEST") {
       return [{ type: "GUEST", data: null }];
     }
-    if (role === "STAFF") {
-      return [
-        {
-          type: "STAFF",
-          data: {
-            firstName: "Staff",
-            lastName: "OFFICIEL",
-            licenseNumber: "STAFF-001",
-            type: "STAFF / ORGANISATEUR",
-            structure: "Fédération Française de Danse",
-            // A permanent card has no expiry date: shown as a status.
-            validUntil: "",
-            status: "Permanente",
-            season: getFfdSeason(new Date()),
-            birthDate: "",
-          } as LicenseUser,
-        },
-      ];
-    }
-    if (role === "CLUB") {
-      return [
-        {
-          type: "STAFF",
-          data: {
-            firstName: "Club",
-            lastName: "EXAMPLE",
-            licenseNumber: "CLUB-001",
-            type: "CLUB / ASSOCIATION",
-            structure: "Fédération Française de Danse",
-            // A season is not an expiry date: shown as a status.
-            validUntil: "",
-            status: "Active",
-            season: getFfdSeason(new Date()),
-            birthDate: "",
-          } as LicenseUser,
-        },
-      ];
+    if (role === "STAFF" || role === "CLUB") {
+      // Real account holder only (#234): no demo name, number or structure.
+      return [{ type: "STAFF", data: buildAccountCard(role, accountHolder) }];
     }
 
     // LICENSEE

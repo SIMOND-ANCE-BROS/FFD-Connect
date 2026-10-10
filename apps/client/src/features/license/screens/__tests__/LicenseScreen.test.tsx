@@ -366,11 +366,19 @@ describe("LicenseScreen Integration", () => {
     expect(getByTestId("license-screen-staff-card")).toBeTruthy();
   });
 
-  it("brings the Staff card forward and shows its staff QR", async () => {
+  it("brings the Staff card forward, without a number row nor a QR (#234)", async () => {
     const staffItems = [
       {
         type: "STAFF",
-        data: { firstName: "Staff", lastName: "Member", licenseNumber: "S1" },
+        data: {
+          firstName: "Marie",
+          lastName: "Curie",
+          licenseNumber: "",
+          birthDate: "",
+          validUntil: "",
+          status: "Permanente",
+          type: "STAFF / ORGANISATEUR",
+        },
       },
     ];
     (useLicenseLogic as jest.Mock).mockReturnValue({
@@ -382,10 +390,9 @@ describe("LicenseScreen Integration", () => {
     await fireEvent.press(getByTestId("license-screen-staff-card"));
     expect(mockActions.handleCardPress).toHaveBeenCalledWith(0);
 
+    // The card gets no QR handler: pressing it never opens a QR.
     await fireEvent.press(getByTestId("license-card-0"));
-    expect(mockActions.handleShowQr).toHaveBeenCalledWith(
-      JSON.stringify({ id: "S1", valid: true, type: "STAFF", role: "STAFF" }),
-    );
+    expect(mockActions.handleShowQr).not.toHaveBeenCalled();
   });
 
   it("handles card press", async () => {

@@ -285,4 +285,46 @@ describe("LicenseCard", () => {
       expect(style.color).toBe("#333");
     });
   });
+  describe("STAFF / CLUB account card (#234)", () => {
+    const renderAccountCard = (user: LicenseUser, onShowQr?: () => void) =>
+      render(
+        <ThemeContext.Provider value={themeMock as never}>
+          <LicenseCard
+            type="FFD"
+            user={user}
+            photoUri={null}
+            onShowQr={onShowQr}
+            testID="account-card"
+          />
+        </ThemeContext.Provider>,
+      );
+
+    it("hides the number row and the QR when the account has no license", async () => {
+      const { getByText, queryByText, getByTestId } = await renderAccountCard({
+        ...mockUser,
+        firstName: "Marie",
+        lastName: "Curie",
+        licenseNumber: "",
+        birthDate: "",
+      });
+
+      expect(getByText("Marie Curie")).toBeTruthy();
+      expect(queryByText("Numéro")).toBeNull();
+      expect(queryByText("Date de naissance")).toBeNull();
+      expect(
+        within(getByTestId("account-card")).queryAllByRole("button"),
+      ).toHaveLength(0);
+    });
+
+    it("shows a club name alone without a leading space", async () => {
+      const { getByText } = await renderAccountCard({
+        ...mockUser,
+        firstName: "",
+        lastName: "Danse Passion Nantes",
+        licenseNumber: "",
+      });
+
+      expect(getByText("Danse Passion Nantes")).toBeTruthy();
+    });
+  });
 });

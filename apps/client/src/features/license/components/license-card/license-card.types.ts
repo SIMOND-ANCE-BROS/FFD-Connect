@@ -56,7 +56,11 @@ export interface LicenseCardProps {
   type: LicenseType;
   user: LicenseUser;
   photoUri: string | null;
-  onShowQr: () => void;
+  /**
+   * Opens the QR in full screen. Absent ⇒ the card has no QR code (a STAFF or
+   * CLUB account holds no license to scan, #234).
+   */
+  onShowQr?: () => void;
   themeOverride?: "light" | "dark";
   onOptions?: () => void;
   style?: ViewStyle | ViewStyle[];
