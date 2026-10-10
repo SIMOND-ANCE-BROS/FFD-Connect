@@ -88,4 +88,32 @@ describe('RenewalDocumentViewer', () => {
     ).toBeInTheDocument();
     await waitFor(() => expect(createObjectURL).not.toHaveBeenCalled());
   });
+
+  it.each([['text/html'], ['image/svg+xml'], ['']])(
+    'never renders an unexpected type (%j) in the back-office origin',
+    async (type) => {
+      vi.spyOn(sdk, 'adminLicenseRenewalsControllerDocumentFile').mockResolvedValue({
+        data: new Blob(['<script>alert(1)</script>'], { type }),
+        error: undefined,
+      } as never);
+      renderViewer();
+      await userEvent.click(screen.getByRole('button', { name: 'Afficher le document' }));
+      expect(await screen.findByText('Format de document non pris en charge.')).toBeInTheDocument();
+      expect(createObjectURL).not.toHaveBeenCalled();
+      expect(screen.queryByRole('img')).toBeNull();
+      expect(screen.queryByTitle('Certificat médical')).toBeNull();
+    },
+  );
+
+  it('re-types the blob it renders, so the browser cannot sniff another type', async () => {
+    vi.spyOn(sdk, 'adminLicenseRenewalsControllerDocumentFile').mockResolvedValue({
+      data: new Blob(['%PDF'], { type: 'application/pdf' }),
+      error: undefined,
+    } as never);
+    renderViewer();
+    await userEvent.click(screen.getByRole('button', { name: 'Afficher le document' }));
+    await screen.findByTitle('Certificat médical');
+    const rendered = (createObjectURL.mock.calls[0] as unknown[])[0] as Blob;
+    expect(rendered.type).toBe('application/pdf');
+  });
 });

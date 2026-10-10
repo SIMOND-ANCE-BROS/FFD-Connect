@@ -12,6 +12,13 @@ interface Props {
 
 type Loaded = { url: string; isPdf: boolean };
 
+/**
+ * The only types the API serves for a renewal document. A blob: URL runs in
+ * the back-office origin and the API's own CSP sandbox header does not follow
+ * the bytes into it: anything else (HTML, SVG, untyped) is never rendered.
+ */
+const RENDERABLE_TYPES = new Set(['image/jpeg', 'image/png', 'application/pdf']);
+
 const isGone = (body: unknown): boolean =>
   typeof body === 'object' &&
   body !== null &&
@@ -52,7 +59,13 @@ export function RenewalDocumentViewer({ requestId, document }: Props) {
       );
       return;
     }
-    setLoaded({ url: URL.createObjectURL(data), isPdf: data.type === 'application/pdf' });
+    if (!RENDERABLE_TYPES.has(data.type)) {
+      setError('Format de document non pris en charge.');
+      return;
+    }
+    // Re-typed explicitly: the rendered blob carries the checked type only.
+    const typed = new Blob([data], { type: data.type });
+    setLoaded({ url: URL.createObjectURL(typed), isPdf: data.type === 'application/pdf' });
   };
 
   if (loaded) {
