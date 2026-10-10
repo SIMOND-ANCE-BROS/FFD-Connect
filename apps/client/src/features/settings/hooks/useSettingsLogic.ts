@@ -16,6 +16,7 @@ import { useAuthRepository } from "../../auth/context/AuthContext";
 import { UserRole } from "../../auth/services/AuthService";
 import type { HelloAssoStatus } from "../../club/services/ClubService";
 import { ClubService } from "../../club/services/ClubService";
+import { usage } from "../../../services/analytics/usage";
 
 const logger = createLogger("useSettingsLogic");
 
@@ -71,6 +72,8 @@ export const useSettingsLogic = ({
    * that account anyway.
    */
   const [isStoreReview, setIsStoreReview] = useState<boolean | null>(null);
+  /** Mesure d'audience anonyme (lot 5) ; null tant que la préférence charge. */
+  const [usageEnabled, setUsageEnabled] = useState<boolean | null>(null);
 
   // UI State
   const [reportModalVisible, setReportModalVisible] = useState(false);
@@ -78,6 +81,7 @@ export const useSettingsLogic = ({
     useState(false);
 
   const loadSettings = useCallback(async () => {
+    void usage.recorder.isEnabled().then(setUsageEnabled);
     try {
       const config = await auth.getAuthConfig();
       setBiometricsEnabled(config.biometricsEnabled ?? false);
@@ -343,6 +347,11 @@ export const useSettingsLogic = ({
     await auth.setRegistrationPolicy(policy);
   };
 
+  const handleToggleUsage = useCallback(async (on: boolean) => {
+    setUsageEnabled(on);
+    await usage.recorder.setEnabled(on);
+  }, []);
+
   return {
     state: {
       currentTheme,
@@ -364,6 +373,7 @@ export const useSettingsLogic = ({
       BiometryTypes,
       licenseExpiryDays,
       isStoreReview,
+      usageEnabled,
     },
     actions: {
       setReportModalVisible,
@@ -382,6 +392,7 @@ export const useSettingsLogic = ({
       handleSetCompetitionScope,
       handleSetCompetitionStatus,
       handleSetRegistrationPolicy,
+      handleToggleUsage,
     },
   };
 };

@@ -19,32 +19,34 @@ L'éditeur n'est pas tenu de désigner un délégué à la protection des donné
 
 ## 2. Données que nous collectons
 
-| Catégorie               | Exemples                                                                                             | Origine                           |
-| ----------------------- | ---------------------------------------------------------------------------------------------------- | --------------------------------- |
-| **Identité & compte**   | nom, prénom, adresse e-mail, mot de passe (haché), rôle (danseur, club, admin)                       | fournies par l'utilisateur        |
-| **Données de licence**  | numéro de licence, club, discipline, catégorie                                                       | saisies / extraites du certificat |
-| **Données de santé** ⚠️ | certificat médical de non contre-indication, date d'aptitude, informations extraites par OCR         | fournies par l'utilisateur        |
-| **Compétitions**        | inscriptions, résultats, palmarès                                                                    | usage de l'app                    |
-| **Paiement**            | transactions d'inscription (traitées par HelloAsso — nous ne stockons **pas** les données bancaires) | via HelloAsso                     |
-| **Contenu**             | musiques ajoutées à la bibliothèque, partenaires recherchés                                          | usage de l'app                    |
-| **Techniques**          | logs d'erreur, adresse IP                                                                            | automatique                       |
-| **Appareils**           | jeton de notification push (identifiant d'appareil FCM), plateforme (iOS / Android), dates d'usage   | automatique (à la connexion)      |
-| **Pass Wallet**         | nom, prénom, numéro et type de licence, date de fin de validité, QR code signé (voir §4 bis)         | à la demande de l'utilisateur     |
+| Catégorie               | Exemples                                                                                                                                                                                                                                                                                                           | Origine                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| **Identité & compte**   | nom, prénom, adresse e-mail, mot de passe (haché), rôle (danseur, club, admin)                                                                                                                                                                                                                                     | fournies par l'utilisateur                     |
+| **Données de licence**  | numéro de licence, club, discipline, catégorie                                                                                                                                                                                                                                                                     | saisies / extraites du certificat              |
+| **Données de santé** ⚠️ | certificat médical de non contre-indication, date d'aptitude, informations extraites par OCR                                                                                                                                                                                                                       | fournies par l'utilisateur                     |
+| **Compétitions**        | inscriptions, résultats, palmarès                                                                                                                                                                                                                                                                                  | usage de l'app                                 |
+| **Paiement**            | transactions d'inscription (traitées par HelloAsso — nous ne stockons **pas** les données bancaires)                                                                                                                                                                                                               | via HelloAsso                                  |
+| **Contenu**             | musiques ajoutées à la bibliothèque, partenaires recherchés                                                                                                                                                                                                                                                        | usage de l'app                                 |
+| **Techniques**          | logs d'erreur, adresse IP                                                                                                                                                                                                                                                                                          | automatique                                    |
+| **Appareils**           | jeton de notification push (identifiant d'appareil FCM), plateforme (iOS / Android), dates d'usage                                                                                                                                                                                                                 | automatique (à la connexion)                   |
+| **Pass Wallet**         | nom, prénom, numéro et type de licence, date de fin de validité, QR code signé (voir §4 bis)                                                                                                                                                                                                                       | à la demande de l'utilisateur                  |
+| **Usage anonyme**       | écrans consultés et durée, événements (connexion, inscription, scan de licence, ajout au Wallet, consultation d'une compétition), date et heure à la minute, plateforme, version de l'application, espace actif — rattachés à un identifiant d'installation aléatoire renouvelé chaque mois, jamais à votre compte | automatique (application mobile, désactivable) |
 
 Les **données de santé** sont des données sensibles au sens de l'article 9 du RGPD et font l'objet de mesures de protection renforcées (voir §7).
 
 ## 3. Finalités et bases légales
 
-| Finalité                                                                  | Base légale                                            |
-| ------------------------------------------------------------------------- | ------------------------------------------------------ |
-| Créer et gérer le compte utilisateur                                      | Exécution du contrat (CGU)                             |
-| Gérer les licences et vérifier l'aptitude médicale                        | Obligation légale / intérêt légitime de la fédération  |
-| Inscrire aux compétitions et encaisser les paiements                      | Exécution du contrat                                   |
-| Traiter le certificat médical (OCR)                                       | **Consentement explicite** de la personne (art. 9-2-a) |
-| Envoyer des notifications (rappels d'échéance, résultats)                 | Consentement / intérêt légitime                        |
-| Ajouter sa licence à Apple Wallet ou Google Wallet                        | Exécution du contrat, à la demande de l'utilisateur    |
-| Produire des statistiques agrégées pour l'administration de la plateforme | Intérêt légitime de la fédération                      |
-| Assurer la sécurité et corriger les bugs                                  | Intérêt légitime                                       |
+| Finalité                                                                  | Base légale                                                                         |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Créer et gérer le compte utilisateur                                      | Exécution du contrat (CGU)                                                          |
+| Gérer les licences et vérifier l'aptitude médicale                        | Obligation légale / intérêt légitime de la fédération                               |
+| Inscrire aux compétitions et encaisser les paiements                      | Exécution du contrat                                                                |
+| Traiter le certificat médical (OCR)                                       | **Consentement explicite** de la personne (art. 9-2-a)                              |
+| Envoyer des notifications (rappels d'échéance, résultats)                 | Consentement / intérêt légitime                                                     |
+| Ajouter sa licence à Apple Wallet ou Google Wallet                        | Exécution du contrat, à la demande de l'utilisateur                                 |
+| Produire des statistiques agrégées pour l'administration de la plateforme | Intérêt légitime de la fédération                                                   |
+| Assurer la sécurité et corriger les bugs                                  | Intérêt légitime                                                                    |
+| Mesurer l'audience de l'application de façon anonyme                      | Intérêt légitime (mesure d'audience exemptée de consentement, recommandations CNIL) |
 
 ## 4. Sous-traitants et destinataires
 
@@ -108,6 +110,7 @@ Danse.
 - **Jetons de notification push (identifiants d'appareil)** : **90 jours** sans réutilisation de l'appareil. L'application réenregistre le jeton à chaque ouverture de session : passé ce délai sans signe de vie, l'appareil est considéré comme abandonné (application désinstallée, appareil remplacé) et la ligne est supprimée automatiquement. Le jeton est également supprimé immédiatement à la déconnexion, à la suppression du compte, et dès que Firebase le déclare invalide.
 - **Jetons de session** : 30 jours maximum.
 - **Logs techniques** : **12 mois**.
+- **Données d'usage anonymes** : **90 jours** avec l'identifiant d'installation, puis statistiques agrégées sans identifiant conservées **25 mois**.
 - **Sauvegardes de la base de données** : **7 jours** glissants. Une donnée supprimée peut y subsister jusqu'à 7 jours ; les sauvegardes ne servent qu'à la restauration du service après incident. Les fichiers envoyés (certificats) ne sont pas sauvegardés.
 
 ## 6. Transferts hors Union européenne
@@ -160,6 +163,11 @@ Vous pouvez également introduire une réclamation auprès de la **CNIL** (www.c
 L'application mobile n'utilise pas de cookies publicitaires. Les identifiants
 techniques (session, appareil pour les notifications) sont strictement nécessaires au
 fonctionnement.
+
+L'application mesure aussi son audience de façon anonyme, sans outil tiers : un
+identifiant d'installation aléatoire, renouvelé chaque mois et sans lien avec votre
+compte. Vous pouvez la désactiver à tout moment dans Réglages → Confidentialité et
+données → Mesure d'audience anonyme.
 
 Le site vitrine ne dépose aucun cookie et n'utilise aucune mesure d'audience.
 

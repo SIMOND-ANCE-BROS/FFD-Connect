@@ -100,6 +100,7 @@ jest.mock("lucide-react-native", () => {
     require("react").createElement(View, props);
   return {
     AlertTriangle: MockIcon,
+    BarChart3: MockIcon,
     Camera: MockIcon,
     Check: MockIcon,
     ChevronDown: MockIcon,

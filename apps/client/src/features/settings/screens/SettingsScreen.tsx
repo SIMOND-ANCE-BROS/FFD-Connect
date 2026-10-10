@@ -431,6 +431,8 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
           onExportData={handleExportData}
           onDeleteAccount={handleDeleteAccountPress}
           onOpenLegal={handleOpenLegal}
+          usageEnabled={state.usageEnabled}
+          onToggleUsage={(on) => void actions.handleToggleUsage(on)}
         />
 
         <SettingsTechnicalSection

@@ -88,7 +88,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
 
   privacy: {
     title: "Politique de confidentialité",
-    updatedAt: "6 juillet 2026",
+    updatedAt: "10 octobre 2026",
     sections: [
       {
         heading: "Responsable de traitement",
@@ -96,15 +96,15 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
       },
       {
         heading: "Données collectées",
-        body: "• Identité : nom, prénom, date de naissance, email\n• Licence fédérale : numéro, catégorie, club, validité, niveau (passeport danse), classement\n• Compétitions : inscriptions, résultats, partenariats\n• Santé : certificat médical d'aptitude et informations extraites par OCR (données sensibles, article 9 du RGPD)\n• Techniques : jetons d'authentification (chiffrés), jeton de notification de l'appareil, signalements de bugs",
+        body: "• Identité : nom, prénom, date de naissance, email\n• Licence fédérale : numéro, catégorie, club, validité, niveau (passeport danse), classement\n• Compétitions : inscriptions, résultats, partenariats\n• Santé : certificat médical d'aptitude et informations extraites par OCR (données sensibles, article 9 du RGPD)\n• Techniques : jetons d'authentification (chiffrés), jeton de notification de l'appareil, signalements de bugs\n• Usage anonyme : écrans consultés et durée, principaux événements, plateforme, version de l'application, espace actif — rattachés à un identifiant d'installation aléatoire renouvelé chaque mois, jamais à votre compte",
       },
       {
         heading: "Finalités et bases légales",
-        body: "• Gestion des licences et compétitions — exécution du contrat / mission fédérale\n• Authentification et sécurité du compte — intérêt légitime\n• Notifications (rappels d'échéance, résultats) — consentement / intérêt légitime\nAucune donnée n'est vendue ni transmise à des tiers à des fins publicitaires.",
+        body: "• Gestion des licences et compétitions — exécution du contrat / mission fédérale\n• Authentification et sécurité du compte — intérêt légitime\n• Notifications (rappels d'échéance, résultats) — consentement / intérêt légitime\n• Mesure d'audience anonyme de l'application — intérêt légitime (exemptée de consentement), désactivable dans Réglages → Confidentialité et données → Mesure d'audience anonyme\nAucune donnée n'est vendue ni transmise à des tiers à des fins publicitaires.",
       },
       {
         heading: "Durées de conservation",
-        body: "• Compte : jusqu'à suppression, et au plus tard 3 ans après la dernière connexion\n• Certificat médical : au plus tard 12 mois après la fin de sa validité\n• Jetons de session : 30 jours maximum\n• Jeton de notification de l'appareil : 90 jours sans réutilisation\n• Logs techniques : 12 mois\n• Sauvegardes de la base de données : 7 jours glissants",
+        body: "• Compte : jusqu'à suppression, et au plus tard 3 ans après la dernière connexion\n• Certificat médical : au plus tard 12 mois après la fin de sa validité\n• Jetons de session : 30 jours maximum\n• Jeton de notification de l'appareil : 90 jours sans réutilisation\n• Logs techniques : 12 mois\n• Usage anonyme : 90 jours avec l'identifiant d'installation, puis statistiques agrégées sans identifiant pendant 25 mois\n• Sauvegardes de la base de données : 7 jours glissants",
       },
       {
         heading: "Vos droits (RGPD)",

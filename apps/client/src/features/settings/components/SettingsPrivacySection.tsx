@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   ChevronRight,
   Download,
   FileText,
@@ -6,7 +7,13 @@ import {
   Trash2,
 } from "lucide-react-native";
 import React from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import {
+  ActivityIndicator,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { AppTheme } from "../../../context/ThemeContext";
 import { LegalDoc } from "../../legal/legalContent";
 import { styles } from "./settings.styles";
@@ -19,6 +26,9 @@ interface SettingsPrivacySectionProps {
   onExportData: () => void;
   onDeleteAccount: () => void;
   onOpenLegal: (doc: LegalDoc) => void;
+  /** Mesure d'audience anonyme (lot 5) ; null pendant le chargement. */
+  usageEnabled: boolean | null;
+  onToggleUsage: (on: boolean) => void;
 }
 
 /**
@@ -32,6 +42,8 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
   onExportData,
   onDeleteAccount,
   onOpenLegal,
+  usageEnabled,
+  onToggleUsage,
 }) => (
   <>
     <View style={styles.sectionTitleContainer}>
@@ -41,9 +53,38 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
     </View>
 
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      {usageEnabled !== null && (
+        <View style={styles.row}>
+          <View style={[styles.rowLeft, { flex: 1 }]}>
+            <View style={[styles.iconBox, { backgroundColor: "#8e44ad20" }]}>
+              <BarChart3 size={20} color="#8e44ad" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowLabel, { color: theme.text }]}>
+                Mesure d'audience anonyme
+              </Text>
+              <Text style={{ color: theme.textSecondary, fontSize: 12 }}>
+                Statistiques d'usage anonymes, sans lien avec votre compte.
+              </Text>
+            </View>
+          </View>
+          <Switch
+            testID="settings-usage-switch"
+            value={usageEnabled}
+            onValueChange={onToggleUsage}
+            accessibilityLabel="Mesure d'audience anonyme"
+            accessibilityHint="Active ou désactive les statistiques d'usage anonymes"
+          />
+        </View>
+      )}
+
       {!isGuest && (
         <TouchableOpacity
-          style={styles.row}
+          style={[
+            styles.row,
+            usageEnabled !== null && styles.borderTop,
+            usageEnabled !== null && { borderTopColor: theme.border },
+          ]}
           onPress={onExportData}
           disabled={exporting}
           testID="settings-export-data-button"
@@ -79,8 +120,11 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
           key={doc}
           style={[
             styles.row,
-            (index > 0 || !isGuest) && styles.borderTop,
-            (index > 0 || !isGuest) && { borderTopColor: theme.border },
+            (index > 0 || !isGuest || usageEnabled !== null) &&
+              styles.borderTop,
+            (index > 0 || !isGuest || usageEnabled !== null) && {
+              borderTopColor: theme.border,
+            },
           ]}
           onPress={() => onOpenLegal(doc)}
           testID={`settings-legal-${doc}-button`}
