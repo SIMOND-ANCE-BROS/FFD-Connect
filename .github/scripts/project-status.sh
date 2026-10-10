@@ -2,17 +2,25 @@
 # Move issues across the « FFD Connect — Roadmap » Project Status column.
 #
 # Usage: project-status.sh <status> <issue-number>...
+#        project-status.sh --from <status> <new-status>
 #   status: one of the Project's Status option names (Todo, In Progress,
-#   In Review, En test, Done). Issues missing from the Project are added.
+#   In Review, Merged, In Beta, Done). Issues missing from the Project are added.
+#   --from moves every card currently in <status> (used when a promotion to
+#   staging ships all of develop: Merged → In Beta).
 #
 # Env: GH_TOKEN (org Projects read/write + repo issues read),
 #      GITHUB_REPOSITORY, PROJECT_OWNER, PROJECT_NUMBER.
 # Lifecycle and rules: docs/guides/gestion-des-issues.md §8.
 set -euo pipefail
 
-STATUS="$1"
+FROM=""
+if [ "${1:-}" = "--from" ]; then
+  FROM="${2:?--from needs a status}"
+  shift 2
+fi
+STATUS="${1:?status required}"
 shift
-[ "$#" -gt 0 ] || { echo "No issue to move."; exit 0; }
+[ -n "$FROM" ] || [ "$#" -gt 0 ] || { echo "No issue to move."; exit 0; }
 
 OWNER="${PROJECT_OWNER:?}"
 NUMBER="${PROJECT_NUMBER:?}"
@@ -42,6 +50,58 @@ if [ -z "$OPTION_ID" ]; then
   exit 1
 fi
 
+set_status() {
+  # shellcheck disable=SC2016
+  gh api graphql -f project="$PROJECT_ID" -f item="$1" -f field="$FIELD_ID" -f option="$OPTION_ID" -f query='
+    mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
+      updateProjectV2ItemFieldValue(input: {
+        projectId: $project, itemId: $item, fieldId: $field,
+        value: { singleSelectOptionId: $option }
+      }) { projectV2Item { id } }
+    }' >/dev/null
+}
+
+if [ -n "$FROM" ]; then
+  # Every card of this repo whose Status is $FROM (paginated, 100 per page).
+  cursor=""
+  moved=0
+  while :; do
+    args=(-f project="$PROJECT_ID")
+    [ -z "$cursor" ] || args+=(-f after="$cursor")
+    # shellcheck disable=SC2016
+    page=$(gh api graphql "${args[@]}" -f query='
+      query($project: ID!, $after: String) {
+        node(id: $project) {
+          ... on ProjectV2 {
+            items(first: 100, after: $after) {
+              pageInfo { hasNextPage endCursor }
+              nodes {
+                id
+                fieldValueByName(name: "Status") {
+                  ... on ProjectV2ItemFieldSingleSelectValue { name }
+                }
+                content { ... on Issue { number repository { nameWithOwner } } }
+              }
+            }
+          }
+        }
+      }')
+    while IFS=$'\t' read -r item number; do
+      [ -n "$item" ] || continue
+      set_status "$item"
+      echo "#$number → $STATUS"
+      moved=$((moved + 1))
+    done < <(jq -r --arg from "$FROM" --arg repo "$GITHUB_REPOSITORY" '
+      .data.node.items.nodes[]
+      | select(.fieldValueByName.name == $from and .content.repository.nameWithOwner == $repo)
+      | [.id, (.content.number | tostring)] | @tsv' <<<"$page")
+    [ "$(jq -r '.data.node.items.pageInfo.hasNextPage' <<<"$page")" = "true" ] || break
+    cursor=$(jq -r '.data.node.items.pageInfo.endCursor' <<<"$page")
+  done
+  echo "$moved card(s) moved from $FROM to $STATUS."
+  exit 0
+fi
+
 for issue in "$@"; do
   # shellcheck disable=SC2016
   node=$(gh api graphql -f owner="$REPO_OWNER" -f name="$REPO_NAME" -F number="$issue" -f query='
@@ -63,14 +123,6 @@ for issue in "$@"; do
       addProjectV2ItemById(input: { projectId: $project, contentId: $content }) { item { id } }
     }' --jq '.data.addProjectV2ItemById.item.id')
 
-  # shellcheck disable=SC2016
-  gh api graphql -f project="$PROJECT_ID" -f item="$item" -f field="$FIELD_ID" -f option="$OPTION_ID" -f query='
-    mutation($project: ID!, $item: ID!, $field: ID!, $option: String!) {
-      updateProjectV2ItemFieldValue(input: {
-        projectId: $project, itemId: $item, fieldId: $field,
-        value: { singleSelectOptionId: $option }
-      }) { projectV2Item { id } }
-    }' >/dev/null
-
+  set_status "$item"
   echo "#$issue → $STATUS"
 done
