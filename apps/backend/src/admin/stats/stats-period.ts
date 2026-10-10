@@ -160,3 +160,27 @@ export function zeroFillCount(
   }
   return buckets.map((start) => ({ start, count: totals.get(start) ?? 0 }));
 }
+
+const fromIso = (iso: string): CalendarDate => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return { y, m, d };
+};
+
+/** Paris calendar date (YYYY-MM-DD) of an instant. */
+export function parisDateOf(instant: Date): string {
+  return isoDate(parisToday(instant));
+}
+
+/** 00:00 Paris of a calendar date (YYYY-MM-DD). */
+export function parisMidnightOf(iso: string): Date {
+  return parisMidnight(fromIso(iso));
+}
+
+export function addIsoDays(iso: string, days: number): string {
+  return isoDate(addDays(fromIso(iso), days));
+}
+
+/** Month arithmetic on the 1st of a month. */
+export function addIsoMonths(iso: string, months: number): string {
+  return isoDate(addMonths(fromIso(iso), months));
+}
