@@ -1,6 +1,6 @@
 # Politique de confidentialité
 
-_Dernière mise à jour : 8 octobre 2026_
+_Dernière mise à jour : 10 octobre 2026_
 
 > **Projet indépendant.** FFD Connect n'est pas une application officielle de la
 > Fédération Française de Danse. La fédération n'en est ni l'éditrice, ni

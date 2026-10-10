@@ -1061,9 +1061,12 @@ describe("UsersService", () => {
         select: Record<string, unknown>;
         take: number;
       };
-      expect(seats.select).toEqual(
-        expect.objectContaining({ seatLabel: true, status: true }),
-      );
+      expect(seats.select).toEqual({
+        seatLabel: true,
+        status: true,
+        createdAt: true,
+        competition: { select: { title: true, date: true } },
+      });
       // Référence de paiement externe et identifiant interne : jamais exportés.
       expect(seats.select.paymentId).toBeUndefined();
       expect(seats.select.itemId).toBeUndefined();
