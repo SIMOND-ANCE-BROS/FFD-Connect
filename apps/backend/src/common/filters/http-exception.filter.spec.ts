@@ -5,6 +5,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import * as Sentry from "@sentry/nestjs";
+import { CodedBadRequestException } from "../errors/coded-bad-request.exception";
 import { HttpExceptionFilter } from "./http-exception.filter";
 
 jest.mock("@sentry/nestjs", () => ({ captureException: jest.fn() }));
@@ -273,5 +274,68 @@ describe("HttpExceptionFilter", () => {
     const [body] = mockResponse.json.mock.lastCall as [Record<string, unknown>];
     expect(body).not.toHaveProperty("memberCount");
     expect(body).not.toHaveProperty("existingClubId");
+  });
+
+  // #225: some 4xx messages are health data (medical unfitness). The user still
+  // reads them; the logs only see the stable code.
+  describe("coded errors (#225)", () => {
+    const HEALTH_TEXT =
+      "Le certificat médical indique que vous n'êtes pas apte (SENTINEL-225)";
+
+    it("logs the code, never the message, and still answers the message", () => {
+      mockRequest.url = "/api/v1/licenses/renewal/req-1/documents";
+      mockRequest.method = "POST";
+
+      filter.catch(
+        new CodedBadRequestException("MEDICAL_UNFIT", HEALTH_TEXT),
+        mockArgumentsHost,
+      );
+
+      const logged = JSON.stringify([
+        mockLogger.warn.mock.calls,
+        mockLogger.error.mock.calls,
+      ]);
+      expect(logged).toContain("MEDICAL_UNFIT");
+      expect(logged).not.toContain("SENTINEL-225");
+      expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: HEALTH_TEXT,
+          code: "MEDICAL_UNFIT",
+        }),
+      );
+    });
+
+    it("also keeps the text out of 5xx logs when a code is set", () => {
+      filter.catch(
+        new HttpException(
+          { message: HEALTH_TEXT, code: "SOME_CODE" },
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        ),
+        mockArgumentsHost,
+      );
+
+      const [payload, line] = mockLogger.error.mock.lastCall as [
+        Record<string, unknown>,
+        string,
+      ];
+      expect(payload.message).toBe("SOME_CODE");
+      expect(line).not.toContain("SENTINEL-225");
+    });
+
+    it("keeps logging the message of uncoded errors", () => {
+      filter.catch(
+        new HttpException("Plain error", HttpStatus.BAD_REQUEST),
+        mockArgumentsHost,
+      );
+      const [payload] = mockLogger.warn.mock.lastCall as [
+        Record<string, unknown>,
+      ];
+      expect(payload.message).toBe("Plain error");
+      const [body] = mockResponse.json.mock.lastCall as [
+        Record<string, unknown>,
+      ];
+      expect(body).not.toHaveProperty("code");
+    });
   });
 });

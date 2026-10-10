@@ -52,7 +52,8 @@ const EMPTY_REPORT: HealthDataPurgeReport = {
  * La politique de confidentialité publiée promet la suppression du certificat
  * médical « au plus tard 12 mois après la fin de validité ». Avant ce service,
  * **rien ne supprimait jamais** ni le fichier archivé ni les `ocrData` extraites
- * par OCR — qui contiennent `rawText`, 500 caractères bruts du certificat.
+ * par OCR — qui contenaient `rawText`, 500 caractères bruts du certificat
+ * (plus écrit ni renvoyé depuis #224).
  *
  * ## Pourquoi un `@Cron` in-process ET un passage au démarrage
  *

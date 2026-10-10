@@ -13,6 +13,7 @@ import {
   redactSecretsInText,
   redactUrl,
 } from "../logger/redact-url";
+import { errorCodeOf } from "../errors/coded-bad-request.exception";
 
 /**
  * Filtre global d'exceptions HTTP pour une gestion cohérente des erreurs
@@ -87,6 +88,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
     }
 
+    // Stable error code (#225): when set, it is what the logs see in place of
+    // the message — some messages carry health data (medical unfitness).
+    const code = errorCodeOf(body);
+
     // Logging structuré pour le debugging
     const errorResponse = {
       statusCode: status,
@@ -94,6 +99,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       path: safeUrl,
       method: request.method,
       message,
+      ...(code ? { code } : {}),
       ...conflictDetails,
     };
 
@@ -111,7 +117,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
 
       const logMessage =
-        typeof message === "string" ? message : JSON.stringify(message);
+        code ??
+        (typeof message === "string" ? message : JSON.stringify(message));
 
       this.logger.error(
         {
@@ -134,7 +141,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       );
     } else if (status >= 400) {
       const logMessage =
-        typeof message === "string" ? message : JSON.stringify(message);
+        code ??
+        (typeof message === "string" ? message : JSON.stringify(message));
 
       this.logger.warn(
         {

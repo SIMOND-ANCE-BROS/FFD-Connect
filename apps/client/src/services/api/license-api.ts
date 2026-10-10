@@ -36,7 +36,6 @@ export interface LicenseRenewalDocument {
     licenseNumber?: string;
     name?: string;
     expiryDate?: string;
-    rawText?: string;
     [key: string]: unknown;
   };
   createdAt: string;

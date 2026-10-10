@@ -289,6 +289,61 @@ export const licenseRenewalDocumentFileSelect = {
   filePath: true,
 } as const;
 
+/**
+ * Document de renouvellement tel que l'API le renvoie (#224). `ocrData` est lu
+ * pour le résumé affiché dans l'app, mais ne sort JAMAIS tel quel : il passe
+ * par `toRenewalDocumentResponse`, qui ne garde que les champs utiles (jamais
+ * `rawText`, texte brut du certificat médical). `purgeDueAt` reste interne.
+ */
+export const licenseRenewalDocumentResponseSelect = {
+  id: true,
+  requestId: true,
+  type: true,
+  filePath: true,
+  ocrData: true,
+  createdAt: true,
+} as const;
+
+/**
+ * Demande de renouvellement telle que l'API la renvoie, documents compris.
+ * Les documents ne sont pas bornés par `take` : un remplacement supprime
+ * l'ancien document du même type, il y en a donc au plus un par type (2).
+ */
+export const licenseRenewalRequestResponseSelect = {
+  id: true,
+  userId: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  documents: { select: licenseRenewalDocumentResponseSelect },
+} as const;
+
+/** Dépôt d'un document : statut de la demande + fichiers déjà déposés. */
+export const licenseRenewalUploadTargetSelect = {
+  status: true,
+  documents: { select: { type: true, filePath: true } },
+} as const;
+
+/** Soumission : statut + données OCR des documents, pour les règles métier. */
+export const licenseRenewalSubmitTargetSelect = {
+  status: true,
+  documents: { select: { type: true, ocrData: true } },
+} as const;
+
+/** Approbation : de quoi renouveler la licence, sans le reste du profil. */
+export const licenseRenewalApprovalTargetSelect = {
+  status: true,
+  userId: true,
+  documents: { select: { type: true, ocrData: true } },
+  user: {
+    select: {
+      category: true,
+      clubName: true,
+      license: { select: { number: true } },
+    },
+  },
+} as const;
+
 /** Sélecteur minimal : identifiant seul (destinataires d'une notification…). */
 export const idOnlySelect = {
   id: true,
