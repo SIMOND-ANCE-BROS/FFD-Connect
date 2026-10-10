@@ -36,6 +36,7 @@ import {
   COMMENT_MAX_LENGTH,
   DOCUMENT_LABELS,
   initialLicenseNumber,
+  isLicenseNumberTaken,
   REJECTION_REASON_LABELS,
   REJECTION_REASONS,
   type RejectionReason,
@@ -142,8 +143,10 @@ export function LicenseRenewalDetailPage() {
       </SimpleGrid>
       {pending ? (
         <DecisionForm
+          key={r.id}
           r={r}
           onDecided={(updated) => {
+            setConflict(null);
             qc.setQueryData(licenseRenewalQuery(id).queryKey, updated);
             refreshAfterDecision();
           }}
@@ -201,6 +204,10 @@ function DecisionForm({ r, onDecided, onConflict }: DecisionFormProps) {
   const [comment, setComment] = useState('');
   const [confirm, setConfirm] = useState<Decision | null>(null);
   const number = licenseNumber.trim();
+  const current = r.user.license?.number ?? null;
+  // Sent only when it changes the licence: omitted, the API keeps the current
+  // number (or uses the OCR reading for a new licence).
+  const changesNumber = number !== '' && number !== current;
   const trimmedComment = comment.trim();
 
   const decide = useMutation({
@@ -209,7 +216,7 @@ function DecisionForm({ r, onDecided, onConflict }: DecisionFormProps) {
         ? unwrap(
             adminLicenseRenewalsControllerApprove({
               path: { id: r.id },
-              body: { licenseNumber: number },
+              body: changesNumber ? { licenseNumber: number } : {},
             }),
           )
         : unwrap(
@@ -230,6 +237,8 @@ function DecisionForm({ r, onDecided, onConflict }: DecisionFormProps) {
       onDecided(updated);
     },
     onError: (e) => {
+      // A number taken by another account: the admin corrects it in place.
+      if (isLicenseNumberTaken(e)) return;
       if (isConflict(e)) {
         setConfirm(null);
         onConflict(apiErrorMessage(e, 'Déjà traitée'));
@@ -321,13 +330,16 @@ function DecisionForm({ r, onDecided, onConflict }: DecisionFormProps) {
               }.`}
             </Text>
           )}
+          {confirm === 'approve' && current && changesNumber && (
+            <Text size="sm" fw={500}>{`Le numéro passera de ${current} à ${number}.`}</Text>
+          )}
           {confirm === 'reject' && reason && (
             <Stack gap={4}>
               <Text size="sm">{`Motif : ${REJECTION_REASON_LABELS[reason]}`}</Text>
               {trimmedComment && <Text size="sm">{`Commentaire : ${trimmedComment}`}</Text>}
             </Stack>
           )}
-          {decide.isError && !isConflict(decide.error) && (
+          {decide.isError && (!isConflict(decide.error) || isLicenseNumberTaken(decide.error)) && (
             <Alert color="red">{apiErrorMessage(decide.error, 'Décision impossible.')}</Alert>
           )}
           <Group justify="flex-end">

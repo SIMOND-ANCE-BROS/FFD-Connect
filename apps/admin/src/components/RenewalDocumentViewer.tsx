@@ -1,5 +1,5 @@
 import { Alert, Box, Button, Stack } from '@mantine/core';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { adminLicenseRenewalsControllerDocumentFile } from '../api/generated/sdk.gen';
 import type { LicenseRenewalDocumentType } from '../api/generated/types.gen';
 import { apiErrorMessage } from '../lib/apiError';
@@ -34,6 +34,10 @@ export function RenewalDocumentViewer({ requestId, document }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const label = DOCUMENT_LABELS[document.type];
+  // Leaving mid-fetch (up to 2 min on a cold start) aborts the request and
+  // must never leave an object URL behind.
+  const inFlight = useRef<AbortController | null>(null);
+  useEffect(() => () => inFlight.current?.abort(), []);
 
   useEffect(
     () => () => {
@@ -43,13 +47,18 @@ export function RenewalDocumentViewer({ requestId, document }: Props) {
   );
 
   const open = async () => {
+    const controller = new AbortController();
+    inFlight.current = controller;
     setLoading(true);
     setError(null);
     const { data, error: body } = await adminLicenseRenewalsControllerDocumentFile({
       path: { id: requestId, docId: document.id },
       parseAs: 'blob',
       cache: 'no-store',
-    });
+      signal: controller.signal,
+    }).catch((e: unknown) => ({ data: undefined, error: e }));
+    if (controller.signal.aborted) return;
+    inFlight.current = null;
     setLoading(false);
     if (body !== undefined || !(data instanceof Blob)) {
       setError(

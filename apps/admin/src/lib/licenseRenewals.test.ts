@@ -62,14 +62,14 @@ describe('initialLicenseNumber', () => {
     ocr: licenseNumber ? { licenseNumber } : {},
   });
 
-  it('prefills the number read on the licence certificate', () => {
+  it('keeps the current licence number first: an OCR misread never replaces it silently', () => {
     expect(initialLicenseNumber([doc('FFD-777')], { number: 'FFD-1', validUntil: '' })).toBe(
-      'FFD-777',
+      'FFD-1',
     );
   });
 
-  it('falls back to the current licence, then to empty', () => {
-    expect(initialLicenseNumber([doc()], { number: 'FFD-1', validUntil: '' })).toBe('FFD-1');
+  it('falls back to the number read on the certificate, then to empty', () => {
+    expect(initialLicenseNumber([doc('FFD-777')], null)).toBe('FFD-777');
     expect(initialLicenseNumber([doc()], null)).toBe('');
     expect(initialLicenseNumber([], null)).toBe('');
   });

@@ -102,13 +102,28 @@ describe('LicenseRenewalDetailPage', () => {
     expect(screen.getByText(/Refusée · soumise le 01\/09\/2025/)).toBeInTheDocument();
   });
 
-  it('approves with the prefilled number, as confirmed by the admin', async () => {
+  it('keeps the current number by default: nothing is sent, the licence keeps it', async () => {
+    renderPage(pending);
+    const approve = vi
+      .spyOn(sdk, 'adminLicenseRenewalsControllerApprove')
+      .mockResolvedValue(ok({ ...pending, status: 'APPROVED', renewsUntil: null }) as never);
+    expect(await screen.findByLabelText('Numéro de licence')).toHaveValue('FFD-123');
+    await userEvent.click(screen.getByRole('button', { name: 'Approuver' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText('La licence n° FFD-123 sera renouvelée jusqu’au 31/08/2027.'),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Le numéro passera/)).toBeNull();
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await waitFor(() => expect(approve).toHaveBeenCalledWith({ path: { id: 'r1' }, body: {} }));
+  });
+
+  it('approves with a number corrected by the admin, and says it replaces the current one', async () => {
     renderPage(pending);
     const approve = vi
       .spyOn(sdk, 'adminLicenseRenewalsControllerApprove')
       .mockResolvedValue(ok({ ...pending, status: 'APPROVED', renewsUntil: null }) as never);
     const number = await screen.findByLabelText('Numéro de licence');
-    expect(number).toHaveValue('FFD-777');
     await userEvent.clear(number);
     await userEvent.type(number, 'FFD-778');
     await userEvent.click(screen.getByRole('button', { name: 'Approuver' }));
@@ -116,6 +131,7 @@ describe('LicenseRenewalDetailPage', () => {
     expect(
       within(dialog).getByText('La licence n° FFD-778 sera renouvelée jusqu’au 31/08/2027.'),
     ).toBeInTheDocument();
+    expect(within(dialog).getByText('Le numéro passera de FFD-123 à FFD-778.')).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     await waitFor(() =>
       expect(approve).toHaveBeenCalledWith({
@@ -123,7 +139,8 @@ describe('LicenseRenewalDetailPage', () => {
         body: { licenseNumber: 'FFD-778' },
       }),
     );
-    expect(await screen.findByText('Renouvellement approuvé')).toBeInTheDocument();
+    // Mantine's notifications store is global: an earlier test's toast may linger.
+    expect((await screen.findAllByText('Renouvellement approuvé')).length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Approuver' })).toBeNull());
   });
 
@@ -149,6 +166,27 @@ describe('LicenseRenewalDetailPage', () => {
         body: { reason: 'CERTIFICATE_TOO_OLD', comment: 'Merci de déposer un certificat récent' },
       }),
     );
+  });
+
+  it('409 « number taken »: the error stays in the dialog, the request is not reloaded', async () => {
+    const { detail } = renderPage(pending);
+    vi.spyOn(sdk, 'adminLicenseRenewalsControllerApprove').mockResolvedValue({
+      data: undefined,
+      error: {
+        statusCode: 409,
+        message: 'Ce numéro de licence est déjà attribué à un autre compte.',
+      },
+    } as never);
+    const number = await screen.findByLabelText('Numéro de licence');
+    await userEvent.clear(number);
+    await userEvent.type(number, 'FFD-999');
+    await userEvent.click(screen.getByRole('button', { name: 'Approuver' }));
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    expect(
+      await within(dialog).findByText('Ce numéro de licence est déjà attribué à un autre compte.'),
+    ).toBeInTheDocument();
+    expect(detail).toHaveBeenCalledTimes(1);
   });
 
   it('409: shows the message and reloads the request', async () => {

@@ -48,6 +48,7 @@ describe('RenewalDocumentViewer', () => {
       path: { id: 'r1', docId: 'd1' },
       parseAs: 'blob',
       cache: 'no-store',
+      signal: expect.any(AbortSignal),
     });
   });
 
@@ -62,6 +63,21 @@ describe('RenewalDocumentViewer', () => {
       'src',
       'blob:certificate-1',
     );
+  });
+
+  it('leaving while the document loads aborts the request and creates no object URL', async () => {
+    let resolve: (value: unknown) => void = () => {};
+    const file = vi
+      .spyOn(sdk, 'adminLicenseRenewalsControllerDocumentFile')
+      .mockImplementation(() => new Promise((r) => (resolve = r)) as never);
+    const view = renderViewer();
+    await userEvent.click(screen.getByRole('button', { name: 'Afficher le document' }));
+    const { signal } = (file.mock.calls[0] as [{ signal: AbortSignal }])[0];
+    view.unmount();
+    expect(signal.aborted).toBe(true);
+    resolve({ data: new Blob(['x'], { type: 'image/png' }), error: undefined });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(createObjectURL).not.toHaveBeenCalled();
   });
 
   it('revokes the object URL when leaving the page', async () => {

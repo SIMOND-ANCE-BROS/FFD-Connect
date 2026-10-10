@@ -85,13 +85,27 @@ export const listFilter = (state: RenewalsUrlState, take: number): LicenseRenewa
 });
 
 /**
- * Number the approval form starts from: read on the licence certificate,
- * else the current licence's. The admin confirms or corrects it.
+ * Number the approval form starts from: the current licence's first (a
+ * number sent to the API REPLACES it, so an OCR misread must never be the
+ * default), else the one read on the licence certificate. The admin confirms
+ * or corrects it; the OCR reading stays visible as a hint.
  */
 export function initialLicenseNumber(
   documents: Pick<AdminRenewalDocumentDetailDto, 'type' | 'ocr'>[],
   license: AdminRenewalLicenseDto | null,
 ): string {
+  if (license?.number) return license.number;
   const read = documents.find((d) => d.type === 'LICENSE_CERTIFICATE')?.ocr?.licenseNumber;
-  return read || license?.number || '';
+  return read?.trim() ?? '';
 }
+
+/**
+ * 409 of an approval whose number is another account's licence (the API has
+ * no error code: its message is the only discriminant), as opposed to the 409
+ * of a request already decided.
+ */
+export const isLicenseNumberTaken = (body: unknown): boolean =>
+  typeof body === 'object' &&
+  body !== null &&
+  (body as { statusCode?: unknown }).statusCode === 409 &&
+  /numéro de licence/i.test(String((body as { message?: unknown }).message ?? ''));
