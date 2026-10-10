@@ -18,4 +18,8 @@ export const ACTION_LABELS: Record<AuditLogEntryDto['action'], string> = {
   TRACK_CREATE: 'Ajout de musique',
   TRACK_UPDATE: 'Modification de musique',
   TRACK_DELETE: 'Suppression de musique',
+  LICENSE_RENEWAL_VIEW: 'Consultation de renouvellement',
+  LICENSE_RENEWAL_DOCUMENT_VIEW: 'Consultation de document de renouvellement',
+  LICENSE_RENEWAL_APPROVE: 'Renouvellement approuvé',
+  LICENSE_RENEWAL_REJECT: 'Renouvellement refusé',
 };

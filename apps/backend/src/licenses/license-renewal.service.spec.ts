@@ -1,4 +1,8 @@
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from "@nestjs/common";
 import {
   LicenseRenewalDocumentType,
   LicenseRenewalStatus,
@@ -38,6 +42,7 @@ describe("LicenseRenewalService", () => {
       findUniqueOrThrow: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
     };
     licenseRenewalDocument: {
       deleteMany: jest.Mock;
@@ -65,6 +70,7 @@ describe("LicenseRenewalService", () => {
       findUniqueOrThrow: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
     licenseRenewalDocument: {
       deleteMany: jest.fn(),
@@ -108,9 +114,17 @@ describe("LicenseRenewalService", () => {
     jest.clearAllMocks();
     mockBlob.isEnabled.mockReturnValue(true);
     mockBlob.getUploadsContainer.mockReturnValue("uploads");
-    mockPrisma.$transaction.mockImplementation((ops: Promise<unknown>[]) =>
-      Promise.all(ops),
+    // Array form (document replacement) and interactive form (approval).
+    mockPrisma.$transaction.mockImplementation(
+      (ops: Promise<unknown>[] | ((tx: MockPrisma) => Promise<unknown>)) =>
+        typeof ops === "function" ? ops(mockPrisma) : Promise.all(ops),
     );
+    mockPrisma.licenseRenewalRequest.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.licenseRenewalRequest.findUniqueOrThrow.mockResolvedValue({
+      id: "req-1",
+      status: LicenseRenewalStatus.APPROVED,
+      documents: [],
+    });
     mockCleaner.deleteFiles.mockResolvedValue(new Set());
   });
 
@@ -713,12 +727,13 @@ describe("LicenseRenewalService", () => {
         id: "user-1",
         license: null,
       });
-      mockPrisma.licenseRenewalRequest.update
-        .mockResolvedValueOnce({
-          id: "req-1",
-          status: LicenseRenewalStatus.PENDING,
-        })
-        .mockResolvedValueOnce(approvedRequest);
+      mockPrisma.licenseRenewalRequest.update.mockResolvedValueOnce({
+        id: "req-1",
+        status: LicenseRenewalStatus.PENDING,
+      });
+      mockPrisma.licenseRenewalRequest.findUniqueOrThrow.mockResolvedValue(
+        approvedRequest,
+      );
       mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue({
         id: "req-1",
         userId: "user-1",
@@ -744,6 +759,67 @@ describe("LicenseRenewalService", () => {
 
       expect(result).toEqual(approvedRequest);
       expect(mockPrisma.license.upsert).toHaveBeenCalled();
+      // Submission time recorded for the moderation queue (#266).
+      expect(mockPrisma.licenseRenewalRequest.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: LicenseRenewalStatus.PENDING,
+            submittedAt: expect.any(Date) as unknown,
+          }) as unknown,
+        }),
+      );
+      // Automatic approval: atomic, conditional on PENDING, no reviewer (#261).
+      expect(mockPrisma.$transaction).toHaveBeenCalledWith(
+        expect.any(Function),
+      );
+      expect(mockPrisma.licenseRenewalRequest.updateMany).toHaveBeenCalledWith({
+        where: { id: "req-1", status: LicenseRenewalStatus.PENDING },
+        data: expect.objectContaining({
+          status: LicenseRenewalStatus.APPROVED,
+          reviewedById: null,
+        }) as unknown,
+      });
+    });
+
+    it("answers 409 and leaves the licence untouched when a concurrent decision won (#261)", async () => {
+      const documents = [
+        {
+          id: "doc-1",
+          type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+          filePath: "/path/to/medical.jpg",
+          ocrData: { isApte: true },
+        },
+        {
+          id: "doc-2",
+          type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
+          filePath: "/path/to/license.jpg",
+          ocrData: { licenseNumber: "FFD-123" },
+        },
+      ];
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+        id: "req-1",
+        userId: "user-1",
+        status: LicenseRenewalStatus.DRAFT,
+        documents,
+      });
+      mockPrisma.user.findUnique.mockResolvedValue({ license: null });
+      mockPrisma.licenseRenewalRequest.update.mockResolvedValue({
+        id: "req-1",
+      });
+      mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue({
+        status: LicenseRenewalStatus.PENDING,
+        userId: "user-1",
+        documents,
+        user: { category: null, clubName: null, license: null },
+      });
+      mockPrisma.licenseRenewalRequest.updateMany.mockResolvedValue({
+        count: 0,
+      });
+
+      await expect(
+        service.submitRenewalRequest("user-1", "req-1"),
+      ).rejects.toThrow(ConflictException);
+      expect(mockPrisma.license.upsert).not.toHaveBeenCalled();
     });
 
     // #250: a license ending this August 31 is renewable from July 1 (summer
@@ -848,120 +924,6 @@ describe("LicenseRenewalService", () => {
           }),
         );
       });
-    });
-  });
-
-  describe("approveRenewalRequest", () => {
-    it("never shortens a license that already runs later (#250)", async () => {
-      const longRunning = new Date("2030-12-31T22:59:59.999Z");
-      mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue({
-        id: "req-1",
-        userId: "user-1",
-        status: LicenseRenewalStatus.PENDING,
-        documents: [],
-        user: {
-          id: "user-1",
-          category: "Elite",
-          clubName: "CVDS",
-          license: { number: "FFD-456", validUntil: longRunning },
-        },
-      });
-      mockPrisma.license.upsert.mockResolvedValue({ id: "L2" });
-      mockPrisma.licenseRenewalRequest.update.mockResolvedValue({
-        id: "req-1",
-        status: LicenseRenewalStatus.APPROVED,
-        documents: [],
-      });
-
-      jest.useFakeTimers({ now: new Date("2027-03-15T10:00:00.000Z") });
-      try {
-        await service.approveRenewalRequest("req-1");
-      } finally {
-        jest.useRealTimers();
-      }
-
-      expect(mockPrisma.license.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          update: expect.objectContaining({
-            validUntil: longRunning,
-          }) as unknown,
-        }),
-      );
-    });
-
-    it("should throw NotFoundException if request not found", async () => {
-      mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue(null);
-
-      await expect(service.approveRenewalRequest("req-1")).rejects.toThrow(
-        NotFoundException,
-      );
-    });
-
-    it("should throw BadRequestException if request is not PENDING", async () => {
-      mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue({
-        id: "req-1",
-        status: LicenseRenewalStatus.DRAFT,
-        documents: [],
-        user: { id: "user-1", license: null },
-      });
-
-      await expect(service.approveRenewalRequest("req-1")).rejects.toThrow(
-        BadRequestException,
-      );
-    });
-
-    it("should approve request, upsert license, and update status", async () => {
-      const approvedRequest = {
-        id: "req-1",
-        status: LicenseRenewalStatus.APPROVED,
-        documents: [],
-      };
-      mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue({
-        id: "req-1",
-        userId: "user-1",
-        status: LicenseRenewalStatus.PENDING,
-        documents: [
-          {
-            id: "doc-1",
-            type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
-            filePath: "/path",
-            ocrData: { licenseNumber: "FFD-456" },
-          },
-        ],
-        user: {
-          id: "user-1",
-          category: "Elite",
-          clubName: "CVDS",
-          license: null,
-        },
-      });
-      mockPrisma.license.upsert.mockResolvedValue({ id: "L2" });
-      mockPrisma.licenseRenewalRequest.update.mockResolvedValue(
-        approvedRequest,
-      );
-
-      // 22:30 UTC on a summer evening = 00:30 the next day in Paris (#238).
-      jest.useFakeTimers({ now: new Date("2026-08-31T22:30:00.000Z") });
-      let result: unknown;
-      try {
-        result = await service.approveRenewalRequest("req-1");
-      } finally {
-        jest.useRealTimers();
-      }
-
-      // Last instant of 2027-08-31 in Paris: shown 31/08, never 01/09.
-      const seasonEnd = new Date("2027-08-31T21:59:59.999Z");
-      expect(result).toEqual(approvedRequest);
-      expect(mockPrisma.license.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { userId: "user-1" },
-          update: expect.objectContaining({ validUntil: seasonEnd }) as unknown,
-          create: expect.objectContaining({
-            number: "FFD-456",
-            validUntil: seasonEnd,
-          }) as unknown,
-        }) as unknown,
-      );
     });
   });
 
@@ -1122,7 +1084,7 @@ describe("LicenseRenewalService", () => {
       expect(createArgs.data.purgeDueAt).toBeNull();
     });
 
-    it("POST renewal/:id/submit and admin renewal/:id/approve", async () => {
+    it("POST renewal/:id/submit (automatic approval)", async () => {
       mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue(
         legacyRequest(LicenseRenewalStatus.DRAFT),
       );
@@ -1132,12 +1094,14 @@ describe("LicenseRenewalService", () => {
         user: { category: "Standard", clubName: "Club", license: null },
       });
       mockPrisma.license.upsert.mockResolvedValue({ id: "L1" });
-      mockPrisma.licenseRenewalRequest.update.mockResolvedValue(
+      mockPrisma.licenseRenewalRequest.update.mockResolvedValue({
+        id: "req-1",
+      });
+      mockPrisma.licenseRenewalRequest.findUniqueOrThrow.mockResolvedValue(
         legacyRequest(LicenseRenewalStatus.APPROVED),
       );
 
       expectSanitized(await service.submitRenewalRequest("user-1", "req-1"));
-      expectSanitized(await service.approveRenewalRequest("req-1"));
       // The licence number read through the whitelist still renews the licence.
       expect(mockPrisma.license.upsert).toHaveBeenCalledWith(
         expect.objectContaining({

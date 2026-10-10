@@ -929,6 +929,22 @@ describe("UsersService", () => {
       };
       expect(renewals.take).toBe(100);
       expect(renewals.select.status).toBe(true);
+      // Modération humaine (#266) : la décision et sa date sont exportées,
+      // jamais l'identité de l'administrateur.
+      expect(renewals.select).toEqual(
+        expect.objectContaining({
+          submittedAt: true,
+          reviewedAt: true,
+          rejectionReason: true,
+          reviewComment: true,
+        }),
+      );
+      expect(
+        (renewals.select as Record<string, unknown>).reviewedById,
+      ).toBeUndefined();
+      expect(
+        (renewals.select as Record<string, unknown>).reviewedBy,
+      ).toBeUndefined();
       expect(renewals.select.documents.select).toEqual({
         type: true,
         ocrData: true,

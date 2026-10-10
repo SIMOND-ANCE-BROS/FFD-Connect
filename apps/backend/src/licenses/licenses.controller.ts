@@ -21,11 +21,9 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
-import { LicenseRenewalDocumentType, UserRole } from "@prisma/client";
+import { LicenseRenewalDocumentType } from "@prisma/client";
 import { Request as ExpressRequest } from "express";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
-import { Roles } from "../auth/decorators/roles.decorator";
-import { RolesGuard } from "../auth/guards/roles.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import {
   createFileFilter,
@@ -370,28 +368,5 @@ export class LicensesController {
     @Param("id", ParseUUIDPipe) id: string,
   ) {
     return this.licenseRenewalService.submitRenewalRequest(req.user.userId, id);
-  }
-
-  // Admin-only: approving renews someone else's license. The licensee's own
-  // flow auto-approves through LicenseRenewalService.submitRenewalRequest,
-  // which calls the service directly and never goes through this route.
-  @Post("renewal/:id/approve")
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({
-    summary: "Approuver une demande (renouvelle la licence)",
-    description:
-      "Réservé aux administrateurs. Passe la demande en APPROVED et renouvelle la licence jusqu’au 31 août (Europe/Paris) qui termine la saison en cours, ou celle de la saison suivante pour une approbation entre le 1er juillet et le 31 août ; une date de fin déjà plus lointaine est conservée.",
-  })
-  @ApiParam({ name: "id", description: "ID de la demande" })
-  @ApiResponse({
-    status: 200,
-    description: "Demande approuvée, licence renouvelée",
-  })
-  @ApiResponse({ status: 400, description: "Demande non en attente" })
-  @ApiResponse({ status: 401, description: "Non autorisé" })
-  @ApiResponse({ status: 404, description: "Demande non trouvée" })
-  async approveRenewal(@Param("id", ParseUUIDPipe) id: string) {
-    return this.licenseRenewalService.approveRenewalRequest(id);
   }
 }

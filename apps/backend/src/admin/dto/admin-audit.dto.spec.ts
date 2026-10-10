@@ -29,6 +29,10 @@ describe("ListAuditLogQueryDto", () => {
         "TRACK_CREATE",
         "TRACK_UPDATE",
         "TRACK_DELETE",
+        "LICENSE_RENEWAL_VIEW",
+        "LICENSE_RENEWAL_DOCUMENT_VIEW",
+        "LICENSE_RENEWAL_APPROVE",
+        "LICENSE_RENEWAL_REJECT",
       ]),
     );
     expect(AUDIT_TARGET_TYPES).toEqual([
@@ -36,6 +40,7 @@ describe("ListAuditLogQueryDto", () => {
       "CLUB",
       "TRACK_CORRECTION",
       "TRACK",
+      "LICENSE_RENEWAL",
     ]);
   });
 });

@@ -6,6 +6,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { getErrorMessage } from "../utils/error.utils";
+import { healthDataPurgeDueSelect } from "../utils/prisma-selects";
 import { medicalCertificatePurgeDueAt } from "./medical-certificate-retention.util";
 
 /**
@@ -65,7 +66,8 @@ const EMPTY_REPORT: HealthDataPurgeReport = {
  *
  * ## L'effacement se fait en deux temps, et l'ordre est raisonné
  *
- * 1. `ocrData` est vidé pour TOUT document échu. C'est une écriture en base :
+ * 1. `ocrData` est vidé pour TOUT document échu, et le commentaire de
+ *    modération (#266) de sa demande avec lui. C'est une écriture en base :
  *    elle n'échoue pas parce qu'un stockage externe va mal. Le texte de santé
  *    disparaît donc à l'heure dite, quoi qu'il arrive au fichier.
  * 2. Le fichier est supprimé, et la ligne seulement ensuite — elle est le seul
@@ -150,7 +152,7 @@ export class HealthDataRetentionService implements OnModuleInit {
         type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
         purgeDueAt: { lte: new Date() },
       },
-      select: { id: true, filePath: true },
+      select: healthDataPurgeDueSelect,
       orderBy: { purgeDueAt: "asc" },
       take: PURGE_BATCH_SIZE,
     });
@@ -162,6 +164,16 @@ export class HealthDataRetentionService implements OnModuleInit {
     const stripped = await this.prisma.licenseRenewalDocument.updateMany({
       where: { id: { in: due.map((document) => document.id) } },
       data: { ocrData: Prisma.DbNull },
+    });
+    // Le commentaire de l'administrateur (#266) peut décrire le certificat :
+    // il part avec lui. Seule la trace de la décision (statut, motif, date)
+    // demeure.
+    await this.prisma.licenseRenewalRequest.updateMany({
+      where: {
+        id: { in: [...new Set(due.map((document) => document.requestId))] },
+        reviewComment: { not: null },
+      },
+      data: { reviewComment: null },
     });
 
     // 2. Le fichier, puis la ligne — et seulement pour les fichiers confirmés

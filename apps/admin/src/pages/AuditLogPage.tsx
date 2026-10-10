@@ -17,6 +17,8 @@ const TARGET_LINKS: Record<AuditLogEntryDto['targetType'], { path: string; label
   CLUB: { path: 'clubs', label: 'Voir le club' },
   TRACK_CORRECTION: { path: 'moderation', label: 'Voir la proposition' },
   TRACK: { path: 'tracks', label: 'Voir la musique' },
+  // Screen delivered by #267.
+  LICENSE_RENEWAL: { path: 'license-renewals', label: 'Voir la demande' },
 };
 
 /**

@@ -24,6 +24,12 @@ export const AUDIT_ACTIONS = [
   "TRACK_CREATE",
   "TRACK_UPDATE",
   "TRACK_DELETE",
+  // Licence renewal moderation (#266). Views are logged too: the request and
+  // its documents are health data (#63). Never any health data in before/after.
+  "LICENSE_RENEWAL_VIEW",
+  "LICENSE_RENEWAL_DOCUMENT_VIEW",
+  "LICENSE_RENEWAL_APPROVE",
+  "LICENSE_RENEWAL_REJECT",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const AUDIT_TARGET_TYPES = [
@@ -31,6 +37,7 @@ export const AUDIT_TARGET_TYPES = [
   "CLUB",
   "TRACK_CORRECTION",
   "TRACK",
+  "LICENSE_RENEWAL",
 ] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 

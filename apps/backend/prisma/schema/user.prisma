@@ -46,7 +46,8 @@ model User {
   partnershipsAsUser2  Partnership[]  @relation("PartnershipUser2")
   soloTeamMemberships  SoloTeamMember[]
   license              License?
-  licenseRenewalRequests LicenseRenewalRequest[]
+  licenseRenewalRequests LicenseRenewalRequest[] @relation("LicenseRenewalRequester")
+  licenseRenewalsReviewed LicenseRenewalRequest[] @relation("LicenseRenewalsReviewed")
   walletPassDownloadTokens WalletPassDownloadToken[]
   notifications        Notification[]
   notificationPrefs    NotificationPreference[]

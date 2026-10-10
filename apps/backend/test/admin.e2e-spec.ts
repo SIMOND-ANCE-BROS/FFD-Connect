@@ -48,6 +48,25 @@ const ADMIN_ROUTES: Array<
   // App usage (lot 5): ADMIN-only at class level.
   ["get", "/api/v1/admin/usage"],
   ["get", "/api/v1/admin/usage?period=7d&space=CLUB"],
+  // Licence renewal moderation (#266): ADMIN-only at class level.
+  ["get", "/api/v1/admin/license-renewals"],
+  ["get", "/api/v1/admin/license-renewals?status=REJECTED&take=50"],
+  [
+    "get",
+    "/api/v1/admin/license-renewals/00000000-0000-4000-8000-000000000000",
+  ],
+  [
+    "get",
+    "/api/v1/admin/license-renewals/00000000-0000-4000-8000-000000000000/documents/00000000-0000-4000-8000-000000000001/file",
+  ],
+  [
+    "post",
+    "/api/v1/admin/license-renewals/00000000-0000-4000-8000-000000000000/approve",
+  ],
+  [
+    "post",
+    "/api/v1/admin/license-renewals/00000000-0000-4000-8000-000000000000/reject",
+  ],
 ];
 
 describe("Admin routes (e2e) — role matrix", () => {
@@ -388,5 +407,50 @@ describe("Admin routes (e2e) — role matrix", () => {
   it("rejects an unknown usage period with 400", async () => {
     currentRole = UserRole.ADMIN;
     await request(server()).get("/api/v1/admin/usage?period=1y").expect(400);
+  });
+
+  describe("licence renewal moderation (#266) — validation", () => {
+    const base =
+      "/api/v1/admin/license-renewals/00000000-0000-4000-8000-000000000000";
+
+    it("caps the page at 50", async () => {
+      currentRole = UserRole.ADMIN;
+      await request(server())
+        .get("/api/v1/admin/license-renewals?take=51")
+        .expect(400);
+    });
+
+    it("rejects an unknown status filter", async () => {
+      currentRole = UserRole.ADMIN;
+      await request(server())
+        .get("/api/v1/admin/license-renewals?status=LOST")
+        .expect(400);
+    });
+
+    it.each([
+      [{}],
+      [{ reason: "BECAUSE" }],
+      [{ reason: "OTHER", comment: "x".repeat(501) }],
+    ])("rejects an invalid refusal %j with 400", async (body) => {
+      currentRole = UserRole.ADMIN;
+      await request(server()).post(`${base}/reject`).send(body).expect(400);
+    });
+
+    it("rejects a malformed licence number with 400", async () => {
+      currentRole = UserRole.ADMIN;
+      await request(server())
+        .post(`${base}/approve`)
+        .send({ licenseNumber: "<script>" })
+        .expect(400);
+    });
+
+    it("the legacy approval route is gone", async () => {
+      currentRole = UserRole.ADMIN;
+      await request(server())
+        .post(
+          "/api/v1/licenses/renewal/00000000-0000-4000-8000-000000000000/approve",
+        )
+        .expect(404);
+    });
   });
 });
