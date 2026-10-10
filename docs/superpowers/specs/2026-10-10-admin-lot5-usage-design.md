@@ -92,7 +92,7 @@ Success: on « Usage de l'app », the admin sees the « jour × heure » grid, t
 
 - `UsageEvent`: `id`, `installId`, `name`, `screen?`, `occurredAt`, `platform`, `appVersion`, `space`, `competitionId?` (no foreign key), `durationSec?`, `receivedAt`. Indexes: `occurredAt`; `(installId, occurredAt)`.
 - `UsageDaily`: `day` (Paris date), `hour` (0–23, Paris), `name`, `screen` (empty string when none), `platform`, `appVersion`, `space`, `count`, `durationSec` (sum). Unique on all key columns.
-- `UsageDailyActive`: `day`, `platform`, `space`, `installs` (distinct installation IDs that day). Unique on `(day, platform, space)`.
+- `UsageDailyActive`: `day`, `platform`, `installs` (distinct installation IDs that day). Unique on `(day, platform)`. Not split by space: an installation that changes space during the day would be counted twice; an installation has one platform, so summing platforms is exact.
 - `UsageRollupState`: last fully aggregated Paris day (single row).
 
 ### 5.3 Rollup and retention job
@@ -104,7 +104,7 @@ Success: on « Usage de l'app », the admin sees the « jour × heure » grid, t
 ### 5.4 Read API
 
 - `GET /admin/usage?period=7d|30d|12m&space=` (ADMIN, class-level guard). `period` defaults to `30d`; other values → 400. `space` optional, one of the five spaces, filters `screens` only.
-- `7d` / `30d` read `UsageEvent`; `12m` reads `UsageDaily` / `UsageDailyActive`, plus the current day from `UsageEvent` (not yet aggregated).
+- `7d` / `30d` read `UsageEvent`; `12m` reads `UsageDaily` / `UsageDailyActive` up to the last aggregated day (`aggregatedUntil` in the response; the rollup runs at every boot and hourly, so it is yesterday whenever the backend has been awake today).
 - Response:
   - `generatedAt`, `period`, `from`, `to`;
   - `activeInstallsPerDay` (average of daily distinct installs), `activeInstallsThisMonth` (distinct installs since the 1st, Paris; with the monthly ID this counts installations active this month);
@@ -114,7 +114,7 @@ Success: on « Usage de l'app », the admin sees the « jour × heure » grid, t
   - `screens`: top 30 `{ screen, views, durationSec }`;
   - `events`: per day, counts of `login`, `login_biometric`, `login_guest`, `register`, `license_scan`, `license_wallet_add` (zero-filled, lot 4 helper; per month for `12m`);
   - `versions`: distinct installs per `appVersion` over the last 7 days (whatever the period), top 10;
-  - `competitions`: top 10 `{ competitionId, title | null, views }` from `competition_view`; `title` joined from `Competition`, `null` when it no longer exists.
+  - `competitions`: top 10 `{ competitionId, title | null, views }` from `competition_view`; `title` joined from `Competition`, `null` when it no longer exists. Read from `UsageEvent`; for `12m` over the last 90 days (aggregates do not keep the competition).
 
 ## 6. Back-office page `/usage`
 
@@ -122,6 +122,7 @@ Success: on « Usage de l'app », the admin sees the « jour × heure » grid, t
 - Period selector « 7 jours », « 30 jours » (default), « 12 mois » and space filter for the screen ranking (« Tous », « Licencié », « Club », « Staff », « Admin », « Invité ») in the URL; « Actualiser »; same query flags as lot 4 (no refetch on focus or reconnect, no retry, no polling); shared « Serveur injoignable » alert; skeletons.
 - Figures: « Installations actives / jour », « Installations actives ce mois », « Sessions », « Durée médiane d'une session » (« — » when `null`), « iOS / Android » share.
 - « Jour × heure » grid: CSS grid of 7 rows (« lun. » … « dim. ») × 24 columns, colour intensity proportional to the largest cell, `title` tooltip with the exact count; a visually hidden table with the same numbers for screen readers. No chart library.
+- For « 12 mois »: « Données agrégées jusqu'au <date> » under the header, and « 90 derniers jours » on the competitions table.
 - Tables: screens (écran, vues, temps total, part), versions (version, installations), competitions (title as plain text — the back-office has no competition page; « Compétition supprimée » when `title` is `null`).
 - Key events: stacked bars (`@mantine/charts`).
 - Footer: « Données anonymes : un identifiant d'installation renouvelé chaque mois, sans lien avec les comptes. Les utilisateurs qui ont désactivé la mesure d'audience n'apparaissent pas. »
@@ -131,7 +132,7 @@ Success: on « Usage de l'app », the admin sees the « jour × heure » grid, t
 
 - App (jest-expo): buffer cap and drop-oldest; field whitelist; monthly ID rotation; send only after a successful response and at most every 2 minutes; background send only with a success in the last 5 minutes; nothing at launch; batch kept on network / 5xx / 429 failure, dropped on 400; no `Authorization` header; opt-out clears buffer and ID; nothing in `__DEV__`; nothing for store-review sessions; duration capped at 1 800 s; settings switch.
 - Backend unit: DTO validation (each field, 0 and 201 events, out-of-range dates, unknown property); 204 with no auth; rollup idempotence and day boundaries; purge thresholds; session splitting at 30 minutes; median; heatmap indexing (Monday = 0, Paris hour); competition title join with a deleted competition.
-- Real-DB integration (dedicated test DB): rollup of an event at 23:30 UTC into the next Paris day; distinct installs per day; `12m` read combining aggregates and the current day.
+- Real-DB integration (dedicated test DB): rollup of an event at 23:30 UTC into the next Paris day; distinct installs per day; `12m` read from the aggregates.
 - Mocked e2e: `/analytics/events` accepted without a token (204), invalid batch → 400, throttle → 429; `/admin/usage` 403 for non-admins, 400 for an unknown period.
 - Admin SPA (Vitest): grid intensities and hidden table, period and space filter in the URL, « — » for `null`, empty state, error alert, menu entry.
 - Coverage thresholds unchanged.
