@@ -24,6 +24,11 @@ import {
   medicalCertificatePurgeDueAt,
 } from "./medical-certificate-retention.util";
 import {
+  nextLicenseSeasonEnd,
+  nextLicenseSeasonEndDay,
+} from "./license-season";
+import { toLicenseQrExpiry } from "./qr/license-qr";
+import {
   pickRenewalOcrData,
   RenewalOcrData,
   toRenewalRequestResponse,
@@ -268,10 +273,12 @@ export class LicenseRenewalService {
       );
     }
 
-    const nextSeasonEnd = this.getNextSeasonEndDate();
+    // Compared as Paris calendar days (#238): a license stored with a stray
+    // time of day on August 31 is still valid for that season.
     if (
       user?.license?.validUntil &&
-      new Date(user.license.validUntil) >= nextSeasonEnd
+      toLicenseQrExpiry(new Date(user.license.validUntil)) >=
+        nextLicenseSeasonEndDay()
     ) {
       throw new BadRequestException(
         "Votre licence est déjà valide pour la prochaine saison. Un renouvellement n'est pas nécessaire.",
@@ -309,7 +316,7 @@ export class LicenseRenewalService {
           ?.licenseNumber ?? null)
       : null;
 
-    const nextYear = this.getNextSeasonEndDate();
+    const nextYear = nextLicenseSeasonEnd();
 
     const licenseNumber =
       ocrLicenseNumber ??
@@ -370,13 +377,5 @@ export class LicenseRenewalService {
         RENEWAL_DOCUMENT_REJECTED,
       );
     }
-  }
-
-  private getNextSeasonEndDate(): Date {
-    const d = new Date();
-    d.setFullYear(d.getFullYear() + 1);
-    d.setMonth(7);
-    d.setDate(31);
-    return d;
   }
 }

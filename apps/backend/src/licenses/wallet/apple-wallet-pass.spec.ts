@@ -3,8 +3,8 @@ import {
   APPLE_PASS_ORGANIZATION_NAME,
   applePassSerialNumber,
   buildApplePassJson,
-  parisEndOfDay,
 } from "./apple-wallet-pass";
+import { parisEndOfDay } from "../qr/license-qr";
 
 const license = {
   id: "lic-1",

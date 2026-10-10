@@ -3,6 +3,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../prisma/prisma.service";
 import { OcrService } from "../utils/ocr.service";
 import { LicensesService } from "./licenses.service";
+import { toLicenseQrExpiry } from "./qr/license-qr";
 import { LicenseQrService } from "./qr/license-qr.service";
 import { AppleWalletPassGenerator } from "./wallet/apple-wallet-pass.generator";
 
@@ -192,20 +193,24 @@ describe("LicensesService", () => {
       mockPrisma.user.findUnique.mockResolvedValue(mockUser);
       mockOcr.extractLicenseInfo.mockResolvedValue({ licenseNumber: "123" });
 
-      const fixedDate = new Date("2024-01-01");
-      jest.useFakeTimers({ now: fixedDate });
+      // 22:30 UTC = 00:30 the next day in Paris: the time of day of the
+      // validation must not leak into validUntil (#238).
+      jest.useFakeTimers({ now: new Date("2024-06-14T22:30:00.000Z") });
 
-      await service.renewLicense("1", CERT_BUFFER);
+      try {
+        await service.renewLicense("1", CERT_BUFFER);
+      } finally {
+        jest.useRealTimers();
+      }
 
       const calls = mockPrisma.license.upsert.mock.calls as [
-        [{ update: { validUntil: Date } }],
+        [{ update: { validUntil: Date }; create: { validUntil: Date } }],
       ];
-      const calledDate = calls[0][0].update.validUntil;
-      expect(calledDate.getFullYear()).toBe(2025);
-      expect(calledDate.getMonth()).toBe(7);
-      expect(calledDate.getDate()).toBe(31);
-
-      jest.useRealTimers();
+      const { update, create } = calls[0][0];
+      // Last instant of 2025-08-31 in Paris (CEST).
+      expect(update.validUntil.toISOString()).toBe("2025-08-31T21:59:59.999Z");
+      expect(create.validUntil.toISOString()).toBe("2025-08-31T21:59:59.999Z");
+      expect(toLicenseQrExpiry(update.validUntil)).toBe("2025-08-31");
     });
   });
 
