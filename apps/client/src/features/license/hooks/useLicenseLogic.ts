@@ -20,6 +20,7 @@ import { PDFAdapter, ShareAdapter } from "../../../utils/platform-adapters";
 import { useAuthRepository, UserRole } from "../../auth/context/AuthContext";
 import type { AuthConfig } from "../../auth/services/AuthService";
 import { LicenseUser } from "../components/LicenseCard";
+import { ffdValidityFields, getFfdSeason } from "../utils/licenseSeason";
 import {
   loadLicenseSnapshot,
   saveLicenseSnapshot,
@@ -187,7 +188,12 @@ export const useLicenseLogic = (): {
             ? await loadLicenseSnapshot(config.username)
             : null;
         if (snapshot) {
-          setFfdUser(snapshot.ffdUser);
+          // Older versions saved an invented "31/08/2026" / "2025/2026" when
+          // the license had no date: re-derive from the raw date (#211).
+          setFfdUser({
+            ...snapshot.ffdUser,
+            ...ffdValidityFields(snapshot.ffdUser.validUntilRaw),
+          });
           if (snapshot.wdsfUser) setWdsfUser(snapshot.wdsfUser);
           setOfflineSince(snapshot.savedAt);
           setLicenseUnavailableReason(null);
@@ -223,17 +229,11 @@ export const useLicenseLogic = (): {
               licenseNumber: profile.license?.number ?? "Non renseigné",
               type: profile.role === "ADMIN" ? "Administrateur" : "Athlète",
               structure: profile.clubName ?? "FFD",
-              validUntil: profile.license?.validUntil
-                ? new Date(profile.license.validUntil).toLocaleDateString(
-                    "fr-FR",
-                  )
-                : "31/08/2026",
-              validUntilRaw: profile.license?.validUntil ?? undefined,
+              ...ffdValidityFields(profile.license?.validUntil),
               // QR signé par le serveur (#168), mis en cache avec le snapshot.
               qrCode: profile.license?.qrCode ?? undefined,
               appleWalletAvailable:
                 profile.license?.appleWalletAvailable === true,
-              season: "2025/2026",
               birthDate: profile.birthDate
                 ? new Date(profile.birthDate).toLocaleDateString("fr-FR")
                 : "--/--/----",
@@ -280,7 +280,6 @@ export const useLicenseLogic = (): {
                   type: "Athlete",
                   validUntil: "",
                   status: "Active",
-                  season: "2025",
                   birthDate: mappedFfdUser.birthDate,
                 };
               }
@@ -556,7 +555,7 @@ export const useLicenseLogic = (): {
             // A permanent card has no expiry date: shown as a status.
             validUntil: "",
             status: "Permanente",
-            season: "2025/2026",
+            season: getFfdSeason(new Date()),
             birthDate: "",
           } as LicenseUser,
         },
@@ -575,7 +574,7 @@ export const useLicenseLogic = (): {
             // A season is not an expiry date: shown as a status.
             validUntil: "",
             status: "Active",
-            season: "2025/2026",
+            season: getFfdSeason(new Date()),
             birthDate: "",
           } as LicenseUser,
         },

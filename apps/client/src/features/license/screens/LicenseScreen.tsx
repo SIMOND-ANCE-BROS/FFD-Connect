@@ -37,6 +37,7 @@ import {
 } from "../components/LicenseCard";
 import { LicenseExpiryBanner } from "../components/LicenseExpiryBanner";
 import { computeLicenseExpiry } from "../utils/licenseExpiry";
+import { getFfdSeason } from "../utils/licenseSeason";
 import { SwipeableLicenseCard } from "../components/SwipeableLicenseCard";
 import { WdsfEntryModal } from "../components/WdsfEntryModal";
 
@@ -233,7 +234,7 @@ export const LicenseScreen: React.FC = () => {
           color={currentTheme.textSecondary}
           style={styles.seasonSubtitle}
         >
-          Saison 2025-2026
+          Saison {getFfdSeason(new Date(), "-")}
         </AppText>
         {/* Mode hors-ligne (#416) : licence servie depuis le snapshot local,
             validité recalculée localement (vert/rouge). */}

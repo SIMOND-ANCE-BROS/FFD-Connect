@@ -518,6 +518,50 @@ describe("useLicenseLogic", () => {
     });
   });
 
+  describe("FFD validity never invented (#211)", () => {
+    const loadFfd = async (license: Record<string, unknown> | null) => {
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "LICENSEE",
+        hasWdsfLicense: false,
+        licensePhotoUri: null,
+        isLoggedIn: true,
+      });
+      mockAuthRepository.getProfile.mockResolvedValue({
+        firstName: "Jean",
+        lastName: "Dupont",
+        license,
+        clubName: "Club FFD",
+        birthDate: "1990-05-15",
+        role: "LICENSEE",
+      });
+      const { result } = await renderHook(() => useLicenseLogic());
+      await waitFor(() => {
+        expect(
+          result.current.state.listItems.find((i) => i.type === "FFD"),
+        ).toBeDefined();
+      });
+      return result.current.state.listItems.find((i) => i.type === "FFD")?.data;
+    };
+
+    it("shows a neutral status and no date nor season without validUntil", async () => {
+      const ffdUser = await loadFfd({ number: "12345" });
+      expect(ffdUser?.validUntil).toBe("");
+      expect(ffdUser?.validUntilRaw).toBeUndefined();
+      expect(ffdUser?.status).toBe("Validité non communiquée");
+      expect(ffdUser?.season).toBeUndefined();
+    });
+
+    it("shows the real date and the season derived from it", async () => {
+      const ffdUser = await loadFfd({
+        number: "12345",
+        validUntil: "2027-08-31T12:00:00.000Z",
+      });
+      expect(ffdUser?.validUntil).toBe("31/08/2027");
+      expect(ffdUser?.status).toBeUndefined();
+      expect(ffdUser?.season).toBe("2026/2027");
+    });
+  });
+
   describe("linked WDSF license (beta feedback)", () => {
     const loadWdsf = async (wdsf: Record<string, unknown>) => {
       mockAuthRepository.getAuthConfig.mockResolvedValue({
@@ -736,6 +780,49 @@ describe("useLicenseLogic", () => {
       expect(mockAuthRepository.getProfile).not.toHaveBeenCalled();
       // Only the current account's snapshot is asked for.
       expect(mockLoadSnapshot).toHaveBeenCalledWith("alice@ffd.fr");
+    });
+
+    it("drops the invented date of an older snapshot without raw date (#211)", async () => {
+      mockIsDeviceOffline.mockResolvedValue(true);
+      mockLoadSnapshot.mockResolvedValue(snapshot);
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(
+          result.current.state.listItems.find((i) => i.type === "FFD"),
+        ).toBeDefined();
+      });
+      const ffdUser = result.current.state.listItems.find(
+        (i) => i.type === "FFD",
+      )?.data;
+      expect(ffdUser?.validUntil).toBe("");
+      expect(ffdUser?.status).toBe("Validité non communiquée");
+      expect(ffdUser?.season).toBeUndefined();
+    });
+
+    it("re-derives date and season from the snapshot's raw date", async () => {
+      mockIsDeviceOffline.mockResolvedValue(true);
+      mockLoadSnapshot.mockResolvedValue({
+        ...snapshot,
+        ffdUser: {
+          ...snapshot.ffdUser,
+          validUntilRaw: "2027-08-31T12:00:00.000Z",
+        },
+      });
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(
+          result.current.state.listItems.find((i) => i.type === "FFD")?.data
+            ?.validUntil,
+        ).toBe("31/08/2027");
+      });
+      expect(
+        result.current.state.listItems.find((i) => i.type === "FFD")?.data
+          ?.season,
+      ).toBe("2026/2027");
     });
 
     it("shows nothing when no snapshot belongs to the current account", async () => {
