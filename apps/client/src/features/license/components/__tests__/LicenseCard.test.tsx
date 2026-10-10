@@ -237,6 +237,27 @@ describe("LicenseCard", () => {
       expect(queryByText("Licence valable jusqu'au")).toBeNull();
     });
 
+    it("shows an unknown validity once, in the footer only (#211)", async () => {
+      const { getAllByText, queryByText } = await renderCard("FFD", {
+        validUntil: "",
+        status: "Validité non communiquée",
+        season: undefined,
+      });
+
+      expect(getAllByText("Validité non communiquée")).toHaveLength(1);
+      expect(queryByText("VALIDITÉ NON COMMUNIQUÉE")).toBeNull();
+    });
+
+    it("keeps a short status tag in the header on one line", async () => {
+      const { getByText } = await renderCard("FFD", {
+        validUntil: "",
+        status: "Permanente",
+        season: undefined,
+      });
+
+      expect(getByText("PERMANENTE").props.numberOfLines).toBe(1);
+    });
+
     it("shows the national federation on the WDSF card", async () => {
       const { getByText } = await renderCard("WDSF", {
         structure: "FFD - Fédération Française de Danse",

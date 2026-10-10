@@ -790,4 +790,64 @@ describe("LicenseScreen Integration", () => {
       expect(queryByTestId("license-unavailable")).toBeNull();
     });
   });
+
+  describe("season and offline validity (#211)", () => {
+    const renderOffline = async (validUntilRaw?: string) => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          offlineSince: "2026-10-01T10:00:00.000Z",
+          listItems: [
+            {
+              type: "FFD",
+              data: {
+                firstName: "John",
+                lastName: "Doe",
+                licenseNumber: "1",
+                validUntilRaw,
+              },
+            },
+          ],
+        },
+        actions: mockActions,
+      });
+      const { getByTestId } = await render(<LicenseScreen />);
+      return (
+        StyleSheet.flatten(getByTestId("license-offline-dot").props.style) as {
+          backgroundColor?: string;
+        }
+      ).backgroundColor;
+    };
+
+    it.each([
+      [new Date(2026, 9, 10, 12, 0), "Saison 2026-2027"],
+      [new Date(2026, 7, 31, 12, 0), "Saison 2025-2026"],
+    ])("shows the current FFD season on %s", async (now, label) => {
+      jest.useFakeTimers({ now, doNotFake: ["nextTick", "setImmediate"] });
+      try {
+        (useLicenseLogic as jest.Mock).mockReturnValue({
+          state: mockState,
+          actions: mockActions,
+        });
+        const { getByText } = await render(<LicenseScreen />);
+        expect(getByText(label)).toBeTruthy();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("uses a neutral offline dot when the expiry date is unknown", async () => {
+      expect(await renderOffline(undefined)).toBe(
+        mockTheme.theme.textSecondary,
+      );
+    });
+
+    it("uses a red offline dot for an expired licence", async () => {
+      expect(await renderOffline("2020-08-31")).toBe("#e74c3c");
+    });
+
+    it("uses a green offline dot for a valid licence", async () => {
+      expect(await renderOffline("2999-08-31")).toBe("#2ecc71");
+    });
+  });
 });

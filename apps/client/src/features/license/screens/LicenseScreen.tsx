@@ -37,6 +37,7 @@ import {
 } from "../components/LicenseCard";
 import { LicenseExpiryBanner } from "../components/LicenseExpiryBanner";
 import { computeLicenseExpiry } from "../utils/licenseExpiry";
+import { getFfdSeason } from "../utils/licenseSeason";
 import { SwipeableLicenseCard } from "../components/SwipeableLicenseCard";
 import { WdsfEntryModal } from "../components/WdsfEntryModal";
 
@@ -92,6 +93,13 @@ export const LicenseScreen: React.FC = () => {
   const ffdUser =
     state.listItems.find((item) => item.type === "FFD")?.data ?? null;
   const ffdValidUntilRaw = ffdUser?.validUntilRaw ?? null;
+  // Offline validity dot: neutral without an expiry date (#211) — an unknown
+  // validity is neither "valid" (green) nor "expired" (red).
+  const offlineDotColor = !ffdValidUntilRaw
+    ? currentTheme.textSecondary
+    : computeLicenseExpiry(ffdValidUntilRaw).status !== "expired"
+      ? "#2ecc71"
+      : "#e74c3c";
 
   // Measured height of each wallet card (by list index): sizes the stack,
   // whose cards are absolutely positioned.
@@ -233,7 +241,7 @@ export const LicenseScreen: React.FC = () => {
           color={currentTheme.textSecondary}
           style={styles.seasonSubtitle}
         >
-          Saison 2025-2026
+          Saison {getFfdSeason(new Date(), "-")}
         </AppText>
         {/* Mode hors-ligne (#416) : licence servie depuis le snapshot local,
             validité recalculée localement (vert/rouge). */}
@@ -246,15 +254,8 @@ export const LicenseScreen: React.FC = () => {
             testID="license-offline-banner"
           >
             <View
-              style={[
-                offlineStyles.dot,
-                {
-                  backgroundColor:
-                    computeLicenseExpiry(ffdValidUntilRaw).status !== "expired"
-                      ? "#2ecc71"
-                      : "#e74c3c",
-                },
-              ]}
+              testID="license-offline-dot"
+              style={[offlineStyles.dot, { backgroundColor: offlineDotColor }]}
             />
             <AppText variant="caption" color={currentTheme.textSecondary}>
               Hors ligne — licence enregistrée le{" "}
