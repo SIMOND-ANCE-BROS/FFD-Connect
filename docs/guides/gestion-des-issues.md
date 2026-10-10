@@ -34,7 +34,7 @@ Domaines autorisés (en majuscules) :
 - Transverses : `RGPD`, `SÉCURITÉ`, `LÉGAL`, `RGAA`, `INFRA`, `CI`, `RELEASE`,
   `DÉPS`, `DOCS`, `QA`, `COÛT`
 
-Une epic s'intitule **`EPIC: <thème>`** (ex. `EPIC: Licence dans Apple Wallet / Google Wallet`).
+Une epic porte le **type `Epic`** ; son titre nomme le thème (ex. `Licence dans Apple Wallet / Google Wallet`). Le préfixe `EPIC:` des anciennes epics est toléré mais n'est plus nécessaire.
 
 ## 3. Description
 
@@ -79,11 +79,13 @@ Le **type d'issue GitHub** dit la nature ; il est obligatoire :
 | Type      | Pour                                                                            |
 | --------- | ------------------------------------------------------------------------------- |
 | `Bug`     | Un comportement existant est faux.                                              |
-| `Feature` | Une capacité nouvelle pour un utilisateur (y compris une epic).                 |
+| `Feature` | Une capacité nouvelle pour un utilisateur.                                      |
+| `Epic`    | Un thème qui regroupe des sub-issues ; ne porte pas de code (§7).               |
 | `Task`    | Travail technique sans effet utilisateur direct (CI, dette, infra, doc, tests). |
 
-Les labels `bug` / `enhancement` restent tolérés pour l'historique, mais le
-**type fait foi**.
+Les labels `bug` / `enhancement` restent tolérés sur les anciennes issues, mais le
+**type fait foi** : les modèles ne les posent plus, et le label `epic` est
+remplacé par le type `Epic`.
 
 ## 5. Labels
 
@@ -103,7 +105,7 @@ Chaque issue ouverte porte :
    `infra`, `ci`, `packages`, `testing`, `documentation`, `dependencies`.
 3. **Des domaines** si utile : `auth`, `license`, `competitions`, `club`,
    `player`.
-4. **Un statut** si pertinent : `epic`, `blocked` (une autre issue ou un tiers
+4. **Un statut** si pertinent : `blocked` (une autre issue ou un tiers
    bloque), `needs-device-test` (code livré, reste une validation sur appareil).
 
 On réutilise les labels existants ; on n'en crée un nouveau qu'en le
@@ -136,21 +138,23 @@ fermées (ou sorties du périmètre, avec mention).
 Toute issue ouverte est dans le Project de l'organisation. Sa colonne
 `Status` suit le cycle de vie de la tâche ; le workflow
 `.github/workflows/project-status.yml` la fait avancer tout seul à partir des
-PR vers `develop` et des issues :
+PR vers `develop`, des promotions vers `staging` et des issues :
 
-| `Status`      | Quand                                                        | Déclencheur automatique                          |
-| ------------- | ------------------------------------------------------------ | ------------------------------------------------ |
-| `Todo`        | Issue triée (type, priorité, milestone posés), pas commencée | issue ouverte / rouverte, PR fermée sans merge   |
-| `In Progress` | On travaille dessus (branche, PR draft)                      | PR **draft** qui référence l'issue               |
-| `In Review`   | PR prête à relire                                            | PR passée « Ready for review »                   |
-| `En test`     | Mergée sur `develop`, à valider en preview / bêta            | PR mergée avec `Refs #N`                         |
-| `Done`        | Validée, issue fermée                                        | issue fermée (à la main après test, ou `Closes`) |
+| `Status`      | Quand                                                        | Déclencheur automatique                                             |
+| ------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `Todo`        | Issue triée (type, priorité, milestone posés), pas commencée | issue ouverte / rouverte, PR fermée sans merge                      |
+| `In Progress` | On travaille dessus (branche, PR draft)                      | PR **draft** qui référence l'issue                                  |
+| `In Review`   | PR prête à relire                                            | PR passée « Ready for review »                                      |
+| `Merged`      | Mergée sur `develop`, pas encore chez les testeurs           | PR mergée avec `Refs #N`                                            |
+| `In Beta`     | Sur `staging` : testable sur TestFlight / Play, à valider    | promotion `develop` → `staging` mergée (toutes les cartes `Merged`) |
+| `Done`        | Validée, issue fermée                                        | issue fermée (à la main après test, ou `Closes`)                    |
 
 **`Refs` ou `Closes` dans la PR ?**
 
 - Changement **visible par un utilisateur** (écran, parcours, notification…) :
-  `Refs #N`. L'issue passe `En test` au merge ; on la ferme (`completed`) à la
-  main une fois validée sur la preview ou la bêta, ce qui la passe `Done`.
+  `Refs #N`. L'issue passe `Merged` au merge, puis `In Beta` à la promotion vers
+  `staging` ; on la ferme (`completed`) à la main une fois validée sur la bêta,
+  ce qui la passe `Done`.
 - Changement **sans effet visible** (CI, infra, doc, refactor, tests,
   dépendances) : `Closes #N`. Merge ⇒ issue fermée ⇒ `Done`.
 
@@ -159,7 +163,8 @@ les messages des commits dans le commit final, et GitHub ferme toute issue
 qu'il y trouve après `Closes` / `Fixes` / `Resolves`, même si la PR dit
 `Refs`. Au merge, on vérifie le message du squash (`gh pr merge --squash
 --body …` pour le réécrire) ; si une issue s'est fermée par erreur, on la
-rouvre avec un commentaire et on la remet `En test`.
+rouvre avec un commentaire et on la remet `Merged` (ou `In Beta` si la
+promotion a déjà eu lieu).
 
 Quand on commence une tâche sans PR (investigation, test sur appareil), on la
 passe `In Progress` à la main :

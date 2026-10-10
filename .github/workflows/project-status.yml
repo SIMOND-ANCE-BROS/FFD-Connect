@@ -6,13 +6,16 @@ name: Project Status
 #   issue opened / reopened          → Todo
 #   PR draft referencing #N          → In Progress
 #   PR ready for review              → In Review
-#   PR merged, `Refs #N`             → En test   (validated on preview/beta,
-#                                                 then the issue is closed by hand)
+#   PR merged, `Refs #N`             → Merged    (on develop, not testable yet)
+#   promotion PR merged into staging → In Beta   (every Merged card: it is now on
+#                                                 TestFlight/Play; the issue is
+#                                                 closed by hand once validated)
 #   PR merged, `Closes/Fixes #N`     → Done      (GitHub closes the issue)
 #   PR closed without merge          → Todo
 #   issue closed                     → Done
 #
-# Only PRs into `develop` move cards; promotion PRs are ignored.
+# Feature PRs into `develop` move their referenced cards. A merged promotion
+# into `staging` ships all of develop, so it moves every `Merged` card at once.
 # Writing to an org Project needs a token with Projects read/write —
 # GITHUB_TOKEN cannot. Fork PRs get no secrets and are skipped.
 # Cost: one ~15 s job per PR/issue event; public repo → free minutes.
@@ -22,7 +25,7 @@ on:
     types: [opened, reopened, closed]
   pull_request:
     types: [opened, reopened, ready_for_review, converted_to_draft, edited, closed]
-    branches: [develop]
+    branches: [develop, staging]
 
 permissions:
   contents: read
@@ -59,6 +62,7 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_DRAFT: ${{ github.event.pull_request.draft }}
           PR_MERGED: ${{ github.event.pull_request.merged }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::warning::PROJECT_TOKEN secret missing — Project not updated."
@@ -71,6 +75,13 @@ jobs:
               opened|reopened) move "Todo" "$ISSUE" ;;
               closed)          move "Done" "$ISSUE" ;;
             esac
+            exit 0
+          fi
+
+          if [ "$PR_BASE" = "staging" ]; then
+            if [ "$ACTION" = "closed" ] && [ "$PR_MERGED" = "true" ]; then
+              bash .github/scripts/project-status.sh --from "Merged" "In Beta"
+            fi
             exit 0
           fi
 
@@ -90,7 +101,7 @@ jobs:
             closed)
               if [ "$PR_MERGED" = "true" ]; then
                 if [ -n "$closing" ]; then move "Done" $closing; fi
-                if [ -n "$refs" ]; then move "En test" $refs; fi
+                if [ -n "$refs" ]; then move "Merged" $refs; fi
               else
                 move "Todo" $all
               fi

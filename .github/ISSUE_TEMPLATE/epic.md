@@ -1,9 +1,8 @@
 ---
 name: Epic
 about: Décrire un objectif de haut-niveau et son périmètre métier
-title: 'EPIC: [thème]'
-labels: 'epic'
-type: Feature
+title: '[thème]'
+type: Epic
 assignees: ''
 ---
 

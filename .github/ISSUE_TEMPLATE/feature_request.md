@@ -2,7 +2,6 @@
 name: Feature Request
 about: Suggest an idea for this project
 title: 'DOMAINE: résultat attendu'
-labels: enhancement
 type: Feature
 assignees: ''
 ---

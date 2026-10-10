@@ -2,7 +2,6 @@
 name: Bug Report
 about: Create a report to help us improve
 title: 'DOMAINE: symptôme observé'
-labels: bug
 type: Bug
 assignees: ''
 ---
