@@ -21279,7 +21279,7 @@
     },
     "/licenses/renew": {
       "post": {
-        "description": "Traite un certificat de licence (image) via OCR pour extraire les informations et renouvelle ou crée la licence. La licence est valide jusqu'au 31 août de l'année suivante.",
+        "description": "Traite un certificat de licence (image) via OCR pour extraire les informations et renouvelle ou crée la licence. La licence est valide jusqu'au 31 août (Europe/Paris) qui termine la saison en cours, ou celle de la saison suivante si le renouvellement a lieu entre le 1er juillet et le 31 août ; une date de fin déjà plus lointaine est conservée.",
         "operationId": "LicensesController_renewLicense",
         "parameters": [],
         "requestBody": {
@@ -22117,7 +22117,7 @@
     },
     "/licenses/renewal/{id}/approve": {
       "post": {
-        "description": "Réservé aux administrateurs. Passe la demande en APPROVED et renouvelle la licence jusqu’au 31 août N+1.",
+        "description": "Réservé aux administrateurs. Passe la demande en APPROVED et renouvelle la licence jusqu’au 31 août (Europe/Paris) qui termine la saison en cours, ou celle de la saison suivante pour une approbation entre le 1er juillet et le 31 août ; une date de fin déjà plus lointaine est conservée.",
         "operationId": "LicensesController_approveRenewal",
         "parameters": [
           {

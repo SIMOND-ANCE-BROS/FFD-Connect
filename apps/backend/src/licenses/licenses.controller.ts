@@ -165,7 +165,7 @@ export class LicensesController {
   @ApiOperation({
     summary: "Renouvelle la licence de l'utilisateur",
     description:
-      "Traite un certificat de licence (image) via OCR pour extraire les informations et renouvelle ou crée la licence. La licence est valide jusqu'au 31 août de l'année suivante.",
+      "Traite un certificat de licence (image) via OCR pour extraire les informations et renouvelle ou crée la licence. La licence est valide jusqu'au 31 août (Europe/Paris) qui termine la saison en cours, ou celle de la saison suivante si le renouvellement a lieu entre le 1er juillet et le 31 août ; une date de fin déjà plus lointaine est conservée.",
   })
   @ApiConsumes("multipart/form-data")
   @ApiBody({
@@ -381,7 +381,7 @@ export class LicensesController {
   @ApiOperation({
     summary: "Approuver une demande (renouvelle la licence)",
     description:
-      "Réservé aux administrateurs. Passe la demande en APPROVED et renouvelle la licence jusqu’au 31 août N+1.",
+      "Réservé aux administrateurs. Passe la demande en APPROVED et renouvelle la licence jusqu’au 31 août (Europe/Paris) qui termine la saison en cours, ou celle de la saison suivante pour une approbation entre le 1er juillet et le 31 août ; une date de fin déjà plus lointaine est conservée.",
   })
   @ApiParam({ name: "id", description: "ID de la demande" })
   @ApiResponse({

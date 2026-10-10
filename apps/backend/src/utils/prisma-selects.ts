@@ -382,7 +382,7 @@ export const licenseRenewalApprovalTargetSelect = {
     select: {
       category: true,
       clubName: true,
-      license: { select: { number: true } },
+      license: { select: { number: true, validUntil: true } },
     },
   },
 } as const;
