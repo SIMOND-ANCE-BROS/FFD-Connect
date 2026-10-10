@@ -154,6 +154,13 @@ PR vers `develop` et des issues :
 - Changement **sans effet visible** (CI, infra, doc, refactor, tests,
   dépendances) : `Closes #N`. Merge ⇒ issue fermée ⇒ `Done`.
 
+Le **même mot-clé** vaut pour les messages de commit : un squash merge recopie
+les messages des commits dans le commit final, et GitHub ferme toute issue
+qu'il y trouve après `Closes` / `Fixes` / `Resolves`, même si la PR dit
+`Refs`. Au merge, on vérifie le message du squash (`gh pr merge --squash
+--body …` pour le réécrire) ; si une issue s'est fermée par erreur, on la
+rouvre avec un commentaire et on la remet `En test`.
+
 Quand on commence une tâche sans PR (investigation, test sur appareil), on la
 passe `In Progress` à la main :
 `gh project item-edit` ou `.github/scripts/project-status.sh "In Progress" N`
