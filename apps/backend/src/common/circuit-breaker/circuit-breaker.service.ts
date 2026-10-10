@@ -8,7 +8,6 @@ import CircuitBreaker from "opossum";
 type BreakerKey =
   | "azure-vision"
   | "azure-tts"
-  | "gemini-rewrite"
   | "wdsf"
   | "helloasso"
   | "fcm"
@@ -33,12 +32,6 @@ const BREAKER_CONFIGS: Record<BreakerKey, BreakerConfig> = {
   "azure-tts": {
     errorThresholdPercentage: 50,
     timeout: 10_000,
-    resetTimeout: 30_000,
-    volumeThreshold: 5,
-  },
-  "gemini-rewrite": {
-    errorThresholdPercentage: 50,
-    timeout: 8_000,
     resetTimeout: 30_000,
     volumeThreshold: 5,
   },

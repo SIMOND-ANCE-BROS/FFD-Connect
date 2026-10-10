@@ -38,7 +38,6 @@
     "@azure/storage-blob": "^12.34.0",
     "@ffd-connect/shared": "workspace:*",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@google/genai": "^2.24.0",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/bullmq": "^11.0.5",
     "@nestjs/common": "^11.2.6",
