@@ -8,7 +8,11 @@ import {
   LicenseRenewalStatus,
   Prisma,
 } from "@prisma/client";
-import { licenseRenewalApprovalTargetSelect } from "../utils/prisma-selects";
+import {
+  idOnlySelect,
+  licenseRenewalApprovalTargetSelect,
+} from "../utils/prisma-selects";
+import { normalizeLicenseNumber } from "./license-number.util";
 import { renewedLicenseValidUntil } from "./license-season";
 import { pickRenewalOcrData } from "./renewal-ocr-data.util";
 
@@ -38,6 +42,22 @@ export function renewalAlreadyDecided(): ConflictException {
   );
 }
 
+/** No licence number is known for the request (#262): a human must enter it. */
+export class LicenseNumberUnknownException extends BadRequestException {
+  constructor() {
+    super(
+      "Aucun numéro de licence connu pour cette demande : saisissez le numéro de licence confirmé.",
+    );
+  }
+}
+
+/** The licence number to create is already another account's licence. */
+export class LicenseNumberTakenException extends ConflictException {
+  constructor() {
+    super("Ce numéro de licence est déjà attribué à un autre compte.");
+  }
+}
+
 /**
  * Approves a PENDING renewal request and renews the licence. Must run inside
  * the caller's interactive `$transaction` (the caller adds its audit row to
@@ -50,7 +70,10 @@ export function renewalAlreadyDecided(): ConflictException {
  *    than the current one (#250).
  *
  * The licence number is never invented (#262): administrator's number, else
- * the OCR reading, else the existing licence's; none of them → 400.
+ * the OCR reading (only when shaped like a licence number), else the existing
+ * licence's. None of them: LicenseNumberUnknownException (400). A number held
+ * by another licence: LicenseNumberTakenException (409); the transaction rolls
+ * back and the request stays PENDING.
  */
 export async function approvePendingRenewal(
   tx: Prisma.TransactionClient,
@@ -70,19 +93,16 @@ export async function approvePendingRenewal(
     (d) => d.type === LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
   );
   const ocrNumber = licenseCertificate
-    ? nonEmpty(
+    ? normalizeLicenseNumber(
         pickRenewalOcrData(licenseCertificate.type, licenseCertificate.ocrData)
           ?.licenseNumber,
       )
     : null;
   const existing = request.user.license;
+  const confirmedNumber = normalizeLicenseNumber(options.licenseNumber);
   const licenseNumber =
-    nonEmpty(options.licenseNumber) ?? ocrNumber ?? nonEmpty(existing?.number);
-  if (!licenseNumber) {
-    throw new BadRequestException(
-      "Aucun numéro de licence connu pour cette demande : saisissez le numéro de licence confirmé.",
-    );
-  }
+    confirmedNumber ?? ocrNumber ?? nonEmpty(existing?.number);
+  if (!licenseNumber) throw new LicenseNumberUnknownException();
 
   const { count } = await tx.licenseRenewalRequest.updateMany({
     where: { id: requestId, status: LicenseRenewalStatus.PENDING },
@@ -98,7 +118,6 @@ export async function approvePendingRenewal(
     existing?.validUntil,
     options.now,
   );
-  const confirmedNumber = nonEmpty(options.licenseNumber);
   try {
     await tx.license.upsert({
       where: { userId: request.userId },
@@ -113,16 +132,14 @@ export async function approvePendingRenewal(
         category: request.user.category ?? "Standard",
         clubName: request.user.clubName ?? "Club",
       },
-      select: { id: true },
+      select: idOnlySelect,
     });
   } catch (error) {
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
     ) {
-      throw new ConflictException(
-        "Ce numéro de licence est déjà attribué à un autre compte.",
-      );
+      throw new LicenseNumberTakenException();
     }
     throw error;
   }

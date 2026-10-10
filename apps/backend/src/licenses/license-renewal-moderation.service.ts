@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import {
   LicenseRenewalDocumentType,
   LicenseRenewalStatus,
@@ -10,6 +15,7 @@ import {
   AdminLicenseRenewalDetailDto,
   ApproveLicenseRenewalDto,
   RejectLicenseRenewalDto,
+  RENEWAL_REASON_HEALTH_DATA,
 } from "./dto/admin-license-renewal.dto";
 import {
   approvePendingRenewal,
@@ -81,7 +87,25 @@ export class LicenseRenewalModerationService {
     const purgeDeadline = new Date(
       now.getTime() + REJECTED_CERTIFICATE_RETENTION_DAYS * DAY_MS,
     );
+    const comment =
+      dto.comment === undefined || dto.comment === "" ? null : dto.comment;
     await this.prisma.$transaction(async (tx) => {
+      // The comment and MEDICAL_RESTRICTION may describe health data: they
+      // are erased by the retention purge WITH the medical certificate. With
+      // no certificate row left, nothing would ever erase them: refused.
+      if (comment !== null || dto.reason === RENEWAL_REASON_HEALTH_DATA) {
+        const certificates = await tx.licenseRenewalDocument.count({
+          where: {
+            requestId,
+            type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+          },
+        });
+        if (certificates === 0) {
+          throw new BadRequestException(
+            "Le certificat médical de cette demande n'est plus conservé : refusez sans commentaire, avec un motif autre que « restriction médicale ».",
+          );
+        }
+      }
       const { count } = await tx.licenseRenewalRequest.updateMany({
         where: { id: requestId, status: LicenseRenewalStatus.PENDING },
         data: {
@@ -89,10 +113,7 @@ export class LicenseRenewalModerationService {
           reviewedById: adminId,
           reviewedAt: now,
           rejectionReason: dto.reason,
-          reviewComment:
-            dto.comment === undefined || dto.comment === ""
-              ? null
-              : dto.comment,
+          reviewComment: comment,
         },
       });
       if (count === 0) throw renewalAlreadyDecided();

@@ -27083,20 +27083,6 @@
             "type": "string",
             "nullable": true
           },
-          "rejectionReason": {
-            "type": "string",
-            "nullable": true,
-            "enum": [
-              "ILLEGIBLE",
-              "INCOMPLETE",
-              "CERTIFICATE_TOO_OLD",
-              "NOT_A_MEDICAL_CERTIFICATE",
-              "IDENTITY_MISMATCH",
-              "LICENSE_MISMATCH",
-              "MEDICAL_RESTRICTION",
-              "OTHER"
-            ]
-          },
           "user": {
             "$ref": "#/components/schemas/AdminRenewalUserDto"
           },
@@ -27123,7 +27109,6 @@
           "createdAt",
           "submittedAt",
           "reviewedAt",
-          "rejectionReason",
           "user",
           "reviewedBy",
           "documents"
@@ -27251,6 +27236,19 @@
             "type": "string",
             "nullable": true
           },
+          "user": {
+            "$ref": "#/components/schemas/AdminRenewalUserDto"
+          },
+          "reviewedBy": {
+            "nullable": true,
+            "description": "Administrateur qui a tranché ; null pour l'auto-approbation",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminRenewalPersonDto"
+              }
+            ]
+          },
           "rejectionReason": {
             "type": "string",
             "nullable": true,
@@ -27263,19 +27261,6 @@
               "LICENSE_MISMATCH",
               "MEDICAL_RESTRICTION",
               "OTHER"
-            ]
-          },
-          "user": {
-            "$ref": "#/components/schemas/AdminRenewalUserDto"
-          },
-          "reviewedBy": {
-            "nullable": true,
-            "description": "Administrateur qui a tranché ; null pour l'auto-approbation",
-            "type": "object",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/AdminRenewalPersonDto"
-              }
             ]
           },
           "reviewComment": {
@@ -27308,9 +27293,9 @@
           "createdAt",
           "submittedAt",
           "reviewedAt",
-          "rejectionReason",
           "user",
           "reviewedBy",
+          "rejectionReason",
           "reviewComment",
           "documents",
           "renewsUntil",

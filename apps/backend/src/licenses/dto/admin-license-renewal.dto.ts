@@ -17,6 +17,10 @@ import {
   MinLength,
 } from "class-validator";
 import { AdminPageMetaDto } from "../../admin/dto/admin-audit.dto";
+import {
+  LICENSE_NUMBER_MAX_LENGTH,
+  LICENSE_NUMBER_PATTERN,
+} from "../license-number.util";
 
 /**
  * Reason codes of a refused renewal (#266). Stored as a plain string column
@@ -38,10 +42,17 @@ export const RENEWAL_REJECTION_REASONS = [
 ] as const;
 export type RenewalRejectionReason = (typeof RENEWAL_REJECTION_REASONS)[number];
 
+/**
+ * The one reason code that is health data (GDPR art. 9). The retention purge
+ * neutralises it to {@link RENEWAL_REASON_NEUTRAL} with the certificate.
+ */
+export const RENEWAL_REASON_HEALTH_DATA: RenewalRejectionReason =
+  "MEDICAL_RESTRICTION";
+export const RENEWAL_REASON_NEUTRAL: RenewalRejectionReason = "OTHER";
+
 export const RENEWAL_REVIEW_COMMENT_MAX_LENGTH = 500;
 export const ADMIN_RENEWAL_PAGE_MAX = 50;
 export const ADMIN_RENEWAL_PAGE_DEFAULT = 20;
-export const LICENSE_NUMBER_MAX_LENGTH = 32;
 
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === "string" ? value.trim() : value;
@@ -96,7 +107,7 @@ export class ApproveLicenseRenewalDto {
   @IsString()
   @MinLength(1)
   @MaxLength(LICENSE_NUMBER_MAX_LENGTH)
-  @Matches(/^[A-Za-z0-9][A-Za-z0-9 ./-]*$/, {
+  @Matches(LICENSE_NUMBER_PATTERN, {
     message: "licenseNumber contient des caractères non autorisés",
   })
   licenseNumber?: string;
@@ -174,11 +185,6 @@ class AdminLicenseRenewalBaseDto {
   @ApiProperty() createdAt!: Date;
   @ApiProperty({ nullable: true, type: Date }) submittedAt!: Date | null;
   @ApiProperty({ nullable: true, type: Date }) reviewedAt!: Date | null;
-  @ApiProperty({
-    nullable: true,
-    enum: RENEWAL_REJECTION_REASONS,
-  })
-  rejectionReason!: RenewalRejectionReason | null;
   @ApiProperty({ type: AdminRenewalUserDto }) user!: AdminRenewalUserDto;
   @ApiProperty({
     type: AdminRenewalPersonDto,
@@ -212,6 +218,15 @@ export class AdminRenewalHistoryItemDto {
 }
 
 export class AdminLicenseRenewalDetailDto extends AdminLicenseRenewalBaseDto {
+  /**
+   * Only in the (audited) detail, never in the queue: `MEDICAL_RESTRICTION`
+   * is health data. Neutralised to `OTHER` by the retention purge.
+   */
+  @ApiProperty({
+    nullable: true,
+    enum: RENEWAL_REJECTION_REASONS,
+  })
+  rejectionReason!: RenewalRejectionReason | null;
   @ApiProperty({ nullable: true, type: String }) reviewComment!: string | null;
   @ApiProperty({ type: [AdminRenewalDocumentDetailDto] })
   documents!: AdminRenewalDocumentDetailDto[];

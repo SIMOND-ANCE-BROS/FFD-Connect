@@ -10,6 +10,8 @@ import {
 } from "@prisma/client";
 import {
   approvePendingRenewal,
+  LicenseNumberTakenException,
+  LicenseNumberUnknownException,
   renewalAlreadyDecided,
 } from "./license-renewal-approval";
 
@@ -230,6 +232,41 @@ describe("approvePendingRenewal", () => {
     random.mockRestore();
   });
 
+  it("ignores an OCR reading not shaped like a licence number", async () => {
+    tx.licenseRenewalRequest.findUnique.mockResolvedValue(
+      target({
+        ocrNumber: "<script>",
+        license: {
+          number: "FFD-OLD",
+          validUntil: new Date("2026-08-31T21:59:59.999Z"),
+        },
+      }),
+    );
+
+    await approvePendingRenewal(client, "req-1", {
+      reviewerId: "admin-1",
+      now: new Date("2027-03-15T10:00:00.000Z"),
+    });
+
+    expect(tx.license.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ number: "FFD-OLD" }) as unknown,
+      }),
+    );
+  });
+
+  it("an invalid OCR reading and no other number: LicenseNumberUnknownException", async () => {
+    tx.licenseRenewalRequest.findUnique.mockResolvedValue(
+      target({ ocrNumber: "x".repeat(40) }),
+    );
+    await expect(
+      approvePendingRenewal(client, "req-1", {
+        reviewerId: null,
+        now: new Date(),
+      }),
+    ).rejects.toBeInstanceOf(LicenseNumberUnknownException);
+  });
+
   it("409 when the confirmed number belongs to another licence", async () => {
     tx.licenseRenewalRequest.findUnique.mockResolvedValue(target());
     tx.license.upsert.mockRejectedValue(
@@ -245,7 +282,7 @@ describe("approvePendingRenewal", () => {
         licenseNumber: "FFD-TAKEN",
         now: new Date(),
       }),
-    ).rejects.toThrow("déjà attribué");
+    ).rejects.toBeInstanceOf(LicenseNumberTakenException);
   });
 
   it("propagates any other licence write error", async () => {

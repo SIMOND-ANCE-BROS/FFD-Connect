@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import {
@@ -23,7 +24,12 @@ import {
   medicalCertificatePurgeDueAt,
 } from "./medical-certificate-retention.util";
 import { isLicenseCoveredForRenewal } from "./license-season";
-import { approvePendingRenewal } from "./license-renewal-approval";
+import { normalizeLicenseNumber } from "./license-number.util";
+import {
+  approvePendingRenewal,
+  LicenseNumberTakenException,
+  LicenseNumberUnknownException,
+} from "./license-renewal-approval";
 import { toLicenseQrExpiry } from "./qr/license-qr";
 import {
   pickRenewalOcrData,
@@ -61,6 +67,8 @@ export const RENEWAL_DOCUMENT_REJECTED = "RENEWAL_DOCUMENT_REJECTED";
 
 @Injectable()
 export class LicenseRenewalService {
+  private readonly logger = new Logger(LicenseRenewalService.name);
+
   constructor(
     private prisma: PrismaService,
     private ocrService: OcrService,
@@ -261,10 +269,12 @@ export class LicenseRenewalService {
       select: { license: { select: { number: true, validUntil: true } } },
     });
     const licenseOcr = pickRenewalOcrData(licenseDoc.type, licenseDoc.ocrData);
+    // Same reading as the approval core (trimmed, shaped like a licence
+    // number): a blank or garbled OCR number must not pass submission and
+    // then fail the approval.
     const hasLicenseNumber =
-      Boolean(
-        licenseOcr?.licenseNumber && licenseOcr.licenseNumber.length > 0,
-      ) || Boolean(user?.license?.number && user.license.number.length > 0);
+      normalizeLicenseNumber(licenseOcr?.licenseNumber) !== null ||
+      (user?.license?.number.trim() ?? "") !== "";
     if (!hasLicenseNumber) {
       throw new BadRequestException(
         "Le certificat de licence n'a pas permis d'identifier un numéro de licence. Assurez-vous que le document est lisible et mentionne le numéro de licence.",
@@ -306,12 +316,28 @@ export class LicenseRenewalService {
    * upsert de la licence, dans UNE transaction (#261).
    */
   private async autoApprove(requestId: string) {
-    await this.prisma.$transaction((tx) =>
-      approvePendingRenewal(tx, requestId, {
-        reviewerId: null,
-        now: new Date(),
-      }),
-    );
+    try {
+      await this.prisma.$transaction((tx) =>
+        approvePendingRenewal(tx, requestId, {
+          reviewerId: null,
+          now: new Date(),
+        }),
+      );
+    } catch (error) {
+      // Licence number unknown, or already another account's: not the
+      // licensee's to fix, and the 409 wording would reveal that a number is
+      // registered. The transaction rolled back: the request stays PENDING
+      // for the administrator, and the licensee sees it as submitted.
+      if (
+        !(error instanceof LicenseNumberUnknownException) &&
+        !(error instanceof LicenseNumberTakenException)
+      ) {
+        throw error;
+      }
+      this.logger.warn(
+        `Licence renewal ${requestId} left PENDING for human review (${error.constructor.name})`,
+      );
+    }
     const approved = await this.prisma.licenseRenewalRequest.findUniqueOrThrow({
       where: { id: requestId },
       select: licenseRenewalRequestResponseSelect,

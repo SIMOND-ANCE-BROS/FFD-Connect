@@ -126,6 +126,11 @@ describe("HealthDataRetentionService", () => {
       where: { id: { in: ["req-1"] }, reviewComment: { not: null } },
       data: { reviewComment: null },
     });
+    // The health-data reason code is neutralised with the certificate.
+    expect(mockPrisma.licenseRenewalRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["req-1"] }, rejectionReason: "MEDICAL_RESTRICTION" },
+      data: { rejectionReason: "OTHER" },
+    });
     expect(
       mockPrisma.licenseRenewalRequest.updateMany.mock.invocationCallOrder[0],
     ).toBeLessThan(mockCleaner.deleteFiles.mock.invocationCallOrder[0]);

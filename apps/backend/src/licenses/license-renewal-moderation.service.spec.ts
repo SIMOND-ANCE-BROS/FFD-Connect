@@ -1,4 +1,8 @@
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from "@nestjs/common";
 import {
   LicenseRenewalDocumentType,
   LicenseRenewalStatus,
@@ -22,7 +26,7 @@ describe("LicenseRenewalModerationService", () => {
       findUnique: jest.fn(),
       updateMany: jest.fn(),
     },
-    licenseRenewalDocument: { updateMany: jest.fn() },
+    licenseRenewalDocument: { updateMany: jest.fn(), count: jest.fn() },
     license: { upsert: jest.fn() },
   };
   const audit = { record: jest.fn() };
@@ -61,6 +65,7 @@ describe("LicenseRenewalModerationService", () => {
     prisma.licenseRenewalRequest.findUnique.mockResolvedValue(approvalTarget);
     prisma.licenseRenewalRequest.updateMany.mockResolvedValue({ count: 1 });
     prisma.licenseRenewalDocument.updateMany.mockResolvedValue({ count: 1 });
+    prisma.licenseRenewalDocument.count.mockResolvedValue(1);
     prisma.license.upsert.mockResolvedValue({ id: "L1" });
     audit.record.mockResolvedValue(undefined);
     query.detailAfterDecision.mockResolvedValue(DETAIL);
@@ -204,6 +209,31 @@ describe("LicenseRenewalModerationService", () => {
         before: { status: "PENDING" },
         after: { status: "REJECTED" },
       });
+    });
+
+    it.each([
+      [{ reason: "OTHER" as const, comment: "Illisible" }],
+      [{ reason: "MEDICAL_RESTRICTION" as const }],
+    ])(
+      "400 for %j when no medical certificate row remains: nothing would ever purge it",
+      async (dto) => {
+        prisma.licenseRenewalDocument.count.mockResolvedValue(0);
+
+        await expect(service.reject("admin-1", "req-1", dto)).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(prisma.licenseRenewalRequest.updateMany).not.toHaveBeenCalled();
+        expect(audit.record).not.toHaveBeenCalled();
+      },
+    );
+
+    it("a plain refusal needs no certificate row", async () => {
+      prisma.licenseRenewalDocument.count.mockResolvedValue(0);
+
+      await service.reject("admin-1", "req-1", { reason: "INCOMPLETE" });
+
+      expect(prisma.licenseRenewalDocument.count).not.toHaveBeenCalled();
+      expect(prisma.licenseRenewalRequest.updateMany).toHaveBeenCalled();
     });
 
     it("409 and nothing else written when the claim lost", async () => {

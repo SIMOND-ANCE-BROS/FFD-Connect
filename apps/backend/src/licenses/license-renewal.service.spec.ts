@@ -6,6 +6,7 @@ import {
 import {
   LicenseRenewalDocumentType,
   LicenseRenewalStatus,
+  Prisma,
 } from "@prisma/client";
 import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../prisma/prisma.service";
@@ -821,6 +822,130 @@ describe("LicenseRenewalService", () => {
       ).rejects.toThrow(ConflictException);
       expect(mockPrisma.license.upsert).not.toHaveBeenCalled();
     });
+
+    it("leaves the request PENDING, without error, when the licence number is another account's", async () => {
+      const documents = [
+        {
+          id: "doc-1",
+          type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+          filePath: "/path/to/medical.jpg",
+          ocrData: { isApte: true },
+        },
+        {
+          id: "doc-2",
+          type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
+          filePath: "/path/to/license.jpg",
+          ocrData: { licenseNumber: "FFD-TAKEN" },
+        },
+      ];
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+        id: "req-1",
+        userId: "user-1",
+        status: LicenseRenewalStatus.DRAFT,
+        documents,
+      });
+      mockPrisma.user.findUnique.mockResolvedValue({ license: null });
+      mockPrisma.licenseRenewalRequest.update.mockResolvedValue({
+        id: "req-1",
+      });
+      mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue({
+        status: LicenseRenewalStatus.PENDING,
+        userId: "user-1",
+        documents,
+        user: { category: null, clubName: null, license: null },
+      });
+      mockPrisma.license.upsert.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError("Unique constraint", {
+          code: "P2002",
+          clientVersion: "7",
+        }),
+      );
+      const pending = {
+        id: "req-1",
+        status: LicenseRenewalStatus.PENDING,
+        documents: [],
+      };
+      mockPrisma.licenseRenewalRequest.findUniqueOrThrow.mockResolvedValue(
+        pending,
+      );
+
+      const result = await service.submitRenewalRequest("user-1", "req-1");
+
+      // Seen as « submitted » by the app; the administrator decides. Nothing
+      // tells the licensee that the number is registered elsewhere.
+      expect(result).toEqual(pending);
+    });
+
+    it("rethrows any other approval failure", async () => {
+      const documents = [
+        {
+          id: "doc-1",
+          type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+          filePath: "/path/to/medical.jpg",
+          ocrData: { isApte: true },
+        },
+        {
+          id: "doc-2",
+          type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
+          filePath: "/path/to/license.jpg",
+          ocrData: { licenseNumber: "FFD-1" },
+        },
+      ];
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+        id: "req-1",
+        userId: "user-1",
+        status: LicenseRenewalStatus.DRAFT,
+        documents,
+      });
+      mockPrisma.user.findUnique.mockResolvedValue({ license: null });
+      mockPrisma.licenseRenewalRequest.update.mockResolvedValue({
+        id: "req-1",
+      });
+      mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue({
+        status: LicenseRenewalStatus.PENDING,
+        userId: "user-1",
+        documents,
+        user: { category: null, clubName: null, license: null },
+      });
+      mockPrisma.license.upsert.mockRejectedValue(new Error("db down"));
+
+      await expect(
+        service.submitRenewalRequest("user-1", "req-1"),
+      ).rejects.toThrow("db down");
+    });
+
+    it.each(["   ", "<<illisible>>"])(
+      "refuses at submission an OCR licence number %j that the approval would not accept",
+      async (licenseNumber) => {
+        mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+          id: "req-1",
+          userId: "user-1",
+          status: LicenseRenewalStatus.DRAFT,
+          documents: [
+            {
+              id: "doc-1",
+              type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+              filePath: "/m.jpg",
+              ocrData: { isApte: true },
+            },
+            {
+              id: "doc-2",
+              type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
+              filePath: "/l.jpg",
+              ocrData: { licenseNumber },
+            },
+          ],
+        });
+        mockPrisma.user.findUnique.mockResolvedValue({
+          license: { number: "  ", validUntil: null },
+        });
+
+        await expect(
+          service.submitRenewalRequest("user-1", "req-1"),
+        ).rejects.toThrow("numéro de licence");
+        expect(mockPrisma.licenseRenewalRequest.update).not.toHaveBeenCalled();
+      },
+    );
 
     // #250: a license ending this August 31 is renewable from July 1 (summer
     // campaign, renewed until the end of the next season), not before.

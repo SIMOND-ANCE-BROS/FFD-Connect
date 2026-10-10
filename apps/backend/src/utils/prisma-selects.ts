@@ -403,6 +403,21 @@ export const healthDataPurgeDueSelect = {
   requestId: true,
 } as const;
 
+/** Sélecteur minimal : identifiant seul (destinataires d'une notification…). */
+export const idOnlySelect = {
+  id: true,
+} as const;
+
+/**
+ * Sélecteur pour l'affichage du nom d'un utilisateur (auteur, relecteur…) :
+ * identifiant et nom, jamais l'e-mail.
+ */
+export const userNameSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+} as const;
+
 /** Licence telle que la file de modération l'affiche : numéro et validité. */
 export const licenseNumberValiditySelect = {
   number: true,
@@ -421,7 +436,6 @@ export const licenseRenewalAdminListSelect = {
   createdAt: true,
   submittedAt: true,
   reviewedAt: true,
-  rejectionReason: true,
   user: {
     select: {
       id: true,
@@ -430,7 +444,7 @@ export const licenseRenewalAdminListSelect = {
       license: { select: licenseNumberValiditySelect },
     },
   },
-  reviewedBy: { select: { id: true, firstName: true, lastName: true } },
+  reviewedBy: { select: userNameSelect },
   documents: {
     select: { id: true, type: true, createdAt: true },
     orderBy: { type: "asc" },
@@ -445,6 +459,9 @@ export const licenseRenewalAdminListSelect = {
 export const licenseRenewalAdminDetailSelect = {
   ...licenseRenewalAdminListSelect,
   userId: true,
+  // Pas dans la file (non tracée) : MEDICAL_RESTRICTION est une donnée de
+  // santé. Le détail, lui, est tracé (LICENSE_RENEWAL_VIEW).
+  rejectionReason: true,
   reviewComment: true,
   documents: {
     select: { id: true, type: true, createdAt: true, ocrData: true },
@@ -471,21 +488,6 @@ export const licenseRenewalDocumentFileTargetSelect = {
 /** Décision de modération : la demande existe-t-elle, et dans quel état. */
 export const licenseRenewalStatusSelect = {
   status: true,
-} as const;
-
-/** Sélecteur minimal : identifiant seul (destinataires d'une notification…). */
-export const idOnlySelect = {
-  id: true,
-} as const;
-
-/**
- * Sélecteur pour l'affichage du nom d'un utilisateur (auteur, relecteur…) :
- * identifiant et nom, jamais l'e-mail.
- */
-export const userNameSelect = {
-  id: true,
-  firstName: true,
-  lastName: true,
 } as const;
 
 /**

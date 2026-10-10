@@ -120,6 +120,10 @@ describe("LicenseRenewalModerationQueryService", () => {
         lastName: "L",
         license: null,
       });
+      // The queue is not audited: no reason code (MEDICAL_RESTRICTION is
+      // health data), no comment.
+      expect(page.data[0]).not.toHaveProperty("rejectionReason");
+      expect(page.data[0]).not.toHaveProperty("reviewComment");
     });
 
     it("writes no audit row", async () => {
@@ -159,6 +163,7 @@ describe("LicenseRenewalModerationQueryService", () => {
       });
       expect(detail.renewsUntil).toEqual(new Date("2027-08-31T21:59:59.999Z"));
       expect(detail.history).toEqual([{ id: "old", status: "APPROVED" }]);
+      expect(detail).toHaveProperty("rejectionReason", null);
       expect(prisma.licenseRenewalRequest.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { userId: "user-1", id: { not: "req-1" } },
@@ -276,17 +281,53 @@ describe("LicenseRenewalModerationQueryService", () => {
       expect(blob.downloadStream).not.toHaveBeenCalled();
     });
 
-    it("404 when the blob is missing, 503 when storage fails", async () => {
+    it("a missing blob is a 404 that does NOT count as a breaker failure", async () => {
       prisma.licenseRenewalDocument.findFirst.mockResolvedValue(doc({}));
       blob.downloadStream.mockRejectedValueOnce({ statusCode: 404 });
+      let insideBreaker: Promise<unknown> | undefined;
+      breaker.fire.mockImplementation(
+        (_key: string, fn: () => Promise<unknown>) => {
+          insideBreaker = fn();
+          return insideBreaker;
+        },
+      );
+
       await expect(
         service.openDocument("admin-1", "req-1", "doc-1"),
       ).rejects.toThrow(NotFoundException);
+      // The breaker's callback resolved: opossum records a success.
+      await expect(insideBreaker).resolves.toBeNull();
+    });
 
-      blob.downloadStream.mockRejectedValueOnce(new Error("timeout"));
+    it("503 when storage fails", async () => {
+      prisma.licenseRenewalDocument.findFirst.mockResolvedValue(doc({}));
+      blob.downloadStream.mockRejectedValueOnce(new Error("boom"));
       await expect(
         service.openDocument("admin-1", "req-1", "doc-1"),
       ).rejects.toThrow(ServiceUnavailableException);
+    });
+
+    it("destroys a stream that arrives after the timeout", async () => {
+      prisma.licenseRenewalDocument.findFirst.mockResolvedValue(doc({}));
+      let deliver: (stream: Readable) => void = () => undefined;
+      blob.downloadStream.mockReturnValue(
+        new Promise<Readable>((resolve) => {
+          deliver = resolve;
+        }),
+      );
+      const late = Readable.from(["%PDF"]);
+      const destroy = jest.spyOn(late, "destroy");
+
+      const opening = service.openDocument("admin-1", "req-1", "doc-1");
+      const assertion = expect(opening).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+      await jest.advanceTimersByTimeAsync(10_001);
+      await assertion;
+      deliver(late);
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(destroy).toHaveBeenCalled();
     });
   });
 });

@@ -63,7 +63,6 @@ function toBase(row: ListRow | DetailRow) {
     createdAt: row.createdAt,
     submittedAt: row.submittedAt,
     reviewedAt: row.reviewedAt,
-    rejectionReason: row.rejectionReason as RenewalRejectionReason | null,
     user: {
       id: row.user.id,
       firstName: row.user.firstName,
@@ -184,21 +183,12 @@ export class LicenseRenewalModerationQueryService {
       after: { documentId, documentType: document.type },
     });
 
-    let stream: Readable;
+    let stream: Readable | null;
     try {
       stream = await this.circuitBreaker.fire("azure-blob", () =>
-        withTimeout(
-          this.blobStorage.downloadStream(
-            document.filePath,
-            this.blobStorage.getUploadsContainer(),
-          ),
-          RENEWAL_DOCUMENT_DOWNLOAD_TIMEOUT_MS,
-          "blob download (renewal document)",
-        ),
+        this.downloadWithTimeout(document.filePath),
       );
     } catch (error) {
-      if (isNotFound(error))
-        throw new NotFoundException("Fichier indisponible");
       // Opaque reference only: no user id, no document content.
       this.logger.warn(
         `Renewal document download failed for "${document.filePath}": ${getErrorMessage(error)}`,
@@ -207,12 +197,44 @@ export class LicenseRenewalModerationQueryService {
         "Stockage des documents momentanément indisponible, réessayez dans un instant.",
       );
     }
+    if (!stream) throw new NotFoundException("Fichier indisponible");
     return {
       stream,
       contentType:
         CONTENT_TYPES[extname(document.filePath).toLowerCase()] ??
         "application/octet-stream",
     };
+  }
+
+  /**
+   * Download behind the shared `azure-blob` breaker:
+   * - a missing blob resolves to null INSIDE the breaker, so a few missing
+   *   files cannot open it for every blob read (music streaming included);
+   * - if the timeout fires first, the stream that arrives later is destroyed
+   *   instead of leaking an open connection to the storage.
+   */
+  private async downloadWithTimeout(
+    blobName: string,
+  ): Promise<Readable | null> {
+    const download = this.blobStorage
+      .downloadStream(blobName, this.blobStorage.getUploadsContainer())
+      .catch((error: unknown) => {
+        if (isNotFound(error)) return null;
+        throw error;
+      });
+    try {
+      return await withTimeout(
+        download,
+        RENEWAL_DOCUMENT_DOWNLOAD_TIMEOUT_MS,
+        "blob download (renewal document)",
+      );
+    } catch (error) {
+      void download.then(
+        (late) => late?.destroy(),
+        () => undefined,
+      );
+      throw error;
+    }
   }
 
   private async findDetailRow(requestId: string): Promise<DetailRow> {
@@ -237,6 +259,7 @@ export class LicenseRenewalModerationQueryService {
     const pending = row.status === LicenseRenewalStatus.PENDING;
     return {
       ...toBase(row),
+      rejectionReason: row.rejectionReason as RenewalRejectionReason | null,
       reviewComment: row.reviewComment,
       documents: row.documents.map((document) => ({
         id: document.id,

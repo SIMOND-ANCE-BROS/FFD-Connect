@@ -81,6 +81,10 @@ describe("Licence renewal moderation (integration, real DB)", () => {
   };
 
   beforeAll(async () => {
+    // The boot pass would race the fixtures: the purge test drives it itself.
+    jest
+      .spyOn(HealthDataRetentionService.prototype, "onModuleInit")
+      .mockImplementation(() => undefined);
     ({ app, prisma, jwt } = await buildHttpApp({
       extra: (builder) =>
         builder.overrideProvider(BlobStorageService).useValue(fakeBlob),
@@ -156,6 +160,7 @@ describe("Licence renewal moderation (integration, real DB)", () => {
       .expect(200);
     expect(list.body.data[0].id).toBe(older.id);
     expect(JSON.stringify(list.body)).not.toContain("Dr Secret");
+    expect(list.body.data[0]).not.toHaveProperty("rejectionReason");
 
     await request(server())
       .get("/api/v1/admin/license-renewals?take=51")
@@ -336,10 +341,32 @@ describe("Licence renewal moderation (integration, real DB)", () => {
     });
     expect(after).toEqual({
       status: LicenseRenewalStatus.REJECTED,
-      rejectionReason: "MEDICAL_RESTRICTION",
+      // The health-data reason is neutralised with the certificate.
+      rejectionReason: "OTHER",
       reviewComment: null,
       documents: [{ type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE }],
     });
+  });
+
+  it("refuses a comment once no medical certificate row remains", async () => {
+    const admin = await createUser(UserRole.ADMIN);
+    const licensee = await createUser(UserRole.LICENSEE);
+    const pending = await pendingRequest(licensee.id, "FFD-5");
+    await prisma.licenseRenewalDocument.deleteMany({
+      where: {
+        requestId: pending.id,
+        type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+      },
+    });
+    const reject = (body: object) =>
+      request(server())
+        .post(`/api/v1/admin/license-renewals/${pending.id}/reject`)
+        .set("Authorization", bearer(admin))
+        .send(body);
+
+    await reject({ reason: "OTHER", comment: "Illisible" }).expect(400);
+    await reject({ reason: "MEDICAL_RESTRICTION" }).expect(400);
+    await reject({ reason: "INCOMPLETE" }).expect(200);
   });
 
   it("store-review account: empty reads, simulated decisions, no certificate", async () => {
