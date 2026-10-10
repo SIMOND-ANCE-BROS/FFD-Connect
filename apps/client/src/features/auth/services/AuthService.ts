@@ -9,6 +9,7 @@ import {
   unregisterDeviceTokenForPush,
 } from "../../settings/services/pushRegistration";
 import { createLogger } from "../../../utils/logger";
+import { usage } from "../../../services/analytics/usage";
 import type { UsersControllerGetProfileResponse } from "../../../api/generated/types.gen";
 
 const logger = createLogger("AuthService");
@@ -53,6 +54,8 @@ export interface AuthConfig {
   /** Space of the last session, reopened at the next login of `lastUser`. */
   lastSpace?: UserRole;
   isGuest?: boolean;
+  /** Account handed to the store reviewers (#212): no usage measurement (lot 5). */
+  isStoreReview?: boolean;
   username?: string;
   clubName?: string;
   biometricsEnabled?: boolean;
@@ -233,13 +236,15 @@ export const AuthService = {
       const prefs = json
         ? (JSON.parse(json) as Partial<AuthConfig>)
         : undefined;
-      return {
+      const config: AuthConfig = {
         ...DEFAULT_CONFIG,
         ...prefs,
         // Tokens live in SecureStore, not the AsyncStorage prefs blob.
         authToken: tokens.authToken,
         refreshToken: tokens.refreshToken,
       };
+      usage.setContext(usage.contextFromConfig(config));
+      return config;
     } catch (error) {
       logger.error("Failed to load auth config", error);
     }
@@ -256,6 +261,7 @@ export const AuthService = {
         AsyncStorage.setItem(AUTH_KEY, JSON.stringify(prefs)),
         setTokens({ authToken, refreshToken }),
       ]);
+      usage.setContext(usage.contextFromConfig(config));
     } catch (error) {
       logger.error("Failed to save auth config", error);
     }
@@ -296,6 +302,11 @@ export const AuthService = {
         passportLevelLatin: user.passportLevelLatin ?? undefined,
         passportLevelStandard: user.passportLevelStandard ?? undefined,
         isGuest: false,
+        // The store-review flag belongs to the previous account.
+        isStoreReview:
+          currentConfig.username === user.email
+            ? currentConfig.isStoreReview
+            : false,
         username: user.email,
         lastLoginDate: new Date().toISOString(),
       };
@@ -577,9 +588,10 @@ export const AuthService = {
    * nothing changed.
    */
   syncRolesFromProfile: async (
-    profile: Pick<UserProfile, "email" | "role" | "roles">,
+    profile: Pick<UserProfile, "email" | "role" | "roles" | "isStoreReview">,
   ): Promise<AuthConfig> => {
     const config = await AuthService.getAuthConfig();
+    const isStoreReview = profile.isStoreReview === true;
     if (!config.isLoggedIn || config.isGuest) return config;
     const roles = rolesFrom(profile);
     const role = resolveSpace({
@@ -592,11 +604,18 @@ export const AuthService = {
     if (
       sameRoles(config.roles, roles) &&
       config.mainRole === profile.role &&
-      config.role === role
+      config.role === role &&
+      (config.isStoreReview === true) === isStoreReview
     ) {
       return config;
     }
-    const next: AuthConfig = { ...config, roles, mainRole: profile.role, role };
+    const next: AuthConfig = {
+      ...config,
+      roles,
+      mainRole: profile.role,
+      role,
+      isStoreReview,
+    };
     await AuthService.saveAuthConfig(next);
     return next;
   },

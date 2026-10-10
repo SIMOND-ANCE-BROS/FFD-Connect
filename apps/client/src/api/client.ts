@@ -8,6 +8,7 @@ import { BACKEND_URL } from "../config";
 import { client } from "./generated/client.gen";
 import { refreshSession } from "./sessionRefresh";
 import { getAccessToken } from "./tokenStore";
+import { usage } from "../services/analytics/usage";
 
 // BACKEND_URL already includes the /api/v1 prefix (both dev and prod), so the
 // generated client uses it as-is. Appending /api/v1 again would double it.
@@ -46,6 +47,13 @@ client.interceptors.response.use(async (response, request) => {
   const retried = new Request(request, {});
   retried.headers.set("Authorization", `Bearer ${newToken}`);
   return fetch(retried);
+});
+
+// Lot 5: a successful response proves the backend is awake — the only moment
+// anonymous usage batches may be sent (never wakes the scale-to-zero app).
+client.interceptors.response.use((response) => {
+  if (response.ok) usage.onApiSuccess();
+  return response;
 });
 
 export { client };
