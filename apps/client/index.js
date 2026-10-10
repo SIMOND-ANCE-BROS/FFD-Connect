@@ -112,6 +112,9 @@ if (sentryDsn && !sentryDisabled && Platform.OS !== "web") {
     attachScreenshot: true,
     // No screenshot for an expected server refusal (#225): the app shows its
     // text in an alert, which may be health data (refused medical certificate).
+    // Nor while a screen showing health data is mounted (#242,
+    // useSensitiveScreen). attachViewHierarchy stays off (default): it would
+    // carry the on-screen text.
     beforeScreenshot,
     // Session Replay disabled on iOS 26+ — RNSentryReplayUnmask shadow node
     // hooks the network stack and triggers nw_protocol_ipv6 crashes.

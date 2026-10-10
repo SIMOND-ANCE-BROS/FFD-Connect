@@ -24,6 +24,7 @@ import { AppText } from "../../../components/AppText";
 import { BackButton } from "../../../components/BackButton";
 import { PinnedHeader } from "../../../components/PinnedHeader";
 import { useTheme } from "../../../context/ThemeContext";
+import { useSensitiveScreen } from "../../../hooks/useSensitiveScreen";
 import { RootStackParamList } from "../../../navigation/types";
 import type { LicenseRenewalDocumentType } from "../../../services/BackendService";
 import { useLicenseRenewalLogic } from "../hooks/useLicenseRenewalLogic";
@@ -36,6 +37,8 @@ const DOC_LABELS: Record<LicenseRenewalDocumentType, string> = {
 };
 
 export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
+  // Medical certificate summary on screen: no Sentry screenshot (#242).
+  useSensitiveScreen();
   const { theme: currentTheme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [headerH, setHeaderH] = useState(insets.top + 56);
