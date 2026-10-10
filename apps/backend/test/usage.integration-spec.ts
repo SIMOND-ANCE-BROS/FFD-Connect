@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { TestingModule } from "@nestjs/testing";
+import { AdminUsageQueryService } from "../src/analytics/admin-usage.query-service";
 import { UsageRetentionService } from "../src/analytics/usage-retention.service";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { buildServiceModule } from "./integration-app.builder";
@@ -125,5 +126,34 @@ describe("Usage analytics (integration, real DB)", () => {
       },
     });
     expect(active?.installs).toBe(1);
+  });
+
+  it("7d read: Paris heatmap, sessions split at 30 minutes, median", async () => {
+    const usage = moduleRef.get(AdminUsageQueryService);
+    await ev(installA, "2001-07-16T06:00:00Z"); // Mon 08:00 Paris
+    await ev(installA, "2001-07-16T06:10:00Z"); // same session (10 min)
+    await ev(installA, "2001-07-16T07:00:00Z"); // 50-min gap → new session (Mon 09:00)
+    await ev(installB, "2001-07-15T22:30:00Z"); // Sunday UTC = Mon 00:30 Paris
+    const u = await usage.get("7d", undefined, NOW);
+    expect(u.heatmap[0][8]).toBe(2);
+    expect(u.heatmap[0][9]).toBe(1);
+    expect(u.heatmap[0][0]).toBe(1);
+    expect(u.sessions).toBe(3); // A: 2, B: 1
+    expect(u.medianSessionMinutes).toBe(0); // durations 10, 0, 0 min
+    expect(u.screens).toEqual([{ screen: "Home", views: 4, durationSec: 40 }]);
+    expect(u.activeInstallsThisMonth).toBe(2);
+  });
+
+  it("12m read comes from the aggregates", async () => {
+    const usage = moduleRef.get(AdminUsageQueryService);
+    await state("2001-07-15");
+    await ev(installA, "2001-07-16T06:00:00Z");
+    await ev(installB, "2001-07-16T06:30:00Z", { platform: "android" });
+    await service.rollup(NOW);
+    const u = await usage.get("12m", undefined, NOW);
+    expect(u.aggregatedUntil).toBe("2001-07-17");
+    expect(u.heatmap[0][8]).toBe(2);
+    expect(u.platforms).toEqual({ ios: 1, android: 1 });
+    expect(u.screens[0]).toEqual({ screen: "Home", views: 2, durationSec: 20 });
   });
 });

@@ -45,6 +45,9 @@ const ADMIN_ROUTES: Array<
   // Database stats (lot 4): ADMIN-only at class level.
   ["get", "/api/v1/admin/stats"],
   ["get", "/api/v1/admin/stats?period=6m"],
+  // App usage (lot 5): ADMIN-only at class level.
+  ["get", "/api/v1/admin/usage"],
+  ["get", "/api/v1/admin/usage?period=7d&space=CLUB"],
 ];
 
 describe("Admin routes (e2e) — role matrix", () => {
@@ -54,6 +57,12 @@ describe("Admin routes (e2e) — role matrix", () => {
 
   beforeAll(async () => {
     prisma = createMockPrismaService();
+    // Boot pass of UsageRetentionService (it never throws; keep its log quiet).
+    prisma.usageRollupState.findUnique.mockResolvedValue(null);
+    prisma.usageEvent.findFirst.mockResolvedValue(null);
+    prisma.usageRollupState.upsert.mockResolvedValue({} as never);
+    prisma.usageDaily.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.usageDailyActive.deleteMany.mockResolvedValue({ count: 0 });
     const moduleRef = await applyE2EOverrides(
       Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(PrismaService)
@@ -374,5 +383,10 @@ describe("Admin routes (e2e) — role matrix", () => {
     expect(res.body.period).toBe("12w");
     expect(res.body.buckets).toHaveLength(12);
     expect(res.body.users.signups).toHaveLength(12);
+  });
+
+  it("rejects an unknown usage period with 400", async () => {
+    currentRole = UserRole.ADMIN;
+    await request(server()).get("/api/v1/admin/usage?period=1y").expect(400);
   });
 });

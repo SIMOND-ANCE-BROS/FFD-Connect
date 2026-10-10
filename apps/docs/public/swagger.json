@@ -6809,6 +6809,417 @@
         "tags": ["wdsf"]
       }
     },
+    "/analytics/events": {
+      "post": {
+        "operationId": "AnalyticsController_ingest",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsageBatchDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Stored"
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Anonymous app usage events (batch, no auth)",
+        "tags": ["analytics"]
+      }
+    },
+    "/admin/usage": {
+      "get": {
+        "operationId": "AdminUsageController_get",
+        "parameters": [
+          {
+            "name": "period",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "30d",
+              "type": "string",
+              "enum": ["7d", "30d", "12m"]
+            }
+          },
+          {
+            "name": "space",
+            "required": false,
+            "in": "query",
+            "description": "Filters the screen ranking only",
+            "schema": {
+              "type": "string",
+              "enum": ["LICENSEE", "CLUB", "STAFF", "ADMIN", "GUEST"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUsageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Anonymous app usage for the back-office (aggregates)",
+        "tags": ["admin"]
+      }
+    },
     "/tracks": {
       "get": {
         "description": "Retourne la liste de toutes les musiques disponibles dans la bibliothèque (status READY uniquement, Ambiance exclue).",
@@ -23811,6 +24222,259 @@
           }
         },
         "required": ["url", "path", "expiresAt"]
+      },
+      "UsageEventDto": {
+        "type": "object",
+        "properties": {
+          "installId": {
+            "type": "string",
+            "description": "Random install ID (UUID v4), renewed monthly"
+          },
+          "name": {
+            "type": "string",
+            "enum": [
+              "login",
+              "login_biometric",
+              "login_guest",
+              "screen_view",
+              "competition_view",
+              "license_scan",
+              "register",
+              "registration_start",
+              "license_wallet_add"
+            ]
+          },
+          "screen": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO date, truncated to the minute by the app"
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["ios", "android"]
+          },
+          "appVersion": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "space": {
+            "type": "string",
+            "enum": ["LICENSEE", "CLUB", "STAFF", "ADMIN", "GUEST"]
+          },
+          "competitionId": {
+            "type": "string"
+          },
+          "durationSec": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1800
+          }
+        },
+        "required": ["installId", "name", "occurredAt", "platform", "appVersion", "space"]
+      },
+      "UsageBatchDto": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageEventDto"
+            }
+          }
+        },
+        "required": ["events"]
+      },
+      "UsagePlatformsDto": {
+        "type": "object",
+        "properties": {
+          "ios": {
+            "type": "number"
+          },
+          "android": {
+            "type": "number"
+          }
+        },
+        "required": ["ios", "android"]
+      },
+      "UsageScreenDto": {
+        "type": "object",
+        "properties": {
+          "screen": {
+            "type": "string"
+          },
+          "views": {
+            "type": "number"
+          },
+          "durationSec": {
+            "type": "number"
+          }
+        },
+        "required": ["screen", "views", "durationSec"]
+      },
+      "UsageEventBucketDto": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string"
+          },
+          "login": {
+            "type": "number"
+          },
+          "login_biometric": {
+            "type": "number"
+          },
+          "login_guest": {
+            "type": "number"
+          },
+          "register": {
+            "type": "number"
+          },
+          "license_scan": {
+            "type": "number"
+          },
+          "license_wallet_add": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "start",
+          "login",
+          "login_biometric",
+          "login_guest",
+          "register",
+          "license_scan",
+          "license_wallet_add"
+        ]
+      },
+      "UsageVersionDto": {
+        "type": "object",
+        "properties": {
+          "appVersion": {
+            "type": "string"
+          },
+          "installs": {
+            "type": "number"
+          }
+        },
+        "required": ["appVersion", "installs"]
+      },
+      "UsageCompetitionDto": {
+        "type": "object",
+        "properties": {
+          "competitionId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "views": {
+            "type": "number"
+          }
+        },
+        "required": ["competitionId", "title", "views"]
+      },
+      "AdminUsageDto": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string",
+            "enum": ["7d", "30d", "12m"]
+          },
+          "from": {
+            "type": "string",
+            "description": "YYYY-MM-DD (Paris), inclusive"
+          },
+          "to": {
+            "type": "string",
+            "description": "YYYY-MM-DD (Paris), inclusive"
+          },
+          "bucket": {
+            "type": "string",
+            "enum": ["day", "month"]
+          },
+          "aggregatedUntil": {
+            "type": "string",
+            "nullable": true
+          },
+          "activeInstallsPerDay": {
+            "type": "number"
+          },
+          "activeInstallsThisMonth": {
+            "type": "number"
+          },
+          "sessions": {
+            "type": "number",
+            "nullable": true
+          },
+          "medianSessionMinutes": {
+            "type": "number",
+            "nullable": true
+          },
+          "platforms": {
+            "$ref": "#/components/schemas/UsagePlatformsDto"
+          },
+          "heatmap": {
+            "type": "array",
+            "description": "7 rows (Monday first) × 24 hours, Paris time",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "screens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageScreenDto"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageEventBucketDto"
+            }
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageVersionDto"
+            }
+          },
+          "competitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageCompetitionDto"
+            }
+          }
+        },
+        "required": [
+          "generatedAt",
+          "period",
+          "from",
+          "to",
+          "bucket",
+          "aggregatedUntil",
+          "activeInstallsPerDay",
+          "activeInstallsThisMonth",
+          "sessions",
+          "medianSessionMinutes",
+          "platforms",
+          "heatmap",
+          "screens",
+          "events",
+          "versions",
+          "competitions"
+        ]
       },
       "TrackResponseDto": {
         "type": "object",
