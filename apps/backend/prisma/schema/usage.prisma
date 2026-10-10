@@ -1,0 +1,53 @@
+/// Mesure d'audience anonyme de l'application (lot 5). Aucun lien avec un
+/// compte : `installId` est un UUID tiré sur l'appareil et renouvelé chaque
+/// mois ; la route d'ingestion n'est pas authentifiée. Purge à 90 jours,
+/// jamais avant l'agrégation du jour (UsageRetentionService).
+model UsageEvent {
+  id            String   @id @default(uuid())
+  installId     String
+  name          String
+  screen        String?
+  occurredAt    DateTime
+  platform      String
+  appVersion    String
+  space         String
+  /// Pas de clé étrangère : une compétition supprimée ne casse rien.
+  competitionId String?
+  durationSec   Int?
+  receivedAt    DateTime @default(now())
+
+  @@index([occurredAt])
+  @@index([installId, occurredAt])
+}
+
+/// Agrégat par jour et heure de Paris, sans identifiant. Conservé 25 mois.
+model UsageDaily {
+  day         DateTime @db.Date
+  hour        Int
+  name        String
+  screen      String   @default("")
+  platform    String
+  appVersion  String
+  space       String
+  count       Int
+  durationSec Int      @default(0)
+
+  @@id([day, hour, name, screen, platform, appVersion, space])
+  @@index([day])
+}
+
+/// Installations distinctes par jour de Paris et plateforme (une installation
+/// n'a qu'une plateforme : la somme des plateformes est exacte). 25 mois.
+model UsageDailyActive {
+  day      DateTime @db.Date
+  platform String
+  installs Int
+
+  @@id([day, platform])
+}
+
+/// Dernier jour de Paris entièrement agrégé (ligne unique, id = 1).
+model UsageRollupState {
+  id      Int      @id @default(1)
+  lastDay DateTime @db.Date
+}

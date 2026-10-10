@@ -13,6 +13,7 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AdminModule } from "./admin/admin.module";
+import { AnalyticsModule } from "./analytics/analytics.module";
 import { AuthModule } from "./auth/auth.module";
 import { StoreReviewInterceptor } from "./auth/store-review/store-review.interceptor";
 import { CareerModule } from "./career/career.module";
@@ -79,6 +80,7 @@ import { WdsfModule } from "./wdsf/wdsf.module";
     StorageModule,
     AuthModule,
     AdminModule,
+    AnalyticsModule,
     TracksModule,
     TrackCorrectionsModule,
     TtsModule,
