@@ -2,7 +2,21 @@
 
 Utilisez l’espace **Danseur** pour retrouver vos licences, votre carrière et votre bibliothèque musicale. Si vous avez plusieurs rôles, sélectionnez cet espace dans **Réglages**.
 
+## Le parcours en un regard
+
+```ffd-parcours
+Mes licences | Ouvrir la carte FFD | Vérifier l’identité et la saison affichées.
+Compétitions | Choisir un événement | Retrouver les informations, les épreuves et le timing.
+Bibliothèque | Ouvrir Danses puis un titre | Retrouver sa musique et ses favoris.
+```
+
 ## Retrouver votre licence
+
+**Pendant la bêta, la licence affichée et son pass Wallet ne sont pas encore acceptés en compétition.** Suivez les consignes de l’organisation pour présenter votre justificatif habituel.
+
+```ffd-demo
+licence
+```
 
 1. Ouvrez l’onglet des licences dans la barre du bas : l’écran s’intitule **Mes licences**.
 2. Consultez votre carte **Licence FFD** et les informations affichées.
@@ -15,6 +29,10 @@ Si des informations sont incorrectes ou absentes, faites-les vérifier par l’�
 
 ## Préparer une compétition
 
+```ffd-demo
+competitions
+```
+
 1. Ouvrez **Compétitions**.
 2. Recherchez un événement et choisissez la période qui vous intéresse : **À venir**, **En cours**, **Passées** ou **Tout**.
 3. Ouvrez sa fiche pour consulter la date, le lieu et les informations disponibles.
@@ -24,6 +42,10 @@ Si des informations sont incorrectes ou absentes, faites-les vérifier par l’�
 Les possibilités d’inscription dépendent notamment de la compétition, de votre profil et du mode d’inscription choisi par votre club. Une demande peut nécessiter une validation : vérifiez son statut au lieu de considérer l’ouverture du formulaire comme une inscription confirmée.
 
 ## Retrouver votre musique
+
+```ffd-demo
+audio
+```
 
 1. Ouvrez **Bibliothèque**.
 2. Utilisez la recherche ou les onglets **Tout**, **Danses** et **Favoris**.

@@ -2,6 +2,14 @@
 
 L’administration des utilisateurs et des clubs se fait dans le **back-office web**. L’espace **Admin** de l’app mobile est un autre point d’entrée : il présente notamment la bibliothèque, les compétitions, le scanner et les réglages.
 
+## Le parcours en un regard
+
+```ffd-parcours
+Back-office web | Ouvrir Utilisateurs | Retrouver le compte à administrer.
+Fiche utilisateur | Vérifier le profil et les rôles | Préparer une modification adaptée au besoin.
+Compte et club | Contrôler le rattachement | Vérifier les accès après l’enregistrement.
+```
+
 ## Ouvrir le back-office
 
 1. Ouvrez le [back-office FFD Connect](https://admin.ffd.gabin-simond.fr).

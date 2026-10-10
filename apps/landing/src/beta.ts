@@ -1,8 +1,7 @@
 // Beta install page (beta/index.html). The page is static and complete without
 // JavaScript; this module only routes its CSS through Vite and puts the
-// visitor's platform first.
+// visitor's platform in place, preserving the DOM and keyboard order.
 import './index.css';
-import './legal.css';
 import './beta.css';
 
 type Platform = 'ios' | 'android' | 'desktop';
@@ -23,6 +22,6 @@ if (platform === 'desktop') {
   document.querySelector<HTMLElement>('[data-desktop-hint]')?.removeAttribute('hidden');
 } else {
   document
-    .querySelector<HTMLElement>(`.beta__card[data-platform="${platform}"] [data-badge]`)
+    .querySelector<HTMLElement>(`.beta-card[data-platform="${platform}"] [data-badge]`)
     ?.removeAttribute('hidden');
 }

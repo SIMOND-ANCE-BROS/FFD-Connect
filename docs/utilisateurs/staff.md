@@ -2,6 +2,14 @@
 
 Ce guide accompagne les personnes qui interviennent à l’accueil. L’espace **Staff** donne accès aux compétitions, au scanner et aux réglages. Les espaces Club et Admin proposent également le scanner, mais les autorisations dépendent de la compétition concernée.
 
+## Le parcours en un regard
+
+```ffd-parcours
+Réglages | Choisir votre espace habilité | Vérifier l’accès au scanner avant le jour J.
+Scanner | Présenter le QR à la caméra | Déclencher la lecture de la licence.
+Résultat du contrôle | Lire le message affiché | Distinguer validation, doublon et refus.
+```
+
 ## Préparer votre accès
 
 1. Vérifiez que vous utilisez la version de bêta prévue par l’organisation.

@@ -130,3 +130,25 @@ it('keeps audience directories and article navigation separate', () => {
     );
   }
 });
+
+it('renders safe, static journey cards and opt-in examples from Markdown', () => {
+  const doc = {
+    ...userGuide,
+    markdown:
+      '# Guide\n\n```ffd-parcours\nRéglages | Choisir Club | Voir ses onglets\n<svg onload=alert(1)> | Lire | Continuer\n```\n\n```ffd-demo\nlicence\n```',
+  };
+  const { html } = renderMarkdown(doc, [doc], '/FFD-Connect/');
+  expect(html).toContain('aria-label="Le parcours en un regard"');
+  expect(html).toContain('Choisir Club');
+  expect(html).not.toContain('<svg');
+  expect(html).toContain('&lt;svg');
+  expect(html).toContain('<details class="guide-demo" data-guide-demo="licence">');
+  expect(html).not.toContain('<iframe');
+  expect(html).not.toContain('<script');
+  expect(() =>
+    renderMarkdown({ ...doc, markdown: '```ffd-demo\nunknown\n```' }, [doc], '/'),
+  ).toThrow('Unknown ffd-demo');
+  expect(() =>
+    renderMarkdown({ ...doc, markdown: '```ffd-parcours\nIncomplete\n```' }, [doc], '/'),
+  ).toThrow('requires Screen');
+});
