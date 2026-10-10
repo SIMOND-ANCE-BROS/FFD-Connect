@@ -43,6 +43,11 @@ export const router = createBrowserRouter([
         // Lazy: keeps @mantine/charts and recharts out of the main bundle.
         lazy: () => import('./pages/StatsPage').then((m) => ({ Component: m.StatsPage })),
       },
+      {
+        path: 'usage',
+        // Lazy: shares the charts chunk with /stats, out of the main bundle.
+        lazy: () => import('./pages/UsagePage').then((m) => ({ Component: m.UsagePage })),
+      },
     ],
   },
   { path: '*', element: <Navigate to="/users" replace /> },

@@ -1,5 +1,9 @@
 import {
+  addIsoDays,
+  addIsoMonths,
+  parisDateOf,
   parisMidnightInDays,
+  parisMidnightOf,
   statsWindow,
   zeroFill,
   zeroFillCount,
@@ -97,5 +101,28 @@ describe("zeroFill", () => {
       { start: "2026-07-06", count: 4 },
       { start: "2026-07-13", count: 0 },
     ]);
+  });
+});
+
+describe("Paris day helpers", () => {
+  it("parisDateOf: late UTC evening is the next Paris day", () => {
+    expect(parisDateOf(new Date("2026-07-15T21:59:00Z"))).toBe("2026-07-15");
+    expect(parisDateOf(new Date("2026-07-15T22:30:00Z"))).toBe("2026-07-16");
+    expect(parisDateOf(new Date("2026-01-15T23:30:00Z"))).toBe("2026-01-16");
+  });
+
+  it("parisMidnightOf follows DST", () => {
+    expect(parisMidnightOf("2026-07-16").toISOString()).toBe(
+      "2026-07-15T22:00:00.000Z",
+    );
+    expect(parisMidnightOf("2026-10-26").toISOString()).toBe(
+      "2026-10-25T23:00:00.000Z",
+    );
+  });
+
+  it("adds days and months on ISO dates", () => {
+    expect(addIsoDays("2026-12-31", 1)).toBe("2027-01-01");
+    expect(addIsoDays("2026-03-01", -1)).toBe("2026-02-28");
+    expect(addIsoMonths("2026-10-01", -25)).toBe("2024-09-01");
   });
 });

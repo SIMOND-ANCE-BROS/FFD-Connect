@@ -8,6 +8,7 @@ import {
 import { createLogger } from "../utils/logger";
 import { retryAxios } from "../utils/retry";
 import { wakeBackend } from "../utils/backendWake";
+import { usage } from "./analytics/usage";
 import { refreshSession } from "../api/sessionRefresh";
 import { getAccessToken } from "../api/tokenStore";
 
@@ -63,6 +64,9 @@ api.interceptors.response.use(
       } catch {
         // Ignore logger errors
       }
+    // Lot 5: a successful response proves the backend is awake — the only
+    // moment anonymous usage batches may be sent.
+    usage.onApiSuccess();
     return response;
   },
   async (error: AxiosError) => {

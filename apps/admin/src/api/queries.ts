@@ -8,6 +8,7 @@ import {
   adminControllerListUsers,
   adminControllerReferenceData,
   adminStatsControllerGet,
+  adminUsageControllerGet,
   adminTracksControllerFindOne,
   adminTracksControllerList,
   trackCorrectionsControllerFindOne,
@@ -22,6 +23,7 @@ import type {
   TrackCorrectionsControllerListData,
 } from './generated/types.gen';
 import type { StatsPeriod } from '../lib/stats';
+import type { UsagePeriod, UsageSpace } from '../lib/usage';
 
 export type UsersFilter = NonNullable<AdminControllerListUsersData['query']>;
 export type ClubsFilter = NonNullable<AdminControllerListClubsData['query']>;
@@ -149,6 +151,17 @@ export const statsQuery = (period: StatsPeriod) =>
   queryOptions({
     queryKey: ['admin', 'stats', period],
     queryFn: () => unwrap(adminStatsControllerGet({ query: { period } })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/** Usage is computed on demand: no refetch on focus or reconnect, no retry (lot 5). */
+export const usageQuery = (period: UsagePeriod, space?: UsageSpace) =>
+  queryOptions({
+    queryKey: ['admin', 'usage', period, space ?? 'ALL'],
+    queryFn: () =>
+      unwrap(adminUsageControllerGet({ query: space ? { period, space } : { period } })),
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: false,

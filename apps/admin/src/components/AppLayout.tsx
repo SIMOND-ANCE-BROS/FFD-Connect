@@ -62,6 +62,7 @@ export function AppLayout() {
         />
         <NavLink component={RouterLink} to="/audit-log" label="Journal d'audit" />
         <NavLink component={RouterLink} to="/stats" label="Statistiques" />
+        <NavLink component={RouterLink} to="/usage" label="Usage de l'app" />
       </AppShell.Navbar>
       <AppShell.Main>
         <Outlet />

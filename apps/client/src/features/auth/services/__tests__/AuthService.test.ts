@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import api from "../../../../services/api";
+import { usage } from "../../../../services/analytics/usage";
 import { createLogger } from "../../../../utils/logger";
 import {
   AuthService,
@@ -949,6 +950,23 @@ describe("AuthService — multi-role", () => {
       roles: ["LICENSEE"],
       mainRole: "LICENSEE",
     };
+
+    it("persists the store-review flag and marks the usage context", async () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify(loggedIn),
+      );
+      const next = await AuthService.syncRolesFromProfile({
+        email: "a@x.fr",
+        role: "LICENSEE",
+        roles: ["LICENSEE"],
+        isStoreReview: true,
+      });
+      expect(lastSaved()).toMatchObject({ isStoreReview: true });
+      expect(usage.contextFromConfig(next)).toEqual({
+        space: "LICENSEE",
+        storeReview: true,
+      });
+    });
 
     it("adds a role granted meanwhile and keeps the current space", async () => {
       (AsyncStorage.getItem as jest.Mock).mockResolvedValue(

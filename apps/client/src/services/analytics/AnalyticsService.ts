@@ -1,52 +1,77 @@
 /**
- * Service d'analytics produit.
- * En __DEV__ : log en console. En prod : no-op par défaut.
- * Pour activer Firebase Analytics : ajouter @react-native-firebase/analytics
- * et remplacer l'implémentation dans createAnalytics().
+ * Analytics produit. En __DEV__ : log console. Hors dev : mesure d'audience
+ * anonyme (lot 5, `usage.ts`), désactivable dans Réglages.
  */
-
 import type {
   AnalyticsEventName,
   AnalyticsEventParams,
   IAnalytics,
 } from "./types";
+import type { UsageInput } from "./usageRecorder";
 
-function createAnalytics(): IAnalytics {
-  // En prod : activer via EXPO_PUBLIC_ANALYTICS_ENABLED=true (après branchement Firebase)
-  const enabled =
-    !__DEV__ &&
-    typeof process !== "undefined" &&
-    process.env.EXPO_PUBLIC_ANALYTICS_ENABLED === "true";
-  const logToConsole = __DEV__;
-
-  const logEvent = (
-    name: AnalyticsEventName,
-    params?: AnalyticsEventParams,
-  ) => {
-    if (logToConsole) {
-      // eslint-disable-next-line no-console
-      console.log("[Analytics]", name, params ?? {});
-    }
-    if (!enabled) return;
-    // TODO: when adding @react-native-firebase/analytics:
-    // import analytics from '@react-native-firebase/analytics';
-    // analytics().logEvent(name, params as Record<string, unknown>);
-  };
-
-  const logScreenView = (screenName: string, params?: AnalyticsEventParams) => {
-    if (logToConsole) {
-      // eslint-disable-next-line no-console
-      console.log("[Analytics] screen_view", {
-        screen_name: screenName,
-        ...params,
-      });
-    }
-    if (!enabled) return;
-    // TODO: when adding Firebase: analytics().logScreenView({ screen_name: screenName, screen_class: screenName });
-    logEvent("screen_view", { screen_name: screenName, ...params });
-  };
-
-  return { logEvent, logScreenView };
+interface AnalyticsDeps {
+  dev: boolean;
+  now(): Date;
+  record(input: UsageInput): Promise<void>;
 }
 
-export const analytics: IAnalytics = createAnalytics();
+export interface AnalyticsWithScreens extends IAnalytics {
+  /** Closes the screen view in progress (app going to the background); resolves once recorded. */
+  endScreen(): Promise<void>;
+}
+
+export function createAnalytics(deps: AnalyticsDeps): AnalyticsWithScreens {
+  let current: { screen: string; startedAt: Date } | null = null;
+
+  const record = (input: UsageInput): Promise<void> =>
+    deps.record(input).catch(() => undefined);
+
+  const endScreen = (): Promise<void> => {
+    if (!current) return Promise.resolve();
+    const { screen, startedAt } = current;
+    current = null;
+    return record({
+      name: "screen_view",
+      screen,
+      occurredAt: startedAt,
+      durationSec: (deps.now().getTime() - startedAt.getTime()) / 1000,
+    });
+  };
+
+  return {
+    logEvent(name: AnalyticsEventName, params?: AnalyticsEventParams) {
+      if (deps.dev) {
+        // eslint-disable-next-line no-console
+        console.log("[Analytics]", name, params ?? {});
+        return;
+      }
+      const competitionId = params?.competition_id;
+      void record(
+        typeof competitionId === "string" ? { name, competitionId } : { name },
+      );
+    },
+    logScreenView(screenName: string, params?: AnalyticsEventParams) {
+      if (deps.dev) {
+        // eslint-disable-next-line no-console
+        console.log("[Analytics] screen_view", {
+          screen_name: screenName,
+          ...params,
+        });
+        return;
+      }
+      void endScreen();
+      current = { screen: screenName, startedAt: deps.now() };
+    },
+    endScreen,
+  };
+}
+
+export const analytics: AnalyticsWithScreens = createAnalytics({
+  dev: __DEV__,
+  now: () => new Date(),
+  // Lazy: keeps AsyncStorage / react-native out of modules that only log.
+  record: async (input) => {
+    const { usage } = await import("./usage");
+    await usage.recorder.record(input);
+  },
+});

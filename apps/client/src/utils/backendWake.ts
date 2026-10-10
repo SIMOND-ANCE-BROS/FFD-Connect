@@ -190,6 +190,15 @@ export async function warmBackend(): Promise<void> {
 }
 
 /**
+ * The `fetch` that never goes through the wake wrapper. For requests that must
+ * NEVER wake the scale-to-zero backend nor show the overlay (anonymous usage
+ * batches, lot 5).
+ */
+export function rawFetch(): typeof fetch {
+  return realFetch ?? fetch;
+}
+
+/**
  * Installe (une seule fois) un wrapper global de `fetch` qui, sur échec d'une
  * requête vers le backend (erreur réseau ou 502/503/504), réveille le
  * Container App, patiente jusqu'à /health 200, puis rejoue la requête une
