@@ -7,7 +7,7 @@
  *
  * All accounts share the password: TestE2e123!
  * Profiles: test.e2e@ffd.com (LICENSEE), club.e2e@ffd.com (CLUB),
- *           staff@test.com (STAFF), admin.e2e@ffd.com (ADMIN).
+ *           staff.e2e@ffd.com (STAFF), admin.e2e@ffd.com (ADMIN).
  * Guest mode needs no account ("Continuer en tant qu'invité").
  *
  * See the login-* Maestro flows in apps/client/.maestro/ for driving each profile.
@@ -50,7 +50,7 @@ const PROFILES: Profile[] = [
     license: "FFD-E2E-CLUB",
   },
   {
-    email: "staff@test.com",
+    email: "staff.e2e@ffd.com",
     role: UserRole.STAFF,
     firstName: "Test",
     lastName: "Staff",
