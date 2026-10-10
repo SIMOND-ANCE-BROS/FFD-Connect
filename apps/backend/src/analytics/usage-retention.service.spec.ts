@@ -36,20 +36,25 @@ const service = (prisma: unknown) =>
   new UsageRetentionService(prisma as PrismaService);
 
 describe("UsageRetentionService.rollup", () => {
-  it("aggregates every finished day after the last one, up to yesterday", async () => {
+  it("aggregates from the oldest of (day after the last one, the last 7 closed days) to yesterday", async () => {
     const { prisma, tx } = makePrisma(
       { lastDay: new Date("2026-10-07T00:00:00Z") },
       null,
     );
     await expect(service(prisma).rollup(NOW)).resolves.toEqual([
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-05",
+      "2026-10-06",
+      "2026-10-07",
       "2026-10-08",
       "2026-10-09",
     ]);
-    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(7);
     expect(tx.usageDaily.deleteMany).toHaveBeenCalledWith({
       where: { day: new Date("2026-10-08T00:00:00Z") },
     });
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(4); // 2 inserts per day
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(14); // 2 inserts per day
     expect(tx.usageRollupState.upsert).toHaveBeenLastCalledWith({
       where: { id: 1 },
       create: { id: 1, lastDay: new Date("2026-10-09T00:00:00Z") },
@@ -80,13 +85,15 @@ describe("UsageRetentionService.rollup", () => {
     expect(await service(prisma).rollup(NOW)).toHaveLength(120);
   });
 
-  it("nothing to do when yesterday is already aggregated", async () => {
+  it("up to date: still re-rolls the last 7 closed days (events arrive up to 7 days late)", async () => {
     const { prisma } = makePrisma(
       { lastDay: new Date("2026-10-09T00:00:00Z") },
       null,
     );
-    await expect(service(prisma).rollup(NOW)).resolves.toEqual([]);
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    const days = await service(prisma).rollup(NOW);
+    expect(days[0]).toBe("2026-10-03");
+    expect(days).toHaveLength(7);
+    expect(days[6]).toBe("2026-10-09");
   });
 });
 

@@ -16,22 +16,21 @@ interface AnalyticsDeps {
 }
 
 export interface AnalyticsWithScreens extends IAnalytics {
-  /** Closes the screen view in progress (app going to the background). */
-  endScreen(): void;
+  /** Closes the screen view in progress (app going to the background); resolves once recorded. */
+  endScreen(): Promise<void>;
 }
 
 export function createAnalytics(deps: AnalyticsDeps): AnalyticsWithScreens {
   let current: { screen: string; startedAt: Date } | null = null;
 
-  const record = (input: UsageInput) => {
-    void deps.record(input).catch(() => undefined);
-  };
+  const record = (input: UsageInput): Promise<void> =>
+    deps.record(input).catch(() => undefined);
 
-  const endScreen = () => {
-    if (!current) return;
+  const endScreen = (): Promise<void> => {
+    if (!current) return Promise.resolve();
     const { screen, startedAt } = current;
     current = null;
-    record({
+    return record({
       name: "screen_view",
       screen,
       occurredAt: startedAt,
@@ -47,7 +46,7 @@ export function createAnalytics(deps: AnalyticsDeps): AnalyticsWithScreens {
         return;
       }
       const competitionId = params?.competition_id;
-      record(
+      void record(
         typeof competitionId === "string" ? { name, competitionId } : { name },
       );
     },
@@ -60,7 +59,7 @@ export function createAnalytics(deps: AnalyticsDeps): AnalyticsWithScreens {
         });
         return;
       }
-      endScreen();
+      void endScreen();
       current = { screen: screenName, startedAt: deps.now() };
     },
     endScreen,

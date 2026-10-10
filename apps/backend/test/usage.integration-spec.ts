@@ -69,7 +69,15 @@ describe("Usage analytics (integration, real DB)", () => {
     await ev(installA, "2001-07-16T23:30:00Z"); // Paris 2001-07-17 01:30
     await ev(installA, "2001-07-16T21:30:00Z"); // Paris 2001-07-16 23:30
     await ev(installB, "2001-07-16T21:45:00Z", { platform: "android" });
-    expect(await service.rollup(NOW)).toEqual(["2001-07-16", "2001-07-17"]);
+    expect(await service.rollup(NOW)).toEqual([
+      "2001-07-11",
+      "2001-07-12",
+      "2001-07-13",
+      "2001-07-14",
+      "2001-07-15",
+      "2001-07-16",
+      "2001-07-17",
+    ]);
     await prisma.usageRollupState.update({
       where: { id: 1 },
       data: { lastDay: new Date("2001-07-15T00:00:00Z") },

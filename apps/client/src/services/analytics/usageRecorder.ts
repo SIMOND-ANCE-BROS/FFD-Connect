@@ -65,7 +65,12 @@ export const USAGE_LIMITS = {
   buffer: 500,
   batch: 200,
   flushEveryMs: 120_000,
-  backgroundWindowMs: 300_000,
+  // Below Azure Container Apps' default 300 s scale-down cooldown: a send at
+  // the edge could otherwise reach an app that just scaled to zero.
+  backgroundWindowMs: 120_000,
+  // The server refuses events older than 7 days (the whole batch): drop them
+  // a little before, so one stale event never poisons a batch.
+  maxAgeMs: 6.5 * 86_400_000,
   maxDurationSec: 1800,
 } as const;
 
@@ -163,15 +168,19 @@ export function createUsageRecorder(deps: UsageDeps): UsageRecorder {
 
   const flush = () =>
     serial(async () => {
-      const buffer = await readBuffer();
-      if (!buffer.length) return;
+      const stored = await readBuffer();
+      const minTime = deps.now().getTime() - USAGE_LIMITS.maxAgeMs;
+      const buffer = stored.filter((e) => Date.parse(e.occurredAt) >= minTime);
+      if (!buffer.length) {
+        if (stored.length) await writeBuffer([]);
+        return;
+      }
       const batch = buffer.slice(0, USAGE_LIMITS.batch);
       // The 2-minute spacing counts from the attempt: a failing backend is not hammered.
       lastFlushAt = deps.now().getTime();
       const status = await deps.send(batch).catch(() => 0);
-      if ((status >= 200 && status < 300) || status === 400) {
-        await writeBuffer(buffer.slice(batch.length));
-      }
+      const sent = (status >= 200 && status < 300) || status === 400;
+      await writeBuffer(sent ? buffer.slice(batch.length) : buffer);
     });
 
   return {

@@ -49,13 +49,13 @@ describe("AnalyticsService", () => {
       },
     ]);
     advance(10);
-    analytics.endScreen();
+    void analytics.endScreen();
     expect(recorded[1]).toMatchObject({
       name: "screen_view",
       screen: "Competitions",
       durationSec: 10,
     });
-    analytics.endScreen(); // nothing pending
+    void analytics.endScreen(); // nothing pending
     expect(recorded).toHaveLength(2);
   });
 
@@ -64,9 +64,24 @@ describe("AnalyticsService", () => {
     const log = jest.spyOn(console, "log").mockImplementation(() => undefined);
     analytics.logEvent("login", { method: "email" });
     analytics.logScreenView("Home");
-    analytics.endScreen();
+    void analytics.endScreen();
     expect(recorded).toHaveLength(0);
     expect(log).toHaveBeenCalled();
     log.mockRestore();
+  });
+
+  it("endScreen resolves once the closing screen view is recorded", async () => {
+    let done = false;
+    const analytics = createAnalytics({
+      dev: false,
+      now: () => new Date("2026-10-10T08:00:00Z"),
+      record: async () => {
+        await new Promise((r) => setImmediate(r)); // a real storage write
+        done = true;
+      },
+    });
+    analytics.logScreenView("Home");
+    await analytics.endScreen();
+    expect(done).toBe(true);
   });
 });

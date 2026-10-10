@@ -143,18 +143,18 @@ describe("usageRecorder", () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 
-  it("background send only with an API success in the last 5 minutes", async () => {
+  it("background send only with an API success in the last 2 minutes", async () => {
     const { recorder, send, advance } = setup();
     await recorder.record({ name: "login" });
     await recorder.onBackground();
     expect(send).not.toHaveBeenCalled(); // backend may be asleep
     await recorder.onApiSuccess(); // flush #1
     await recorder.record({ name: "login" });
-    advance(4 * 60_000);
-    await recorder.onBackground(); // flush #2
+    advance(90_000);
+    await recorder.onBackground(); // flush #2 (within 2 min of the success)
     await recorder.record({ name: "login" });
-    advance(6 * 60_000);
-    await recorder.onBackground(); // last success 10 min ago: no flush
+    advance(60_000); // 2.5 min since the last success: the app may be scaling down
+    await recorder.onBackground(); // no flush
     expect(send).toHaveBeenCalledTimes(2);
   });
 
@@ -205,5 +205,18 @@ describe("usageRecorder", () => {
     const { recorder, send } = setup();
     await recorder.onApiSuccess();
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("never sends an event the server would reject as too old (it would poison the batch)", async () => {
+    const { recorder, sent, buffer } = setup();
+    await recorder.record({
+      name: "screen_view",
+      screen: "Home",
+      occurredAt: new Date("2026-10-03T20:00:00.000Z"), // ~6.5 days before the clock
+    });
+    await recorder.record({ name: "login" });
+    await recorder.onApiSuccess();
+    expect(sent[0].map((e) => e.name)).toEqual(["login"]);
+    expect(buffer()).toHaveLength(0);
   });
 });

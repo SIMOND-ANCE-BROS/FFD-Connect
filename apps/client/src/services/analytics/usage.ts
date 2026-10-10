@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState, Platform } from "react-native";
 import { APP_VERSION, BACKEND_URL } from "../../config";
+import { rawFetch } from "../../utils/backendWake";
 import {
   createUsageRecorder,
   type UsageContext,
@@ -10,17 +11,27 @@ import {
 
 let context: UsageContext = { space: "GUEST", storeReview: false };
 
-/** Plain fetch: no auth header, outside the axios wake-and-replay interceptor. */
+const SEND_TIMEOUT_MS = 10_000;
+
+/**
+ * Sent with the RAW fetch: the global fetch is wrapped by backendWake, which
+ * would wake the backend and show the overlay on a failure. No auth header.
+ */
 export async function sendUsageBatch(events: UsageRecord[]): Promise<number> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEND_TIMEOUT_MS);
   try {
-    const res = await fetch(`${BACKEND_URL}/analytics/events`, {
+    const res = await rawFetch()(`${BACKEND_URL}/analytics/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ events }),
+      signal: controller.signal,
     });
     return res.status;
   } catch {
     return 0;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -68,12 +79,16 @@ export const usage = {
   onApiSuccess(): void {
     void recorder.onApiSuccess();
   },
-  /** On background: close the pending screen view, then flush if awake. Returns an unsubscribe. */
-  start(onBackground: () => void): () => void {
+  /**
+   * On background: record the closing screen view FIRST, then flush if the
+   * backend is awake. Returns an unsubscribe.
+   */
+  start(onBackground: () => Promise<void> | void): () => void {
     const sub = AppState.addEventListener("change", (status) => {
       if (status !== "background") return;
-      onBackground();
-      void recorder.onBackground();
+      void Promise.resolve(onBackground())
+        .catch(() => undefined)
+        .then(() => recorder.onBackground());
     });
     return () => sub.remove();
   },

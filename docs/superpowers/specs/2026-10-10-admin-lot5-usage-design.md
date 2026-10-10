@@ -15,8 +15,8 @@ Success: on « Usage de l'app », the admin sees the « jour × heure » grid, t
 
 ## 2. Decisions (taken with the user)
 
-| Topic                | Decision                                                                                                                                                   |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Topic                | Decision                                                                                                                                                  |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | « Carte de chaleur » | Days of the week × hours of the day grid (Paris time) + screen ranking. No location data.                                                                 |
 | Anonymity            | Random installation ID generated on the device, renewed every calendar month, never linked to the account. Endpoint unauthenticated.                      |
 | Approach             | First-party: local buffer in the app, batched sending only when the backend is already awake, Postgres storage, dashboard in the back-office.             |
@@ -58,10 +58,11 @@ Success: on « Usage de l'app », the admin sees the « jour × heure » grid, t
 - Buffer in AsyncStorage, at most 500 events; when full, the oldest are dropped.
 - A batch (at most 200 events) is sent with `POST /analytics/events` only:
   - right after any successful API response of the axios instance, at most once every 2 minutes;
-  - when the app goes to the background, if an API response succeeded within the last 5 minutes.
+  - when the app goes to the background, if an API response succeeded within the last 2 minutes (below Azure Container Apps' 300 s scale-down cooldown).
 - Never on a timer, never on app launch by itself, never through `backendWake`: if the backend is asleep, the events wait.
 - On a failed send (network, 5xx, 429), the batch stays in the buffer; a 400 (invalid batch) drops it, to never loop on bad data.
-- The send is a plain request outside the wake-and-replay interceptor.
+- The send uses the raw `fetch` captured by `backendWake` (the global one is wrapped and would wake the backend), with a 10 s timeout.
+- Events older than 6.5 days are dropped before sending: the server refuses a whole batch containing one older than 7 days.
 
 ### 4.4 Opt-out
 
@@ -98,7 +99,7 @@ Success: on « Usage de l'app », the admin sees the « jour × heure » grid, t
 ### 5.3 Rollup and retention job
 
 - `UsageRetentionService`: hourly `@Cron` + one pass at startup (existing pattern), guarded against overlapping runs.
-- Rollup: every finished Paris day after the last aggregated one and up to yesterday is aggregated from `UsageEvent` into `UsageDaily` and `UsageDailyActive`, each day in one transaction that deletes then rewrites that day (idempotent).
+- Rollup: every finished Paris day from the oldest of (the day after the last aggregated one, the last 7 closed days — late events are accepted for 7 days) up to yesterday is aggregated from `UsageEvent` into `UsageDaily` and `UsageDailyActive`, each day in one transaction that deletes then rewrites that day (idempotent).
 - Purge: `UsageEvent` older than 90 days; `UsageDaily` / `UsageDailyActive` older than 25 months. Batched deletes, bounded per run.
 
 ### 5.4 Read API

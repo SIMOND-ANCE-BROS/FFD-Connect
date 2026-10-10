@@ -15,6 +15,8 @@ import {
 
 export const MAX_ROLLUP_DAYS_PER_RUN = 120;
 export const PURGE_BATCH = 10_000;
+/** Days re-aggregated on every pass (intake accepts events up to 7 days old). */
+export const LATE_EVENT_DAYS = 7;
 const DAY_MS = 86_400_000;
 
 const PARIS = Prisma.sql`AT TIME ZONE 'UTC' AT TIME ZONE 'Europe/Paris'`;
@@ -79,7 +81,11 @@ export class UsageRetentionService implements OnModuleInit {
     });
     let first: string;
     if (state) {
-      first = addIsoDays(isoOfDbDate(state.lastDay), 1);
+      // Intake accepts events up to 7 days late: always re-roll the last 7
+      // closed days too (idempotent), so late batches reach the aggregates.
+      const next = addIsoDays(isoOfDbDate(state.lastDay), 1);
+      const lateWindow = addIsoDays(yesterday, -(LATE_EVENT_DAYS - 1));
+      first = next < lateWindow ? next : lateWindow;
     } else {
       const oldest = await this.prisma.usageEvent.findFirst({
         orderBy: { occurredAt: "asc" },
