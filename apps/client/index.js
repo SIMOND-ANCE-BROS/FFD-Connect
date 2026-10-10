@@ -13,7 +13,10 @@ import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 import App from "./App";
 import { registerBackgroundMessageHandler } from "./src/features/settings/services/backgroundMessaging";
-import { beforeScreenshot } from "./src/utils/sentryPrivacy";
+import {
+  sentryIntegrations,
+  sentryPrivacyOptions,
+} from "./src/utils/sentryOptions";
 
 // Crash diagnosis: catch JS errors before they propagate to Hermes uncaught
 // (which causes a SIGABRT with no useful info). Logs full message + stack
@@ -109,27 +112,20 @@ if (sentryDsn && !sentryDisabled && Platform.OS !== "web") {
     release: releaseVersion,
     dist: updateDist,
     tracesSampleRate: 0.1,
-    attachScreenshot: true,
-    // No screenshot for an expected server refusal (#225): the app shows its
-    // text in an alert, which may be health data (refused medical certificate).
-    // Nor while a screen showing health data is mounted (#242,
-    // useSensitiveScreen). attachViewHierarchy stays off (default): it would
-    // carry the on-screen text.
-    beforeScreenshot,
+    // Screenshots only for JS-captured errors, through beforeScreenshot: none
+    // for an expected server refusal (#225), none while a screen showing
+    // health data is mounted (#242). Native crashes get no screenshot (the
+    // native SDKs would not ask beforeScreenshot). See src/utils/sentryOptions.
+    ...sentryPrivacyOptions,
     // Session Replay disabled on iOS 26+ — RNSentryReplayUnmask shadow node
     // hooks the network stack and triggers nw_protocol_ipv6 crashes.
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 0,
     // Strip mobileReplay/Replay integrations even if SDK auto-adds them — the
     // shadow node remains registered in the binary but at least the runtime
-    // listener layer is removed, which is enough on most cases.
-    integrations: (defaults) =>
-      defaults.filter(
-        (i) =>
-          i.name !== "MobileReplay" &&
-          i.name !== "Replay" &&
-          i.name !== "ReactNativeReplay",
-      ),
+    // listener layer is removed, which is enough on most cases. Also adds the
+    // JS screenshot integration that attachScreenshot: false leaves out.
+    integrations: sentryIntegrations,
   });
   // Le SHA git relie un crash au code exact (tags/releases GitHub).
   Sentry.setTag("git_sha", process.env.EXPO_PUBLIC_GIT_SHA || "unknown");
