@@ -551,14 +551,61 @@ describe("useLicenseLogic", () => {
       expect(ffdUser?.season).toBeUndefined();
     });
 
-    it("shows the real date and the season derived from it", async () => {
-      const ffdUser = await loadFfd({
-        number: "12345",
-        validUntil: "2027-08-31T12:00:00.000Z",
+    describe("with a fake clock on 10/10/2026 (season 2026/2027)", () => {
+      beforeEach(() => {
+        // Only Date is faked: timers stay real for waitFor / promises.
+        jest.useFakeTimers({
+          now: new Date(2026, 9, 10, 12, 0),
+          doNotFake: [
+            "nextTick",
+            "setImmediate",
+            "clearImmediate",
+            "setTimeout",
+            "clearTimeout",
+            "setInterval",
+            "clearInterval",
+            "queueMicrotask",
+            "requestAnimationFrame",
+            "cancelAnimationFrame",
+          ],
+        });
       });
-      expect(ffdUser?.validUntil).toBe("31/08/2027");
-      expect(ffdUser?.status).toBeUndefined();
-      expect(ffdUser?.season).toBe("2026/2027");
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it("shows the current season for a valid mid-season expiry (2030-12-31)", async () => {
+        const ffdUser = await loadFfd({
+          number: "12345",
+          validUntil: "2030-12-31T12:00:00.000Z",
+        });
+        expect(ffdUser?.validUntil).toBe("31/12/2030");
+        expect(ffdUser?.status).toBeUndefined();
+        expect(ffdUser?.season).toBe("2026/2027");
+      });
+
+      it("shows the season of the expiry date for an expired licence", async () => {
+        const ffdUser = await loadFfd({
+          number: "12345",
+          validUntil: "2026-08-31T12:00:00.000Z",
+        });
+        expect(ffdUser?.validUntil).toBe("31/08/2026");
+        expect(ffdUser?.season).toBe("2025/2026");
+      });
+
+      it.each(["STAFF", "CLUB"])(
+        "gives the %s card the current season",
+        async (role) => {
+          mockAuthRepository.getAuthConfig.mockResolvedValue({ role });
+          const { result } = await renderHook(() => useLicenseLogic());
+          await waitFor(() => {
+            expect(result.current.state.role).toBe(role);
+          });
+          expect(result.current.state.listItems[0].data?.season).toBe(
+            "2026/2027",
+          );
+        },
+      );
     });
   });
 
@@ -807,7 +854,8 @@ describe("useLicenseLogic", () => {
         ...snapshot,
         ffdUser: {
           ...snapshot.ffdUser,
-          validUntilRaw: "2027-08-31T12:00:00.000Z",
+          // Expired: its season does not depend on today's date.
+          validUntilRaw: "2026-08-31T12:00:00.000Z",
         },
       });
 
@@ -817,12 +865,12 @@ describe("useLicenseLogic", () => {
         expect(
           result.current.state.listItems.find((i) => i.type === "FFD")?.data
             ?.validUntil,
-        ).toBe("31/08/2027");
+        ).toBe("31/08/2026");
       });
       expect(
         result.current.state.listItems.find((i) => i.type === "FFD")?.data
           ?.season,
-      ).toBe("2026/2027");
+      ).toBe("2025/2026");
     });
 
     it("shows nothing when no snapshot belongs to the current account", async () => {

@@ -31,16 +31,25 @@ export function getFfdSeason(date: Date, separator = "/"): string {
 }
 
 /**
- * Season a license is valid for, derived from its expiry date. A date-only ISO
- * string ("2026-08-31") is read as UTC midnight by `Date`, so the season is
- * computed on the UTC calendar date to avoid sliding into the previous day
- * west of Greenwich. Unknown/invalid date ⇒ `undefined` (the card hides it).
+ * Season shown on a license card.
+ *
+ * - Still valid ⇒ the current FFD season. The expiry date is not always a
+ *   season end (beta auto-licences are "now + 365 days", seeded accounts can
+ *   run to 2030-12-31), so deriving the season from it could show a season
+ *   that has not started.
+ * - Expired ⇒ the season of its expiry date (the last season it covered).
+ *   A date-only ISO string ("2026-08-31") is read as UTC midnight by `Date`,
+ *   so that season is computed on the UTC calendar date to avoid sliding into
+ *   the previous day west of Greenwich.
+ * - Unknown/invalid date ⇒ `undefined` (the card hides it).
  */
 export function getLicenseSeason(
   validUntil: string | Date | null | undefined,
+  now: Date = new Date(),
 ): string | undefined {
   const date = parseDate(validUntil);
   if (!date) return undefined;
+  if (date.getTime() >= now.getTime()) return getFfdSeason(now);
   const utcDay = new Date(
     date.getUTCFullYear(),
     date.getUTCMonth(),
@@ -67,6 +76,7 @@ export function formatFfdValidUntil(
  */
 export function ffdValidityFields(
   validUntilRaw: string | null | undefined,
+  now: Date = new Date(),
 ): Pick<LicenseUser, "validUntil" | "validUntilRaw" | "status" | "season"> {
   const validUntil = formatFfdValidUntil(validUntilRaw);
   if (!validUntil) {
@@ -81,6 +91,6 @@ export function ffdValidityFields(
     validUntil,
     validUntilRaw: validUntilRaw ?? undefined,
     status: undefined,
-    season: getLicenseSeason(validUntilRaw),
+    season: getLicenseSeason(validUntilRaw, now),
   };
 }

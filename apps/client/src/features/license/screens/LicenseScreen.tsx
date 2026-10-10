@@ -93,6 +93,13 @@ export const LicenseScreen: React.FC = () => {
   const ffdUser =
     state.listItems.find((item) => item.type === "FFD")?.data ?? null;
   const ffdValidUntilRaw = ffdUser?.validUntilRaw ?? null;
+  // Offline validity dot: neutral without an expiry date (#211) — an unknown
+  // validity is neither "valid" (green) nor "expired" (red).
+  const offlineDotColor = !ffdValidUntilRaw
+    ? currentTheme.textSecondary
+    : computeLicenseExpiry(ffdValidUntilRaw).status !== "expired"
+      ? "#2ecc71"
+      : "#e74c3c";
 
   // Measured height of each wallet card (by list index): sizes the stack,
   // whose cards are absolutely positioned.
@@ -247,15 +254,8 @@ export const LicenseScreen: React.FC = () => {
             testID="license-offline-banner"
           >
             <View
-              style={[
-                offlineStyles.dot,
-                {
-                  backgroundColor:
-                    computeLicenseExpiry(ffdValidUntilRaw).status !== "expired"
-                      ? "#2ecc71"
-                      : "#e74c3c",
-                },
-              ]}
+              testID="license-offline-dot"
+              style={[offlineStyles.dot, { backgroundColor: offlineDotColor }]}
             />
             <AppText variant="caption" color={currentTheme.textSecondary}>
               Hors ligne — licence enregistrée le{" "}

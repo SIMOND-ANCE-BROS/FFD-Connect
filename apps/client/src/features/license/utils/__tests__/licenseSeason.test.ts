@@ -25,17 +25,37 @@ describe("getFfdSeason", () => {
 });
 
 describe("getLicenseSeason", () => {
-  it("derives the season from a date-only expiry (end of season)", () => {
-    expect(getLicenseSeason("2026-08-31")).toBe("2025/2026");
+  const now = new Date(2026, 9, 10, 12, 0); // 10/10/2026 → season 2026/2027
+
+  it("shows the current season for a still-valid mid-season expiry (2030-12-31)", () => {
+    expect(getLicenseSeason("2030-12-31", now)).toBe("2026/2027");
   });
 
-  it("switches season right after the boundary", () => {
-    expect(getLicenseSeason("2026-09-01")).toBe("2026/2027");
+  it("shows the current season for a 'now + 365 days' beta licence", () => {
+    expect(getLicenseSeason("2027-10-10T12:00:00.000Z", now)).toBe("2026/2027");
   });
 
-  it("accepts a full ISO timestamp and a Date", () => {
-    expect(getLicenseSeason("2027-08-31T00:00:00.000Z")).toBe("2026/2027");
-    expect(getLicenseSeason(new Date(Date.UTC(2027, 8, 1)))).toBe("2027/2028");
+  it("shows the season of the expiry date once the licence has expired", () => {
+    expect(getLicenseSeason("2026-08-31", now)).toBe("2025/2026");
+    expect(getLicenseSeason("2025-12-31", now)).toBe("2025/2026");
+  });
+
+  it("puts an expiry on September 1st in the season it opened", () => {
+    const later = new Date(2028, 0, 1);
+    expect(getLicenseSeason("2026-09-01", later)).toBe("2026/2027");
+    expect(getLicenseSeason(new Date(Date.UTC(2027, 7, 31)), later)).toBe(
+      "2026/2027",
+    );
+  });
+
+  it("uses the real clock by default", () => {
+    jest.useFakeTimers({ now: new Date(2027, 8, 2, 9, 0) });
+    try {
+      expect(getLicenseSeason("2030-12-31")).toBe("2027/2028");
+      expect(getLicenseSeason("2027-08-31")).toBe("2026/2027");
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("returns undefined without a usable date — never an invented season", () => {
@@ -58,13 +78,22 @@ describe("formatFfdValidUntil", () => {
 });
 
 describe("ffdValidityFields", () => {
-  it("shows the real date and its season, no status", () => {
-    expect(ffdValidityFields("2027-08-31T12:00:00.000Z")).toEqual({
-      validUntil: "31/08/2027",
-      validUntilRaw: "2027-08-31T12:00:00.000Z",
+  it("shows the real date and the current season while valid, no status", () => {
+    expect(
+      ffdValidityFields("2030-12-31T12:00:00.000Z", new Date(2026, 9, 10)),
+    ).toEqual({
+      validUntil: "31/12/2030",
+      validUntilRaw: "2030-12-31T12:00:00.000Z",
       status: undefined,
       season: "2026/2027",
     });
+  });
+
+  it("shows the expiry season of an expired licence", () => {
+    expect(
+      ffdValidityFields("2026-08-31T12:00:00.000Z", new Date(2026, 9, 10))
+        .season,
+    ).toBe("2025/2026");
   });
 
   it("shows a neutral status and no date nor season when the date is missing", () => {
