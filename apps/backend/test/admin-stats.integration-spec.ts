@@ -5,6 +5,7 @@ import {
   TrackCorrectionStatus,
   UserRole,
 } from "@prisma/client";
+import { AdminStatsQueryService } from "../src/admin/admin-stats.query-service";
 import { statsWindow } from "../src/admin/stats/stats-period";
 import { medianReviewHours, timeSeries } from "../src/admin/stats/stats-series";
 import { PrismaService } from "../src/prisma/prisma.service";
@@ -18,6 +19,7 @@ describe("Admin stats (integration, real DB)", () => {
   let prisma: PrismaService;
   const userIds: string[] = [];
   const trackIds: string[] = [];
+  const clubIds: string[] = [];
 
   beforeAll(async () => {
     const built = await buildServiceModule();
@@ -29,6 +31,8 @@ describe("Admin stats (integration, real DB)", () => {
     await prisma.track.deleteMany({ where: { id: { in: trackIds } } }); // cascades corrections
     await prisma.license.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    await prisma.club.deleteMany({ where: { id: { in: clubIds } } });
+    clubIds.length = 0;
     userIds.length = 0;
     trackIds.length = 0;
   });
@@ -116,5 +120,74 @@ describe("Admin stats (integration, real DB)", () => {
     await expect(
       medianReviewHours(prisma, statsWindow("12w", NOW)),
     ).resolves.toBe(6.5);
+  });
+
+  it("per-club figures follow User.clubId and skip store-review members", async () => {
+    const service = moduleRef.get(AdminStatsQueryService);
+    const club = await prisma.club.create({
+      data: { name: `Stat ${randomUUID()}` },
+    });
+    const other = await prisma.club.create({
+      data: { name: `Stat ${randomUUID()}` },
+    });
+    clubIds.push(club.id, other.id);
+    const today = new Date("2026-07-14T22:00:00Z");
+    const licence = (userId: string, validUntil: Date) =>
+      prisma.license.create({
+        data: {
+          number: randomUUID(),
+          validUntil,
+          category: "Latin",
+          clubName: other.name, // free text points to the other club on purpose
+          userId,
+        },
+      });
+    const a = await user({ clubId: club.id });
+    await licence(a.id, new Date("2027-01-01T00:00:00Z")); // valid
+    const b = await user({
+      clubId: club.id,
+      role: UserRole.LICENSEE,
+      extraRoles: [UserRole.CLUB],
+    });
+    await licence(b.id, new Date("2026-01-01T00:00:00Z")); // expired
+    await user({ clubId: club.id, isStoreReview: true, role: UserRole.CLUB });
+    const figures = await service.clubFigures([club.id, other.id], today);
+    expect(figures.get(club.id)).toEqual({
+      members: 2,
+      clubAccounts: 1,
+      validLicences: 1,
+    });
+    expect(figures.get(other.id)).toEqual({
+      members: 0,
+      clubAccounts: 0,
+      validLicences: 0,
+    });
+  });
+
+  it("licence counts around today (deltas)", async () => {
+    const service = moduleRef.get(AdminStatsQueryService);
+    const now = new Date();
+    const before = (await service.get("12w", now)).licences;
+    const day = 86_400_000;
+    const mk = async (validUntil: Date) => {
+      const u = await user();
+      await prisma.license.create({
+        data: {
+          number: randomUUID(),
+          validUntil,
+          category: "Latin",
+          clubName: "X",
+          userId: u.id,
+        },
+      });
+    };
+    await mk(new Date(now.getTime() + 10 * day)); // valid, within 30 and 60
+    await mk(new Date(now.getTime() + 45 * day)); // valid, within 60 only
+    await mk(new Date(now.getTime() - 2 * day)); // expired
+    const after = (await service.get("12w", now)).licences;
+    expect(after.valid - before.valid).toBe(2);
+    expect(after.expiring30d - before.expiring30d).toBe(1);
+    expect(after.expiring60d - before.expiring60d).toBe(2);
+    expect(after.expired - before.expired).toBe(1);
   });
 });

@@ -8,6 +8,7 @@ import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminController } from "./admin.controller";
 import { AdminReferenceService } from "./admin-reference.service";
+import { AdminStatsQueryService } from "./admin-stats.query-service";
 import { AdminUserAccountsService } from "./admin-user-accounts.service";
 
 @Module({
@@ -17,6 +18,7 @@ import { AdminUserAccountsService } from "./admin-user-accounts.service";
     AdminClubsQueryService,
     AdminClubsService,
     AdminReferenceService,
+    AdminStatsQueryService,
     AdminUserAccountsService,
     AdminUsersQueryService,
     AdminUsersService,
