@@ -4646,3 +4646,29 @@ html[data-motion='ready'] [data-reveal]:not([data-revealed='true']) {
     max-width: calc(100vw - 32px);
   }
 }
+
+.module-availability {
+  margin-block: 20px;
+  padding: 16px 18px;
+  border: 1px solid #cbdfea;
+  border-radius: 10px;
+  background: #f0f7fc;
+}
+.module-availability strong {
+  display: block;
+  font-size: 0.8rem;
+  color: #004481;
+}
+.module-availability p {
+  margin-top: 7px;
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+.module-availability a {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: #004481;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

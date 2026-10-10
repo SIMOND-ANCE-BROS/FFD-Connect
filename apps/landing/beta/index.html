@@ -40,9 +40,15 @@
             Votre saison, votre club, votre musique.<br />Essayez FFD Connect en avant-première et
             aidez-nous à faire évoluer l’application.
           </p>
-          <a class="beta-jump" href="#installation"
-            >Choisir mon téléphone <span aria-hidden="true">↓</span></a
-          >
+          <nav class="beta-quick-start" aria-label="Choisir votre téléphone">
+            <a class="beta-button beta-button-primary" href="#installer-ios"
+              >iPhone / iPad <span aria-hidden="true">↓</span></a
+            >
+            <a class="beta-button beta-button-secondary" href="#installer-android"
+              >Android <span aria-hidden="true">↓</span></a
+            >
+          </nav>
+          <p class="beta-quick-note">Accédez directement aux étapes de votre appareil.</p>
         </div>
         <aside class="beta-pass" aria-label="L’application à installer">
           <div class="beta-pass-top">
@@ -69,7 +75,13 @@
           l’installation.
         </p>
         <div class="beta-platforms">
-          <section class="beta-card" data-platform="ios" aria-labelledby="beta-ios">
+          <section
+            class="beta-card"
+            id="installer-ios"
+            tabindex="-1"
+            data-platform="ios"
+            aria-labelledby="beta-ios"
+          >
             <div class="beta-card-heading">
               <span class="beta-device-icon" aria-hidden="true"
                 ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -129,7 +141,13 @@
               TestFlight déjà installé ? Passez directement à l’invitation.
             </p>
           </section>
-          <section class="beta-card" data-platform="android" aria-labelledby="beta-android">
+          <section
+            class="beta-card"
+            id="installer-android"
+            tabindex="-1"
+            data-platform="android"
+            aria-labelledby="beta-android"
+          >
             <div class="beta-card-heading">
               <span class="beta-device-icon beta-device-android" aria-hidden="true"
                 ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -203,6 +221,19 @@
           </section>
         </div>
       </section>
+
+      <aside class="beta-scope beta-width" aria-label="Ce que vous pouvez tester">
+        <div>
+          <strong>Avant de commencer</strong>
+          <p>
+            Les fonctions accessibles dépendent de votre rôle. La licence affichée et son pass
+            Wallet ne sont pas encore acceptés en compétition pendant la bêta.
+          </p>
+        </div>
+        <a class="beta-inline-link" href="../documentation/utilisateurs/disponibilites/"
+          >Voir les fonctions et leurs limites →</a
+        >
+      </aside>
 
       <section class="beta-after beta-width" aria-labelledby="after-title">
         <div>

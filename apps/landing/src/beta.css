@@ -523,3 +523,71 @@
     scroll-behavior: auto;
   }
 }
+
+/* Direct installation paths remain native anchors, including without JS. */
+.beta-quick-start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+.beta-quick-start .beta-button {
+  min-width: 180px;
+}
+.beta-button-secondary {
+  color: #004481;
+  border-color: #a8c7db;
+  background: #edf5fb;
+}
+.beta-button-secondary:hover {
+  background: #deedf7;
+}
+.beta-quick-note {
+  margin-top: 12px;
+  font-size: 0.8rem;
+}
+.beta-card[id] {
+  scroll-margin-top: 24px;
+}
+.beta-card:target {
+  border-color: #007bbf;
+  box-shadow: 0 0 0 2px #007bbf;
+}
+.beta-card:focus-visible {
+  outline: 3px solid #007bbf;
+  outline-offset: 5px;
+}
+.beta-scope {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 26px;
+  margin-top: 26px;
+  padding: 22px;
+  background: #eef5fa;
+  border-radius: 12px;
+}
+.beta-scope p {
+  font-size: 0.875rem;
+  margin-top: 5px;
+  max-width: 700px;
+}
+.beta-scope a {
+  flex-shrink: 0;
+  max-width: 280px;
+}
+@media (max-width: 650px) {
+  .beta-quick-start {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .beta-quick-start .beta-button {
+    min-width: 0;
+    padding: 13px 12px;
+  }
+  .beta-scope {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
