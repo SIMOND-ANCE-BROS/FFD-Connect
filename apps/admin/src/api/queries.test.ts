@@ -1,4 +1,4 @@
-import { correctionQuery, ensureOk, trackQuery, tracksQuery } from './queries';
+import { correctionQuery, ensureOk, statsQuery, trackQuery, tracksQuery } from './queries';
 
 describe('ensureOk', () => {
   it('resolves on a 204', async () => {
@@ -45,5 +45,16 @@ describe('track queries', () => {
       ...flags,
     });
     expect(tracksQuery({}).refetchInterval).toBeUndefined();
+  });
+});
+
+describe('statsQuery', () => {
+  it('is keyed by period and never wakes the backend on a refocus, a reconnect or a retry', () => {
+    expect(statsQuery('6m')).toMatchObject({
+      queryKey: ['admin', 'stats', '6m'],
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: false,
+    });
   });
 });
