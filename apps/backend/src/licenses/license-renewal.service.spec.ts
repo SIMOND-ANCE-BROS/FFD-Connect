@@ -644,6 +644,46 @@ describe("LicenseRenewalService", () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it("compares the season by Paris day: a stray time on 31/08 still counts as renewed (#238)", async () => {
+      jest.useFakeTimers({ now: new Date("2026-10-10T12:00:00.000Z") });
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+        id: "req-1",
+        userId: "user-1",
+        status: LicenseRenewalStatus.DRAFT,
+        documents: [
+          {
+            id: "doc-1",
+            type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+            filePath: "/path/to/medical.jpg",
+            ocrData: { isApte: true },
+          },
+          {
+            id: "doc-2",
+            type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
+            filePath: "/path/to/license.jpg",
+            ocrData: { licenseNumber: "FFD-123" },
+          },
+        ],
+      });
+      // Stored before the fix with the time of an 08:00 approval: earlier
+      // than the new canonical instant, but the same Paris day.
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: "user-1",
+        license: {
+          number: "FFD-123",
+          validUntil: new Date("2027-08-31T08:00:00.000Z"),
+        },
+      });
+
+      try {
+        await expect(
+          service.submitRenewalRequest("user-1", "req-1"),
+        ).rejects.toThrow("déjà valide pour la prochaine saison");
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it("should auto-approve when all validations pass", async () => {
       const approvedRequest = {
         id: "req-1",
@@ -759,13 +799,26 @@ describe("LicenseRenewalService", () => {
         approvedRequest,
       );
 
-      const result = await service.approveRenewalRequest("req-1");
+      // 22:30 UTC on a summer evening = 00:30 the next day in Paris (#238).
+      jest.useFakeTimers({ now: new Date("2026-08-31T22:30:00.000Z") });
+      let result: unknown;
+      try {
+        result = await service.approveRenewalRequest("req-1");
+      } finally {
+        jest.useRealTimers();
+      }
 
+      // Last instant of 2027-08-31 in Paris: shown 31/08, never 01/09.
+      const seasonEnd = new Date("2027-08-31T21:59:59.999Z");
       expect(result).toEqual(approvedRequest);
       expect(mockPrisma.license.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { userId: "user-1" },
-          create: expect.objectContaining({ number: "FFD-456" }) as unknown,
+          update: expect.objectContaining({ validUntil: seasonEnd }) as unknown,
+          create: expect.objectContaining({
+            number: "FFD-456",
+            validUntil: seasonEnd,
+          }) as unknown,
         }) as unknown,
       );
     });

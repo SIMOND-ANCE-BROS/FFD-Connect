@@ -27,6 +27,7 @@ import {
   adminControllerUpdateUser,
 } from '../api/generated/sdk.gen';
 import type { AdminControllerUpdateUserData, UserRole } from '../api/generated/types.gen';
+import { formatLicenseValidUntil } from '../lib/licenseDate';
 import {
   auditQuery,
   clubOptionsQuery,
@@ -266,8 +267,7 @@ export function UserDetailPage() {
           <Text size="sm">Email : {u.email}</Text>
           <Text size="sm">
             Licence : {u.licenseNumber ?? '—'}
-            {u.licenseValidUntil &&
-              ` (jusqu'au ${dayjs(u.licenseValidUntil).format('DD/MM/YYYY')})`}
+            {u.licenseValidUntil && ` (jusqu'au ${formatLicenseValidUntil(u.licenseValidUntil)})`}
           </Text>
           <Text size="sm">WDSF : {u.wdsfMin ?? '—'}</Text>
           <Text size="sm">Inscription : {dayjs(u.createdAt).format('DD/MM/YYYY')}</Text>

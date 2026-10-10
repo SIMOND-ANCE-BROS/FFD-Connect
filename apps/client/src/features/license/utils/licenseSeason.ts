@@ -58,15 +58,25 @@ export function getLicenseSeason(
   return getFfdSeason(utcDay);
 }
 
+/** Time zone the FFD license validity day is expressed in (backend #238). */
+const FFD_TIME_ZONE = "Europe/Paris";
+
 /**
  * Expiry date as shown on the FFD card ("31/08/2026"), or "" when the server
  * sent none (or an unparseable one): the card then shows a status instead.
+ *
+ * Always the calendar day in Europe/Paris, whatever the phone's time zone:
+ * the backend stores the end of a season as the last instant of August 31 in
+ * Paris (#238), which is already September 1 east of Paris (La Réunion,
+ * Nouvelle-Calédonie…). Same day as the signed QR and the Wallet pass.
  */
 export function formatFfdValidUntil(
   validUntil: string | Date | null | undefined,
 ): string {
   const date = parseDate(validUntil);
-  return date ? date.toLocaleDateString("fr-FR") : "";
+  return date
+    ? date.toLocaleDateString("fr-FR", { timeZone: FFD_TIME_ZONE })
+    : "";
 }
 
 /**

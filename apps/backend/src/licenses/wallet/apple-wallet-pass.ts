@@ -1,5 +1,5 @@
 import { disciplineLabel } from "../../common/competition-level";
-import { LICENSE_QR_TIME_ZONE, toLicenseQrExpiry } from "../qr/license-qr";
+import { parisEndOfDay, toLicenseQrExpiry } from "../qr/license-qr";
 
 /**
  * Content of the Apple Wallet license pass (#162) — pure, no Nest, no I/O.
@@ -75,48 +75,6 @@ export interface BuildApplePassInput {
 /** Stable per license: re-adding the pass replaces the previous one. */
 export function applePassSerialNumber(licenseId: string): string {
   return `ffd-connect-license-${licenseId}`;
-}
-
-const PARIS_PARTS_FORMAT = new Intl.DateTimeFormat("en-US", {
-  timeZone: LICENSE_QR_TIME_ZONE,
-  hourCycle: "h23",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-});
-
-/** Offset of Europe/Paris from UTC at `instant`, in milliseconds. */
-function parisOffsetMs(instant: number): number {
-  const parts = PARIS_PARTS_FORMAT.formatToParts(new Date(instant));
-  const part = (type: Intl.DateTimeFormatPartTypes): number =>
-    Number(parts.find((p) => p.type === type)?.value);
-  const wallClockAsUtc = Date.UTC(
-    part("year"),
-    part("month") - 1,
-    part("day"),
-    part("hour"),
-    part("minute"),
-    part("second"),
-  );
-  return wallClockAsUtc - Math.floor(instant / 1000) * 1000;
-}
-
-/**
- * Instant at which the calendar day `day` (`YYYY-MM-DD`) ends in
- * Europe/Paris, i.e. midnight Paris time of the following day. Same rule as
- * the signed QR: valid until the end of its `exp` day in Paris.
- */
-export function parisEndOfDay(day: string): Date {
-  const [year, month, date] = day.split("-").map(Number);
-  const midnightAsUtc = Date.UTC(year, month - 1, date + 1);
-  // Two passes: the offset at the guessed instant may differ by an hour
-  // around a DST switch.
-  let instant = midnightAsUtc - parisOffsetMs(midnightAsUtc);
-  instant = midnightAsUtc - parisOffsetMs(instant);
-  return new Date(instant);
 }
 
 /** `YYYY-MM-DD` → `DD/MM/YYYY` (French display, no time zone involved). */
