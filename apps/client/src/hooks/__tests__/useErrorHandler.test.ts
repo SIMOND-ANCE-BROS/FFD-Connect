@@ -28,11 +28,13 @@ describe("useErrorHandler", () => {
     alertSpy.mockRestore();
   });
 
-  // #225: a coded server refusal shows its own text to the user, while the
-  // logger (and so Sentry) only gets the error's generic message.
-  it("shows a coded refusal's server text and never logs it", async () => {
+  // #225: a coded server refusal shows its own text to the user, and is an
+  // expected business refusal: never sent to Sentry (logger.error), whose
+  // screenshot could catch the alert. Dev console only, without the text.
+  it("shows a coded refusal's server text and never sends it to Sentry", async () => {
     const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
     const logger = createLogger("test");
+    jest.clearAllMocks();
     const { result } = await renderHook(() => useErrorHandler());
     const error = new HttpError(400, "Bad Request", null, "Upload failed 400", {
       code: "MEDICAL_UNFIT",
@@ -51,14 +53,25 @@ describe("useErrorHandler", () => {
       "Erreur",
       "Certificat refusé (SENTINEL-225)",
     );
-    const logged = (logger.error as jest.Mock).mock.calls as [string, Error][];
-    expect(logged.length).toBeGreaterThan(0);
-    for (const [message, err] of logged) {
-      expect(message).not.toContain("SENTINEL-225");
-      expect(err.message).not.toContain("SENTINEL-225");
-      expect(JSON.stringify(err)).not.toContain("SENTINEL-225");
-    }
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledTimes(1);
+    const debugged = JSON.stringify((logger.debug as jest.Mock).mock.calls);
+    expect(debugged).not.toContain("SENTINEL-225");
+    expect(debugged).not.toContain("MEDICAL_UNFIT");
     alertSpy.mockRestore();
+  });
+
+  it("still sends an uncoded HttpError to Sentry", async () => {
+    const logger = createLogger("test");
+    jest.clearAllMocks();
+    const { result } = await renderHook(() => useErrorHandler());
+    const error = new HttpError(500, "Error");
+
+    await act(() => {
+      result.current.handleError(error, { logError: true });
+    });
+
+    expect(logger.error).toHaveBeenCalledWith("Une erreur est survenue", error);
   });
 
   it("keeps the caller's message for errors without server text", async () => {
