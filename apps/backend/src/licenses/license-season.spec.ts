@@ -2,6 +2,7 @@ import {
   grantedLicenseSeasonEnd,
   grantedLicenseSeasonEndDay,
   isLicenseCoveredForRenewal,
+  renewedLicenseValidUntil,
 } from "./license-season";
 import { parisEndOfDay, toLicenseQrExpiry } from "./qr/license-qr";
 
@@ -33,7 +34,7 @@ describe("license season rule (#250)", () => {
     ["01/09/2027 00:30 Paris", "2027-08-31T22:30:00.000Z", "2028-08-31"],
     ["01/09/2027 midday", "2027-09-01T10:00:00.000Z", "2028-08-31"],
     ["15/12/2027 (December)", "2027-12-15T10:00:00.000Z", "2028-08-31"],
-  ])("a license granted on %s ends on %s", (_label, now, expectedDay) => {
+  ])("a license granted on %s (%s) ends on %s", (_label, now, expectedDay) => {
     const granted = new Date(now);
 
     expect(grantedLicenseSeasonEndDay(granted)).toBe(expectedDay);
@@ -167,5 +168,53 @@ describe("isLicenseCoveredForRenewal (#250)", () => {
     expect(
       isLicenseCoveredForRenewal(new Date(validUntil), new Date(now)),
     ).toBe(expected);
+  });
+});
+
+describe("renewedLicenseValidUntil (#250): never shortens a license", () => {
+  const MARCH_2027 = new Date("2027-03-15T10:00:00.000Z");
+
+  it("grants the season end when there is no license yet", () => {
+    expect(renewedLicenseValidUntil(null, MARCH_2027).toISOString()).toBe(
+      SEASON_END_2027,
+    );
+    expect(renewedLicenseValidUntil(undefined, MARCH_2027).toISOString()).toBe(
+      SEASON_END_2027,
+    );
+  });
+
+  it("extends an expired license to the season end", () => {
+    const expired = new Date("2026-08-31T21:59:59.999Z");
+
+    expect(renewedLicenseValidUntil(expired, MARCH_2027).toISOString()).toBe(
+      SEASON_END_2027,
+    );
+  });
+
+  it("keeps a license that already runs later (2030 stays 2030)", () => {
+    const longRunning = new Date("2030-12-31T22:59:59.999Z");
+
+    expect(renewedLicenseValidUntil(longRunning, MARCH_2027)).toEqual(
+      longRunning,
+    );
+  });
+
+  it("normalises a stray time on the same 31/08 to the last Paris instant", () => {
+    const stray = new Date("2027-08-31T08:00:00.000Z");
+
+    expect(renewedLicenseValidUntil(stray, MARCH_2027).toISOString()).toBe(
+      SEASON_END_2027,
+    );
+  });
+
+  it("defaults to the current clock", () => {
+    jest.useFakeTimers({ now: new Date("2027-07-10T10:00:00.000Z") });
+    try {
+      expect(renewedLicenseValidUntil(null).toISOString()).toBe(
+        SEASON_END_2028,
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

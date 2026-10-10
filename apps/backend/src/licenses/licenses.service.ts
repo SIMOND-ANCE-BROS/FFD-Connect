@@ -6,7 +6,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { OcrService } from "../utils/ocr.service";
 import { licenseBaseSelect } from "../utils/prisma-selects";
-import { grantedLicenseSeasonEnd } from "./license-season";
+import { renewedLicenseValidUntil } from "./license-season";
 import { LicenseQrService } from "./qr/license-qr.service";
 import { AppleWalletPassGenerator } from "./wallet/apple-wallet-pass.generator";
 
@@ -71,7 +71,8 @@ export class LicensesService {
       );
     }
 
-    const seasonEnd = grantedLicenseSeasonEnd();
+    // Never shortens an existing license (#250).
+    const seasonEnd = renewedLicenseValidUntil(user.license?.validUntil);
 
     const licenseNumber =
       ocrData.licenseNumber ??

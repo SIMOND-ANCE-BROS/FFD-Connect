@@ -24,8 +24,8 @@ import {
   medicalCertificatePurgeDueAt,
 } from "./medical-certificate-retention.util";
 import {
-  grantedLicenseSeasonEnd,
   isLicenseCoveredForRenewal,
+  renewedLicenseValidUntil,
 } from "./license-season";
 import { toLicenseQrExpiry } from "./qr/license-qr";
 import {
@@ -319,7 +319,10 @@ export class LicenseRenewalService {
           ?.licenseNumber ?? null)
       : null;
 
-    const seasonEnd = grantedLicenseSeasonEnd();
+    // Never shortens an existing license (#250).
+    const seasonEnd = renewedLicenseValidUntil(
+      request.user.license?.validUntil,
+    );
 
     const licenseNumber =
       ocrLicenseNumber ??

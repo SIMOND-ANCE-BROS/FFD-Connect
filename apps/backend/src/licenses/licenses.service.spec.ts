@@ -213,6 +213,40 @@ describe("LicensesService", () => {
       expect(create.validUntil.toISOString()).toBe("2024-08-31T21:59:59.999Z");
       expect(toLicenseQrExpiry(update.validUntil)).toBe("2024-08-31");
     });
+
+    const renewAt = async (now: string, validUntil?: Date) => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: "1",
+        license: { number: "123", validUntil },
+        clubName: "Club Test",
+      });
+      mockOcr.extractLicenseInfo.mockResolvedValue({ licenseNumber: "123" });
+      jest.useFakeTimers({ now: new Date(now) });
+      try {
+        await service.renewLicense("1", CERT_BUFFER);
+      } finally {
+        jest.useRealTimers();
+      }
+      const calls = mockPrisma.license.upsert.mock.calls as [
+        [{ update: { validUntil: Date }; create: { validUntil: Date } }],
+      ];
+      return calls[0][0];
+    };
+
+    it("covers the next season for a summer validation (July → 31/08 N+1, #250)", async () => {
+      const { update, create } = await renewAt("2027-07-15T10:00:00.000Z");
+
+      expect(update.validUntil.toISOString()).toBe("2028-08-31T21:59:59.999Z");
+      expect(create.validUntil.toISOString()).toBe("2028-08-31T21:59:59.999Z");
+    });
+
+    it("never shortens a license that already runs later (#250)", async () => {
+      const longRunning = new Date("2030-12-31T22:59:59.999Z");
+
+      const { update } = await renewAt("2027-03-15T10:00:00.000Z", longRunning);
+
+      expect(update.validUntil).toEqual(longRunning);
+    });
   });
 
   describe("validateStaffLicense", () => {

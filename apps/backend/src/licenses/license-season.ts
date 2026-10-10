@@ -70,3 +70,19 @@ export function isLicenseCoveredForRenewal(
 ): boolean {
   return toLicenseQrExpiry(validUntil) >= grantedLicenseSeasonEndDay(now);
 }
+
+/**
+ * `validUntil` to store when a license is granted or renewed at `now`: the
+ * season end of {@link grantedLicenseSeasonEnd}, unless the existing license
+ * already runs later — a renewal never shortens a license (#250), e.g. one
+ * granted under the former rule or a seeded long-running one.
+ */
+export function renewedLicenseValidUntil(
+  existingValidUntil: Date | null | undefined,
+  now: Date = new Date(),
+): Date {
+  const seasonEnd = grantedLicenseSeasonEnd(now);
+  if (!existingValidUntil) return seasonEnd;
+  const existing = new Date(existingValidUntil);
+  return existing.getTime() > seasonEnd.getTime() ? existing : seasonEnd;
+}

@@ -852,6 +852,43 @@ describe("LicenseRenewalService", () => {
   });
 
   describe("approveRenewalRequest", () => {
+    it("never shortens a license that already runs later (#250)", async () => {
+      const longRunning = new Date("2030-12-31T22:59:59.999Z");
+      mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue({
+        id: "req-1",
+        userId: "user-1",
+        status: LicenseRenewalStatus.PENDING,
+        documents: [],
+        user: {
+          id: "user-1",
+          category: "Elite",
+          clubName: "CVDS",
+          license: { number: "FFD-456", validUntil: longRunning },
+        },
+      });
+      mockPrisma.license.upsert.mockResolvedValue({ id: "L2" });
+      mockPrisma.licenseRenewalRequest.update.mockResolvedValue({
+        id: "req-1",
+        status: LicenseRenewalStatus.APPROVED,
+        documents: [],
+      });
+
+      jest.useFakeTimers({ now: new Date("2027-03-15T10:00:00.000Z") });
+      try {
+        await service.approveRenewalRequest("req-1");
+      } finally {
+        jest.useRealTimers();
+      }
+
+      expect(mockPrisma.license.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({
+            validUntil: longRunning,
+          }) as unknown,
+        }),
+      );
+    });
+
     it("should throw NotFoundException if request not found", async () => {
       mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue(null);
 
