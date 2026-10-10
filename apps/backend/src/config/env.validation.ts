@@ -200,13 +200,6 @@ class EnvironmentVariables {
   @IsOptional()
   AZURE_SPEECH_RESOURCE_ID?: string;
 
-  // Clé API Gemini (Google AI). N'est plus lue par le module TTS (la réécriture
-  // d'annonce a été retirée : le texte est synthétisé tel quel). Conservée
-  // optionnelle pour ne pas casser les environnements qui la définissent encore.
-  @IsString()
-  @IsOptional()
-  GOOGLE_API_KEY?: string;
-
   // Firebase Service Account (notifications push). Priorité au JSON complet
   // (injecté depuis Key Vault) : sur Azure Container Apps il n'y a pas de
   // système de fichiers où déposer une clé. Le chemin reste en repli pour le
