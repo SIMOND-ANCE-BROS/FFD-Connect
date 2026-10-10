@@ -19,9 +19,13 @@ import {
   competitionLevelsSelect,
   deviceTokenExportSelect,
   licenseBaseSelect,
+  licenseRenewalRequestExportSelect,
   notificationPreferenceExportSelect,
+  seatBookingExportSelect,
+  soloTeamMembershipExportSelect,
   trackCorrectionExportSelect,
 } from "../utils/prisma-selects";
+import { pickRenewalOcrData } from "../licenses/renewal-ocr-data.util";
 import { WdsfService } from "../wdsf/wdsf.service";
 import { resolveWdsfFederation, wdsfNameMatches } from "../wdsf/wdsf.utils";
 import { AccountDeletionService } from "./account-deletion.service";
@@ -424,6 +428,9 @@ export class UsersService {
    * Les appareils enregistrés pour le push apparaissent en métadonnées
    * (plateforme, dates) : la donnée personnelle est déclarée, sans exposer la
    * valeur du token FCM qui permettrait de détourner la livraison.
+   *
+   * Les documents de renouvellement de licence n'exposent que la liste
+   * blanche OCR (`pickRenewalOcrData`), jamais le texte brut ni le fichier.
    */
   async exportMyData(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -432,6 +439,8 @@ export class UsersService {
         ...USER_BASE_SELECT,
         extraRoles: true,
         birthDate: true,
+        nationalRanking: true,
+        lastLoginAt: true,
         license: {
           select: {
             number: true,
@@ -479,6 +488,25 @@ export class UsersService {
           orderBy: { createdAt: "desc" },
           take: 500,
         },
+        // Demandes de renouvellement de licence (#241) : statut, dates et,
+        // par document, type, date de dépôt et données lues — filtrées plus
+        // bas par la liste blanche OCR (jamais le texte brut du certificat
+        // médical). Le fichier et sa référence de stockage restent internes.
+        licenseRenewalRequests: {
+          select: licenseRenewalRequestExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        },
+        soloTeamMemberships: {
+          select: soloTeamMembershipExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        },
+        seatBookings: {
+          select: seatBookingExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 500,
+        },
       },
     });
     if (!user) {
@@ -487,12 +515,22 @@ export class UsersService {
     // Nom des pistes visées par les propositions : filtré comme partout côté
     // non-admin. L'export ne doit pas démasquer une piste modérée (titre
     // masqué ou piste blacklistée) que l'utilisateur a pu cibler.
-    const { trackCorrectionsProposed, ...rest } = user;
+    const { trackCorrectionsProposed, licenseRenewalRequests, ...rest } = user;
     return {
       format: "ffd-connect-export-v1",
       exportedAt: new Date().toISOString(),
       data: {
         ...rest,
+        licenseRenewalRequests: licenseRenewalRequests.map(
+          ({ documents, ...request }) => ({
+            ...request,
+            documents: documents.map((document) => ({
+              type: document.type,
+              createdAt: document.createdAt,
+              ocrData: pickRenewalOcrData(document.type, document.ocrData),
+            })),
+          }),
+        ),
         trackCorrectionsProposed: trackCorrectionsProposed.map(
           ({ track, ...correction }) => ({
             ...correction,

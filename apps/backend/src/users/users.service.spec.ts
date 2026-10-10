@@ -738,13 +738,28 @@ describe("UsersService", () => {
   // -------------------------------------------------------------------------
 
   describe("exportMyData", () => {
+    /** Utilisateur tel que le renvoie le select de l'export (relations mappées). */
+    const makeExportedUser = (overrides: Record<string, unknown> = {}) =>
+      makeUser({
+        trackCorrectionsProposed: [],
+        licenseRenewalRequests: [],
+        ...overrides,
+      });
+
+    const exportSelect = () =>
+      prisma.user.findUnique.mock.calls[0][0]?.select as Record<
+        string,
+        unknown
+      >;
+
     it("retourne les données enveloppées avec format et date d'export", async () => {
-      const exported = makeUser({
+      const exported = makeExportedUser({
         registrations: [],
         partnershipsAsUser1: [],
         partnershipsAsUser2: [],
         notifications: [],
-        trackCorrectionsProposed: [],
+        soloTeamMemberships: [],
+        seatBookings: [],
       });
       prisma.user.findUnique.mockResolvedValue(exported);
 
@@ -756,9 +771,7 @@ describe("UsersService", () => {
     });
 
     it("exporte les rôles supplémentaires de l'utilisateur", async () => {
-      prisma.user.findUnique.mockResolvedValue(
-        makeUser({ trackCorrectionsProposed: [] }),
-      );
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
 
       await service.exportMyData("u1");
 
@@ -769,9 +782,7 @@ describe("UsersService", () => {
     });
 
     it("ne sélectionne jamais le mot de passe ni les tokens", async () => {
-      prisma.user.findUnique.mockResolvedValue(
-        makeUser({ trackCorrectionsProposed: [] }),
-      );
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
 
       await service.exportMyData("u1");
 
@@ -788,9 +799,7 @@ describe("UsersService", () => {
     });
 
     it("exporte les appareils push en métadonnées, jamais la valeur du token", async () => {
-      prisma.user.findUnique.mockResolvedValue(
-        makeUser({ trackCorrectionsProposed: [] }),
-      );
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
 
       await service.exportMyData("u1");
 
@@ -816,9 +825,7 @@ describe("UsersService", () => {
     });
 
     it("exporte les préférences de notification réellement enregistrées", async () => {
-      prisma.user.findUnique.mockResolvedValue(
-        makeUser({ trackCorrectionsProposed: [] }),
-      );
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
 
       await service.exportMyData("u1");
 
@@ -842,9 +849,7 @@ describe("UsersService", () => {
     });
 
     it("exporte les propositions de correction, sans l'identité du relecteur", async () => {
-      prisma.user.findUnique.mockResolvedValue(
-        makeUser({ trackCorrectionsProposed: [] }),
-      );
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
 
       await service.exportMyData("u1");
 
@@ -872,7 +877,7 @@ describe("UsersService", () => {
         track,
       });
       prisma.user.findUnique.mockResolvedValue(
-        makeUser({
+        makeExportedUser({
           trackCorrectionsProposed: [
             correction({
               title: "Vrai titre",
@@ -908,6 +913,164 @@ describe("UsersService", () => {
       ]);
       expect(JSON.stringify(result)).not.toContain("Vrai titre");
       expect(JSON.stringify(result)).not.toContain("Secret");
+    });
+
+    it("sélectionne les demandes de renouvellement bornées, sans référence de fichier", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      await service.exportMyData("u1");
+
+      const renewals = exportSelect().licenseRenewalRequests as {
+        select: {
+          status: boolean;
+          documents: { select: Record<string, unknown> };
+        };
+        take: number;
+      };
+      expect(renewals.take).toBe(100);
+      expect(renewals.select.status).toBe(true);
+      expect(renewals.select.documents.select).toEqual({
+        type: true,
+        ocrData: true,
+        createdAt: true,
+      });
+      // La référence de stockage (nom de blob / chemin) reste interne.
+      expect(renewals.select.documents.select.filePath).toBeUndefined();
+      expect(renewals.select.documents.select.purgeDueAt).toBeUndefined();
+    });
+
+    it("exporte les demandes de renouvellement avec les seules données OCR de la liste blanche", async () => {
+      const submittedAt = new Date("2026-09-01T10:00:00Z");
+      prisma.user.findUnique.mockResolvedValue(
+        makeExportedUser({
+          licenseRenewalRequests: [
+            {
+              status: "PENDING",
+              createdAt: submittedAt,
+              updatedAt: submittedAt,
+              documents: [
+                {
+                  type: "MEDICAL_CERTIFICATE",
+                  createdAt: submittedAt,
+                  ocrData: {
+                    isApte: true,
+                    date: "2026-08-20",
+                    doctorName: "Dr Martin",
+                    rawText: "Certificat : asthme sévère, traitement en cours",
+                  },
+                },
+                {
+                  type: "LICENSE_CERTIFICATE",
+                  createdAt: submittedAt,
+                  ocrData: {
+                    licenseNumber: "12345",
+                    expiryDate: "2027-08-31",
+                    rawText: "texte brut",
+                  },
+                },
+                {
+                  type: "LICENSE_CERTIFICATE",
+                  createdAt: submittedAt,
+                  ocrData: null,
+                },
+              ],
+            },
+          ],
+        }),
+      );
+
+      const result = await service.exportMyData("u1");
+
+      expect(result.data.licenseRenewalRequests).toEqual([
+        {
+          status: "PENDING",
+          createdAt: submittedAt,
+          updatedAt: submittedAt,
+          documents: [
+            {
+              type: "MEDICAL_CERTIFICATE",
+              createdAt: submittedAt,
+              ocrData: {
+                isApte: true,
+                date: "2026-08-20",
+                doctorName: "Dr Martin",
+              },
+            },
+            {
+              type: "LICENSE_CERTIFICATE",
+              createdAt: submittedAt,
+              ocrData: { licenseNumber: "12345", expiryDate: "2027-08-31" },
+            },
+            {
+              type: "LICENSE_CERTIFICATE",
+              createdAt: submittedAt,
+              ocrData: null,
+            },
+          ],
+        },
+      ]);
+      const json = JSON.stringify(result);
+      expect(json).not.toContain("rawText");
+      expect(json).not.toContain("asthme");
+    });
+
+    it("ne sort jamais la référence de fichier d'un document, même si la base la renvoie", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        makeExportedUser({
+          licenseRenewalRequests: [
+            {
+              status: "DRAFT",
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              documents: [
+                {
+                  type: "MEDICAL_CERTIFICATE",
+                  createdAt: new Date(),
+                  ocrData: {},
+                  filePath: "renewals/u1/secret-blob.pdf",
+                },
+              ],
+            },
+          ],
+        }),
+      );
+
+      const result = await service.exportMyData("u1");
+
+      expect(JSON.stringify(result)).not.toContain("secret-blob");
+    });
+
+    it("exporte les équipes solo, les réservations de places et le profil complet", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      await service.exportMyData("u1");
+
+      const select = exportSelect();
+      expect(select.nationalRanking).toBe(true);
+      expect(select.lastLoginAt).toBe(true);
+      const teams = select.soloTeamMemberships as {
+        select: Record<string, unknown>;
+        take: number;
+      };
+      expect(teams.select).toEqual({
+        createdAt: true,
+        team: { select: { name: true, level: true } },
+      });
+      expect(teams.take).toBe(100);
+      const seats = select.seatBookings as {
+        select: Record<string, unknown>;
+        take: number;
+      };
+      expect(seats.select).toEqual({
+        seatLabel: true,
+        status: true,
+        createdAt: true,
+        competition: { select: { title: true, date: true } },
+      });
+      // Référence de paiement externe et identifiant interne : jamais exportés.
+      expect(seats.select.paymentId).toBeUndefined();
+      expect(seats.select.itemId).toBeUndefined();
+      expect(seats.take).toBe(500);
     });
 
     it("rejette en NotFound si l'utilisateur n'existe pas", async () => {
