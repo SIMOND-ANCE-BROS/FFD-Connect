@@ -176,7 +176,7 @@ export class OcrService implements OnModuleInit {
       // non-identifying diagnostics.
       const parsed = this.parseMedicalCertificateText(fullText);
       this.logger.log(
-        `OCR medical: ${fullText.length} chars, isApte=${String(parsed.isApte)}, date=${Boolean(parsed.date)}, doctorName=${Boolean(parsed.doctorName)}`,
+        `OCR medical: ${fullText.length} chars, isApteRead=${parsed.isApte !== undefined}, date=${Boolean(parsed.date)}, doctorName=${Boolean(parsed.doctorName)}`,
       );
       return parsed;
     } catch (error) {

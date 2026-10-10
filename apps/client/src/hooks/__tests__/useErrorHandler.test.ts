@@ -1,5 +1,7 @@
 import { act, renderHook } from "@testing-library/react-native";
 import { Alert } from "react-native";
+import { HttpError } from "../../utils/httpInterceptor";
+import { createLogger } from "../../utils/logger";
 import { useErrorHandler } from "../useErrorHandler";
 
 jest.mock("../../utils/logger", () => {
@@ -23,6 +25,57 @@ describe("useErrorHandler", () => {
     });
 
     expect(alertSpy).toHaveBeenCalledWith("Erreur", "Test Error");
+    alertSpy.mockRestore();
+  });
+
+  // #225: a coded server refusal shows its own text to the user, while the
+  // logger (and so Sentry) only gets the error's generic message.
+  it("shows a coded refusal's server text and never logs it", async () => {
+    const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    const logger = createLogger("test");
+    const { result } = await renderHook(() => useErrorHandler());
+    const error = new HttpError(400, "Bad Request", null, "Upload failed 400", {
+      code: "MEDICAL_UNFIT",
+      userMessage: "Certificat refusé (SENTINEL-225)",
+    });
+
+    await act(() => {
+      result.current.handleError(error, {
+        userMessage: "Le dépôt du document a échoué",
+        showAlert: true,
+        logError: true,
+      });
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      "Erreur",
+      "Certificat refusé (SENTINEL-225)",
+    );
+    const logged = (logger.error as jest.Mock).mock.calls as [string, Error][];
+    expect(logged.length).toBeGreaterThan(0);
+    for (const [message, err] of logged) {
+      expect(message).not.toContain("SENTINEL-225");
+      expect(err.message).not.toContain("SENTINEL-225");
+      expect(JSON.stringify(err)).not.toContain("SENTINEL-225");
+    }
+    alertSpy.mockRestore();
+  });
+
+  it("keeps the caller's message for errors without server text", async () => {
+    const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    const { result } = await renderHook(() => useErrorHandler());
+
+    await act(() => {
+      result.current.handleError(new HttpError(500, "Error"), {
+        userMessage: "Le dépôt du document a échoué",
+        showAlert: true,
+      });
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      "Erreur",
+      "Le dépôt du document a échoué",
+    );
     alertSpy.mockRestore();
   });
 

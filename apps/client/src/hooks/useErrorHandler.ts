@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { Alert } from "react-native";
+import { HttpError } from "../utils/httpInterceptor";
 import { createLogger } from "../utils/logger";
 
 const logger = createLogger("useErrorHandler");
@@ -71,8 +72,13 @@ export const useErrorHandler = () => {
       }
 
       // Affiche une alerte si demandé
+      // A coded server refusal (#225) carries a text written for the user
+      // (e.g. why a medical certificate was refused): it is more useful than
+      // the generic message, and only ever shown, never logged.
       if (showAlert) {
-        Alert.alert("Erreur", userMessage ?? errorObj.message);
+        const serverText =
+          errorObj instanceof HttpError ? errorObj.userMessage : undefined;
+        Alert.alert("Erreur", serverText ?? userMessage ?? errorObj.message);
       }
 
       // Appelle le callback personnalisé

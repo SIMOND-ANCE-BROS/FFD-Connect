@@ -11,6 +11,7 @@ import { OcrService } from "../utils/ocr.service";
 import { CodedBadRequestException } from "../common/errors/coded-bad-request.exception";
 import {
   LicenseRenewalService,
+  RENEWAL_DOCUMENT_REJECTED,
   RenewalErrorCode,
 } from "./license-renewal.service";
 
@@ -991,14 +992,17 @@ describe("LicenseRenewalService", () => {
             "Le certificat médical indique que vous n'êtes pas apte à la pratique. Le document ne peut pas être accepté.",
         }),
       );
-      expect(error.message).toBe("MEDICAL_UNFIT");
+      // The logs only see the neutral code: the fine one reveals fitness.
+      expect(error.message).toBe(RENEWAL_DOCUMENT_REJECTED);
+      expect(error.logCode).toBe(RENEWAL_DOCUMENT_REJECTED);
       expect(error.stack).not.toContain("apte");
+      expect(error.stack).not.toContain("MEDICAL_UNFIT");
     });
 
     it("unreadable fitness: MEDICAL_FITNESS_UNCONFIRMED", async () => {
       const error = await uploadMedical({});
       expect(error.code).toBe(RenewalErrorCode.MEDICAL_FITNESS_UNCONFIRMED);
-      expect(error.message).toBe("MEDICAL_FITNESS_UNCONFIRMED");
+      expect(error.message).toBe(RENEWAL_DOCUMENT_REJECTED);
     });
 
     it("certificate too old: the date stays in the user message only", async () => {
@@ -1011,7 +1015,7 @@ describe("LicenseRenewalService", () => {
             "Le certificat médical doit dater de moins de 12 mois. La date détectée (2001-02-03) est trop ancienne.",
         }),
       );
-      expect(error.message).not.toContain("2001-02-03");
+      expect(error.message).toBe(RENEWAL_DOCUMENT_REJECTED);
       expect(error.stack).not.toContain("2001-02-03");
     });
 
@@ -1034,7 +1038,7 @@ describe("LicenseRenewalService", () => {
         service.submitRenewalRequest("user-1", "req-1"),
       ).rejects.toMatchObject({
         code: RenewalErrorCode.MEDICAL_FITNESS_UNCONFIRMED,
-        message: RenewalErrorCode.MEDICAL_FITNESS_UNCONFIRMED,
+        message: RENEWAL_DOCUMENT_REJECTED,
       });
     });
   });

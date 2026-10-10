@@ -1,11 +1,19 @@
 import { BackendService } from "../BackendService";
 import { httpGet, httpPost, httpRequest } from "../../utils/httpInterceptor";
 
-jest.mock("../../utils/httpInterceptor", () => ({
-  httpGet: jest.fn(),
-  httpPost: jest.fn(),
-  httpRequest: jest.fn(),
-}));
+jest.mock("../../utils/httpInterceptor", () => {
+  // The real error builders: upload refusals go through them (#225).
+  const actual = jest.requireActual<
+    typeof import("../../utils/httpInterceptor")
+  >("../../utils/httpInterceptor");
+  return {
+    HttpError: actual.HttpError,
+    httpErrorFromBody: actual.httpErrorFromBody,
+    httpGet: jest.fn(),
+    httpPost: jest.fn(),
+    httpRequest: jest.fn(),
+  };
+});
 
 jest.mock("expo-file-system", () => ({
   downloadAsync: jest.fn(),

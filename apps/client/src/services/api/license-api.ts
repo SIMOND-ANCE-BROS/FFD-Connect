@@ -10,10 +10,31 @@ import {
 } from "../../api/generated";
 import { BACKEND_URL } from "../../config";
 import { ERROR_MESSAGES } from "../../constants/errorMessages";
-import { httpGet, httpPost } from "../../utils/httpInterceptor";
+import {
+  HttpError,
+  type HttpErrorData,
+  httpErrorFromBody,
+  httpGet,
+  httpPost,
+} from "../../utils/httpInterceptor";
 import { createLogger } from "../../utils/logger";
 
 const logger = createLogger("LicenseApi");
+
+/**
+ * Error of a refused renewal-document upload. The server's refusal can be
+ * medical (#225): its text lands in `userMessage` for display, never in the
+ * error's `message`, which is what logs and Sentry read.
+ */
+async function uploadError(response: Response): Promise<HttpError> {
+  const body = (await response.json().catch(() => null)) as HttpErrorData;
+  return httpErrorFromBody(
+    response.status,
+    response.statusText,
+    body,
+    `Upload failed ${response.status}`,
+  );
+}
 
 export type LicenseRenewalStatus =
   | "DRAFT"
@@ -29,15 +50,17 @@ export interface LicenseRenewalDocument {
   requestId: string;
   type: LicenseRenewalDocumentType;
   filePath: string;
+  /**
+   * Fields read on the document, as whitelisted by the server (#224) — the
+   * raw certificate text is never returned.
+   */
   ocrData?: {
     isApte?: boolean;
     date?: string;
     doctorName?: string;
     licenseNumber?: string;
-    name?: string;
     expiryDate?: string;
-    [key: string]: unknown;
-  };
+  } | null;
   createdAt: string;
 }
 
@@ -203,10 +226,7 @@ export const LicenseApi = {
         body: formData,
       });
       if (!response.ok) {
-        const err = (await response.json().catch(() => ({}))) as {
-          message?: string;
-        };
-        throw new Error(err.message ?? `Upload failed ${response.status}`);
+        throw await uploadError(response);
       }
       return response.json() as Promise<LicenseRenewalRequest>;
     }
@@ -225,10 +245,7 @@ export const LicenseApi = {
       body: formData,
     });
     if (!response.ok) {
-      const err = (await response.json().catch(() => ({}))) as {
-        message?: string;
-      };
-      throw new Error(err.message ?? `Upload failed ${response.status}`);
+      throw await uploadError(response);
     }
     return response.json() as Promise<LicenseRenewalRequest>;
   },

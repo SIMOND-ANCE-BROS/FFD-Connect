@@ -306,7 +306,29 @@ describe("HttpExceptionFilter", () => {
       );
     });
 
-    it("also keeps the text out of 5xx logs when a code is set", () => {
+    it("logs the neutral logCode, answers the fine code", () => {
+      filter.catch(
+        new CodedBadRequestException(
+          "MEDICAL_UNFIT",
+          HEALTH_TEXT,
+          "RENEWAL_DOCUMENT_REJECTED",
+        ),
+        mockArgumentsHost,
+      );
+
+      const logged = JSON.stringify(mockLogger.warn.mock.calls);
+      expect(logged).toContain("RENEWAL_DOCUMENT_REJECTED");
+      expect(logged).not.toContain("MEDICAL_UNFIT");
+      expect(logged).not.toContain("SENTINEL-225");
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: HEALTH_TEXT,
+          code: "MEDICAL_UNFIT",
+        }),
+      );
+    });
+
+    it("also keeps the text out of 5xx logs and Sentry when a code is set", () => {
       filter.catch(
         new HttpException(
           { message: HEALTH_TEXT, code: "SOME_CODE" },
@@ -320,7 +342,30 @@ describe("HttpExceptionFilter", () => {
         string,
       ];
       expect(payload.message).toBe("SOME_CODE");
+      // Message, error.message and the stack header: nothing carries the text.
+      expect(JSON.stringify(payload)).not.toContain("SENTINEL-225");
       expect(line).not.toContain("SENTINEL-225");
+      expect(
+        JSON.stringify((Sentry.captureException as jest.Mock).mock.lastCall),
+      ).not.toContain("SENTINEL-225");
+    });
+
+    it("answers and logs the code of a plain HttpException body (WDSF_NAME_MISMATCH)", () => {
+      const text = "Cette licence WDSF n'est pas à votre nom (SENTINEL-WDSF)";
+      filter.catch(
+        new HttpException(
+          { message: text, code: "WDSF_NAME_MISMATCH" },
+          HttpStatus.BAD_REQUEST,
+        ),
+        mockArgumentsHost,
+      );
+
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ message: text, code: "WDSF_NAME_MISMATCH" }),
+      );
+      const logged = JSON.stringify(mockLogger.warn.mock.calls);
+      expect(logged).toContain("WDSF_NAME_MISMATCH");
+      expect(logged).not.toContain("SENTINEL-WDSF");
     });
 
     it("keeps logging the message of uncoded errors", () => {

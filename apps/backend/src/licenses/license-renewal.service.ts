@@ -50,6 +50,13 @@ export const RenewalErrorCode = {
   MEDICAL_CERTIFICATE_TOO_OLD: "MEDICAL_CERTIFICATE_TOO_OLD",
 } as const;
 
+/**
+ * The only code the logs see for any of the refusals above: the fine codes
+ * go to the client, but logged next to a request they would still reveal the
+ * user's fitness.
+ */
+export const RENEWAL_DOCUMENT_REJECTED = "RENEWAL_DOCUMENT_REJECTED";
+
 @Injectable()
 export class LicenseRenewalService {
   constructor(
@@ -123,12 +130,14 @@ export class LicenseRenewalService {
         throw new CodedBadRequestException(
           RenewalErrorCode.MEDICAL_UNFIT,
           "Le certificat médical indique que vous n'êtes pas apte à la pratique. Le document ne peut pas être accepté.",
+          RENEWAL_DOCUMENT_REJECTED,
         );
       }
       if (medical.isApte !== true) {
         throw new CodedBadRequestException(
           RenewalErrorCode.MEDICAL_FITNESS_UNCONFIRMED,
           "Impossible de confirmer l'aptitude sur le certificat médical. Assurez-vous que le document mentionne clairement « apte à la pratique » ou « ne présente pas de contre-indication » et que l'image est lisible.",
+          RENEWAL_DOCUMENT_REJECTED,
         );
       }
       this.assertMedicalCertificateDateValid(medical);
@@ -239,6 +248,7 @@ export class LicenseRenewalService {
       throw new CodedBadRequestException(
         RenewalErrorCode.MEDICAL_FITNESS_UNCONFIRMED,
         "Le certificat médical n'a pas été reconnu comme attestant votre aptitude. Veuillez déposer un document où « apte à la pratique » est clairement lisible.",
+        RENEWAL_DOCUMENT_REJECTED,
       );
     }
     this.assertMedicalCertificateDateValid(medicalOcr);
@@ -357,6 +367,7 @@ export class LicenseRenewalService {
       throw new CodedBadRequestException(
         RenewalErrorCode.MEDICAL_CERTIFICATE_TOO_OLD,
         `Le certificat médical doit dater de moins de ${MEDICAL_CERTIFICATE_MAX_AGE_MONTHS} mois. La date détectée (${dateStr}) est trop ancienne.`,
+        RENEWAL_DOCUMENT_REJECTED,
       );
     }
   }

@@ -585,6 +585,25 @@ describe("OcrService", () => {
       expect(logs).toMatch(/\d+ chars/);
     });
 
+    it("logs whether fitness was read, never the fitness itself", async () => {
+      const medicalLog = async (text: string): Promise<string> => {
+        spies.forEach((spy) => spy.mockClear());
+        mockDetectText.mockResolvedValue(text);
+        await service.extractMedicalCertificateInfo(Buffer.from("img"));
+        return loggedText(spies);
+      };
+
+      // Fit and unfit certificates log the same line: fitness was read.
+      const fit = await medicalLog("Le patient est apte à la danse");
+      const unfit = await medicalLog("Le patient est inapte à la danse");
+      expect(fit).toContain("isApteRead=true");
+      expect(unfit).toContain("isApteRead=true");
+      expect(unfit).not.toContain("isApteRead=false");
+      expect(await medicalLog("Certificat illisible")).toContain(
+        "isApteRead=false",
+      );
+    });
+
     it("does not log the licence certificate text, only diagnostics", async () => {
       mockDetectText.mockResolvedValue(
         `${SENTINEL} Licence N° 98765432 ${SENTINEL} Jean Dupont valable jusqu'au 31/12/2026`,
