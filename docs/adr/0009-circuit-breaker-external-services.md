@@ -4,7 +4,7 @@
 **Status**: accepted
 **Deciders**: Gabin Simond
 
-> **Note (2026-10)** : la liste des services ci-dessous est historique. GenAI (Gemini, `@google/genai`) a été retiré du backend (#216) et Google Vision/TTS ont migré vers Azure AI (#658). La décision reste valable.
+> **Note (2026-10)** : la liste des services ci-dessous est historique. GenAI (Gemini, `@google/genai`) a été retiré du backend (#216) et Google Vision/TTS ont migré vers Azure AI. La décision reste valable.
 
 ## Context
 
