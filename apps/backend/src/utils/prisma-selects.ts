@@ -318,6 +318,49 @@ export const licenseRenewalRequestResponseSelect = {
   documents: { select: licenseRenewalDocumentResponseSelect },
 } as const;
 
+/**
+ * Export RGPD (art. 15/20) d'un document de renouvellement : type, date de
+ * dépôt et données lues. `ocrData` est lu pour être filtré par
+ * `pickRenewalOcrData` (liste blanche, jamais `rawText`) avant de sortir. La
+ * référence de stockage (`filePath`) et l'échéance de purge restent internes.
+ */
+export const licenseRenewalDocumentExportSelect = {
+  type: true,
+  ocrData: true,
+  createdAt: true,
+} as const;
+
+/**
+ * Export RGPD (art. 15/20) des demandes de renouvellement de licence. Comme
+ * pour la réponse API, les documents ne sont pas bornés : au plus un par type.
+ */
+export const licenseRenewalRequestExportSelect = {
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  documents: {
+    select: licenseRenewalDocumentExportSelect,
+    orderBy: { createdAt: "asc" },
+  },
+} as const;
+
+/** Export RGPD : appartenance aux équipes solo du club (nom, niveau, date). */
+export const soloTeamMembershipExportSelect = {
+  createdAt: true,
+  team: { select: { name: true, level: true } },
+} as const;
+
+/**
+ * Export RGPD : réservations de places. La référence de paiement externe
+ * (HelloAsso) et l'identifiant de l'emplacement dans le plan restent internes.
+ */
+export const seatBookingExportSelect = {
+  seatLabel: true,
+  status: true,
+  createdAt: true,
+  competition: { select: { title: true, date: true } },
+} as const;
+
 /** Dépôt d'un document : statut de la demande + fichiers déjà déposés. */
 export const licenseRenewalUploadTargetSelect = {
   status: true,

@@ -303,7 +303,7 @@ export class UsersController {
   @ApiOperation({
     summary: "Export RGPD des données personnelles (portabilité)",
     description:
-      "Retourne toutes les données personnelles de l'utilisateur connecté (profil, licence, inscriptions, partenariats, notifications) en un seul JSON — droit à la portabilité, RGPD art. 20. Ne contient jamais de secrets ni de données de tiers.",
+      "Retourne toutes les données personnelles de l'utilisateur connecté (profil, licence, demandes de renouvellement de licence, inscriptions, partenariats, équipes solo, réservations de places, notifications, appareils, préférences, propositions de correction) en un seul JSON — droit à la portabilité, RGPD art. 20. Ne contient jamais de secrets ni de données de tiers.",
   })
   @ApiResponse({
     status: 200,

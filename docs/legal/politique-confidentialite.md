@@ -150,7 +150,7 @@ Conformément au RGPD, vous disposez des droits d'**accès**, de **rectification
 
 Pour exercer ces droits : privacy@gabin-simond.fr. Une réponse vous sera apportée sous un mois.
 
-L'application permet d'exercer directement l'accès/portabilité (export de vos données) et l'effacement (suppression du compte). L'export liste vos appareils enregistrés pour les notifications sous forme de métadonnées (plateforme, dates) : la valeur du jeton lui-même n'y figure pas, car sa divulgation permettrait de détourner la livraison de vos notifications vers un autre compte.
+L'application permet d'exercer directement l'accès/portabilité (export de vos données) et l'effacement (suppression du compte). L'export liste vos appareils enregistrés pour les notifications sous forme de métadonnées (plateforme, dates) : la valeur du jeton lui-même n'y figure pas, car sa divulgation permettrait de détourner la livraison de vos notifications vers un autre compte. Il comprend aussi vos demandes de renouvellement de licence : leur statut, leurs dates et, pour chaque document déposé, son type, sa date de dépôt et les seules informations lues sur le document (aptitude, date et médecin pour le certificat médical ; numéro et échéance pour l'attestation de licence). Le fichier lui-même n'y est pas joint.
 
 Vous pouvez également introduire une réclamation auprès de la **CNIL** (www.cnil.fr).
 
