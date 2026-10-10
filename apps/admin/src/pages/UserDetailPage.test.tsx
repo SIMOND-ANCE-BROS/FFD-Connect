@@ -374,6 +374,87 @@ describe('UserDetailPage', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin', 'users'] });
   });
 
+  describe('store-review account', () => {
+    beforeEach(() => {
+      vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+        data: { ...detail, isStoreReview: true },
+        error: undefined,
+      } as never);
+    });
+
+    it('flags the account and keeps the edit form', async () => {
+      renderPage();
+      expect(
+        await screen.findByText('Compte de validation App Store / Google Play'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /enregistrer/i })).toBeEnabled();
+    });
+
+    it('explains instead of deleting', async () => {
+      const remove = vi.spyOn(sdk, 'adminControllerDeleteUser');
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent(
+        'Ce compte est utilisé pour les validations App Store / Google Play : il ne peut pas être supprimé.',
+      );
+      expect(within(dialog).queryByLabelText(/recopiez l'email/i)).toBeNull();
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Compris' }));
+      expect(remove).not.toHaveBeenCalled();
+    });
+
+    it('explains instead of disabling', async () => {
+      const setStatus = vi.spyOn(sdk, 'adminControllerSetUserStatus');
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Désactiver' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent(/il ne peut pas être désactivé/);
+      expect(within(dialog).queryByRole('button', { name: 'Désactiver' })).toBeNull();
+      expect(setStatus).not.toHaveBeenCalled();
+    });
+
+    it('still lets a disabled store-review account be reactivated', async () => {
+      vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+        data: { ...detail, isStoreReview: true, disabledAt: '2026-10-01T10:00:00.000Z' },
+        error: undefined,
+      } as never);
+      const setStatus = vi.spyOn(sdk, 'adminControllerSetUserStatus').mockResolvedValue({
+        data: { ...detail, isStoreReview: true },
+        error: undefined,
+      } as never);
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Réactiver' }));
+      await userEvent.click(
+        within(await screen.findByRole('dialog')).getByRole('button', { name: 'Réactiver' }),
+      );
+      expect(setStatus).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { active: true } });
+    });
+
+    it('shows the store-review message when the API refuses a deletion with a bare 403', async () => {
+      vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+        data: { ...detail, isStoreReview: false },
+        error: undefined,
+      } as never);
+      vi.spyOn(sdk, 'adminControllerDeleteUser').mockResolvedValue({
+        data: undefined,
+        error: {
+          statusCode: 403,
+          message:
+            'Ce compte est utilisé pour les validations App Store / Google Play : il ne peut pas être supprimé.',
+        },
+        response: new Response(null, { status: 403 }),
+      } as never);
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.type(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Supprimer définitivement' }),
+      );
+      expect(await within(dialog).findByText(/il ne peut pas être supprimé/)).toBeInTheDocument();
+    });
+  });
+
   it('saves extra roles after the confirmation', async () => {
     const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
       data: { ...detail, extraRoles: ['CLUB'], roles: ['LICENSEE', 'CLUB'] },

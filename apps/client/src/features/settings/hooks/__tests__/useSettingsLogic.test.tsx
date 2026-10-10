@@ -175,6 +175,52 @@ describe("useSettingsLogic", () => {
     });
   });
 
+  describe("store-review flag from the profile", () => {
+    // Keep the later suites on the default (unresolved) profile.
+    afterEach(() => {
+      mockAuth.getProfile.mockReset();
+      mockAuth.syncRolesFromProfile.mockReset();
+    });
+
+    it("is unknown until the profile loads", async () => {
+      mockAuth.getProfile.mockRejectedValue(new Error("offline"));
+      const { result } = await renderHook(() =>
+        useSettingsLogic({ navigation: mockNavigation }),
+      );
+      await act(async () => {});
+      expect(result.current.state.isStoreReview).toBeNull();
+    });
+
+    it("exposes the store-review account", async () => {
+      mockAuth.getProfile.mockResolvedValue({
+        email: "r@x.fr",
+        role: "ADMIN",
+        roles: ["ADMIN"],
+        isStoreReview: true,
+      });
+      mockAuth.syncRolesFromProfile.mockResolvedValue({ role: "ADMIN" });
+      const { result } = await renderHook(() =>
+        useSettingsLogic({ navigation: mockNavigation }),
+      );
+      await act(async () => {});
+      expect(result.current.state.isStoreReview).toBe(true);
+    });
+
+    it("treats a profile without the flag (older backend) as a regular account", async () => {
+      mockAuth.getProfile.mockResolvedValue({
+        email: "a@x.fr",
+        role: "ADMIN",
+        roles: ["ADMIN"],
+      });
+      mockAuth.syncRolesFromProfile.mockResolvedValue({ role: "ADMIN" });
+      const { result } = await renderHook(() =>
+        useSettingsLogic({ navigation: mockNavigation }),
+      );
+      await act(async () => {});
+      expect(result.current.state.isStoreReview).toBe(false);
+    });
+  });
+
   describe("Happy Path", () => {
     it("initializes and loads settings", async () => {
       const { result } = await renderHook(() =>

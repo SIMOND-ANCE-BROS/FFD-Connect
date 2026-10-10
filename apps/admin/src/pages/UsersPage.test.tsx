@@ -136,6 +136,20 @@ describe('UsersPage', () => {
     expect(within(other).queryByText('Désactivé')).toBeNull();
   });
 
+  it('badges the store-review account', async () => {
+    const p = page(2);
+    const [a, b] = p.data.data;
+    vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue({
+      ...p,
+      data: { ...p.data, data: [{ ...a, isStoreReview: true }, b] },
+    } as never);
+    renderPage();
+    const row = (await screen.findByText('jeanne@x.fr')).closest('tr') as HTMLElement;
+    expect(within(row).getByText('Validation stores')).toBeInTheDocument();
+    const other = screen.getByText('paul@x.fr').closest('tr') as HTMLElement;
+    expect(within(other).queryByText('Validation stores')).toBeNull();
+  });
+
   it('filters on the status, from the first page', async () => {
     const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(1) as never);
     renderPage();

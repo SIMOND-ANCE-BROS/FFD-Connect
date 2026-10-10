@@ -65,6 +65,13 @@ export const useSettingsLogic = ({
     null,
   );
 
+  /**
+   * Store-review account (#212), read from /users/me. null until the profile
+   * is known: impersonation stays hidden until then, the API refuses it to
+   * that account anyway.
+   */
+  const [isStoreReview, setIsStoreReview] = useState<boolean | null>(null);
+
   // UI State
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [changePasswordModalVisible, setChangePasswordModalVisible] =
@@ -111,6 +118,7 @@ export const useSettingsLogic = ({
       // Check license expiry
       try {
         const profile = await auth.getProfile();
+        setIsStoreReview(profile.isStoreReview === true);
         // Same /users/me response, no extra request: picks up a role changed
         // in the back-office without a re-login.
         try {
@@ -355,6 +363,7 @@ export const useSettingsLogic = ({
       changePasswordModalVisible,
       BiometryTypes,
       licenseExpiryDays,
+      isStoreReview,
     },
     actions: {
       setReportModalVisible,

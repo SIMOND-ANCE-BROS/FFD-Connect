@@ -156,6 +156,29 @@ describe('ClubDetailPage', () => {
     expect(await screen.findByRole('dialog')).toHaveTextContent('Désactiver ce club');
   });
 
+  it('flags the store-review club and explains instead of deleting or disabling', async () => {
+    const remove = vi.spyOn(sdk, 'adminControllerDeleteClub');
+    const setStatus = vi.spyOn(sdk, 'adminControllerSetClubStatus');
+    renderPage({ ...busy, isStoreReview: true });
+    expect(
+      await screen.findByText('Compte de validation App Store / Google Play'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeEnabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer le club' }));
+    let dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(
+      'Ce club est utilisé pour les validations App Store / Google Play : il ne peut pas être supprimé.',
+    );
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Compris' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'Désactiver le club' }));
+    dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(/il ne peut pas être désactivé/);
+    expect(remove).not.toHaveBeenCalled();
+    expect(setStatus).not.toHaveBeenCalled();
+  });
+
   it('deletes an empty club after a confirmation and returns to the list', async () => {
     const remove = vi.spyOn(sdk, 'adminControllerDeleteClub').mockResolvedValue({
       data: undefined,

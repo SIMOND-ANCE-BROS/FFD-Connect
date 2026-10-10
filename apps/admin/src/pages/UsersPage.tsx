@@ -20,6 +20,7 @@ import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { UserRole } from '../api/generated/types.gen';
+import { StoreReviewBadge } from '../components/StoreReview';
 import { apiErrorMessage } from '../lib/apiError';
 import { disciplineOptions, formatDiscipline } from '../lib/discipline';
 import {
@@ -166,6 +167,7 @@ export function UsersPage() {
                         Désactivé
                       </Badge>
                     )}
+                    {u.isStoreReview && <StoreReviewBadge />}
                   </Table.Td>
                   <Table.Td>{u.email}</Table.Td>
                   <Table.Td>
