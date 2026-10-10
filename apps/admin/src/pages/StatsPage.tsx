@@ -216,6 +216,7 @@ function StatsContent({ s }: { s: AdminStatsDto }) {
             label="Approuvées sur la période"
             value={rateLabel(t.correctionsApproved, t.correctionsApproved + t.correctionsRejected)}
           />
+          <Figure label="Refusées sur la période" value={t.correctionsRejected} />
           <Figure label="Délai médian de traitement" value={durationLabel(t.medianReviewHours)} />
         </SimpleGrid>
         <Chart title="Propositions de correction" summary={sum(t.corrections, 'propositions')}>

@@ -114,6 +114,8 @@ describe('StatsPage', () => {
     expect(screen.getByText('42')).toBeInTheDocument();
     expect(screen.getByText('75 % (3 / 4)')).toBeInTheDocument();
     expect(screen.getByText('6,5 h')).toBeInTheDocument();
+    const rejected = screen.getByText('Refusées sur la période').closest('div') as HTMLElement;
+    expect(within(rejected).getByText('2')).toBeInTheDocument();
     expect(screen.getByText('12 inscriptions sur la période')).toBeInTheDocument();
     const table = screen.getByRole('table');
     expect(within(table).getByRole('link', { name: 'Club Un' })).toHaveAttribute(
