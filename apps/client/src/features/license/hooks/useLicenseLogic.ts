@@ -42,6 +42,26 @@ function isNetworkFailure(err: unknown): boolean {
   );
 }
 
+/**
+ * Account a STAFF/CLUB holder belongs to: the session username, distinct
+ * during an impersonation so the admin's own name never leaks into it.
+ */
+function accountOwnerKey(config: AuthConfig): string {
+  return `${config.impersonating ? "impersonating:" : ""}${config.username ?? ""}`;
+}
+
+/** Holder names of a same-owner offline snapshot (#234). */
+function snapshotHolder(
+  ffdUser: LicenseUser,
+): Pick<AccountHolder, "firstName" | "lastName" | "birthDate"> {
+  return {
+    firstName: ffdUser.firstName,
+    lastName: ffdUser.lastName,
+    // Already formatted ("15/05/1990"), or "--/--/----" when unknown.
+    birthDate: ffdUser.birthDate,
+  };
+}
+
 interface LicenseLogicState {
   loadingPdf: boolean;
   showQr: boolean;
@@ -192,12 +212,13 @@ export const useLicenseLogic = (): {
           config && !config.impersonating
             ? await loadLicenseSnapshot(config.username)
             : null;
-        if (snapshot) {
+        if (config && snapshot) {
           // Same account (owner check above): its last known name.
+          const owner = accountOwnerKey(config);
           setAccountHolder((previous) => ({
             ...previous,
-            firstName: snapshot.ffdUser.firstName,
-            lastName: snapshot.ffdUser.lastName,
+            owner,
+            ...snapshotHolder(snapshot.ffdUser),
           }));
           // Older versions saved an invented "31/08/2026" / "2025/2026" when
           // the license had no date: re-derive from the raw date (#211).
@@ -221,8 +242,33 @@ export const useLicenseLogic = (): {
           setPhotoUri(config.licensePhotoUri ?? null);
           setShowWdsf(config.hasWdsfLicense ?? false);
           setRole(config.role);
-          // Session club name: known before (and without) the profile.
-          setAccountHolder({ clubName: config.clubName ?? null });
+          // Holder of a STAFF/CLUB card (#234): kept across focuses for the
+          // same account (no flicker to the neutral label while the profile
+          // reloads — up to a cold start), reset as soon as the account
+          // changes (logout, impersonation switch).
+          const owner = accountOwnerKey(config);
+          const sessionClubName = config.clubName ?? null;
+          setAccountHolder((previous) =>
+            previous?.owner === owner
+              ? { ...previous, clubName: previous.clubName ?? sessionClubName }
+              : { owner, clubName: sessionClubName },
+          );
+          if (
+            (config.role === "STAFF" || config.role === "CLUB") &&
+            !config.impersonating
+          ) {
+            // Same-owner snapshot: last known name before any network call.
+            const snapshot = await loadLicenseSnapshot(config.username);
+            if (snapshot) {
+              setAccountHolder((previous) =>
+                previous?.owner === owner &&
+                !previous.firstName &&
+                !previous.lastName
+                  ? { ...previous, ...snapshotHolder(snapshot.ffdUser) }
+                  : previous,
+              );
+            }
+          }
 
           // 2. Fetch Real Profile if logged in
           if (config.isLoggedIn && config.role !== "GUEST") {
@@ -235,6 +281,7 @@ export const useLicenseLogic = (): {
             }
             const profile = await auth.getProfile();
             setAccountHolder({
+              owner: accountOwnerKey(config),
               firstName: profile.firstName,
               lastName: profile.lastName,
               clubName: profile.clubName ?? config.clubName ?? null,

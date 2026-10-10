@@ -324,7 +324,10 @@ describe("LicenseCard", () => {
         licenseNumber: "",
       });
 
-      expect(getByText("Danse Passion Nantes")).toBeTruthy();
+      // No trimming normalizer: " Danse Passion Nantes" would not match.
+      expect(
+        getByText("Danse Passion Nantes", { normalizer: (text) => text }),
+      ).toBeTruthy();
     });
   });
 });

@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { AxiosError, AxiosHeaders } from "axios";
 import {
   mockAuthRepository,
@@ -843,6 +844,114 @@ describe("useLicenseLogic", () => {
       });
       expect(result.current.state.listItems[0].data?.firstName).toBe("Marie");
       expect(result.current.state.listItems[0].data?.licenseNumber).toBe("");
+    });
+
+    // Re-runs the screen's focus callback (the mock runs it once, on mount).
+    const refocus = async () => {
+      const calls = (useFocusEffect as jest.Mock).mock.calls;
+      const callback = calls[calls.length - 1][0] as () => void;
+      await act(async () => {
+        callback();
+      });
+    };
+    const pending = () => new Promise<never>(() => {});
+
+    it("keeps the known name across focuses while the profile reloads", async () => {
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "STAFF",
+        isLoggedIn: true,
+        username: "staff@test.com",
+      });
+      mockAuthRepository.getProfile
+        .mockResolvedValueOnce({
+          firstName: "Marie",
+          lastName: "Curie",
+          role: "STAFF",
+        })
+        // Second focus: backend cold start, the profile never answers here.
+        .mockReturnValueOnce(pending());
+      const seen: (string | undefined)[] = [];
+      const { result } = await renderHook(() => {
+        const logic = useLicenseLogic();
+        seen.push(logic.state.listItems[0]?.data?.lastName);
+        return logic;
+      });
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe("Curie");
+      });
+      const known = seen.indexOf("Curie");
+
+      await refocus();
+      await waitFor(() => {
+        expect(mockAuthRepository.getProfile).toHaveBeenCalledTimes(2);
+      });
+      expect(result.current.state.listItems[0].data?.lastName).toBe("Curie");
+      expect(seen.slice(known)).not.toContain(ACCOUNT_NAME_UNKNOWN);
+    });
+
+    it("never keeps the previous account's name after an account switch", async () => {
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "STAFF",
+        isLoggedIn: true,
+        username: "a@test.com",
+      });
+      mockAuthRepository.getProfile
+        .mockResolvedValueOnce({
+          firstName: "Marie",
+          lastName: "Curie",
+          role: "STAFF",
+        })
+        .mockReturnValueOnce(pending());
+      const { result } = await renderHook(() => useLicenseLogic());
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe("Curie");
+      });
+
+      // Impersonation switch: another account, profile not loaded yet.
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "STAFF",
+        isLoggedIn: true,
+        username: "b@test.com",
+        impersonating: true,
+      });
+      await refocus();
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe(
+          ACCOUNT_NAME_UNKNOWN,
+        );
+      });
+      expect(JSON.stringify(result.current.state.listItems)).not.toMatch(
+        /Marie|Curie/,
+      );
+    });
+
+    it("pre-fills the name and birth date from the same-owner snapshot", async () => {
+      mockLoadSnapshot.mockResolvedValueOnce({
+        ffdUser: {
+          firstName: "Marie",
+          lastName: "Curie",
+          licenseNumber: "Non renseigné",
+          birthDate: "15/05/1990",
+          validUntil: "",
+          type: "Athlète",
+        },
+        wdsfUser: null,
+        savedAt: "2026-10-01T10:00:00.000Z",
+      });
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "STAFF",
+        isLoggedIn: true,
+        username: "staff@test.com",
+      });
+      mockAuthRepository.getProfile.mockReturnValueOnce(pending());
+      const { result } = await renderHook(() => useLicenseLogic());
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe("Curie");
+      });
+      expect(mockLoadSnapshot).toHaveBeenCalledWith("staff@test.com");
+      expect(result.current.state.listItems[0].data?.birthDate).toBe(
+        "15/05/1990",
+      );
     });
   });
 

@@ -42,6 +42,17 @@ describe("buildAccountCard (#234)", () => {
     expect(card.birthDate).toBe("");
   });
 
+  it("keeps an already formatted birth date (offline snapshot)", () => {
+    expect(
+      buildAccountCard("STAFF", { lastName: "Curie", birthDate: "15/05/1990" })
+        .birthDate,
+    ).toBe("15/05/1990");
+    expect(
+      buildAccountCard("STAFF", { lastName: "Curie", birthDate: "--/--/----" })
+        .birthDate,
+    ).toBe("");
+  });
+
   it("uses neutral labels when nothing is known", () => {
     expect(buildAccountCard("STAFF", null, NOW)).toMatchObject({
       firstName: "",

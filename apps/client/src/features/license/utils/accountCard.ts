@@ -12,6 +12,8 @@ import { getFfdSeason } from "./licenseSeason";
 
 /** Holder data of the account, as known from the profile (or the session). */
 export interface AccountHolder {
+  /** Account the data belongs to: never shown for another account. */
+  owner?: string;
   firstName?: string | null;
   lastName?: string | null;
   clubName?: string | null;
@@ -27,8 +29,12 @@ export const ACCOUNT_CLUB_UNKNOWN = "Club non communiqué";
 
 const clean = (value: string | null | undefined): string => value?.trim() ?? "";
 
+/** Birth date already formatted for display (offline snapshot). */
+const DISPLAY_DATE = /^\d{2}\/\d{2}\/\d{4}$/;
+
 function formatBirthDate(value: string | null | undefined): string {
   if (!value) return "";
+  if (DISPLAY_DATE.test(value)) return value;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("fr-FR");
 }
