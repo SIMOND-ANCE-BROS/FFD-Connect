@@ -38,6 +38,11 @@ export const router = createBrowserRouter([
       { path: 'tracks/import', element: <TrackImportPage /> },
       { path: 'tracks/:id', element: <TrackDetailPage /> },
       { path: 'audit-log', element: <AuditLogPage /> },
+      {
+        path: 'stats',
+        // Lazy: keeps @mantine/charts and recharts out of the main bundle.
+        lazy: () => import('./pages/StatsPage').then((m) => ({ Component: m.StatsPage })),
+      },
     ],
   },
   { path: '*', element: <Navigate to="/users" replace /> },

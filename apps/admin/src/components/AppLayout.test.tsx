@@ -47,6 +47,7 @@ describe('AppLayout', () => {
     expect(order.indexOf('Musiques')).toBe(order.indexOf('Clubs') + 1);
     expect(screen.getByRole('link', { name: 'Modération' })).toHaveAttribute('href', '/moderation');
     expect(screen.getByRole('link', { name: "Journal d'audit" })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Statistiques' })).toHaveAttribute('href', '/stats');
     expect(screen.queryByText('Nouvel utilisateur')).toBeNull();
     expect(screen.getByText('content')).toBeInTheDocument();
   });
