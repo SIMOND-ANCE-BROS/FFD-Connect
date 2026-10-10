@@ -152,7 +152,6 @@ export class OcrService implements OnModuleInit {
     isApte?: boolean;
     date?: string;
     doctorName?: string;
-    rawText?: string;
   }> {
     if (!this.endpoint) {
       this.logger.log(`[MOCK] OCR medical certificate (${describe(image)})`);
@@ -160,7 +159,6 @@ export class OcrService implements OnModuleInit {
         isApte: true,
         date: new Date().toISOString().slice(0, 10),
         doctorName: "Dr. Mock",
-        rawText: "Certificat médical - Apte - Danse",
       };
     }
 
@@ -171,14 +169,14 @@ export class OcrService implements OnModuleInit {
           withTimeout(this.detectText(image), 15_000, "Vision.read (medical)"),
       );
       if (!fullText) {
-        return { rawText: "" };
+        return {};
       }
       // Never log the extracted text: a medical certificate is health data
       // (GDPR art. 9, #140) and logs escape the certificate purge. Only
       // non-identifying diagnostics.
       const parsed = this.parseMedicalCertificateText(fullText);
       this.logger.log(
-        `OCR medical: ${fullText.length} chars, isApte=${String(parsed.isApte)}, date=${Boolean(parsed.date)}, doctorName=${Boolean(parsed.doctorName)}`,
+        `OCR medical: ${fullText.length} chars, isApteRead=${parsed.isApte !== undefined}, date=${Boolean(parsed.date)}, doctorName=${Boolean(parsed.doctorName)}`,
       );
       return parsed;
     } catch (error) {
@@ -194,7 +192,6 @@ export class OcrService implements OnModuleInit {
     isApte?: boolean;
     date?: string;
     doctorName?: string;
-    rawText?: string;
   } {
     const normalized = text.replace(/\s+/g, " ").toLowerCase();
 
@@ -249,11 +246,8 @@ export class OcrService implements OnModuleInit {
     );
     if (drMatch) doctorName = drMatch[1].trim();
 
-    return {
-      isApte,
-      date,
-      doctorName,
-      rawText: text.slice(0, 500),
-    };
+    // No raw text in the result (#224): it would be persisted with the
+    // renewal document and returned by the API — health data, GDPR art. 9.
+    return { isApte, date, doctorName };
   }
 }

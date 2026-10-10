@@ -13,6 +13,7 @@ import {
   redactSecretsInText,
   redactUrl,
 } from "../logger/redact-url";
+import { errorCodeOf, logCodeOf } from "../errors/coded-bad-request.exception";
 
 /**
  * Filtre global d'exceptions HTTP pour une gestion cohérente des erreurs
@@ -37,6 +38,29 @@ const CONFLICT_DETAIL_KEYS = [
   "existingTrackId",
   "pendingCorrections",
 ] as const;
+
+/**
+ * The logged shape of an error. With a log code, neither the message nor the
+ * stack header ("Name: message", its first line) may carry the original text.
+ */
+function describeError(
+  exception: Error,
+  logCode: string | undefined,
+): { name: string; message: string; stack?: string } {
+  const stack = exception.stack && redactSecretsInText(exception.stack);
+  if (!logCode) {
+    return {
+      name: exception.name,
+      message: redactSecretsInText(exception.message),
+      stack,
+    };
+  }
+  return {
+    name: exception.name,
+    message: logCode,
+    stack: stack?.split("\n").slice(1).join("\n"),
+  };
+}
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -87,6 +111,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
     }
 
+    // Stable error code (#225), answered to the client. When a code is set,
+    // the logs see `logCode` in place of the message: some messages carry
+    // health data (medical unfitness), and for those the fine code itself is
+    // replaced by a neutral one.
+    const code = errorCodeOf(body);
+    const logCode = logCodeOf(exception, body);
+
     // Logging structuré pour le debugging
     const errorResponse = {
       statusCode: status,
@@ -94,6 +125,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       path: safeUrl,
       method: request.method,
       message,
+      ...(code ? { code } : {}),
       ...conflictDetails,
     };
 
@@ -106,12 +138,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
       // vraie erreur serveur et part dans Sentry.
       if (status !== HTTP_STATUS_SERVICE_UNAVAILABLE) {
         Sentry.captureException(
-          exception instanceof Error ? exception : new Error(String(exception)),
+          logCode
+            ? new Error(logCode)
+            : exception instanceof Error
+              ? exception
+              : new Error(String(exception)),
         );
       }
 
       const logMessage =
-        typeof message === "string" ? message : JSON.stringify(message);
+        logCode ??
+        (typeof message === "string" ? message : JSON.stringify(message));
 
       this.logger.error(
         {
@@ -121,12 +158,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
           message: logMessage,
           error:
             exception instanceof Error
-              ? {
-                  name: exception.name,
-                  message: redactSecretsInText(exception.message),
-                  stack:
-                    exception.stack && redactSecretsInText(exception.stack),
-                }
+              ? describeError(exception, logCode)
               : redactSecretsDeep(exception),
           context: "HttpExceptionFilter",
         },
@@ -134,7 +166,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       );
     } else if (status >= 400) {
       const logMessage =
-        typeof message === "string" ? message : JSON.stringify(message);
+        logCode ??
+        (typeof message === "string" ? message : JSON.stringify(message));
 
       this.logger.warn(
         {

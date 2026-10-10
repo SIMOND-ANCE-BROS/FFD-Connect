@@ -10,11 +10,24 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
+import { CodedBadRequestException } from "../common/errors/coded-bad-request.exception";
 import { OcrService } from "../utils/ocr.service";
+import {
+  idOnlySelect,
+  licenseRenewalApprovalTargetSelect,
+  licenseRenewalRequestResponseSelect,
+  licenseRenewalSubmitTargetSelect,
+  licenseRenewalUploadTargetSelect,
+} from "../utils/prisma-selects";
 import {
   MEDICAL_CERTIFICATE_VALIDITY_MONTHS,
   medicalCertificatePurgeDueAt,
 } from "./medical-certificate-retention.util";
+import {
+  pickRenewalOcrData,
+  RenewalOcrData,
+  toRenewalRequestResponse,
+} from "./renewal-ocr-data.util";
 
 /**
  * Âge maximum du certificat médical en mois (règle fédération : certificat
@@ -23,6 +36,26 @@ import {
  * de validité, et deux constantes finiraient par diverger.
  */
 const MEDICAL_CERTIFICATE_MAX_AGE_MONTHS = MEDICAL_CERTIFICATE_VALIDITY_MONTHS;
+
+/**
+ * Stable codes of the refusals whose message is health data (#225). The user
+ * still reads the French message; the logs only ever see the code.
+ */
+export const RenewalErrorCode = {
+  /** The certificate states a contraindication. */
+  MEDICAL_UNFIT: "MEDICAL_UNFIT",
+  /** Fitness could not be read on the certificate. */
+  MEDICAL_FITNESS_UNCONFIRMED: "MEDICAL_FITNESS_UNCONFIRMED",
+  /** The certificate is older than the federation allows (message has its date). */
+  MEDICAL_CERTIFICATE_TOO_OLD: "MEDICAL_CERTIFICATE_TOO_OLD",
+} as const;
+
+/**
+ * The only code the logs see for any of the refusals above: the fine codes
+ * go to the client, but logged next to a request they would still reveal the
+ * user's fitness.
+ */
+export const RENEWAL_DOCUMENT_REJECTED = "RENEWAL_DOCUMENT_REJECTED";
 
 @Injectable()
 export class LicenseRenewalService {
@@ -37,13 +70,14 @@ export class LicenseRenewalService {
   async startRenewalRequest(userId: string) {
     const existing = await this.prisma.licenseRenewalRequest.findFirst({
       where: { userId, status: LicenseRenewalStatus.DRAFT },
-      include: { documents: true },
+      select: licenseRenewalRequestResponseSelect,
     });
-    if (existing) return existing;
-    return this.prisma.licenseRenewalRequest.create({
+    if (existing) return toRenewalRequestResponse(existing);
+    const created = await this.prisma.licenseRenewalRequest.create({
       data: { userId, status: LicenseRenewalStatus.DRAFT },
-      include: { documents: true },
+      select: licenseRenewalRequestResponseSelect,
     });
+    return toRenewalRequestResponse(created);
   }
 
   /** Récupère la demande de renouvellement en cours (brouillon ou soumise) pour l'utilisateur. */
@@ -51,11 +85,9 @@ export class LicenseRenewalService {
     const request = await this.prisma.licenseRenewalRequest.findFirst({
       where: { userId },
       orderBy: { createdAt: "desc" },
-      include: {
-        documents: true,
-      },
+      select: licenseRenewalRequestResponseSelect,
     });
-    return request ?? null;
+    return request ? toRenewalRequestResponse(request) : null;
   }
 
   /**
@@ -75,7 +107,7 @@ export class LicenseRenewalService {
   ) {
     const request = await this.prisma.licenseRenewalRequest.findFirst({
       where: { id: requestId, userId },
-      include: { documents: true },
+      select: licenseRenewalUploadTargetSelect,
     });
     if (!request)
       throw new NotFoundException("Demande de renouvellement non trouvée");
@@ -84,26 +116,37 @@ export class LicenseRenewalService {
         "Seules les demandes en brouillon peuvent recevoir des documents",
       );
 
-    let ocrData: Record<string, unknown> | null = null;
+    // Only the whitelisted fields are kept (#224): the OCR must not be able to
+    // persist raw certificate text, whatever it returns.
+    let ocrData: RenewalOcrData | null = null;
     if (type === LicenseRenewalDocumentType.MEDICAL_CERTIFICATE) {
       const medical =
-        await this.ocrService.extractMedicalCertificateInfo(fileBuffer);
+        pickRenewalOcrData(
+          type,
+          await this.ocrService.extractMedicalCertificateInfo(fileBuffer),
+        ) ?? {};
       ocrData = medical;
-      if (ocrData.isApte === false) {
-        throw new BadRequestException(
+      if (medical.isApte === false) {
+        throw new CodedBadRequestException(
+          RenewalErrorCode.MEDICAL_UNFIT,
           "Le certificat médical indique que vous n'êtes pas apte à la pratique. Le document ne peut pas être accepté.",
+          RENEWAL_DOCUMENT_REJECTED,
         );
       }
-      if (ocrData.isApte !== true) {
-        throw new BadRequestException(
+      if (medical.isApte !== true) {
+        throw new CodedBadRequestException(
+          RenewalErrorCode.MEDICAL_FITNESS_UNCONFIRMED,
           "Impossible de confirmer l'aptitude sur le certificat médical. Assurez-vous que le document mentionne clairement « apte à la pratique » ou « ne présente pas de contre-indication » et que l'image est lisible.",
+          RENEWAL_DOCUMENT_REJECTED,
         );
       }
-      this.assertMedicalCertificateDateValid(ocrData, "upload");
+      this.assertMedicalCertificateDateValid(medical);
     }
     if (type === LicenseRenewalDocumentType.LICENSE_CERTIFICATE) {
-      const licenseInfo = await this.ocrService.extractLicenseInfo(fileBuffer);
-      ocrData = licenseInfo;
+      ocrData = pickRenewalOcrData(
+        type,
+        await this.ocrService.extractLicenseInfo(fileBuffer),
+      );
     }
 
     // L'OCR (et ses validations) ayant réussi, on archive le document dans Blob.
@@ -130,7 +173,7 @@ export class LicenseRenewalService {
             requestId,
             type,
             filePath: storedReference,
-            ocrData: (ocrData as unknown) ?? undefined,
+            ocrData: ocrData ? { ...ocrData } : undefined,
             // Échéance de purge posée À L'ÉCRITURE (#62) : elle se déduit de la
             // date d'émission enfouie dans `ocrData`, que le SQL ne sait pas
             // lire. La stocker permet à la purge de filtrer exactement, au lieu
@@ -162,10 +205,11 @@ export class LicenseRenewalService {
       "document-replaced",
     );
 
-    return this.prisma.licenseRenewalRequest.findUniqueOrThrow({
+    const updated = await this.prisma.licenseRenewalRequest.findUniqueOrThrow({
       where: { id: requestId },
-      include: { documents: true },
+      select: licenseRenewalRequestResponseSelect,
     });
+    return toRenewalRequestResponse(updated);
   }
 
   /**
@@ -176,7 +220,7 @@ export class LicenseRenewalService {
   async submitRenewalRequest(userId: string, requestId: string) {
     const request = await this.prisma.licenseRenewalRequest.findFirst({
       where: { id: requestId, userId },
-      include: { documents: true },
+      select: licenseRenewalSubmitTargetSelect,
     });
     if (!request)
       throw new NotFoundException("Demande de renouvellement non trouvée");
@@ -199,22 +243,21 @@ export class LicenseRenewalService {
         "Le certificat de licence est obligatoire pour soumettre la demande.",
       );
 
-    const medicalOcr = medicalDoc.ocrData as {
-      isApte?: boolean;
-      date?: string;
-    } | null;
+    const medicalOcr = pickRenewalOcrData(medicalDoc.type, medicalDoc.ocrData);
     if (medicalOcr?.isApte !== true) {
-      throw new BadRequestException(
+      throw new CodedBadRequestException(
+        RenewalErrorCode.MEDICAL_FITNESS_UNCONFIRMED,
         "Le certificat médical n'a pas été reconnu comme attestant votre aptitude. Veuillez déposer un document où « apte à la pratique » est clairement lisible.",
+        RENEWAL_DOCUMENT_REJECTED,
       );
     }
-    this.assertMedicalCertificateDateValid(medicalOcr, "submit");
+    this.assertMedicalCertificateDateValid(medicalOcr);
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { license: { select: { number: true, validUntil: true } } },
     });
-    const licenseOcr = licenseDoc.ocrData as { licenseNumber?: string } | null;
+    const licenseOcr = pickRenewalOcrData(licenseDoc.type, licenseDoc.ocrData);
     const hasLicenseNumber =
       Boolean(
         licenseOcr?.licenseNumber && licenseOcr.licenseNumber.length > 0,
@@ -238,6 +281,7 @@ export class LicenseRenewalService {
     await this.prisma.licenseRenewalRequest.update({
       where: { id: requestId },
       data: { status: LicenseRenewalStatus.PENDING, updatedAt: new Date() },
+      select: idOnlySelect,
     });
     return this.approveRenewalRequest(requestId);
   }
@@ -248,10 +292,7 @@ export class LicenseRenewalService {
   async approveRenewalRequest(requestId: string) {
     const request = await this.prisma.licenseRenewalRequest.findUnique({
       where: { id: requestId },
-      include: {
-        documents: true,
-        user: { include: { license: true } },
-      },
+      select: licenseRenewalApprovalTargetSelect,
     });
     if (!request)
       throw new NotFoundException("Demande de renouvellement non trouvée");
@@ -263,14 +304,10 @@ export class LicenseRenewalService {
     const licenseCert = request.documents.find(
       (d) => d.type === LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
     );
-    const ocrLicenseNumber =
-      licenseCert?.ocrData &&
-      typeof licenseCert.ocrData === "object" &&
-      "licenseNumber" in licenseCert.ocrData
-        ? String(
-            (licenseCert.ocrData as { licenseNumber?: string }).licenseNumber,
-          )
-        : null;
+    const ocrLicenseNumber = licenseCert
+      ? (pickRenewalOcrData(licenseCert.type, licenseCert.ocrData)
+          ?.licenseNumber ?? null)
+      : null;
 
     const nextYear = this.getNextSeasonEndDate();
 
@@ -291,11 +328,12 @@ export class LicenseRenewalService {
       },
     });
 
-    return this.prisma.licenseRenewalRequest.update({
+    const approved = await this.prisma.licenseRenewalRequest.update({
       where: { id: requestId },
       data: { status: LicenseRenewalStatus.APPROVED, updatedAt: new Date() },
-      include: { documents: true },
+      select: licenseRenewalRequestResponseSelect,
     });
+    return toRenewalRequestResponse(approved);
   }
 
   /**
@@ -318,11 +356,7 @@ export class LicenseRenewalService {
     return blobName;
   }
 
-  private assertMedicalCertificateDateValid(
-    ocrData: { date?: string },
-    context: "upload" | "submit",
-  ): void {
-    void context;
+  private assertMedicalCertificateDateValid(ocrData: RenewalOcrData): void {
     const dateStr = ocrData.date;
     if (!dateStr) return;
     const certDate = new Date(dateStr);
@@ -330,8 +364,10 @@ export class LicenseRenewalService {
     const limit = new Date();
     limit.setMonth(limit.getMonth() - MEDICAL_CERTIFICATE_MAX_AGE_MONTHS);
     if (certDate < limit) {
-      throw new BadRequestException(
+      throw new CodedBadRequestException(
+        RenewalErrorCode.MEDICAL_CERTIFICATE_TOO_OLD,
         `Le certificat médical doit dater de moins de ${MEDICAL_CERTIFICATE_MAX_AGE_MONTHS} mois. La date détectée (${dateStr}) est trop ancienne.`,
+        RENEWAL_DOCUMENT_REJECTED,
       );
     }
   }

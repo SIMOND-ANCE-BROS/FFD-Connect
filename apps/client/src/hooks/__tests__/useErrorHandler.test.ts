@@ -1,5 +1,7 @@
 import { act, renderHook } from "@testing-library/react-native";
 import { Alert } from "react-native";
+import { HttpError } from "../../utils/httpInterceptor";
+import { createLogger } from "../../utils/logger";
 import { useErrorHandler } from "../useErrorHandler";
 
 jest.mock("../../utils/logger", () => {
@@ -23,6 +25,70 @@ describe("useErrorHandler", () => {
     });
 
     expect(alertSpy).toHaveBeenCalledWith("Erreur", "Test Error");
+    alertSpy.mockRestore();
+  });
+
+  // #225: a coded server refusal shows its own text to the user, and is an
+  // expected business refusal: never sent to Sentry (logger.error), whose
+  // screenshot could catch the alert. Dev console only, without the text.
+  it("shows a coded refusal's server text and never sends it to Sentry", async () => {
+    const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    const logger = createLogger("test");
+    jest.clearAllMocks();
+    const { result } = await renderHook(() => useErrorHandler());
+    const error = new HttpError(400, "Bad Request", null, "Upload failed 400", {
+      code: "MEDICAL_UNFIT",
+      userMessage: "Certificat refusé (SENTINEL-225)",
+    });
+
+    await act(() => {
+      result.current.handleError(error, {
+        userMessage: "Le dépôt du document a échoué",
+        showAlert: true,
+        logError: true,
+      });
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      "Erreur",
+      "Certificat refusé (SENTINEL-225)",
+    );
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledTimes(1);
+    const debugged = JSON.stringify((logger.debug as jest.Mock).mock.calls);
+    expect(debugged).not.toContain("SENTINEL-225");
+    expect(debugged).not.toContain("MEDICAL_UNFIT");
+    alertSpy.mockRestore();
+  });
+
+  it("still sends an uncoded HttpError to Sentry", async () => {
+    const logger = createLogger("test");
+    jest.clearAllMocks();
+    const { result } = await renderHook(() => useErrorHandler());
+    const error = new HttpError(500, "Error");
+
+    await act(() => {
+      result.current.handleError(error, { logError: true });
+    });
+
+    expect(logger.error).toHaveBeenCalledWith("Une erreur est survenue", error);
+  });
+
+  it("keeps the caller's message for errors without server text", async () => {
+    const alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    const { result } = await renderHook(() => useErrorHandler());
+
+    await act(() => {
+      result.current.handleError(new HttpError(500, "Error"), {
+        userMessage: "Le dépôt du document a échoué",
+        showAlert: true,
+      });
+    });
+
+    expect(alertSpy).toHaveBeenCalledWith(
+      "Erreur",
+      "Le dépôt du document a échoué",
+    );
     alertSpy.mockRestore();
   });
 

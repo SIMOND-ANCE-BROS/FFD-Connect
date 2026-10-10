@@ -296,14 +296,14 @@ describe("OcrService", () => {
       const result = await service.extractMedicalCertificateInfo("path");
       expect(result.isApte).toBe(true);
       expect(result.doctorName).toBe("Dr. Mock");
-      expect(result.rawText).toBe("Certificat médical - Apte - Danse");
+      expect(result).not.toHaveProperty("rawText");
       expect(result.date).toBeDefined();
     });
 
-    it("should return empty rawText when no text detected", async () => {
+    it("should return an empty result when no text detected", async () => {
       mockDetectText.mockResolvedValue("");
       const result = await service.extractMedicalCertificateInfo("path");
-      expect(result).toEqual({ rawText: "" });
+      expect(result).toEqual({});
     });
 
     it("should parse a full medical certificate text", async () => {
@@ -314,7 +314,13 @@ describe("OcrService", () => {
       expect(result.isApte).toBe(true);
       expect(result.date).toBe("2026-03-15");
       expect(result.doctorName).toBe("Martin");
-      expect(result.rawText).toBe(fullText);
+      // #224: only parsed fields, never the certificate text itself.
+      expect(Object.keys(result).sort()).toEqual([
+        "date",
+        "doctorName",
+        "isApte",
+      ]);
+      expect(JSON.stringify(result)).not.toContain("soussigné");
     });
 
     it("should return empty on generic error", async () => {
@@ -512,17 +518,13 @@ describe("OcrService", () => {
       });
     });
 
-    describe("rawText truncation", () => {
-      it("should truncate rawText to 500 characters", async () => {
-        const longText = "A".repeat(600);
-        const result = await parseViaOcr(longText);
-        expect(result.rawText).toHaveLength(500);
-      });
-
-      it("should return full rawText when under 500 characters", async () => {
-        const shortText = "Certificat médical court";
-        const result = await parseViaOcr(shortText);
-        expect(result.rawText).toBe(shortText);
+    describe("no raw text in the result (#224)", () => {
+      it("never returns the certificate text, short or long", async () => {
+        for (const text of ["A".repeat(600), "Certificat médical court"]) {
+          const result = await parseViaOcr(text);
+          expect(result).not.toHaveProperty("rawText");
+          expect(JSON.stringify(result)).not.toContain(text);
+        }
       });
     });
 
@@ -534,7 +536,6 @@ describe("OcrService", () => {
         expect(result.isApte).toBe(true);
         expect(result.date).toBe("2026-01-15");
         expect(result.doctorName).toBe("Durand");
-        expect(result.rawText).toBeDefined();
       });
     });
   });
@@ -582,6 +583,25 @@ describe("OcrService", () => {
       expect(logs).not.toContain("01/02/1990");
       expect(logs).toContain("OCR medical:");
       expect(logs).toMatch(/\d+ chars/);
+    });
+
+    it("logs whether fitness was read, never the fitness itself", async () => {
+      const medicalLog = async (text: string): Promise<string> => {
+        spies.forEach((spy) => spy.mockClear());
+        mockDetectText.mockResolvedValue(text);
+        await service.extractMedicalCertificateInfo(Buffer.from("img"));
+        return loggedText(spies);
+      };
+
+      // Fit and unfit certificates log the same line: fitness was read.
+      const fit = await medicalLog("Le patient est apte à la danse");
+      const unfit = await medicalLog("Le patient est inapte à la danse");
+      expect(fit).toContain("isApteRead=true");
+      expect(unfit).toContain("isApteRead=true");
+      expect(unfit).not.toContain("isApteRead=false");
+      expect(await medicalLog("Certificat illisible")).toContain(
+        "isApteRead=false",
+      );
     });
 
     it("does not log the licence certificate text, only diagnostics", async () => {

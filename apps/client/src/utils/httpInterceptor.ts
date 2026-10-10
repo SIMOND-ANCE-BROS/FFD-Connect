@@ -10,18 +10,83 @@ const logger = createLogger("HTTP");
 export type HttpErrorData = Record<string, unknown> | string | null;
 
 /**
+ * Détails d'une erreur serveur « codée » (#225) : un code stable et le texte
+ * rédigé pour l'utilisateur, qui peut contenir des données personnelles
+ * (refus médical d'un certificat).
+ */
+export interface HttpErrorDetails {
+  code?: string;
+  userMessage?: string;
+}
+
+/**
  * Erreur HTTP personnalisée
  */
 export class HttpError extends Error {
+  /** Code stable renvoyé par le serveur, quand il y en a un. */
+  public readonly code?: string;
+  /**
+   * Texte du serveur destiné à l'utilisateur : à AFFICHER, jamais à
+   * journaliser. Non énumérable, comme `code`, pour qu'aucune sérialisation de
+   * l'erreur (logger, Sentry) ne l'emporte.
+   */
+  public readonly userMessage?: string;
+
   constructor(
     public statusCode: number,
     public statusText: string,
     public data?: HttpErrorData,
     message?: string,
+    details: HttpErrorDetails = {},
   ) {
     super(message ?? `HTTP ${statusCode}: ${statusText}`);
     this.name = "HttpError";
+    Object.defineProperty(this, "code", {
+      value: details.code,
+      enumerable: false,
+    });
+    Object.defineProperty(this, "userMessage", {
+      value: details.userMessage,
+      enumerable: false,
+    });
   }
+}
+
+/**
+ * Construit l'HttpError d'une réponse en erreur.
+ *
+ * Un corps « codé » (#225, ex. refus médical d'un certificat) porte un texte
+ * qui peut être une donnée de santé : l'erreur prend alors un message
+ * générique (`fallbackMessage`), seul visible des logs et de Sentry, ne garde
+ * pas le corps dans `data`, et range le code et le texte serveur dans les
+ * champs non énumérables `code` / `userMessage`. Sans code, comportement
+ * historique : le message du serveur devient celui de l'erreur.
+ */
+export function httpErrorFromBody(
+  statusCode: number,
+  statusText: string,
+  body: HttpErrorData,
+  fallbackMessage: string,
+): HttpError {
+  const record = body && typeof body === "object" ? body : null;
+  const code =
+    typeof record?.code === "string" && record.code.length > 0
+      ? record.code
+      : undefined;
+  const serverMessage =
+    typeof record?.message === "string" ? record.message : undefined;
+  if (code) {
+    return new HttpError(statusCode, statusText, null, fallbackMessage, {
+      code,
+      userMessage: serverMessage,
+    });
+  }
+  return new HttpError(
+    statusCode,
+    statusText,
+    body,
+    serverMessage ?? fallbackMessage,
+  );
 }
 
 /**
@@ -153,30 +218,21 @@ export async function httpRequest<T = unknown>(
           errorData = await response.text();
         }
 
-        const serverMessage =
-          errorData &&
-          typeof errorData === "object" &&
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-          typeof (errorData as Record<string, unknown>).message === "string"
-            ? // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-              ((errorData as Record<string, unknown>).message as string)
-            : null;
-        const message =
-          serverMessage ?? errorMessage ?? getErrorMessage(response.status);
-
-        const httpError = new HttpError(
+        const httpError = httpErrorFromBody(
           response.status,
           response.statusText,
           errorData,
-          message,
+          errorMessage ?? getErrorMessage(response.status),
         );
 
+        // Never the response body (#225): it may carry personal or health
+        // data, and these logs reach Sentry with the user's identity. Not
+        // the code either: a fine code (MEDICAL_UNFIT) is health data too.
         if (logErrors && !quietStatuses.includes(response.status)) {
           logger.error(`HTTP ${response.status}: ${response.statusText}`, {
             url,
             status: response.status,
             statusText: response.statusText,
-            data: errorData,
           });
         }
 

@@ -13,6 +13,7 @@ import * as Application from "expo-application";
 import * as Updates from "expo-updates";
 import App from "./App";
 import { registerBackgroundMessageHandler } from "./src/features/settings/services/backgroundMessaging";
+import { beforeScreenshot } from "./src/utils/sentryPrivacy";
 
 // Crash diagnosis: catch JS errors before they propagate to Hermes uncaught
 // (which causes a SIGABRT with no useful info). Logs full message + stack
@@ -109,6 +110,9 @@ if (sentryDsn && !sentryDisabled && Platform.OS !== "web") {
     dist: updateDist,
     tracesSampleRate: 0.1,
     attachScreenshot: true,
+    // No screenshot for an expected server refusal (#225): the app shows its
+    // text in an alert, which may be health data (refused medical certificate).
+    beforeScreenshot,
     // Session Replay disabled on iOS 26+ — RNSentryReplayUnmask shadow node
     // hooks the network stack and triggers nw_protocol_ipv6 crashes.
     replaysSessionSampleRate: 0,
