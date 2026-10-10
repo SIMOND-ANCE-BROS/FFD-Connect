@@ -22,6 +22,12 @@ describe("Analytics intake (e2e)", () => {
 
   beforeAll(async () => {
     prisma = createMockPrismaService();
+    // Boot pass of UsageRetentionService (it never throws; keep its log quiet).
+    prisma.usageRollupState.findUnique.mockResolvedValue(null);
+    prisma.usageEvent.findFirst.mockResolvedValue(null);
+    prisma.usageRollupState.upsert.mockResolvedValue({} as never);
+    prisma.usageDaily.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.usageDailyActive.deleteMany.mockResolvedValue({ count: 0 });
     const moduleRef = await applyE2EOverrides(
       Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(PrismaService)
