@@ -6,7 +6,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { OcrService } from "../utils/ocr.service";
 import { licenseBaseSelect } from "../utils/prisma-selects";
-import { nextLicenseSeasonEnd } from "./license-season";
+import { grantedLicenseSeasonEnd } from "./license-season";
 import { LicenseQrService } from "./qr/license-qr.service";
 import { AppleWalletPassGenerator } from "./wallet/apple-wallet-pass.generator";
 
@@ -71,7 +71,7 @@ export class LicensesService {
       );
     }
 
-    const nextYear = nextLicenseSeasonEnd();
+    const seasonEnd = grantedLicenseSeasonEnd();
 
     const licenseNumber =
       ocrData.licenseNumber ??
@@ -87,13 +87,13 @@ export class LicensesService {
     return this.prisma.license.upsert({
       where: { userId },
       update: {
-        validUntil: nextYear,
+        validUntil: seasonEnd,
         updatedAt: new Date(),
       },
       create: {
         userId,
         number: licenseNumber,
-        validUntil: nextYear,
+        validUntil: seasonEnd,
         category: user.category ?? "Standard",
         clubName: user.clubName,
       },

@@ -678,7 +678,7 @@ describe("LicenseRenewalService", () => {
       try {
         await expect(
           service.submitRenewalRequest("user-1", "req-1"),
-        ).rejects.toThrow("déjà valide pour la prochaine saison");
+        ).rejects.toThrow("déjà valide jusqu'au 31/08/2027");
       } finally {
         jest.useRealTimers();
       }
@@ -744,6 +744,110 @@ describe("LicenseRenewalService", () => {
 
       expect(result).toEqual(approvedRequest);
       expect(mockPrisma.license.upsert).toHaveBeenCalled();
+    });
+
+    // #250: a license ending this August 31 is renewable from July 1 (summer
+    // campaign, renewed until the end of the next season), not before.
+    describe("renewal eligibility by season (#250)", () => {
+      const SEASON_END_2027 = new Date("2027-08-31T21:59:59.999Z");
+      const SEASON_END_2028 = new Date("2028-08-31T21:59:59.999Z");
+
+      const arrangeSubmit = (validUntil: Date) => {
+        const documents = [
+          {
+            id: "doc-1",
+            type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+            filePath: "/path/to/medical.jpg",
+            ocrData: { isApte: true },
+          },
+          {
+            id: "doc-2",
+            type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
+            filePath: "/path/to/license.jpg",
+            ocrData: { licenseNumber: "FFD-123" },
+          },
+        ];
+        const license = { number: "FFD-123", validUntil };
+        mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+          id: "req-1",
+          userId: "user-1",
+          status: LicenseRenewalStatus.DRAFT,
+          documents,
+        });
+        mockPrisma.user.findUnique.mockResolvedValue({ id: "user-1", license });
+        mockPrisma.licenseRenewalRequest.update.mockResolvedValue({
+          id: "req-1",
+          status: LicenseRenewalStatus.APPROVED,
+          documents: [],
+        });
+        mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue({
+          id: "req-1",
+          userId: "user-1",
+          status: LicenseRenewalStatus.PENDING,
+          documents,
+          user: {
+            id: "user-1",
+            category: "Standard",
+            clubName: "Club",
+            license,
+          },
+        });
+        mockPrisma.license.upsert.mockResolvedValue({ id: "L1" });
+      };
+
+      const submitAt = async (now: string) => {
+        jest.useFakeTimers({ now: new Date(now) });
+        try {
+          return await service.submitRenewalRequest("user-1", "req-1");
+        } finally {
+          jest.useRealTimers();
+        }
+      };
+
+      it("refuses in April a license that already runs until this August 31", async () => {
+        arrangeSubmit(SEASON_END_2027);
+
+        await expect(submitAt("2027-04-10T10:00:00.000Z")).rejects.toThrow(
+          "déjà valide jusqu'au 31/08/2027",
+        );
+        expect(mockPrisma.license.upsert).not.toHaveBeenCalled();
+      });
+
+      it("renews it in July (00:30 Paris on July 1, still June 30 in UTC) until the end of the next season", async () => {
+        arrangeSubmit(SEASON_END_2027);
+
+        await submitAt("2027-06-30T22:30:00.000Z");
+
+        expect(mockPrisma.license.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({
+            update: expect.objectContaining({
+              validUntil: SEASON_END_2028,
+            }) as unknown,
+          }),
+        );
+      });
+
+      it("refuses in August a license already renewed for the next season", async () => {
+        arrangeSubmit(SEASON_END_2028);
+
+        await expect(submitAt("2027-08-20T10:00:00.000Z")).rejects.toThrow(
+          "déjà valide jusqu'au 31/08/2028",
+        );
+      });
+
+      it("renews in March an expired license until the end of the current season", async () => {
+        arrangeSubmit(new Date("2026-08-31T21:59:59.999Z"));
+
+        await submitAt("2027-03-15T10:00:00.000Z");
+
+        expect(mockPrisma.license.upsert).toHaveBeenCalledWith(
+          expect.objectContaining({
+            update: expect.objectContaining({
+              validUntil: SEASON_END_2027,
+            }) as unknown,
+          }),
+        );
+      });
     });
   });
 

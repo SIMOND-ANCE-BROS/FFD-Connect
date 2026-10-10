@@ -303,7 +303,8 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
             </AppText>
             <AppText variant="body" style={statusSubtitleStyle}>
               Votre licence a été renouvelée avec succès. Elle est valable
-              jusqu’au 31 août de la prochaine saison.
+              jusqu’au 31 août de la saison en cours, ou de la saison suivante
+              si vous l’avez renouvelée entre le 1er juillet et le 31 août.
             </AppText>
           </View>
         )}

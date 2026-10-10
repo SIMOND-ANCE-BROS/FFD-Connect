@@ -24,8 +24,8 @@ import {
   medicalCertificatePurgeDueAt,
 } from "./medical-certificate-retention.util";
 import {
-  nextLicenseSeasonEnd,
-  nextLicenseSeasonEndDay,
+  grantedLicenseSeasonEnd,
+  isLicenseCoveredForRenewal,
 } from "./license-season";
 import { toLicenseQrExpiry } from "./qr/license-qr";
 import {
@@ -273,15 +273,18 @@ export class LicenseRenewalService {
       );
     }
 
-    // Compared as Paris calendar days (#238): a license stored with a stray
-    // time of day on August 31 is still valid for that season.
+    // Renewing is pointless when the current license already runs at least
+    // as long as a renewal granted now would (#250): e.g. a license ending
+    // this August 31 is renewable from July 1, not in April.
     if (
       user?.license?.validUntil &&
-      toLicenseQrExpiry(new Date(user.license.validUntil)) >=
-        nextLicenseSeasonEndDay()
+      isLicenseCoveredForRenewal(new Date(user.license.validUntil))
     ) {
+      const [year, month, day] = toLicenseQrExpiry(
+        new Date(user.license.validUntil),
+      ).split("-");
       throw new BadRequestException(
-        "Votre licence est déjà valide pour la prochaine saison. Un renouvellement n'est pas nécessaire.",
+        `Votre licence est déjà valide jusqu'au ${day}/${month}/${year}. Un renouvellement n'est pas nécessaire.`,
       );
     }
 
@@ -316,7 +319,7 @@ export class LicenseRenewalService {
           ?.licenseNumber ?? null)
       : null;
 
-    const nextYear = nextLicenseSeasonEnd();
+    const seasonEnd = grantedLicenseSeasonEnd();
 
     const licenseNumber =
       ocrLicenseNumber ??
@@ -325,11 +328,11 @@ export class LicenseRenewalService {
 
     await this.prisma.license.upsert({
       where: { userId: request.userId },
-      update: { validUntil: nextYear, updatedAt: new Date() },
+      update: { validUntil: seasonEnd, updatedAt: new Date() },
       create: {
         userId: request.userId,
         number: licenseNumber,
-        validUntil: nextYear,
+        validUntil: seasonEnd,
         category: request.user.category ?? "Standard",
         clubName: request.user.clubName ?? "Club",
       },

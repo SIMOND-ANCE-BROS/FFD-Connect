@@ -54,4 +54,23 @@ describe("LicenseRenewalScreen — Sentry screenshots (#242)", () => {
     await unmount();
     expect(isSensitiveScreenShown()).toBe(false);
   });
+
+  it("states the season rule once the renewal is approved (#250)", async () => {
+    (useLicenseRenewalLogic as jest.Mock).mockReturnValue({
+      ...(useLicenseRenewalLogic as jest.Mock)(),
+      request: { id: "req-1", status: "APPROVED", documents: [] },
+      loading: false,
+      step: "approved",
+    });
+
+    const { getByText, queryByText } = await render(
+      <LicenseRenewalScreen
+        {...createMockScreenProps("LicenseRenewal", undefined)}
+      />,
+    );
+
+    expect(getByText(/jusqu’au 31 août de la saison en cours/)).toBeTruthy();
+    expect(getByText(/entre le 1er juillet et le 31 août/)).toBeTruthy();
+    expect(queryByText(/de la prochaine saison/)).toBeNull();
+  });
 });

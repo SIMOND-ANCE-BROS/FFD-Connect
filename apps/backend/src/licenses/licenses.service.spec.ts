@@ -184,7 +184,7 @@ describe("LicensesService", () => {
       );
     });
 
-    it("should set validUntil to next year August 31st", async () => {
+    it("should set validUntil to the end of the current season (#250)", async () => {
       const mockUser = {
         id: "1",
         license: { number: "123" },
@@ -207,10 +207,11 @@ describe("LicensesService", () => {
         [{ update: { validUntil: Date }; create: { validUntil: Date } }],
       ];
       const { update, create } = calls[0][0];
-      // Last instant of 2025-08-31 in Paris (CEST).
-      expect(update.validUntil.toISOString()).toBe("2025-08-31T21:59:59.999Z");
-      expect(create.validUntil.toISOString()).toBe("2025-08-31T21:59:59.999Z");
-      expect(toLicenseQrExpiry(update.validUntil)).toBe("2025-08-31");
+      // 15/06/2024 in Paris: end of the current 2023-2024 season, last
+      // instant of 2024-08-31 in Paris (CEST).
+      expect(update.validUntil.toISOString()).toBe("2024-08-31T21:59:59.999Z");
+      expect(create.validUntil.toISOString()).toBe("2024-08-31T21:59:59.999Z");
+      expect(toLicenseQrExpiry(update.validUntil)).toBe("2024-08-31");
     });
   });
 
