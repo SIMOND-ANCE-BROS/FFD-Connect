@@ -1,6 +1,6 @@
 # Politique de confidentialité
 
-_Dernière mise à jour : 8 octobre 2026_
+_Dernière mise à jour : 10 octobre 2026_
 
 > **Projet indépendant.** FFD Connect n'est pas une application officielle de la
 > Fédération Française de Danse. La fédération n'en est ni l'éditrice, ni
@@ -35,15 +35,16 @@ Les **données de santé** sont des données sensibles au sens de l'article 9 du
 
 ## 3. Finalités et bases légales
 
-| Finalité                                                  | Base légale                                            |
-| --------------------------------------------------------- | ------------------------------------------------------ |
-| Créer et gérer le compte utilisateur                      | Exécution du contrat (CGU)                             |
-| Gérer les licences et vérifier l'aptitude médicale        | Obligation légale / intérêt légitime de la fédération  |
-| Inscrire aux compétitions et encaisser les paiements      | Exécution du contrat                                   |
-| Traiter le certificat médical (OCR)                       | **Consentement explicite** de la personne (art. 9-2-a) |
-| Envoyer des notifications (rappels d'échéance, résultats) | Consentement / intérêt légitime                        |
-| Ajouter sa licence à Apple Wallet ou Google Wallet        | Exécution du contrat, à la demande de l'utilisateur    |
-| Assurer la sécurité et corriger les bugs                  | Intérêt légitime                                       |
+| Finalité                                                                  | Base légale                                            |
+| ------------------------------------------------------------------------- | ------------------------------------------------------ |
+| Créer et gérer le compte utilisateur                                      | Exécution du contrat (CGU)                             |
+| Gérer les licences et vérifier l'aptitude médicale                        | Obligation légale / intérêt légitime de la fédération  |
+| Inscrire aux compétitions et encaisser les paiements                      | Exécution du contrat                                   |
+| Traiter le certificat médical (OCR)                                       | **Consentement explicite** de la personne (art. 9-2-a) |
+| Envoyer des notifications (rappels d'échéance, résultats)                 | Consentement / intérêt légitime                        |
+| Ajouter sa licence à Apple Wallet ou Google Wallet                        | Exécution du contrat, à la demande de l'utilisateur    |
+| Produire des statistiques agrégées pour l'administration de la plateforme | Intérêt légitime de la fédération                      |
+| Assurer la sécurité et corriger les bugs                                  | Intérêt légitime                                       |
 
 ## 4. Sous-traitants et destinataires
 

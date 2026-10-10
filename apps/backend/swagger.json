@@ -5115,6 +5115,216 @@
         "tags": ["admin"]
       }
     },
+    "/admin/stats": {
+      "get": {
+        "operationId": "AdminStatsController_get",
+        "parameters": [
+          {
+            "name": "period",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "12w",
+              "type": "string",
+              "enum": ["12w", "6m", "12m"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStatsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Database statistics for the back-office (read-only)",
+        "tags": ["admin"]
+      }
+    },
     "/users/members": {
       "get": {
         "description": "Retourne la liste des membres du club associé à l'utilisateur organisateur authentifié. Nécessite le rôle ORGANIZER.",
@@ -23543,6 +23753,381 @@
           }
         },
         "required": ["invitationSent"]
+      },
+      "RoleCountsDto": {
+        "type": "object",
+        "properties": {
+          "LICENSEE": {
+            "type": "number"
+          },
+          "CLUB": {
+            "type": "number"
+          },
+          "STAFF": {
+            "type": "number"
+          },
+          "ADMIN": {
+            "type": "number"
+          }
+        },
+        "required": ["LICENSEE", "CLUB", "STAFF", "ADMIN"]
+      },
+      "SignupBucketDto": {
+        "type": "object",
+        "properties": {
+          "LICENSEE": {
+            "type": "number"
+          },
+          "CLUB": {
+            "type": "number"
+          },
+          "STAFF": {
+            "type": "number"
+          },
+          "ADMIN": {
+            "type": "number"
+          },
+          "start": {
+            "type": "string",
+            "description": "Bucket start, YYYY-MM-DD (Europe/Paris)"
+          }
+        },
+        "required": ["LICENSEE", "CLUB", "STAFF", "ADMIN", "start"]
+      },
+      "UsersStatsDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "byRole": {
+            "$ref": "#/components/schemas/RoleCountsDto"
+          },
+          "neverLoggedIn": {
+            "type": "number"
+          },
+          "active7d": {
+            "type": "number"
+          },
+          "active30d": {
+            "type": "number"
+          },
+          "disabled": {
+            "type": "number"
+          },
+          "signups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SignupBucketDto"
+            }
+          }
+        },
+        "required": [
+          "total",
+          "byRole",
+          "neverLoggedIn",
+          "active7d",
+          "active30d",
+          "disabled",
+          "signups"
+        ]
+      },
+      "CountBucketDto": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": ["start", "count"]
+      },
+      "StatsClubRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "members": {
+            "type": "number"
+          },
+          "clubAccounts": {
+            "type": "number"
+          },
+          "validLicences": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "name", "members", "clubAccounts", "validLicences"]
+      },
+      "LicencesStatsDto": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "number"
+          },
+          "expiring30d": {
+            "type": "number"
+          },
+          "expiring60d": {
+            "type": "number"
+          },
+          "expired": {
+            "type": "number"
+          },
+          "renewalsPending": {
+            "type": "number"
+          },
+          "created": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CountBucketDto"
+            }
+          },
+          "clubs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatsClubRowDto"
+            }
+          },
+          "clubsWithoutClubAccount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "valid",
+          "expiring30d",
+          "expiring60d",
+          "expired",
+          "renewalsPending",
+          "created",
+          "clubs",
+          "clubsWithoutClubAccount"
+        ]
+      },
+      "CompetitionStatusCountsDto": {
+        "type": "object",
+        "properties": {
+          "UPCOMING": {
+            "type": "number"
+          },
+          "LIVE": {
+            "type": "number"
+          },
+          "PAST": {
+            "type": "number"
+          },
+          "CANCELLED": {
+            "type": "number"
+          }
+        },
+        "required": ["UPCOMING", "LIVE", "PAST", "CANCELLED"]
+      },
+      "RegistrationBucketDto": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string"
+          },
+          "PENDING": {
+            "type": "number"
+          },
+          "CONFIRMED": {
+            "type": "number"
+          },
+          "CANCELLED": {
+            "type": "number"
+          }
+        },
+        "required": ["start", "PENDING", "CONFIRMED", "CANCELLED"]
+      },
+      "CompetitionsStatsDto": {
+        "type": "object",
+        "properties": {
+          "byStatus": {
+            "$ref": "#/components/schemas/CompetitionStatusCountsDto"
+          },
+          "registrations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistrationBucketDto"
+            }
+          },
+          "pastConfirmed": {
+            "type": "number"
+          },
+          "pastCheckedIn": {
+            "type": "number"
+          },
+          "pastPaid": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "byStatus",
+          "registrations",
+          "pastConfirmed",
+          "pastCheckedIn",
+          "pastPaid"
+        ]
+      },
+      "TrackStatusCountsDto": {
+        "type": "object",
+        "properties": {
+          "READY": {
+            "type": "number"
+          },
+          "PENDING": {
+            "type": "number"
+          },
+          "ERROR": {
+            "type": "number"
+          }
+        },
+        "required": ["READY", "PENDING", "ERROR"]
+      },
+      "CorrectionBucketDto": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string"
+          },
+          "TITLE": {
+            "type": "number"
+          },
+          "ARTIST": {
+            "type": "number"
+          },
+          "DANCE": {
+            "type": "number"
+          },
+          "MPM": {
+            "type": "number"
+          },
+          "PASO_CLASH": {
+            "type": "number"
+          },
+          "OTHER": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "start",
+          "TITLE",
+          "ARTIST",
+          "DANCE",
+          "MPM",
+          "PASO_CLASH",
+          "OTHER"
+        ]
+      },
+      "ContentStatsDto": {
+        "type": "object",
+        "properties": {
+          "tracksByStatus": {
+            "$ref": "#/components/schemas/TrackStatusCountsDto"
+          },
+          "tracksBlacklisted": {
+            "type": "number"
+          },
+          "tracksMasked": {
+            "type": "number"
+          },
+          "correctionsPending": {
+            "type": "number"
+          },
+          "correctionsApproved": {
+            "type": "number",
+            "description": "Decided during the period"
+          },
+          "correctionsRejected": {
+            "type": "number",
+            "description": "Decided during the period"
+          },
+          "medianReviewHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "corrections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CorrectionBucketDto"
+            }
+          },
+          "bugReports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CountBucketDto"
+            }
+          },
+          "adminActions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CountBucketDto"
+            }
+          }
+        },
+        "required": [
+          "tracksByStatus",
+          "tracksBlacklisted",
+          "tracksMasked",
+          "correctionsPending",
+          "correctionsApproved",
+          "correctionsRejected",
+          "medianReviewHours",
+          "corrections",
+          "bugReports",
+          "adminActions"
+        ]
+      },
+      "AdminStatsDto": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string",
+            "enum": ["12w", "6m", "12m"]
+          },
+          "bucket": {
+            "type": "string",
+            "enum": ["week", "month"]
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "users": {
+            "$ref": "#/components/schemas/UsersStatsDto"
+          },
+          "licences": {
+            "$ref": "#/components/schemas/LicencesStatsDto"
+          },
+          "competitions": {
+            "$ref": "#/components/schemas/CompetitionsStatsDto"
+          },
+          "content": {
+            "$ref": "#/components/schemas/ContentStatsDto"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "period",
+          "bucket",
+          "buckets",
+          "users",
+          "licences",
+          "competitions",
+          "content"
+        ]
       },
       "WdsfDataDto": {
         "type": "object",
