@@ -1,5 +1,10 @@
 import { HttpError } from "../httpInterceptor";
-import { beforeScreenshot, isExpectedServerRefusal } from "../sentryPrivacy";
+import {
+  beforeScreenshot,
+  isExpectedServerRefusal,
+  isSensitiveScreenShown,
+  markSensitiveScreenShown,
+} from "../sentryPrivacy";
 
 const refusal = new HttpError(400, "Bad Request", null, "Échec", {
   code: "MEDICAL_UNFIT",
@@ -34,5 +39,34 @@ describe("beforeScreenshot (#225)", () => {
       beforeScreenshot({}, { originalException: new Error("crash") }),
     ).toBe(true);
     expect(beforeScreenshot({}, {})).toBe(true);
+  });
+});
+
+describe("sensitive screen flag (#242)", () => {
+  it("refuses every screenshot while a sensitive screen is shown", () => {
+    const release = markSensitiveScreenShown();
+    try {
+      expect(isSensitiveScreenShown()).toBe(true);
+      expect(
+        beforeScreenshot({}, { originalException: new Error("crash") }),
+      ).toBe(false);
+      expect(beforeScreenshot({}, {})).toBe(false);
+    } finally {
+      release();
+    }
+    expect(isSensitiveScreenShown()).toBe(false);
+    expect(beforeScreenshot({}, {})).toBe(true);
+  });
+
+  it("counts overlapping screens and ignores a double release", () => {
+    const releaseA = markSensitiveScreenShown();
+    const releaseB = markSensitiveScreenShown();
+
+    releaseA();
+    releaseA();
+    expect(isSensitiveScreenShown()).toBe(true);
+
+    releaseB();
+    expect(isSensitiveScreenShown()).toBe(false);
   });
 });
