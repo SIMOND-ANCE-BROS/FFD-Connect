@@ -48,6 +48,7 @@ describe('AppLayout', () => {
     expect(screen.getByRole('link', { name: 'Modération' })).toHaveAttribute('href', '/moderation');
     expect(screen.getByRole('link', { name: "Journal d'audit" })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Statistiques' })).toHaveAttribute('href', '/stats');
+    expect(screen.getByRole('link', { name: "Usage de l'app" })).toHaveAttribute('href', '/usage');
     expect(screen.queryByText('Nouvel utilisateur')).toBeNull();
     expect(screen.getByText('content')).toBeInTheDocument();
   });
