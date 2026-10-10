@@ -17,6 +17,7 @@ import { LicenseRenewalDocumentType, Prisma } from "@prisma/client";
 import { TestingModule } from "@nestjs/testing";
 import { HealthDataRetentionService } from "../src/licenses/health-data-retention.service";
 import { LicenseRenewalService } from "../src/licenses/license-renewal.service";
+import { medicalCertificatePurgeDueAt } from "../src/licenses/medical-certificate-retention.util";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { BlobStorageService } from "../src/storage/blob-storage.service";
 import { OcrService } from "../src/utils/ocr.service";
@@ -133,7 +134,10 @@ describe("Health data retention purge (integration, real DB)", () => {
     });
     expect(await find(due.id)).toBeNull();
     expect(deleteFile).toHaveBeenCalledTimes(1);
-    expect(deleteFile).toHaveBeenCalledWith("due.pdf", "uploads");
+    expect(deleteFile).toHaveBeenCalledWith(
+      "due.pdf",
+      blob.getUploadsContainer(),
+    );
     expect(await find(notDue.id)).toEqual({
       ocrData: { isApte: true, date: "2099-01-01" },
       purgeDueAt: FUTURE,
@@ -141,13 +145,44 @@ describe("Health data retention purge (integration, real DB)", () => {
   });
 
   it("treats purgeDueAt == now as due (lte bound)", async () => {
-    const now = new Date();
-    const atBound = await doc({ filePath: "bound.pdf", purgeDueAt: now });
+    // Only `Date` is frozen, so the service's own `new Date()` equals the
+    // stored deadline to the millisecond: an `lt` regression keeps the row.
+    // Timers, ticks and microtasks stay real, so Prisma I/O is unaffected.
+    const now = new Date("2030-06-15T12:00:00.123Z");
+    jest.useFakeTimers({
+      now,
+      doNotFake: [
+        "hrtime",
+        "nextTick",
+        "performance",
+        "queueMicrotask",
+        "requestAnimationFrame",
+        "cancelAnimationFrame",
+        "requestIdleCallback",
+        "cancelIdleCallback",
+        "setImmediate",
+        "clearImmediate",
+        "setInterval",
+        "clearInterval",
+        "setTimeout",
+        "clearTimeout",
+      ],
+    });
+    try {
+      const atBound = await doc({ filePath: "bound.pdf", purgeDueAt: now });
+      const justAfter = await doc({
+        filePath: "just-after.pdf",
+        purgeDueAt: new Date(now.getTime() + 1),
+      });
 
-    const report = await retention.purgeExpiredHealthData();
+      const report = await retention.purgeExpiredHealthData();
 
-    expect(report.purged).toBe(1);
-    expect(await find(atBound.id)).toBeNull();
+      expect(report).toMatchObject({ due: 1, purged: 1 });
+      expect(await find(atBound.id)).toBeNull();
+      expect(await find(justAfter.id)).not.toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("never purges a licence certificate, even with a past due date", async () => {
@@ -240,17 +275,21 @@ describe("Health data retention purge (integration, real DB)", () => {
     await fsp.mkdir(dir, { recursive: true });
     const name = `retention-${Date.now()}.pdf`;
     await fsp.writeFile(path.join(dir, name), "certificate");
-    const legacy = await doc({
-      filePath: `uploads/renewal/${name}`,
-      purgeDueAt: PAST,
-    });
+    try {
+      const legacy = await doc({
+        filePath: `uploads/renewal/${name}`,
+        purgeDueAt: PAST,
+      });
 
-    const report = await retention.purgeExpiredHealthData();
+      const report = await retention.purgeExpiredHealthData();
 
-    expect(report.purged).toBe(1);
-    expect(deleteFile).not.toHaveBeenCalled();
-    expect(await find(legacy.id)).toBeNull();
-    await expect(fsp.access(path.join(dir, name))).rejects.toThrow();
+      expect(report.purged).toBe(1);
+      expect(deleteFile).not.toHaveBeenCalled();
+      expect(await find(legacy.id)).toBeNull();
+      await expect(fsp.access(path.join(dir, name))).rejects.toThrow();
+    } finally {
+      await fsp.rm(path.join(dir, name), { force: true });
+    }
   });
 
   it("is skipped entirely when blob storage is not configured — nothing is dated, wiped or deleted", async () => {
@@ -375,11 +414,13 @@ describe("Health data retention purge (integration, real DB)", () => {
       const licence = rows.find((r) => r.type === LICENSE_CERTIFICATE);
       expect(Object.keys(medical?.ocrData ?? {}).sort()).toEqual(MEDICAL_KEYS);
       expect(Object.keys(licence?.ocrData ?? {}).sort()).toEqual(LICENSE_KEYS);
-      // Issue date + 12 months of validity + 12 months of retention.
-      const expected = new Date(issued);
-      expected.setUTCFullYear(expected.getUTCFullYear() + 2);
-      expect(medical?.purgeDueAt?.toISOString().slice(0, 10)).toBe(
-        expected.toISOString().slice(0, 10),
+      // Issue date + 12 months of validity + 12 months of retention, with the
+      // util's own month arithmetic (29 Feb clamps to 28 Feb).
+      expect(medical?.purgeDueAt).toEqual(
+        medicalCertificatePurgeDueAt({
+          createdAt: new Date(),
+          ocrData: { date: issued.toISOString() },
+        }),
       );
       expect(licence?.purgeDueAt).toBeNull();
     });
