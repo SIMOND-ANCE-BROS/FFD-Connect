@@ -42,6 +42,9 @@ const ADMIN_ROUTES: Array<
   ["get", "/api/v1/admin/tracks/00000000-0000-4000-8000-000000000000"],
   ["post", "/api/v1/admin/tracks/check"],
   ["post", "/api/v1/admin/tracks"],
+  // Database stats (lot 4): ADMIN-only at class level.
+  ["get", "/api/v1/admin/stats"],
+  ["get", "/api/v1/admin/stats?period=6m"],
 ];
 
 describe("Admin routes (e2e) — role matrix", () => {
@@ -353,5 +356,23 @@ describe("Admin routes (e2e) — role matrix", () => {
         items: Array.from({ length: 201 }, () => ({ sha256: "a".repeat(64) })),
       })
       .expect(400);
+  });
+
+  it("rejects an unknown stats period with 400", async () => {
+    currentRole = UserRole.ADMIN;
+    await request(server()).get("/api/v1/admin/stats?period=1y").expect(400);
+  });
+
+  it("serves stats with the 12w default", async () => {
+    currentRole = UserRole.ADMIN;
+    // mockDeep returns undefined: lists must be lists for the real service.
+    prisma.$queryRaw.mockResolvedValue([] as never);
+    prisma.user.groupBy.mockResolvedValue([] as never);
+    prisma.competition.groupBy.mockResolvedValue([] as never);
+    prisma.track.groupBy.mockResolvedValue([] as never);
+    const res = await request(server()).get("/api/v1/admin/stats").expect(200);
+    expect(res.body.period).toBe("12w");
+    expect(res.body.buckets).toHaveLength(12);
+    expect(res.body.users.signups).toHaveLength(12);
   });
 });

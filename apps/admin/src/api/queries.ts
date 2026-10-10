@@ -7,6 +7,7 @@ import {
   adminControllerListClubs,
   adminControllerListUsers,
   adminControllerReferenceData,
+  adminStatsControllerGet,
   adminTracksControllerFindOne,
   adminTracksControllerList,
   trackCorrectionsControllerFindOne,
@@ -20,6 +21,7 @@ import type {
   AdminTracksControllerListData,
   TrackCorrectionsControllerListData,
 } from './generated/types.gen';
+import type { StatsPeriod } from '../lib/stats';
 
 export type UsersFilter = NonNullable<AdminControllerListUsersData['query']>;
 export type ClubsFilter = NonNullable<AdminControllerListClubsData['query']>;
@@ -137,6 +139,16 @@ export const trackQuery = (id: string) =>
   queryOptions({
     queryKey: ['admin', 'tracks', 'item', id],
     queryFn: () => unwrap(adminTracksControllerFindOne({ path: { id } })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/** Stats are computed on demand: no refetch on focus or reconnect, no retry (lot 4). */
+export const statsQuery = (period: StatsPeriod) =>
+  queryOptions({
+    queryKey: ['admin', 'stats', period],
+    queryFn: () => unwrap(adminStatsControllerGet({ query: { period } })),
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: false,
