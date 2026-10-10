@@ -27,6 +27,7 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../../navigation/types";
 import { formatCompetitionLevels } from "../../../utils/competitionLevel";
 import { formatDiscipline } from "../../../utils/discipline";
+import { formatFfdValidUntil } from "../../license/utils/licenseSeason";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ClubMemberEditor">;
 
@@ -243,9 +244,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
               Valide jusqu'à
             </AppText>
             <AppText variant="body" style={{ color: theme.text }}>
-              {licenseValidUntil
-                ? new Date(licenseValidUntil).toLocaleDateString("fr-FR")
-                : "—"}
+              {formatFfdValidUntil(licenseValidUntil) || "—"}
             </AppText>
           </View>
         </View>

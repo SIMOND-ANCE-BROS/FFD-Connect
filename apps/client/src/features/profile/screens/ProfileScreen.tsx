@@ -22,6 +22,7 @@ import {
   formatCompetitionLevels,
 } from "../../../utils/competitionLevel";
 import { formatDiscipline } from "../../../utils/discipline";
+import { formatFfdValidUntil } from "../../license/utils/licenseSeason";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Profile">;
 
@@ -151,7 +152,7 @@ export const ProfileScreen = ({ navigation }: Props) => {
             </AppText>
             <View style={styles.expiryRow}>
               <AppText variant="caption" color={currentTheme.textSecondary}>
-                {`Valide jusqu'au ${new Date(license.validUntil).toLocaleDateString("fr-FR")}`}
+                {`Valide jusqu'au ${formatFfdValidUntil(license.validUntil)}`}
               </AppText>
             </View>
           </View>

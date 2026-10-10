@@ -19,8 +19,11 @@ describe("license season end (#238)", () => {
     ["00:30 Paris time in winter", "2026-02-09T23:30:00.000Z"],
     ["00:30 Paris time in summer", "2026-07-09T22:30:00.000Z"],
     ["midday UTC", "2026-10-10T12:00:00.000Z"],
-    ["just after the spring DST switch", "2026-03-29T01:00:00.000Z"],
-    ["just after the autumn DST switch", "2026-10-25T01:00:00.000Z"],
+    // These two only vary `now`: the season end itself is always in summer
+    // time (CEST); DST handling of the end-of-day is covered by the
+    // parisEndOfDay tests in qr/license-qr.spec.ts.
+    ["a `now` on the spring DST switch day", "2026-03-29T01:00:00.000Z"],
+    ["a `now` on the autumn DST switch day", "2026-10-25T01:00:00.000Z"],
   ])("an approval at %s ends on 31/08 Paris, last instant", (_label, now) => {
     const end = nextLicenseSeasonEnd(new Date(now));
 

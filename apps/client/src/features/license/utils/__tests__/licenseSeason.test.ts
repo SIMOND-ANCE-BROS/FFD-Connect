@@ -75,6 +75,35 @@ describe("formatFfdValidUntil", () => {
     expect(formatFfdValidUntil(undefined)).toBe("");
     expect(formatFfdValidUntil("garbage")).toBe("");
   });
+
+  // Backend #238: a season ends at the last instant of 31/08 in Paris.
+  const SEASON_END = "2027-08-31T21:59:59.999Z";
+
+  it("shows the Paris day, even on a phone east of Paris (#238)", () => {
+    // What a phone in Nouméa or La Réunion would show with its own zone.
+    expect(
+      new Date(SEASON_END).toLocaleDateString("fr-FR", {
+        timeZone: "Pacific/Noumea",
+      }),
+    ).toBe("01/09/2027");
+    expect(
+      new Date(SEASON_END).toLocaleDateString("fr-FR", {
+        timeZone: "Indian/Reunion",
+      }),
+    ).toBe("01/09/2027");
+    expect(formatFfdValidUntil(SEASON_END)).toBe("31/08/2027");
+    expect(formatFfdValidUntil(new Date(SEASON_END))).toBe("31/08/2027");
+  });
+
+  it("keeps seeded date-only values on their day", () => {
+    expect(formatFfdValidUntil("2026-08-31")).toBe("31/08/2026");
+  });
+
+  it("puts an expired season end in the season it closed (#238)", () => {
+    expect(getLicenseSeason(SEASON_END, new Date("2027-09-15T12:00:00Z"))).toBe(
+      "2026/2027",
+    );
+  });
 });
 
 describe("ffdValidityFields", () => {
