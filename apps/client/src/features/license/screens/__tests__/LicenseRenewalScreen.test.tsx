@@ -184,6 +184,30 @@ describe("LicenseRenewalScreen — decision shown to the licensee (#268)", () =>
     const { getByText } = await renderScreen();
 
     expect(getByText("Lu automatiquement — à titre indicatif")).toBeTruthy();
-    expect(getByText("Non apte")).toBeTruthy();
+  });
+
+  it("words a contraindication read by the OCR as a hint, apart from a fit reading", async () => {
+    const medical = {
+      id: "d1",
+      type: "MEDICAL_CERTIFICATE",
+      ocrData: { isApte: false },
+      createdAt: "2026-10-01T00:00:00.000Z",
+    };
+    (useLicenseRenewalLogic as jest.Mock).mockReturnValue({
+      ...baseLogic(),
+      request: { id: "req-1", status: "DRAFT", documents: [medical] },
+      getDoc: (type: string) =>
+        type === "MEDICAL_CERTIFICATE" ? medical : undefined,
+    });
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(
+      getByText(
+        "Le certificat semble mentionner une contre-indication à la pratique.",
+      ),
+    ).toBeTruthy();
+    expect(queryByText("Non apte")).toBeNull();
+    expect(queryByText("Apte à la pratique")).toBeNull();
   });
 });

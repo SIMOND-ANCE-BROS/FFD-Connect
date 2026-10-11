@@ -1,4 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useFocusEffect } from "@react-navigation/native";
+import {
+  type QueryClient,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useCallback } from "react";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 import {
   BackendService,
@@ -30,14 +36,57 @@ export function renewalStatusQueryKey(
 }
 
 /**
+ * Re-reads the cached status, but only while it is PENDING: that is the one
+ * state a decision can change behind the licensee's back. Any other status
+ * (or none) costs no request — scale-to-zero backend, every request wakes it.
+ * `cancelRefetch: false` joins a fetch already in flight.
+ */
+export function refreshRenewalStatusIfPending(
+  queryClient: QueryClient,
+  queryKey: ReturnType<typeof renewalStatusQueryKey>,
+): Promise<void> {
+  if (queryClient.getQueryData(queryKey) !== "PENDING") {
+    return Promise.resolve();
+  }
+  return queryClient.refetchQueries(
+    { queryKey, exact: true },
+    { cancelRefetch: false },
+  );
+}
+
+/** {@link refreshRenewalStatusIfPending} for the current account (pull-to-refresh). */
+export function useRefreshRenewalStatusIfPending(): () => Promise<void> {
+  const queryClient = useQueryClient();
+  const impersonating = useAuthStore((s) => s.impersonating);
+  const impersonatedName = useAuthStore((s) => s.impersonatedName);
+  return useCallback(
+    () =>
+      refreshRenewalStatusIfPending(
+        queryClient,
+        renewalStatusQueryKey(impersonating, impersonatedName),
+      ),
+    [queryClient, impersonating, impersonatedName],
+  );
+}
+
+/**
  * True while the account's renewal request awaits a federation decision.
  * Loaded when a screen showing the banner mounts — no polling, no refetch on
- * foreground (scale-to-zero backend: every request wakes it).
+ * foreground (scale-to-zero backend: every request wakes it). When the screen
+ * regains focus with a PENDING status, it is read again: the Licence tab stays
+ * mounted, and the banner must not outlive the decision.
  */
 export function useRenewalPending(): boolean {
   const auth = useAuthRepository();
   const impersonating = useAuthStore((s) => s.impersonating);
   const impersonatedName = useAuthStore((s) => s.impersonatedName);
+  const refreshIfPending = useRefreshRenewalStatusIfPending();
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshIfPending();
+    }, [refreshIfPending]),
+  );
 
   const { data } = useQuery({
     queryKey: renewalStatusQueryKey(impersonating, impersonatedName),

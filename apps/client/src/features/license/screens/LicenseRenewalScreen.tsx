@@ -82,8 +82,14 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
     const d = doc.ocrData;
     const lines: string[] = [];
     if (doc.type === "MEDICAL_CERTIFICATE") {
+      // A contraindication read by the OCR is a hint too: worded as such,
+      // not as a verdict (a person checks the document).
       if (d.isApte !== undefined)
-        lines.push(d.isApte ? "Apte à la pratique" : "Non apte");
+        lines.push(
+          d.isApte
+            ? "Apte à la pratique"
+            : "Le certificat semble mentionner une contre-indication à la pratique.",
+        );
       if (d.date) lines.push(`Date : ${d.date}`);
       if (d.doctorName) lines.push(`Médecin : ${d.doctorName}`);
     } else {

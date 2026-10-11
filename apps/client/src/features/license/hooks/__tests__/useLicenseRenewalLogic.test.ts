@@ -371,6 +371,24 @@ describe("useLicenseRenewalLogic", () => {
 
   // The Licence and Profile banners read this key (#268): the renewal screen
   // keeps it right, so going back shows the new state without a request.
+  // A failed read (network, 5xx, cold start) says nothing about the request:
+  // the banners must keep a real PENDING instead of losing it.
+  it("keeps a PENDING status for the banners when the read fails", async () => {
+    queryClient.clear();
+    queryClient.setQueryData(renewalStatusQueryKey(), "PENDING");
+    mockGetMyRenewal.mockRejectedValue(new Error("503"));
+
+    const { result } = await renderHook(() => useLicenseRenewalLogic());
+
+    await waitFor(() => expect(mockGetMyRenewal).toHaveBeenCalled());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.request).toBeNull();
+    expect(queryClient.getQueryData(renewalStatusQueryKey())).toBe("PENDING");
+    queryClient.clear();
+  });
+
   it("shares the request status with the licence banners", async () => {
     queryClient.clear();
     mockGetMyRenewal.mockResolvedValue(
