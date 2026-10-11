@@ -179,16 +179,21 @@ export function computeCoupleAgeGroup(
   return null;
 }
 
+/** Vrai si la personne a l'âge Espoir : 16 à 20 ans au 31 décembre de l'année de référence. */
+export function isEspoirAge(birthDate: Date, referenceYear: number): boolean {
+  const age = getAgeAtReferenceDate(birthDate, referenceYear);
+  return age >= ESPOIR_MIN_AGE && age <= ESPOIR_MAX_AGE;
+}
+
 /** Vrai si le couple a l'âge Espoir : les deux partenaires ont 16 à 20 ans au 31 décembre. */
 export function isCoupleEspoirEligible(
   birthDateA: Date,
   birthDateB: Date,
   referenceYear: number,
 ): boolean {
-  return [birthDateA, birthDateB].every((birthDate) => {
-    const age = getAgeAtReferenceDate(birthDate, referenceYear);
-    return age >= ESPOIR_MIN_AGE && age <= ESPOIR_MAX_AGE;
-  });
+  return [birthDateA, birthDateB].every((birthDate) =>
+    isEspoirAge(birthDate, referenceYear),
+  );
 }
 
 /**

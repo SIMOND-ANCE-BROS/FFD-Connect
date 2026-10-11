@@ -42,6 +42,8 @@ export const userEligibilityProfileSelect = {
   ...competitionLevelsSelect,
   category: true,
   ageGroup: true,
+  // Espoir (16–20 on 31 December) is decided on the actual age.
+  birthDate: true,
 } as const;
 
 /** Membre d'une Solo Team : identité + niveaux (calcul du niveau d'équipe). */
@@ -56,7 +58,6 @@ export const soloTeamMemberUserSelect = {
 export const partnershipCandidateSelect = {
   clubId: true,
   clubName: true,
-  birthDate: true,
   ...userEligibilityProfileSelect,
 } as const;
 

@@ -8,6 +8,7 @@ export function getEligibilityReasonLabel(reason: string): string {
   if (s === "WRONG_CATEGORY") return "Catégorie non compatible";
   if (s === "WRONG_AGE_GROUP") return "Classe d'âge non compatible";
   if (s === "AGE_GROUP_REQUIRED") return "Classe d'âge non renseignée";
+  if (s === "ESPOIR_AGE") return "Réservé aux 16-20 ans (Espoir)";
   if (s === "NOT_ALLOWED") return "Non autorisé pour cette épreuve";
   if (s.length > 60) return s.slice(0, 57) + "…";
   return s;
