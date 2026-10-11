@@ -1,3 +1,4 @@
+import { PageHeader } from '../components/PageHeader';
 import '@mantine/charts/styles.css';
 import { BarChart } from '@mantine/charts';
 import {
@@ -280,7 +281,7 @@ export function UsagePage() {
   return (
     <Stack>
       <Group justify="space-between" wrap="wrap">
-        <Title order={2}>Usage de l'app</Title>
+        <PageHeader title="Usage de l'app" />
         <Group wrap="wrap">
           <SegmentedControl
             value={period}

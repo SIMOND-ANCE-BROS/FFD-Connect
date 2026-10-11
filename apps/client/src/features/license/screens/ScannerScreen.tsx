@@ -241,7 +241,7 @@ export const ScannerScreen = ({ navigation, route }: ScannerScreenProps) => {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="black" />
+      <StatusBar barStyle="light-content" />
 
       <CameraView
         testID="scanner-camera-view"

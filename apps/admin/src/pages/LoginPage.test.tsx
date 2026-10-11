@@ -14,7 +14,7 @@ function renderLogin() {
       <MemoryRouter initialEntries={['/login']}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/users" element={<p>users page</p>} />
+          <Route path="/" element={<p>home page</p>} />
         </Routes>
       </MemoryRouter>
     </MantineProvider>,
@@ -47,11 +47,11 @@ describe('LoginPage', () => {
     } as never);
   });
 
-  it('logs an ADMIN in and goes to /users', async () => {
+  it('logs an ADMIN in and goes to the dashboard', async () => {
     const login = vi.spyOn(sdk, 'authControllerLogin').mockResolvedValue(loginOk('ADMIN') as never);
     renderLogin();
     await submit();
-    expect(await screen.findByText('users page')).toBeInTheDocument();
+    expect(await screen.findByText('home page')).toBeInTheDocument();
     expect(login).toHaveBeenCalledWith({ body: { username: 'a@x.fr', password: 'secret' } });
     expect(useSession.getState().user?.role).toBe('ADMIN');
   });
@@ -70,7 +70,7 @@ describe('LoginPage', () => {
     );
     renderLogin();
     await submit();
-    expect(await screen.findByText('users page')).toBeInTheDocument();
+    expect(await screen.findByText('home page')).toBeInTheDocument();
     expect(useSession.getState().user?.roles).toEqual(['LICENSEE', 'ADMIN']);
   });
 

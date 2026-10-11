@@ -132,10 +132,7 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
     <SafeAreaView
       style={[styles.container, { backgroundColor: currentTheme.background }]}
     >
-      <StatusBar
-        barStyle={currentTheme.statusBarStyle}
-        backgroundColor={currentTheme.background}
-      />
+      <StatusBar barStyle={currentTheme.statusBarStyle} />
 
       {/* Header */}
       <View style={styles.header}>

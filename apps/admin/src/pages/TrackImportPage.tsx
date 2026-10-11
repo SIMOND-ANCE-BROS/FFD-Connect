@@ -1,3 +1,4 @@
+import { PageHeader } from '../components/PageHeader';
 import {
   Alert,
   Anchor,
@@ -14,7 +15,6 @@ import {
   Table,
   Text,
   TextInput,
-  Title,
 } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -218,7 +218,7 @@ export function TrackImportPage() {
       <Anchor component={Link} to="/tracks">
         Retour au catalogue
       </Anchor>
-      <Title order={2}>Importer des musiques</Title>
+      <PageHeader title="Importer des musiques" />
       <Paper
         withBorder
         p="xl"

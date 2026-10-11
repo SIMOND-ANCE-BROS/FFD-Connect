@@ -12,7 +12,7 @@ import {
 /**
  * Back-office identity, aligned with the mobile app (apps/client/src/theme):
  * FFD royal blue as primary (the app's light primary), FFD cyan for the dark
- * scheme (the app's dark primary), FFD red as the single accent, slate neutrals.
+ * scheme (the app's dark primary), slate neutrals and semantic status colours.
  */
 export const BRAND = {
   blue: '#004481',
@@ -30,9 +30,9 @@ const ffdBlue: MantineColorsTuple = [
   '#6ba6dd',
   '#3f8ad2',
   '#2479c9',
-  '#0f6bbf',
+  BRAND.cyan,
   '#0058a6',
-  '#004481',
+  BRAND.blue,
   '#003464',
 ];
 
@@ -70,7 +70,48 @@ const fontFamily =
 export const theme = createTheme({
   primaryColor: 'ffd',
   primaryShade: { light: 8, dark: 6 },
-  colors: { ffd: ffdBlue, gray: slate, dark: slateDark },
+  colors: {
+    ffd: ffdBlue,
+    gray: slate,
+    dark: slateDark,
+    // Emerald, amber and red families match the app's semantic palette.
+    green: [
+      '#ecfdf5',
+      '#d1fae5',
+      '#a7f3d0',
+      '#6ee7b7',
+      '#34d399',
+      '#10B981',
+      '#059669',
+      '#047857',
+      '#065f46',
+      '#064e3b',
+    ],
+    orange: [
+      '#fffbeb',
+      '#fef3c7',
+      '#fde68a',
+      '#fcd34d',
+      '#fbbf24',
+      '#F59E0B',
+      '#d97706',
+      '#b45309',
+      '#92400e',
+      '#78350f',
+    ],
+    red: [
+      '#fef2f2',
+      '#fee2e2',
+      '#fecaca',
+      '#fca5a5',
+      '#f87171',
+      '#EF4444',
+      '#dc2626',
+      '#b91c1c',
+      '#991b1b',
+      '#7f1d1d',
+    ],
+  },
   fontFamily,
   headings: {
     fontFamily,
@@ -80,6 +121,14 @@ export const theme = createTheme({
       h3: { fontSize: '1.2rem', lineHeight: '1.3' },
       h4: { fontSize: '1.05rem', lineHeight: '1.35' },
     },
+  },
+  autoContrast: true,
+  radius: {
+    xs: '0.25rem',
+    sm: '0.375rem',
+    md: '0.75rem',
+    lg: '1.25rem',
+    xl: '1.875rem',
   },
   defaultRadius: 'md',
   cursorType: 'pointer',
@@ -102,8 +151,7 @@ export const theme = createTheme({
 
 /** App-level surfaces the Mantine palette has no name for. */
 export const cssVariablesResolver: CSSVariablesResolver = () => ({
-  // The red rule under the header band: the one accent of the interface.
-  variables: { '--app-accent': BRAND.red },
+  variables: {},
   light: {
     '--app-canvas': BRAND.slate50,
     '--app-header-bg': BRAND.blue,

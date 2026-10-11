@@ -1,5 +1,6 @@
 import {
   Alert,
+  Anchor,
   Badge,
   Button,
   Group,
@@ -101,6 +102,7 @@ export function UsersPage() {
 
   const searchInput = (
     <TextInput
+      label="Rechercher un utilisateur"
       placeholder="Nom, prénom ou email"
       value={search}
       onChange={(e) => setSearch(e.currentTarget.value)}
@@ -109,6 +111,7 @@ export function UsersPage() {
   const secondaryFilters = (
     <>
       <Select
+        label="Rôle"
         placeholder="Rôle"
         clearable
         data={reference.data?.roles ?? []}
@@ -116,6 +119,7 @@ export function UsersPage() {
         onChange={(v) => setRole(v as UserRole | null)}
       />
       <Select
+        label="Club"
         placeholder="Club"
         clearable
         searchable
@@ -124,6 +128,7 @@ export function UsersPage() {
         onChange={setClubId}
       />
       <Select
+        label="Catégorie"
         placeholder="Catégorie"
         clearable
         data={disciplineOptions(reference.data?.categories ?? [])}
@@ -132,6 +137,7 @@ export function UsersPage() {
       />
       <DatePickerInput
         type="range"
+        label="Date d’inscription"
         placeholder="Inscription entre…"
         clearable
         value={range}
@@ -259,7 +265,14 @@ export function UsersPage() {
                       onClick={() => navigate(`/users/${u.id}`)}
                     >
                       <Table.Td>
-                        {u.lastName} {u.firstName}
+                        <Anchor
+                          component={Link}
+                          to={`/users/${u.id}`}
+                          onClick={(event) => event.stopPropagation()}
+                          fw={600}
+                        >
+                          {u.lastName} {u.firstName}
+                        </Anchor>
                         {u.disabledAt && (
                           <Badge color="red" variant="light" ml="xs">
                             Désactivé

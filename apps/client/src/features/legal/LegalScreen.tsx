@@ -31,10 +31,7 @@ export const LegalScreen = ({ route, navigation }: Props) => {
       style={[styles.container, { backgroundColor: theme.background }]}
       edges={["left", "right"]}
     >
-      <StatusBar
-        barStyle={theme.statusBarStyle}
-        backgroundColor={theme.background}
-      />
+      <StatusBar barStyle={theme.statusBarStyle} />
 
       <ScrollView
         contentContainerStyle={{

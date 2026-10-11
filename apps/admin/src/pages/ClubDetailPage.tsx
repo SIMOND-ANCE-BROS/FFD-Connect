@@ -1,3 +1,4 @@
+import { PageHeader } from '../components/PageHeader';
 import {
   Alert,
   Anchor,
@@ -185,7 +186,7 @@ export function ClubDetailPage() {
     <Stack>
       <Group justify="space-between">
         <Group>
-          <Title order={2}>{c.name}</Title>
+          <PageHeader title={c.name} />
           {disabled && (
             <Badge color="red" variant="light">
               Désactivé

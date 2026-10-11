@@ -203,10 +203,7 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
       style={[styles.container, { backgroundColor: currentTheme.background }]}
       edges={["left", "right"]}
     >
-      <StatusBar
-        barStyle={currentTheme.statusBarStyle}
-        backgroundColor={currentTheme.background}
-      />
+      <StatusBar barStyle={currentTheme.statusBarStyle} />
 
       <ScrollView
         style={styles.scroll}
