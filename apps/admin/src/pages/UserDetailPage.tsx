@@ -4,7 +4,6 @@ import {
   Card,
   Checkbox,
   Group,
-  Loader,
   Modal,
   NumberInput,
   Select,
@@ -20,6 +19,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { ListSkeleton } from '../components/ListStates';
 import {
   adminControllerDeleteUser,
   adminControllerResendInvitation,
@@ -193,7 +193,7 @@ export function UserDetailPage() {
   if (user.isError) {
     return <Alert color="red">Utilisateur introuvable ou erreur serveur.</Alert>;
   }
-  if (!user.data || !initial || !ref.data) return <Loader />;
+  if (!user.data || !initial || !ref.data) return <ListSkeleton rows={5} />;
   const u = user.data;
   const isSelf = me?.id === u.id;
   const disabled = u.disabledAt != null;
@@ -263,7 +263,7 @@ export function UserDetailPage() {
         </Alert>
       )}
       <Card withBorder>
-        <SimpleGrid cols={3}>
+        <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <Text size="sm">Email : {u.email}</Text>
           <Text size="sm">
             Licence : {u.licenseNumber ?? '—'}
@@ -278,7 +278,7 @@ export function UserDetailPage() {
         </SimpleGrid>
       </Card>
       <form onSubmit={onSubmit}>
-        <SimpleGrid cols={2}>
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <TextInput label="Prénom" withAsterisk {...form.getInputProps('firstName')} />
           <TextInput label="Nom" withAsterisk {...form.getInputProps('lastName')} />
           <Select

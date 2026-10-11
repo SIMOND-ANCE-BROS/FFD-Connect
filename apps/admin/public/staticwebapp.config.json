@@ -1,7 +1,10 @@
 {
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/assets/*"]
+    "exclude": ["/assets/*", "/icons/*", "/manifest.webmanifest"]
+  },
+  "mimeTypes": {
+    ".webmanifest": "application/manifest+json"
   },
   "globalHeaders": {
     "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://api-staging.ffd.gabin-simond.fr https://api.ffd.gabin-simond.fr; font-src 'self'; connect-src 'self' https://api-staging.ffd.gabin-simond.fr https://api.ffd.gabin-simond.fr; media-src 'self' https://api-staging.ffd.gabin-simond.fr https://api.ffd.gabin-simond.fr; frame-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",

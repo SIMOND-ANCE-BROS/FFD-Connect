@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { UNAVAILABLE_MESSAGE } from '../lib/apiError';
+import { mockPhoneViewport } from '../test/viewport';
 import { TracksPage } from './TracksPage';
 
 const track = (overrides: Record<string, unknown> = {}) => ({
@@ -150,5 +151,28 @@ describe('TracksPage', () => {
     renderPage();
     expect(await screen.findByText(UNAVAILABLE_MESSAGE)).toBeInTheDocument();
     expect(screen.queryByRole('table')).toBeNull();
+  });
+
+  it('on a phone, counts the folded filters restored from the URL and resets them', async () => {
+    mockPhoneViewport();
+    const list = vi.spyOn(sdk, 'adminTracksControllerList').mockResolvedValue(page([]) as never);
+    renderPage('/tracks?status=ERROR&blacklisted=true&style=Rumba&q=paso');
+    await screen.findByText('Aucune musique');
+    expect(screen.getByRole('textbox', { name: 'Rechercher' })).toBeVisible();
+    // Status, one flag and the dance; the search is not a folded filter.
+    await userEvent.click(screen.getByRole('button', { name: 'Filtres (3)' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Réinitialiser' }));
+    expect(await screen.findByRole('button', { name: 'Filtres' })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith({ query: { q: 'paso', skip: 0, take: 50 } }),
+    );
+  });
+
+  it('on a desktop, shows every filter without a « Filtres » button', async () => {
+    vi.spyOn(sdk, 'adminTracksControllerList').mockResolvedValue(page([]) as never);
+    renderPage();
+    await screen.findByText('Aucune musique');
+    expect(screen.queryByRole('button', { name: /^Filtres/ })).toBeNull();
+    expect(screen.getByText('Blacklistées')).toBeVisible();
   });
 });

@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   Group,
-  Loader,
   Modal,
   NumberInput,
   SimpleGrid,
@@ -21,6 +20,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { type RefObject, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import { ListSkeleton } from '../components/ListStates';
 import {
   trackCorrectionsControllerApprove,
   trackCorrectionsControllerReject,
@@ -105,7 +105,7 @@ function CorrectionReview({ id }: { id: string }) {
   if (item.isError) {
     return <Alert color="red">{apiErrorMessage(item.error, 'Proposition introuvable.')}</Alert>;
   }
-  if (!item.data) return <Loader />;
+  if (!item.data) return <ListSkeleton rows={5} />;
   const c = item.data;
   const badge = STATUS_BADGES[c.status];
 
@@ -294,7 +294,7 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
       <Card withBorder>
         <Stack>
           <Title order={4}>Valeurs à appliquer</Title>
-          <SimpleGrid cols={2}>
+          <SimpleGrid cols={{ base: 1, sm: 2 }}>
             <TextInput
               label="Titre"
               value={values.title}
