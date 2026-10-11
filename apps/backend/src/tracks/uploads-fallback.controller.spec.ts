@@ -1,9 +1,4 @@
 import { INestApplication, ServiceUnavailableException } from "@nestjs/common";
-import {
-  AbstractLoader,
-  ExpressLoader,
-  ServeStaticModule,
-} from "@nestjs/serve-static";
 import { Test } from "@nestjs/testing";
 import * as fs from "fs";
 import * as os from "os";
@@ -21,12 +16,23 @@ const REAL_TRACK = "04-JIVE ｜ Dj Ice - Blinding Lights (39 MPM)";
 const AUDIO = Buffer.from("0123456789abcdefghij"); // 20 bytes
 const ETAG = '"0x8DCAFE"';
 const LAST_MODIFIED = new Date("2026-09-01T10:00:00Z");
+// Content of every on-disk file that must stay unreachable.
+const SECRET = "SECRET-DOCUMENT-CONTENT";
 
 function url(name: string): string {
   return `/uploads/${encodeURIComponent(name)}`;
 }
 
-describe("UploadsFallbackController (with ServeStaticModule)", () => {
+function binaryParser(
+  r: NodeJS.ReadableStream,
+  cb: (err: Error | null, body: Buffer) => void,
+): void {
+  const chunks: Buffer[] = [];
+  r.on("data", (c: Buffer) => chunks.push(c));
+  r.on("end", () => cb(null, Buffer.concat(chunks)));
+}
+
+describe("UploadsFallbackController (sole owner of /uploads)", () => {
   let app: INestApplication;
   let tmpRoot: string;
   let blob: {
@@ -41,12 +47,25 @@ describe("UploadsFallbackController (with ServeStaticModule)", () => {
   beforeAll(() => {
     tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "uploads-fallback-"));
     const uploads = path.join(tmpRoot, "uploads");
-    fs.mkdirSync(path.join(uploads, "certificates"), { recursive: true });
+    // Sensitive files that must never be reachable, even though they exist.
+    for (const dir of ["certificates", "renewal", "tts_cache", "nested"]) {
+      fs.mkdirSync(path.join(uploads, dir), { recursive: true });
+    }
+    fs.writeFileSync(path.join(uploads, "certificates", "scan.jpg"), SECRET);
+    fs.writeFileSync(path.join(uploads, "certificates", "scan.pdf"), SECRET);
+    fs.writeFileSync(path.join(uploads, "renewal", "doc.png"), SECRET);
+    fs.writeFileSync(path.join(uploads, "tts_cache", "abc.mp3"), SECRET);
+    fs.writeFileSync(path.join(uploads, "nested", "track.mp3"), SECRET);
+    fs.writeFileSync(path.join(tmpRoot, "outside.mp3"), SECRET);
+    fs.writeFileSync(path.join(uploads, ".hidden.mp3"), SECRET);
+    fs.writeFileSync(path.join(uploads, "notes.txt"), SECRET);
+    fs.writeFileSync(path.join(uploads, "scan.pdf"), SECRET);
+    // Flat track media, legitimately served.
     fs.writeFileSync(
       path.join(uploads, "ffd-test-metronome-samba.mp3"),
       Buffer.from("local-disk-audio"),
     );
-    fs.writeFileSync(path.join(uploads, "notes.txt"), "plain");
+    fs.writeFileSync(path.join(uploads, "cover é.png"), Buffer.from("png!"));
   });
 
   afterAll(() => {
@@ -56,24 +75,12 @@ describe("UploadsFallbackController (with ServeStaticModule)", () => {
   async function createApp(): Promise<void> {
     const cwd = jest.spyOn(process, "cwd").mockReturnValue(tmpRoot);
     const moduleRef = await Test.createTestingModule({
-      imports: [
-        ServeStaticModule.forRoot({
-          rootPath: path.join(tmpRoot, "uploads"),
-          serveRoot: "/uploads",
-        }),
-      ],
       controllers: [UploadsFallbackController],
       providers: [
         { provide: BlobStorageService, useValue: blob },
         { provide: CircuitBreakerService, useValue: breaker },
       ],
-    })
-      // The testing module instantiates providers before the HTTP adapter
-      // exists, so ServeStatic would pick its no-op loader; force the Express
-      // one to reproduce production (NestFactory.create) routing order.
-      .overrideProvider(AbstractLoader)
-      .useValue(new ExpressLoader())
-      .compile();
+    }).compile();
     app = moduleRef.createNestApplication({ logger: false });
     app.setGlobalPrefix("api/v1", {
       exclude: [UPLOADS_FALLBACK_PREFIX_EXCLUDE],
@@ -110,7 +117,7 @@ describe("UploadsFallbackController (with ServeStaticModule)", () => {
     await app.close();
   });
 
-  describe("disk hit (unchanged ServeStatic behaviour)", () => {
+  describe("disk hit", () => {
     it("serves the local file with Range support and never touches the blob", async () => {
       const res = await request(app.getHttpServer())
         .get("/uploads/ffd-test-metronome-samba.mp3")
@@ -118,8 +125,132 @@ describe("UploadsFallbackController (with ServeStaticModule)", () => {
 
       expect(res.status).toBe(206);
       expect(res.headers["content-range"]).toBe("bytes 0-4/16");
+      expect(res.headers["content-length"]).toBe("5");
+      expect(res.headers["accept-ranges"]).toBe("bytes");
+      expect(res.headers["content-type"]).toBe("audio/mpeg");
       expect(res.body.toString()).toBe("local");
       expect(blob.getProperties).not.toHaveBeenCalled();
+    });
+
+    it("serves the full local mp3 with caching headers", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/uploads/ffd-test-metronome-samba.mp3")
+        .buffer(true)
+        .parse(binaryParser);
+
+      expect(res.status).toBe(200);
+      expect(res.body.toString()).toBe("local-disk-audio");
+      expect(res.headers["content-type"]).toBe("audio/mpeg");
+      expect(res.headers["cache-control"]).toBe("public, max-age=86400");
+      expect(res.headers["etag"]).toBeDefined();
+      expect(res.headers["last-modified"]).toBeDefined();
+    });
+
+    it("answers a conditional request with 304", async () => {
+      const first = await request(app.getHttpServer()).get(
+        "/uploads/ffd-test-metronome-samba.mp3",
+      );
+      const res = await request(app.getHttpServer())
+        .get("/uploads/ffd-test-metronome-samba.mp3")
+        .set("If-None-Match", String(first.headers["etag"]));
+      expect(res.status).toBe(304);
+    });
+
+    it("answers an unsatisfiable Range on a local file with an uncached 416", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/uploads/ffd-test-metronome-samba.mp3")
+        .set("Range", "bytes=999999999-");
+
+      expect(res.status).toBe(416);
+      expect(res.headers["content-range"]).toBe("bytes */16");
+      expect(res.headers["cache-control"] ?? "").not.toMatch(/max-age/);
+      expect(res.headers["etag"]).toBeUndefined();
+      expect(res.headers["last-modified"]).toBeUndefined();
+      expect(res.headers["content-type"]).toBeUndefined();
+      expect(blob.getProperties).not.toHaveBeenCalled();
+    });
+
+    it("strips the file headers when send fails otherwise (412 → 404)", async () => {
+      const ok = await request(app.getHttpServer()).get(
+        "/uploads/ffd-test-metronome-samba.mp3",
+      );
+      const res = await request(app.getHttpServer())
+        .get("/uploads/ffd-test-metronome-samba.mp3")
+        .set("If-Match", '"not-the-etag"');
+
+      expect(res.status).toBe(404);
+      expect(res.headers["cache-control"] ?? "").not.toMatch(/max-age/);
+      // Only Express's own weak ETag of the JSON body, never the file's.
+      expect(res.headers["etag"]).not.toBe(ok.headers["etag"]);
+      expect(res.headers["last-modified"]).toBeUndefined();
+      expect(res.headers["content-range"]).toBeUndefined();
+      expect(res.headers["accept-ranges"]).toBeUndefined();
+      expect(res.headers["content-type"]).toMatch(/application\/json/);
+    });
+
+    it("answers HEAD on a local file without a body", async () => {
+      const res = await request(app.getHttpServer()).head(
+        "/uploads/ffd-test-metronome-samba.mp3",
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers["content-length"]).toBe("16");
+      expect(blob.getProperties).not.toHaveBeenCalled();
+    });
+
+    it("serves local artwork (non-ASCII name) as an image", async () => {
+      const res = await request(app.getHttpServer())
+        .get(url("cover é.png"))
+        .buffer(true)
+        .parse(binaryParser);
+
+      expect(res.status).toBe(200);
+      expect(res.headers["content-type"]).toBe("image/png");
+      expect(res.body.toString()).toBe("png!");
+    });
+
+    it("serves local files even when blob storage is disabled", async () => {
+      blob.isEnabled.mockReturnValue(false);
+      const res = await request(app.getHttpServer()).get(
+        "/uploads/ffd-test-metronome-samba.mp3",
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
+  describe("only flat track media are reachable (#293)", () => {
+    it.each([
+      "/uploads/certificates/scan.jpg",
+      "/uploads/certificates/scan.pdf",
+      "/uploads/renewal/doc.png",
+      "/uploads/tts_cache/abc.mp3",
+      "/uploads/nested/track.mp3",
+      "/uploads/certificates%2Fscan.jpg",
+      "/uploads/renewal%2Fdoc.png",
+      "/uploads/tts_cache%2Fabc.mp3",
+      "/uploads/..%2Foutside.mp3",
+      "/uploads/../outside.mp3",
+      "/uploads/%2E%2E%2Foutside.mp3",
+      "/uploads/nested/..%2F..%2Foutside.mp3",
+      "/uploads/.hidden.mp3",
+      "/uploads/notes.txt",
+      "/uploads/scan.pdf",
+      "/uploads/",
+      "/uploads",
+    ])("returns 404 for %s although the file exists on disk", async (p) => {
+      for (const enabled of [true, false]) {
+        blob.isEnabled.mockReturnValue(enabled);
+        const res = await request(app.getHttpServer()).get(p);
+        expect(res.status).toBe(404);
+        expect(res.text).not.toContain(SECRET);
+      }
+      expect(blob.getProperties).not.toHaveBeenCalled();
+    });
+
+    it("returns 404 on HEAD for a document sub-folder", async () => {
+      const res = await request(app.getHttpServer()).head(
+        "/uploads/certificates/scan.jpg",
+      );
+      expect(res.status).toBe(404);
     });
   });
 
@@ -128,11 +259,7 @@ describe("UploadsFallbackController (with ServeStaticModule)", () => {
       const res = await request(app.getHttpServer())
         .get(url(`${REAL_TRACK}.mp3`))
         .buffer(true)
-        .parse((r, cb) => {
-          const chunks: Buffer[] = [];
-          r.on("data", (c: Buffer) => chunks.push(c));
-          r.on("end", () => cb(null, Buffer.concat(chunks)));
-        });
+        .parse(binaryParser);
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual(AUDIO);
@@ -253,7 +380,7 @@ describe("UploadsFallbackController (with ServeStaticModule)", () => {
     });
   });
 
-  describe("hand-over to ServeStatic (today's 404)", () => {
+  describe("404 cases", () => {
     it("returns the 404 JSON when the blob does not exist either", async () => {
       blob.getProperties.mockResolvedValue(null);
       const res = await request(app.getHttpServer()).get(url("missing.mp3"));
@@ -282,24 +409,13 @@ describe("UploadsFallbackController (with ServeStaticModule)", () => {
       expect(res.status).toBe(404);
     });
 
-    it("leaves non-media names to ServeStatic without a blob lookup", async () => {
-      const local = await request(app.getHttpServer()).get(
-        "/uploads/notes.txt",
-      );
-      expect(local.status).toBe(200);
-      const missing = await request(app.getHttpServer()).get(
-        "/uploads/scan.pdf",
-      );
-      expect(missing.status).toBe(404);
-      expect(blob.getProperties).not.toHaveBeenCalled();
-    });
-
     it.each([
       "/uploads/certificates/scan.jpg",
       "/uploads/renewal/doc.png",
       "/uploads/certificates%2Fscan.jpg",
       "/uploads/..%2F..%2Fetc%2Fpasswd.mp3",
       "/uploads/.hidden.mp3",
+      "/uploads/missing.pdf",
     ])("never looks up %s in blob storage", async (p) => {
       const res = await request(app.getHttpServer()).get(p);
       expect(res.status).toBe(404);

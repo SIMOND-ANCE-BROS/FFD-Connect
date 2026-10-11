@@ -1,29 +1,5 @@
-import { StorageEngine, diskStorage, memoryStorage } from "multer";
+import { StorageEngine, memoryStorage } from "multer";
 import { extname } from "path";
-
-/**
- * Storage multer pour les uploads : mémoire en test (pas d'I/O disque),
- * disque sinon, avec un nom de fichier unique par upload.
- *
- * Lit process.env directement (exception à la convention ConfigService) car les
- * options de FileInterceptor sont évaluées au chargement du module, avant que
- * l'injection de dépendances ne soit disponible.
- */
-export function createUploadStorage(destination: string): StorageEngine {
-  return process.env.NODE_ENV === "test"
-    ? memoryStorage()
-    : diskStorage({
-        destination,
-        filename: (_req, file, cb) => {
-          const uniqueSuffix =
-            Date.now() + "-" + Math.round(Math.random() * 1e9);
-          cb(
-            null,
-            `${file.fieldname}-${uniqueSuffix}${extname(file.originalname)}`,
-          );
-        },
-      });
-}
 
 /**
  * Storage multer en mémoire (buffer) pour les uploads destinés à Azure Blob

@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Logger,
-  Next,
   Param,
   Req,
   RequestMethod,
@@ -11,7 +10,7 @@ import {
 import type { RouteInfo } from "@nestjs/common/interfaces";
 import { ApiExcludeController } from "@nestjs/swagger";
 import { SkipThrottle } from "@nestjs/throttler";
-import type { NextFunction, Request, Response } from "express";
+import type { Request, Response } from "express";
 import { promises as fsp } from "fs";
 import * as path from "path";
 import { pipeline, Readable } from "stream";
@@ -40,22 +39,38 @@ export const UPLOADS_FALLBACK_PREFIX_EXCLUDE: RouteInfo = {
 const BLOB_CALL_TIMEOUT_MS = 8_000;
 // Track files are written once by the import tool and keep their name; a day
 // of client caching saves wake-ups and blob reads without pinning a bad file.
-const CACHE_CONTROL = "public, max-age=86400";
+const CACHE_MAX_AGE_SECONDS = 86_400;
+const CACHE_CONTROL = `public, max-age=${CACHE_MAX_AGE_SECONDS}`;
+
+/** Headers describing a served file, stripped from disk error responses. */
+const ENTITY_HEADERS = [
+  "Cache-Control",
+  "ETag",
+  "Last-Modified",
+  "Content-Type",
+] as const;
+
+const NOT_FOUND_BODY = {
+  statusCode: 404,
+  message: "Not Found",
+  error: "Not Found",
+} as const;
 
 /**
- * `/uploads/<file>` blob fallback.
+ * `/uploads/<file>`: the only public route to track media (audio + artwork).
  *
- * The client builds audio and artwork URLs as `/uploads/<file>`, historically
- * served by ServeStaticModule from the container's local disk — which is empty
- * on every new Container Apps revision. Real tracks only live in the blob
- * `tracks` container, so this route streams them from there when the file is
- * not on disk.
+ * The client builds audio and artwork URLs as `/uploads/<file>`. This
+ * controller is the single owner of that path — there is no static file
+ * server on the `uploads/` folder (#293): it only answers flat track media
+ * names (`isFlatMediaFilename`: allowlisted audio/image extension, no
+ * sub-folder, no traversal, no dotfile) and returns 404 for anything else,
+ * even when the file exists on disk. Sub-folders of `uploads/` (such as the
+ * TTS cache, delivered by its own route, POST /tts) are never reachable.
  *
- * Nest routes are registered before ServeStaticModule's handlers, so this
- * route runs first and hands over (`next()`) to ServeStatic in every case it
- * does not own: blob disabled, non-flat or non-media name, file present on
- * disk, blob miss or blob error. Only single-segment names match, so
- * sub-folders of `uploads/` are untouched, and the `uploads` blob container
+ * Lookup order: the container's local disk (`<cwd>/uploads/<file>` — local
+ * dev and seeded tracks; Express `sendFile` handles Range, HEAD, ETag and
+ * Last-Modified), then the blob `tracks` container, since the local disk is
+ * empty on every new Container Apps revision. The `uploads` blob container
  * (licence/medical documents) is never read.
  */
 @ApiExcludeController()
@@ -75,13 +90,15 @@ export class UploadsFallbackController {
     @Param("filename") filename: string,
     @Req() req: Request,
     @Res() res: Response,
-    @Next() next: NextFunction,
   ): Promise<void> {
-    if (!this.fallbackEnabled() || !isFlatMediaFilename(filename)) {
-      return next();
+    if (!isFlatMediaFilename(filename)) {
+      return this.notFound(res);
     }
     if (await this.existsOnDisk(filename)) {
-      return next();
+      return this.sendFromDisk(filename, res);
+    }
+    if (!this.fallbackEnabled()) {
+      return this.notFound(res);
     }
 
     let props: BlobFileProperties | null;
@@ -91,12 +108,12 @@ export class UploadsFallbackController {
       );
     } catch (error) {
       this.logger.warn(
-        `Blob lookup failed for /uploads fallback: ${getErrorMessage(error)}`,
+        `Blob lookup failed for /uploads: ${getErrorMessage(error)}`,
       );
-      return next();
+      return this.notFound(res);
     }
     if (!props) {
-      return next();
+      return this.notFound(res);
     }
 
     const etag = props.etag;
@@ -136,16 +153,16 @@ export class UploadsFallbackController {
       );
     } catch (error) {
       this.logger.warn(
-        `Blob download failed for /uploads fallback: ${getErrorMessage(error)}`,
+        `Blob download failed for /uploads: ${getErrorMessage(error)}`,
       );
-      return next();
+      return this.notFound(res);
     }
 
     this.writeHead(res, status, filename, props, length, start, end);
     pipeline(body, res, (error) => {
       if (error) {
         this.logger.warn(
-          `Blob stream aborted for /uploads fallback: ${getErrorMessage(error)}`,
+          `Blob stream aborted for /uploads: ${getErrorMessage(error)}`,
         );
       }
     });
@@ -167,6 +184,51 @@ export class UploadsFallbackController {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Local file through `send` (Range → 206, HEAD, ETag/Last-Modified → 304).
+   * The name is already a validated flat media name; `root` confines it too.
+   */
+  private sendFromDisk(filename: string, res: Response): Promise<void> {
+    return new Promise((resolve) => {
+      res.sendFile(
+        filename,
+        {
+          root: this.uploadsRoot,
+          dotfiles: "deny",
+          maxAge: CACHE_MAX_AGE_SECONDS * 1000,
+          headers: { "Content-Type": contentTypeForFilename(filename) },
+        },
+        (error?: Error & { status?: number }) => {
+          if (error) {
+            if (res.headersSent) {
+              this.logger.warn(
+                `Disk stream aborted for /uploads: ${getErrorMessage(error)}`,
+              );
+            } else {
+              // `send` sets the entity headers before failing (416, 412…):
+              // never let a cache keep them on an error response.
+              for (const header of ENTITY_HEADERS) res.removeHeader(header);
+              if (error.status === 416) {
+                // Keep `Content-Range: bytes */<size>` set by `send`.
+                res.setHeader("Accept-Ranges", "bytes");
+                res.status(416).end();
+              } else {
+                res.removeHeader("Content-Range");
+                res.removeHeader("Accept-Ranges");
+                this.notFound(res);
+              }
+            }
+          }
+          resolve();
+        },
+      );
+    });
+  }
+
+  private notFound(res: Response): void {
+    res.status(404).json(NOT_FOUND_BODY);
   }
 
   private callBlob<T>(label: string, fn: () => Promise<T>): Promise<T> {

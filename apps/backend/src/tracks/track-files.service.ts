@@ -23,7 +23,7 @@ export const TRACK_FILE_DELETE_TIMEOUT_MS = 8_000;
  * Audio and artwork files of the track library, stored flat under their name:
  * in the blob `tracks` container (served by `/uploads/<name>`, see
  * UploadsFallbackController), or in `<cwd>/uploads/` when blob storage is not
- * configured (local dev, served by ServeStaticModule).
+ * configured (local dev, read from disk first by the same controller).
  *
  * Blob calls go through a circuit breaker + timeout (ADR-0009). Uploads have
  * their own breaker: a 20 MB upload must not share the 10 s budget of the
