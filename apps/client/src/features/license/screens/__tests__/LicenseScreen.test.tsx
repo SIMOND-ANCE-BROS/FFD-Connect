@@ -35,6 +35,10 @@ jest.mock("../../components/SwipeableLicenseCard", () => ({
 jest.mock("../../hooks/useLicenseLogic", () => ({
   useLicenseLogic: jest.fn(),
 }));
+const mockRenewalPending = jest.fn(() => false);
+jest.mock("../../hooks/useRenewalPending", () => ({
+  useRenewalPending: () => mockRenewalPending(),
+}));
 
 // Inline mock for ThemeContext to ensure stability
 jest.mock("../../../../context/ThemeContext", () => ({
@@ -176,6 +180,7 @@ describe("LicenseScreen Integration", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRenewalPending.mockReturnValue(false);
 
     (useTheme as jest.Mock).mockImplementation(() => ({
       theme: mockTheme.theme,
@@ -202,6 +207,23 @@ describe("LicenseScreen Integration", () => {
     expect(getByTestId("license-screen-scroll-view")).toBeTruthy();
     expect(getByTestId("license-screen-card-FFD")).toBeTruthy();
     expect(getByTestId("license-screen-add-wdsf-card")).toBeTruthy();
+  });
+
+  it("says a renewal request is being checked (#268)", async () => {
+    mockRenewalPending.mockReturnValue(true);
+    (useLicenseLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...mockState,
+        listItems: [{ type: "FFD", data: { licenseNumber: "123" } }],
+      },
+      actions: mockActions,
+    });
+
+    const { getByText } = await render(<LicenseScreen />);
+
+    expect(
+      getByText("Demande de renouvellement en cours de vérification"),
+    ).toBeTruthy();
   });
 
   it("opens the QR modal with the server-signed QR as-is (#168)", async () => {

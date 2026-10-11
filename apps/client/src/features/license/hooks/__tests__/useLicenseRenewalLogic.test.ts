@@ -4,6 +4,8 @@ import {
   mockUserRole,
 } from "../../../../__tests__/mocks/mockAuthRepository";
 import { useLicenseRenewalLogic } from "../useLicenseRenewalLogic";
+import { queryClient } from "../../../../services/queryClient";
+import { renewalStatusQueryKey } from "../useRenewalPending";
 
 // Mock AuthContext
 jest.mock("../../../auth/context/AuthContext", () => ({
@@ -72,6 +74,7 @@ const makeDraftRequest = (
       requestId: string;
       type: string;
       filePath: string;
+      ocrData?: Record<string, unknown> | null;
       createdAt: string;
     }>;
   }> = {},
@@ -293,6 +296,40 @@ describe("useLicenseRenewalLogic", () => {
     expect(mockSubmitRenewal).toHaveBeenCalledWith("token-abc", "req-1");
   });
 
+  // The OCR reading is a hint for the person who checks (#268): an
+  // unfavourable or empty reading never disables the submission.
+  it("lets the licensee submit whatever the OCR read", async () => {
+    mockGetMyRenewal.mockResolvedValue(
+      makeDraftRequest({
+        documents: [
+          {
+            id: "doc-1",
+            requestId: "req-1",
+            type: "MEDICAL_CERTIFICATE",
+            filePath: "m.jpg",
+            ocrData: { isApte: false },
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+          {
+            id: "doc-2",
+            requestId: "req-1",
+            type: "LICENSE_CERTIFICATE",
+            filePath: "l.jpg",
+            ocrData: null,
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+      }),
+    );
+
+    const { result } = await renderHook(() => useLicenseRenewalLogic());
+
+    await waitFor(() => {
+      expect(result.current.request?.documents).toHaveLength(2);
+    });
+    expect(result.current.canSubmit).toBeTruthy();
+  });
+
   // 8. Submit success → status transitions to 'submitted' step
   it("should transition step to submitted after successful submit", async () => {
     const fullRequest = makeDraftRequest({
@@ -330,6 +367,79 @@ describe("useLicenseRenewalLogic", () => {
 
     expect(result.current.step).toBe("submitted");
     expect(result.current.request?.status).toBe("PENDING");
+  });
+
+  // The Licence and Profile banners read this key (#268): the renewal screen
+  // keeps it right, so going back shows the new state without a request.
+  it("shares the request status with the licence banners", async () => {
+    queryClient.clear();
+    mockGetMyRenewal.mockResolvedValue(
+      makeDraftRequest({
+        documents: [
+          {
+            id: "doc-1",
+            requestId: "req-1",
+            type: "MEDICAL_CERTIFICATE",
+            filePath: "m.jpg",
+            createdAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+      }),
+    );
+    mockSubmitRenewal.mockResolvedValue(
+      makeDraftRequest({ status: "PENDING" }),
+    );
+
+    const { result } = await renderHook(() => useLicenseRenewalLogic());
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(renewalStatusQueryKey())).toBe("DRAFT");
+    });
+
+    await act(async () => {
+      await result.current.submit();
+    });
+
+    expect(queryClient.getQueryData(renewalStatusQueryKey())).toBe("PENDING");
+    queryClient.clear();
+  });
+
+  // A banner fetch still waiting for a waking backend must not overwrite the
+  // status this screen has just written (the banner would invite renewing
+  // a second time).
+  it("keeps the submitted status over a banner fetch still in flight", async () => {
+    queryClient.clear();
+    let resolveStale: (status: string) => void = () => {};
+    void queryClient
+      .fetchQuery({
+        queryKey: renewalStatusQueryKey(),
+        queryFn: () =>
+          new Promise<string>((resolve) => {
+            resolveStale = resolve;
+          }),
+      })
+      .catch(() => {});
+    mockGetMyRenewal.mockResolvedValue(makeDraftRequest());
+    mockSubmitRenewal.mockResolvedValue(
+      makeDraftRequest({ status: "PENDING" }),
+    );
+
+    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    await waitFor(() => expect(result.current.request).not.toBeNull());
+    await act(async () => {
+      await result.current.submit();
+    });
+    await waitFor(() => {
+      expect(queryClient.getQueryData(renewalStatusQueryKey())).toBe("PENDING");
+    });
+
+    await act(async () => {
+      resolveStale("DRAFT");
+      await Promise.resolve();
+    });
+
+    expect(queryClient.getQueryData(renewalStatusQueryKey())).toBe("PENDING");
+    queryClient.clear();
   });
 
   // 9. Loading state — submitting is true during submit, false after

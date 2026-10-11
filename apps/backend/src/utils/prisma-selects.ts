@@ -315,6 +315,10 @@ export const licenseRenewalRequestResponseSelect = {
   status: true,
   createdAt: true,
   updatedAt: true,
+  // Decision shown to the licensee (#268); who decided stays internal.
+  submittedAt: true,
+  rejectionReason: true,
+  reviewComment: true,
   documents: { select: licenseRenewalDocumentResponseSelect },
 } as const;
 

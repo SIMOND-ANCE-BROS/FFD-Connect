@@ -19,10 +19,15 @@ jest.mock("react-native-safe-area-context", () => ({
 jest.mock("lucide-react-native", () => ({
   Award: () => null,
   CreditCard: () => null,
+  Hourglass: () => null,
   IdCard: () => null,
 }));
 jest.mock("../../../license/components/LicenseExpiryBanner", () => ({
   LicenseExpiryBanner: () => null,
+}));
+const mockRenewalPending = jest.fn(() => false);
+jest.mock("../../../license/hooks/useRenewalPending", () => ({
+  useRenewalPending: () => mockRenewalPending(),
 }));
 jest.mock("../../../../components/AppText", () => ({
   AppText: ({ children }: { children: React.ReactNode }) => {
@@ -56,6 +61,7 @@ const route = { params: {} } as never;
 describe("ProfileScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRenewalPending.mockReturnValue(false);
     mockUseTheme.mockReturnValue({ theme } as unknown as ThemeContextType);
   });
 
@@ -79,6 +85,25 @@ describe("ProfileScreen", () => {
     // The check-in scanner is organizer-only (403 for licensees since #174).
     expect(navigate).not.toHaveBeenCalledWith("Scanner");
     expect(queryByText("Scanner ma licence")).toBeNull();
+  });
+
+  it("says a renewal request is being checked (#268)", async () => {
+    mockRenewalPending.mockReturnValue(true);
+    mockGet.mockImplementation((url: string) =>
+      url === "/licenses/my"
+        ? Promise.resolve({ data: null })
+        : Promise.resolve({ data: { results: [] } }),
+    );
+
+    const { findByText } = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+
+    await fireEvent.press(
+      await findByText("Demande de renouvellement en cours de vérification"),
+    );
+    const { navigate } = mockNavigation as unknown as { navigate: jest.Mock };
+    expect(navigate).toHaveBeenCalledWith("LicenseRenewal");
   });
 
   it("renders the license when the user has one", async () => {
