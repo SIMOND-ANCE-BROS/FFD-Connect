@@ -179,6 +179,32 @@ describe("NotificationsScreen", () => {
     },
   );
 
+  it("opens the licence renewal screen from a renewal decision (#269)", async () => {
+    (BackendService.getNotifications as jest.Mock).mockResolvedValue([
+      {
+        id: "n1",
+        title: "Renouvellement de licence approuvé",
+        body: "Test",
+        createdAt: new Date().toISOString(),
+        isRead: true,
+        data: {
+          type: "LICENSE_RENEWAL_DECISION",
+          requestId: "req-1",
+          status: "APPROVED",
+        },
+      },
+    ]);
+    const { getByText } = await renderScreen();
+    await waitFor(() =>
+      expect(getByText("Renouvellement de licence approuvé")).toBeTruthy(),
+    );
+
+    await fireEvent.press(getByText("Renouvellement de licence approuvé"));
+
+    expect(navigation.navigate).toHaveBeenCalledTimes(1);
+    expect(navigation.navigate).toHaveBeenCalledWith("LicenseRenewal");
+  });
+
   // Un type ajouté côté serveur ne doit pas faire planter un client plus ancien :
   // ce qu'on ne reconnaît pas ne mène nulle part, silencieusement.
   it("does nothing when the payload carries no known destination", async () => {

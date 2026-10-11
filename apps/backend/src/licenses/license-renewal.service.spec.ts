@@ -9,6 +9,7 @@ import {
   Prisma,
 } from "@prisma/client";
 import { Test, TestingModule } from "@nestjs/testing";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
@@ -19,6 +20,7 @@ import {
   RENEWAL_DOCUMENT_REJECTED,
   RenewalErrorCode,
 } from "./license-renewal.service";
+import { LicenseRenewalNotificationService } from "./license-renewal-notification.service";
 
 /** Buffer factice représentant un document uploadé en mémoire. */
 const FILE_BUFFER = Buffer.from("fake-file-bytes");
@@ -37,6 +39,7 @@ describe("LicenseRenewalService", () => {
     };
     user: {
       findUnique: jest.Mock;
+      findMany: jest.Mock;
     };
     licenseRenewalRequest: {
       findFirst: jest.Mock;
@@ -67,6 +70,7 @@ describe("LicenseRenewalService", () => {
     },
     user: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
     },
     licenseRenewalRequest: {
       findFirst: jest.fn(),
@@ -103,6 +107,12 @@ describe("LicenseRenewalService", () => {
   };
 
   const mockCleaner = { deleteFiles: jest.fn() };
+  const mockNotifications = { sendToUsers: jest.fn(), sendToUser: jest.fn() };
+
+  /** Lets the fire-and-forget notification settle. */
+  const flushNotifications = async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -112,6 +122,10 @@ describe("LicenseRenewalService", () => {
         { provide: OcrService, useValue: mockOcr },
         { provide: BlobStorageService, useValue: mockBlob },
         { provide: RenewalDocumentFileCleaner, useValue: mockCleaner },
+        // The real notifier, over a mocked NotificationsService: the
+        // fire-and-forget contract is part of what is tested here.
+        LicenseRenewalNotificationService,
+        { provide: NotificationsService, useValue: mockNotifications },
       ],
     }).compile();
 
@@ -1094,6 +1108,158 @@ describe("LicenseRenewalService", () => {
       // Seen as « submitted » by the app; the administrator decides. Nothing
       // tells the licensee that the number is registered elsewhere.
       expect(result).toEqual(pending);
+    });
+
+    describe("administrator notification (#269)", () => {
+      /** A submission the automatic approval cannot settle: left PENDING. */
+      const arrangeLeftPending = () => {
+        const documents = [
+          {
+            id: "doc-1",
+            type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+            filePath: "/path/to/medical.jpg",
+            ocrData: { isApte: true },
+          },
+          {
+            id: "doc-2",
+            type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
+            filePath: "/path/to/license.jpg",
+            ocrData: { licenseNumber: "FFD-TAKEN" },
+          },
+        ];
+        mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+          id: "req-1",
+          userId: "user-1",
+          status: LicenseRenewalStatus.DRAFT,
+          documents,
+        });
+        mockPrisma.user.findUnique.mockResolvedValue({ license: null });
+        mockPrisma.licenseRenewalRequest.update.mockResolvedValue({
+          id: "req-1",
+        });
+        mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue({
+          status: LicenseRenewalStatus.PENDING,
+          userId: "user-1",
+          documents,
+          user: { category: null, clubName: null, license: null },
+        });
+        mockPrisma.license.upsert.mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError("Unique constraint", {
+            code: "P2002",
+            clientVersion: "7",
+          }),
+        );
+        const pending = {
+          id: "req-1",
+          status: LicenseRenewalStatus.PENDING,
+          documents: [],
+        };
+        mockPrisma.licenseRenewalRequest.findUniqueOrThrow.mockResolvedValue(
+          pending,
+        );
+        mockPrisma.user.findMany.mockResolvedValue([
+          { id: "admin-1" },
+          { id: "admin-2" },
+        ]);
+        return pending;
+      };
+
+      it("tells every administrator that a request awaits review", async () => {
+        arrangeLeftPending();
+        mockNotifications.sendToUsers.mockResolvedValue({ recipients: 2 });
+
+        await service.submitRenewalRequest("user-1", "req-1");
+        await flushNotifications();
+
+        expect(mockNotifications.sendToUsers).toHaveBeenCalledTimes(1);
+        expect(mockNotifications.sendToUsers).toHaveBeenCalledWith(
+          ["admin-1", "admin-2"],
+          "LICENSE_RENEWAL_TO_REVIEW",
+          expect.any(String),
+          expect.any(String),
+          { type: "LICENSE_RENEWAL_TO_REVIEW", requestId: "req-1" },
+        );
+        expect(mockNotifications.sendToUser).not.toHaveBeenCalled();
+      });
+
+      it("never fails the submission when the notification fails", async () => {
+        const pending = arrangeLeftPending();
+        mockNotifications.sendToUsers.mockRejectedValue(new Error("FCM down"));
+
+        await expect(
+          service.submitRenewalRequest("user-1", "req-1"),
+        ).resolves.toEqual(pending);
+        await flushNotifications();
+        expect(mockNotifications.sendToUsers).toHaveBeenCalled();
+      });
+
+      it("never fails the submission when the administrators cannot be read", async () => {
+        const pending = arrangeLeftPending();
+        mockPrisma.user.findMany.mockRejectedValue(new Error("DB hiccup"));
+
+        await expect(
+          service.submitRenewalRequest("user-1", "req-1"),
+        ).resolves.toEqual(pending);
+        await flushNotifications();
+        expect(mockNotifications.sendToUsers).not.toHaveBeenCalled();
+      });
+
+      it("notifies no one when the request is approved automatically", async () => {
+        const documents = [
+          {
+            id: "doc-1",
+            type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+            filePath: "/path/to/medical.jpg",
+            ocrData: { isApte: true },
+          },
+          {
+            id: "doc-2",
+            type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
+            filePath: "/path/to/license.jpg",
+            ocrData: { licenseNumber: "FFD-123" },
+          },
+        ];
+        mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+          id: "req-1",
+          userId: "user-1",
+          status: LicenseRenewalStatus.DRAFT,
+          documents,
+        });
+        mockPrisma.user.findUnique.mockResolvedValue({ license: null });
+        mockPrisma.licenseRenewalRequest.update.mockResolvedValue({
+          id: "req-1",
+        });
+        mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue({
+          status: LicenseRenewalStatus.PENDING,
+          userId: "user-1",
+          documents,
+          user: { category: null, clubName: null, license: null },
+        });
+        mockPrisma.license.upsert.mockResolvedValue({ id: "L1" });
+
+        await service.submitRenewalRequest("user-1", "req-1");
+        await flushNotifications();
+
+        // Nothing left to review, and the licensee reads the outcome in the
+        // response itself.
+        expect(mockNotifications.sendToUsers).not.toHaveBeenCalled();
+        expect(mockNotifications.sendToUser).not.toHaveBeenCalled();
+      });
+
+      it("notifies no one when the submission is refused", async () => {
+        mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+          id: "req-1",
+          userId: "user-1",
+          status: LicenseRenewalStatus.DRAFT,
+          documents: [],
+        });
+
+        await expect(
+          service.submitRenewalRequest("user-1", "req-1"),
+        ).rejects.toThrow(BadRequestException);
+        await flushNotifications();
+        expect(mockNotifications.sendToUsers).not.toHaveBeenCalled();
+      });
     });
 
     it("rethrows any other approval failure", async () => {
