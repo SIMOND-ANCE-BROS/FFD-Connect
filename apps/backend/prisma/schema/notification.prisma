@@ -33,9 +33,17 @@ enum NotificationType {
   /// métadonnées. Destiné aux administrateurs.
   TRACK_REPORT
 
+  /// Un licencié soumet une demande de renouvellement de licence qui attend
+  /// une vérification humaine. Destiné aux administrateurs.
+  LICENSE_RENEWAL_TO_REVIEW
+
   /// La décision d'un administrateur (validée ou refusée) sur une proposition
   /// de correction de musique QUE J'AI SOUMISE. Pour tous les rôles.
   TRACK_CORRECTION_DECISION
+
+  /// La décision d'un administrateur (approuvée ou refusée) sur MA demande de
+  /// renouvellement de licence. Pour tous les rôles.
+  LICENSE_RENEWAL_DECISION
 
   /// Notification de diagnostic déclenchée par l'utilisateur lui-même
   /// (POST /notifications/test). NON RÉGLABLE : la couper rendrait le
