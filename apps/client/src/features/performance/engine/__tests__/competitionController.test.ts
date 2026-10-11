@@ -309,12 +309,30 @@ describe("competitionController", () => {
       expect(ids).toContain(JIVE.id);
     });
 
-    it("draws an off-tempo track when the regulation tempo is off", () => {
+    it("draws an off-tempo track only when the regulation tempo is off", () => {
       const slowJive = t("j-slow", "Jive", 38);
-      engine.setEngineDeps({ ...deps, allTracks: [slowJive] });
-      setProgram({
-        rounds: [roundOf("Latin", "Round", ["Jive"])],
-      });
+      engine.setEngineDeps({ ...deps, allTracks: [slowJive, SAMBA] });
+      const program = {
+        rounds: [roundOf("Latin", "Round", ["Samba", "Jive"])],
+      };
+      const ids = () => store().playlist.map((i) => i.track.id);
+
+      setProgram({ ...program, regulationTempo: false });
+      engine.generatePlaylist();
+      expect(ids()).toContain("j-slow");
+
+      setProgram({ ...program, regulationTempo: true });
+      engine.generatePlaylist();
+      expect(ids()).not.toContain("j-slow");
+      expect(ids()).toContain(SAMBA.id);
+    });
+
+    it("treats a missing regulationTempo as off", () => {
+      const slowJive = t("j-slow", "Jive", 38);
+      engine.setEngineDeps({ ...deps, allTracks: [slowJive, SAMBA] });
+      setProgram({ rounds: [roundOf("Latin", "Round", ["Samba", "Jive"])] });
+      const { regulationTempo: _omit, ...legacy } = store().config;
+      store().setConfig(legacy as PerformanceConfig);
       engine.generatePlaylist();
       expect(store().playlist.map((i) => i.track.id)).toContain("j-slow");
     });
