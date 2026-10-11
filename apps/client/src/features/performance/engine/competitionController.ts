@@ -107,6 +107,9 @@ let transitioning = false;
 let holdTimer = false;
 let ambianceTrack: TrackData | null = null;
 let closingPath: string | null = null;
+
+/** « Annonces vocales » setting (on unless explicitly turned off). */
+const announcementsOn = (): boolean => store().config.announcements !== false;
 let previousStatus: "playing" | "break" | null = null;
 let ttsFailureHandled = false;
 /**
@@ -370,7 +373,8 @@ async function startBreak(): Promise<void> {
 async function announceBreak(index: number, token: number): Promise<void> {
   const item = store().playlist[index] as PlaylistItem | undefined;
   try {
-    if (item) {
+    // Announcements off: the break is music only, nothing to call.
+    if (item && announcementsOn()) {
       store().setIsAnnouncing(true);
       if (ambianceTrack) {
         await rampVolume(DUCKED_VOLUME, BREAK_FADE_IN_MS, token);
@@ -450,7 +454,7 @@ async function transitionToDance(
   holdTimer = true;
   try {
     const fromBreak = store().status === "break" && ambianceTrack !== null;
-    if (announce) {
+    if (announce && announcementsOn()) {
       store().setIsAnnouncing(true);
       if (fromBreak) {
         await rampVolume(DUCKED_VOLUME, 600, token);
@@ -622,7 +626,10 @@ export async function startPerformance(): Promise<boolean> {
     const uniqueTracks = [
       ...new Map(list.map((i) => [i.track.id, i.track])).values(),
     ];
-    const texts = [...new Set(list.map((i) => i.announcementText))];
+    const speaks = announcementsOn();
+    const texts = speaks
+      ? [...new Set(list.map((i) => i.announcementText))]
+      : [];
     const trackUris = new Map<string, string>();
     const ttsPaths = new Map<string, string>();
     // Holder object: assigned inside a task closure.
@@ -648,13 +655,15 @@ export async function startPerformance(): Promise<boolean> {
         }
       });
     }
-    tasks.push(async () => {
-      try {
-        closingPath = await Tts.preload(CLOSING_ANNOUNCEMENT);
-      } catch {
-        closingPath = null; // optional closing line
-      }
-    });
+    if (speaks) {
+      tasks.push(async () => {
+        try {
+          closingPath = await Tts.preload(CLOSING_ANNOUNCEMENT);
+        } catch {
+          closingPath = null; // optional closing line
+        }
+      });
+    }
 
     try {
       await runWithProgress(

@@ -73,6 +73,4 @@ export const EVENTS_SOURCE_NOTICES = {
     message:
       "Les épreuves ne sont pas encore disponibles dans les documents officiels de la FFD. Elles s'afficheront ici dès la publication de la circulaire.",
   },
-  /** Label of the button that opens the circular. */
-  openCircular: "Ouvrir la circulaire",
 } as const satisfies Record<string, BetaNoticeCopy | string>;

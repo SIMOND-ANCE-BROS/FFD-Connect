@@ -10,8 +10,13 @@ import { AppTheme } from "../context/ThemeContext";
 /** Hauteur de la barre de titre (hors safe-area et hors contenu épinglé). */
 export const PINNED_HEADER_BAR = 56;
 
-/** Le flou déborde de cette hauteur sous le contenu pour s'y estomper. */
-const FADE_TAIL = 28;
+/**
+ * Le flou déborde de cette hauteur sous le contenu pour s'y estomper. Court
+ * (12 px, contre 28 avant) : les listes commencent juste sous l'en-tête, sans
+ * vide visible (retour bêta sur Compétitions et Bibliothèque).
+ */
+export const PINNED_HEADER_FADE = 12;
+const FADE_TAIL = PINNED_HEADER_FADE;
 
 interface PinnedHeaderProps {
   theme: AppTheme;
@@ -89,7 +94,8 @@ export const PinnedHeader = ({
           }
         >
           <BlurView
-            intensity={isDark ? 50 : 70}
+            testID="pinned-header-blur"
+            intensity={isDark ? 35 : 50}
             tint={isDark ? "dark" : "light"}
             style={StyleSheet.absoluteFill}
           />

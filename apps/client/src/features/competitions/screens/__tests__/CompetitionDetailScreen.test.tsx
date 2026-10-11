@@ -215,7 +215,7 @@ describe("CompetitionDetailScreen", () => {
     };
 
     it("flags events deduced from the circular and opens it", async () => {
-      const { getByText, getByTestId } = await renderWith({
+      const { getByText, getByTestId, getByLabelText } = await renderWith({
         eventsSource: "CIRCULAR",
         circularUrl: CIRCULAR,
       });
@@ -223,11 +223,24 @@ describe("CompetitionDetailScreen", () => {
       expect(
         getByText(EVENTS_SOURCE_NOTICES.deducedFromCircular.message),
       ).toBeTruthy();
-      await fireEvent.press(
-        getByTestId("competition-events-source-open-circular"),
-      );
+      await fireEvent.press(getByLabelText("Ouvrir la circulaire"));
       expect(Linking.openURL).toHaveBeenCalledWith(CIRCULAR);
+      // Deduced events are real: they are listed.
+      expect(getByTestId("competition-detail-events-list")).toBeTruthy();
     });
+
+    // One circular button only (the programme block's), not one per block.
+    it.each(["CIRCULAR", "DESCRIPTION", "GENERIC"])(
+      "offers a single circular button (%s)",
+      async (eventsSource) => {
+        const { getAllByLabelText } = await renderWith({
+          eventsSource,
+          circularUrl: CIRCULAR,
+        });
+
+        expect(getAllByLabelText("Ouvrir la circulaire")).toHaveLength(1);
+      },
+    );
 
     it("flags events deduced from the description", async () => {
       const { getByText, getByTestId } = await renderWith({
@@ -238,13 +251,11 @@ describe("CompetitionDetailScreen", () => {
       expect(
         getByText(EVENTS_SOURCE_NOTICES.deducedFromDescription.message),
       ).toBeTruthy();
-      expect(
-        getByTestId("competition-events-source-open-circular"),
-      ).toBeTruthy();
+      expect(getByTestId("competition-detail-events-list")).toBeTruthy();
     });
 
     it("points to the circular when its events could not be read", async () => {
-      const { getByText, getByTestId } = await renderWith({
+      const { getByText, getByLabelText } = await renderWith({
         eventsSource: "GENERIC",
         circularUrl: CIRCULAR,
       });
@@ -252,20 +263,62 @@ describe("CompetitionDetailScreen", () => {
       expect(
         getByText(EVENTS_SOURCE_NOTICES.circularUnreadable.message),
       ).toBeTruthy();
-      expect(
-        getByTestId("competition-events-source-open-circular"),
-      ).toBeTruthy();
+      expect(getByLabelText("Ouvrir la circulaire")).toBeTruthy();
+    });
+
+    // The sync seeds placeholder events (Standard/Latin × Adult/Senior) until
+    // the real ones are read: they are not shown as if they were real.
+    it.each([["GENERIC"], [null], [undefined]])(
+      "does not list placeholder events (source %s)",
+      async (eventsSource) => {
+        const { queryByTestId, queryByText } = await renderWith({
+          eventsSource,
+          circularUrl: CIRCULAR,
+        });
+
+        expect(queryByTestId("competition-detail-events-list")).toBeNull();
+        expect(queryByText("Latines")).toBeNull();
+      },
+    );
+
+    it("keeps one results entry when placeholder events are hidden", async () => {
+      const props = createTestProps();
+      mockUseLogic.mockReturnValue({
+        state: {
+          ...baseState,
+          details: {
+            ...mockCompetition,
+            ffdId: "ffd-1",
+            eventsSource: "GENERIC",
+            status: "PAST" as const,
+          },
+        },
+        actions: baseActions,
+      });
+
+      const { getByText } = await render(
+        <CompetitionDetailScreen {...props} />,
+      );
+
+      await fireEvent.press(getByText("Résultats"));
+      expect(props.navigation.navigate).toHaveBeenCalledWith("LiveResults", {
+        competitionId: "c1",
+      });
+    });
+
+    it("has no results entry for an upcoming competition", async () => {
+      const { queryByText } = await renderWith({ eventsSource: "GENERIC" });
+
+      expect(queryByText("Résultats")).toBeNull();
     });
 
     it("says events are not published yet when there is no circular (field absent)", async () => {
-      const { getByText, queryByTestId } = await renderWith({});
+      const { getByText, queryByLabelText } = await renderWith({});
 
       expect(
         getByText(EVENTS_SOURCE_NOTICES.notYetPublished.message),
       ).toBeTruthy();
-      expect(
-        queryByTestId("competition-events-source-open-circular"),
-      ).toBeNull();
+      expect(queryByLabelText("Ouvrir la circulaire")).toBeNull();
     });
 
     it("shows no notice for a competition not synced from the federation", async () => {
@@ -276,6 +329,8 @@ describe("CompetitionDetailScreen", () => {
       );
 
       expect(queryByTestId("competition-events-source-notice")).toBeNull();
+      // Club-created events are authoritative: always listed.
+      expect(queryByTestId("competition-detail-events-list")).toBeTruthy();
     });
   });
 

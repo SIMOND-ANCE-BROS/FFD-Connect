@@ -1,7 +1,11 @@
 import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 import { Text } from "react-native";
-import { PINNED_HEADER_BAR, PinnedHeader } from "../PinnedHeader";
+import {
+  PINNED_HEADER_BAR,
+  PINNED_HEADER_FADE,
+  PinnedHeader,
+} from "../PinnedHeader";
 
 jest.mock("@react-native-masked-view/masked-view", () => {
   const { View } = jest.requireActual("react-native");
@@ -21,9 +25,6 @@ jest.mock("../../context/ThemeContext", () => ({
 }));
 
 const theme = { text: "#000", border: "#ccc" } as never;
-
-/** Le flou déborde de 28 px sous le contenu (`FADE_TAIL`, privé au composant). */
-const FADE_TAIL = 28;
 
 const renderHeader = (onHeightChange?: (h: number) => void) =>
   render(
@@ -59,7 +60,25 @@ describe("PinnedHeader", () => {
       nativeEvent: { layout: { height: 120 } },
     });
 
-    expect(onHeightChange).toHaveBeenCalledWith(120 + FADE_TAIL);
+    expect(onHeightChange).toHaveBeenCalledWith(120 + PINNED_HEADER_FADE);
+  });
+
+  // Retour bêta : 28 px de fondu laissaient un vide sous les en-têtes des
+  // listes (Compétitions, Bibliothèque). Un fondu court remonte les listes.
+  it("garde un fondu court sous l'en-tête", () => {
+    expect(PINNED_HEADER_FADE).toBeLessThanOrEqual(12);
+  });
+
+  it("floute plus légèrement le contenu qui passe dessous", async () => {
+    const { getByTestId, rerender } = await renderHeader();
+    expect(getByTestId("pinned-header-blur").props.intensity).toBe(50);
+
+    await rerender(
+      <PinnedHeader theme={theme} isDark title="Notifications">
+        <Text>Filtres</Text>
+      </PinnedHeader>,
+    );
+    expect(getByTestId("pinned-header-blur").props.intensity).toBe(35);
   });
 
   // `onHeightChange` est optionnel : plusieurs écrans montent l'en-tête sans

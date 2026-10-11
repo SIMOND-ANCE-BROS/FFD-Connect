@@ -83,6 +83,7 @@ describe("PerformanceSetupScreen", () => {
     duration: 30,
     pauseDuration: 10,
     pasoClashes: 2,
+    announcements: true,
   };
 
   const mockEngine = (
@@ -127,6 +128,17 @@ describe("PerformanceSetupScreen", () => {
     (useTheme as jest.Mock).mockReturnValue({ theme: mockTheme });
     (useNavigation as jest.Mock).mockReturnValue(navigation);
     mockEngine();
+  });
+
+  it("lets the user turn the MC announcements off", async () => {
+    const engine = mockEngine();
+    const { getByTestId } = await render(<PerformanceSetupScreen />);
+
+    const toggle = getByTestId("performance-setup-announcements-switch");
+    expect(toggle.props.value).toBe(true);
+
+    await fireEvent(toggle, "valueChange", false);
+    expect(applyLast(engine.setConfig as jest.Mock).announcements).toBe(false);
   });
 
   it("renders one card per round", async () => {

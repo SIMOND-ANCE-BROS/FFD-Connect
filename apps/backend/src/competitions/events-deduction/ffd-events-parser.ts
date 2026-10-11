@@ -21,8 +21,10 @@ import { getAllowedLevelsForAgeGroup } from "../../common/age-group";
 /**
  * Bump when the parsing rules change: it is part of the stored fingerprint, so
  * a new version re-processes every competition on the next sync.
+ * v4 (#318): circulars refused by an HTML page were fingerprinted and never
+ * read again — every competition is re-processed once.
  */
-export const FFD_EVENTS_PARSER_VERSION = 3;
+export const FFD_EVENTS_PARSER_VERSION = 4;
 
 export type DeducedEventKind = "CLASSIFICATRICE" | "OPEN" | "MAJEURE";
 export type DeducedEventType = "COUPLE" | "SOLO";

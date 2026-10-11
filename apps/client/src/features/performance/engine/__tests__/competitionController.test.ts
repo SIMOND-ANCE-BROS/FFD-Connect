@@ -102,6 +102,7 @@ const setProgram = (patch: Partial<PerformanceConfig> = {}) => {
     duration: 4,
     pauseDuration: 3,
     pasoClashes: 2,
+    announcements: true,
     ...patch,
   });
 };
@@ -454,6 +455,45 @@ describe("competitionController", () => {
       await started;
       expect(store().status).toBe("break");
       expect(deps.pause).not.toHaveBeenCalled();
+    });
+  });
+
+  // « Annonces vocales » turned off in the setup screen: nothing is spoken,
+  // nothing is generated, the competition runs on the music alone.
+  describe("announcements turned off", () => {
+    it("generates no announcement while loading", async () => {
+      setProgram({ announcements: false });
+
+      await expect(engine.startPerformance()).resolves.toBe(true);
+
+      expect(Tts.preload).not.toHaveBeenCalled();
+      expect(store().status).toBe("break");
+    });
+
+    it("runs the break and the dance without speaking, and keeps the pause music up", async () => {
+      setProgram({ announcements: false });
+
+      await engine.startPerformance();
+      await advance(engine.BREAK_FADE_IN_MS + engine.AMBIANCE_RISE_MS);
+
+      expect(Tts.speak).not.toHaveBeenCalled();
+      expect(store().isAnnouncing).toBe(false);
+      expect(lastVolume()).toBeCloseTo(engine.AMBIANCE_VOLUME);
+
+      // Whole break, then the dance starts on its own.
+      await advance(3000);
+      await advance(2000);
+      expect(deps.playTrack).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: "s1" }),
+        undefined,
+        true,
+      );
+      expect(store().status).toBe("playing");
+
+      // Dance, then the end without the closing line.
+      await advance(10_000);
+      expect(store().status).toBe("finished");
+      expect(Tts.speak).not.toHaveBeenCalled();
     });
   });
 
