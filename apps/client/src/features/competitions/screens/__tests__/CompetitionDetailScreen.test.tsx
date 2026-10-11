@@ -334,6 +334,84 @@ describe("CompetitionDetailScreen", () => {
     });
   });
 
+  // A circular lists one event per level: one card per discipline / age
+  // class / type, with a row per level (they looked like duplicates).
+  describe("events grouped by level", () => {
+    const levels = [
+      { id: "l1", eventKind: "OPEN" },
+      { id: "l2", eventKind: "CLASSIFICATRICE", level: "Avancé" },
+      { id: "l3", eventKind: "CLASSIFICATRICE", level: "Débutant" },
+      { id: "l4", eventKind: "CLASSIFICATRICE", level: "Intermédiaire" },
+    ].map((o) => ({
+      category: "Latin",
+      ageGroup: "Junior I",
+      eventType: "COUPLE",
+      competitionId: "c1",
+      ...o,
+    }));
+    const withLevels = {
+      ...mockCompetition,
+      ffdId: "ffd-1",
+      eventsSource: "CIRCULAR",
+      events: levels,
+    };
+
+    it("shows one card for the four levels", async () => {
+      mockUseLogic.mockReturnValue({
+        state: { ...baseState, details: withLevels },
+        actions: baseActions,
+      });
+
+      const { getAllByText, getByText } = await render(
+        <CompetitionDetailScreen {...createTestProps()} />,
+      );
+
+      expect(getAllByText("Latines")).toHaveLength(1);
+      for (const label of ["Débutant", "Intermédiaire", "Avancé", "Open"]) {
+        expect(getByText(label)).toBeTruthy();
+      }
+    });
+
+    it("hides the levels the dancer cannot enter on demand", async () => {
+      mockUseLogic.mockReturnValue({
+        state: { ...baseState, details: withLevels },
+        actions: {
+          ...baseActions,
+          isEligible: (event: { id: string }) =>
+            event.id === "l2"
+              ? { eligible: false, reason: "NOT_ALLOWED" }
+              : { eligible: true },
+        },
+      });
+
+      const { getByTestId, getByText, queryByText } = await render(
+        <CompetitionDetailScreen {...createTestProps()} />,
+      );
+
+      expect(getByText("Avancé")).toBeTruthy();
+      await fireEvent(
+        getByTestId("competition-detail-eligible-only"),
+        "valueChange",
+        true,
+      );
+      expect(queryByText("Avancé")).toBeNull();
+      expect(getByText("Débutant")).toBeTruthy();
+    });
+
+    it("offers no filter when every event is open to the dancer", async () => {
+      mockUseLogic.mockReturnValue({
+        state: { ...baseState, details: withLevels },
+        actions: baseActions,
+      });
+
+      const { queryByTestId } = await render(
+        <CompetitionDetailScreen {...createTestProps()} />,
+      );
+
+      expect(queryByTestId("competition-detail-eligible-only")).toBeNull();
+    });
+  });
+
   it("switches tabs", async () => {
     mockUseLogic.mockReturnValue({
       state: {

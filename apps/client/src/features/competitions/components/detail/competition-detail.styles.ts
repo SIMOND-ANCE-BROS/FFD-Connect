@@ -180,6 +180,22 @@ export const styles = StyleSheet.create({
     minWidth: 72,
     paddingHorizontal: 10,
   },
+  eventRow: {
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(127,127,127,0.25)",
+  },
+  eventGroupHeader: {
+    marginBottom: 4,
+  },
+  eligibleOnlyRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
   disabledEvent: {
     opacity: 0.6,
   },
