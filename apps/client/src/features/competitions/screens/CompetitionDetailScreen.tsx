@@ -12,6 +12,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { AppButton } from "../../../components/AppButton";
 import { AppText } from "../../../components/AppText";
 import { BetaNotice } from "../../../components/BetaNotice";
 import { BETA_NOTICES } from "../../../constants/betaNotices";
@@ -34,6 +35,7 @@ import { styles } from "../components/detail/competition-detail.styles";
 import { TimingList } from "../components/TimingList";
 import { useCompetitionDetailLogic } from "../hooks/useCompetitionDetailLogic";
 import { addCompetitionToCalendar } from "../utils/addToCalendar";
+import { hasPlaceholderEvents } from "../utils/eventsSourceNotice";
 import {
   clearDeadlineStorage,
   deadlineStorageKey,
@@ -175,6 +177,12 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
     );
   }
 
+  const showResults =
+    state.details.status === "PAST" || state.details.status === "LIVE";
+  const detailsId = state.details.id;
+  const openResults = () =>
+    navigation.navigate("LiveResults", { competitionId: detailsId });
+
   return (
     <SafeAreaView style={styles.flexOne} edges={["left", "right"]}>
       <View
@@ -271,40 +279,52 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
                 eventsSource={state.details.eventsSource}
                 circularUrl={state.details.circularUrl}
               />
-              <View
-                style={styles.eventsList}
-                testID="competition-detail-events-list"
-              >
-                {state.details.events.map((event) => {
-                  const isRegistered = state.myRegistrations.includes(event.id);
-                  const eligibility = actions.isEligible(event);
-                  const isOrganizer = state.userRole === "CLUB";
-
-                  return (
-                    <CompetitionEventCard
-                      key={event.id}
-                      currentTheme={currentTheme}
-                      event={event}
-                      isRegistered={isRegistered}
-                      eligibility={eligibility}
-                      isOrganizer={isOrganizer}
-                      canSelfRegister={state.canSelfRegister}
-                      showResults={
-                        state.details!.status === "PAST" ||
-                        state.details!.status === "LIVE"
-                      }
-                      onNavigateResults={() =>
-                        navigation.navigate("LiveResults", {
-                          competitionId: state.details!.id,
-                        })
-                      }
-                      onRegister={actions.handleRegister}
-                      onUnregister={actions.handleUnregister}
-                      pendingAction={state.pendingRegistrationActions[event.id]}
+              {hasPlaceholderEvents(state.details) ? (
+                // Placeholder events are not listed as if they were real; the
+                // results (per competition) stay reachable once it has started.
+                showResults ? (
+                  <View style={styles.resultsOnly}>
+                    <AppButton
+                      title="Résultats"
+                      variant="outline"
+                      onPress={openResults}
+                      testID="competition-detail-results"
                     />
-                  );
-                })}
-              </View>
+                  </View>
+                ) : null
+              ) : (
+                <View
+                  style={styles.eventsList}
+                  testID="competition-detail-events-list"
+                >
+                  {state.details.events.map((event) => {
+                    const isRegistered = state.myRegistrations.includes(
+                      event.id,
+                    );
+                    const eligibility = actions.isEligible(event);
+                    const isOrganizer = state.userRole === "CLUB";
+
+                    return (
+                      <CompetitionEventCard
+                        key={event.id}
+                        currentTheme={currentTheme}
+                        event={event}
+                        isRegistered={isRegistered}
+                        eligibility={eligibility}
+                        isOrganizer={isOrganizer}
+                        canSelfRegister={state.canSelfRegister}
+                        showResults={showResults}
+                        onNavigateResults={openResults}
+                        onRegister={actions.handleRegister}
+                        onUnregister={actions.handleUnregister}
+                        pendingAction={
+                          state.pendingRegistrationActions[event.id]
+                        }
+                      />
+                    );
+                  })}
+                </View>
+              )}
             </>
           ) : (
             <View

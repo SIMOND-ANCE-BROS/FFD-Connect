@@ -45,3 +45,17 @@ export function getEventsSourceNotice(
         : { copy: EVENTS_SOURCE_NOTICES.notYetPublished, circularUrl: null };
   }
 }
+
+/**
+ * True when the events of a federation competition are the placeholders the
+ * sync seeds (Standard/Latin × Adult/Senior) until its real épreuves are read
+ * from the circular or the description: they are not shown as real events.
+ * Club-created competitions are authoritative and never placeholders.
+ */
+export function hasPlaceholderEvents(competition: EventsSourceInput): boolean {
+  if (!competition.ffdId) return false;
+  return (
+    competition.eventsSource !== "CIRCULAR" &&
+    competition.eventsSource !== "DESCRIPTION"
+  );
+}
