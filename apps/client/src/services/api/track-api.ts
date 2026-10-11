@@ -82,6 +82,9 @@ export const TrackApi = {
       headers: await authHeaders(),
       errorMessage: ERROR_MESSAGES.OPERATION_FAILED,
       logErrors: true,
+      // 409 = propositions de correction en attente : attendu, montré à
+      // l'admin, pas une erreur à remonter dans Sentry.
+      quietStatuses: [409],
     });
   },
 };

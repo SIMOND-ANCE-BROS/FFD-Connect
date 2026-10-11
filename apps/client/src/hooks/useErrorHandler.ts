@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 import { Alert } from "react-native";
+import { HttpError } from "../utils/httpInterceptor";
 import { createLogger } from "../utils/logger";
+import { isExpectedServerRefusal } from "../utils/sentryPrivacy";
 
 const logger = createLogger("useErrorHandler");
 
@@ -65,14 +67,27 @@ export const useErrorHandler = () => {
       const errorObj =
         error instanceof Error ? error : new Error(String(error));
 
-      // Log l'erreur
+      // Log l'erreur. An expected server refusal (#225, e.g. a refused medical
+      // certificate) is not a bug: dev console only, never Sentry — whose
+      // screenshot could also catch the alert shown just below.
       if (logError) {
-        logger.error(userMessage ?? "Une erreur est survenue", errorObj);
+        if (isExpectedServerRefusal(errorObj)) {
+          logger.debug(userMessage ?? "Refus du serveur", {
+            status: errorObj.statusCode,
+          });
+        } else {
+          logger.error(userMessage ?? "Une erreur est survenue", errorObj);
+        }
       }
 
       // Affiche une alerte si demandé
+      // A coded server refusal (#225) carries a text written for the user
+      // (e.g. why a medical certificate was refused): it is more useful than
+      // the generic message, and only ever shown, never logged.
       if (showAlert) {
-        Alert.alert("Erreur", userMessage ?? errorObj.message);
+        const serverText =
+          errorObj instanceof HttpError ? errorObj.userMessage : undefined;
+        Alert.alert("Erreur", serverText ?? userMessage ?? errorObj.message);
       }
 
       // Appelle le callback personnalisé

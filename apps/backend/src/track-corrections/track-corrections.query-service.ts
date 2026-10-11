@@ -65,12 +65,13 @@ export class TrackCorrectionsQueryService {
   ): Promise<TrackCorrectionAdminPageDto> {
     const skip = query.skip ?? DEFAULT_SKIP;
     const take = query.take ?? DEFAULT_TAKE;
-    // Without reason/q the where is exactly the one of lot 1 (mobile contract).
+    // Without reason/q/trackId the where is exactly the one of lot 1 (mobile contract).
     const where: Prisma.TrackCorrectionWhereInput = {
       ...(query.status && { status: query.status }),
       ...(query.reason &&
         query.reason.length > 0 && { reason: { in: query.reason } }),
       ...(query.q && { track: trackSearchWhere(query.q) }),
+      ...(query.trackId && { trackId: query.trackId }),
     };
     const orderBy: Prisma.TrackCorrectionOrderByWithRelationInput = {
       createdAt:

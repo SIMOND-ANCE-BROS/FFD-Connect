@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { AxiosError, AxiosHeaders } from "axios";
 import {
   mockAuthRepository,
@@ -6,6 +7,10 @@ import {
 } from "../../../../__tests__/mocks/mockAuthRepository";
 import { mockNavigation } from "../../../../__tests__/mocks/mockNavigation";
 import { isDeviceOffline } from "../../../../utils/connectivity";
+import {
+  ACCOUNT_CLUB_UNKNOWN,
+  ACCOUNT_NAME_UNKNOWN,
+} from "../../utils/accountCard";
 import {
   loadLicenseSnapshot,
   saveLicenseSnapshot,
@@ -518,6 +523,460 @@ describe("useLicenseLogic", () => {
     });
   });
 
+  describe("FFD validity never invented (#211)", () => {
+    const loadFfd = async (license: Record<string, unknown> | null) => {
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "LICENSEE",
+        hasWdsfLicense: false,
+        licensePhotoUri: null,
+        isLoggedIn: true,
+      });
+      mockAuthRepository.getProfile.mockResolvedValue({
+        firstName: "Jean",
+        lastName: "Dupont",
+        license,
+        clubName: "Club FFD",
+        birthDate: "1990-05-15",
+        role: "LICENSEE",
+      });
+      const { result } = await renderHook(() => useLicenseLogic());
+      await waitFor(() => {
+        expect(
+          result.current.state.listItems.find((i) => i.type === "FFD"),
+        ).toBeDefined();
+      });
+      return result.current.state.listItems.find((i) => i.type === "FFD")?.data;
+    };
+
+    it("shows a neutral status and no date nor season without validUntil", async () => {
+      const ffdUser = await loadFfd({ number: "12345" });
+      expect(ffdUser?.validUntil).toBe("");
+      expect(ffdUser?.validUntilRaw).toBeUndefined();
+      expect(ffdUser?.status).toBe("Validité non communiquée");
+      expect(ffdUser?.season).toBeUndefined();
+    });
+
+    describe("with a fake clock on 10/10/2026 (season 2026/2027)", () => {
+      beforeEach(() => {
+        // Only Date is faked: timers stay real for waitFor / promises.
+        jest.useFakeTimers({
+          now: new Date(2026, 9, 10, 12, 0),
+          doNotFake: [
+            "nextTick",
+            "setImmediate",
+            "clearImmediate",
+            "setTimeout",
+            "clearTimeout",
+            "setInterval",
+            "clearInterval",
+            "queueMicrotask",
+            "requestAnimationFrame",
+            "cancelAnimationFrame",
+          ],
+        });
+      });
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it("shows the current season for a valid mid-season expiry (2030-12-31)", async () => {
+        const ffdUser = await loadFfd({
+          number: "12345",
+          validUntil: "2030-12-31T12:00:00.000Z",
+        });
+        expect(ffdUser?.validUntil).toBe("31/12/2030");
+        expect(ffdUser?.status).toBeUndefined();
+        expect(ffdUser?.season).toBe("2026/2027");
+      });
+
+      it("shows the season of the expiry date for an expired licence", async () => {
+        const ffdUser = await loadFfd({
+          number: "12345",
+          validUntil: "2026-08-31T12:00:00.000Z",
+        });
+        expect(ffdUser?.validUntil).toBe("31/08/2026");
+        expect(ffdUser?.season).toBe("2025/2026");
+      });
+
+      it.each(["STAFF", "CLUB"])(
+        "gives the %s card the current season",
+        async (role) => {
+          mockAuthRepository.getAuthConfig.mockResolvedValue({ role });
+          const { result } = await renderHook(() => useLicenseLogic());
+          await waitFor(() => {
+            expect(result.current.state.role).toBe(role);
+          });
+          expect(result.current.state.listItems[0].data?.season).toBe(
+            "2026/2027",
+          );
+        },
+      );
+    });
+  });
+
+  describe("linked WDSF license (beta feedback)", () => {
+    const loadWdsf = async (wdsf: Record<string, unknown>) => {
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "LICENSEE",
+        hasWdsfLicense: true,
+        licensePhotoUri: null,
+        isLoggedIn: true,
+      });
+      mockAuthRepository.getProfile.mockResolvedValue({
+        firstName: "Jean",
+        lastName: "Dupont",
+        license: { number: "12345", validUntil: "2026-08-31" },
+        clubName: "Club FFD",
+        birthDate: "1990-05-15",
+        role: "LICENSEE",
+        wdsf: { min: "10117265", nationality: "France", ...wdsf },
+      });
+      const { result } = await renderHook(() => useLicenseLogic());
+      await waitFor(() => {
+        expect(
+          result.current.state.listItems.find((i) => i.type === "WDSF"),
+        ).toBeDefined();
+      });
+      return result.current.state.listItems.find((i) => i.type === "WDSF")
+        ?.data;
+    };
+
+    it("shows the national federation returned by the server, not WDSF", async () => {
+      const wdsfUser = await loadWdsf({
+        federation: "FFD - Fédération Française de Danse",
+      });
+      expect(wdsfUser?.structure).toBe("FFD - Fédération Française de Danse");
+    });
+
+    it("never invents WDSF as the federation when the server does not know it", async () => {
+      const wdsfUser = await loadWdsf({ federation: null });
+      expect(wdsfUser?.structure).toBeUndefined();
+    });
+
+    it("keeps the status out of the expiry date when there is none", async () => {
+      const wdsfUser = await loadWdsf({ expiresOn: null });
+      expect(wdsfUser?.validUntil).toBe("");
+      expect(wdsfUser?.status).toBe("Active");
+    });
+
+    it("formats a real expiry date and sets no status", async () => {
+      const wdsfUser = await loadWdsf({
+        expiresOn: "2026-12-31T00:00:00.000Z",
+      });
+      expect(wdsfUser?.validUntil).toMatch(/2026/);
+      expect(wdsfUser?.status).toBeUndefined();
+    });
+  });
+
+  it("maps a freshly verified WDSF license without an expiry date to a status", async () => {
+    mockAuthRepository.getAuthConfig.mockResolvedValue({
+      role: "LICENSEE",
+      authToken: "token",
+      isLoggedIn: true,
+    });
+    mockAuthRepository.getProfile.mockResolvedValue({
+      firstName: "Jean",
+      lastName: "Dupont",
+      role: "LICENSEE",
+    });
+    mockAuthRepository.verifyWdsfLicense.mockResolvedValue({
+      firstName: "Jean",
+      lastName: "Dupont",
+      licenseNumber: "10117265",
+      type: "Athlete's License",
+      structure: "",
+      validUntil: "Active",
+      status: "Active",
+      birthDate: "1990-05-15",
+    });
+
+    const { result } = await renderHook(() => useLicenseLogic());
+    await waitFor(() =>
+      expect(mockAuthRepository.getAuthConfig).toHaveBeenCalled(),
+    );
+    await act(async () => {
+      await result.current.actions.handleVerifyWdsf("10117265");
+    });
+
+    const wdsfUser = result.current.state.listItems.find(
+      (i) => i.type === "WDSF",
+    )?.data;
+    expect(wdsfUser?.validUntil).toBe("");
+    expect(wdsfUser?.status).toBe("Active");
+    expect(wdsfUser?.structure).toBeUndefined();
+  });
+
+  describe("STAFF / CLUB account card (#234)", () => {
+    const loadAccountCard = async (
+      role: "STAFF" | "CLUB",
+      profile: Record<string, unknown> | null,
+      config: Record<string, unknown> = {},
+    ) => {
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role,
+        isLoggedIn: true,
+        username: "account@test.com",
+        ...config,
+      });
+      if (profile) {
+        mockAuthRepository.getProfile.mockResolvedValue(profile);
+      } else {
+        mockAuthRepository.getProfile.mockRejectedValue(new Error("boom"));
+      }
+      const { result } = await renderHook(() => useLicenseLogic());
+      await waitFor(() => {
+        expect(mockAuthRepository.getProfile).toHaveBeenCalled();
+      });
+      return result;
+    };
+
+    it("STAFF card carries the profile's name and club, no demo value", async () => {
+      const result = await loadAccountCard("STAFF", {
+        firstName: "Marie",
+        lastName: "Curie",
+        role: "STAFF",
+        clubName: "Club de Danse Lyon",
+        birthDate: "1990-05-15",
+      });
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe("Curie");
+      });
+      const card = result.current.state.listItems[0];
+      expect(card.type).toBe("STAFF");
+      expect(card.data).toMatchObject({
+        firstName: "Marie",
+        lastName: "Curie",
+        structure: "Club de Danse Lyon",
+        licenseNumber: "",
+        type: "STAFF / ORGANISATEUR",
+      });
+      expect(card.data?.birthDate).toBe(
+        new Date("1990-05-15").toLocaleDateString("fr-FR"),
+      );
+      const serialized = JSON.stringify(card.data);
+      expect(serialized).not.toMatch(
+        /OFFICIEL|STAFF-001|Fédération Française de Danse/,
+      );
+    });
+
+    it("CLUB card carries the account's club name", async () => {
+      const result = await loadAccountCard("CLUB", {
+        firstName: "Jean",
+        lastName: "Gérant",
+        role: "CLUB",
+        clubName: "Danse Passion Nantes",
+      });
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe(
+          "Danse Passion Nantes",
+        );
+      });
+      const card = result.current.state.listItems[0].data;
+      expect(card).toMatchObject({
+        firstName: "",
+        licenseNumber: "",
+        birthDate: "",
+        type: "CLUB / ASSOCIATION",
+      });
+      expect(card?.structure).toBeUndefined();
+      expect(JSON.stringify(card)).not.toMatch(
+        /EXAMPLE|CLUB-001|Fédération Française de Danse/,
+      );
+    });
+
+    it("CLUB card falls back to the session club name when the profile fails", async () => {
+      const result = await loadAccountCard("CLUB", null, {
+        clubName: "Club Session",
+      });
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe(
+          "Club Session",
+        );
+      });
+    });
+
+    it.each([
+      ["STAFF", ACCOUNT_NAME_UNKNOWN],
+      ["CLUB", ACCOUNT_CLUB_UNKNOWN],
+    ] as const)(
+      "%s card shows a neutral label when the data is missing",
+      async (role, label) => {
+        const result = await loadAccountCard(role, {
+          firstName: "",
+          lastName: "",
+          role,
+        });
+        await waitFor(() => {
+          expect(result.current.state.listItems[0].data?.lastName).toBe(label);
+        });
+        expect(result.current.state.listItems[0].data).toMatchObject({
+          firstName: "",
+          licenseNumber: "",
+        });
+        expect(
+          result.current.state.listItems[0].data?.structure,
+        ).toBeUndefined();
+      },
+    );
+
+    it("STAFF card offline uses the account's own snapshot name", async () => {
+      mockIsDeviceOffline.mockResolvedValueOnce(true);
+      mockLoadSnapshot.mockResolvedValueOnce({
+        ffdUser: {
+          firstName: "Marie",
+          lastName: "Curie",
+          licenseNumber: "Non renseigné",
+          birthDate: "",
+          validUntil: "",
+          type: "Athlète",
+        },
+        wdsfUser: null,
+        savedAt: "2026-10-01T10:00:00.000Z",
+      });
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "STAFF",
+        isLoggedIn: true,
+        username: "staff@test.com",
+      });
+      const { result } = await renderHook(() => useLicenseLogic());
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe("Curie");
+      });
+      expect(result.current.state.listItems[0].data?.firstName).toBe("Marie");
+      expect(result.current.state.listItems[0].data?.licenseNumber).toBe("");
+    });
+
+    // Re-runs the screen's focus callback (the mock runs it once, on mount).
+    const refocus = async () => {
+      const calls = (useFocusEffect as jest.Mock).mock.calls;
+      const callback = calls[calls.length - 1][0] as () => void;
+      await act(async () => {
+        callback();
+      });
+    };
+    const pending = () => new Promise<never>(() => {});
+
+    it("keeps the known name across focuses while the profile reloads", async () => {
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "STAFF",
+        isLoggedIn: true,
+        username: "staff@test.com",
+      });
+      mockAuthRepository.getProfile
+        .mockResolvedValueOnce({
+          firstName: "Marie",
+          lastName: "Curie",
+          role: "STAFF",
+        })
+        // Second focus: backend cold start, the profile never answers here.
+        .mockReturnValueOnce(pending());
+      const seen: (string | undefined)[] = [];
+      const { result } = await renderHook(() => {
+        const logic = useLicenseLogic();
+        seen.push(logic.state.listItems[0]?.data?.lastName);
+        return logic;
+      });
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe("Curie");
+      });
+      const known = seen.indexOf("Curie");
+
+      await refocus();
+      await waitFor(() => {
+        expect(mockAuthRepository.getProfile).toHaveBeenCalledTimes(2);
+      });
+      expect(result.current.state.listItems[0].data?.lastName).toBe("Curie");
+      expect(seen.slice(known)).not.toContain(ACCOUNT_NAME_UNKNOWN);
+    });
+
+    it("never keeps the previous account's name after an account switch", async () => {
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "STAFF",
+        isLoggedIn: true,
+        username: "a@test.com",
+      });
+      mockAuthRepository.getProfile
+        .mockResolvedValueOnce({
+          firstName: "Marie",
+          lastName: "Curie",
+          role: "STAFF",
+        })
+        .mockReturnValueOnce(pending());
+      const { result } = await renderHook(() => useLicenseLogic());
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe("Curie");
+      });
+
+      // Impersonation switch: another account, profile not loaded yet.
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "STAFF",
+        isLoggedIn: true,
+        username: "b@test.com",
+        impersonating: true,
+      });
+      await refocus();
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe(
+          ACCOUNT_NAME_UNKNOWN,
+        );
+      });
+      expect(JSON.stringify(result.current.state.listItems)).not.toMatch(
+        /Marie|Curie/,
+      );
+    });
+
+    it("pre-fills the name and birth date from the same-owner snapshot", async () => {
+      mockLoadSnapshot.mockResolvedValueOnce({
+        ffdUser: {
+          firstName: "Marie",
+          lastName: "Curie",
+          licenseNumber: "Non renseigné",
+          birthDate: "15/05/1990",
+          validUntil: "",
+          type: "Athlète",
+        },
+        wdsfUser: null,
+        savedAt: "2026-10-01T10:00:00.000Z",
+      });
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        role: "STAFF",
+        isLoggedIn: true,
+        username: "staff@test.com",
+      });
+      mockAuthRepository.getProfile.mockReturnValueOnce(pending());
+      const { result } = await renderHook(() => useLicenseLogic());
+      await waitFor(() => {
+        expect(result.current.state.listItems[0].data?.lastName).toBe("Curie");
+      });
+      expect(mockLoadSnapshot).toHaveBeenCalledWith("staff@test.com");
+      expect(result.current.state.listItems[0].data?.birthDate).toBe(
+        "15/05/1990",
+      );
+    });
+  });
+
+  it("gives the staff and club cards a status, not a fake expiry date", async () => {
+    mockAuthRepository.getAuthConfig.mockResolvedValue({ role: "STAFF" });
+    const staff = await renderHook(() => useLicenseLogic());
+    await waitFor(() => {
+      expect(staff.result.current.state.role).toBe("STAFF");
+    });
+    expect(staff.result.current.state.listItems[0].data).toMatchObject({
+      validUntil: "",
+      status: "Permanente",
+    });
+
+    mockAuthRepository.getAuthConfig.mockResolvedValue({ role: "CLUB" });
+    const club = await renderHook(() => useLicenseLogic());
+    await waitFor(() => {
+      expect(club.result.current.state.role).toBe("CLUB");
+    });
+    expect(club.result.current.state.listItems[0].data).toMatchObject({
+      validUntil: "",
+      status: "Active",
+    });
+  });
+
   it("keeps the server-signed QR on the FFD license (#168)", async () => {
     const qrCode = '{"v":1,"id":"FFD-12345","exp":"2026-08-31","sig":"abc"}';
     mockAuthRepository.getAuthConfig.mockResolvedValue({
@@ -622,6 +1081,50 @@ describe("useLicenseLogic", () => {
       expect(mockAuthRepository.getProfile).not.toHaveBeenCalled();
       // Only the current account's snapshot is asked for.
       expect(mockLoadSnapshot).toHaveBeenCalledWith("alice@ffd.fr");
+    });
+
+    it("drops the invented date of an older snapshot without raw date (#211)", async () => {
+      mockIsDeviceOffline.mockResolvedValue(true);
+      mockLoadSnapshot.mockResolvedValue(snapshot);
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(
+          result.current.state.listItems.find((i) => i.type === "FFD"),
+        ).toBeDefined();
+      });
+      const ffdUser = result.current.state.listItems.find(
+        (i) => i.type === "FFD",
+      )?.data;
+      expect(ffdUser?.validUntil).toBe("");
+      expect(ffdUser?.status).toBe("Validité non communiquée");
+      expect(ffdUser?.season).toBeUndefined();
+    });
+
+    it("re-derives date and season from the snapshot's raw date", async () => {
+      mockIsDeviceOffline.mockResolvedValue(true);
+      mockLoadSnapshot.mockResolvedValue({
+        ...snapshot,
+        ffdUser: {
+          ...snapshot.ffdUser,
+          // Expired: its season does not depend on today's date.
+          validUntilRaw: "2026-08-31T12:00:00.000Z",
+        },
+      });
+
+      const { result } = await renderHook(() => useLicenseLogic());
+
+      await waitFor(() => {
+        expect(
+          result.current.state.listItems.find((i) => i.type === "FFD")?.data
+            ?.validUntil,
+        ).toBe("31/08/2026");
+      });
+      expect(
+        result.current.state.listItems.find((i) => i.type === "FFD")?.data
+          ?.season,
+      ).toBe("2025/2026");
     });
 
     it("shows nothing when no snapshot belongs to the current account", async () => {
@@ -798,7 +1301,7 @@ describe("useLicenseLogic", () => {
       expect(saveLicenseSnapshot).toHaveBeenCalledWith(
         "alice@ffd.fr",
         expect.objectContaining({ licenseNumber: "12345" }),
-        expect.objectContaining({ structure: "WDSF" }),
+        expect.objectContaining({ licenseNumber: "WDSF-PENDING" }),
       );
       expect(result.current.state.licenseUnavailable).toBe(false);
       expect(result.current.state.offlineSince).toBeNull();

@@ -10,10 +10,31 @@ import {
 } from "../../api/generated";
 import { BACKEND_URL } from "../../config";
 import { ERROR_MESSAGES } from "../../constants/errorMessages";
-import { httpGet, httpPost } from "../../utils/httpInterceptor";
+import {
+  HttpError,
+  type HttpErrorData,
+  httpErrorFromBody,
+  httpGet,
+  httpPost,
+} from "../../utils/httpInterceptor";
 import { createLogger } from "../../utils/logger";
 
 const logger = createLogger("LicenseApi");
+
+/**
+ * Error of a refused renewal-document upload. The server's refusal can be
+ * medical (#225): its text lands in `userMessage` for display, never in the
+ * error's `message`, which is what logs and Sentry read.
+ */
+async function uploadError(response: Response): Promise<HttpError> {
+  const body = (await response.json().catch(() => null)) as HttpErrorData;
+  return httpErrorFromBody(
+    response.status,
+    response.statusText,
+    body,
+    `Upload failed ${response.status}`,
+  );
+}
 
 export type LicenseRenewalStatus =
   | "DRAFT"
@@ -29,18 +50,30 @@ export interface LicenseRenewalDocument {
   requestId: string;
   type: LicenseRenewalDocumentType;
   filePath: string;
+  /**
+   * Fields read on the document, as whitelisted by the server (#224) — the
+   * raw certificate text is never returned.
+   */
   ocrData?: {
     isApte?: boolean;
     date?: string;
     doctorName?: string;
     licenseNumber?: string;
-    name?: string;
     expiryDate?: string;
-    rawText?: string;
-    [key: string]: unknown;
-  };
+  } | null;
   createdAt: string;
 }
+
+/** Codes of a refusal, as the API defines them (RENEWAL_REJECTION_REASONS). */
+export type RenewalRejectionReason =
+  | "ILLEGIBLE"
+  | "INCOMPLETE"
+  | "CERTIFICATE_TOO_OLD"
+  | "NOT_A_MEDICAL_CERTIFICATE"
+  | "IDENTITY_MISMATCH"
+  | "LICENSE_MISMATCH"
+  | "MEDICAL_RESTRICTION"
+  | "OTHER";
 
 export interface LicenseRenewalRequest {
   id: string;
@@ -48,6 +81,15 @@ export interface LicenseRenewalRequest {
   status: LicenseRenewalStatus;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Decision shown to the licensee (#268). Optional: absent from requests
+   * served by an older backend and from the store-review simulation.
+   */
+  submittedAt?: string | null;
+  /** Kept as a string: a code added server-side later must not break parsing. */
+  rejectionReason?: string | null;
+  /** Free comment of the federation; erased by the retention purge. */
+  reviewComment?: string | null;
   documents: LicenseRenewalDocument[];
 }
 
@@ -204,10 +246,7 @@ export const LicenseApi = {
         body: formData,
       });
       if (!response.ok) {
-        const err = (await response.json().catch(() => ({}))) as {
-          message?: string;
-        };
-        throw new Error(err.message ?? `Upload failed ${response.status}`);
+        throw await uploadError(response);
       }
       return response.json() as Promise<LicenseRenewalRequest>;
     }
@@ -226,10 +265,7 @@ export const LicenseApi = {
       body: formData,
     });
     if (!response.ok) {
-      const err = (await response.json().catch(() => ({}))) as {
-        message?: string;
-      };
-      throw new Error(err.message ?? `Upload failed ${response.status}`);
+      throw await uploadError(response);
     }
     return response.json() as Promise<LicenseRenewalRequest>;
   },

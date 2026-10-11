@@ -41,3 +41,38 @@ export const BETA_NOTICES = {
   competitionsEmptyHint:
     "Vos inscriptions faites auprès de la FFD n'apparaissent pas encore dans l'app.",
 } as const satisfies Record<string, BetaNoticeCopy | string>;
+
+/**
+ * Notices about the origin of a competition's events (épreuves), shown on the
+ * competition detail screen. Chosen by `getEventsSourceNotice` from the
+ * backend `eventsSource` + `circularUrl`. Temporary: they go away once the
+ * events come from a structured federation source.
+ */
+export const EVENTS_SOURCE_NOTICES = {
+  /** Events deduced from the circular PDF. */
+  deducedFromCircular: {
+    title: "Épreuves à vérifier",
+    message:
+      "Catégories déduites automatiquement de la circulaire FFD : à vérifier sur le document officiel.",
+  },
+  /** Events deduced from the competition description. */
+  deducedFromDescription: {
+    title: "Épreuves à vérifier",
+    message:
+      "Catégories déduites automatiquement de la description FFD de la compétition : à vérifier sur la circulaire officielle.",
+  },
+  /** A circular exists but its events could not be read. */
+  circularUnreadable: {
+    title: "Épreuves non disponibles",
+    message:
+      "Les épreuves n'ont pas pu être lues automatiquement : consultez la circulaire.",
+  },
+  /** No circular published yet. */
+  notYetPublished: {
+    title: "Épreuves non disponibles",
+    message:
+      "Les épreuves ne sont pas encore disponibles dans les documents officiels de la FFD. Elles s'afficheront ici dès la publication de la circulaire.",
+  },
+  /** Label of the button that opens the circular. */
+  openCircular: "Ouvrir la circulaire",
+} as const satisfies Record<string, BetaNoticeCopy | string>;

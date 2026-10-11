@@ -137,6 +137,88 @@ describe("CompetitionEventNotificationService", () => {
       expect(notifications.sendToUsers).toHaveBeenCalledTimes(1);
     });
 
+    describe("per-discipline level", () => {
+      type Profile = Awaited<ReturnType<typeof prisma.user.findMany>>;
+      const dancer = {
+        id: "u1",
+        category: "Ten Dance",
+        competitionLevel: null,
+        competitionLevelLatin: "International",
+        competitionLevelStandard: "Débutant",
+        ageGroup: "Adulte",
+      };
+      const notifiedFor = async (
+        event: CompetitionWithEvents["events"][number],
+        profile: Record<string, unknown> = dancer,
+      ) => {
+        prisma.user.findMany.mockResolvedValue([profile] as unknown as Profile);
+        await service.notifyNewCompetition(competition([event]));
+        return notifications.sendToUsers.mock.calls.length > 0;
+      };
+
+      it("matches the Latin level on a Latin épreuve", async () => {
+        expect(
+          await notifiedFor({
+            category: "Latin",
+            level: "International",
+            ageGroup: "Adulte",
+          }),
+        ).toBe(true);
+      });
+
+      it("does not use the Latin level on a Standard épreuve", async () => {
+        expect(
+          await notifiedFor({
+            category: "Standard",
+            level: "International",
+            ageGroup: "Adulte",
+          }),
+        ).toBe(false);
+      });
+
+      it("matches the Standard level on a Standard épreuve", async () => {
+        expect(
+          await notifiedFor({
+            category: "Standard",
+            level: "Débutant",
+            ageGroup: "Adulte",
+          }),
+        ).toBe(true);
+      });
+
+      it("Ten Dance: notifies a dancer of both disciplines, level ignored", async () => {
+        expect(
+          await notifiedFor({
+            category: "Ten Dance",
+            level: "Avancé",
+            ageGroup: "Adulte",
+          }),
+        ).toBe(true);
+      });
+
+      it("Ten Dance: skips a dancer of a single discipline", async () => {
+        expect(
+          await notifiedFor(
+            { category: "Ten Dance", level: null, ageGroup: "Adulte" },
+            { ...dancer, category: "Latin", competitionLevelStandard: null },
+          ),
+        ).toBe(false);
+      });
+
+      it("a Ten Dance dancer is notified for a Latin épreuve", async () => {
+        expect(
+          await notifiedFor(
+            { category: "Latin", level: null, ageGroup: "Adulte" },
+            {
+              ...dancer,
+              competitionLevelLatin: null,
+              competitionLevelStandard: null,
+            },
+          ),
+        ).toBe(true);
+      });
+    });
+
     it("only queries users with the LICENSEE role", async () => {
       prisma.user.findMany.mockResolvedValue([]);
 

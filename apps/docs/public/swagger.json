@@ -3072,28 +3072,7 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Permissions insuffisantes, ou club de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -3274,28 +3253,7 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Permissions insuffisantes, ou club de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -3444,7 +3402,7 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["USER", "CLUB", "TRACK_CORRECTION"]
+              "enum": ["USER", "CLUB", "TRACK_CORRECTION", "TRACK", "LICENSE_RENEWAL"]
             }
           },
           {
@@ -4585,7 +4543,7 @@
             }
           },
           "403": {
-            "description": "Son propre compte"
+            "description": "Son propre compte, ou compte de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -4780,7 +4738,7 @@
             }
           },
           "403": {
-            "description": "Son propre compte"
+            "description": "Son propre compte, ou compte de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -5091,6 +5049,213 @@
           }
         ],
         "summary": "Renvoyer l'invitation d'un compte jamais connecté (hors administrateurs)",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/stats": {
+      "get": {
+        "operationId": "AdminStatsController_get",
+        "parameters": [
+          {
+            "name": "period",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "12w",
+              "type": "string",
+              "enum": ["12w", "6m", "12m"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminStatsDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Database statistics for the back-office (read-only)",
         "tags": ["admin"]
       }
     },
@@ -5553,6 +5718,34 @@
                       "nullable": true,
                       "example": "Club de Danse Paris"
                     },
+                    "category": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": ["Latin", "Standard", "Ten Dance"],
+                      "description": "Discipline déclarée (valeur stockée, non traduite)"
+                    },
+                    "ageGroup": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "competitionLevelLatin": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": ["Débutant", "Intermédiaire", "Avancé", "International"],
+                      "description": "Niveau de compétition en Latines"
+                    },
+                    "competitionLevelStandard": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": ["Débutant", "Intermédiaire", "Avancé", "International"],
+                      "description": "Niveau de compétition en Standards"
+                    },
+                    "competitionLevel": {
+                      "type": "string",
+                      "nullable": true,
+                      "deprecated": true,
+                      "description": "Ancien niveau unique, conservé pour les anciennes versions de l'app. Préférer les niveaux par discipline."
+                    },
                     "licenseNumber": {
                       "type": "string",
                       "nullable": true
@@ -5598,6 +5791,44 @@
                         "updatedAt": {
                           "type": "string",
                           "format": "date-time"
+                        }
+                      }
+                    },
+                    "isStoreReview": {
+                      "type": "boolean",
+                      "description": "Compte de validation App Store / Google Play : ses écritures sont simulées (réponse 2xx, en-tête X-Demo-Mode: simulated, rien n'est enregistré)."
+                    },
+                    "wdsf": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Licence WDSF liée au compte (null si aucune).",
+                      "properties": {
+                        "min": {
+                          "type": "string",
+                          "example": "10117265"
+                        },
+                        "nationality": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "licenseType": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "ageGroup": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "expiresOn": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "federation": {
+                          "type": "string",
+                          "nullable": true,
+                          "example": "FFD - Fédération Française de Danse",
+                          "description": "Fédération nationale du titulaire (jamais « WDSF »). Null si inconnue."
                         }
                       }
                     },
@@ -6122,7 +6353,7 @@
     },
     "/users/me/export": {
       "get": {
-        "description": "Retourne toutes les données personnelles de l'utilisateur connecté (profil, licence, inscriptions, partenariats, notifications) en un seul JSON — droit à la portabilité, RGPD art. 20. Ne contient jamais de secrets ni de données de tiers.",
+        "description": "Retourne en un seul JSON les données personnelles de l'utilisateur connecté actuellement couvertes par l'export (profil, licence, demandes de renouvellement de licence, inscriptions, partenariats, équipes solo, réservations de places, notifications, appareils, préférences, propositions de correction) — droit à la portabilité, RGPD art. 20. Ne contient jamais de secrets ni de données de tiers.",
         "operationId": "UsersController_exportMyData",
         "parameters": [],
         "responses": {
@@ -6576,6 +6807,417 @@
         ],
         "summary": "Récupère les informations d'un athlète WDSF",
         "tags": ["wdsf"]
+      }
+    },
+    "/analytics/events": {
+      "post": {
+        "operationId": "AnalyticsController_ingest",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsageBatchDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Stored"
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Anonymous app usage events (batch, no auth)",
+        "tags": ["analytics"]
+      }
+    },
+    "/admin/usage": {
+      "get": {
+        "operationId": "AdminUsageController_get",
+        "parameters": [
+          {
+            "name": "period",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "30d",
+              "type": "string",
+              "enum": ["7d", "30d", "12m"]
+            }
+          },
+          {
+            "name": "space",
+            "required": false,
+            "in": "query",
+            "description": "Filters the screen ranking only",
+            "schema": {
+              "type": "string",
+              "enum": ["LICENSEE", "CLUB", "STAFF", "ADMIN", "GUEST"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUsageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Anonymous app usage for the back-office (aggregates)",
+        "tags": ["admin"]
       }
     },
     "/tracks": {
@@ -7343,7 +7985,7 @@
         "tags": ["tracks"]
       },
       "patch": {
-        "description": "Réservé aux administrateurs. Permet de corriger titre, artiste, style et BPM après ajout. Champs absents = inchangés.",
+        "description": "Réservé aux administrateurs. Permet de corriger titre, artiste, style et BPM après ajout. Champs absents = inchangés. Chaque modification appliquée est tracée dans le journal d'audit (TRACK_UPDATE). Une musique en erreur (tempo non détecté) passe en READY quand un MPM > 0 est saisi.",
         "operationId": "TracksController_update",
         "parameters": [
           {
@@ -7352,6 +7994,7 @@
             "in": "path",
             "description": "UUID de la musique",
             "schema": {
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -7509,7 +8152,7 @@
         "tags": ["tracks"]
       },
       "delete": {
-        "description": "Réservé aux administrateurs. Supprime définitivement la piste de la bibliothèque partagée ainsi que son fichier audio associé.",
+        "description": "Réservé aux administrateurs. Supprime définitivement la piste de la bibliothèque partagée, puis son fichier audio et sa pochette. Refusé (409) tant que des propositions de correction sont en attente sur la musique. Tracé dans le journal d'audit (TRACK_DELETE).",
         "operationId": "TracksController_remove",
         "parameters": [
           {
@@ -7518,6 +8161,7 @@
             "in": "path",
             "description": "UUID de la musique",
             "schema": {
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -7582,6 +8226,262 @@
           },
           "404": {
             "description": "Track non trouvée"
+          },
+          "409": {
+            "description": "Propositions de correction en attente (pendingCorrections) : les traiter ou blacklister la musique"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Supprime une musique (modération)",
+        "tags": ["tracks"]
+      }
+    },
+    "/admin/tracks": {
+      "get": {
+        "description": "Toutes les musiques, y compris blacklistées, en attente, en erreur et d'ambiance (pas de filtre bibliothèque). Plus récentes d'abord. Filtres : q (titre ou artiste, 2 à 100 caractères), status, blacklisted, titleMasked, style, ambiance.",
+        "operationId": "AdminTracksController_list",
+        "parameters": [
+          {
+            "name": "skip",
+            "required": false,
+            "in": "query",
+            "description": "Number of items to skip",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "take",
+            "required": false,
+            "in": "query",
+            "description": "Number of items to take",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Recherche dans le titre ou l'artiste, sans tenir compte de la casse",
+            "schema": {
+              "minLength": 2,
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/TrackStatus"
+            }
+          },
+          {
+            "name": "blacklisted",
+            "required": false,
+            "in": "query",
+            "description": "true : seulement les musiques blacklistées ; false : seulement les autres",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "titleMasked",
+            "required": false,
+            "in": "query",
+            "description": "true : seulement les titres masqués ; false : seulement les autres",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "style",
+            "required": false,
+            "in": "query",
+            "description": "Danse (libellé exact, sans tenir compte de la casse)",
+            "schema": {
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "name": "ambiance",
+            "required": false,
+            "in": "query",
+            "description": "true : seulement l'ambiance (style ou artiste « Ambiance ») ; false : tout sauf l'ambiance",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTracksPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
           },
           "409": {
             "description": "Conflit - La ressource existe déjà",
@@ -7661,8 +8561,628 @@
             "JWT-auth": []
           }
         ],
-        "summary": "Supprime une musique (modération)",
-        "tags": ["tracks"]
+        "summary": "Catalogue des musiques (vue administrateur)",
+        "tags": ["admin"]
+      },
+      "post": {
+        "description": "Un fichier par requête. MP3 reconnu par son contenu ; noms de stockage générés par le serveur ; tempo analysé si rawBpm est absent ; statut ERROR si aucun tempo n'est connu. Tracé dans le journal d'audit (TRACK_CREATE).",
+        "operationId": "AdminTracksController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["audio", "title", "artist", "sha256"],
+                "properties": {
+                  "audio": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "MP3, 20 Mo au plus"
+                  },
+                  "artwork": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Pochette JPEG ou PNG, 2 Mo au plus"
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "artist": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "style": {
+                    "type": "string",
+                    "enum": [
+                      "Valse Lente",
+                      "Tango",
+                      "Valse Viennoise",
+                      "Quickstep",
+                      "Slow Fox",
+                      "Samba",
+                      "Cha-cha",
+                      "Rumba",
+                      "Paso Doble",
+                      "Jive",
+                      "Ambiance"
+                    ],
+                    "description": "Danse (libellé canonique) ou « Ambiance »"
+                  },
+                  "mpm": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 400,
+                    "description": "Tempo dansé (MPM) ; sinon calculé selon la danse"
+                  },
+                  "rawBpm": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 400,
+                    "description": "Tempo brut (BPM) ; sinon détecté par le serveur"
+                  },
+                  "sourceKey": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "description": "Source track-prep (ex. apple:1091542189)"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$",
+                    "description": "SHA-256 du fichier audio (hexadécimal), recalculé par le serveur"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTrackDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Fichier ou champ invalide, empreinte SHA-256 différente"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Doublon (même source ou même fichier) : existingTrackId"
+          },
+          "413": {
+            "description": "Fichier audio > 20 Mo ou pochette > 2 Mo"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Analyse du tempo saturée ou stockage indisponible : réessayer dans un instant"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Importer une musique",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/tracks/check": {
+      "post": {
+        "description": "Pour chaque élément (200 au plus), indique si une musique existe déjà avec la même source (sourceKey) ou le même fichier audio (SHA-256). Réponses dans l’ordre de la requête.",
+        "operationId": "AdminTracksController_check",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckTracksDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckTracksResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Doublons avant import",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/tracks/{id}": {
+      "get": {
+        "operationId": "AdminTracksController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminTrackDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Musique introuvable"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Une musique (vue administrateur)",
+        "tags": ["admin"]
       }
     },
     "/track-corrections": {
@@ -7885,6 +9405,16 @@
             "schema": {
               "minLength": 2,
               "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "trackId",
+            "required": false,
+            "in": "query",
+            "description": "Propositions d'une seule musique (lien depuis la fiche musique)",
+            "schema": {
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -9226,7 +10756,7 @@
     },
     "/tts": {
       "post": {
-        "description": "Convertit un texte en fichier audio MP3 en utilisant la synthèse vocale. Le fichier est mis en cache pour éviter les régénérations.",
+        "description": "Convertit un texte (1 à 500 caractères) en fichier audio MP3 en utilisant la synthèse vocale. Authentification requise, limité à 60 requêtes par minute et par utilisateur. Le fichier est mis en cache pour éviter les régénérations.",
         "operationId": "TtsController_speak",
         "parameters": [],
         "requestBody": {
@@ -9234,17 +10764,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "description": "Texte à convertir en audio",
-                    "example": "Bienvenue sur FFD Connect",
-                    "minLength": 1,
-                    "maxLength": 500
-                  }
-                },
-                "required": ["text"]
+                "$ref": "#/components/schemas/TtsRequestDto"
               }
             }
           }
@@ -9262,7 +10782,7 @@
             }
           },
           "400": {
-            "description": "Texte manquant ou invalide",
+            "description": "Requête invalide - Erreur de validation",
             "content": {
               "application/json": {
                 "schema": {
@@ -9273,8 +10793,15 @@
                       "example": 400
                     },
                     "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
                       "type": "string",
-                      "example": "Text is required"
+                      "example": "Bad Request"
                     }
                   }
                 }
@@ -9422,6 +10949,11 @@
             }
           }
         },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
         "summary": "Génère un fichier audio à partir d'un texte",
         "tags": ["tts"]
       }
@@ -19749,7 +21281,7 @@
     },
     "/licenses/renew": {
       "post": {
-        "description": "Traite un certificat de licence (image) via OCR pour extraire les informations et renouvelle ou crée la licence. La licence est valide jusqu'au 31 août de l'année suivante.",
+        "description": "Traite un certificat de licence (image) via OCR pour extraire les informations et renouvelle ou crée la licence. La licence est valide jusqu'au 31 août (Europe/Paris) qui termine la saison en cours, ou celle de la saison suivante si le renouvellement a lieu entre le 1er juillet et le 31 août ; une date de fin déjà plus lointaine est conservée.",
         "operationId": "LicensesController_renewLicense",
         "parameters": [],
         "requestBody": {
@@ -19959,11 +21491,11 @@
     },
     "/licenses/renewal/start": {
       "post": {
-        "description": "Crée ou récupère une demande de renouvellement en brouillon pour déposer le certificat médical et le certificat de licence.",
+        "description": "Crée ou récupère une demande de renouvellement en brouillon pour déposer le certificat médical et le certificat de licence. Si une demande est déjà en attente de validation (PENDING), c'est elle qui est renvoyée : une seule demande en attente par utilisateur.",
         "operationId": "LicensesController_startRenewal",
         "parameters": [],
         "responses": {
-          "200": {
+          "201": {
             "description": "Demande créée ou existante"
           },
           "400": {
@@ -20333,7 +21865,7 @@
           }
         },
         "responses": {
-          "200": {
+          "201": {
             "description": "Demande mise à jour avec document et données OCR"
           },
           "400": {
@@ -20453,7 +21985,7 @@
     },
     "/licenses/renewal/{id}/submit": {
       "post": {
-        "description": "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence.",
+        "description": "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence. Refusée (409) si une autre demande de l'utilisateur est déjà en attente de validation.",
         "operationId": "LicensesController_submitRenewal",
         "parameters": [
           {
@@ -20467,7 +21999,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "Demande soumise"
           },
           "400": {
@@ -20504,7 +22036,7 @@
             "description": "Demande non trouvée"
           },
           "409": {
-            "description": "Conflit - La ressource existe déjà",
+            "description": "Conflit - Une autre demande de l'utilisateur est déjà en attente de validation, ou la demande vient d'être traitée par un administrateur",
             "content": {
               "application/json": {
                 "schema": {
@@ -20585,30 +22117,310 @@
         "tags": ["licenses"]
       }
     },
-    "/licenses/renewal/{id}/approve": {
-      "post": {
-        "description": "Réservé au processus métier ou admin. Passe la demande en APPROVED et renouvelle la licence jusqu’au 31 août N+1.",
-        "operationId": "LicensesController_approveRenewal",
+    "/admin/license-renewals": {
+      "get": {
+        "description": "Paginée (take ≤ 50), plus anciennes soumissions d'abord. Filtre status (par défaut PENDING). Ni fichier, ni donnée lue sur les documents.",
+        "operationId": "AdminLicenseRenewalsController_list",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Statut des demandes listées (par défaut : en attente)",
+            "schema": {
+              "$ref": "#/components/schemas/LicenseRenewalStatus"
+            }
+          },
+          {
+            "name": "skip",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "take",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLicenseRenewalsPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "File des demandes de renouvellement",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/license-renewals/{id}": {
+      "get": {
+        "description": "Demande, documents (indices OCR tant qu'elle est en attente), fin de validité qu'accorderait une approbation, historique des demandes du même utilisateur (statuts et dates). Consultation tracée (LICENSE_RENEWAL_VIEW).",
+        "operationId": "AdminLicenseRenewalsController_detail",
         "parameters": [
           {
             "name": "id",
             "required": true,
             "in": "path",
-            "description": "ID de la demande",
             "schema": {
+              "format": "uuid",
               "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Demande approuvée, licence renouvelée"
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLicenseRenewalDetailDto"
+                }
+              }
+            }
           },
           "400": {
-            "description": "Demande non en attente"
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
-            "description": "Non autorisé"
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
           },
           "403": {
             "description": "Accès interdit - Permissions insuffisantes",
@@ -20715,8 +22527,527 @@
             "JWT-auth": []
           }
         ],
+        "summary": "Détail d'une demande de renouvellement",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/license-renewals/{id}/documents/{docId}/file": {
+      "get": {
+        "description": "Servi en flux authentifié, jamais mis en cache, uniquement tant que la demande est en attente (410 ensuite). Consultation tracée (LICENSE_RENEWAL_DOCUMENT_VIEW). Limité à 30 ouvertures par minute.",
+        "operationId": "AdminLicenseRenewalsController_documentFile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "docId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contenu du document",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Document ou fichier introuvable"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Demande traitée : documents plus consultables"
+          },
+          "429": {
+            "description": "Trop d'ouvertures"
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stockage indisponible"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Fichier d'un document (certificat médical ou de licence)",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/license-renewals/{id}/approve": {
+      "post": {
+        "description": "Licence renouvelée jusqu'au 31 août (Europe/Paris) de la saison accordée à la date de la décision, jamais raccourcie. Numéro : celui confirmé par l'administrateur, sinon la lecture OCR, sinon celui de la licence existante ; aucun → 400 (jamais de numéro inventé). Tracé (LICENSE_RENEWAL_APPROVE).",
+        "operationId": "AdminLicenseRenewalsController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveLicenseRenewalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLicenseRenewalDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Aucun numéro de licence connu"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Demande non trouvée"
+          },
+          "409": {
+            "description": "Demande déjà traitée, ou numéro de licence attribué à un autre compte"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
         "summary": "Approuver une demande (renouvelle la licence)",
-        "tags": ["licenses"]
+        "tags": ["admin"]
+      }
+    },
+    "/admin/license-renewals/{id}/reject": {
+      "post": {
+        "description": "Motif obligatoire parmi les codes, commentaire facultatif (≤ 500). Le certificat médical est purgé au plus tard 30 jours après la décision. Tracé (LICENSE_RENEWAL_REJECT, sans le motif).",
+        "operationId": "AdminLicenseRenewalsController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectLicenseRenewalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLicenseRenewalDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Demande non trouvée"
+          },
+          "409": {
+            "description": "Demande déjà traitée"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Refuser une demande",
+        "tags": ["admin"]
       }
     },
     "/health/live": {
@@ -21389,6 +23720,10 @@
             "type": "string",
             "nullable": true
           },
+          "isStoreReview": {
+            "type": "boolean",
+            "description": "Club du compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable"
+          },
           "memberCount": {
             "type": "number",
             "description": "Membres hors comptes Club"
@@ -21410,6 +23745,7 @@
           "name",
           "registrationMode",
           "disabledAt",
+          "isStoreReview",
           "memberCount",
           "clubAccountCount",
           "helloAssoConfigured",
@@ -21529,6 +23865,10 @@
             "type": "string",
             "nullable": true
           },
+          "isStoreReview": {
+            "type": "boolean",
+            "description": "Club du compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable"
+          },
           "memberCount": {
             "type": "number",
             "description": "Membres hors comptes Club"
@@ -21567,6 +23907,7 @@
           "name",
           "registrationMode",
           "disabledAt",
+          "isStoreReview",
           "memberCount",
           "clubAccountCount",
           "helloAssoConfigured",
@@ -21670,12 +24011,19 @@
               "CLUB_ENABLE",
               "CLUB_DELETE",
               "TRACK_CORRECTION_APPROVE",
-              "TRACK_CORRECTION_REJECT"
+              "TRACK_CORRECTION_REJECT",
+              "TRACK_CREATE",
+              "TRACK_UPDATE",
+              "TRACK_DELETE",
+              "LICENSE_RENEWAL_VIEW",
+              "LICENSE_RENEWAL_DOCUMENT_VIEW",
+              "LICENSE_RENEWAL_APPROVE",
+              "LICENSE_RENEWAL_REJECT"
             ]
           },
           "targetType": {
             "type": "string",
-            "enum": ["USER", "CLUB", "TRACK_CORRECTION"]
+            "enum": ["USER", "CLUB", "TRACK_CORRECTION", "TRACK", "LICENSE_RENEWAL"]
           },
           "targetId": {
             "type": "string"
@@ -21784,6 +24132,10 @@
             "format": "date-time",
             "type": "string",
             "nullable": true
+          },
+          "isStoreReview": {
+            "type": "boolean",
+            "description": "Compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable"
           }
         },
         "required": [
@@ -21800,7 +24152,8 @@
           "ageGroup",
           "licenseStatus",
           "createdAt",
-          "disabledAt"
+          "disabledAt",
+          "isStoreReview"
         ]
       },
       "AdminUsersPageDto": {
@@ -21887,6 +24240,10 @@
             "type": "string",
             "nullable": true
           },
+          "isStoreReview": {
+            "type": "boolean",
+            "description": "Compte de validation App Store / Google Play : modifiable, mais ni supprimable ni désactivable"
+          },
           "birthDate": {
             "format": "date-time",
             "type": "string",
@@ -21913,6 +24270,16 @@
             ]
           },
           "competitionLevel": {
+            "type": "string",
+            "nullable": true,
+            "deprecated": true,
+            "description": "Ancien niveau unique (repli) — préférer les niveaux par discipline"
+          },
+          "competitionLevelLatin": {
+            "type": "string",
+            "nullable": true
+          },
+          "competitionLevelStandard": {
             "type": "string",
             "nullable": true
           },
@@ -21969,11 +24336,14 @@
           "licenseStatus",
           "createdAt",
           "disabledAt",
+          "isStoreReview",
           "birthDate",
           "nationalRanking",
           "passportLevelLatin",
           "passportLevelStandard",
           "competitionLevel",
+          "competitionLevelLatin",
+          "competitionLevelStandard",
           "wdsfMin",
           "wdsfExpiresOn",
           "licenseNumber",
@@ -22045,7 +24415,21 @@
           "competitionLevel": {
             "type": "string",
             "nullable": true,
-            "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null]
+            "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null],
+            "deprecated": true,
+            "description": "Ancien niveau unique. Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard."
+          },
+          "competitionLevelLatin": {
+            "type": "string",
+            "nullable": true,
+            "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null],
+            "description": "Niveau de compétition en Latines"
+          },
+          "competitionLevelStandard": {
+            "type": "string",
+            "nullable": true,
+            "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null],
+            "description": "Niveau de compétition en Standards"
           },
           "nationalRanking": {
             "type": "number",
@@ -22129,7 +24513,21 @@
           "competitionLevel": {
             "type": "string",
             "nullable": true,
-            "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null]
+            "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null],
+            "deprecated": true,
+            "description": "Ancien niveau unique. Sans niveau par discipline dans la même requête, il est recopié dans competitionLevelLatin et competitionLevelStandard."
+          },
+          "competitionLevelLatin": {
+            "type": "string",
+            "nullable": true,
+            "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null],
+            "description": "Niveau de compétition en Latines"
+          },
+          "competitionLevelStandard": {
+            "type": "string",
+            "nullable": true,
+            "enum": ["International", "Avancé", "Intermédiaire", "Débutant", null],
+            "description": "Niveau de compétition en Standards"
           },
           "nationalRanking": {
             "type": "number",
@@ -22191,6 +24589,367 @@
           }
         },
         "required": ["invitationSent"]
+      },
+      "RoleCountsDto": {
+        "type": "object",
+        "properties": {
+          "LICENSEE": {
+            "type": "number"
+          },
+          "CLUB": {
+            "type": "number"
+          },
+          "STAFF": {
+            "type": "number"
+          },
+          "ADMIN": {
+            "type": "number"
+          }
+        },
+        "required": ["LICENSEE", "CLUB", "STAFF", "ADMIN"]
+      },
+      "SignupBucketDto": {
+        "type": "object",
+        "properties": {
+          "LICENSEE": {
+            "type": "number"
+          },
+          "CLUB": {
+            "type": "number"
+          },
+          "STAFF": {
+            "type": "number"
+          },
+          "ADMIN": {
+            "type": "number"
+          },
+          "start": {
+            "type": "string",
+            "description": "Bucket start, YYYY-MM-DD (Europe/Paris)"
+          }
+        },
+        "required": ["LICENSEE", "CLUB", "STAFF", "ADMIN", "start"]
+      },
+      "UsersStatsDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number"
+          },
+          "byRole": {
+            "$ref": "#/components/schemas/RoleCountsDto"
+          },
+          "neverLoggedIn": {
+            "type": "number"
+          },
+          "active7d": {
+            "type": "number"
+          },
+          "active30d": {
+            "type": "number"
+          },
+          "disabled": {
+            "type": "number"
+          },
+          "signups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SignupBucketDto"
+            }
+          }
+        },
+        "required": [
+          "total",
+          "byRole",
+          "neverLoggedIn",
+          "active7d",
+          "active30d",
+          "disabled",
+          "signups"
+        ]
+      },
+      "CountBucketDto": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": ["start", "count"]
+      },
+      "StatsClubRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "members": {
+            "type": "number"
+          },
+          "clubAccounts": {
+            "type": "number"
+          },
+          "validLicences": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "name", "members", "clubAccounts", "validLicences"]
+      },
+      "LicencesStatsDto": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "number"
+          },
+          "expiring30d": {
+            "type": "number"
+          },
+          "expiring60d": {
+            "type": "number"
+          },
+          "expired": {
+            "type": "number"
+          },
+          "renewalsPending": {
+            "type": "number"
+          },
+          "created": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CountBucketDto"
+            }
+          },
+          "clubs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StatsClubRowDto"
+            }
+          },
+          "clubsWithoutClubAccount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "valid",
+          "expiring30d",
+          "expiring60d",
+          "expired",
+          "renewalsPending",
+          "created",
+          "clubs",
+          "clubsWithoutClubAccount"
+        ]
+      },
+      "CompetitionStatusCountsDto": {
+        "type": "object",
+        "properties": {
+          "UPCOMING": {
+            "type": "number"
+          },
+          "LIVE": {
+            "type": "number"
+          },
+          "PAST": {
+            "type": "number"
+          },
+          "CANCELLED": {
+            "type": "number"
+          }
+        },
+        "required": ["UPCOMING", "LIVE", "PAST", "CANCELLED"]
+      },
+      "RegistrationBucketDto": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string"
+          },
+          "PENDING": {
+            "type": "number"
+          },
+          "CONFIRMED": {
+            "type": "number"
+          },
+          "CANCELLED": {
+            "type": "number"
+          }
+        },
+        "required": ["start", "PENDING", "CONFIRMED", "CANCELLED"]
+      },
+      "CompetitionsStatsDto": {
+        "type": "object",
+        "properties": {
+          "byStatus": {
+            "$ref": "#/components/schemas/CompetitionStatusCountsDto"
+          },
+          "registrations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistrationBucketDto"
+            }
+          },
+          "pastConfirmed": {
+            "type": "number"
+          },
+          "pastCheckedIn": {
+            "type": "number"
+          },
+          "pastPaid": {
+            "type": "number"
+          }
+        },
+        "required": ["byStatus", "registrations", "pastConfirmed", "pastCheckedIn", "pastPaid"]
+      },
+      "TrackStatusCountsDto": {
+        "type": "object",
+        "properties": {
+          "READY": {
+            "type": "number"
+          },
+          "PENDING": {
+            "type": "number"
+          },
+          "ERROR": {
+            "type": "number"
+          }
+        },
+        "required": ["READY", "PENDING", "ERROR"]
+      },
+      "CorrectionBucketDto": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string"
+          },
+          "TITLE": {
+            "type": "number"
+          },
+          "ARTIST": {
+            "type": "number"
+          },
+          "DANCE": {
+            "type": "number"
+          },
+          "MPM": {
+            "type": "number"
+          },
+          "PASO_CLASH": {
+            "type": "number"
+          },
+          "OTHER": {
+            "type": "number"
+          }
+        },
+        "required": ["start", "TITLE", "ARTIST", "DANCE", "MPM", "PASO_CLASH", "OTHER"]
+      },
+      "ContentStatsDto": {
+        "type": "object",
+        "properties": {
+          "tracksByStatus": {
+            "$ref": "#/components/schemas/TrackStatusCountsDto"
+          },
+          "tracksBlacklisted": {
+            "type": "number"
+          },
+          "tracksMasked": {
+            "type": "number"
+          },
+          "correctionsPending": {
+            "type": "number"
+          },
+          "correctionsApproved": {
+            "type": "number",
+            "description": "Decided during the period"
+          },
+          "correctionsRejected": {
+            "type": "number",
+            "description": "Decided during the period"
+          },
+          "medianReviewHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "corrections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CorrectionBucketDto"
+            }
+          },
+          "bugReports": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CountBucketDto"
+            }
+          },
+          "adminActions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CountBucketDto"
+            }
+          }
+        },
+        "required": [
+          "tracksByStatus",
+          "tracksBlacklisted",
+          "tracksMasked",
+          "correctionsPending",
+          "correctionsApproved",
+          "correctionsRejected",
+          "medianReviewHours",
+          "corrections",
+          "bugReports",
+          "adminActions"
+        ]
+      },
+      "AdminStatsDto": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string",
+            "enum": ["12w", "6m", "12m"]
+          },
+          "bucket": {
+            "type": "string",
+            "enum": ["week", "month"]
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "users": {
+            "$ref": "#/components/schemas/UsersStatsDto"
+          },
+          "licences": {
+            "$ref": "#/components/schemas/LicencesStatsDto"
+          },
+          "competitions": {
+            "$ref": "#/components/schemas/CompetitionsStatsDto"
+          },
+          "content": {
+            "$ref": "#/components/schemas/ContentStatsDto"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "period",
+          "bucket",
+          "buckets",
+          "users",
+          "licences",
+          "competitions",
+          "content"
+        ]
       },
       "WdsfDataDto": {
         "type": "object",
@@ -22268,6 +25027,259 @@
           }
         },
         "required": ["url", "path", "expiresAt"]
+      },
+      "UsageEventDto": {
+        "type": "object",
+        "properties": {
+          "installId": {
+            "type": "string",
+            "description": "Random install ID (UUID v4), renewed monthly"
+          },
+          "name": {
+            "type": "string",
+            "enum": [
+              "login",
+              "login_biometric",
+              "login_guest",
+              "screen_view",
+              "competition_view",
+              "license_scan",
+              "register",
+              "registration_start",
+              "license_wallet_add"
+            ]
+          },
+          "screen": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "occurredAt": {
+            "type": "string",
+            "description": "ISO date, truncated to the minute by the app"
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["ios", "android"]
+          },
+          "appVersion": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "space": {
+            "type": "string",
+            "enum": ["LICENSEE", "CLUB", "STAFF", "ADMIN", "GUEST"]
+          },
+          "competitionId": {
+            "type": "string"
+          },
+          "durationSec": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1800
+          }
+        },
+        "required": ["installId", "name", "occurredAt", "platform", "appVersion", "space"]
+      },
+      "UsageBatchDto": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageEventDto"
+            }
+          }
+        },
+        "required": ["events"]
+      },
+      "UsagePlatformsDto": {
+        "type": "object",
+        "properties": {
+          "ios": {
+            "type": "number"
+          },
+          "android": {
+            "type": "number"
+          }
+        },
+        "required": ["ios", "android"]
+      },
+      "UsageScreenDto": {
+        "type": "object",
+        "properties": {
+          "screen": {
+            "type": "string"
+          },
+          "views": {
+            "type": "number"
+          },
+          "durationSec": {
+            "type": "number"
+          }
+        },
+        "required": ["screen", "views", "durationSec"]
+      },
+      "UsageEventBucketDto": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string"
+          },
+          "login": {
+            "type": "number"
+          },
+          "login_biometric": {
+            "type": "number"
+          },
+          "login_guest": {
+            "type": "number"
+          },
+          "register": {
+            "type": "number"
+          },
+          "license_scan": {
+            "type": "number"
+          },
+          "license_wallet_add": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "start",
+          "login",
+          "login_biometric",
+          "login_guest",
+          "register",
+          "license_scan",
+          "license_wallet_add"
+        ]
+      },
+      "UsageVersionDto": {
+        "type": "object",
+        "properties": {
+          "appVersion": {
+            "type": "string"
+          },
+          "installs": {
+            "type": "number"
+          }
+        },
+        "required": ["appVersion", "installs"]
+      },
+      "UsageCompetitionDto": {
+        "type": "object",
+        "properties": {
+          "competitionId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "views": {
+            "type": "number"
+          }
+        },
+        "required": ["competitionId", "title", "views"]
+      },
+      "AdminUsageDto": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string",
+            "enum": ["7d", "30d", "12m"]
+          },
+          "from": {
+            "type": "string",
+            "description": "YYYY-MM-DD (Paris), inclusive"
+          },
+          "to": {
+            "type": "string",
+            "description": "YYYY-MM-DD (Paris), inclusive"
+          },
+          "bucket": {
+            "type": "string",
+            "enum": ["day", "month"]
+          },
+          "aggregatedUntil": {
+            "type": "string",
+            "nullable": true
+          },
+          "activeInstallsPerDay": {
+            "type": "number"
+          },
+          "activeInstallsThisMonth": {
+            "type": "number"
+          },
+          "sessions": {
+            "type": "number",
+            "nullable": true
+          },
+          "medianSessionMinutes": {
+            "type": "number",
+            "nullable": true
+          },
+          "platforms": {
+            "$ref": "#/components/schemas/UsagePlatformsDto"
+          },
+          "heatmap": {
+            "type": "array",
+            "description": "7 rows (Monday first) × 24 hours, Paris time",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "screens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageScreenDto"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageEventBucketDto"
+            }
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageVersionDto"
+            }
+          },
+          "competitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UsageCompetitionDto"
+            }
+          }
+        },
+        "required": [
+          "generatedAt",
+          "period",
+          "from",
+          "to",
+          "bucket",
+          "aggregatedUntil",
+          "activeInstallsPerDay",
+          "activeInstallsThisMonth",
+          "sessions",
+          "medianSessionMinutes",
+          "platforms",
+          "heatmap",
+          "screens",
+          "events",
+          "versions",
+          "competitions"
+        ]
       },
       "TrackResponseDto": {
         "type": "object",
@@ -22381,6 +25393,169 @@
             }
           }
         }
+      },
+      "TrackStatus": {
+        "type": "string",
+        "enum": ["PENDING", "READY", "ERROR"]
+      },
+      "AdminTrackDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "Titre réel, même masqué"
+          },
+          "artist": {
+            "type": "string"
+          },
+          "style": {
+            "type": "string",
+            "nullable": true,
+            "description": "Danse (texte libre ; « Ambiance » pour la musique de pause)"
+          },
+          "bpm": {
+            "type": "number",
+            "description": "Tempo en MPM (mesures par minute)"
+          },
+          "rawBpm": {
+            "type": "number",
+            "description": "Tempo brut détecté (BPM), 0 si inconnu"
+          },
+          "clashTimecodes": {
+            "description": "Paso doble : timecodes (secondes) des clashs",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "titleMasked": {
+            "type": "boolean"
+          },
+          "blacklisted": {
+            "type": "boolean"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TrackStatus"
+              }
+            ]
+          },
+          "sourceKey": {
+            "type": "string",
+            "nullable": true,
+            "description": "Source track-prep (ex. apple:1091542189)"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Fichier audio, servi par GET /uploads/{filename} (hors préfixe /api/v1)"
+          },
+          "artwork": {
+            "type": "string",
+            "nullable": true,
+            "description": "Pochette, servie par GET /uploads/{artwork}"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pendingCorrections": {
+            "type": "number",
+            "description": "Propositions de correction en attente"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "artist",
+          "style",
+          "bpm",
+          "rawBpm",
+          "clashTimecodes",
+          "titleMasked",
+          "blacklisted",
+          "status",
+          "sourceKey",
+          "filename",
+          "artwork",
+          "createdAt",
+          "pendingCorrections"
+        ]
+      },
+      "AdminTracksPageDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminTrackDto"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AdminPageMetaDto"
+          }
+        },
+        "required": ["data", "meta"]
+      },
+      "CheckTrackItemDto": {
+        "type": "object",
+        "properties": {
+          "sourceKey": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "apple:1091542189"
+          },
+          "sha256": {
+            "type": "string",
+            "description": "SHA-256 du fichier audio (hexadécimal)",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": ["sha256"]
+      },
+      "CheckTracksDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "minItems": 1,
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CheckTrackItemDto"
+            }
+          }
+        },
+        "required": ["items"]
+      },
+      "TrackCheckResultDto": {
+        "type": "object",
+        "properties": {
+          "exists": {
+            "type": "boolean",
+            "description": "Une musique existe déjà (même source ou même fichier)"
+          },
+          "trackId": {
+            "type": "string",
+            "description": "La musique existante"
+          }
+        },
+        "required": ["exists"]
+      },
+      "CheckTracksResultDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Une réponse par élément, dans l'ordre de la requête",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrackCheckResultDto"
+            }
+          }
+        },
+        "required": ["items"]
       },
       "TrackCorrectionReason": {
         "type": "string",
@@ -22821,6 +25996,19 @@
         },
         "required": ["reason"]
       },
+      "TtsRequestDto": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Texte à convertir en audio",
+            "example": "Bienvenue sur FFD Connect",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": ["text"]
+      },
       "ConnectHelloAssoDto": {
         "type": "object",
         "properties": {
@@ -22960,7 +26148,7 @@
           },
           "registrantLevel": {
             "type": "string",
-            "description": "Niveau du couple/solo (obligatoire pour épreuves classificatrices)",
+            "description": "Niveau du couple/solo dans la discipline de l'épreuve. Absent : niveau du profil du membre pour cette discipline. Ignoré pour les 10 danses.",
             "enum": ["International", "Avancé", "Intermédiaire", "Débutant"]
           }
         },
@@ -23014,7 +26202,7 @@
           },
           "registrantLevel": {
             "type": "string",
-            "description": "Niveau du couple/solo (obligatoire pour épreuves classificatrices : International, Avancé, Intermédiaire, Débutant)",
+            "description": "Niveau du couple/solo dans la discipline de l'épreuve (International, Avancé, Intermédiaire, Débutant). Absent : niveau du profil pour cette discipline. Ignoré pour les 10 danses.",
             "enum": ["International", "Avancé", "Intermédiaire", "Débutant"]
           }
         },
@@ -23271,7 +26459,9 @@
               "CLUB_MEMBER_REGISTRATION",
               "CLUB_PARTNERSHIP",
               "TRACK_REPORT",
+              "LICENSE_RENEWAL_TO_REVIEW",
               "TRACK_CORRECTION_DECISION",
+              "LICENSE_RENEWAL_DECISION",
               "DIAGNOSTIC_TEST"
             ],
             "description": "Type d'événement",
@@ -23307,7 +26497,9 @@
               "CLUB_MEMBER_REGISTRATION",
               "CLUB_PARTNERSHIP",
               "TRACK_REPORT",
+              "LICENSE_RENEWAL_TO_REVIEW",
               "TRACK_CORRECTION_DECISION",
+              "LICENSE_RENEWAL_DECISION",
               "DIAGNOSTIC_TEST"
             ],
             "description": "Type d'événement à régler, tel que renvoyé par GET /notifications/preferences",
@@ -23361,6 +26553,367 @@
           }
         },
         "required": ["count"]
+      },
+      "LicenseRenewalStatus": {
+        "type": "string",
+        "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"]
+      },
+      "AdminRenewalLicenseDto": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "string"
+          },
+          "validUntil": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": ["number", "validUntil"]
+      },
+      "AdminRenewalUserDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "license": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminRenewalLicenseDto"
+              }
+            ]
+          }
+        },
+        "required": ["id", "firstName", "lastName", "license"]
+      },
+      "AdminRenewalPersonDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "firstName", "lastName"]
+      },
+      "LicenseRenewalDocumentType": {
+        "type": "string",
+        "enum": ["MEDICAL_CERTIFICATE", "LICENSE_CERTIFICATE"]
+      },
+      "AdminRenewalDocumentDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalDocumentType"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": ["id", "type", "createdAt"]
+      },
+      "AdminLicenseRenewalListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalStatus"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "submittedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reviewedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "user": {
+            "$ref": "#/components/schemas/AdminRenewalUserDto"
+          },
+          "reviewedBy": {
+            "nullable": true,
+            "description": "Administrateur qui a tranché ; null pour l'auto-approbation",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminRenewalPersonDto"
+              }
+            ]
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminRenewalDocumentDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "createdAt",
+          "submittedAt",
+          "reviewedAt",
+          "user",
+          "reviewedBy",
+          "documents"
+        ]
+      },
+      "AdminLicenseRenewalsPageDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminLicenseRenewalListItemDto"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AdminPageMetaDto"
+          }
+        },
+        "required": ["data", "meta"]
+      },
+      "AdminRenewalOcrHintsDto": {
+        "type": "object",
+        "properties": {
+          "isApte": {
+            "type": "boolean"
+          },
+          "date": {
+            "type": "string"
+          },
+          "doctorName": {
+            "type": "string"
+          },
+          "licenseNumber": {
+            "type": "string"
+          },
+          "expiryDate": {
+            "type": "string"
+          }
+        }
+      },
+      "AdminRenewalDocumentDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalDocumentType"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "ocr": {
+            "nullable": true,
+            "description": "Indices lus par l'OCR, seulement tant que la demande est en attente (null ensuite).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminRenewalOcrHintsDto"
+              }
+            ]
+          }
+        },
+        "required": ["id", "type", "createdAt", "ocr"]
+      },
+      "AdminRenewalHistoryItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalStatus"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "submittedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reviewedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": ["id", "status", "createdAt", "submittedAt", "reviewedAt"]
+      },
+      "AdminLicenseRenewalDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalStatus"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "submittedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reviewedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "user": {
+            "$ref": "#/components/schemas/AdminRenewalUserDto"
+          },
+          "reviewedBy": {
+            "nullable": true,
+            "description": "Administrateur qui a tranché ; null pour l'auto-approbation",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminRenewalPersonDto"
+              }
+            ]
+          },
+          "rejectionReason": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "ILLEGIBLE",
+              "INCOMPLETE",
+              "CERTIFICATE_TOO_OLD",
+              "NOT_A_MEDICAL_CERTIFICATE",
+              "IDENTITY_MISMATCH",
+              "LICENSE_MISMATCH",
+              "MEDICAL_RESTRICTION",
+              "OTHER"
+            ]
+          },
+          "reviewComment": {
+            "type": "string",
+            "nullable": true
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminRenewalDocumentDetailDto"
+            }
+          },
+          "renewsUntil": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Fin de validité qu'accorderait une approbation maintenant (null hors attente)"
+          },
+          "history": {
+            "description": "Autres demandes du même utilisateur (statuts et dates uniquement), plus récentes d'abord",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminRenewalHistoryItemDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "createdAt",
+          "submittedAt",
+          "reviewedAt",
+          "user",
+          "reviewedBy",
+          "rejectionReason",
+          "reviewComment",
+          "documents",
+          "renewsUntil",
+          "history"
+        ]
+      },
+      "ApproveLicenseRenewalDto": {
+        "type": "object",
+        "properties": {
+          "licenseNumber": {
+            "type": "string",
+            "description": "Numéro de licence confirmé par l'administrateur. Prioritaire sur la lecture OCR ; remplace le numéro d'une licence existante. Obligatoire si aucun numéro n'est connu.",
+            "maxLength": 32,
+            "example": "FFD-123456"
+          }
+        }
+      },
+      "RejectLicenseRenewalDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "ILLEGIBLE",
+              "INCOMPLETE",
+              "CERTIFICATE_TOO_OLD",
+              "NOT_A_MEDICAL_CERTIFICATE",
+              "IDENTITY_MISMATCH",
+              "LICENSE_MISMATCH",
+              "MEDICAL_RESTRICTION",
+              "OTHER"
+            ]
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Commentaire adressé au licencié. Effacé avec le certificat par la purge de rétention."
+          }
+        },
+        "required": ["reason"]
       },
       "CreateCheckoutDto": {
         "type": "object",

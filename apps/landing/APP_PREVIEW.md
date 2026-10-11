@@ -60,3 +60,15 @@ and external documents are not simulated. Returning preserves filters and
 restores focus to the selected card. On mobile, the preview precedes its
 explanatory copy. Other screens use the pinned reference above; this is not
 a promise of pixel parity with later mobile releases.
+
+## Guided examples (9 October 2026)
+
+Navigation labels and club management entries were rechecked against develop
+`161a97a98c58c2d48b13a704b0e3ca86849feb15` (MainTabs and ClubDashboardScreen).
+Use “Réglages” and include Solo Teams. Pending registrations depend on the club's
+registration mode, now stated in the example. Other screen styling retains the
+pinned references above. User guides reuse this exact component on demand; they
+are not screenshots and do not establish native pixel parity.
+
+The landing provides three concrete tasks per module. Resetting a guide example
+clears its local demo state. No authenticated requests or analytics are added.

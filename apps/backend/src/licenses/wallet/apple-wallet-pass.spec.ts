@@ -3,7 +3,6 @@ import {
   APPLE_PASS_ORGANIZATION_NAME,
   applePassSerialNumber,
   buildApplePassJson,
-  parisEndOfDay,
 } from "./apple-wallet-pass";
 
 const license = {
@@ -14,34 +13,6 @@ const license = {
   firstName: "Jean",
   lastName: "Dupont",
 };
-
-describe("parisEndOfDay", () => {
-  it("summer time (UTC+2)", () => {
-    expect(parisEndOfDay("2026-08-31").toISOString()).toBe(
-      "2026-08-31T22:00:00.000Z",
-    );
-  });
-
-  it("winter time (UTC+1)", () => {
-    expect(parisEndOfDay("2026-12-31").toISOString()).toBe(
-      "2026-12-31T23:00:00.000Z",
-    );
-  });
-
-  it("the day before the spring DST switch ends at 00:00 CET", () => {
-    // 2026-03-29 is the switch day: 2026-03-28 ends at 00:00 CET (UTC+1).
-    expect(parisEndOfDay("2026-03-28").toISOString()).toBe(
-      "2026-03-28T23:00:00.000Z",
-    );
-  });
-
-  it("the autumn DST switch day ends at 00:00 CET", () => {
-    // 2026-10-25 03:00 CEST → 02:00 CET; the next midnight is CET.
-    expect(parisEndOfDay("2026-10-25").toISOString()).toBe(
-      "2026-10-25T23:00:00.000Z",
-    );
-  });
-});
 
 describe("buildApplePassJson", () => {
   const pass = buildApplePassJson({
@@ -76,6 +47,20 @@ describe("buildApplePassJson", () => {
     ]);
     expect(pass.generic.auxiliaryFields[0].value).toBe("31/12/2026");
     expect(pass.expirationDate).toBe("2026-12-31T23:00:00.000Z");
+  });
+
+  it.each([
+    ["Latin", "Latines"],
+    ["Standard", "Standards"],
+    ["Ten Dance", "10 danses"],
+  ])("shows the %s discipline in French", (category, label) => {
+    const translated = buildApplePassJson({
+      passTypeIdentifier: "pass.org.example.test",
+      teamIdentifier: "TEST000000",
+      license: { ...license, category },
+      qrMessage: "x",
+    });
+    expect(translated.generic.secondaryFields[1].value).toBe(label);
   });
 
   it("has a serial number stable per license", () => {

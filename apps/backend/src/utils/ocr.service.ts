@@ -106,9 +106,13 @@ export class OcrService implements OnModuleInit {
         return {};
       }
 
-      this.logger.log(`OCR detected text: ${fullText.substring(0, 100)}...`);
-
-      return this.parseText(fullText);
+      // Never log the extracted text: it carries identity and licence data
+      // (GDPR, #140). Only non-identifying diagnostics.
+      const parsed = this.parseText(fullText);
+      this.logger.log(
+        `OCR license: ${fullText.length} chars, licenseNumber=${Boolean(parsed.licenseNumber)}, expiryDate=${Boolean(parsed.expiryDate)}`,
+      );
+      return parsed;
     } catch (error) {
       if (error instanceof ServiceUnavailableException) throw error;
       const errorMessage =
@@ -148,7 +152,6 @@ export class OcrService implements OnModuleInit {
     isApte?: boolean;
     date?: string;
     doctorName?: string;
-    rawText?: string;
   }> {
     if (!this.endpoint) {
       this.logger.log(`[MOCK] OCR medical certificate (${describe(image)})`);
@@ -156,7 +159,6 @@ export class OcrService implements OnModuleInit {
         isApte: true,
         date: new Date().toISOString().slice(0, 10),
         doctorName: "Dr. Mock",
-        rawText: "Certificat médical - Apte - Danse",
       };
     }
 
@@ -167,10 +169,16 @@ export class OcrService implements OnModuleInit {
           withTimeout(this.detectText(image), 15_000, "Vision.read (medical)"),
       );
       if (!fullText) {
-        return { rawText: "" };
+        return {};
       }
-      this.logger.log(`OCR medical: ${fullText.substring(0, 150)}...`);
-      return this.parseMedicalCertificateText(fullText);
+      // Never log the extracted text: a medical certificate is health data
+      // (GDPR art. 9, #140) and logs escape the certificate purge. Only
+      // non-identifying diagnostics.
+      const parsed = this.parseMedicalCertificateText(fullText);
+      this.logger.log(
+        `OCR medical: ${fullText.length} chars, isApteRead=${parsed.isApte !== undefined}, date=${Boolean(parsed.date)}, doctorName=${Boolean(parsed.doctorName)}`,
+      );
+      return parsed;
     } catch (error) {
       if (error instanceof ServiceUnavailableException) throw error;
       const errorMessage =
@@ -184,7 +192,6 @@ export class OcrService implements OnModuleInit {
     isApte?: boolean;
     date?: string;
     doctorName?: string;
-    rawText?: string;
   } {
     const normalized = text.replace(/\s+/g, " ").toLowerCase();
 
@@ -239,11 +246,8 @@ export class OcrService implements OnModuleInit {
     );
     if (drMatch) doctorName = drMatch[1].trim();
 
-    return {
-      isApte,
-      date,
-      doctorName,
-      rawText: text.slice(0, 500),
-    };
+    // No raw text in the result (#224): it would be persisted with the
+    // renewal document and returned by the API — health data, GDPR art. 9.
+    return { isApte, date, doctorName };
   }
 }

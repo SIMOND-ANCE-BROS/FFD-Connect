@@ -1,8 +1,17 @@
 import { Injectable } from "@nestjs/common";
 import { NotificationType, RegistrationStatus, UserRole } from "@prisma/client";
 import { withActiveRole } from "../../auth/roles";
+import { disciplineLabel } from "../../common/competition-level";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
+
+/** « Latines Adulte » : discipline en français + classe d'âge. */
+export function eventDisplayLabel(event: {
+  category: string | null;
+  ageGroup: string | null;
+}): string {
+  return `${disciplineLabel(event.category)} ${event.ageGroup ?? ""}`.trim();
+}
 
 interface RegistrationRef {
   id: string;
@@ -53,7 +62,7 @@ export class RegistrationNotificationService {
     options: RegisterNotifyOptions,
   ): Promise<void> {
     const compTitle = event.competition.title;
-    const eventLabel = `${event.category ?? ""} ${event.ageGroup ?? ""}`.trim();
+    const eventLabel = eventDisplayLabel(event);
     const { byOrganizer, initialStatus } = options;
 
     if (byOrganizer) {
@@ -137,7 +146,7 @@ export class RegistrationNotificationService {
     options: UnregisterNotifyOptions,
   ): Promise<void> {
     const compTitle = event.competition.title;
-    const eventLabel = `${event.category ?? ""} ${event.ageGroup ?? ""}`.trim();
+    const eventLabel = eventDisplayLabel(event);
 
     if (
       options.byOrganizer &&
@@ -202,7 +211,7 @@ export class RegistrationNotificationService {
     event: EventRef,
   ): Promise<void> {
     const compTitle = event.competition.title;
-    const eventLabel = `${event.category ?? ""} ${event.ageGroup ?? ""}`.trim();
+    const eventLabel = eventDisplayLabel(event);
 
     await this.notificationsService.sendToUser(
       registration.userId,

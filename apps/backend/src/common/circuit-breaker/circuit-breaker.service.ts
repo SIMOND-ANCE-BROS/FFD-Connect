@@ -8,11 +8,12 @@ import CircuitBreaker from "opossum";
 type BreakerKey =
   | "azure-vision"
   | "azure-tts"
-  | "gemini-rewrite"
   | "wdsf"
   | "helloasso"
   | "fcm"
-  | "azure-blob";
+  | "azure-blob"
+  | "azure-blob-write"
+  | "ffd-documents";
 
 interface BreakerConfig {
   errorThresholdPercentage: number;
@@ -31,12 +32,6 @@ const BREAKER_CONFIGS: Record<BreakerKey, BreakerConfig> = {
   "azure-tts": {
     errorThresholdPercentage: 50,
     timeout: 10_000,
-    resetTimeout: 30_000,
-    volumeThreshold: 5,
-  },
-  "gemini-rewrite": {
-    errorThresholdPercentage: 50,
-    timeout: 8_000,
     resetTimeout: 30_000,
     volumeThreshold: 5,
   },
@@ -67,6 +62,22 @@ const BREAKER_CONFIGS: Record<BreakerKey, BreakerConfig> = {
     errorThresholdPercentage: 50,
     timeout: 10_000,
     resetTimeout: 30_000,
+    volumeThreshold: 5,
+  },
+  // Track file uploads of the back-office import (up to 20 MB each): their own
+  // breaker, so their longer budget does not loosen the /uploads reads.
+  "azure-blob-write": {
+    errorThresholdPercentage: 50,
+    timeout: 45_000,
+    resetTimeout: 30_000,
+    volumeThreshold: 5,
+  },
+  // FFD circular PDFs downloaded by the sync (temporary épreuves deduction).
+  // The call is also bounded by withTimeout(20s); this is the outer guard.
+  "ffd-documents": {
+    errorThresholdPercentage: 50,
+    timeout: 25_000,
+    resetTimeout: 60_000,
     volumeThreshold: 5,
   },
 };

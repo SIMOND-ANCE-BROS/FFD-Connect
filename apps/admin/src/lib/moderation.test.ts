@@ -93,6 +93,29 @@ describe('moderation URL state', () => {
       nextPendingFilter(new URLSearchParams('status=REJECTED&reason=MPM&q=paso&page=3')),
     ).toEqual({ status: 'PENDING', reason: ['MPM'], q: 'paso', skip: 0, take: 1 });
   });
+
+  it('reads and writes the track filter, UUIDs only', () => {
+    const id = '4f1c2a8e-1b2c-4d5e-8f90-123456789abc';
+    expect(readModerationParams(new URLSearchParams(`track=${id}`))).toEqual({
+      status: 'PENDING',
+      reasons: [],
+      q: '',
+      page: 1,
+      trackId: id,
+    });
+    expect(readModerationParams(new URLSearchParams('track=t1'))).not.toHaveProperty('trackId');
+    expect(
+      writeModerationParams(new URLSearchParams(`track=${id}&page=2`), {
+        status: 'APPROVED',
+      }).toString(),
+    ).toBe(`status=APPROVED&track=${id}`);
+    expect(
+      writeModerationParams(new URLSearchParams(`track=${id}`), { trackId: undefined }).toString(),
+    ).toBe('');
+    expect(
+      moderationFilter({ status: 'PENDING', reasons: [], q: '', page: 1, trackId: id }, 50),
+    ).toEqual({ status: 'PENDING', trackId: id, skip: 0, take: 50 });
+  });
 });
 
 describe('proposalSummary', () => {

@@ -10,6 +10,7 @@
     "^newrelic$": "<rootDir>/setup/newrelic-mock.ts"
   },
   "testTimeout": 60000,
+  "maxWorkers": 1,
   "globalSetup": "./setup/global-setup.ts",
   "globalTeardown": "./setup/global-teardown.ts"
 }

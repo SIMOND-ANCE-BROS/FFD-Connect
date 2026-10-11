@@ -11,6 +11,7 @@ export type {
   ApiRegistration,
   ApiResult,
   ApiScheduleItem,
+  CompetitionEventsSource,
   CompetitionStatus,
   EventType,
   PaginatedResponse,

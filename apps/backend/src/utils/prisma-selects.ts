@@ -3,6 +3,8 @@
  * Utilise `select` au lieu de `include` pour limiter les champs récupérés
  */
 
+import { TrackCorrectionStatus } from "@prisma/client";
+
 /**
  * Sélecteur pour les informations utilisateur de base (sans mot de passe)
  */
@@ -22,6 +24,40 @@ export const userBaseSelect = {
   nationalRanking: true,
   passportLevelLatin: true,
   passportLevelStandard: true,
+} as const;
+
+/**
+ * Niveaux de compétition d'un utilisateur : un par discipline + l'ancien
+ * niveau unique (déprécié, lu en repli). À lire via
+ * getCompetitionLevelForCategory (src/common/competition-level).
+ */
+export const competitionLevelsSelect = {
+  competitionLevel: true,
+  competitionLevelLatin: true,
+  competitionLevelStandard: true,
+} as const;
+
+/** Champs du profil dont dépend l'éligibilité à une épreuve. */
+export const userEligibilityProfileSelect = {
+  ...competitionLevelsSelect,
+  category: true,
+  ageGroup: true,
+} as const;
+
+/** Membre d'une Solo Team : identité + niveaux (calcul du niveau d'équipe). */
+export const soloTeamMemberUserSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  ...competitionLevelsSelect,
+} as const;
+
+/** Création d'un couple : appartenance au club + données de suggestion (âge, disciplines, niveaux). */
+export const partnershipCandidateSelect = {
+  clubId: true,
+  clubName: true,
+  birthDate: true,
+  ...userEligibilityProfileSelect,
 } as const;
 
 /**
@@ -253,6 +289,124 @@ export const licenseRenewalDocumentFileSelect = {
   filePath: true,
 } as const;
 
+/**
+ * Document de renouvellement tel que l'API le renvoie (#224). `ocrData` est lu
+ * pour le résumé affiché dans l'app, mais ne sort JAMAIS tel quel : il passe
+ * par `toRenewalDocumentResponse`, qui ne garde que les champs utiles (jamais
+ * `rawText`, texte brut du certificat médical). `purgeDueAt` reste interne.
+ */
+export const licenseRenewalDocumentResponseSelect = {
+  id: true,
+  requestId: true,
+  type: true,
+  filePath: true,
+  ocrData: true,
+  createdAt: true,
+} as const;
+
+/**
+ * Demande de renouvellement telle que l'API la renvoie, documents compris.
+ * Les documents ne sont pas bornés par `take` : un remplacement supprime
+ * l'ancien document du même type, il y en a donc au plus un par type (2).
+ */
+export const licenseRenewalRequestResponseSelect = {
+  id: true,
+  userId: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  // Decision shown to the licensee (#268); who decided stays internal.
+  submittedAt: true,
+  rejectionReason: true,
+  reviewComment: true,
+  documents: { select: licenseRenewalDocumentResponseSelect },
+} as const;
+
+/**
+ * Export RGPD (art. 15/20) d'un document de renouvellement : type, date de
+ * dépôt et données lues. `ocrData` est lu pour être filtré par
+ * `pickRenewalOcrData` (liste blanche, jamais `rawText`) avant de sortir. La
+ * référence de stockage (`filePath`) et l'échéance de purge restent internes.
+ */
+export const licenseRenewalDocumentExportSelect = {
+  type: true,
+  ocrData: true,
+  createdAt: true,
+} as const;
+
+/**
+ * Export RGPD (art. 15/20) des demandes de renouvellement de licence. Comme
+ * pour la réponse API, les documents ne sont pas bornés : au plus un par type.
+ */
+export const licenseRenewalRequestExportSelect = {
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+  // Modération humaine (#266) : dates et motif de la décision, commentaire de
+  // l'administrateur. Jamais son identité (comme pour les corrections).
+  submittedAt: true,
+  reviewedAt: true,
+  rejectionReason: true,
+  reviewComment: true,
+  documents: {
+    select: licenseRenewalDocumentExportSelect,
+    orderBy: { createdAt: "asc" },
+  },
+} as const;
+
+/** Export RGPD : appartenance aux équipes solo du club (nom, niveau, date). */
+export const soloTeamMembershipExportSelect = {
+  createdAt: true,
+  team: { select: { name: true, level: true } },
+} as const;
+
+/**
+ * Export RGPD : réservations de places. La référence de paiement externe
+ * (HelloAsso) et l'identifiant de l'emplacement dans le plan restent internes.
+ */
+export const seatBookingExportSelect = {
+  seatLabel: true,
+  status: true,
+  createdAt: true,
+  competition: { select: { title: true, date: true } },
+} as const;
+
+/** Dépôt d'un document : statut de la demande + fichiers déjà déposés. */
+export const licenseRenewalUploadTargetSelect = {
+  status: true,
+  documents: { select: { type: true, filePath: true } },
+} as const;
+
+/** Soumission : statut + données OCR des documents, pour les règles métier. */
+export const licenseRenewalSubmitTargetSelect = {
+  status: true,
+  documents: { select: { type: true, ocrData: true } },
+} as const;
+
+/** Approbation : de quoi renouveler la licence, sans le reste du profil. */
+export const licenseRenewalApprovalTargetSelect = {
+  status: true,
+  userId: true,
+  documents: { select: { type: true, ocrData: true } },
+  user: {
+    select: {
+      category: true,
+      clubName: true,
+      license: { select: { number: true, validUntil: true } },
+    },
+  },
+} as const;
+
+/**
+ * Purge de rétention (#62) : documents échus. `requestId` sert à effacer, avec
+ * le document, le commentaire de l'administrateur sur la demande (#266).
+ */
+export const healthDataPurgeDueSelect = {
+  id: true,
+  filePath: true,
+  requestId: true,
+} as const;
+
 /** Sélecteur minimal : identifiant seul (destinataires d'une notification…). */
 export const idOnlySelect = {
   id: true,
@@ -266,6 +420,78 @@ export const userNameSelect = {
   id: true,
   firstName: true,
   lastName: true,
+} as const;
+
+/** Licence telle que la file de modération l'affiche : numéro et validité. */
+export const licenseNumberValiditySelect = {
+  number: true,
+  validUntil: true,
+} as const;
+
+/**
+ * File de modération des renouvellements (#266) : une ligne par demande. Les
+ * documents ne sont décrits que par leur type et leur date — ni fichier, ni
+ * référence de stockage, ni données lues. Au plus un document par type (2),
+ * d'où l'absence de `take`.
+ */
+export const licenseRenewalAdminListSelect = {
+  id: true,
+  status: true,
+  createdAt: true,
+  submittedAt: true,
+  reviewedAt: true,
+  user: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      license: { select: licenseNumberValiditySelect },
+    },
+  },
+  reviewedBy: { select: userNameSelect },
+  documents: {
+    select: { id: true, type: true, createdAt: true },
+    orderBy: { type: "asc" },
+  },
+} as const;
+
+/**
+ * Détail d'une demande pour la modération : la ligne de la file, plus le
+ * commentaire et les données lues par l'OCR (indices, filtrés par
+ * `pickRenewalOcrData` et montrés seulement tant que la demande est PENDING).
+ */
+export const licenseRenewalAdminDetailSelect = {
+  ...licenseRenewalAdminListSelect,
+  userId: true,
+  // Pas dans la file (non tracée) : MEDICAL_RESTRICTION est une donnée de
+  // santé. Le détail, lui, est tracé (LICENSE_RENEWAL_VIEW).
+  rejectionReason: true,
+  reviewComment: true,
+  documents: {
+    select: { id: true, type: true, createdAt: true, ocrData: true },
+    orderBy: { type: "asc" },
+  },
+} as const;
+
+/** Historique des demandes d'un utilisateur : statuts et dates uniquement. */
+export const licenseRenewalHistorySelect = {
+  id: true,
+  status: true,
+  createdAt: true,
+  submittedAt: true,
+  reviewedAt: true,
+} as const;
+
+/** Fichier d'un document à servir à l'administrateur, et l'état de sa demande. */
+export const licenseRenewalDocumentFileTargetSelect = {
+  type: true,
+  filePath: true,
+  request: { select: { status: true } },
+} as const;
+
+/** Décision de modération : la demande existe-t-elle, et dans quel état. */
+export const licenseRenewalStatusSelect = {
+  status: true,
 } as const;
 
 /**
@@ -384,6 +610,67 @@ export const trackCorrectionAuditTrackSelect = {
 } as const;
 
 /**
+ * Track fields of a TRACK_UPDATE audit row: read by the write guard and
+ * returned by the update itself, inside the same transaction.
+ */
+export const trackAuditSelect = {
+  title: true,
+  artist: true,
+  style: true,
+  bpm: true,
+  titleMasked: true,
+  blacklisted: true,
+  clashTimecodes: true,
+  status: true,
+} as const;
+
+/** Guard read of TracksService.updateTrack: owner, raw tempo, audited fields. */
+export const trackUpdateTargetSelect = {
+  submittedById: true,
+  rawBpm: true,
+  ...trackAuditSelect,
+} as const;
+
+/** What a track deletion audits (metadata only) and which files it removes. */
+export const trackDeletionSelect = {
+  title: true,
+  artist: true,
+  sourceKey: true,
+  filename: true,
+  artwork: true,
+} as const;
+
+/** Back-office catalogue: every field of AdminTrackDto, plus the pending corrections. */
+export const adminTrackSelect = {
+  id: true,
+  title: true,
+  artist: true,
+  style: true,
+  bpm: true,
+  rawBpm: true,
+  clashTimecodes: true,
+  titleMasked: true,
+  blacklisted: true,
+  status: true,
+  sourceKey: true,
+  filename: true,
+  artwork: true,
+  createdAt: true,
+  _count: {
+    select: {
+      corrections: { where: { status: TrackCorrectionStatus.PENDING } },
+    },
+  },
+} as const;
+
+/** Duplicate lookup of the import: a hit by content hash or by source key. */
+export const trackDuplicateSelect = {
+  id: true,
+  sourceKey: true,
+  contentHash: true,
+} as const;
+
+/**
  * Export RGPD (art. 15/20) des propositions de correction : le contenu soumis
  * par l'utilisateur et la décision, sans l'identité de l'administrateur
  * (donnée d'un tiers). Les drapeaux de modération sont lus pour que l'export
@@ -437,6 +724,7 @@ export const adminUserListSelect = {
   ageGroup: true,
   createdAt: true,
   disabledAt: true,
+  isStoreReview: true,
   license: { select: { number: true, validUntil: true } },
 } as const;
 
@@ -447,7 +735,7 @@ export const adminUserDetailSelect = {
   nationalRanking: true,
   passportLevelLatin: true,
   passportLevelStandard: true,
-  competitionLevel: true,
+  ...competitionLevelsSelect,
   wdsfMin: true,
   wdsfExpiresOn: true,
   lastLoginAt: true,
@@ -456,8 +744,12 @@ export const adminUserDetailSelect = {
   club: { select: { disabledAt: true } },
 } as const;
 
-/** Back-office status toggle: current state only. */
-export const adminUserStatusSelect = { id: true, disabledAt: true } as const;
+/** Back-office status toggle: current state + store-review protection. */
+export const adminUserStatusSelect = {
+  id: true,
+  disabledAt: true,
+  isStoreReview: true,
+} as const;
 
 /** Back-office: the editable fields of a user, for the audit diff. */
 export const adminUserEditableSelect = {
@@ -470,7 +762,7 @@ export const adminUserEditableSelect = {
   ageGroup: true,
   passportLevelLatin: true,
   passportLevelStandard: true,
-  competitionLevel: true,
+  ...competitionLevelsSelect,
   nationalRanking: true,
   role: true,
   extraRoles: true,
@@ -492,12 +784,15 @@ export const adminInvitationTargetSelect = {
 
 /**
  * Account status, read at login, at refresh and on every authenticated
- * request (JwtStrategy). Indexed lookup by primary key, three columns.
+ * request (JwtStrategy). Indexed lookup by primary key, four columns.
+ * `isStoreReview` rides along so the store-review simulated-write mode costs
+ * no extra query (StoreReviewInterceptor).
  */
 export const accountStatusSelect = {
   role: true,
   extraRoles: true,
   disabledAt: true,
+  isStoreReview: true,
   club: { select: { disabledAt: true } },
 } as const;
 
@@ -506,6 +801,7 @@ export const adminUserDeletionTargetSelect = {
   id: true,
   email: true,
   role: true,
+  isStoreReview: true,
 } as const;
 
 /** Back-office clubs table. Never select HelloAsso credentials. */
@@ -514,6 +810,7 @@ export const adminClubListSelect = {
   name: true,
   registrationMode: true,
   disabledAt: true,
+  isStoreReview: true,
   createdAt: true,
 } as const;
 
@@ -535,8 +832,19 @@ export const adminClubEditableSelect = {
   registrationMode: true,
 } as const;
 
-/** Back-office club status toggle: current state only. */
-export const adminClubStatusSelect = { id: true, disabledAt: true } as const;
+/** Back-office club status toggle: current state + store-review protection. */
+export const adminClubStatusSelect = {
+  id: true,
+  disabledAt: true,
+  isStoreReview: true,
+} as const;
+
+/** Back-office club deletion: name for the audit row + store-review protection. */
+export const adminClubDeletionTargetSelect = {
+  id: true,
+  name: true,
+  isStoreReview: true,
+} as const;
 
 /** Existing club an admin attaches a new account to (refused when disabled). */
 export const adminClubAttachSelect = {
@@ -581,4 +889,32 @@ export const volunteerTokenAuthSelect = {
   competitionId: true,
   expiresAt: true,
   name: true,
+} as const;
+
+/**
+ * TEMPORARY — what the FFD épreuves deduction needs to decide whether a
+ * synced competition's events may be replaced: its documents, the stored
+ * fingerprint, and each event's shape + dependants (registrations, results,
+ * schedule). The event list is bounded (`take`), a deduced set never exceeds
+ * MAX_DEDUCED_EVENTS (400).
+ */
+export const competitionEventsDeductionSelect = {
+  id: true,
+  eventsDescription: true,
+  circularUrl: true,
+  eventsSource: true,
+  eventsFingerprint: true,
+  events: {
+    select: {
+      category: true,
+      ageGroup: true,
+      eventType: true,
+      level: true,
+      eventKind: true,
+      _count: {
+        select: { registrations: true, results: true, scheduleItems: true },
+      },
+    },
+    take: 500,
+  },
 } as const;

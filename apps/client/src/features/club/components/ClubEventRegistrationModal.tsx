@@ -15,6 +15,7 @@ import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
 import { Event } from "../../competitions/context/CompetitionContext";
 import { ClubMember } from "../services/ClubService";
+import { formatDiscipline } from "../../../utils/discipline";
 
 interface Props {
   visible: boolean;
@@ -88,7 +89,7 @@ export const ClubEventRegistrationModal: React.FC<Props> = ({
               Gérer les inscriptions
             </AppText>
             <AppText variant="caption" style={{ color: theme.textSecondary }}>
-              {event.category} {event.ageGroup}
+              {formatDiscipline(event.category)} {event.ageGroup}
               {event.eventType === "SOLO" ? " • Solo" : " • Couple"}
             </AppText>
           </View>
@@ -162,7 +163,8 @@ export const ClubEventRegistrationModal: React.FC<Props> = ({
                         style={{ color: theme.textSecondary }}
                       >
                         {member.license?.number ?? "Sans licence"} •{" "}
-                        {member.ageGroup ?? ""} {member.category ?? ""}
+                        {member.ageGroup ?? ""}{" "}
+                        {formatDiscipline(member.category)}
                       </AppText>
                     </View>
                     <View style={[styles.checkbox, checkboxStyle]}>

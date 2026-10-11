@@ -10,6 +10,8 @@ import {
   LicenseRenewalDocumentType,
   LicenseRenewalRequest,
 } from "../../../services/BackendService";
+import { queryClient } from "../../../services/queryClient";
+import { renewalStatusQueryKey } from "./useRenewalPending";
 
 export type RenewalStep = "documents" | "submitted" | "approved" | "rejected";
 
@@ -22,19 +24,33 @@ export function useLicenseRenewalLogic() {
     useState<LicenseRenewalDocumentType | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // The Licence and Profile banners read the status from React Query (#268):
+  // keep it in step with what this screen loads or submits.
+  const applyRequest = useCallback((next: LicenseRenewalRequest | null) => {
+    setRequest(next);
+    const queryKey = renewalStatusQueryKey();
+    // A banner fetch still in flight (waking backend) would land after this
+    // write and overwrite it with an older status: cancel it first. The
+    // cancellation reverts asynchronously, hence the write once it settled.
+    void queryClient
+      .cancelQueries({ queryKey })
+      .then(() => queryClient.setQueryData(queryKey, next?.status ?? null));
+  }, []);
+
   const loadRenewal = useCallback(async () => {
     const config = await auth.getAuthConfig();
     if (!config.authToken || !config.isLoggedIn) {
-      setRequest(null);
+      applyRequest(null);
       return;
     }
     try {
       const data = await BackendService.getMyRenewalRequest(config.authToken);
-      setRequest(data ?? null);
+      applyRequest(data ?? null);
     } catch {
+      // Unknown, not "none": the banners keep what they last knew.
       setRequest(null);
     }
-  }, [auth]);
+  }, [auth, applyRequest]);
 
   useEffect(() => {
     loadRenewal().catch(() => {});
@@ -50,7 +66,7 @@ export function useLicenseRenewalLogic() {
         const data = await BackendService.startRenewalRequest(
           config.authToken!,
         );
-        setRequest(data);
+        applyRequest(data);
       },
       {
         userMessage: ERROR_MESSAGES.RENEWAL_LOAD_FAILED,
@@ -58,7 +74,7 @@ export function useLicenseRenewalLogic() {
         logError: true,
       },
     );
-  }, [auth, withErrorHandling]);
+  }, [auth, applyRequest, withErrorHandling]);
 
   const pickAndUploadDocument = useCallback(
     async (type: LicenseRenewalDocumentType) => {
@@ -104,7 +120,7 @@ export function useLicenseRenewalLogic() {
             // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
             result.assets![0].uri,
           );
-          setRequest(updated);
+          applyRequest(updated);
         },
         {
           userMessage: ERROR_MESSAGES.RENEWAL_UPLOAD_FAILED,
@@ -114,7 +130,7 @@ export function useLicenseRenewalLogic() {
       );
       setUploadingType(null);
     },
-    [auth, request, startOrGetDraft, withErrorHandling],
+    [auth, request, startOrGetDraft, withErrorHandling, applyRequest],
   );
 
   const submit = useCallback(async () => {
@@ -129,7 +145,7 @@ export function useLicenseRenewalLogic() {
           config.authToken!,
           request.id,
         );
-        setRequest(updated);
+        applyRequest(updated);
       },
       {
         userMessage: ERROR_MESSAGES.RENEWAL_SUBMIT_FAILED,
@@ -138,7 +154,7 @@ export function useLicenseRenewalLogic() {
       },
     );
     setSubmitting(false);
-  }, [auth, request, withErrorHandling]);
+  }, [auth, request, withErrorHandling, applyRequest]);
 
   const getDoc = (
     type: LicenseRenewalDocumentType,

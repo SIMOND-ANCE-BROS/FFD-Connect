@@ -43,7 +43,7 @@ export interface AuthRepository {
   getProfile(): Promise<UserProfile>;
   /** Applies the roles of a fetched `/users/me` profile (no request). */
   syncRolesFromProfile(
-    profile: Pick<UserProfile, "email" | "role" | "roles">,
+    profile: Pick<UserProfile, "email" | "role" | "roles" | "isStoreReview">,
   ): Promise<AuthConfig>;
   verifyWdsfLicense(min: string): Promise<WdsfVerifyResponse>;
   /** Enregistre la licence WDSF sur le profil backend (après vérification). */

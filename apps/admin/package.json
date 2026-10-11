@@ -13,6 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource-variable/dm-sans": "5.2.8",
+    "@mantine/charts": "^8.3.18",
     "@mantine/core": "^8.3.0",
     "@mantine/dates": "^8.3.0",
     "@mantine/form": "^8.3.0",
@@ -23,6 +25,7 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-router": "^7.9.0",
+    "recharts": "^2.15.4",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

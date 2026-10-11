@@ -214,6 +214,27 @@ describe("TrackCorrectionsQueryService", () => {
         expect.objectContaining({ where: {} }),
       );
     });
+
+    it("filters on one track's proposals", async () => {
+      prisma.trackCorrection.count.mockResolvedValue(0);
+      prisma.trackCorrection.findMany.mockResolvedValue([]);
+
+      await service.listForAdmin({
+        status: TrackCorrectionStatus.PENDING,
+        trackId: "4f1c2a8e-1b2c-4d5e-8f90-123456789abc",
+        skip: 0,
+        take: 10,
+      });
+
+      expect(prisma.trackCorrection.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            status: TrackCorrectionStatus.PENDING,
+            trackId: "4f1c2a8e-1b2c-4d5e-8f90-123456789abc",
+          },
+        }),
+      );
+    });
   });
 
   describe("resultingBpm", () => {

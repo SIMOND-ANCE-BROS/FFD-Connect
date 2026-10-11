@@ -1,4 +1,11 @@
-import { correctionQuery, ensureOk } from './queries';
+import {
+  correctionQuery,
+  ensureOk,
+  statsQuery,
+  trackQuery,
+  tracksQuery,
+  usageQuery,
+} from './queries';
 
 describe('ensureOk', () => {
   it('resolves on a 204', async () => {
@@ -26,6 +33,43 @@ describe('correctionQuery', () => {
   it('never wakes the scale-to-zero backend on a refocus, a reconnect or a retry', () => {
     expect(correctionQuery('c1')).toMatchObject({
       queryKey: ['admin', 'moderation', 'item', 'c1'],
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: false,
+    });
+  });
+});
+
+describe('track queries', () => {
+  it('never wake the scale-to-zero backend on a refocus, a reconnect or a retry', () => {
+    const flags = { refetchOnWindowFocus: false, refetchOnReconnect: false, retry: false };
+    expect(tracksQuery({ skip: 0, take: 50 })).toMatchObject({
+      queryKey: ['admin', 'tracks', 'list', { skip: 0, take: 50 }],
+      ...flags,
+    });
+    expect(trackQuery('t1')).toMatchObject({
+      queryKey: ['admin', 'tracks', 'item', 't1'],
+      ...flags,
+    });
+    expect(tracksQuery({}).refetchInterval).toBeUndefined();
+  });
+});
+
+describe('statsQuery', () => {
+  it('is keyed by period and never wakes the backend on a refocus, a reconnect or a retry', () => {
+    expect(statsQuery('6m')).toMatchObject({
+      queryKey: ['admin', 'stats', '6m'],
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: false,
+    });
+  });
+});
+
+describe('usageQuery', () => {
+  it('is keyed by period and space and never wakes the backend', () => {
+    expect(usageQuery('7d', 'CLUB')).toMatchObject({
+      queryKey: ['admin', 'usage', '7d', 'CLUB'],
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
       retry: false,

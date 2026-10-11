@@ -6,6 +6,7 @@ import {
   buildAppleWalletPassUrl,
   LicenseApi,
 } from "../license-api";
+import { HttpError } from "../../../utils/httpInterceptor";
 
 jest.mock("../../../api/generated", () => ({
   appleWalletControllerCreateDownloadLink: jest.fn(),
@@ -128,5 +129,51 @@ describe("LicenseApi.createAppleWalletPassUrl", () => {
     await expect(LicenseApi.createAppleWalletPassUrl()).rejects.toThrow(
       APPLE_WALLET_GENERIC_ERROR,
     );
+  });
+});
+
+// #225: a refused upload can be medical. Its text is for the user only.
+describe("LicenseApi.uploadRenewalDocument — refusal", () => {
+  const MEDICAL_TEXT = "Certificat : pas apte (SENTINEL-225)";
+
+  it("keeps a coded refusal's text out of the error message", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      json: jest
+        .fn()
+        .mockResolvedValue({ message: MEDICAL_TEXT, code: "MEDICAL_UNFIT" }),
+    });
+
+    const err = (await LicenseApi.uploadRenewalDocument(
+      "tok",
+      "req-1",
+      "MEDICAL_CERTIFICATE",
+      "file:///doc.jpg",
+    ).catch((e: unknown) => e)) as HttpError;
+
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err.message).toBe("Upload failed 400");
+    expect(err.userMessage).toBe(MEDICAL_TEXT);
+    expect(err.code).toBe("MEDICAL_UNFIT");
+  });
+
+  it("falls back on a generic message when the body is unreadable", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: "Error",
+      json: jest.fn().mockRejectedValue(new Error("not json")),
+    });
+
+    await expect(
+      LicenseApi.uploadRenewalDocument(
+        "tok",
+        "req-1",
+        "LICENSE_CERTIFICATE",
+        "file:///doc.jpg",
+      ),
+    ).rejects.toThrow("Upload failed 500");
   });
 });

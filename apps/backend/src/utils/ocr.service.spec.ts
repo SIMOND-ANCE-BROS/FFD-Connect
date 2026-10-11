@@ -1,4 +1,4 @@
-import { ServiceUnavailableException } from "@nestjs/common";
+import { Logger, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
 import axios from "axios";
@@ -296,14 +296,14 @@ describe("OcrService", () => {
       const result = await service.extractMedicalCertificateInfo("path");
       expect(result.isApte).toBe(true);
       expect(result.doctorName).toBe("Dr. Mock");
-      expect(result.rawText).toBe("Certificat médical - Apte - Danse");
+      expect(result).not.toHaveProperty("rawText");
       expect(result.date).toBeDefined();
     });
 
-    it("should return empty rawText when no text detected", async () => {
+    it("should return an empty result when no text detected", async () => {
       mockDetectText.mockResolvedValue("");
       const result = await service.extractMedicalCertificateInfo("path");
-      expect(result).toEqual({ rawText: "" });
+      expect(result).toEqual({});
     });
 
     it("should parse a full medical certificate text", async () => {
@@ -314,7 +314,13 @@ describe("OcrService", () => {
       expect(result.isApte).toBe(true);
       expect(result.date).toBe("2026-03-15");
       expect(result.doctorName).toBe("Martin");
-      expect(result.rawText).toBe(fullText);
+      // #224: only parsed fields, never the certificate text itself.
+      expect(Object.keys(result).sort()).toEqual([
+        "date",
+        "doctorName",
+        "isApte",
+      ]);
+      expect(JSON.stringify(result)).not.toContain("soussigné");
     });
 
     it("should return empty on generic error", async () => {
@@ -512,17 +518,13 @@ describe("OcrService", () => {
       });
     });
 
-    describe("rawText truncation", () => {
-      it("should truncate rawText to 500 characters", async () => {
-        const longText = "A".repeat(600);
-        const result = await parseViaOcr(longText);
-        expect(result.rawText).toHaveLength(500);
-      });
-
-      it("should return full rawText when under 500 characters", async () => {
-        const shortText = "Certificat médical court";
-        const result = await parseViaOcr(shortText);
-        expect(result.rawText).toBe(shortText);
+    describe("no raw text in the result (#224)", () => {
+      it("never returns the certificate text, short or long", async () => {
+        for (const text of ["A".repeat(600), "Certificat médical court"]) {
+          const result = await parseViaOcr(text);
+          expect(result).not.toHaveProperty("rawText");
+          expect(JSON.stringify(result)).not.toContain(text);
+        }
       });
     });
 
@@ -534,8 +536,97 @@ describe("OcrService", () => {
         expect(result.isApte).toBe(true);
         expect(result.date).toBe("2026-01-15");
         expect(result.doctorName).toBe("Durand");
-        expect(result.rawText).toBeDefined();
       });
+    });
+  });
+
+  // Regression #140: OCR text from uploaded certificates is health / identity
+  // data (GDPR art. 9) and must never reach the logs.
+  describe("never logs OCR content (#140)", () => {
+    const SENTINEL = "SENTINEL-HEALTH-7f3a9c";
+    const loggedText = (spies: jest.SpyInstance[]): string =>
+      spies
+        .flatMap((spy) => spy.mock.calls)
+        .flat()
+        .map((arg) => String(arg))
+        .join("\n");
+
+    let spies: jest.SpyInstance[];
+
+    beforeEach(() => {
+      spies = (
+        ["log", "warn", "error", "debug", "verbose", "fatal"] as const
+      ).map((method) =>
+        jest
+          .spyOn(Logger.prototype, method)
+          .mockImplementation(() => undefined),
+      );
+    });
+
+    afterEach(() => {
+      spies.forEach((spy) => spy.mockRestore());
+    });
+
+    it("does not log the medical certificate text, only diagnostics", async () => {
+      mockDetectText.mockResolvedValue(
+        `${SENTINEL} Je soussigné Docteur ${SENTINEL}Martin certifie que ${SENTINEL} Jean Dupont né le 01/02/1990 est apte à la pratique de la danse. Fait le 15/01/2025`,
+      );
+
+      const result = await service.extractMedicalCertificateInfo(
+        Buffer.from("img"),
+      );
+
+      expect(result.isApte).toBe(true);
+      const logs = loggedText(spies);
+      expect(logs).not.toContain(SENTINEL);
+      expect(logs).not.toContain("Dupont");
+      expect(logs).not.toContain("01/02/1990");
+      expect(logs).toContain("OCR medical:");
+      expect(logs).toMatch(/\d+ chars/);
+    });
+
+    it("logs whether fitness was read, never the fitness itself", async () => {
+      const medicalLog = async (text: string): Promise<string> => {
+        spies.forEach((spy) => spy.mockClear());
+        mockDetectText.mockResolvedValue(text);
+        await service.extractMedicalCertificateInfo(Buffer.from("img"));
+        return loggedText(spies);
+      };
+
+      // Fit and unfit certificates log the same line: fitness was read.
+      const fit = await medicalLog("Le patient est apte à la danse");
+      const unfit = await medicalLog("Le patient est inapte à la danse");
+      expect(fit).toContain("isApteRead=true");
+      expect(unfit).toContain("isApteRead=true");
+      expect(unfit).not.toContain("isApteRead=false");
+      expect(await medicalLog("Certificat illisible")).toContain(
+        "isApteRead=false",
+      );
+    });
+
+    it("does not log the licence certificate text, only diagnostics", async () => {
+      mockDetectText.mockResolvedValue(
+        `${SENTINEL} Licence N° 98765432 ${SENTINEL} Jean Dupont valable jusqu'au 31/12/2026`,
+      );
+
+      const result = await service.extractLicenseInfo(Buffer.from("img"));
+
+      expect(result.licenseNumber).toBe("98765432");
+      const logs = loggedText(spies);
+      expect(logs).not.toContain(SENTINEL);
+      expect(logs).not.toContain("98765432");
+      expect(logs).not.toContain("Dupont");
+      expect(logs).toContain("OCR license:");
+      expect(logs).toContain("licenseNumber=true");
+    });
+
+    it("does not log the text when nothing could be parsed", async () => {
+      mockDetectText.mockResolvedValue(`${SENTINEL} illisible`);
+
+      await service.extractMedicalCertificateInfo(Buffer.from("img"));
+      await service.extractLicenseInfo(Buffer.from("img"));
+
+      expect(loggedText(spies)).not.toContain(SENTINEL);
     });
   });
 });

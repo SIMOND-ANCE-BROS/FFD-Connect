@@ -31,6 +31,8 @@ export class CreateAdminUserDto extends PickType(UpdateAdminUserDto, [
   "passportLevelLatin",
   "passportLevelStandard",
   "competitionLevel",
+  "competitionLevelLatin",
+  "competitionLevelStandard",
   "nationalRanking",
 ] as const) {
   @ApiProperty()

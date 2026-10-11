@@ -55,6 +55,13 @@ export interface ApiScheduleItem {
   eventId?: string;
 }
 
+/**
+ * Origin of a competition's events (épreuves), set by the backend sync.
+ * GENERIC (or null/absent) = placeholder events; DESCRIPTION / CIRCULAR =
+ * events deduced from the federation description / circular PDF.
+ */
+export type CompetitionEventsSource = 'GENERIC' | 'DESCRIPTION' | 'CIRCULAR';
+
 export interface ApiCompetition {
   id: string;
   ffdId?: string;
@@ -77,7 +84,9 @@ export interface ApiCompetition {
   type?: string;
   organizer?: string;
   organizerEmail?: string;
-  circularUrl?: string;
+  circularUrl?: string | null;
+  /** Origin of the events; absent on backends that predate the deduction. */
+  eventsSource?: CompetitionEventsSource | null;
   registrationUrl?: string;
   imageUrl?: string;
   delayMinutes?: number;

@@ -8,6 +8,10 @@ import { of, throwError } from "rxjs";
 import { CompetitionSyncService } from "./competition-sync.service";
 import { CompetitionCacheService } from "./competition-cache.service";
 import { CompetitionEventNotificationService } from "./competition-event-notification.service";
+import {
+  CompetitionEventsDeductionService,
+  FfdDocumentTooLargeError,
+} from "./competition-events-deduction.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { FFDCompetitionItem } from "../interfaces/ffd-competition.interface";
 
@@ -41,6 +45,10 @@ describe("CompetitionSyncService", () => {
       CompetitionEventNotificationService,
       "notifyNewCompetition" | "notifyResultsPublished"
     >
+  >;
+
+  let eventsDeductionService: jest.Mocked<
+    Pick<CompetitionEventsDeductionService, "deduceForCompetitions">
   >;
 
   const mockCompetition = { id: "db-comp-1", ffdId: "/api/competitions/1" };
@@ -78,6 +86,10 @@ describe("CompetitionSyncService", () => {
       notifyResultsPublished: jest.fn().mockResolvedValue(undefined),
     };
 
+    eventsDeductionService = {
+      deduceForCompetitions: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CompetitionSyncService,
@@ -88,6 +100,10 @@ describe("CompetitionSyncService", () => {
         {
           provide: CompetitionEventNotificationService,
           useValue: eventNotificationService,
+        },
+        {
+          provide: CompetitionEventsDeductionService,
+          useValue: eventsDeductionService,
         },
       ],
     }).compile();
@@ -368,6 +384,135 @@ describe("CompetitionSyncService", () => {
           ]),
         }),
       );
+      // …and flagged as generic for the client
+      expect(prisma.competition.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: [mockCompetition.id] } },
+        data: { eventsSource: "GENERIC" },
+      });
+    });
+
+    it("does not reseed competitions that already have events", async () => {
+      const items = [makeFFDItem()];
+      httpService.get
+        .mockReturnValueOnce(makeListResponse(items))
+        .mockReturnValueOnce(of(makeDetailResponse(items[0])));
+      prisma.competition.upsert.mockResolvedValueOnce(mockCompetition as any);
+      prisma.event.findMany.mockResolvedValue([
+        { competitionId: mockCompetition.id } as any,
+      ]);
+
+      await service.syncFFDCompetitions();
+
+      expect(prisma.event.createMany).not.toHaveBeenCalled();
+      expect(prisma.competition.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("hands the synced competitions to the events deduction", async () => {
+      const items = [makeFFDItem()];
+      httpService.get
+        .mockReturnValueOnce(makeListResponse(items))
+        .mockReturnValueOnce(of(makeDetailResponse(items[0])));
+      prisma.competition.upsert.mockResolvedValueOnce(mockCompetition as any);
+      prisma.event.findMany.mockResolvedValue([]);
+
+      await service.syncFFDCompetitions();
+
+      expect(eventsDeductionService.deduceForCompetitions).toHaveBeenCalledWith(
+        [mockCompetition.id],
+        expect.any(Function),
+      );
+    });
+  });
+
+  describe("downloadFfdDocument", () => {
+    const pdf = Buffer.from("%PDF-1.7 circular");
+
+    it("follows the anti-bot redirects and returns the PDF bytes", async () => {
+      httpService.get
+        .mockReturnValueOnce(
+          of({
+            status: 200,
+            headers: { "set-cookie": ["bot_mitigation_cookie=AAA; Path=/"] },
+            data: Buffer.from(
+              "<script>window.location.href='/redirect_TOKEN====/uploads/c.pdf'</script>",
+            ),
+          }),
+        )
+        .mockReturnValueOnce(
+          of({
+            status: 307,
+            headers: { location: "https://api.ffd.fr/uploads/c.pdf" },
+            data: Buffer.alloc(0),
+          }),
+        )
+        .mockReturnValueOnce(of({ status: 200, headers: {}, data: pdf }));
+
+      const result = await service.downloadFfdDocument(
+        "https://api.ffd.fr/uploads/c.pdf",
+      );
+
+      expect(result.equals(pdf)).toBe(true);
+      expect(httpService.get).toHaveBeenLastCalledWith(
+        "https://api.ffd.fr/uploads/c.pdf",
+        expect.objectContaining({
+          responseType: "arraybuffer",
+          maxContentLength: 10 * 1024 * 1024,
+          timeout: 20_000,
+          headers: expect.objectContaining({
+            Cookie: "bot_mitigation_cookie=AAA",
+          }) as object,
+        }),
+      );
+    });
+
+    it("turns an aborted oversized transfer into FfdDocumentTooLargeError", async () => {
+      httpService.get.mockReturnValueOnce(
+        throwError(
+          () => new Error("maxContentLength size of 10485760 exceeded"),
+        ),
+      );
+
+      await expect(
+        service.downloadFfdDocument("https://api.ffd.fr/uploads/huge.pdf"),
+      ).rejects.toBeInstanceOf(FfdDocumentTooLargeError);
+    });
+
+    it("propagates other download errors unchanged", async () => {
+      httpService.get.mockReturnValueOnce(
+        throwError(() => new Error("socket hang up")),
+      );
+
+      await expect(
+        service.downloadFfdDocument("https://api.ffd.fr/uploads/c.pdf"),
+      ).rejects.toThrow("socket hang up");
+    });
+
+    it("rejects an HTTP error instead of returning the error page", async () => {
+      httpService.get.mockReturnValueOnce(
+        of({ status: 404, headers: {}, data: Buffer.from("Not found") }),
+      );
+
+      await expect(
+        service.downloadFfdDocument("https://api.ffd.fr/uploads/missing.pdf"),
+      ).rejects.toThrow("HTTP 404");
+    });
+
+    it("is the downloader given to the events deduction", async () => {
+      const items = [makeFFDItem()];
+      httpService.get
+        .mockReturnValueOnce(makeListResponse(items))
+        .mockReturnValueOnce(of(makeDetailResponse(items[0])))
+        .mockReturnValueOnce(of({ status: 200, headers: {}, data: pdf }));
+      prisma.competition.upsert.mockResolvedValueOnce(mockCompetition as any);
+      prisma.event.findMany.mockResolvedValue([]);
+
+      await service.syncFFDCompetitions();
+      const downloader =
+        eventsDeductionService.deduceForCompetitions.mock.calls[0][1];
+
+      await expect(
+        downloader("https://api.ffd.fr/uploads/c.pdf"),
+      ).resolves.toEqual(pdf);
     });
   });
 

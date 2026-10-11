@@ -28,7 +28,10 @@ import { AdminAuditService } from "../admin/admin-audit.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { TracksService } from "../tracks/tracks.service";
-import { trackCorrectionAuditTrackSelect } from "../utils/prisma-selects";
+import {
+  trackAuditSelect,
+  trackCorrectionAuditTrackSelect,
+} from "../utils/prisma-selects";
 import {
   MAX_ADMINS_NOTIFIED,
   MAX_PENDING_CORRECTIONS_PER_USER,
@@ -696,6 +699,7 @@ describe("TrackCorrectionsService", () => {
           bpm: 62,
         },
         tx,
+        { skipAudit: true },
       );
       expect(notifications.sendToUser).toHaveBeenCalledWith(
         "u1",
@@ -742,6 +746,7 @@ describe("TrackCorrectionsService", () => {
           clashTimecodes: [3],
         },
         tx,
+        { skipAudit: true },
       );
     });
 
@@ -763,6 +768,7 @@ describe("TrackCorrectionsService", () => {
           clashTimecodes: [],
         },
         tx,
+        { skipAudit: true },
       );
     });
 
@@ -1076,6 +1082,7 @@ describe("TrackCorrectionsService", () => {
         prisma as unknown as PrismaService,
         { calculateMpm: jest.fn().mockReturnValue(0) } as never,
         {} as never,
+        audit as unknown as AdminAuditService,
       );
       realService = new TrackCorrectionsService(
         prisma as unknown as PrismaService,
@@ -1090,6 +1097,25 @@ describe("TrackCorrectionsService", () => {
         rawBpm: 120,
       } as never);
       tx.track.update.mockResolvedValue({} as never);
+    });
+
+    it("writes the approval row only: the applied update is not audited twice", async () => {
+      prisma.trackCorrection.findUnique.mockResolvedValue(
+        decisionRow() as never,
+      );
+      // A real change, so the real updateTrack WOULD audit it without skipAudit.
+      tx.track.update.mockResolvedValue({
+        title: "Espana Cani",
+        bpm: 62,
+      } as never);
+
+      await realService.approve("c1", "admin-1", {});
+
+      expect(audit.record).toHaveBeenCalledTimes(1);
+      expect(audit.record.mock.calls[0][1]).toMatchObject({
+        action: "TRACK_CORRECTION_APPROVE",
+        targetType: "TRACK_CORRECTION",
+      });
     });
 
     it("écrit les clashs proposés (triés) sur la piste", async () => {
@@ -1107,6 +1133,7 @@ describe("TrackCorrectionsService", () => {
       expect(tx.track.update).toHaveBeenCalledWith({
         where: { id: "t1" },
         data: { clashTimecodes: [39.2, 78.5] },
+        select: trackAuditSelect,
       });
       expect(prisma.track.update).not.toHaveBeenCalled();
     });
@@ -1126,6 +1153,7 @@ describe("TrackCorrectionsService", () => {
       expect(tx.track.update).toHaveBeenCalledWith({
         where: { id: "t1" },
         data: { clashTimecodes: [40, 80, 120] },
+        select: trackAuditSelect,
       });
     });
 
@@ -1163,6 +1191,7 @@ describe("TrackCorrectionsService", () => {
       expect(tx.track.update).toHaveBeenCalledWith({
         where: { id: "t1" },
         data: { clashTimecodes: [40, 80, 120] },
+        select: trackAuditSelect,
       });
     });
   });

@@ -1,4 +1,5 @@
 import { Prisma, TrackStatus } from "@prisma/client";
+import { AMBIANCE_STYLE } from "./dance-labels";
 
 /**
  * Pistes de la bibliothèque visibles par un non-admin : exclut Ambiance, les
@@ -15,6 +16,31 @@ export const LIBRARY_TRACK_WHERE: Prisma.TrackWhereInput = {
     },
     { status: TrackStatus.READY },
     { blacklisted: false },
+  ],
+};
+
+/** Ambiance tracks (pause music of the competition mode): style OR artist « Ambiance », any case. */
+export const AMBIANCE_TRACK_WHERE: Prisma.TrackWhereInput = {
+  OR: [
+    { style: { equals: AMBIANCE_STYLE, mode: "insensitive" } },
+    { artist: { equals: AMBIANCE_STYLE, mode: "insensitive" } },
+  ],
+};
+
+/**
+ * Every other track. Deliberately not `NOT: AMBIANCE_TRACK_WHERE`: in SQL,
+ * NOT (style ILIKE 'Ambiance') is NULL for a null style, which would drop
+ * every track without a dance (same construction as LIBRARY_TRACK_WHERE).
+ */
+export const NOT_AMBIANCE_TRACK_WHERE: Prisma.TrackWhereInput = {
+  AND: [
+    { artist: { not: { equals: AMBIANCE_STYLE }, mode: "insensitive" } },
+    {
+      OR: [
+        { style: { not: { equals: AMBIANCE_STYLE }, mode: "insensitive" } },
+        { style: null },
+      ],
+    },
   ],
 };
 

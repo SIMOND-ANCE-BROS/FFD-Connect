@@ -16,6 +16,7 @@ import { CompetitionRegistrationService } from "./services/competition-registrat
 import { CompetitionResultsService } from "./services/competition-results.service";
 import { RegistrationNotificationService } from "./services/registration-notification.service";
 import { CompetitionEventNotificationService } from "./services/competition-event-notification.service";
+import { CompetitionEventsDeductionService } from "./services/competition-events-deduction.service";
 import { CompetitionSyncService } from "./services/competition-sync.service";
 import { SyncProcessor } from "./sync.processor";
 
@@ -52,6 +53,7 @@ import { SyncProcessor } from "./sync.processor";
     CompetitionEventNotificationService,
     CompetitionCacheService,
     CompetitionSyncService,
+    CompetitionEventsDeductionService,
     LiveGateway,
     SyncProcessor,
   ],

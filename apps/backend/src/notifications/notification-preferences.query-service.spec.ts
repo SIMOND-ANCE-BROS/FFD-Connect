@@ -93,7 +93,12 @@ describe("NotificationPreferencesQueryService", () => {
       await service.getCatalogForUser("u1", [UserRole.LICENSEE]);
 
       expect(mockPrisma.notificationPreference.findMany).toHaveBeenCalledWith({
-        where: { userId: "u1" },
+        // Only configurable types: the bound counts them, another type's row
+        // must not evict a real one.
+        where: {
+          userId: "u1",
+          type: { in: [...CONFIGURABLE_NOTIFICATION_TYPES] },
+        },
         select: { type: true, enabled: true },
         take: CONFIGURABLE_NOTIFICATION_TYPES.length + 1,
       });
@@ -189,8 +194,12 @@ describe("NotificationPreferencesQueryService", () => {
 
       const where = mockPrisma.notificationPreference.findMany.mock.calls[0][0]
         .where as Record<string, unknown>;
-      expect(where).toEqual({ userId: "u1" });
-      expect(where.type).toBeUndefined();
+      // Filtered to the configurable types (the bound counts them), never to
+      // the caller's role: a licensee's read still covers the club types.
+      expect(where).toEqual({
+        userId: "u1",
+        type: { in: [...CONFIGURABLE_NOTIFICATION_TYPES] },
+      });
     });
   });
 

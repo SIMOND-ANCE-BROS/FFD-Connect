@@ -25,3 +25,27 @@ if (search) {
   search.addEventListener('input', update);
   update();
 }
+
+// Load the app adaptation only when a reader explicitly opens an example.
+for (const panel of document.querySelectorAll<HTMLDetailsElement>('[data-guide-demo]')) {
+  let loaded = false;
+  let loading = false;
+  panel.addEventListener('toggle', async () => {
+    if (!panel.open || loaded || loading) return;
+    loading = true;
+    const status = panel.querySelector<HTMLElement>('[data-guide-demo-status]');
+    if (status) status.textContent = 'Chargement de l’aperçu…';
+    try {
+      const { mountGuidePreview } = await import('./components/guide-preview');
+      mountGuidePreview(panel.querySelector('[data-guide-demo-root]')!, panel.dataset.guideDemo!);
+      loaded = true;
+      if (status) status.textContent = 'Aperçu prêt. Vous pouvez explorer l’écran ci-dessus.';
+    } catch {
+      if (status)
+        status.textContent =
+          'L’aperçu n’a pas pu se charger. Fermez puis rouvrez ce panneau pour réessayer ; les étapes restent disponibles.';
+    } finally {
+      loading = false;
+    }
+  });
+}

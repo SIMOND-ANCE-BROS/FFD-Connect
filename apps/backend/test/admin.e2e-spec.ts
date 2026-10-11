@@ -7,6 +7,7 @@ import { AppModule } from "../src/app.module";
 import { JwtAuthGuard } from "../src/auth/jwt-auth.guard";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { RedisService } from "../src/redis/redis.service";
+import { NOT_AMBIANCE_TRACK_WHERE } from "../src/tracks/track-visibility.util";
 import { createMockPrismaService } from "./mocks/prisma.mock";
 import { applyE2EOverrides, configureTestApp } from "./test-app.factory";
 
@@ -36,6 +37,36 @@ const ADMIN_ROUTES: Array<
   // Moderation queue: ADMIN-only per method on the shared track-corrections controller.
   ["get", "/api/v1/track-corrections?status=PENDING&reason=MPM&q=paso"],
   ["get", "/api/v1/track-corrections/00000000-0000-4000-8000-000000000000"],
+  // Track catalogue (lot 3): ADMIN-only at class level.
+  ["get", "/api/v1/admin/tracks"],
+  ["get", "/api/v1/admin/tracks/00000000-0000-4000-8000-000000000000"],
+  ["post", "/api/v1/admin/tracks/check"],
+  ["post", "/api/v1/admin/tracks"],
+  // Database stats (lot 4): ADMIN-only at class level.
+  ["get", "/api/v1/admin/stats"],
+  ["get", "/api/v1/admin/stats?period=6m"],
+  // App usage (lot 5): ADMIN-only at class level.
+  ["get", "/api/v1/admin/usage"],
+  ["get", "/api/v1/admin/usage?period=7d&space=CLUB"],
+  // Licence renewal moderation (#266): ADMIN-only at class level.
+  ["get", "/api/v1/admin/license-renewals"],
+  ["get", "/api/v1/admin/license-renewals?status=REJECTED&take=50"],
+  [
+    "get",
+    "/api/v1/admin/license-renewals/00000000-0000-4000-8000-000000000000",
+  ],
+  [
+    "get",
+    "/api/v1/admin/license-renewals/00000000-0000-4000-8000-000000000000/documents/00000000-0000-4000-8000-000000000001/file",
+  ],
+  [
+    "post",
+    "/api/v1/admin/license-renewals/00000000-0000-4000-8000-000000000000/approve",
+  ],
+  [
+    "post",
+    "/api/v1/admin/license-renewals/00000000-0000-4000-8000-000000000000/reject",
+  ],
 ];
 
 describe("Admin routes (e2e) — role matrix", () => {
@@ -45,6 +76,12 @@ describe("Admin routes (e2e) — role matrix", () => {
 
   beforeAll(async () => {
     prisma = createMockPrismaService();
+    // Boot pass of UsageRetentionService (it never throws; keep its log quiet).
+    prisma.usageRollupState.findUnique.mockResolvedValue(null);
+    prisma.usageEvent.findFirst.mockResolvedValue(null);
+    prisma.usageRollupState.upsert.mockResolvedValue({} as never);
+    prisma.usageDaily.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.usageDailyActive.deleteMany.mockResolvedValue({ count: 0 });
     const moduleRef = await applyE2EOverrides(
       Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(PrismaService)
@@ -232,5 +269,188 @@ describe("Admin routes (e2e) — role matrix", () => {
     expect(prisma.adminAuditLog.findMany).toHaveBeenLastCalledWith(
       expect.objectContaining({ where: { targetType: "TRACK_CORRECTION" } }),
     );
+  });
+
+  it('parses the catalogue flags as booleans, "false" included', async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.track.count.mockResolvedValue(0);
+    prisma.track.findMany.mockResolvedValue([]);
+    await request(server())
+      .get(
+        "/api/v1/admin/tracks?blacklisted=false&titleMasked=true&ambiance=false&status=ERROR&q=%20paso%20&style=Rumba&take=50",
+      )
+      .expect(200);
+    expect(prisma.track.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            {
+              OR: [
+                { title: { contains: "paso", mode: "insensitive" } },
+                { artist: { contains: "paso", mode: "insensitive" } },
+              ],
+            },
+            { status: "ERROR" },
+            { blacklisted: false },
+            { titleMasked: true },
+            { style: { equals: "Rumba", mode: "insensitive" } },
+            NOT_AMBIANCE_TRACK_WHERE,
+          ],
+        },
+        take: 50,
+      }),
+    );
+  });
+
+  it.each(["blacklisted=yes", "ambiance=1", "status=DONE", "q=p", "take=101"])(
+    "refuses the catalogue filter %s (400)",
+    async (qs) => {
+      currentRole = UserRole.ADMIN;
+      await request(server()).get(`/api/v1/admin/tracks?${qs}`).expect(400);
+    },
+  );
+
+  it("GET /admin/tracks/:id answers 404 for an unknown track and 400 for a non-UUID", async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.track.findUnique.mockResolvedValue(null);
+    await request(server())
+      .get("/api/v1/admin/tracks/00000000-0000-4000-8000-000000000000")
+      .expect(404);
+    await request(server()).get("/api/v1/admin/tracks/not-a-uuid").expect(400);
+  });
+
+  it("filters the moderation queue on one track", async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.trackCorrection.count.mockResolvedValue(0);
+    prisma.trackCorrection.findMany.mockResolvedValue([]);
+    await request(server())
+      .get(
+        "/api/v1/track-corrections?trackId=00000000-0000-4000-8000-000000000000",
+      )
+      .expect(200);
+    expect(prisma.trackCorrection.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { trackId: "00000000-0000-4000-8000-000000000000" },
+      }),
+    );
+  });
+
+  const postImport = () =>
+    request(server())
+      .post("/api/v1/admin/tracks")
+      .field("title", "T")
+      .field("artist", "A")
+      .field("sha256", "a".repeat(64));
+
+  it("refuses an audio file over 20 MB (413) at the multer limit of the route, and stores nothing", async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.track.create.mockClear();
+    const res = await postImport().attach(
+      "audio",
+      Buffer.alloc(20 * 1024 * 1024 + 1, 0xff),
+      "big.mp3",
+    );
+    expect(res.status).toBe(413);
+    // multer's own message: the route limit fired while reading, not the service after buffering.
+    expect(res.body.message).toBe("File too large");
+    expect(prisma.track.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses a file that is not an MP3, whatever its name and declared type (400)", async () => {
+    currentRole = UserRole.ADMIN;
+    const res = await postImport().attach(
+      "audio",
+      Buffer.from("RIFF\u0000\u0000\u0000\u0000WAVEfmt "),
+      {
+        filename: "song.mp3",
+        contentType: "audio/mpeg",
+      },
+    );
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe("Le fichier audio n'est pas un MP3.");
+  });
+
+  it("refuses an unexpected file part (400)", async () => {
+    currentRole = UserRole.ADMIN;
+    const res = await postImport().attach("image", Buffer.from("ID3"), "x.mp3");
+    expect(res.status).toBe(400);
+  });
+
+  it("refuses a duplicate check of more than 200 items (400)", async () => {
+    currentRole = UserRole.ADMIN;
+    await request(server())
+      .post("/api/v1/admin/tracks/check")
+      .send({
+        items: Array.from({ length: 201 }, () => ({ sha256: "a".repeat(64) })),
+      })
+      .expect(400);
+  });
+
+  it("rejects an unknown stats period with 400", async () => {
+    currentRole = UserRole.ADMIN;
+    await request(server()).get("/api/v1/admin/stats?period=1y").expect(400);
+  });
+
+  it("serves stats with the 12w default", async () => {
+    currentRole = UserRole.ADMIN;
+    // mockDeep returns undefined: lists must be lists for the real service.
+    prisma.$queryRaw.mockResolvedValue([] as never);
+    prisma.user.groupBy.mockResolvedValue([] as never);
+    prisma.competition.groupBy.mockResolvedValue([] as never);
+    prisma.track.groupBy.mockResolvedValue([] as never);
+    const res = await request(server()).get("/api/v1/admin/stats").expect(200);
+    expect(res.body.period).toBe("12w");
+    expect(res.body.buckets).toHaveLength(12);
+    expect(res.body.users.signups).toHaveLength(12);
+  });
+
+  it("rejects an unknown usage period with 400", async () => {
+    currentRole = UserRole.ADMIN;
+    await request(server()).get("/api/v1/admin/usage?period=1y").expect(400);
+  });
+
+  describe("licence renewal moderation (#266) — validation", () => {
+    const base =
+      "/api/v1/admin/license-renewals/00000000-0000-4000-8000-000000000000";
+
+    it("caps the page at 50", async () => {
+      currentRole = UserRole.ADMIN;
+      await request(server())
+        .get("/api/v1/admin/license-renewals?take=51")
+        .expect(400);
+    });
+
+    it("rejects an unknown status filter", async () => {
+      currentRole = UserRole.ADMIN;
+      await request(server())
+        .get("/api/v1/admin/license-renewals?status=LOST")
+        .expect(400);
+    });
+
+    it.each([
+      [{}],
+      [{ reason: "BECAUSE" }],
+      [{ reason: "OTHER", comment: "x".repeat(501) }],
+    ])("rejects an invalid refusal %j with 400", async (body) => {
+      currentRole = UserRole.ADMIN;
+      await request(server()).post(`${base}/reject`).send(body).expect(400);
+    });
+
+    it("rejects a malformed licence number with 400", async () => {
+      currentRole = UserRole.ADMIN;
+      await request(server())
+        .post(`${base}/approve`)
+        .send({ licenseNumber: "<script>" })
+        .expect(400);
+    });
+
+    it("the legacy approval route is gone", async () => {
+      currentRole = UserRole.ADMIN;
+      await request(server())
+        .post(
+          "/api/v1/licenses/renewal/00000000-0000-4000-8000-000000000000/approve",
+        )
+        .expect(404);
+    });
   });
 });

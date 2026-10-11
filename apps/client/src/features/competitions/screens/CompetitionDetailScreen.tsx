@@ -24,6 +24,7 @@ import { analytics } from "../../../services/analytics";
 import { ClubEventRegistrationModal } from "../../club/components/ClubEventRegistrationModal";
 import { ClubService } from "../../club/services/ClubService";
 import { CompetitionEventCard } from "../components/detail/CompetitionEventCard";
+import { CompetitionEventsSourceNotice } from "../components/detail/CompetitionEventsSourceNotice";
 import { CompetitionInfoCard } from "../components/detail/CompetitionInfoCard";
 import { CompetitionMapCard } from "../components/detail/CompetitionMapCard";
 import { CompetitionPendingSection } from "../components/detail/CompetitionPendingSection";
@@ -38,6 +39,7 @@ import {
   deadlineStorageKey,
   scheduleDeadlineNotification,
 } from "../../../utils/scheduleDeadlineNotification";
+import { formatDiscipline } from "../../../utils/discipline";
 
 type Tab = "EVENTS" | "TIMING";
 
@@ -262,6 +264,11 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
                 eventsDescription={state.details.eventsDescription}
                 programUrl={state.details.programUrl}
                 registrationUrl={state.details.registrationUrl}
+                circularUrl={state.details.circularUrl ?? undefined}
+              />
+              <CompetitionEventsSourceNotice
+                ffdId={state.details.ffdId}
+                eventsSource={state.details.eventsSource}
                 circularUrl={state.details.circularUrl}
               />
               <View
@@ -339,7 +346,7 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
       {state.partnerInputEvent && (
         <PartnerInputModal
           visible={!!state.partnerInputEvent}
-          eventLabel={`${state.partnerInputEvent.category} ${state.partnerInputEvent.ageGroup}`}
+          eventLabel={`${formatDiscipline(state.partnerInputEvent.category)} ${state.partnerInputEvent.ageGroup}`}
           onConfirm={actions.handleConfirmPartnerRegistration}
           onClose={actions.clearPartnerInput}
           theme={currentTheme}

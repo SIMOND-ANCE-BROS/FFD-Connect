@@ -216,6 +216,102 @@ describe("useCompetitionDetailLogic", () => {
         expect(eligibility.eligible).toBe(true);
       });
     });
+
+    it("tolerates legacy and canonical age-class spellings", async () => {
+      // Default profile ageGroup is « Adulte ».
+      const { result } = await renderHook(
+        () =>
+          useCompetitionDetailLogic(mockCompetitionId, mockNavigation as never),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.state.loading).toBe(false));
+
+      await waitFor(() => {
+        expect(
+          result.current.actions.isEligible(
+            createPartialEvent({
+              id: "evt-1",
+              category: "A",
+              ageGroup: "Adult",
+            }),
+          ).eligible,
+        ).toBe(true);
+      });
+      const senior = result.current.actions.isEligible(
+        createPartialEvent({
+          id: "evt-2",
+          category: "A",
+          ageGroup: "Senior II",
+        }),
+      );
+      expect(senior.eligible).toBe(false);
+      expect(senior.reason).toBe("WRONG_AGE_GROUP");
+      expect(
+        result.current.actions.isEligible(
+          createPartialEvent({
+            id: "evt-3",
+            category: "A",
+            ageGroup: "Espoir",
+          }),
+        ).eligible,
+      ).toBe(true);
+    });
+
+    it("uses the per-discipline levels from /users/me (Ten Dance needs both)", async () => {
+      mockGetAuthConfig.mockResolvedValue({
+        role: "LICENSEE",
+        category: "Latin",
+        ageGroup: "Adulte",
+      });
+      const getProfile = jest.fn().mockResolvedValue({
+        category: "Latin",
+        ageGroup: "Adulte",
+        competitionLevelLatin: "Avancé",
+        competitionLevelStandard: null,
+      });
+      const auth = { getAuthConfig: mockGetAuthConfig, getProfile };
+      (useAuthRepository as jest.Mock).mockReturnValue(auth);
+
+      const { result } = await renderHook(
+        () =>
+          useCompetitionDetailLogic(mockCompetitionId, mockNavigation as never),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(getProfile).toHaveBeenCalled());
+      await waitFor(() => {
+        expect(
+          result.current.actions.isEligible(
+            createPartialEvent({ id: "evt-1", category: "Latin" }),
+          ).eligible,
+        ).toBe(true);
+      });
+      expect(
+        result.current.actions.isEligible(
+          createPartialEvent({ id: "evt-2", category: "Ten Dance" }),
+        ),
+      ).toEqual({ eligible: false, reason: "WRONG_CATEGORY" });
+
+      getProfile.mockResolvedValue({
+        category: "Latin",
+        ageGroup: "Adulte",
+        competitionLevelLatin: "Avancé",
+        competitionLevelStandard: "Débutant",
+      });
+      const second = await renderHook(
+        () =>
+          useCompetitionDetailLogic(mockCompetitionId, mockNavigation as never),
+        { wrapper: createWrapper() },
+      );
+      await waitFor(() => {
+        expect(
+          second.result.current.actions.isEligible(
+            createPartialEvent({ id: "evt-2", category: "Ten Dance" }),
+          ).eligible,
+        ).toBe(true);
+      });
+    });
   });
 
   describe("handleRegister", () => {

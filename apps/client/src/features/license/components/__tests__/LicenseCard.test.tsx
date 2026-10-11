@@ -1,5 +1,6 @@
 import { render, within } from "@testing-library/react-native";
 import React from "react";
+import { StyleSheet } from "react-native";
 import { ThemeContext } from "../../../../context/ThemeContext";
 import { LicenseCard, LicenseUser } from "../LicenseCard";
 
@@ -166,5 +167,167 @@ describe("LicenseCard", () => {
     expect(getByText("Club A")).toBeTruthy();
     expect(getByText("MAIF")).toBeTruthy();
     expect(getByText("Licence valable jusqu'au")).toBeTruthy();
+  });
+
+  describe("beta feedback", () => {
+    const renderCard = (
+      type: "FFD" | "WDSF",
+      user: Partial<LicenseUser> = {},
+      themeOverride?: "light" | "dark",
+    ) =>
+      render(
+        <ThemeContext.Provider value={themeMock as never}>
+          <LicenseCard
+            type={type}
+            user={{ ...mockUser, ...user }}
+            photoUri={null}
+            onShowQr={mockOnShowQr}
+            themeOverride={themeOverride}
+          />
+        </ThemeContext.Provider>,
+      );
+
+    it("never truncates the birth date label with an ellipsis", async () => {
+      const { getByText } = await renderCard("FFD");
+
+      // numberOfLines={1} cut it to « Date de naissa… » on a phone.
+      expect(
+        getByText("Date de naissance").props.numberOfLines,
+      ).toBeUndefined();
+      expect(getByText("Numéro").props.numberOfLines).toBeUndefined();
+    });
+
+    it("gives the lone FFD identity column the whole width", async () => {
+      const { getByTestId } = await renderCard("FFD");
+
+      const style = StyleSheet.flatten(
+        getByTestId("license-card-identity-column-0").props.style as object,
+      ) as { width?: string; flex?: number };
+      // It was 50% wide even without a second column.
+      expect(style.width).toBeUndefined();
+      expect(style.flex).toBe(1);
+    });
+
+    it("never truncates the WDSF grid labels either", async () => {
+      const { getByText } = await renderCard("WDSF", { ageGroup: "Adult" });
+
+      expect(getByText("Date of birth").props.numberOfLines).toBeUndefined();
+      expect(getByText("Age group").props.numberOfLines).toBeUndefined();
+    });
+
+    it("labels a WDSF status as a status, not as an expiry date", async () => {
+      const { getByText, queryByText } = await renderCard("WDSF", {
+        validUntil: "",
+        status: "Active",
+      });
+
+      expect(getByText("License status")).toBeTruthy();
+      expect(getByText("Active")).toBeTruthy();
+      expect(queryByText("License expires on")).toBeNull();
+    });
+
+    it("labels a permanent FFD card as a status", async () => {
+      const { getByText, queryByText } = await renderCard("FFD", {
+        validUntil: "",
+        status: "Permanente",
+      });
+
+      expect(getByText("Statut de la licence")).toBeTruthy();
+      expect(getByText("Permanente")).toBeTruthy();
+      expect(queryByText("Licence valable jusqu'au")).toBeNull();
+    });
+
+    it("shows an unknown validity once, in the footer only (#211)", async () => {
+      const { getAllByText, queryByText } = await renderCard("FFD", {
+        validUntil: "",
+        status: "Validité non communiquée",
+        season: undefined,
+      });
+
+      expect(getAllByText("Validité non communiquée")).toHaveLength(1);
+      expect(queryByText("VALIDITÉ NON COMMUNIQUÉE")).toBeNull();
+    });
+
+    it("keeps a short status tag in the header on one line", async () => {
+      const { getByText } = await renderCard("FFD", {
+        validUntil: "",
+        status: "Permanente",
+        season: undefined,
+      });
+
+      expect(getByText("PERMANENTE").props.numberOfLines).toBe(1);
+    });
+
+    it("shows the national federation on the WDSF card", async () => {
+      const { getByText } = await renderCard("WDSF", {
+        structure: "FFD - Fédération Française de Danse",
+      });
+
+      expect(getByText("My federation")).toBeTruthy();
+      expect(getByText("FFD - Fédération Française de Danse")).toBeTruthy();
+    });
+
+    it("hides the federation when it is unknown instead of showing WDSF", async () => {
+      const { queryByText } = await renderCard("WDSF", {
+        structure: undefined,
+      });
+
+      expect(queryByText("My federation")).toBeNull();
+    });
+
+    it("keeps the WDSF header title readable on the light theme", async () => {
+      const { getByText } = await renderCard("WDSF", {}, "light");
+
+      const style = StyleSheet.flatten(
+        getByText("LICENCE D").props.style as object,
+      ) as { color?: string };
+      // White on the light grey header was invisible behind the front card.
+      expect(style.color).toBe("#333");
+    });
+  });
+  describe("STAFF / CLUB account card (#234)", () => {
+    const renderAccountCard = (user: LicenseUser, onShowQr?: () => void) =>
+      render(
+        <ThemeContext.Provider value={themeMock as never}>
+          <LicenseCard
+            type="FFD"
+            user={user}
+            photoUri={null}
+            onShowQr={onShowQr}
+            testID="account-card"
+          />
+        </ThemeContext.Provider>,
+      );
+
+    it("hides the number row and the QR when the account has no license", async () => {
+      const { getByText, queryByText, getByTestId } = await renderAccountCard({
+        ...mockUser,
+        firstName: "Marie",
+        lastName: "Curie",
+        licenseNumber: "",
+        birthDate: "",
+      });
+
+      expect(getByText("Marie Curie")).toBeTruthy();
+      expect(queryByText("Numéro")).toBeNull();
+      expect(queryByText("Date de naissance")).toBeNull();
+      expect(
+        within(getByTestId("account-card")).queryAllByRole("button"),
+      ).toHaveLength(0);
+    });
+
+    it("shows a club name alone without a leading space", async () => {
+      const { getByText } = await renderAccountCard({
+        ...mockUser,
+        firstName: "",
+        lastName: "Danse Passion Nantes",
+        licenseNumber: "",
+      });
+
+      // No trimming normalizer: " Danse Passion Nantes" would not match.
+      expect(
+        getByText("Danse Passion Nantes", { normalizer: (text) => text }),
+      ).toBeTruthy();
+    });
   });
 });

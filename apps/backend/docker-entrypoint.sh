@@ -19,8 +19,9 @@ echo "Migrations applied successfully."
 # réveil scale-from-zero, chaque seed est un no-op (idempotent, les données
 # persistent en base) mais coûtait ~5 boots Node séquentiels avant que le
 # backend n'écoute. L'app sert /health pendant que les seeds tournent ; ordre
-# préservé à l'intérieur du bloc (career dépend des licences). Non-fatal : un
-# échec de seed ne bloque JAMAIS le démarrage (log + on continue).
+# préservé à l'intérieur du bloc (purge avant le compte de validation,
+# career/direct après lui). Non-fatal : un échec de seed ne bloque JAMAIS le
+# démarrage (log + on continue).
 if [ "$SEED_TEST_TRACKS" = "true" ]; then
   (
     # Purge des anciennes pistes métronome "FFD Test" (la bibliothèque est
@@ -30,6 +31,17 @@ if [ "$SEED_TEST_TRACKS" = "true" ]; then
       echo "[seed] Test tracks purge completed."
     else
       echo "[seed] WARNING: test tracks purge failed (non-fatal)."
+    fi
+
+    # Purge des comptes et clubs de TEST (club@/staff@/admin@test.com,
+    # beta@test.com, partenaires de démo, cibles de scan…). Seul le compte de
+    # validation des stores (licensee@test.com) et son club restent. Doit
+    # tourner AVANT le seed du compte de validation (qui pose son drapeau).
+    echo "[seed] Purging test accounts..."
+    if node dist/scripts/purge-test-accounts.js; then
+      echo "[seed] Test accounts purge completed."
+    else
+      echo "[seed] WARNING: test accounts purge failed (non-fatal)."
     fi
 
     # Seed de licences bêta-testeurs. Le register exige une licence
@@ -42,33 +54,33 @@ if [ "$SEED_TEST_TRACKS" = "true" ]; then
       echo "[seed] WARNING: beta licenses seed failed (non-fatal)."
     fi
 
-    # Career demo data for beta testers (competitions/events/registrations/
-    # results), so the Profile/Career screens render with content. Runs after
-    # the license seed (needs the tester to have claimed the license).
-    echo "[seed] Seeding beta-tester career data..."
-    if node dist/scripts/seed-beta-career.js; then
-      echo "[seed] Beta career seed completed."
-    else
-      echo "[seed] WARNING: beta career seed failed (non-fatal)."
-    fi
-
-    # Comptes de test par rôle (LICENSEE/CLUB/STAFF/ADMIN) pour le switch de
-    # profil côté preview.
-    echo "[seed] Seeding profile test accounts..."
+    # Compte de validation des stores (licensee@test.com) : ADMIN + tous les
+    # rôles, club « Club Test FFD », drapeau isStoreReview (écritures simulées,
+    # ni supprimable ni désactivable). Mot de passe = PROFILE_TEST_PASSWORD.
+    echo "[seed] Seeding store-review account..."
     if node dist/scripts/seed-profile-test-accounts.js; then
-      echo "[seed] Profile test accounts seed completed."
+      echo "[seed] Store-review account seed completed."
     else
-      echo "[seed] WARNING: profile test accounts seed failed (non-fatal)."
+      echo "[seed] WARNING: store-review account seed failed (non-fatal)."
     fi
 
-    # Données de test pour la bannière d'expiration de licence + le scan QR de
-    # check-in (compétition active + 2 licenciés inscrits). Runs last (needs
-    # beta@test.com to exist).
-    echo "[seed] Seeding check-in test data..."
-    if node dist/scripts/seed-checkin-test.js; then
-      echo "[seed] Check-in test seed completed."
+    # Career demo data of the store-review account (competitions/events/
+    # registrations/results), so the Profile/Career screens render with
+    # content. Runs after the store-review account seed.
+    echo "[seed] Seeding store-review career data..."
+    if node dist/scripts/seed-beta-career.js; then
+      echo "[seed] Career seed completed."
     else
-      echo "[seed] WARNING: check-in test seed failed (non-fatal)."
+      echo "[seed] WARNING: career seed failed (non-fatal)."
+    fi
+
+    # Compétition en direct de démo (timing, retard, résultats) où le compte
+    # de validation est inscrit. Runs last (needs the store-review account).
+    echo "[seed] Seeding live competition demo data..."
+    if node dist/scripts/seed-checkin-test.js; then
+      echo "[seed] Live demo seed completed."
+    else
+      echo "[seed] WARNING: live demo seed failed (non-fatal)."
     fi
 
     echo "[seed] All staging seeds finished."

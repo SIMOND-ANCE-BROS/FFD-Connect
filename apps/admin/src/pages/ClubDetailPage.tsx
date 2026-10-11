@@ -6,7 +6,6 @@ import {
   Card,
   Group,
   List,
-  Loader,
   Modal,
   Select,
   SimpleGrid,
@@ -22,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { ListSkeleton } from '../components/ListStates';
 import {
   adminControllerDeleteClub,
   adminControllerSetClubStatus,
@@ -31,9 +31,11 @@ import type { AdminClubDetailDto, ClubRegistrationMode } from '../api/generated/
 import { auditQuery, clubQuery, ensureOk, unwrap } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
 import { LinkMemberModal } from '../components/LinkMemberModal';
+import { StoreReviewBlockedModal, StoreReviewNotice } from '../components/StoreReview';
 import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { extraRoleLabels, REGISTRATION_MODE_LABELS, ROLE_LABELS } from '../lib/labels';
+import { protectedActionError, type ProtectedAction } from '../lib/storeReview';
 
 interface ClubForm {
   name: string;
@@ -83,6 +85,7 @@ export function ClubDetailPage() {
   const [statusOpen, setStatusOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [blocked, setBlocked] = useState<ProtectedAction | null>(null);
 
   const form = useForm<ClubForm>({
     initialValues: { name: '', registrationMode: 'MEMBERS_AUTO_CONFIRM' },
@@ -129,7 +132,11 @@ export function ClubDetailPage() {
     onError: (e) =>
       notifications.show({
         color: 'red',
-        message: apiErrorMessage(e, 'Changement de statut impossible'),
+        message: protectedActionError(
+          e,
+          { isStoreReview: club.data?.isStoreReview === true, target: 'club', action: 'disable' },
+          'Changement de statut impossible',
+        ),
       }),
   });
 
@@ -147,10 +154,15 @@ export function ClubDetailPage() {
   });
 
   if (club.isError) return <Alert color="red">Club introuvable ou erreur serveur.</Alert>;
-  if (!club.data) return <Loader />;
+  if (!club.data) return <ListSkeleton rows={5} />;
   const c = club.data;
   const disabled = c.disabledAt !== null;
   const blocking = usageLines(c);
+  const storeReview = c.isStoreReview;
+  // The store-review club can be neither deleted nor disabled: explain it
+  // instead of opening a flow the API would refuse. Reactivation stays open.
+  const openStatus = () => (storeReview && !disabled ? setBlocked('disable') : setStatusOpen(true));
+  const openDelete = () => (storeReview ? setBlocked('delete') : setDeleteOpen(true));
   // Counts only come with a 409; a network or server failure keeps the retry button.
   const deleteBlockers = remove.isError ? usageLines(remove.error) : [];
 
@@ -180,14 +192,11 @@ export function ClubDetailPage() {
             </Badge>
           )}
         </Group>
-        <Button
-          variant="light"
-          color={disabled ? 'green' : 'red'}
-          onClick={() => setStatusOpen(true)}
-        >
+        <Button variant="light" color={disabled ? 'green' : 'red'} onClick={openStatus}>
           {disabled ? 'Réactiver le club' : 'Désactiver le club'}
         </Button>
       </Group>
+      {storeReview && <StoreReviewNotice target="club" />}
       {disabled && (
         <Alert color="red" title="Club désactivé">
           Depuis le {dayjs(c.disabledAt).format('DD/MM/YYYY HH:mm')}, ses comptes Club ne peuvent
@@ -195,7 +204,7 @@ export function ClubDetailPage() {
         </Alert>
       )}
       <Card withBorder>
-        <SimpleGrid cols={3}>
+        <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <Text size="sm">Création : {dayjs(c.createdAt).format('DD/MM/YYYY')}</Text>
           <Text size="sm">HelloAsso : {c.helloAssoConfigured ? 'configuré' : 'non configuré'}</Text>
           <Text size="sm">
@@ -205,7 +214,7 @@ export function ClubDetailPage() {
       </Card>
 
       <form onSubmit={onSubmit}>
-        <SimpleGrid cols={2}>
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <TextInput label="Nom du club" withAsterisk {...form.getInputProps('name')} />
           <Select
             label="Mode d'inscription"
@@ -240,13 +249,13 @@ export function ClubDetailPage() {
             <Button
               color="red"
               variant="outline"
-              disabled={blocking.length > 0}
-              onClick={() => setDeleteOpen(true)}
+              disabled={blocking.length > 0 && !storeReview}
+              onClick={openDelete}
             >
               Supprimer le club
             </Button>
             {blocking.length > 0 && !disabled && (
-              <Button variant="light" color="red" onClick={() => setStatusOpen(true)}>
+              <Button variant="light" color="red" onClick={openStatus}>
                 Désactiver à la place
               </Button>
             )}
@@ -339,6 +348,8 @@ export function ClubDetailPage() {
         </Text>
       )}
 
+      <StoreReviewBlockedModal target="club" action={blocked} onClose={() => setBlocked(null)} />
+
       <LinkMemberModal
         club={{ id: c.id, name: c.name }}
         opened={linkOpen}
@@ -409,7 +420,14 @@ export function ClubDetailPage() {
         <Stack>
           <Text size="sm">Le club « {c.name} » sera supprimé définitivement.</Text>
           {remove.isError && (
-            <Alert color="red" title={apiErrorMessage(remove.error, 'Suppression impossible')}>
+            <Alert
+              color="red"
+              title={protectedActionError(
+                remove.error,
+                { isStoreReview: storeReview, target: 'club', action: 'delete' },
+                'Suppression impossible',
+              )}
+            >
               {deleteBlockers.length > 0 && (
                 <List size="sm">
                   {deleteBlockers.map((line) => (

@@ -18,6 +18,7 @@ import { SearchBar } from "../../../components/SearchBar";
 import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
 import { useCompetitionRepository } from "../context/CompetitionContext";
+import { formatDiscipline } from "../../../utils/discipline";
 const FlashList = NativeFlashList as <T>(
   props: FlashListProps<T>,
 ) => React.ReactElement | null;
@@ -65,7 +66,7 @@ export const EventRegistrantsScreen = ({ route, navigation }: Props) => {
     <PinnedHeader
       theme={theme}
       isDark={isDark}
-      title={`${category} - ${level}`}
+      title={`${formatDiscipline(category)} - ${level}`}
       onHeightChange={setHeaderH}
       left={<BackButton onPress={() => navigation.goBack()} />}
     >

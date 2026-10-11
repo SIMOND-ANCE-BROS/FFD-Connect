@@ -1,24 +1,23 @@
 /**
- * Seed de TEST pour (1) la bannière d'expiration de licence et (2) le scan QR
- * de check-in — staging/beta uniquement.
+ * Seed de DÉMO « compétition en direct » — staging/beta uniquement.
  *
- * (1) Met la licence du compte de démo licencié (beta@test.com) à expiration
- *     proche (J+20) pour faire apparaître la bannière orange (< 30 j).
- * (2) Crée une compétition ACTIVE (datée d'aujourd'hui → renvoyée par
- *     GET /competitions/active) + 2 épreuves + 2 licenciés factices INSCRITS
- *     (CONFIRMED, droits payés) avec des IDs fixes, pour que les 2 QR codes de
- *     test donnent un check-in réussi.
+ * Crée une compétition ACTIVE (datée d'aujourd'hui → renvoyée par
+ * GET /competitions/active) + 2 épreuves, y inscrit le compte de validation
+ * des stores (`isStoreReview`, licensee@test.com — CONFIRMED, droits payés)
+ * et simule le direct : un timing complet de la journée (ScheduleItem), un
+ * retard estimé et des résultats publiés (Result) pour ce compte et des
+ * couples fictifs — quarts/demies/finale en Latines, demi-finale en Standard
+ * (finale à venir).
  *
- * (3) Simule le direct de cette compétition (aperçu de la fonctionnalité) :
- *     un timing complet de la journée (ScheduleItem), un retard estimé et des
- *     résultats publiés (Result) pour les inscrits et des couples fictifs —
- *     quarts/demies/finale en Latines, demi-finale en Standard (finale à venir).
- *
- * Les QR codes encodent { "id": "seed-scan-user-1" | "seed-scan-user-2" } —
- * le backend résout l'utilisateur par cet id et check-in ses inscriptions.
+ * Ce seed créait autrefois 2 licenciés factices (seed-scan-user-1/2, cibles de
+ * QR de test) et avançait l'expiration de la licence de beta@test.com : ces
+ * comptes de test sont supprimés (purge-test-accounts.ts). Le compte de
+ * validation porte désormais les inscriptions ; sa licence reste valide
+ * (pas de bannière d'expiration).
  *
  * Idempotent (IDs fixes → upsert). Lancé au boot (docker-entrypoint.sh) si
- * SEED_TEST_TRACKS=true — jamais en prod. Non-fatal.
+ * SEED_TEST_TRACKS=true — jamais en prod — après seed-profile-test-accounts.
+ * Non-fatal.
  */
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
@@ -30,73 +29,36 @@ const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
-const BETA_EMAIL = "beta@test.com";
 const COMP_ID = "seed-checkin-comp";
 const EVENT_LATIN = "seed-checkin-ev-latin";
 const EVENT_STD = "seed-checkin-ev-standard";
 
-const SCAN_USERS = [
-  {
-    id: "seed-scan-user-1",
-    email: "scan1@test.com",
-    firstName: "Test",
-    lastName: "Latine",
-    licenseNumber: "SCAN-TEST-001",
-    eventId: EVENT_LATIN,
-    bib: 101,
-  },
-  {
-    id: "seed-scan-user-2",
-    email: "scan2@test.com",
-    firstName: "Test",
-    lastName: "Standard",
-    licenseNumber: "SCAN-TEST-002",
-    eventId: EVENT_STD,
-    bib: 102,
-  },
+/** Inscriptions du compte de validation (ids fixes hérités du seed d'origine). */
+const REVIEW_REGISTRATIONS = [
+  { id: "seed-checkin-reg-review-latin", eventId: EVENT_LATIN, bib: 101 },
+  { id: "seed-checkin-reg-review-standard", eventId: EVENT_STD, bib: 102 },
 ];
 
+interface Registrant {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
 async function main() {
-  // (1) Bannière d'expiration : licence du compte licencié → J+20.
-  const beta = await prisma.user.findUnique({
-    where: { email: BETA_EMAIL },
-    select: { id: true },
+  const reviewer = await prisma.user.findFirst({
+    where: { isStoreReview: true },
+    select: { id: true, firstName: true, lastName: true },
+    orderBy: { createdAt: "asc" },
   });
-  if (beta) {
-    const soon = new Date();
-    soon.setDate(soon.getDate() + 20);
-    const lic = await prisma.license.findFirst({
-      where: { userId: beta.id },
-      select: { id: true },
-    });
-    if (lic) {
-      await prisma.license.update({
-        where: { id: lic.id },
-        data: { validUntil: soon },
-      });
-    } else {
-      // Pas de licence rattachée → on en crée une (sinon ni bannière ni n° de
-      // licence sur la carte). Numéro dédié, rattaché au compte de démo.
-      await prisma.license.upsert({
-        where: { number: "BETA-EXPIRY-TEST" },
-        update: { userId: beta.id, validUntil: soon },
-        create: {
-          number: "BETA-EXPIRY-TEST",
-          validUntil: soon,
-          category: "Ten Dance",
-          clubName: "Club de test",
-          userId: beta.id,
-        },
-      });
-    }
+  if (!reviewer) {
     console.warn(
-      `Licence ${BETA_EMAIL} → expire le ${soon.toISOString().slice(0, 10)} (bannière).`,
+      "ℹ️  Live demo seed skipped: compte de validation des stores introuvable (seed-profile-test-accounts d'abord).",
     );
-  } else {
-    console.warn(`ℹ️  ${BETA_EMAIL} introuvable — bannière sautée.`);
+    return;
   }
 
-  // (2) Compétition ACTIVE = datée d'aujourd'hui (midi, heure locale serveur).
+  // Compétition ACTIVE = datée d'aujourd'hui (midi, heure locale serveur).
   const today = new Date();
   today.setHours(12, 0, 0, 0);
   await prisma.competition.upsert({
@@ -131,59 +93,33 @@ async function main() {
     });
   }
 
-  // 2 licenciés factices + inscriptions confirmées (droits payés) → scan OK.
-  for (const u of SCAN_USERS) {
-    await prisma.user.upsert({
-      where: { id: u.id },
-      update: { firstName: u.firstName, lastName: u.lastName },
-      create: {
-        id: u.id,
-        email: u.email,
-        // Compte non connectable (cible de scan uniquement) : hash factice.
-        password: "seed-checkin-not-a-real-hash",
-        firstName: u.firstName,
-        lastName: u.lastName,
-        role: "LICENSEE",
-        category: u.eventId === EVENT_LATIN ? "Latin" : "Standard",
-        ageGroup: "Adult",
-      },
-    });
-
-    await prisma.license.upsert({
-      where: { number: u.licenseNumber },
-      update: { userId: u.id, validUntil: new Date("2027-12-31") },
-      create: {
-        number: u.licenseNumber,
-        validUntil: new Date("2027-12-31"),
-        category: "Ten Dance",
-        clubName: "Club de test",
-        userId: u.id,
-      },
-    });
-
+  for (const r of REVIEW_REGISTRATIONS) {
+    const data = {
+      userId: reviewer.id,
+      status: "CONFIRMED" as const,
+      feePaid: true,
+      bibNumber: r.bib,
+    };
     await prisma.registration.upsert({
-      where: { id: `seed-checkin-reg-${u.id}` },
-      update: { status: "CONFIRMED", feePaid: true, bibNumber: u.bib },
+      where: { id: r.id },
+      update: data,
       create: {
-        id: `seed-checkin-reg-${u.id}`,
-        eventId: u.eventId,
-        userId: u.id,
-        status: "CONFIRMED",
-        feePaid: true,
-        bibNumber: u.bib,
+        id: r.id,
+        eventId: r.eventId,
+        ...data,
         partnerName: "Partenaire Démo",
         coupleAgeGroup: "Adult",
-        coupleDisciplineLatin: u.eventId === EVENT_LATIN,
+        coupleDisciplineLatin: r.eventId === EVENT_LATIN,
       },
     });
   }
 
   console.warn(
-    "Check-in test seed: compétition active + 2 licenciés inscrits (QR seed-scan-user-1/2).",
+    "Live demo seed: compétition active + inscriptions du compte de validation.",
   );
 
-  // (3) Direct simulé : timing de la journée + résultats publiés.
-  await seedLiveSimulation(today);
+  // Direct simulé : timing de la journée + résultats publiés.
+  await seedLiveSimulation(today, reviewer);
 }
 
 /** Retard estimé affiché sur la compétition de démo (bandeau + timing). */
@@ -226,7 +162,10 @@ function round(label: string, size: number, qualified?: number): DemoResult[] {
  * Timing + résultats de la compétition de démo. Idempotent (IDs fixes →
  * upsert) et additif : ne touche que des lignes `seed-live-*`.
  */
-async function seedLiveSimulation(day: Date): Promise<void> {
+async function seedLiveSimulation(
+  day: Date,
+  registrant: Registrant,
+): Promise<void> {
   // Horaires en UTC (≈ 9h–19h heure de Paris) : la ligne « maintenant » du
   // timing tombe au milieu du programme pendant la journée.
   const at = (hUtc: number, m = 0): Date => {
@@ -297,16 +236,14 @@ async function seedLiveSimulation(day: Date): Promise<void> {
   }
 
   // Résultats publiés. Le client regroupe par `round` (toutes épreuves
-  // confondues) → le libellé porte l'épreuve. Les inscrits « Test Latine » /
-  // « Test Standard » y figurent pour visualiser LEURS résultats.
+  // confondues) → le libellé porte l'épreuve. Le compte de validation y
+  // figure pour visualiser SES résultats.
   const perEvent: Array<{
     eventId: string;
-    registrant: (typeof SCAN_USERS)[number];
     results: DemoResult[];
   }> = [
     {
       eventId: EVENT_LATIN,
-      registrant: SCAN_USERS[0],
       results: [
         ...round("Latines — Quart de finale", 8, 6),
         ...round("Latines — Demi-finale", 6, 4),
@@ -315,7 +252,6 @@ async function seedLiveSimulation(day: Date): Promise<void> {
     },
     {
       eventId: EVENT_STD,
-      registrant: SCAN_USERS[1],
       results: [
         ...round("Standard — Quart de finale", 8, 6),
         ...round("Standard — Demi-finale", 6, 4),
@@ -324,7 +260,7 @@ async function seedLiveSimulation(day: Date): Promise<void> {
   ];
   for (const ev of perEvent) {
     const names = [
-      `${ev.registrant.firstName} ${ev.registrant.lastName} & Partenaire Démo`,
+      `${registrant.firstName} ${registrant.lastName} & Partenaire Démo`,
       ...DEMO_COUPLES,
     ];
     for (const r of ev.results) {
@@ -335,7 +271,7 @@ async function seedLiveSimulation(day: Date): Promise<void> {
         r.ranking === 2 ? 0 : r.ranking === 1 ? 1 : r.ranking - 1;
       const userId =
         coupleIndex === 0
-          ? ev.registrant.id
+          ? registrant.id
           : `seed-live-couple-${ev.eventId}-${coupleIndex}`;
       const slug = r.round
         .split("—")[1]

@@ -6,6 +6,19 @@ import { applyDecorators } from "@nestjs/common";
 import { ApiResponse } from "@nestjs/swagger";
 
 /**
+ * Body of a 409. Exported so that an endpoint documenting its own 409
+ * description (which replaces the common one) keeps the same schema.
+ */
+export const CONFLICT_ERROR_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    statusCode: { type: "number" as const, example: 409 },
+    message: { type: "string" as const, example: "Resource already exists" },
+    error: { type: "string" as const, example: "Conflict" },
+  },
+};
+
+/**
  * Décorateur pour ajouter les réponses d'erreur communes à un endpoint
  *
  * @example
@@ -74,14 +87,7 @@ export function ApiCommonErrorResponses() {
     ApiResponse({
       status: 409,
       description: "Conflit - La ressource existe déjà",
-      schema: {
-        type: "object",
-        properties: {
-          statusCode: { type: "number", example: 409 },
-          message: { type: "string", example: "Resource already exists" },
-          error: { type: "string", example: "Conflict" },
-        },
-      },
+      schema: CONFLICT_ERROR_SCHEMA,
     }),
     ApiResponse({
       status: 429,

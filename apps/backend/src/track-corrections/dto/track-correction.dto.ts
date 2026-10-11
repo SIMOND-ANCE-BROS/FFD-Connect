@@ -205,4 +205,13 @@ export class ListTrackCorrectionsQueryDto extends PaginationParamsDto {
   @MinLength(TRACK_CORRECTION_SEARCH_MIN_LENGTH)
   @MaxLength(TRACK_CORRECTION_SEARCH_MAX_LENGTH)
   q?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Propositions d'une seule musique (lien depuis la fiche musique)",
+    format: "uuid",
+  })
+  @IsOptional()
+  @IsUUID()
+  trackId?: string;
 }

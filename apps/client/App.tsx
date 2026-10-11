@@ -38,6 +38,7 @@ import { AppNavigator } from "./src/navigation/AppNavigator";
 import { PersistedQueryClientProvider } from "./src/services/queryClient";
 import { WakeOverlay } from "./src/components/WakeOverlay";
 import { installBackendWake, warmBackend } from "./src/utils/backendWake";
+import { analytics, usage } from "./src/services/analytics";
 import {
   registerDeviceTokenForPush,
   setupPushListeners,
@@ -85,6 +86,10 @@ function App(): React.JSX.Element {
     useClubStore.getState().setRepository(defaultClubRepository);
     void initClubLogo();
   }, []);
+
+  // Lot 5: on background, close the screen view and send usage if the
+  // backend is awake (never wakes it).
+  useEffect(() => usage.start(() => analytics.endScreen()), []);
 
   // Push notifications. Foreground listeners (onMessage,
   // getInitialNotification) are wired on every launch, outside the auth flow:

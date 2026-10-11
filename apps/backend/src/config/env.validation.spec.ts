@@ -127,6 +127,20 @@ describe("validate (env.validation)", () => {
     });
   });
 
+  describe("FFD_DEDUCE_EVENTS", () => {
+    it.each(["true", "false"])("accepte %s", (value) => {
+      expect(validate({ ...VALID_BASE, FFD_DEDUCE_EVENTS: value })).toEqual(
+        expect.objectContaining({ FFD_DEDUCE_EVENTS: value }),
+      );
+    });
+
+    it("refuse une autre valeur", () => {
+      expect(() =>
+        validate({ ...VALID_BASE, FFD_DEDUCE_EVENTS: "yes" }),
+      ).toThrow("Erreur de validation des variables d'environnement");
+    });
+  });
+
   describe("champs optionnels sans valeur par défaut", () => {
     it("accepte CORS_ORIGINS défini", () => {
       const result = validate({

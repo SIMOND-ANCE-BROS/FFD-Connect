@@ -18,6 +18,17 @@ describe('ChangeSummary', () => {
     expect(screen.queryByText(/11111111|22222222/)).not.toBeInTheDocument();
   });
 
+  it('shows disciplines in French', () => {
+    render(
+      <MantineProvider>
+        <ChangeSummary before={{ category: 'Latin' }} after={{ category: 'Ten Dance' }} />
+      </MantineProvider>,
+    );
+    expect(screen.getByText('Catégorie')).toBeInTheDocument();
+    expect(screen.getByText('Latines')).toBeInTheDocument();
+    expect(screen.getByText('10 danses')).toBeInTheDocument();
+  });
+
   it('labels club fields and shows registration modes and roles in French', () => {
     render(
       <MantineProvider>
@@ -49,5 +60,25 @@ describe('ChangeSummary', () => {
     expect(screen.getByText('Danse')).toBeInTheDocument();
     expect(screen.getByText('0:40, 1:20')).toBeInTheDocument();
     expect(screen.getByText('Aucun clash')).toBeInTheDocument();
+  });
+
+  it('labels the track moderation flags, the status and the source, booleans in French', () => {
+    render(
+      <MantineProvider>
+        <ChangeSummary
+          before={{ titleMasked: false, blacklisted: true, status: 'ERROR', sourceKey: null }}
+          after={{ titleMasked: true, blacklisted: false, status: 'READY', sourceKey: 'apple:1' }}
+        />
+      </MantineProvider>,
+    );
+    expect(screen.getByText('Titre masqué')).toBeInTheDocument();
+    expect(screen.getByText('Blacklistée')).toBeInTheDocument();
+    expect(screen.getByText('Statut')).toBeInTheDocument();
+    expect(screen.getByText('Source')).toBeInTheDocument();
+    expect(screen.getAllByText('Oui')).toHaveLength(2);
+    expect(screen.getAllByText('Non')).toHaveLength(2);
+    expect(screen.getByText('En erreur')).toBeInTheDocument();
+    expect(screen.getByText('Prête')).toBeInTheDocument();
+    expect(screen.getByText('apple:1')).toBeInTheDocument();
   });
 });

@@ -31,6 +31,9 @@ model Track {
   /// Normalized provider+id key (e.g. "youtube:dQw4w9WgXcQ") used to dedup
   /// repeated submissions of the same source. Null for legacy/manual entries.
   sourceKey     String?     @unique
+  /// SHA-256 (hex) of the audio file imported from the back-office, to refuse
+  /// a second import of the same file. Null for tracks added before lot 3.
+  contentHash   String?     @unique
   submittedById String?
   submittedBy   User?       @relation("TrackSubmissions", fields: [submittedById], references: [id], onDelete: SetNull)
   /// Propositions de correction des métadonnées soumises par les utilisateurs.

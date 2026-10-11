@@ -1,3 +1,4 @@
+import { storeReviewUserMessage } from "../auth/store-review/store-review-protection";
 import {
   BadRequestException,
   ForbiddenException,
@@ -28,6 +29,8 @@ const current = {
   passportLevelLatin: null,
   passportLevelStandard: null,
   competitionLevel: null,
+  competitionLevelLatin: null,
+  competitionLevelStandard: null,
   nationalRanking: 12,
   role: UserRole.LICENSEE,
   extraRoles: [] as UserRole[],
@@ -82,6 +85,28 @@ describe("AdminUsersService.update", () => {
       after: { lastName: "Durand" },
     });
     expect(query.detail).toHaveBeenCalledWith("u1");
+  });
+
+  it("stores a different competition level per discipline", async () => {
+    await service.update("admin-1", "u1", {
+      competitionLevelLatin: "International",
+      competitionLevelStandard: "Débutant",
+    });
+
+    expect(prisma.user.update.mock.calls[0][0].data).toEqual({
+      competitionLevelLatin: "International",
+      competitionLevelStandard: "Débutant",
+    });
+  });
+
+  it("mirrors a legacy single level (older back-office) to both disciplines", async () => {
+    await service.update("admin-1", "u1", { competitionLevel: "Avancé" });
+
+    expect(prisma.user.update.mock.calls[0][0].data).toEqual({
+      competitionLevel: "Avancé",
+      competitionLevelLatin: "Avancé",
+      competitionLevelStandard: "Avancé",
+    });
   });
 
   it("syncs clubName when clubId changes", async () => {
@@ -440,6 +465,34 @@ describe("AdminUsersService.setStatus", () => {
       service.setStatus("admin-1", "nope", false),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it("refuses to disable the store-review account, writing nothing", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "u1",
+      disabledAt: null,
+      isStoreReview: true,
+    } as never);
+    await expect(service.setStatus("admin-1", "u1", false)).rejects.toThrow(
+      new ForbiddenException(storeReviewUserMessage("disable")),
+    );
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it("still lets an admin re-enable a disabled store-review account", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "u1",
+      disabledAt: new Date(),
+      isStoreReview: true,
+    } as never);
+    await service.setStatus("admin-1", "u1", true);
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: "u1" },
+      data: { disabledAt: null },
+      select: { id: true },
+    });
+  });
 });
 
 describe("AdminUsersService.delete", () => {
@@ -513,5 +566,23 @@ describe("AdminUsersService.delete", () => {
     await expect(
       service.delete("admin-1", "nope", "a@b.fr"),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("refuses to delete the store-review account with the French message", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      id: "u1",
+      email: "licensee@test.com",
+      role: UserRole.ADMIN,
+      isStoreReview: true,
+    } as never);
+    await expect(
+      service.delete("admin-1", "u1", "licensee@test.com"),
+    ).rejects.toThrow(
+      new ForbiddenException(
+        "Ce compte est utilisé pour les validations App Store / Google Play : il ne peut pas être supprimé.",
+      ),
+    );
+    expect(deletion.deleteAccount).not.toHaveBeenCalled();
+    expect(audit.recordOp).not.toHaveBeenCalled();
   });
 });

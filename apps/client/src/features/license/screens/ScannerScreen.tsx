@@ -14,6 +14,7 @@ import { ThemeContextType, useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
 import { useScannerLogic } from "../hooks/useScannerLogic";
 import { CheckinResponse } from "../services/CheckinService";
+import { formatDiscipline } from "../../../utils/discipline";
 
 // --- Subcomponent: Result Overlay ---
 const CheckinResultOverlay = ({
@@ -89,7 +90,7 @@ const CheckinResultOverlay = ({
               variant="caption"
               style={{ color: currentTheme.textSecondary }}
             >
-              {reg.event}
+              {formatDiscipline(reg.event)}
             </AppText>
 
             <View style={styles.regRow}>

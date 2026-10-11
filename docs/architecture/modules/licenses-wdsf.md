@@ -28,7 +28,7 @@ Routes:
 - `GET /licenses/renewal/my`
 - `POST /licenses/renewal/:id/documents`
 - `POST /licenses/renewal/:id/submit`
-- `POST /licenses/renewal/:id/approve`
+- Modération (ADMIN, [ADR-0021](../../adr/0021-moderation-humaine-renouvellements-donnees-sante.md)) : `GET /admin/license-renewals`, `GET /admin/license-renewals/:id`, `GET /admin/license-renewals/:id/documents/:docId/file`, `POST /admin/license-renewals/:id/approve`, `POST /admin/license-renewals/:id/reject`
 - `GET /wdsf/athlete/:min`
 - `PATCH /users/me` (enregistrement WDSF cote profil)
 
@@ -58,11 +58,10 @@ Specificites:
 1. Start draft via `POST /licenses/renewal/start`.
 2. Upload documents via `POST /licenses/renewal/:id/documents`.
 3. Soumission via `POST /licenses/renewal/:id/submit`.
-4. Validation staff/admin via `POST /licenses/renewal/:id/approve`.
+4. Auto-approbation à la soumission (jusqu'à #271), ou décision de l'administrateur via `POST /admin/license-renewals/:id/approve` / `reject` (décision atomique, 409 si déjà traitée, tracée dans le journal d'audit).
 
 ## 7) Risques et points d'attention
 
 - Robustesse upload mobile/web (formats, timeout, taille).
 - Cohesion entre donnees OCR et validation metier.
 - Evolution des champs WDSF a maintenir synchronisee backend/client.
-

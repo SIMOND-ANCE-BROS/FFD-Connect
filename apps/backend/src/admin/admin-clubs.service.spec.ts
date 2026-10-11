@@ -1,4 +1,9 @@
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { storeReviewClubMessage } from "../auth/store-review/store-review-protection";
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { ClubRegistrationMode, Prisma, UserRole } from "@prisma/client";
 import {
@@ -338,6 +343,20 @@ describe("AdminClubsService", () => {
         service.setStatus("admin-1", "nope", false),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
+
+    it("refuses to disable the store-review club, writing nothing", async () => {
+      prisma.club.findUnique.mockResolvedValue({
+        id: "c1",
+        disabledAt: null,
+        isStoreReview: true,
+      } as never);
+      await expect(service.setStatus("admin-1", "c1", false)).rejects.toThrow(
+        new ForbiddenException(storeReviewClubMessage("disable")),
+      );
+      expect(prisma.club.update).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
   });
 
   describe("delete", () => {
@@ -398,6 +417,22 @@ describe("AdminClubsService", () => {
       await expect(service.delete("admin-1", "nope")).rejects.toBeInstanceOf(
         NotFoundException,
       );
+    });
+
+    it("refuses to delete the store-review club before locking or counting", async () => {
+      prisma.club.findUnique.mockResolvedValue({
+        id: "c1",
+        name: "Club Test FFD",
+        isStoreReview: true,
+      } as never);
+      await expect(service.delete("admin-1", "c1")).rejects.toThrow(
+        new ForbiddenException(
+          "Ce club est utilisé pour les validations App Store / Google Play : il ne peut pas être supprimé.",
+        ),
+      );
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+      expect(prisma.club.delete).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
     });
   });
 });

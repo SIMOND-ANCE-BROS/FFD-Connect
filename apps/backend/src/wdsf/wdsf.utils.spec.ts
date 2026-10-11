@@ -7,6 +7,7 @@ import {
   nameTokens,
   wdsfNameMatches,
   parsePersonsToAthlete,
+  resolveWdsfFederation,
 } from "./wdsf.utils";
 
 describe("wdsf.utils", () => {
@@ -152,6 +153,51 @@ describe("wdsf.utils", () => {
       ];
       const result = parsePersonsToAthlete(data, "11111");
       expect(result.structure).toBe("FFD - Fédération Française de Danse");
+    });
+
+    it("never reports WDSF as the national federation", () => {
+      const result = parsePersonsToAthlete(
+        [
+          {
+            min: "22222",
+            firstName: "Jane",
+            lastName: "Smith",
+            country: { name: "Germany" },
+            memberBody: { name: "WDSF" },
+          },
+        ],
+        "22222",
+      );
+      expect(result.structure).toBe("");
+    });
+
+    it("prefers the FFD over a WDSF member body for a French athlete", () => {
+      const result = parsePersonsToAthlete(
+        [
+          {
+            min: "33333",
+            firstName: "Paul",
+            lastName: "Durand",
+            country: "FRA",
+            memberBody: { name: "WDSF" },
+          },
+        ],
+        "33333",
+      );
+      expect(result.structure).toBe("FFD - Fédération Française de Danse");
+    });
+  });
+
+  describe("resolveWdsfFederation", () => {
+    it.each([
+      ["FFD", null, "FFD - Fédération Française de Danse"],
+      ["DTV", "Germany", "DTV"],
+      ["WDSF", "France", "FFD - Fédération Française de Danse"],
+      [null, "fra", "FFD - Fédération Française de Danse"],
+      ["WDSF", "Germany", ""],
+      [undefined, undefined, ""],
+    ])("member body %s, country %s → %s", (memberBody, country, expected) => {
+      expect(resolveWdsfFederation(memberBody, country)).toBe(expected);
     });
   });
 

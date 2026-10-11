@@ -2,11 +2,25 @@ jest.mock("../../config", () => ({ BACKEND_URL: "http://test/api/v1" }));
 jest.mock("../../utils/logger", () => ({
   createLogger: () => ({ warn: jest.fn(), info: jest.fn(), error: jest.fn() }),
 }));
+jest.mock("../../utils/backendWake", () => ({
+  warmBackend: jest.fn(() => Promise.resolve()),
+}));
+jest.mock("../../api/tokenStore", () => ({
+  getAccessToken: jest.fn(() => Promise.resolve("access-1")),
+}));
+jest.mock("../../api/sessionRefresh", () => ({
+  refreshSession: jest.fn(() => Promise.resolve("access-2")),
+}));
 
+import * as Sentry from "@sentry/react-native";
 import { createAudioPlayer } from "expo-audio";
 import { getInfoAsync, writeAsStringAsync } from "expo-file-system/legacy";
+import { refreshSession } from "../../api/sessionRefresh";
+import { getAccessToken } from "../../api/tokenStore";
+import { warmBackend } from "../../utils/backendWake";
 import TtsService, {
   arrayBufferToBase64,
+  resetTtsServiceForTests,
   ttsCacheFilename,
 } from "../TtsService";
 
@@ -27,7 +41,13 @@ const fakeAnnouncer = {
 };
 const emitStatus = (status: Record<string, unknown>) =>
   [...listeners].forEach((l) => l(status));
-(createAudioPlayer as jest.Mock).mockImplementation(() => fakeAnnouncer);
+const announcerOptions: unknown[] = [];
+(createAudioPlayer as jest.Mock).mockImplementation(
+  (_source: unknown, options: unknown) => {
+    announcerOptions.push(options);
+    return fakeAnnouncer;
+  },
+);
 
 const toBuffer = (s: string): ArrayBuffer => {
   const bytes = new TextEncoder().encode(s);
@@ -95,7 +115,7 @@ describe("ttsCacheFilename", () => {
   it("is stable and versioned", () => {
     const name = ttsCacheFilename("Place au Tango !");
     expect(name).toBe(ttsCacheFilename("Place au Tango !"));
-    expect(name).toMatch(/^tts_v2_[0-9a-f]{8}_[0-9a-z]+\.mp3$/);
+    expect(name).toMatch(/^tts_v3_[0-9a-f]{8}_[0-9a-z]+\.mp3$/);
   });
 });
 
@@ -125,6 +145,7 @@ describe("TtsService.preload (download)", () => {
     jest.clearAllMocks();
     (getInfoAsync as jest.Mock).mockResolvedValue({ exists: false });
     fetchMock = jest.spyOn(global, "fetch");
+    resetTtsServiceForTests();
   });
   afterEach(() => {
     fetchMock.mockRestore();
@@ -140,6 +161,87 @@ describe("TtsService.preload (download)", () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(writeAsStringAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the user's access token (POST /tts requires auth)", async () => {
+    fetchMock.mockResolvedValueOnce(okResponse());
+    await TtsService.preload("Place au Tango !");
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual(
+      expect.objectContaining({ Authorization: "Bearer access-1" }),
+    );
+    expect(init.body).toBe(JSON.stringify({ text: "Place au Tango !" }));
+  });
+
+  it("sends no Authorization header without a session", async () => {
+    (getAccessToken as jest.Mock).mockResolvedValueOnce(undefined);
+    fetchMock.mockResolvedValueOnce(okResponse());
+    await TtsService.preload("Samba !");
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.headers).not.toHaveProperty("Authorization");
+  });
+
+  it("refreshes an expired session on 401 and replays with the new token", async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 401 })
+      .mockResolvedValueOnce(okResponse());
+    await expect(TtsService.preload("Quickstep !")).resolves.toContain(
+      ttsCacheFilename("Quickstep !"),
+    );
+    expect(refreshSession).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const replay = fetchMock.mock.calls[1][1] as RequestInit;
+    expect(replay.headers).toEqual(
+      expect.objectContaining({ Authorization: "Bearer access-2" }),
+    );
+  });
+
+  it("fails with the 401 when the session cannot be refreshed", async () => {
+    (refreshSession as jest.Mock).mockResolvedValue(null);
+    fetchMock.mockResolvedValue({ ok: false, status: 401 });
+    await expect(TtsService.preload("Valse !")).rejects.toThrow(
+      "TTS indisponible (TTS API Error: 401)",
+    );
+    // One request per attempt, no replay without a fresh token.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    (refreshSession as jest.Mock).mockResolvedValue("access-2");
+  });
+
+  it("waits for Retry-After on 429 without consuming an attempt", async () => {
+    jest.useFakeTimers();
+    const tooMany = {
+      ok: false,
+      status: 429,
+      headers: new Headers({ "Retry-After": "7" }),
+    };
+    fetchMock
+      .mockResolvedValueOnce(tooMany)
+      .mockResolvedValueOnce(tooMany)
+      .mockResolvedValueOnce(okResponse());
+    const p = TtsService.preload("Paso doble !");
+    await jest.advanceTimersByTimeAsync(6999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(7001);
+    await expect(p).resolves.toContain(ttsCacheFilename("Paso doble !"));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("gives up after a bounded number of 429 waits", async () => {
+    jest.useFakeTimers();
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: new Headers({ "Retry-After": "999" }),
+    });
+    const p = TtsService.preload("Cha-cha-cha !");
+    const assertion = expect(p).rejects.toThrow(
+      "TTS indisponible (TTS API Error: 429)",
+    );
+    // Capped at 60 s per wait, 3 waits, then 2 failed attempts.
+    await jest.advanceTimersByTimeAsync(3 * 60000 + 1000);
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it("gives up after two attempts with a TTS error", async () => {
@@ -164,6 +266,44 @@ describe("TtsService.preload (download)", () => {
     fetchMock.mockResolvedValueOnce(okResponse());
     await TtsService.preload("Samba !");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits for the scale-to-zero backend to be awake before generating", async () => {
+    let wake: () => void = () => {};
+    (warmBackend as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          wake = resolve;
+        }),
+    );
+    fetchMock.mockResolvedValue(okResponse());
+    const p = TtsService.preload("Place au Jaïve !");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fetchMock).not.toHaveBeenCalled(); // still waking (cold start)
+    wake();
+    await expect(p).resolves.toContain(ttsCacheFilename("Place au Jaïve !"));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks the backend once for a batch of downloads", async () => {
+    fetchMock.mockResolvedValue(okResponse());
+    await Promise.all([
+      TtsService.preload("Samba !"),
+      TtsService.preload("Rumba !"),
+      TtsService.preload("Jaïve !"),
+    ]);
+    expect(warmBackend).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not wake the backend when the clip is cached", async () => {
+    (getInfoAsync as jest.Mock).mockResolvedValueOnce({
+      exists: true,
+      size: 10,
+    });
+    await TtsService.preload("Tango !");
+    expect(warmBackend).not.toHaveBeenCalled();
   });
 
   it("keeps the abort timeout running until the body is read", async () => {
@@ -214,7 +354,7 @@ describe("TtsService.speak (dedicated announcement player)", () => {
     });
     expect(fakeAnnouncer.play).toHaveBeenCalled();
     emitStatus({ didJustFinish: true });
-    await expect(p).resolves.toBeUndefined();
+    await expect(p).resolves.toBe("spoken");
   });
 
   it("does NOT resolve on the initial Paused status emitted after load", async () => {
@@ -273,11 +413,58 @@ describe("TtsService.speak (dedicated announcement player)", () => {
     ).rejects.toThrow(/bad uri/);
   });
 
+  it("keeps the audio session active (expo-audio deactivates it after a pause)", async () => {
+    const p = TtsService.speak("Place au Tango !", "file:///c/s.mp3");
+    await flush();
+    emitStatus({ didJustFinish: true });
+    await p;
+    expect(announcerOptions[0]).toEqual(
+      expect.objectContaining({ keepAudioSessionActive: true }),
+    );
+  });
+
+  it("reports a clip that never loaded as NOT spoken (was a silent success)", async () => {
+    const p = TtsService.speak("Place au Jaïve !", "file:///c/n.mp3");
+    await flush();
+    jest.advanceTimersByTime(20000);
+    await expect(p).resolves.toBe("not-played");
+    // Silenced: it must not start late, over the dance.
+    expect(fakeAnnouncer.pause).toHaveBeenCalled();
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      "TTS announcement not spoken: not-played",
+      expect.objectContaining({ level: "warning" }),
+    );
+  });
+
+  it("reports a clip loaded but never playing as NOT spoken", async () => {
+    const p = TtsService.speak("Samba !", "file:///c/l.mp3");
+    await flush();
+    emitStatus({ isLoaded: true, playing: false, duration: 2, currentTime: 0 });
+    jest.advanceTimersByTime(3600);
+    await expect(p).resolves.toBe("not-played");
+  });
+
+  it("a clip superseded by a newer one is reported as interrupted", async () => {
+    const first = TtsService.speak("Samba !", "file:///c/1.mp3");
+    await flush();
+    const second = TtsService.speak("Rumba !", "file:///c/2.mp3");
+    await expect(first).resolves.toBe("interrupted");
+    expect(Sentry.captureMessage).toHaveBeenCalledWith(
+      "TTS announcement not spoken: interrupted",
+      expect.anything(),
+    );
+    await flush();
+    emitStatus({ didJustFinish: true });
+    await expect(second).resolves.toBe("spoken");
+  });
+
   it("stop() ends the pending announcement", async () => {
     const p = TtsService.speak("Place au Tango !", "file:///c/c.mp3");
     await flush();
     await TtsService.stop();
-    await expect(p).resolves.toBeUndefined();
+    await expect(p).resolves.toBe("interrupted");
     expect(fakeAnnouncer.pause).toHaveBeenCalled();
+    // A deliberate stop is not an incident.
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 });

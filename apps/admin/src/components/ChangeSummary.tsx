@@ -1,5 +1,6 @@
 import { Table } from '@mantine/core';
 import { REGISTRATION_MODE_LABELS, ROLE_LABELS } from '../lib/labels';
+import { formatDiscipline } from '../lib/discipline';
 import { formatTimecode } from '../lib/moderation';
 
 const LABELS: Record<string, string> = {
@@ -11,7 +12,9 @@ const LABELS: Record<string, string> = {
   ageGroup: "Classe d'âge",
   passportLevelLatin: 'Passeport Latine',
   passportLevelStandard: 'Passeport Standard',
-  competitionLevel: 'Niveau compétition',
+  competitionLevel: 'Niveau compétition (ancien)',
+  competitionLevelLatin: 'Niveau Latines',
+  competitionLevelStandard: 'Niveau Standards',
   nationalRanking: 'Classement national',
   role: 'Rôle',
   extraRoles: 'Rôles supplémentaires',
@@ -24,16 +27,24 @@ const LABELS: Record<string, string> = {
   bpm: 'MPM',
   clashTimecodes: 'Clashes paso',
   trackId: 'Musique',
+  titleMasked: 'Titre masqué',
+  blacklisted: 'Blacklistée',
+  status: 'Statut',
+  sourceKey: 'Source',
+  filename: 'Fichier',
 };
 
 const VALUE_LABELS: Record<string, Record<string, string>> = {
   role: ROLE_LABELS,
   extraRoles: ROLE_LABELS,
   registrationMode: REGISTRATION_MODE_LABELS,
+  // Track status (audit rows of the track catalogue).
+  status: { READY: 'Prête', PENDING: 'En attente', ERROR: 'En erreur' },
 };
 
 function display(key: string, value: unknown): string {
   if (value === null || value === undefined) return '—';
+  if (typeof value === 'boolean') return value ? 'Oui' : 'Non';
   if (key === 'clashTimecodes' && Array.isArray(value)) {
     return value.length
       ? value.map((v) => (typeof v === 'number' ? formatTimecode(v) : String(v))).join(', ')
@@ -45,6 +56,7 @@ function display(key: string, value: unknown): string {
       : '—';
   }
   const text = String(value);
+  if (key === 'category') return formatDiscipline(text);
   return VALUE_LABELS[key]?.[text] ?? text;
 }
 

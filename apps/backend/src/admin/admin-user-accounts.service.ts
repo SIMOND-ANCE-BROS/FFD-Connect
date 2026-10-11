@@ -11,6 +11,7 @@ import * as crypto from "crypto";
 import { AuthPasswordService } from "../auth/auth-password.service";
 import { EmailService, InvitationRole } from "../auth/email.service";
 import { hasRole, normalizeExtraRoles } from "../auth/roles";
+import { mirrorLegacyCompetitionLevel } from "../common/competition-level";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   adminClubAttachSelect,
@@ -38,7 +39,11 @@ function profileOf(dto: CreateAdminUserDto) {
     ageGroup: dto.ageGroup ?? undefined,
     passportLevelLatin: dto.passportLevelLatin ?? undefined,
     passportLevelStandard: dto.passportLevelStandard ?? undefined,
-    competitionLevel: dto.competitionLevel ?? undefined,
+    ...mirrorLegacyCompetitionLevel({
+      competitionLevel: dto.competitionLevel ?? undefined,
+      competitionLevelLatin: dto.competitionLevelLatin ?? undefined,
+      competitionLevelStandard: dto.competitionLevelStandard ?? undefined,
+    }),
     nationalRanking: dto.nationalRanking ?? undefined,
   };
 }

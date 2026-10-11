@@ -1,10 +1,12 @@
 ---
 name: Feature Request
 about: Suggest an idea for this project
-title: "[FEATURE] "
-labels: enhancement
-assignees: ""
+title: 'DOMAINE: résultat attendu'
+type: Feature
+assignees: ''
 ---
+
+<!-- Conventions : docs/guides/gestion-des-issues.md — type d'issue, une priorité (P0…P3 ou icebox), labels de zone, milestone, epic parente. -->
 
 **Related Module**
 

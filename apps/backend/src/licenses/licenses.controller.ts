@@ -23,7 +23,10 @@ import {
 } from "@nestjs/swagger";
 import { LicenseRenewalDocumentType } from "@prisma/client";
 import { Request as ExpressRequest } from "express";
-import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
+import {
+  ApiCommonErrorResponses,
+  CONFLICT_ERROR_SCHEMA,
+} from "../common/decorators/api-error-responses.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import {
   createFileFilter,
@@ -36,6 +39,15 @@ import {
 } from "../utils/upload-storage.util";
 import { LicenseRenewalService } from "./license-renewal.service";
 import { LicensesService } from "./licenses.service";
+import {
+  StoreReviewOwnData,
+  StoreReviewSimulation,
+} from "../auth/store-review/store-review.decorator";
+import {
+  simulatedRenewalDocument,
+  simulatedRenewalStart,
+  simulatedRenewalSubmit,
+} from "../auth/store-review/store-review-responses";
 
 interface RequestWithUser extends ExpressRequest {
   user: {
@@ -55,6 +67,7 @@ export class LicensesController {
     private readonly licenseRenewalService: LicenseRenewalService,
   ) {}
 
+  @StoreReviewOwnData()
   @Get("my")
   @ApiOperation({
     summary: "Récupère la licence de l'utilisateur connecté",
@@ -153,7 +166,7 @@ export class LicensesController {
   @ApiOperation({
     summary: "Renouvelle la licence de l'utilisateur",
     description:
-      "Traite un certificat de licence (image) via OCR pour extraire les informations et renouvelle ou crée la licence. La licence est valide jusqu'au 31 août de l'année suivante.",
+      "Traite un certificat de licence (image) via OCR pour extraire les informations et renouvelle ou crée la licence. La licence est valide jusqu'au 31 août (Europe/Paris) qui termine la saison en cours, ou celle de la saison suivante si le renouvellement a lieu entre le 1er juillet et le 31 août ; une date de fin déjà plus lointaine est conservée.",
   })
   @ApiConsumes("multipart/form-data")
   @ApiBody({
@@ -245,18 +258,20 @@ export class LicensesController {
 
   // --- Demande de renouvellement (workflow documents + OCR) ---
 
+  @StoreReviewSimulation(simulatedRenewalStart)
   @Post("renewal/start")
   @ApiOperation({
     summary: "Démarrer une demande de renouvellement",
     description:
-      "Crée ou récupère une demande de renouvellement en brouillon pour déposer le certificat médical et le certificat de licence.",
+      "Crée ou récupère une demande de renouvellement en brouillon pour déposer le certificat médical et le certificat de licence. Si une demande est déjà en attente de validation (PENDING), c'est elle qui est renvoyée : une seule demande en attente par utilisateur.",
   })
-  @ApiResponse({ status: 200, description: "Demande créée ou existante" })
+  @ApiResponse({ status: 201, description: "Demande créée ou existante" })
   @ApiResponse({ status: 401, description: "Non autorisé" })
   async startRenewal(@Req() req: RequestWithUser) {
     return this.licenseRenewalService.startRenewalRequest(req.user.userId);
   }
 
+  @StoreReviewOwnData()
   @Get("renewal/my")
   @ApiOperation({
     summary: "Ma demande de renouvellement en cours",
@@ -269,6 +284,7 @@ export class LicensesController {
     return this.licenseRenewalService.getMyRenewalRequest(req.user.userId);
   }
 
+  @StoreReviewSimulation(simulatedRenewalDocument)
   @Post("renewal/:id/documents")
   @ApiOperation({
     summary: "Déposer un document sur une demande (OCR automatique)",
@@ -292,7 +308,7 @@ export class LicensesController {
     },
   })
   @ApiResponse({
-    status: 200,
+    status: 201,
     description: "Demande mise à jour avec document et données OCR",
   })
   @ApiResponse({
@@ -335,42 +351,32 @@ export class LicensesController {
     );
   }
 
+  @StoreReviewSimulation(simulatedRenewalSubmit)
   @Post("renewal/:id/submit")
   @ApiOperation({
     summary: "Soumettre la demande de renouvellement",
     description:
-      "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence.",
+      "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence. Refusée (409) si une autre demande de l'utilisateur est déjà en attente de validation.",
   })
   @ApiParam({ name: "id", description: "ID de la demande" })
-  @ApiResponse({ status: 200, description: "Demande soumise" })
+  @ApiResponse({ status: 201, description: "Demande soumise" })
   @ApiResponse({
     status: 400,
     description: "Documents manquants ou déjà soumise",
   })
   @ApiResponse({ status: 401, description: "Non autorisé" })
   @ApiResponse({ status: 404, description: "Demande non trouvée" })
+  // Replaces the common 409 description: same body schema, both causes.
+  @ApiResponse({
+    status: 409,
+    description:
+      "Conflit - Une autre demande de l'utilisateur est déjà en attente de validation, ou la demande vient d'être traitée par un administrateur",
+    schema: CONFLICT_ERROR_SCHEMA,
+  })
   async submitRenewal(
     @Req() req: RequestWithUser,
     @Param("id", ParseUUIDPipe) id: string,
   ) {
     return this.licenseRenewalService.submitRenewalRequest(req.user.userId, id);
-  }
-
-  @Post("renewal/:id/approve")
-  @ApiOperation({
-    summary: "Approuver une demande (renouvelle la licence)",
-    description:
-      "Réservé au processus métier ou admin. Passe la demande en APPROVED et renouvelle la licence jusqu’au 31 août N+1.",
-  })
-  @ApiParam({ name: "id", description: "ID de la demande" })
-  @ApiResponse({
-    status: 200,
-    description: "Demande approuvée, licence renouvelée",
-  })
-  @ApiResponse({ status: 400, description: "Demande non en attente" })
-  @ApiResponse({ status: 401, description: "Non autorisé" })
-  @ApiResponse({ status: 404, description: "Demande non trouvée" })
-  async approveRenewal(@Param("id", ParseUUIDPipe) id: string) {
-    return this.licenseRenewalService.approveRenewalRequest(id);
   }
 }

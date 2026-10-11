@@ -105,7 +105,6 @@ updates:
       passport:
         patterns: ['passport', 'passport-*']
       # Vendor families sharing transitives (@azure/core-*, google-gax).
-      # @google/genai is deliberately NOT here — unrelated SDK, own cadence.
       azure:
         patterns: ['@azure/*']
       google-cloud:

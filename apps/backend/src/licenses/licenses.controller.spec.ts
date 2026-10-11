@@ -38,7 +38,6 @@ describe("LicensesController", () => {
     getMyRenewalRequest: jest.fn(),
     uploadRenewalDocument: jest.fn(),
     submitRenewalRequest: jest.fn(),
-    approveRenewalRequest: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -225,23 +224,6 @@ describe("LicensesController", () => {
       expect(
         mockLicenseRenewalService.submitRenewalRequest,
       ).toHaveBeenCalledWith("user-1", "req-uuid-1");
-      expect(result).toEqual({ id: "req-1", status: "APPROVED" });
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // POST /licenses/renewal/:id/approve
-  // ---------------------------------------------------------------------------
-  describe("approveRenewal", () => {
-    it("delegates to licenseRenewalService.approveRenewalRequest", async () => {
-      mockLicenseRenewalService.approveRenewalRequest.mockResolvedValue({
-        id: "req-1",
-        status: "APPROVED",
-      });
-      const result = await controller.approveRenewal("req-uuid-1");
-      expect(
-        mockLicenseRenewalService.approveRenewalRequest,
-      ).toHaveBeenCalledWith("req-uuid-1");
       expect(result).toEqual({ id: "req-1", status: "APPROVED" });
     });
   });

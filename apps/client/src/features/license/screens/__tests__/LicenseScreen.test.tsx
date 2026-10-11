@@ -2,7 +2,7 @@ import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import React from "react";
 import { StyleSheet } from "react-native";
 import type { ReactTestRendererJSON } from "react-test-renderer";
-import { STACKED_CARD_ACTIVE_OFFSET } from "../../../../components/StackedCard";
+import { STACKED_CARD_PEEK } from "../../../../components/StackedCard";
 import { BETA_NOTICES } from "../../../../constants/betaNotices";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useLicenseLogic } from "../../hooks/useLicenseLogic";
@@ -35,6 +35,10 @@ jest.mock("../../components/SwipeableLicenseCard", () => ({
 jest.mock("../../hooks/useLicenseLogic", () => ({
   useLicenseLogic: jest.fn(),
 }));
+const mockRenewalPending = jest.fn(() => false);
+jest.mock("../../hooks/useRenewalPending", () => ({
+  useRenewalPending: () => mockRenewalPending(),
+}));
 
 // Inline mock for ThemeContext to ensure stability
 jest.mock("../../../../context/ThemeContext", () => ({
@@ -55,16 +59,11 @@ jest.mock("../../components/LicenseCard", () => ({
   LicenseCard: (props: {
     testID?: string;
     onShowQr?: () => void;
-    collapsed?: boolean;
     onOptions?: () => void;
   }) => {
     const { Text } = require("react-native");
     return (
-      <Text
-        testID={props.testID}
-        onPress={props.onShowQr}
-        accessibilityHint={props.collapsed ? "collapsed" : "expanded"}
-      >
+      <Text testID={props.testID} onPress={props.onShowQr}>
         {props.testID}
         {props.onOptions ? (
           <Text testID={`${props.testID}-options`} onPress={props.onOptions}>
@@ -181,6 +180,7 @@ describe("LicenseScreen Integration", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRenewalPending.mockReturnValue(false);
 
     (useTheme as jest.Mock).mockImplementation(() => ({
       theme: mockTheme.theme,
@@ -207,6 +207,23 @@ describe("LicenseScreen Integration", () => {
     expect(getByTestId("license-screen-scroll-view")).toBeTruthy();
     expect(getByTestId("license-screen-card-FFD")).toBeTruthy();
     expect(getByTestId("license-screen-add-wdsf-card")).toBeTruthy();
+  });
+
+  it("says a renewal request is being checked (#268)", async () => {
+    mockRenewalPending.mockReturnValue(true);
+    (useLicenseLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...mockState,
+        listItems: [{ type: "FFD", data: { licenseNumber: "123" } }],
+      },
+      actions: mockActions,
+    });
+
+    const { getByText } = await render(<LicenseScreen />);
+
+    expect(
+      getByText("Demande de renouvellement en cours de vérification"),
+    ).toBeTruthy();
   });
 
   it("opens the QR modal with the server-signed QR as-is (#168)", async () => {
@@ -371,11 +388,19 @@ describe("LicenseScreen Integration", () => {
     expect(getByTestId("license-screen-staff-card")).toBeTruthy();
   });
 
-  it("brings the Staff card forward and shows its staff QR", async () => {
+  it("brings the Staff card forward, without a number row nor a QR (#234)", async () => {
     const staffItems = [
       {
         type: "STAFF",
-        data: { firstName: "Staff", lastName: "Member", licenseNumber: "S1" },
+        data: {
+          firstName: "Marie",
+          lastName: "Curie",
+          licenseNumber: "",
+          birthDate: "",
+          validUntil: "",
+          status: "Permanente",
+          type: "STAFF / ORGANISATEUR",
+        },
       },
     ];
     (useLicenseLogic as jest.Mock).mockReturnValue({
@@ -387,10 +412,9 @@ describe("LicenseScreen Integration", () => {
     await fireEvent.press(getByTestId("license-screen-staff-card"));
     expect(mockActions.handleCardPress).toHaveBeenCalledWith(0);
 
+    // The card gets no QR handler: pressing it never opens a QR.
     await fireEvent.press(getByTestId("license-card-0"));
-    expect(mockActions.handleShowQr).toHaveBeenCalledWith(
-      JSON.stringify({ id: "S1", valid: true, type: "STAFF", role: "STAFF" }),
-    );
+    expect(mockActions.handleShowQr).not.toHaveBeenCalled();
   });
 
   it("handles card press", async () => {
@@ -509,41 +533,35 @@ describe("LicenseScreen Integration", () => {
       expect(contentStyle.paddingBottom).toBeGreaterThanOrEqual(90);
     });
 
-    it("reserves the stacked card offset under the wallet", async () => {
-      (useLicenseLogic as jest.Mock).mockReturnValue({
-        state: {
-          ...mockState,
-          listItems: [
-            { type: "FFD", data: { licenseNumber: "123" } },
-            { type: "ADD_WDSF", data: null },
-          ],
-        },
-        actions: mockActions,
-      });
-
-      const { getByTestId } = await render(<LicenseScreen />);
-      const walletStyle = StyleSheet.flatten(
-        getByTestId("license-screen-wallet").props.style as object,
-      ) as { paddingBottom?: number };
-
-      expect(walletStyle.paddingBottom).toBe(STACKED_CARD_ACTIVE_OFFSET);
-    });
-
-    it("lets the wallet height follow the compact active card", async () => {
+    it("sizes the wallet from the measured cards: peek + front card", async () => {
       (useLicenseLogic as jest.Mock).mockReturnValue({
         state: { ...mockState, showWdsf: true, listItems: dualItems },
         actions: mockActions,
       });
 
       const { getByTestId } = await render(<LicenseScreen />);
+      const layout = (height: number) => ({
+        nativeEvent: { layout: { x: 0, y: 0, width: 335, height } },
+      });
+      await fireEvent(
+        getByTestId("license-screen-card-FFD"),
+        "layout",
+        layout(320),
+      );
+      await fireEvent(
+        getByTestId("license-screen-card-WDSF"),
+        "layout",
+        layout(300),
+      );
+
       const walletStyle = StyleSheet.flatten(
         getByTestId("license-screen-wallet").props.style as object,
-      ) as { minHeight?: number; paddingBottom?: number };
+      ) as { minHeight?: number; height?: number };
 
       // No fixed minimum that would push the content under the tab bar: the
-      // stack is the active card + the reserved offset of the peeking card.
+      // stack is the peeking header of the WDSF card + the front FFD card.
       expect(walletStyle.minHeight).toBeUndefined();
-      expect(walletStyle.paddingBottom).toBe(STACKED_CARD_ACTIVE_OFFSET);
+      expect(walletStyle.height).toBe(STACKED_CARD_PEEK + 320);
     });
   });
 
@@ -581,17 +599,25 @@ describe("LicenseScreen Integration", () => {
       expect(getByTestId("license-screen-card-WDSF")).toBeTruthy();
     });
 
-    it("expands the active FFD card and collapses the WDSF one", async () => {
-      const { getByTestId } = await renderDual(0);
+    it("renders the card behind in full, as one labelled button", async () => {
+      const { getByTestId, getByLabelText } = await renderDual(0);
 
-      expect(getByTestId("license-card-FFD").props.accessibilityHint).toBe(
-        "expanded",
-      );
-      expect(getByTestId("license-card-WDSF").props.accessibilityHint).toBe(
-        "collapsed",
+      // Both cards are full cards (no compact variant): bringing one forward
+      // only moves it, it never changes its size.
+      expect(getByTestId("license-card-FFD")).toBeTruthy();
+      expect(
+        getByTestId("license-card-WDSF", { includeHiddenElements: true }),
+      ).toBeTruthy();
+      // The WDSF card behind is a single button that brings it forward; its
+      // content is hidden from screen readers and from touches.
+      const backCard = getByLabelText("Licence WDSF");
+      expect(backCard.props.accessibilityHint).toBe(
+        "Affiche cette carte au premier plan",
       );
       // Swipe-to-remove only works on the active WDSF card.
-      expect(getByTestId("swipeable-wdsf-disabled")).toBeTruthy();
+      expect(
+        getByTestId("swipeable-wdsf-disabled", { includeHiddenElements: true }),
+      ).toBeTruthy();
     });
 
     it("brings the WDSF card forward when tapped", async () => {
@@ -601,15 +627,13 @@ describe("LicenseScreen Integration", () => {
       expect(mockActions.handleCardPress).toHaveBeenCalledWith(1);
     });
 
-    it("expands the active WDSF card with swipe-to-remove and its menu", async () => {
-      const { getByTestId } = await renderDual(1);
+    it("brings the WDSF card forward with swipe-to-remove and its menu", async () => {
+      const { getByTestId, getByLabelText, queryByLabelText } =
+        await renderDual(1);
 
-      expect(getByTestId("license-card-WDSF").props.accessibilityHint).toBe(
-        "expanded",
-      );
-      expect(getByTestId("license-card-FFD").props.accessibilityHint).toBe(
-        "collapsed",
-      );
+      // The FFD card is now the one behind; the WDSF card is not a button.
+      expect(getByLabelText("Licence FFD")).toBeTruthy();
+      expect(queryByLabelText("Licence WDSF")).toBeNull();
       expect(getByTestId("swipeable-wdsf-enabled")).toBeTruthy();
 
       await fireEvent.press(getByTestId("license-card-WDSF-options"));
@@ -793,6 +817,66 @@ describe("LicenseScreen Integration", () => {
 
       const { queryByTestId } = await render(<LicenseScreen />);
       expect(queryByTestId("license-unavailable")).toBeNull();
+    });
+  });
+
+  describe("season and offline validity (#211)", () => {
+    const renderOffline = async (validUntilRaw?: string) => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          offlineSince: "2026-10-01T10:00:00.000Z",
+          listItems: [
+            {
+              type: "FFD",
+              data: {
+                firstName: "John",
+                lastName: "Doe",
+                licenseNumber: "1",
+                validUntilRaw,
+              },
+            },
+          ],
+        },
+        actions: mockActions,
+      });
+      const { getByTestId } = await render(<LicenseScreen />);
+      return (
+        StyleSheet.flatten(getByTestId("license-offline-dot").props.style) as {
+          backgroundColor?: string;
+        }
+      ).backgroundColor;
+    };
+
+    it.each([
+      [new Date(2026, 9, 10, 12, 0), "Saison 2026-2027"],
+      [new Date(2026, 7, 31, 12, 0), "Saison 2025-2026"],
+    ])("shows the current FFD season on %s", async (now, label) => {
+      jest.useFakeTimers({ now, doNotFake: ["nextTick", "setImmediate"] });
+      try {
+        (useLicenseLogic as jest.Mock).mockReturnValue({
+          state: mockState,
+          actions: mockActions,
+        });
+        const { getByText } = await render(<LicenseScreen />);
+        expect(getByText(label)).toBeTruthy();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it("uses a neutral offline dot when the expiry date is unknown", async () => {
+      expect(await renderOffline(undefined)).toBe(
+        mockTheme.theme.textSecondary,
+      );
+    });
+
+    it("uses a red offline dot for an expired licence", async () => {
+      expect(await renderOffline("2020-08-31")).toBe("#e74c3c");
+    });
+
+    it("uses a green offline dot for a valid licence", async () => {
+      expect(await renderOffline("2999-08-31")).toBe("#2ecc71");
     });
   });
 });

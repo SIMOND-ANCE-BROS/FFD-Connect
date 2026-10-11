@@ -56,7 +56,7 @@
 
 ### ⚠️ À valider
 
-- **TTS runtime** — `@google/genai` 2.x : le SDK est mocké en test ; le chemin réel est **à valider sur staging** (#677) car il conditionne les annonces du Mode Simulation.
+- **TTS runtime** — Azure AI Speech (managed identity) ; l'appel HTTP est mocké en test, le chemin réel est **à valider sur staging** (#677) car il conditionne les annonces du Mode Simulation. (Gemini et `@google/genai` ont été retirés, #216.)
 
 ---
 

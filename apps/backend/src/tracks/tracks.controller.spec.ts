@@ -254,12 +254,15 @@ describe("TracksController", () => {
   // ─── remove (DELETE /tracks/:id) ───────────────────────────────────────────
 
   describe("remove", () => {
-    it("delegates to the service deleteTrack", async () => {
+    it("delegates to the service deleteTrack with the caller as actor", async () => {
       mockTracksService.deleteTrack.mockResolvedValue(undefined);
 
-      await controller.remove("track-1");
+      await controller.remove("track-1", adminReq);
 
-      expect(mockTracksService.deleteTrack).toHaveBeenCalledWith("track-1");
+      expect(mockTracksService.deleteTrack).toHaveBeenCalledWith(
+        "track-1",
+        "admin-1",
+      );
     });
 
     it("propagates NotFoundException from the service", async () => {
@@ -267,7 +270,7 @@ describe("TracksController", () => {
         new NotFoundException("Track track-x not found"),
       );
 
-      await expect(controller.remove("track-x")).rejects.toThrow(
+      await expect(controller.remove("track-x", adminReq)).rejects.toThrow(
         NotFoundException,
       );
     });

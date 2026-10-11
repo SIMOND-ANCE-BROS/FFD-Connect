@@ -18,6 +18,7 @@ import { PinnedHeader } from "../../../components/PinnedHeader";
 import { SearchBar } from "../../../components/SearchBar";
 import { useTheme } from "../../../context/ThemeContext";
 import { useClubMembersLogic } from "../hooks/useClubMembersLogic";
+import { formatDiscipline } from "../../../utils/discipline";
 
 export const ClubMembersScreen = () => {
   const { theme, isDark } = useTheme();
@@ -77,7 +78,9 @@ export const ClubMembersScreen = () => {
                     style={{ color: theme.textSecondary }}
                   >
                     {item.license?.number ?? "Sans licence"} •{" "}
-                    {item.category ?? item.ageGroup ?? "—"}
+                    {(item.category ? formatDiscipline(item.category) : null) ??
+                      item.ageGroup ??
+                      "—"}
                   </AppText>
                 </View>
                 <View style={styles.actionButton}>

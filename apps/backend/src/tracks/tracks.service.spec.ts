@@ -1,10 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   HttpException,
   NotFoundException,
 } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
-import { TrackStatus } from "@prisma/client";
+import { TrackCorrectionStatus, TrackStatus } from "@prisma/client";
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -14,34 +15,42 @@ import {
   TrackRow,
   useTrackTable,
 } from "../../test/mocks/track-where.mock";
+import { AdminAuditService } from "../admin/admin-audit.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { BlobStorageService } from "../storage/blob-storage.service";
+import { idOnlySelect, trackAuditSelect } from "../utils/prisma-selects";
 import { BpmService } from "./bpm.service";
-import { TracksService } from "./tracks.service";
+import { TrackFilesService } from "./track-files.service";
+import {
+  TRACK_HAS_PENDING_CORRECTIONS_MESSAGE,
+  TracksService,
+} from "./tracks.service";
 
 describe("TracksService", () => {
   let service: TracksService;
   let prisma: MockPrismaService;
   let mockBpm: { calculateMpm: jest.Mock };
-  let mockBlob: { isEnabled: jest.Mock; deleteFile: jest.Mock };
+  let files: { remove: jest.Mock };
+  let audit: { record: jest.Mock };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     prisma = createMockPrismaService();
+    // Interactive transaction: the callback gets the same mocked client.
+    prisma.$transaction.mockImplementation(((fn: (tx: unknown) => unknown) =>
+      fn(prisma)) as never);
     mockBpm = {
       calculateMpm: jest.fn((bpm: number) => Math.round(bpm)),
     };
-    mockBlob = {
-      isEnabled: jest.fn().mockReturnValue(false),
-      deleteFile: jest.fn().mockResolvedValue(true),
-    };
+    files = { remove: jest.fn().mockResolvedValue(undefined) };
+    audit = { record: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TracksService,
         { provide: PrismaService, useValue: prisma },
         { provide: BpmService, useValue: mockBpm },
-        { provide: BlobStorageService, useValue: mockBlob },
+        { provide: TrackFilesService, useValue: files },
+        { provide: AdminAuditService, useValue: audit },
       ],
     }).compile();
 
@@ -296,7 +305,9 @@ describe("TracksService", () => {
       expect(tx.track.update).toHaveBeenCalledWith({
         where: { id: "t1" },
         data: { title: "New" },
+        select: trackAuditSelect,
       });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(prisma.track.findUnique).not.toHaveBeenCalled();
       expect(prisma.track.update).not.toHaveBeenCalled();
     });
@@ -470,6 +481,180 @@ describe("TracksService", () => {
 
       expect(prisma.track.update).not.toHaveBeenCalled();
     });
+
+    it("audits the fields really applied, read back in the same transaction", async () => {
+      prisma.track.findUnique.mockResolvedValue({
+        submittedById: null,
+        rawBpm: 104,
+        title: "Old",
+        artist: "A",
+        style: "Tango",
+        bpm: 33,
+        titleMasked: false,
+        blacklisted: false,
+        clashTimecodes: [],
+        status: TrackStatus.READY,
+      } as never);
+      prisma.track.update.mockResolvedValue({
+        title: "Old",
+        artist: "A",
+        style: "Rumba",
+        bpm: 26,
+        titleMasked: false,
+        blacklisted: true,
+        clashTimecodes: [],
+        status: TrackStatus.READY,
+      } as never);
+      mockBpm.calculateMpm.mockReturnValue(26);
+
+      await service.updateTrack("t1", "admin-1", true, {
+        style: "Rumba",
+        blacklisted: true,
+      });
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.track.update).toHaveBeenCalledWith({
+        where: { id: "t1" },
+        data: { style: "Rumba", blacklisted: true, bpm: 26 },
+        select: trackAuditSelect,
+      });
+      expect(audit.record).toHaveBeenCalledTimes(1);
+      expect(audit.record).toHaveBeenCalledWith(prisma, {
+        actorId: "admin-1",
+        action: "TRACK_UPDATE",
+        targetType: "TRACK",
+        targetId: "t1",
+        before: { style: "Tango", bpm: 33, blacklisted: false },
+        after: { style: "Rumba", bpm: 26, blacklisted: true },
+      });
+    });
+
+    it("writes no audit row when nothing changed", async () => {
+      const row = {
+        title: "Same",
+        artist: "A",
+        style: null,
+        bpm: 0,
+        titleMasked: false,
+        blacklisted: false,
+        clashTimecodes: [],
+        status: TrackStatus.READY,
+      };
+      prisma.track.findUnique.mockResolvedValue({
+        submittedById: null,
+        rawBpm: 0,
+        ...row,
+      } as never);
+      prisma.track.update.mockResolvedValue(row as never);
+
+      await service.updateTrack("t1", "admin-1", true, { title: "Same" });
+
+      expect(prisma.track.update).toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it("writes no audit row when the update fails", async () => {
+      prisma.track.findUnique.mockResolvedValue({
+        submittedById: null,
+        rawBpm: 0,
+      } as never);
+      prisma.track.update.mockRejectedValue(new Error("db down"));
+
+      await expect(
+        service.updateTrack("t1", "admin-1", true, { title: "X" }),
+      ).rejects.toThrow("db down");
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it("audits through the caller's transaction when one is given", async () => {
+      const tx = createMockPrismaService();
+      tx.track.findUnique.mockResolvedValue({
+        submittedById: null,
+        rawBpm: 0,
+        title: "Old",
+      } as never);
+      tx.track.update.mockResolvedValue({ title: "New" } as never);
+
+      await service.updateTrack("t1", "admin-1", true, { title: "New" }, tx);
+
+      expect(audit.record).toHaveBeenCalledWith(
+        tx,
+        expect.objectContaining({
+          action: "TRACK_UPDATE",
+          before: { title: "Old" },
+          after: { title: "New" },
+        }),
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("skips its own audit row when the caller audits (correction approval)", async () => {
+      const tx = createMockPrismaService();
+      tx.track.findUnique.mockResolvedValue({
+        submittedById: null,
+        rawBpm: 0,
+        title: "Old",
+      } as never);
+      tx.track.update.mockResolvedValue({ title: "New" } as never);
+
+      await service.updateTrack("t1", "admin-1", true, { title: "New" }, tx, {
+        skipAudit: true,
+      });
+
+      expect(tx.track.update).toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it("publishes an ERROR track once an admin sets its MPM", async () => {
+      prisma.track.findUnique.mockResolvedValue({
+        submittedById: null,
+        rawBpm: 0,
+        bpm: 0,
+        status: TrackStatus.ERROR,
+      } as never);
+      prisma.track.update.mockResolvedValue({
+        bpm: 52,
+        status: TrackStatus.READY,
+      } as never);
+
+      await service.updateTrack("t1", "admin-1", true, { bpm: 52 });
+
+      expect(prisma.track.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { bpm: 52, status: TrackStatus.READY },
+        }),
+      );
+      expect(audit.record).toHaveBeenCalledWith(
+        prisma,
+        expect.objectContaining({
+          before: { bpm: 0, status: TrackStatus.ERROR },
+          after: { bpm: 52, status: TrackStatus.READY },
+        }),
+      );
+    });
+
+    it("keeps an ERROR track out of the library without a tempo, and never promotes another status", async () => {
+      prisma.track.update.mockResolvedValue({} as never);
+      prisma.track.findUnique.mockResolvedValueOnce({
+        submittedById: null,
+        rawBpm: 0,
+        status: TrackStatus.ERROR,
+      } as never);
+      await service.updateTrack("t1", "admin-1", true, { title: "X", bpm: 0 });
+      expect(prisma.track.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: { title: "X", bpm: 0 } }),
+      );
+
+      prisma.track.findUnique.mockResolvedValueOnce({
+        submittedById: null,
+        rawBpm: 0,
+        status: TrackStatus.PENDING,
+      } as never);
+      await service.updateTrack("t1", "admin-1", true, { bpm: 52 });
+      expect(prisma.track.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: { bpm: 52 } }),
+      );
+    });
   });
 
   describe("bpmForPatch", () => {
@@ -493,42 +678,131 @@ describe("TracksService", () => {
   });
 
   describe("deleteTrack", () => {
+    const row = {
+      title: "Rumba",
+      artist: "Orchestre",
+      sourceKey: "apple:1",
+      filename: "a.mp3",
+      artwork: "a.jpg",
+    };
+
     it("throws NotFoundException when the track is missing", async () => {
       prisma.track.findUnique.mockResolvedValue(null);
 
-      await expect(service.deleteTrack("missing")).rejects.toThrow(
+      await expect(service.deleteTrack("missing", "admin-1")).rejects.toThrow(
         NotFoundException,
       );
       expect(prisma.track.delete).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
     });
 
-    it("deletes the DB row and the local file when blob storage is disabled", async () => {
-      prisma.track.findUnique.mockResolvedValue(
-        // @ts-expect-error - testing partial return
-        { filename: "song.mp3" },
-      );
-      // @ts-expect-error - testing partial return
-      prisma.track.delete.mockResolvedValue({});
+    it("refuses (409) while correction proposals are pending, and keeps the files", async () => {
+      prisma.track.findUnique.mockResolvedValue(row as never);
+      prisma.trackCorrection.count.mockResolvedValue(2);
 
-      await service.deleteTrack("t1");
+      const error = await service
+        .deleteTrack("t1", "admin-1")
+        .catch((e: unknown) => e);
 
-      expect(prisma.track.delete).toHaveBeenCalledWith({ where: { id: "t1" } });
-      expect(mockBlob.deleteFile).not.toHaveBeenCalled();
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).getResponse()).toEqual({
+        message: TRACK_HAS_PENDING_CORRECTIONS_MESSAGE,
+        pendingCorrections: 2,
+      });
+      expect(prisma.trackCorrection.count).toHaveBeenCalledWith({
+        where: { trackId: "t1", status: TrackCorrectionStatus.PENDING },
+      });
+      expect(prisma.track.delete).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(files.remove).not.toHaveBeenCalled();
     });
 
-    it("deletes the blob when blob storage is enabled", async () => {
-      mockBlob.isEnabled.mockReturnValue(true);
-      prisma.track.findUnique.mockResolvedValue(
-        // @ts-expect-error - testing partial return
-        { filename: "song.mp3" },
+    it("deletes the row with its audit row in one transaction, then both files", async () => {
+      prisma.track.findUnique.mockResolvedValue(row as never);
+      prisma.trackCorrection.count.mockResolvedValue(0);
+      prisma.track.count.mockResolvedValue(0);
+      prisma.track.delete.mockResolvedValue({ id: "t1" } as never);
+
+      await service.deleteTrack("t1", "admin-1");
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.track.delete).toHaveBeenCalledWith({
+        where: { id: "t1" },
+        select: idOnlySelect,
+      });
+      expect(audit.record).toHaveBeenCalledWith(prisma, {
+        actorId: "admin-1",
+        action: "TRACK_DELETE",
+        targetType: "TRACK",
+        targetId: "t1",
+        before: {
+          title: "Rumba",
+          artist: "Orchestre",
+          sourceKey: "apple:1",
+          filename: "a.mp3",
+        },
+      });
+      expect(files.remove).toHaveBeenCalledWith(["a.mp3", "a.jpg"]);
+    });
+
+    it("removes only the audio file of a track without artwork", async () => {
+      prisma.track.findUnique.mockResolvedValue({
+        ...row,
+        artwork: null,
+      } as never);
+      prisma.trackCorrection.count.mockResolvedValue(0);
+      prisma.track.count.mockResolvedValue(0);
+      prisma.track.delete.mockResolvedValue({ id: "t1" } as never);
+
+      await service.deleteTrack("t1", "admin-1");
+
+      expect(files.remove).toHaveBeenCalledWith(["a.mp3"]);
+      expect(prisma.track.count).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps an artwork another track still uses, and removes the unshared audio", async () => {
+      prisma.track.findUnique.mockResolvedValue(row as never);
+      prisma.trackCorrection.count.mockResolvedValue(0);
+      prisma.track.delete.mockResolvedValue({ id: "t1" } as never);
+      prisma.track.count.mockImplementation((async (args: {
+        where: { artwork?: string; filename?: string };
+      }) => (args.where.artwork === "a.jpg" ? 1 : 0)) as never);
+
+      await service.deleteTrack("t1", "admin-1");
+
+      // Counted inside the transaction, after the row is gone: the remaining tracks.
+      expect(prisma.track.count).toHaveBeenCalledWith({
+        where: { artwork: "a.jpg" },
+      });
+      expect(prisma.track.count).toHaveBeenCalledWith({
+        where: { filename: "a.mp3" },
+      });
+      expect(files.remove).toHaveBeenCalledWith(["a.mp3"]);
+    });
+
+    it("keeps an audio file another track still uses", async () => {
+      prisma.track.findUnique.mockResolvedValue(row as never);
+      prisma.trackCorrection.count.mockResolvedValue(0);
+      prisma.track.delete.mockResolvedValue({ id: "t1" } as never);
+      prisma.track.count.mockImplementation((async (args: {
+        where: { artwork?: string; filename?: string };
+      }) => (args.where.filename === "a.mp3" ? 2 : 0)) as never);
+
+      await service.deleteTrack("t1", "admin-1");
+
+      expect(files.remove).toHaveBeenCalledWith(["a.jpg"]);
+    });
+
+    it("leaves the files and writes no audit row when the deletion fails", async () => {
+      prisma.track.findUnique.mockResolvedValue(row as never);
+      prisma.trackCorrection.count.mockResolvedValue(0);
+      prisma.track.delete.mockRejectedValue(new Error("db down"));
+
+      await expect(service.deleteTrack("t1", "admin-1")).rejects.toThrow(
+        "db down",
       );
-      // @ts-expect-error - testing partial return
-      prisma.track.delete.mockResolvedValue({});
-
-      await service.deleteTrack("t1");
-
-      expect(prisma.track.delete).toHaveBeenCalledWith({ where: { id: "t1" } });
-      expect(mockBlob.deleteFile).toHaveBeenCalledWith("song.mp3");
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(files.remove).not.toHaveBeenCalled();
     });
   });
 });

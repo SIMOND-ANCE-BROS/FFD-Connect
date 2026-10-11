@@ -7,6 +7,12 @@ import {
   adminControllerListClubs,
   adminControllerListUsers,
   adminControllerReferenceData,
+  adminLicenseRenewalsControllerDetail,
+  adminLicenseRenewalsControllerList,
+  adminStatsControllerGet,
+  adminUsageControllerGet,
+  adminTracksControllerFindOne,
+  adminTracksControllerList,
   trackCorrectionsControllerFindOne,
   trackCorrectionsControllerList,
   trackCorrectionsControllerPendingCount,
@@ -15,13 +21,19 @@ import type {
   AdminControllerAuditLogData,
   AdminControllerListClubsData,
   AdminControllerListUsersData,
+  AdminLicenseRenewalsControllerListData,
+  AdminTracksControllerListData,
   TrackCorrectionsControllerListData,
 } from './generated/types.gen';
+import type { StatsPeriod } from '../lib/stats';
+import type { UsagePeriod, UsageSpace } from '../lib/usage';
 
 export type UsersFilter = NonNullable<AdminControllerListUsersData['query']>;
 export type ClubsFilter = NonNullable<AdminControllerListClubsData['query']>;
 export type AuditFilter = NonNullable<AdminControllerAuditLogData['query']>;
 export type ModerationFilter = NonNullable<TrackCorrectionsControllerListData['query']>;
+export type TracksFilter = NonNullable<AdminTracksControllerListData['query']>;
+export type LicenseRenewalsFilter = NonNullable<AdminLicenseRenewalsControllerListData['query']>;
 
 /** Throws so React Query surfaces the error state (the generated client never throws). */
 export async function unwrap<T>(p: Promise<{ data?: T; error?: unknown }>): Promise<T> {
@@ -115,3 +127,87 @@ export const correctionQuery = (id: string) =>
     refetchOnReconnect: false,
     retry: false,
   });
+
+/**
+ * Track catalogue. Same rule as the moderation queries: a refocus, a
+ * reconnect or a retry would wake the scale-to-zero backend.
+ */
+export const tracksQuery = (q: TracksFilter) =>
+  queryOptions({
+    queryKey: ['admin', 'tracks', 'list', q],
+    queryFn: () => unwrap(adminTracksControllerList({ query: q })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+export const trackQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['admin', 'tracks', 'item', id],
+    queryFn: () => unwrap(adminTracksControllerFindOne({ path: { id } })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/** Stats are computed on demand: no refetch on focus or reconnect, no retry (lot 4). */
+export const statsQuery = (period: StatsPeriod) =>
+  queryOptions({
+    queryKey: ['admin', 'stats', period],
+    queryFn: () => unwrap(adminStatsControllerGet({ query: { period } })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/** Usage is computed on demand: no refetch on focus or reconnect, no retry (lot 5). */
+export const usageQuery = (period: UsagePeriod, space?: UsageSpace) =>
+  queryOptions({
+    queryKey: ['admin', 'usage', period, space ?? 'ALL'],
+    queryFn: () =>
+      unwrap(adminUsageControllerGet({ query: space ? { period, space } : { period } })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/**
+ * Licence renewals (#267). Same rule as moderation: a refocus, a reconnect
+ * or a retry would wake the scale-to-zero backend.
+ */
+export const licenseRenewalsQuery = (q: LicenseRenewalsFilter) =>
+  queryOptions({
+    queryKey: ['admin', 'license-renewals', 'list', q],
+    queryFn: () => unwrap(adminLicenseRenewalsControllerList({ query: q })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/** Each read of the detail is audited server-side (LICENSE_RENEWAL_VIEW). */
+export const licenseRenewalQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['admin', 'license-renewals', 'item', id],
+    queryFn: () => unwrap(adminLicenseRenewalsControllerDetail({ path: { id } })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/**
+ * Requests waiting for a decision, for the menu badge: the total of a
+ * one-row page (the API has no count route). Refetched on navigation and
+ * after a decision only.
+ */
+export const pendingRenewalsCountQuery = queryOptions({
+  queryKey: ['admin', 'license-renewals', 'pending-count'],
+  queryFn: async () => {
+    const page = await unwrap(
+      adminLicenseRenewalsControllerList({ query: { status: 'PENDING', take: 1 } }),
+    );
+    return { count: page.meta.total };
+  },
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+  retry: false,
+});

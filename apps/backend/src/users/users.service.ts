@@ -16,13 +16,18 @@ import { AppleWalletPassGenerator } from "../licenses/wallet/apple-wallet-pass.g
 import { PrismaService } from "../prisma/prisma.service";
 import { publicTrackName } from "../tracks/track-visibility.util";
 import {
+  competitionLevelsSelect,
   deviceTokenExportSelect,
   licenseBaseSelect,
+  licenseRenewalRequestExportSelect,
   notificationPreferenceExportSelect,
+  seatBookingExportSelect,
+  soloTeamMembershipExportSelect,
   trackCorrectionExportSelect,
 } from "../utils/prisma-selects";
+import { pickRenewalOcrData } from "../licenses/renewal-ocr-data.util";
 import { WdsfService } from "../wdsf/wdsf.service";
-import { wdsfNameMatches } from "../wdsf/wdsf.utils";
+import { resolveWdsfFederation, wdsfNameMatches } from "../wdsf/wdsf.utils";
 import { AccountDeletionService } from "./account-deletion.service";
 
 /** Champs de base récupérés pour tout utilisateur. */
@@ -34,7 +39,8 @@ const USER_BASE_SELECT = {
   role: true,
   category: true,
   ageGroup: true,
-  competitionLevel: true,
+  // Per-discipline levels + deprecated single level (kept for older clients).
+  ...competitionLevelsSelect,
   clubName: true,
   createdAt: true,
   updatedAt: true,
@@ -45,6 +51,7 @@ const USER_BASE_SELECT = {
   wdsfLicenseType: true,
   wdsfAgeGroup: true,
   wdsfExpiresOn: true,
+  wdsfFederation: true,
 } satisfies Prisma.UserSelect;
 
 /** Export RGPD : inscriptions avec le contexte compétition/épreuve. */
@@ -84,12 +91,14 @@ function buildWdsfFromUser(user: {
   wdsfLicenseType: string | null;
   wdsfAgeGroup: string | null;
   wdsfExpiresOn: Date | null;
+  wdsfFederation?: string | null;
 }): {
   min: string;
   nationality?: string | null;
   licenseType?: string | null;
   ageGroup?: string | null;
   expiresOn?: string | null;
+  federation: string | null;
 } | null {
   if (!user.wdsfMin?.trim()) return null;
   return {
@@ -98,6 +107,12 @@ function buildWdsfFromUser(user: {
     licenseType: user.wdsfLicenseType ?? null,
     ageGroup: user.wdsfAgeGroup ?? null,
     expiresOn: user.wdsfExpiresOn ? user.wdsfExpiresOn.toISOString() : null,
+    // National federation read from WDSF when linked; licenses linked before
+    // it was stored fall back on the nationality (France ⇒ FFD).
+    federation:
+      user.wdsfFederation?.trim() ||
+      resolveWdsfFederation(null, user.wdsfNationality) ||
+      null,
   };
 }
 
@@ -260,6 +275,8 @@ export class UsersService {
         extraRoles: true,
         birthDate: true,
         nationalRanking: true,
+        // Store-review account: the app may tell the reviewer writes are simulated.
+        isStoreReview: true,
         club: { select: { disabledAt: true } },
         license: { select: licenseBaseSelect },
         // Exclure le password explicitement
@@ -313,6 +330,7 @@ export class UsersService {
           wdsfLicenseType: null,
           wdsfAgeGroup: null,
           wdsfExpiresOn: null,
+          wdsfFederation: null,
         },
       });
       return this.findOne(userId);
@@ -326,7 +344,10 @@ export class UsersService {
       throw new Error("Invalid wdsf.expiresOn date");
     }
 
-    await this.assertWdsfNameMatchesAccount(userId, data.min.trim());
+    const athlete = await this.assertWdsfNameMatchesAccount(
+      userId,
+      data.min.trim(),
+    );
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -336,6 +357,8 @@ export class UsersService {
         wdsfLicenseType: data.licenseType?.trim() ?? null,
         wdsfAgeGroup: data.ageGroup?.trim() ?? null,
         wdsfExpiresOn: expiresOnDate,
+        // Read server-side from WDSF, never trusted from the client payload.
+        wdsfFederation: athlete.structure?.trim() || null,
       },
     });
     return this.findOne(userId);
@@ -345,11 +368,12 @@ export class UsersService {
    * Refuse de lier un MIN WDSF dont le titulaire ne porte pas le nom du compte
    * (celui de la licence FFD). Le MIN est relu côté serveur auprès de la WDSF :
    * on ne fait jamais confiance au nom envoyé par le client.
+   * Renvoie la fiche WDSF relue (fédération nationale comprise).
    */
   private async assertWdsfNameMatchesAccount(
     userId: string,
     min: string,
-  ): Promise<void> {
+  ): Promise<{ structure?: string }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { firstName: true, lastName: true },
@@ -366,6 +390,7 @@ export class UsersService {
         code: "WDSF_NAME_MISMATCH",
       });
     }
+    return athlete;
   }
 
   /**
@@ -403,6 +428,9 @@ export class UsersService {
    * Les appareils enregistrés pour le push apparaissent en métadonnées
    * (plateforme, dates) : la donnée personnelle est déclarée, sans exposer la
    * valeur du token FCM qui permettrait de détourner la livraison.
+   *
+   * Les documents de renouvellement de licence n'exposent que la liste
+   * blanche OCR (`pickRenewalOcrData`), jamais le texte brut ni le fichier.
    */
   async exportMyData(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -411,6 +439,8 @@ export class UsersService {
         ...USER_BASE_SELECT,
         extraRoles: true,
         birthDate: true,
+        nationalRanking: true,
+        lastLoginAt: true,
         license: {
           select: {
             number: true,
@@ -458,6 +488,25 @@ export class UsersService {
           orderBy: { createdAt: "desc" },
           take: 500,
         },
+        // Demandes de renouvellement de licence (#241) : statut, dates et,
+        // par document, type, date de dépôt et données lues — filtrées plus
+        // bas par la liste blanche OCR (jamais le texte brut du certificat
+        // médical). Le fichier et sa référence de stockage restent internes.
+        licenseRenewalRequests: {
+          select: licenseRenewalRequestExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        },
+        soloTeamMemberships: {
+          select: soloTeamMembershipExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        },
+        seatBookings: {
+          select: seatBookingExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 500,
+        },
       },
     });
     if (!user) {
@@ -466,12 +515,22 @@ export class UsersService {
     // Nom des pistes visées par les propositions : filtré comme partout côté
     // non-admin. L'export ne doit pas démasquer une piste modérée (titre
     // masqué ou piste blacklistée) que l'utilisateur a pu cibler.
-    const { trackCorrectionsProposed, ...rest } = user;
+    const { trackCorrectionsProposed, licenseRenewalRequests, ...rest } = user;
     return {
       format: "ffd-connect-export-v1",
       exportedAt: new Date().toISOString(),
       data: {
         ...rest,
+        licenseRenewalRequests: licenseRenewalRequests.map(
+          ({ documents, ...request }) => ({
+            ...request,
+            documents: documents.map((document) => ({
+              type: document.type,
+              createdAt: document.createdAt,
+              ocrData: pickRenewalOcrData(document.type, document.ocrData),
+            })),
+          }),
+        ),
         trackCorrectionsProposed: trackCorrectionsProposed.map(
           ({ track, ...correction }) => ({
             ...correction,

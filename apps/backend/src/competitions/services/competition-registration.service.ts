@@ -15,15 +15,30 @@ import {
 import {
   computeCoupleAgeGroup,
   computeSoloAgeGroup,
+  ESPOIR_AGE_GROUP,
+  ESPOIR_MAX_AGE,
+  ESPOIR_MIN_AGE,
   getReferenceYear,
+  isCoupleEspoirEligible,
 } from "../../common/age-group";
+import {
+  disciplineLabel,
+  getCompetitionLevelForCategory,
+  normalizeDiscipline,
+  practisesDiscipline,
+} from "../../common/competition-level";
 import { checkParticipationEligibility } from "../../common/participation-rules";
 import { handlePrismaError } from "../../utils/prisma-errors.util";
 import { hasRole } from "../../auth/roles";
 import {
   competitionForRegistrationSelect,
+  userEligibilityProfileSelect,
   userRolesClubSelect,
 } from "../../utils/prisma-selects";
+
+/** 10 danses : réservé aux danseurs des deux disciplines. */
+export const TEN_DANCE_BOTH_DISCIPLINES_MESSAGE =
+  "Les épreuves 10 danses sont réservées aux danseurs pratiquant les Latines et les Standards.";
 import { PrismaService } from "../../prisma/prisma.service";
 import { ClubsHelloAssoService } from "../../clubs/clubs-helloasso.service";
 import { CompetitionCacheService } from "./competition-cache.service";
@@ -170,8 +185,16 @@ export class CompetitionRegistrationService {
     let computedAgeGroup: string | null = null;
     const registrant = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { birthDate: true },
+      select: { birthDate: true, ...userEligibilityProfileSelect },
     });
+    // 10 danses : la personne inscrite doit pratiquer les deux disciplines
+    // (aucune condition de niveau). Profil sans info de discipline : non bloquant.
+    if (
+      normalizeDiscipline(event.category) === "Ten Dance" &&
+      practisesDiscipline(registrant, event.category) === false
+    ) {
+      throw new BadRequestException(TEN_DANCE_BOTH_DISCIPLINES_MESSAGE);
+    }
     if (event.eventType === EventType.SOLO && registrant?.birthDate) {
       computedAgeGroup = computeSoloAgeGroup(
         registrant.birthDate,
@@ -196,6 +219,18 @@ export class CompetitionRegistrationService {
           partner.birthDate,
           referenceYear,
         );
+        if (
+          event.ageGroup === ESPOIR_AGE_GROUP &&
+          !isCoupleEspoirEligible(
+            registrant.birthDate,
+            partner.birthDate,
+            referenceYear,
+          )
+        ) {
+          throw new BadRequestException(
+            `Les épreuves Espoir sont réservées aux couples de moins de 21 ans (partenaires de ${ESPOIR_MIN_AGE} à ${ESPOIR_MAX_AGE} ans au 31 décembre).`,
+          );
+        }
       }
       if (!partnerDisplayName && partner?.firstName != null) {
         partnerDisplayName = `${partner.firstName} ${partner.lastName}`.trim();
@@ -223,9 +258,11 @@ export class CompetitionRegistrationService {
         eventKind: eventKind ?? undefined,
         competitionType: competitionType ?? undefined,
         registrantAgeGroup: finalAgeGroup,
+        // Niveau explicite, sinon celui du profil DANS LA DISCIPLINE de l'épreuve.
         registrantLevel: options.registrantLevel?.trim()
           ? options.registrantLevel.trim()
-          : undefined,
+          : (getCompetitionLevelForCategory(registrant, event.category) ??
+            undefined),
       });
       if (!eligibility.allowed) {
         throw new BadRequestException(
@@ -252,7 +289,7 @@ export class CompetitionRegistrationService {
       });
       if (otherInSameSpecialty) {
         throw new BadRequestException(
-          `En compétition majeure, un couple ou solo ne peut participer qu'à une seule épreuve par spécialité (${event.category}). Vous êtes déjà inscrit à une épreuve ${event.category}.`,
+          `En compétition majeure, un couple ou solo ne peut participer qu'à une seule épreuve par spécialité (${disciplineLabel(event.category)}). Vous êtes déjà inscrit à une épreuve ${disciplineLabel(event.category)}.`,
         );
       }
     }

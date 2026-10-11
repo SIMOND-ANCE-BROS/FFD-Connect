@@ -1,24 +1,34 @@
 /**
- * Seed des COMPTES DE TEST par rôle — staging uniquement.
+ * Seed du COMPTE DE VALIDATION DES STORES — staging uniquement.
  *
- * Permet le « switch de profil » côté client (preview) : le testeur se reconnecte
- * instantanément en LICENSEE / CLUB / STAFF / ADMIN pour tester les
- * fonctionnalités de chaque rôle AVEC de vraies données (le backend voit le
- * vrai rôle du JWT).
+ * Un seul compte de test subsiste sur staging : `licensee@test.com`, donné aux
+ * équipes de validation App Store Connect / Google Play (les builds TestFlight
+ * et Play visent backend-staging). Il est :
+ * - ADMIN en rôle principal, avec TOUS les autres rôles en `extraRoles`
+ *   (multi-profil, lot 1c) pour que les relecteurs voient chaque espace ;
+ * - rattaché au club « Club Test FFD » (nécessaire au rôle CLUB) ;
+ * - marqué `isStoreReview` (lui ET son club) : ses écritures sont SIMULÉES
+ *   (StoreReviewInterceptor, réponse 2xx sans écriture en base) et le
+ *   back-office refuse de le supprimer ou de le désactiver.
+ *
+ * Son mot de passe est le secret partagé PROFILE_TEST_PASSWORD (variable
+ * d'environnement de staging, connue des stores) : ne JAMAIS changer l'email
+ * ni le mot de passe. Le hash n'est écrit qu'à la création (un compte existant
+ * garde son mot de passe) ; sans la variable, un compte absent n'est pas créé.
  *
  * Idempotent (upsert par email). Lancé au démarrage du conteneur
- * (docker-entrypoint.sh) UNIQUEMENT si SEED_TEST_TRACKS=true — jamais en prod.
- * Le mot de passe partagé est connu du bundle PREVIEW uniquement (voir
- * src/features/settings/utils/profileSwitch.ts, gated APP_ENV==="preview").
- *
- * ⚠️ Ces comptes n'existent que sur staging (seed non lancé en prod). Ne pas
- * réutiliser ce mot de passe ailleurs.
+ * (docker-entrypoint.sh) UNIQUEMENT si SEED_TEST_TRACKS=true — jamais en prod —
+ * APRÈS purge-test-accounts.
  */
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, UserRole } from "@prisma/client";
+import { Prisma, PrismaClient, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import "dotenv/config";
 import { Pool } from "pg";
+import {
+  STORE_REVIEW_CLUB_NAME,
+  STORE_REVIEW_EMAIL,
+} from "./purge-test-accounts.utils";
 
 const connectionString = process.env.DATABASE_URL;
 const pool = new Pool({ connectionString });
@@ -26,112 +36,113 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 const BCRYPT_ROUNDS = 12;
-/** Mot de passe partagé des comptes de test (staging). Connu du bundle preview. */
-const TEST_PASSWORD = process.env.PROFILE_TEST_PASSWORD ?? "TestProfil2026!";
-const CLUB_NAME = "Club Test FFD";
+/**
+ * Mot de passe partagé du compte de validation : variable d'environnement
+ * UNIQUEMENT (secret de la Container App staging), jamais de valeur par défaut
+ * dans le dépôt (public). Lu seulement pour CRÉER le compte.
+ */
+const TEST_PASSWORD = process.env.PROFILE_TEST_PASSWORD?.trim();
+const LICENSE_NUMBER = "TEST-LICENSEE-001";
+const CATEGORY = "Latin";
+/** La licence doit rester valide pendant toute la durée des validations. */
+const LICENSE_VALID_UNTIL = new Date("2030-12-31");
 
-interface TestAccount {
-  email: string;
-  firstName: string;
-  lastName: string;
-  role: UserRole;
-  clubName?: string;
-  category?: string;
-  ageGroup?: string;
-}
+/** ADMIN principal + tous les autres rôles, dans l'ordre de l'enum. */
+const MAIN_ROLE = UserRole.ADMIN;
+const EXTRA_ROLES = Object.values(UserRole).filter((r) => r !== MAIN_ROLE);
 
-const ACCOUNTS: TestAccount[] = [
-  {
-    email: "licensee@test.com",
-    firstName: "Test",
-    lastName: "Licencié",
-    role: UserRole.LICENSEE,
-    clubName: CLUB_NAME,
-    category: "Latin",
-    ageGroup: "Adulte",
-  },
-  {
-    email: "club@test.com",
-    firstName: "Test",
-    lastName: "Club",
-    role: UserRole.CLUB,
-    clubName: CLUB_NAME,
-  },
-  {
-    email: "staff@test.com",
-    firstName: "Test",
-    lastName: "Staff",
-    role: UserRole.STAFF,
-  },
-  {
-    email: "admin@test.com",
-    firstName: "Test",
-    lastName: "Admin",
-    role: UserRole.ADMIN,
-  },
-];
-
-async function main() {
-  const passwordHash = await bcrypt.hash(TEST_PASSWORD, BCRYPT_ROUNDS);
-
-  // Le compte CLUB a besoin d'un Club (nom unique) pour un espace club non vide.
-  await prisma.club.upsert({
-    where: { name: CLUB_NAME },
-    update: {},
-    create: { name: CLUB_NAME },
-  });
-  const club = await prisma.club.findUnique({
-    where: { name: CLUB_NAME },
+async function createAccount(
+  profile: Omit<
+    Prisma.UserUncheckedCreateInput,
+    "email" | "password" | "firstName" | "lastName"
+  >,
+): Promise<{ id: string } | null> {
+  if (!TEST_PASSWORD) {
+    console.error(
+      `seed-profile-test-accounts: ${STORE_REVIEW_EMAIL} is missing and PROFILE_TEST_PASSWORD is not set — account not created.`,
+    );
+    process.exitCode = 1;
+    return null;
+  }
+  return prisma.user.create({
+    data: {
+      email: STORE_REVIEW_EMAIL,
+      password: await bcrypt.hash(TEST_PASSWORD, BCRYPT_ROUNDS),
+      firstName: "Test",
+      lastName: "Licencié",
+      ...profile,
+    },
     select: { id: true },
   });
+}
 
-  let count = 0;
-  for (const acc of ACCOUNTS) {
-    const user = await prisma.user.upsert({
-      where: { email: acc.email },
-      update: {
-        role: acc.role,
-        firstName: acc.firstName,
-        lastName: acc.lastName,
-        clubName: acc.clubName ?? null,
-        clubId: acc.role === "CLUB" ? (club?.id ?? null) : null,
-        category: acc.category ?? null,
-        ageGroup: acc.ageGroup ?? null,
-      },
-      create: {
-        email: acc.email,
-        password: passwordHash,
-        role: acc.role,
-        firstName: acc.firstName,
-        lastName: acc.lastName,
-        clubName: acc.clubName ?? null,
-        clubId: acc.role === "CLUB" ? (club?.id ?? null) : null,
-        category: acc.category ?? null,
-        ageGroup: acc.ageGroup ?? null,
-      },
+async function main() {
+  // Le club du compte : retrouvé par drapeau d'abord (un admin a pu le
+  // renommer depuis le back-office), sinon par nom.
+  const flaggedClub = await prisma.club.findFirst({
+    where: { isStoreReview: true },
+    select: { id: true, name: true },
+  });
+  const club =
+    flaggedClub ??
+    (await prisma.club.upsert({
+      where: { name: STORE_REVIEW_CLUB_NAME },
+      update: { isStoreReview: true, disabledAt: null },
+      create: { name: STORE_REVIEW_CLUB_NAME, isStoreReview: true },
+      select: { id: true, name: true },
+    }));
+  if (flaggedClub) {
+    await prisma.club.update({
+      where: { id: club.id },
+      data: { disabledAt: null },
       select: { id: true },
     });
-
-    // Le licencié a besoin d'une licence rattachée pour l'écran E-Licence.
-    if (acc.role === "LICENSEE") {
-      const licenseNumber = "TEST-LICENSEE-001";
-      await prisma.license.upsert({
-        where: { number: licenseNumber },
-        update: { userId: user.id },
-        create: {
-          number: licenseNumber,
-          category: acc.category ?? "Latin",
-          clubName: CLUB_NAME,
-          validUntil: new Date("2026-12-31"),
-          userId: user.id,
-        },
-      });
-    }
-    count++;
   }
 
+  const profile = {
+    role: MAIN_ROLE,
+    extraRoles: EXTRA_ROLES,
+    clubId: club.id,
+    clubName: club.name,
+    category: CATEGORY,
+    ageGroup: "Adulte",
+    isStoreReview: true,
+    // Un compte de validation désactivé = rejet du store.
+    disabledAt: null,
+  };
+  const existing = await prisma.user.findUnique({
+    where: { email: STORE_REVIEW_EMAIL },
+    select: { id: true },
+  });
+  // An existing account keeps its password: the seed never rewrites it.
+  const user = existing
+    ? await prisma.user.update({
+        where: { id: existing.id },
+        data: profile,
+        select: { id: true },
+      })
+    : await createAccount(profile);
+  if (!user) return;
+
+  // Licence rattachée (écran E-Licence, QR, Wallet), valide longtemps.
+  await prisma.license.upsert({
+    where: { number: LICENSE_NUMBER },
+    update: {
+      userId: user.id,
+      validUntil: LICENSE_VALID_UNTIL,
+      clubName: club.name,
+    },
+    create: {
+      number: LICENSE_NUMBER,
+      category: CATEGORY,
+      clubName: club.name,
+      validUntil: LICENSE_VALID_UNTIL,
+      userId: user.id,
+    },
+  });
+
   console.log(
-    `Profile test accounts seeded: ${count} (password gated preview)`,
+    `Store-review account seeded: ${STORE_REVIEW_EMAIL} (ADMIN + ${EXTRA_ROLES.join(", ")}, club "${club.name}", license valid until ${LICENSE_VALID_UNTIL.toISOString().slice(0, 10)})`,
   );
 }
 

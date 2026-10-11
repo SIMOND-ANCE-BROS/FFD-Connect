@@ -15,9 +15,6 @@ export const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
   },
-  collapsedCardHeight: {
-    height: 88,
-  },
 
   // Header — kept compact so a full card (FFD or WDSF) fits on one phone
   // screen without scrolling.
@@ -65,7 +62,6 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 48,
   },
   typeLabel: {
-    color: "white",
     fontSize: 18,
     letterSpacing: 1,
     textAlign: "center",
@@ -114,8 +110,11 @@ export const styles = StyleSheet.create({
     paddingRight: 6,
     marginBottom: 8,
   },
+  // Columns share the width only when there are two of them: a lone column
+  // (FFD number + birth date) takes the whole width instead of half of it.
   infoGridColumn: {
-    width: "50%",
+    flex: 1,
+    minWidth: 0,
   },
   infoCellFullWidth: {
     width: "100%",
@@ -223,11 +222,22 @@ export const styles = StyleSheet.create({
   },
   validityContainer: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
+    columnGap: 8,
     marginTop: 4,
     borderTopWidth: 1,
     borderTopColor: "#33333320",
     paddingTop: 8,
+  },
+  // Label and value wrap onto two lines with large accessibility font sizes
+  // instead of being truncated.
+  validityLabel: {
+    flexShrink: 1,
+  },
+  validityValue: {
+    flexShrink: 1,
+    textAlign: "right",
   },
 });

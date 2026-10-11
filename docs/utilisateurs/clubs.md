@@ -2,6 +2,18 @@
 
 Ce guide concerne l’**Espace club** de l’application mobile. Il faut disposer du rôle Club et être rattaché au club concerné. L’administration de tous les clubs se fait séparément dans le [back-office administrateur](./administrateurs.md).
 
+```ffd-demo
+organisation
+```
+
+## Le parcours en un regard
+
+```ffd-parcours
+Réglages | Sélectionner l’espace Club | Retrouver les onglets associés à votre rôle.
+Espace club | Ouvrir Gestion des Membres | Accéder aux membres rattachés au club.
+Événements | Consulter les inscriptions | Vérifier le statut des demandes, selon le mode du club.
+```
+
 ## Ouvrir votre tableau de bord
 
 1. Si votre compte possède plusieurs rôles, choisissez **Club** dans les **Réglages**.

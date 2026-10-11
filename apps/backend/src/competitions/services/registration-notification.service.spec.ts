@@ -3,7 +3,10 @@ import { NotificationType, RegistrationStatus } from "@prisma/client";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { createMockPrismaService } from "../__mocks__/types";
-import { RegistrationNotificationService } from "./registration-notification.service";
+import {
+  eventDisplayLabel,
+  RegistrationNotificationService,
+} from "./registration-notification.service";
 
 const mockPrismaService = createMockPrismaService();
 const mockNotificationsService = {
@@ -55,8 +58,19 @@ describe("RegistrationNotificationService", () => {
         "u1",
         NotificationType.REGISTRATION_STATUS,
         "Inscription par le club",
-        expect.stringContaining("Comp"),
+        'Le club vous a inscrit à "Comp" - Latines Adulte.',
         expect.objectContaining({ type: "registration_by_club" }),
+      );
+    });
+
+    it.each([
+      ["Latin", "Latines Adulte"],
+      ["Standard", "Standards Adulte"],
+      ["Ten Dance", "10 danses Adulte"],
+      [null, "Adulte"],
+    ])("labels the %s épreuve in French", (category, expected) => {
+      expect(eventDisplayLabel({ category, ageGroup: "Adulte" })).toBe(
+        expected,
       );
     });
 

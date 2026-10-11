@@ -1,6 +1,6 @@
 appId: fr.ffdanse.connect
 ---
-# Log in as staff (staff@test.com). Requires the seed:e2e profiles (pnpm --filter backend seed:e2e).
+# Log in as staff (staff.e2e@ffd.com). Requires the seed:e2e profiles (pnpm --filter backend seed:e2e).
 # On a cleared state the app shows a splash then the CGU gate before login — wait for
 # it and accept it (id cgu-accept-button). eraseText clears any iOS-autofilled value.
 - extendedWaitUntil:
@@ -13,7 +13,7 @@ appId: fr.ffdanse.connect
     timeout: 30000
 - tapOn: { id: "login-email-input" }
 - eraseText
-- inputText: "staff@test.com"
+- inputText: "staff.e2e@ffd.com"
 - tapOn: { id: "login-password-input" }
 - eraseText
 - inputText: "TestE2e123!"

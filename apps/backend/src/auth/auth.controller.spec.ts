@@ -1,9 +1,11 @@
-import { UnauthorizedException } from "@nestjs/common";
+import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
+import { UserRole } from "@prisma/client";
 import { Test, TestingModule } from "@nestjs/testing";
 import { AuthController } from "./auth.controller";
 import { AuthPasswordService } from "./auth-password.service";
 import { AuthService } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
+import { STORE_REVIEW_IMPERSONATION_MESSAGE } from "./store-review/store-review-protection";
 
 describe("AuthController", () => {
   let controller: AuthController;
@@ -14,6 +16,7 @@ describe("AuthController", () => {
   const mockAuthService = {
     login: jest.fn(),
     validateUser: jest.fn(),
+    impersonate: jest.fn(),
   };
 
   const mockAuthTokenService = {
@@ -153,6 +156,42 @@ describe("AuthController", () => {
         "u1",
         "Old1!",
         "NewValid1!",
+      );
+    });
+  });
+  describe("impersonate", () => {
+    const body = { targetEmail: "jane@x.fr" };
+
+    it("refuses the store-review account (flag read from the database by JwtStrategy)", async () => {
+      const req = {
+        user: {
+          userId: "review-1",
+          roles: [UserRole.ADMIN],
+          storeReview: true,
+        },
+        ip: "1.1.1.1",
+      } as never;
+      await expect(controller.impersonate(req, body)).rejects.toThrow(
+        new ForbiddenException(STORE_REVIEW_IMPERSONATION_MESSAGE),
+      );
+      expect(mockAuthService.impersonate).not.toHaveBeenCalled();
+    });
+
+    it("lets a regular admin impersonate", async () => {
+      mockAuthService.impersonate.mockResolvedValue({ access_token: "t" });
+      const req = {
+        user: { userId: "admin-1", roles: [UserRole.ADMIN] },
+        ip: "1.1.1.1",
+      } as never;
+      await expect(controller.impersonate(req, body)).resolves.toEqual({
+        access_token: "t",
+      });
+      expect(mockAuthService.impersonate).toHaveBeenCalledWith(
+        "admin-1",
+        [UserRole.ADMIN],
+        { userId: undefined, email: "jane@x.fr" },
+        undefined,
+        "1.1.1.1",
       );
     });
   });

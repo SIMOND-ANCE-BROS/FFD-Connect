@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
@@ -19,10 +19,17 @@ jest.mock("react-native-safe-area-context", () => ({
 jest.mock("lucide-react-native", () => ({
   Award: () => null,
   CreditCard: () => null,
+  Hourglass: () => null,
   IdCard: () => null,
 }));
 jest.mock("../../../license/components/LicenseExpiryBanner", () => ({
   LicenseExpiryBanner: () => null,
+}));
+const mockRenewalPending = jest.fn(() => false);
+const mockRefreshRenewalStatus = jest.fn().mockResolvedValue(undefined);
+jest.mock("../../../license/hooks/useRenewalPending", () => ({
+  useRenewalPending: () => mockRenewalPending(),
+  useRefreshRenewalStatusIfPending: () => mockRefreshRenewalStatus,
 }));
 jest.mock("../../../../components/AppText", () => ({
   AppText: ({ children }: { children: React.ReactNode }) => {
@@ -56,6 +63,7 @@ const route = { params: {} } as never;
 describe("ProfileScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRenewalPending.mockReturnValue(false);
     mockUseTheme.mockReturnValue({ theme } as unknown as ThemeContextType);
   });
 
@@ -81,6 +89,46 @@ describe("ProfileScreen", () => {
     expect(queryByText("Scanner ma licence")).toBeNull();
   });
 
+  it("says a renewal request is being checked (#268)", async () => {
+    mockRenewalPending.mockReturnValue(true);
+    mockGet.mockImplementation((url: string) =>
+      url === "/licenses/my"
+        ? Promise.resolve({ data: null })
+        : Promise.resolve({ data: { results: [] } }),
+    );
+
+    const { findByText } = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+
+    await fireEvent.press(
+      await findByText("Demande de renouvellement en cours de vérification"),
+    );
+    const { navigate } = mockNavigation as unknown as { navigate: jest.Mock };
+    expect(navigate).toHaveBeenCalledWith("LicenseRenewal");
+  });
+
+  it("re-reads a pending renewal status on pull-to-refresh (#268)", async () => {
+    mockGet.mockImplementation((url: string) =>
+      url === "/licenses/my"
+        ? Promise.resolve({ data: null })
+        : Promise.resolve({ data: { results: [] } }),
+    );
+
+    const { findByText, getByTestId } = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+    await findByText("Aucune licence associée");
+    expect(mockRefreshRenewalStatus).not.toHaveBeenCalled();
+
+    const refreshControl = getByTestId("profile-scroll").props
+      .refreshControl as React.ReactElement<{ onRefresh: () => void }>;
+    await act(async () => {
+      refreshControl.props.onRefresh();
+    });
+    expect(mockRefreshRenewalStatus).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the license when the user has one", async () => {
     mockGet.mockImplementation((url: string) =>
       url === "/licenses/my"
@@ -100,5 +148,59 @@ describe("ProfileScreen", () => {
     );
 
     expect(await findByText("20011125-pit-ev38")).toBeTruthy();
+  });
+
+  it("shows the competition level of each discipline", async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url === "/users/me") {
+        return Promise.resolve({
+          data: {
+            competitionLevelLatin: "Avancé",
+            competitionLevelStandard: "Débutant",
+            competitionLevel: "Intermédiaire",
+          },
+        });
+      }
+      return url === "/licenses/my"
+        ? Promise.resolve({ data: null })
+        : Promise.resolve({ data: { results: [] } });
+    });
+
+    const { findByText } = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+
+    expect(await findByText("Niveau de compétition")).toBeTruthy();
+    expect(
+      await findByText("Latines : Avancé · Standards : Débutant"),
+    ).toBeTruthy();
+  });
+
+  it("falls back to the legacy single level, and hides the row without any level", async () => {
+    mockGet.mockImplementation((url: string) =>
+      url === "/users/me"
+        ? Promise.resolve({ data: { competitionLevel: "Avancé" } })
+        : Promise.resolve({
+            data: url === "/licenses/my" ? null : { results: [] },
+          }),
+    );
+    const first = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+    expect(await first.findByText("Avancé")).toBeTruthy();
+    await first.unmount();
+
+    mockGet.mockImplementation((url: string) =>
+      url === "/users/me"
+        ? Promise.reject(new Error("offline"))
+        : Promise.resolve({
+            data: url === "/licenses/my" ? null : { results: [] },
+          }),
+    );
+    const second = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+    expect(await second.findByText("Aucune licence associée")).toBeTruthy();
+    expect(second.queryByText("Niveau de compétition")).toBeNull();
   });
 });

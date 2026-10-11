@@ -86,3 +86,42 @@ source-reviewed walkthroughs, not a claim of authenticated device testing.
 The older Astro MDX guides are not imported: they use a separate renderer and
 some describe earlier navigation. Their application remains unchanged; the
 canonical source for this landing's user guides is `docs/utilisateurs/`.
+
+### Visual user guides
+
+In any Markdown guide, use a fenced `ffd-parcours` block with one
+`Screen | Action | Expected result` line per step (at least two). These steps
+render as numbered cards and remain readable without JavaScript. Text is escaped;
+HTML is never accepted in this block.
+
+Use a fenced `ffd-demo` block containing exactly `licence`, `competitions`,
+`audio` or `organisation` to add an optional interactive example. The shared
+landing adaptation loads only when the reader opens it. Failures keep the written
+guide available and reopening retries the load. These are web adaptations with
+fictional data, not native screenshots or authenticated app sessions. Keep native
+screenshots distinct and add them only after capturing a reviewed test account.
+
+### Guide review metadata and reference checks
+
+Optional Markdown frontmatter records a **source review**, not a device test:
+
+```yaml
+---
+reviewed_version: 1.0.0
+reviewed_date: 2026-10-11
+reviewed_commit: 4f1dd8a766d9ecfca8cee6fadbbb25fb9c423a80
+reviewed_scope: Inscription et connexion
+---
+```
+
+All four fields are required together. Update them only after reviewing the stated
+scope against that app revision; publishing the site never advances them automatically.
+Guides without metadata explicitly show that their app version is not verified.
+
+The Vite build checks local documentation destinations, documentation fragments,
+and local HTML assets after writing the build. Repository-relative Markdown images and linked Markdown documents
+must exist when collecting the docs. Failures name the source page and destination.
+Both root and `BASE_PATH=/FFD-Connect/` deployments are supported. External HTTP
+resources and fragments rendered by the landing's React app are outside this static
+check; no network probes are performed. Links intentionally directed to GitHub
+(for source files or excluded documentation) remain external links.

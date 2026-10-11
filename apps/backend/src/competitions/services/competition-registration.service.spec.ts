@@ -16,6 +16,7 @@ import {
   CompetitionRegistrationService,
   isRegistrationClosed,
   registrationClosedMessage,
+  TEN_DANCE_BOTH_DISCIPLINES_MESSAGE,
 } from "./competition-registration.service";
 
 const mockPrismaService = createMockPrismaService();
@@ -326,6 +327,185 @@ describe("CompetitionRegistrationService", () => {
       expect(result.id).toBe("r1");
     });
 
+    describe("level and discipline read from the profile", () => {
+      const eventOf = (overrides: Record<string, unknown>) => ({
+        id: "e1",
+        competitionId: "c1",
+        eventType: "COUPLE",
+        competition: {
+          title: "Comp",
+          date: new Date(2025, 5, 1),
+          competitionType: "NATIONALE",
+        },
+        category: "Latin",
+        ageGroup: "Adulte",
+        eventKind: "CLASSIFICATRICE",
+        level: "Avancé",
+        ...overrides,
+      });
+      const partner = {
+        birthDate: new Date(2000, 0, 1),
+        firstName: "A",
+        lastName: "B",
+      };
+      const mockRegistrant = (profile: Record<string, unknown>) =>
+        mockPrismaService.user.findUnique
+          .mockResolvedValueOnce({
+            birthDate: new Date(2000, 0, 1),
+            ...profile,
+          })
+          .mockResolvedValueOnce(partner);
+
+      beforeEach(() => {
+        mockPrismaService.registration.findFirst.mockResolvedValue(null);
+      });
+
+      it("uses the profile level OF THE EVENT DISCIPLINE when none is given", async () => {
+        mockPrismaService.event.findUnique.mockResolvedValue(eventOf({}));
+        mockRegistrant({
+          category: "Ten Dance",
+          competitionLevelLatin: "International",
+          competitionLevelStandard: "Débutant",
+        });
+
+        const result = await service.register("e1", "u1", "A B", {
+          byOrganizer: true,
+          partnerUserId: "p1",
+        });
+        expect(result.id).toBe("r1");
+      });
+
+      it("rejects when the level in the event discipline is too low", async () => {
+        mockPrismaService.event.findUnique.mockResolvedValue(
+          eventOf({ category: "Standard" }),
+        );
+        mockRegistrant({
+          category: "Ten Dance",
+          competitionLevelLatin: "International",
+          competitionLevelStandard: "Débutant",
+        });
+
+        await expect(
+          service.register("e1", "u1", "A B", {
+            byOrganizer: true,
+            partnerUserId: "p1",
+          }),
+        ).rejects.toThrow("votre niveau (Débutant) est insuffisant");
+      });
+
+      it("Ten Dance: accepts a dancer of both disciplines whatever the level", async () => {
+        mockPrismaService.event.findUnique.mockResolvedValue(
+          eventOf({
+            category: "Ten Dance",
+            eventKind: "MAJEURE",
+            level: "International",
+          }),
+        );
+        mockRegistrant({
+          category: "Latin",
+          competitionLevelLatin: "Débutant",
+          competitionLevelStandard: "Débutant",
+        });
+
+        const result = await service.register("e1", "u1", "A B", {
+          byOrganizer: true,
+          partnerUserId: "p1",
+        });
+        expect(result.id).toBe("r1");
+      });
+
+      it("Ten Dance: rejects a dancer of a single discipline", async () => {
+        mockPrismaService.event.findUnique.mockResolvedValue(
+          eventOf({ category: "Ten Dance", eventKind: "MAJEURE", level: null }),
+        );
+        mockPrismaService.user.findUnique.mockResolvedValueOnce({
+          birthDate: new Date(2000, 0, 1),
+          category: "Latin",
+          competitionLevelLatin: "International",
+        });
+
+        await expect(
+          service.register("e1", "u1", "A B", {
+            byOrganizer: true,
+            partnerUserId: "p1",
+          }),
+        ).rejects.toThrow(TEN_DANCE_BOTH_DISCIPLINES_MESSAGE);
+        expect(mockPrismaService.registration.create).not.toHaveBeenCalled();
+      });
+    });
+
+    const espoirEvent = {
+      id: "e1",
+      competitionId: "c1",
+      eventType: "COUPLE",
+      competition: {
+        title: "Championnat",
+        date: new Date(2026, 5, 1),
+        competitionType: "MAJEURE",
+      },
+      category: "Standard",
+      ageGroup: "Espoir",
+      eventKind: "MAJEURE",
+      level: null,
+    };
+
+    it("rejects an Espoir registration when the older partner is 21 or more", async () => {
+      mockPrismaService.event.findUnique.mockResolvedValue(espoirEvent);
+      mockPrismaService.registration.findFirst.mockResolvedValue(null);
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce({ birthDate: new Date(2005, 0, 1) })
+        .mockResolvedValueOnce({
+          birthDate: new Date(2007, 0, 1),
+          firstName: "A",
+          lastName: "B",
+        });
+
+      await expect(
+        service.register("e1", "u1", "A B", {
+          byOrganizer: true,
+          partnerUserId: "p1",
+        }),
+      ).rejects.toThrow(/moins de 21 ans/);
+    });
+
+    it("rejects an Espoir registration when a partner is under 16", async () => {
+      mockPrismaService.event.findUnique.mockResolvedValue(espoirEvent);
+      mockPrismaService.registration.findFirst.mockResolvedValue(null);
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce({ birthDate: new Date(2009, 0, 1) })
+        .mockResolvedValueOnce({
+          birthDate: new Date(2012, 0, 1),
+          firstName: "A",
+          lastName: "B",
+        });
+
+      await expect(
+        service.register("e1", "u1", "A B", {
+          byOrganizer: true,
+          partnerUserId: "p1",
+        }),
+      ).rejects.toThrow(/moins de 21 ans/);
+    });
+
+    it("accepts an Espoir registration for an under-21 Adulte couple", async () => {
+      mockPrismaService.event.findUnique.mockResolvedValue(espoirEvent);
+      mockPrismaService.registration.findFirst.mockResolvedValue(null);
+      mockPrismaService.user.findUnique
+        .mockResolvedValueOnce({ birthDate: new Date(2006, 3, 1) })
+        .mockResolvedValueOnce({
+          birthDate: new Date(2007, 0, 1),
+          firstName: "A",
+          lastName: "B",
+        });
+
+      const result = await service.register("e1", "u1", "A B", {
+        byOrganizer: true,
+        partnerUserId: "p1",
+      });
+
+      expect(result.id).toBe("r1");
+    });
+
     it("should throw BadRequestException for second MAJEURE registration in same specialty", async () => {
       mockPrismaService.event.findUnique.mockResolvedValue({
         id: "e1",
@@ -353,13 +533,16 @@ describe("CompetitionRegistrationService", () => {
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce({ id: "existing-r" });
 
-      await expect(
-        service.register("e1", "u1", "A B", {
-          byOrganizer: true,
-          partnerUserId: "p1",
-          coupleAgeGroup: "Adulte",
-        }),
-      ).rejects.toThrow(BadRequestException);
+      const attempt = service.register("e1", "u1", "A B", {
+        byOrganizer: true,
+        partnerUserId: "p1",
+        coupleAgeGroup: "Adulte",
+      });
+      await expect(attempt).rejects.toThrow(BadRequestException);
+      // French discipline label in the message, not the stored value.
+      await expect(attempt).rejects.toThrow(
+        "une seule épreuve par spécialité (Latines). Vous êtes déjà inscrit à une épreuve Latines.",
+      );
     });
 
     it("should succeed when no existing MAJEURE registration in same specialty", async () => {

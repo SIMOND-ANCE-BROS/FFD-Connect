@@ -1,13 +1,43 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { posix, resolve } from 'node:path';
 import { Marked, Renderer } from 'marked';
 import type { Plugin } from 'vite';
+import { validateDocumentation } from './documentation-validation';
 
 export type Audience = 'utilisateurs' | 'technique';
 export const audienceForPath = (path: string): Audience =>
   path.startsWith('docs/utilisateurs/') ? 'utilisateurs' : 'technique';
 
-export type Doc = { path: string; slug: string; title: string; markdown: string };
+export type Review = { version: string; date: string; commit: string; scope: string };
+export type Doc = { path: string; slug: string; title: string; markdown: string; review?: Review };
+export function readReview(raw: string): Review | undefined {
+  const header = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)?.[1] ?? '';
+  const field = (name: string) =>
+    header.match(new RegExp('^reviewed_' + name + ': (.+)$', 'm'))?.[1].trim();
+  const version = field('version'),
+    date = field('date'),
+    commit = field('commit'),
+    scope = field('scope');
+  if (![version, date, commit, scope].some(Boolean)) return undefined;
+  if (
+    !version ||
+    !date ||
+    !commit ||
+    !scope ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+    !/^[a-f0-9]{40}$/.test(commit)
+  )
+    throw new Error('Invalid documentation review metadata');
+  return { version, date, commit, scope };
+}
+export function reviewLabel(doc: Doc) {
+  if (!doc.review)
+    return audienceForPath(doc.path) === 'utilisateurs'
+      ? 'Version de l’application non vérifiée pour ce guide'
+      : 'Documentation technique · Source GitHub';
+  const r = doc.review;
+  return `Relecture du code · v${escapeHtml(r.version)} · ${escapeHtml(r.date)} · ${escapeHtml(r.scope)} · <a href="${repo}/commit/${r.commit}" target="_blank" rel="noreferrer">${r.commit.slice(0, 7)}</a> · Test sur appareil non effectué`;
+}
 const repo = 'https://github.com/SIMOND-ANCE-BROS/FFD-Connect';
 const excluded = new Set(['archives', 'references', 'superpowers', 'legal']);
 const extras: Record<string, string> = {
@@ -30,7 +60,7 @@ export const headingId = (s: string) =>
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s-]/gu, '')
     .trim()
-    .replace(/\s+/g, '-');
+    .replace(/\s/g, '-');
 export function slugForPath(path: string) {
   return (
     extras[path] ??
@@ -55,10 +85,30 @@ export function collectDocs(root: string): Doc[] {
   const docs = paths.sort().map((path) => {
     const raw = readFileSync(resolve(root, path), 'utf8');
     const markdown = raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '');
+    new Marked({
+      walkTokens(token) {
+        if (
+          (token.type !== 'image' && token.type !== 'link') ||
+          /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(token.href)
+        )
+          return;
+        const target = decodeURIComponent(
+          new URL(token.href, 'https://repository.local/' + path).pathname.slice(1),
+        );
+        if (
+          (token.type === 'image' || target.endsWith('.md')) &&
+          !existsSync(resolve(root, target))
+        ) {
+          throw new Error(
+            `${path}: missing repository ${token.type === 'image' ? 'image' : 'document'}: ${token.href}`,
+          );
+        }
+      },
+    }).parse(markdown);
     const title =
       markdown.match(/^# (.+)$/m)?.[1].replace(/[*`]/g, '') ??
       path.split('/').at(-1)!.replace(/\.md$/, '').replace(/-/g, ' ');
-    return { path, slug: slugForPath(path), title, markdown };
+    return { path, slug: slugForPath(path), title, markdown, review: readReview(raw) };
   });
   const slugs = new Set<string>(['utilisateurs', 'technique']);
   for (const doc of docs) {
@@ -125,6 +175,30 @@ export function renderMarkdown(doc: Doc, docs: Doc[], base: string) {
       ? `<img loading="lazy" src="${escapeHtml(href)}" alt="${escapeHtml(token.text)}" />`
       : '';
   };
+  renderer.code = function (token) {
+    if (token.lang === 'ffd-demo') {
+      const view = token.text.trim();
+      const labels: Record<string, string> = {
+        licence: 'Retrouver sa licence',
+        competitions: 'Préparer une compétition',
+        audio: 'Retrouver sa musique',
+        organisation: 'Découvrir l’espace club',
+      };
+      if (!Object.prototype.hasOwnProperty.call(labels, view))
+        throw new Error(`Unknown ffd-demo view in ${doc.path}: ${view}`);
+      return `<details class="guide-demo" data-guide-demo="${view}"><summary>${labels[view]} · Ouvrir l’aperçu interactif</summary><p>Adaptation web des écrans de l’app · Données fictives · Aucun compte connecté.</p><div data-guide-demo-root></div><p data-guide-demo-status role="status">L’aperçu se charge à l’ouverture avec JavaScript. Les étapes du guide restent disponibles ci-dessous.</p></details>`;
+    }
+    if (token.lang === 'ffd-parcours') {
+      const rows = token.text
+        .trim()
+        .split('\n')
+        .map((line) => line.split('|').map((cell) => cell.trim()));
+      if (rows.length < 2 || rows.some((row) => row.length !== 3 || row.some((cell) => !cell)))
+        throw new Error(`ffd-parcours requires Screen | Action | Result rows in ${doc.path}`);
+      return `<ol class="guide-route" aria-label="Le parcours en un regard">${rows.map(([screen, action, result], i) => `<li><span class="guide-route-number" aria-hidden="true">${i + 1}</span><div><p class="guide-route-screen">${escapeHtml(screen)}</p><strong>${escapeHtml(action)}</strong><p>${escapeHtml(result)}</p></div></li>`).join('')}</ol>`;
+    }
+    return Renderer.prototype.code.call(this, token);
+  };
   renderer.table = function (token) {
     return `<div class="doc-table-scroll" tabindex="0" role="region" aria-label="Tableau défilant">${Renderer.prototype.table.call(this, token)}</div>`;
   };
@@ -177,10 +251,10 @@ export function renderIndex(docs: Doc[], base: string, audience?: Audience) {
   const users = audience === 'utilisateurs';
   const selected = docs.filter((doc) => audienceForPath(doc.path) === audience);
   const title = !audience
-    ? 'À chaque besoin,<br /><em>son guide.</em>'
+    ? 'Trouvez le bon guide.'
     : users
-      ? 'Votre app,<br /><em>pas à pas.</em>'
-      : 'Le projet,<br /><em>côté technique.</em>';
+      ? 'Comment pouvons-nous vous aider ?'
+      : 'La documentation technique.';
   const lede = !audience
     ? 'Apprendre à utiliser l’application ou comprendre sa construction : choisissez votre espace.'
     : users
@@ -216,7 +290,7 @@ export function renderIndex(docs: Doc[], base: string, audience?: Audience) {
     : '';
   return (
     header(base) +
-    `<main id="contenu" tabindex="-1" class="docs-main section-width">${audienceNavigation(base, audience)}<div class="docs-heading"><p class="eyebrow">${!audience ? 'LES RESSOURCES FFD CONNECT' : users ? 'DOCUMENTATION UTILISATEURS' : 'DÉVELOPPEMENT & EXPLOITATION'}</p><h1>${title}</h1><p class="docs-lede">${lede}</p>${audience ? '<a class="text-link" href="#articles">Voir tous les articles de cet espace ↓</a>' : ''}</div>${users ? `<section class="doc-start"><div><p class="eyebrow">VOTRE PREMIÈRE VISITE</p><h2>De la bêta à votre premier écran.</h2><p>Installer l’app, se connecter et comprendre les espaces.</p></div><a class="button button-primary" href="${base}documentation/utilisateurs/premiers-pas/">Commencer ici →</a></section>` : ''}<section class="docs-grid${!audience ? ' doc-portal-cards' : ''}" aria-label="${!audience ? 'Deux espaces de documentation' : users ? 'Choisir son parcours' : 'Repères techniques'}">${cardsHtml(cards, base)}</section>${directory}${audience !== 'technique' ? `<section class="doc-testing"><div><p class="eyebrow">PASSER À LA PRATIQUE</p><h2>Prêt à essayer ?</h2></div><div><p>La bêta est accessible via TestFlight sur iPhone et iPad, et le test fermé Google Play sur Android. La page d’inscription vous accompagne.</p><a href="${base}beta/" class="button button-primary">Rejoindre la bêta</a></div></section>` : ''}</main>` +
+    `<main id="contenu" tabindex="-1" class="docs-main docs-compact section-width">${audienceNavigation(base, audience)}<div class="docs-heading"><p class="eyebrow">${!audience ? 'LES RESSOURCES FFD CONNECT' : users ? 'DOCUMENTATION UTILISATEURS' : 'DÉVELOPPEMENT & EXPLOITATION'}</p><h1>${title}</h1><p class="docs-lede">${lede}</p>${audience ? '<a class="text-link" href="#articles">Voir tous les articles de cet espace ↓</a>' : ''}</div>${users ? `<section class="doc-start"><div><p class="eyebrow">VOTRE PREMIÈRE VISITE</p><h2>Vous découvrez l’app ?</h2><p>Installer l’app, se connecter et comprendre les espaces.</p></div><a class="button button-primary" href="${base}documentation/utilisateurs/premiers-pas/">Commencer ici →</a></section>` : ''}<section class="docs-grid${!audience ? ' doc-portal-cards' : ''}" aria-label="${!audience ? 'Deux espaces de documentation' : users ? 'Choisir son parcours' : 'Repères techniques'}">${cardsHtml(cards, base)}</section>${directory}${audience !== 'technique' ? `<section class="doc-testing"><div><p class="eyebrow">PASSER À LA PRATIQUE</p><h2>Prêt à essayer ?</h2></div><div><p>La bêta est accessible via TestFlight sur iPhone et iPad, et le test fermé Google Play sur Android. La page d’inscription vous accompagne.</p><a href="${base}beta/" class="button button-primary">Rejoindre la bêta</a></div></section>` : ''}</main>` +
     footer(base)
   );
 }
@@ -239,12 +313,13 @@ export function renderArticle(doc: Doc, docs: Doc[], base: string) {
       ];
   return (
     header(base) +
-    `<main id="contenu" tabindex="-1" class="section-width documentation-page">${audienceNavigation(base, audience)}<a class="text-link doc-back" href="${base}documentation/${audience}/">← ${users ? 'Les guides d’utilisation' : 'Les ressources techniques'}</a><div class="article-layout"><aside class="article-sidebar"><p class="eyebrow">${users ? 'GUIDES UTILISATEURS' : 'DOCUMENTATION TECHNIQUE'}</p><nav aria-label="Rubriques de documentation">${nav.map(([slug, title]) => `<a href="${base}documentation/${slug}/"${slug === doc.slug ? ' aria-current="page"' : ''}>${title}</a>`).join('')}</nav><a class="article-all" href="${base}documentation/${audience}/#articles">Tous les articles</a><a class="button button-outline" href="${base}beta/">Rejoindre la bêta</a></aside><div class="article-main"><header class="article-heading"><p class="eyebrow">${users ? 'UTILISER FFD CONNECT' : 'LE PROJET, CÔTÉ TECHNIQUE'}</p><h1>${escapeHtml(doc.title)}</h1><div class="article-sync"><p><span class="sync-dot live"></span>Publié avec la dernière version du site · Source GitHub</p></div></header>${toc.length ? `<details class="article-toc" open><summary>Dans cette page <span>${toc.length} sections</span></summary><nav aria-label="Sommaire de l’article">${toc.map((h) => `<a href="#${escapeHtml(h.id)}">${escapeHtml(h.title)}</a>`).join('')}</nav></details>` : ''}<article class="doc-prose">${html}</article><footer class="article-source"><p>Ce guide est généré automatiquement depuis le dépôt à chaque publication. Son contenu reste lisible sans JavaScript.</p><a href="${repo}/blob/staging/${doc.path}" target="_blank" rel="noreferrer">Voir le fichier source sur GitHub ↗</a></footer></div></div></main>` +
+    `<main id="contenu" tabindex="-1" class="section-width documentation-page">${audienceNavigation(base, audience)}<a class="text-link doc-back" href="${base}documentation/${audience}/">← ${users ? 'Les guides d’utilisation' : 'Les ressources techniques'}</a><div class="article-layout"><aside class="article-sidebar"><p class="eyebrow">${users ? 'GUIDES UTILISATEURS' : 'DOCUMENTATION TECHNIQUE'}</p><nav aria-label="Rubriques de documentation">${nav.map(([slug, title]) => `<a href="${base}documentation/${slug}/"${slug === doc.slug ? ' aria-current="page"' : ''}>${title}</a>`).join('')}</nav><a class="article-all" href="${base}documentation/${audience}/#articles">Tous les articles</a><a class="button button-outline" href="${base}beta/">Rejoindre la bêta</a></aside><div class="article-main"><header class="article-heading"><p class="eyebrow">${users ? 'UTILISER FFD CONNECT' : 'LE PROJET, CÔTÉ TECHNIQUE'}</p><h1>${escapeHtml(doc.title)}</h1><div class="article-sync"><p>${reviewLabel(doc)}</p></div></header>${toc.length ? `<details class="article-toc" open><summary>Dans cette page <span>${toc.length} sections</span></summary><nav aria-label="Sommaire de l’article">${toc.map((h) => `<a href="#${escapeHtml(h.id)}">${escapeHtml(h.title)}</a>`).join('')}</nav></details>` : ''}<article class="doc-prose">${html}</article><footer class="article-source"><p>Ce guide est généré automatiquement depuis le dépôt à chaque publication. Son contenu reste lisible sans JavaScript.</p><a href="${repo}/blob/staging/${doc.path}" target="_blank" rel="noreferrer">Voir le fichier source sur GitHub ↗</a></footer></div></div></main>` +
     footer(base)
   );
 }
-function renderDocument(template: string, body: string, title: string) {
+function renderDocument(template: string, body: string, title: string, base: string) {
   return template
+    .replace('href="../app-logo.png"', `href="${base}app-logo.png"`)
     .replace(
       /<!--documentation-body-->[\s\S]*?<!--\/documentation-body-->/,
       () => `<!--documentation-body-->${body}<!--/documentation-body-->`,
@@ -257,17 +332,22 @@ function renderDocument(template: string, body: string, title: string) {
 export function documentationPages(): Plugin {
   let base = '/';
   let root = '';
+  let outDir = '';
   let docs: Doc[] = [];
   return {
     name: 'ffd-documentation-pages',
     enforce: 'post',
     configResolved(config) {
       base = config.base;
+      outDir = resolve(config.root, config.build.outDir);
       root = resolve(config.root, '../..');
       docs = collectDocs(root);
     },
     buildStart() {
       for (const doc of docs) this.addWatchFile(resolve(root, doc.path));
+    },
+    writeBundle() {
+      validateDocumentation(outDir, base);
     },
     configureServer(server) {
       server.watcher.add(resolve(root, 'docs'));
@@ -290,6 +370,7 @@ export function documentationPages(): Plugin {
               ? 'Guides utilisateurs'
               : 'Documentation technique'
             : doc!.title,
+          base,
         );
         res.statusCode = 200;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -319,11 +400,12 @@ export function documentationPages(): Plugin {
               template,
               renderIndex(docs, base, audience),
               audience === 'utilisateurs' ? 'Guides utilisateurs' : 'Documentation technique',
+              base,
             ),
           });
         }
         for (const doc of docs) {
-          const source = renderDocument(template, renderArticle(doc, docs, base), doc.title);
+          const source = renderDocument(template, renderArticle(doc, docs, base), doc.title, base);
           this.emitFile({
             type: 'asset',
             fileName: `documentation/${doc.slug}/index.html`,

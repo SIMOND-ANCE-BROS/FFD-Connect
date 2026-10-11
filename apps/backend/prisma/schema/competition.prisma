@@ -21,6 +21,15 @@ enum EventType {
   COUPLE
 }
 
+/// TEMPORAIRE (tant que l'app n'est pas reliée à la FFD) : origine des épreuves
+/// d'une compétition synchronisée. GENERIC = épreuves génériques par défaut ;
+/// DESCRIPTION / CIRCULAR = déduites du texte FFD / de la circulaire PDF (à vérifier).
+enum EventsSource {
+  GENERIC
+  DESCRIPTION
+  CIRCULAR
+}
+
 enum CompetitionStatus {
   UPCOMING
   LIVE
@@ -73,6 +82,8 @@ model Competition {
   ticketingUrl           String?
   layout                 Json?            @default("[]")
   registrationDeadline   DateTime?        // Date limite d'inscription (pour countdown)
+  eventsSource           EventsSource?    // TEMPORAIRE : origine des épreuves (null = antérieur / saisie manuelle)
+  eventsFingerprint      String?          // TEMPORAIRE : empreinte des documents déjà analysés (évite de retraiter)
   seatBookings           SeatBooking[]
 
   @@index([date])

@@ -1,8 +1,9 @@
 import {
   Alert,
+  Box,
   Button,
-  Center,
   Group,
+  Image,
   Loader,
   Paper,
   PasswordInput,
@@ -91,28 +92,60 @@ export function LoginPage() {
   });
 
   return (
-    <Center h="100vh">
-      <Paper w={360} p="xl" withBorder>
-        <form onSubmit={onSubmit}>
-          <Stack>
-            <Title order={2}>FFD Connect — Administration</Title>
-            {!awake && (
-              <Group gap="xs">
-                <Loader size="xs" />
-                <Text size="sm" c="dimmed">
-                  Réveil du serveur… (jusqu'à 2 minutes)
-                </Text>
-              </Group>
-            )}
-            {error && <Alert color="red">{error}</Alert>}
-            <TextInput label="Email" type="email" required {...form.getInputProps('email')} />
-            <PasswordInput label="Mot de passe" required {...form.getInputProps('password')} />
-            <Button type="submit" loading={submitting} disabled={!awake}>
-              Se connecter
-            </Button>
-          </Stack>
-        </form>
-      </Paper>
-    </Center>
+    <Box mih="100dvh" bg="var(--app-canvas)">
+      <Box
+        bg="var(--app-header-bg)"
+        c="white"
+        px="md"
+        pt="calc(3rem + env(safe-area-inset-top))"
+        pb={88}
+        style={{ borderBottom: '3px solid var(--app-accent)' }}
+      >
+        <Stack align="center" gap={6}>
+          <Image src="/icons/icon-192.png" alt="" w={64} h={64} radius="md" />
+          <Text fw={700} fz={26} lh={1.2}>
+            FFD Connect
+          </Text>
+          <Text size="sm" c="rgba(255,255,255,0.8)">
+            Back-office d'administration
+          </Text>
+        </Stack>
+      </Box>
+      <Box px="md" mt={-56} pb="calc(2rem + env(safe-area-inset-bottom))">
+        <Paper maw={400} mx="auto" p={{ base: 'lg', sm: 'xl' }} withBorder shadow="md">
+          <form onSubmit={onSubmit}>
+            <Stack>
+              <Title order={2}>Connexion</Title>
+              {!awake && (
+                <Group gap="xs" wrap="nowrap">
+                  <Loader size="xs" />
+                  <Text size="sm" c="dimmed">
+                    Réveil du serveur… (jusqu'à 2 minutes)
+                  </Text>
+                </Group>
+              )}
+              {error && <Alert color="red">{error}</Alert>}
+              <TextInput
+                label="Email"
+                type="email"
+                autoComplete="username"
+                inputMode="email"
+                required
+                {...form.getInputProps('email')}
+              />
+              <PasswordInput
+                label="Mot de passe"
+                autoComplete="current-password"
+                required
+                {...form.getInputProps('password')}
+              />
+              <Button type="submit" fullWidth mt="xs" loading={submitting} disabled={!awake}>
+                Se connecter
+              </Button>
+            </Stack>
+          </form>
+        </Paper>
+      </Box>
+    </Box>
   );
 }

@@ -359,6 +359,13 @@ describe("CompetitionsScreen", () => {
 
     await fireEvent.press(getByTestId("competitions-filter-button"));
     await fireEvent.press(getByTestId("competitions-filter-discipline-COUPLE"));
+    // Labels are French, values stay the API's raw "Latin" / "Standard".
+    expect(getByTestId("competitions-filter-style-Latin")).toHaveTextContent(
+      "Latines",
+    );
+    expect(getByTestId("competitions-filter-style-Standard")).toHaveTextContent(
+      "Standards",
+    );
     await fireEvent.press(getByTestId("competitions-filter-style-Latin"));
     await fireEvent.changeText(
       getByTestId("competitions-filter-distance-custom"),

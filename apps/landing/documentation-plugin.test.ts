@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   collectDocs,
+  readReview,
+  reviewLabel,
   audienceForPath,
   renderIndex,
   renderArticle,
@@ -56,6 +58,12 @@ describe('repository-backed static documentation', () => {
       mkdirSync(join(root, 'docs/new-folder'));
       writeFileSync(join(root, 'docs/new-folder/README.md'), '# New section');
       expect(collectDocs(root).some((d) => d.slug === 'new-folder')).toBe(true);
+      writeFileSync(join(root, 'docs/guides/new.md'), '# Guide\n\n[Broken](missing.md)');
+      expect(() => collectDocs(root)).toThrow('missing repository document');
+      writeFileSync(join(root, 'docs/guides/new.md'), '# Guide\n\n![Screenshot](missing.png)');
+      expect(() => collectDocs(root)).toThrow('missing repository image');
+      writeFileSync(join(root, 'docs/guides/missing.png'), 'fixture');
+      expect(() => collectDocs(root)).not.toThrow();
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -129,4 +137,43 @@ it('keeps audience directories and article navigation separate', () => {
       base + 'documentation/guides/first/',
     );
   }
+});
+
+it('renders safe, static journey cards and opt-in examples from Markdown', () => {
+  const doc = {
+    ...userGuide,
+    markdown:
+      '# Guide\n\n```ffd-parcours\nRéglages | Choisir Club | Voir ses onglets\n<svg onload=alert(1)> | Lire | Continuer\n```\n\n```ffd-demo\nlicence\n```',
+  };
+  const { html } = renderMarkdown(doc, [doc], '/FFD-Connect/');
+  expect(html).toContain('aria-label="Le parcours en un regard"');
+  expect(html).toContain('Choisir Club');
+  expect(html).not.toContain('<svg');
+  expect(html).toContain('&lt;svg');
+  expect(html).toContain('<details class="guide-demo" data-guide-demo="licence">');
+  expect(html).not.toContain('<iframe');
+  expect(html).not.toContain('<script');
+  expect(() =>
+    renderMarkdown({ ...doc, markdown: '```ffd-demo\nunknown\n```' }, [doc], '/'),
+  ).toThrow('Unknown ffd-demo');
+  expect(() =>
+    renderMarkdown({ ...doc, markdown: '```ffd-parcours\nIncomplete\n```' }, [doc], '/'),
+  ).toThrow('requires Screen');
+});
+
+describe('review metadata', () => {
+  it('does not imply an app test without evidence', () => {
+    expect(reviewLabel({ ...one, path: 'docs/utilisateurs/test.md' })).toContain('non vérifiée');
+    expect(readReview('# A guide')).toBeUndefined();
+  });
+  it('requires a complete traceable review and escapes its description', () => {
+    expect(() => readReview('---\nreviewed_version: 1.0.0\n---\n')).toThrow();
+    const review = readReview(
+      '---\nreviewed_version: 1.0.0\nreviewed_date: 2026-10-11\nreviewed_commit: ' +
+        'a'.repeat(40) +
+        '\nreviewed_scope: <script>\n---\n',
+    );
+    expect(reviewLabel({ ...one, review })).toContain('&lt;script&gt;');
+    expect(reviewLabel({ ...one, review })).toContain('Test sur appareil non effectué');
+  });
 });

@@ -23,6 +23,14 @@ import {
   CareerSearchMember,
   CareerService,
 } from "./career.service";
+import {
+  StoreReviewOwnData,
+  StoreReviewRead,
+} from "../auth/store-review/store-review.decorator";
+import {
+  simulatedEmptyCareer,
+  simulatedEmptyList,
+} from "../auth/store-review/store-review-responses";
 
 @ApiTags("career")
 @ApiCommonErrorResponses()
@@ -32,6 +40,7 @@ import {
 export class CareerController {
   constructor(private readonly careerService: CareerService) {}
 
+  @StoreReviewOwnData()
   @Get("me")
   @ApiOperation({
     summary: "Ma carrière",
@@ -138,6 +147,7 @@ export class CareerController {
     return this.careerService.getMyCareer(req.user.userId);
   }
 
+  @StoreReviewRead(simulatedEmptyList)
   @Get("search-members")
   @ApiOperation({
     summary: "Rechercher des membres (pour voir leur carrière)",
@@ -161,6 +171,8 @@ export class CareerController {
     return this.careerService.searchMembers(req.user.userId, q ?? "");
   }
 
+  @StoreReviewOwnData({ when: (ctx) => ctx.params.userId === ctx.userId })
+  @StoreReviewRead(simulatedEmptyCareer)
   @Get("user/:userId")
   @ApiOperation({
     summary: "Carrière d’un utilisateur",

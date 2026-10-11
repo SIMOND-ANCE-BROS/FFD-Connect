@@ -1,6 +1,4 @@
 import { Inject, MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
-import { ServeStaticModule } from "@nestjs/serve-static";
-import { join } from "path";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -13,7 +11,9 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ScheduleModule } from "@nestjs/schedule";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AdminModule } from "./admin/admin.module";
+import { AnalyticsModule } from "./analytics/analytics.module";
 import { AuthModule } from "./auth/auth.module";
+import { StoreReviewInterceptor } from "./auth/store-review/store-review.interceptor";
 import { CareerModule } from "./career/career.module";
 import { CircuitBreakerModule } from "./common/circuit-breaker/circuit-breaker.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
@@ -78,14 +78,13 @@ import { WdsfModule } from "./wdsf/wdsf.module";
     StorageModule,
     AuthModule,
     AdminModule,
+    AnalyticsModule,
     TracksModule,
     TrackCorrectionsModule,
     TtsModule,
     PrismaModule,
-    ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), "uploads"),
-      serveRoot: "/uploads",
-    }),
+    // No static file server on uploads/: track media are served by
+    // UploadsFallbackController (flat media names only, #293).
     CareerModule,
     ClubsModule,
     CompetitionsModule,
@@ -115,6 +114,11 @@ import { WdsfModule } from "./wdsf/wdsf.module";
     {
       provide: APP_INTERCEPTOR,
       useClass: MetricsInterceptor,
+    },
+    {
+      // Last global interceptor: logging and metrics still see simulated writes.
+      provide: APP_INTERCEPTOR,
+      useClass: StoreReviewInterceptor,
     },
   ],
 })

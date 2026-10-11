@@ -1,9 +1,16 @@
 /**
- * Règles d'accession au niveau supérieur – Règlement Sportif FFDanse.
- * 2.1 Accession Intermédiaire (passeport orange min.)
- * 2.2 Accession Avancé (2 Critériums + 8 épreuves classificatrices + passeport violet) – à compléter avec données participation
- * 2.3 Accession International (Adulte/Senior, 2 derniers Critériums + 750 pts + passeport rouge) – à compléter
- * 3.1–3.5 Plafond de niveau en cas de changement de classe d'âge
+ * Niveaux de compétition des couples – Règlement Sportif FFDanse.
+ * 3.1–3.5 Plafond de niveau en cas de changement de classe d'âge.
+ *
+ * Le niveau de compétition (Débutant, Intermédiaire, Avancé, International)
+ * est propre à chaque discipline et N'EST PAS déduit des couleurs du Passeport
+ * Danse (décision produit) : aucune règle ici ne filtre un niveau selon un
+ * passeport. Le niveau d'un danseur se lit via getCompetitionLevelForCategory
+ * (src/common/competition-level).
+ *
+ * L'ordre des couleurs du Passeport Danse reste exposé : il sert aux niveaux
+ * SOLO (Novice / Confirmé / Expérimenté, src/common/solo-rules), concept
+ * distinct du niveau de compétition.
  */
 
 import type { CompetitionLevel } from "../age-group/age-group.util";
@@ -24,17 +31,6 @@ export const PASSPORT_LEVEL_ORDER = [
 
 export type PassportLevelValue = (typeof PASSPORT_LEVEL_ORDER)[number];
 
-/** Couleur minimale requise pour chaque niveau (Article 2). */
-export const MIN_PASSPORT_FOR_LEVEL: Record<
-  CompetitionLevel,
-  PassportLevelValue
-> = {
-  Débutant: "BLANC", // pas de condition spécifique
-  Intermédiaire: "ORANGE", // 2.1
-  Avancé: "VIOLET", // 2.2
-  International: "ROUGE", // 2.3
-};
-
 /**
  * Retourne l'ordre (index) d'une couleur passeport. Plus l'index est élevé, plus le niveau est élevé.
  */
@@ -47,8 +43,9 @@ export function passportOrder(level: string | null | undefined): number {
 }
 
 /**
- * Vérifie si le partenaire a au moins la couleur de passeport requise.
- * On considère le meilleur des deux (Latine et Standard) pour chaque partenaire.
+ * Vérifie si le danseur a au moins la couleur de passeport requise.
+ * On considère le meilleur des deux (Latine et Standard).
+ * Utilisé par les niveaux SOLO uniquement (solo-rules).
  */
 export function hasAtLeastPassport(
   passportLatin: string | null | undefined,
@@ -61,37 +58,6 @@ export function hasAtLeastPassport(
   const std = passportOrder(passportStandard);
   const best = Math.max(lat, std);
   return best >= minOrder;
-}
-
-/**
- * Les deux partenaires doivent avoir au moins la couleur requise pour le niveau (2.1, 2.2, 2.3).
- * Pour le niveau Débutant, le règlement n'exige pas de couleur de passeport (licence C minimum).
- */
-export function coupleMeetsPassportForLevel(
-  partner1: {
-    passportLevelLatin?: string | null;
-    passportLevelStandard?: string | null;
-  },
-  partner2: {
-    passportLevelLatin?: string | null;
-    passportLevelStandard?: string | null;
-  },
-  level: CompetitionLevel,
-): boolean {
-  if (level === "Débutant") return true;
-  const minColor = MIN_PASSPORT_FOR_LEVEL[level];
-  return (
-    hasAtLeastPassport(
-      partner1.passportLevelLatin,
-      partner1.passportLevelStandard,
-      minColor,
-    ) &&
-    hasAtLeastPassport(
-      partner2.passportLevelLatin,
-      partner2.passportLevelStandard,
-      minColor,
-    )
-  );
 }
 
 /**
@@ -136,21 +102,11 @@ export function getMaxLevelForCoupleAgeGroup(
 }
 
 /**
- * Filtre les niveaux autorisés pour un couple selon :
- * - classe d'âge (niveaux autorisés + plafond art. 3),
- * - respect de la couleur passeport minimale pour chaque niveau (2.1, 2.2, 2.3).
- * Les deux partenaires doivent avoir au moins la couleur requise pour qu'un niveau soit proposé.
+ * Niveaux autorisés pour un couple selon sa classe d'âge uniquement
+ * (niveaux autorisés + plafond art. 3). Le Passeport Danse n'intervient pas.
  */
 export function getAllowedLevelsForCouple(
   coupleAgeGroup: string | null | undefined,
-  partner1: {
-    passportLevelLatin?: string | null;
-    passportLevelStandard?: string | null;
-  },
-  partner2: {
-    passportLevelLatin?: string | null;
-    passportLevelStandard?: string | null;
-  },
 ): CompetitionLevel[] {
   const allowedByAge = coupleAgeGroup
     ? getAllowedLevelsForAgeGroup("COUPLE", coupleAgeGroup)
@@ -158,62 +114,9 @@ export function getAllowedLevelsForCouple(
   if (allowedByAge.length === 0) return [];
 
   const maxForAge = getMaxLevelForCoupleAgeGroup(coupleAgeGroup);
-  const capped = maxForAge
+  return maxForAge
     ? allowedByAge.filter(
         (l) => levelOrderIndex(l) <= levelOrderIndex(maxForAge),
       )
     : allowedByAge;
-
-  return capped.filter((level) =>
-    coupleMeetsPassportForLevel(partner1, partner2, level),
-  );
-}
-
-/**
- * Indique si l'accession au niveau Intermédiaire est possible (2.1).
- * Condition : couple actuellement Débutant + les deux ont au moins orange.
- * La "demande du responsable technique" n'est pas vérifiable ici (workflow à part).
- */
-export function canAccessIntermediaire(
-  partner1: {
-    passportLevelLatin?: string | null;
-    passportLevelStandard?: string | null;
-  },
-  partner2: {
-    passportLevelLatin?: string | null;
-    passportLevelStandard?: string | null;
-  },
-): boolean {
-  return coupleMeetsPassportForLevel(partner1, partner2, "Intermédiaire");
-}
-
-/**
- * Pour 2.2 (Avancé) et 2.3 (International), les conditions de participation (Critériums, épreuves, points)
- * doivent être évaluées côté métier quand les données d'inscriptions/résultats seront disponibles.
- * Cette fonction retourne uniquement la condition passeport.
- */
-export function meetsPassportForAvance(
-  partner1: {
-    passportLevelLatin?: string | null;
-    passportLevelStandard?: string | null;
-  },
-  partner2: {
-    passportLevelLatin?: string | null;
-    passportLevelStandard?: string | null;
-  },
-): boolean {
-  return coupleMeetsPassportForLevel(partner1, partner2, "Avancé");
-}
-
-export function meetsPassportForInternational(
-  partner1: {
-    passportLevelLatin?: string | null;
-    passportLevelStandard?: string | null;
-  },
-  partner2: {
-    passportLevelLatin?: string | null;
-    passportLevelStandard?: string | null;
-  },
-): boolean {
-  return coupleMeetsPassportForLevel(partner1, partner2, "International");
 }

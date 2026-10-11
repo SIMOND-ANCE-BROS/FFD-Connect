@@ -4,7 +4,6 @@ import {
   Card,
   Checkbox,
   Group,
-  Loader,
   Modal,
   NumberInput,
   Select,
@@ -20,6 +19,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
+import { ListSkeleton } from '../components/ListStates';
 import {
   adminControllerDeleteUser,
   adminControllerResendInvitation,
@@ -27,6 +27,7 @@ import {
   adminControllerUpdateUser,
 } from '../api/generated/sdk.gen';
 import type { AdminControllerUpdateUserData, UserRole } from '../api/generated/types.gen';
+import { formatLicenseValidUntil } from '../lib/licenseDate';
 import {
   auditQuery,
   clubOptionsQuery,
@@ -36,10 +37,18 @@ import {
   userQuery,
 } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
+import { StoreReviewBlockedModal, StoreReviewNotice } from '../components/StoreReview';
 import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { ROLE_LABELS } from '../lib/labels';
-import { changedFields, type EditableFields, withLegacy } from '../lib/diff';
+import {
+  changedFields,
+  type EditableFields,
+  legacyCompetitionLevelHint,
+  withLegacy,
+} from '../lib/diff';
+import { formatDiscipline } from '../lib/discipline';
+import { protectedActionError, type ProtectedAction } from '../lib/storeReview';
 import { useSession } from '../session/sessionStore';
 
 type UpdateBody = AdminControllerUpdateUserData['body'];
@@ -67,6 +76,7 @@ export function UserDetailPage() {
   const [statusOpen, setStatusOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [typedEmail, setTypedEmail] = useState('');
+  const [blocked, setBlocked] = useState<ProtectedAction | null>(null);
 
   const initial = useMemo<EditableFields | null>(() => {
     const u = user.data;
@@ -79,7 +89,8 @@ export function UserDetailPage() {
       ageGroup: u.ageGroup,
       passportLevelLatin: u.passportLevelLatin ?? null,
       passportLevelStandard: u.passportLevelStandard ?? null,
-      competitionLevel: u.competitionLevel,
+      competitionLevelLatin: u.competitionLevelLatin ?? null,
+      competitionLevelStandard: u.competitionLevelStandard ?? null,
       nationalRanking: u.nationalRanking,
       role: u.role,
       extraRoles: u.extraRoles,
@@ -95,7 +106,8 @@ export function UserDetailPage() {
       ageGroup: null,
       passportLevelLatin: null,
       passportLevelStandard: null,
-      competitionLevel: null,
+      competitionLevelLatin: null,
+      competitionLevelStandard: null,
       nationalRanking: null,
       role: '',
       extraRoles: [],
@@ -158,7 +170,11 @@ export function UserDetailPage() {
     onError: (e) =>
       notifications.show({
         color: 'red',
-        message: apiErrorMessage(e, 'Changement de statut impossible'),
+        message: protectedActionError(
+          e,
+          { isStoreReview: user.data?.isStoreReview === true, target: 'user', action: 'disable' },
+          'Changement de statut impossible',
+        ),
       }),
   });
 
@@ -177,10 +193,15 @@ export function UserDetailPage() {
   if (user.isError) {
     return <Alert color="red">Utilisateur introuvable ou erreur serveur.</Alert>;
   }
-  if (!user.data || !initial || !ref.data) return <Loader />;
+  if (!user.data || !initial || !ref.data) return <ListSkeleton rows={5} />;
   const u = user.data;
   const isSelf = me?.id === u.id;
   const disabled = u.disabledAt != null;
+  const storeReview = u.isStoreReview;
+  // The store-review account can be neither deleted nor disabled: explain it
+  // instead of opening a flow the API would refuse. Reactivation stays open.
+  const openStatus = () => (storeReview && !disabled ? setBlocked('disable') : setStatusOpen(true));
+  const openDelete = () => (storeReview ? setBlocked('delete') : setDeleteOpen(true));
   // lastLoginAt is recorded at login and refresh since lot 1; null = never used.
   // Only back-office accounts get an invitation; a CLUB account of a disabled
   // club could not log in anyway (the server refuses both cases too).
@@ -190,6 +211,9 @@ export function UserDetailPage() {
     u.lastLoginAt === null &&
     !disabled &&
     !(u.role === 'CLUB' && u.clubDisabledAt !== null);
+  // Before the per-discipline levels, a single level was stored: show it as a
+  // read-only hint while neither discipline level is set.
+  const legacyLevelHint = legacyCompetitionLevelHint(u);
   const emailMatches = typedEmail.trim().toLowerCase() === u.email.toLowerCase();
   const closeDelete = () => {
     setDeleteOpen(false);
@@ -219,16 +243,13 @@ export function UserDetailPage() {
             </Button>
           )}
           {!isSelf && (
-            <Button
-              variant="light"
-              color={disabled ? 'green' : 'red'}
-              onClick={() => setStatusOpen(true)}
-            >
+            <Button variant="light" color={disabled ? 'green' : 'red'} onClick={openStatus}>
               {disabled ? 'Réactiver' : 'Désactiver'}
             </Button>
           )}
         </Group>
       </Group>
+      {storeReview && <StoreReviewNotice target="user" />}
       {disabled && (
         <Alert color="red" title="Compte désactivé">
           Désactivé le {dayjs(u.disabledAt).format('DD/MM/YYYY HH:mm')} : connexion et accès
@@ -242,12 +263,11 @@ export function UserDetailPage() {
         </Alert>
       )}
       <Card withBorder>
-        <SimpleGrid cols={3}>
+        <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <Text size="sm">Email : {u.email}</Text>
           <Text size="sm">
             Licence : {u.licenseNumber ?? '—'}
-            {u.licenseValidUntil &&
-              ` (jusqu'au ${dayjs(u.licenseValidUntil).format('DD/MM/YYYY')})`}
+            {u.licenseValidUntil && ` (jusqu'au ${formatLicenseValidUntil(u.licenseValidUntil)})`}
           </Text>
           <Text size="sm">WDSF : {u.wdsfMin ?? '—'}</Text>
           <Text size="sm">Inscription : {dayjs(u.createdAt).format('DD/MM/YYYY')}</Text>
@@ -258,7 +278,7 @@ export function UserDetailPage() {
         </SimpleGrid>
       </Card>
       <form onSubmit={onSubmit}>
-        <SimpleGrid cols={2}>
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <TextInput label="Prénom" withAsterisk {...form.getInputProps('firstName')} />
           <TextInput label="Nom" withAsterisk {...form.getInputProps('lastName')} />
           <Select
@@ -271,7 +291,7 @@ export function UserDetailPage() {
           <Select
             label="Catégorie"
             clearable
-            data={withLegacy(ref.data.categories, initial.category)}
+            data={withLegacy(ref.data.categories, initial.category, formatDiscipline)}
             {...form.getInputProps('category')}
           />
           <Select
@@ -282,10 +302,18 @@ export function UserDetailPage() {
             {...form.getInputProps('ageGroup')}
           />
           <Select
-            label="Niveau compétition"
+            label="Niveau Latines"
             clearable
-            data={withLegacy(ref.data.competitionLevels, initial.competitionLevel)}
-            {...form.getInputProps('competitionLevel')}
+            data={withLegacy(ref.data.competitionLevels, initial.competitionLevelLatin)}
+            description={legacyLevelHint}
+            {...form.getInputProps('competitionLevelLatin')}
+          />
+          <Select
+            label="Niveau Standards"
+            clearable
+            data={withLegacy(ref.data.competitionLevels, initial.competitionLevelStandard)}
+            description={legacyLevelHint}
+            {...form.getInputProps('competitionLevelStandard')}
           />
           <Select
             label="Passeport Latine"
@@ -380,7 +408,7 @@ export function UserDetailPage() {
               l'oubli). Pour une mesure réversible, désactivez le compte.
             </Text>
             <Group>
-              <Button color="red" variant="outline" onClick={() => setDeleteOpen(true)}>
+              <Button color="red" variant="outline" onClick={openDelete}>
                 Supprimer le compte
               </Button>
             </Group>
@@ -421,7 +449,13 @@ export function UserDetailPage() {
             réservations, notifications, documents. Cette action est irréversible.
           </Text>
           {remove.isError && (
-            <Alert color="red">{apiErrorMessage(remove.error, 'Suppression impossible')}</Alert>
+            <Alert color="red">
+              {protectedActionError(
+                remove.error,
+                { isStoreReview: storeReview, target: 'user', action: 'delete' },
+                'Suppression impossible',
+              )}
+            </Alert>
           )}
           <TextInput
             label="Recopiez l'email du compte pour confirmer"
@@ -444,6 +478,8 @@ export function UserDetailPage() {
           </Group>
         </Stack>
       </Modal>
+
+      <StoreReviewBlockedModal target="user" action={blocked} onClose={() => setBlocked(null)} />
 
       <Title order={4}>Historique admin</Title>
       {history.data?.data.length ? (

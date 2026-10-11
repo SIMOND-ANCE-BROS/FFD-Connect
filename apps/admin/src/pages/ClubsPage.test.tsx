@@ -67,6 +67,19 @@ describe('ClubsPage', () => {
     expect(screen.getByText('2 clubs')).toBeInTheDocument();
   });
 
+  it('badges the store-review club', async () => {
+    const [a, b] = page.data.data;
+    vi.spyOn(sdk, 'adminControllerListClubs').mockResolvedValue({
+      ...page,
+      data: { ...page.data, data: [{ ...a, isStoreReview: true }, b] },
+    } as never);
+    renderPage();
+    const rowA = (await screen.findByRole('link', { name: 'Club A' })).closest('tr') as HTMLElement;
+    expect(within(rowA).getByText('Validation stores')).toBeInTheDocument();
+    const rowB = screen.getByRole('link', { name: 'Club B' }).closest('tr') as HTMLElement;
+    expect(within(rowB).queryByText('Validation stores')).toBeNull();
+  });
+
   it('searches by name after debounce and filters on the status, from the first page', async () => {
     const spy = vi.spyOn(sdk, 'adminControllerListClubs').mockResolvedValue(page as never);
     renderPage();

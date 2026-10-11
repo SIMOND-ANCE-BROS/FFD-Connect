@@ -25,7 +25,7 @@ pnpm --filter backend seed:e2e            # one account per role (idempotent)
 | Guest    | _"Continuer en tant qu'invité"_ | Compétitions · Réglages                                     |
 | LICENSEE | `test.e2e@ffd.com`              | Carrière · License · Bibliothèque · Compétitions · Réglages |
 | CLUB     | `club.e2e@ffd.com`              | Espace club · Compétitions · Scanner · Réglages             |
-| STAFF    | `staff@test.com`                | Compétitions · Scanner · Réglages                           |
+| STAFF    | `staff.e2e@ffd.com`             | Compétitions · Scanner · Réglages                           |
 | ADMIN    | `admin.e2e@ffd.com`             | Bibliothèque · Compétitions · Scanner · Réglages            |
 
 ## 2. Standalone build (the reliable vehicle — NOT the dev-client)
@@ -96,7 +96,7 @@ share one XCUITest driver across flows, which is exactly what goes zombie on thi
 | --------------------- | --------------------------------------- |
 | `login-licensee.yaml` | Log in as LICENSEE (`test.e2e@ffd.com`) |
 | `login-club.yaml`     | Log in as CLUB (`club.e2e@ffd.com`)     |
-| `login-staff.yaml`    | Log in as STAFF (`staff@test.com`)      |
+| `login-staff.yaml`    | Log in as STAFF (`staff.e2e@ffd.com`)   |
 | `login-admin.yaml`    | Log in as ADMIN (`admin.e2e@ffd.com`)   |
 | `logout.yaml`         | Log out from any authenticated screen   |
 

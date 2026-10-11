@@ -45,15 +45,23 @@ export interface LicenseConfig {
   cardBackground: string;
   borderColor: string;
   nameColor: string;
+  /**
+   * Title and menu icon of the coloured header. Must contrast with
+   * `backgroundColor`: the header is what peeks out of the stacked wallet.
+   */
+  headerTextColor: string;
 }
 
 export interface LicenseCardProps {
   type: LicenseType;
   user: LicenseUser;
   photoUri: string | null;
-  onShowQr: () => void;
+  /**
+   * Opens the QR in full screen. Absent ⇒ the card has no QR code (a STAFF or
+   * CLUB account holds no license to scan, #234).
+   */
+  onShowQr?: () => void;
   themeOverride?: "light" | "dark";
-  collapsed?: boolean;
   onOptions?: () => void;
   style?: ViewStyle | ViewStyle[];
   testID?: string;

@@ -7,16 +7,19 @@ import { AdminClubsService } from "./admin-clubs.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminController } from "./admin.controller";
+import { AdminStatsController } from "./admin-stats.controller";
 import { AdminReferenceService } from "./admin-reference.service";
+import { AdminStatsQueryService } from "./admin-stats.query-service";
 import { AdminUserAccountsService } from "./admin-user-accounts.service";
 
 @Module({
   imports: [AdminAuditModule, AuthModule, UsersModule],
-  controllers: [AdminController],
+  controllers: [AdminController, AdminStatsController],
   providers: [
     AdminClubsQueryService,
     AdminClubsService,
     AdminReferenceService,
+    AdminStatsQueryService,
     AdminUserAccountsService,
     AdminUsersQueryService,
     AdminUsersService,

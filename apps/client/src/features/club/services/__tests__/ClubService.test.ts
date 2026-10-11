@@ -112,7 +112,7 @@ describe("ClubService", () => {
       role: "LICENSEE" as const,
       category: "Latin",
       ageGroup: "Adult",
-      competitionLevel: "B",
+      competitionLevel: "Avancé",
     };
 
     it("returns true when no filter is applied", () => {
@@ -140,6 +140,27 @@ describe("ClubService", () => {
       );
     });
 
+    it("matches canonical and legacy age-class spellings", () => {
+      // Legacy member class « Adult » vs canonical deduced event « Adulte ».
+      expect(ClubService.checkEligibility(member, { ageGroup: "Adulte" })).toBe(
+        true,
+      );
+      const senior = { ...member, ageGroup: "Senior II" };
+      expect(ClubService.checkEligibility(senior, { ageGroup: "Senior" })).toBe(
+        true,
+      );
+      expect(
+        ClubService.checkEligibility(senior, { ageGroup: "Senior III" }),
+      ).toBe(false);
+      // « Espoir » (under 21) is open to Youth and Adulte couples.
+      expect(ClubService.checkEligibility(member, { ageGroup: "Espoir" })).toBe(
+        true,
+      );
+      expect(ClubService.checkEligibility(senior, { ageGroup: "Espoir" })).toBe(
+        false,
+      );
+    });
+
     it("ignores category filter when filter.category is empty string", () => {
       expect(ClubService.checkEligibility(member, { category: "" })).toBe(true);
     });
@@ -152,7 +173,7 @@ describe("ClubService", () => {
       expect(
         ClubService.checkEligibility(member, {
           eventKind: "CLASSIFICATRICE",
-          level: "A",
+          level: "International",
         }),
       ).toBe(false);
     });
@@ -161,7 +182,7 @@ describe("ClubService", () => {
       expect(
         ClubService.checkEligibility(member, {
           eventKind: "CLASSIFICATRICE",
-          level: "B",
+          level: "Avancé",
         }),
       ).toBe(true);
     });
@@ -170,8 +191,83 @@ describe("ClubService", () => {
       expect(
         ClubService.checkEligibility(member, {
           eventKind: "LIBRE",
-          level: "A",
+          level: "International",
         }),
+      ).toBe(true);
+    });
+
+    it("reads the level of the event discipline, not the legacy level", () => {
+      const dancer = {
+        ...member,
+        category: "Ten Dance",
+        competitionLevelLatin: "International",
+        competitionLevelStandard: "Débutant",
+      };
+      const classif = { eventKind: "CLASSIFICATRICE" };
+      expect(
+        ClubService.checkEligibility(dancer, {
+          ...classif,
+          category: "Latin",
+          level: "International",
+        }),
+      ).toBe(true);
+      expect(
+        ClubService.checkEligibility(dancer, {
+          ...classif,
+          category: "Standard",
+          level: "International",
+        }),
+      ).toBe(false);
+      expect(
+        ClubService.checkEligibility(dancer, {
+          ...classif,
+          category: "Standard",
+          level: "Débutant",
+        }),
+      ).toBe(true);
+    });
+
+    it("accepts a dancer with a level in the event discipline even if the declared category differs", () => {
+      expect(
+        ClubService.checkEligibility(
+          { ...member, competitionLevelStandard: "Débutant" },
+          { category: "Standard" },
+        ),
+      ).toBe(true);
+    });
+
+    it("requires both disciplines for Ten Dance and ignores the level", () => {
+      expect(
+        ClubService.checkEligibility(member, { category: "Ten Dance" }),
+      ).toBe(false);
+      expect(
+        ClubService.checkEligibility(
+          { ...member, competitionLevelStandard: "Débutant" },
+          {
+            category: "Ten Dance",
+            eventKind: "CLASSIFICATRICE",
+            level: "International",
+          },
+        ),
+      ).toBe(true);
+    });
+
+    it("does not block a member without any discipline information", () => {
+      const unknown = { ...member, category: undefined };
+      expect(ClubService.checkEligibility(unknown, { category: "Latin" })).toBe(
+        true,
+      );
+    });
+
+    it("compares raw categories when the event discipline is unknown", () => {
+      expect(ClubService.checkEligibility(member, { category: "Rock" })).toBe(
+        false,
+      );
+      expect(
+        ClubService.checkEligibility(
+          { ...member, category: "Rock" },
+          { category: "Rock" },
+        ),
       ).toBe(true);
     });
 

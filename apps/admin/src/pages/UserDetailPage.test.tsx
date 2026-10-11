@@ -28,6 +28,8 @@ const detail = {
   passportLevelLatin: null,
   passportLevelStandard: null,
   competitionLevel: null,
+  competitionLevelLatin: null,
+  competitionLevelStandard: null,
   wdsfMin: null,
   wdsfExpiresOn: null,
   licenseNumber: 'L1',
@@ -37,6 +39,14 @@ const detail = {
   clubDisabledAt: null,
   createdByAdmin: true,
 };
+
+/** Picks an option in a Mantine Select (every listbox stays mounted in jsdom). */
+async function pickOption(input: HTMLElement, name: string) {
+  await userEvent.click(input);
+  const listbox = document.getElementById(input.getAttribute('aria-controls') ?? '');
+  if (!listbox) throw new Error('listbox not found');
+  await userEvent.click(within(listbox).getByRole('option', { name, hidden: true }));
+}
 
 function renderPage() {
   return render(
@@ -92,7 +102,7 @@ describe('UserDetailPage', () => {
 
   it('shows a legacy category instead of a blank select', async () => {
     renderPage();
-    expect(await screen.findByDisplayValue('Latine (valeur historique)')).toBeInTheDocument();
+    expect(await screen.findByDisplayValue('Latines (valeur historique)')).toBeInTheDocument();
   });
 
   it('confirms a before → after summary then PATCHes only the changed field', async () => {
@@ -113,6 +123,38 @@ describe('UserDetailPage', () => {
       path: { id: 'u1' },
       body: { lastName: 'Durand' },
     });
+  });
+
+  it('edits the Latin and Standard levels separately, never the legacy single level', async () => {
+    vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+      data: { ...detail, competitionLevelLatin: 'Débutant' },
+      error: undefined,
+    } as never);
+    const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
+      data: { ...detail, competitionLevelLatin: 'Débutant', competitionLevelStandard: 'Débutant' },
+      error: undefined,
+    } as never);
+    renderPage();
+    const standard = await screen.findByLabelText('Niveau Standards', { selector: 'input' });
+    expect(screen.getByLabelText('Niveau Latines', { selector: 'input' })).toHaveValue('Débutant');
+    await pickOption(standard, 'Débutant');
+    await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Niveau Standards');
+    await userEvent.click(within(dialog).getByRole('button', { name: /confirmer/i }));
+    expect(patch).toHaveBeenCalledWith({
+      path: { id: 'u1' },
+      body: { competitionLevelStandard: 'Débutant' },
+    });
+  });
+
+  it('shows the legacy single level as a read-only hint when no discipline level is set', async () => {
+    vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+      data: { ...detail, competitionLevel: 'Avancé' },
+      error: undefined,
+    } as never);
+    renderPage();
+    expect(await screen.findAllByText('Ancien niveau unique : Avancé')).toHaveLength(2);
   });
 
   it('blocks the save when a required name is cleared', async () => {
@@ -330,6 +372,87 @@ describe('UserDetailPage', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     await screen.findByText('users list');
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin', 'users'] });
+  });
+
+  describe('store-review account', () => {
+    beforeEach(() => {
+      vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+        data: { ...detail, isStoreReview: true },
+        error: undefined,
+      } as never);
+    });
+
+    it('flags the account and keeps the edit form', async () => {
+      renderPage();
+      expect(
+        await screen.findByText('Compte de validation App Store / Google Play'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /enregistrer/i })).toBeEnabled();
+    });
+
+    it('explains instead of deleting', async () => {
+      const remove = vi.spyOn(sdk, 'adminControllerDeleteUser');
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent(
+        'Ce compte est utilisé pour les validations App Store / Google Play : il ne peut pas être supprimé.',
+      );
+      expect(within(dialog).queryByLabelText(/recopiez l'email/i)).toBeNull();
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Compris' }));
+      expect(remove).not.toHaveBeenCalled();
+    });
+
+    it('explains instead of disabling', async () => {
+      const setStatus = vi.spyOn(sdk, 'adminControllerSetUserStatus');
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Désactiver' }));
+      const dialog = await screen.findByRole('dialog');
+      expect(dialog).toHaveTextContent(/il ne peut pas être désactivé/);
+      expect(within(dialog).queryByRole('button', { name: 'Désactiver' })).toBeNull();
+      expect(setStatus).not.toHaveBeenCalled();
+    });
+
+    it('still lets a disabled store-review account be reactivated', async () => {
+      vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+        data: { ...detail, isStoreReview: true, disabledAt: '2026-10-01T10:00:00.000Z' },
+        error: undefined,
+      } as never);
+      const setStatus = vi.spyOn(sdk, 'adminControllerSetUserStatus').mockResolvedValue({
+        data: { ...detail, isStoreReview: true },
+        error: undefined,
+      } as never);
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Réactiver' }));
+      await userEvent.click(
+        within(await screen.findByRole('dialog')).getByRole('button', { name: 'Réactiver' }),
+      );
+      expect(setStatus).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { active: true } });
+    });
+
+    it('shows the store-review message when the API refuses a deletion with a bare 403', async () => {
+      vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+        data: { ...detail, isStoreReview: false },
+        error: undefined,
+      } as never);
+      vi.spyOn(sdk, 'adminControllerDeleteUser').mockResolvedValue({
+        data: undefined,
+        error: {
+          statusCode: 403,
+          message:
+            'Ce compte est utilisé pour les validations App Store / Google Play : il ne peut pas être supprimé.',
+        },
+        response: new Response(null, { status: 403 }),
+      } as never);
+      renderPage();
+      await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.type(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
+      await userEvent.click(
+        within(dialog).getByRole('button', { name: 'Supprimer définitivement' }),
+      );
+      expect(await within(dialog).findByText(/il ne peut pas être supprimé/)).toBeInTheDocument();
+    });
   });
 
   it('saves extra roles after the confirmation', async () => {

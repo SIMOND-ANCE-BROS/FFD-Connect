@@ -12,21 +12,35 @@ describe("ListAuditLogQueryDto", () => {
       (e) => e.property,
     );
 
-  it("accepts track corrections as a target type", () => {
+  it("accepts track corrections and tracks as target types", () => {
     expect(errors({ targetType: "TRACK_CORRECTION" })).toEqual([]);
+    expect(errors({ targetType: "TRACK" })).toEqual([]);
   });
 
   it("refuses an unknown target type", () => {
-    expect(errors({ targetType: "TRACK" })).toEqual(["targetType"]);
+    expect(errors({ targetType: "COMPETITION" })).toEqual(["targetType"]);
   });
 
-  it("knows the moderation decisions", () => {
+  it("knows the moderation decisions and the track writes", () => {
     expect(AUDIT_ACTIONS).toEqual(
       expect.arrayContaining([
         "TRACK_CORRECTION_APPROVE",
         "TRACK_CORRECTION_REJECT",
+        "TRACK_CREATE",
+        "TRACK_UPDATE",
+        "TRACK_DELETE",
+        "LICENSE_RENEWAL_VIEW",
+        "LICENSE_RENEWAL_DOCUMENT_VIEW",
+        "LICENSE_RENEWAL_APPROVE",
+        "LICENSE_RENEWAL_REJECT",
       ]),
     );
-    expect(AUDIT_TARGET_TYPES).toEqual(["USER", "CLUB", "TRACK_CORRECTION"]);
+    expect(AUDIT_TARGET_TYPES).toEqual([
+      "USER",
+      "CLUB",
+      "TRACK_CORRECTION",
+      "TRACK",
+      "LICENSE_RENEWAL",
+    ]);
   });
 });

@@ -4,3 +4,5 @@ export type {
   AnalyticsEventParams,
   IAnalytics,
 } from "./types";
+export { usage, sendUsageBatch } from "./usage";
+export type { AnalyticsWithScreens } from "./AnalyticsService";

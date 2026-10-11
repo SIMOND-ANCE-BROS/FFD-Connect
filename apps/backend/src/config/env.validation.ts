@@ -82,6 +82,11 @@ class EnvironmentVariables {
   @IsOptional()
   FFD_ITEMS_PER_PAGE?: number = 100;
 
+  // TEMPORAIRE : déduction des épreuves depuis la description / la circulaire FFD
+  @IsIn(["true", "false"])
+  @IsOptional()
+  FFD_DEDUCE_EVENTS?: string;
+
   // Sentry (optionnel — si absent, le tracking est désactivé)
   @IsString()
   @IsOptional()
@@ -194,13 +199,6 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   AZURE_SPEECH_RESOURCE_ID?: string;
-
-  // Clé API Gemini (Google AI). N'est plus lue par le module TTS (la réécriture
-  // d'annonce a été retirée : le texte est synthétisé tel quel). Conservée
-  // optionnelle pour ne pas casser les environnements qui la définissent encore.
-  @IsString()
-  @IsOptional()
-  GOOGLE_API_KEY?: string;
 
   // Firebase Service Account (notifications push). Priorité au JSON complet
   // (injecté depuis Key Vault) : sur Azure Container Apps il n'y a pas de

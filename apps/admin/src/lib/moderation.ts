@@ -41,6 +41,8 @@ export interface ModerationUrlState {
   reasons: TrackCorrectionReason[];
   q: string;
   page: number;
+  /** One track's proposals (link from the track page); absent: every track. */
+  trackId?: string;
 }
 
 const isStatus = (value: string | null): value is TrackCorrectionStatus =>
@@ -49,16 +51,20 @@ const isStatus = (value: string | null): value is TrackCorrectionStatus =>
 const isReason = (value: string): value is TrackCorrectionReason =>
   (REASONS as string[]).includes(value);
 
-/** Filters kept in the URL: `?status=APPROVED&reason=MPM,TITLE&q=paso&page=2`. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Filters kept in the URL: `?status=APPROVED&reason=MPM,TITLE&q=paso&page=2&track=<uuid>`. */
 export function readModerationParams(params: URLSearchParams): ModerationUrlState {
   const status = params.get('status');
   const q = (params.get('q') ?? '').trim();
   const page = Number(params.get('page'));
+  const track = params.get('track') ?? '';
   return {
     status: isStatus(status) ? status : 'PENDING',
     reasons: (params.get('reason') ?? '').split(',').filter(isReason),
     q: q.length >= MIN_SEARCH_LENGTH ? q : '',
     page: Number.isInteger(page) && page > 1 ? page : 1,
+    ...(UUID.test(track) && { trackId: track }),
   };
 }
 
@@ -74,6 +80,7 @@ export function writeModerationParams(
   if (next.reasons.length > 0) params.set('reason', next.reasons.join(','));
   if (next.q) params.set('q', next.q);
   if (next.page > 1) params.set('page', String(next.page));
+  if (next.trackId) params.set('track', next.trackId);
   return params;
 }
 
@@ -83,6 +90,7 @@ export function moderationFilter(state: ModerationUrlState, take: number): Moder
     status: state.status,
     ...(state.reasons.length > 0 && { reason: state.reasons }),
     ...(state.q && { q: state.q }),
+    ...(state.trackId && { trackId: state.trackId }),
     skip: (state.page - 1) * take,
     take,
   };

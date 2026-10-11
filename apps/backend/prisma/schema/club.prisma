@@ -28,6 +28,7 @@ model Club {
   helloAssoOrgSlug      String?
   registrationMode      ClubRegistrationMode @default(MEMBERS_AUTO_CONFIRM)
   disabledAt            DateTime?            // Désactivé par un admin (null = actif) : ses comptes CLUB sont bloqués
+  isStoreReview         Boolean  @default(false) // Club du compte de validation App Store / Google Play : ni supprimable ni désactivable
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
   members                    User[]

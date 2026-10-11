@@ -28,6 +28,26 @@ export function getStructureDisplayName(code: string): string {
   );
 }
 
+/**
+ * National federation (member body) of a WDSF athlete, as a display name.
+ *
+ * "WDSF" is the international body, never a national federation: it is never
+ * returned. Without a usable member body, a French athlete belongs to the FFD;
+ * otherwise the federation is unknown ("").
+ */
+export function resolveWdsfFederation(
+  memberBodyName: string | null | undefined,
+  country: string | null | undefined,
+): string {
+  const display = getStructureDisplayName(memberBodyName?.trim() ?? "");
+  if (display && display.toUpperCase() !== "WDSF") return display;
+  const countryUpper = (country ?? "").trim().toUpperCase();
+  if (countryUpper === "FRANCE" || countryUpper === "FRA") {
+    return FEDERATION_DISPLAY_NAMES.FFD;
+  }
+  return "";
+}
+
 /** Extrait une date de naissance (string ISO ou objet { year, month, day }). */
 export function normalizeBirthDate(value: unknown): string {
   if (value == null || value === "") return "";
@@ -196,15 +216,8 @@ export function parsePersonsToAthlete(
   const birthDateStr = normalizeBirthDate(birthDateRaw);
   const memberBodyName = (athlete.memberBody as { name?: string } | undefined)
     ?.name;
-  const structureCode = memberBodyName?.trim() ?? "";
-  let structure = getStructureDisplayName(structureCode) || "WDSF";
-  const countryUpper = countryStr.toUpperCase();
-  if (
-    (structure === "WDSF" || !structureCode) &&
-    (countryUpper === "FRANCE" || countryUpper === "FRA")
-  ) {
-    structure = FEDERATION_DISPLAY_NAMES.FFD;
-  }
+  // National federation, never "WDSF" (the international body): "" if unknown.
+  const structure = resolveWdsfFederation(memberBodyName, countryStr);
   const photoUrl = extractPhotoUrl(athlete);
   return {
     // "name" is the full name ("Gabin Simond"): never use it as the first name,

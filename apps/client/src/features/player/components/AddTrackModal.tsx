@@ -17,6 +17,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import { BackendService } from "../../../services/BackendService";
 import { useLibrary } from "../context/LibraryContext";
 import { DANCE_GROUPS, mpmFromBpm } from "../utils/danceTempo";
+import { formatDiscipline } from "../../../utils/discipline";
 
 export interface EditableTrack {
   id: string;
@@ -336,7 +337,7 @@ export const AddTrackModal = ({
                       { color: currentTheme.textSecondary },
                     ]}
                   >
-                    {group.label}
+                    {formatDiscipline(group.label)}
                   </Text>
                   <View style={styles.styleGrid}>
                     {group.dances.map((s) => (

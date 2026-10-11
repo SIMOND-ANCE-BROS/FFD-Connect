@@ -196,12 +196,13 @@ identity — aucune clé de service n'est stockée.
 | `AZURE_SPEECH_VOICE`       | `fr-FR-DeniseNeural` | Voix neurale FR (Denise par défaut).                                                                          |
 | `AZURE_SPEECH_RESOURCE_ID` | —                    | ARM resource id du compte Speech (optionnel). Utilisé pour l'auth Entra ID.                                   |
 
-## Gemini (obsolète)
+## Gemini (retiré)
 
 La réécriture des annonces TTS par Gemini a été retirée : le client envoie
 désormais des annonces rédigées en français, synthétisées telles quelles par
-Azure. `GOOGLE_API_KEY` reste acceptée par `env.validation.ts` pour ne pas
-casser les environnements qui la définissent encore, mais elle n'est plus lue.
+Azure. Le SDK `@google/genai` et la variable `GOOGLE_API_KEY` ont été supprimés
+du backend (#216). La validation des variables n'interdit pas les variables
+inconnues : un environnement qui la définit encore démarre normalement.
 
 ## Azure Blob Storage (uploads)
 

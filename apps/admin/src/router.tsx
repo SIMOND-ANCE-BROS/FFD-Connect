@@ -4,10 +4,15 @@ import { AuditLogPage } from './pages/AuditLogPage';
 import { LoginPage } from './pages/LoginPage';
 import { ModerationDetailPage } from './pages/ModerationDetailPage';
 import { ModerationPage } from './pages/ModerationPage';
+import { LicenseRenewalDetailPage } from './pages/LicenseRenewalDetailPage';
+import { LicenseRenewalsPage } from './pages/LicenseRenewalsPage';
 import { NewUserPage } from './pages/NewUserPage';
 import { UserDetailPage } from './pages/UserDetailPage';
 import { ClubDetailPage } from './pages/ClubDetailPage';
 import { ClubsPage } from './pages/ClubsPage';
+import { TrackDetailPage } from './pages/TrackDetailPage';
+import { TrackImportPage } from './pages/TrackImportPage';
+import { TracksPage } from './pages/TracksPage';
 import { NewClubPage } from './pages/NewClubPage';
 import { UsersPage } from './pages/UsersPage';
 import { RequireAdmin } from './session/RequireAdmin';
@@ -31,7 +36,22 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', element: <ClubDetailPage /> },
       { path: 'moderation', element: <ModerationPage /> },
       { path: 'moderation/:id', element: <ModerationDetailPage /> },
+      { path: 'license-renewals', element: <LicenseRenewalsPage /> },
+      { path: 'license-renewals/:id', element: <LicenseRenewalDetailPage /> },
+      { path: 'tracks', element: <TracksPage /> },
+      { path: 'tracks/import', element: <TrackImportPage /> },
+      { path: 'tracks/:id', element: <TrackDetailPage /> },
       { path: 'audit-log', element: <AuditLogPage /> },
+      {
+        path: 'stats',
+        // Lazy: keeps @mantine/charts and recharts out of the main bundle.
+        lazy: () => import('./pages/StatsPage').then((m) => ({ Component: m.StatsPage })),
+      },
+      {
+        path: 'usage',
+        // Lazy: shares the charts chunk with /stats, out of the main bundle.
+        lazy: () => import('./pages/UsagePage').then((m) => ({ Component: m.UsagePage })),
+      },
     ],
   },
   { path: '*', element: <Navigate to="/users" replace /> },

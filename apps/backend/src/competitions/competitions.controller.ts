@@ -47,6 +47,17 @@ import {
   GenerateVolunteerTokenDto,
   VolunteerCheckInDto,
 } from "./dto/volunteer-token.dto";
+import {
+  StoreReviewOwnData,
+  StoreReviewRead,
+  StoreReviewReadable,
+  StoreReviewSimulation,
+} from "../auth/store-review/store-review.decorator";
+import {
+  simulatedCheckIn,
+  simulatedEmptyList,
+  simulatedVolunteerToken,
+} from "../auth/store-review/store-review-responses";
 
 @ApiTags("competitions")
 @ApiCommonErrorResponses()
@@ -60,6 +71,7 @@ export class CompetitionsController {
     private readonly accessService: CompetitionAccessService,
   ) {}
 
+  @StoreReviewReadable()
   @Get()
   @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({
@@ -172,6 +184,7 @@ export class CompetitionsController {
     return this.managementService.enqueueSyncFFD();
   }
 
+  @StoreReviewRead(simulatedEmptyList)
   @Get("club/pending-registrations")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
@@ -309,6 +322,7 @@ export class CompetitionsController {
     return this.managementService.getRegulationConstants();
   }
 
+  @StoreReviewOwnData()
   @Get("user/registrations")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
@@ -348,6 +362,7 @@ export class CompetitionsController {
     return this.resultsService.getUserRegistrations(req.user.userId);
   }
 
+  @StoreReviewRead(simulatedEmptyList)
   @Get("event/:eventId/registrations")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
@@ -398,6 +413,7 @@ export class CompetitionsController {
     return this.resultsService.getEventRegistrations(eventId);
   }
 
+  @StoreReviewReadable()
   @Get(":id/for-user")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
@@ -417,6 +433,7 @@ export class CompetitionsController {
     return this.queryService.findOneForUser(id, req.user.userId);
   }
 
+  @StoreReviewReadable()
   @Get("sync/status")
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth("JWT-auth")
@@ -710,6 +727,7 @@ export class CompetitionsController {
     );
   }
 
+  @StoreReviewSimulation(simulatedCheckIn)
   @Post(":id/checkin")
   @UseGuards(JwtAuthGuard, RolesGuard, ThrottlerUserGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
@@ -743,6 +761,7 @@ export class CompetitionsController {
     return this.resultsService.checkIn(competitionId, body.qrData);
   }
 
+  @StoreReviewSimulation(simulatedVolunteerToken)
   @Post(":id/volunteer/token")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)

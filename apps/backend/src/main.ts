@@ -5,8 +5,6 @@ import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
-import * as fs from "fs";
-import * as path from "path";
 
 import compression from "compression";
 import helmet from "helmet";
@@ -17,18 +15,6 @@ import { sentryRedactionOptions } from "./common/logger/sentry-redaction";
 import { HEALTH_PREFIX_EXCLUDE } from "./health/health.controller";
 import { UPLOADS_FALLBACK_PREFIX_EXCLUDE } from "./tracks/uploads-fallback.controller";
 import { requireProductionEnv } from "./utils/require-production-env";
-
-function ensureUploadDirs() {
-  const dirs = [
-    path.join(process.cwd(), "uploads", "certificates"),
-    path.join(process.cwd(), "uploads", "renewal"),
-  ];
-  for (const dir of dirs) {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-  }
-}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
@@ -204,8 +190,6 @@ async function bootstrap() {
       },
     });
   }
-
-  ensureUploadDirs();
 
   process.on("unhandledRejection", (reason) => {
     logger.error(`Unhandled promise rejection: ${String(reason)}`, "Process");

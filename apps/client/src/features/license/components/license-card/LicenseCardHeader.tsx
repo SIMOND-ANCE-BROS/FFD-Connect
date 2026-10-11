@@ -3,6 +3,7 @@ import { MoreHorizontal } from "lucide-react-native";
 import { TouchableOpacity, View } from "react-native";
 import Svg, { Path, SvgUri } from "react-native-svg";
 import { AppText } from "../../../../components/AppText";
+import { FFD_VALIDITY_UNKNOWN } from "../../utils/licenseSeason";
 import { styles } from "./license-card.styles";
 import { LicenseConfig, LicenseUser } from "./license-card.types";
 
@@ -58,7 +59,7 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
           variant="h1"
           numberOfLines={1}
           adjustsFontSizeToFit
-          style={styles.typeLabel}
+          style={[styles.typeLabel, { color: config.headerTextColor }]}
         >
           {user.type}
         </AppText>
@@ -70,19 +71,22 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
           >
             {user.season}
           </AppText>
-        ) : (
+        ) : user.status && user.status !== FFD_VALIDITY_UNKNOWN ? (
           <View
             style={[styles.statusTag, { borderColor: config.highlightColor }]}
           >
             <AppText
               variant="caption"
               weight="bold"
+              numberOfLines={1}
               style={{ color: config.highlightColor }}
             >
-              {user.status?.toUpperCase()}
+              {user.status.toUpperCase()}
             </AppText>
           </View>
-        )}
+        ) : null}
+        {/* Unknown validity (#211): no header tag — the footer row already
+            says « Validité non communiquée ». */}
       </View>
 
       {/* Options Menu Button */}
@@ -93,7 +97,7 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           style={styles.optionsButton}
         >
-          <MoreHorizontal size={24} color="white" />
+          <MoreHorizontal size={24} color={config.headerTextColor} />
         </TouchableOpacity>
       )}
     </View>
