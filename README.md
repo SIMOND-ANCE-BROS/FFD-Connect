@@ -99,7 +99,7 @@ pnpm install
 ```
 
 **Patch pnpm appliqué automatiquement :** `pnpm install` applique le patch déclaré dans
-`patchedDependencies` de `pnpm-workspace.yaml` (aujourd'hui un seul : `react-native@0.86.0`, correctif
+`patchedDependencies` de `pnpm-workspace.yaml` (aujourd'hui un seul : `react-native@0.86.3`, correctif
 TurboModule iOS 26). Aucun script post-install custom n'est nécessaire. Le seul hook est
 `prepare` (installation des hooks Husky).
 
@@ -539,7 +539,7 @@ Utilisez l'endpoint `/reports` de l'API ou créez une issue sur GitHub avec :
 
 - **expo** (~57.0): Framework Expo (SDK 57)
 - **react** (19.2.x): Bibliothèque React
-- **react-native** (0.86.0): Framework React Native
+- **react-native** (0.86.3): Framework React Native
 - **zustand** (^5): State management client
 - **@tanstack/react-query** (^5): Cache serveur
 - **expo-audio**: Lecteur audio (remplace react-native-track-player)
