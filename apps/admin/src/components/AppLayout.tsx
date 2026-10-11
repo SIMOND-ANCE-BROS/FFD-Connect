@@ -2,8 +2,16 @@ import { AppShell, Badge, Button, Group, NavLink, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router';
-import { pendingCountQuery } from '../api/queries';
+import { pendingCountQuery, pendingRenewalsCountQuery } from '../api/queries';
 import { useSession } from '../session/sessionStore';
+
+/** Red counter of a queue in the menu; nothing when the queue is empty. */
+const countBadge = (value: number) =>
+  value > 0 ? (
+    <Badge size="sm" color="red" circle={value < 10}>
+      {value}
+    </Badge>
+  ) : null;
 
 export function AppLayout() {
   const user = useSession((s) => s.user);
@@ -12,6 +20,8 @@ export function AppLayout() {
   const { pathname } = useLocation();
   const pending = useQuery(pendingCountQuery);
   const { refetch } = pending;
+  const renewals = useQuery(pendingRenewalsCountQuery);
+  const { refetch: refetchRenewals } = renewals;
   // Refreshed on navigation (and invalidated after a decision), never polled:
   // every request wakes the scale-to-zero backend.
   const lastPath = useRef(pathname);
@@ -19,8 +29,10 @@ export function AppLayout() {
     if (lastPath.current === pathname) return;
     lastPath.current = pathname;
     void refetch();
-  }, [pathname, refetch]);
+    void refetchRenewals();
+  }, [pathname, refetch, refetchRenewals]);
   const count = pending.data?.count ?? 0;
+  const renewalsCount = renewals.data?.count ?? 0;
 
   return (
     <AppShell header={{ height: 56 }} navbar={{ width: 220, breakpoint: 'sm' }} padding="md">
@@ -52,13 +64,13 @@ export function AppLayout() {
           component={RouterLink}
           to="/moderation"
           label="Modération"
-          rightSection={
-            count > 0 ? (
-              <Badge size="sm" color="red" circle={count < 10}>
-                {count}
-              </Badge>
-            ) : null
-          }
+          rightSection={countBadge(count)}
+        />
+        <NavLink
+          component={RouterLink}
+          to="/license-renewals"
+          label="Renouvellements"
+          rightSection={countBadge(renewalsCount)}
         />
         <NavLink component={RouterLink} to="/audit-log" label="Journal d'audit" />
         <NavLink component={RouterLink} to="/stats" label="Statistiques" />

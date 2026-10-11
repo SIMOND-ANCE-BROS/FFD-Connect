@@ -7,6 +7,7 @@ import type { AuditLogEntryDto } from '../api/generated/types.gen';
 import { auditQuery } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
 import { ACTION_LABELS } from '../lib/auditLabels';
+import { formatLicenseValidUntil } from '../lib/licenseDate';
 
 const PAGE_SIZE = 50;
 
@@ -17,7 +18,6 @@ const TARGET_LINKS: Record<AuditLogEntryDto['targetType'], { path: string; label
   CLUB: { path: 'clubs', label: 'Voir le club' },
   TRACK_CORRECTION: { path: 'moderation', label: 'Voir la proposition' },
   TRACK: { path: 'tracks', label: 'Voir la musique' },
-  // Screen delivered by #267.
   LICENSE_RENEWAL: { path: 'license-renewals', label: 'Voir la demande' },
 };
 
@@ -34,6 +34,14 @@ function visibleChange(entry: AuditLogEntryDto) {
     if (sole || before.trackId === after.trackId) {
       delete before.trackId;
       delete after.trackId;
+    }
+  }
+  // A renewal approval logs the licence's end of validity: shown as the Paris day.
+  if (entry.targetType === 'LICENSE_RENEWAL') {
+    for (const side of [before, after]) {
+      if (typeof side.validUntil === 'string') {
+        side.validUntil = formatLicenseValidUntil(side.validUntil);
+      }
     }
   }
   // A deletion only records `before`: show what was deleted against "—".

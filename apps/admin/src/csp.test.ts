@@ -22,10 +22,11 @@ describe('Static Web App CSP', () => {
       'default-src': "'self'",
       'script-src': "'self'",
       'style-src': "'self' 'unsafe-inline'",
-      'img-src': `'self' data: ${API_ORIGINS}`,
+      'img-src': `'self' data: blob: ${API_ORIGINS}`,
       'font-src': "'self'",
       'connect-src': `'self' ${API_ORIGINS}`,
       'media-src': `'self' ${API_ORIGINS}`,
+      'frame-src': "'self' blob:",
       'frame-ancestors': "'none'",
       'base-uri': "'self'",
       'form-action': "'self'",
@@ -33,7 +34,7 @@ describe('Static Web App CSP', () => {
   });
 
   it('lets <img> load track artwork from both API origins', () => {
-    expect(directives['img-src']).toBe(`'self' data: ${API_ORIGINS}`);
+    expect(directives['img-src']).toBe(`'self' data: blob: ${API_ORIGINS}`);
   });
 
   it('lets <audio> load track files from both API origins', () => {
@@ -42,6 +43,11 @@ describe('Static Web App CSP', () => {
 
   it('keeps the API reachable for fetch', () => {
     expect(directives['connect-src']).toBe(`'self' ${API_ORIGINS}`);
+  });
+
+  it('shows a renewal certificate from its object URL (#267): blob: for <img> and <iframe>', () => {
+    expect(directives['img-src']).toContain('blob:');
+    expect(directives['frame-src']).toBe("'self' blob:");
   });
 
   it('forbids framing', () => {

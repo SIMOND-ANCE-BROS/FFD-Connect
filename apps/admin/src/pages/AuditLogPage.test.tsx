@@ -258,4 +258,41 @@ describe('AuditLogPage', () => {
     expect(screen.getByText('a.mp3')).toBeInTheDocument();
     expect(screen.getAllByText('—')).toHaveLength(4);
   });
+  it('links renewal decisions and shows the granted end of validity as a Paris day', async () => {
+    vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 'l9',
+            action: 'LICENSE_RENEWAL_APPROVE',
+            targetType: 'LICENSE_RENEWAL',
+            targetId: 'r1',
+            before: { status: 'PENDING' },
+            after: { status: 'APPROVED', validUntil: '2027-08-31T21:59:59.999Z' },
+            actorId: 'a1',
+            actorName: 'Gabin S',
+            createdAt: '2026-10-10T10:00:00.000Z',
+          },
+        ],
+        meta: { total: 1, skip: 0, take: 50, hasMore: false },
+      },
+      error: undefined,
+    } as never);
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <AuditLogPage />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    expect(await screen.findByText('Renouvellement approuvé')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Voir la demande' })).toHaveAttribute(
+      'href',
+      '/license-renewals/r1',
+    );
+    expect(screen.getByText('31/08/2027')).toBeInTheDocument();
+    expect(screen.queryByText(/2027-08-31T/)).toBeNull();
+  });
 });
