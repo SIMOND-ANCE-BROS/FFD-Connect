@@ -27,7 +27,7 @@ export class ImpersonateDto {
 
   @ApiPropertyOptional({
     description:
-      "Raison de l'impersonation (obligatoire pour le staff, journalisée).",
+      "Raison de l'impersonation (obligatoire pour le staff, journalisée). Elle est restituée à l'utilisateur ciblé dans son export RGPD (GET /users/me/export) : n'y écrire aucune donnée personnelle d'un tiers.",
   })
   @IsOptional()
   @IsString()
