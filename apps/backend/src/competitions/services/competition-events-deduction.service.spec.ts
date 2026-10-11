@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test } from "@nestjs/testing";
 import { EventsSource, PrismaClient } from "@prisma/client";
@@ -432,6 +433,76 @@ describe("CompetitionEventsDeductionService", () => {
       await service.deduceForCompetitions(["comp-1"], download);
 
       expect(prisma.competition.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // #318: on staging every sync skipped all competitions without a word.
+  // Each outcome is now visible, and a transient refusal is retried.
+  describe("observability (#318)", () => {
+    let logSpy: jest.SpyInstance;
+    let warnSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      logSpy = jest.spyOn(Logger.prototype, "log").mockImplementation();
+      warnSpy = jest.spyOn(Logger.prototype, "warn").mockImplementation();
+    });
+
+    afterEach(() => {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+
+    const logged = (spy: jest.SpyInstance) =>
+      spy.mock.calls.map((c) => String(c[0])).join("\n");
+
+    it("retries a circular answered by an HTML page (anti-bot) and says so", async () => {
+      givenCandidates(
+        makeCandidate({ eventsDescription: null, circularUrl: CIRCULAR_URL }),
+      );
+      download.mockResolvedValue(
+        Buffer.from("<!DOCTYPE html><html><body>Checking your browser"),
+      );
+
+      await service.deduceForCompetitions(["comp-1"], download);
+
+      // No fingerprint: the next sync downloads it again.
+      expect(prisma.competition.update).not.toHaveBeenCalled();
+      expect(logged(warnSpy)).toMatch(/HTML page.*not a PDF/i);
+      expect(logged(warnSpy)).toContain(CIRCULAR_URL);
+    });
+
+    it("says why a circular outside the FFD API is ignored", async () => {
+      givenCandidates(
+        makeCandidate({ circularUrl: "https://cdn.example/circulaire.pdf" }),
+      );
+
+      await service.deduceForCompetitions(["comp-1"], download);
+
+      expect(download).not.toHaveBeenCalled();
+      expect(logged(warnSpy)).toMatch(/not hosted by the FFD API/i);
+    });
+
+    it("says when a PDF yields no recognisable event", async () => {
+      givenCandidates(
+        makeCandidate({ eventsDescription: null, circularUrl: CIRCULAR_URL }),
+      );
+      mockedExtractPdfText.mockResolvedValue("Programme à venir");
+
+      await service.deduceForCompetitions(["comp-1"], download);
+
+      expect(logged(logSpy)).toMatch(/no event recognised/i);
+    });
+
+    it("sums up every sync, already-analysed competitions included", async () => {
+      const done = makeCandidate({ id: "comp-2", circularUrl: CIRCULAR_URL });
+      done.eventsFingerprint = service.fingerprint(done);
+      givenCandidates(makeCandidate({ circularUrl: CIRCULAR_URL }), done);
+
+      await service.deduceForCompetitions(["comp-1", "comp-2"], download);
+
+      expect(logged(logSpy)).toMatch(
+        /Events deduction: 2 competitions — 1 deduced, 1 already analysed, 0 locked, 0 with no event recognised, 0 unreadable/,
+      );
     });
   });
 

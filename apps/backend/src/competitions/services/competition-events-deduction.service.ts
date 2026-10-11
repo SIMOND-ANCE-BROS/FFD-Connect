@@ -62,6 +62,22 @@ function isLegacyGenericEvent(event: DeductionCandidate["events"][number]) {
   );
 }
 
+/** What a sync did with one competition (summed up in one log line). */
+type DeductionOutcome =
+  | "deduced"
+  | "unchanged"
+  | "locked"
+  | "unrecognised"
+  | "unreadable";
+
+interface CircularReading {
+  events: DeducedEvent[];
+  /** The circular could not be read for a transient reason: retried. */
+  failed: boolean;
+  /** Size of the extracted text, for the "no event recognised" log. */
+  textLength?: string;
+}
+
 /**
  * TEMPORARY (until the app is connected to the FFD) — replaces the generic
  * épreuves of a synced competition by the ones deduced from its documents:
@@ -111,15 +127,27 @@ export class CompetitionEventsDeductionService {
 
     // Strictly sequential (concurrency 1): at most one document downloaded
     // and parsed at a time, so a sync batch never holds several PDFs in memory.
+    const tally: Record<DeductionOutcome, number> = {
+      deduced: 0,
+      unchanged: 0,
+      locked: 0,
+      unrecognised: 0,
+      unreadable: 0,
+    };
     for (const competition of candidates) {
       try {
-        await this.deduceOne(competition, download);
+        tally[await this.deduceOne(competition, download)] += 1;
       } catch (error: unknown) {
+        tally.unreadable += 1;
         this.logger.warn(
           `Events deduction failed for competition ${competition.id}: ${getErrorMessage(error)}`,
         );
       }
     }
+    // One line per sync (#318): a sync that deduces nothing must say why.
+    this.logger.log(
+      `Events deduction: ${candidates.length} competitions — ${tally.deduced} deduced, ${tally.unchanged} already analysed, ${tally.locked} locked, ${tally.unrecognised} with no event recognised, ${tally.unreadable} unreadable`,
+    );
   }
 
   fingerprint(competition: {
@@ -157,15 +185,15 @@ export class CompetitionEventsDeductionService {
   private async deduceOne(
     competition: DeductionCandidate,
     download: FfdDocumentDownloader,
-  ): Promise<void> {
+  ): Promise<DeductionOutcome> {
     const fingerprint = this.fingerprint(competition);
-    if (competition.eventsFingerprint === fingerprint) return;
+    if (competition.eventsFingerprint === fingerprint) return "unchanged";
 
     // Checked before any download: a competition with registrations is
     // never touched, so its documents are not even fetched.
     if (!this.isReplaceable(competition)) {
       await this.saveFingerprint(competition.id, fingerprint);
-      return;
+      return "locked";
     }
 
     const fromDescription = competition.eventsDescription
@@ -190,20 +218,30 @@ export class CompetitionEventsDeductionService {
       if (nextFingerprint) {
         await this.saveFingerprint(competition.id, nextFingerprint);
       }
-      return;
+      if (circular.failed) return "unreadable";
+      this.logger.log(
+        `No event recognised for competition ${competition.id} (description: ${competition.eventsDescription?.length ?? 0} chars, circular: ${circular.textLength ?? "none"})`,
+      );
+      return "unrecognised";
     }
 
     await this.replaceEvents(competition.id, events, source, nextFingerprint);
     this.logger.log(
       `Deduced ${events.length} events (${source}) for competition ${competition.id}`,
     );
+    return "deduced";
   }
 
   private async readCircular(
     circularUrl: string | null,
     download: FfdDocumentDownloader,
-  ): Promise<{ events: DeducedEvent[]; failed: boolean }> {
-    if (!circularUrl || !this.isFfdDocumentUrl(circularUrl)) {
+  ): Promise<CircularReading> {
+    if (!circularUrl) return { events: [], failed: false };
+    if (!this.isFfdDocumentUrl(circularUrl)) {
+      // The fingerprint includes the URL: a corrected one is read again.
+      this.logger.warn(
+        `Circular ignored, not hosted by the FFD API (${circularUrl})`,
+      );
       return { events: [], failed: false };
     }
 
@@ -230,7 +268,20 @@ export class CompetitionEventsDeductionService {
       this.logger.warn(`Circular too large, ignored (${circularUrl})`);
       return { events: [], failed: false };
     }
-    if (!isPdf(data)) return { events: [], failed: false };
+    if (!isPdf(data)) {
+      // An HTML page instead of the PDF is the FFD's anti-bot answer (or an
+      // error page): transient, so retried on the next sync. Anything else
+      // (a poster image) will never become a PDF: not retried.
+      const head = data.subarray(0, 512).toString("latin1");
+      const html =
+        /^\s*</.test(head) && /<(!doctype|html|head|body)/i.test(head);
+      this.logger.warn(
+        html
+          ? `Circular answered by an HTML page, not a PDF — retried next sync (${circularUrl}, ${data.length} bytes)`
+          : `Circular is not a PDF, ignored (${circularUrl}, ${data.length} bytes)`,
+      );
+      return { events: [], failed: html };
+    }
 
     let text: string;
     try {
@@ -252,7 +303,11 @@ export class CompetitionEventsDeductionService {
     // rasterisation or a Document Intelligence resource. Not worth it for a
     // temporary feature — those competitions keep the description/generic
     // events.
-    return { events: parseFfdEvents(text), failed: false };
+    return {
+      events: parseFfdEvents(text),
+      failed: false,
+      textLength: `${text.length} chars`,
+    };
   }
 
   /**
