@@ -1,6 +1,15 @@
 import { ImageSource } from "expo-image";
 import { LicenseConfig, LicenseType } from "./license-card.types";
 
+/**
+ * Fédération Française de Danse logo, shown on the FFD licence card only
+ * (#312, risk accepted by the publisher). The app icon and login screen keep
+ * FFD Connect's own artwork (`assets/logo.png`, #93).
+ */
+export const FFD_FEDERATION_LOGO =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("../../../../assets/ffd-federation-logo.png") as ImageSource;
+
 export function getLicenseConfig(
   type: LicenseType,
   isDark: boolean,
@@ -14,8 +23,7 @@ export function getLicenseConfig(
         textColor: "#E5E5EA",
         highlightColor: "#FF3B30",
         labelColor: "#66B2FF",
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        logo: require("../../../../assets/logo.png") as ImageSource,
+        logo: FFD_FEDERATION_LOGO,
         curveColor: "#1E1E1E",
         cardBackground: "#1E1E1E",
         borderColor: "#333",
@@ -28,8 +36,7 @@ export function getLicenseConfig(
       textColor: "#004481",
       highlightColor: "#E30613",
       labelColor: "#004481",
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      logo: require("../../../../assets/logo.png") as ImageSource,
+      logo: FFD_FEDERATION_LOGO,
       curveColor: "white",
       cardBackground: "white",
       borderColor: "#E0E0E0",

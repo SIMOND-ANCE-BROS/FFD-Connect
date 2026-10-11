@@ -43,13 +43,27 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
       {/* Logo */}
       <View style={styles.logoContainer}>
         {isFFD ? (
-          <Image
-            source={config.logo}
-            style={styles.logoImage}
-            contentFit="contain"
-          />
+          // White badge: the federation logo keeps its own colours (navy
+          // text, red/blue dancer), which vanish on the blue header in both
+          // themes. Tinting it white would alter the mark.
+          <View style={styles.logoBadge} testID="license-card-ffd-logo">
+            <Image
+              source={config.logo}
+              style={styles.logoImage}
+              contentFit="contain"
+              accessible
+              accessibilityRole="image"
+              accessibilityLabel="Logo de la Fédération Française de Danse"
+              accessibilityHint="Fédération qui délivre cette licence"
+            />
+          </View>
         ) : (
-          <SvgUri width="44" height="44" uri={config.logo as string} />
+          <SvgUri
+            width="44"
+            height="44"
+            uri={config.logo as string}
+            testID="license-card-wdsf-logo"
+          />
         )}
       </View>
 

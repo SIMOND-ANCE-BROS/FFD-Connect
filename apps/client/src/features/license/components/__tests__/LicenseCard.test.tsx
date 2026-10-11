@@ -3,6 +3,10 @@ import React from "react";
 import { StyleSheet } from "react-native";
 import { ThemeContext } from "../../../../context/ThemeContext";
 import { LicenseCard, LicenseUser } from "../LicenseCard";
+import {
+  FFD_FEDERATION_LOGO,
+  getLicenseConfig,
+} from "../license-card/license-card.config";
 
 const themeMock = {
   theme: {
@@ -285,6 +289,72 @@ describe("LicenseCard", () => {
       expect(style.color).toBe("#333");
     });
   });
+
+  describe("federation logo (#312)", () => {
+    const renderCard = (type: "FFD" | "WDSF", theme: "light" | "dark") =>
+      render(
+        <ThemeContext.Provider value={themeMock as never}>
+          <LicenseCard
+            type={type}
+            user={mockUser}
+            photoUri={null}
+            onShowQr={mockOnShowQr}
+            themeOverride={theme}
+          />
+        </ThemeContext.Provider>,
+      );
+
+    it.each(["light", "dark"] as const)(
+      "shows the FFD logo on an FFD licence (%s theme)",
+      async (theme) => {
+        const { getByTestId, getByLabelText, queryByTestId } = await renderCard(
+          "FFD",
+          theme,
+        );
+
+        const logo = getByLabelText("Logo de la Fédération Française de Danse");
+        expect(logo.props.source).toBe(FFD_FEDERATION_LOGO);
+        // On a white badge: the logo's navy text is unreadable on the blue
+        // header otherwise, and it is never tinted.
+        const badge = StyleSheet.flatten(
+          getByTestId("license-card-ffd-logo").props.style as object,
+        ) as { backgroundColor?: string };
+        expect(badge.backgroundColor).toBe("white");
+        expect(
+          (
+            StyleSheet.flatten(logo.props.style as object) as {
+              tintColor?: string;
+            }
+          ).tintColor,
+        ).toBeUndefined();
+        expect(queryByTestId("license-card-wdsf-logo")).toBeNull();
+      },
+    );
+
+    it.each(["light", "dark"] as const)(
+      "never shows the FFD logo on a WDSF licence (%s theme)",
+      async (theme) => {
+        const { queryByTestId, queryByLabelText, getByTestId } =
+          await renderCard("WDSF", theme);
+
+        expect(queryByTestId("license-card-ffd-logo")).toBeNull();
+        expect(
+          queryByLabelText("Logo de la Fédération Française de Danse"),
+        ).toBeNull();
+        expect(getByTestId("license-card-wdsf-logo")).toBeTruthy();
+      },
+    );
+
+    it("keeps the federation logo out of the WDSF config", () => {
+      for (const isDark of [false, true]) {
+        expect(getLicenseConfig("FFD", isDark).logo).toBe(FFD_FEDERATION_LOGO);
+        expect(getLicenseConfig("WDSF", isDark).logo).not.toBe(
+          FFD_FEDERATION_LOGO,
+        );
+      }
+    });
+  });
+
   describe("STAFF / CLUB account card (#234)", () => {
     const renderAccountCard = (user: LicenseUser, onShowQr?: () => void) =>
       render(
