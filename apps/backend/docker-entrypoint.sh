@@ -35,7 +35,7 @@ if [ "$SEED_TEST_TRACKS" = "true" ]; then
 
     # Purge des comptes et clubs de TEST (club@/staff@/admin@test.com,
     # beta@test.com, partenaires de démo, cibles de scan…). Seul le compte de
-    # validation des stores (licensee@test.com) et son club restent. Doit
+    # validation des stores (drapeau isStoreReview) et son club restent. Doit
     # tourner AVANT le seed du compte de validation (qui pose son drapeau).
     echo "[seed] Purging test accounts..."
     if node dist/scripts/purge-test-accounts.js; then
@@ -54,9 +54,11 @@ if [ "$SEED_TEST_TRACKS" = "true" ]; then
       echo "[seed] WARNING: beta licenses seed failed (non-fatal)."
     fi
 
-    # Compte de validation des stores (licensee@test.com) : ADMIN + tous les
-    # rôles, club « Club Test FFD », drapeau isStoreReview (écritures simulées,
-    # ni supprimable ni désactivable). Mot de passe = PROFILE_TEST_PASSWORD.
+    # Compte de validation des stores (demo@ffd.gabin-simond.fr, ex
+    # licensee@test.com, renommé en place) : ADMIN + tous les rôles, club
+    # « Club Démo FFD Connect », drapeau isStoreReview (écritures simulées, ni
+    # supprimable ni désactivable). Mot de passe = PROFILE_TEST_PASSWORD (le
+    # seed réaligne le hash au boot si le secret change).
     echo "[seed] Seeding store-review account..."
     if node dist/scripts/seed-profile-test-accounts.js; then
       echo "[seed] Store-review account seed completed."

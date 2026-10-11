@@ -2,8 +2,8 @@
  * Purge of the TEST accounts and TEST clubs created by the staging seeds.
  *
  * Staging now keeps a single test account: the store-review account
- * (licensee@test.com, `isStoreReview`) given to Apple / Google, and its club
- * "Club Test FFD". Everything else the seeds created goes: club@/staff@/
+ * (`isStoreReview`, STORE_REVIEW_EMAIL) given to Apple / Google, and its club
+ * (STORE_REVIEW_CLUB_NAME). Everything else the seeds created goes: club@/staff@/
  * admin@test.com, the beta@test.com demo, the beta-career partners
  * (partner-*@test.com) and their "Club Démo Bêta", the check-in scan targets
  * (seed-scan-user-*). Selection rules: purge-test-accounts.utils.ts — never a

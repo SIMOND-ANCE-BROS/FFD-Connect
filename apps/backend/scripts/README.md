@@ -153,6 +153,6 @@ Ordre au boot, tous non bloquants :
 1. `purge-test-tracks.ts` — pistes métronome « FFD Test ».
 2. `purge-test-accounts.ts` — comptes `@test.com` / ids `seed-*` et clubs de démo (« Club Démo Bêta »), sauf le compte de validation des stores. `--dry-run` liste sans supprimer. Règles : `purge-test-accounts.utils.ts`.
 3. `seed-beta-testers.ts` — licences des vrais bêta-testeurs.
-4. `seed-profile-test-accounts.ts` — compte de validation des stores `licensee@test.com` (ADMIN + tous les rôles, club « Club Test FFD », `isStoreReview`).
+4. `seed-profile-test-accounts.ts` — compte de validation des stores `demo@ffd.gabin-simond.fr` (« Compte Démo » ; ADMIN + tous les rôles, club « Club Démo FFD Connect », `isStoreReview`). Il est retrouvé par drapeau puis par email (nouveau, puis ancien `licensee@test.com`) et RENOMMÉ en place, jamais recréé. Son mot de passe suit le secret `PROFILE_TEST_PASSWORD` : pour le faire tourner, changer le secret du serveur et redémarrer (le seed réaligne le hash), puis mettre à jour App Store Connect et Play Console le même jour.
 5. `seed-beta-career.ts` — carrière de démo du compte de validation.
 6. `seed-checkin-test.ts` — compétition en direct de démo où le compte de validation est inscrit.

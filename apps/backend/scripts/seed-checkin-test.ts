@@ -3,7 +3,7 @@
  *
  * Crée une compétition ACTIVE (datée d'aujourd'hui → renvoyée par
  * GET /competitions/active) + 2 épreuves, y inscrit le compte de validation
- * des stores (`isStoreReview`, licensee@test.com — CONFIRMED, droits payés)
+ * des stores (`isStoreReview`, retrouvé par drapeau — CONFIRMED, droits payés)
  * et simule le direct : un timing complet de la journée (ScheduleItem), un
  * retard estimé et des résultats publiés (Result) pour ce compte et des
  * couples fictifs — quarts/demies/finale en Latines, demi-finale en Standard

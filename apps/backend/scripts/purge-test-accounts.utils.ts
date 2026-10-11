@@ -20,7 +20,16 @@ const TEST_EMAIL_DOMAIN = "@test.com";
  * flagged yet (the purge runs before the seed that flags it), and deleting it
  * would change its id and end the reviewers' sessions.
  */
-export const STORE_REVIEW_EMAIL = "licensee@test.com";
+export const STORE_REVIEW_EMAIL = "demo@ffd.gabin-simond.fr";
+
+/**
+ * Former email of the account (an `@test.com` address, so the purge would
+ * target it). Kept excluded during the transition: until the seed has renamed
+ * the account in place, deleting it would change its id and end the
+ * reviewers' sessions.
+ */
+// TODO(2026-10): remove the LEGACY_* constants once staging is migrated (#347).
+export const LEGACY_STORE_REVIEW_EMAIL = "licensee@test.com";
 
 /** Fixed ids of seeded rows (`seed-scan-user-1`…). */
 const SEED_ID_PREFIX = "seed-";
@@ -29,7 +38,13 @@ const SEED_ID_PREFIX = "seed-";
 export const TEST_CLUB_NAMES: readonly string[] = ["Club Démo Bêta"];
 
 /** Club of the store-review account (seed-profile-test-accounts.ts): kept. */
-export const STORE_REVIEW_CLUB_NAME = "Club Test FFD";
+export const STORE_REVIEW_CLUB_NAME = "Club Démo FFD Connect";
+
+/**
+ * Former club name, looked up by the seed to rename the club in place.
+ * TODO(2026-10): remove once staging is migrated (#347).
+ */
+export const LEGACY_STORE_REVIEW_CLUB_NAME = "Club Test FFD";
 
 /** License numbers created by the staging seeds for the purged accounts. */
 const TEST_LICENSE_NUMBER = /^(SCAN-TEST-\d+|BETA-EXPIRY-TEST)$/;
@@ -50,7 +65,13 @@ export interface PurgeClubCandidate {
 
 export function isTestUser(user: PurgeUserCandidate): boolean {
   const email = user.email.trim().toLowerCase();
-  if (user.isStoreReview || email === STORE_REVIEW_EMAIL) return false;
+  if (
+    user.isStoreReview ||
+    email === STORE_REVIEW_EMAIL ||
+    email === LEGACY_STORE_REVIEW_EMAIL
+  ) {
+    return false;
+  }
   return (
     email.endsWith(TEST_EMAIL_DOMAIN) || user.id.startsWith(SEED_ID_PREFIX)
   );
