@@ -1,3 +1,10 @@
+---
+reviewed_version: 1.0.0
+reviewed_date: 2026-10-11
+reviewed_commit: 4f1dd8a766d9ecfca8cee6fadbbb25fb9c423a80
+reviewed_scope: Inscription et connexion
+---
+
 # Premiers pas avec FFD Connect
 
 Ce parcours vous accompagne de l’installation à vos premiers écrans. FFD Connect est un projet indépendant en bêta : les fonctions visibles dépendent de la version installée et des accès de votre compte.
@@ -16,9 +23,19 @@ Ouvrez la [page d’inscription à la bêta](https://ffd.gabin-simond.fr/beta) e
 
 L’aperçu du site est une démonstration avec des données fictives. Il ne permet pas de se connecter à votre compte ni d’effectuer une inscription réelle.
 
-## 2. Se connecter
+## 2. Créer un compte ou se connecter
 
-1. Ouvrez l’application et renseignez votre numéro de licence ou votre adresse email dans le champ de connexion.
+**L’installation de la bêta ne crée pas de compte dans l’application.** L’accès TestFlight ou Google Play et le compte FFD Connect sont deux étapes distinctes.
+
+### Vous n’avez pas encore de compte
+
+Sur l’écran de connexion, choisissez **Créer un compte**. Préparez votre numéro de licence FFD, vos nom et prénom, votre adresse email et un mot de passe. Renseignez le formulaire, confirmez votre mot de passe et acceptez les conditions d’utilisation avant de choisir **S’inscrire**. Suivez les indications affichées si l’inscription est refusée.
+
+La création d’un compte ne vous attribue pas automatiquement les droits club, staff ou administration. Demandez ces accès à l’équipe qui gère votre structure.
+
+### Vous avez déjà un compte ou une invitation
+
+1. Ouvrez l’application et renseignez l’adresse email de votre compte FFD Connect dans le champ de connexion.
 2. Utilisez le mot de passe associé à votre accès. Si vous avez reçu une invitation de l’administration, suivez d’abord son lien pour définir votre mot de passe.
 3. Si vous ne retrouvez pas votre mot de passe, utilisez le parcours de récupération proposé sur l’écran de connexion.
 

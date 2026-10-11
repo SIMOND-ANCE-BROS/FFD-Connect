@@ -3961,12 +3961,14 @@ html[data-motion='ready'] [data-reveal]:not([data-revealed='true']) {
   align-items: center;
 }
 .article-sync p {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   line-height: 1.7;
   color: #58758c;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: block;
+}
+.article-sync a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .sync-dot {
   width: 7px;
@@ -4286,7 +4288,7 @@ html[data-motion='ready'] [data-reveal]:not([data-revealed='true']) {
     overflow-wrap: anywhere;
   }
   .article-sync p {
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
   }
 }
 /* Base styles for accessible Radix controls, without a utility CSS runtime. */

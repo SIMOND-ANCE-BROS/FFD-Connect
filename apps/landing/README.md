@@ -100,3 +100,28 @@ landing adaptation loads only when the reader opens it. Failures keep the writte
 guide available and reopening retries the load. These are web adaptations with
 fictional data, not native screenshots or authenticated app sessions. Keep native
 screenshots distinct and add them only after capturing a reviewed test account.
+
+### Guide review metadata and reference checks
+
+Optional Markdown frontmatter records a **source review**, not a device test:
+
+```yaml
+---
+reviewed_version: 1.0.0
+reviewed_date: 2026-10-11
+reviewed_commit: 4f1dd8a766d9ecfca8cee6fadbbb25fb9c423a80
+reviewed_scope: Inscription et connexion
+---
+```
+
+All four fields are required together. Update them only after reviewing the stated
+scope against that app revision; publishing the site never advances them automatically.
+Guides without metadata explicitly show that their app version is not verified.
+
+The Vite build checks local documentation destinations, documentation fragments,
+and local HTML assets after writing the build. Repository-relative Markdown images and linked Markdown documents
+must exist when collecting the docs. Failures name the source page and destination.
+Both root and `BASE_PATH=/FFD-Connect/` deployments are supported. External HTTP
+resources and fragments rendered by the landing's React app are outside this static
+check; no network probes are performed. Links intentionally directed to GitHub
+(for source files or excluded documentation) remain external links.
