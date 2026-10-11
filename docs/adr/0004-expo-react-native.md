@@ -52,7 +52,7 @@ Use React Native 0.81 with Expo 54 in managed workflow, using EAS Build for clou
 Les versions réelles actuelles de la stack mobile sont :
 
 - **Expo** ~57.0
-- **React Native** 0.86.0
+- **React Native** 0.86.3
 - **React** 19.2
 
 (L'ADR d'origine citait Expo 54 / RN 0.81.)
