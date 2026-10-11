@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigService } from "@nestjs/config";
 import { PrismaClient } from "@prisma/client";
@@ -7,6 +7,7 @@ import { PaymentService } from "./payment.service";
 import { HelloAssoService } from "./hello-asso.service";
 import { ClubsHelloAssoService } from "../clubs/clubs-helloasso.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { PaymentNotificationService } from "./payment-notification.service";
 
 describe("PaymentService", () => {
   let service: PaymentService;
@@ -18,6 +19,9 @@ describe("PaymentService", () => {
     Pick<ClubsHelloAssoService, "getHelloAssoCredentialsForCompetition">
   >;
   let configService: jest.Mocked<Pick<ConfigService, "get">>;
+  let paymentNotificationService: jest.Mocked<
+    Pick<PaymentNotificationService, "notifyPaymentReceived">
+  >;
 
   const mockCredentials = {
     clientId: "client-id",
@@ -70,6 +74,10 @@ describe("PaymentService", () => {
       get: jest.fn().mockReturnValue("https://app.example.com"),
     };
 
+    paymentNotificationService = {
+      notifyPaymentReceived: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentService,
@@ -77,6 +85,10 @@ describe("PaymentService", () => {
         { provide: HelloAssoService, useValue: helloAssoService },
         { provide: ClubsHelloAssoService, useValue: clubsService },
         { provide: ConfigService, useValue: configService },
+        {
+          provide: PaymentNotificationService,
+          useValue: paymentNotificationService,
+        },
       ],
     }).compile();
 
@@ -373,26 +385,75 @@ describe("PaymentService", () => {
   });
 
   describe("confirmBooking", () => {
-    it("calls seatBooking.update with CONFIRMED status", async () => {
-      prisma.seatBooking.update.mockResolvedValue({
-        ...mockBooking,
-        status: "CONFIRMED",
-      } as any);
+    it("confirms the booking with a conditional write and notifies the club once", async () => {
+      prisma.seatBooking.updateMany.mockResolvedValue({ count: 1 });
 
       await service.confirmBooking("booking-1");
 
-      expect(prisma.seatBooking.update).toHaveBeenCalledWith({
-        where: { id: "booking-1" },
+      expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith({
+        where: { id: "booking-1", status: { not: "CONFIRMED" } },
         data: { status: "CONFIRMED" },
       });
+      expect(
+        paymentNotificationService.notifyPaymentReceived,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        paymentNotificationService.notifyPaymentReceived,
+      ).toHaveBeenCalledWith("booking-1");
+    });
+
+    it("ignores a webhook replay: no second notification", async () => {
+      prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+      prisma.seatBooking.findUnique.mockResolvedValue({
+        id: "booking-1",
+      } as never);
+
+      await expect(
+        service.confirmBooking("booking-1"),
+      ).resolves.toBeUndefined();
+
+      expect(
+        paymentNotificationService.notifyPaymentReceived,
+      ).not.toHaveBeenCalled();
+    });
+
+    it("notifies only the first of two deliveries of the same payment", async () => {
+      prisma.seatBooking.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockResolvedValueOnce({ count: 0 });
+      prisma.seatBooking.findUnique.mockResolvedValue({
+        id: "booking-1",
+      } as never);
+
+      await service.confirmBooking("booking-1");
+      await service.confirmBooking("booking-1");
+
+      expect(
+        paymentNotificationService.notifyPaymentReceived,
+      ).toHaveBeenCalledTimes(1);
+    });
+
+    it("throws NotFoundException for an unknown booking, without notifying", async () => {
+      prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+      prisma.seatBooking.findUnique.mockResolvedValue(null);
+
+      await expect(service.confirmBooking("missing")).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(
+        paymentNotificationService.notifyPaymentReceived,
+      ).not.toHaveBeenCalled();
     });
 
     it("propagates prisma errors", async () => {
-      prisma.seatBooking.update.mockRejectedValue(new Error("DB error"));
+      prisma.seatBooking.updateMany.mockRejectedValue(new Error("DB error"));
 
       await expect(service.confirmBooking("booking-1")).rejects.toThrow(
         "DB error",
       );
+      expect(
+        paymentNotificationService.notifyPaymentReceived,
+      ).not.toHaveBeenCalled();
     });
   });
 });

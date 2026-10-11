@@ -98,10 +98,9 @@ describe("catalogue des notifications", () => {
       );
     });
 
-    it("keeps the HelloAsso payment type dormant until its producer ships (#39)", () => {
-      // Configurable before anything emits it, it would be a switch with no
-      // effect, and a toggle would write an enum value the rollback image
-      // cannot read.
+    it("keeps the HelloAsso payment type non-configurable while it has no push (#39)", () => {
+      // Preferences only filter the push and this type is feed-only: a
+      // switch would have no effect.
       expect(isConfigurable(NotificationType.CLUB_PAYMENT_RECEIVED)).toBe(
         false,
       );

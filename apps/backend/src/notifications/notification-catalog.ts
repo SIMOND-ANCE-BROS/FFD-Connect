@@ -134,13 +134,13 @@ export const NOTIFICATION_CATALOG: Readonly<
       "Quand un couple inter-club impliquant votre club est proposé, validé, refusé ou clôturé.",
   },
 
-  // ── HelloAsso payment received (#39): DORMANT ───────────────────────────────
+  // ── HelloAsso payment received (#39): IN-APP FEED ONLY ──────────────────────
   //
-  // Declared together with its migration, but no producer yet: it stays
-  // `configurable: false` until the revision that emits it ships. Made
-  // configurable now, it would show as a switch with no effect, and every
-  // toggle would write to the database an enum value that the previous image
-  // (the one a rollback falls back to) cannot read.
+  // PaymentNotificationService.notifyPaymentReceived writes it to the feed of
+  // the organizer club's managers (`withActiveRole(CLUB)`), WITHOUT push.
+  // Preferences only filter the push (the feed is always written), so a
+  // switch would govern nothing: it stays `configurable: false` until a push
+  // is decided for it — that revision makes it configurable.
   [NotificationType.CLUB_PAYMENT_RECEIVED]: {
     defaultEnabled: true,
     configurable: false,

@@ -1,10 +1,18 @@
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { BookingStatus } from "@prisma/client";
 import { ClubsHelloAssoService } from "../clubs/clubs-helloasso.service";
 import { handlePrismaError } from "../utils/prisma-errors.util";
+import { idOnlySelect } from "../utils/prisma-selects";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateCheckoutDto } from "./dto/create-checkout.dto";
 import { HelloAssoService } from "./hello-asso.service";
+import { PaymentNotificationService } from "./payment-notification.service";
 
 @Injectable()
 export class PaymentService {
@@ -15,6 +23,7 @@ export class PaymentService {
     private readonly helloAssoService: HelloAssoService,
     private readonly clubsHelloAssoService: ClubsHelloAssoService,
     private readonly configService: ConfigService,
+    private readonly paymentNotificationService: PaymentNotificationService,
   ) {}
 
   async createCheckout(userId: string, body: CreateCheckoutDto) {
@@ -94,10 +103,35 @@ export class PaymentService {
     }
   }
 
+  /**
+   * Confirms a booking paid through HelloAsso, then tells the organizer club.
+   *
+   * IDEMPOTENT: HelloAsso replays webhooks. The transition is a conditional
+   * write (`status != CONFIRMED`), atomic in the database, so of two
+   * deliveries of the same payment — even concurrent — exactly one moves the
+   * booking and notifies the club; the others are no-ops.
+   */
   async confirmBooking(bookingId: string): Promise<void> {
-    await this.prisma.seatBooking.update({
-      where: { id: bookingId },
-      data: { status: "CONFIRMED" },
+    const { count } = await this.prisma.seatBooking.updateMany({
+      where: { id: bookingId, status: { not: BookingStatus.CONFIRMED } },
+      data: { status: BookingStatus.CONFIRMED },
     });
+
+    if (count === 0) {
+      const existing = await this.prisma.seatBooking.findUnique({
+        where: { id: bookingId },
+        select: idOnlySelect,
+      });
+      if (!existing) {
+        throw new NotFoundException("Réservation introuvable");
+      }
+      this.logger.log(
+        `Booking ${bookingId} already confirmed: webhook replay ignored`,
+      );
+      return;
+    }
+
+    // Never rejects: a notification failure must not fail the webhook.
+    await this.paymentNotificationService.notifyPaymentReceived(bookingId);
   }
 }

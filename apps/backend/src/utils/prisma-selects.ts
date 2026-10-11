@@ -372,6 +372,24 @@ export const seatBookingExportSelect = {
   competition: { select: { title: true, date: true } },
 } as const;
 
+/**
+ * HelloAsso payment notification (#39): what the organizer club is told about
+ * a confirmed booking, and how to find that club (competition `organizer`).
+ * Never the payer's identity nor the external payment reference.
+ */
+export const seatBookingPaymentNotificationSelect = {
+  id: true,
+  seatLabel: true,
+  competition: { select: { id: true, title: true, organizer: true } },
+} as const;
+
+/** A club's identity and status, to address its managers. */
+export const clubRecipientSelect = {
+  id: true,
+  name: true,
+  disabledAt: true,
+} as const;
+
 /** Dépôt d'un document : statut de la demande + fichiers déjà déposés. */
 export const licenseRenewalUploadTargetSelect = {
   status: true,
