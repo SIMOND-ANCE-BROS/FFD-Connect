@@ -108,6 +108,10 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 16,
   },
+  resultsOnly: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+  },
   eventsList: {
     paddingHorizontal: 16,
     paddingBottom: 24,
