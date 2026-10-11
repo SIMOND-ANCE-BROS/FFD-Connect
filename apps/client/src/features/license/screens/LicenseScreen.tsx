@@ -6,6 +6,7 @@ import {
   Animated,
   Modal,
   Platform,
+  Pressable,
   StatusBar,
   StyleSheet,
   TouchableOpacity,
@@ -453,14 +454,19 @@ export const LicenseScreen: React.FC = () => {
         onRequestClose={() => actions.setShowQr(false)}
         testID="qr-code-modal"
       >
-        <TouchableOpacity
-          accessibilityRole="button"
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => actions.setShowQr(false)}
-          testID="qr-modal-overlay"
-        >
+        {/* Fond et carte sont frères (cf. SpaceSheet) : un bouton englobant
+            la carte serait lu par VoiceOver comme un seul élément. */}
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => actions.setShowQr(false)}
+            testID="qr-modal-overlay"
+            accessibilityRole="button"
+            accessibilityLabel="Fermer"
+            accessibilityHint="Ferme le code de la licence"
+          />
           <View
+            testID="qr-modal-card"
             style={[
               styles.qrModalContent,
               { backgroundColor: currentTheme.surface },
@@ -485,7 +491,7 @@ export const LicenseScreen: React.FC = () => {
               <AppText variant="button">Fermer</AppText>
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </SafeAreaView>
   );

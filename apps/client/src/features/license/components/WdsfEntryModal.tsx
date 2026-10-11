@@ -112,23 +112,24 @@ export const WdsfEntryModal: React.FC<WdsfEntryModalProps> = ({
         style={styles.modalOverlayContainer}
       >
         <Animated.View style={[styles.modalOverlay, overlayStyle]}>
+          <BlurView
+            style={StyleSheet.absoluteFill}
+            intensity={30}
+            tint={theme.dark ? "dark" : "light"}
+            pointerEvents="none"
+          />
+          {/* Fond et carte sont frères (cf. SpaceSheet) : un Pressable
+              englobant le formulaire serait lu par VoiceOver comme un seul
+              élément. */}
           <Pressable
-            accessibilityRole="button"
             style={StyleSheet.absoluteFill}
             onPress={onClose}
-          >
-            <BlurView
-              style={StyleSheet.absoluteFill}
-              intensity={30}
-              tint={theme.dark ? "dark" : "light"}
-              pointerEvents="none"
-            />
-          </Pressable>
-          <Pressable
+            testID="wdsf-modal-backdrop"
             accessibilityRole="button"
-            onPress={() => {}}
-            style={styles.modalContentWrapper}
-          >
+            accessibilityLabel="Fermer"
+            accessibilityHint="Ferme l'ajout de licence WDSF"
+          />
+          <View pointerEvents="box-none" style={styles.modalContentWrapper}>
             <Animated.View
               testID={testID}
               style={[
@@ -227,7 +228,7 @@ export const WdsfEntryModal: React.FC<WdsfEntryModalProps> = ({
                 </TouchableOpacity>
               </View>
             </Animated.View>
-          </Pressable>
+          </View>
         </Animated.View>
       </KeyboardAvoidingView>
     </Modal>

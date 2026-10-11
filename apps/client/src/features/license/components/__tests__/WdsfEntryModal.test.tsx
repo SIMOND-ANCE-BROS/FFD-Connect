@@ -1,5 +1,6 @@
 import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
+import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { ThemeContext } from "../../../../context/ThemeContext";
 import { WdsfEntryModal } from "../WdsfEntryModal";
 
@@ -97,5 +98,28 @@ describe("WdsfEntryModal", () => {
     );
 
     expect(getByText("Invalid MIN number")).toBeTruthy();
+  });
+
+  it("a11y (#356): the form card is not wrapped in an accessible element", async () => {
+    const { getByTestId } = await render(
+      <ThemeContext.Provider value={themeMock as never}>
+        <WdsfEntryModal
+          visible={true}
+          onClose={mockOnClose}
+          onVerify={mockOnVerify}
+          loading={false}
+          error={null}
+          theme={themeMock.theme as never}
+          testID="wdsf-modal"
+        />
+      </ThemeContext.Provider>,
+    );
+
+    expectSiblingBackdrop(
+      getByTestId("wdsf-modal-backdrop"),
+      getByTestId("wdsf-modal"),
+    );
+    await fireEvent.press(getByTestId("wdsf-modal-backdrop"));
+    expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 });

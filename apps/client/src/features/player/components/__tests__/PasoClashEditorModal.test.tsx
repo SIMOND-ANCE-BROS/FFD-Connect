@@ -6,6 +6,7 @@ import {
 } from "@testing-library/react-native";
 import React from "react";
 import { Alert } from "react-native";
+import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { BackendService } from "../../../../services/BackendService";
 import {
   TrackCorrectionApi,
@@ -291,5 +292,18 @@ describe("PasoClashEditorModal", () => {
       );
       expect(onClose).not.toHaveBeenCalled();
     });
+  });
+
+  it("a11y (#356) : le fond est un frère de la carte et ferme l'éditeur", async () => {
+    const onClose = jest.fn();
+    const { getByTestId } = await render(
+      <PasoClashEditorModal {...baseProps} onClose={onClose} />,
+    );
+    expectSiblingBackdrop(
+      getByTestId("paso-editor-backdrop"),
+      getByTestId("paso-editor-card"),
+    );
+    await fireEvent.press(getByTestId("paso-editor-backdrop"));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

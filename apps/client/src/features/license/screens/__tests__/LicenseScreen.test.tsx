@@ -2,6 +2,7 @@ import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import React from "react";
 import { StyleSheet } from "react-native";
 import type { ReactTestRendererJSON } from "react-test-renderer";
+import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { STACKED_CARD_PEEK } from "../../../../components/StackedCard";
 import { BETA_NOTICES } from "../../../../constants/betaNotices";
 import { useTheme } from "../../../../context/ThemeContext";
@@ -493,6 +494,12 @@ describe("LicenseScreen Integration", () => {
     });
 
     const { getByTestId } = await render(<LicenseScreen />);
+
+    // a11y (#356): the overlay is a sibling of the QR card, not its wrapper.
+    expectSiblingBackdrop(
+      getByTestId("qr-modal-overlay"),
+      getByTestId("qr-modal-card"),
+    );
 
     await fireEvent.press(getByTestId("qr-modal-overlay"));
     expect(mockActions.setShowQr).toHaveBeenCalledWith(false);

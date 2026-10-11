@@ -1,6 +1,7 @@
 import { act, fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 import { Alert } from "react-native";
+import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
 import { AuthService } from "../../../auth/services/AuthService";
 import { ChangePasswordModal } from "../ChangePasswordModal";
@@ -159,5 +160,17 @@ describe("ChangePasswordModal", () => {
       "Erreur",
       "Mot de passe incorrect",
     );
+  });
+
+  it("a11y (#356): backdrop is a sibling of the card and closes the modal", async () => {
+    const { getByTestId, getAllByLabelText } = await renderModal();
+    expectSiblingBackdrop(
+      getByTestId("change-password-backdrop"),
+      getByTestId("change-password-card"),
+    );
+    // Backdrop and header close button are two distinct "Fermer" buttons.
+    expect(getAllByLabelText("Fermer", { exact: true })).toHaveLength(2);
+    await fireEvent.press(getByTestId("change-password-backdrop"));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
