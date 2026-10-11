@@ -21,6 +21,11 @@ interface CompetitionEventCardProps {
   onUnregister: (event: Event) => void;
   /** Action queued offline for this event, waiting for the network (#416). */
   pendingAction?: "register" | "unregister";
+  /**
+   * Row of a grouped card: the discipline / age class / type are in the
+   * group header, the row only names what sets this event apart (level…).
+   */
+  variantLabel?: string;
 }
 
 export function CompetitionEventCard({
@@ -35,31 +40,43 @@ export function CompetitionEventCard({
   onRegister,
   onUnregister,
   pendingAction,
+  variantLabel,
 }: CompetitionEventCardProps) {
   const showLicenceActions = !isOrganizer;
+  const embedded = variantLabel !== undefined;
 
   return (
     <View
+      testID={embedded ? `event-row-${event.id}` : undefined}
       style={[
-        styles.eventCard,
-        { backgroundColor: currentTheme.surface },
+        embedded
+          ? styles.eventRow
+          : [styles.eventCard, { backgroundColor: currentTheme.surface }],
         !eligibility.eligible && showLicenceActions && styles.disabledEvent,
       ]}
     >
       <View style={styles.eventCardBody}>
         <View style={styles.eventInfo}>
-          <AppText variant="h3" color={currentTheme.text}>
-            {formatDiscipline(event.category)}
-          </AppText>
-          <AppText
-            variant="caption"
-            color={currentTheme.textSecondary}
-            style={styles.eventDetails}
-          >
-            {event.dance && `${event.dance} • `}
-            {event.ageGroup}
-            {event.eventType === "SOLO" ? " • Solo" : " • Couple"}
-          </AppText>
+          {embedded ? (
+            <AppText variant="body" weight="600" color={currentTheme.text}>
+              {variantLabel}
+            </AppText>
+          ) : (
+            <>
+              <AppText variant="h3" color={currentTheme.text}>
+                {formatDiscipline(event.category)}
+              </AppText>
+              <AppText
+                variant="caption"
+                color={currentTheme.textSecondary}
+                style={styles.eventDetails}
+              >
+                {event.dance && `${event.dance} • `}
+                {event.ageGroup}
+                {event.eventType === "SOLO" ? " • Solo" : " • Couple"}
+              </AppText>
+            </>
+          )}
           {pendingAction && showLicenceActions && (
             <AppText
               testID={`pending-event-${event.id}`}
