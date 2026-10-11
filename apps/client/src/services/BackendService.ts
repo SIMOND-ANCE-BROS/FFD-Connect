@@ -25,6 +25,7 @@ export type {
 export type {
   LicenseRenewalDocument,
   LicenseRenewalDocumentType,
+  LicenseRenewalRejectionReason,
   LicenseRenewalRequest,
   LicenseRenewalStatus,
 } from "./api/license-api";

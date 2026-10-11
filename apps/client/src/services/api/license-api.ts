@@ -7,6 +7,8 @@ import { Platform } from "react-native";
 import {
   appleWalletControllerCreateDownloadLink,
   type AppleWalletPassLinkDto,
+  type LicenseRenewalDocumentDto,
+  type LicenseRenewalRequestDto,
 } from "../../api/generated";
 import { BACKEND_URL } from "../../config";
 import { ERROR_MESSAGES } from "../../constants/errorMessages";
@@ -36,42 +38,19 @@ async function uploadError(response: Response): Promise<HttpError> {
   );
 }
 
-export type LicenseRenewalStatus =
-  | "DRAFT"
-  | "PENDING"
-  | "APPROVED"
-  | "REJECTED";
-export type LicenseRenewalDocumentType =
-  | "MEDICAL_CERTIFICATE"
-  | "LICENSE_CERTIFICATE";
-
-export interface LicenseRenewalDocument {
-  id: string;
-  requestId: string;
-  type: LicenseRenewalDocumentType;
-  filePath: string;
-  /**
-   * Fields read on the document, as whitelisted by the server (#224) — the
-   * raw certificate text is never returned.
-   */
-  ocrData?: {
-    isApte?: boolean;
-    date?: string;
-    doctorName?: string;
-    licenseNumber?: string;
-    expiryDate?: string;
-  } | null;
-  createdAt: string;
-}
-
-export interface LicenseRenewalRequest {
-  id: string;
-  userId: string;
-  status: LicenseRenewalStatus;
-  createdAt: string;
-  updatedAt: string;
-  documents: LicenseRenewalDocument[];
-}
+/*
+ * Renewal types come from the generated OpenAPI client (#268): the request
+ * carries the review outcome (`rejectionReason`, `reviewComment`). Document
+ * `ocrData` holds only the fields whitelisted by the server (#224) — the raw
+ * certificate text is never returned.
+ */
+export type {
+  LicenseRenewalDocumentType,
+  LicenseRenewalRejectionReason,
+  LicenseRenewalStatus,
+} from "../../api/generated";
+export type LicenseRenewalDocument = LicenseRenewalDocumentDto;
+export type LicenseRenewalRequest = LicenseRenewalRequestDto;
 
 export type { AppleWalletPassLinkDto };
 

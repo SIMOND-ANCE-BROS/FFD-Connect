@@ -17,6 +17,8 @@ import { RootStackParamList } from "../../../navigation/types";
 import api from "../../../services/api";
 import type { CareerResult } from "../../../services/BackendService";
 import { LicenseExpiryBanner } from "../../license/components/LicenseExpiryBanner";
+import { RenewalUnderReviewBanner } from "../../license/components/RenewalUnderReviewBanner";
+import { useRenewalUnderReview } from "../../license/hooks/useMyRenewalStatus";
 import {
   type CompetitionLevelProfile,
   formatCompetitionLevels,
@@ -28,6 +30,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "Profile">;
 
 export const ProfileScreen = ({ navigation }: Props) => {
   const { theme: currentTheme } = useTheme();
+  const renewalUnderReview = useRenewalUnderReview();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -113,10 +116,18 @@ export const ProfileScreen = ({ navigation }: Props) => {
           />
         }
       >
-        <LicenseExpiryBanner
-          validUntil={license?.validUntil}
-          onPress={() => navigation.navigate("LicenseRenewal")}
-        />
+        {/* A request waiting for the administrator (#268) replaces the
+            expiry banner: asking to renew again would be misleading. */}
+        {renewalUnderReview ? (
+          <RenewalUnderReviewBanner
+            onPress={() => navigation.navigate("LicenseRenewal")}
+          />
+        ) : (
+          <LicenseExpiryBanner
+            validUntil={license?.validUntil}
+            onPress={() => navigation.navigate("LicenseRenewal")}
+          />
+        )}
 
         {/* License Section */}
         <View style={styles.sectionHeader}>

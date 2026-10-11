@@ -3,7 +3,14 @@ import {
   mockAuthRepository,
   mockUserRole,
 } from "../../../../__tests__/mocks/mockAuthRepository";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import React from "react";
+import { MY_RENEWAL_STATUS_QUERY_KEY } from "../useMyRenewalStatus";
 import { useLicenseRenewalLogic } from "../useLicenseRenewalLogic";
+
+let queryClient: QueryClient;
+const wrapper = ({ children }: { children: React.ReactNode }) =>
+  React.createElement(QueryClientProvider, { client: queryClient }, children);
 
 // Mock AuthContext
 jest.mock("../../../auth/context/AuthContext", () => ({
@@ -88,6 +95,7 @@ const makeDraftRequest = (
 describe("useLicenseRenewalLogic", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    queryClient = new QueryClient();
 
     // Default: logged in
     mockAuthRepository.getAuthConfig.mockResolvedValue({
@@ -109,7 +117,9 @@ describe("useLicenseRenewalLogic", () => {
 
   // 1. Initial state: no request, not loading
   it("should have no request and not be loading initially", async () => {
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => {
       expect(mockGetMyRenewal).toHaveBeenCalled();
@@ -122,7 +132,9 @@ describe("useLicenseRenewalLogic", () => {
 
   // 2. startOrGetDraft calls service and creates request
   it("should call startRenewalRequest and set request when startOrGetDraft is called", async () => {
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => expect(mockGetMyRenewal).toHaveBeenCalled());
 
@@ -143,7 +155,9 @@ describe("useLicenseRenewalLogic", () => {
     const existingRequest = makeDraftRequest({ id: "existing-req" });
     mockGetMyRenewal.mockResolvedValue(existingRequest);
 
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => {
       expect(result.current.request).toMatchObject({ id: "existing-req" });
@@ -174,7 +188,9 @@ describe("useLicenseRenewalLogic", () => {
       }),
     );
 
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => {
       expect(result.current.request).toMatchObject({ id: "req-1" });
@@ -214,7 +230,9 @@ describe("useLicenseRenewalLogic", () => {
       }),
     );
 
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => {
       expect(result.current.request).toMatchObject({ id: "req-1" });
@@ -236,7 +254,9 @@ describe("useLicenseRenewalLogic", () => {
   it("should not submit when required documents are missing (canSubmit is false)", async () => {
     mockGetMyRenewal.mockResolvedValue(makeDraftRequest({ documents: [] }));
 
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => {
       expect(result.current.request).toMatchObject({ status: "DRAFT" });
@@ -278,7 +298,9 @@ describe("useLicenseRenewalLogic", () => {
     });
     mockGetMyRenewal.mockResolvedValue(fullRequest);
 
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => {
       expect(result.current.request?.documents).toHaveLength(2);
@@ -318,7 +340,9 @@ describe("useLicenseRenewalLogic", () => {
       makeDraftRequest({ status: "PENDING" }),
     );
 
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => {
       expect(result.current.request?.documents).toHaveLength(2);
@@ -330,6 +354,11 @@ describe("useLicenseRenewalLogic", () => {
 
     expect(result.current.step).toBe("submitted");
     expect(result.current.request?.status).toBe("PENDING");
+    // The Licence and Profile banners read this cache (#268).
+    expect(queryClient.getQueryData(MY_RENEWAL_STATUS_QUERY_KEY)).toEqual({
+      id: "req-1",
+      status: "PENDING",
+    });
   });
 
   // 9. Loading state — submitting is true during submit, false after
@@ -337,7 +366,9 @@ describe("useLicenseRenewalLogic", () => {
     const draftRequest = makeDraftRequest();
     mockGetMyRenewal.mockResolvedValue(draftRequest);
 
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => expect(result.current.request).not.toBeNull());
 
@@ -352,7 +383,9 @@ describe("useLicenseRenewalLogic", () => {
   it("should call launchImageLibraryAsync when pickAndUploadDocument is invoked", async () => {
     mockGetMyRenewal.mockResolvedValue(makeDraftRequest());
 
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => expect(result.current.request).not.toBeNull());
 
@@ -372,7 +405,9 @@ describe("useLicenseRenewalLogic", () => {
     });
     mockUploadDoc.mockRejectedValueOnce(new Error("Upload failed"));
 
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => expect(result.current.request).not.toBeNull());
 
@@ -389,7 +424,9 @@ describe("useLicenseRenewalLogic", () => {
       makeDraftRequest({ status: "APPROVED" }),
     );
 
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => {
       expect(result.current.request?.status).toBe("APPROVED");
@@ -404,7 +441,9 @@ describe("useLicenseRenewalLogic", () => {
       makeDraftRequest({ status: "REJECTED" }),
     );
 
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => {
       expect(result.current.request?.status).toBe("REJECTED");
@@ -417,7 +456,9 @@ describe("useLicenseRenewalLogic", () => {
   it("should reload request when loadRenewal is called manually", async () => {
     mockGetMyRenewal.mockResolvedValue(null);
 
-    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
 
     await waitFor(() => expect(mockGetMyRenewal).toHaveBeenCalledTimes(1));
     expect(result.current.request).toBeNull();

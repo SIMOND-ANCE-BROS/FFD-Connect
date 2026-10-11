@@ -36,6 +36,7 @@ import {
   LicenseUser,
 } from "../components/LicenseCard";
 import { LicenseExpiryBanner } from "../components/LicenseExpiryBanner";
+import { RenewalUnderReviewBanner } from "../components/RenewalUnderReviewBanner";
 import { computeLicenseExpiry } from "../utils/licenseExpiry";
 import { getFfdSeason } from "../utils/licenseSeason";
 import { SwipeableLicenseCard } from "../components/SwipeableLicenseCard";
@@ -45,6 +46,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import type { RootStackParamList } from "../../../navigation/types";
 import { isWdsfQrData } from "../../../utils/typeGuards";
 import { useLicenseLogic } from "../hooks/useLicenseLogic";
+import { useRenewalUnderReview } from "../hooks/useMyRenewalStatus";
 import { buildLicenseQrData } from "../utils/licenseQrData";
 
 if (Platform.OS === "android") {
@@ -176,6 +178,8 @@ export const LicenseScreen: React.FC = () => {
 
   const activeItemType = state.listItems[state.activeCardIndex]?.type;
   const isGuest = state.listItems.some((item) => item.type === "GUEST");
+  const renewalUnderReview = useRenewalUnderReview(!isGuest);
+  const openRenewal = () => navigation.getParent()?.navigate("LicenseRenewal");
 
   return (
     <SafeAreaView
@@ -302,10 +306,16 @@ export const LicenseScreen: React.FC = () => {
             </AppText>
           </View>
         ) : null}
-        <LicenseExpiryBanner
-          validUntil={ffdValidUntilRaw}
-          onPress={() => navigation.getParent()?.navigate("LicenseRenewal")}
-        />
+        {/* A request waiting for the administrator (#268) replaces the
+            expiry banner: asking to renew again would be misleading. */}
+        {renewalUnderReview ? (
+          <RenewalUnderReviewBanner onPress={openRenewal} />
+        ) : (
+          <LicenseExpiryBanner
+            validUntil={ffdValidUntilRaw}
+            onPress={openRenewal}
+          />
+        )}
         {/* Beta: the displayed license (and its Wallet pass) is not yet
             accepted at competitions — shown above the cards and the
             Apple Wallet button. */}

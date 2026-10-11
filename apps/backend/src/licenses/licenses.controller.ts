@@ -37,6 +37,7 @@ import {
   createMemoryUploadStorage,
   generateBlobName,
 } from "../utils/upload-storage.util";
+import { LicenseRenewalRequestDto } from "./dto/license-renewal-request.dto";
 import { LicenseRenewalService } from "./license-renewal.service";
 import { LicensesService } from "./licenses.service";
 import {
@@ -265,7 +266,11 @@ export class LicensesController {
     description:
       "Crée ou récupère une demande de renouvellement en brouillon pour déposer le certificat médical et le certificat de licence. Si une demande est déjà en attente de validation (PENDING), c'est elle qui est renvoyée : une seule demande en attente par utilisateur.",
   })
-  @ApiResponse({ status: 201, description: "Demande créée ou existante" })
+  @ApiResponse({
+    status: 201,
+    description: "Demande créée ou existante",
+    type: LicenseRenewalRequestDto,
+  })
   @ApiResponse({ status: 401, description: "Non autorisé" })
   async startRenewal(@Req() req: RequestWithUser) {
     return this.licenseRenewalService.startRenewalRequest(req.user.userId);
@@ -278,7 +283,12 @@ export class LicensesController {
     description:
       "Retourne la dernière demande de renouvellement de l'utilisateur (brouillon ou soumise).",
   })
-  @ApiResponse({ status: 200, description: "Demande ou null" })
+  @ApiResponse({
+    status: 200,
+    description:
+      "Demande (avec l'issue de la modération : motif et commentaire d'un refus) ou null",
+    type: LicenseRenewalRequestDto,
+  })
   @ApiResponse({ status: 401, description: "Non autorisé" })
   async getMyRenewal(@Req() req: RequestWithUser) {
     return this.licenseRenewalService.getMyRenewalRequest(req.user.userId);
@@ -310,6 +320,7 @@ export class LicensesController {
   @ApiResponse({
     status: 201,
     description: "Demande mise à jour avec document et données OCR",
+    type: LicenseRenewalRequestDto,
   })
   @ApiResponse({
     status: 400,
@@ -359,7 +370,11 @@ export class LicensesController {
       "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence. Refusée (409) si une autre demande de l'utilisateur est déjà en attente de validation.",
   })
   @ApiParam({ name: "id", description: "ID de la demande" })
-  @ApiResponse({ status: 201, description: "Demande soumise" })
+  @ApiResponse({
+    status: 201,
+    description: "Demande soumise",
+    type: LicenseRenewalRequestDto,
+  })
   @ApiResponse({
     status: 400,
     description: "Documents manquants ou déjà soumise",

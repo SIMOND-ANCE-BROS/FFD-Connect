@@ -3,6 +3,7 @@ import React from "react";
 
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
 import api from "../../../../services/api";
+import { useRenewalUnderReview } from "../../../license/hooks/useMyRenewalStatus";
 import { ProfileScreen } from "../ProfileScreen";
 
 jest.mock("../../../../context/ThemeContext");
@@ -20,9 +21,16 @@ jest.mock("lucide-react-native", () => ({
   Award: () => null,
   CreditCard: () => null,
   IdCard: () => null,
+  Hourglass: () => null,
 }));
 jest.mock("../../../license/components/LicenseExpiryBanner", () => ({
-  LicenseExpiryBanner: () => null,
+  LicenseExpiryBanner: () => {
+    const { View } = require("react-native");
+    return <View testID="license-expiry-banner" />;
+  },
+}));
+jest.mock("../../../license/hooks/useMyRenewalStatus", () => ({
+  useRenewalUnderReview: jest.fn(() => false),
 }));
 jest.mock("../../../../components/AppText", () => ({
   AppText: ({ children }: { children: React.ReactNode }) => {
@@ -79,6 +87,44 @@ describe("ProfileScreen", () => {
     // The check-in scanner is organizer-only (403 for licensees since #174).
     expect(navigate).not.toHaveBeenCalledWith("Scanner");
     expect(queryByText("Scanner ma licence")).toBeNull();
+  });
+
+  it("shows « en cours de vérification » instead of the expiry banner while a renewal is PENDING (#268)", async () => {
+    (useRenewalUnderReview as jest.Mock).mockReturnValue(true);
+    mockGet.mockImplementation((url: string) =>
+      url === "/licenses/my"
+        ? Promise.resolve({ data: null })
+        : Promise.resolve({ data: { results: [] } }),
+    );
+
+    const { findByText, getByTestId, queryByTestId } = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+
+    expect(
+      await findByText("Demande de renouvellement en cours de vérification"),
+    ).toBeTruthy();
+    expect(queryByTestId("license-expiry-banner")).toBeNull();
+
+    await fireEvent.press(getByTestId("renewal-under-review-banner"));
+    const { navigate } = mockNavigation as unknown as { navigate: jest.Mock };
+    expect(navigate).toHaveBeenCalledWith("LicenseRenewal");
+  });
+
+  it("keeps the expiry banner without a pending renewal", async () => {
+    (useRenewalUnderReview as jest.Mock).mockReturnValue(false);
+    mockGet.mockImplementation((url: string) =>
+      url === "/licenses/my"
+        ? Promise.resolve({ data: null })
+        : Promise.resolve({ data: { results: [] } }),
+    );
+
+    const { findByTestId, queryByTestId } = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+
+    expect(await findByTestId("license-expiry-banner")).toBeTruthy();
+    expect(queryByTestId("renewal-under-review-banner")).toBeNull();
   });
 
   it("renders the license when the user has one", async () => {

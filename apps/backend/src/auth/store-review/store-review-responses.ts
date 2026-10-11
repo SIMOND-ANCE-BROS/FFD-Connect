@@ -58,6 +58,10 @@ const renewalRequest = (
   documents,
   createdAt: iso(ctx.now),
   updatedAt: iso(ctx.now),
+  submittedAt: status === "PENDING" ? iso(ctx.now) : null,
+  reviewedAt: null,
+  rejectionReason: null,
+  reviewComment: null,
   simulated: true,
 });
 

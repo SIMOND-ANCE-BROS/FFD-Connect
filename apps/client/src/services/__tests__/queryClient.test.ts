@@ -26,6 +26,12 @@ describe("queryClient — persistance et déconnexion", () => {
     ).toBe(false);
   });
 
+  it("ne persiste jamais l'état de la demande de renouvellement (#268)", async () => {
+    expect(shouldPersistQuery(await seed(["license-renewal", "my"]))).toBe(
+      false,
+    );
+  });
+
   it("persiste les autres requêtes réussies (comportement par défaut)", async () => {
     expect(shouldPersistQuery(await seed(["notifications"]))).toBe(true);
   });

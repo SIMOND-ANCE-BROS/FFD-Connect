@@ -2,12 +2,17 @@ import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import React from "react";
 import { StyleSheet } from "react-native";
 import type { ReactTestRendererJSON } from "react-test-renderer";
+import { mockNavigation } from "../../../../__tests__/mocks/mockNavigation";
 import { STACKED_CARD_PEEK } from "../../../../components/StackedCard";
 import { BETA_NOTICES } from "../../../../constants/betaNotices";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useLicenseLogic } from "../../hooks/useLicenseLogic";
+import { useRenewalUnderReview } from "../../hooks/useMyRenewalStatus";
 import { LicenseScreen } from "../LicenseScreen";
 
+jest.mock("../../hooks/useMyRenewalStatus", () => ({
+  useRenewalUnderReview: jest.fn(() => false),
+}));
 jest.mock("../../../../components/NotificationBell", () => ({
   NotificationBell: () => {
     const { View } = require("react-native");
@@ -253,6 +258,74 @@ describe("LicenseScreen Integration", () => {
       name: "Doe John",
       valid: true,
       type: "FFD",
+    });
+  });
+
+  describe("renewal under review banner (#268)", () => {
+    const ffdItems = [
+      {
+        type: "FFD",
+        data: {
+          firstName: "John",
+          lastName: "Doe",
+          licenseNumber: "123",
+          // Expired: the expiry banner would show without a pending request.
+          validUntilRaw: "2020-08-31T00:00:00Z",
+        },
+      },
+    ];
+
+    it("shows « en cours de vérification » instead of the expiry banner while a request is PENDING", async () => {
+      (useRenewalUnderReview as jest.Mock).mockReturnValue(true);
+      const parentNavigate = jest.fn();
+      (mockNavigation.getParent as jest.Mock).mockReturnValue({
+        navigate: parentNavigate,
+      });
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: { ...mockState, listItems: ffdItems },
+        actions: mockActions,
+      });
+
+      const { getByTestId, getByText, queryByTestId } = await render(
+        <LicenseScreen />,
+      );
+
+      expect(
+        getByText("Demande de renouvellement en cours de vérification"),
+      ).toBeTruthy();
+      expect(queryByTestId("license-expiry-banner")).toBeNull();
+      expect(useRenewalUnderReview).toHaveBeenLastCalledWith(true);
+
+      await fireEvent.press(getByTestId("renewal-under-review-banner"));
+      expect(parentNavigate).toHaveBeenCalledWith("LicenseRenewal");
+    });
+
+    it("keeps the expiry banner without a pending request", async () => {
+      (useRenewalUnderReview as jest.Mock).mockReturnValue(false);
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: { ...mockState, listItems: ffdItems },
+        actions: mockActions,
+      });
+
+      const { getByTestId, queryByTestId } = await render(<LicenseScreen />);
+
+      expect(queryByTestId("renewal-under-review-banner")).toBeNull();
+      expect(getByTestId("license-expiry-banner")).toBeTruthy();
+    });
+
+    it("never asks for a guest", async () => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          role: "GUEST",
+          listItems: [{ type: "GUEST", data: null }],
+        },
+        actions: mockActions,
+      });
+
+      await render(<LicenseScreen />);
+
+      expect(useRenewalUnderReview).toHaveBeenLastCalledWith(false);
     });
   });
 

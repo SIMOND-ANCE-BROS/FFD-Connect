@@ -1,6 +1,7 @@
 /* eslint-disable react-native-a11y/has-valid-accessibility-descriptors */
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import {
+  AlertTriangle,
   CheckCircle2,
   FileText,
   Stethoscope,
@@ -26,8 +27,12 @@ import { PinnedHeader } from "../../../components/PinnedHeader";
 import { useTheme } from "../../../context/ThemeContext";
 import { useSensitiveScreen } from "../../../hooks/useSensitiveScreen";
 import { RootStackParamList } from "../../../navigation/types";
-import type { LicenseRenewalDocumentType } from "../../../services/BackendService";
+import type { LicenseRenewalDocumentType } from "../../../services/api/license-api";
 import { useLicenseRenewalLogic } from "../hooks/useLicenseRenewalLogic";
+import {
+  getRenewalOcrWarnings,
+  rejectionReasonLabel,
+} from "../utils/renewalReview";
 
 type Props = NativeStackScreenProps<RootStackParamList, "LicenseRenewal">;
 
@@ -37,13 +42,15 @@ const DOC_LABELS: Record<LicenseRenewalDocumentType, string> = {
 };
 
 export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
-  // Medical certificate summary on screen: no Sentry screenshot (#242).
+  // Medical certificate summary, OCR hints and the reason of a refusal on
+  // screen (a reason can be medical): no Sentry screenshot (#242, #249).
   useSensitiveScreen();
   const { theme: currentTheme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [headerH, setHeaderH] = useState(insets.top + 56);
 
   const ocrTextStyle = { color: currentTheme.textSecondary };
+  const warningTextStyle = [styles.warningText, { color: currentTheme.text }];
   const docTitleStyle = [styles.docHeaderTitle, { color: currentTheme.text }];
   const loadingTextStyle = [
     styles.loadingText,
@@ -78,8 +85,8 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
     const d = doc.ocrData;
     const lines: string[] = [];
     if (doc.type === "MEDICAL_CERTIFICATE") {
-      if (d.isApte !== undefined)
-        lines.push(d.isApte ? "Apte à la pratique" : "Non apte");
+      // A fitness not confirmed by the reading is a warning, below.
+      if (d.isApte === true) lines.push("Apte à la pratique");
       if (d.date) lines.push(`Date : ${d.date}`);
       if (d.doctorName) lines.push(`Médecin : ${d.doctorName}`);
     } else {
@@ -96,6 +103,40 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
             {line}
           </AppText>
         ))}
+      </View>
+    );
+  };
+
+  /**
+   * Hints of the automatic reading: informative only, they never disable the
+   * submission (#268) — an administrator checks every document (ADR-0021).
+   */
+  const renderOcrWarnings = (doc: NonNullable<ReturnType<typeof getDoc>>) => {
+    const warnings = getRenewalOcrWarnings(doc);
+    if (warnings.length === 0) return null;
+    return (
+      <View
+        style={[
+          styles.warningBox,
+          {
+            backgroundColor: `${currentTheme.warning}1A`,
+            borderColor: currentTheme.warning,
+          },
+        ]}
+        testID={`ocr-warnings-${doc.type}`}
+      >
+        {warnings.map((warning) => (
+          <View key={warning} style={styles.warningRow}>
+            <AlertTriangle size={14} color={currentTheme.warning} />
+            <AppText variant="caption" style={warningTextStyle}>
+              {warning}
+            </AppText>
+          </View>
+        ))}
+        <AppText variant="caption" style={ocrTextStyle}>
+          À titre indicatif : vous pouvez soumettre votre demande, un
+          administrateur vérifiera le document.
+        </AppText>
       </View>
     );
   };
@@ -141,6 +182,7 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
           )}
         </View>
         {doc && renderOcrSummary(doc)}
+        {doc && renderOcrWarnings(doc)}
         <TouchableOpacity
           style={[
             styles.uploadBtn,
@@ -170,6 +212,13 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
       </View>
     );
   };
+
+  const rejectionLabel = rejectionReasonLabel(request?.rejectionReason);
+  const submittedOn = request?.submittedAt
+    ? new Date(request.submittedAt).toLocaleDateString("fr-FR")
+    : null;
+  const statusDateStyle = [styles.statusDate, ocrTextStyle];
+  const reviewValueStyle = [styles.reviewValue, { color: currentTheme.text }];
 
   const submitButtonStyle = [
     styles.primaryButton,
@@ -278,12 +327,17 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
           >
             <FileText size={48} color={currentTheme.primary} />
             <AppText variant="h2" style={statusTitleStyle}>
-              Demande soumise
+              Demande en cours de vérification
             </AppText>
             <AppText variant="body" style={statusSubtitleStyle}>
               Votre demande de renouvellement est en attente de validation. Vous
               serez notifié dès qu’elle sera traitée.
             </AppText>
+            {submittedOn ? (
+              <AppText variant="caption" style={statusDateStyle}>
+                {`Envoyée le ${submittedOn}`}
+              </AppText>
+            ) : null}
           </View>
         )}
 
@@ -327,6 +381,42 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
               Votre demande n’a pas pu être validée. Vous pouvez déposer une
               nouvelle demande avec des documents conformes.
             </AppText>
+            {rejectionLabel || request.reviewComment ? (
+              <View
+                style={[
+                  styles.reviewBox,
+                  { backgroundColor: currentTheme.background },
+                ]}
+                testID="renewal-rejection-details"
+              >
+                {rejectionLabel ? (
+                  <>
+                    <AppText variant="caption" style={ocrTextStyle}>
+                      Motif du refus
+                    </AppText>
+                    <AppText variant="body" style={reviewValueStyle}>
+                      {rejectionLabel}
+                    </AppText>
+                  </>
+                ) : null}
+                {request.reviewComment ? (
+                  <>
+                    <AppText
+                      variant="caption"
+                      style={[
+                        ocrTextStyle,
+                        rejectionLabel ? styles.reviewGap : null,
+                      ]}
+                    >
+                      Commentaire de l’administrateur
+                    </AppText>
+                    <AppText variant="body" style={reviewValueStyle}>
+                      {request.reviewComment}
+                    </AppText>
+                  </>
+                ) : null}
+              </View>
+            ) : null}
             <TouchableOpacity
               style={retryButtonStyle}
               onPress={() => {
@@ -445,6 +535,36 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   loadingText: {
+    marginTop: 12,
+  },
+  warningBox: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+    gap: 6,
+  },
+  warningRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  warningText: {
+    flex: 1,
+  },
+  reviewBox: {
+    alignSelf: "stretch",
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 16,
+  },
+  reviewValue: {
+    marginTop: 2,
+  },
+  reviewGap: {
+    marginTop: 12,
+  },
+  statusDate: {
     marginTop: 12,
   },
 });

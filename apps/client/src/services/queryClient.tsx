@@ -65,8 +65,13 @@ const asyncStoragePersister = createAsyncStoragePersister({
  * Familles de requêtes jamais écrites sur le disque. Les propositions de
  * correction exposent des données d'autres utilisateurs (noms des auteurs,
  * commentaires) côté admin : inutile de les laisser 24 h dans AsyncStorage.
+ * L'état de la demande de renouvellement (#268) touche au dossier médical :
+ * il reste en mémoire et se relit à l'ouverture de l'app.
  */
-const NON_PERSISTED_QUERY_ROOTS: readonly string[] = ["track-corrections"];
+const NON_PERSISTED_QUERY_ROOTS: readonly string[] = [
+  "track-corrections",
+  "license-renewal",
+];
 
 /** Filtre de persistance : le défaut de React Query, moins les exclusions. */
 export function shouldPersistQuery(query: Query): boolean {

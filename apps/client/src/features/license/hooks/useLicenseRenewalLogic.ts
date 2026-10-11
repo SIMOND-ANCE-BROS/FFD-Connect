@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useState } from "react";
 import { useAuthRepository } from "../../auth/context/AuthContext";
@@ -10,6 +11,7 @@ import {
   LicenseRenewalDocumentType,
   LicenseRenewalRequest,
 } from "../../../services/BackendService";
+import { setMyRenewalStatus } from "./useMyRenewalStatus";
 
 export type RenewalStep = "documents" | "submitted" | "approved" | "rejected";
 
@@ -17,7 +19,19 @@ export function useLicenseRenewalLogic() {
   const auth = useAuthRepository();
   const { withErrorHandling } = useErrorHandler();
   const { isLoading: loading } = useLoadingState();
-  const [request, setRequest] = useState<LicenseRenewalRequest | null>(null);
+  const queryClient = useQueryClient();
+  const [request, setRequestState] = useState<LicenseRenewalRequest | null>(
+    null,
+  );
+  // Every fresh request also updates the status cache read by the
+  // « en cours de vérification » banners of the Licence and Profile screens.
+  const setRequest = useCallback(
+    (next: LicenseRenewalRequest | null) => {
+      setRequestState(next);
+      setMyRenewalStatus(queryClient, next);
+    },
+    [queryClient],
+  );
   const [uploadingType, setUploadingType] =
     useState<LicenseRenewalDocumentType | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -34,7 +48,7 @@ export function useLicenseRenewalLogic() {
     } catch {
       setRequest(null);
     }
-  }, [auth]);
+  }, [auth, setRequest]);
 
   useEffect(() => {
     loadRenewal().catch(() => {});
@@ -58,7 +72,7 @@ export function useLicenseRenewalLogic() {
         logError: true,
       },
     );
-  }, [auth, withErrorHandling]);
+  }, [auth, setRequest, withErrorHandling]);
 
   const pickAndUploadDocument = useCallback(
     async (type: LicenseRenewalDocumentType) => {
@@ -114,7 +128,7 @@ export function useLicenseRenewalLogic() {
       );
       setUploadingType(null);
     },
-    [auth, request, startOrGetDraft, withErrorHandling],
+    [auth, request, setRequest, startOrGetDraft, withErrorHandling],
   );
 
   const submit = useCallback(async () => {
@@ -138,7 +152,7 @@ export function useLicenseRenewalLogic() {
       },
     );
     setSubmitting(false);
-  }, [auth, request, withErrorHandling]);
+  }, [auth, request, setRequest, withErrorHandling]);
 
   const getDoc = (
     type: LicenseRenewalDocumentType,

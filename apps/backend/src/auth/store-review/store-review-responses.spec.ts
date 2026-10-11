@@ -97,6 +97,10 @@ describe("store-review simulated responses", () => {
         documents: [],
         createdAt: NOW.toISOString(),
         updatedAt: NOW.toISOString(),
+        submittedAt: null,
+        reviewedAt: null,
+        rejectionReason: null,
+        reviewComment: null,
         simulated: true,
       });
     });
@@ -122,6 +126,20 @@ describe("store-review simulated responses", () => {
       expect(
         simulatedRenewalSubmit(ctx({ params: { id: "req-1" } })),
       ).toMatchObject({ id: "req-1", status: "PENDING" });
+    });
+
+    it("carries the review fields the app reads (#268): submitted, not reviewed", () => {
+      expect(
+        simulatedRenewalSubmit(ctx({ params: { id: "req-1" } })),
+      ).toMatchObject({
+        submittedAt: NOW.toISOString(),
+        reviewedAt: null,
+        rejectionReason: null,
+        reviewComment: null,
+      });
+      expect(simulatedRenewalStart(ctx())).toMatchObject({
+        submittedAt: null,
+      });
     });
 
     it("falls back to a fresh id without a route :id", () => {

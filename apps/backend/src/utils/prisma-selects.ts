@@ -308,6 +308,8 @@ export const licenseRenewalDocumentResponseSelect = {
  * Demande de renouvellement telle que l'API la renvoie, documents compris.
  * Les documents ne sont pas bornés par `take` : un remplacement supprime
  * l'ancien document du même type, il y en a donc au plus un par type (2).
+ * L'issue de la modération (#268) est exposée au licencié — motif et
+ * commentaire de sa propre demande — mais jamais l'identité du modérateur.
  */
 export const licenseRenewalRequestResponseSelect = {
   id: true,
@@ -315,6 +317,10 @@ export const licenseRenewalRequestResponseSelect = {
   status: true,
   createdAt: true,
   updatedAt: true,
+  submittedAt: true,
+  reviewedAt: true,
+  rejectionReason: true,
+  reviewComment: true,
   documents: { select: licenseRenewalDocumentResponseSelect },
 } as const;
 

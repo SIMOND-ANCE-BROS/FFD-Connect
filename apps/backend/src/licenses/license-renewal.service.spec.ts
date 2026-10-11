@@ -276,6 +276,39 @@ describe("LicenseRenewalService", () => {
       );
     });
 
+    it("exposes the review outcome of the licensee's own request, never the reviewer (#268)", async () => {
+      const reviewedAt = new Date("2026-10-10T09:00:00Z");
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+        id: "req-1",
+        userId: "user-1",
+        status: LicenseRenewalStatus.REJECTED,
+        submittedAt: new Date("2026-10-09T09:00:00Z"),
+        reviewedAt,
+        rejectionReason: "ILLEGIBLE",
+        reviewComment: "Photo floue",
+        documents: [],
+      });
+
+      const result = await service.getMyRenewalRequest("user-1");
+
+      expect(result).toMatchObject({
+        status: LicenseRenewalStatus.REJECTED,
+        reviewedAt,
+        rejectionReason: "ILLEGIBLE",
+        reviewComment: "Photo floue",
+      });
+      const { select } = mockPrisma.licenseRenewalRequest.findFirst.mock
+        .calls[0][0] as { select: Record<string, unknown> };
+      expect(select).toMatchObject({
+        submittedAt: true,
+        reviewedAt: true,
+        rejectionReason: true,
+        reviewComment: true,
+      });
+      expect(select).not.toHaveProperty("reviewedById");
+      expect(select).not.toHaveProperty("reviewedBy");
+    });
+
     it("should return null if no request exists", async () => {
       mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue(null);
 

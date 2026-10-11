@@ -12,6 +12,9 @@ import { useTheme } from "../../../../context/ThemeContext";
 import { useLicenseLogic } from "../../hooks/useLicenseLogic";
 import { LicenseScreen } from "../LicenseScreen";
 
+jest.mock("../../hooks/useMyRenewalStatus", () => ({
+  useRenewalUnderReview: jest.fn(() => false),
+}));
 jest.mock("../../../../components/NotificationBell", () => ({
   NotificationBell: () => null,
 }));
