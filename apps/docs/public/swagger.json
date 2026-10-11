@@ -21489,11 +21489,11 @@
     },
     "/licenses/renewal/start": {
       "post": {
-        "description": "Crée ou récupère une demande de renouvellement en brouillon pour déposer le certificat médical et le certificat de licence.",
+        "description": "Crée ou récupère une demande de renouvellement en brouillon pour déposer le certificat médical et le certificat de licence. Si une demande est déjà en attente de validation (PENDING), c'est elle qui est renvoyée : une seule demande en attente par utilisateur.",
         "operationId": "LicensesController_startRenewal",
         "parameters": [],
         "responses": {
-          "200": {
+          "201": {
             "description": "Demande créée ou existante"
           },
           "400": {
@@ -21863,7 +21863,7 @@
           }
         },
         "responses": {
-          "200": {
+          "201": {
             "description": "Demande mise à jour avec document et données OCR"
           },
           "400": {
@@ -21983,7 +21983,7 @@
     },
     "/licenses/renewal/{id}/submit": {
       "post": {
-        "description": "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence.",
+        "description": "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence. Refusée (409) si une autre demande de l'utilisateur est déjà en attente de validation.",
         "operationId": "LicensesController_submitRenewal",
         "parameters": [
           {
@@ -21997,7 +21997,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "Demande soumise"
           },
           "400": {
@@ -22034,7 +22034,7 @@
             "description": "Demande non trouvée"
           },
           "409": {
-            "description": "Conflit - La ressource existe déjà",
+            "description": "Conflit - Une autre demande de l'utilisateur est déjà en attente de validation, ou la demande vient d'être traitée par un administrateur",
             "content": {
               "application/json": {
                 "schema": {

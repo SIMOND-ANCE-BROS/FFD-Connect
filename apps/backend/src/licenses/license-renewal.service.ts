@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -7,6 +8,7 @@ import {
 import {
   LicenseRenewalDocumentType,
   LicenseRenewalStatus,
+  Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
@@ -76,27 +78,56 @@ export class LicenseRenewalService {
     private renewalDocumentFiles: RenewalDocumentFileCleaner,
   ) {}
 
-  /** Crée ou récupère une demande de renouvellement en brouillon pour l'utilisateur. */
+  /**
+   * Crée ou récupère la demande de renouvellement en cours de l'utilisateur.
+   *
+   * Une seule demande PENDING par utilisateur (#271) : si une demande attend
+   * déjà la décision d'un administrateur, c'est elle qui est renvoyée — pas de
+   * nouveau brouillon qui s'empilerait dans la file de modération. Sinon le
+   * brouillon existant est repris, ou un brouillon est créé.
+   *
+   * Lecture et création sous le verrou utilisateur (`lockUserRenewals`) : deux
+   * démarrages simultanés ne créent pas deux brouillons.
+   */
   async startRenewalRequest(userId: string) {
-    const existing = await this.prisma.licenseRenewalRequest.findFirst({
-      where: { userId, status: LicenseRenewalStatus.DRAFT },
-      select: licenseRenewalRequestResponseSelect,
+    const request = await this.prisma.$transaction(async (tx) => {
+      await lockUserRenewals(tx, userId);
+      const pending = await tx.licenseRenewalRequest.findFirst({
+        where: { userId, status: LicenseRenewalStatus.PENDING },
+        // Several PENDING may predate #271: the oldest heads the queue.
+        orderBy: { createdAt: "asc" },
+        select: licenseRenewalRequestResponseSelect,
+      });
+      if (pending) return pending;
+      const draft = await tx.licenseRenewalRequest.findFirst({
+        where: { userId, status: LicenseRenewalStatus.DRAFT },
+        orderBy: { createdAt: "desc" },
+        select: licenseRenewalRequestResponseSelect,
+      });
+      if (draft) return draft;
+      return tx.licenseRenewalRequest.create({
+        data: { userId, status: LicenseRenewalStatus.DRAFT },
+        select: licenseRenewalRequestResponseSelect,
+      });
     });
-    if (existing) return toRenewalRequestResponse(existing);
-    const created = await this.prisma.licenseRenewalRequest.create({
-      data: { userId, status: LicenseRenewalStatus.DRAFT },
-      select: licenseRenewalRequestResponseSelect,
-    });
-    return toRenewalRequestResponse(created);
+    return toRenewalRequestResponse(request);
   }
 
   /** Récupère la demande de renouvellement en cours (brouillon ou soumise) pour l'utilisateur. */
   async getMyRenewalRequest(userId: string) {
-    const request = await this.prisma.licenseRenewalRequest.findFirst({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      select: licenseRenewalRequestResponseSelect,
-    });
+    // Same rule as `startRenewalRequest` (#271): the request awaiting a
+    // decision comes first, even when a newer draft predates #271.
+    const request =
+      (await this.prisma.licenseRenewalRequest.findFirst({
+        where: { userId, status: LicenseRenewalStatus.PENDING },
+        orderBy: { createdAt: "asc" },
+        select: licenseRenewalRequestResponseSelect,
+      })) ??
+      (await this.prisma.licenseRenewalRequest.findFirst({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        select: licenseRenewalRequestResponseSelect,
+      }));
     return request ? toRenewalRequestResponse(request) : null;
   }
 
@@ -225,7 +256,8 @@ export class LicenseRenewalService {
   /**
    * Soumet la demande de renouvellement (DRAFT → PENDING, `submittedAt` posé,
    * puis APPROVED).
-   * Exige certificat médical et certificat de licence.
+   * Exige certificat médical et certificat de licence, et qu'aucune autre
+   * demande de l'utilisateur ne soit déjà en attente (409, #271).
    * Si les deux validations OCR passent, la demande est auto-approuvée et la licence est renouvelée.
    */
   async submitRenewalRequest(userId: string, requestId: string) {
@@ -296,17 +328,53 @@ export class LicenseRenewalService {
       );
     }
 
-    const submittedAt = new Date();
-    await this.prisma.licenseRenewalRequest.update({
-      where: { id: requestId },
-      data: {
-        status: LicenseRenewalStatus.PENDING,
-        submittedAt,
-        updatedAt: submittedAt,
-      },
-      select: idOnlySelect,
-    });
+    await this.markSubmitted(userId, requestId);
     return this.autoApprove(requestId);
+  }
+
+  /**
+   * DRAFT → PENDING under the user lock (#271). Refused (409) while another
+   * request of the user awaits a decision: only a draft left over from before
+   * #271 can get here. The update is conditional on DRAFT, so of two
+   * concurrent submissions of the same request the second one is told the
+   * request was already submitted.
+   */
+  private async markSubmitted(userId: string, requestId: string) {
+    await this.prisma.$transaction(async (tx) => {
+      await lockUserRenewals(tx, userId);
+      const otherPending = await tx.licenseRenewalRequest.count({
+        where: {
+          userId,
+          status: LicenseRenewalStatus.PENDING,
+          id: { not: requestId },
+        },
+      });
+      if (otherPending > 0) {
+        throw new ConflictException(
+          "Une demande de renouvellement est déjà en attente de validation.",
+        );
+      }
+      const submittedAt = new Date();
+      try {
+        await tx.licenseRenewalRequest.update({
+          where: { id: requestId, status: LicenseRenewalStatus.DRAFT },
+          data: {
+            status: LicenseRenewalStatus.PENDING,
+            submittedAt,
+            updatedAt: submittedAt,
+          },
+          select: idOnlySelect,
+        });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2025"
+        ) {
+          throw new BadRequestException("La demande a déjà été soumise");
+        }
+        throw error;
+      }
+    });
   }
 
   /**
@@ -380,4 +448,33 @@ export class LicenseRenewalService {
       );
     }
   }
+}
+
+/**
+ * Serialises the renewal requests of one user (#271) until the caller's
+ * transaction ends. A row lock rather than a partial unique index: requests
+ * made before #271 may already hold several PENDING per user, and an index
+ * that fails to build would fail the migration at container boot (ADR-0017).
+ * `FOR NO KEY UPDATE` does not conflict with the `KEY SHARE` locks taken by
+ * foreign key checks, so inserting other rows that reference the user is not
+ * blocked.
+ *
+ * Lock-then-read relies on READ COMMITTED (the default): each statement after
+ * the lock takes a fresh snapshot and sees what the previous holder committed.
+ * Do NOT run it under REPEATABLE READ or SERIALIZABLE: the snapshot is taken
+ * at the first statement, so the reads after the lock would miss the request
+ * the other transaction just committed.
+ *
+ * Throws NotFoundException when the user does not exist (deleted account):
+ * no row is locked, so nothing would be serialised.
+ */
+async function lockUserRenewals(
+  tx: Prisma.TransactionClient,
+  userId: string,
+): Promise<void> {
+  const locked = await tx.$queryRaw<{ id: string }[]>(
+    Prisma.sql`SELECT id FROM "User" WHERE id = ${userId} FOR NO KEY UPDATE`,
+  );
+  if (locked.length === 0)
+    throw new NotFoundException("Utilisateur non trouvé");
 }

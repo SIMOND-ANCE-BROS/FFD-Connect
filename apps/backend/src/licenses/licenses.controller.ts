@@ -23,7 +23,10 @@ import {
 } from "@nestjs/swagger";
 import { LicenseRenewalDocumentType } from "@prisma/client";
 import { Request as ExpressRequest } from "express";
-import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
+import {
+  ApiCommonErrorResponses,
+  CONFLICT_ERROR_SCHEMA,
+} from "../common/decorators/api-error-responses.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import {
   createFileFilter,
@@ -260,9 +263,9 @@ export class LicensesController {
   @ApiOperation({
     summary: "Démarrer une demande de renouvellement",
     description:
-      "Crée ou récupère une demande de renouvellement en brouillon pour déposer le certificat médical et le certificat de licence.",
+      "Crée ou récupère une demande de renouvellement en brouillon pour déposer le certificat médical et le certificat de licence. Si une demande est déjà en attente de validation (PENDING), c'est elle qui est renvoyée : une seule demande en attente par utilisateur.",
   })
-  @ApiResponse({ status: 200, description: "Demande créée ou existante" })
+  @ApiResponse({ status: 201, description: "Demande créée ou existante" })
   @ApiResponse({ status: 401, description: "Non autorisé" })
   async startRenewal(@Req() req: RequestWithUser) {
     return this.licenseRenewalService.startRenewalRequest(req.user.userId);
@@ -305,7 +308,7 @@ export class LicensesController {
     },
   })
   @ApiResponse({
-    status: 200,
+    status: 201,
     description: "Demande mise à jour avec document et données OCR",
   })
   @ApiResponse({
@@ -353,16 +356,23 @@ export class LicensesController {
   @ApiOperation({
     summary: "Soumettre la demande de renouvellement",
     description:
-      "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence.",
+      "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence. Refusée (409) si une autre demande de l'utilisateur est déjà en attente de validation.",
   })
   @ApiParam({ name: "id", description: "ID de la demande" })
-  @ApiResponse({ status: 200, description: "Demande soumise" })
+  @ApiResponse({ status: 201, description: "Demande soumise" })
   @ApiResponse({
     status: 400,
     description: "Documents manquants ou déjà soumise",
   })
   @ApiResponse({ status: 401, description: "Non autorisé" })
   @ApiResponse({ status: 404, description: "Demande non trouvée" })
+  // Replaces the common 409 description: same body schema, both causes.
+  @ApiResponse({
+    status: 409,
+    description:
+      "Conflit - Une autre demande de l'utilisateur est déjà en attente de validation, ou la demande vient d'être traitée par un administrateur",
+    schema: CONFLICT_ERROR_SCHEMA,
+  })
   async submitRenewal(
     @Req() req: RequestWithUser,
     @Param("id", ParseUUIDPipe) id: string,
