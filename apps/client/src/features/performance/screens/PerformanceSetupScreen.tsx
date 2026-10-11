@@ -1,7 +1,8 @@
 import { useNavigation } from "@react-navigation/native";
 import { Plus } from "lucide-react-native";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   StyleSheet,
   Switch,
   TextInput,
@@ -21,20 +22,29 @@ import { PinnedHeader } from "../../../components/PinnedHeader";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import { useTheme } from "../../../context/ThemeContext";
 import { DanceOrderEditor } from "../components/DanceOrderEditor";
+import { PresetBanner } from "../components/PresetBanner";
+import { PresetsSheet } from "../components/PresetsSheet";
 import { RoundCard } from "../components/RoundCard";
 import { usePerformanceEngine } from "../hooks/usePerformanceEngine";
+import {
+  useCompetitionPresetsStore,
+  type CompetitionPreset,
+} from "../../../stores/competitionPresets.store";
 import {
   isOfficialOrder,
   useDanceOrderStore,
 } from "../../../stores/danceOrder.store";
 import {
+  createDefaultConfig,
   usePerformanceStore,
   type Category,
 } from "../../../stores/performance.store";
 import {
   addGroup,
   addRound,
+  configFromPreset,
   isPasoDoble,
+  isSameProgram,
   removeGroup,
   removeRound,
   setGroupCategory,
@@ -95,6 +105,49 @@ export const PerformanceSetupScreen = () => {
   const danceOrder = useDanceOrderStore((s) => s.danceOrder);
   const setCategoryOrder = useDanceOrderStore((s) => s.setCategoryOrder);
   const resetDanceOrder = useDanceOrderStore((s) => s.resetDanceOrder);
+
+  const presets = useCompetitionPresetsStore((s) => s.presets);
+  const activePresetId = useCompetitionPresetsStore((s) => s.activePresetId);
+  const savePreset = useCompetitionPresetsStore((s) => s.save);
+  const overwritePreset = useCompetitionPresetsStore((s) => s.overwrite);
+  const renamePreset = useCompetitionPresetsStore((s) => s.rename);
+  const removePreset = useCompetitionPresetsStore((s) => s.remove);
+  const setActivePreset = useCompetitionPresetsStore((s) => s.setActive);
+  const [presetsOpen, setPresetsOpen] = useState(false);
+  // Presets are frozen while a competition is loading or running.
+  const presetsLocked = status !== "idle" && status !== "finished";
+  const activePreset = presets.find((p) => p.id === activePresetId) ?? null;
+  // Compared through configFromPreset: the stored data may predate the
+  // current shape, and the live programme always went through it on load.
+  const presetModified = useMemo(
+    () =>
+      activePreset !== null &&
+      !isSameProgram(config, configFromPreset(activePreset.config)),
+    [activePreset, config],
+  );
+  // Unsaved edits: against the active preset, or the default programme.
+  const hasUnsavedChanges = () =>
+    activePreset
+      ? presetModified
+      : !isSameProgram(config, createDefaultConfig());
+  const loadPreset = (preset: CompetitionPreset) => {
+    const load = () => {
+      setConfig(configFromPreset(preset.config));
+      setActivePreset(preset.id);
+    };
+    if (!hasUnsavedChanges()) {
+      load();
+      return;
+    }
+    Alert.alert(
+      "Remplacer le programme actuel ?",
+      "Les modifications non enregistrées seront perdues.",
+      [
+        { text: "Annuler", style: "cancel" },
+        { text: "Remplacer", style: "destructive", onPress: load },
+      ],
+    );
+  };
   // Only the categories danced somewhere in the programme are reorderable.
   const programCategories = CATEGORIES.filter((c) =>
     config.rounds.some((r) => r.groups.includes(c)),
@@ -143,6 +196,16 @@ export const PerformanceSetupScreen = () => {
           paddingTop: headerH,
         }}
       >
+        <PresetBanner
+          presetName={activePreset?.name ?? null}
+          modified={presetModified}
+          disabled={presetsLocked}
+          onOpen={() => setPresetsOpen(true)}
+          onUpdate={() => {
+            if (activePreset) overwritePreset(activePreset.id, config);
+          }}
+        />
+
         {/* Programme de tours */}
         <View style={styles.section}>
           <AppText
@@ -386,6 +449,18 @@ export const PerformanceSetupScreen = () => {
           )}
         </View>
       </ScrollView>
+
+      <PresetsSheet
+        visible={presetsOpen && !presetsLocked}
+        presets={presets}
+        activePresetId={activePresetId}
+        onClose={() => setPresetsOpen(false)}
+        onLoad={loadPreset}
+        onSave={(name) => savePreset(name, config)}
+        onReplace={(id) => overwritePreset(id, config)}
+        onRename={renamePreset}
+        onDelete={removePreset}
+      />
 
       <PinnedHeader
         theme={currentTheme}

@@ -1,18 +1,25 @@
 import { useNavigation } from "@react-navigation/native";
 import { fireEvent, render } from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
+import { Alert } from "react-native";
 import { useTheme } from "../../../../context/ThemeContext";
 import {
   OFFICIAL_DANCE_ORDER,
   useDanceOrderStore,
 } from "../../../../stores/danceOrder.store";
+import { useCompetitionPresetsStore } from "../../../../stores/competitionPresets.store";
 import {
+  createDefaultConfig,
   createRound,
   usePerformanceStore,
   type PerformanceConfig,
   type RoundConfig,
 } from "../../../../stores/performance.store";
 import { usePerformanceEngine } from "../../hooks/usePerformanceEngine";
+import {
+  configFromPreset,
+  isSameProgram,
+} from "../../utils/competitionProgram";
 import { PerformanceSetupScreen } from "../PerformanceSetupScreen";
 
 jest.mock("../../hooks/usePerformanceEngine", () => ({
@@ -126,6 +133,7 @@ describe("PerformanceSetupScreen", () => {
     jest.clearAllMocks();
     usePerformanceStore.getState().setStatus("idle");
     useDanceOrderStore.setState({ danceOrder: OFFICIAL_DANCE_ORDER });
+    useCompetitionPresetsStore.setState({ presets: [], activePresetId: null });
     (useTheme as jest.Mock).mockReturnValue({ theme: mockTheme });
     (useNavigation as jest.Mock).mockReturnValue(navigation);
     mockEngine();
@@ -439,6 +447,179 @@ describe("PerformanceSetupScreen", () => {
     it("disables the reset while the order is already official", async () => {
       const { getByTestId } = await render(<PerformanceSetupScreen />);
       expect(getByTestId("performance-dance-order-reset")).toBeDisabled();
+    });
+  });
+
+  describe("presets", () => {
+    const presets = () => useCompetitionPresetsStore.getState();
+
+    /** Presses a button of the last Alert.alert by its label. */
+    const pressAlert = (spy: jest.SpyInstance, label: string) => {
+      const buttons = spy.mock.calls[spy.mock.calls.length - 1][2] as {
+        text: string;
+        onPress?: () => void;
+      }[];
+      buttons.find((b) => b.text === label)?.onPress?.();
+    };
+
+    it("shows a custom programme when no preset is active", async () => {
+      const { getByTestId, queryByTestId } = await render(
+        <PerformanceSetupScreen />,
+      );
+      expect(getByTestId("performance-preset-banner-title")).toHaveTextContent(
+        "Programme personnalisé",
+      );
+      expect(queryByTestId("performance-preset-modified")).toBeNull();
+      expect(queryByTestId("performance-preset-update")).toBeNull();
+    });
+
+    it("saves the programme, then loads it back after confirming", async () => {
+      const alertSpy = jest.spyOn(Alert, "alert").mockImplementation();
+      const { setConfig } = mockEngine();
+      const { getByTestId, queryByTestId, rerender } = await render(
+        <PerformanceSetupScreen />,
+      );
+      await fireEvent.press(getByTestId("performance-presets-open"));
+      await fireEvent.press(getByTestId("performance-presets-save"));
+      await fireEvent.changeText(
+        getByTestId("performance-presets-name-input"),
+        "Gala",
+      );
+      await fireEvent.press(getByTestId("performance-presets-form-confirm"));
+
+      const [saved] = presets().presets;
+      expect(saved.name).toBe("Gala");
+      expect(isSameProgram(saved.config, baseConfig)).toBe(true);
+      expect(getByTestId("performance-preset-banner-title")).toHaveTextContent(
+        "Preset : Gala",
+      );
+
+      // The user builds another programme, then reloads the preset.
+      mockEngine({
+        config: { ...baseConfig, rounds: [standard], duration: 60 },
+        setConfig,
+      });
+      await rerender(<PerformanceSetupScreen />);
+      expect(getByTestId("performance-preset-modified")).toBeTruthy();
+      await fireEvent.press(getByTestId(`performance-preset-${saved.id}-load`));
+
+      expect(alertSpy).toHaveBeenCalledWith(
+        "Remplacer le programme actuel ?",
+        "Les modifications non enregistrées seront perdues.",
+        expect.any(Array),
+      );
+      expect(setConfig).not.toHaveBeenCalled();
+      pressAlert(alertSpy, "Remplacer");
+
+      const loaded = applyLast(setConfig);
+      expect(isSameProgram(loaded, baseConfig)).toBe(true);
+      expect(loaded.rounds[0].id).not.toBe("r1");
+      expect(presets().activePresetId).toBe(saved.id);
+      expect(queryByTestId(`performance-preset-${saved.id}`)).toBeNull();
+      alertSpy.mockRestore();
+    });
+
+    it("loads directly when the programme is unmodified", async () => {
+      const alertSpy = jest.spyOn(Alert, "alert").mockImplementation();
+      presets().save("Gala", { ...baseConfig, duration: 45 });
+      const [saved] = presets().presets;
+      presets().setActive(null);
+      const { setConfig } = mockEngine({ config: createDefaultConfig() });
+      const { getByTestId } = await render(<PerformanceSetupScreen />);
+      await fireEvent.press(getByTestId("performance-presets-open"));
+      await fireEvent.press(getByTestId(`performance-preset-${saved.id}-load`));
+
+      expect(alertSpy).not.toHaveBeenCalled();
+      expect(applyLast(setConfig).duration).toBe(45);
+      expect(presets().activePresetId).toBe(saved.id);
+      alertSpy.mockRestore();
+    });
+
+    it("asks before replacing a modified programme, « Annuler » keeps it", async () => {
+      const alertSpy = jest.spyOn(Alert, "alert").mockImplementation();
+      presets().save("Gala", { ...baseConfig, duration: 45 });
+      const [saved] = presets().presets;
+      presets().setActive(null);
+      const { setConfig } = mockEngine({
+        config: { ...createDefaultConfig(), duration: 60 },
+      });
+      const { getByTestId } = await render(<PerformanceSetupScreen />);
+      await fireEvent.press(getByTestId("performance-presets-open"));
+      await fireEvent.press(getByTestId(`performance-preset-${saved.id}-load`));
+
+      expect(alertSpy).toHaveBeenCalledTimes(1);
+      pressAlert(alertSpy, "Annuler");
+      expect(setConfig).not.toHaveBeenCalled();
+      expect(presets().activePresetId).toBeNull();
+
+      await fireEvent.press(getByTestId("performance-presets-open"));
+      await fireEvent.press(getByTestId(`performance-preset-${saved.id}-load`));
+      pressAlert(alertSpy, "Remplacer");
+      expect(applyLast(setConfig).duration).toBe(45);
+      expect(presets().activePresetId).toBe(saved.id);
+      alertSpy.mockRestore();
+    });
+
+    it("is not flagged as modified right after a load", async () => {
+      presets().save("Gala", baseConfig);
+      mockEngine({ config: configFromPreset(baseConfig) });
+      const { getByTestId, queryByTestId } = await render(
+        <PerformanceSetupScreen />,
+      );
+      expect(getByTestId("performance-preset-banner-title")).toHaveTextContent(
+        "Preset : Gala",
+      );
+      expect(queryByTestId("performance-preset-modified")).toBeNull();
+    });
+
+    it("does not flag a preset saved with a pause of 0 as modified", async () => {
+      const noBreak = { ...baseConfig, pauseDuration: 0 };
+      presets().save("Gala", noBreak);
+      mockEngine({ config: noBreak });
+      const { getByTestId, queryByTestId } = await render(
+        <PerformanceSetupScreen />,
+      );
+      expect(getByTestId("performance-preset-banner-title")).toHaveTextContent(
+        /Gala/,
+      );
+      expect(queryByTestId("performance-preset-modified")).toBeNull();
+    });
+
+    it("flags an edited preset as modified, and « Mettre à jour » saves it", async () => {
+      presets().save("Gala", baseConfig);
+      mockEngine({ config: { ...baseConfig, duration: 45 } });
+      const { getByTestId, queryByTestId } = await render(
+        <PerformanceSetupScreen />,
+      );
+      expect(getByTestId("performance-preset-modified")).toHaveTextContent(
+        "modifié",
+      );
+
+      await fireEvent.press(getByTestId("performance-preset-update"));
+
+      expect(presets().presets[0].config.duration).toBe(45);
+      expect(queryByTestId("performance-preset-modified")).toBeNull();
+    });
+
+    it.each(["loading", "break", "playing", "paused"] as const)(
+      "locks the presets while the competition is %s",
+      async (status) => {
+        presets().save("Gala", baseConfig);
+        mockEngine({ status, config: { ...baseConfig, duration: 45 } });
+        const { getByTestId, queryByTestId } = await render(
+          <PerformanceSetupScreen />,
+        );
+        expect(getByTestId("performance-presets-open")).toBeDisabled();
+        expect(getByTestId("performance-preset-update")).toBeDisabled();
+        await fireEvent.press(getByTestId("performance-presets-open"));
+        expect(queryByTestId("performance-presets-save")).toBeNull();
+      },
+    );
+
+    it("unlocks the presets once the competition is finished", async () => {
+      mockEngine({ status: "finished" });
+      const { getByTestId } = await render(<PerformanceSetupScreen />);
+      expect(getByTestId("performance-presets-open")).not.toBeDisabled();
     });
   });
 });

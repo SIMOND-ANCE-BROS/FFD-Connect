@@ -5,7 +5,9 @@
  */
 import type { TrackData } from "../../player/context/PlayerContext";
 import {
+  createDefaultConfig,
   createRound,
+  createRoundId,
   DANCES,
   MAX_ROUND_GROUPS,
   MIN_ROUND_GROUPS,
@@ -262,6 +264,111 @@ export const toggleRoundDance = (
           : [...list, dance],
       },
     };
+  });
+
+// --- Presets ----------------------------------------------------------------
+
+const PROGRAM_CATEGORIES: readonly Category[] = ["Standard", "Latin"];
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+const isPositiveNumber = (v: unknown): v is number =>
+  typeof v === "number" && Number.isFinite(v) && v > 0;
+
+const isNonNegativeNumber = (v: unknown): v is number =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0;
+
+const isCategory = (v: unknown): v is Category =>
+  PROGRAM_CATEGORIES.includes(v as Category);
+
+const stringList = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((d): d is string => typeof d === "string") : [];
+
+/** One saved round rebuilt with a fresh id, or null without a usable group. */
+const roundFromPreset = (saved: unknown): RoundConfig | null => {
+  if (!isRecord(saved)) return null;
+  const groups = Array.isArray(saved.groups)
+    ? saved.groups.filter(isCategory).slice(0, MAX_ROUND_GROUPS)
+    : [];
+  if (groups.length < MIN_ROUND_GROUPS) return null;
+  const dances = isRecord(saved.dances) ? saved.dances : {};
+  return normalizeRound({
+    id: createRoundId(),
+    type: saved.type === "Final" ? "Final" : "Round",
+    groups,
+    dances: {
+      Standard: stringList(dances.Standard),
+      Latin: stringList(dances.Latin),
+    },
+  });
+};
+
+/**
+ * Rebuilds a live programme from a saved preset, field by field: anything
+ * missing or invalid (stale storage, older shape) falls back to the default,
+ * unknown dances and categories are dropped, and every round gets a fresh id
+ * so the loaded programme never shares a reference with the stored one.
+ */
+export const configFromPreset = (saved: unknown): PerformanceConfig => {
+  const defaults = createDefaultConfig();
+  if (!isRecord(saved)) return defaults;
+  const rounds = Array.isArray(saved.rounds)
+    ? saved.rounds
+        .map(roundFromPreset)
+        .filter((r): r is RoundConfig => r !== null)
+    : [];
+  return {
+    rounds: rounds.length > 0 ? rounds : defaults.rounds,
+    duration: isPositiveNumber(saved.duration)
+      ? saved.duration
+      : defaults.duration,
+    pauseDuration: isNonNegativeNumber(saved.pauseDuration)
+      ? saved.pauseDuration
+      : defaults.pauseDuration,
+    pasoClashes:
+      saved.pasoClashes === 2 || saved.pasoClashes === 3
+        ? saved.pasoClashes
+        : defaults.pasoClashes,
+    announcements:
+      typeof saved.announcements === "boolean"
+        ? saved.announcements
+        : defaults.announcements,
+    regulationTempo:
+      typeof saved.regulationTempo === "boolean"
+        ? saved.regulationTempo
+        : defaults.regulationTempo,
+  };
+};
+
+const sameList = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((v, i) => v === b[i]);
+
+const sameSet = (a: readonly string[], b: readonly string[]) =>
+  sameList([...a].sort(), [...b].sort());
+
+/**
+ * True when two programmes are the same, round ids aside (a loaded preset
+ * gets fresh ids). Groups are compared in floor order; the dances of a
+ * category as a set (their order is the global dance order setting).
+ */
+export const isSameProgram = (
+  a: PerformanceConfig,
+  b: PerformanceConfig,
+): boolean =>
+  a.duration === b.duration &&
+  a.pauseDuration === b.pauseDuration &&
+  a.pasoClashes === b.pasoClashes &&
+  a.announcements === b.announcements &&
+  (a.regulationTempo ?? false) === (b.regulationTempo ?? false) &&
+  a.rounds.length === b.rounds.length &&
+  a.rounds.every((round, i) => {
+    const other = b.rounds[i];
+    return (
+      round.type === other.type &&
+      sameList(round.groups, other.groups) &&
+      PROGRAM_CATEGORIES.every((c) => sameSet(round.dances[c], other.dances[c]))
+    );
   });
 
 // --- Playlist ---------------------------------------------------------------

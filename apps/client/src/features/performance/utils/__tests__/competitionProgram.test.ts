@@ -12,11 +12,13 @@ import {
   addGroup,
   addRound,
   buildPlaylist,
+  configFromPreset,
   describeGroup,
   describeItem,
   danceLabel,
   describeValidation,
   getAnnouncementText,
+  isSameProgram,
   moveDance,
   normalizeRound,
   ordinal,
@@ -926,5 +928,230 @@ describe("validateProgram — regulation tempo", () => {
     const v = validateProgram(latin(["Jive"]), []);
     expect(v.offTempo).toEqual([]);
     expect(v.missing).toHaveLength(1);
+  });
+});
+
+describe("configFromPreset", () => {
+  const saved: PerformanceConfig = {
+    rounds: [
+      {
+        id: "old-1",
+        type: "Final",
+        groups: ["Standard", "Latin"],
+        dances: { Standard: ["Tango", "Valse Lente"], Latin: ["Jive"] },
+      },
+    ],
+    duration: 75,
+    pauseDuration: 20,
+    pasoClashes: 3,
+    announcements: false,
+    regulationTempo: false,
+  };
+
+  it("round-trips a pause of 0 (« Without a break »)", () => {
+    expect(configFromPreset({ ...saved, pauseDuration: 0 }).pauseDuration).toBe(
+      0,
+    );
+  });
+
+  it.each([-5, NaN, Infinity, "0", null])(
+    "falls back to the default pause for %p",
+    (bad) => {
+      expect(
+        configFromPreset({ ...saved, pauseDuration: bad }).pauseDuration,
+      ).toBe(createDefaultConfig().pauseDuration);
+    },
+  );
+
+  it("still rejects a duration of 0", () => {
+    expect(configFromPreset({ ...saved, duration: 0 }).duration).toBe(
+      createDefaultConfig().duration,
+    );
+  });
+
+  it("restores a valid preset with fresh round ids", () => {
+    const cfg = configFromPreset(saved);
+    expect(cfg).toMatchObject({
+      duration: 75,
+      pauseDuration: 20,
+      pasoClashes: 3,
+      announcements: false,
+    });
+    expect(cfg.rounds).toHaveLength(1);
+    expect(cfg.rounds[0]).toMatchObject({
+      type: "Final",
+      groups: ["Standard", "Latin"],
+      dances: { Standard: ["Valse Lente", "Tango"], Latin: ["Jive"] },
+    });
+    expect(cfg.rounds[0].id).not.toBe("old-1");
+    expect(isSameProgram(cfg, saved)).toBe(true);
+  });
+
+  it("gives every load its own round ids", () => {
+    expect(configFromPreset(saved).rounds[0].id).not.toBe(
+      configFromPreset(saved).rounds[0].id,
+    );
+  });
+
+  it("never shares an array with the saved preset", () => {
+    const cfg = configFromPreset(saved);
+    cfg.rounds[0].groups.push("Latin");
+    cfg.rounds[0].dances.Latin.push("Samba");
+    expect(saved.rounds[0].groups).toEqual(["Standard", "Latin"]);
+    expect(saved.rounds[0].dances.Latin).toEqual(["Jive"]);
+  });
+
+  it("falls back to the defaults for garbage", () => {
+    for (const garbage of [undefined, null, 42, "x", [], {}]) {
+      expect(
+        isSameProgram(configFromPreset(garbage), createDefaultConfig()),
+      ).toBe(true);
+    }
+  });
+
+  it("reloads the regulation tempo setting, defaulting when not a boolean", () => {
+    expect(
+      configFromPreset({ ...saved, regulationTempo: true }).regulationTempo,
+    ).toBe(true);
+    expect(
+      configFromPreset({ ...saved, regulationTempo: false }).regulationTempo,
+    ).toBe(false);
+    for (const bad of ["yes", 1, null, undefined]) {
+      expect(
+        configFromPreset({ ...saved, regulationTempo: bad }).regulationTempo,
+      ).toBe(false);
+    }
+  });
+
+  it("keeps only the valid fields of a partial preset", () => {
+    const defaults = createDefaultConfig();
+    const cfg = configFromPreset({
+      duration: 60,
+      pauseDuration: -5,
+      pasoClashes: 4,
+      announcements: "yes",
+      rounds: "x",
+    });
+    expect(cfg).toMatchObject({
+      duration: 60,
+      pauseDuration: defaults.pauseDuration,
+      pasoClashes: defaults.pasoClashes,
+      announcements: defaults.announcements,
+    });
+    expect(cfg.rounds).toHaveLength(1);
+    expect(cfg.rounds[0].groups).toEqual(["Latin", "Latin"]);
+    expect(configFromPreset({ duration: Number.NaN }).duration).toBe(
+      defaults.duration,
+    );
+    expect(configFromPreset({ duration: Infinity }).duration).toBe(
+      defaults.duration,
+    );
+  });
+
+  it("drops unknown dances and categories, and rounds left without a group", () => {
+    const cfg = configFromPreset({
+      rounds: [
+        {
+          type: "Quarter",
+          groups: ["Latin", "Disco"],
+          dances: { Latin: ["Jive", "Lindy Hop", "Jive", 3], Standard: "x" },
+        },
+        { type: "Round", groups: ["Disco"], dances: {} },
+        "garbage",
+      ],
+    });
+    expect(cfg.rounds).toHaveLength(1);
+    expect(cfg.rounds[0]).toMatchObject({
+      type: "Round",
+      groups: ["Latin"],
+      dances: { Standard: [], Latin: ["Jive"] },
+    });
+  });
+
+  it("caps the groups of a round", () => {
+    const cfg = configFromPreset({
+      rounds: [
+        {
+          type: "Round",
+          groups: Array.from({ length: 15 }, () => "Standard"),
+          dances: { Standard: ["Tango"], Latin: [] },
+        },
+      ],
+    });
+    expect(cfg.rounds[0].groups).toHaveLength(MAX_ROUND_GROUPS);
+  });
+
+  it("uses the default round when no saved round is usable", () => {
+    const cfg = configFromPreset({ rounds: [{ groups: [] }], duration: 60 });
+    expect(cfg.duration).toBe(60);
+    expect(cfg.rounds).toHaveLength(1);
+    expect(cfg.rounds[0]).toMatchObject({
+      type: "Round",
+      groups: ["Latin", "Latin"],
+    });
+  });
+});
+
+describe("isSameProgram", () => {
+  const base = createDefaultConfig();
+
+  it("ignores round ids", () => {
+    const other = {
+      ...base,
+      rounds: base.rounds.map((r) => ({ ...r, id: "other" })),
+    };
+    expect(isSameProgram(base, other)).toBe(true);
+  });
+
+  it("ignores the order of the dances inside a category", () => {
+    const reversed = {
+      ...base,
+      rounds: [
+        {
+          ...base.rounds[0],
+          dances: {
+            ...base.rounds[0].dances,
+            Latin: [...base.rounds[0].dances.Latin].reverse(),
+          },
+        },
+      ],
+    };
+    expect(isSameProgram(base, reversed)).toBe(true);
+  });
+
+  it("compares the regulation tempo, undefined meaning off", () => {
+    expect(isSameProgram(base, { ...base, regulationTempo: true })).toBe(false);
+    expect(isSameProgram({ ...base, regulationTempo: true }, base)).toBe(false);
+    const missing = { ...base } as Partial<PerformanceConfig>;
+    delete missing.regulationTempo;
+    expect(isSameProgram(base, missing as PerformanceConfig)).toBe(true);
+    expect(
+      isSameProgram(missing as PerformanceConfig, {
+        ...base,
+        regulationTempo: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("detects every change of the programme", () => {
+    const round = base.rounds[0];
+    const changed: PerformanceConfig[] = [
+      { ...base, duration: 60 },
+      { ...base, pauseDuration: 5 },
+      { ...base, pasoClashes: 3 },
+      { ...base, announcements: false },
+      { ...base, rounds: [...base.rounds, createRound("Standard")] },
+      { ...base, rounds: [{ ...round, type: "Final" }] },
+      { ...base, rounds: [{ ...round, groups: ["Latin"] }] },
+      { ...base, rounds: [{ ...round, groups: ["Standard", "Latin"] }] },
+      {
+        ...base,
+        rounds: [{ ...round, dances: { ...round.dances, Latin: ["Samba"] } }],
+      },
+    ];
+    for (const c of changed) {
+      expect(isSameProgram(base, c)).toBe(false);
+      expect(isSameProgram(c, base)).toBe(false);
+    }
   });
 });
