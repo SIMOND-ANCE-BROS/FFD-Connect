@@ -29,7 +29,9 @@ describe("catalogue des notifications", () => {
       [NotificationType.CLUB_MEMBER_REGISTRATION]: false,
       [NotificationType.CLUB_PARTNERSHIP]: true,
       [NotificationType.TRACK_REPORT]: true,
+      [NotificationType.LICENSE_RENEWAL_TO_REVIEW]: true,
       [NotificationType.TRACK_CORRECTION_DECISION]: true,
+      [NotificationType.LICENSE_RENEWAL_DECISION]: true,
       [NotificationType.DIAGNOSTIC_TEST]: true,
     };
 
@@ -95,6 +97,19 @@ describe("catalogue des notifications", () => {
       );
     });
 
+    it("keeps the licence renewal types dormant until their producer ships (#269)", () => {
+      // Configurable before anything emits them, they would be switches with
+      // no effect, and a toggle would write an enum value the rollback image
+      // cannot read.
+      for (const type of [
+        NotificationType.LICENSE_RENEWAL_TO_REVIEW,
+        NotificationType.LICENSE_RENEWAL_DECISION,
+      ]) {
+        expect(isConfigurable(type)).toBe(false);
+        expect(CONFIGURABLE_NOTIFICATION_TYPES).not.toContain(type);
+      }
+    });
+
     it("expose tous les autres types, dans l'ordre de déclaration de l'enum", () => {
       // L'ordre est le contrat d'affichage de l'écran de réglages.
       expect(CONFIGURABLE_NOTIFICATION_TYPES).toEqual([
@@ -136,8 +151,17 @@ describe("catalogue des notifications", () => {
       [NotificationType.CLUB_PARTNERSHIP]: [UserRole.CLUB],
       // reportTrack : where { role: ADMIN }
       [NotificationType.TRACK_REPORT]: [UserRole.ADMIN],
+      // Licence renewal moderation is an administrator's job.
+      [NotificationType.LICENSE_RENEWAL_TO_REVIEW]: [UserRole.ADMIN],
       // Destinataire = correction.proposedById, aucun filtre de rôle.
       [NotificationType.TRACK_CORRECTION_DECISION]: [
+        UserRole.LICENSEE,
+        UserRole.CLUB,
+        UserRole.STAFF,
+        UserRole.ADMIN,
+      ],
+      // Recipient = the request's userId: any role may renew a licence.
+      [NotificationType.LICENSE_RENEWAL_DECISION]: [
         UserRole.LICENSEE,
         UserRole.CLUB,
         UserRole.STAFF,

@@ -143,6 +143,23 @@ export const NOTIFICATION_CATALOG: Readonly<
       "Quand un utilisateur signale une musique ou propose une correction de ses informations (réservé aux administrateurs).",
   },
 
+  // ── Licence renewal (#269): DORMANT ─────────────────────────────────────────
+  //
+  // Declared together with their migration, but no producer yet: they stay
+  // `configurable: false` until the revision that emits them ships. Made
+  // configurable now, they would show as switches with no effect, and every
+  // toggle would write to the database an enum value that the previous image
+  // (the one a rollback falls back to) cannot read. The emitting revision
+  // makes them configurable.
+  [NotificationType.LICENSE_RENEWAL_TO_REVIEW]: {
+    defaultEnabled: true,
+    configurable: false,
+    roles: [UserRole.ADMIN],
+    label: "Renouvellements de licence à vérifier",
+    description:
+      "Quand un licencié soumet une demande de renouvellement de licence qui attend votre vérification (réservé aux administrateurs).",
+  },
+
   // ── Concerne directement l'utilisateur → activé par défaut (opt-out) ───────
   [NotificationType.TRACK_CORRECTION_DECISION]: {
     defaultEnabled: true,
@@ -153,6 +170,16 @@ export const NOTIFICATION_CATALOG: Readonly<
     label: "Mes propositions de correction",
     description:
       "Quand un administrateur valide ou refuse une correction de musique que vous avez proposée.",
+  },
+
+  // Dormant, like LICENSE_RENEWAL_TO_REVIEW above (#269).
+  [NotificationType.LICENSE_RENEWAL_DECISION]: {
+    defaultEnabled: true,
+    configurable: false,
+    roles: ALL_ROLES,
+    label: "Mon renouvellement de licence",
+    description:
+      "Quand un administrateur approuve ou refuse votre demande de renouvellement de licence.",
   },
 
   // ── Déclenchée par l'utilisateur lui-même → non réglable ───────────────────
