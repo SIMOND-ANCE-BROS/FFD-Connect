@@ -6,6 +6,7 @@
 import type { TrackData } from "../../player/context/PlayerContext";
 import {
   createRound,
+  DANCES,
   MAX_ROUND_GROUPS,
   MIN_ROUND_GROUPS,
   type Category,
@@ -20,6 +21,7 @@ import {
 } from "../../../stores/danceOrder.store";
 import { fnv1aHash } from "../../../utils/stableHash";
 import { formatDiscipline } from "../../../utils/discipline";
+import { isTempoCompliant, tempoRange } from "./competitionTempo";
 
 // --- Dances -----------------------------------------------------------------
 
@@ -103,6 +105,23 @@ export const isAmbianceTrack = (t: TrackData): boolean =>
   t.style?.toLowerCase() === "ambiance" ||
   t.title.toLowerCase().includes("ambiance") ||
   t.artist.toLowerCase().includes("ambiance");
+
+const COMPETITION_DANCES: readonly string[] = [
+  ...DANCES.Standard,
+  ...DANCES.Latin,
+];
+
+/**
+ * Competition pool: tracks of a competition dance whose original tempo is in
+ * that dance's regulation range (see competitionTempo). Apply BEFORE
+ * selectPasoPool so its « 3 clashs » fallback only sees in-range Paso tracks.
+ */
+export const selectTempoCompliant = (tracks: TrackData[]): TrackData[] =>
+  tracks.filter((t) =>
+    COMPETITION_DANCES.some(
+      (d) => trackMatchesDance(t.style, d) && isTempoCompliant(t, d),
+    ),
+  );
 
 // --- Rounds -----------------------------------------------------------------
 
@@ -279,20 +298,35 @@ export interface MissingDances extends RoundCategoryProblem {
   dances: string[];
 }
 
+export interface OffTempoDance extends RoundCategoryProblem {
+  dance: string;
+  /** Tracks of the dance in the library, all outside its tempo range. */
+  outOfRange: number;
+}
+
 export interface ProgramValidation {
   /** Rounds (1-based) with a group whose category has no dance selected. */
   emptyRounds: RoundCategoryProblem[];
   /** Dances for which the library has no track, grouped by round. */
   missing: MissingDances[];
+  /** Dances whose tracks all miss the regulation tempo. */
+  offTempo: OffTempoDance[];
 }
 
+/**
+ * @param tracks the playable pool (tempo-filtered in competition).
+ * @param allTracks the same library before the tempo filter — tells « no
+ *   music » from « no music at the right tempo ». Defaults to `tracks`.
+ */
 export const validateProgram = (
   cfg: PerformanceConfig,
   tracks: TrackData[],
   order: DanceOrder = OFFICIAL_DANCE_ORDER,
+  allTracks: TrackData[] = tracks,
 ): ProgramValidation => {
   const emptyRounds: RoundCategoryProblem[] = [];
   const missing: MissingDances[] = [];
+  const offTempo: OffTempoDance[] = [];
   cfg.rounds.forEach((raw, i) => {
     const round = normalizeRound(raw, order);
     for (const category of roundCategories(round)) {
@@ -301,15 +335,32 @@ export const validateProgram = (
         emptyRounds.push({ roundIndex: i + 1, category });
         continue;
       }
-      const absent = dances.filter(
-        (d) => !tracks.some((t) => trackMatchesDance(t.style, d)),
-      );
+      const absent: string[] = [];
+      for (const d of dances) {
+        if (tracks.some((t) => trackMatchesDance(t.style, d))) continue;
+        const outOfRange = allTracks.filter((t) =>
+          trackMatchesDance(t.style, d),
+        ).length;
+        if (outOfRange > 0) {
+          offTempo.push({ roundIndex: i + 1, category, dance: d, outOfRange });
+        } else {
+          absent.push(d);
+        }
+      }
       if (absent.length > 0) {
         missing.push({ roundIndex: i + 1, category, dances: absent });
       }
     }
   });
-  return { emptyRounds, missing };
+  return { emptyRounds, missing, offTempo };
+};
+
+const describeOffTempo = (o: OffTempoDance): string => {
+  const range = tempoRange(o.dance);
+  const span = range ? ` — entre ${range.min} et ${range.max} MPM` : "";
+  return `• Tour ${o.roundIndex} (${CATEGORY_LABELS[o.category]}) : ${danceLabel(
+    o.dance,
+  )}${span} (${o.outOfRange} hors tempo)`;
 };
 
 /** French, user-facing description of the validation problems (or null). */
@@ -320,6 +371,7 @@ export const describeValidation = (v: ProgramValidation): string | null => {
       .join(", ");
     return `Sélectionnez au moins une danse pour : ${list}.`;
   }
+  const blocks: string[] = [];
   if (v.missing.length > 0) {
     const lines = v.missing.map(
       (m) =>
@@ -327,9 +379,16 @@ export const describeValidation = (v: ProgramValidation): string | null => {
           .map(danceLabel)
           .join(", ")}`,
     );
-    return `Aucune musique disponible pour :\n${lines.join("\n")}`;
+    blocks.push(`Aucune musique disponible pour :\n${lines.join("\n")}`);
   }
-  return null;
+  if (v.offTempo.length > 0) {
+    blocks.push(
+      `Aucune musique au tempo réglementaire pour :\n${v.offTempo
+        .map(describeOffTempo)
+        .join("\n")}`,
+    );
+  }
+  return blocks.length > 0 ? blocks.join("\n\n") : null;
 };
 
 export interface RoundStep {
