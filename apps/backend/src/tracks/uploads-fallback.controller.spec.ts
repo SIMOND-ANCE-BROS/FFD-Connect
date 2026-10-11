@@ -156,6 +156,38 @@ describe("UploadsFallbackController (sole owner of /uploads)", () => {
       expect(res.status).toBe(304);
     });
 
+    it("answers an unsatisfiable Range on a local file with an uncached 416", async () => {
+      const res = await request(app.getHttpServer())
+        .get("/uploads/ffd-test-metronome-samba.mp3")
+        .set("Range", "bytes=999999999-");
+
+      expect(res.status).toBe(416);
+      expect(res.headers["content-range"]).toBe("bytes */16");
+      expect(res.headers["cache-control"] ?? "").not.toMatch(/max-age/);
+      expect(res.headers["etag"]).toBeUndefined();
+      expect(res.headers["last-modified"]).toBeUndefined();
+      expect(res.headers["content-type"]).toBeUndefined();
+      expect(blob.getProperties).not.toHaveBeenCalled();
+    });
+
+    it("strips the file headers when send fails otherwise (412 → 404)", async () => {
+      const ok = await request(app.getHttpServer()).get(
+        "/uploads/ffd-test-metronome-samba.mp3",
+      );
+      const res = await request(app.getHttpServer())
+        .get("/uploads/ffd-test-metronome-samba.mp3")
+        .set("If-Match", '"not-the-etag"');
+
+      expect(res.status).toBe(404);
+      expect(res.headers["cache-control"] ?? "").not.toMatch(/max-age/);
+      // Only Express's own weak ETag of the JSON body, never the file's.
+      expect(res.headers["etag"]).not.toBe(ok.headers["etag"]);
+      expect(res.headers["last-modified"]).toBeUndefined();
+      expect(res.headers["content-range"]).toBeUndefined();
+      expect(res.headers["accept-ranges"]).toBeUndefined();
+      expect(res.headers["content-type"]).toMatch(/application\/json/);
+    });
+
     it("answers HEAD on a local file without a body", async () => {
       const res = await request(app.getHttpServer()).head(
         "/uploads/ffd-test-metronome-samba.mp3",

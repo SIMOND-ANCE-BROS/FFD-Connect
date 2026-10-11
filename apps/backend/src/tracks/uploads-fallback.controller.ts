@@ -42,6 +42,14 @@ const BLOB_CALL_TIMEOUT_MS = 8_000;
 const CACHE_MAX_AGE_SECONDS = 86_400;
 const CACHE_CONTROL = `public, max-age=${CACHE_MAX_AGE_SECONDS}`;
 
+/** Headers describing a served file, stripped from disk error responses. */
+const ENTITY_HEADERS = [
+  "Cache-Control",
+  "ETag",
+  "Last-Modified",
+  "Content-Type",
+] as const;
+
 const NOT_FOUND_BODY = {
   statusCode: 404,
   message: "Not Found",
@@ -57,7 +65,7 @@ const NOT_FOUND_BODY = {
  * names (`isFlatMediaFilename`: allowlisted audio/image extension, no
  * sub-folder, no traversal, no dotfile) and returns 404 for anything else,
  * even when the file exists on disk. Sub-folders of `uploads/` (such as the
- * TTS cache, delivered by its own authenticated route) are never reachable.
+ * TTS cache, delivered by its own route, POST /tts) are never reachable.
  *
  * Lookup order: the container's local disk (`<cwd>/uploads/<file>` — local
  * dev and seeded tracks; Express `sendFile` handles Range, HEAD, ETag and
@@ -192,14 +200,25 @@ export class UploadsFallbackController {
           maxAge: CACHE_MAX_AGE_SECONDS * 1000,
           headers: { "Content-Type": contentTypeForFilename(filename) },
         },
-        (error?: Error) => {
+        (error?: Error & { status?: number }) => {
           if (error) {
             if (res.headersSent) {
               this.logger.warn(
                 `Disk stream aborted for /uploads: ${getErrorMessage(error)}`,
               );
             } else {
-              this.notFound(res);
+              // `send` sets the entity headers before failing (416, 412…):
+              // never let a cache keep them on an error response.
+              for (const header of ENTITY_HEADERS) res.removeHeader(header);
+              if (error.status === 416) {
+                // Keep `Content-Range: bytes */<size>` set by `send`.
+                res.setHeader("Accept-Ranges", "bytes");
+                res.status(416).end();
+              } else {
+                res.removeHeader("Content-Range");
+                res.removeHeader("Accept-Ranges");
+                this.notFound(res);
+              }
             }
           }
           resolve();
