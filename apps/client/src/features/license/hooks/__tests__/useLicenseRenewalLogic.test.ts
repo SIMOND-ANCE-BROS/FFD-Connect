@@ -381,8 +381,11 @@ describe("useLicenseRenewalLogic", () => {
     const { result } = await renderHook(() => useLicenseRenewalLogic());
 
     await waitFor(() => expect(mockGetMyRenewal).toHaveBeenCalled());
+    // Let any cache write settle: it goes through cancelQueries().then(),
+    // several ticks after the read — a single microtask would miss it.
     await act(async () => {
-      await Promise.resolve();
+      await new Promise(setImmediate);
+      await new Promise(setImmediate);
     });
     expect(result.current.request).toBeNull();
     expect(queryClient.getQueryData(renewalStatusQueryKey())).toBe("PENDING");

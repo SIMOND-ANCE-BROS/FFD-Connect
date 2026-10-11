@@ -22,7 +22,9 @@ import { useAuthStore } from "../../../stores/auth.store";
  * session and the mounted tabs alive, so the admin's own status must not
  * stand for the impersonated account's (logout clears the whole cache).
  * The renewal screen writes this key when it loads or submits a request, so
- * the banner is right on the way back without another request.
+ * the banner is right on the way back: that write counts as a fresh read,
+ * and the focus refresh (PENDING only) skips it for
+ * {@link RENEWAL_STATUS_FRESH_MS}.
  */
 export function renewalStatusQueryKey(
   impersonating: boolean = useAuthStore.getState().impersonating,
@@ -36,16 +38,28 @@ export function renewalStatusQueryKey(
 }
 
 /**
- * Re-reads the cached status, but only while it is PENDING: that is the one
- * state a decision can change behind the licensee's back. Any other status
- * (or none) costs no request — scale-to-zero backend, every request wakes it.
+ * A status read (or written by the renewal screen) less than this long ago is
+ * not read again: no duplicate request on the way back from the renewal
+ * screen, nor one per tab switch.
+ */
+export const RENEWAL_STATUS_FRESH_MS = 30_000;
+
+/**
+ * Re-reads the cached status, but only while it is PENDING — the one state a
+ * decision can change behind the licensee's back — and older than
+ * {@link RENEWAL_STATUS_FRESH_MS}. Any other status (or none) costs no
+ * request: scale-to-zero backend, every request wakes it.
  * `cancelRefetch: false` joins a fetch already in flight.
  */
 export function refreshRenewalStatusIfPending(
   queryClient: QueryClient,
   queryKey: ReturnType<typeof renewalStatusQueryKey>,
 ): Promise<void> {
-  if (queryClient.getQueryData(queryKey) !== "PENDING") {
+  const state = queryClient.getQueryState(queryKey);
+  if (
+    state?.data !== "PENDING" ||
+    Date.now() - state.dataUpdatedAt < RENEWAL_STATUS_FRESH_MS
+  ) {
     return Promise.resolve();
   }
   return queryClient.refetchQueries(

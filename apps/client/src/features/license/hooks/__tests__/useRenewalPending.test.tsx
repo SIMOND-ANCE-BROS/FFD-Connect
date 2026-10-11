@@ -4,6 +4,7 @@ import React from "react";
 import { BackendService } from "../../../../services/BackendService";
 import { useAuthStore } from "../../../../stores/auth.store";
 import {
+  RENEWAL_STATUS_FRESH_MS,
   refreshRenewalStatusIfPending,
   renewalStatusQueryKey,
   useRenewalPending,
@@ -135,7 +136,15 @@ describe("useRenewalPending (#268)", () => {
   });
 
   describe("on focus", () => {
-    it("re-reads a PENDING status, so the banner drops once the decision is taken", async () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    /** Moves the clock past the freshness window of the cached status. */
+    const laterBy = (ms: number) => {
+      const now = Date.now();
+      jest.spyOn(Date, "now").mockReturnValue(now + ms);
+    };
+
+    it("re-reads a stale PENDING status, so the banner drops once the decision is taken", async () => {
       mockGetMyRenewal.mockResolvedValue({ id: "r1", status: "PENDING" });
       const { result } = await renderHook(() => useRenewalPending(), {
         wrapper,
@@ -144,12 +153,32 @@ describe("useRenewalPending (#268)", () => {
       expect(mockGetMyRenewal).toHaveBeenCalledTimes(1);
 
       mockGetMyRenewal.mockResolvedValue({ id: "r1", status: "APPROVED" });
+      laterBy(RENEWAL_STATUS_FRESH_MS + 1_000);
       await act(async () => {
         refocus();
       });
 
       await waitFor(() => expect(result.current).toBe(false));
       expect(mockGetMyRenewal).toHaveBeenCalledTimes(2);
+    });
+
+    // Back from the renewal screen (which just wrote the status), or a quick
+    // tab switch: the status is fresh, no request.
+    it("does not re-read a fresh PENDING status", async () => {
+      mockGetMyRenewal.mockResolvedValue({ id: "r1", status: "PENDING" });
+      const { result } = await renderHook(() => useRenewalPending(), {
+        wrapper,
+      });
+      await waitFor(() => expect(result.current).toBe(true));
+
+      laterBy(RENEWAL_STATUS_FRESH_MS - 1_000);
+      await act(async () => {
+        refocus();
+      });
+      await settled();
+
+      expect(mockGetMyRenewal).toHaveBeenCalledTimes(1);
+      expect(result.current).toBe(true);
     });
 
     it.each([
@@ -189,20 +218,34 @@ describe("refreshRenewalStatusIfPending (#268)", () => {
     });
   });
 
+  const stale = () => ({
+    updatedAt: Date.now() - RENEWAL_STATUS_FRESH_MS - 1_000,
+  });
+
   it("does nothing unless the cached status is PENDING", async () => {
     const refetch = jest.spyOn(client, "refetchQueries");
     const key = renewalStatusQueryKey(false, null);
 
     await refreshRenewalStatusIfPending(client, key);
-    client.setQueryData(key, "REJECTED");
+    client.setQueryData(key, "REJECTED", stale());
     await refreshRenewalStatusIfPending(client, key);
     expect(refetch).not.toHaveBeenCalled();
 
-    client.setQueryData(key, "PENDING");
+    client.setQueryData(key, "PENDING", stale());
     await refreshRenewalStatusIfPending(client, key);
     expect(refetch).toHaveBeenCalledWith(
       { queryKey: key, exact: true },
       { cancelRefetch: false },
     );
+  });
+
+  it("skips a PENDING status read less than 30 s ago", async () => {
+    const refetch = jest.spyOn(client, "refetchQueries");
+    const key = renewalStatusQueryKey(false, null);
+
+    client.setQueryData(key, "PENDING");
+    await refreshRenewalStatusIfPending(client, key);
+
+    expect(refetch).not.toHaveBeenCalled();
   });
 });
