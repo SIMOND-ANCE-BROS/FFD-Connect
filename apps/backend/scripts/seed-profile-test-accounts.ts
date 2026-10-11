@@ -1,24 +1,35 @@
 /**
  * Seed du COMPTE DE VALIDATION DES STORES — staging uniquement.
  *
- * Un seul compte de test subsiste sur staging : `licensee@test.com`, donné aux
- * équipes de validation App Store Connect / Google Play (les builds TestFlight
- * et Play visent backend-staging). Il est :
+ * Un seul compte de test subsiste sur staging : `demo@ffd.gabin-simond.fr`
+ * (« Compte Démo »), donné aux équipes de validation App Store Connect /
+ * Google Play (les builds TestFlight et Play visent backend-staging). Il est :
  * - ADMIN en rôle principal, avec TOUS les autres rôles en `extraRoles`
  *   (multi-profil, lot 1c) pour que les relecteurs voient chaque espace ;
- * - rattaché au club « Club Test FFD » (nécessaire au rôle CLUB) ;
+ * - rattaché au club « Club Démo FFD Connect » (nécessaire au rôle CLUB) ;
  * - marqué `isStoreReview` (lui ET son club) : ses écritures sont SIMULÉES
  *   (StoreReviewInterceptor, réponse 2xx sans écriture en base) et le
  *   back-office refuse de le supprimer ou de le désactiver.
  *
- * Son mot de passe est le secret partagé PROFILE_TEST_PASSWORD (variable
- * d'environnement de staging, connue des stores) : ne JAMAIS changer l'email
- * ni le mot de passe. Le hash n'est écrit qu'à la création (un compte existant
- * garde son mot de passe) ; sans la variable, un compte absent n'est pas créé.
+ * RENOMMAGE, jamais recréation : seul un compte portant le drapeau
+ * `isStoreReview` est mis à jour (un compte non marqué qui détient l'email
+ * cible ou l'ancien `licensee@test.com` est un CONFLIT : erreur, rien écrit —
+ * jamais d'élévation d'un compte tiers). Email et noms ne sont réécrits qu'à la
+ * migration depuis l'ancien email (une modification faite ensuite depuis le
+ * back-office n'est pas écrasée à chaque boot) ; l'id, les données de carrière
+ * et les sessions survivent. Idem pour le club (renommé s'il porte encore
+ * l'ancien nom). Un conflit d'unicité sur le nom de club est loggué
+ * (`process.exitCode = 1`) sans bloquer le compte.
  *
- * Idempotent (upsert par email). Lancé au démarrage du conteneur
- * (docker-entrypoint.sh) UNIQUEMENT si SEED_TEST_TRACKS=true — jamais en prod —
- * APRÈS purge-test-accounts.
+ * Son mot de passe suit le secret PROFILE_TEST_PASSWORD (variable
+ * d'environnement de staging, connue des stores). Rotation : changer le secret
+ * du serveur et redémarrer — ce seed réaligne le hash au boot et révoque les refresh tokens du compte — puis mettre à
+ * jour App Store Connect ET Play Console le MÊME jour. Sans la variable, un
+ * compte existant reste intact et un compte absent n'est pas créé.
+ *
+ * Idempotent. Lancé au démarrage du conteneur (docker-entrypoint.sh)
+ * UNIQUEMENT si SEED_TEST_TRACKS=true — jamais en prod — APRÈS
+ * purge-test-accounts.
  */
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient, UserRole } from "@prisma/client";
@@ -26,9 +37,20 @@ import * as bcrypt from "bcrypt";
 import "dotenv/config";
 import { Pool } from "pg";
 import {
+  LEGACY_STORE_REVIEW_EMAIL,
   STORE_REVIEW_CLUB_NAME,
   STORE_REVIEW_EMAIL,
 } from "./purge-test-accounts.utils";
+import {
+  STORE_REVIEW_CLUB_LOOKUP_NAMES,
+  STORE_REVIEW_FIRST_NAME,
+  STORE_REVIEW_LAST_NAME,
+  pickStoreReviewClub,
+  planClubRename,
+  planPasswordUpdate,
+  planUserRename,
+  resolveStoreReviewAccount,
+} from "./seed-profile-test-accounts.utils";
 
 const connectionString = process.env.DATABASE_URL;
 const pool = new Pool({ connectionString });
@@ -39,7 +61,7 @@ const BCRYPT_ROUNDS = 12;
 /**
  * Mot de passe partagé du compte de validation : variable d'environnement
  * UNIQUEMENT (secret de la Container App staging), jamais de valeur par défaut
- * dans le dépôt (public). Lu seulement pour CRÉER le compte.
+ * dans le dépôt (public). Sert à créer le compte ET à réaligner son hash.
  */
 const TEST_PASSWORD = process.env.PROFILE_TEST_PASSWORD?.trim();
 const LICENSE_NUMBER = "TEST-LICENSEE-001";
@@ -68,37 +90,94 @@ async function createAccount(
     data: {
       email: STORE_REVIEW_EMAIL,
       password: await bcrypt.hash(TEST_PASSWORD, BCRYPT_ROUNDS),
-      firstName: "Test",
-      lastName: "Licencié",
+      firstName: STORE_REVIEW_FIRST_NAME,
+      lastName: STORE_REVIEW_LAST_NAME,
       ...profile,
     },
     select: { id: true },
   });
 }
 
-async function main() {
-  // Le club du compte : retrouvé par drapeau d'abord (un admin a pu le
-  // renommer depuis le back-office), sinon par nom.
-  const flaggedClub = await prisma.club.findFirst({
-    where: { isStoreReview: true },
-    select: { id: true, name: true },
+function fail(message: string): void {
+  console.error(`seed-profile-test-accounts: ${message}`);
+  process.exitCode = 1;
+}
+
+/**
+ * Finds (or creates) the club and renames it in place. A name conflict is
+ * reported (exitCode 1) but the club keeps its name: the account work goes on.
+ */
+async function ensureClub(): Promise<{ id: string; name: string }> {
+  // Retrouvé par drapeau d'abord (un admin a pu le renommer depuis le
+  // back-office), sinon par nom (nouveau de préférence, puis ancien).
+  const rows = await prisma.club.findMany({
+    where: {
+      OR: [
+        { isStoreReview: true },
+        { name: { in: [...STORE_REVIEW_CLUB_LOOKUP_NAMES] } },
+      ],
+    },
+    select: { id: true, name: true, isStoreReview: true },
+    orderBy: { createdAt: "asc" },
+    take: 10,
   });
-  const club =
-    flaggedClub ??
-    (await prisma.club.upsert({
-      where: { name: STORE_REVIEW_CLUB_NAME },
-      update: { isStoreReview: true, disabledAt: null },
-      create: { name: STORE_REVIEW_CLUB_NAME, isStoreReview: true },
+  const existing = pickStoreReviewClub(rows);
+  if (!existing) {
+    return prisma.club.create({
+      data: { name: STORE_REVIEW_CLUB_NAME, isStoreReview: true },
       select: { id: true, name: true },
-    }));
-  if (flaggedClub) {
-    await prisma.club.update({
-      where: { id: club.id },
-      data: { disabledAt: null },
-      select: { id: true },
     });
   }
+  const nameHolder = rows.find((c) => c.name === STORE_REVIEW_CLUB_NAME);
+  const plan = planClubRename(existing, nameHolder ?? null);
+  if (!plan.ok) fail(plan.error);
+  return prisma.club.update({
+    where: { id: existing.id },
+    data: {
+      ...(plan.ok ? plan.data : {}),
+      isStoreReview: true,
+      disabledAt: null,
+    },
+    select: { id: true, name: true },
+  });
+}
 
+async function main() {
+  const candidates = await prisma.user.findMany({
+    where: {
+      OR: [
+        { isStoreReview: true },
+        { email: { equals: STORE_REVIEW_EMAIL, mode: "insensitive" } },
+        { email: { equals: LEGACY_STORE_REVIEW_EMAIL, mode: "insensitive" } },
+      ],
+    },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      isStoreReview: true,
+      password: true,
+    },
+    orderBy: { createdAt: "asc" },
+    take: 10,
+  });
+  const decision = resolveStoreReviewAccount(candidates);
+  if (decision.kind === "conflict") {
+    // Never elevate an unflagged account that merely holds one of the emails.
+    fail(
+      `unflagged user(s) ${decision.ids.join(", ")} hold the store-review email; nothing written.`,
+    );
+    return;
+  }
+  if (decision.kind === "create" && !TEST_PASSWORD) {
+    fail(
+      `${STORE_REVIEW_EMAIL} is missing and PROFILE_TEST_PASSWORD is not set — account not created.`,
+    );
+    return;
+  }
+
+  const club = await ensureClub();
   const profile = {
     role: MAIN_ROLE,
     extraRoles: EXTRA_ROLES,
@@ -110,18 +189,53 @@ async function main() {
     // Un compte de validation désactivé = rejet du store.
     disabledAt: null,
   };
-  const existing = await prisma.user.findUnique({
-    where: { email: STORE_REVIEW_EMAIL },
-    select: { id: true },
-  });
-  // An existing account keeps its password: the seed never rewrites it.
-  const user = existing
-    ? await prisma.user.update({
+
+  let user: { id: string } | null;
+  if (decision.kind === "update") {
+    const existing = decision.user;
+    const rename = planUserRename(existing, null);
+    if (!rename.ok) {
+      fail(rename.error);
+      return;
+    }
+    // The password follows the server secret (never logged).
+    const secretMatches = TEST_PASSWORD
+      ? await bcrypt.compare(TEST_PASSWORD, existing.password)
+      : true;
+    const rotate =
+      planPasswordUpdate(TEST_PASSWORD, secretMatches) === "rotate";
+    const data = { ...profile, ...rename.data };
+    if (rotate && TEST_PASSWORD) {
+      // Hash + session revocation in ONE transaction: old credentials die.
+      const password = await bcrypt.hash(TEST_PASSWORD, BCRYPT_ROUNDS);
+      const [updated] = await prisma.$transaction([
+        prisma.user.update({
+          where: { id: existing.id },
+          data: { ...data, password },
+          select: { id: true },
+        }),
+        prisma.refreshToken.updateMany({
+          where: { userId: existing.id, revoked: false },
+          data: { revoked: true, revokedAt: new Date() },
+        }),
+      ]);
+      user = updated;
+      console.log("Store-review account: password rotated, sessions revoked.");
+    } else {
+      user = await prisma.user.update({
         where: { id: existing.id },
-        data: profile,
+        data,
         select: { id: true },
-      })
-    : await createAccount(profile);
+      });
+    }
+    if (Object.keys(rename.data).length > 0) {
+      console.log(
+        `Store-review account renamed in place (${existing.id}): ${Object.keys(rename.data).join(", ")}`,
+      );
+    }
+  } else {
+    user = await createAccount(profile);
+  }
   if (!user) return;
 
   // Licence rattachée (écran E-Licence, QR, Wallet), valide longtemps.
