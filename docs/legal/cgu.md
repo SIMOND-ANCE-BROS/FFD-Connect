@@ -1,6 +1,6 @@
 # Conditions Générales d'Utilisation (CGU)
 
-_Dernière mise à jour : 8 octobre 2026_
+_Dernière mise à jour : 11 octobre 2026_
 
 > **Projet indépendant.** FFD Connect n'est pas une application officielle de la
 > Fédération Française de Danse, qui n'en est ni l'éditrice ni la responsable de
@@ -41,7 +41,9 @@ restriction sera levée lorsque ce dispositif sera mis en œuvre.
 ## 5. Certificat médical et données de santé
 
 - L'utilisateur garantit l'authenticité des documents déposés (certificat médical notamment).
-- Le dépôt d'un certificat médical vaut consentement explicite à son traitement pour la vérification de l'aptitude (voir [politique de confidentialité](./politique-confidentialite.md)).
+- Le certificat médical déposé pour renouveler une licence est vérifié par une personne : l'éditeur, en tant qu'administrateur de la plateforme. La lecture automatique du document (OCR) ne fournit que des indices et ne décide pas du renouvellement.
+- Le dépôt d'un certificat médical vaut consentement explicite à son traitement pour la vérification de l'aptitude, y compris à sa consultation par l'éditeur (voir [politique de confidentialité](./politique-confidentialite.md)).
+- En cas de refus, le motif et, le cas échéant, un commentaire de l'administrateur sont communiqués dans l'Application ; l'utilisateur peut alors déposer une nouvelle demande.
 
 ## 6. Paiements
 

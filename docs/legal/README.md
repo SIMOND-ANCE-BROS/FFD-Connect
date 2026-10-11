@@ -18,12 +18,13 @@ collectées ou des sous-traitants doit être répercutée aux deux endroits.
 
 ## État
 
-|                                                        |                                                      |
-| ------------------------------------------------------ | ---------------------------------------------------- |
-| Identité de l'éditeur, contact, durées de conservation | ✅ renseignés (5 octobre 2026)                       |
-| Publication à des URL publiques                        | ✅ `deploy-landing.yml` — requis par Apple et Google |
-| Lien depuis l'application                              | ✅ Réglages + gate CGU à la première ouverture       |
-| **Relecture par un·e juriste**                         | ❌ **jamais faite**                                  |
+|                                                        |                                                                                  |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| Identité de l'éditeur, contact, durées de conservation | ✅ renseignés (5 octobre 2026)                                                   |
+| Publication à des URL publiques                        | ✅ `deploy-landing.yml` — requis par Apple et Google                             |
+| Lien depuis l'application                              | ✅ Réglages + gate CGU à la première ouverture                                   |
+| **Relecture par un·e juriste**                         | ❌ **jamais faite**                                                              |
+| CGU en vigueur                                         | version 2 (11 octobre 2026) — re-acceptation demandée dans l'app (`CGU_VERSION`) |
 
 Les textes décrivent les traitements réellement implémentés, ce qui est le minimum
 exigible — pas une validation juridique. Deux points méritent un avis avant un
@@ -46,6 +47,23 @@ l'OCR ne l'a pas trouvée**, elle est calculée depuis la date de dépôt sans c
 durée de validité : le document peut alors être supprimé jusqu'à un an plus tôt que
 nécessaire. C'est délibéré — la politique promet « au plus tard », donc supprimer en
 avance la respecte, tandis que supposer une émission tardive risquerait de la violer.
+
+**Vérification humaine du certificat médical** (#270, épique #19). Les CGU (§5) et la
+politique (§2 à §5, §7, §9) annoncent que l'éditeur, administrateur de la plateforme,
+vérifie lui-même le certificat : il ouvre le fichier tant que la demande est en
+attente, chaque ouverture est tracée, et la lecture OCR ne donne que des indices.
+Un certificat refusé est purgé au plus tard 30 jours après la décision, avec le
+commentaire de l'administrateur. Ce passage aux CGU v2 doit être publié au plus tard
+avec la fin de l'auto-approbation (#271).
+
+- **Publication** : le site ne publie `docs/legal` qu'au push sur `staging`, et
+  `CGU_VERSION` n'atteint l'app qu'avec le build ou la mise à jour suivante. Une
+  fusion dans `develop` ne publie rien : ces textes doivent arriver sur `staging`
+  dans la même promotion que #271, ou avant — jamais après.
+- **Administrateurs** : les textes affirment qu'à ce jour l'éditeur est le seul
+  administrateur, donc le seul destinataire des certificats. Créer un autre compte
+  administrateur impose d'abord de mettre à jour la section « destinataires » (§4)
+  de la politique.
 
 Les traitements décrits reflètent le code au moment de la rédaction ; à tenir à jour
 à chaque évolution des données collectées ou des sous-traitants.
