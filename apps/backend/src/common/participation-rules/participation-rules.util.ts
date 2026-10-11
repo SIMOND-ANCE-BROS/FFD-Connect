@@ -235,6 +235,22 @@ export function isLevelEligibleForClassificatriceEvent(
       reason: `Épreuve classificatrice niveau ${levelEvent} : votre niveau (${levelReg}) est insuffisant.`,
     };
   }
+  if (idxReg > idxEvt) {
+    // Article 9 §2: a couple only enters the classificatrice of ITS level.
+    // Exception: a level the age class does not offer (Juniors stop at
+    // Avancé) enters the highest level offered below it.
+    const highestOfferedBelow = levelOrder
+      .slice(0, idxReg)
+      .filter((level) => allowed.includes(level as CompetitionLevel))
+      .pop();
+    const offered = allowed.includes(levelReg as CompetitionLevel);
+    if (offered || highestOfferedBelow !== levelEvent) {
+      return {
+        allowed: false,
+        reason: `Classificatrice réservée au niveau ${levelEvent}`,
+      };
+    }
+  }
   return { allowed: true };
 }
 

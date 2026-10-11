@@ -110,11 +110,18 @@ describe("evaluateEventEligibility", () => {
       competitionLevelStandard: "Intermédiaire",
     });
 
-    it("International in Latin can enter a Latin Avancé classificatrice", () => {
+    it("International in Latin enters the Latin International classificatrice only", () => {
+      expect(
+        evaluateEventEligibility(
+          classif("Latin", "International"),
+          nationale,
+          dancer,
+        ).eligible,
+      ).toBe(true);
       expect(
         evaluateEventEligibility(classif("Latin", "Avancé"), nationale, dancer)
           .eligible,
-      ).toBe(true);
+      ).toBe(false);
     });
 
     it("Intermédiaire in Standard cannot enter a Standard Avancé classificatrice", () => {

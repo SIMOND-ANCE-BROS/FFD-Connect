@@ -523,7 +523,7 @@ describe("CompetitionQueryService (integration with real DB)", () => {
           competitionType: "NATIONALE",
         },
       });
-      const [latinAvance, standardAvance, tenDance] = await Promise.all([
+      const [latinInternational, standardAvance, tenDance] = await Promise.all([
         prisma.event.create({
           data: {
             competitionId: comp.id,
@@ -531,7 +531,9 @@ describe("CompetitionQueryService (integration with real DB)", () => {
             ageGroup: "Adulte",
             eventType: "COUPLE",
             eventKind: "CLASSIFICATRICE",
-            level: "Avancé",
+            // The dancer's own Latin level: a classificatrice is open to
+            // its level only (Article 9 §2).
+            level: "International",
           },
         }),
         prisma.event.create({
@@ -592,7 +594,8 @@ describe("CompetitionQueryService (integration with real DB)", () => {
         };
 
         expect(
-          (await eligibilityOf(bothDisciplines.id, latinAvance.id)).eligible,
+          (await eligibilityOf(bothDisciplines.id, latinInternational.id))
+            .eligible,
         ).toBe(true);
         const standard = await eligibilityOf(
           bothDisciplines.id,
