@@ -1,8 +1,15 @@
-import { theme } from './theme';
+import { BRAND, theme } from './theme';
 
 describe('admin theme', () => {
+  it('uses the mobile cyan in dark mode with automatic foreground contrast', () => {
+    expect(theme.colors?.ffd?.[6]).toBe(BRAND.cyan);
+    expect(theme.autoContrast).toBe(true);
+  });
+
   it('keeps badges in sentence case on every variant and size (Mantine uppercases by default)', () => {
-    const styles = theme.components?.Badge?.styles as { label?: { textTransform?: string } };
+    const styles = theme.components?.Badge?.styles as {
+      label?: { textTransform?: string };
+    };
     expect(styles.label?.textTransform).toBe('none');
   });
 

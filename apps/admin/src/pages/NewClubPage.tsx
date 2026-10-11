@@ -1,4 +1,5 @@
-import { Alert, Anchor, Button, Select, Stack, TextInput, Title } from '@mantine/core';
+import { PageHeader } from '../components/PageHeader';
+import { Alert, Anchor, Button, Select, Stack, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
@@ -81,7 +82,7 @@ export function NewClubPage() {
 
   return (
     <Stack maw={640}>
-      <Title order={2}>Nouveau club</Title>
+      <PageHeader title="Nouveau club" />
       {error && (
         <Alert color="red">
           {error.message}

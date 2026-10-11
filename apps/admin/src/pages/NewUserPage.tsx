@@ -1,3 +1,4 @@
+import { PageHeader } from '../components/PageHeader';
 import {
   Alert,
   Button,
@@ -195,7 +196,7 @@ export function NewUserPage() {
 
   return (
     <Stack maw={640}>
-      <Title order={2}>Nouvel utilisateur</Title>
+      <PageHeader title="Nouvel utilisateur" />
       {clubs.isError && <Alert color="red">Impossible de charger la liste des clubs.</Alert>}
       {error && (
         <Alert color="red">

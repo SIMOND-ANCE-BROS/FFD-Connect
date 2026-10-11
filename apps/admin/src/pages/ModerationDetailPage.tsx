@@ -1,3 +1,4 @@
+import { PageHeader } from '../components/PageHeader';
 import {
   Alert,
   Anchor,
@@ -116,7 +117,7 @@ function CorrectionReview({ id }: { id: string }) {
       </Anchor>
       <Group justify="space-between">
         <Group>
-          <Title order={2}>{c.track.title}</Title>
+          <PageHeader title={c.track.title} />
           {c.track.titleMasked && (
             <Badge color="gray" variant="light">
               Titre masqué

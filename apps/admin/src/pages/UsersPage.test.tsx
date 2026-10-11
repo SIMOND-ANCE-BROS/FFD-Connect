@@ -2,7 +2,7 @@ import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { mockPhoneViewport } from '../test/viewport';
@@ -49,6 +49,10 @@ const page = (n: number) => ({
   error: undefined,
 });
 
+function LocationProbe() {
+  return <p data-testid="location">{useLocation().pathname}</p>;
+}
+
 function renderPage() {
   return render(
     <MantineProvider>
@@ -57,6 +61,7 @@ function renderPage() {
       >
         <MemoryRouter>
           <UsersPage />
+          <LocationProbe />
         </MemoryRouter>
       </QueryClientProvider>
     </MantineProvider>,
@@ -80,6 +85,17 @@ describe('UsersPage', () => {
       },
       error: undefined,
     } as never);
+  });
+
+  it('opens a user record with the keyboard and exposes filter labels', async () => {
+    vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(2) as never);
+    renderPage();
+    const link = await screen.findByRole('link', { name: 'Martin Jeanne' });
+    expect(screen.getByRole('textbox', { name: 'Rechercher un utilisateur' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Date d’inscription')).toBeInTheDocument();
+    link.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByTestId('location')).toHaveTextContent('/users/u1');
   });
 
   it('lists users with the total count', async () => {

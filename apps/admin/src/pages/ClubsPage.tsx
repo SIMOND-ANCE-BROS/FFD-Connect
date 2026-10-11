@@ -46,7 +46,11 @@ export function ClubsPage() {
   }
 
   const clubs = useQuery({
-    ...clubsQuery({ ...filters, skip: (pageIndex - 1) * PAGE_SIZE, take: PAGE_SIZE }),
+    ...clubsQuery({
+      ...filters,
+      skip: (pageIndex - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
     placeholderData: keepPreviousData,
   });
   const total = clubs.data?.meta.total ?? 0;
@@ -65,6 +69,7 @@ export function ClubsPage() {
       />
       <Group gap="sm" align="flex-start">
         <TextInput
+          label="Rechercher un club"
           placeholder="Nom du club"
           value={search}
           onChange={(e) => setSearch(e.currentTarget.value)}

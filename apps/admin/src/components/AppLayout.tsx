@@ -68,7 +68,9 @@ const NAV_LINK_STYLE = { borderRadius: 'var(--mantine-radius-md)' };
 
 function ColorSchemeToggle() {
   const { setColorScheme } = useMantineColorScheme();
-  const computed = useComputedColorScheme('light', { getInitialValueInEffect: true });
+  const computed = useComputedColorScheme('light', {
+    getInitialValueInEffect: true,
+  });
   const dark = computed === 'dark';
   return (
     <ActionIcon
@@ -139,7 +141,11 @@ export function AppLayout() {
   return (
     <AppShell
       header={{ height: HEADER_HEIGHT }}
-      navbar={{ width: 240, breakpoint: 'sm', collapsed: { mobile: !navOpened } }}
+      navbar={{
+        width: 240,
+        breakpoint: 'sm',
+        collapsed: { mobile: !navOpened },
+      }}
       padding={{ base: 'sm', sm: 'lg' }}
     >
       <AppShell.Header
@@ -147,7 +153,7 @@ export function AppLayout() {
         bg="var(--app-header-bg)"
         c="white"
         pt="env(safe-area-inset-top)"
-        style={{ borderBottom: '3px solid var(--app-accent)' }}
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.15)' }}
       >
         <Group h="100%" px={{ base: 'xs', sm: 'md' }} justify="space-between" wrap="nowrap">
           <Group gap="xs" wrap="nowrap" miw={0}>

@@ -1,3 +1,4 @@
+import { PageHeader } from '../components/PageHeader';
 import '@mantine/charts/styles.css';
 import { BarChart, LineChart } from '@mantine/charts';
 import {
@@ -261,7 +262,7 @@ export function StatsPage() {
   return (
     <Stack>
       <Group justify="space-between" wrap="wrap">
-        <Title order={2}>Statistiques</Title>
+        <PageHeader title="Statistiques" />
         <Group wrap="wrap">
           <SegmentedControl
             value={period}
