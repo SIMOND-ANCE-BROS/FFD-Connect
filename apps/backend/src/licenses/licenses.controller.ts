@@ -260,7 +260,7 @@ export class LicensesController {
   @ApiOperation({
     summary: "Démarrer une demande de renouvellement",
     description:
-      "Crée ou récupère une demande de renouvellement en brouillon pour déposer le certificat médical et le certificat de licence.",
+      "Crée ou récupère une demande de renouvellement en brouillon pour déposer le certificat médical et le certificat de licence. Si une demande est déjà en attente de validation (PENDING), c'est elle qui est renvoyée : une seule demande en attente par utilisateur.",
   })
   @ApiResponse({ status: 200, description: "Demande créée ou existante" })
   @ApiResponse({ status: 401, description: "Non autorisé" })
@@ -353,7 +353,7 @@ export class LicensesController {
   @ApiOperation({
     summary: "Soumettre la demande de renouvellement",
     description:
-      "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence.",
+      "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence. Refusée (409) si une autre demande de l'utilisateur est déjà en attente de validation.",
   })
   @ApiParam({ name: "id", description: "ID de la demande" })
   @ApiResponse({ status: 200, description: "Demande soumise" })

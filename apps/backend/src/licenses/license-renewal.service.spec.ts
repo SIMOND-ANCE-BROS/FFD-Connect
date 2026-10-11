@@ -30,6 +30,7 @@ describe("LicenseRenewalService", () => {
 
   interface MockPrisma {
     $transaction: jest.Mock;
+    $queryRaw: jest.Mock;
     license: {
       findUnique: jest.Mock;
       upsert: jest.Mock;
@@ -44,6 +45,7 @@ describe("LicenseRenewalService", () => {
       create: jest.Mock;
       update: jest.Mock;
       updateMany: jest.Mock;
+      count: jest.Mock;
     };
     licenseRenewalDocument: {
       deleteMany: jest.Mock;
@@ -58,6 +60,7 @@ describe("LicenseRenewalService", () => {
 
   const mockPrisma: MockPrisma = {
     $transaction: jest.fn((ops: Promise<unknown>[]) => Promise.all(ops)),
+    $queryRaw: jest.fn(),
     license: {
       findUnique: jest.fn(),
       upsert: jest.fn(),
@@ -72,6 +75,7 @@ describe("LicenseRenewalService", () => {
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
+      count: jest.fn(),
     },
     licenseRenewalDocument: {
       deleteMany: jest.fn(),
@@ -121,6 +125,8 @@ describe("LicenseRenewalService", () => {
         typeof ops === "function" ? ops(mockPrisma) : Promise.all(ops),
     );
     mockPrisma.licenseRenewalRequest.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.licenseRenewalRequest.count.mockResolvedValue(0);
+    mockPrisma.$queryRaw.mockResolvedValue([{ id: "user-1" }]);
     mockPrisma.licenseRenewalRequest.findUniqueOrThrow.mockResolvedValue({
       id: "req-1",
       status: LicenseRenewalStatus.APPROVED,
@@ -137,12 +143,62 @@ describe("LicenseRenewalService", () => {
         status: LicenseRenewalStatus.DRAFT,
         documents: [],
       };
-      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue(existing);
+      mockPrisma.licenseRenewalRequest.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(existing);
 
       const result = await service.startRenewalRequest("user-1");
 
       expect(result).toEqual(existing);
       expect(mockPrisma.licenseRenewalRequest.create).not.toHaveBeenCalled();
+    });
+
+    it("returns the PENDING request instead of opening a draft (#271)", async () => {
+      const pending = {
+        id: "req-pending",
+        userId: "user-1",
+        status: LicenseRenewalStatus.PENDING,
+        documents: [],
+      };
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValueOnce(pending);
+
+      const result = await service.startRenewalRequest("user-1");
+
+      expect(result).toEqual(pending);
+      // Looked for first, and a draft is neither looked for nor created.
+      expect(mockPrisma.licenseRenewalRequest.findFirst).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(mockPrisma.licenseRenewalRequest.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: "user-1", status: LicenseRenewalStatus.PENDING },
+          orderBy: { createdAt: "asc" },
+        }),
+      );
+      expect(mockPrisma.licenseRenewalRequest.create).not.toHaveBeenCalled();
+    });
+
+    it("locks the user's row before reading, inside one transaction (#271)", async () => {
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue(null);
+      mockPrisma.licenseRenewalRequest.create.mockResolvedValue({
+        id: "req-2",
+        userId: "user-1",
+        status: LicenseRenewalStatus.DRAFT,
+        documents: [],
+      });
+
+      await service.startRenewalRequest("user-1");
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledWith(
+        expect.any(Function),
+      );
+      const [sql] = mockPrisma.$queryRaw.mock.calls[0] as [Prisma.Sql];
+      expect(sql.sql).toContain('FROM "User"');
+      expect(sql.sql).toContain("FOR NO KEY UPDATE");
+      expect(sql.values).toEqual(["user-1"]);
+      expect(mockPrisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        mockPrisma.licenseRenewalRequest.findFirst.mock.invocationCallOrder[0],
+      );
     });
 
     it("should create a new DRAFT request if none exists", async () => {
@@ -535,6 +591,97 @@ describe("LicenseRenewalService", () => {
       await expect(
         service.submitRenewalRequest("user-1", "req-1"),
       ).rejects.toThrow(BadRequestException);
+    });
+
+    describe("one PENDING request per user (#271)", () => {
+      const submittableDraft = {
+        id: "req-1",
+        userId: "user-1",
+        status: LicenseRenewalStatus.DRAFT,
+        documents: [
+          {
+            type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+            ocrData: { isApte: true },
+          },
+          {
+            type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
+            ocrData: { licenseNumber: "FFD-123" },
+          },
+        ],
+      };
+
+      beforeEach(() => {
+        mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue(
+          submittableDraft,
+        );
+        mockPrisma.user.findUnique.mockResolvedValue({ license: null });
+      });
+
+      it("refuses (409) while another request of the user is PENDING, without submitting", async () => {
+        mockPrisma.licenseRenewalRequest.count.mockResolvedValue(1);
+
+        await expect(
+          service.submitRenewalRequest("user-1", "req-1"),
+        ).rejects.toThrow(ConflictException);
+        expect(mockPrisma.licenseRenewalRequest.count).toHaveBeenCalledWith({
+          where: {
+            userId: "user-1",
+            status: LicenseRenewalStatus.PENDING,
+            id: { not: "req-1" },
+          },
+        });
+        expect(mockPrisma.licenseRenewalRequest.update).not.toHaveBeenCalled();
+        expect(mockPrisma.license.upsert).not.toHaveBeenCalled();
+      });
+
+      it("checks and submits under the user's lock, conditionally on DRAFT", async () => {
+        mockPrisma.licenseRenewalRequest.update.mockResolvedValue({
+          id: "req-1",
+        });
+        // The automatic approval itself is out of scope: let it lose the race.
+        mockPrisma.licenseRenewalRequest.findUnique.mockResolvedValue(null);
+
+        await expect(
+          service.submitRenewalRequest("user-1", "req-1"),
+        ).rejects.toThrow(NotFoundException);
+
+        const [sql] = mockPrisma.$queryRaw.mock.calls[0] as [Prisma.Sql];
+        expect(sql.sql).toContain("FOR NO KEY UPDATE");
+        expect(sql.values).toEqual(["user-1"]);
+        expect(mockPrisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+          mockPrisma.licenseRenewalRequest.count.mock.invocationCallOrder[0],
+        );
+        expect(mockPrisma.licenseRenewalRequest.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: "req-1", status: LicenseRenewalStatus.DRAFT },
+          }),
+        );
+      });
+
+      it("answers 'already submitted' when a concurrent submission won (P2025)", async () => {
+        mockPrisma.licenseRenewalRequest.update.mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError("No record", {
+            code: "P2025",
+            clientVersion: "test",
+          }),
+        );
+
+        await expect(
+          service.submitRenewalRequest("user-1", "req-1"),
+        ).rejects.toThrow(
+          new BadRequestException("La demande a déjà été soumise"),
+        );
+        expect(mockPrisma.license.upsert).not.toHaveBeenCalled();
+      });
+
+      it("rethrows any other database error of the submission", async () => {
+        const failure = new Error("connection lost");
+        mockPrisma.licenseRenewalRequest.update.mockRejectedValue(failure);
+
+        await expect(
+          service.submitRenewalRequest("user-1", "req-1"),
+        ).rejects.toBe(failure);
+      });
     });
 
     it("should throw BadRequestException if medical document is missing", async () => {
