@@ -25,6 +25,7 @@ import {
 } from "../../test/mocks/track-where.mock";
 import { withActiveRole } from "../auth/roles";
 import { AdminAuditService } from "../admin/admin-audit.service";
+import { MAX_ADMINS_NOTIFIED } from "../notifications/admin-recipients";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { TracksService } from "../tracks/tracks.service";
@@ -33,7 +34,6 @@ import {
   trackCorrectionAuditTrackSelect,
 } from "../utils/prisma-selects";
 import {
-  MAX_ADMINS_NOTIFIED,
   MAX_PENDING_CORRECTIONS_PER_USER,
   MAX_PENDING_CORRECTIONS_PER_USER_PER_TRACK,
   MAX_SERIALIZABLE_ATTEMPTS,

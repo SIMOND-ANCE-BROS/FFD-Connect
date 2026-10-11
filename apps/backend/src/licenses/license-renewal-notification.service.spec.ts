@@ -8,10 +8,10 @@ import { withActiveRole } from "../auth/roles";
 import { NOTIFICATION_CATALOG } from "../notifications/notification-catalog";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { MAX_ADMINS_NOTIFIED } from "../notifications/admin-recipients";
 import {
   LICENSE_RENEWAL_PUSH_COPY,
   LicenseRenewalNotificationService,
-  MAX_ADMINS_NOTIFIED,
 } from "./license-renewal-notification.service";
 
 describe("LicenseRenewalNotificationService", () => {
@@ -34,7 +34,7 @@ describe("LicenseRenewalNotificationService", () => {
   afterEach(() => warn.mockRestore());
 
   describe("notifyToReview", () => {
-    it("reaches every active administrator, with a bounded read", async () => {
+    it("reaches every enabled administrator, with a bounded, ordered read", async () => {
       prisma.user.findMany.mockResolvedValue([
         { id: "admin-1" },
         { id: "admin-2" },
@@ -43,8 +43,11 @@ describe("LicenseRenewalNotificationService", () => {
       await service.notifyToReview("req-1");
 
       expect(prisma.user.findMany).toHaveBeenCalledWith({
-        where: withActiveRole(UserRole.ADMIN),
+        // A disabled administrator cannot act on it: skipped.
+        where: { ...withActiveRole(UserRole.ADMIN), disabledAt: null },
         select: { id: true },
+        // Deterministic subset when the bound is reached.
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         take: MAX_ADMINS_NOTIFIED,
       });
       expect(notifications.sendToUsers).toHaveBeenCalledWith(

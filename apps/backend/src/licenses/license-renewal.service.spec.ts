@@ -1204,6 +1204,39 @@ describe("LicenseRenewalService", () => {
         expect(mockNotifications.sendToUsers).not.toHaveBeenCalled();
       });
 
+      it("tells the administrators when the automatic approval fails unexpectedly", async () => {
+        arrangeLeftPending();
+        mockPrisma.license.upsert.mockRejectedValue(new Error("DB hiccup"));
+        mockNotifications.sendToUsers.mockResolvedValue({ recipients: 2 });
+
+        await expect(
+          service.submitRenewalRequest("user-1", "req-1"),
+        ).rejects.toThrow("DB hiccup");
+        await flushNotifications();
+
+        // The approval rolled back: the request is still PENDING.
+        expect(mockNotifications.sendToUsers).toHaveBeenCalledWith(
+          ["admin-1", "admin-2"],
+          "LICENSE_RENEWAL_TO_REVIEW",
+          expect.any(String),
+          expect.any(String),
+          { type: "LICENSE_RENEWAL_TO_REVIEW", requestId: "req-1" },
+        );
+      });
+
+      it("notifies no one when a concurrent decision already settled the request (409)", async () => {
+        arrangeLeftPending();
+        mockPrisma.licenseRenewalRequest.updateMany.mockResolvedValue({
+          count: 0,
+        });
+
+        await expect(
+          service.submitRenewalRequest("user-1", "req-1"),
+        ).rejects.toThrow(ConflictException);
+        await flushNotifications();
+        expect(mockNotifications.sendToUsers).not.toHaveBeenCalled();
+      });
+
       it("notifies no one when the request is approved automatically", async () => {
         const documents = [
           {

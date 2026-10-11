@@ -5,14 +5,12 @@ import {
   UserRole,
 } from "@prisma/client";
 import { withActiveRole } from "../auth/roles";
+import { MAX_ADMINS_NOTIFIED } from "../notifications/admin-recipients";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { getErrorMessage } from "../utils/error.utils";
 import { idOnlySelect } from "../utils/prisma-selects";
 import { toLicenseQrExpiry } from "./qr/license-qr";
-
-/** Upper bound of the administrators read to be notified of a request. */
-export const MAX_ADMINS_NOTIFIED = 100;
 
 /**
  * Push copy of the licence renewal notifications (#269).
@@ -69,12 +67,17 @@ export class LicenseRenewalNotificationService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  /** LICENSE_RENEWAL_TO_REVIEW to every administrator. */
+  /**
+   * LICENSE_RENEWAL_TO_REVIEW to every enabled administrator. A disabled
+   * account cannot log in to act on it: it is skipped. Oldest accounts first,
+   * so that the bounded subset is deterministic.
+   */
   async notifyToReview(requestId: string): Promise<void> {
     try {
       const admins = await this.prisma.user.findMany({
-        where: withActiveRole(UserRole.ADMIN),
+        where: { ...withActiveRole(UserRole.ADMIN), disabledAt: null },
         select: idOnlySelect,
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         take: MAX_ADMINS_NOTIFIED,
       });
       await this.notifications.sendToUsers(

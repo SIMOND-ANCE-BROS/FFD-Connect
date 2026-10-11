@@ -145,6 +145,18 @@ describe("Licence renewal notifications (integration, real DB)", () => {
     await prisma.adminAuditLog.deleteMany({
       where: { targetId: { in: requests.map((r) => r.id) } },
     });
+    // The CI database is shared: administrators created by other suites
+    // also received this suite's "to review" rows. Remove them by request.
+    if (requests.length > 0) {
+      await prisma.notification.deleteMany({
+        where: {
+          type: NotificationType.LICENSE_RENEWAL_TO_REVIEW,
+          OR: requests.map((r) => ({
+            data: { path: ["requestId"], equals: r.id },
+          })),
+        },
+      });
+    }
     await prisma.notification.deleteMany({
       where: { userId: { in: userIds } },
     });
@@ -158,8 +170,14 @@ describe("Licence renewal notifications (integration, real DB)", () => {
     await app.close();
   });
 
-  it("a submission left for human review notifies the administrators", async () => {
+  it("a submission left for human review notifies the enabled administrators", async () => {
     const admin = await createUser(UserRole.ADMIN);
+    const disabledAdmin = await createUser(UserRole.ADMIN);
+    await prisma.user.update({
+      where: { id: disabledAdmin.id },
+      data: { disabledAt: new Date() },
+      select: { id: true },
+    });
     const licensee = await createUser(UserRole.LICENSEE);
     // The number read on the certificate is already another account's: the
     // automatic approval steps aside and the request stays PENDING.
@@ -216,6 +234,12 @@ describe("Licence renewal notifications (integration, real DB)", () => {
       requestId: draft.id,
     });
     expectNoPersonalData(row);
+    // A disabled administrator cannot act on it.
+    expect(
+      await prisma.notification.count({
+        where: { userId: disabledAdmin.id },
+      }),
+    ).toBe(0);
     // The licensee is not told anything yet: no decision was taken.
     expect(
       await prisma.notification.count({

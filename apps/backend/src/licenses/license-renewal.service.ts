@@ -402,6 +402,12 @@ export class LicenseRenewalService {
         !(error instanceof LicenseNumberUnknownException) &&
         !(error instanceof LicenseNumberTakenException)
       ) {
+        // Any other failure rolled the approval back as well: the request is
+        // still PENDING and awaits a human (#269) — unless a concurrent
+        // decision already settled it (409).
+        if (!(error instanceof ConflictException)) {
+          void this.renewalNotifications.notifyToReview(requestId);
+        }
         throw error;
       }
       this.logger.warn(
