@@ -6,7 +6,7 @@ type: Epic
 assignees: ''
 ---
 
-<!-- Conventions : docs/guides/gestion-des-issues.md — type d'issue, une priorité (P0…P3 ou icebox), labels de zone, milestone, epic parente. -->
+<!-- Conventions : docs/guides/gestion-des-issues.md — pas de priorité sur une epic (elle vit sur ses sub-issues), labels de zone, milestone ou icebox. -->
 
 ## Objectif
 
