@@ -361,7 +361,10 @@ describe("CompetitionRegistrationService", () => {
       });
 
       it("uses the profile level OF THE EVENT DISCIPLINE when none is given", async () => {
-        mockPrismaService.event.findUnique.mockResolvedValue(eventOf({}));
+        // Latin International: its own level (Standard Débutant would fail).
+        mockPrismaService.event.findUnique.mockResolvedValue(
+          eventOf({ level: "International" }),
+        );
         mockRegistrant({
           category: "Ten Dance",
           competitionLevelLatin: "International",

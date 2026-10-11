@@ -247,8 +247,21 @@ describe("isLevelEligibleForClassificatriceEvent", () => {
     ).toBe(true);
   });
 
-  it("returns allowed when registrant level is above event level", () => {
-    // International is above Avancé
+  // Article 9 §2: « un couple ne peut participer qu'aux épreuves organisées
+  // pour sa classe d'âge et son niveau » — never a lower level (beta report:
+  // an Avancé couple was offered the Intermédiaire classificatrice).
+  it("returns not allowed when registrant level is above event level", () => {
+    const result = isLevelEligibleForClassificatriceEvent(
+      "COUPLE",
+      "Adulte",
+      "Avancé",
+      "Intermédiaire",
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toMatch(/réservée au niveau Intermédiaire/);
+  });
+
+  it("returns not allowed for International in an Avancé event when International is offered", () => {
     expect(
       isLevelEligibleForClassificatriceEvent(
         "COUPLE",
@@ -256,7 +269,28 @@ describe("isLevelEligibleForClassificatriceEvent", () => {
         "International",
         "Avancé",
       ).allowed,
+    ).toBe(false);
+  });
+
+  // A level the age class does not offer (Juniors stop at Avancé): the
+  // couple enters the highest level offered below it, not nothing at all.
+  it("lets a level not offered for the age class enter the highest offered one", () => {
+    expect(
+      isLevelEligibleForClassificatriceEvent(
+        "COUPLE",
+        "Junior I",
+        "International",
+        "Avancé",
+      ).allowed,
     ).toBe(true);
+    expect(
+      isLevelEligibleForClassificatriceEvent(
+        "COUPLE",
+        "Junior I",
+        "International",
+        "Intermédiaire",
+      ).allowed,
+    ).toBe(false);
   });
 
   it("SOLO: Solo Juvénile Intermédiaire is allowed in Intermédiaire event", () => {
