@@ -56,5 +56,14 @@ Un certificat refusé est purgé au plus tard 30 jours après la décision, avec
 commentaire de l'administrateur. Ce passage aux CGU v2 doit être publié au plus tard
 avec la fin de l'auto-approbation (#271).
 
+- **Publication** : le site ne publie `docs/legal` qu'au push sur `staging`, et
+  `CGU_VERSION` n'atteint l'app qu'avec le build ou la mise à jour suivante. Une
+  fusion dans `develop` ne publie rien : ces textes doivent arriver sur `staging`
+  dans la même promotion que #271, ou avant — jamais après.
+- **Administrateurs** : les textes affirment qu'à ce jour l'éditeur est le seul
+  administrateur, donc le seul destinataire des certificats. Créer un autre compte
+  administrateur impose d'abord de mettre à jour la section « destinataires » (§4)
+  de la politique.
+
 Les traitements décrits reflètent le code au moment de la rédaction ; à tenir à jour
 à chaque évolution des données collectées ou des sous-traitants.

@@ -108,7 +108,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
       },
       {
         heading: "Vérification du certificat médical",
-        body: "Votre certificat médical est vérifié par une personne : l'éditeur, en tant qu'administrateur de la plateforme. Tant que votre demande est en attente, il peut ouvrir le fichier et voir les informations lues automatiquement, qui ne sont que des indices. Chaque ouverture est tracée, sans le contenu du document. Une fois la demande traitée, le fichier n'est plus consultable. En cas de refus, vous voyez dans l'application le motif et, le cas échéant, un commentaire de l'administrateur.",
+        body: "Votre certificat médical est vérifié par une personne : l'éditeur, en tant qu'administrateur de la plateforme (à ce jour le seul). Tant que votre demande est en attente, il peut ouvrir le fichier et voir les informations lues automatiquement, qui ne sont que des indices. Chaque ouverture est tracée, sans le contenu du document. Une fois la demande traitée, le fichier n'est plus consultable. En cas de refus, vous voyez dans l'application le motif et, le cas échéant, un commentaire de l'administrateur.",
       },
       {
         heading: "Durées de conservation",
