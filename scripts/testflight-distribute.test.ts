@@ -132,6 +132,10 @@ test('normalizeNotes : trim et limite de 4000 caracteres', () => {
   assert.strictEqual(normalizeNotes('x'.repeat(5000)).length, 4000);
 });
 
+test('normalizeNotes : retire les emoji refuses par App Store Connect, garde le francais', () => {
+  assert.strictEqual(normalizeNotes('• Écran « ok » 🤖 d’accueil…'), '• Écran « ok »  d’accueil…');
+});
+
 test('corps JSON:API envoyes a App Store Connect', () => {
   assert.deepStrictEqual(addToGroupBody('b1'), { data: [{ type: 'builds', id: 'b1' }] });
   assert.deepStrictEqual(reviewSubmissionBody('b1'), {

@@ -17,6 +17,23 @@ const SECTION = /^##\s+pour les testeurs\s*$/i;
 /** Contenu d'une section qui veut dire « rien pour les testeurs ». */
 const NOTHING = /^(rien|aucun|aucune|néant|n\/a|na|-|—|–)\.?$/i;
 
+/** Ligne de pied de page ajoutée aux descriptions de PR (hors section). */
+const FOOTER =
+  /^(?:\s*🤖|.*Generated with \[Claude Code\]|\s*https:\/\/claude\.ai\/code|\s*(?:-{3,}|\*{3,}|_{3,})\s*$)/u;
+
+/**
+ * Retire ce que les stores refusent (App Store Connect : « invalid
+ * characters », ex. 🤖) : tout hors du plan multilingue de base, plus les
+ * sélecteurs de variante et caractères de contrôle. Accents, « », ’, …, •
+ * restent intacts.
+ */
+export function sanitizeStoreText(text) {
+  return text
+    .replace(/[\u{10000}-\u{10FFFF}]/gu, '')
+    .replace(/[\uD800-\uDFFF\uFE0F\u200D]/g, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+}
+
 /** Numéro de la PR d'un commit squashé : la DERNIÈRE réf « (#N) » du sujet. */
 export function prNumber(subject) {
   const refs = [...subject.matchAll(/\(#(\d+)\)/g)];
@@ -35,11 +52,17 @@ export function extractTesterSection(body) {
   const section = [];
   for (const line of lines.slice(start + 1)) {
     if (/^#{1,2}\s/.test(line)) break; // section suivante
+    if (FOOTER.test(line)) break; // pied de page de la PR
     section.push(line);
   }
   const text = section.join('\n').trim();
   if (!text || NOTHING.test(text)) return null;
-  return text;
+  const kept = text
+    .split('\n')
+    .filter((line) => !NOTHING.test(line.trim().replace(/^[-*•]\s+/, '')))
+    .join('\n')
+    .trim();
+  return kept || null;
 }
 
 /**
@@ -52,8 +75,13 @@ export function toBullets(section) {
     .map((line) => line.trim())
     .filter(Boolean);
   const items = lines.filter((line) => /^[-*•]\s+/.test(line));
-  if (items.length === 0) return [`• ${lines.join(' ')}`];
-  return items.map((line) => `• ${line.replace(/^[-*•]\s+/, '')}`);
+  const bullets =
+    items.length === 0
+      ? [`• ${lines.join(' ')}`]
+      : items.map((line) => `• ${line.replace(/^[-*•]\s+/, '')}`);
+  return bullets
+    .map((b) => sanitizeStoreText(b).trim())
+    .filter((b) => b.replace(/^•\s*/, '') && !NOTHING.test(b.replace(/^•\s*/, '')));
 }
 
 /**
@@ -63,5 +91,5 @@ export function toBullets(section) {
 export function renderTesterNotes(sections) {
   const bullets = sections.flatMap((section) => toBullets(section));
   if (bullets.length === 0) return 'Corrections et améliorations diverses.';
-  return `Nouveautés et corrections\n${bullets.join('\n')}`;
+  return sanitizeStoreText(`Nouveautés et corrections\n${bullets.join('\n')}`);
 }
