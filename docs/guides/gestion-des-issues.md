@@ -89,23 +89,43 @@ Les labels `bug` / `enhancement` restent tolérés sur les anciennes issues, mai
 **type fait foi** : les modèles ne les posent plus, et le label `epic` est
 remplacé par le type `Epic`.
 
-## 5. Labels
+## 5. Priorité, effort et labels
 
-Chaque issue ouverte porte :
+La priorité et l'effort sont des **champs d'issue** de l'organisation (panneau
+latéral de l'issue, colonnes `Priority` et `Effort` du Project), **pas des
+labels** : un champ n'accepte qu'une valeur, et les vues du Project peuvent
+trier et regrouper dessus. Ces champs ne sont visibles que des membres de
+l'organisation.
 
-1. **Une priorité** — exactement une, ou `icebox` à la place. **Exception : une
-   issue de type `Epic` n'a pas de priorité** (seulement un milestone, ou
-   `icebox`) ; l'urgence se lit sur ses sub-issues, et un P0 désigne toujours
-   une issue à traiter tout de suite :
+**Priority** — exactement une sur toute issue ouverte, sauf `icebox` et sauf
+une issue de type `Epic` (l'urgence d'une epic se lit sur ses sub-issues) :
 
-   | Label    | Sens                                                                                   | Milestone                                         |
-   | -------- | -------------------------------------------------------------------------------------- | ------------------------------------------------- |
-   | `P0`     | Bloquant, sécurité, RGPD, donnée fausse montrée à l'utilisateur — à traiter maintenant | `Bêta — correctifs prioritaires`                  |
-   | `P1`     | Bêta, prochain cycle                                                                   | `Bêta — correctifs prioritaires`                  |
-   | `P2`     | Nécessaire au lancement public                                                         | `v1.0 — Lancement public`                         |
-   | `P3`     | Plus tard                                                                              | `v1.1 — Engagement` / `v2.0 — Communauté & Admin` |
-   | `icebox` | Idée non planifiée                                                                     | aucun                                             |
+| `Priority` | Sens                                                                                   | Milestone                                         |
+| ---------- | -------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `Urgent`   | Bloquant, sécurité, RGPD, donnée fausse montrée à l'utilisateur — à traiter maintenant | `Bêta — correctifs prioritaires`                  |
+| `High`     | Bêta, prochain cycle                                                                   | `Bêta — correctifs prioritaires`                  |
+| `Medium`   | Nécessaire au lancement public                                                         | `v1.0 — Lancement public`                         |
+| `Low`      | Plus tard                                                                              | `v1.1 — Engagement` / `v2.0 — Communauté & Admin` |
 
+**Effort** — estimation grossière, posée au tri et corrigée quand on en sait
+plus (y compris sur une idée en `icebox`) :
+
+| `Effort` | Ordre de grandeur                                                    |
+| -------- | -------------------------------------------------------------------- |
+| `Low`    | Moins d'une demi-journée, correctif localisé                         |
+| `Medium` | Un à trois jours, plusieurs fichiers ou une PR de taille normale     |
+| `High`   | Plusieurs jours, plusieurs PR, ou dépendance externe (tiers, stores) |
+
+`Start date` / `Target date` (champs d'issue également) sont facultatifs ; ils
+alimentent la vue 🗺 Roadmap quand on veut dater un travail précis.
+
+Les champs se posent dans l'interface ou par l'API GraphQL
+(`setIssueFieldValue`, champs listés par `list_issue_fields` sur
+l'organisation) ; `gh issue edit` ne sait pas les modifier.
+
+Chaque issue ouverte porte aussi des **labels** :
+
+1. `icebox` pour une idée non planifiée (pas de priorité ni de milestone).
 2. **Une ou plusieurs zones** : `backend`, `client`, `admin`, `landing`,
    `infra`, `ci`, `packages`, `testing`, `documentation`, `dependencies`.
 3. **Des domaines** si utile : `auth`, `license`, `competitions`, `club`,
@@ -167,14 +187,14 @@ Toute issue ouverte est dans le Project de l'organisation. Sa colonne
 `.github/workflows/project-status.yml` la fait avancer tout seul à partir des
 PR vers `develop`, des promotions vers `staging` et des issues :
 
-| `Status`      | Quand                                                        | Déclencheur automatique                                             |
-| ------------- | ------------------------------------------------------------ | ------------------------------------------------------------------- |
-| `Todo`        | Issue triée (type, priorité, milestone posés), pas commencée | issue ouverte / rouverte, PR fermée sans merge                      |
-| `In Progress` | On travaille dessus (branche, PR draft)                      | PR **draft** qui référence l'issue                                  |
-| `In Review`   | PR prête à relire                                            | PR passée « Ready for review »                                      |
-| `Merged`      | Mergée sur `develop`, pas encore chez les testeurs           | PR mergée avec `Refs #N`                                            |
-| `In Beta`     | Sur `staging` : testable sur TestFlight / Play, à valider    | promotion `develop` → `staging` mergée (toutes les cartes `Merged`) |
-| `Done`        | Validée, issue fermée                                        | issue fermée (à la main après test, ou `Closes`)                    |
+| `Status`      | Quand                                                                | Déclencheur automatique                                             |
+| ------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `Todo`        | Issue triée (type, priorité, effort, milestone posés), pas commencée | issue ouverte / rouverte, PR fermée sans merge                      |
+| `In Progress` | On travaille dessus (branche, PR draft)                              | PR **draft** qui référence l'issue                                  |
+| `In Review`   | PR prête à relire                                                    | PR passée « Ready for review »                                      |
+| `Merged`      | Mergée sur `develop`, pas encore chez les testeurs                   | PR mergée avec `Refs #N`                                            |
+| `In Beta`     | Sur `staging` : testable sur TestFlight / Play, à valider            | promotion `develop` → `staging` mergée (toutes les cartes `Merged`) |
+| `Done`        | Validée, issue fermée                                                | issue fermée (à la main après test, ou `Closes`)                    |
 
 **`Refs` ou `Closes` dans la PR ?**
 
@@ -203,15 +223,15 @@ Project se lisent depuis l'issue : on ne les double pas.
 
 **Vues du Project** — chacune répond à une question :
 
-| Vue                | Question                                    | Contenu                                                |
-| ------------------ | ------------------------------------------- | ------------------------------------------------------ |
-| 📋 Backlog         | Que reste-t-il à commencer ?                | `Todo` ouvertes, hors epics et icebox, par milestone   |
-| 🗂 Kanban          | Où en est chaque tâche ?                    | Colonnes par `Status`, hors epics et icebox            |
-| 🔥 Priorités P0/P1 | Qu'est-ce qui est urgent ?                  | Issues ouvertes `P0`/`P1`, par `Status`                |
-| 🗺 Roadmap         | Quand arrive quoi ?                         | Frise par milestone (dates = échéances des milestones) |
-| 🏁 Par milestone   | Qu'est-ce qui bloque la prochaine version ? | Issues ouvertes par milestone, triées par `Status`     |
-| 🧭 Epics           | Où en est chaque thème ?                    | Epics avec leur progression de sub-issues              |
-| 🧊 Icebox          | Quelles idées sont en attente ?             | Issues `icebox`                                        |
+| Vue              | Question                                    | Contenu                                                                   |
+| ---------------- | ------------------------------------------- | ------------------------------------------------------------------------- |
+| 📋 Backlog       | Que reste-t-il à commencer ?                | `Todo` ouvertes, hors epics et icebox, par milestone, triées par priorité |
+| 🗂 Kanban        | Où en est chaque tâche ?                    | Colonnes par `Status`, hors epics et icebox                               |
+| 🔥 Urgent & High | Qu'est-ce qui est urgent ?                  | Issues ouvertes `Urgent`/`High`, par `Status`                             |
+| 🗺 Roadmap       | Quand arrive quoi ?                         | Frise par milestone (dates = échéances des milestones)                    |
+| 🏁 Par milestone | Qu'est-ce qui bloque la prochaine version ? | Issues ouvertes par milestone, triées par `Status`                        |
+| 🧭 Epics         | Où en est chaque thème ?                    | Epics avec leur progression de sub-issues                                 |
+| 🧊 Icebox        | Quelles idées sont en attente ?             | Issues `icebox`                                                           |
 
 Les vues ne montrent que le dépôt `FFD-Connect` (les cartes de l'ancien dépôt
 d'archive sont filtrées).
