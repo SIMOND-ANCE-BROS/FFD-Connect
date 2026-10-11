@@ -2,6 +2,14 @@
 
 Un même compte peut servir à danser, représenter un club ou participer à l’organisation. Les espaces permettent de retrouver une navigation adaptée à chacune de ces activités.
 
+## Le parcours en un regard
+
+```ffd-parcours
+Réglages | Repérer le sélecteur d’espace | Il apparaît si plusieurs rôles sont disponibles.
+Espace | Choisir le rôle souhaité | La navigation s’adapte aux droits déjà accordés.
+Barre de navigation | Vérifier les onglets | Reprendre votre parcours dans le bon espace.
+```
+
 ## Changer d’espace
 
 1. Ouvrez **Réglages**.

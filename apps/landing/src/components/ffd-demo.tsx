@@ -1,6 +1,6 @@
 import { sitePath } from '../lib/ffd';
 
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useId, type ReactNode } from 'react';
 import {
   Award,
   Bell,
@@ -133,6 +133,7 @@ export function AppDemo({
   preview?: boolean;
 }) {
   const [selectedEvent, setSelectedEvent] = useState<(typeof events)[number] | null>(null);
+  const licenseBodyId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const eventButtons = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -202,14 +203,14 @@ export function AppDemo({
           { label: 'Espace club', Icon: Users, target: 'organisation' },
           { label: 'Compétitions', Icon: Trophy, target: 'competitions' },
           { label: 'Scanner', Icon: ScanLine },
-          { label: 'Paramètres', Icon: Settings },
+          { label: 'Réglages', Icon: Settings },
         ]
       : [
           { label: 'Carrière', Icon: Award },
           { label: 'Licence', Icon: IdCard, target: 'licence' },
           { label: 'Bibliothèque', Icon: ListMusic, target: 'audio' },
           { label: 'Compétitions', Icon: Trophy, target: 'competitions' },
-          { label: 'Paramètres', Icon: Settings },
+          { label: 'Réglages', Icon: Settings },
         ];
   return (
     <div className={'phone-shell' + (preview ? ' phone-preview' : '')}>
@@ -475,7 +476,7 @@ export function AppDemo({
                     className="native-license-heading"
                     onClick={() => setExpanded(!expanded)}
                     aria-expanded={expanded}
-                    aria-controls="demo-license-body"
+                    aria-controls={licenseBodyId}
                   >
                     <img src={sitePath('license-source-logo.png')} width="60" height="60" alt="" />
                     <span>
@@ -487,7 +488,7 @@ export function AppDemo({
                     </span>
                   </button>
                   {expanded && (
-                    <div id="demo-license-body">
+                    <div id={licenseBodyId}>
                       <div className="native-license-body">
                         <div>
                           <h5>Camille Martin</h5>
@@ -601,8 +602,14 @@ export function AppDemo({
                     color: '#E91E63',
                   },
                   {
+                    label: 'Solo Teams',
+                    subtitle: 'Équipes de danse en ligne',
+                    Icon: UsersRound,
+                    color: '#9C27B0',
+                  },
+                  {
                     label: 'Inscriptions en attente',
-                    subtitle: 'Demandes à valider',
+                    subtitle: 'Selon le mode d’inscription du club',
                     Icon: ClipboardList,
                     color: '#FF9800',
                   },

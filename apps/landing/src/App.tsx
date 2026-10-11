@@ -36,9 +36,14 @@ const modules: {
   title: string;
   description: string;
   items: string[];
+  access: string;
+  limitation: string;
 }[] = [
   {
     id: 'competitions',
+    access: 'Dans la bêta · selon votre profil',
+    limitation:
+      'Programme, résultats et inscriptions dépendent des données et des accès de chaque événement.',
     n: '01',
     name: 'Compétitions',
     icon: Trophy,
@@ -50,21 +55,27 @@ const modules: {
   },
   {
     id: 'licence',
+    access: 'Dans la bêta · espace Danseur',
+    limitation:
+      'La carte et son pass Wallet ne sont pas encore acceptés en compétition. Conservez votre justificatif habituel.',
     n: '02',
     name: 'Licence',
     icon: ScanLine,
     phase: 'ARRIVER L’ESPRIT LIBRE',
     title: 'L’essentiel, avec vous.',
     description:
-      'Une licence numérique et vos informations réunies, pour simplifier le passage de l’inscription à l’accueil.',
+      'Une licence numérique et vos informations réunies, pour retrouver les repères de votre saison.',
     items: [
       'Retrouver ses informations',
-      'Présenter sa licence numérique',
-      'Faciliter le contrôle à l’accueil',
+      'Consulter sa licence numérique',
+      'Vérifier sa saison et son identité',
     ],
   },
   {
     id: 'audio',
+    access: 'Dans la bêta · Danseur et Admin',
+    limitation:
+      'La bibliothèque accessible dépend des titres disponibles et de vos droits. Aucun morceau réel n’est joué dans cet aperçu.',
     n: '03',
     name: 'Musique',
     icon: Music2,
@@ -80,6 +91,9 @@ const modules: {
   },
   {
     id: 'organisation',
+    access: 'Dans la bêta · espace Club',
+    limitation:
+      'La gestion nécessite un compte Club habilité. Les inscriptions en attente dépendent du mode choisi par votre club.',
     n: '04',
     name: 'Espace club',
     icon: Users,
@@ -429,6 +443,13 @@ export default function App() {
                     </p>
                     <h3>{module.title}</h3>
                     <p className="module-description">{module.description}</p>
+                    <div className="module-availability">
+                      <strong>{module.access}</strong>
+                      <p>{module.limitation}</p>
+                      <a href={sitePath('documentation/utilisateurs/disponibilites/')}>
+                        Fonctions, accès et limites →
+                      </a>
+                    </div>
                     <ul>
                       {module.items.map((item) => (
                         <li key={item}>
@@ -437,15 +458,45 @@ export default function App() {
                         </li>
                       ))}
                     </ul>
-                    <p className="preview-help">
-                      {module.id === 'competitions'
-                        ? 'Ouvrez une compétition, consultez sa fiche puis son programme et son timing.'
-                        : module.id === 'audio'
-                          ? 'Ouvrez une danse, recherchez un titre et ajoutez-le aux favoris.'
-                          : module.id === 'licence'
-                            ? 'Touchez la carte pour la replier. Explorez les informations de licence.'
-                            : 'Découvrez les raccourcis et les rubriques de l’espace club.'}
-                    </p>
+                    <div className="demo-mission">
+                      <p className="eyebrow">À ESSAYER DANS CET APERÇU</p>
+                      <ol>
+                        {(module.id === 'competitions'
+                          ? [
+                              'Recherchez « Lyon ».',
+                              'Ouvrez « Open de Lyon ».',
+                              'Consultez les onglets Épreuves puis Timing.',
+                            ]
+                          : module.id === 'audio'
+                            ? [
+                                'Dans Danses, ouvrez « Samba ».',
+                                'Ajoutez le titre aux favoris avec le cœur.',
+                                'Ouvrez Favoris pour le retrouver.',
+                              ]
+                            : module.id === 'licence'
+                              ? [
+                                  'Vérifiez l’identité et la saison sur la carte.',
+                                  'Touchez le QR pour comprendre son utilisation.',
+                                  'Repliez puis rouvrez la carte FFD.',
+                                ]
+                              : [
+                                  'Repérez le nombre de membres.',
+                                  'Ouvrez « Gestion des Membres » pour lire son rôle.',
+                                  'Découvrez les raccourcis Couples et Solo Teams.',
+                                ]
+                        ).map((step) => (
+                          <li key={step}>{step}</li>
+                        ))}
+                      </ol>
+                      <a
+                        className="text-link"
+                        href={sitePath(
+                          `documentation/utilisateurs/${module.id === 'organisation' ? 'clubs' : 'danseurs'}/`,
+                        )}
+                      >
+                        Consulter le guide pas à pas →
+                      </a>
+                    </div>
                     <a href={betaUrl} className="text-link">
                       Passer à l’application : rejoindre la bêta
                     </a>
