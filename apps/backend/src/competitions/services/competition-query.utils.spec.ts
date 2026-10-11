@@ -208,6 +208,66 @@ describe("evaluateEventEligibility", () => {
   });
 });
 
+// Espoir (« -21 ») is an event class for couples aged 16 to 20 on 31
+// December: an Adulte born in 2000 must not see it as open (beta report).
+describe("evaluateEventEligibility — Espoir age", () => {
+  const espoir = event({
+    ageGroup: "Espoir",
+    level: "Avancé",
+    eventKind: "CLASSIFICATRICE",
+  });
+  const in2026 = { competitionType: "NATIONALE", date: new Date("2026-10-17") };
+  const advanced = { competitionLevelLatin: "Avancé" };
+
+  it("closes Espoir to a dancer over 20 on 31 December", () => {
+    expect(
+      evaluateEventEligibility(
+        espoir,
+        in2026,
+        profile({ ...advanced, birthDate: new Date("2000-05-18") }),
+      ),
+    ).toEqual({ eligible: false, reason: "ESPOIR_AGE" });
+  });
+
+  it("closes Espoir to a dancer under 16 on 31 December", () => {
+    expect(
+      evaluateEventEligibility(
+        espoir,
+        in2026,
+        profile({
+          ...advanced,
+          ageGroup: "Junior II",
+          birthDate: new Date("2012-01-10"),
+        }),
+      ).eligible,
+    ).toBe(false);
+  });
+
+  it("keeps Espoir open to a dancer aged 16 to 20", () => {
+    expect(
+      evaluateEventEligibility(
+        espoir,
+        in2026,
+        profile({
+          ...advanced,
+          ageGroup: "Youth",
+          birthDate: new Date("2008-03-02"),
+        }),
+      ),
+    ).toEqual({ eligible: true });
+  });
+
+  it("falls back to the age-class rule when the birth date is unknown", () => {
+    expect(
+      evaluateEventEligibility(
+        espoir,
+        in2026,
+        profile({ ...advanced, ageGroup: "Youth", birthDate: null }),
+      ),
+    ).toEqual({ eligible: true });
+  });
+});
+
 describe("enrichCompetitionsForUser", () => {
   const makeComp = (
     events: EligibilityEventInput[],

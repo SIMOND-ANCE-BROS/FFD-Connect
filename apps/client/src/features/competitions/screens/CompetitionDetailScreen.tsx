@@ -5,6 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
+  Switch,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -25,6 +26,7 @@ import { analytics } from "../../../services/analytics";
 import { ClubEventRegistrationModal } from "../../club/components/ClubEventRegistrationModal";
 import { ClubService } from "../../club/services/ClubService";
 import { CompetitionEventCard } from "../components/detail/CompetitionEventCard";
+import { CompetitionEventGroupCard } from "../components/detail/CompetitionEventGroupCard";
 import { CompetitionEventsSourceNotice } from "../components/detail/CompetitionEventsSourceNotice";
 import { CompetitionInfoCard } from "../components/detail/CompetitionInfoCard";
 import { CompetitionMapCard } from "../components/detail/CompetitionMapCard";
@@ -35,6 +37,7 @@ import { styles } from "../components/detail/competition-detail.styles";
 import { TimingList } from "../components/TimingList";
 import { useCompetitionDetailLogic } from "../hooks/useCompetitionDetailLogic";
 import { addCompetitionToCalendar } from "../utils/addToCalendar";
+import { groupEvents } from "../utils/eventGroups";
 import { hasPlaceholderEvents } from "../utils/eventsSourceNotice";
 import {
   clearDeadlineStorage,
@@ -57,6 +60,7 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
     navigation,
   );
   const [activeTab, setActiveTab] = useState<Tab>("EVENTS");
+  const [eligibleOnly, setEligibleOnly] = useState(false);
   const { theme: currentTheme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [headerH, setHeaderH] = useState(insets.top + 56);
@@ -179,6 +183,17 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
 
   const showResults =
     state.details.status === "PAST" || state.details.status === "LIVE";
+  const isOrganizer = state.userRole === "CLUB";
+  // Licensee filter: only offered when some event is actually closed.
+  const showEligibleFilter =
+    !isOrganizer &&
+    !state.isGuest &&
+    state.details.events.some((e) => !actions.isEligible(e).eligible);
+  const visibleEvents =
+    showEligibleFilter && eligibleOnly
+      ? state.details.events.filter((e) => actions.isEligible(e).eligible)
+      : state.details.events;
+  const eventGroups = groupEvents(visibleEvents);
   const detailsId = state.details.id;
   const openResults = () =>
     navigation.navigate("LiveResults", { competitionId: detailsId });
@@ -293,37 +308,59 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
                   </View>
                 ) : null
               ) : (
-                <View
-                  style={styles.eventsList}
-                  testID="competition-detail-events-list"
-                >
-                  {state.details.events.map((event) => {
-                    const isRegistered = state.myRegistrations.includes(
-                      event.id,
-                    );
-                    const eligibility = actions.isEligible(event);
-                    const isOrganizer = state.userRole === "CLUB";
-
-                    return (
-                      <CompetitionEventCard
-                        key={event.id}
-                        currentTheme={currentTheme}
-                        event={event}
-                        isRegistered={isRegistered}
-                        eligibility={eligibility}
-                        isOrganizer={isOrganizer}
-                        canSelfRegister={state.canSelfRegister}
-                        showResults={showResults}
-                        onNavigateResults={openResults}
-                        onRegister={actions.handleRegister}
-                        onUnregister={actions.handleUnregister}
-                        pendingAction={
-                          state.pendingRegistrationActions[event.id]
-                        }
+                <>
+                  {showEligibleFilter && (
+                    <View style={styles.eligibleOnlyRow}>
+                      <AppText variant="body" color={currentTheme.text}>
+                        Épreuves éligibles uniquement
+                      </AppText>
+                      <Switch
+                        testID="competition-detail-eligible-only"
+                        accessibilityLabel="Afficher uniquement les épreuves éligibles"
+                        accessibilityHint="Masque les épreuves auxquelles vous ne pouvez pas participer"
+                        trackColor={{
+                          false: "#767577",
+                          true: currentTheme.primary,
+                        }}
+                        value={eligibleOnly}
+                        onValueChange={setEligibleOnly}
                       />
-                    );
-                  })}
-                </View>
+                    </View>
+                  )}
+                  <View
+                    style={styles.eventsList}
+                    testID="competition-detail-events-list"
+                  >
+                    {eventGroups.map((group) => (
+                      <CompetitionEventGroupCard
+                        key={group.key}
+                        currentTheme={currentTheme}
+                        group={group}
+                        renderEvent={(event, variantLabel) => (
+                          <CompetitionEventCard
+                            key={event.id}
+                            currentTheme={currentTheme}
+                            event={event}
+                            isRegistered={state.myRegistrations.includes(
+                              event.id,
+                            )}
+                            eligibility={actions.isEligible(event)}
+                            isOrganizer={isOrganizer}
+                            canSelfRegister={state.canSelfRegister}
+                            showResults={showResults}
+                            onNavigateResults={openResults}
+                            onRegister={actions.handleRegister}
+                            onUnregister={actions.handleUnregister}
+                            pendingAction={
+                              state.pendingRegistrationActions[event.id]
+                            }
+                            variantLabel={variantLabel}
+                          />
+                        )}
+                      />
+                    ))}
+                  </View>
+                </>
               )}
             </>
           ) : (

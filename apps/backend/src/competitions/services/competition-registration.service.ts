@@ -20,6 +20,7 @@ import {
   ESPOIR_MIN_AGE,
   getReferenceYear,
   isCoupleEspoirEligible,
+  isEspoirAge,
 } from "../../common/age-group";
 import {
   disciplineLabel,
@@ -185,7 +186,7 @@ export class CompetitionRegistrationService {
     let computedAgeGroup: string | null = null;
     const registrant = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { birthDate: true, ...userEligibilityProfileSelect },
+      select: userEligibilityProfileSelect,
     });
     // 10 danses : la personne inscrite doit pratiquer les deux disciplines
     // (aucune condition de niveau). Profil sans info de discipline : non bloquant.
@@ -244,6 +245,18 @@ export class CompetitionRegistrationService {
       (isCouple && options.coupleAgeGroup?.trim()
         ? options.coupleAgeGroup.trim()
         : null);
+
+    // Espoir: the registrant's own age is checked even when the partner is
+    // only a name (no account, so no birth date to compare).
+    if (
+      event.ageGroup === ESPOIR_AGE_GROUP &&
+      registrant?.birthDate &&
+      !isEspoirAge(registrant.birthDate, referenceYear)
+    ) {
+      throw new BadRequestException(
+        `Les épreuves Espoir sont réservées aux couples de moins de 21 ans (partenaires de ${ESPOIR_MIN_AGE} à ${ESPOIR_MAX_AGE} ans au 31 décembre).`,
+      );
+    }
 
     // Règle Article 9 : éligibilité classe d'âge et niveau (classificatrice / open)
     const competitionType = event.competition.competitionType ?? null;
