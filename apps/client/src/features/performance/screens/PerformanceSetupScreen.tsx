@@ -1,7 +1,13 @@
 import { useNavigation } from "@react-navigation/native";
 import { Plus } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
-import { StyleSheet, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  StyleSheet,
+  Switch,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 // Gesture-handler ScrollView: cooperates with the draggable rows' pan gesture.
 import { ScrollView } from "react-native-gesture-handler";
 import {
@@ -72,7 +78,9 @@ export const PerformanceSetupScreen = () => {
     [],
   );
 
-  const updateConfig = <K extends "duration" | "pauseDuration" | "pasoClashes">(
+  const updateConfig = <
+    K extends "duration" | "pauseDuration" | "pasoClashes" | "announcements",
+  >(
     key: K,
     value: (typeof config)[K],
   ) => {
@@ -267,6 +275,28 @@ export const PerformanceSetupScreen = () => {
           </View>
         </View>
 
+        {/* MC voice: calls each dance and closes the competition. */}
+        <View style={[styles.section, styles.switchRow]}>
+          <View style={styles.switchText}>
+            <AppText variant="body" weight="600">
+              Annonces vocales
+            </AppText>
+            <AppText variant="caption" color={currentTheme.textSecondary}>
+              Le présentateur annonce chaque danse et la fin de la compétition.
+            </AppText>
+          </View>
+          <Switch
+            testID="performance-setup-announcements-switch"
+            accessibilityLabel="Annonces vocales"
+            accessibilityHint="Active ou désactive les annonces du présentateur pendant la compétition"
+            trackColor={{ false: "#767577", true: currentTheme.primary }}
+            thumbColor={config.announcements ? "#fff" : "#f4f3f4"}
+            ios_backgroundColor="#3e3e3e"
+            value={config.announcements}
+            onValueChange={(value) => updateConfig("announcements", value)}
+          />
+        </View>
+
         {/* Paso Settings (Latin rounds containing the Paso Doble) */}
         {hasPaso && (
           <View style={styles.section}>
@@ -341,6 +371,12 @@ export const PerformanceSetupScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  switchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  switchText: { flex: 1, gap: 2 },
   container: {
     flex: 1,
   },
