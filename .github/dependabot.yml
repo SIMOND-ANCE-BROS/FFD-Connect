@@ -104,11 +104,9 @@ updates:
       # (touches src/auth). @nestjs/passport stays in the nestjs group.
       passport:
         patterns: ['passport', 'passport-*']
-      # Vendor families sharing transitives (@azure/core-*, google-gax).
+      # Vendor family sharing transitives (@azure/core-*).
       azure:
         patterns: ['@azure/*']
-      google-cloud:
-        patterns: ['@google-cloud/*']
       # Both 0.x (any minor is potentially breaking) and consumed together by
       # ValidationPipe on every DTO boundary, incl. HelloAsso webhooks.
       validation:
@@ -144,7 +142,6 @@ updates:
           - 'passport'
           - 'passport-*'
           - '@azure/*'
-          - '@google-cloud/*'
           - 'class-validator'
           - 'class-transformer'
           - 'reflect-metadata'
