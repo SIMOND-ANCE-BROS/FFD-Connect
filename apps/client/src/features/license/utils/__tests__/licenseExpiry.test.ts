@@ -112,12 +112,6 @@ describe("computeLicenseExpiry", () => {
       expect(Object.is(result.days, -0)).toBe(false);
     });
 
-    it("is expired 1 ms after validUntil", () => {
-      expect(computeLicenseExpiry(validUntil, new Date(end + 1)).status).toBe(
-        "expired",
-      );
-    });
-
     it("is still 'urgent' at the exact validUntil instant", () => {
       expect(computeLicenseExpiry(validUntil, new Date(end))).toEqual({
         status: "urgent",
@@ -148,6 +142,99 @@ describe("computeLicenseExpiry", () => {
       expect(
         computeLicenseExpiry(validUntil, new Date("2027-09-10T10:00:00Z")),
       ).toEqual({ status: "expired", days: -10 });
+    });
+  });
+
+  describe("validUntil at any hour: valid until the end of its Paris day (#255)", () => {
+    // Beta auto-licences: arbitrary hour, here 10:00 in Paris on August 31.
+    const anyHour = "2027-08-31T08:00:00Z";
+
+    it("stays 'urgent' (expires today) later the same Paris day", () => {
+      expect(
+        computeLicenseExpiry(anyHour, new Date("2027-08-31T15:00:00Z")),
+      ).toEqual({ status: "urgent", days: 0 });
+    });
+
+    it("is expired from the next Paris day", () => {
+      // 00:30 in Paris on September 1.
+      expect(
+        computeLicenseExpiry(anyHour, new Date("2027-08-31T22:30:00Z")),
+      ).toEqual({ status: "expired", days: -1 });
+    });
+
+    it("does not expire a legacy midnight-UTC date a day early", () => {
+      // 02:00 in Paris on August 31: valid for the whole of August 31.
+      expect(
+        computeLicenseExpiry(
+          "2027-08-31T00:00:00Z",
+          new Date("2027-08-31T20:00:00Z"),
+        ),
+      ).toEqual({ status: "urgent", days: 0 });
+    });
+  });
+
+  describe("daylight saving time", () => {
+    it("counts 3 days across the end of DST (October 2027)", () => {
+      // End of November 2 in Paris (CET, UTC+1), now October 30 (CEST).
+      expect(
+        computeLicenseExpiry(
+          "2027-11-02T22:59:59.999Z",
+          new Date("2027-10-30T10:00:00Z"),
+        ),
+      ).toEqual({ status: "urgent", days: 3 });
+    });
+
+    describe("around the start of DST (March 28, 2027)", () => {
+      // End of March 28 in Paris (CEST, UTC+2).
+      const validUntil = "2027-03-28T21:59:59.999Z";
+
+      it("has 1 day left at 23:30 in Paris the evening before (CET)", () => {
+        expect(
+          computeLicenseExpiry(validUntil, new Date("2027-03-27T22:30:00Z")),
+        ).toEqual({ status: "urgent", days: 1 });
+      });
+
+      it("expires today at 23:30 in Paris on March 28 (CEST)", () => {
+        expect(
+          computeLicenseExpiry(validUntil, new Date("2027-03-28T21:30:00Z")),
+        ).toEqual({ status: "urgent", days: 0 });
+      });
+
+      it("is expired at 00:30 in Paris on March 29", () => {
+        expect(
+          computeLicenseExpiry(validUntil, new Date("2027-03-28T22:30:00Z")),
+        ).toEqual({ status: "expired", days: -1 });
+      });
+    });
+  });
+
+  describe("fallback when the runtime cannot format Paris days", () => {
+    beforeEach(() => {
+      jest
+        .spyOn(Date.prototype, "toLocaleDateString")
+        .mockReturnValue("not-a-date");
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it("counts remaining days to the millisecond", () => {
+      expect(
+        computeLicenseExpiry(
+          "2027-08-31T12:00:00Z",
+          new Date("2027-08-29T00:00:00Z"),
+        ),
+      ).toEqual({ status: "urgent", days: 3 });
+    });
+
+    it("is expired right after validUntil, with at most -1 days", () => {
+      expect(
+        computeLicenseExpiry(
+          "2027-08-31T12:00:00Z",
+          new Date("2027-08-31T13:00:00Z"),
+        ),
+      ).toEqual({ status: "expired", days: -1 });
     });
   });
 });
