@@ -34,7 +34,9 @@ Domaines autorisés (en majuscules) :
 - Transverses : `RGPD`, `SÉCURITÉ`, `LÉGAL`, `RGAA`, `INFRA`, `CI`, `RELEASE`,
   `DÉPS`, `DOCS`, `QA`, `COÛT`
 
-Une epic porte le **type `Epic`** ; son titre nomme le thème (ex. `Licence dans Apple Wallet / Google Wallet`). Le préfixe `EPIC:` des anciennes epics est toléré mais n'est plus nécessaire.
+Une epic porte le **type `Epic`** ; son titre nomme le thème, **sans préfixe
+`EPIC:` ni `DOMAINE:`** (ex. `Licence dans Apple Wallet / Google Wallet`) : le
+type suffit à la distinguer, et les vues du Project la filtrent par type.
 
 ## 3. Description
 
@@ -123,6 +125,28 @@ documentant ici.
 
 On travaille d'abord dans le milestone ouvert le plus haut de la liste.
 
+**Description d'un milestone** — toujours ce format, dans cet ordre :
+
+```markdown
+🎯 Objectif : une phrase — ce qui est vrai pour l'utilisateur quand le milestone est fermé.
+
+✅ Critères de sortie :
+
+- condition vérifiable ;
+- …
+- aucun P<n> ouvert dans ce milestone.
+
+📦 Périmètre : les epics couvertes (#N Nom), en précisant le volet quand une epic est partagée entre milestones.
+
+🚫 Hors périmètre : ce qui est explicitement repoussé, et vers quel milestone.
+
+📅 Échéance : une date, ou la condition qui permettra de la fixer.
+```
+
+Quand le périmètre change (epic ajoutée ou repoussée), on met la description à
+jour dans la foulée ; un milestone se ferme quand ses critères de sortie sont
+tous remplis.
+
 ## 7. Relations
 
 | Relation                 | Outil GitHub                                     | Règle                                                                                                  |
@@ -176,6 +200,21 @@ passe `In Progress` à la main :
 
 Les champs `Milestone`, `Labels`, `Parent issue` et `Sub-issues progress` du
 Project se lisent depuis l'issue : on ne les double pas.
+
+**Vues du Project** — chacune répond à une question :
+
+| Vue                | Question                                    | Contenu                                                |
+| ------------------ | ------------------------------------------- | ------------------------------------------------------ |
+| 📋 Backlog         | Que reste-t-il à commencer ?                | `Todo` ouvertes, hors epics et icebox, par milestone   |
+| 🗂 Kanban          | Où en est chaque tâche ?                    | Colonnes par `Status`, hors epics et icebox            |
+| 🔥 Priorités P0/P1 | Qu'est-ce qui est urgent ?                  | Issues ouvertes `P0`/`P1`, par `Status`                |
+| 🗺 Roadmap         | Quand arrive quoi ?                         | Frise par milestone (dates = échéances des milestones) |
+| 🏁 Par milestone   | Qu'est-ce qui bloque la prochaine version ? | Issues ouvertes par milestone, triées par `Status`     |
+| 🧭 Epics           | Où en est chaque thème ?                    | Epics avec leur progression de sub-issues              |
+| 🧊 Icebox          | Quelles idées sont en attente ?             | Issues `icebox`                                        |
+
+Les vues ne montrent que le dépôt `FFD-Connect` (les cartes de l'ancien dépôt
+d'archive sont filtrées).
 
 ## 9. Fermer
 
