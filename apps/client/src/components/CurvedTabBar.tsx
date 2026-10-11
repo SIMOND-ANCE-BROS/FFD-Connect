@@ -360,7 +360,10 @@ const styles = StyleSheet.create({
   },
   floatingPill: {
     flexDirection: "row",
-    width: TAB_BAR_WIDTH,
+    // Relative, not the launch-time window width: on Android the app rotates
+    // (large screens), and a fixed width would overflow after a rotation.
+    // TAB_BAR_WIDTH only seeds the first layout; onLayout below re-measures.
+    width: "90%",
     height: 70,
     borderRadius: 35,
     alignItems: "center",

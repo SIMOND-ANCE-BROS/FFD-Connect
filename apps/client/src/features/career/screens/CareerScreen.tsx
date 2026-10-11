@@ -136,10 +136,7 @@ export const CareerScreen = ({ navigation }: Props) => {
       style={[styles.container, { backgroundColor: currentTheme.background }]}
       edges={["left", "right"]}
     >
-      <StatusBar
-        barStyle={currentTheme.statusBarStyle}
-        backgroundColor={currentTheme.background}
-      />
+      <StatusBar barStyle={currentTheme.statusBarStyle} />
 
       <ScrollView
         testID="career-scroll"
