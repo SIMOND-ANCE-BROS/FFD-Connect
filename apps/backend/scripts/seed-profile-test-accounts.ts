@@ -11,16 +11,19 @@
  *   (StoreReviewInterceptor, réponse 2xx sans écriture en base) et le
  *   back-office refuse de le supprimer ou de le désactiver.
  *
- * RENOMMAGE, jamais recréation : le compte est retrouvé par drapeau
- * `isStoreReview`, puis par le nouvel email, puis par l'ancien
- * (`licensee@test.com`) ; email et noms sont mis à jour en place, donc l'id, les
- * données de carrière et les sessions des relecteurs survivent. Idem pour le
- * club. Un conflit d'unicité (email ou nom de club déjà pris) est loggué et
- * met `process.exitCode = 1` sans rien casser.
+ * RENOMMAGE, jamais recréation : seul un compte portant le drapeau
+ * `isStoreReview` est mis à jour (un compte non marqué qui détient l'email
+ * cible ou l'ancien `licensee@test.com` est un CONFLIT : erreur, rien écrit —
+ * jamais d'élévation d'un compte tiers). Email et noms ne sont réécrits qu'à la
+ * migration depuis l'ancien email (une modification faite ensuite depuis le
+ * back-office n'est pas écrasée à chaque boot) ; l'id, les données de carrière
+ * et les sessions survivent. Idem pour le club (renommé s'il porte encore
+ * l'ancien nom). Un conflit d'unicité sur le nom de club est loggué
+ * (`process.exitCode = 1`) sans bloquer le compte.
  *
  * Son mot de passe suit le secret PROFILE_TEST_PASSWORD (variable
  * d'environnement de staging, connue des stores). Rotation : changer le secret
- * du serveur et redémarrer — ce seed réaligne le hash au boot — puis mettre à
+ * du serveur et redémarrer — ce seed réaligne le hash au boot et révoque les refresh tokens du compte — puis mettre à
  * jour App Store Connect ET Play Console le MÊME jour. Sans la variable, un
  * compte existant reste intact et un compte absent n'est pas créé.
  *
@@ -42,10 +45,11 @@ import {
   STORE_REVIEW_CLUB_LOOKUP_NAMES,
   STORE_REVIEW_FIRST_NAME,
   STORE_REVIEW_LAST_NAME,
-  pickStoreReviewUser,
+  pickStoreReviewClub,
   planClubRename,
   planPasswordUpdate,
   planUserRename,
+  resolveStoreReviewAccount,
 } from "./seed-profile-test-accounts.utils";
 
 const connectionString = process.env.DATABASE_URL;
@@ -99,48 +103,81 @@ function fail(message: string): void {
   process.exitCode = 1;
 }
 
-/** Finds (or creates) the club, renaming it in place. null = conflict. */
-async function ensureClub(): Promise<{ id: string; name: string } | null> {
+/**
+ * Finds (or creates) the club and renames it in place. A name conflict is
+ * reported (exitCode 1) but the club keeps its name: the account work goes on.
+ */
+async function ensureClub(): Promise<{ id: string; name: string }> {
   // Retrouvé par drapeau d'abord (un admin a pu le renommer depuis le
-  // back-office), sinon par nom (nouveau ou ancien).
-  const flagged = await prisma.club.findFirst({
-    where: { isStoreReview: true },
-    select: { id: true, name: true },
+  // back-office), sinon par nom (nouveau de préférence, puis ancien).
+  const rows = await prisma.club.findMany({
+    where: {
+      OR: [
+        { isStoreReview: true },
+        { name: { in: [...STORE_REVIEW_CLUB_LOOKUP_NAMES] } },
+      ],
+    },
+    select: { id: true, name: true, isStoreReview: true },
     orderBy: { createdAt: "asc" },
+    take: 10,
   });
-  const existing =
-    flagged ??
-    (await prisma.club.findFirst({
-      where: { name: { in: [...STORE_REVIEW_CLUB_LOOKUP_NAMES] } },
-      select: { id: true, name: true },
-      orderBy: { createdAt: "asc" },
-    }));
+  const existing = pickStoreReviewClub(rows);
   if (!existing) {
     return prisma.club.create({
       data: { name: STORE_REVIEW_CLUB_NAME, isStoreReview: true },
       select: { id: true, name: true },
     });
   }
-  const nameHolder = await prisma.club.findUnique({
-    where: { name: STORE_REVIEW_CLUB_NAME },
-    select: { id: true },
-  });
-  const plan = planClubRename(existing, nameHolder);
-  if (!plan.ok) {
-    fail(plan.error);
-    return null;
-  }
+  const nameHolder = rows.find((c) => c.name === STORE_REVIEW_CLUB_NAME);
+  const plan = planClubRename(existing, nameHolder ?? null);
+  if (!plan.ok) fail(plan.error);
   return prisma.club.update({
     where: { id: existing.id },
-    data: { ...plan.data, isStoreReview: true, disabledAt: null },
+    data: {
+      ...(plan.ok ? plan.data : {}),
+      isStoreReview: true,
+      disabledAt: null,
+    },
     select: { id: true, name: true },
   });
 }
 
 async function main() {
-  const club = await ensureClub();
-  if (!club) return;
+  const candidates = await prisma.user.findMany({
+    where: {
+      OR: [
+        { isStoreReview: true },
+        { email: { equals: STORE_REVIEW_EMAIL, mode: "insensitive" } },
+        { email: { equals: LEGACY_STORE_REVIEW_EMAIL, mode: "insensitive" } },
+      ],
+    },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      isStoreReview: true,
+      password: true,
+    },
+    orderBy: { createdAt: "asc" },
+    take: 10,
+  });
+  const decision = resolveStoreReviewAccount(candidates);
+  if (decision.kind === "conflict") {
+    // Never elevate an unflagged account that merely holds one of the emails.
+    fail(
+      `unflagged user(s) ${decision.ids.join(", ")} hold the store-review email; nothing written.`,
+    );
+    return;
+  }
+  if (decision.kind === "create" && !TEST_PASSWORD) {
+    fail(
+      `${STORE_REVIEW_EMAIL} is missing and PROFILE_TEST_PASSWORD is not set — account not created.`,
+    );
+    return;
+  }
 
+  const club = await ensureClub();
   const profile = {
     role: MAIN_ROLE,
     extraRoles: EXTRA_ROLES,
@@ -152,36 +189,11 @@ async function main() {
     // Un compte de validation désactivé = rejet du store.
     disabledAt: null,
   };
-  const candidates = await prisma.user.findMany({
-    where: {
-      OR: [
-        { isStoreReview: true },
-        {
-          email: {
-            in: [STORE_REVIEW_EMAIL, LEGACY_STORE_REVIEW_EMAIL],
-            mode: "insensitive",
-          },
-        },
-      ],
-    },
-    select: {
-      id: true,
-      email: true,
-      firstName: true,
-      lastName: true,
-      isStoreReview: true,
-      password: true,
-    },
-    take: 10,
-  });
-  const existing = pickStoreReviewUser(candidates);
 
   let user: { id: string } | null;
-  if (existing) {
-    const emailHolder = candidates.find(
-      (c) => c.email.trim().toLowerCase() === STORE_REVIEW_EMAIL,
-    );
-    const rename = planUserRename(existing, emailHolder ?? null);
+  if (decision.kind === "update") {
+    const existing = decision.user;
+    const rename = planUserRename(existing, null);
     if (!rename.ok) {
       fail(rename.error);
       return;
@@ -192,23 +204,35 @@ async function main() {
       : true;
     const rotate =
       planPasswordUpdate(TEST_PASSWORD, secretMatches) === "rotate";
-    user = await prisma.user.update({
-      where: { id: existing.id },
-      data: {
-        ...profile,
-        ...rename.data,
-        ...(rotate && TEST_PASSWORD
-          ? { password: await bcrypt.hash(TEST_PASSWORD, BCRYPT_ROUNDS) }
-          : {}),
-      },
-      select: { id: true },
-    });
+    const data = { ...profile, ...rename.data };
+    if (rotate && TEST_PASSWORD) {
+      // Hash + session revocation in ONE transaction: old credentials die.
+      const password = await bcrypt.hash(TEST_PASSWORD, BCRYPT_ROUNDS);
+      const [updated] = await prisma.$transaction([
+        prisma.user.update({
+          where: { id: existing.id },
+          data: { ...data, password },
+          select: { id: true },
+        }),
+        prisma.refreshToken.updateMany({
+          where: { userId: existing.id, revoked: false },
+          data: { revoked: true, revokedAt: new Date() },
+        }),
+      ]);
+      user = updated;
+      console.log("Store-review account: password rotated, sessions revoked.");
+    } else {
+      user = await prisma.user.update({
+        where: { id: existing.id },
+        data,
+        select: { id: true },
+      });
+    }
     if (Object.keys(rename.data).length > 0) {
       console.log(
         `Store-review account renamed in place (${existing.id}): ${Object.keys(rename.data).join(", ")}`,
       );
     }
-    if (rotate) console.log("Store-review account: password rotated.");
   } else {
     user = await createAccount(profile);
   }

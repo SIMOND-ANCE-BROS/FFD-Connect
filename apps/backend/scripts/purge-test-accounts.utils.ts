@@ -28,6 +28,7 @@ export const STORE_REVIEW_EMAIL = "demo@ffd.gabin-simond.fr";
  * the account in place, deleting it would change its id and end the
  * reviewers' sessions.
  */
+// TODO(2026-10): remove the LEGACY_* constants once staging is migrated (#347).
 export const LEGACY_STORE_REVIEW_EMAIL = "licensee@test.com";
 
 /** Fixed ids of seeded rows (`seed-scan-user-1`…). */
@@ -39,7 +40,10 @@ export const TEST_CLUB_NAMES: readonly string[] = ["Club Démo Bêta"];
 /** Club of the store-review account (seed-profile-test-accounts.ts): kept. */
 export const STORE_REVIEW_CLUB_NAME = "Club Démo FFD Connect";
 
-/** Former club name, kept excluded until the seed has renamed the club. */
+/**
+ * Former club name, looked up by the seed to rename the club in place.
+ * TODO(2026-10): remove once staging is migrated (#347).
+ */
 export const LEGACY_STORE_REVIEW_CLUB_NAME = "Club Test FFD";
 
 /** License numbers created by the staging seeds for the purged accounts. */
@@ -83,12 +87,6 @@ const TEST_CLUB_NAME_SET = new Set(
   TEST_CLUB_NAMES.map((n) => n.toLocaleLowerCase("fr")),
 );
 
-const STORE_REVIEW_CLUB_NAME_SET = new Set(
-  [STORE_REVIEW_CLUB_NAME, LEGACY_STORE_REVIEW_CLUB_NAME].map((n) =>
-    n.toLocaleLowerCase("fr"),
-  ),
-);
-
 /**
  * A seeded club goes only when none of its members survives the purge: a club
  * a real account was attached to (by hand, or a tester who picked it) stays.
@@ -100,9 +98,6 @@ export function selectTestClubs<T extends PurgeClubCandidate>(
   return clubs.filter(
     (club) =>
       !club.isStoreReview &&
-      !STORE_REVIEW_CLUB_NAME_SET.has(
-        club.name.trim().toLocaleLowerCase("fr"),
-      ) &&
       TEST_CLUB_NAME_SET.has(club.name.trim().toLocaleLowerCase("fr")) &&
       club.memberIds.every((id) => purgedUserIds.has(id)),
   );

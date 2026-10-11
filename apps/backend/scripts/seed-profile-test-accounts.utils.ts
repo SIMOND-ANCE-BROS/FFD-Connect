@@ -23,20 +23,32 @@ export interface StoreReviewUserRow {
   isStoreReview: boolean;
 }
 
+const norm = (e: string) => e.trim().toLowerCase();
+
+export type StoreReviewAccountDecision<T extends StoreReviewUserRow> =
+  | { kind: "update"; user: T }
+  | { kind: "create" }
+  | { kind: "conflict"; ids: string[] };
+
 /**
- * Picks the existing account: flag first, then the target email, then the
- * legacy email. `null` = nothing to rename (create, or skip).
+ * Only a FLAGGED (`isStoreReview`) account may be updated or elevated: the
+ * seed grants ADMIN + every role, so adopting an unflagged account that merely
+ * holds the target or legacy email would be account squatting. Unflagged
+ * holder(s) of either email = conflict (nothing written); create only when the
+ * flag and both emails are free.
  */
-export function pickStoreReviewUser<T extends StoreReviewUserRow>(
+export function resolveStoreReviewAccount<T extends StoreReviewUserRow>(
   rows: readonly T[],
-): T | null {
-  const norm = (e: string) => e.trim().toLowerCase();
-  return (
-    rows.find((r) => r.isStoreReview) ??
-    rows.find((r) => norm(r.email) === STORE_REVIEW_EMAIL) ??
-    rows.find((r) => norm(r.email) === LEGACY_STORE_REVIEW_EMAIL) ??
-    null
+): StoreReviewAccountDecision<T> {
+  const flagged = rows.find((r) => r.isStoreReview);
+  if (flagged) return { kind: "update", user: flagged };
+  const holders = rows.filter((r) =>
+    [STORE_REVIEW_EMAIL, LEGACY_STORE_REVIEW_EMAIL].includes(norm(r.email)),
   );
+  if (holders.length > 0) {
+    return { kind: "conflict", ids: holders.map((h) => h.id) };
+  }
+  return { kind: "create" };
 }
 
 export type RenamePlan<D> =
@@ -44,47 +56,71 @@ export type RenamePlan<D> =
   | { ok: false; error: string };
 
 /**
- * Fields to rewrite on the existing account so it matches the target identity.
- * `emailHolder` is whoever currently owns the target email (unique constraint):
- * another user = conflict, nothing is written.
+ * Identity fields are rewritten only when migrating from the legacy email, so
+ * a later back-office edit of the name/email is not reset at every boot.
+ * `emailHolder` is whoever owns the target email (unique constraint): another
+ * user = conflict, nothing is written.
  */
 export function planUserRename(
-  existing: Pick<StoreReviewUserRow, "id" | "email" | "firstName" | "lastName">,
+  existing: Pick<StoreReviewUserRow, "id" | "email">,
   emailHolder: { id: string } | null,
 ): RenamePlan<{ email: string; firstName: string; lastName: string }> {
-  const data: Partial<{ email: string; firstName: string; lastName: string }> =
-    {};
-  if (existing.email !== STORE_REVIEW_EMAIL) {
-    if (emailHolder && emailHolder.id !== existing.id) {
-      return {
-        ok: false,
-        error: `${STORE_REVIEW_EMAIL} already belongs to another user (${emailHolder.id}); store-review account ${existing.id} not renamed.`,
-      };
-    }
-    data.email = STORE_REVIEW_EMAIL;
+  if (norm(existing.email) !== LEGACY_STORE_REVIEW_EMAIL) {
+    return { ok: true, data: {} };
   }
-  if (existing.firstName !== STORE_REVIEW_FIRST_NAME) {
-    data.firstName = STORE_REVIEW_FIRST_NAME;
+  if (emailHolder && emailHolder.id !== existing.id) {
+    return {
+      ok: false,
+      error: `${STORE_REVIEW_EMAIL} already belongs to another user (${emailHolder.id}); store-review account ${existing.id} not renamed.`,
+    };
   }
-  if (existing.lastName !== STORE_REVIEW_LAST_NAME) {
-    data.lastName = STORE_REVIEW_LAST_NAME;
-  }
-  return { ok: true, data };
+  return {
+    ok: true,
+    data: {
+      email: STORE_REVIEW_EMAIL,
+      firstName: STORE_REVIEW_FIRST_NAME,
+      lastName: STORE_REVIEW_LAST_NAME,
+    },
+  };
+}
+
+export interface StoreReviewClubRow {
+  id: string;
+  name: string;
+  isStoreReview: boolean;
 }
 
 /**
- * Club found by flag (or legacy name): rename it to the target name unless
- * another club already holds that name (unique constraint).
+ * Flagged club first; otherwise, among unflagged clubs carrying the target or
+ * legacy name, the one already holding the target name.
+ */
+export function pickStoreReviewClub<T extends StoreReviewClubRow>(
+  rows: readonly T[],
+): T | null {
+  return (
+    rows.find((r) => r.isStoreReview) ??
+    rows.find((r) => r.name === STORE_REVIEW_CLUB_NAME) ??
+    rows.find((r) => r.name === LEGACY_STORE_REVIEW_CLUB_NAME) ??
+    null
+  );
+}
+
+/**
+ * Rename the club only when it still carries the legacy name, unless another
+ * club already holds the target name (unique constraint). A conflict is
+ * reported but must not stop the account work: the club keeps its name.
  */
 export function planClubRename(
   club: { id: string; name: string },
   nameHolder: { id: string } | null,
 ): RenamePlan<{ name: string }> {
-  if (club.name === STORE_REVIEW_CLUB_NAME) return { ok: true, data: {} };
+  if (club.name !== LEGACY_STORE_REVIEW_CLUB_NAME) {
+    return { ok: true, data: {} };
+  }
   if (nameHolder && nameHolder.id !== club.id) {
     return {
       ok: false,
-      error: `A club named "${STORE_REVIEW_CLUB_NAME}" already exists (${nameHolder.id}); store-review club ${club.id} not renamed.`,
+      error: `A club named "${STORE_REVIEW_CLUB_NAME}" already exists (${nameHolder.id}); store-review club ${club.id} keeps its name.`,
     };
   }
   return { ok: true, data: { name: STORE_REVIEW_CLUB_NAME } };

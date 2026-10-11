@@ -1,5 +1,4 @@
 import {
-  LEGACY_STORE_REVIEW_CLUB_NAME,
   LEGACY_STORE_REVIEW_EMAIL,
   STORE_REVIEW_CLUB_NAME,
   STORE_REVIEW_EMAIL,
@@ -93,7 +92,6 @@ describe("selectTestClubs", () => {
     const clubs = [
       club("c1", STORE_REVIEW_CLUB_NAME, [], true),
       club("c2", STORE_REVIEW_CLUB_NAME, []),
-      club("c4", LEGACY_STORE_REVIEW_CLUB_NAME, []),
       club("c3", "Club Démo Bêta", [], true),
     ];
     expect(selectTestClubs(clubs, new Set())).toEqual([]);

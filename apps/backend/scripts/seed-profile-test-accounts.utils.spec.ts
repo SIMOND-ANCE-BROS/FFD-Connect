@@ -1,13 +1,15 @@
 import {
+  LEGACY_STORE_REVIEW_CLUB_NAME,
   LEGACY_STORE_REVIEW_EMAIL,
   STORE_REVIEW_CLUB_NAME,
   STORE_REVIEW_EMAIL,
 } from "./purge-test-accounts.utils";
 import {
-  pickStoreReviewUser,
+  pickStoreReviewClub,
   planClubRename,
   planPasswordUpdate,
   planUserRename,
+  resolveStoreReviewAccount,
 } from "./seed-profile-test-accounts.utils";
 
 const row = (id: string, email: string, isStoreReview = false) => ({
@@ -18,36 +20,32 @@ const row = (id: string, email: string, isStoreReview = false) => ({
   isStoreReview,
 });
 
-describe("pickStoreReviewUser", () => {
-  it("prefers the flagged account, whatever its email", () => {
-    const rows = [
-      row("a", STORE_REVIEW_EMAIL),
-      row("b", "renamed@x.fr", true),
-      row("c", LEGACY_STORE_REVIEW_EMAIL),
-    ];
-    expect(pickStoreReviewUser(rows)?.id).toBe("b");
+describe("resolveStoreReviewAccount", () => {
+  it("updates the flagged account, whatever its email", () => {
+    const flagged = row("b", "renamed@x.fr", true);
+    const rows = [row("a", STORE_REVIEW_EMAIL), flagged];
+    expect(resolveStoreReviewAccount(rows)).toEqual({
+      kind: "update",
+      user: flagged,
+    });
   });
 
-  it("then the new email, then the legacy email", () => {
+  it("never adopts an unflagged holder of the new or legacy email", () => {
     expect(
-      pickStoreReviewUser([
-        row("c", LEGACY_STORE_REVIEW_EMAIL),
+      resolveStoreReviewAccount([
         row("a", ` ${STORE_REVIEW_EMAIL.toUpperCase()}`),
-      ])?.id,
-    ).toBe("a");
-    expect(pickStoreReviewUser([row("c", LEGACY_STORE_REVIEW_EMAIL)])?.id).toBe(
-      "c",
-    );
+        row("c", LEGACY_STORE_REVIEW_EMAIL),
+      ]),
+    ).toEqual({ kind: "conflict", ids: ["a", "c"] });
   });
 
-  it("returns null when nothing matches", () => {
-    expect(pickStoreReviewUser([row("z", "real@gmail.com")])).toBeNull();
-    expect(pickStoreReviewUser([])).toBeNull();
+  it("creates only when no flagged user and both emails are free", () => {
+    expect(resolveStoreReviewAccount([])).toEqual({ kind: "create" });
   });
 });
 
 describe("planUserRename", () => {
-  it("renames the legacy account in place", () => {
+  it("migrates the legacy account in place", () => {
     expect(planUserRename(row("a", LEGACY_STORE_REVIEW_EMAIL), null)).toEqual({
       ok: true,
       data: {
@@ -58,13 +56,15 @@ describe("planUserRename", () => {
     });
   });
 
-  it("is a no-op when already renamed", () => {
-    const done = {
-      ...row("a", STORE_REVIEW_EMAIL),
-      firstName: "Compte",
-      lastName: "Démo",
-    };
-    expect(planUserRename(done, { id: "a" })).toEqual({ ok: true, data: {} });
+  it("leaves an already migrated or edited account alone", () => {
+    expect(planUserRename(row("a", STORE_REVIEW_EMAIL), null)).toEqual({
+      ok: true,
+      data: {},
+    });
+    expect(planUserRename(row("a", "edited@x.fr"), null)).toEqual({
+      ok: true,
+      data: {},
+    });
   });
 
   it("refuses when another user holds the new email", () => {
@@ -76,23 +76,49 @@ describe("planUserRename", () => {
   });
 });
 
-describe("planClubRename", () => {
-  it("renames a legacy club", () => {
-    expect(planClubRename({ id: "c", name: "Club Test FFD" }, null)).toEqual({
-      ok: true,
-      data: { name: STORE_REVIEW_CLUB_NAME },
-    });
+describe("pickStoreReviewClub", () => {
+  const club = (id: string, name: string, isStoreReview = false) => ({
+    id,
+    name,
+    isStoreReview,
   });
 
-  it("does nothing when already named", () => {
+  it("prefers the flagged club", () => {
+    const rows = [club("a", STORE_REVIEW_CLUB_NAME), club("b", "X", true)];
+    expect(pickStoreReviewClub(rows)?.id).toBe("b");
+  });
+
+  it("prefers the club already holding the target name over the legacy", () => {
+    const rows = [
+      club("l", LEGACY_STORE_REVIEW_CLUB_NAME),
+      club("n", STORE_REVIEW_CLUB_NAME),
+    ];
+    expect(pickStoreReviewClub(rows)?.id).toBe("n");
+    expect(pickStoreReviewClub([rows[0]])?.id).toBe("l");
+    expect(pickStoreReviewClub([])).toBeNull();
+  });
+});
+
+describe("planClubRename", () => {
+  it("renames a legacy club", () => {
+    expect(
+      planClubRename({ id: "c", name: LEGACY_STORE_REVIEW_CLUB_NAME }, null),
+    ).toEqual({ ok: true, data: { name: STORE_REVIEW_CLUB_NAME } });
+  });
+
+  it("does nothing when already migrated or edited", () => {
     expect(
       planClubRename({ id: "c", name: STORE_REVIEW_CLUB_NAME }, { id: "c" }),
     ).toEqual({ ok: true, data: {} });
+    expect(planClubRename({ id: "c", name: "Edited" }, null)).toEqual({
+      ok: true,
+      data: {},
+    });
   });
 
-  it("refuses when another club holds the name", () => {
+  it("reports a conflict when another club holds the name", () => {
     const plan = planClubRename(
-      { id: "c", name: "Club Test FFD" },
+      { id: "c", name: LEGACY_STORE_REVIEW_CLUB_NAME },
       { id: "x" },
     );
     expect(plan.ok).toBe(false);
