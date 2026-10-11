@@ -58,12 +58,16 @@ export class NotificationPreferencesQueryService {
     roles: readonly string[],
   ): Promise<ResolvedNotificationPreference[]> {
     const stored = await this.prisma.notificationPreference.findMany({
-      where: { userId },
+      // Only configurable types are read: the bound below counts them, so a
+      // row of another type (a non-configurable value, or one made
+      // configurable by a later revision and left behind by a rollback) must
+      // not take the place of a real one. Deliberately NOT filtered by role:
+      // out-of-scope rows must survive the read.
+      where: { userId, type: { in: [...CONFIGURABLE_NOTIFICATION_TYPES] } },
       select: notificationPreferenceStateSelect,
       // Borne la lecture : au plus une ligne par valeur de l'enum, mais la
       // requête ne doit pas dépendre de cette garantie d'unicité pour rester
-      // bornée (cf. convention Prisma du dépôt). Volontairement NON filtrée par
-      // rôle : les lignes hors périmètre doivent survivre à la lecture.
+      // bornée (cf. convention Prisma du dépôt).
       take: CONFIGURABLE_NOTIFICATION_TYPES.length + 1,
     });
 
