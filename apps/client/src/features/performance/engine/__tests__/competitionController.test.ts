@@ -318,7 +318,9 @@ describe("competitionController", () => {
       await expect(engine.startPerformance()).resolves.toBe(false);
       expect(Alert.alert).toHaveBeenCalledWith(
         "Musiques manquantes",
-        expect.stringContaining("Jive — entre 42 et 44 MPM (1 hors tempo)"),
+        expect.stringContaining(
+          "Jive — entre 42 et 44 MPM (1 musique hors tempo)",
+        ),
       );
       expect(cacheTrack).not.toHaveBeenCalled();
     });

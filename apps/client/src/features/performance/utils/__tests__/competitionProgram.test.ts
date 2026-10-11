@@ -861,6 +861,16 @@ describe("selectTempoCompliant", () => {
     expect(kept.map((t) => t.id)).toEqual(["r-ok"]);
   });
 
+  it("keeps a track only when compliant for every dance its style matches", () => {
+    // "Tango Jive" matches both Tango (31-33) and Jive (42-44).
+    const kept = selectTempoCompliant([
+      track("both-ok-tango", "Tango Jive", 32),
+      track("both-ok-jive", "Tango Jive", 43),
+      track("neither", "Tango Jive", 50),
+    ]);
+    expect(kept).toEqual([]);
+  });
+
   it("drops tracks matching no competition dance", () => {
     expect(selectTempoCompliant([track("x", "Bachata", 30)])).toEqual([]);
   });
@@ -884,7 +894,8 @@ describe("validateProgram — regulation tempo", () => {
     ]);
     expect(describeValidation(v)).toBe(
       "Aucune musique au tempo réglementaire pour :\n" +
-        "• Tour 1 (Latines) : Jive — entre 42 et 44 MPM (2 hors tempo)",
+        "• Tour 1 (Latines) : Jive — entre 42 et 44 MPM (2 musiques hors tempo)\n" +
+        "Retirez ces danses du programme ou proposez une correction de tempo depuis la bibliothèque.",
     );
   });
 
@@ -908,7 +919,7 @@ describe("validateProgram — regulation tempo", () => {
     expect(text).toContain(
       "Aucune musique disponible pour :\n• Tour 1 (Latines) : Jive",
     );
-    expect(text).toContain("Rumba — entre 24 et 26 MPM (1 hors tempo)");
+    expect(text).toContain("Rumba — entre 24 et 26 MPM (1 musique hors tempo)");
   });
 
   it("defaults allTracks to the pool (no off-tempo without it)", () => {

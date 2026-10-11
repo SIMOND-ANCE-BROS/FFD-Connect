@@ -117,11 +117,12 @@ const COMPETITION_DANCES: readonly string[] = [
  * selectPasoPool so its « 3 clashs » fallback only sees in-range Paso tracks.
  */
 export const selectTempoCompliant = (tracks: TrackData[]): TrackData[] =>
-  tracks.filter((t) =>
-    COMPETITION_DANCES.some(
-      (d) => trackMatchesDance(t.style, d) && isTempoCompliant(t, d),
-    ),
-  );
+  tracks.filter((t) => {
+    const matched = COMPETITION_DANCES.filter((d) =>
+      trackMatchesDance(t.style, d),
+    );
+    return matched.length > 0 && matched.every((d) => isTempoCompliant(t, d));
+  });
 
 // --- Rounds -----------------------------------------------------------------
 
@@ -360,7 +361,9 @@ const describeOffTempo = (o: OffTempoDance): string => {
   const span = range ? ` — entre ${range.min} et ${range.max} MPM` : "";
   return `• Tour ${o.roundIndex} (${CATEGORY_LABELS[o.category]}) : ${danceLabel(
     o.dance,
-  )}${span} (${o.outOfRange} hors tempo)`;
+  )}${span} (${o.outOfRange} ${
+    o.outOfRange > 1 ? "musiques hors tempo" : "musique hors tempo"
+  })`;
 };
 
 /** French, user-facing description of the validation problems (or null). */
@@ -385,7 +388,9 @@ export const describeValidation = (v: ProgramValidation): string | null => {
     blocks.push(
       `Aucune musique au tempo réglementaire pour :\n${v.offTempo
         .map(describeOffTempo)
-        .join("\n")}`,
+        .join(
+          "\n",
+        )}\nRetirez ces danses du programme ou proposez une correction de tempo depuis la bibliothèque.`,
     );
   }
   return blocks.length > 0 ? blocks.join("\n\n") : null;

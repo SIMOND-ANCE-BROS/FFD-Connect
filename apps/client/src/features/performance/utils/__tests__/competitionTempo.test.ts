@@ -22,6 +22,21 @@ describe("competition tempo rules", () => {
     expect(tempoRange("Paso Doble")).toEqual({ min: 60, max: 62 });
   });
 
+  it.each([
+    ["Valse Lente", 28, 30],
+    ["Tango", 31, 33],
+    ["Valse Viennoise", 58, 60],
+    ["Slow Fox", 28, 30],
+    ["Quickstep", 50, 52],
+    ["Samba", 50, 52],
+    ["Cha-Cha-Cha", 30, 32],
+    ["Rumba", 24, 26],
+    ["Paso Doble", 60, 62],
+    ["Jive", 42, 44],
+  ])("%s ranges from %i to %i MPM", (dance, min, max) => {
+    expect(tempoRange(dance)).toEqual({ min, max });
+  });
+
   it("includes both bounds", () => {
     expect(isTempoCompliant(at(42), "Jive")).toBe(true);
     expect(isTempoCompliant(at(44), "Jive")).toBe(true);
