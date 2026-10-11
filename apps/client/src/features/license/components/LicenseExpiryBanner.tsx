@@ -4,7 +4,10 @@ import { Pressable, StyleSheet, View } from "react-native";
 
 import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
-import { computeLicenseExpiry } from "../utils/licenseExpiry";
+import {
+  computeLicenseExpiry,
+  formatLicenseExpiryCountdown,
+} from "../utils/licenseExpiry";
 
 interface LicenseExpiryBannerProps {
   /** Date d'expiration ISO brute (pas la chaîne `validUntil` déjà formatée). */
@@ -36,13 +39,10 @@ export const LicenseExpiryBanner: React.FC<LicenseExpiryBannerProps> = ({
   const color =
     status === "urgent" || status === "expired" ? theme.danger : theme.warning;
 
-  const remaining = days ?? 0;
   const message =
     status === "expired"
       ? "Votre licence a expiré"
-      : remaining === 0
-        ? "Votre licence expire aujourd'hui"
-        : `Votre licence expire dans ${remaining} jour${remaining > 1 ? "s" : ""}`;
+      : formatLicenseExpiryCountdown(days ?? 0);
 
   return (
     <Pressable

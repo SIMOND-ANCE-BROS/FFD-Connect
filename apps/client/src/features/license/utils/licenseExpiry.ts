@@ -77,3 +77,13 @@ export function computeLicenseExpiry(
   if (days <= WARNING_THRESHOLD_DAYS) return { status: "warning", days };
   return { status: "valid", days };
 }
+
+/**
+ * Libellé du compte à rebours d'une licence non expirée, partagé par la
+ * bannière de l'écran Licence et celle des Réglages (même formulation).
+ * @param days Jours restants renvoyés par `computeLicenseExpiry` (≥ 0).
+ */
+export function formatLicenseExpiryCountdown(days: number): string {
+  if (days <= 0) return "Votre licence expire aujourd'hui";
+  return `Votre licence expire dans ${days} jour${days > 1 ? "s" : ""}`;
+}

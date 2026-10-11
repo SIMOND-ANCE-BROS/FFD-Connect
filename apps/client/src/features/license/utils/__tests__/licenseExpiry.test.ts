@@ -1,4 +1,17 @@
-import { computeLicenseExpiry } from "../licenseExpiry";
+import {
+  computeLicenseExpiry,
+  formatLicenseExpiryCountdown,
+} from "../licenseExpiry";
+
+describe("formatLicenseExpiryCountdown", () => {
+  it.each([
+    [0, "Votre licence expire aujourd'hui"],
+    [1, "Votre licence expire dans 1 jour"],
+    [12, "Votre licence expire dans 12 jours"],
+  ])("formats %i day(s)", (days, expected) => {
+    expect(formatLicenseExpiryCountdown(days)).toBe(expected);
+  });
+});
 
 describe("computeLicenseExpiry", () => {
   const now = new Date("2026-01-01T00:00:00Z");
