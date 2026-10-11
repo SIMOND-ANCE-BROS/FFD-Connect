@@ -1,10 +1,10 @@
 import { act, fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 import { Alert } from "react-native";
+import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
 import { ClubService } from "../../../club/services/ClubService";
 import { HelloAssoModal } from "../HelloAssoModal";
-import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 
 jest.mock("../../../../context/ThemeContext");
 jest.mock("../../../club/services/ClubService", () => ({

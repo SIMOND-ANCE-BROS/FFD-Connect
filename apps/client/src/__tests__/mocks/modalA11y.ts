@@ -1,3 +1,5 @@
+import { StyleSheet } from "react-native";
+
 /**
  * Shared assertions for the "sibling backdrop" modal pattern (issue #356).
  *
@@ -17,10 +19,13 @@ interface HostNode {
 
 /**
  * Asserts that:
- * - the card is not an accessible element, nor nested in one (so its fields
- *   are reachable one by one by a screen reader);
- * - the backdrop is an accessible "button" with no child at all (it wraps
- *   nothing, in particular nothing interactive).
+ * - the card and its ancestors do not set `accessible={true}` (the prop a
+ *   Pressable / TouchableOpacity sets by default) and the card is not inside
+ *   the backdrop. Only the `accessible` prop is checked, not every other way
+ *   an element can group its children for a screen reader;
+ * - the backdrop is a "button" with no child at all;
+ * - the backdrop fills its container (absoluteFill) and comes before the
+ *   card branch in their common parent, so it is rendered underneath.
  */
 export function expectSiblingBackdrop(backdrop: HostNode, card: HostNode) {
   expect(card.props.accessible).not.toBe(true);
@@ -34,4 +39,32 @@ export function expectSiblingBackdrop(backdrop: HostNode, card: HostNode) {
 
   expect(backdrop.props.accessibilityRole).toBe("button");
   expect(backdrop.children).toHaveLength(0);
+
+  // absoluteFill: the backdrop covers the whole container.
+  expect(
+    StyleSheet.flatten(
+      backdrop.props.style as Parameters<typeof StyleSheet.flatten>[0],
+    ),
+  ).toEqual(
+    expect.objectContaining({
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+    }),
+  );
+
+  // Order: in the backdrop's parent, the backdrop precedes the branch that
+  // holds the card, so the card is drawn (and hit-tested) above it.
+  const container = backdrop.parent;
+  expect(container).not.toBeNull();
+  let cardBranch: HostNode | null = card;
+  while (cardBranch && cardBranch.parent !== container) {
+    cardBranch = cardBranch.parent;
+  }
+  expect(cardBranch).not.toBeNull();
+  const siblings = container?.children ?? [];
+  expect(siblings.indexOf(backdrop)).toBeGreaterThanOrEqual(0);
+  expect(siblings.indexOf(backdrop)).toBeLessThan(siblings.indexOf(cardBranch));
 }

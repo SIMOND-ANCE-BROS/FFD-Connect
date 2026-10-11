@@ -6,6 +6,7 @@ import {
 } from "@testing-library/react-native";
 import React from "react";
 import { Alert } from "react-native";
+import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { BackendService } from "../../../../services/BackendService";
 import {
   TrackCorrectionApi,
@@ -13,7 +14,6 @@ import {
 } from "../../../../services/api/track-correction-api";
 import { useLibrarySyncStore } from "../../../../stores/librarySync.store";
 import { PasoClashEditorModal } from "../PasoClashEditorModal";
-import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 
 jest.mock("../../../../services/api/track-correction-api", () => {
   const actual = jest.requireActual<

@@ -1,8 +1,8 @@
 import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
+import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { ThemeContext } from "../../../../context/ThemeContext";
 import { WdsfEntryModal } from "../WdsfEntryModal";
-import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 
 const themeMock = {
   theme: {

@@ -1,10 +1,10 @@
 import { act, fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 import { Alert } from "react-native";
+import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
 import { AuthService } from "../../../auth/services/AuthService";
 import { ChangePasswordModal } from "../ChangePasswordModal";
-import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 
 jest.mock("../../../../context/ThemeContext");
 jest.mock("../../../auth/services/AuthService", () => ({
