@@ -58,6 +58,9 @@ describe('installable back-office (#298)', () => {
     expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest" />');
     expect(html).toMatch(/<link rel="apple-touch-icon" sizes="180x180" href="([^"]+)"/);
     expect(pngSize('/icons/apple-touch-icon.png')).toBe('180x180');
+    expect(html).toContain(
+      '<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />',
+    );
     expect(html).toContain('name="apple-mobile-web-app-capable" content="yes"');
     expect(html).toContain('name="mobile-web-app-capable" content="yes"');
     expect(html).toContain('name="apple-mobile-web-app-title" content="FFD Admin"');
