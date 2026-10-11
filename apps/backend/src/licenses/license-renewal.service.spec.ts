@@ -186,6 +186,25 @@ describe("LicenseRenewalService", () => {
 
       expect(result).toBeNull();
     });
+
+    it("selects the decision the licensee is shown (#268)", async () => {
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue(null);
+
+      await service.getMyRenewalRequest("user-1");
+
+      const { select } = mockPrisma.licenseRenewalRequest.findFirst.mock
+        .calls[0][0] as { select: Record<string, unknown> };
+      expect(select).toEqual(
+        expect.objectContaining({
+          submittedAt: true,
+          rejectionReason: true,
+          reviewComment: true,
+        }),
+      );
+      // Who decided stays internal: the licensee hears from the federation.
+      expect(select).not.toHaveProperty("reviewedBy");
+      expect(select).not.toHaveProperty("reviewedById");
+    });
   });
 
   describe("uploadRenewalDocument", () => {
