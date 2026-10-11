@@ -4,6 +4,7 @@ export {
   computeSoloAgeGroup,
   computeCoupleAgeGroup,
   isCoupleEspoirEligible,
+  isEspoirAge,
   ESPOIR_AGE_GROUP,
   ESPOIR_MAX_AGE,
   ESPOIR_MIN_AGE,

@@ -449,6 +449,23 @@ describe("CompetitionRegistrationService", () => {
       level: null,
     };
 
+    // Beta report: an Adulte born in 2000 could enter an Espoir event with a
+    // partner typed by name (no account, so no partner birth date to check).
+    it("rejects an Espoir registration of a registrant over 20, partner by name only", async () => {
+      mockPrismaService.event.findUnique.mockResolvedValue(espoirEvent);
+      mockPrismaService.registration.findFirst.mockResolvedValue(null);
+      mockPrismaService.user.findUnique.mockResolvedValueOnce({
+        birthDate: new Date(2000, 4, 18),
+        ageGroup: "Adulte",
+      });
+
+      await expect(
+        service.register("e1", "u1", "Partenaire Inconnu", {
+          coupleAgeGroup: "Adulte",
+        }),
+      ).rejects.toThrow(/moins de 21 ans/);
+    });
+
     it("rejects an Espoir registration when the older partner is 21 or more", async () => {
       mockPrismaService.event.findUnique.mockResolvedValue(espoirEvent);
       mockPrismaService.registration.findFirst.mockResolvedValue(null);

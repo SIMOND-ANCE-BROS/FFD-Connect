@@ -4,6 +4,11 @@ import {
   type CompetitionLevelProfile,
 } from "../../common/competition-level";
 import {
+  ESPOIR_AGE_GROUP,
+  getReferenceYear,
+  isEspoirAge,
+} from "../../common/age-group";
+import {
   checkParticipationEligibility,
   type CompetitionTypeValue,
   type EventKindValue,
@@ -12,6 +17,8 @@ import {
 /** Profile fields an eligibility decision depends on. */
 export interface EligibilityProfile extends CompetitionLevelProfile {
   ageGroup: string | null;
+  /** Known for licence holders (derived from the licence number). */
+  birthDate?: Date | null;
 }
 
 /** Event fields an eligibility decision depends on. */
@@ -40,7 +47,7 @@ export interface EventEligibility {
  */
 export function evaluateEventEligibility(
   event: EligibilityEventInput,
-  competition: { competitionType?: string | null },
+  competition: { competitionType?: string | null; date?: Date | string | null },
   registrant: EligibilityProfile | null,
 ): EventEligibility {
   const registrantAgeGroup = registrant?.ageGroup?.trim() ?? "";
@@ -69,6 +76,18 @@ export function evaluateEventEligibility(
   if (!result.allowed) {
     return { eligible: false, reason: result.reason ?? "NOT_ALLOWED" };
   }
+
+  // Espoir is open to couple classes by age class (Youth, Adulte…), but the
+  // event is for 16–20 year-olds on 31 December: decided on the birth date
+  // when it is known (an Adulte born in 2000 is not « -21 »).
+  if (event.ageGroup === ESPOIR_AGE_GROUP && registrant.birthDate) {
+    const referenceYear = getReferenceYear(
+      competition.date ? new Date(competition.date) : null,
+    );
+    if (!isEspoirAge(new Date(registrant.birthDate), referenceYear)) {
+      return { eligible: false, reason: "ESPOIR_AGE" };
+    }
+  }
   return { eligible: true };
 }
 
@@ -81,6 +100,7 @@ export function evaluateEventEligibility(
 export function enrichCompetitionsForUser<
   T extends {
     competitionType?: string | null;
+    date?: Date | string | null;
     events: (EligibilityEventInput & { registrations: unknown[] })[];
   },
 >(
@@ -105,7 +125,7 @@ export function enrichCompetitionsForUser<
  */
 export function mapEventsWithEligibility<T extends EligibilityEventInput>(
   events: T[],
-  competition: { competitionType?: string | null },
+  competition: { competitionType?: string | null; date?: Date | string | null },
   registrant: EligibilityProfile | null,
 ): (T & { eligibility: EventEligibility })[] {
   return events.map((event) => ({
