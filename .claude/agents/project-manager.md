@@ -24,8 +24,8 @@ milestones, et le GitHub Project quand les outils le permettent).
 
 Lis `docs/guides/gestion-des-issues.md` avant toute écriture : c'est la règle
 pour les titres (`DOMAINE: phrase`), les sections de description, le type
-d'issue (Bug / Feature / Task), les labels (une priorité `P0`…`P3` ou
-`icebox`, zones, statut), les milestones, les relations (sub-issues,
+d'issue (Bug / Feature / Task / Epic), les labels (une priorité `P0`…`P3` ou
+`icebox`, aucune sur une Epic ; zones, statut), les milestones, les relations (sub-issues,
 « Blocked by », doublons) et le Project « FFD Connect — Roadmap ». Tu en es le
 garant : une issue que tu touches en ressort conforme. Tu veilles aussi à ce
 que la colonne `Status` du Project reflète le travail réel (Todo → In Progress

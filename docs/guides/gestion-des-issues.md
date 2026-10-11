@@ -91,7 +91,10 @@ remplacé par le type `Epic`.
 
 Chaque issue ouverte porte :
 
-1. **Une priorité** — exactement une, ou `icebox` à la place :
+1. **Une priorité** — exactement une, ou `icebox` à la place. **Exception : une
+   issue de type `Epic` n'a pas de priorité** (seulement un milestone, ou
+   `icebox`) ; l'urgence se lit sur ses sub-issues, et un P0 désigne toujours
+   une issue à traiter tout de suite :
 
    | Label    | Sens                                                                                   | Milestone                                         |
    | -------- | -------------------------------------------------------------------------------------- | ------------------------------------------------- |
