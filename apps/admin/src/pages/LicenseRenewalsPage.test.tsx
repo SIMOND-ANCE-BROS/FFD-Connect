@@ -1,3 +1,4 @@
+import { mockPhoneViewport } from '../test/viewport';
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -22,14 +23,25 @@ const row = (overrides: Record<string, unknown> = {}) => ({
   },
   reviewedBy: null,
   documents: [
-    { id: 'd1', type: 'MEDICAL_CERTIFICATE', createdAt: '2026-10-08T08:30:00.000Z' },
-    { id: 'd2', type: 'LICENSE_CERTIFICATE', createdAt: '2026-10-08T08:40:00.000Z' },
+    {
+      id: 'd1',
+      type: 'MEDICAL_CERTIFICATE',
+      createdAt: '2026-10-08T08:30:00.000Z',
+    },
+    {
+      id: 'd2',
+      type: 'LICENSE_CERTIFICATE',
+      createdAt: '2026-10-08T08:40:00.000Z',
+    },
   ],
   ...overrides,
 });
 
 const page = (data: object[]) => ({
-  data: { data, meta: { total: data.length, skip: 0, take: 50, hasMore: false } },
+  data: {
+    data,
+    meta: { total: data.length, skip: 0, take: 50, hasMore: false },
+  },
   error: undefined,
 });
 
@@ -66,6 +78,18 @@ function renderPage(path = '/license-renewals') {
 describe('LicenseRenewalsPage', () => {
   beforeEach(() => vi.restoreAllMocks());
 
+  it('opens a phone request card without loading its documents', async () => {
+    mockPhoneViewport();
+    vi.spyOn(sdk, 'adminLicenseRenewalsControllerList').mockResolvedValue(page([row()]) as never);
+    renderPage('/license-renewals?status=PENDING');
+    const link = await screen.findByRole('link', { name: /Eva Martin/ });
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(link).toHaveTextContent('FFD-123');
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    link.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByTestId('location')).toHaveTextContent('/license-renewals/r1?status=PENDING');
+  });
   it('lists the requests to process by default', async () => {
     const list = vi
       .spyOn(sdk, 'adminLicenseRenewalsControllerList')
@@ -75,7 +99,9 @@ describe('LicenseRenewalsPage', () => {
       'href',
       '/users/u1',
     );
-    expect(list).toHaveBeenCalledWith({ query: { status: 'PENDING', skip: 0, take: 50 } });
+    expect(list).toHaveBeenCalledWith({
+      query: { status: 'PENDING', skip: 0, take: 50 },
+    });
     expect(screen.getByText('FFD-123')).toBeInTheDocument();
     expect(screen.getByText('31/08/2026')).toBeInTheDocument();
     expect(screen.getByText('Certificat médical, Attestation de licence')).toBeInTheDocument();
@@ -100,7 +126,9 @@ describe('LicenseRenewalsPage', () => {
     await userEvent.click(screen.getByText('Refusées'));
     expect(await screen.findByText('Gabin S')).toBeInTheDocument();
     expect(screen.getByTestId('location')).toHaveTextContent('/license-renewals?status=REJECTED');
-    expect(list).toHaveBeenLastCalledWith({ query: { status: 'REJECTED', skip: 0, take: 50 } });
+    expect(list).toHaveBeenLastCalledWith({
+      query: { status: 'REJECTED', skip: 0, take: 50 },
+    });
   });
 
   it('opens a request', async () => {

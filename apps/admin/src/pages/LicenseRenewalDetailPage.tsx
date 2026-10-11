@@ -1,3 +1,4 @@
+import { PageHeader } from '../components/PageHeader';
 import {
   Alert,
   Anchor,
@@ -101,9 +102,13 @@ export function LicenseRenewalDetailPage() {
         Retour à la liste
       </Anchor>
       <Group justify="space-between">
-        <Title order={2}>
-          {r.user.firstName} {r.user.lastName}
-        </Title>
+        <PageHeader
+          title={
+            <>
+              {r.user.firstName} {r.user.lastName}
+            </>
+          }
+        />
         <Badge size="lg" variant="light" color={badge.color}>
           {badge.label}
         </Badge>

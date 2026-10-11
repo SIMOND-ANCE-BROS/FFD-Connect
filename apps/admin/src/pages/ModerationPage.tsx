@@ -18,7 +18,8 @@ import dayjs from 'dayjs';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { FilterPanel } from '../components/FilterPanel';
-import { ListSkeleton } from '../components/ListStates';
+import { EmptyState, ListSkeleton } from '../components/ListStates';
+import { RecordCard, RecordLine, RecordList } from '../components/RecordCard';
 import { PageHeader } from '../components/PageHeader';
 import { useIsMobile } from '../lib/useIsMobile';
 import type { TrackCorrectionReason, TrackCorrectionStatus } from '../api/generated/types.gen';
@@ -96,6 +97,7 @@ export function ModerationPage() {
   );
   const searchInput = (
     <TextInput
+      label="Rechercher une proposition"
       placeholder="Titre ou artiste"
       value={search}
       onChange={(e) => setSearch(e.currentTarget.value)}
@@ -156,66 +158,95 @@ export function ModerationPage() {
           <Text size="sm" c="dimmed">
             {total} proposition{total > 1 ? 's' : ''}
           </Text>
-          <Table.ScrollContainer minWidth={820}>
-            <Table striped highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Musique</Table.Th>
-                  <Table.Th>Motif</Table.Th>
-                  <Table.Th>Proposée par</Table.Th>
-                  <Table.Th>Date</Table.Th>
-                  <Table.Th>Changements proposés</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {total === 0 && (
-                  <Table.Tr>
-                    <Table.Td colSpan={5}>Aucune proposition</Table.Td>
-                  </Table.Tr>
-                )}
-                {(list.data?.data ?? []).map((c) => (
-                  <Table.Tr
-                    key={c.id}
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => navigate(`/moderation/${c.id}${locationSearch}`)}
-                  >
-                    <Table.Td>
-                      <Group gap="xs">
-                        <Anchor
-                          component={Link}
-                          to={`/moderation/${c.id}${locationSearch}`}
-                          size="sm"
-                          fw={500}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {c.track.title}
-                        </Anchor>
-                        {c.track.titleMasked && (
-                          <Badge size="xs" color="gray" variant="light">
-                            Titre masqué
-                          </Badge>
-                        )}
-                        {c.track.blacklisted && (
-                          <Badge size="xs" color="red" variant="light">
-                            Retirée
-                          </Badge>
-                        )}
-                      </Group>
-                      <Text size="xs" c="dimmed">
-                        {c.track.artist}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
+          {total === 0 ? (
+            <EmptyState title="Aucune proposition">
+              Aucune correction ne correspond à ces filtres.
+            </EmptyState>
+          ) : isMobile ? (
+            <RecordList>
+              {(list.data?.data ?? []).map((c) => (
+                <RecordCard
+                  key={c.id}
+                  to={`/moderation/${c.id}${locationSearch}`}
+                  title={c.track.title}
+                  badges={
+                    <>
                       <Badge variant="light">{REASON_LABELS[c.reason]}</Badge>
-                    </Table.Td>
-                    <Table.Td>{c.proposer?.name ?? 'Compte supprimé'}</Table.Td>
-                    <Table.Td>{dayjs(c.createdAt).format('DD/MM/YYYY HH:mm')}</Table.Td>
-                    <Table.Td>{proposalSummary(c.proposed)}</Table.Td>
+                      {c.track.titleMasked && <Badge color="gray">Titre masqué</Badge>}
+                      {c.track.blacklisted && <Badge color="red">Retirée</Badge>}
+                    </>
+                  }
+                >
+                  <Text size="sm" c="dimmed">
+                    {c.track.artist}
+                  </Text>
+                  <RecordLine label="Proposée par">
+                    {c.proposer?.name ?? 'Compte supprimé'}
+                  </RecordLine>
+                  <RecordLine label="Date">
+                    {dayjs(c.createdAt).format('DD/MM/YYYY HH:mm')}
+                  </RecordLine>
+                  <RecordLine label="Changements">{proposalSummary(c.proposed)}</RecordLine>
+                </RecordCard>
+              ))}
+            </RecordList>
+          ) : (
+            <Table.ScrollContainer minWidth={820}>
+              <Table striped highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Musique</Table.Th>
+                    <Table.Th>Motif</Table.Th>
+                    <Table.Th>Proposée par</Table.Th>
+                    <Table.Th>Date</Table.Th>
+                    <Table.Th>Changements proposés</Table.Th>
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+                </Table.Thead>
+                <Table.Tbody>
+                  {(list.data?.data ?? []).map((c) => (
+                    <Table.Tr
+                      key={c.id}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => navigate(`/moderation/${c.id}${locationSearch}`)}
+                    >
+                      <Table.Td>
+                        <Group gap="xs">
+                          <Anchor
+                            component={Link}
+                            to={`/moderation/${c.id}${locationSearch}`}
+                            size="sm"
+                            fw={500}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {c.track.title}
+                          </Anchor>
+                          {c.track.titleMasked && (
+                            <Badge size="xs" color="gray" variant="light">
+                              Titre masqué
+                            </Badge>
+                          )}
+                          {c.track.blacklisted && (
+                            <Badge size="xs" color="red" variant="light">
+                              Retirée
+                            </Badge>
+                          )}
+                        </Group>
+                        <Text size="xs" c="dimmed">
+                          {c.track.artist}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge variant="light">{REASON_LABELS[c.reason]}</Badge>
+                      </Table.Td>
+                      <Table.Td>{c.proposer?.name ?? 'Compte supprimé'}</Table.Td>
+                      <Table.Td>{dayjs(c.createdAt).format('DD/MM/YYYY HH:mm')}</Table.Td>
+                      <Table.Td>{proposalSummary(c.proposed)}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
           {total > PAGE_SIZE && (
             <Pagination
               total={Math.ceil(total / PAGE_SIZE)}

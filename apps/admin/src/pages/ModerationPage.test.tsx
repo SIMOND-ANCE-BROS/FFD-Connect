@@ -1,3 +1,4 @@
+import { mockPhoneViewport } from '../test/viewport';
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -12,7 +13,13 @@ const item = (overrides: Record<string, unknown> = {}) => ({
   trackId: 't1',
   reason: 'MPM',
   status: 'PENDING',
-  proposed: { title: null, artist: null, style: null, bpm: 62, clashTimecodes: null },
+  proposed: {
+    title: null,
+    artist: null,
+    style: null,
+    bpm: 62,
+    clashTimecodes: null,
+  },
   message: null,
   reviewComment: null,
   reviewedAt: null,
@@ -35,7 +42,10 @@ const item = (overrides: Record<string, unknown> = {}) => ({
 });
 
 const page = (data: object[]) => ({
-  data: { data, meta: { total: data.length, skip: 0, take: 50, hasMore: false } },
+  data: {
+    data,
+    meta: { total: data.length, skip: 0, take: 50, hasMore: false },
+  },
   error: undefined,
 });
 
@@ -83,6 +93,17 @@ describe('ModerationPage', () => {
     vi.restoreAllMocks();
   });
 
+  it('opens a phone card with filters preserved and no desktop table', async () => {
+    mockPhoneViewport();
+    vi.spyOn(sdk, 'trackCorrectionsControllerList').mockResolvedValue(page([item()]) as never);
+    renderPage('/moderation?status=PENDING');
+    const link = await screen.findByRole('link', { name: /España Cañí/ });
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(link).toHaveTextContent('Eva Martin');
+    link.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(screen.getByTestId('location')).toHaveTextContent('/moderation/c1?status=PENDING');
+  });
   it('shows the pending queue by default, with track, reason, proposer and summary', async () => {
     const spy = vi
       .spyOn(sdk, 'trackCorrectionsControllerList')
@@ -94,7 +115,9 @@ describe('ModerationPage', () => {
     expect(within(row).getByText('Eva Martin')).toBeInTheDocument();
     expect(within(row).getByText('MPM 62')).toBeInTheDocument();
     expect(screen.getByText('1 proposition')).toBeInTheDocument();
-    expect(spy).toHaveBeenCalledWith({ query: { status: 'PENDING', skip: 0, take: 50 } });
+    expect(spy).toHaveBeenCalledWith({
+      query: { status: 'PENDING', skip: 0, take: 50 },
+    });
   });
 
   it('flags a masked title next to the real one', async () => {
@@ -113,7 +136,13 @@ describe('ModerationPage', () => {
     renderPage('/moderation?status=APPROVED&reason=MPM,TITLE&q=paso&page=2');
     await screen.findByText('España Cañí');
     expect(spy).toHaveBeenCalledWith({
-      query: { status: 'APPROVED', reason: ['MPM', 'TITLE'], q: 'paso', skip: 50, take: 50 },
+      query: {
+        status: 'APPROVED',
+        reason: ['MPM', 'TITLE'],
+        q: 'paso',
+        skip: 50,
+        take: 50,
+      },
     });
     expect(screen.getByRole('checkbox', { name: 'MPM' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Titre' })).toBeChecked();
@@ -137,7 +166,12 @@ describe('ModerationPage', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Clashes paso' }));
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({
-        query: { status: 'REJECTED', reason: ['PASO_CLASH'], skip: 0, take: 50 },
+        query: {
+          status: 'REJECTED',
+          reason: ['PASO_CLASH'],
+          skip: 0,
+          take: 50,
+        },
       }),
     );
     expect(location()).toBe('/moderation?status=REJECTED&reason=PASO_CLASH');
@@ -152,7 +186,9 @@ describe('ModerationPage', () => {
     const input = screen.getByPlaceholderText('Titre ou artiste');
     await userEvent.type(input, 'p');
     await new Promise((resolve) => setTimeout(resolve, 450));
-    expect(spy).not.toHaveBeenCalledWith({ query: expect.objectContaining({ q: 'p' }) });
+    expect(spy).not.toHaveBeenCalledWith({
+      query: expect.objectContaining({ q: 'p' }),
+    });
     await userEvent.type(input, 'a');
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({
@@ -236,6 +272,8 @@ describe('ModerationPage', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: 'Toutes les musiques' }));
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/moderation'));
-    expect(list).toHaveBeenLastCalledWith({ query: { status: 'PENDING', skip: 0, take: 50 } });
+    expect(list).toHaveBeenLastCalledWith({
+      query: { status: 'PENDING', skip: 0, take: 50 },
+    });
   });
 });

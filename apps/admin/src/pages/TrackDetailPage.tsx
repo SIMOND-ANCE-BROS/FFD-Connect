@@ -1,3 +1,4 @@
+import { PageHeader } from '../components/PageHeader';
 import {
   Alert,
   Anchor,
@@ -198,7 +199,7 @@ function TrackEditor({ id }: { id: string }) {
       </Anchor>
       <Group justify="space-between">
         <Group>
-          <Title order={2}>{t.title}</Title>
+          <PageHeader title={t.title} />
           {t.titleMasked && (
             <Badge color="gray" variant="light">
               Titre masqué

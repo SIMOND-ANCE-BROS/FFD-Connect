@@ -1,4 +1,6 @@
+import { PageHeader } from '../components/PageHeader';
 import {
+  Fieldset,
   Alert,
   Button,
   Card,
@@ -172,7 +174,11 @@ export function UserDetailPage() {
         color: 'red',
         message: protectedActionError(
           e,
-          { isStoreReview: user.data?.isStoreReview === true, target: 'user', action: 'disable' },
+          {
+            isStoreReview: user.data?.isStoreReview === true,
+            target: 'user',
+            action: 'disable',
+          },
           'Changement de statut impossible',
         ),
       }),
@@ -232,23 +238,24 @@ export function UserDetailPage() {
 
   return (
     <Stack>
-      <Group justify="space-between">
-        <Title order={2}>
-          {u.firstName} {u.lastName}
-        </Title>
-        <Group>
-          {canResend && (
-            <Button variant="light" loading={resend.isPending} onClick={() => resend.mutate()}>
-              Renvoyer l'invitation
-            </Button>
-          )}
-          {!isSelf && (
-            <Button variant="light" color={disabled ? 'green' : 'red'} onClick={openStatus}>
-              {disabled ? 'Réactiver' : 'Désactiver'}
-            </Button>
-          )}
-        </Group>
-      </Group>
+      <PageHeader
+        title={`${u.firstName} ${u.lastName}`}
+        description="Identité, parcours sportif et accès au compte."
+        actions={
+          <>
+            {canResend && (
+              <Button variant="light" loading={resend.isPending} onClick={() => resend.mutate()}>
+                Renvoyer l'invitation
+              </Button>
+            )}
+            {!isSelf && (
+              <Button variant="light" color={disabled ? 'green' : 'red'} onClick={openStatus}>
+                {disabled ? 'Réactiver' : 'Désactiver'}
+              </Button>
+            )}
+          </>
+        }
+      />
       {storeReview && <StoreReviewNotice target="user" />}
       {disabled && (
         <Alert color="red" title="Compte désactivé">
@@ -278,98 +285,113 @@ export function UserDetailPage() {
         </SimpleGrid>
       </Card>
       <form onSubmit={onSubmit}>
-        <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          <TextInput label="Prénom" withAsterisk {...form.getInputProps('firstName')} />
-          <TextInput label="Nom" withAsterisk {...form.getInputProps('lastName')} />
-          <Select
-            label="Club"
-            clearable
-            searchable
-            data={(clubs.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
-            {...form.getInputProps('clubId')}
-          />
-          <Select
-            label="Catégorie"
-            clearable
-            data={withLegacy(ref.data.categories, initial.category, formatDiscipline)}
-            {...form.getInputProps('category')}
-          />
-          <Select
-            label="Classe d'âge"
-            clearable
-            searchable
-            data={withLegacy(ref.data.ageGroups, initial.ageGroup)}
-            {...form.getInputProps('ageGroup')}
-          />
-          <Select
-            label="Niveau Latines"
-            clearable
-            data={withLegacy(ref.data.competitionLevels, initial.competitionLevelLatin)}
-            description={legacyLevelHint}
-            {...form.getInputProps('competitionLevelLatin')}
-          />
-          <Select
-            label="Niveau Standards"
-            clearable
-            data={withLegacy(ref.data.competitionLevels, initial.competitionLevelStandard)}
-            description={legacyLevelHint}
-            {...form.getInputProps('competitionLevelStandard')}
-          />
-          <Select
-            label="Passeport Latine"
-            clearable
-            data={ref.data.passportLevels}
-            {...form.getInputProps('passportLevelLatin')}
-          />
-          <Select
-            label="Passeport Standard"
-            clearable
-            data={ref.data.passportLevels}
-            {...form.getInputProps('passportLevelStandard')}
-          />
-          <NumberInput
-            label="Classement national"
-            min={1}
-            max={100000}
-            allowDecimal={false}
-            {...form.getInputProps('nationalRanking')}
-          />
-          <Select
-            label="Rôle"
-            data={ref.data.roles}
-            disabled={isSelf}
-            description={isSelf ? 'Vous ne pouvez pas modifier votre propre rôle' : undefined}
-            {...form.getInputProps('role')}
-            onChange={(v) => {
-              form.setFieldValue('role', v ?? '');
-              form.setFieldValue(
-                'extraRoles',
-                form.values.extraRoles.filter((r) => r !== v),
-              );
-            }}
-          />
-          <Checkbox.Group
-            label="Rôles supplémentaires"
-            description="Droits cumulés avec le rôle principal"
-            {...form.getInputProps('extraRoles')}
-          >
-            <Group mt="xs">
-              {(Object.keys(ROLE_LABELS) as UserRole[])
-                .filter((r) => r !== form.values.role)
-                .map((r) => (
-                  <Checkbox
-                    key={r}
-                    value={r}
-                    label={ROLE_LABELS[r]}
-                    disabled={isSelf && r === 'ADMIN' && u.role !== 'ADMIN'}
-                  />
-                ))}
-            </Group>
-          </Checkbox.Group>
-        </SimpleGrid>
-        <Group mt="md">
-          <Button type="submit">Enregistrer</Button>
-        </Group>
+        <Stack>
+          <Fieldset legend="Identité et club">
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+              <TextInput label="Prénom" withAsterisk {...form.getInputProps('firstName')} />
+              <TextInput label="Nom" withAsterisk {...form.getInputProps('lastName')} />
+              <Select
+                label="Club"
+                clearable
+                searchable
+                data={(clubs.data ?? []).map((c) => ({
+                  value: c.id,
+                  label: c.name,
+                }))}
+                {...form.getInputProps('clubId')}
+              />
+            </SimpleGrid>
+          </Fieldset>
+          <Fieldset legend="Parcours sportif">
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+              <Select
+                label="Catégorie"
+                clearable
+                data={withLegacy(ref.data.categories, initial.category, formatDiscipline)}
+                {...form.getInputProps('category')}
+              />
+              <Select
+                label="Classe d'âge"
+                clearable
+                searchable
+                data={withLegacy(ref.data.ageGroups, initial.ageGroup)}
+                {...form.getInputProps('ageGroup')}
+              />
+              <Select
+                label="Niveau Latines"
+                clearable
+                data={withLegacy(ref.data.competitionLevels, initial.competitionLevelLatin)}
+                description={legacyLevelHint}
+                {...form.getInputProps('competitionLevelLatin')}
+              />
+              <Select
+                label="Niveau Standards"
+                clearable
+                data={withLegacy(ref.data.competitionLevels, initial.competitionLevelStandard)}
+                description={legacyLevelHint}
+                {...form.getInputProps('competitionLevelStandard')}
+              />
+              <Select
+                label="Passeport Latine"
+                clearable
+                data={ref.data.passportLevels}
+                {...form.getInputProps('passportLevelLatin')}
+              />
+              <Select
+                label="Passeport Standard"
+                clearable
+                data={ref.data.passportLevels}
+                {...form.getInputProps('passportLevelStandard')}
+              />
+              <NumberInput
+                label="Classement national"
+                min={1}
+                max={100000}
+                allowDecimal={false}
+                {...form.getInputProps('nationalRanking')}
+              />
+            </SimpleGrid>
+          </Fieldset>
+          <Fieldset legend="Rôles et permissions">
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+              <Select
+                label="Rôle"
+                data={ref.data.roles}
+                disabled={isSelf}
+                description={isSelf ? 'Vous ne pouvez pas modifier votre propre rôle' : undefined}
+                {...form.getInputProps('role')}
+                onChange={(v) => {
+                  form.setFieldValue('role', v ?? '');
+                  form.setFieldValue(
+                    'extraRoles',
+                    form.values.extraRoles.filter((r) => r !== v),
+                  );
+                }}
+              />
+              <Checkbox.Group
+                label="Rôles supplémentaires"
+                description="Droits cumulés avec le rôle principal"
+                {...form.getInputProps('extraRoles')}
+              >
+                <Group mt="xs">
+                  {(Object.keys(ROLE_LABELS) as UserRole[])
+                    .filter((r) => r !== form.values.role)
+                    .map((r) => (
+                      <Checkbox
+                        key={r}
+                        value={r}
+                        label={ROLE_LABELS[r]}
+                        disabled={isSelf && r === 'ADMIN' && u.role !== 'ADMIN'}
+                      />
+                    ))}
+                </Group>
+              </Checkbox.Group>
+            </SimpleGrid>
+          </Fieldset>
+          <Group mt="md">
+            <Button type="submit">Enregistrer</Button>
+          </Group>
+        </Stack>
       </form>
 
       <Modal
@@ -452,7 +474,11 @@ export function UserDetailPage() {
             <Alert color="red">
               {protectedActionError(
                 remove.error,
-                { isStoreReview: storeReview, target: 'user', action: 'delete' },
+                {
+                  isStoreReview: storeReview,
+                  target: 'user',
+                  action: 'delete',
+                },
                 'Suppression impossible',
               )}
             </Alert>

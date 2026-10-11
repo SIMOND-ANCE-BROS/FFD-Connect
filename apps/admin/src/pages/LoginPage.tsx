@@ -22,7 +22,9 @@ import { UNAVAILABLE_MESSAGE } from '../lib/apiError';
 import { isAdmin, type SessionUser, useSession } from '../session/sessionStore';
 
 // The login response has no Swagger DTO for `roles` (lot 1c): read it defensively.
-type LoginUser = NonNullable<AuthControllerLoginResponse['user']> & { roles?: unknown };
+type LoginUser = NonNullable<AuthControllerLoginResponse['user']> & {
+  roles?: unknown;
+};
 
 const toRoles = (roles: unknown): string[] | undefined =>
   Array.isArray(roles) && roles.every((r) => typeof r === 'string') ? roles : undefined;
@@ -99,7 +101,7 @@ export function LoginPage() {
         px="md"
         pt="calc(3rem + env(safe-area-inset-top))"
         pb={88}
-        style={{ borderBottom: '3px solid var(--app-accent)' }}
+        style={{ borderBottom: '1px solid rgba(255,255,255,0.15)' }}
       >
         <Stack align="center" gap={6}>
           <Image src="/icons/icon-192.png" alt="" w={64} h={64} radius="md" />
