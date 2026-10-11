@@ -93,6 +93,42 @@ describe("NotificationHandler", () => {
       });
     });
 
+    it("opens the licence renewal screen from a renewal decision push (#269)", () => {
+      notificationHandler.setupNotificationListeners();
+
+      mockOnOpenedHandler?.({
+        data: {
+          type: "LICENSE_RENEWAL_DECISION",
+          requestId: "req-1",
+          status: "APPROVED",
+        },
+      });
+
+      expect(mockSetPendingDeepLink).toHaveBeenCalledWith({
+        screen: "LicenseRenewal",
+        params: undefined,
+      });
+    });
+
+    it("opens the licence renewal screen when the decision push launched the app (#269)", async () => {
+      mockInitialNotification = Promise.resolve({
+        data: {
+          type: "LICENSE_RENEWAL_DECISION",
+          requestId: "req-1",
+          status: "REJECTED",
+        },
+      } as MockNotificationMessage);
+
+      notificationHandler.setupNotificationListeners();
+      await mockInitialNotification;
+      await Promise.resolve();
+
+      expect(mockSetPendingDeepLink).toHaveBeenCalledWith({
+        screen: "LicenseRenewal",
+        params: undefined,
+      });
+    });
+
     // L'utilisateur a tapé : il doit arriver quelque part, ne serait-ce que là
     // où la notification est lisible en entier.
     it("ouvre le centre de notifications quand la charge utile ne désigne rien", () => {

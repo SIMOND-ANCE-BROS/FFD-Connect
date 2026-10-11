@@ -22,6 +22,28 @@ describe("notificationTargetOf", () => {
     });
   });
 
+  it("opens the licence renewal screen on a renewal decision (#269)", () => {
+    for (const status of ["APPROVED", "REJECTED"]) {
+      expect(
+        notificationTargetOf({
+          type: "LICENSE_RENEWAL_DECISION",
+          requestId: "req-1",
+          status,
+        }),
+      ).toEqual({ screen: "LicenseRenewal", params: undefined });
+    }
+  });
+
+  // Moderation lives in the back-office: no mobile screen to open.
+  it("designates nothing for the administrators' renewal to review", () => {
+    expect(
+      notificationTargetOf({
+        type: "LICENSE_RENEWAL_TO_REVIEW",
+        requestId: "req-1",
+      }),
+    ).toBeNull();
+  });
+
   /**
    * `null` n'est pas un échec : une notification de test, un signalement de
    * musique ou un partenariat ne pointent vers aucun écran. Les deux appelants

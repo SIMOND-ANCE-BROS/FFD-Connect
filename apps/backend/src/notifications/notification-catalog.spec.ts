@@ -97,19 +97,6 @@ describe("catalogue des notifications", () => {
       );
     });
 
-    it("keeps the licence renewal types dormant until their producer ships (#269)", () => {
-      // Configurable before anything emits them, they would be switches with
-      // no effect, and a toggle would write an enum value the rollback image
-      // cannot read.
-      for (const type of [
-        NotificationType.LICENSE_RENEWAL_TO_REVIEW,
-        NotificationType.LICENSE_RENEWAL_DECISION,
-      ]) {
-        expect(isConfigurable(type)).toBe(false);
-        expect(CONFIGURABLE_NOTIFICATION_TYPES).not.toContain(type);
-      }
-    });
-
     it("expose tous les autres types, dans l'ordre de déclaration de l'enum", () => {
       // L'ordre est le contrat d'affichage de l'écran de réglages.
       expect(CONFIGURABLE_NOTIFICATION_TYPES).toEqual([
@@ -119,7 +106,9 @@ describe("catalogue des notifications", () => {
         NotificationType.CLUB_MEMBER_REGISTRATION,
         NotificationType.CLUB_PARTNERSHIP,
         NotificationType.TRACK_REPORT,
+        NotificationType.LICENSE_RENEWAL_TO_REVIEW,
         NotificationType.TRACK_CORRECTION_DECISION,
+        NotificationType.LICENSE_RENEWAL_DECISION,
       ]);
     });
   });
@@ -151,7 +140,7 @@ describe("catalogue des notifications", () => {
       [NotificationType.CLUB_PARTNERSHIP]: [UserRole.CLUB],
       // reportTrack : where { role: ADMIN }
       [NotificationType.TRACK_REPORT]: [UserRole.ADMIN],
-      // Licence renewal moderation is an administrator's job.
+      // notifyToReview : withActiveRole(ADMIN)
       [NotificationType.LICENSE_RENEWAL_TO_REVIEW]: [UserRole.ADMIN],
       // Destinataire = correction.proposedById, aucun filtre de rôle.
       [NotificationType.TRACK_CORRECTION_DECISION]: [
@@ -209,6 +198,7 @@ describe("catalogue des notifications", () => {
         NotificationType.COMPETITION_RESULTS,
         NotificationType.NEW_COMPETITION,
         NotificationType.TRACK_CORRECTION_DECISION,
+        NotificationType.LICENSE_RENEWAL_DECISION,
       ]);
       // Sous-suite de l'ordre global, jamais une réorganisation.
       expect(forLicensee).toEqual(

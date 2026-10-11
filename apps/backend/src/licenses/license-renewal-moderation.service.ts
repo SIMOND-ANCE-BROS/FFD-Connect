@@ -10,7 +10,7 @@ import {
 } from "@prisma/client";
 import { AdminAuditService } from "../admin/admin-audit.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { licenseRenewalStatusSelect } from "../utils/prisma-selects";
+import { licenseRenewalStatusOwnerSelect } from "../utils/prisma-selects";
 import {
   AdminLicenseRenewalDetailDto,
   ApproveLicenseRenewalDto,
@@ -22,6 +22,7 @@ import {
   renewalAlreadyDecided,
 } from "./license-renewal-approval";
 import { LicenseRenewalModerationQueryService } from "./license-renewal-moderation.query-service";
+import { LicenseRenewalNotificationService } from "./license-renewal-notification.service";
 
 /** A refused medical certificate is purged at most this long after the decision (#19). */
 export const REJECTED_CERTIFICATE_RETENTION_DAYS = 30;
@@ -37,6 +38,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * The audit row carries the status and, for an approval, the granted validity
  * — never the reason code (`MEDICAL_RESTRICTION` is health data), never the
  * comment, never anything read on a document.
+ *
+ * Once the transaction committed, the licensee is notified of the decision
+ * (LICENSE_RENEWAL_DECISION, #269), fire-and-forget: a notification failure
+ * never fails nor delays the decision.
  */
 @Injectable()
 export class LicenseRenewalModerationService {
@@ -46,6 +51,7 @@ export class LicenseRenewalModerationService {
     private readonly prisma: PrismaService,
     private readonly audit: AdminAuditService,
     private readonly query: LicenseRenewalModerationQueryService,
+    private readonly notifier: LicenseRenewalNotificationService,
   ) {}
 
   async approve(
@@ -53,10 +59,10 @@ export class LicenseRenewalModerationService {
     requestId: string,
     dto: ApproveLicenseRenewalDto,
   ): Promise<AdminLicenseRenewalDetailDto> {
-    await this.assertPending(requestId);
+    const { userId } = await this.assertPending(requestId);
     const now = new Date();
-    await this.prisma.$transaction(async (tx) => {
-      const result = await approvePendingRenewal(tx, requestId, {
+    const result = await this.prisma.$transaction(async (tx) => {
+      const approval = await approvePendingRenewal(tx, requestId, {
         reviewerId: adminId,
         licenseNumber: dto.licenseNumber,
         now,
@@ -69,11 +75,16 @@ export class LicenseRenewalModerationService {
         before: { status: LicenseRenewalStatus.PENDING },
         after: {
           status: LicenseRenewalStatus.APPROVED,
-          validUntil: result.validUntil.toISOString(),
+          validUntil: approval.validUntil.toISOString(),
         },
       });
+      return approval;
     });
     this.logger.log(`Licence renewal ${requestId} approved by ${adminId}`);
+    void this.notifier.notifyDecision(userId, requestId, {
+      status: LicenseRenewalStatus.APPROVED,
+      validUntil: result.validUntil,
+    });
     return this.query.detailAfterDecision(requestId);
   }
 
@@ -82,7 +93,7 @@ export class LicenseRenewalModerationService {
     requestId: string,
     dto: RejectLicenseRenewalDto,
   ): Promise<AdminLicenseRenewalDetailDto> {
-    await this.assertPending(requestId);
+    const { userId } = await this.assertPending(requestId);
     const now = new Date();
     const purgeDeadline = new Date(
       now.getTime() + REJECTED_CERTIFICATE_RETENTION_DAYS * DAY_MS,
@@ -138,18 +149,27 @@ export class LicenseRenewalModerationService {
       });
     });
     this.logger.log(`Licence renewal ${requestId} rejected by ${adminId}`);
+    // Neither the reason nor the comment reaches the notification: both may
+    // describe health data, and a push outlives the retention purge.
+    void this.notifier.notifyDecision(userId, requestId, {
+      status: LicenseRenewalStatus.REJECTED,
+    });
     return this.query.detailAfterDecision(requestId);
   }
 
-  /** 404 for an unknown request, 409 for one no longer PENDING. */
-  private async assertPending(requestId: string): Promise<void> {
+  /**
+   * 404 for an unknown request, 409 for one no longer PENDING. Returns the
+   * licensee, to be notified of the decision.
+   */
+  private async assertPending(requestId: string): Promise<{ userId: string }> {
     const request = await this.prisma.licenseRenewalRequest.findUnique({
       where: { id: requestId },
-      select: licenseRenewalStatusSelect,
+      select: licenseRenewalStatusOwnerSelect,
     });
     if (!request)
       throw new NotFoundException("Demande de renouvellement non trouvée");
     if (request.status !== LicenseRenewalStatus.PENDING)
       throw renewalAlreadyDecided();
+    return { userId: request.userId };
   }
 }

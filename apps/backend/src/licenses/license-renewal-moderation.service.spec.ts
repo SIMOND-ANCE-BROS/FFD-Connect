@@ -9,12 +9,14 @@ import {
 } from "@prisma/client";
 import { AdminAuditService } from "../admin/admin-audit.service";
 import type { AuditEntry } from "../admin/dto/admin-audit.dto";
+import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { LicenseRenewalModerationQueryService } from "./license-renewal-moderation.query-service";
 import {
   LicenseRenewalModerationService,
   REJECTED_CERTIFICATE_RETENTION_DAYS,
 } from "./license-renewal-moderation.service";
+import { LicenseRenewalNotificationService } from "./license-renewal-notification.service";
 
 const NOW = new Date("2027-03-15T10:00:00.000Z");
 const DETAIL = { id: "req-1", status: "APPROVED" };
@@ -31,11 +33,24 @@ describe("LicenseRenewalModerationService", () => {
   };
   const audit = { record: jest.fn() };
   const query = { detailAfterDecision: jest.fn() };
+  const notifications = { sendToUser: jest.fn(), sendToUsers: jest.fn() };
+  // The real notifier over a mocked NotificationsService: the
+  // fire-and-forget contract is part of what is tested here.
+  const notifier = new LicenseRenewalNotificationService(
+    prisma as unknown as PrismaService,
+    notifications as unknown as NotificationsService,
+  );
   const service = new LicenseRenewalModerationService(
     prisma as unknown as PrismaService,
     audit as unknown as AdminAuditService,
     query as unknown as LicenseRenewalModerationQueryService,
+    notifier,
   );
+
+  /** Lets the fire-and-forget notification settle. */
+  const flushNotifications = async () => {
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  };
 
   const approvalTarget = {
     status: LicenseRenewalStatus.PENDING,
@@ -69,6 +84,11 @@ describe("LicenseRenewalModerationService", () => {
     prisma.license.upsert.mockResolvedValue({ id: "L1" });
     audit.record.mockResolvedValue(undefined);
     query.detailAfterDecision.mockResolvedValue(DETAIL);
+    notifications.sendToUser.mockResolvedValue({
+      sent: 1,
+      failed: 0,
+      pruned: 0,
+    });
   });
 
   afterEach(() => jest.useRealTimers());
@@ -138,12 +158,78 @@ describe("LicenseRenewalModerationService", () => {
       expect(audit.record).not.toHaveBeenCalled();
       expect(prisma.license.upsert).not.toHaveBeenCalled();
     });
+
+    describe("licensee notification (#269)", () => {
+      it("tells the licensee, once the transaction committed", async () => {
+        let committed = false;
+        prisma.$transaction.mockImplementation(
+          async (fn: (tx: typeof prisma) => Promise<unknown>) => {
+            const result = await fn(prisma);
+            committed = true;
+            return result;
+          },
+        );
+        notifications.sendToUser.mockImplementation(() => {
+          expect(committed).toBe(true);
+          return Promise.resolve({ sent: 1, failed: 0, pruned: 0 });
+        });
+
+        await service.approve("admin-1", "req-1", {});
+        await flushNotifications();
+
+        expect(notifications.sendToUser).toHaveBeenCalledTimes(1);
+        expect(notifications.sendToUser).toHaveBeenCalledWith(
+          "user-1",
+          "LICENSE_RENEWAL_DECISION",
+          "Renouvellement de licence approuvé",
+          "Votre licence est renouvelée jusqu'au 31/08/2027.",
+          {
+            type: "LICENSE_RENEWAL_DECISION",
+            requestId: "req-1",
+            status: "APPROVED",
+          },
+        );
+      });
+
+      it("a notification failure never fails the decision", async () => {
+        notifications.sendToUser.mockRejectedValue(new Error("FCM down"));
+
+        await expect(service.approve("admin-1", "req-1", {})).resolves.toBe(
+          DETAIL,
+        );
+        await flushNotifications();
+        expect(notifications.sendToUser).toHaveBeenCalled();
+        expect(audit.record).toHaveBeenCalled();
+      });
+
+      it("a notifier that throws synchronously never fails the decision", async () => {
+        notifications.sendToUser.mockImplementation(() => {
+          throw new Error("boom");
+        });
+
+        await expect(service.approve("admin-1", "req-1", {})).resolves.toBe(
+          DETAIL,
+        );
+      });
+
+      it("nobody is notified when the decision did not happen (409)", async () => {
+        prisma.licenseRenewalRequest.updateMany.mockResolvedValue({
+          count: 0,
+        });
+        await expect(service.approve("admin-1", "req-1", {})).rejects.toThrow(
+          ConflictException,
+        );
+        await flushNotifications();
+        expect(notifications.sendToUser).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe("reject", () => {
     beforeEach(() => {
       prisma.licenseRenewalRequest.findUnique.mockResolvedValue({
         status: LicenseRenewalStatus.PENDING,
+        userId: "user-1",
       });
     });
 
@@ -244,6 +330,57 @@ describe("LicenseRenewalModerationService", () => {
       ).rejects.toThrow(ConflictException);
       expect(prisma.licenseRenewalDocument.updateMany).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    describe("licensee notification (#269)", () => {
+      it("tells the licensee without the reason nor the comment (health data)", async () => {
+        await service.reject("admin-1", "req-1", {
+          reason: "MEDICAL_RESTRICTION",
+          comment: "Contre-indication cardiaque",
+        });
+        await flushNotifications();
+
+        expect(notifications.sendToUser).toHaveBeenCalledWith(
+          "user-1",
+          "LICENSE_RENEWAL_DECISION",
+          "Renouvellement de licence refusé",
+          expect.any(String),
+          {
+            type: "LICENSE_RENEWAL_DECISION",
+            requestId: "req-1",
+            status: "REJECTED",
+          },
+        );
+        const serialized = JSON.stringify(notifications.sendToUser.mock.calls);
+        for (const leak of [
+          "MEDICAL_RESTRICTION",
+          "Contre-indication",
+          "cardiaque",
+          "médical",
+        ]) {
+          expect(serialized).not.toContain(leak);
+        }
+      });
+
+      it("a notification failure never fails the decision", async () => {
+        notifications.sendToUser.mockRejectedValue(new Error("FCM down"));
+
+        await expect(
+          service.reject("admin-1", "req-1", { reason: "OTHER" }),
+        ).resolves.toBe(DETAIL);
+        await flushNotifications();
+        expect(notifications.sendToUser).toHaveBeenCalled();
+      });
+
+      it("nobody is notified when the decision was refused (400)", async () => {
+        prisma.licenseRenewalDocument.count.mockResolvedValue(0);
+
+        await expect(
+          service.reject("admin-1", "req-1", { reason: "MEDICAL_RESTRICTION" }),
+        ).rejects.toThrow(BadRequestException);
+        await flushNotifications();
+        expect(notifications.sendToUser).not.toHaveBeenCalled();
+      });
     });
   });
 });

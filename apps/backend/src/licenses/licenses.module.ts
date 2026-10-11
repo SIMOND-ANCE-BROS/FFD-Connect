@@ -8,6 +8,7 @@ import { HealthDataRetentionService } from "./health-data-retention.service";
 import { AdminLicenseRenewalsController } from "./admin-license-renewals.controller";
 import { LicenseRenewalModerationQueryService } from "./license-renewal-moderation.query-service";
 import { LicenseRenewalModerationService } from "./license-renewal-moderation.service";
+import { LicenseRenewalNotificationService } from "./license-renewal-notification.service";
 import { LicenseRenewalService } from "./license-renewal.service";
 import { LicensesController } from "./licenses.controller";
 import { LicensesService } from "./licenses.service";
@@ -20,6 +21,7 @@ import { LicensesService } from "./licenses.service";
     LicenseRenewalService,
     LicenseRenewalModerationService,
     LicenseRenewalModerationQueryService,
+    LicenseRenewalNotificationService,
     OcrService,
     HealthDataRetentionService,
   ],

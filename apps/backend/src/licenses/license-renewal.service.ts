@@ -32,6 +32,7 @@ import {
   LicenseNumberTakenException,
   LicenseNumberUnknownException,
 } from "./license-renewal-approval";
+import { LicenseRenewalNotificationService } from "./license-renewal-notification.service";
 import { toLicenseQrExpiry } from "./qr/license-qr";
 import {
   pickRenewalOcrData,
@@ -76,6 +77,7 @@ export class LicenseRenewalService {
     private ocrService: OcrService,
     private blobStorage: BlobStorageService,
     private renewalDocumentFiles: RenewalDocumentFileCleaner,
+    private renewalNotifications: LicenseRenewalNotificationService,
   ) {}
 
   /**
@@ -400,6 +402,12 @@ export class LicenseRenewalService {
         !(error instanceof LicenseNumberUnknownException) &&
         !(error instanceof LicenseNumberTakenException)
       ) {
+        // Any other failure rolled the approval back as well: the request is
+        // still PENDING and awaits a human (#269) — unless a concurrent
+        // decision already settled it (409).
+        if (!(error instanceof ConflictException)) {
+          void this.renewalNotifications.notifyToReview(requestId);
+        }
         throw error;
       }
       this.logger.warn(
@@ -410,6 +418,13 @@ export class LicenseRenewalService {
       where: { id: requestId },
       select: licenseRenewalRequestResponseSelect,
     });
+    // Left PENDING: a human must review it, the administrators are told
+    // (#269), fire-and-forget so a notification never fails the submission.
+    // An automatic approval notifies no one: the licensee reads the outcome
+    // in this very response, and there is nothing left to review.
+    if (approved.status === LicenseRenewalStatus.PENDING) {
+      void this.renewalNotifications.notifyToReview(requestId);
+    }
     return toRenewalRequestResponse(approved);
   }
 

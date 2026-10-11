@@ -489,9 +489,13 @@ export const licenseRenewalDocumentFileTargetSelect = {
   request: { select: { status: true } },
 } as const;
 
-/** Décision de modération : la demande existe-t-elle, et dans quel état. */
-export const licenseRenewalStatusSelect = {
+/**
+ * Moderation decision: does the request exist, in which state, and whose is
+ * it (the owner is notified of the decision, #269).
+ */
+export const licenseRenewalStatusOwnerSelect = {
   status: true,
+  userId: true,
 } as const;
 
 /**
