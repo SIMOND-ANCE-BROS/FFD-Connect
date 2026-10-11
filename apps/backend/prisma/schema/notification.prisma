@@ -29,6 +29,10 @@ enum NotificationType {
   /// valider, acceptation, refus, clôture. Destiné aux gestionnaires de club.
   CLUB_PARTNERSHIP
 
+  /// Un paiement HelloAsso est reçu pour une réservation d'une compétition
+  /// organisée par MON club. Destiné aux gestionnaires de club (#39).
+  CLUB_PAYMENT_RECEIVED
+
   /// Un utilisateur signale une musique ou propose une correction de ses
   /// métadonnées. Destiné aux administrateurs.
   TRACK_REPORT
