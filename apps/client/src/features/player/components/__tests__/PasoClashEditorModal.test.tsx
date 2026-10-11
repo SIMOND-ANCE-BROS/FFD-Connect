@@ -13,6 +13,7 @@ import {
 } from "../../../../services/api/track-correction-api";
 import { useLibrarySyncStore } from "../../../../stores/librarySync.store";
 import { PasoClashEditorModal } from "../PasoClashEditorModal";
+import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 
 jest.mock("../../../../services/api/track-correction-api", () => {
   const actual = jest.requireActual<
@@ -291,5 +292,18 @@ describe("PasoClashEditorModal", () => {
       );
       expect(onClose).not.toHaveBeenCalled();
     });
+  });
+
+  it("a11y (#356) : le fond est un frère de la carte et ferme l'éditeur", async () => {
+    const onClose = jest.fn();
+    const { getByTestId } = await render(
+      <PasoClashEditorModal {...baseProps} onClose={onClose} />,
+    );
+    expectSiblingBackdrop(
+      getByTestId("paso-editor-backdrop"),
+      getByTestId("paso-editor-card"),
+    );
+    await fireEvent.press(getByTestId("paso-editor-backdrop"));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

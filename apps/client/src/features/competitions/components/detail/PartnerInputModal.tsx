@@ -2,9 +2,9 @@ import React from "react";
 import {
   Alert,
   Modal,
+  Pressable,
   StyleSheet,
   TextInput,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { AppButton } from "../../../../components/AppButton";
@@ -46,66 +46,69 @@ export function PartnerInputModal({
     onClose();
   };
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <TouchableOpacity
-        activeOpacity={1}
-        style={partnerModalStyles.overlay}
-        onPress={handleClose}
-        accessibilityRole="button"
-        accessibilityLabel="Fermer"
-        accessibilityHint="Ferme la saisie du partenaire"
-      >
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={(e) => e.stopPropagation()}
-          accessibilityRole="none"
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={handleClose}
+    >
+      {/* Fond et carte sont frères (cf. SpaceSheet) : un bouton englobant la
+          carte serait lu par VoiceOver comme un seul élément. */}
+      <View style={partnerModalStyles.overlay}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={handleClose}
+          testID="partner-input-backdrop"
+          accessibilityRole="button"
+          accessibilityLabel="Fermer"
+          accessibilityHint="Ferme la saisie du partenaire"
+        />
+        <View
+          testID="partner-input-card"
+          style={[partnerModalStyles.box, { backgroundColor: theme.surface }]}
         >
-          <View
-            style={[partnerModalStyles.box, { backgroundColor: theme.surface }]}
+          <AppText
+            variant="h3"
+            color={theme.text}
+            style={partnerModalStyles.title}
           >
-            <AppText
-              variant="h3"
-              color={theme.text}
-              style={partnerModalStyles.title}
-            >
-              Inscription en couple
-            </AppText>
-            <AppText
-              variant="caption"
-              color={theme.textSecondary}
-              style={partnerModalStyles.subtitle}
-            >
-              {eventLabel}
-            </AppText>
-            <TextInput
-              placeholder="Nom du partenaire"
-              placeholderTextColor={theme.textSecondary}
-              value={partnerName}
-              onChangeText={setPartnerName}
-              style={[
-                partnerModalStyles.input,
-                { color: theme.text, borderColor: theme.border },
-              ]}
-              accessibilityLabel="Nom du partenaire"
-              accessibilityHint="Saisissez le nom de votre partenaire de danse"
+            Inscription en couple
+          </AppText>
+          <AppText
+            variant="caption"
+            color={theme.textSecondary}
+            style={partnerModalStyles.subtitle}
+          >
+            {eventLabel}
+          </AppText>
+          <TextInput
+            placeholder="Nom du partenaire"
+            placeholderTextColor={theme.textSecondary}
+            value={partnerName}
+            onChangeText={setPartnerName}
+            style={[
+              partnerModalStyles.input,
+              { color: theme.text, borderColor: theme.border },
+            ]}
+            accessibilityLabel="Nom du partenaire"
+            accessibilityHint="Saisissez le nom de votre partenaire de danse"
+          />
+          <View style={partnerModalStyles.buttons}>
+            <AppButton
+              title="Annuler"
+              variant="outline"
+              onPress={handleClose}
+              style={partnerModalStyles.btn}
             />
-            <View style={partnerModalStyles.buttons}>
-              <AppButton
-                title="Annuler"
-                variant="outline"
-                onPress={handleClose}
-                style={partnerModalStyles.btn}
-              />
-              <AppButton
-                title="Valider"
-                variant="primary"
-                onPress={handleSubmit}
-                style={partnerModalStyles.btn}
-              />
-            </View>
+            <AppButton
+              title="Valider"
+              variant="primary"
+              onPress={handleSubmit}
+              style={partnerModalStyles.btn}
+            />
           </View>
-        </TouchableOpacity>
-      </TouchableOpacity>
+        </View>
+      </View>
     </Modal>
   );
 }

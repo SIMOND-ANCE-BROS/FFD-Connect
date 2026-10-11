@@ -74,15 +74,20 @@ export const DeleteAccountModal = ({
       animationType="fade"
       onRequestClose={handleClose}
     >
-      <Pressable
-        style={styles.backdrop}
-        onPress={handleClose}
-        accessible={false}
-      >
+      {/* Fond et carte sont frères (cf. SpaceSheet) : le fond devient un
+          bouton « Fermer » annoncé, et le formulaire reste atteignable. */}
+      <View style={styles.backdrop}>
         <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={handleClose}
+          testID="delete-account-backdrop"
+          accessibilityRole="button"
+          accessibilityLabel="Fermer"
+          accessibilityHint="Ferme la suppression du compte sans rien supprimer"
+        />
+        <View
+          testID="delete-account-card"
           style={[styles.card, { backgroundColor: theme.surface }]}
-          onPress={() => {}}
-          accessible={false}
         >
           <View style={styles.titleRow}>
             <TriangleAlert size={22} color="#e74c3c" />
@@ -167,8 +172,8 @@ export const DeleteAccountModal = ({
           <Text style={[styles.footnote, { color: theme.textSecondary }]}>
             RGPD art. 17 — droit à l'effacement
           </Text>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 };

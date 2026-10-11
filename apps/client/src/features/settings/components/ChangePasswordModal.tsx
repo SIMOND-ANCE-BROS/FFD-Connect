@@ -123,15 +123,20 @@ export const ChangePasswordModal = ({
       animationType="fade"
       onRequestClose={handleClose}
     >
-      <Pressable
-        accessibilityRole="button"
-        style={styles.overlay}
-        onPress={handleClose}
-      >
+      {/* Fond et carte sont frères (cf. SpaceSheet) : un bouton englobant la
+          carte serait lu par VoiceOver comme un seul élément. */}
+      <View style={styles.overlay}>
         <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={handleClose}
+          testID="change-password-backdrop"
           accessibilityRole="button"
+          accessibilityLabel="Fermer"
+          accessibilityHint="Ferme la fenêtre de changement de mot de passe"
+        />
+        <View
+          testID="change-password-card"
           style={[styles.modal, { backgroundColor: currentTheme.surface }]}
-          onPress={(e) => e.stopPropagation()}
         >
           <View style={styles.header}>
             <AppText variant="h2" color={currentTheme.text}>
@@ -139,6 +144,8 @@ export const ChangePasswordModal = ({
             </AppText>
             <TouchableOpacity
               accessibilityRole="button"
+              accessibilityLabel="Fermer"
+              accessibilityHint="Ferme la fenêtre de changement de mot de passe"
               onPress={handleClose}
               style={styles.closeButton}
             >
@@ -330,8 +337,8 @@ export const ChangePasswordModal = ({
               />
             </View>
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 };

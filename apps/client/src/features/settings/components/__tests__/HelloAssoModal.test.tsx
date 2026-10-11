@@ -4,6 +4,7 @@ import { Alert } from "react-native";
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
 import { ClubService } from "../../../club/services/ClubService";
 import { HelloAssoModal } from "../HelloAssoModal";
+import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 
 jest.mock("../../../../context/ThemeContext");
 jest.mock("../../../club/services/ClubService", () => ({
@@ -175,5 +176,17 @@ describe("HelloAssoModal", () => {
     });
 
     expect(Alert.alert).toHaveBeenCalledWith("Erreur", "Invalid credentials");
+  });
+
+  it("a11y (#356): backdrop is a sibling of the card and closes the modal", async () => {
+    const { getByTestId, getAllByLabelText } = await renderModal();
+    expectSiblingBackdrop(
+      getByTestId("helloasso-backdrop"),
+      getByTestId("helloasso-card"),
+    );
+    // Backdrop and header close button are two distinct "Fermer" buttons.
+    expect(getAllByLabelText("Fermer", { exact: true })).toHaveLength(2);
+    await fireEvent.press(getByTestId("helloasso-backdrop"));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

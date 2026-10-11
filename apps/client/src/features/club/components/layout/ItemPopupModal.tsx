@@ -1,6 +1,13 @@
 import { Lock, RotateCw, X } from "lucide-react-native";
 import React from "react";
-import { Modal, ScrollView, TouchableOpacity, View } from "react-native";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { AppText } from "../../../../components/AppText";
 import { AppTheme } from "../../../../context/ThemeContext";
 import type { LayoutItem } from "../../hooks/useClubCompetitionEditorLogic";
@@ -43,19 +50,20 @@ export function ItemPopupModal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <TouchableOpacity
-        style={styles.popupBackdrop}
-        activeOpacity={1}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Fermer le popup"
-        accessibilityHint="Ferme le panneau de détails de l'élément"
-      >
-        <TouchableOpacity
+      {/* Fond et carte sont frères (cf. SpaceSheet) : un bouton englobant la
+          carte serait lu par VoiceOver comme un seul élément. */}
+      <View style={styles.popupBackdrop}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          testID="item-popup-backdrop"
+          accessibilityRole="button"
+          accessibilityLabel="Fermer le popup"
+          accessibilityHint="Ferme le panneau de détails de l'élément"
+        />
+        <View
+          testID="item-popup-card"
           style={[styles.popupBox, { backgroundColor: theme.surface }]}
-          activeOpacity={1}
-          onPress={() => {}}
-          accessibilityRole="none"
         >
           {item && (
             <>
@@ -266,8 +274,8 @@ export function ItemPopupModal({
               </TouchableOpacity>
             </>
           )}
-        </TouchableOpacity>
-      </TouchableOpacity>
+        </View>
+      </View>
     </Modal>
   );
 }

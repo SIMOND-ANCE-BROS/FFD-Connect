@@ -61,14 +61,19 @@ export const FilterSheet = ({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <Pressable
-        style={styles.backdrop}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Fermer les filtres"
-        accessibilityHint="Ferme le panneau de filtres"
-      >
+      {/* Fond et carte sont frères : un Pressable englobant la carte serait
+          lu par VoiceOver comme un seul élément et masquerait les filtres. */}
+      <View style={styles.root}>
         <Pressable
+          style={[StyleSheet.absoluteFill, styles.backdrop]}
+          onPress={onClose}
+          testID="filter-sheet-backdrop"
+          accessibilityRole="button"
+          accessibilityLabel="Fermer les filtres"
+          accessibilityHint="Ferme le panneau de filtres"
+        />
+        <View
+          testID="filter-sheet-card"
           style={[
             styles.card,
             {
@@ -76,8 +81,6 @@ export const FilterSheet = ({
               paddingBottom: keyboardHeight > 0 ? keyboardHeight : 28,
             },
           ]}
-          onPress={() => {}}
-          accessibilityRole="none"
         >
           <View style={styles.header}>
             <AppText variant="h3" color={theme.text} style={styles.title}>
@@ -122,17 +125,19 @@ export const FilterSheet = ({
               Réinitialiser{activeCount > 0 ? ` (${activeCount})` : ""}
             </AppText>
           </TouchableOpacity>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  backdrop: {
+  root: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
     justifyContent: "flex-end",
+  },
+  backdrop: {
+    backgroundColor: "rgba(0,0,0,0.55)",
   },
   card: {
     borderTopLeftRadius: radii.xl,
