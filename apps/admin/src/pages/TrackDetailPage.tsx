@@ -4,8 +4,8 @@ import {
   Badge,
   Button,
   Card,
+  Flex,
   Group,
-  Loader,
   Modal,
   NumberInput,
   Select,
@@ -21,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { ListSkeleton } from '../components/ListStates';
 import { tracksControllerRemove, tracksControllerUpdate } from '../api/generated/sdk.gen';
 import type { UpdateTrackDto } from '../api/generated/types.gen';
 import { auditQuery, ensureOk, trackQuery } from '../api/queries';
@@ -154,7 +155,7 @@ function TrackEditor({ id }: { id: string }) {
   if (track.isError) {
     return <Alert color="red">{apiErrorMessage(track.error, 'Musique introuvable.')}</Alert>;
   }
-  if (!track.data || !values) return <Loader />;
+  if (!track.data || !values) return <ListSkeleton rows={5} />;
   const t = track.data;
   const patch = trackPatch(t, values, bpmTouched);
   const preview = resultingBpm(t, patch);
@@ -224,7 +225,7 @@ function TrackEditor({ id }: { id: string }) {
         </Alert>
       )}
       <Card withBorder>
-        <Group align="flex-start" wrap="nowrap">
+        <Flex direction={{ base: 'column', xs: 'row' }} align="flex-start" gap="md">
           {t.artwork && (
             <img
               src={trackArtworkUrl(t.artwork)}
@@ -237,7 +238,7 @@ function TrackEditor({ id }: { id: string }) {
               style={{ objectFit: 'cover', borderRadius: 4 }}
             />
           )}
-          <Stack gap="xs" style={{ flex: 1 }}>
+          <Stack gap="xs" w="100%" style={{ flex: 1 }}>
             <audio
               ref={audioRef}
               aria-label="Lecteur de la musique"
@@ -252,7 +253,7 @@ function TrackEditor({ id }: { id: string }) {
               Position : {formatTimecode(position)}
             </Text>
           </Stack>
-        </Group>
+        </Flex>
       </Card>
 
       <form
@@ -265,7 +266,7 @@ function TrackEditor({ id }: { id: string }) {
         }}
       >
         <Stack>
-          <SimpleGrid cols={2}>
+          <SimpleGrid cols={{ base: 1, sm: 2 }}>
             <TextInput
               label="Titre"
               value={values.title}

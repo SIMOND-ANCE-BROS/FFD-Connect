@@ -6,7 +6,6 @@ import {
   Card,
   Group,
   List,
-  Loader,
   Modal,
   Select,
   SimpleGrid,
@@ -22,6 +21,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { ListSkeleton } from '../components/ListStates';
 import {
   adminControllerDeleteClub,
   adminControllerSetClubStatus,
@@ -154,7 +154,7 @@ export function ClubDetailPage() {
   });
 
   if (club.isError) return <Alert color="red">Club introuvable ou erreur serveur.</Alert>;
-  if (!club.data) return <Loader />;
+  if (!club.data) return <ListSkeleton rows={5} />;
   const c = club.data;
   const disabled = c.disabledAt !== null;
   const blocking = usageLines(c);
@@ -204,7 +204,7 @@ export function ClubDetailPage() {
         </Alert>
       )}
       <Card withBorder>
-        <SimpleGrid cols={3}>
+        <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <Text size="sm">Création : {dayjs(c.createdAt).format('DD/MM/YYYY')}</Text>
           <Text size="sm">HelloAsso : {c.helloAssoConfigured ? 'configuré' : 'non configuré'}</Text>
           <Text size="sm">
@@ -214,7 +214,7 @@ export function ClubDetailPage() {
       </Card>
 
       <form onSubmit={onSubmit}>
-        <SimpleGrid cols={2}>
+        <SimpleGrid cols={{ base: 1, sm: 2 }}>
           <TextInput label="Nom du club" withAsterisk {...form.getInputProps('name')} />
           <Select
             label="Mode d'inscription"

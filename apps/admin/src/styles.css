@@ -1,0 +1,114 @@
+/*
+ * Global rules Mantine has no prop for: safe areas of the installed app,
+ * touch-size controls and phone-sized modals. Loaded after Mantine's styles.
+ */
+
+html,
+body {
+  background: var(--app-canvas, var(--mantine-color-body));
+}
+
+body {
+  -webkit-tap-highlight-color: transparent;
+  /* Landscape iPhone: keep the content clear of the rounded corners. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Numbers line up in tables and counters. */
+.mantine-Table-table,
+.app-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Main lists sit on a surface, like the cards around them. */
+.mantine-AppShell-main .mantine-TableScrollContainer-scrollContainer {
+  background: var(--mantine-color-body);
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+}
+
+/* Clickable rows (lists that open a record). */
+.app-row-link {
+  cursor: pointer;
+}
+
+/*
+ * Safety net for tables not wrapped in a ScrollContainer: on a phone the table
+ * scrolls inside itself instead of widening the page.
+ */
+@media (max-width: 47.99em) {
+  .mantine-AppShell-main .mantine-Table-table,
+  .mantine-Modal-body .mantine-Table-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mantine-TableScrollContainer-scrollContainer .mantine-Table-table {
+    display: table;
+    overflow: visible;
+  }
+}
+
+/* Touch screens: 44 px controls (Apple HIG), 16 px inputs (no iOS focus zoom). */
+@media (pointer: coarse) {
+  .mantine-Input-wrapper {
+    --input-height-xs: 2.5rem;
+    --input-height-sm: 2.75rem;
+  }
+
+  .mantine-Input-input {
+    font-size: max(16px, var(--input-fz, 1rem));
+  }
+
+  .mantine-Button-root {
+    --button-height-xs: 2.5rem;
+    --button-height-sm: 2.75rem;
+  }
+
+  .mantine-ActionIcon-root {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .mantine-NavLink-root {
+    min-height: 2.75rem;
+  }
+
+  .mantine-SegmentedControl-label {
+    min-height: 2.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* Phones: every modal becomes a full-screen sheet, clear of the notch. */
+@media (max-width: 47.99em) {
+  .mantine-Modal-inner {
+    --modal-inner-y-offset: 0;
+    --modal-inner-x-offset: 0;
+  }
+
+  .mantine-Modal-content {
+    --modal-content-flex: 0 0 100%;
+    --modal-content-max-height: 100dvh;
+    --modal-content-height: 100dvh;
+    border-radius: 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .mantine-Modal-header {
+    padding-top: calc(var(--mantine-spacing-md) + env(safe-area-inset-top));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

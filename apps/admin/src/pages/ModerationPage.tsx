@@ -4,20 +4,21 @@ import {
   Badge,
   Chip,
   Group,
-  Loader,
   Pagination,
+  ScrollArea,
   SegmentedControl,
   Stack,
   Table,
   Text,
   TextInput,
-  Title,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
+import { ListSkeleton } from '../components/ListStates';
+import { PageHeader } from '../components/PageHeader';
 import type { TrackCorrectionReason, TrackCorrectionStatus } from '../api/generated/types.gen';
 import { moderationListQuery } from '../api/queries';
 import { apiErrorMessage } from '../lib/apiError';
@@ -77,7 +78,10 @@ export function ModerationPage() {
 
   return (
     <Stack>
-      <Title order={2}>Modération</Title>
+      <PageHeader
+        title="Modération"
+        description="Corrections de musiques proposées par les utilisateurs."
+      />
       {state.trackId && (
         <Alert color="blue" title="Propositions d'une seule musique">
           <Group gap="md">
@@ -95,12 +99,13 @@ export function ModerationPage() {
           </Group>
         </Alert>
       )}
-      <SegmentedControl
-        w="fit-content"
-        data={STATUS_OPTIONS}
-        value={state.status}
-        onChange={(v) => update({ status: v as TrackCorrectionStatus })}
-      />
+      <ScrollArea type="never">
+        <SegmentedControl
+          data={STATUS_OPTIONS}
+          value={state.status}
+          onChange={(v) => update({ status: v as TrackCorrectionStatus })}
+        />
+      </ScrollArea>
       <Chip.Group
         multiple
         value={state.reasons}
@@ -124,70 +129,72 @@ export function ModerationPage() {
           {apiErrorMessage(list.error, 'Impossible de charger les propositions.')}
         </Alert>
       ) : list.isPending ? (
-        <Loader />
+        <ListSkeleton />
       ) : (
         <>
           <Text size="sm" c="dimmed">
             {total} proposition{total > 1 ? 's' : ''}
           </Text>
-          <Table striped highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Musique</Table.Th>
-                <Table.Th>Motif</Table.Th>
-                <Table.Th>Proposée par</Table.Th>
-                <Table.Th>Date</Table.Th>
-                <Table.Th>Changements proposés</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {total === 0 && (
+          <Table.ScrollContainer minWidth={820}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
                 <Table.Tr>
-                  <Table.Td colSpan={5}>Aucune proposition</Table.Td>
+                  <Table.Th>Musique</Table.Th>
+                  <Table.Th>Motif</Table.Th>
+                  <Table.Th>Proposée par</Table.Th>
+                  <Table.Th>Date</Table.Th>
+                  <Table.Th>Changements proposés</Table.Th>
                 </Table.Tr>
-              )}
-              {(list.data?.data ?? []).map((c) => (
-                <Table.Tr
-                  key={c.id}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/moderation/${c.id}${locationSearch}`)}
-                >
-                  <Table.Td>
-                    <Group gap="xs">
-                      <Anchor
-                        component={Link}
-                        to={`/moderation/${c.id}${locationSearch}`}
-                        size="sm"
-                        fw={500}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {c.track.title}
-                      </Anchor>
-                      {c.track.titleMasked && (
-                        <Badge size="xs" color="gray" variant="light">
-                          Titre masqué
-                        </Badge>
-                      )}
-                      {c.track.blacklisted && (
-                        <Badge size="xs" color="red" variant="light">
-                          Retirée
-                        </Badge>
-                      )}
-                    </Group>
-                    <Text size="xs" c="dimmed">
-                      {c.track.artist}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge variant="light">{REASON_LABELS[c.reason]}</Badge>
-                  </Table.Td>
-                  <Table.Td>{c.proposer?.name ?? 'Compte supprimé'}</Table.Td>
-                  <Table.Td>{dayjs(c.createdAt).format('DD/MM/YYYY HH:mm')}</Table.Td>
-                  <Table.Td>{proposalSummary(c.proposed)}</Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+              </Table.Thead>
+              <Table.Tbody>
+                {total === 0 && (
+                  <Table.Tr>
+                    <Table.Td colSpan={5}>Aucune proposition</Table.Td>
+                  </Table.Tr>
+                )}
+                {(list.data?.data ?? []).map((c) => (
+                  <Table.Tr
+                    key={c.id}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/moderation/${c.id}${locationSearch}`)}
+                  >
+                    <Table.Td>
+                      <Group gap="xs">
+                        <Anchor
+                          component={Link}
+                          to={`/moderation/${c.id}${locationSearch}`}
+                          size="sm"
+                          fw={500}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {c.track.title}
+                        </Anchor>
+                        {c.track.titleMasked && (
+                          <Badge size="xs" color="gray" variant="light">
+                            Titre masqué
+                          </Badge>
+                        )}
+                        {c.track.blacklisted && (
+                          <Badge size="xs" color="red" variant="light">
+                            Retirée
+                          </Badge>
+                        )}
+                      </Group>
+                      <Text size="xs" c="dimmed">
+                        {c.track.artist}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge variant="light">{REASON_LABELS[c.reason]}</Badge>
+                    </Table.Td>
+                    <Table.Td>{c.proposer?.name ?? 'Compte supprimé'}</Table.Td>
+                    <Table.Td>{dayjs(c.createdAt).format('DD/MM/YYYY HH:mm')}</Table.Td>
+                    <Table.Td>{proposalSummary(c.proposed)}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
           {total > PAGE_SIZE && (
             <Pagination
               total={Math.ceil(total / PAGE_SIZE)}
