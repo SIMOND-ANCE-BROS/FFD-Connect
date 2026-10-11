@@ -5,13 +5,19 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
-import { pendingCountQuery } from '../api/queries';
+import { pendingCountQuery, renewalsPendingCountQuery } from '../api/queries';
 import { AppLayout } from './AppLayout';
 
 const countSpy = (count: number) =>
   vi
     .spyOn(sdk, 'trackCorrectionsControllerPendingCount')
     .mockResolvedValue({ data: { count }, error: undefined } as never);
+
+const renewalsSpy = (total: number) =>
+  vi.spyOn(sdk, 'adminLicenseRenewalsControllerList').mockResolvedValue({
+    data: { data: [], meta: { total, skip: 0, take: 1, hasMore: total > 0 } },
+    error: undefined,
+  } as never);
 
 function renderLayout() {
   return render(
@@ -35,6 +41,7 @@ function renderLayout() {
 describe('AppLayout', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    renewalsSpy(0);
   });
 
   it('lists the sections of the back-office, without a "new user" shortcut', async () => {
@@ -80,5 +87,39 @@ describe('AppLayout', () => {
     expect(pendingCountQuery.refetchOnWindowFocus).toBe(false);
     expect(pendingCountQuery.refetchOnReconnect).toBe(false);
     expect(pendingCountQuery.retry).toBe(false);
+  });
+
+  it('links « Renouvellements » and badges it with the pending renewals (#267)', async () => {
+    countSpy(0);
+    const spy = renewalsSpy(4);
+    renderLayout();
+    const link = screen.getByRole('link', { name: /^Renouvellements/ });
+    expect(link).toHaveAttribute('href', '/license-renewals');
+    expect(await within(link).findByText('4')).toBeInTheDocument();
+    expect(spy).toHaveBeenCalledWith({ query: { status: 'PENDING', take: 1 } });
+  });
+
+  it('shows no renewal badge when nothing is pending', async () => {
+    countSpy(0);
+    const spy = renewalsSpy(0);
+    renderLayout();
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    const link = screen.getByRole('link', { name: /^Renouvellements/ });
+    expect(within(link).queryByText('0')).toBeNull();
+  });
+
+  it('refreshes the renewal count on navigation, never on a timer', async () => {
+    countSpy(0);
+    const spy = renewalsSpy(2);
+    renderLayout();
+    await screen.findByText('2');
+    expect(spy).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole('link', { name: 'Clubs' }));
+    expect(await screen.findByText('clubs page')).toBeInTheDocument();
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect(renewalsPendingCountQuery.refetchInterval).toBeUndefined();
+    expect(renewalsPendingCountQuery.refetchOnWindowFocus).toBe(false);
+    expect(renewalsPendingCountQuery.refetchOnReconnect).toBe(false);
+    expect(renewalsPendingCountQuery.retry).toBe(false);
   });
 });

@@ -5,6 +5,8 @@ import { LoginPage } from './pages/LoginPage';
 import { ModerationDetailPage } from './pages/ModerationDetailPage';
 import { ModerationPage } from './pages/ModerationPage';
 import { NewUserPage } from './pages/NewUserPage';
+import { RenewalDetailPage } from './pages/RenewalDetailPage';
+import { RenewalsPage } from './pages/RenewalsPage';
 import { UserDetailPage } from './pages/UserDetailPage';
 import { ClubDetailPage } from './pages/ClubDetailPage';
 import { ClubsPage } from './pages/ClubsPage';
@@ -34,6 +36,8 @@ export const router = createBrowserRouter([
       { path: 'clubs/:id', element: <ClubDetailPage /> },
       { path: 'moderation', element: <ModerationPage /> },
       { path: 'moderation/:id', element: <ModerationDetailPage /> },
+      { path: 'license-renewals', element: <RenewalsPage /> },
+      { path: 'license-renewals/:id', element: <RenewalDetailPage /> },
       { path: 'tracks', element: <TracksPage /> },
       { path: 'tracks/import', element: <TrackImportPage /> },
       { path: 'tracks/:id', element: <TrackDetailPage /> },

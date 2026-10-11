@@ -22,10 +22,11 @@ describe('Static Web App CSP', () => {
       'default-src': "'self'",
       'script-src': "'self'",
       'style-src': "'self' 'unsafe-inline'",
-      'img-src': `'self' data: ${API_ORIGINS}`,
+      'img-src': `'self' data: blob: ${API_ORIGINS}`,
       'font-src': "'self'",
       'connect-src': `'self' ${API_ORIGINS}`,
       'media-src': `'self' ${API_ORIGINS}`,
+      'frame-src': "'self' blob:",
       'frame-ancestors': "'none'",
       'base-uri': "'self'",
       'form-action': "'self'",
@@ -33,7 +34,17 @@ describe('Static Web App CSP', () => {
   });
 
   it('lets <img> load track artwork from both API origins', () => {
-    expect(directives['img-src']).toBe(`'self' data: ${API_ORIGINS}`);
+    expect(directives['img-src']).toBe(`'self' data: blob: ${API_ORIGINS}`);
+  });
+
+  it('shows a renewal document fetched as an object URL, in <img> or <iframe> (#267)', () => {
+    expect(directives['img-src']?.split(' ')).toContain('blob:');
+    expect(directives['frame-src']).toBe("'self' blob:");
+  });
+
+  it('never lets blob: run script', () => {
+    expect(directives['script-src']).toBe("'self'");
+    expect(directives['default-src']).toBe("'self'");
   });
 
   it('lets <audio> load track files from both API origins', () => {

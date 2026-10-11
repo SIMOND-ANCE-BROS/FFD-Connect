@@ -7,6 +7,8 @@ import {
   adminControllerListClubs,
   adminControllerListUsers,
   adminControllerReferenceData,
+  adminLicenseRenewalsControllerDetail,
+  adminLicenseRenewalsControllerList,
   adminStatsControllerGet,
   adminUsageControllerGet,
   adminTracksControllerFindOne,
@@ -19,6 +21,7 @@ import type {
   AdminControllerAuditLogData,
   AdminControllerListClubsData,
   AdminControllerListUsersData,
+  AdminLicenseRenewalsControllerListData,
   AdminTracksControllerListData,
   TrackCorrectionsControllerListData,
 } from './generated/types.gen';
@@ -30,6 +33,7 @@ export type ClubsFilter = NonNullable<AdminControllerListClubsData['query']>;
 export type AuditFilter = NonNullable<AdminControllerAuditLogData['query']>;
 export type ModerationFilter = NonNullable<TrackCorrectionsControllerListData['query']>;
 export type TracksFilter = NonNullable<AdminTracksControllerListData['query']>;
+export type RenewalsFilter = NonNullable<AdminLicenseRenewalsControllerListData['query']>;
 
 /** Throws so React Query surfaces the error state (the generated client never throws). */
 export async function unwrap<T>(p: Promise<{ data?: T; error?: unknown }>): Promise<T> {
@@ -162,6 +166,49 @@ export const usageQuery = (period: UsagePeriod, space?: UsageSpace) =>
     queryKey: ['admin', 'usage', period, space ?? 'ALL'],
     queryFn: () =>
       unwrap(adminUsageControllerGet({ query: space ? { period, space } : { period } })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/**
+ * Licence renewal queue (#267). Same rule as the moderation queries: a
+ * refocus, a reconnect or a retry would wake the scale-to-zero backend.
+ */
+export const renewalsListQuery = (q: RenewalsFilter) =>
+  queryOptions({
+    queryKey: ['admin', 'renewals', 'list', q],
+    queryFn: () => unwrap(adminLicenseRenewalsControllerList({ query: q })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/**
+ * Pending renewals, for the menu badge: the total of a one-row page. Refetched
+ * on navigation and after a decision only, never polled.
+ */
+export const renewalsPendingCountQuery = queryOptions({
+  queryKey: ['admin', 'renewals', 'pending-count'],
+  queryFn: async () => {
+    const page = await unwrap(
+      adminLicenseRenewalsControllerList({ query: { status: 'PENDING', take: 1 } }),
+    );
+    return page.meta.total;
+  },
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+  retry: false,
+});
+
+/**
+ * One renewal. Every read is an audited access to health data
+ * (LICENSE_RENEWAL_VIEW): never refetched behind the admin's back.
+ */
+export const renewalQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['admin', 'renewals', 'item', id],
+    queryFn: () => unwrap(adminLicenseRenewalsControllerDetail({ path: { id } })),
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: false,

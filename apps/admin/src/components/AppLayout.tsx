@@ -2,7 +2,7 @@ import { AppShell, Badge, Button, Group, NavLink, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router';
-import { pendingCountQuery } from '../api/queries';
+import { pendingCountQuery, renewalsPendingCountQuery } from '../api/queries';
 import { useSession } from '../session/sessionStore';
 
 export function AppLayout() {
@@ -11,7 +11,9 @@ export function AppLayout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const pending = useQuery(pendingCountQuery);
+  const renewals = useQuery(renewalsPendingCountQuery);
   const { refetch } = pending;
+  const { refetch: refetchRenewals } = renewals;
   // Refreshed on navigation (and invalidated after a decision), never polled:
   // every request wakes the scale-to-zero backend.
   const lastPath = useRef(pathname);
@@ -19,8 +21,10 @@ export function AppLayout() {
     if (lastPath.current === pathname) return;
     lastPath.current = pathname;
     void refetch();
-  }, [pathname, refetch]);
+    void refetchRenewals();
+  }, [pathname, refetch, refetchRenewals]);
   const count = pending.data?.count ?? 0;
+  const renewalsCount = renewals.data ?? 0;
 
   return (
     <AppShell header={{ height: 56 }} navbar={{ width: 220, breakpoint: 'sm' }} padding="md">
@@ -52,13 +56,13 @@ export function AppLayout() {
           component={RouterLink}
           to="/moderation"
           label="Modération"
-          rightSection={
-            count > 0 ? (
-              <Badge size="sm" color="red" circle={count < 10}>
-                {count}
-              </Badge>
-            ) : null
-          }
+          rightSection={<CountBadge count={count} />}
+        />
+        <NavLink
+          component={RouterLink}
+          to="/license-renewals"
+          label="Renouvellements"
+          rightSection={<CountBadge count={renewalsCount} />}
         />
         <NavLink component={RouterLink} to="/audit-log" label="Journal d'audit" />
         <NavLink component={RouterLink} to="/stats" label="Statistiques" />
@@ -68,5 +72,15 @@ export function AppLayout() {
         <Outlet />
       </AppShell.Main>
     </AppShell>
+  );
+}
+
+/** Menu counter of items to process; nothing at zero. */
+function CountBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <Badge size="sm" color="red" circle={count < 10}>
+      {count}
+    </Badge>
   );
 }
