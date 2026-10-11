@@ -6,7 +6,7 @@ type: Feature
 assignees: ''
 ---
 
-<!-- Conventions : docs/guides/gestion-des-issues.md — type d'issue, une priorité (P0…P3 ou icebox), labels de zone, milestone, epic parente. -->
+<!-- Conventions : docs/guides/gestion-des-issues.md — type d'issue, champs Priority et Effort (ou label icebox), labels de zone, milestone, epic parente. -->
 
 **Related Module**
 
