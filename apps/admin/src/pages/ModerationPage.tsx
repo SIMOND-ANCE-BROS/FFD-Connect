@@ -17,8 +17,10 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
+import { FilterPanel } from '../components/FilterPanel';
 import { ListSkeleton } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
+import { useIsMobile } from '../lib/useIsMobile';
 import type { TrackCorrectionReason, TrackCorrectionStatus } from '../api/generated/types.gen';
 import { moderationListQuery } from '../api/queries';
 import { apiErrorMessage } from '../lib/apiError';
@@ -75,6 +77,30 @@ export function ModerationPage() {
     placeholderData: keepPreviousData,
   });
   const total = list.data?.meta.total ?? 0;
+  const isMobile = useIsMobile();
+
+  const reasonFilters = (
+    <Chip.Group
+      multiple
+      value={state.reasons}
+      onChange={(v) => update({ reasons: v as TrackCorrectionReason[] })}
+    >
+      <Group gap="xs">
+        {REASONS.map((reason) => (
+          <Chip key={reason} value={reason} size="sm">
+            {REASON_LABELS[reason]}
+          </Chip>
+        ))}
+      </Group>
+    </Chip.Group>
+  );
+  const searchInput = (
+    <TextInput
+      placeholder="Titre ou artiste"
+      value={search}
+      onChange={(e) => setSearch(e.currentTarget.value)}
+    />
+  );
 
   return (
     <Stack>
@@ -106,24 +132,19 @@ export function ModerationPage() {
           onChange={(v) => update({ status: v as TrackCorrectionStatus })}
         />
       </ScrollArea>
-      <Chip.Group
-        multiple
-        value={state.reasons}
-        onChange={(v) => update({ reasons: v as TrackCorrectionReason[] })}
-      >
-        <Group gap="xs">
-          {REASONS.map((reason) => (
-            <Chip key={reason} value={reason} size="sm">
-              {REASON_LABELS[reason]}
-            </Chip>
-          ))}
-        </Group>
-      </Chip.Group>
-      <TextInput
-        placeholder="Titre ou artiste"
-        value={search}
-        onChange={(e) => setSearch(e.currentTarget.value)}
-      />
+      {isMobile ? (
+        <>
+          {searchInput}
+          <FilterPanel activeCount={state.reasons.length} onReset={() => update({ reasons: [] })}>
+            {reasonFilters}
+          </FilterPanel>
+        </>
+      ) : (
+        <>
+          {reasonFilters}
+          {searchInput}
+        </>
+      )}
       {list.isError ? (
         <Alert color="red">
           {apiErrorMessage(list.error, 'Impossible de charger les propositions.')}

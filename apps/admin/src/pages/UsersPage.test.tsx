@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { mockPhoneViewport } from '../test/viewport';
 import { UsersPage } from './UsersPage';
 
 const page = (n: number) => ({
@@ -160,6 +161,62 @@ describe('UsersPage', () => {
         query: expect.objectContaining({ status: 'disabled', skip: 0 }),
       }),
     );
+  });
+
+  describe('on a phone', () => {
+    beforeEach(() => mockPhoneViewport());
+
+    it('keeps the search visible and folds the other filters', async () => {
+      vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(2) as never);
+      renderPage();
+      expect(await screen.findByText('jeanne@x.fr')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/nom, prénom ou email/i)).toBeVisible();
+      const toggle = screen.getByRole('button', { name: 'Filtres' });
+      expect(toggle).toHaveAttribute('aria-expanded', 'false');
+      await userEvent.click(toggle);
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByPlaceholderText('Rôle')).toBeInTheDocument();
+      // Cards, not the desktop table.
+      expect(screen.queryByRole('table')).toBeNull();
+      expect(screen.getByRole('link', { name: /Martin Jeanne/ })).toHaveAttribute(
+        'href',
+        '/users/u1',
+      );
+    });
+
+    it('counts the active filters and resets them', async () => {
+      const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(1) as never);
+      renderPage();
+      await screen.findByText('jeanne@x.fr');
+      await userEvent.click(screen.getByRole('button', { name: 'Filtres' }));
+      await userEvent.click(screen.getByText('Désactivés'));
+      expect(await screen.findByRole('button', { name: 'Filtres (1)' })).toBeInTheDocument();
+      await waitFor(() =>
+        expect(spy).toHaveBeenLastCalledWith({
+          query: expect.objectContaining({ status: 'disabled' }),
+        }),
+      );
+      // The search is always visible: it never counts as a folded filter.
+      await userEvent.type(screen.getByPlaceholderText(/nom, prénom ou email/i), 'mar');
+      expect(screen.getByRole('button', { name: 'Filtres (1)' })).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Réinitialiser' }));
+      expect(await screen.findByRole('button', { name: 'Filtres' })).toBeInTheDocument();
+      await waitFor(() =>
+        expect(spy).toHaveBeenLastCalledWith({
+          query: expect.not.objectContaining({ status: expect.anything() }),
+        }),
+      );
+    });
+  });
+
+  it('shows every filter at once on a desktop, without a « Filtres » button', async () => {
+    vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(2) as never);
+    renderPage();
+    await screen.findByText('jeanne@x.fr');
+    expect(screen.queryByRole('button', { name: /^Filtres/ })).toBeNull();
+    expect(screen.getByPlaceholderText('Rôle')).toBeVisible();
+    expect(screen.getByText('Désactivés')).toBeInTheDocument();
+    expect(screen.getByRole('table')).toBeInTheDocument();
   });
 
   it('shows a badge per extra role', async () => {

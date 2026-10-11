@@ -19,6 +19,7 @@ import dayjs from 'dayjs';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import type { UserRole } from '../api/generated/types.gen';
+import { FilterPanel } from '../components/FilterPanel';
 import { EmptyState, ListSkeleton } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
 import { RecordCard, RecordLine, RecordList } from '../components/RecordCard';
@@ -82,6 +83,70 @@ export function UsersPage() {
   const total = users.data?.meta.total ?? 0;
   const rows = users.data?.data ?? [];
   const isMobile = useIsMobile();
+  // Search stays out of the count: it is always visible above the panel.
+  const activeFilters = [
+    role,
+    clubId,
+    category,
+    status !== 'all' || null,
+    range[0] ?? range[1],
+  ].filter(Boolean).length;
+  const resetFilters = () => {
+    setRole(null);
+    setClubId(null);
+    setCategory(null);
+    setStatus('all');
+    setRange([null, null]);
+  };
+
+  const searchInput = (
+    <TextInput
+      placeholder="Nom, prénom ou email"
+      value={search}
+      onChange={(e) => setSearch(e.currentTarget.value)}
+    />
+  );
+  const secondaryFilters = (
+    <>
+      <Select
+        placeholder="Rôle"
+        clearable
+        data={reference.data?.roles ?? []}
+        value={role}
+        onChange={(v) => setRole(v as UserRole | null)}
+      />
+      <Select
+        placeholder="Club"
+        clearable
+        searchable
+        data={(clubs.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
+        value={clubId}
+        onChange={setClubId}
+      />
+      <Select
+        placeholder="Catégorie"
+        clearable
+        data={disciplineOptions(reference.data?.categories ?? [])}
+        value={category}
+        onChange={setCategory}
+      />
+      <DatePickerInput
+        type="range"
+        placeholder="Inscription entre…"
+        clearable
+        value={range}
+        onChange={setRange}
+      />
+    </>
+  );
+  const statusControl = (
+    <SegmentedControl
+      w={{ base: '100%', xs: 'fit-content' }}
+      data={STATUS_FILTER_OPTIONS}
+      value={status}
+      onChange={(v) => setStatus(v as StatusChoice)}
+    />
+  );
 
   return (
     <Stack>
@@ -93,48 +158,23 @@ export function UsersPage() {
           </Button>
         }
       />
-      <SimpleGrid cols={{ base: 1, xs: 2, lg: 5 }} spacing="sm">
-        <TextInput
-          placeholder="Nom, prénom ou email"
-          value={search}
-          onChange={(e) => setSearch(e.currentTarget.value)}
-        />
-        <Select
-          placeholder="Rôle"
-          clearable
-          data={reference.data?.roles ?? []}
-          value={role}
-          onChange={(v) => setRole(v as UserRole | null)}
-        />
-        <Select
-          placeholder="Club"
-          clearable
-          searchable
-          data={(clubs.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
-          value={clubId}
-          onChange={setClubId}
-        />
-        <Select
-          placeholder="Catégorie"
-          clearable
-          data={disciplineOptions(reference.data?.categories ?? [])}
-          value={category}
-          onChange={setCategory}
-        />
-        <DatePickerInput
-          type="range"
-          placeholder="Inscription entre…"
-          clearable
-          value={range}
-          onChange={setRange}
-        />
-      </SimpleGrid>
-      <SegmentedControl
-        w={{ base: '100%', xs: 'fit-content' }}
-        data={STATUS_FILTER_OPTIONS}
-        value={status}
-        onChange={(v) => setStatus(v as StatusChoice)}
-      />
+      {isMobile ? (
+        <>
+          {searchInput}
+          <FilterPanel activeCount={activeFilters} onReset={resetFilters}>
+            {secondaryFilters}
+            {statusControl}
+          </FilterPanel>
+        </>
+      ) : (
+        <>
+          <SimpleGrid cols={{ base: 1, xs: 2, lg: 5 }} spacing="sm">
+            {searchInput}
+            {secondaryFilters}
+          </SimpleGrid>
+          {statusControl}
+        </>
+      )}
       {users.isError ? (
         <Alert color="red">
           {apiErrorMessage(users.error, 'Impossible de charger les utilisateurs.')}

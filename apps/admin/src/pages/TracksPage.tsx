@@ -21,6 +21,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { TrackStatus } from '../api/generated/types.gen';
 import { tracksQuery } from '../api/queries';
+import { FilterPanel } from '../components/FilterPanel';
 import { EmptyState, ListSkeleton } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
 import { RecordCard, RecordLine, RecordList } from '../components/RecordCard';
@@ -85,6 +86,62 @@ export function TracksPage() {
   const rows = list.data?.data ?? [];
   const isMobile = useIsMobile();
 
+  const statusControl = (
+    <ScrollArea type="never" offsetScrollbars={false}>
+      <SegmentedControl
+        data={TRACK_STATUS_FILTERS}
+        value={state.status ?? 'ALL'}
+        onChange={(v) => update({ status: v === 'ALL' ? null : (v as TrackStatus) })}
+      />
+    </ScrollArea>
+  );
+  const flagFilters = (
+    <Group gap="sm">
+      <Chip.Group
+        multiple
+        value={FLAGS.filter((f) => state[f.key]).map((f) => f.key)}
+        onChange={(v) =>
+          update({
+            blacklisted: v.includes('blacklisted'),
+            titleMasked: v.includes('titleMasked'),
+            ambiance: v.includes('ambiance'),
+          })
+        }
+      >
+        <Group gap="xs">
+          {FLAGS.map((f) => (
+            <Chip key={f.key} value={f.key} size="sm">
+              {f.label}
+            </Chip>
+          ))}
+        </Group>
+      </Chip.Group>
+      <Select
+        aria-label="Danse"
+        placeholder="Danse"
+        clearable
+        w={{ base: '100%', xs: 200 }}
+        data={DANCE_LABELS}
+        value={state.style || null}
+        onChange={(v) => update({ style: v ?? '' })}
+      />
+    </Group>
+  );
+  const searchInput = (
+    <TextInput
+      aria-label="Rechercher"
+      maxLength={MAX_SEARCH_LENGTH}
+      placeholder="Titre ou artiste"
+      value={search}
+      onChange={(e) => setSearch(e.currentTarget.value)}
+    />
+  );
+  // Search stays out of the count: it is always visible above the panel.
+  const activeFilters =
+    (state.status ? 1 : 0) + FLAGS.filter((f) => state[f.key]).length + (state.style ? 1 : 0);
+  const resetFilters = () =>
+    update({ status: null, blacklisted: false, titleMasked: false, ambiance: false, style: '' });
+
   return (
     <Stack>
       <PageHeader
@@ -95,50 +152,21 @@ export function TracksPage() {
           </Button>
         }
       />
-      <ScrollArea type="never" offsetScrollbars={false}>
-        <SegmentedControl
-          data={TRACK_STATUS_FILTERS}
-          value={state.status ?? 'ALL'}
-          onChange={(v) => update({ status: v === 'ALL' ? null : (v as TrackStatus) })}
-        />
-      </ScrollArea>
-      <Group gap="sm">
-        <Chip.Group
-          multiple
-          value={FLAGS.filter((f) => state[f.key]).map((f) => f.key)}
-          onChange={(v) =>
-            update({
-              blacklisted: v.includes('blacklisted'),
-              titleMasked: v.includes('titleMasked'),
-              ambiance: v.includes('ambiance'),
-            })
-          }
-        >
-          <Group gap="xs">
-            {FLAGS.map((f) => (
-              <Chip key={f.key} value={f.key} size="sm">
-                {f.label}
-              </Chip>
-            ))}
-          </Group>
-        </Chip.Group>
-        <Select
-          aria-label="Danse"
-          placeholder="Danse"
-          clearable
-          w={{ base: '100%', xs: 200 }}
-          data={DANCE_LABELS}
-          value={state.style || null}
-          onChange={(v) => update({ style: v ?? '' })}
-        />
-      </Group>
-      <TextInput
-        aria-label="Rechercher"
-        maxLength={MAX_SEARCH_LENGTH}
-        placeholder="Titre ou artiste"
-        value={search}
-        onChange={(e) => setSearch(e.currentTarget.value)}
-      />
+      {isMobile ? (
+        <>
+          {searchInput}
+          <FilterPanel activeCount={activeFilters} onReset={resetFilters}>
+            {statusControl}
+            {flagFilters}
+          </FilterPanel>
+        </>
+      ) : (
+        <>
+          {statusControl}
+          {flagFilters}
+          {searchInput}
+        </>
+      )}
       {list.isError ? (
         <Alert color="red">
           {apiErrorMessage(list.error, 'Impossible de charger les musiques.')}
