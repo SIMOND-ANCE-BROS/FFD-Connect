@@ -11,7 +11,7 @@ import {
   LicenseRenewalRequest,
 } from "../../../services/BackendService";
 import { queryClient } from "../../../services/queryClient";
-import { RENEWAL_STATUS_QUERY_KEY } from "./useRenewalPending";
+import { renewalStatusQueryKey } from "./useRenewalPending";
 
 export type RenewalStep = "documents" | "submitted" | "approved" | "rejected";
 
@@ -28,7 +28,13 @@ export function useLicenseRenewalLogic() {
   // keep it in step with what this screen loads or submits.
   const applyRequest = useCallback((next: LicenseRenewalRequest | null) => {
     setRequest(next);
-    queryClient.setQueryData(RENEWAL_STATUS_QUERY_KEY, next?.status ?? null);
+    const queryKey = renewalStatusQueryKey();
+    // A banner fetch still in flight (waking backend) would land after this
+    // write and overwrite it with an older status: cancel it first. The
+    // cancellation reverts asynchronously, hence the write once it settled.
+    void queryClient
+      .cancelQueries({ queryKey })
+      .then(() => queryClient.setQueryData(queryKey, next?.status ?? null));
   }, []);
 
   const loadRenewal = useCallback(async () => {

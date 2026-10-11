@@ -180,6 +180,7 @@ describe("LicenseScreen Integration", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRenewalPending.mockReturnValue(false);
 
     (useTheme as jest.Mock).mockImplementation(() => ({
       theme: mockTheme.theme,
@@ -223,7 +224,6 @@ describe("LicenseScreen Integration", () => {
     expect(
       getByText("Demande de renouvellement en cours de vérification"),
     ).toBeTruthy();
-    mockRenewalPending.mockReturnValue(false);
   });
 
   it("opens the QR modal with the server-signed QR as-is (#168)", async () => {

@@ -5,7 +5,7 @@ import {
 } from "../../../../__tests__/mocks/mockAuthRepository";
 import { useLicenseRenewalLogic } from "../useLicenseRenewalLogic";
 import { queryClient } from "../../../../services/queryClient";
-import { RENEWAL_STATUS_QUERY_KEY } from "../useRenewalPending";
+import { renewalStatusQueryKey } from "../useRenewalPending";
 
 // Mock AuthContext
 jest.mock("../../../auth/context/AuthContext", () => ({
@@ -393,14 +393,52 @@ describe("useLicenseRenewalLogic", () => {
     const { result } = await renderHook(() => useLicenseRenewalLogic());
 
     await waitFor(() => {
-      expect(queryClient.getQueryData(RENEWAL_STATUS_QUERY_KEY)).toBe("DRAFT");
+      expect(queryClient.getQueryData(renewalStatusQueryKey())).toBe("DRAFT");
     });
 
     await act(async () => {
       await result.current.submit();
     });
 
-    expect(queryClient.getQueryData(RENEWAL_STATUS_QUERY_KEY)).toBe("PENDING");
+    expect(queryClient.getQueryData(renewalStatusQueryKey())).toBe("PENDING");
+    queryClient.clear();
+  });
+
+  // A banner fetch still waiting for a waking backend must not overwrite the
+  // status this screen has just written (the banner would invite renewing
+  // a second time).
+  it("keeps the submitted status over a banner fetch still in flight", async () => {
+    queryClient.clear();
+    let resolveStale: (status: string) => void = () => {};
+    void queryClient
+      .fetchQuery({
+        queryKey: renewalStatusQueryKey(),
+        queryFn: () =>
+          new Promise<string>((resolve) => {
+            resolveStale = resolve;
+          }),
+      })
+      .catch(() => {});
+    mockGetMyRenewal.mockResolvedValue(makeDraftRequest());
+    mockSubmitRenewal.mockResolvedValue(
+      makeDraftRequest({ status: "PENDING" }),
+    );
+
+    const { result } = await renderHook(() => useLicenseRenewalLogic());
+    await waitFor(() => expect(result.current.request).not.toBeNull());
+    await act(async () => {
+      await result.current.submit();
+    });
+    await waitFor(() => {
+      expect(queryClient.getQueryData(renewalStatusQueryKey())).toBe("PENDING");
+    });
+
+    await act(async () => {
+      resolveStale("DRAFT");
+      await Promise.resolve();
+    });
+
+    expect(queryClient.getQueryData(renewalStatusQueryKey())).toBe("PENDING");
     queryClient.clear();
   });
 

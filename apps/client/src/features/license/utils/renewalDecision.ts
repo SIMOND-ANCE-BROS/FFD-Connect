@@ -1,8 +1,8 @@
 import type { RenewalRejectionReason } from "../../../services/api/license-api";
 
 /**
- * Libellés des motifs de refus d'un renouvellement (#268). Mêmes codes que
- * l'API (`RENEWAL_REJECTION_REASONS`) et mêmes libellés que le back-office.
+ * Labels of a renewal refusal reason (#268): same codes as the API
+ * (`RENEWAL_REJECTION_REASONS`), same wording as the back-office.
  */
 const REJECTION_REASON_LABELS: Record<RenewalRejectionReason, string> = {
   ILLEGIBLE: "Document illisible",
@@ -16,9 +16,9 @@ const REJECTION_REASON_LABELS: Record<RenewalRejectionReason, string> = {
 };
 
 /**
- * Libellé lisible d'un code de motif ; `null` sans motif (demande antérieure
- * à la modération). Un code inconnu (ajouté côté serveur après cette version
- * de l'app) retombe sur « Autre motif » plutôt que d'afficher le code brut.
+ * Readable label of a reason code; `null` without a reason (request older
+ * than the moderation). An unknown code (added server-side after this app
+ * version) falls back to « Autre motif » rather than showing the raw code.
  */
 export function rejectionReasonLabel(
   reason: string | null | undefined,

@@ -61,6 +61,7 @@ const route = { params: {} } as never;
 describe("ProfileScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRenewalPending.mockReturnValue(false);
     mockUseTheme.mockReturnValue({ theme } as unknown as ThemeContextType);
   });
 
@@ -103,7 +104,6 @@ describe("ProfileScreen", () => {
     );
     const { navigate } = mockNavigation as unknown as { navigate: jest.Mock };
     expect(navigate).toHaveBeenCalledWith("LicenseRenewal");
-    mockRenewalPending.mockReturnValue(false);
   });
 
   it("renders the license when the user has one", async () => {

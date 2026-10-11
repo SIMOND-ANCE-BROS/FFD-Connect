@@ -8,18 +8,18 @@ import { useRenewalPending } from "../hooks/useRenewalPending";
 import { LicenseExpiryBanner } from "./LicenseExpiryBanner";
 
 interface LicenseRenewalBannerProps {
-  /** Date d'expiration ISO brute, transmise au bandeau d'expiration. */
+  /** Raw ISO expiry date, passed on to the expiry banner. */
   validUntil: string | Date | null | undefined;
-  /** Action au tap : ouvrir l'écran de renouvellement. */
+  /** On tap: open the renewal screen. */
   onPress?: () => void;
 }
 
 const PENDING_MESSAGE = "Demande de renouvellement en cours de vérification";
 
 /**
- * Bandeau licence des écrans Licence et Profil (#268). Tant qu'une demande de
- * renouvellement attend la décision de la fédération, il le dit — et remplace
- * le bandeau d'expiration, qui inviterait à renouveler une seconde fois.
+ * Licence banner of the Licence and Profile screens (#268). While a renewal
+ * request awaits the federation's decision it says so, in place of the
+ * expiry banner — which would invite renewing a second time.
  */
 export const LicenseRenewalBanner: React.FC<LicenseRenewalBannerProps> = ({
   validUntil,
@@ -41,7 +41,7 @@ export const LicenseRenewalBanner: React.FC<LicenseRenewalBannerProps> = ({
       testID="license-renewal-pending-banner"
       style={[
         styles.container,
-        // Fond teinté ~10% de la couleur principale (hex 6 → 8 chiffres).
+        // ~10% tint of the primary colour (6 → 8 hex digits).
         { backgroundColor: `${theme.primary}1A`, borderColor: theme.primary },
       ]}
     >

@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react-native";
 import React from "react";
 import { BackendService } from "../../../../services/BackendService";
-import { useRenewalPending } from "../useRenewalPending";
+import { useAuthStore } from "../../../../stores/auth.store";
+import { renewalStatusQueryKey, useRenewalPending } from "../useRenewalPending";
 
 const mockGetAuthConfig = jest.fn();
 jest.mock("../../../auth/context/AuthContext", () => ({
@@ -14,16 +15,26 @@ jest.mock("../../../../services/BackendService", () => ({
 
 const mockGetMyRenewal = BackendService.getMyRenewalRequest as jest.Mock;
 
-const wrapper = ({ children }: { children: React.ReactNode }) => {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+let client: QueryClient;
+const wrapper = ({ children }: { children: React.ReactNode }) => (
+  <QueryClientProvider client={client}>{children}</QueryClientProvider>
+);
+
+/** Waits until the status query has resolved or failed, not just started. */
+const settled = () =>
+  waitFor(() => {
+    const queries = client.getQueryCache().getAll();
+    expect(queries.length).toBeGreaterThan(0);
+    for (const q of queries) expect(q.state.status).not.toBe("pending");
   });
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-};
 
 describe("useRenewalPending (#268)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    });
+    useAuthStore.setState({ impersonating: false, impersonatedName: null });
     mockGetAuthConfig.mockResolvedValue({
       authToken: "token-abc",
       isLoggedIn: true,
@@ -50,7 +61,7 @@ describe("useRenewalPending (#268)", () => {
         wrapper,
       });
 
-      await waitFor(() => expect(mockGetMyRenewal).toHaveBeenCalled());
+      await settled();
       expect(result.current).toBe(false);
     },
   );
@@ -62,7 +73,7 @@ describe("useRenewalPending (#268)", () => {
       wrapper,
     });
 
-    await waitFor(() => expect(mockGetMyRenewal).toHaveBeenCalled());
+    await settled();
     expect(result.current).toBe(false);
   });
 
@@ -73,7 +84,7 @@ describe("useRenewalPending (#268)", () => {
       wrapper,
     });
 
-    await waitFor(() => expect(mockGetAuthConfig).toHaveBeenCalled());
+    await settled();
     expect(mockGetMyRenewal).not.toHaveBeenCalled();
     expect(result.current).toBe(false);
   });
@@ -85,7 +96,23 @@ describe("useRenewalPending (#268)", () => {
       wrapper,
     });
 
+    await settled();
+    expect(result.current).toBe(false);
+  });
+
+  // An impersonation keeps the session (and the mounted tabs) alive: the
+  // admin's own status must never stand for the impersonated account's.
+  it("does not reuse the account's status during an impersonation", async () => {
+    client.setQueryData(renewalStatusQueryKey(), "PENDING");
+    useAuthStore.setState({ impersonating: true, impersonatedName: "Jo D." });
+    mockGetMyRenewal.mockResolvedValue({ id: "r2", status: "DRAFT" });
+
+    const { result } = await renderHook(() => useRenewalPending(), {
+      wrapper,
+    });
+
     await waitFor(() => expect(mockGetMyRenewal).toHaveBeenCalled());
+    await settled();
     expect(result.current).toBe(false);
   });
 });
