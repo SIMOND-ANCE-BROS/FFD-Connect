@@ -217,11 +217,11 @@ describe("LicenseRenewalScreen — Sentry screenshots (#242)", () => {
     expect(getByTestId("ocr-warnings-MEDICAL_CERTIFICATE")).toBeTruthy();
     expect(
       getByText(
-        "La lecture automatique n'a pas confirmé l'aptitude à la pratique.",
+        "Le certificat semble mentionner une contre-indication à la pratique.",
       ),
     ).toBeTruthy();
     expect(getByTestId("ocr-warnings-LICENSE_CERTIFICATE")).toBeTruthy();
-    expect(getByText("Le numéro de licence n'a pas pu être lu.")).toBeTruthy();
+    expect(getByText("Le numéro de licence n’a pas pu être lu.")).toBeTruthy();
     expect(getAllByText(/À titre indicatif/)).toHaveLength(2);
     expect(queryByText("Non apte")).toBeNull();
 

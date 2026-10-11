@@ -7,11 +7,17 @@ import { STACKED_CARD_PEEK } from "../../../../components/StackedCard";
 import { BETA_NOTICES } from "../../../../constants/betaNotices";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useLicenseLogic } from "../../hooks/useLicenseLogic";
-import { useRenewalUnderReview } from "../../hooks/useMyRenewalStatus";
+import {
+  useRenewalStatusRefresh,
+  useRenewalUnderReview,
+} from "../../hooks/useMyRenewalStatus";
 import { LicenseScreen } from "../LicenseScreen";
 
 jest.mock("../../hooks/useMyRenewalStatus", () => ({
   useRenewalUnderReview: jest.fn(() => false),
+  useRenewalStatusRefresh: jest.fn(() =>
+    jest.fn().mockResolvedValue(undefined),
+  ),
 }));
 jest.mock("../../../../components/NotificationBell", () => ({
   NotificationBell: () => {
@@ -295,6 +301,7 @@ describe("LicenseScreen Integration", () => {
       ).toBeTruthy();
       expect(queryByTestId("license-expiry-banner")).toBeNull();
       expect(useRenewalUnderReview).toHaveBeenLastCalledWith(true);
+      expect(useRenewalStatusRefresh).toHaveBeenLastCalledWith(true);
 
       await fireEvent.press(getByTestId("renewal-under-review-banner"));
       expect(parentNavigate).toHaveBeenCalledWith("LicenseRenewal");
@@ -326,6 +333,7 @@ describe("LicenseScreen Integration", () => {
       await render(<LicenseScreen />);
 
       expect(useRenewalUnderReview).toHaveBeenLastCalledWith(false);
+      expect(useRenewalStatusRefresh).toHaveBeenLastCalledWith(false);
     });
   });
 

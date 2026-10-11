@@ -55,18 +55,26 @@ describe("getRenewalOcrWarnings (#268)", () => {
     expect(
       getRenewalOcrWarnings({ type: "MEDICAL_CERTIFICATE", ocrData: {} }, NOW),
     ).toEqual([
-      "La lecture automatique n'a pas confirmé l'aptitude à la pratique.",
-      "La date du certificat n'a pas pu être lue.",
+      "La lecture automatique n’a pas confirmé l’aptitude à la pratique.",
+      "La date du certificat n’a pas pu être lue.",
     ]);
-    expect(
-      getRenewalOcrWarnings(
-        {
-          type: "MEDICAL_CERTIFICATE",
-          ocrData: { isApte: false, date: "pas une date" },
-        },
-        NOW,
-      ),
-    ).toHaveLength(2);
+  });
+
+  it("tells a contraindication read on the certificate apart from an unread fitness", () => {
+    const warnings = getRenewalOcrWarnings(
+      {
+        type: "MEDICAL_CERTIFICATE",
+        ocrData: { isApte: false, date: "pas une date" },
+      },
+      NOW,
+    );
+    expect(warnings).toEqual([
+      "Le certificat semble mentionner une contre-indication à la pratique.",
+      "La date du certificat n’a pas pu être lue.",
+    ]);
+    expect(warnings).not.toContain(
+      "La lecture automatique n’a pas confirmé l’aptitude à la pratique.",
+    );
   });
 
   it("warns about a certificate older than 12 months", () => {
@@ -87,7 +95,7 @@ describe("getRenewalOcrWarnings (#268)", () => {
         { type: "LICENSE_CERTIFICATE", ocrData: { licenseNumber: "  " } },
         NOW,
       ),
-    ).toEqual(["Le numéro de licence n'a pas pu être lu."]);
+    ).toEqual(["Le numéro de licence n’a pas pu être lu."]);
     expect(
       getRenewalOcrWarnings(
         { type: "LICENSE_CERTIFICATE", ocrData: { licenseNumber: "FFD-1" } },
@@ -99,6 +107,6 @@ describe("getRenewalOcrWarnings (#268)", () => {
   it("warns when the document was not read at all", () => {
     expect(
       getRenewalOcrWarnings({ type: "LICENSE_CERTIFICATE", ocrData: null }),
-    ).toEqual(["Le document n'a pas pu être lu automatiquement."]);
+    ).toEqual(["Le document n’a pas pu être lu automatiquement."]);
   });
 });

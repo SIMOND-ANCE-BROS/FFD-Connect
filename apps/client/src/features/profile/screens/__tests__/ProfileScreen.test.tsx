@@ -1,9 +1,12 @@
-import { fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
 import api from "../../../../services/api";
-import { useRenewalUnderReview } from "../../../license/hooks/useMyRenewalStatus";
+import {
+  useRenewalStatusRefresh,
+  useRenewalUnderReview,
+} from "../../../license/hooks/useMyRenewalStatus";
 import { ProfileScreen } from "../ProfileScreen";
 
 jest.mock("../../../../context/ThemeContext");
@@ -31,6 +34,9 @@ jest.mock("../../../license/components/LicenseExpiryBanner", () => ({
 }));
 jest.mock("../../../license/hooks/useMyRenewalStatus", () => ({
   useRenewalUnderReview: jest.fn(() => false),
+  useRenewalStatusRefresh: jest.fn(() =>
+    jest.fn().mockResolvedValue(undefined),
+  ),
 }));
 jest.mock("../../../../components/AppText", () => ({
   AppText: ({ children }: { children: React.ReactNode }) => {
@@ -109,6 +115,28 @@ describe("ProfileScreen", () => {
     await fireEvent.press(getByTestId("renewal-under-review-banner"));
     const { navigate } = mockNavigation as unknown as { navigate: jest.Mock };
     expect(navigate).toHaveBeenCalledWith("LicenseRenewal");
+  });
+
+  it("re-reads the renewal status on pull-to-refresh (#268)", async () => {
+    const refresh = jest.fn().mockResolvedValue(undefined);
+    (useRenewalStatusRefresh as jest.Mock).mockReturnValue(refresh);
+    mockGet.mockImplementation((url: string) =>
+      url === "/licenses/my"
+        ? Promise.resolve({ data: null })
+        : Promise.resolve({ data: { results: [] } }),
+    );
+
+    const { findByText, getByTestId } = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+    await findByText("Aucune licence associée");
+
+    const refreshControl = getByTestId("profile-scroll").props
+      .refreshControl as React.ReactElement<{ onRefresh: () => void }>;
+    await act(async () => {
+      refreshControl.props.onRefresh();
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the expiry banner without a pending renewal", async () => {

@@ -46,7 +46,10 @@ export function useLicenseRenewalLogic() {
       const data = await BackendService.getMyRenewalRequest(config.authToken);
       setRequest(data ?? null);
     } catch {
-      setRequest(null);
+      // Local state only: a failed read (network, 5xx, cold start) says
+      // nothing about the request, and writing null to the shared cache
+      // would erase a real PENDING from the Licence and Profile banners.
+      setRequestState(null);
     }
   }, [auth, setRequest]);
 

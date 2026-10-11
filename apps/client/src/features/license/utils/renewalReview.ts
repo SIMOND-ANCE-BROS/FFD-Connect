@@ -16,9 +16,9 @@ export const RENEWAL_REJECTION_LABELS: Record<
   INCOMPLETE: "Dossier incomplet",
   CERTIFICATE_TOO_OLD: "Certificat médical trop ancien",
   NOT_A_MEDICAL_CERTIFICATE:
-    "Le document déposé n'est pas un certificat médical",
+    "Le document déposé n’est pas un certificat médical",
   IDENTITY_MISMATCH:
-    "L'identité indiquée sur le document ne correspond pas à votre compte",
+    "L’identité indiquée sur le document ne correspond pas à votre compte",
   LICENSE_MISMATCH: "Le numéro de licence ne correspond pas",
   MEDICAL_RESTRICTION:
     "Le certificat médical mentionne une restriction à la pratique",
@@ -65,18 +65,22 @@ export function getRenewalOcrWarnings(
   now: Date = new Date(),
 ): string[] {
   const ocr = doc.ocrData;
-  if (!ocr) return ["Le document n'a pas pu être lu automatiquement."];
+  if (!ocr) return ["Le document n’a pas pu être lu automatiquement."];
 
   const warnings: string[] = [];
   if (doc.type === "MEDICAL_CERTIFICATE") {
-    if (ocr.isApte !== true) {
+    if (ocr.isApte === false) {
       warnings.push(
-        "La lecture automatique n'a pas confirmé l'aptitude à la pratique.",
+        "Le certificat semble mentionner une contre-indication à la pratique.",
+      );
+    } else if (ocr.isApte !== true) {
+      warnings.push(
+        "La lecture automatique n’a pas confirmé l’aptitude à la pratique.",
       );
     }
     const date = ocr.date ? new Date(ocr.date) : null;
     if (!date || Number.isNaN(date.getTime())) {
-      warnings.push("La date du certificat n'a pas pu être lue.");
+      warnings.push("La date du certificat n’a pas pu être lue.");
     } else {
       const limit = new Date(now);
       limit.setMonth(limit.getMonth() - MEDICAL_CERTIFICATE_MAX_AGE_MONTHS);
@@ -87,7 +91,7 @@ export function getRenewalOcrWarnings(
       }
     }
   } else if (!ocr.licenseNumber?.trim()) {
-    warnings.push("Le numéro de licence n'a pas pu être lu.");
+    warnings.push("Le numéro de licence n’a pas pu être lu.");
   }
   return warnings;
 }

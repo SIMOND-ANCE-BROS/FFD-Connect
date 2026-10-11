@@ -18,7 +18,10 @@ import api from "../../../services/api";
 import type { CareerResult } from "../../../services/BackendService";
 import { LicenseExpiryBanner } from "../../license/components/LicenseExpiryBanner";
 import { RenewalUnderReviewBanner } from "../../license/components/RenewalUnderReviewBanner";
-import { useRenewalUnderReview } from "../../license/hooks/useMyRenewalStatus";
+import {
+  useRenewalStatusRefresh,
+  useRenewalUnderReview,
+} from "../../license/hooks/useMyRenewalStatus";
 import {
   type CompetitionLevelProfile,
   formatCompetitionLevels,
@@ -31,6 +34,8 @@ type Props = NativeStackScreenProps<RootStackParamList, "Profile">;
 export const ProfileScreen = ({ navigation }: Props) => {
   const { theme: currentTheme } = useTheme();
   const renewalUnderReview = useRenewalUnderReview();
+  // Re-read at each focus and on pull-to-refresh (#268).
+  const refreshRenewalStatus = useRenewalStatusRefresh();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -82,7 +87,8 @@ export const ProfileScreen = ({ navigation }: Props) => {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     void loadData();
-  }, [loadData]);
+    void refreshRenewalStatus();
+  }, [loadData, refreshRenewalStatus]);
 
   if (loading) {
     return (
@@ -107,6 +113,7 @@ export const ProfileScreen = ({ navigation }: Props) => {
         backgroundColor={currentTheme.background}
       />
       <ScrollView
+        testID="profile-scroll"
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl

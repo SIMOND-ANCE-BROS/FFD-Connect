@@ -1,4 +1,10 @@
-import { useQuery, type QueryClient } from "@tanstack/react-query";
+import { useFocusEffect } from "@react-navigation/native";
+import {
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
+import { useCallback } from "react";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 import {
   LicenseApi,
@@ -56,4 +62,38 @@ export function useRenewalUnderReview(enabled = true): boolean {
     enabled,
   });
   return enabled && isRenewalUnderReview(data);
+}
+
+/**
+ * Re-reads the cached status. `cancelRefetch: false` joins a fetch already in
+ * flight (first mount) instead of firing a second request.
+ */
+export function refreshMyRenewalStatus(
+  queryClient: QueryClient,
+): Promise<void> {
+  return queryClient.invalidateQueries(
+    { queryKey: MY_RENEWAL_STATUS_QUERY_KEY },
+    { cancelRefetch: false },
+  );
+}
+
+/**
+ * Re-reads the renewal status each time the screen gains focus, and returns a
+ * callback for pull-to-refresh. Needed because the app wires no React Query
+ * focus manager (`refetchOnWindowFocus` does nothing in React Native) and the
+ * Licence tab stays mounted: without it the « en cours de vérification »
+ * banner would outlive the administrator's decision.
+ */
+export function useRenewalStatusRefresh(enabled = true): () => Promise<void> {
+  const queryClient = useQueryClient();
+  const refresh = useCallback(
+    () => (enabled ? refreshMyRenewalStatus(queryClient) : Promise.resolve()),
+    [enabled, queryClient],
+  );
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
+  return refresh;
 }

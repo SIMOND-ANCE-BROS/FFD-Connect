@@ -14,6 +14,9 @@ import { LicenseScreen } from "../LicenseScreen";
 
 jest.mock("../../hooks/useMyRenewalStatus", () => ({
   useRenewalUnderReview: jest.fn(() => false),
+  useRenewalStatusRefresh: jest.fn(() =>
+    jest.fn().mockResolvedValue(undefined),
+  ),
 }));
 jest.mock("../../../../components/NotificationBell", () => ({
   NotificationBell: () => null,

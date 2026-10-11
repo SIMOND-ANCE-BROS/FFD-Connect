@@ -71,12 +71,25 @@ const REQUIRED_RENEWAL_DOCUMENT_TYPES = [
   "LICENSE_CERTIFICATE",
 ] as const;
 
+/**
+ * A clean automatic reading per document, so the reviewer sees no OCR
+ * warning (#268). Only the fields the server whitelists for that type.
+ */
+const simulatedOcrData = (
+  ctx: SimulationContext,
+  type: (typeof REQUIRED_RENEWAL_DOCUMENT_TYPES)[number],
+) =>
+  type === "MEDICAL_CERTIFICATE"
+    ? { isApte: true, date: iso(ctx.now).slice(0, 10) }
+    : { licenseNumber: "DEMO-000000" };
+
 const simulatedDocuments = (ctx: SimulationContext, requestId: string) =>
   REQUIRED_RENEWAL_DOCUMENT_TYPES.map((type) => ({
     id: ctx.newId(),
     requestId,
     type,
     filePath: "",
+    ocrData: simulatedOcrData(ctx, type),
     createdAt: iso(ctx.now),
   }));
 

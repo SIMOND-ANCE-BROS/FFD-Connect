@@ -5,8 +5,23 @@ import { mockAuthRepository } from "../../../../__tests__/mocks/mockAuthReposito
 import {
   MY_RENEWAL_STATUS_QUERY_KEY,
   setMyRenewalStatus,
+  useRenewalStatusRefresh,
   useRenewalUnderReview,
 } from "../useMyRenewalStatus";
+
+// Like the real useFocusEffect: runs at mount (first focus); `mockFocus`
+// simulates the screen gaining focus again.
+let mockFocusCallback: (() => void) | null = null;
+const mockFocus = () => mockFocusCallback?.();
+jest.mock("@react-navigation/native", () => {
+  const ReactActual = require("react");
+  return {
+    useFocusEffect: (callback: () => void) => {
+      mockFocusCallback = callback;
+      ReactActual.useEffect(() => callback(), [callback]);
+    },
+  };
+});
 
 jest.mock("../../../auth/context/AuthContext", () => ({
   useAuthRepository: () => mockAuthRepository,
@@ -162,5 +177,71 @@ describe("useRenewalUnderReview (#268)", () => {
       setMyRenewalStatus(client, null);
     });
     expect(result.current).toBe(false);
+  });
+});
+
+describe("useRenewalStatusRefresh (#268)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFocusCallback = null;
+    mockAuthRepository.getAuthConfig.mockResolvedValue({
+      authToken: "token",
+      isLoggedIn: true,
+    });
+  });
+
+  const useBannerState = (enabled = true) => {
+    useRenewalStatusRefresh(enabled);
+    return useRenewalUnderReview(enabled);
+  };
+
+  it("drops the banner once the decision is taken, at the next focus", async () => {
+    mockGetMyRenewal.mockResolvedValue(request("PENDING"));
+    const client = makeClient();
+    const { result } = await renderHook(() => useBannerState(), {
+      wrapper: wrapperFor(client),
+    });
+    await waitFor(() => expect(result.current).toBe(true));
+    // The first focus joins the mount fetch instead of firing a second one.
+    expect(mockGetMyRenewal).toHaveBeenCalledTimes(1);
+
+    // The administrator approves while the Licence tab stays mounted.
+    mockGetMyRenewal.mockResolvedValue(request("APPROVED"));
+    await act(async () => {
+      mockFocus();
+    });
+
+    await waitFor(() => expect(result.current).toBe(false));
+    expect(mockGetMyRenewal).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a callback that re-reads the status (pull-to-refresh)", async () => {
+    mockGetMyRenewal.mockResolvedValue(request("PENDING"));
+    const client = makeClient();
+    const { result } = await renderHook(
+      () => ({
+        refresh: useRenewalStatusRefresh(),
+        underReview: useRenewalUnderReview(),
+      }),
+      { wrapper: wrapperFor(client) },
+    );
+    await waitFor(() => expect(result.current.underReview).toBe(true));
+
+    mockGetMyRenewal.mockResolvedValue(request("REJECTED"));
+    await act(async () => {
+      await result.current.refresh();
+    });
+    expect(result.current.underReview).toBe(false);
+  });
+
+  it("does not fetch when disabled (guest)", async () => {
+    const client = makeClient();
+    await renderHook(() => useBannerState(false), {
+      wrapper: wrapperFor(client),
+    });
+    await act(async () => {
+      mockFocus();
+    });
+    expect(mockGetMyRenewal).not.toHaveBeenCalled();
   });
 });

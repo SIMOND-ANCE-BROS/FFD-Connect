@@ -95,7 +95,9 @@ const makeDraftRequest = (
 describe("useLicenseRenewalLogic", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    queryClient = new QueryClient();
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 1000 } },
+    });
 
     // Default: logged in
     mockAuthRepository.getAuthConfig.mockResolvedValue({
@@ -113,6 +115,42 @@ describe("useLicenseRenewalLogic", () => {
 
     mockRequestPermissions.mockResolvedValue({ status: "granted" });
     mockLaunchImageLibrary.mockResolvedValue({ canceled: true, assets: [] });
+  });
+
+  afterEach(() => queryClient.clear());
+
+  it("keeps a PENDING status in the shared cache when the read fails (#268)", async () => {
+    queryClient.setQueryData(MY_RENEWAL_STATUS_QUERY_KEY, {
+      id: "req-1",
+      status: "PENDING",
+    });
+    mockGetMyRenewal.mockRejectedValue(new Error("503"));
+
+    const { result } = await renderHook(() => useLicenseRenewalLogic(), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(mockGetMyRenewal).toHaveBeenCalled());
+    expect(result.current.request).toBeNull();
+    expect(queryClient.getQueryData(MY_RENEWAL_STATUS_QUERY_KEY)).toEqual({
+      id: "req-1",
+      status: "PENDING",
+    });
+  });
+
+  it("writes a successful read to the shared cache", async () => {
+    mockGetMyRenewal.mockResolvedValue(
+      makeDraftRequest({ status: "APPROVED" }),
+    );
+
+    await renderHook(() => useLicenseRenewalLogic(), { wrapper });
+
+    await waitFor(() =>
+      expect(queryClient.getQueryData(MY_RENEWAL_STATUS_QUERY_KEY)).toEqual({
+        id: "req-1",
+        status: "APPROVED",
+      }),
+    );
   });
 
   // 1. Initial state: no request, not loading

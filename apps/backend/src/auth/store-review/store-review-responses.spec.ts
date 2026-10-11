@@ -122,6 +122,16 @@ describe("store-review simulated responses", () => {
       expect(res.documents.every((d) => d.requestId === "req-1")).toBe(true);
     });
 
+    it("documents carry a clean OCR reading, so the app shows no warning (#268)", () => {
+      const res = simulatedRenewalDocument(ctx()) as {
+        documents: { type: string; ocrData: Record<string, unknown> }[];
+      };
+      expect(res.documents.map((d) => d.ocrData)).toEqual([
+        { isApte: true, date: "2026-10-09" },
+        { licenseNumber: "DEMO-000000" },
+      ]);
+    });
+
     it("submit returns a pending request", () => {
       expect(
         simulatedRenewalSubmit(ctx({ params: { id: "req-1" } })),

@@ -46,7 +46,10 @@ import { useTheme } from "../../../context/ThemeContext";
 import type { RootStackParamList } from "../../../navigation/types";
 import { isWdsfQrData } from "../../../utils/typeGuards";
 import { useLicenseLogic } from "../hooks/useLicenseLogic";
-import { useRenewalUnderReview } from "../hooks/useMyRenewalStatus";
+import {
+  useRenewalStatusRefresh,
+  useRenewalUnderReview,
+} from "../hooks/useMyRenewalStatus";
 import { buildLicenseQrData } from "../utils/licenseQrData";
 
 if (Platform.OS === "android") {
@@ -179,6 +182,8 @@ export const LicenseScreen: React.FC = () => {
   const activeItemType = state.listItems[state.activeCardIndex]?.type;
   const isGuest = state.listItems.some((item) => item.type === "GUEST");
   const renewalUnderReview = useRenewalUnderReview(!isGuest);
+  // Re-read at each focus, like the licence itself (useLicenseLogic).
+  useRenewalStatusRefresh(!isGuest);
   const openRenewal = () => navigation.getParent()?.navigate("LicenseRenewal");
 
   return (

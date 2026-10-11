@@ -54,6 +54,12 @@ export class LicenseRenewalRequestDto {
     nullable: true,
     enum: RENEWAL_REJECTION_REASONS,
     enumName: "LicenseRenewalRejectionReason",
+    // The shared enum schema gets its own generic description; without it,
+    // Nest copies the property-specific one below onto the component.
+    enumSchema: {
+      description:
+        "Code du motif de refus d'une demande de renouvellement de licence.",
+    },
     description:
       "Motif du refus (null sauf demande refusée). `MEDICAL_RESTRICTION` est ramené à `OTHER` par la purge de rétention.",
   })
