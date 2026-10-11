@@ -72,8 +72,8 @@ interface MaybeStoreReviewRequest extends Request {
  *
  * `req.user.storeReview` is set by JwtStrategy from its per-request account
  * lookup (no extra query). Routes without a JWT guard (login, refresh,
- * logout, register, password reset, TTS, webhooks) have no `req.user` and run
- * normally. A route opts out with @StoreReviewPassthrough(); a route whose
+ * logout, register, password reset, webhooks) have no `req.user` and run
+ * normally. A route opts out with @StoreReviewPassthrough() (e.g. TTS); a route whose
  * client reads specific fields declares its body with @StoreReviewSimulation().
  *
  * Its reads are DENY BY DEFAULT: a GET returns real data only when the route

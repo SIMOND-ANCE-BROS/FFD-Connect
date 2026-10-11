@@ -5,10 +5,18 @@ jest.mock("../../utils/logger", () => ({
 jest.mock("../../utils/backendWake", () => ({
   warmBackend: jest.fn(() => Promise.resolve()),
 }));
+jest.mock("../../api/tokenStore", () => ({
+  getAccessToken: jest.fn(() => Promise.resolve("access-1")),
+}));
+jest.mock("../../api/sessionRefresh", () => ({
+  refreshSession: jest.fn(() => Promise.resolve("access-2")),
+}));
 
 import * as Sentry from "@sentry/react-native";
 import { createAudioPlayer } from "expo-audio";
 import { getInfoAsync, writeAsStringAsync } from "expo-file-system/legacy";
+import { refreshSession } from "../../api/sessionRefresh";
+import { getAccessToken } from "../../api/tokenStore";
 import { warmBackend } from "../../utils/backendWake";
 import TtsService, {
   arrayBufferToBase64,
@@ -153,6 +161,87 @@ describe("TtsService.preload (download)", () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(writeAsStringAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends the user's access token (POST /tts requires auth)", async () => {
+    fetchMock.mockResolvedValueOnce(okResponse());
+    await TtsService.preload("Place au Tango !");
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual(
+      expect.objectContaining({ Authorization: "Bearer access-1" }),
+    );
+    expect(init.body).toBe(JSON.stringify({ text: "Place au Tango !" }));
+  });
+
+  it("sends no Authorization header without a session", async () => {
+    (getAccessToken as jest.Mock).mockResolvedValueOnce(undefined);
+    fetchMock.mockResolvedValueOnce(okResponse());
+    await TtsService.preload("Samba !");
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(init.headers).not.toHaveProperty("Authorization");
+  });
+
+  it("refreshes an expired session on 401 and replays with the new token", async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 401 })
+      .mockResolvedValueOnce(okResponse());
+    await expect(TtsService.preload("Quickstep !")).resolves.toContain(
+      ttsCacheFilename("Quickstep !"),
+    );
+    expect(refreshSession).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const replay = fetchMock.mock.calls[1][1] as RequestInit;
+    expect(replay.headers).toEqual(
+      expect.objectContaining({ Authorization: "Bearer access-2" }),
+    );
+  });
+
+  it("fails with the 401 when the session cannot be refreshed", async () => {
+    (refreshSession as jest.Mock).mockResolvedValue(null);
+    fetchMock.mockResolvedValue({ ok: false, status: 401 });
+    await expect(TtsService.preload("Valse !")).rejects.toThrow(
+      "TTS indisponible (TTS API Error: 401)",
+    );
+    // One request per attempt, no replay without a fresh token.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    (refreshSession as jest.Mock).mockResolvedValue("access-2");
+  });
+
+  it("waits for Retry-After on 429 without consuming an attempt", async () => {
+    jest.useFakeTimers();
+    const tooMany = {
+      ok: false,
+      status: 429,
+      headers: new Headers({ "Retry-After": "7" }),
+    };
+    fetchMock
+      .mockResolvedValueOnce(tooMany)
+      .mockResolvedValueOnce(tooMany)
+      .mockResolvedValueOnce(okResponse());
+    const p = TtsService.preload("Paso doble !");
+    await jest.advanceTimersByTimeAsync(6999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(7001);
+    await expect(p).resolves.toContain(ttsCacheFilename("Paso doble !"));
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("gives up after a bounded number of 429 waits", async () => {
+    jest.useFakeTimers();
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 429,
+      headers: new Headers({ "Retry-After": "999" }),
+    });
+    const p = TtsService.preload("Cha-cha-cha !");
+    const assertion = expect(p).rejects.toThrow(
+      "TTS indisponible (TTS API Error: 429)",
+    );
+    // Capped at 60 s per wait, 3 waits, then 2 failed attempts.
+    await jest.advanceTimersByTimeAsync(3 * 60000 + 1000);
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it("gives up after two attempts with a TTS error", async () => {
