@@ -6,6 +6,11 @@ import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { getErrorMessage } from "../utils/error.utils";
+import { healthDataPurgeDueSelect } from "../utils/prisma-selects";
+import {
+  RENEWAL_REASON_HEALTH_DATA,
+  RENEWAL_REASON_NEUTRAL,
+} from "./dto/admin-license-renewal.dto";
 import { medicalCertificatePurgeDueAt } from "./medical-certificate-retention.util";
 
 /**
@@ -65,8 +70,10 @@ const EMPTY_REPORT: HealthDataPurgeReport = {
  *
  * ## L'effacement se fait en deux temps, et l'ordre est raisonné
  *
- * 1. `ocrData` est vidé pour TOUT document échu. C'est une écriture en base :
- *    elle n'échoue pas parce qu'un stockage externe va mal. Le texte de santé
+ * 1. `ocrData` est vidé pour TOUT document échu ; sur sa demande, le
+ *    commentaire de modération est effacé et le motif MEDICAL_RESTRICTION
+ *    ramené à OTHER (#266). Ce sont des écritures en base : elles
+ *    n'échouent pas parce qu'un stockage externe va mal. Le texte de santé
  *    disparaît donc à l'heure dite, quoi qu'il arrive au fichier.
  * 2. Le fichier est supprimé, et la ligne seulement ensuite — elle est le seul
  *    pointeur vers le blob. L'effacer alors que le fichier a résisté
@@ -150,7 +157,7 @@ export class HealthDataRetentionService implements OnModuleInit {
         type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
         purgeDueAt: { lte: new Date() },
       },
-      select: { id: true, filePath: true },
+      select: healthDataPurgeDueSelect,
       orderBy: { purgeDueAt: "asc" },
       take: PURGE_BATCH_SIZE,
     });
@@ -162,6 +169,23 @@ export class HealthDataRetentionService implements OnModuleInit {
     const stripped = await this.prisma.licenseRenewalDocument.updateMany({
       where: { id: { in: due.map((document) => document.id) } },
       data: { ocrData: Prisma.DbNull },
+    });
+    // Modération (#266) : le commentaire de l'administrateur peut décrire le
+    // certificat, et le motif MEDICAL_RESTRICTION est lui-même une donnée de
+    // santé. Ils partent avec le certificat : le commentaire est effacé, le
+    // motif ramené à OTHER. Seule la trace neutre de la décision (statut,
+    // date) demeure.
+    const requestIds = [...new Set(due.map((document) => document.requestId))];
+    await this.prisma.licenseRenewalRequest.updateMany({
+      where: { id: { in: requestIds }, reviewComment: { not: null } },
+      data: { reviewComment: null },
+    });
+    await this.prisma.licenseRenewalRequest.updateMany({
+      where: {
+        id: { in: requestIds },
+        rejectionReason: RENEWAL_REASON_HEALTH_DATA,
+      },
+      data: { rejectionReason: RENEWAL_REASON_NEUTRAL },
     });
 
     // 2. Le fichier, puis la ligne — et seulement pour les fichiers confirmés

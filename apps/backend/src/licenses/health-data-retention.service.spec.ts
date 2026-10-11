@@ -18,12 +18,13 @@ describe("HealthDataRetentionService", () => {
       deleteMany: jest.fn(),
       update: jest.fn(),
     },
+    licenseRenewalRequest: { updateMany: jest.fn() },
     $transaction: jest.fn(),
   };
   const mockCleaner = { deleteFiles: jest.fn() };
   const mockBlobStorage = { isEnabled: jest.fn() };
 
-  const due = { id: "doc-1", filePath: "blob-1" };
+  const due = { id: "doc-1", filePath: "blob-1", requestId: "req-1" };
 
   /** `findMany` sert d'abord le backfill, puis les documents échus. */
   const whenFindMany = (undated: unknown[], dueDocs: unknown[]) => {
@@ -41,6 +42,9 @@ describe("HealthDataRetentionService", () => {
     });
     mockPrisma.licenseRenewalDocument.deleteMany.mockResolvedValue({
       count: 1,
+    });
+    mockPrisma.licenseRenewalRequest.updateMany.mockResolvedValue({
+      count: 0,
     });
     mockPrisma.$transaction.mockResolvedValue([]);
 
@@ -102,6 +106,34 @@ describe("HealthDataRetentionService", () => {
     // Petit lot : les suppressions de blob partent en parallèle derrière un
     // disjoncteur PARTAGÉ avec le streaming musical.
     expect(dueQuery.take).toBeLessThanOrEqual(50);
+  });
+
+  /**
+   * #266 : le commentaire de l'administrateur peut décrire le certificat ; il
+   * part avec le document, avant le stockage externe, même si le fichier
+   * résiste.
+   */
+  it("efface le commentaire de modération des demandes concernées", async () => {
+    whenFindMany(
+      [],
+      [due, { id: "doc-2", filePath: "blob-2", requestId: "req-1" }],
+    );
+    mockCleaner.deleteFiles.mockResolvedValue(new Set());
+
+    await service.purgeExpiredHealthData();
+
+    expect(mockPrisma.licenseRenewalRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["req-1"] }, reviewComment: { not: null } },
+      data: { reviewComment: null },
+    });
+    // The health-data reason code is neutralised with the certificate.
+    expect(mockPrisma.licenseRenewalRequest.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["req-1"] }, rejectionReason: "MEDICAL_RESTRICTION" },
+      data: { rejectionReason: "OTHER" },
+    });
+    expect(
+      mockPrisma.licenseRenewalRequest.updateMany.mock.invocationCallOrder[0],
+    ).toBeLessThan(mockCleaner.deleteFiles.mock.invocationCallOrder[0]);
   });
 
   it("efface les données extraites PUIS le fichier PUIS la ligne", async () => {

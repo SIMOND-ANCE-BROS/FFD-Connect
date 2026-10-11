@@ -3444,7 +3444,13 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["USER", "CLUB", "TRACK_CORRECTION", "TRACK"]
+              "enum": [
+                "USER",
+                "CLUB",
+                "TRACK_CORRECTION",
+                "TRACK",
+                "LICENSE_RENEWAL"
+              ]
             }
           },
           {
@@ -22420,30 +22426,316 @@
         "tags": ["licenses"]
       }
     },
-    "/licenses/renewal/{id}/approve": {
-      "post": {
-        "description": "Réservé aux administrateurs. Passe la demande en APPROVED et renouvelle la licence jusqu’au 31 août (Europe/Paris) qui termine la saison en cours, ou celle de la saison suivante pour une approbation entre le 1er juillet et le 31 août ; une date de fin déjà plus lointaine est conservée.",
-        "operationId": "LicensesController_approveRenewal",
+    "/admin/license-renewals": {
+      "get": {
+        "description": "Paginée (take ≤ 50), plus anciennes soumissions d'abord. Filtre status (par défaut PENDING). Ni fichier, ni donnée lue sur les documents.",
+        "operationId": "AdminLicenseRenewalsController_list",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Statut des demandes listées (par défaut : en attente)",
+            "schema": {
+              "$ref": "#/components/schemas/LicenseRenewalStatus"
+            }
+          },
+          {
+            "name": "skip",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "take",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLicenseRenewalsPageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "File des demandes de renouvellement",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/license-renewals/{id}": {
+      "get": {
+        "description": "Demande, documents (indices OCR tant qu'elle est en attente), fin de validité qu'accorderait une approbation, historique des demandes du même utilisateur (statuts et dates). Consultation tracée (LICENSE_RENEWAL_VIEW).",
+        "operationId": "AdminLicenseRenewalsController_detail",
         "parameters": [
           {
             "name": "id",
             "required": true,
             "in": "path",
-            "description": "ID de la demande",
             "schema": {
+              "format": "uuid",
               "type": "string"
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "Demande approuvée, licence renouvelée"
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLicenseRenewalDetailDto"
+                }
+              }
+            }
           },
           "400": {
-            "description": "Demande non en attente"
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
           },
           "401": {
-            "description": "Non autorisé"
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
           },
           "403": {
             "description": "Accès interdit - Permissions insuffisantes",
@@ -22550,8 +22842,533 @@
             "JWT-auth": []
           }
         ],
+        "summary": "Détail d'une demande de renouvellement",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/license-renewals/{id}/documents/{docId}/file": {
+      "get": {
+        "description": "Servi en flux authentifié, jamais mis en cache, uniquement tant que la demande est en attente (410 ensuite). Consultation tracée (LICENSE_RENEWAL_DOCUMENT_VIEW). Limité à 30 ouvertures par minute.",
+        "operationId": "AdminLicenseRenewalsController_documentFile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "docId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contenu du document",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Document ou fichier introuvable"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Demande traitée : documents plus consultables"
+          },
+          "429": {
+            "description": "Trop d'ouvertures"
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stockage indisponible"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Fichier d'un document (certificat médical ou de licence)",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/license-renewals/{id}/approve": {
+      "post": {
+        "description": "Licence renouvelée jusqu'au 31 août (Europe/Paris) de la saison accordée à la date de la décision, jamais raccourcie. Numéro : celui confirmé par l'administrateur, sinon la lecture OCR, sinon celui de la licence existante ; aucun → 400 (jamais de numéro inventé). Tracé (LICENSE_RENEWAL_APPROVE).",
+        "operationId": "AdminLicenseRenewalsController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveLicenseRenewalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLicenseRenewalDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Aucun numéro de licence connu"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Demande non trouvée"
+          },
+          "409": {
+            "description": "Demande déjà traitée, ou numéro de licence attribué à un autre compte"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
         "summary": "Approuver une demande (renouvelle la licence)",
-        "tags": ["licenses"]
+        "tags": ["admin"]
+      }
+    },
+    "/admin/license-renewals/{id}/reject": {
+      "post": {
+        "description": "Motif obligatoire parmi les codes, commentaire facultatif (≤ 500). Le certificat médical est purgé au plus tard 30 jours après la décision. Tracé (LICENSE_RENEWAL_REJECT, sans le motif).",
+        "operationId": "AdminLicenseRenewalsController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectLicenseRenewalDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLicenseRenewalDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Demande non trouvée"
+          },
+          "409": {
+            "description": "Demande déjà traitée"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Refuser une demande",
+        "tags": ["admin"]
       }
     },
     "/health/live": {
@@ -23545,12 +24362,22 @@
               "TRACK_CORRECTION_REJECT",
               "TRACK_CREATE",
               "TRACK_UPDATE",
-              "TRACK_DELETE"
+              "TRACK_DELETE",
+              "LICENSE_RENEWAL_VIEW",
+              "LICENSE_RENEWAL_DOCUMENT_VIEW",
+              "LICENSE_RENEWAL_APPROVE",
+              "LICENSE_RENEWAL_REJECT"
             ]
           },
           "targetType": {
             "type": "string",
-            "enum": ["USER", "CLUB", "TRACK_CORRECTION", "TRACK"]
+            "enum": [
+              "USER",
+              "CLUB",
+              "TRACK_CORRECTION",
+              "TRACK",
+              "LICENSE_RENEWAL"
+            ]
           },
           "targetId": {
             "type": "string"
@@ -26148,6 +26975,367 @@
           }
         },
         "required": ["count"]
+      },
+      "LicenseRenewalStatus": {
+        "type": "string",
+        "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"]
+      },
+      "AdminRenewalLicenseDto": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "string"
+          },
+          "validUntil": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": ["number", "validUntil"]
+      },
+      "AdminRenewalUserDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "license": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminRenewalLicenseDto"
+              }
+            ]
+          }
+        },
+        "required": ["id", "firstName", "lastName", "license"]
+      },
+      "AdminRenewalPersonDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "firstName", "lastName"]
+      },
+      "LicenseRenewalDocumentType": {
+        "type": "string",
+        "enum": ["MEDICAL_CERTIFICATE", "LICENSE_CERTIFICATE"]
+      },
+      "AdminRenewalDocumentDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalDocumentType"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": ["id", "type", "createdAt"]
+      },
+      "AdminLicenseRenewalListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalStatus"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "submittedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reviewedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "user": {
+            "$ref": "#/components/schemas/AdminRenewalUserDto"
+          },
+          "reviewedBy": {
+            "nullable": true,
+            "description": "Administrateur qui a tranché ; null pour l'auto-approbation",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminRenewalPersonDto"
+              }
+            ]
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminRenewalDocumentDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "createdAt",
+          "submittedAt",
+          "reviewedAt",
+          "user",
+          "reviewedBy",
+          "documents"
+        ]
+      },
+      "AdminLicenseRenewalsPageDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminLicenseRenewalListItemDto"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AdminPageMetaDto"
+          }
+        },
+        "required": ["data", "meta"]
+      },
+      "AdminRenewalOcrHintsDto": {
+        "type": "object",
+        "properties": {
+          "isApte": {
+            "type": "boolean"
+          },
+          "date": {
+            "type": "string"
+          },
+          "doctorName": {
+            "type": "string"
+          },
+          "licenseNumber": {
+            "type": "string"
+          },
+          "expiryDate": {
+            "type": "string"
+          }
+        }
+      },
+      "AdminRenewalDocumentDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalDocumentType"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "ocr": {
+            "nullable": true,
+            "description": "Indices lus par l'OCR, seulement tant que la demande est en attente (null ensuite).",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminRenewalOcrHintsDto"
+              }
+            ]
+          }
+        },
+        "required": ["id", "type", "createdAt", "ocr"]
+      },
+      "AdminRenewalHistoryItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalStatus"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "submittedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reviewedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": ["id", "status", "createdAt", "submittedAt", "reviewedAt"]
+      },
+      "AdminLicenseRenewalDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalStatus"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "submittedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reviewedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "user": {
+            "$ref": "#/components/schemas/AdminRenewalUserDto"
+          },
+          "reviewedBy": {
+            "nullable": true,
+            "description": "Administrateur qui a tranché ; null pour l'auto-approbation",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminRenewalPersonDto"
+              }
+            ]
+          },
+          "rejectionReason": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "ILLEGIBLE",
+              "INCOMPLETE",
+              "CERTIFICATE_TOO_OLD",
+              "NOT_A_MEDICAL_CERTIFICATE",
+              "IDENTITY_MISMATCH",
+              "LICENSE_MISMATCH",
+              "MEDICAL_RESTRICTION",
+              "OTHER"
+            ]
+          },
+          "reviewComment": {
+            "type": "string",
+            "nullable": true
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminRenewalDocumentDetailDto"
+            }
+          },
+          "renewsUntil": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Fin de validité qu'accorderait une approbation maintenant (null hors attente)"
+          },
+          "history": {
+            "description": "Autres demandes du même utilisateur (statuts et dates uniquement), plus récentes d'abord",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminRenewalHistoryItemDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "createdAt",
+          "submittedAt",
+          "reviewedAt",
+          "user",
+          "reviewedBy",
+          "rejectionReason",
+          "reviewComment",
+          "documents",
+          "renewsUntil",
+          "history"
+        ]
+      },
+      "ApproveLicenseRenewalDto": {
+        "type": "object",
+        "properties": {
+          "licenseNumber": {
+            "type": "string",
+            "description": "Numéro de licence confirmé par l'administrateur. Prioritaire sur la lecture OCR ; remplace le numéro d'une licence existante. Obligatoire si aucun numéro n'est connu.",
+            "maxLength": 32,
+            "example": "FFD-123456"
+          }
+        }
+      },
+      "RejectLicenseRenewalDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": [
+              "ILLEGIBLE",
+              "INCOMPLETE",
+              "CERTIFICATE_TOO_OLD",
+              "NOT_A_MEDICAL_CERTIFICATE",
+              "IDENTITY_MISMATCH",
+              "LICENSE_MISMATCH",
+              "MEDICAL_RESTRICTION",
+              "OTHER"
+            ]
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Commentaire adressé au licencié. Effacé avec le certificat par la purge de rétention."
+          }
+        },
+        "required": ["reason"]
       },
       "CreateCheckoutDto": {
         "type": "object",

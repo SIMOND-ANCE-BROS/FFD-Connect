@@ -34,11 +34,33 @@ model LicenseRenewalRequest {
   status    LicenseRenewalStatus   @default(DRAFT)
   createdAt DateTime              @default(now())
   updatedAt DateTime              @updatedAt
-  user      User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User                  @relation("LicenseRenewalRequester", fields: [userId], references: [id], onDelete: Cascade)
   documents LicenseRenewalDocument[]
+
+  // ── Modération humaine (#19, #266) ─────────────────────────────────────
+  // Colonnes NULLABLES : ajoutées à une table déjà peuplée, la migration reste
+  // additive (ADR-0017). Voir ADR-0021.
+
+  /// Passage DRAFT → PENDING. Ordre de la file de modération (plus anciennes
+  /// d'abord). Rattrapé à `updatedAt` pour les demandes antérieures.
+  submittedAt     DateTime?
+  /// Administrateur qui a tranché (null pour l'auto-approbation, ou si son
+  /// compte a été supprimé depuis).
+  reviewedById    String?
+  reviewedBy      User?     @relation("LicenseRenewalsReviewed", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt      DateTime?
+  /// Code de motif de refus (`RENEWAL_REJECTION_REASONS`), validé côté
+  /// TypeScript : pas d'enum PostgreSQL, dont l'ajout de valeurs se migre mal.
+  rejectionReason String?
+  /// Commentaire libre de l'administrateur (≤ 500). Peut décrire le
+  /// certificat : effacé par la purge de rétention avec le document (#62).
+  reviewComment   String?
 
   @@index([userId])
   @@index([status])
+  // File de modération : filtre par statut, tri par date de soumission.
+  @@index([status, submittedAt])
+  @@index([reviewedById])
 }
 
 model LicenseRenewalDocument {

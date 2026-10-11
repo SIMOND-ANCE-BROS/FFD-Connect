@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import {
@@ -14,7 +15,6 @@ import { CodedBadRequestException } from "../common/errors/coded-bad-request.exc
 import { OcrService } from "../utils/ocr.service";
 import {
   idOnlySelect,
-  licenseRenewalApprovalTargetSelect,
   licenseRenewalRequestResponseSelect,
   licenseRenewalSubmitTargetSelect,
   licenseRenewalUploadTargetSelect,
@@ -23,10 +23,13 @@ import {
   MEDICAL_CERTIFICATE_VALIDITY_MONTHS,
   medicalCertificatePurgeDueAt,
 } from "./medical-certificate-retention.util";
+import { isLicenseCoveredForRenewal } from "./license-season";
+import { normalizeLicenseNumber } from "./license-number.util";
 import {
-  isLicenseCoveredForRenewal,
-  renewedLicenseValidUntil,
-} from "./license-season";
+  approvePendingRenewal,
+  LicenseNumberTakenException,
+  LicenseNumberUnknownException,
+} from "./license-renewal-approval";
 import { toLicenseQrExpiry } from "./qr/license-qr";
 import {
   pickRenewalOcrData,
@@ -64,6 +67,8 @@ export const RENEWAL_DOCUMENT_REJECTED = "RENEWAL_DOCUMENT_REJECTED";
 
 @Injectable()
 export class LicenseRenewalService {
+  private readonly logger = new Logger(LicenseRenewalService.name);
+
   constructor(
     private prisma: PrismaService,
     private ocrService: OcrService,
@@ -218,7 +223,8 @@ export class LicenseRenewalService {
   }
 
   /**
-   * Soumet la demande de renouvellement (DRAFT → PENDING ou APPROVED).
+   * Soumet la demande de renouvellement (DRAFT → PENDING, `submittedAt` posé,
+   * puis APPROVED).
    * Exige certificat médical et certificat de licence.
    * Si les deux validations OCR passent, la demande est auto-approuvée et la licence est renouvelée.
    */
@@ -263,10 +269,12 @@ export class LicenseRenewalService {
       select: { license: { select: { number: true, validUntil: true } } },
     });
     const licenseOcr = pickRenewalOcrData(licenseDoc.type, licenseDoc.ocrData);
+    // Same reading as the approval core (trimmed, shaped like a licence
+    // number): a blank or garbled OCR number must not pass submission and
+    // then fail the approval.
     const hasLicenseNumber =
-      Boolean(
-        licenseOcr?.licenseNumber && licenseOcr.licenseNumber.length > 0,
-      ) || Boolean(user?.license?.number && user.license.number.length > 0);
+      normalizeLicenseNumber(licenseOcr?.licenseNumber) !== null ||
+      (user?.license?.number.trim() ?? "") !== "";
     if (!hasLicenseNumber) {
       throw new BadRequestException(
         "Le certificat de licence n'a pas permis d'identifier un numéro de licence. Assurez-vous que le document est lisible et mentionne le numéro de licence.",
@@ -288,62 +296,50 @@ export class LicenseRenewalService {
       );
     }
 
+    const submittedAt = new Date();
     await this.prisma.licenseRenewalRequest.update({
       where: { id: requestId },
-      data: { status: LicenseRenewalStatus.PENDING, updatedAt: new Date() },
+      data: {
+        status: LicenseRenewalStatus.PENDING,
+        submittedAt,
+        updatedAt: submittedAt,
+      },
       select: idOnlySelect,
     });
-    return this.approveRenewalRequest(requestId);
+    return this.autoApprove(requestId);
   }
 
   /**
-   * Approuve une demande de renouvellement (admin ou processus auto) et renouvelle la licence.
+   * Auto-approbation à la soumission (en place jusqu'à #271, qui la retirera au
+   * profit de la seule modération humaine). Même cœur que la décision admin
+   * (`approvePendingRenewal`) : passage conditionnel PENDING → APPROVED puis
+   * upsert de la licence, dans UNE transaction (#261).
    */
-  async approveRenewalRequest(requestId: string) {
-    const request = await this.prisma.licenseRenewalRequest.findUnique({
-      where: { id: requestId },
-      select: licenseRenewalApprovalTargetSelect,
-    });
-    if (!request)
-      throw new NotFoundException("Demande de renouvellement non trouvée");
-    if (request.status !== LicenseRenewalStatus.PENDING)
-      throw new BadRequestException(
-        "Seules les demandes en attente peuvent être approuvées",
+  private async autoApprove(requestId: string) {
+    try {
+      await this.prisma.$transaction((tx) =>
+        approvePendingRenewal(tx, requestId, {
+          reviewerId: null,
+          now: new Date(),
+        }),
       );
-
-    const licenseCert = request.documents.find(
-      (d) => d.type === LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
-    );
-    const ocrLicenseNumber = licenseCert
-      ? (pickRenewalOcrData(licenseCert.type, licenseCert.ocrData)
-          ?.licenseNumber ?? null)
-      : null;
-
-    // Never shortens an existing license (#250).
-    const seasonEnd = renewedLicenseValidUntil(
-      request.user.license?.validUntil,
-    );
-
-    const licenseNumber =
-      ocrLicenseNumber ??
-      request.user.license?.number ??
-      `FFD-${Math.floor(Math.random() * 1000000)}`;
-
-    await this.prisma.license.upsert({
-      where: { userId: request.userId },
-      update: { validUntil: seasonEnd, updatedAt: new Date() },
-      create: {
-        userId: request.userId,
-        number: licenseNumber,
-        validUntil: seasonEnd,
-        category: request.user.category ?? "Standard",
-        clubName: request.user.clubName ?? "Club",
-      },
-    });
-
-    const approved = await this.prisma.licenseRenewalRequest.update({
+    } catch (error) {
+      // Licence number unknown, or already another account's: not the
+      // licensee's to fix, and the 409 wording would reveal that a number is
+      // registered. The transaction rolled back: the request stays PENDING
+      // for the administrator, and the licensee sees it as submitted.
+      if (
+        !(error instanceof LicenseNumberUnknownException) &&
+        !(error instanceof LicenseNumberTakenException)
+      ) {
+        throw error;
+      }
+      this.logger.warn(
+        `Licence renewal ${requestId} left PENDING for human review (${error.constructor.name})`,
+      );
+    }
+    const approved = await this.prisma.licenseRenewalRequest.findUniqueOrThrow({
       where: { id: requestId },
-      data: { status: LicenseRenewalStatus.APPROVED, updatedAt: new Date() },
       select: licenseRenewalRequestResponseSelect,
     });
     return toRenewalRequestResponse(approved);

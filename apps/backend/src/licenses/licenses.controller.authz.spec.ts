@@ -8,30 +8,23 @@ import { LicensesController } from "./licenses.controller";
 import { LicensesService } from "./licenses.service";
 
 /**
- * HTTP-level authorization of POST /licenses/renewal/:id/approve.
- *
- * Approving a renewal request renews someone's license, so the route is
- * reserved to ADMIN. JwtAuthGuard is stubbed to inject the caller; RolesGuard
- * is the real one, so these tests exercise the actual guard chain.
+ * POST /licenses/renewal/:id/approve is gone (#266): renewal decisions are
+ * taken from POST /admin/license-renewals/:id/approve only, with an audit row
+ * and the administrator's confirmed licence number. The licensee's own flow
+ * auto-approves inside LicenseRenewalService.submitRenewalRequest (until #271).
  */
-describe("LicensesController — renewal approval authorization", () => {
+describe("LicensesController — legacy renewal approval route removed", () => {
   let app: INestApplication;
-  let currentUser: { userId: string; role: UserRole; roles?: UserRole[] };
+  let currentUser: { userId: string; role: UserRole };
 
   const REQUEST_ID = "4f9b2c1e-8a3d-4e2f-9b6a-1c2d3e4f5a6b";
 
-  const mockLicenseRenewalService = {
-    approveRenewalRequest: jest.fn(),
-  };
-
   beforeEach(async () => {
-    currentUser = { userId: "user-1", role: UserRole.LICENSEE };
-
     const moduleRef = await Test.createTestingModule({
       controllers: [LicensesController],
       providers: [
         { provide: LicensesService, useValue: {} },
-        { provide: LicenseRenewalService, useValue: mockLicenseRenewalService },
+        { provide: LicenseRenewalService, useValue: {} },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -47,71 +40,19 @@ describe("LicensesController — renewal approval authorization", () => {
 
     app = moduleRef.createNestApplication();
     await app.init();
-    jest.clearAllMocks();
-    mockLicenseRenewalService.approveRenewalRequest.mockResolvedValue({
-      id: REQUEST_ID,
-      status: "APPROVED",
-    });
   });
 
   afterEach(async () => {
     await app.close();
   });
 
-  const approve = () =>
-    request(app.getHttpServer() as Parameters<typeof request>[0]).post(
-      `/licenses/renewal/${REQUEST_ID}/approve`,
-    );
-
-  it.each([UserRole.LICENSEE, UserRole.CLUB, UserRole.STAFF])(
-    "rejects a %s account with 403 and does not approve",
+  it.each([UserRole.ADMIN, UserRole.LICENSEE])(
+    "answers 404 to a %s account",
     async (role) => {
       currentUser = { userId: "user-1", role };
-
-      await approve().expect(403);
-
-      expect(
-        mockLicenseRenewalService.approveRenewalRequest,
-      ).not.toHaveBeenCalled();
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post(`/licenses/renewal/${REQUEST_ID}/approve`)
+        .expect(404);
     },
   );
-
-  it("rejects a multi-profile account without the ADMIN profile", async () => {
-    currentUser = {
-      userId: "user-1",
-      role: UserRole.CLUB,
-      roles: [UserRole.LICENSEE, UserRole.CLUB],
-    };
-
-    await approve().expect(403);
-
-    expect(
-      mockLicenseRenewalService.approveRenewalRequest,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("lets an ADMIN approve the request", async () => {
-    currentUser = { userId: "admin-1", role: UserRole.ADMIN };
-
-    const res = await approve().expect(201);
-
-    expect(res.body).toEqual({ id: REQUEST_ID, status: "APPROVED" });
-    expect(
-      mockLicenseRenewalService.approveRenewalRequest,
-    ).toHaveBeenCalledWith(REQUEST_ID);
-  });
-
-  it("lets a multi-profile account holding ADMIN approve the request", async () => {
-    currentUser = {
-      userId: "admin-2",
-      role: UserRole.LICENSEE,
-      roles: [UserRole.LICENSEE, UserRole.ADMIN],
-    };
-
-    await approve().expect(201);
-
-    expect(
-      mockLicenseRenewalService.approveRenewalRequest,
-    ).toHaveBeenCalledWith(REQUEST_ID);
-  });
 });

@@ -338,6 +338,12 @@ export const licenseRenewalRequestExportSelect = {
   status: true,
   createdAt: true,
   updatedAt: true,
+  // Modération humaine (#266) : dates et motif de la décision, commentaire de
+  // l'administrateur. Jamais son identité (comme pour les corrections).
+  submittedAt: true,
+  reviewedAt: true,
+  rejectionReason: true,
+  reviewComment: true,
   documents: {
     select: licenseRenewalDocumentExportSelect,
     orderBy: { createdAt: "asc" },
@@ -387,6 +393,16 @@ export const licenseRenewalApprovalTargetSelect = {
   },
 } as const;
 
+/**
+ * Purge de rétention (#62) : documents échus. `requestId` sert à effacer, avec
+ * le document, le commentaire de l'administrateur sur la demande (#266).
+ */
+export const healthDataPurgeDueSelect = {
+  id: true,
+  filePath: true,
+  requestId: true,
+} as const;
+
 /** Sélecteur minimal : identifiant seul (destinataires d'une notification…). */
 export const idOnlySelect = {
   id: true,
@@ -400,6 +416,78 @@ export const userNameSelect = {
   id: true,
   firstName: true,
   lastName: true,
+} as const;
+
+/** Licence telle que la file de modération l'affiche : numéro et validité. */
+export const licenseNumberValiditySelect = {
+  number: true,
+  validUntil: true,
+} as const;
+
+/**
+ * File de modération des renouvellements (#266) : une ligne par demande. Les
+ * documents ne sont décrits que par leur type et leur date — ni fichier, ni
+ * référence de stockage, ni données lues. Au plus un document par type (2),
+ * d'où l'absence de `take`.
+ */
+export const licenseRenewalAdminListSelect = {
+  id: true,
+  status: true,
+  createdAt: true,
+  submittedAt: true,
+  reviewedAt: true,
+  user: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      license: { select: licenseNumberValiditySelect },
+    },
+  },
+  reviewedBy: { select: userNameSelect },
+  documents: {
+    select: { id: true, type: true, createdAt: true },
+    orderBy: { type: "asc" },
+  },
+} as const;
+
+/**
+ * Détail d'une demande pour la modération : la ligne de la file, plus le
+ * commentaire et les données lues par l'OCR (indices, filtrés par
+ * `pickRenewalOcrData` et montrés seulement tant que la demande est PENDING).
+ */
+export const licenseRenewalAdminDetailSelect = {
+  ...licenseRenewalAdminListSelect,
+  userId: true,
+  // Pas dans la file (non tracée) : MEDICAL_RESTRICTION est une donnée de
+  // santé. Le détail, lui, est tracé (LICENSE_RENEWAL_VIEW).
+  rejectionReason: true,
+  reviewComment: true,
+  documents: {
+    select: { id: true, type: true, createdAt: true, ocrData: true },
+    orderBy: { type: "asc" },
+  },
+} as const;
+
+/** Historique des demandes d'un utilisateur : statuts et dates uniquement. */
+export const licenseRenewalHistorySelect = {
+  id: true,
+  status: true,
+  createdAt: true,
+  submittedAt: true,
+  reviewedAt: true,
+} as const;
+
+/** Fichier d'un document à servir à l'administrateur, et l'état de sa demande. */
+export const licenseRenewalDocumentFileTargetSelect = {
+  type: true,
+  filePath: true,
+  request: { select: { status: true } },
+} as const;
+
+/** Décision de modération : la demande existe-t-elle, et dans quel état. */
+export const licenseRenewalStatusSelect = {
+  status: true,
 } as const;
 
 /**

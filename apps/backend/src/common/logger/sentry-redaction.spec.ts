@@ -22,6 +22,37 @@ describe("sentryRedactionOptions", () => {
     expect(JSON.stringify(out)).not.toContain(TOKEN);
   });
 
+  it("drops the incoming request body of events and transactions (#266)", () => {
+    const body = {
+      reason: "MEDICAL_RESTRICTION",
+      comment: "Contre-indication",
+      password: "hunter2",
+    };
+    const event = {
+      type: undefined,
+      request: { url: "https://api.example.org/x", method: "POST", data: body },
+    } as unknown as ErrorEvent;
+    const out = sentryRedactionOptions.beforeSend?.(event, {}) as ErrorEvent;
+    expect(out.request).toEqual({
+      url: "https://api.example.org/x",
+      method: "POST",
+    });
+    const tx = {
+      type: "transaction",
+      request: { data: JSON.stringify(body) },
+    } as unknown as TransactionEvent;
+    const outTx = sentryRedactionOptions.beforeSendTransaction?.(
+      tx,
+      {},
+    ) as TransactionEvent;
+    expect(JSON.stringify(outTx)).not.toContain("MEDICAL_RESTRICTION");
+  });
+
+  it("leaves an event without body untouched", () => {
+    const event = { type: undefined, message: "x" } as unknown as ErrorEvent;
+    expect(sentryRedactionOptions.beforeSend?.(event, {})).toEqual(event);
+  });
+
   it("scrubs transactions and their spans", () => {
     const event = {
       type: "transaction",
