@@ -220,6 +220,8 @@ module.exports = {
     scheme: "ffdconnect",
     // Version marketing (TestFlight / App Store), bumpée par release-please.
     version: "1.0.0", // x-release-please-version
+    // Portrait on iOS only: on Android, plugins/withAndroidFreeOrientation.js
+    // strips the generated lock (Android 16 ignores it on large screens).
     orientation: "portrait",
     icon: APP_ICON,
     userInterfaceStyle: "automatic",
@@ -316,9 +318,24 @@ module.exports = {
             // iOS 26 before merging to develop. Revert to "jsc" if it crashes.
             jsEngine: "hermes",
           },
-          android: { minSdkVersion: 24 },
+          android: {
+            minSdkVersion: 24,
+            // R8 (shrink + obfuscation) on release builds. Without it the
+            // Play Console flags "DEX code optimisation below threshold"
+            // (obfuscation ~1 %), which costs store visibility. Every native
+            // dependency ships its own consumer ProGuard rules (RN core,
+            // expo-modules-core, Firebase, Sentry, reanimated…), so no
+            // extraProguardRules are needed today — add them here if a
+            // release build crashes on a stripped class.
+            enableMinifyInReleaseBuilds: true,
+            enableShrinkResourcesInReleaseBuilds: true,
+          },
         },
       ],
+      // Android only: drop the portrait lock / resize restrictions that
+      // Android 16 ignores on large screens and that Play flags. iOS keeps
+      // `orientation: "portrait"` above.
+      "./plugins/withAndroidFreeOrientation.js",
       // use_modular_headers! pour Firebase/GoogleUtilities (EAS + prebuild)
       // Keep enabled even when Firebase plugin is off — Sentry/Firebase
       // packages are still in package.json so autolinking pulls their pods,

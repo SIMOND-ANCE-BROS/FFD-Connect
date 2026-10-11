@@ -67,10 +67,7 @@ const ThemedAppContent = () => {
 
   return (
     <>
-      <StatusBar
-        barStyle={theme.statusBarStyle}
-        backgroundColor={theme.background}
-      />
+      <StatusBar barStyle={theme.statusBarStyle} />
       <AppNavigator />
       <WakeOverlay />
       {/* Barre clavier "verre" (prev / next / Terminé) — remplace

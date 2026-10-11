@@ -103,10 +103,7 @@ export const ProfileScreen = ({ navigation }: Props) => {
     <SafeAreaView
       style={[styles.container, { backgroundColor: currentTheme.background }]}
     >
-      <StatusBar
-        barStyle={currentTheme.statusBarStyle}
-        backgroundColor={currentTheme.background}
-      />
+      <StatusBar barStyle={currentTheme.statusBarStyle} />
       <ScrollView
         testID="profile-scroll"
         contentContainerStyle={styles.scrollContent}

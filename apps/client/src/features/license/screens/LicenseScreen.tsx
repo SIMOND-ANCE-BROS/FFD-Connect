@@ -182,10 +182,7 @@ export const LicenseScreen: React.FC = () => {
       style={[styles.container, { backgroundColor: currentTheme.background }]}
       edges={["left", "right"]}
     >
-      <StatusBar
-        barStyle={currentTheme.statusBarStyle}
-        backgroundColor={currentTheme.background}
-      />
+      <StatusBar barStyle={currentTheme.statusBarStyle} />
 
       <GlassHeader
         theme={currentTheme}

@@ -446,10 +446,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
       edges={["left", "right"]}
       style={[styles.container, { backgroundColor: currentTheme.background }]}
     >
-      <StatusBar
-        barStyle={currentTheme.statusBarStyle}
-        backgroundColor={currentTheme.background}
-      />
+      <StatusBar barStyle={currentTheme.statusBarStyle} />
 
       {isGridView ? (
         <FlatList
