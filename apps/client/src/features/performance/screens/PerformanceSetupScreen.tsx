@@ -79,7 +79,12 @@ export const PerformanceSetupScreen = () => {
   );
 
   const updateConfig = <
-    K extends "duration" | "pauseDuration" | "pasoClashes" | "announcements",
+    K extends
+      | "duration"
+      | "pauseDuration"
+      | "pasoClashes"
+      | "announcements"
+      | "regulationTempo",
   >(
     key: K,
     value: (typeof config)[K],
@@ -294,6 +299,29 @@ export const PerformanceSetupScreen = () => {
             ios_backgroundColor="#3e3e3e"
             value={config.announcements}
             onValueChange={(value) => updateConfig("announcements", value)}
+          />
+        </View>
+
+        {/* Opt-in: only play tracks at the official tempo of each dance. */}
+        <View style={[styles.section, styles.switchRow]}>
+          <View style={styles.switchText}>
+            <AppText variant="body" weight="600">
+              Tempo réglementaire
+            </AppText>
+            <AppText variant="caption" color={currentTheme.textSecondary}>
+              Ne jouer que des musiques au tempo officiel de chaque danse (ex.
+              Jive 42-44 MPM).
+            </AppText>
+          </View>
+          <Switch
+            testID="performance-setup-regulation-tempo-switch"
+            accessibilityLabel="Tempo réglementaire"
+            accessibilityHint="Active ou désactive le filtre sur le tempo officiel de chaque danse pendant la compétition"
+            trackColor={{ false: "#767577", true: currentTheme.primary }}
+            thumbColor={config.regulationTempo ? "#fff" : "#f4f3f4"}
+            ios_backgroundColor="#3e3e3e"
+            value={config.regulationTempo === true}
+            onValueChange={(value) => updateConfig("regulationTempo", value)}
           />
         </View>
 

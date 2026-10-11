@@ -118,6 +118,7 @@ const setProgram = (patch: Partial<PerformanceConfig> = {}) => {
     pauseDuration: 3,
     pasoClashes: 2,
     announcements: true,
+    regulationTempo: false,
     ...patch,
   });
 };
@@ -299,6 +300,7 @@ describe("competitionController", () => {
       const slowJive = t("j-slow", "Jive", 38);
       engine.setEngineDeps({ ...deps, allTracks: [slowJive, JIVE, SAMBA] });
       setProgram({
+        regulationTempo: true,
         rounds: [roundOf("Latin", "Round", ["Samba", "Jive"])],
       });
       engine.generatePlaylist();
@@ -307,12 +309,36 @@ describe("competitionController", () => {
       expect(ids).toContain(JIVE.id);
     });
 
+    it("draws an off-tempo track when the regulation tempo is off", () => {
+      const slowJive = t("j-slow", "Jive", 38);
+      engine.setEngineDeps({ ...deps, allTracks: [slowJive] });
+      setProgram({
+        rounds: [roundOf("Latin", "Round", ["Jive"])],
+      });
+      engine.generatePlaylist();
+      expect(store().playlist.map((i) => i.track.id)).toContain("j-slow");
+    });
+
+    it("does not block the start on tempo when the switch is off", async () => {
+      (loadCompetitionLibrary as jest.Mock).mockResolvedValue({
+        tracks: [SAMBA, t("j-fast", "Jive", 48)],
+        ambiance: [AMBIANCE],
+      });
+      setProgram({
+        rounds: [roundOf("Latin", "Final", ["Samba", "Jive"])],
+      });
+      await expect(engine.startPerformance()).resolves.toBe(true);
+      expect(Alert.alert).not.toHaveBeenCalled();
+      expect(store().playlist.map((i) => i.track.id)).toContain("j-fast");
+    });
+
     it("blocks the start when a dance has no in-range track", async () => {
       (loadCompetitionLibrary as jest.Mock).mockResolvedValue({
         tracks: [SAMBA, t("j-fast", "Jive", 48)],
         ambiance: [AMBIANCE],
       });
       setProgram({
+        regulationTempo: true,
         rounds: [roundOf("Latin", "Final", ["Samba", "Jive"])],
       });
       await expect(engine.startPerformance()).resolves.toBe(false);
@@ -336,6 +362,7 @@ describe("competitionController", () => {
         allTracks: [offTempoThree, inRangeNoClash],
       });
       setProgram({
+        regulationTempo: true,
         pasoClashes: 3,
         rounds: [roundOf("Latin", "Final", ["Paso Doble"])],
       });
@@ -353,6 +380,7 @@ describe("competitionController", () => {
         ambiance: [AMBIANCE],
       });
       setProgram({
+        regulationTempo: true,
         pasoClashes: 3,
         rounds: [roundOf("Latin", "Final", ["Paso Doble"])],
       });
