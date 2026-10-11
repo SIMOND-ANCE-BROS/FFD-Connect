@@ -13,23 +13,29 @@ import {
 import { ThrottlerUserGuard } from "./throttler-user.guard";
 
 /**
- * Global rate limiter (APP_GUARD), keyed by the client IP (`req.ip`, real
- * client address once `trust proxy` is set — see `config/trust-proxy.ts`).
+ * Global rate limiter (APP_GUARD). It runs before any route guard, so before
+ * authentication, and keys each request on:
  *
- * It runs before any route guard, so before authentication. Routes that
- * declare their own per-user limit with `ThrottlerUserGuard` are counted ONLY
- * per user by that guard (#182) — otherwise their `@Throttle` override would
- * also apply per IP, and everyone behind the same address (a gym Wi-Fi on
- * competition day, mobile CGNAT) would share a budget sized for one person.
+ * - `gsub:<sub>` on a route that declares a per-user limit with
+ *   `ThrottlerUserGuard`, when the request carries a validly signed, unexpired
+ *   access token (same secret and checks as JwtStrategy, #182). Users behind
+ *   the same address (a gym Wi-Fi on competition day, mobile CGNAT) then no
+ *   longer share a budget sized for one person;
+ * - the client IP (`req.ip`, real client address once `trust proxy` is set —
+ *   see `config/trust-proxy.ts`) everywhere else: public routes (login,
+ *   refresh, register, Wallet pass links…), and per-user routes hit with a
+ *   missing, forged or expired token.
  *
- * The skip is granted only to a request that carries a validly signed,
- * unexpired access token: `ThrottlerUserGuard` runs after `JwtAuthGuard`, so
- * a request rejected with 401 never reaches it. Skipping on the route alone
- * (or on a mere `Authorization` header) would leave forged or garbage tokens
- * unlimited; they stay counted here, per IP, with the route's limit.
+ * It never skips: `ThrottlerUserGuard` runs after `JwtAuthGuard` (and
+ * `RolesGuard`), so a request refused in between — 401 for a disabled or
+ * deleted account, 403 for a missing role — is counted by no other guard.
+ * Counting it here, before authentication, keeps the route limit in force
+ * whatever the outcome.
  *
- * Every other route — public ones (login, refresh, register, Wallet pass
- * links…) included — keeps the per-IP limit.
+ * The `gsub:` prefix differs from `ThrottlerUserGuard`'s `user:` on purpose:
+ * both guards share the storage and key format (class, handler, throttler
+ * name, tracker), and the same prefix would decrement one bucket twice per
+ * request, halving the limit.
  */
 @Injectable()
 export class GlobalThrottlerGuard extends ThrottlerGuard {
@@ -48,35 +54,47 @@ export class GlobalThrottlerGuard extends ThrottlerGuard {
     });
   }
 
-  protected async shouldSkip(context: ExecutionContext): Promise<boolean> {
-    const guards = [
-      ...this.routeGuards(context.getClass()),
-      ...this.routeGuards(context.getHandler()),
-    ];
-    if (!guards.some(isPerUserThrottler)) {
-      return false;
+  /** The base guard calls the tracker with `(req, context)`. */
+  protected async getTracker(
+    req: Record<string, unknown>,
+    context?: ExecutionContext,
+  ): Promise<string> {
+    if (context && this.hasPerUserLimit(context)) {
+      const subject = await this.verifiedSubject(req);
+      if (subject) {
+        return `gsub:${subject}`;
+      }
     }
-    const { req } = this.getRequestResponse(context);
-    return this.hasValidAccessToken(req);
+    return super.getTracker(req);
   }
 
-  private async hasValidAccessToken(
+  private hasPerUserLimit(context: ExecutionContext): boolean {
+    return [
+      ...this.routeGuards(context.getClass()),
+      ...this.routeGuards(context.getHandler()),
+    ].some(isPerUserThrottler);
+  }
+
+  /** `sub` of a validly signed, unexpired bearer token; otherwise null. */
+  private async verifiedSubject(
     req: Record<string, unknown>,
-  ): Promise<boolean> {
+  ): Promise<string | null> {
     const headers = req["headers"] as Record<string, unknown> | undefined;
     const authorization = headers?.["authorization"];
     if (typeof authorization !== "string") {
-      return false;
+      return null;
     }
     const match = /^Bearer\s+(\S+)$/i.exec(authorization.trim());
     if (!match) {
-      return false;
+      return null;
     }
     try {
       const payload = await this.jwt.verifyAsync<{ sub?: unknown }>(match[1]);
-      return typeof payload.sub === "string" && payload.sub.length > 0;
+      return typeof payload.sub === "string" && payload.sub.length > 0
+        ? payload.sub
+        : null;
     } catch {
-      return false;
+      return null;
     }
   }
 
