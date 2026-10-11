@@ -24,6 +24,7 @@ import {
   removeRound,
   roundCategories,
   roundSequence,
+  selectTempoCompliant,
   setGroupCategory,
   setRoundType,
   sortDances,
@@ -37,12 +38,26 @@ import {
   type DanceOrder,
 } from "../../../../stores/danceOrder.store";
 
-const track = (id: string, style: string): TrackData => ({
+import { COMPETITION_TEMPO } from "../competitionTempo";
+
+/** Lower bound of the range of the dance the library `style` belongs to. */
+const inRangeMpm = (style: string): number => {
+  const dance = Object.keys(COMPETITION_TEMPO).find((d) =>
+    trackMatchesDance(style, d),
+  );
+  return dance ? COMPETITION_TEMPO[dance].min : 30;
+};
+
+const track = (
+  id: string,
+  style: string,
+  baseBpm: number = inRangeMpm(style),
+): TrackData => ({
   id,
   title: `${style} ${id}`,
   artist: "Artiste",
   url: `https://cdn/${id}.mp3`,
-  baseBpm: 30,
+  baseBpm,
   style,
 });
 
@@ -823,5 +838,93 @@ describe("custom dance order (per category, every round)", () => {
     expect(moveDance(latin, 9, 0)).toEqual(latin);
     // Pure: the input is untouched.
     expect(latin).toEqual([...DANCES.Latin]);
+  });
+});
+
+describe("selectTempoCompliant", () => {
+  it("keeps in-range tracks, judged with their library spelling", () => {
+    const kept = selectTempoCompliant([
+      track("sf-ok", "Slowfox", 29),
+      track("cc-ok", "Cha-cha", 31),
+      track("j-ok", "Jive", 43),
+    ]);
+    expect(kept.map((t) => t.id)).toEqual(["sf-ok", "cc-ok", "j-ok"]);
+  });
+
+  it("drops off-range and tempo-less tracks", () => {
+    const kept = selectTempoCompliant([
+      track("j-slow", "Jive", 38),
+      track("j-fast", "Jive", 48),
+      track("r-none", "Rumba", 0),
+      track("r-ok", "Rumba", 25),
+    ]);
+    expect(kept.map((t) => t.id)).toEqual(["r-ok"]);
+  });
+
+  it("keeps a track only when compliant for every dance its style matches", () => {
+    // "Tango Jive" matches both Tango (31-33) and Jive (42-44).
+    const kept = selectTempoCompliant([
+      track("both-ok-tango", "Tango Jive", 32),
+      track("both-ok-jive", "Tango Jive", 43),
+      track("neither", "Tango Jive", 50),
+    ]);
+    expect(kept).toEqual([]);
+  });
+
+  it("drops tracks matching no competition dance", () => {
+    expect(selectTempoCompliant([track("x", "Bachata", 30)])).toEqual([]);
+  });
+});
+
+describe("validateProgram — regulation tempo", () => {
+  const latin = (dances: string[]) =>
+    cfg([round(["Latin"], { dances: { Latin: dances } })]);
+
+  it("reports a dance whose tracks are all off-tempo", () => {
+    const all = [track("j1", "Jive", 48), track("j2", "Jive", 39)];
+    const v = validateProgram(
+      latin(["Jive"]),
+      selectTempoCompliant(all),
+      undefined,
+      all,
+    );
+    expect(v.missing).toEqual([]);
+    expect(v.offTempo).toEqual([
+      { roundIndex: 1, category: "Latin", dance: "Jive", outOfRange: 2 },
+    ]);
+    expect(describeValidation(v)).toBe(
+      "Aucune musique au tempo réglementaire pour :\n" +
+        "• Tour 1 (Latines) : Jive — entre 42 et 44 MPM (2 musiques hors tempo)\n" +
+        "Retirez ces danses du programme ou proposez une correction de tempo depuis la bibliothèque.",
+    );
+  });
+
+  it("keeps « no music » when the dance has no track at all", () => {
+    const v = validateProgram(latin(["Jive"]), [], undefined, []);
+    expect(v.offTempo).toEqual([]);
+    expect(v.missing).toEqual([
+      { roundIndex: 1, category: "Latin", dances: ["Jive"] },
+    ]);
+  });
+
+  it("shows missing and off-tempo dances together", () => {
+    const all = [track("r1", "Rumba", 30)];
+    const v = validateProgram(
+      latin(["Rumba", "Jive"]),
+      selectTempoCompliant(all),
+      undefined,
+      all,
+    );
+    const text = describeValidation(v);
+    expect(text).toContain(
+      "Aucune musique disponible pour :\n• Tour 1 (Latines) : Jive",
+    );
+    expect(text).toContain("Rumba — entre 24 et 26 MPM (1 musique hors tempo)");
+  });
+
+  it("defaults allTracks to the pool (no off-tempo without it)", () => {
+    const v = validateProgram(latin(["Jive"]), []);
+    expect(v.offTempo).toEqual([]);
+    expect(v.missing).toHaveLength(1);
   });
 });

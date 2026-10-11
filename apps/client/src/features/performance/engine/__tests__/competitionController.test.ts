@@ -16,7 +16,11 @@ import TrackPlayer, { State } from "../../../../utils/TrackPlayerWrapper";
 import type { TrackData } from "../../../player/context/PlayerContext";
 import { cacheTrack } from "../../services/competitionAudioCache";
 import { loadCompetitionLibrary } from "../../services/competitionLibrary";
-import { CLOSING_ANNOUNCEMENT } from "../../utils/competitionProgram";
+import {
+  CLOSING_ANNOUNCEMENT,
+  trackMatchesDance,
+} from "../../utils/competitionProgram";
+import { COMPETITION_TEMPO } from "../../utils/competitionTempo";
 import * as engine from "../competitionController";
 
 jest.mock("../../../../services/TtsService", () => ({
@@ -60,12 +64,23 @@ jest.mock("../../../../utils/logger", () => ({
   createLogger: () => ({ warn: jest.fn(), info: jest.fn(), error: jest.fn() }),
 }));
 
-const t = (id: string, style: string): TrackData => ({
+const inRangeMpm = (style: string): number => {
+  const dance = Object.keys(COMPETITION_TEMPO).find((d) =>
+    trackMatchesDance(style, d),
+  );
+  return dance ? COMPETITION_TEMPO[dance].min : 30;
+};
+
+const t = (
+  id: string,
+  style: string,
+  baseBpm: number = inRangeMpm(style),
+): TrackData => ({
   id,
   title: `${style} ${id}`,
   artist: "Artiste",
   url: `https://static/uploads/${id}.mp3`,
-  baseBpm: 30,
+  baseBpm,
   style,
 });
 
@@ -103,6 +118,7 @@ const setProgram = (patch: Partial<PerformanceConfig> = {}) => {
     pauseDuration: 3,
     pasoClashes: 2,
     announcements: true,
+    regulationTempo: false,
     ...patch,
   });
 };
@@ -278,6 +294,118 @@ describe("competitionController", () => {
         expect.stringContaining("Tango, Quickstep"),
       );
       expect(cacheTrack).not.toHaveBeenCalled();
+    });
+
+    it("never previews an off-tempo track", () => {
+      const slowJive = t("j-slow", "Jive", 38);
+      engine.setEngineDeps({ ...deps, allTracks: [slowJive, JIVE, SAMBA] });
+      setProgram({
+        regulationTempo: true,
+        rounds: [roundOf("Latin", "Round", ["Samba", "Jive"])],
+      });
+      engine.generatePlaylist();
+      const ids = store().playlist.map((i) => i.track.id);
+      expect(ids).not.toContain("j-slow");
+      expect(ids).toContain(JIVE.id);
+    });
+
+    it("draws an off-tempo track only when the regulation tempo is off", () => {
+      const slowJive = t("j-slow", "Jive", 38);
+      engine.setEngineDeps({ ...deps, allTracks: [slowJive, SAMBA] });
+      const program = {
+        rounds: [roundOf("Latin", "Round", ["Samba", "Jive"])],
+      };
+      const ids = () => store().playlist.map((i) => i.track.id);
+
+      setProgram({ ...program, regulationTempo: false });
+      engine.generatePlaylist();
+      expect(ids()).toContain("j-slow");
+
+      setProgram({ ...program, regulationTempo: true });
+      engine.generatePlaylist();
+      expect(ids()).not.toContain("j-slow");
+      expect(ids()).toContain(SAMBA.id);
+    });
+
+    it("treats a missing regulationTempo as off", () => {
+      const slowJive = t("j-slow", "Jive", 38);
+      engine.setEngineDeps({ ...deps, allTracks: [slowJive, SAMBA] });
+      setProgram({ rounds: [roundOf("Latin", "Round", ["Samba", "Jive"])] });
+      const { regulationTempo: _omit, ...legacy } = store().config;
+      store().setConfig(legacy as PerformanceConfig);
+      engine.generatePlaylist();
+      expect(store().playlist.map((i) => i.track.id)).toContain("j-slow");
+    });
+
+    it("does not block the start on tempo when the switch is off", async () => {
+      (loadCompetitionLibrary as jest.Mock).mockResolvedValue({
+        tracks: [SAMBA, t("j-fast", "Jive", 48)],
+        ambiance: [AMBIANCE],
+      });
+      setProgram({
+        rounds: [roundOf("Latin", "Final", ["Samba", "Jive"])],
+      });
+      await expect(engine.startPerformance()).resolves.toBe(true);
+      expect(Alert.alert).not.toHaveBeenCalled();
+      expect(store().playlist.map((i) => i.track.id)).toContain("j-fast");
+    });
+
+    it("blocks the start when a dance has no in-range track", async () => {
+      (loadCompetitionLibrary as jest.Mock).mockResolvedValue({
+        tracks: [SAMBA, t("j-fast", "Jive", 48)],
+        ambiance: [AMBIANCE],
+      });
+      setProgram({
+        regulationTempo: true,
+        rounds: [roundOf("Latin", "Final", ["Samba", "Jive"])],
+      });
+      await expect(engine.startPerformance()).resolves.toBe(false);
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Musiques manquantes",
+        expect.stringContaining(
+          "Jive — entre 42 et 44 MPM (1 musique hors tempo)",
+        ),
+      );
+      expect(cacheTrack).not.toHaveBeenCalled();
+    });
+
+    it("falls back to an in-range clash-less Paso with « 3 clashs »", () => {
+      const offTempoThree = {
+        ...t("p3", "Paso Doble", 66),
+        clashTimecodes: [30, 60, 90],
+      };
+      const inRangeNoClash = t("p0", "Paso Doble", 61);
+      engine.setEngineDeps({
+        ...deps,
+        allTracks: [offTempoThree, inRangeNoClash],
+      });
+      setProgram({
+        regulationTempo: true,
+        pasoClashes: 3,
+        rounds: [roundOf("Latin", "Final", ["Paso Doble"])],
+      });
+      engine.generatePlaylist();
+      expect(store().playlist.map((i) => i.track.id)).toEqual(["p0"]);
+    });
+
+    it("keeps « no music » when Pasos are excluded by the clash rule only", async () => {
+      const twoClashes = {
+        ...t("p2", "Paso Doble", 61),
+        clashTimecodes: [30, 60],
+      };
+      (loadCompetitionLibrary as jest.Mock).mockResolvedValue({
+        tracks: [twoClashes],
+        ambiance: [AMBIANCE],
+      });
+      setProgram({
+        regulationTempo: true,
+        pasoClashes: 3,
+        rounds: [roundOf("Latin", "Final", ["Paso Doble"])],
+      });
+      await expect(engine.startPerformance()).resolves.toBe(false);
+      const message = (Alert.alert as jest.Mock).mock.calls.at(-1)?.[1];
+      expect(message).toContain("Aucune musique disponible");
+      expect(message).not.toContain("tempo réglementaire");
     });
 
     it("rejects a round without dance", async () => {

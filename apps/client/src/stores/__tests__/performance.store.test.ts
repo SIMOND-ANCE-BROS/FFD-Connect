@@ -37,6 +37,11 @@ describe("performance.store", () => {
     expect(createDefaultConfig().rounds[0].groups).toHaveLength(2);
   });
 
+  it("keeps the regulation tempo off by default", () => {
+    expect(createDefaultConfig().regulationTempo).toBe(false);
+    expect(usePerformanceStore.getState().config.regulationTempo).toBe(false);
+  });
+
   it("exposes loading progress and announcing setters", () => {
     const s = usePerformanceStore.getState();
     s.setLoadingProgress({ done: 2, total: 9 });

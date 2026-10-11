@@ -84,6 +84,7 @@ describe("PerformanceSetupScreen", () => {
     pauseDuration: 10,
     pasoClashes: 2,
     announcements: true,
+    regulationTempo: false,
   };
 
   const mockEngine = (
@@ -139,6 +140,17 @@ describe("PerformanceSetupScreen", () => {
 
     await fireEvent(toggle, "valueChange", false);
     expect(applyLast(engine.setConfig as jest.Mock).announcements).toBe(false);
+  });
+
+  it("lets the user opt in to the regulation tempo (off by default)", async () => {
+    const engine = mockEngine();
+    const { getByTestId } = await render(<PerformanceSetupScreen />);
+
+    const toggle = getByTestId("performance-setup-regulation-tempo-switch");
+    expect(toggle.props.value).toBe(false);
+
+    await fireEvent(toggle, "valueChange", true);
+    expect(applyLast(engine.setConfig as jest.Mock).regulationTempo).toBe(true);
   });
 
   it("renders one card per round", async () => {

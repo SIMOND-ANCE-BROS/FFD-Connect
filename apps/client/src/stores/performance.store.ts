@@ -53,6 +53,12 @@ export interface PerformanceConfig {
    * generated nor spoken — the breaks keep their pause music.
    */
   announcements: boolean;
+  /**
+   * Opt-in: only draw tracks whose original tempo (MPM) is in the dance's
+   * regulation range. Off by default (training-tempo libraries); a missing
+   * value counts as off.
+   */
+  regulationTempo: boolean;
 }
 
 export interface PlaylistItem {
@@ -113,6 +119,7 @@ export const createDefaultConfig = (): PerformanceConfig => ({
   pauseDuration: 15,
   pasoClashes: 2,
   announcements: true,
+  regulationTempo: false,
 });
 
 interface PerformanceState {

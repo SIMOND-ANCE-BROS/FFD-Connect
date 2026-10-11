@@ -52,6 +52,7 @@ import {
   buildPlaylist,
   CLOSING_ANNOUNCEMENT,
   describeValidation,
+  selectTempoCompliant,
   validateProgram,
 } from "../utils/competitionProgram";
 
@@ -590,9 +591,19 @@ export async function startPerformance(): Promise<boolean> {
 
     const cfg = store().config;
     const order = useDanceOrderStore.getState().danceOrder;
-    // Paso doble : réglage « 3 clashs » → seules les pistes à 3 clashs.
-    const pool = selectPasoPool(library.tracks, cfg.pasoClashes);
-    const validation = validateProgram(cfg, pool, order);
+    const clashPool = selectPasoPool(library.tracks, cfg.pasoClashes);
+    let pool = clashPool;
+    if (cfg.regulationTempo === true) {
+      // Regulation tempo (opt-in): only in-range tracks are drawn — filtered
+      // BEFORE the Paso clash rule so its « 3 clashs » fallback never picks an
+      // off-tempo Paso. `clashPool` (same rule, no tempo filter) lets the
+      // validation tell « no music » from « no music at the right tempo ».
+      pool = selectPasoPool(
+        selectTempoCompliant(library.tracks),
+        cfg.pasoClashes,
+      );
+    }
+    const validation = validateProgram(cfg, pool, order, clashPool);
     const problem = describeValidation(validation);
     if (problem) {
       return await abort(
@@ -822,7 +833,13 @@ export function fadeNow(): void {
 export function generatePlaylist(): void {
   const d = requireDeps();
   const s = store();
-  const pool = selectPasoPool(d.allTracks, s.config.pasoClashes);
+  // Same order as at start: tempo filter (opt-in) before the Paso clash rule.
+  const pool = selectPasoPool(
+    s.config.regulationTempo === true
+      ? selectTempoCompliant(d.allTracks)
+      : d.allTracks,
+    s.config.pasoClashes,
+  );
   const order = useDanceOrderStore.getState().danceOrder;
   s.setPlaylist(
     capPasoClashes(buildPlaylist(s.config, pool, Math.random, order), s.config),
