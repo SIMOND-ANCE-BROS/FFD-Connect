@@ -743,8 +743,15 @@ describe("UsersService", () => {
       makeUser({
         trackCorrectionsProposed: [],
         licenseRenewalRequests: [],
+        submittedTracks: [],
         ...overrides,
       });
+
+    beforeEach(() => {
+      prisma.result.findMany.mockResolvedValue([]);
+      prisma.bugReport.findMany.mockResolvedValue([]);
+      prisma.impersonationLog.findMany.mockResolvedValue([]);
+    });
 
     const exportSelect = () =>
       prisma.user.findUnique.mock.calls[0][0]?.select as Record<
@@ -767,7 +774,12 @@ describe("UsersService", () => {
 
       expect(result.format).toBe("ffd-connect-export-v1");
       expect(typeof result.exportedAt).toBe("string");
-      expect(result.data).toEqual(exported);
+      expect(result.data).toEqual({
+        ...exported,
+        results: [],
+        bugReports: [],
+        impersonationsReceived: [],
+      });
     });
 
     it("exporte les rôles supplémentaires de l'utilisateur", async () => {
@@ -791,8 +803,8 @@ describe("UsersService", () => {
         unknown
       >;
       expect(select.password).toBeUndefined();
-      expect(select.refreshTokens).toBeUndefined();
       expect(select.passwordResetTokens).toBeUndefined();
+      expect(select.walletPassDownloadTokens).toBeUndefined();
       // Les données personnelles clés sont bien exportées
       expect(select.email).toBe(true);
       expect(select.birthDate).toBe(true);
@@ -1095,6 +1107,243 @@ describe("UsersService", () => {
       await expect(service.exportMyData("ghost")).rejects.toThrow(
         NotFoundException,
       );
+      // Aucune requête annexe pour un compte inexistant.
+      expect(prisma.result.findMany).not.toHaveBeenCalled();
+    });
+
+    // --- #251 : données personnelles manquantes ---------------------------
+
+    it("exporte la date de désactivation du compte", async () => {
+      const disabledAt = new Date("2026-09-01T08:00:00Z");
+      prisma.user.findUnique.mockResolvedValue(
+        makeExportedUser({ disabledAt }),
+      );
+
+      const result = await service.exportMyData("u1");
+
+      expect(exportSelect().disabledAt).toBe(true);
+      expect(result.data.disabledAt).toBe(disabledAt);
+    });
+
+    it("exporte les résultats de compétition avec le contexte, sans le libellé du couple", async () => {
+      const event = (title: string) => ({
+        category: "Latin",
+        ageGroup: "Adulte",
+        level: null,
+        eventType: "COUPLE",
+        competition: { title, date: new Date("2026-05-01") },
+      });
+      prisma.result.findMany.mockResolvedValue([
+        {
+          round: "Finale",
+          ranking: 2,
+          createdAt: new Date("2026-05-01"),
+          details: {
+            participant: "Alice Dupont / Bob Martin",
+            totalParticipants: 12,
+          },
+          event: event("Open de Lyon"),
+        },
+        {
+          round: "1/2",
+          ranking: 7,
+          createdAt: new Date("2026-04-01"),
+          details: null,
+          event: event("Open de Nice"),
+        },
+        {
+          round: "Finale",
+          ranking: 1,
+          createdAt: new Date("2026-03-01"),
+          details: ["inattendu"],
+          event: event("Open de Metz"),
+        },
+        {
+          round: "Finale",
+          ranking: 3,
+          createdAt: new Date("2026-02-01"),
+          details: { totalParticipants: "douze" },
+          event: event("Open de Lille"),
+        },
+      ] as never);
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      const result = await service.exportMyData("u1");
+
+      const query = prisma.result.findMany.mock.calls[0][0];
+      expect(query?.where).toEqual({ userId: "u1" });
+      expect(query?.take).toBe(1000);
+      expect(query?.select).toEqual(
+        expect.objectContaining({ round: true, ranking: true }),
+      );
+      const results = result.data.results;
+      expect(results.map((r) => r.totalParticipants)).toEqual([
+        12,
+        null,
+        null,
+        null,
+      ]);
+      expect(results[0]).toEqual({
+        round: "Finale",
+        ranking: 2,
+        createdAt: new Date("2026-05-01"),
+        totalParticipants: 12,
+        event: event("Open de Lyon"),
+      });
+      // Le libellé `participant` nomme le partenaire : jamais exporté.
+      expect(JSON.stringify(result)).not.toContain("Bob Martin");
+    });
+
+    it("exporte les inscriptions en tant que partenaire, sans les données du licencié principal", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      await service.exportMyData("u1");
+
+      const asPartner = exportSelect().registrationsAsPartner as {
+        select: Record<string, unknown>;
+        take: number;
+      };
+      expect(asPartner.take).toBe(500);
+      expect(asPartner.select).toEqual(
+        expect.objectContaining({
+          status: true,
+          createdAt: true,
+          event: {
+            select: expect.objectContaining({
+              competition: { select: { title: true, date: true } },
+            }),
+          },
+        }),
+      );
+      // Identité et paiement du licencié qui a inscrit le couple : tiers.
+      for (const field of [
+        "user",
+        "userId",
+        "partnerName",
+        "partnerUserId",
+        "feePaid",
+      ]) {
+        expect(asPartner.select[field]).toBeUndefined();
+      }
+    });
+
+    it("exporte les musiques proposées en masquant le nom des pistes modérées", async () => {
+      const createdAt = new Date("2026-06-01");
+      const track = (title: string, titleMasked: boolean) => ({
+        title,
+        artist: "Artiste",
+        titleMasked,
+        blacklisted: false,
+        status: "READY",
+        createdAt,
+      });
+      prisma.user.findUnique.mockResolvedValue(
+        makeExportedUser({
+          submittedTracks: [
+            track("Ma rumba", false),
+            track("Titre cache", true),
+          ],
+        }),
+      );
+
+      const result = await service.exportMyData("u1");
+
+      const tracks = exportSelect().submittedTracks as {
+        select: Record<string, unknown>;
+        take: number;
+      };
+      expect(tracks.take).toBe(500);
+      // Fichier et clé de source : internes.
+      expect(tracks.select.filename).toBeUndefined();
+      expect(tracks.select.sourceKey).toBeUndefined();
+      expect(result.data.submittedTracks).toEqual([
+        { title: "Ma rumba", artist: "Artiste", status: "READY", createdAt },
+        {
+          title: "Titre masqué",
+          artist: "Artiste",
+          status: "READY",
+          createdAt,
+        },
+      ]);
+      expect(JSON.stringify(result)).not.toContain("Titre cache");
+    });
+
+    it("exporte les signalements envoyés, sans la pile d'erreur", async () => {
+      const report = {
+        message: "[BUG] crash",
+        deviceInfo: "iPhone 15 / iOS 26",
+        createdAt: new Date("2026-07-01"),
+      };
+      prisma.bugReport.findMany.mockResolvedValue([report] as never);
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      const result = await service.exportMyData("u1");
+
+      const query = prisma.bugReport.findMany.mock.calls[0][0];
+      expect(query?.where).toEqual({ userId: "u1" });
+      expect(query?.take).toBe(200);
+      expect(query?.select).toEqual({
+        message: true,
+        deviceInfo: true,
+        createdAt: true,
+      });
+      expect(result.data.bugReports).toEqual([report]);
+    });
+
+    it("exporte les impersonations reçues avec le seul rôle de l'auteur", async () => {
+      const session = {
+        actorRole: UserRole.STAFF,
+        reason: "Support",
+        startedAt: new Date("2026-08-01T10:00:00Z"),
+        endedAt: null,
+      };
+      prisma.impersonationLog.findMany.mockResolvedValue([session] as never);
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      const result = await service.exportMyData("u1");
+
+      const query = prisma.impersonationLog.findMany.mock.calls[0][0];
+      expect(query?.where).toEqual({ targetUserId: "u1" });
+      expect(query?.take).toBe(200);
+      const select = query?.select as Record<string, unknown>;
+      expect(select).toEqual({
+        actorRole: true,
+        reason: true,
+        startedAt: true,
+        endedAt: true,
+      });
+      // Identité et IP de l'administrateur : données d'un tiers.
+      expect(select.actorId).toBeUndefined();
+      expect(select.ip).toBeUndefined();
+      expect(result.data.impersonationsReceived).toEqual([session]);
+    });
+
+    it("exporte les sessions de connexion en métadonnées, jamais le hash du token", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      await service.exportMyData("u1");
+
+      const sessions = exportSelect().refreshTokens as {
+        select: Record<string, unknown>;
+        take: number;
+      };
+      expect(sessions.select).toEqual({
+        createdAt: true,
+        expiresAt: true,
+        revoked: true,
+        revokedAt: true,
+      });
+      expect(sessions.select.token).toBeUndefined();
+      expect(sessions.take).toBe(100);
+    });
+
+    it("n'exporte pas le journal d'audit admin (traçabilité, données de tiers)", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      await service.exportMyData("u1");
+
+      expect(exportSelect().adminAuditActions).toBeUndefined();
+      expect(prisma.adminAuditLog.findMany).not.toHaveBeenCalled();
     });
   });
 
