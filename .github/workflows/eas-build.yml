@@ -1,11 +1,20 @@
 # yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
 name: EAS Build & Update
+# The branch and SHA in the run title. Not cosmetic: the gate ("Detect change
+# type") reads it back to find the last commit whose OTA was published, because
+# a workflow_run run's head_sha is the default branch's, not the built one.
+# Keep the " <branch> @ <40-hex sha>" suffix (same contract as deploy-backend).
+# A manual run gets a title that never matches it.
+run-name: >-
+  EAS Build & Update · ${{ github.event_name == 'workflow_dispatch'
+  && format('bêta {0} ({1})', inputs.action, github.ref_name)
+  || format('{0} @ {1}', github.event.workflow_run.head_branch, github.event.workflow_run.head_sha) }}
 
 on:
   # Triggered after CI passes (not directly on push).
-  # NOTE: Manual CI re-runs also trigger this workflow. The gate job
-  # checks client_changed via git diff, so a re-run of CI without new
-  # client changes will skip all EAS jobs. Verified safe.
+  # NOTE: Manual CI re-runs also trigger this workflow. The gate diffs against
+  # the last commit whose OTA was published, so a re-run of CI without new
+  # client changes skips all EAS jobs.
   workflow_run:
     workflows: ['CI']
     types: [completed]
@@ -110,42 +119,114 @@ jobs:
         id: check
         env:
           BRANCH: ${{ github.event.workflow_run.head_branch }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          # Cascade pushes (develop -> staging -> master) are merge commits: the
-          # first parent is the branch's previous tip, so HEAD^1..HEAD is exactly
-          # the cumulative promoted change. A native EAS build costs ~2 $, so only
-          # force one when that diff cannot be trusted (fast-forward or direct
-          # push = no merge commit).
+          set -uo pipefail
+          # Base of the diff = the commit whose OTA was last PUBLISHED from this
+          # branch, not HEAD^1 (#119). CI on these branches runs with
+          # cancel-in-progress: when push N's CI is cancelled by push N+1 (or
+          # fails without a re-run), this workflow never runs for N, and a
+          # HEAD^1 base made N+1 compare N..N+1 only, so N's client change was
+          # never published. Same mechanism as the backend fix of #118 (ci.yml,
+          # "Backend image needed?").
+          # The published SHA comes from the Actions API (GITHUB_TOKEN, no
+          # secret): the most recent run of this workflow whose OTA job for the
+          # branch has its "Publish OTA update" step in `success`. The step, not
+          # the job: a tag/release failure after a successful `eas update` still
+          # means the bundle is out. A rejected production approval or a
+          # cancelled run never reaches that step, so it is not counted. The SHA
+          # is read from the run title (`run-name` above): workflow_run runs
+          # carry the default branch's head_sha, not the published commit.
+          # Not `eas update:list`: it needs the EAS CLI here, and it also lists
+          # OTAs published by hand from local branches.
+          case "$BRANCH" in
+            develop) OTA_JOB="OTA Update (development)" ;;
+            staging) OTA_JOB="OTA Update (preview)" ;;
+            master) OTA_JOB="OTA Update (production)" ;;
+            *) OTA_JOB="" ;;
+          esac
+
+          find_published() {
+            [ -n "$OTA_JOB" ] || return 1
+            local candidates run sha result checked=0
+            # Recent runs for this branch, newest first: "<run id> <sha>". A run
+            # whose jobs were all skipped (CI failed) published nothing.
+            candidates=$(gh api "repos/$REPO/actions/workflows/eas-build.yml/runs?per_page=100" \
+              --jq ".workflow_runs | sort_by(.run_started_at) | reverse | .[]
+                    | select(.id != $RUN_ID and .conclusion != \"skipped\")
+                    | (.display_title | capture(\" $BRANCH @ (?<sha>[0-9a-f]{40})\$\")?) as \$m
+                    | select(\$m != null) | \"\(.id) \(\$m.sha)\"") || return 1
+            while read -r run sha; do
+              [ -n "$run" ] || continue
+              # Bounded API calls; beyond that, fail safe.
+              checked=$((checked + 1))
+              [ "$checked" -le 30 ] || return 1
+              result=$(gh api "repos/$REPO/actions/runs/$run/jobs?per_page=100" \
+                --jq "[.jobs[] | select(.name == \"$OTA_JOB\") | .steps[]?
+                       | select(.name == \"Publish OTA update\") | .conclusion] | first // \"none\"") \
+                || return 1
+              if [ "$result" = "success" ]; then
+                echo "$sha"
+                return 0
+              fi
+            done <<< "$candidates"
+            return 1
+          }
+
+          # Base used when the published SHA is unknown: the branch's previous
+          # tip. client_changed is then forced to true (an OTA is free); this
+          # base only keeps the native/eas_config path checks meaningful, so an
+          # API hiccup (or the first run after this change) does not force a
+          # ~2 USD native build.
+          FALLBACK_SHA=""
           if [ "$BRANCH" = "staging" ] || [ "$BRANCH" = "master" ]; then
-            if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" -lt 3 ]; then
-              echo "Cascade push to $BRANCH without a merge commit - forcing full build"
-              echo "client_changed=true" >> "$GITHUB_OUTPUT"
-              echo "native=true" >> "$GITHUB_OUTPUT"
-              # Unknown diff: also stop the fingerprint step from picking OTA-only.
-              echo "eas_config=true" >> "$GITHUB_OUTPUT"
-              exit 0
+            # Cascade pushes are merge commits whose first parent is the
+            # previous tip. Without one (fast-forward, direct push), HEAD^1 is
+            # not the whole pushed change: no fallback base.
+            if [ "$(git rev-list --parents -n 1 HEAD | wc -w)" -ge 3 ]; then
+              FALLBACK_SHA=$(git rev-parse HEAD^1)
             fi
-            COMPARE_SHA=$(git rev-parse HEAD^1)
           else
-            # Develop: compare against the previous push (last 2 commits)
-            COMPARE_SHA=$(git log --first-parent -2 --format='%H' HEAD | tail -1)
+            # Develop: the previous commit on the first-parent chain.
+            FALLBACK_SHA=$(git log --first-parent -2 --format='%H' HEAD | tail -n +2)
           fi
 
+          FORCE_CLIENT="false"
+          COMPARE_SHA=""
+          if PUBLISHED=$(find_published) && [ -n "$PUBLISHED" ]; then
+            if git cat-file -e "$PUBLISHED^{commit}" 2> /dev/null \
+              || git fetch --no-tags --depth=1 origin "$PUBLISHED" > /dev/null 2>&1; then
+              COMPARE_SHA="$PUBLISHED"
+              echo "Last OTA published from $BRANCH: $PUBLISHED"
+            else
+              echo "::warning::Could not fetch the last published commit $PUBLISHED"
+            fi
+          else
+            echo "::warning::No published OTA found for $BRANCH in recent runs (or API error)"
+          fi
           if [ -z "$COMPARE_SHA" ]; then
-            echo "No comparison base found - assuming everything changed"
+            FORCE_CLIENT="true"
+            COMPARE_SHA="$FALLBACK_SHA"
+            echo "Last published commit unknown: OTA published anyway (fail-safe), native checks against ${COMPARE_SHA:-nothing}." \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ -z "$COMPARE_SHA" ] || ! CHANGED_FILES=$(git diff --name-only "$COMPARE_SHA" HEAD); then
+            echo "No usable comparison base - assuming everything changed"
             echo "client_changed=true" >> "$GITHUB_OUTPUT"
             echo "native=true" >> "$GITHUB_OUTPUT"
+            # Unknown diff: also stop the fingerprint step from picking OTA-only.
             echo "eas_config=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
-          CHANGED_FILES=$(git diff --name-only "$COMPARE_SHA" HEAD)
           echo "Comparing $COMPARE_SHA..HEAD (branch: $BRANCH)"
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
           # Check if any client-related files changed
-          CLIENT_CHANGED="false"
+          CLIENT_CHANGED="$FORCE_CLIENT"
           if echo "$CHANGED_FILES" | grep -qE "^(apps/client/|packages/shared/|pnpm-lock\.yaml)"; then
             CLIENT_CHANGED="true"
           fi
