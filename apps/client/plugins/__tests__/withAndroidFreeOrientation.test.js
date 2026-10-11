@@ -8,6 +8,8 @@
  */
 const {
   removeOrientationRestrictions,
+  overrideLibraryActivities,
+  LIBRARY_ACTIVITIES_LOCKING_ORIENTATION,
   RESTRICTING_ATTRIBUTES,
 } = require("../withAndroidFreeOrientation");
 
@@ -75,7 +77,31 @@ describe("withAndroidFreeOrientation", () => {
     expect(activity["android:launchMode"]).toBe("singleTask");
   });
 
+  it("asks the manifest merger to drop the portrait lock of library activities", () => {
+    const manifest = overrideLibraryActivities(buildManifest());
+    const activities = manifest.manifest.application[0].activity;
+
+    expect(manifest.manifest.$["xmlns:tools"]).toBe(
+      "http://schemas.android.com/tools",
+    );
+    for (const name of LIBRARY_ACTIVITIES_LOCKING_ORIENTATION) {
+      const override = activities.find((a) => a.$["android:name"] === name);
+      expect(override.$["tools:remove"]).toBe("android:screenOrientation");
+    }
+    // MainActivity is untouched by the override pass.
+    expect(activities[0].$["android:name"]).toBe(".MainActivity");
+  });
+
+  it("does not duplicate the override nodes — prebuild runs repeatedly", () => {
+    const once = overrideLibraryActivities(buildManifest());
+    const count = once.manifest.application[0].activity.length;
+    const twice = overrideLibraryActivities(once);
+
+    expect(twice.manifest.application[0].activity).toHaveLength(count);
+  });
+
   it("tolerates a manifest without application or activity", () => {
+    expect(() => overrideLibraryActivities({ manifest: {} })).not.toThrow();
     expect(() => removeOrientationRestrictions({ manifest: {} })).not.toThrow();
     expect(() =>
       removeOrientationRestrictions({ manifest: { application: [{}] } }),
