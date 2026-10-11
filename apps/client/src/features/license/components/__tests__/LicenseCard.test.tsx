@@ -4,6 +4,7 @@ import { StyleSheet } from "react-native";
 import { ThemeContext } from "../../../../context/ThemeContext";
 import { LicenseCard, LicenseUser } from "../LicenseCard";
 import {
+  FFD_CONNECT_LOGO,
   FFD_FEDERATION_LOGO,
   getLicenseConfig,
 } from "../license-card/license-card.config";
@@ -342,6 +343,38 @@ describe("LicenseCard", () => {
           queryByLabelText("Logo de la Fédération Française de Danse"),
         ).toBeNull();
         expect(getByTestId("license-card-wdsf-logo")).toBeTruthy();
+      },
+    );
+
+    it.each(["light", "dark"] as const)(
+      "shows FFD Connect's icon, not the FFD logo, on an account card (%s theme)",
+      async (theme) => {
+        const { getByTestId, queryByTestId, queryByLabelText } = await render(
+          <ThemeContext.Provider value={themeMock as never}>
+            <LicenseCard
+              type="FFD"
+              variant="account"
+              user={{ ...mockUser, licenseNumber: "" }}
+              photoUri={null}
+              themeOverride={theme}
+            />
+          </ThemeContext.Provider>,
+        );
+
+        expect(queryByTestId("license-card-ffd-logo")).toBeNull();
+        expect(
+          queryByLabelText("Logo de la Fédération Française de Danse"),
+        ).toBeNull();
+        // Same look as before #312: the app icon tinted white.
+        const icon = getByTestId("license-card-app-logo");
+        expect(icon.props.source).toBe(FFD_CONNECT_LOGO);
+        expect(
+          (
+            StyleSheet.flatten(icon.props.style as object) as {
+              tintColor?: string;
+            }
+          ).tintColor,
+        ).toBe("white");
       },
     );
 

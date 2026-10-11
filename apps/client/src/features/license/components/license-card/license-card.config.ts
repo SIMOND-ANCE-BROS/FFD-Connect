@@ -10,6 +10,14 @@ export const FFD_FEDERATION_LOGO =
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require("../../../../assets/ffd-federation-logo.png") as ImageSource;
 
+/**
+ * FFD Connect's own icon (#93), shown tinted white on the STAFF / CLUB account
+ * cards (#234): they hold no FFD licence, so no federation logo (#312).
+ */
+export const FFD_CONNECT_LOGO =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("../../../../assets/logo.png") as ImageSource;
+
 export function getLicenseConfig(
   type: LicenseType,
   isDark: boolean,

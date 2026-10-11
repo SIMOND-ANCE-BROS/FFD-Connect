@@ -61,6 +61,11 @@ export const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  appLogoImage: {
+    width: 44,
+    height: 44,
+    tintColor: "white",
+  },
   logoImage: {
     width: "100%",
     height: "100%",
