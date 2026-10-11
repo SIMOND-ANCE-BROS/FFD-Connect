@@ -44,12 +44,33 @@ describe("ThrottlerUserGuard", () => {
       expect(tracker).toBe("user:from-jwt");
     });
 
-    it("returns ip:x-forwarded-for when no user and x-forwarded-for header", async () => {
+    // The client writes X-Forwarded-For: reading it raw would let anyone pick
+    // its throttling key. Only `req.ip` (resolved by Express with a bounded
+    // `trust proxy`, #182) is used.
+    it("ignores a client-supplied X-Forwarded-For header", async () => {
+      const req = {
+        ip: "10.0.0.1",
+        headers: { "x-forwarded-for": "192.168.1.1" },
+      } as Record<string, unknown>;
+      const tracker = await getTracker(req);
+      expect(tracker).toBe("ip:10.0.0.1");
+    });
+
+    it("does not fall back on X-Forwarded-For when req.ip is missing", async () => {
       const req = {
         headers: { "x-forwarded-for": "192.168.1.1" },
       } as Record<string, unknown>;
       const tracker = await getTracker(req);
-      expect(tracker).toBe("ip:192.168.1.1");
+      expect(tracker).toBe("ip:");
+    });
+
+    it("groups IPv6 clients by /64 subnet like the base guard", async () => {
+      const req = { ip: "2001:db8:1:2:aaaa:bbbb:cccc:dddd" } as Record<
+        string,
+        unknown
+      >;
+      const tracker = await getTracker(req);
+      expect(tracker).toBe("ip:2001:db8:1:2::/64");
     });
 
     it("returns ip:req.ip when no user and req.ip set", async () => {

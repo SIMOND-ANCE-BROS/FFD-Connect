@@ -228,6 +228,20 @@ describe("validate (env.validation)", () => {
       expect(result.FIREBASE_SERVICE_ACCOUNT_JSON).toBe(serviceAccount);
     });
 
+    it("accepte TRUST_PROXY_HOPS entier (converti depuis la chaîne d'env)", () => {
+      const result = validate({ ...VALID_BASE, TRUST_PROXY_HOPS: "1" });
+      expect(result.TRUST_PROXY_HOPS).toBe(1);
+    });
+
+    it.each(["-1", "11", "1.5", "true"])(
+      "rejette TRUST_PROXY_HOPS=%s",
+      (value) => {
+        expect(() =>
+          validate({ ...VALID_BASE, TRUST_PROXY_HOPS: value }),
+        ).toThrow("Erreur de validation des variables d'environnement");
+      },
+    );
+
     it("accepte ENABLE_IP_BLACKLIST optionnel", () => {
       const result = validate({
         ...VALID_BASE,
