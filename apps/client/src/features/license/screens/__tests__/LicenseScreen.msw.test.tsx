@@ -15,6 +15,10 @@ import { LicenseScreen } from "../LicenseScreen";
 jest.mock("../../../../components/NotificationBell", () => ({
   NotificationBell: () => null,
 }));
+// The renewal banner reads its status through React Query (#268).
+jest.mock("../../hooks/useRenewalPending", () => ({
+  useRenewalPending: () => false,
+}));
 jest.mock("../../components/SwipeableLicenseCard", () => ({
   SwipeableLicenseCard: ({
     children,

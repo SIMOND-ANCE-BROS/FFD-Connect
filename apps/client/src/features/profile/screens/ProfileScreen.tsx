@@ -16,7 +16,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
 import api from "../../../services/api";
 import type { CareerResult } from "../../../services/BackendService";
-import { LicenseExpiryBanner } from "../../license/components/LicenseExpiryBanner";
+import { LicenseRenewalBanner } from "../../license/components/LicenseRenewalBanner";
 import {
   type CompetitionLevelProfile,
   formatCompetitionLevels,
@@ -113,7 +113,7 @@ export const ProfileScreen = ({ navigation }: Props) => {
           />
         }
       >
-        <LicenseExpiryBanner
+        <LicenseRenewalBanner
           validUntil={license?.validUntil}
           onPress={() => navigation.navigate("LicenseRenewal")}
         />

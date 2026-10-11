@@ -66,7 +66,11 @@ const asyncStoragePersister = createAsyncStoragePersister({
  * correction exposent des données d'autres utilisateurs (noms des auteurs,
  * commentaires) côté admin : inutile de les laisser 24 h dans AsyncStorage.
  */
-const NON_PERSISTED_QUERY_ROOTS: readonly string[] = ["track-corrections"];
+const NON_PERSISTED_QUERY_ROOTS: readonly string[] = [
+  "track-corrections",
+  // Renewal state (#268): tied to a medical certificate, kept in memory only.
+  "license-renewal",
+];
 
 /** Filtre de persistance : le défaut de React Query, moins les exclusions. */
 export function shouldPersistQuery(query: Query): boolean {

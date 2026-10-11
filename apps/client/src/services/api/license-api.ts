@@ -64,12 +64,32 @@ export interface LicenseRenewalDocument {
   createdAt: string;
 }
 
+/** Codes of a refusal, as the API defines them (RENEWAL_REJECTION_REASONS). */
+export type RenewalRejectionReason =
+  | "ILLEGIBLE"
+  | "INCOMPLETE"
+  | "CERTIFICATE_TOO_OLD"
+  | "NOT_A_MEDICAL_CERTIFICATE"
+  | "IDENTITY_MISMATCH"
+  | "LICENSE_MISMATCH"
+  | "MEDICAL_RESTRICTION"
+  | "OTHER";
+
 export interface LicenseRenewalRequest {
   id: string;
   userId: string;
   status: LicenseRenewalStatus;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Decision shown to the licensee (#268). Optional: absent from requests
+   * served by an older backend and from the store-review simulation.
+   */
+  submittedAt?: string | null;
+  /** Kept as a string: a code added server-side later must not break parsing. */
+  rejectionReason?: string | null;
+  /** Free comment of the federation; erased by the retention purge. */
+  reviewComment?: string | null;
   documents: LicenseRenewalDocument[];
 }
 

@@ -28,6 +28,7 @@ import { useSensitiveScreen } from "../../../hooks/useSensitiveScreen";
 import { RootStackParamList } from "../../../navigation/types";
 import type { LicenseRenewalDocumentType } from "../../../services/BackendService";
 import { useLicenseRenewalLogic } from "../hooks/useLicenseRenewalLogic";
+import { rejectionReasonLabel } from "../utils/renewalDecision";
 
 type Props = NativeStackScreenProps<RootStackParamList, "LicenseRenewal">;
 
@@ -73,6 +74,9 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
     loadRenewal().catch(() => {});
   }, [loadRenewal]);
 
+  const rejectionLabel = rejectionReasonLabel(request?.rejectionReason);
+  const reviewComment = request?.reviewComment?.trim();
+
   const renderOcrSummary = (doc: ReturnType<typeof getDoc>) => {
     if (!doc?.ocrData) return null;
     const d = doc.ocrData;
@@ -91,6 +95,10 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
       <View
         style={[styles.ocrBox, { backgroundColor: currentTheme.background }]}
       >
+        {/* A hint, not a verdict: a person checks the document (#268). */}
+        <AppText variant="caption" weight="600" style={ocrTextStyle}>
+          Lu automatiquement — à titre indicatif
+        </AppText>
         {lines.map((line, i) => (
           <AppText key={i} variant="caption" style={ocrTextStyle}>
             {line}
@@ -323,10 +331,44 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
             <AppText variant="h2" style={statusTitleStyle}>
               Demande refusée
             </AppText>
-            <AppText variant="body" style={statusSubtitleStyle}>
-              Votre demande n’a pas pu être validée. Vous pouvez déposer une
-              nouvelle demande avec des documents conformes.
-            </AppText>
+            {rejectionLabel ? (
+              <>
+                <AppText variant="body" weight="600" style={statusTitleStyle}>
+                  {`Motif : ${rejectionLabel}`}
+                </AppText>
+                {reviewComment ? (
+                  <View
+                    style={[
+                      styles.commentBox,
+                      { backgroundColor: currentTheme.background },
+                    ]}
+                  >
+                    <AppText
+                      variant="caption"
+                      weight="600"
+                      style={ocrTextStyle}
+                    >
+                      Commentaire de la fédération
+                    </AppText>
+                    <AppText
+                      variant="body"
+                      style={{ color: currentTheme.text }}
+                    >
+                      {reviewComment}
+                    </AppText>
+                  </View>
+                ) : null}
+                <AppText variant="body" style={statusSubtitleStyle}>
+                  Vous pouvez déposer une nouvelle demande avec des documents
+                  conformes.
+                </AppText>
+              </>
+            ) : (
+              <AppText variant="body" style={statusSubtitleStyle}>
+                Votre demande n’a pas pu être validée. Vous pouvez déposer une
+                nouvelle demande avec des documents conformes.
+              </AppText>
+            )}
             <TouchableOpacity
               style={retryButtonStyle}
               onPress={() => {
@@ -411,6 +453,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 12,
     marginBottom: 12,
+  },
+  commentBox: {
+    alignSelf: "stretch",
+    gap: 4,
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
   },
   uploadBtn: {
     flexDirection: "row",

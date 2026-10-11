@@ -74,3 +74,116 @@ describe("LicenseRenewalScreen — Sentry screenshots (#242)", () => {
     expect(queryByText(/de la prochaine saison/)).toBeNull();
   });
 });
+
+describe("LicenseRenewalScreen — decision shown to the licensee (#268)", () => {
+  const baseLogic = () => ({
+    request: null,
+    loading: false,
+    uploadingType: null,
+    submitting: false,
+    canSubmit: false,
+    step: "documents",
+    getDoc: jest.fn(),
+    loadRenewal: jest.fn().mockResolvedValue(undefined),
+    startOrGetDraft: jest.fn(),
+    pickAndUploadDocument: jest.fn(),
+    submit: jest.fn(),
+  });
+
+  beforeEach(() => {
+    (useTheme as jest.Mock).mockReturnValue({
+      theme: {
+        background: "#fff",
+        surface: "#f2f2f2",
+        text: "#111",
+        textSecondary: "#666",
+        primary: "#3b82f6",
+        border: "#e5e7eb",
+        danger: "#ef4444",
+      },
+      isDark: false,
+    });
+  });
+
+  const renderScreen = () =>
+    render(
+      <LicenseRenewalScreen
+        {...createMockScreenProps("LicenseRenewal", undefined)}
+      />,
+    );
+
+  it("shows the refusal reason and the federation's comment", async () => {
+    (useLicenseRenewalLogic as jest.Mock).mockReturnValue({
+      ...baseLogic(),
+      request: {
+        id: "req-1",
+        status: "REJECTED",
+        documents: [],
+        rejectionReason: "ILLEGIBLE",
+        reviewComment: "Merci de reprendre la photo en pleine lumière.",
+      },
+      step: "rejected",
+    });
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText("Motif : Document illisible")).toBeTruthy();
+    expect(getByText("Commentaire de la fédération")).toBeTruthy();
+    expect(
+      getByText("Merci de reprendre la photo en pleine lumière."),
+    ).toBeTruthy();
+    expect(getByText("Nouvelle demande")).toBeTruthy();
+  });
+
+  it("shows the reason alone when the federation left no comment", async () => {
+    (useLicenseRenewalLogic as jest.Mock).mockReturnValue({
+      ...baseLogic(),
+      request: {
+        id: "req-1",
+        status: "REJECTED",
+        documents: [],
+        rejectionReason: "CERTIFICATE_TOO_OLD",
+        reviewComment: null,
+      },
+      step: "rejected",
+    });
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText("Motif : Certificat trop ancien")).toBeTruthy();
+    expect(queryByText("Commentaire de la fédération")).toBeNull();
+  });
+
+  it("keeps the generic text for a refusal without a reason (older request)", async () => {
+    (useLicenseRenewalLogic as jest.Mock).mockReturnValue({
+      ...baseLogic(),
+      request: { id: "req-1", status: "REJECTED", documents: [] },
+      step: "rejected",
+    });
+
+    const { getByText, queryByText } = await renderScreen();
+
+    expect(getByText(/n’a pas pu être validée/)).toBeTruthy();
+    expect(queryByText(/^Motif :/)).toBeNull();
+  });
+
+  it("labels the OCR reading as indicative only", async () => {
+    const medical = {
+      id: "d1",
+      type: "MEDICAL_CERTIFICATE",
+      ocrData: { isApte: false },
+      createdAt: "2026-10-01T00:00:00.000Z",
+    };
+    (useLicenseRenewalLogic as jest.Mock).mockReturnValue({
+      ...baseLogic(),
+      request: { id: "req-1", status: "DRAFT", documents: [medical] },
+      getDoc: (type: string) =>
+        type === "MEDICAL_CERTIFICATE" ? medical : undefined,
+    });
+
+    const { getByText } = await renderScreen();
+
+    expect(getByText("Lu automatiquement — à titre indicatif")).toBeTruthy();
+    expect(getByText("Non apte")).toBeTruthy();
+  });
+});

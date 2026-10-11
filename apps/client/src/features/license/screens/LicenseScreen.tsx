@@ -35,7 +35,7 @@ import {
   LicenseType,
   LicenseUser,
 } from "../components/LicenseCard";
-import { LicenseExpiryBanner } from "../components/LicenseExpiryBanner";
+import { LicenseRenewalBanner } from "../components/LicenseRenewalBanner";
 import { computeLicenseExpiry } from "../utils/licenseExpiry";
 import { getFfdSeason } from "../utils/licenseSeason";
 import { SwipeableLicenseCard } from "../components/SwipeableLicenseCard";
@@ -302,7 +302,7 @@ export const LicenseScreen: React.FC = () => {
             </AppText>
           </View>
         ) : null}
-        <LicenseExpiryBanner
+        <LicenseRenewalBanner
           validUntil={ffdValidUntilRaw}
           onPress={() => navigation.getParent()?.navigate("LicenseRenewal")}
         />
