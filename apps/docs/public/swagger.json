@@ -21493,7 +21493,7 @@
         "operationId": "LicensesController_startRenewal",
         "parameters": [],
         "responses": {
-          "200": {
+          "201": {
             "description": "Demande créée ou existante"
           },
           "400": {
@@ -21863,7 +21863,7 @@
           }
         },
         "responses": {
-          "200": {
+          "201": {
             "description": "Demande mise à jour avec document et données OCR"
           },
           "400": {
@@ -21997,7 +21997,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "Demande soumise"
           },
           "400": {
@@ -22034,7 +22034,7 @@
             "description": "Demande non trouvée"
           },
           "409": {
-            "description": "Conflit - La ressource existe déjà",
+            "description": "Conflit - Une autre demande de l'utilisateur est déjà en attente de validation, ou la demande vient d'être traitée par un administrateur",
             "content": {
               "application/json": {
                 "schema": {

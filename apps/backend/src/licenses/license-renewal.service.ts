@@ -115,11 +115,19 @@ export class LicenseRenewalService {
 
   /** Récupère la demande de renouvellement en cours (brouillon ou soumise) pour l'utilisateur. */
   async getMyRenewalRequest(userId: string) {
-    const request = await this.prisma.licenseRenewalRequest.findFirst({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-      select: licenseRenewalRequestResponseSelect,
-    });
+    // Same rule as `startRenewalRequest` (#271): the request awaiting a
+    // decision comes first, even when a newer draft predates #271.
+    const request =
+      (await this.prisma.licenseRenewalRequest.findFirst({
+        where: { userId, status: LicenseRenewalStatus.PENDING },
+        orderBy: { createdAt: "asc" },
+        select: licenseRenewalRequestResponseSelect,
+      })) ??
+      (await this.prisma.licenseRenewalRequest.findFirst({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        select: licenseRenewalRequestResponseSelect,
+      }));
     return request ? toRenewalRequestResponse(request) : null;
   }
 
@@ -450,12 +458,23 @@ export class LicenseRenewalService {
  * `FOR NO KEY UPDATE` does not conflict with the `KEY SHARE` locks taken by
  * foreign key checks, so inserting other rows that reference the user is not
  * blocked.
+ *
+ * Lock-then-read relies on READ COMMITTED (the default): each statement after
+ * the lock takes a fresh snapshot and sees what the previous holder committed.
+ * Do NOT run it under REPEATABLE READ or SERIALIZABLE: the snapshot is taken
+ * at the first statement, so the reads after the lock would miss the request
+ * the other transaction just committed.
+ *
+ * Throws NotFoundException when the user does not exist (deleted account):
+ * no row is locked, so nothing would be serialised.
  */
 async function lockUserRenewals(
   tx: Prisma.TransactionClient,
   userId: string,
 ): Promise<void> {
-  await tx.$queryRaw(
+  const locked = await tx.$queryRaw<{ id: string }[]>(
     Prisma.sql`SELECT id FROM "User" WHERE id = ${userId} FOR NO KEY UPDATE`,
   );
+  if (locked.length === 0)
+    throw new NotFoundException("Utilisateur non trouvé");
 }

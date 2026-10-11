@@ -44,6 +44,7 @@ describe("Licence renewal: one PENDING request per user (integration, real DB)",
     userId: string,
     status: LicenseRenewalStatus,
     createdAt = new Date(),
+    licenseNumber = "FFD-271",
   ) =>
     prisma.licenseRenewalRequest.create({
       data: {
@@ -63,7 +64,7 @@ describe("Licence renewal: one PENDING request per user (integration, real DB)",
             {
               type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
               filePath: `licence-${randomUUID()}.png`,
-              ocrData: { licenseNumber: "FFD-271" },
+              ocrData: { licenseNumber },
             },
           ],
         },
@@ -86,7 +87,34 @@ describe("Licence renewal: one PENDING request per user (integration, real DB)",
     ({ app, prisma, jwt } = await buildHttpApp());
   });
 
+  /**
+   * A licence number already held by another account: the automatic approval
+   * fails on it and leaves the submitted request PENDING (#280), which is
+   * the situation #271 guards against.
+   */
+  const takenLicenseNumber = async () => {
+    const holder = await createLicensee();
+    const number = `T-${randomUUID().slice(0, 8)}`;
+    await prisma.license.create({
+      data: {
+        userId: holder.id,
+        number,
+        validUntil: new Date("2020-08-31T00:00:00Z"),
+        category: "Standard",
+        clubName: "Club",
+      },
+      select: { id: true },
+    });
+    return number;
+  };
+
+  const submit = (u: { id: string; email: string; role: string }, id: string) =>
+    request(server())
+      .post(`/api/v1/licenses/renewal/${id}/submit`)
+      .set("Authorization", bearer(u));
+
   afterEach(async () => {
+    await prisma.license.deleteMany({ where: { userId: { in: userIds } } });
     // Cascades to the requests and their documents.
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     userIds.length = 0;
@@ -204,5 +232,74 @@ describe("Licence renewal: one PENDING request per user (integration, real DB)",
         select: { id: true },
       }),
     ).toBeNull();
+  });
+
+  it("GET renewal/my shows the PENDING request before a newer leftover draft", async () => {
+    const licensee = await createLicensee();
+    const pending = await createRequest(
+      licensee.id,
+      LicenseRenewalStatus.PENDING,
+      new Date("2026-09-01T08:00:00Z"),
+    );
+    await createRequest(
+      licensee.id,
+      LicenseRenewalStatus.DRAFT,
+      new Date("2026-09-02T08:00:00Z"),
+    );
+
+    const res = await request(server())
+      .get("/api/v1/licenses/renewal/my")
+      .set("Authorization", bearer(licensee))
+      .expect(200);
+
+    expect(res.body).toMatchObject({ id: pending.id, status: "PENDING" });
+  });
+
+  it("two drafts submitted concurrently: one PENDING, the other refused (409)", async () => {
+    const number = await takenLicenseNumber();
+    const licensee = await createLicensee();
+    const drafts = await Promise.all(
+      [new Date("2026-09-01T08:00:00Z"), new Date("2026-09-02T08:00:00Z")].map(
+        (createdAt) =>
+          createRequest(
+            licensee.id,
+            LicenseRenewalStatus.DRAFT,
+            createdAt,
+            number,
+          ),
+      ),
+    );
+
+    const responses = await Promise.all(
+      drafts.map((d) => submit(licensee, d.id)),
+    );
+
+    expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
+    const statuses = (await requestsOf(licensee.id)).map((r) => r.status);
+    expect(statuses.sort()).toEqual([
+      LicenseRenewalStatus.DRAFT,
+      LicenseRenewalStatus.PENDING,
+    ]);
+  });
+
+  it("the same draft submitted twice concurrently: one success, one 400", async () => {
+    const number = await takenLicenseNumber();
+    const licensee = await createLicensee();
+    const draft = await createRequest(
+      licensee.id,
+      LicenseRenewalStatus.DRAFT,
+      new Date(),
+      number,
+    );
+
+    const responses = await Promise.all([
+      submit(licensee, draft.id),
+      submit(licensee, draft.id),
+    ]);
+
+    expect(responses.map((r) => r.status).sort()).toEqual([201, 400]);
+    expect(await requestsOf(licensee.id)).toEqual([
+      { id: draft.id, status: LicenseRenewalStatus.PENDING },
+    ]);
   });
 });
