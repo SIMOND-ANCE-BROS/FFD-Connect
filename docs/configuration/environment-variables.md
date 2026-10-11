@@ -47,6 +47,20 @@ environnement, jamais commitée.
 > `NODE_ENV=production`, l'application quitte sur une erreur fatale (voir
 > `src/main.ts`). Ne jamais utiliser `*`.
 
+## Proxy et limitation de débit
+
+| Variable           | Défaut                                  | Rôle                                                                                        |
+| ------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `TRUST_PROXY_HOPS` | `1` si `NODE_ENV=production`, sinon `0` | Nombre de proxys de confiance devant le backend (réglage Express `trust proxy`), de 0 à 10. |
+
+> Derrière Azure Container Apps, seul l'ingress (Envoy) est devant le backend :
+> `1` est la bonne valeur, inutile de la poser. Express prend alors l'adresse
+> ajoutée par l'ingress à `X-Forwarded-For` comme IP du client (`req.ip`), ce
+> qui sert de clé à la limitation de débit des routes publiques. Ne jamais
+> « faire confiance à tous les sauts » : le client écrit lui-même l'en-tête et
+> pourrait choisir son IP. À augmenter seulement si un autre proxy (CDN, Front
+> Door) est ajouté devant l'ingress (#182).
+
 ## Redis
 
 | Variable         | Défaut      | Rôle                                      |

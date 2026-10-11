@@ -4,6 +4,7 @@ import * as Sentry from "@sentry/nestjs";
 import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
+import { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 
 import compression from "compression";
@@ -12,12 +13,13 @@ import { Logger } from "nestjs-pino";
 import { AppModule } from "./app.module";
 import { API_GLOBAL_PREFIX } from "./common/api-prefix";
 import { sentryRedactionOptions } from "./common/logger/sentry-redaction";
+import { applyTrustProxy } from "./config/trust-proxy";
 import { HEALTH_PREFIX_EXCLUDE } from "./health/health.controller";
 import { UPLOADS_FALLBACK_PREFIX_EXCLUDE } from "./tracks/uploads-fallback.controller";
 import { requireProductionEnv } from "./utils/require-production-env";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true, // Buffer logs until Pino logger is ready
     rawBody: true, // Required for webhook HMAC signature verification
   });
@@ -80,6 +82,11 @@ async function bootstrap() {
     nodeEnv,
     prodEnvCallbacks,
   );
+
+  // Real client IP behind the Container Apps ingress: rate limiting keys on
+  // `req.ip` (#182). Trusts a fixed number of hops, never every hop.
+  const trustProxyHops = applyTrustProxy(app, configService);
+  logger.log(`trust proxy: ${trustProxyHops} hop(s)`, "Bootstrap");
 
   // Compression gzip pour améliorer les performances
   app.use(compression());

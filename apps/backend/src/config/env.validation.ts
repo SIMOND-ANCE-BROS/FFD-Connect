@@ -2,6 +2,7 @@ import { plainToInstance } from "class-transformer";
 import {
   IsEnum,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -264,6 +265,14 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   WALLET_APPLE_TEAM_ID?: string;
+
+  // Reverse-proxy hops trusted to compute the client IP (`trust proxy`, #182).
+  // Unset: 1 in production (Container Apps ingress), 0 elsewhere.
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  @IsOptional()
+  TRUST_PROXY_HOPS?: number;
 
   // Fonctionnalités optionnelles
   @IsString()

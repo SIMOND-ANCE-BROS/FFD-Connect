@@ -4,13 +4,14 @@ import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { JwtService } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { Test } from "@nestjs/testing";
-import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerModule } from "@nestjs/throttler";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import request from "supertest";
 import { JwtStrategy } from "../auth/jwt.strategy";
 import { StoreReviewInterceptor } from "../auth/store-review/store-review.interceptor";
+import { GlobalThrottlerGuard } from "../common/guards/global-throttler.guard";
 import { PrismaService } from "../prisma/prisma.service";
 import { TTS_TEXT_MAX_LENGTH } from "./dto/tts-request.dto";
 import { TTS_THROTTLE, TtsController } from "./tts.controller";
@@ -88,7 +89,7 @@ describe("POST /tts (HTTP)", () => {
         },
         { provide: PrismaService, useValue: prisma },
         { provide: TtsService, useValue: tts },
-        { provide: APP_GUARD, useClass: ThrottlerGuard },
+        { provide: APP_GUARD, useClass: GlobalThrottlerGuard },
         { provide: APP_INTERCEPTOR, useClass: StoreReviewInterceptor },
       ],
     }).compile();
@@ -185,5 +186,20 @@ describe("POST /tts (HTTP)", () => {
     const res = await post({ text: "Une de trop" }, token);
     expect(res.status).toBe(429);
     expect(Number(res.headers["retry-after"])).toBeGreaterThan(0);
+  });
+
+  // #182: supertest sends every request from the same address, like several
+  // users behind the ingress or a gym Wi-Fi. The 60/min budget is per user.
+  it("does not let one user consume another user's budget from the same IP", async () => {
+    const first = tokenFor("u1");
+    for (let i = 0; i < TTS_THROTTLE.limit; i++) {
+      expect((await post({ text: `Annonce ${i}` }, first)).status).toBe(200);
+    }
+    expect((await post({ text: "Une de trop" }, first)).status).toBe(429);
+
+    const second = tokenFor("u2");
+    for (let i = 0; i < TTS_THROTTLE.limit; i++) {
+      expect((await post({ text: `Annonce ${i}` }, second)).status).toBe(200);
+    }
   });
 });
