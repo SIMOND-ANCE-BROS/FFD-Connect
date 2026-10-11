@@ -398,6 +398,7 @@ export const LicenseScreen: React.FC = () => {
                 >
                   <LicenseCard
                     type="FFD"
+                    variant="account"
                     user={item.data as LicenseUser}
                     photoUri={state.photoUri}
                     // No QR: a STAFF/CLUB account holds no license to scan,

@@ -4,11 +4,14 @@ import { TouchableOpacity, View } from "react-native";
 import Svg, { Path, SvgUri } from "react-native-svg";
 import { AppText } from "../../../../components/AppText";
 import { FFD_VALIDITY_UNKNOWN } from "../../utils/licenseSeason";
+import { FFD_CONNECT_LOGO } from "./license-card.config";
 import { styles } from "./license-card.styles";
 import { LicenseConfig, LicenseUser } from "./license-card.types";
 
 interface LicenseCardHeaderProps {
   isFFD: boolean;
+  /** STAFF / CLUB account card: FFD Connect icon, no federation logo. */
+  isAccount?: boolean;
   config: LicenseConfig;
   user: LicenseUser;
   onOptions?: () => void;
@@ -16,6 +19,7 @@ interface LicenseCardHeaderProps {
 
 export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
   isFFD,
+  isAccount = false,
   config,
   user,
   onOptions,
@@ -42,14 +46,35 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
     <View style={styles.headerContent}>
       {/* Logo */}
       <View style={styles.logoContainer}>
-        {isFFD ? (
+        {isFFD && isAccount ? (
           <Image
-            source={config.logo}
-            style={styles.logoImage}
+            source={FFD_CONNECT_LOGO}
+            style={styles.appLogoImage}
             contentFit="contain"
+            testID="license-card-app-logo"
           />
+        ) : isFFD ? (
+          // White badge: the federation logo keeps its own colours (navy
+          // text, red/blue dancer), which vanish on the blue header in both
+          // themes. Tinting it white would alter the mark.
+          <View style={styles.logoBadge} testID="license-card-ffd-logo">
+            <Image
+              source={config.logo}
+              style={styles.logoImage}
+              contentFit="contain"
+              accessible
+              accessibilityRole="image"
+              accessibilityLabel="Logo de la Fédération Française de Danse"
+              accessibilityHint="Fédération qui délivre cette licence"
+            />
+          </View>
         ) : (
-          <SvgUri width="44" height="44" uri={config.logo as string} />
+          <SvgUri
+            width="44"
+            height="44"
+            uri={config.logo as string}
+            testID="license-card-wdsf-logo"
+          />
         )}
       </View>
 

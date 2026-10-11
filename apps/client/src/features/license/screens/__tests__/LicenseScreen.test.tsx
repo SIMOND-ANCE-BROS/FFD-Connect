@@ -60,11 +60,15 @@ jest.mock("../../components/LicenseCard", () => ({
     testID?: string;
     onShowQr?: () => void;
     onOptions?: () => void;
+    variant?: "license" | "account";
   }) => {
     const { Text } = require("react-native");
     return (
       <Text testID={props.testID} onPress={props.onShowQr}>
         {props.testID}
+        {props.variant === "account" ? (
+          <Text testID={`${props.testID}-account-variant`} />
+        ) : null}
         {props.onOptions ? (
           <Text testID={`${props.testID}-options`} onPress={props.onOptions}>
             ...
@@ -415,6 +419,55 @@ describe("LicenseScreen Integration", () => {
     // The card gets no QR handler: pressing it never opens a QR.
     await fireEvent.press(getByTestId("license-card-0"));
     expect(mockActions.handleShowQr).not.toHaveBeenCalled();
+  });
+
+  it.each(["STAFF", "CLUB"])(
+    "never shows the federation logo on the %s account card (#312)",
+    async (role) => {
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          role,
+          listItems: [
+            {
+              type: "STAFF",
+              data: {
+                firstName: "",
+                lastName: "Danse Passion Nantes",
+                licenseNumber: "",
+                validUntil: "",
+                type: role,
+              },
+            },
+          ],
+        },
+        actions: mockActions,
+      });
+
+      const { getByTestId } = await render(<LicenseScreen />);
+      // The account variant swaps the federation logo for FFD Connect's
+      // icon (rendering covered in LicenseCard.test.tsx).
+      expect(getByTestId("license-card-0-account-variant")).toBeTruthy();
+    },
+  );
+
+  it("keeps the licence variant (federation logo) on an FFD licence (#312)", async () => {
+    (useLicenseLogic as jest.Mock).mockReturnValue({
+      state: {
+        ...mockState,
+        listItems: [
+          {
+            type: "FFD",
+            data: { firstName: "John", lastName: "Doe", licenseNumber: "1" },
+          },
+        ],
+      },
+      actions: mockActions,
+    });
+
+    const { getByTestId, queryByTestId } = await render(<LicenseScreen />);
+    expect(getByTestId("license-card-FFD")).toBeTruthy();
+    expect(queryByTestId("license-card-FFD-account-variant")).toBeNull();
   });
 
   it("handles card press", async () => {
