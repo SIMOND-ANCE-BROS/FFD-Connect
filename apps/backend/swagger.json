@@ -26885,7 +26885,9 @@
               "CLUB_MEMBER_REGISTRATION",
               "CLUB_PARTNERSHIP",
               "TRACK_REPORT",
+              "LICENSE_RENEWAL_TO_REVIEW",
               "TRACK_CORRECTION_DECISION",
+              "LICENSE_RENEWAL_DECISION",
               "DIAGNOSTIC_TEST"
             ],
             "description": "Type d'événement",
@@ -26921,7 +26923,9 @@
               "CLUB_MEMBER_REGISTRATION",
               "CLUB_PARTNERSHIP",
               "TRACK_REPORT",
+              "LICENSE_RENEWAL_TO_REVIEW",
               "TRACK_CORRECTION_DECISION",
+              "LICENSE_RENEWAL_DECISION",
               "DIAGNOSTIC_TEST"
             ],
             "description": "Type d'événement à régler, tel que renvoyé par GET /notifications/preferences",
