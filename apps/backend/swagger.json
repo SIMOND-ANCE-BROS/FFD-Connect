@@ -21799,7 +21799,14 @@
         "parameters": [],
         "responses": {
           "201": {
-            "description": "Demande créée ou existante"
+            "description": "Demande créée ou existante",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseRenewalRequestDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Requête invalide - Erreur de validation",
@@ -21971,7 +21978,14 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Demande ou null"
+            "description": "Demande (avec l'issue de la modération : motif et commentaire d'un refus) ou null",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseRenewalRequestDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Requête invalide - Erreur de validation",
@@ -22175,7 +22189,14 @@
         },
         "responses": {
           "201": {
-            "description": "Demande mise à jour avec document et données OCR"
+            "description": "Demande mise à jour avec document et données OCR",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseRenewalRequestDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Type invalide ou fichier manquant"
@@ -22309,7 +22330,14 @@
         ],
         "responses": {
           "201": {
-            "description": "Demande soumise"
+            "description": "Demande soumise",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LicenseRenewalRequestDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Documents manquants ou déjà soumise"
@@ -26980,6 +27008,154 @@
         "type": "string",
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"]
       },
+      "LicenseRenewalRejectionReason": {
+        "type": "string",
+        "description": "Code du motif de refus d'une demande de renouvellement de licence.",
+        "enum": [
+          "ILLEGIBLE",
+          "INCOMPLETE",
+          "CERTIFICATE_TOO_OLD",
+          "NOT_A_MEDICAL_CERTIFICATE",
+          "IDENTITY_MISMATCH",
+          "LICENSE_MISMATCH",
+          "MEDICAL_RESTRICTION",
+          "OTHER"
+        ]
+      },
+      "LicenseRenewalDocumentType": {
+        "type": "string",
+        "enum": ["MEDICAL_CERTIFICATE", "LICENSE_CERTIFICATE"]
+      },
+      "LicenseRenewalOcrDataDto": {
+        "type": "object",
+        "properties": {
+          "isApte": {
+            "type": "boolean"
+          },
+          "date": {
+            "type": "string"
+          },
+          "doctorName": {
+            "type": "string"
+          },
+          "licenseNumber": {
+            "type": "string"
+          },
+          "expiryDate": {
+            "type": "string"
+          }
+        }
+      },
+      "LicenseRenewalDocumentDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalDocumentType"
+              }
+            ]
+          },
+          "filePath": {
+            "type": "string"
+          },
+          "ocrData": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalOcrDataDto"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "requestId",
+          "type",
+          "filePath",
+          "ocrData",
+          "createdAt"
+        ]
+      },
+      "LicenseRenewalRequestDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalStatus"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "submittedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reviewedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "rejectionReason": {
+            "nullable": true,
+            "description": "Motif du refus (null sauf demande refusée). `MEDICAL_RESTRICTION` est ramené à `OTHER` par la purge de rétention.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LicenseRenewalRejectionReason"
+              }
+            ]
+          },
+          "reviewComment": {
+            "type": "string",
+            "nullable": true,
+            "description": "Commentaire de l'administrateur au licencié. Effacé avec le certificat par la purge de rétention."
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LicenseRenewalDocumentDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "submittedAt",
+          "reviewedAt",
+          "rejectionReason",
+          "reviewComment",
+          "documents"
+        ]
+      },
       "AdminRenewalLicenseDto": {
         "type": "object",
         "properties": {
@@ -27031,10 +27207,6 @@
           }
         },
         "required": ["id", "firstName", "lastName"]
-      },
-      "LicenseRenewalDocumentType": {
-        "type": "string",
-        "enum": ["MEDICAL_CERTIFICATE", "LICENSE_CERTIFICATE"]
       },
       "AdminRenewalDocumentDto": {
         "type": "object",
