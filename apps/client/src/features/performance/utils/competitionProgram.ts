@@ -276,6 +276,9 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 const isPositiveNumber = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v) && v > 0;
 
+const isNonNegativeNumber = (v: unknown): v is number =>
+  typeof v === "number" && Number.isFinite(v) && v >= 0;
+
 const isCategory = (v: unknown): v is Category =>
   PROGRAM_CATEGORIES.includes(v as Category);
 
@@ -320,7 +323,7 @@ export const configFromPreset = (saved: unknown): PerformanceConfig => {
     duration: isPositiveNumber(saved.duration)
       ? saved.duration
       : defaults.duration,
-    pauseDuration: isPositiveNumber(saved.pauseDuration)
+    pauseDuration: isNonNegativeNumber(saved.pauseDuration)
       ? saved.pauseDuration
       : defaults.pauseDuration,
     pasoClashes:

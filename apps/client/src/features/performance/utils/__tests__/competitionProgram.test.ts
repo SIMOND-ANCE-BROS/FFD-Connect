@@ -948,6 +948,27 @@ describe("configFromPreset", () => {
     regulationTempo: false,
   };
 
+  it("round-trips a pause of 0 (« Without a break »)", () => {
+    expect(configFromPreset({ ...saved, pauseDuration: 0 }).pauseDuration).toBe(
+      0,
+    );
+  });
+
+  it.each([-5, NaN, Infinity, "0", null])(
+    "falls back to the default pause for %p",
+    (bad) => {
+      expect(
+        configFromPreset({ ...saved, pauseDuration: bad }).pauseDuration,
+      ).toBe(createDefaultConfig().pauseDuration);
+    },
+  );
+
+  it("still rejects a duration of 0", () => {
+    expect(configFromPreset({ ...saved, duration: 0 }).duration).toBe(
+      createDefaultConfig().duration,
+    );
+  });
+
   it("restores a valid preset with fresh round ids", () => {
     const cfg = configFromPreset(saved);
     expect(cfg).toMatchObject({

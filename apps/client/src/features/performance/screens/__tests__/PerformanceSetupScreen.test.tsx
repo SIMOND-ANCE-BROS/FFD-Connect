@@ -572,6 +572,19 @@ describe("PerformanceSetupScreen", () => {
       expect(queryByTestId("performance-preset-modified")).toBeNull();
     });
 
+    it("does not flag a preset saved with a pause of 0 as modified", async () => {
+      const noBreak = { ...baseConfig, pauseDuration: 0 };
+      presets().save("Gala", noBreak);
+      mockEngine({ config: noBreak });
+      const { getByTestId, queryByTestId } = await render(
+        <PerformanceSetupScreen />,
+      );
+      expect(getByTestId("performance-preset-banner-title")).toHaveTextContent(
+        /Gala/,
+      );
+      expect(queryByTestId("performance-preset-modified")).toBeNull();
+    });
+
     it("flags an edited preset as modified, and « Mettre à jour » saves it", async () => {
       presets().save("Gala", baseConfig);
       mockEngine({ config: { ...baseConfig, duration: 45 } });

@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render, within } from "@testing-library/react-native";
 import React from "react";
 import { Alert, type AlertButton } from "react-native";
 import { useTheme } from "../../../../context/ThemeContext";
@@ -88,6 +88,19 @@ describe("PresetsSheet", () => {
     expect(getByText("Entraînement")).toBeTruthy();
     expect(getAllByText(/Enregistré le 11\/10\/2026/)).toHaveLength(2);
     expect(getByText(/En cours/)).toBeTruthy();
+  });
+
+  it("keeps the controls out of the backdrop so VoiceOver can reach them", async () => {
+    const { getByTestId, props } = await renderSheet();
+    const backdrop = getByTestId("performance-presets-backdrop");
+    expect(
+      within(backdrop).queryByTestId("performance-presets-save"),
+    ).toBeNull();
+    expect(
+      within(backdrop).queryByTestId("performance-presets-close"),
+    ).toBeNull();
+    await fireEvent.press(backdrop);
+    expect(props.onClose).toHaveBeenCalledTimes(1);
   });
 
   it("explains the empty list", async () => {

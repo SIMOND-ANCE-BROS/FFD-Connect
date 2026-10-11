@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppButton } from "../../../components/AppButton";
 import { AppText } from "../../../components/AppText";
 import { radii } from "../../../constants/radii";
@@ -104,6 +105,7 @@ export const PresetsSheet: React.FC<PresetsSheetProps> = ({
   onDelete,
 }) => {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const [form, setForm] = useState<Form | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -188,199 +190,201 @@ export const PresetsSheet: React.FC<PresetsSheetProps> = ({
       onRequestClose={close}
     >
       <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.backdrop}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
+        {/* Sibling of the card, not its parent: a Pressable parent would
+            collapse into one VoiceOver element and hide the controls. */}
         <Pressable
-          style={styles.backdrop}
+          style={StyleSheet.absoluteFill}
           onPress={close}
+          testID="performance-presets-backdrop"
           accessibilityRole="button"
           accessibilityLabel="Fermer les presets"
           accessibilityHint="Ferme la liste des presets"
+        />
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.surface,
+              paddingBottom: Math.max(insets.bottom + 12, 28),
+            },
+          ]}
         >
-          <Pressable
-            style={[styles.card, { backgroundColor: theme.surface }]}
-            onPress={() => {}}
-            accessibilityRole="none"
-          >
-            <View style={styles.header}>
-              <AppText variant="h3" color={theme.text} style={styles.title}>
-                Presets
-              </AppText>
-              <TouchableOpacity
-                onPress={close}
-                accessibilityRole="button"
-                accessibilityLabel="Fermer"
-                accessibilityHint="Ferme la liste des presets"
-                hitSlop={8}
-                testID="performance-presets-close"
-              >
-                <X size={22} color={theme.text} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              style={styles.body}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
+          <View style={styles.header}>
+            <AppText variant="h3" color={theme.text} style={styles.title}>
+              Presets
+            </AppText>
+            <TouchableOpacity
+              onPress={close}
+              accessibilityRole="button"
+              accessibilityLabel="Fermer"
+              accessibilityHint="Ferme la liste des presets"
+              hitSlop={12}
+              testID="performance-presets-close"
             >
-              {presets.length === 0 && (
+              <X size={22} color={theme.text} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            style={styles.body}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {presets.length === 0 && (
+              <AppText
+                variant="caption"
+                color={theme.textSecondary}
+                testID="performance-presets-empty"
+              >
+                Aucun preset enregistré. Enregistrez le programme actuel pour le
+                retrouver en un geste.
+              </AppText>
+            )}
+            {presets.map((preset) => {
+              const active = preset.id === activePresetId;
+              const prefix = `performance-preset-${preset.id}`;
+              return (
+                <View
+                  key={preset.id}
+                  testID={prefix}
+                  style={[
+                    styles.row,
+                    { borderColor: active ? theme.primary : theme.border },
+                  ]}
+                >
+                  <View style={styles.rowText}>
+                    <AppText variant="body" weight="600" color={theme.text}>
+                      {preset.name}
+                    </AppText>
+                    <AppText variant="caption" color={theme.textSecondary}>
+                      {active ? "En cours · " : ""}Enregistré le{" "}
+                      {formatPresetDate(preset.updatedAt)}
+                    </AppText>
+                  </View>
+                  <View style={styles.rowActions}>
+                    <RowButton
+                      text="Charger"
+                      label={`Charger le preset ${preset.name}`}
+                      hint="Remplace le programme affiché par ce preset"
+                      color={theme.primary}
+                      testID={`${prefix}-load`}
+                      onPress={() => {
+                        onLoad(preset);
+                        close();
+                      }}
+                    />
+                    <RowButton
+                      text="Renommer"
+                      label={`Renommer le preset ${preset.name}`}
+                      hint="Change le nom de ce preset"
+                      color={theme.text}
+                      testID={`${prefix}-rename`}
+                      onPress={() =>
+                        openForm({ kind: "rename", id: preset.id }, preset.name)
+                      }
+                    />
+                    <RowButton
+                      text="Supprimer"
+                      label={`Supprimer le preset ${preset.name}`}
+                      hint="Supprime ce preset après confirmation"
+                      color={theme.danger}
+                      testID={`${prefix}-delete`}
+                      onPress={() => confirmDelete(preset)}
+                    />
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          {form ? (
+            <View style={styles.form}>
+              <AppText variant="caption" color={theme.textSecondary}>
+                {form.kind === "save" ? "Nom du preset" : "Nouveau nom"}
+              </AppText>
+              <TextInput
+                testID="performance-presets-name-input"
+                accessibilityLabel="Nom du preset"
+                accessibilityHint={`${PRESET_NAME_MAX_LENGTH} caractères maximum`}
+                value={name}
+                onChangeText={(t) => {
+                  setName(t);
+                  setError(null);
+                }}
+                maxLength={PRESET_NAME_MAX_LENGTH}
+                autoFocus
+                placeholder="Ex. Championnat de France"
+                placeholderTextColor={theme.textSecondary}
+                returnKeyType="done"
+                onSubmitEditing={submit}
+                style={[
+                  styles.input,
+                  {
+                    color: theme.text,
+                    borderColor: theme.border,
+                    backgroundColor: theme.background,
+                  },
+                ]}
+              />
+              {error && (
                 <AppText
                   variant="caption"
-                  color={theme.textSecondary}
-                  testID="performance-presets-empty"
+                  color={theme.danger}
+                  testID="performance-presets-error"
+                  accessibilityLiveRegion="polite"
                 >
-                  Aucun preset enregistré. Enregistrez le programme actuel pour
-                  le retrouver en un geste.
+                  {error}
                 </AppText>
               )}
-              {presets.map((preset) => {
-                const active = preset.id === activePresetId;
-                const prefix = `performance-preset-${preset.id}`;
-                return (
-                  <View
-                    key={preset.id}
-                    testID={prefix}
-                    style={[
-                      styles.row,
-                      { borderColor: active ? theme.primary : theme.border },
-                    ]}
-                  >
-                    <View style={styles.rowText}>
-                      <AppText variant="body" weight="600" color={theme.text}>
-                        {preset.name}
-                      </AppText>
-                      <AppText variant="caption" color={theme.textSecondary}>
-                        {active ? "En cours · " : ""}Enregistré le{" "}
-                        {formatPresetDate(preset.updatedAt)}
-                      </AppText>
-                    </View>
-                    <View style={styles.rowActions}>
-                      <RowButton
-                        text="Charger"
-                        label={`Charger le preset ${preset.name}`}
-                        hint="Remplace le programme affiché par ce preset"
-                        color={theme.primary}
-                        testID={`${prefix}-load`}
-                        onPress={() => {
-                          onLoad(preset);
-                          close();
-                        }}
-                      />
-                      <RowButton
-                        text="Renommer"
-                        label={`Renommer le preset ${preset.name}`}
-                        hint="Change le nom de ce preset"
-                        color={theme.text}
-                        testID={`${prefix}-rename`}
-                        onPress={() =>
-                          openForm(
-                            { kind: "rename", id: preset.id },
-                            preset.name,
-                          )
-                        }
-                      />
-                      <RowButton
-                        text="Supprimer"
-                        label={`Supprimer le preset ${preset.name}`}
-                        hint="Supprime ce preset après confirmation"
-                        color={theme.danger}
-                        testID={`${prefix}-delete`}
-                        onPress={() => confirmDelete(preset)}
-                      />
-                    </View>
-                  </View>
-                );
-              })}
-            </ScrollView>
-
-            {form ? (
-              <View style={styles.form}>
-                <AppText variant="caption" color={theme.textSecondary}>
-                  {form.kind === "save" ? "Nom du preset" : "Nouveau nom"}
-                </AppText>
-                <TextInput
-                  testID="performance-presets-name-input"
-                  accessibilityLabel="Nom du preset"
-                  accessibilityHint={`${PRESET_NAME_MAX_LENGTH} caractères maximum`}
-                  value={name}
-                  onChangeText={(t) => {
-                    setName(t);
-                    setError(null);
-                  }}
-                  maxLength={PRESET_NAME_MAX_LENGTH}
-                  autoFocus
-                  placeholder="Ex. Championnat de France"
-                  placeholderTextColor={theme.textSecondary}
-                  returnKeyType="done"
-                  onSubmitEditing={submit}
-                  style={[
-                    styles.input,
-                    {
-                      color: theme.text,
-                      borderColor: theme.border,
-                      backgroundColor: theme.background,
-                    },
-                  ]}
+              <View style={styles.formActions}>
+                <AppButton
+                  title="Annuler"
+                  variant="secondary"
+                  onPress={closeForm}
+                  style={styles.formButton}
+                  testID="performance-presets-form-cancel"
+                  accessibilityLabel="Annuler"
+                  accessibilityHint="Ferme le formulaire sans rien enregistrer"
                 />
-                {error && (
-                  <AppText
-                    variant="caption"
-                    color={theme.danger}
-                    testID="performance-presets-error"
-                    accessibilityLiveRegion="polite"
-                  >
-                    {error}
-                  </AppText>
-                )}
-                <View style={styles.formActions}>
-                  <AppButton
-                    title="Annuler"
-                    variant="secondary"
-                    onPress={closeForm}
-                    style={styles.formButton}
-                    testID="performance-presets-form-cancel"
-                    accessibilityLabel="Annuler"
-                    accessibilityHint="Ferme le formulaire sans rien enregistrer"
-                  />
-                  <AppButton
-                    title={form.kind === "save" ? "Enregistrer" : "Renommer"}
-                    onPress={submit}
-                    style={styles.formButton}
-                    testID="performance-presets-form-confirm"
-                    accessibilityLabel={
-                      form.kind === "save"
-                        ? "Enregistrer le preset"
-                        : "Renommer le preset"
-                    }
-                    accessibilityHint={
-                      form.kind === "save"
-                        ? "Enregistre le programme actuel sous ce nom"
-                        : "Donne ce nom au preset"
-                    }
-                  />
-                </View>
+                <AppButton
+                  title={form.kind === "save" ? "Enregistrer" : "Renommer"}
+                  onPress={submit}
+                  style={styles.formButton}
+                  testID="performance-presets-form-confirm"
+                  accessibilityLabel={
+                    form.kind === "save"
+                      ? "Enregistrer le preset"
+                      : "Renommer le preset"
+                  }
+                  accessibilityHint={
+                    form.kind === "save"
+                      ? "Enregistre le programme actuel sous ce nom"
+                      : "Donne ce nom au preset"
+                  }
+                />
               </View>
-            ) : (
-              <AppButton
-                title="Enregistrer le programme actuel"
-                variant="outline"
-                onPress={() => openForm({ kind: "save" }, "")}
-                style={styles.saveButton}
-                testID="performance-presets-save"
-                accessibilityLabel="Enregistrer le programme actuel"
-                accessibilityHint="Enregistre le programme configuré sous un nom"
-              />
-            )}
-          </Pressable>
-        </Pressable>
+            </View>
+          ) : (
+            <AppButton
+              title="Enregistrer le programme actuel"
+              variant="outline"
+              onPress={() => openForm({ kind: "save" }, "")}
+              style={styles.saveButton}
+              testID="performance-presets-save"
+              accessibilityLabel="Enregistrer le programme actuel"
+              accessibilityHint="Enregistre le programme configuré sous un nom"
+            />
+          )}
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.55)",
@@ -411,7 +415,7 @@ const styles = StyleSheet.create({
   },
   rowText: { gap: 2 },
   rowActions: { flexDirection: "row", gap: 16 },
-  rowButton: { paddingVertical: 4 },
+  rowButton: { minHeight: 44, justifyContent: "center" },
   form: { marginTop: 12, gap: 8 },
   input: {
     padding: 12,

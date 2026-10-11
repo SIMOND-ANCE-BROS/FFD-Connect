@@ -104,6 +104,11 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   text: { flex: 1, gap: 2 },
-  action: { paddingVertical: 4 },
-  open: { flexDirection: "row", alignItems: "center", gap: 4 },
+  action: { minHeight: 44, justifyContent: "center" },
+  open: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 4,
+  },
 });
