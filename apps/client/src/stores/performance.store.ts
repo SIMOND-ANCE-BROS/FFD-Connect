@@ -48,6 +48,11 @@ export interface PerformanceConfig {
   pauseDuration: number;
   /** Applies to Latin rounds containing the Paso Doble. */
   pasoClashes: 2 | 3;
+  /**
+   * MC voice: calls each dance and closes the competition. Off, nothing is
+   * generated nor spoken — the breaks keep their pause music.
+   */
+  announcements: boolean;
 }
 
 export interface PlaylistItem {
@@ -107,6 +112,7 @@ export const createDefaultConfig = (): PerformanceConfig => ({
   duration: 90,
   pauseDuration: 15,
   pasoClashes: 2,
+  announcements: true,
 });
 
 interface PerformanceState {
