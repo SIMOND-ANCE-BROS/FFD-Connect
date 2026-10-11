@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router';
 import { AppLayout } from './components/AppLayout';
 import { AuditLogPage } from './pages/AuditLogPage';
+import { DashboardPage } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
 import { ModerationDetailPage } from './pages/ModerationDetailPage';
 import { ModerationPage } from './pages/ModerationPage';
@@ -27,7 +28,7 @@ export const router = createBrowserRouter([
       </RequireAdmin>
     ),
     children: [
-      { index: true, element: <Navigate to="/users" replace /> },
+      { index: true, element: <DashboardPage /> },
       { path: 'users', element: <UsersPage /> },
       { path: 'users/new', element: <NewUserPage /> },
       { path: 'users/:id', element: <UserDetailPage /> },
@@ -54,5 +55,5 @@ export const router = createBrowserRouter([
       },
     ],
   },
-  { path: '*', element: <Navigate to="/users" replace /> },
+  { path: '*', element: <Navigate to="/" replace /> },
 ]);

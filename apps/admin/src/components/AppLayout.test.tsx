@@ -51,12 +51,22 @@ describe('AppLayout', () => {
   it('lists the sections of the back-office, without a "new user" shortcut', async () => {
     countSpy(0);
     renderLayout();
+    expect(screen.getByRole('link', { name: 'Tableau de bord' })).toHaveAttribute('href', '/');
+    expect(screen.getAllByRole('link')[0]).toHaveTextContent('Tableau de bord');
     expect(screen.getByRole('link', { name: 'Utilisateurs' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Clubs' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Musiques' })).toHaveAttribute('href', '/tracks');
+    const music = screen.getByRole('group', { name: 'Musiques' });
+    expect(within(music).getByRole('link', { name: 'Bibliothèque' })).toHaveAttribute(
+      'href',
+      '/tracks',
+    );
+    expect(within(music).getByRole('link', { name: 'Modération' })).toHaveAttribute(
+      'href',
+      '/moderation',
+    );
     const order = screen.getAllByRole('link').map((link) => link.textContent);
-    expect(order.indexOf('Musiques')).toBe(order.indexOf('Clubs') + 1);
-    expect(screen.getByRole('link', { name: 'Modération' })).toHaveAttribute('href', '/moderation');
+    expect(order.indexOf('Bibliothèque')).toBe(order.indexOf('Clubs') + 1);
+    expect(order.indexOf('Modération')).toBe(order.indexOf('Bibliothèque') + 1);
     expect(screen.getByRole('link', { name: 'Renouvellements' })).toHaveAttribute(
       'href',
       '/license-renewals',
@@ -125,15 +135,31 @@ describe('AppLayout', () => {
     );
   });
 
+  it('groups the music library and its moderation under « Musiques »', () => {
+    countSpy(0);
+    renderLayout('/users');
+    expect(NAV_ITEMS.find((i) => i.label === 'Musiques')).toMatchObject({
+      children: [{ to: '/tracks' }, { to: '/moderation', queue: 'moderation' }],
+    });
+    expect(screen.queryByRole('link', { name: 'Musiques' })).toBeNull();
+  });
+
   it('marks the current section as active, including its sub-pages', () => {
     countSpy(0);
     renderLayout('/users/42');
     expect(screen.getByRole('link', { name: 'Utilisateurs' })).toHaveAttribute('data-active');
     expect(screen.getByRole('link', { name: 'Clubs' })).not.toHaveAttribute('data-active');
+    // The dashboard is `/`: it must not light up for every page.
+    expect(screen.getByRole('link', { name: 'Tableau de bord' })).not.toHaveAttribute(
+      'data-active',
+    );
   });
 
   it('keeps the menu in a single list, in display order', () => {
-    expect(NAV_ITEMS.map((i) => i.to)).toEqual([
+    expect(
+      NAV_ITEMS.flatMap((i) => ('children' in i ? i.children.map((c) => c.to) : [i.to])),
+    ).toEqual([
+      '/',
       '/users',
       '/clubs',
       '/tracks',
