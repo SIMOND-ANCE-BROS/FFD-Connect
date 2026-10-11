@@ -3,7 +3,7 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 import React from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { CguAcceptanceModal } from "../CguAcceptanceModal";
-import { hasAcceptedCgu } from "../cguConsent";
+import { CGU_VERSION, hasAcceptedCgu } from "../cguConsent";
 
 jest.mock("../../../context/ThemeContext", () => ({
   useTheme: () => ({
@@ -27,7 +27,7 @@ describe("CguAcceptanceModal", () => {
   });
 
   it("ne rend rien si les CGU sont déjà acceptées", async () => {
-    await AsyncStorage.setItem("cgu_accepted_version", "1");
+    await AsyncStorage.setItem("cgu_accepted_version", CGU_VERSION);
 
     const { queryByTestId } = await render(<CguAcceptanceModal />);
     await act(async () => {});

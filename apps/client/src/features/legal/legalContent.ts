@@ -49,7 +49,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
 
   cgu: {
     title: "Conditions générales d'utilisation",
-    updatedAt: "6 juillet 2026",
+    updatedAt: "11 octobre 2026",
     sections: [
       {
         heading: "1. Objet",
@@ -68,19 +68,23 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
         body: "Les inscriptions aux compétitions sont soumises au règlement sportif de la fédération. Les paiements éventuels sont opérés par HelloAsso, selon ses propres conditions.",
       },
       {
-        heading: "5. Mineurs",
+        heading: "5. Certificat médical",
+        body: "Le certificat médical déposé pour renouveler une licence est vérifié par une personne : l'éditeur, en tant qu'administrateur de la plateforme. La lecture automatique du document ne fournit que des indices et ne décide pas du renouvellement. Le dépôt vaut consentement explicite à ce traitement, y compris à la consultation du certificat par l'éditeur. En cas de refus, le motif et, le cas échéant, un commentaire vous sont communiqués dans l'application.",
+      },
+      {
+        heading: "6. Mineurs",
         body: "L'application est réservée aux personnes majeures. Le traitement des données d'un mineur, en particulier ses données de santé, requiert le consentement d'un titulaire de l'autorité parentale ; tant que ce dispositif n'est pas en place, aucun compte de mineur n'est accepté.",
       },
       {
-        heading: "6. Disponibilité et responsabilité",
+        heading: "7. Disponibilité et responsabilité",
         body: "Le service est fourni « en l'état », en version bêta. L'éditeur ne garantit pas une disponibilité continue et ne saurait être tenu responsable des dommages indirects liés à l'utilisation de l'application.",
       },
       {
-        heading: "7. Résiliation",
+        heading: "8. Résiliation",
         body: "Vous pouvez supprimer votre compte à tout moment depuis Réglages → Confidentialité et données. L'éditeur peut suspendre un compte en cas de violation des présentes conditions.",
       },
       {
-        heading: "8. Droit applicable",
+        heading: "9. Droit applicable",
         body: "Les présentes conditions sont soumises au droit français. Tout litige relève des juridictions françaises compétentes.",
       },
     ],
@@ -88,7 +92,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
 
   privacy: {
     title: "Politique de confidentialité",
-    updatedAt: "10 octobre 2026",
+    updatedAt: "11 octobre 2026",
     sections: [
       {
         heading: "Responsable de traitement",
@@ -96,15 +100,19 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
       },
       {
         heading: "Données collectées",
-        body: "• Identité : nom, prénom, date de naissance, email\n• Licence fédérale : numéro, catégorie, club, validité, niveau (passeport danse), classement\n• Compétitions : inscriptions, résultats, partenariats\n• Santé : certificat médical d'aptitude et informations extraites par OCR (données sensibles, article 9 du RGPD)\n• Techniques : jetons d'authentification (chiffrés), jeton de notification de l'appareil, signalements de bugs\n• Usage anonyme : écrans consultés et durée, principaux événements, plateforme, version de l'application, espace actif — rattachés à un identifiant d'installation aléatoire renouvelé chaque mois, jamais à votre compte",
+        body: "• Identité : nom, prénom, date de naissance, email\n• Licence fédérale : numéro, catégorie, club, validité, niveau (passeport danse), classement\n• Compétitions : inscriptions, résultats, partenariats\n• Santé : certificat médical d'aptitude, informations extraites par OCR, motif d'un refus et commentaire de l'administrateur (données sensibles, article 9 du RGPD)\n• Techniques : jetons d'authentification (chiffrés), jeton de notification de l'appareil, signalements de bugs\n• Usage anonyme : écrans consultés et durée, principaux événements, plateforme, version de l'application, espace actif — rattachés à un identifiant d'installation aléatoire renouvelé chaque mois, jamais à votre compte",
       },
       {
         heading: "Finalités et bases légales",
-        body: "• Gestion des licences et compétitions — exécution du contrat / mission fédérale\n• Authentification et sécurité du compte — intérêt légitime\n• Notifications (rappels d'échéance, résultats) — consentement / intérêt légitime\n• Mesure d'audience anonyme de l'application — intérêt légitime (exemptée de consentement), désactivable dans Réglages → Confidentialité et données → Mesure d'audience anonyme\nAucune donnée n'est vendue ni transmise à des tiers à des fins publicitaires.",
+        body: "• Gestion des licences et compétitions — exécution du contrat / mission fédérale\n• Vérification du certificat médical (lecture automatique et vérification par l'éditeur) — consentement explicite (article 9-2-a du RGPD)\n• Authentification et sécurité du compte — intérêt légitime\n• Notifications (rappels d'échéance, résultats) — consentement / intérêt légitime\n• Mesure d'audience anonyme de l'application — intérêt légitime (exemptée de consentement), désactivable dans Réglages → Confidentialité et données → Mesure d'audience anonyme\nAucune donnée n'est vendue ni transmise à des tiers à des fins publicitaires.",
+      },
+      {
+        heading: "Vérification du certificat médical",
+        body: "Votre certificat médical est vérifié par une personne : l'éditeur, en tant qu'administrateur de la plateforme. Tant que votre demande est en attente, il peut ouvrir le fichier et voir les informations lues automatiquement, qui ne sont que des indices. Chaque ouverture est tracée, sans le contenu du document. Une fois la demande traitée, le fichier n'est plus consultable. En cas de refus, vous voyez dans l'application le motif et, le cas échéant, un commentaire de l'administrateur.",
       },
       {
         heading: "Durées de conservation",
-        body: "• Compte : jusqu'à suppression, et au plus tard 3 ans après la dernière connexion\n• Certificat médical : au plus tard 12 mois après la fin de sa validité\n• Jetons de session : 30 jours maximum\n• Jeton de notification de l'appareil : 90 jours sans réutilisation\n• Logs techniques : 12 mois\n• Usage anonyme : 90 jours avec l'identifiant d'installation, puis statistiques agrégées sans identifiant pendant 25 mois\n• Sauvegardes de la base de données : 7 jours glissants",
+        body: "• Compte : jusqu'à suppression, et au plus tard 3 ans après la dernière connexion\n• Certificat médical : au plus tard 12 mois après la fin de sa validité ; un certificat refusé, au plus tard 30 jours après la décision\n• Jetons de session : 30 jours maximum\n• Jeton de notification de l'appareil : 90 jours sans réutilisation\n• Logs techniques : 12 mois\n• Usage anonyme : 90 jours avec l'identifiant d'installation, puis statistiques agrégées sans identifiant pendant 25 mois\n• Sauvegardes de la base de données : 7 jours glissants",
       },
       {
         heading: "Vos droits (RGPD)",

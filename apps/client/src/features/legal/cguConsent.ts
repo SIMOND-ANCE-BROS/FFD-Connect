@@ -5,7 +5,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
  * CGU_VERSION lors d'un changement substantiel des conditions re-déclenche
  * la demande d'acceptation au prochain lancement.
  */
-export const CGU_VERSION = "1";
+// v2 (#270) : vérification du certificat médical par une personne (CGU §5).
+export const CGU_VERSION = "2";
 
 const STORAGE_KEY = "cgu_accepted_version";
 

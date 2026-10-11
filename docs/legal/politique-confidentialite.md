@@ -1,6 +1,6 @@
 # Politique de confidentialité
 
-_Dernière mise à jour : 10 octobre 2026_
+_Dernière mise à jour : 11 octobre 2026_
 
 > **Projet indépendant.** FFD Connect n'est pas une application officielle de la
 > Fédération Française de Danse. La fédération n'en est ni l'éditrice, ni
@@ -23,7 +23,7 @@ L'éditeur n'est pas tenu de désigner un délégué à la protection des donné
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
 | **Identité & compte**   | nom, prénom, adresse e-mail, mot de passe (haché), rôle (danseur, club, admin)                                                                                                                                                                                                                                     | fournies par l'utilisateur                     |
 | **Données de licence**  | numéro de licence, club, discipline, catégorie                                                                                                                                                                                                                                                                     | saisies / extraites du certificat              |
-| **Données de santé** ⚠️ | certificat médical de non contre-indication, date d'aptitude, informations extraites par OCR                                                                                                                                                                                                                       | fournies par l'utilisateur                     |
+| **Données de santé** ⚠️ | certificat médical de non contre-indication, date d'aptitude, informations extraites par OCR, décision de la vérification (motif d'un refus, commentaire de l'administrateur)                                                                                                                                      | fournies par l'utilisateur                     |
 | **Compétitions**        | inscriptions, résultats, palmarès                                                                                                                                                                                                                                                                                  | usage de l'app                                 |
 | **Paiement**            | transactions d'inscription (traitées par HelloAsso — nous ne stockons **pas** les données bancaires)                                                                                                                                                                                                               | via HelloAsso                                  |
 | **Contenu**             | musiques ajoutées à la bibliothèque, partenaires recherchés                                                                                                                                                                                                                                                        | usage de l'app                                 |
@@ -36,17 +36,17 @@ Les **données de santé** sont des données sensibles au sens de l'article 9 du
 
 ## 3. Finalités et bases légales
 
-| Finalité                                                                  | Base légale                                                                         |
-| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Créer et gérer le compte utilisateur                                      | Exécution du contrat (CGU)                                                          |
-| Gérer les licences et vérifier l'aptitude médicale                        | Obligation légale / intérêt légitime de la fédération                               |
-| Inscrire aux compétitions et encaisser les paiements                      | Exécution du contrat                                                                |
-| Traiter le certificat médical (OCR)                                       | **Consentement explicite** de la personne (art. 9-2-a)                              |
-| Envoyer des notifications (rappels d'échéance, résultats)                 | Consentement / intérêt légitime                                                     |
-| Ajouter sa licence à Apple Wallet ou Google Wallet                        | Exécution du contrat, à la demande de l'utilisateur                                 |
-| Produire des statistiques agrégées pour l'administration de la plateforme | Intérêt légitime de la fédération                                                   |
-| Assurer la sécurité et corriger les bugs                                  | Intérêt légitime                                                                    |
-| Mesurer l'audience de l'application de façon anonyme                      | Intérêt légitime (mesure d'audience exemptée de consentement, recommandations CNIL) |
+| Finalité                                                                           | Base légale                                                                         |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Créer et gérer le compte utilisateur                                               | Exécution du contrat (CGU)                                                          |
+| Gérer les licences et vérifier l'aptitude médicale                                 | Obligation légale / intérêt légitime de la fédération                               |
+| Inscrire aux compétitions et encaisser les paiements                               | Exécution du contrat                                                                |
+| Vérifier le certificat médical (lecture automatique et vérification par l'éditeur) | **Consentement explicite** de la personne (art. 9-2-a)                              |
+| Envoyer des notifications (rappels d'échéance, résultats)                          | Consentement / intérêt légitime                                                     |
+| Ajouter sa licence à Apple Wallet ou Google Wallet                                 | Exécution du contrat, à la demande de l'utilisateur                                 |
+| Produire des statistiques agrégées pour l'administration de la plateforme          | Intérêt légitime de la fédération                                                   |
+| Assurer la sécurité et corriger les bugs                                           | Intérêt légitime                                                                    |
+| Mesurer l'audience de l'application de façon anonyme                               | Intérêt légitime (mesure d'audience exemptée de consentement, recommandations CNIL) |
 
 ## 4. Sous-traitants et destinataires
 
@@ -61,6 +61,8 @@ Nous faisons appel aux prestataires suivants, qui agissent comme sous-traitants 
 | **Microsoft Azure AI** (Vision, Speech) | OCR du certificat, synthèse vocale                  | UE (Irlande)                       |
 | **Resend**                              | envoi d'e-mails transactionnels                     | États-Unis (voir §6)               |
 | **Google Wallet**                       | émission du pass de licence Google Wallet           | Google Ireland / hors UE (voir §6) |
+
+**Certificat médical.** Le certificat médical déposé avec une demande de renouvellement de licence est vérifié par une personne : l'éditeur, en tant qu'administrateur de la plateforme, en est destinataire. Tant que la demande est en attente, il peut ouvrir le fichier du certificat et voir les informations lues automatiquement sur le document (aptitude, date, médecin, numéro de licence). Ces informations ne sont que des indices : c'est l'éditeur qui décide, au vu du document. Chaque consultation de la demande et chaque ouverture du fichier sont tracées (auteur, date, document ouvert — jamais son contenu). Une fois la demande traitée, le fichier n'est plus consultable. En cas de refus, vous voyez dans l'application le motif du refus et, le cas échéant, un commentaire libre de l'administrateur.
 
 Les administrateurs de la plateforme peuvent consulter et corriger les informations de profil (club, catégorie, classe d'âge, niveaux) ; chaque modification est tracée (auteur, date, valeurs avant/après) et, à la suppression du compte, ces traces sont conservées mais dépouillées de toute donnée personnelle (seuls l'action, la date et un identifiant technique subsistent). Les administrateurs peuvent également désactiver un compte (mesure réversible : le compte ne peut plus se connecter, ses données sont conservées) ou le supprimer définitivement (mêmes effets que la suppression demandée depuis l'application) ; ces actions sont elles aussi tracées, et les traces conservées après la suppression ne contiennent aucune donnée personnelle.
 
@@ -105,7 +107,7 @@ Danse.
 ## 5. Durées de conservation
 
 - **Compte & licence** : pendant la durée d'activité du compte, puis **3 ans** après la dernière connexion, à l'issue desquels le compte est supprimé.
-- **Données de santé (certificat médical)** : conservées le temps nécessaire à la vérification de l'aptitude, puis supprimées **au plus tard 12 mois après la fin de validité** du certificat.
+- **Données de santé (certificat médical)** : conservées le temps nécessaire à la vérification de l'aptitude, puis supprimées **au plus tard 12 mois après la fin de validité** du certificat. Un certificat **refusé** est supprimé **au plus tard 30 jours après la décision**, avec les informations lues sur le document et le commentaire de l'administrateur ; un motif de refus d'ordre médical (contre-indication) est alors remplacé par un motif neutre.
 - **Données de paiement** : conservées par HelloAsso selon ses propres obligations comptables.
 - **Jetons de notification push (identifiants d'appareil)** : **90 jours** sans réutilisation de l'appareil. L'application réenregistre le jeton à chaque ouverture de session : passé ce délai sans signe de vie, l'appareil est considéré comme abandonné (application désinstallée, appareil remplacé) et la ligne est supprimée automatiquement. Le jeton est également supprimé immédiatement à la déconnexion, à la suppression du compte, et dès que Firebase le déclare invalide.
 - **Jetons de session** : 30 jours maximum.
@@ -137,6 +139,7 @@ UE–États-Unis (Data Privacy Framework).
 - Chiffrement en transit (HTTPS/TLS) et **au repos** (chiffrement du stockage et de la base de données Azure).
 - **Chiffrement applicatif renforcé des données de santé** (objectif AES-256) — voir la feuille de route sécurité (issue #418).
 - Accès restreint selon le rôle ; tokens d'authentification hachés (SHA-256) en base.
+- Vérification du certificat : seul l'administrateur de la plateforme (l'éditeur) peut l'ouvrir, uniquement tant que la demande est en attente, et chaque ouverture est tracée.
 - Consentement explicite recueilli avant tout traitement d'un certificat médical.
 
 ## 8. Mineurs
@@ -154,7 +157,7 @@ Conformément au RGPD, vous disposez des droits d'**accès**, de **rectification
 
 Pour exercer ces droits : privacy@gabin-simond.fr. Une réponse vous sera apportée sous un mois.
 
-L'application permet d'exercer directement l'accès/portabilité (export de vos données) et l'effacement (suppression du compte). L'export liste vos appareils enregistrés pour les notifications sous forme de métadonnées (plateforme, dates) : la valeur du jeton lui-même n'y figure pas, car sa divulgation permettrait de détourner la livraison de vos notifications vers un autre compte. Il comprend aussi vos demandes de renouvellement de licence : leur statut, leurs dates et, pour chaque document déposé, son type, sa date de dépôt et les seules informations lues sur le document (aptitude, date et médecin pour le certificat médical ; numéro et échéance pour l'attestation de licence). Le fichier lui-même n'y est pas joint.
+L'application permet d'exercer directement l'accès/portabilité (export de vos données) et l'effacement (suppression du compte). L'export liste vos appareils enregistrés pour les notifications sous forme de métadonnées (plateforme, dates) : la valeur du jeton lui-même n'y figure pas, car sa divulgation permettrait de détourner la livraison de vos notifications vers un autre compte. Il comprend aussi vos demandes de renouvellement de licence : leur statut, leurs dates (création, soumission, décision), le motif d'un refus et le commentaire de l'administrateur — jamais son identité —, et, pour chaque document déposé, son type, sa date de dépôt et les seules informations lues sur le document (aptitude, date et médecin pour le certificat médical ; numéro et échéance pour l'attestation de licence). Le fichier lui-même n'y est pas joint.
 
 Vous pouvez également introduire une réclamation auprès de la **CNIL** (www.cnil.fr).
 
