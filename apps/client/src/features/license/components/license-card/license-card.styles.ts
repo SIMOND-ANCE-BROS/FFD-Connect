@@ -52,10 +52,23 @@ export const styles = StyleSheet.create({
     left: 16,
     top: 14,
   },
-  logoImage: {
+  logoBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    padding: 3,
+    backgroundColor: "white",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  appLogoImage: {
     width: 44,
     height: 44,
     tintColor: "white",
+  },
+  logoImage: {
+    width: "100%",
+    height: "100%",
   },
   titleContainer: {
     alignItems: "center",

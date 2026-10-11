@@ -65,4 +65,10 @@ export interface LicenseCardProps {
   onOptions?: () => void;
   style?: ViewStyle | ViewStyle[];
   testID?: string;
+  /**
+   * `account`: card of a STAFF / CLUB account (#234), drawn with the FFD
+   * template but holding no licence, so it shows FFD Connect's icon instead of
+   * the federation logo (#312). Defaults to `license`.
+   */
+  variant?: "license" | "account";
 }

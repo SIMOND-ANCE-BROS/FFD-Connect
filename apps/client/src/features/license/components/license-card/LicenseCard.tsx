@@ -16,6 +16,7 @@ export const LicenseCard: React.FC<LicenseCardProps> = ({
   onOptions,
   style,
   testID,
+  variant = "license",
 }) => {
   const isFFD = type === "FFD";
   const isDark = themeOverride === "dark";
@@ -37,6 +38,7 @@ export const LicenseCard: React.FC<LicenseCardProps> = ({
       >
         <LicenseCardHeader
           isFFD={isFFD}
+          isAccount={variant === "account"}
           config={config}
           user={user}
           onOptions={onOptions}

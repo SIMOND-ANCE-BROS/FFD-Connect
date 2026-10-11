@@ -41,6 +41,9 @@ describe('installable back-office (#298)', () => {
     expect(app.start_url).toBe('/');
     expect(app.scope).toBe('/');
     expect(app.theme_color).toBe(BRAND.blue);
+    // Splash background = the icon's own blue (scripts/make-icons.js), so the
+    // icon blends into the launch screen (#311).
+    expect(app.background_color).toBe('#01468A');
   });
 
   it('ships 192/512 icons and a maskable one, each file at its declared size', () => {
