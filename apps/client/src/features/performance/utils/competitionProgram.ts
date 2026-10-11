@@ -331,6 +331,10 @@ export const configFromPreset = (saved: unknown): PerformanceConfig => {
       typeof saved.announcements === "boolean"
         ? saved.announcements
         : defaults.announcements,
+    regulationTempo:
+      typeof saved.regulationTempo === "boolean"
+        ? saved.regulationTempo
+        : defaults.regulationTempo,
   };
 };
 
@@ -353,6 +357,7 @@ export const isSameProgram = (
   a.pauseDuration === b.pauseDuration &&
   a.pasoClashes === b.pasoClashes &&
   a.announcements === b.announcements &&
+  (a.regulationTempo ?? false) === (b.regulationTempo ?? false) &&
   a.rounds.length === b.rounds.length &&
   a.rounds.every((round, i) => {
     const other = b.rounds[i];

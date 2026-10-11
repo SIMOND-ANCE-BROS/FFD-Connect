@@ -945,6 +945,7 @@ describe("configFromPreset", () => {
     pauseDuration: 20,
     pasoClashes: 3,
     announcements: false,
+    regulationTempo: false,
   };
 
   it("restores a valid preset with fresh round ids", () => {
@@ -984,6 +985,20 @@ describe("configFromPreset", () => {
       expect(
         isSameProgram(configFromPreset(garbage), createDefaultConfig()),
       ).toBe(true);
+    }
+  });
+
+  it("reloads the regulation tempo setting, defaulting when not a boolean", () => {
+    expect(
+      configFromPreset({ ...saved, regulationTempo: true }).regulationTempo,
+    ).toBe(true);
+    expect(
+      configFromPreset({ ...saved, regulationTempo: false }).regulationTempo,
+    ).toBe(false);
+    for (const bad of ["yes", 1, null, undefined]) {
+      expect(
+        configFromPreset({ ...saved, regulationTempo: bad }).regulationTempo,
+      ).toBe(false);
     }
   });
 
@@ -1081,6 +1096,20 @@ describe("isSameProgram", () => {
       ],
     };
     expect(isSameProgram(base, reversed)).toBe(true);
+  });
+
+  it("compares the regulation tempo, undefined meaning off", () => {
+    expect(isSameProgram(base, { ...base, regulationTempo: true })).toBe(false);
+    expect(isSameProgram({ ...base, regulationTempo: true }, base)).toBe(false);
+    const missing = { ...base } as Partial<PerformanceConfig>;
+    delete missing.regulationTempo;
+    expect(isSameProgram(base, missing as PerformanceConfig)).toBe(true);
+    expect(
+      isSameProgram(missing as PerformanceConfig, {
+        ...base,
+        regulationTempo: false,
+      }),
+    ).toBe(true);
   });
 
   it("detects every change of the programme", () => {
