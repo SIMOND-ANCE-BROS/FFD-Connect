@@ -1,14 +1,9 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from "@nestjs/common";
+import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { BookingStatus } from "@prisma/client";
 import { ClubsHelloAssoService } from "../clubs/clubs-helloasso.service";
 import { handlePrismaError } from "../utils/prisma-errors.util";
-import { idOnlySelect } from "../utils/prisma-selects";
+import { seatBookingStatusSelect } from "../utils/prisma-selects";
 import { PrismaService } from "../prisma/prisma.service";
 import { CreateCheckoutDto } from "./dto/create-checkout.dto";
 import { HelloAssoService } from "./hello-asso.service";
@@ -107,27 +102,38 @@ export class PaymentService {
    * Confirms a booking paid through HelloAsso, then tells the organizer club.
    *
    * IDEMPOTENT: HelloAsso replays webhooks. The transition is a conditional
-   * write (`status != CONFIRMED`), atomic in the database, so of two
+   * write (`PENDING` → `CONFIRMED`), atomic in the database, so of two
    * deliveries of the same payment — even concurrent — exactly one moves the
    * booking and notifies the club; the others are no-ops.
+   *
+   * NEVER THROWS on a booking it cannot confirm: any non-2xx answer makes
+   * HelloAsso retry forever, while the money is already taken. An unknown
+   * booking (removed by the checkout cleanup or an account deletion) or a
+   * late payment on a CANCELLED/EXPIRED booking is logged as an error — the
+   * reconciliation signal — and never resurrects nor notifies anything.
    */
   async confirmBooking(bookingId: string): Promise<void> {
     const { count } = await this.prisma.seatBooking.updateMany({
-      where: { id: bookingId, status: { not: BookingStatus.CONFIRMED } },
+      where: { id: bookingId, status: BookingStatus.PENDING },
       data: { status: BookingStatus.CONFIRMED },
     });
 
     if (count === 0) {
       const existing = await this.prisma.seatBooking.findUnique({
         where: { id: bookingId },
-        select: idOnlySelect,
+        select: seatBookingStatusSelect,
       });
       if (!existing) {
-        throw new NotFoundException("Réservation introuvable");
+        this.logger.error(`HelloAsso payment for unknown booking ${bookingId}`);
+      } else if (existing.status === BookingStatus.CONFIRMED) {
+        this.logger.log(
+          `Booking ${bookingId} already confirmed: webhook replay ignored`,
+        );
+      } else {
+        this.logger.error(
+          `HelloAsso payment for booking ${bookingId} in status ${existing.status}: not confirmed`,
+        );
       }
-      this.logger.log(
-        `Booking ${bookingId} already confirmed: webhook replay ignored`,
-      );
       return;
     }
 

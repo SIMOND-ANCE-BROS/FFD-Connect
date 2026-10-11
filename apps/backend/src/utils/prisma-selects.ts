@@ -383,6 +383,11 @@ export const seatBookingPaymentNotificationSelect = {
   competition: { select: { id: true, title: true, organizer: true } },
 } as const;
 
+/** Status of a booking a HelloAsso payment could not confirm (#39). */
+export const seatBookingStatusSelect = {
+  status: true,
+} as const;
+
 /** A club's identity and status, to address its managers. */
 export const clubRecipientSelect = {
   id: true,

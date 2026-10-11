@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Logger } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigService } from "@nestjs/config";
 import { PrismaClient } from "@prisma/client";
@@ -391,7 +391,7 @@ describe("PaymentService", () => {
       await service.confirmBooking("booking-1");
 
       expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith({
-        where: { id: "booking-1", status: { not: "CONFIRMED" } },
+        where: { id: "booking-1", status: "PENDING" },
         data: { status: "CONFIRMED" },
       });
       expect(
@@ -405,7 +405,7 @@ describe("PaymentService", () => {
     it("ignores a webhook replay: no second notification", async () => {
       prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
       prisma.seatBooking.findUnique.mockResolvedValue({
-        id: "booking-1",
+        status: "CONFIRMED",
       } as never);
 
       await expect(
@@ -422,7 +422,7 @@ describe("PaymentService", () => {
         .mockResolvedValueOnce({ count: 1 })
         .mockResolvedValueOnce({ count: 0 });
       prisma.seatBooking.findUnique.mockResolvedValue({
-        id: "booking-1",
+        status: "CONFIRMED",
       } as never);
 
       await service.confirmBooking("booking-1");
@@ -433,17 +433,46 @@ describe("PaymentService", () => {
       ).toHaveBeenCalledTimes(1);
     });
 
-    it("throws NotFoundException for an unknown booking, without notifying", async () => {
+    it("answers 2xx for an unknown booking and logs the reconciliation error", async () => {
+      const error = jest
+        .spyOn(Logger.prototype, "error")
+        .mockImplementation(() => undefined);
       prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
       prisma.seatBooking.findUnique.mockResolvedValue(null);
 
-      await expect(service.confirmBooking("missing")).rejects.toThrow(
-        NotFoundException,
+      await expect(service.confirmBooking("missing")).resolves.toBeUndefined();
+
+      expect(error).toHaveBeenCalledWith(
+        "HelloAsso payment for unknown booking missing",
       );
       expect(
         paymentNotificationService.notifyPaymentReceived,
       ).not.toHaveBeenCalled();
+      error.mockRestore();
     });
+
+    it.each(["CANCELLED", "EXPIRED"])(
+      "never resurrects a %s booking: logs an error, no notification",
+      async (status) => {
+        const error = jest
+          .spyOn(Logger.prototype, "error")
+          .mockImplementation(() => undefined);
+        prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+        prisma.seatBooking.findUnique.mockResolvedValue({ status } as never);
+
+        await expect(
+          service.confirmBooking("booking-1"),
+        ).resolves.toBeUndefined();
+
+        expect(error).toHaveBeenCalledWith(
+          `HelloAsso payment for booking booking-1 in status ${status}: not confirmed`,
+        );
+        expect(
+          paymentNotificationService.notifyPaymentReceived,
+        ).not.toHaveBeenCalled();
+        error.mockRestore();
+      },
+    );
 
     it("propagates prisma errors", async () => {
       prisma.seatBooking.updateMany.mockRejectedValue(new Error("DB error"));

@@ -147,6 +147,34 @@ describe("HelloAsso payment notification (integration, real DB)", () => {
     ).toEqual({ status: BookingStatus.CONFIRMED });
   });
 
+  it("never resurrects a cancelled booking nor notifies, and does not throw", async () => {
+    const club = await createClub();
+    const manager = await createUser(UserRole.CLUB, club);
+    const member = await createUser(UserRole.LICENSEE, club);
+    const booking = await pendingBooking(club, member.id);
+    await prisma.seatBooking.update({
+      where: { id: booking.id },
+      data: { status: BookingStatus.CANCELLED },
+      select: { id: true },
+    });
+
+    await expect(payments.confirmBooking(booking.id)).resolves.toBeUndefined();
+
+    expect(
+      await prisma.seatBooking.findUnique({
+        where: { id: booking.id },
+        select: { status: true },
+      }),
+    ).toEqual({ status: BookingStatus.CANCELLED });
+    expect(await paymentRows(manager.id)).toHaveLength(0);
+  });
+
+  it("answers without throwing for an unknown booking", async () => {
+    await expect(
+      payments.confirmBooking(randomUUID()),
+    ).resolves.toBeUndefined();
+  });
+
   it("confirms the payment even when the notification write fails", async () => {
     const club = await createClub();
     await createUser(UserRole.CLUB, club);
