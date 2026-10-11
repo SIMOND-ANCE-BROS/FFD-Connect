@@ -175,6 +175,74 @@ describe("useSettingsLogic", () => {
     });
   });
 
+  describe("license expiry reminder (#255)", () => {
+    // End of August 31 in Paris, as the backend stores it (#238).
+    const validUntil = "2027-08-31T21:59:59.999Z";
+
+    afterEach(() => {
+      jest.useRealTimers();
+      mockAuth.getProfile.mockReset();
+      mockAuth.syncRolesFromProfile.mockReset();
+    });
+
+    const daysAt = async (
+      now: string,
+      license: { validUntil?: string } | null = { validUntil },
+    ): Promise<number | null> => {
+      // Fake the clock only: promises and timers keep running for real.
+      jest.useFakeTimers({
+        now: new Date(now),
+        doNotFake: [
+          "nextTick",
+          "queueMicrotask",
+          "setImmediate",
+          "clearImmediate",
+          "setTimeout",
+          "clearTimeout",
+          "setInterval",
+          "clearInterval",
+          "requestAnimationFrame",
+          "cancelAnimationFrame",
+          "requestIdleCallback",
+          "cancelIdleCallback",
+          "hrtime",
+          "performance",
+        ],
+      });
+      mockAuth.getProfile.mockResolvedValue({
+        email: "a@x.fr",
+        role: "LICENSEE",
+        roles: ["LICENSEE"],
+        license,
+      });
+      mockAuth.syncRolesFromProfile.mockResolvedValue({ role: "LICENSEE" });
+      const { result } = await renderHook(() =>
+        useSettingsLogic({ navigation: mockNavigation }),
+      );
+      await act(async () => {});
+      return result.current.state.licenseExpiryDays;
+    };
+
+    it("says 'today' (0 days) on the last day, like the License screen", async () => {
+      expect(await daysAt("2027-08-31T10:00:00Z")).toBe(0);
+    });
+
+    it("counts Paris calendar days before the end", async () => {
+      expect(await daysAt("2027-08-30T21:30:00Z")).toBe(1);
+      expect(await daysAt("2027-08-11T10:00:00Z")).toBe(20);
+    });
+
+    it("shows no reminder once the license has expired", async () => {
+      expect(await daysAt("2027-08-31T22:01:00Z")).toBeNull();
+      expect(await daysAt("2027-09-01T10:00:00Z")).toBeNull();
+    });
+
+    it("shows no reminder more than 30 days ahead or without an end date", async () => {
+      expect(await daysAt("2027-06-01T10:00:00Z")).toBeNull();
+      expect(await daysAt("2027-08-31T10:00:00Z", null)).toBeNull();
+    });
+  });
+
   describe("store-review flag from the profile", () => {
     // Keep the later suites on the default (unresolved) profile.
     afterEach(() => {
