@@ -157,8 +157,8 @@ export const API_URL: string = BACKEND_URL;
 
 /**
  * Base URL pour les fichiers statiques (uploads/, artwork…). Les routes
- * `/uploads` sont servies à la racine par `ServeStaticModule` (cf.
- * `app.module.ts`), pas sous le préfixe `/api/v1`. On strippe le suffixe
+ * `/uploads` sont servies à la racine par `UploadsFallbackController` (cf.
+ * backend `tracks/`), pas sous le préfixe `/api/v1`. On strippe le suffixe
  * pour éviter les 404 sur audio/jpg.
  */
 export const STATIC_BASE_URL: string = BACKEND_URL.replace(

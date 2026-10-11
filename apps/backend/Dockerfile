@@ -89,8 +89,9 @@ RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 3000
 
-# Create upload directories and run as non-root user for security
-RUN mkdir -p /app/apps/backend/uploads/certificates /app/apps/backend/uploads/renewal && \
+# Create the local uploads directory (track media fallback + TTS cache; documents
+# live in blob storage, #293) and run as non-root user for security
+RUN mkdir -p /app/apps/backend/uploads && \
     addgroup -S appgroup && adduser -S appuser -G appgroup && \
     chown -R appuser:appgroup /app
 USER appuser

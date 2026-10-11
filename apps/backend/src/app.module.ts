@@ -1,6 +1,4 @@
 import { Inject, MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
-import { ServeStaticModule } from "@nestjs/serve-static";
-import { join } from "path";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -85,10 +83,8 @@ import { WdsfModule } from "./wdsf/wdsf.module";
     TrackCorrectionsModule,
     TtsModule,
     PrismaModule,
-    ServeStaticModule.forRoot({
-      rootPath: join(process.cwd(), "uploads"),
-      serveRoot: "/uploads",
-    }),
+    // No static file server on uploads/: track media are served by
+    // UploadsFallbackController (flat media names only, #293).
     CareerModule,
     ClubsModule,
     CompetitionsModule,
