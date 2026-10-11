@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { APP_GUARD, Reflector } from "@nestjs/core";
+import { JwtService } from "@nestjs/jwt";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import { Test } from "@nestjs/testing";
 import { Throttle, ThrottlerModule } from "@nestjs/throttler";
@@ -20,20 +21,27 @@ import { applyTrustProxy } from "../../config/trust-proxy";
 import { GlobalThrottlerGuard } from "./global-throttler.guard";
 import { ThrottlerUserGuard } from "./throttler-user.guard";
 
+const JWT_SECRET = "global-throttler-spec-secret";
 const GLOBAL_LIMIT = 3;
 const ROUTE_LIMIT = 2;
 const ROUTE_THROTTLE = { default: { ttl: 60_000, limit: ROUTE_LIMIT } };
 
-/** Stands in for JwtAuthGuard: `x-test-user` becomes `req.user.userId`. */
+const jwt = new JwtService({ secret: JWT_SECRET });
+const tokenFor = (sub: string) => jwt.sign({ sub });
+
+/** Stands in for JwtAuthGuard: verifies the bearer token, sets `req.user`. */
 @Injectable()
 class FakeAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const req = context
       .switchToHttp()
       .getRequest<Request & { user?: { userId: string } }>();
-    const userId = req.headers["x-test-user"];
-    if (typeof userId !== "string") throw new UnauthorizedException();
-    req.user = { userId };
+    const token = req.headers.authorization?.replace(/^Bearer /, "") ?? "";
+    try {
+      req.user = { userId: jwt.verify<{ sub: string }>(token).sub };
+    } catch {
+      throw new UnauthorizedException();
+    }
     return true;
   }
 }
@@ -69,6 +77,12 @@ class ClassLevelController {
   }
 }
 
+const configWith = (values: Record<string, unknown>) =>
+  ({
+    get: (key: string) => values[key],
+    getOrThrow: (key: string) => values[key],
+  }) as unknown as ConfigService;
+
 /**
  * Global per-IP throttler + per-user throttler over HTTP, with the same
  * `trust proxy` setup as main.ts (#182).
@@ -77,20 +91,23 @@ describe("GlobalThrottlerGuard (HTTP)", () => {
   let app: NestExpressApplication;
 
   const boot = async (trustProxyHops: number) => {
+    const config = configWith({
+      JWT_SECRET,
+      TRUST_PROXY_HOPS: trustProxyHops,
+    });
     const moduleRef = await Test.createTestingModule({
       imports: [
         ThrottlerModule.forRoot([{ ttl: 60_000, limit: GLOBAL_LIMIT }]),
       ],
       controllers: [RoutesController, ClassLevelController],
-      providers: [{ provide: APP_GUARD, useClass: GlobalThrottlerGuard }],
+      providers: [
+        { provide: ConfigService, useValue: config },
+        { provide: APP_GUARD, useClass: GlobalThrottlerGuard },
+      ],
     }).compile();
     app = moduleRef.createNestApplication<NestExpressApplication>({
       logger: false,
     });
-    const config = {
-      get: (key: string) =>
-        key === "TRUST_PROXY_HOPS" ? trustProxyHops : undefined,
-    } as unknown as ConfigService;
     applyTrustProxy(app, config);
     await app.init();
   };
@@ -113,7 +130,7 @@ describe("GlobalThrottlerGuard (HTTP)", () => {
     it("ignores addresses forged by the client further left", async () => {
       const res = await request(server())
         .get("/t/ip")
-        .set(from("6.6.6.6, 203.0.113.7"));
+        .set(from("6.6.6.6, 10.0.0.1, 203.0.113.7"));
       expect(res.body).toEqual({ ip: "203.0.113.7" });
     });
   });
@@ -146,16 +163,31 @@ describe("GlobalThrottlerGuard (HTTP)", () => {
         .expect(201);
     });
 
-    it("cannot be bypassed by forging X-Forwarded-For", async () => {
+    it("cannot be bypassed by forging several X-Forwarded-For entries", async () => {
       for (let i = 0; i < ROUTE_LIMIT; i++) {
         await request(server())
           .post("/t/public")
-          .set(from(`198.51.100.${i}, 203.0.113.1`))
+          .set(from(`198.51.100.${i}, 192.0.2.${i}, 203.0.113.1`))
           .expect(201);
       }
       await request(server())
         .post("/t/public")
-        .set(from("198.51.100.99, 203.0.113.1"))
+        .set(from("198.51.100.99, 192.0.2.99, 203.0.113.1"))
+        .expect(429);
+    });
+
+    it("cannot be bypassed with a bearer token", async () => {
+      for (let i = 0; i < ROUTE_LIMIT; i++) {
+        await request(server())
+          .post("/t/public")
+          .set(from("203.0.113.1"))
+          .set("Authorization", `Bearer ${tokenFor(`user-${i}`)}`)
+          .expect(201);
+      }
+      await request(server())
+        .post("/t/public")
+        .set(from("203.0.113.1"))
+        .set("Authorization", `Bearer ${tokenFor("user-x")}`)
         .expect(429);
     });
   });
@@ -164,7 +196,10 @@ describe("GlobalThrottlerGuard (HTTP)", () => {
     beforeEach(() => boot(1));
 
     const asUser = (path: string, userId: string, ip = "203.0.113.1") =>
-      request(server()).post(path).set(from(ip)).set("x-test-user", userId);
+      request(server())
+        .post(path)
+        .set(from(ip))
+        .set("Authorization", `Bearer ${tokenFor(userId)}`);
 
     it.each(["/t/per-user", "/class-level"])(
       "two users behind the same IP do not consume each other's quota (%s)",
@@ -194,6 +229,48 @@ describe("GlobalThrottlerGuard (HTTP)", () => {
         await asUser("/t/per-user", `user-${u}`).expect(201);
       }
     });
+
+    // Security review of #182: the per-user guard only runs after JWT
+    // validation, so a request rejected with 401 never reaches it. Forged or
+    // garbage tokens must therefore stay counted per IP by the global guard.
+    it.each([
+      ["a garbage bearer string", "Bearer x"],
+      [
+        "a token signed with another secret",
+        `Bearer ${new JwtService({ secret: "attacker" }).sign({ sub: "alice" })}`,
+      ],
+      [
+        "an expired token",
+        `Bearer ${jwt.sign({ sub: "alice", exp: Math.floor(Date.now() / 1000) - 60 })}`,
+      ],
+      ["a non-bearer scheme", `Basic ${tokenFor("alice")}`],
+    ])(
+      "keeps counting per IP a request with %s",
+      async (_label, authorization) => {
+        const attempt = () =>
+          request(server())
+            .post("/t/per-user")
+            .set(from("203.0.113.66"))
+            .set("Authorization", authorization);
+        for (let i = 0; i < ROUTE_LIMIT; i++) {
+          await attempt().expect(401);
+        }
+        await attempt().expect(429);
+      },
+    );
+
+    it("keeps counting per IP a request without any token", async () => {
+      for (let i = 0; i < ROUTE_LIMIT; i++) {
+        await request(server())
+          .post("/t/per-user")
+          .set(from("203.0.113.67"))
+          .expect(401);
+      }
+      await request(server())
+        .post("/t/per-user")
+        .set(from("203.0.113.67"))
+        .expect(429);
+    });
   });
 });
 
@@ -202,7 +279,12 @@ describe("GlobalThrottlerGuard.shouldSkip", () => {
   const handler = () => undefined;
   class Ctrl {}
 
-  const shouldSkip = (guards: Map<unknown, unknown[]>) => {
+  const shouldSkip = (
+    guards: Map<unknown, unknown[]>,
+    headers: Record<string, unknown> = {
+      authorization: `Bearer ${tokenFor("alice")}`,
+    },
+  ) => {
     const reflector = {
       get: (_key: string, target: unknown) => guards.get(target),
     } as unknown as Reflector;
@@ -210,10 +292,15 @@ describe("GlobalThrottlerGuard.shouldSkip", () => {
       null as never,
       null as never,
       reflector,
+      configWith({ JWT_SECRET }),
     );
     const context = {
       getHandler: () => handler,
       getClass: () => Ctrl,
+      switchToHttp: () => ({
+        getRequest: () => ({ headers }),
+        getResponse: () => ({}),
+      }),
     } as unknown as ExecutionContext;
     return (
       guard as unknown as {
@@ -229,13 +316,26 @@ describe("GlobalThrottlerGuard.shouldSkip", () => {
       "a guard instance",
       new ThrottlerUserGuard(null as never, null as never, null as never),
     ],
-  ])("skips a route guarded by %s", async (_label, perUserGuard) => {
+  ])(
+    "skips a route guarded by %s with a valid token",
+    async (_label, perUserGuard) => {
+      await expect(
+        shouldSkip(new Map([[handler, [FakeAuthGuard, perUserGuard]]])),
+      ).resolves.toBe(true);
+    },
+  );
+
+  it.each([
+    ["no authorization header", {}],
+    ["a non-string authorization", { authorization: ["Bearer a", "b"] }],
+    ["a token without subject", { authorization: `Bearer ${jwt.sign({})}` }],
+  ])("does not skip with %s", async (_label, headers) => {
     await expect(
-      shouldSkip(new Map([[handler, [FakeAuthGuard, perUserGuard]]])),
-    ).resolves.toBe(true);
+      shouldSkip(new Map([[handler, [ThrottlerUserGuard]]]), headers),
+    ).resolves.toBe(false);
   });
 
-  it("counts routes without a per-user throttler", async () => {
+  it("counts routes without a per-user throttler, even with a valid token", async () => {
     await expect(
       shouldSkip(new Map<unknown, unknown[]>([[Ctrl, [FakeAuthGuard]]])),
     ).resolves.toBe(false);
