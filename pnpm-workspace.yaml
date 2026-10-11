@@ -259,4 +259,4 @@ onlyBuiltDependencies:
   - '@sentry/cli'
 
 patchedDependencies:
-  react-native@0.86.0: 'patches/react-native@0.86.0.patch'
+  react-native@0.86.3: 'patches/react-native@0.86.3.patch'
