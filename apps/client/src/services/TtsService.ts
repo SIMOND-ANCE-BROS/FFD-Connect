@@ -10,6 +10,8 @@ import {
 } from "expo-audio";
 import * as Sentry from "@sentry/react-native";
 import { Platform } from "react-native";
+import { refreshSession } from "../api/sessionRefresh";
+import { getAccessToken } from "../api/tokenStore";
 import { BACKEND_URL } from "../config";
 import { warmBackend } from "../utils/backendWake";
 import { createLogger } from "../utils/logger";
@@ -74,7 +76,47 @@ const describeError = (e: unknown): string => {
   return "Network request failed";
 };
 
-/** One POST /tts → local file. Throws on any failure (incl. empty audio). */
+/** At most this many 429 waits per clip (they do not consume an attempt). */
+const TTS_MAX_RATE_LIMIT_WAITS = 3;
+/** Never wait longer than this on a single 429. */
+const TTS_MAX_RETRY_AFTER_MS = 60000;
+
+/** POST /tts answered 429: retry after `retryAfterMs`. */
+class TtsRateLimitedError extends Error {
+  constructor(public readonly retryAfterMs: number) {
+    super("TTS API Error: 429");
+    this.name = "TtsRateLimitedError";
+  }
+}
+
+const retryAfterMs = (response: Response): number => {
+  const seconds = Number(response.headers.get("Retry-After"));
+  return Number.isFinite(seconds) && seconds > 0
+    ? Math.min(seconds * 1000, TTS_MAX_RETRY_AFTER_MS)
+    : 5000;
+};
+
+const postTts = (
+  text: string,
+  token: string | null | undefined,
+  signal: AbortSignal,
+): Promise<Response> =>
+  fetch(`${BACKEND_URL}/tts`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ text }),
+    signal,
+  });
+
+/**
+ * One POST /tts → local file. Throws on any failure (incl. empty audio).
+ * The route requires the user's token (#303): on 401 (expired access token)
+ * the session is refreshed once and the request replayed — safe, the text is
+ * the whole request.
+ */
 const fetchAudioOnce = async (
   text: string,
   localPath: string,
@@ -84,12 +126,20 @@ const fetchAudioOnce = async (
   // soon as the headers arrive let a stalled body hang arrayBuffer() forever.
   const timeout = setTimeout(() => controller.abort(), TTS_REQUEST_TIMEOUT_MS);
   try {
-    const response = await fetch(`${BACKEND_URL}/tts`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-      signal: controller.signal,
-    });
+    let response = await postTts(
+      text,
+      await getAccessToken(),
+      controller.signal,
+    );
+    if (response.status === 401) {
+      const freshToken = await refreshSession();
+      if (freshToken) {
+        response = await postTts(text, freshToken, controller.signal);
+      }
+    }
+    if (response.status === 429) {
+      throw new TtsRateLimitedError(retryAfterMs(response));
+    }
     if (!response.ok) {
       throw new Error(`TTS API Error: ${response.status}`);
     }
@@ -163,12 +213,27 @@ const downloadAudio = async (text: string): Promise<string> => {
   // 2. Backend (Redis cache + generation if needed), once it is awake.
   await ensureBackendReady();
   let lastError: unknown;
+  let rateLimitWaits = 0;
   for (let attempt = 1; attempt <= TTS_DOWNLOAD_ATTEMPTS; attempt++) {
     try {
       await fetchAudioOnce(text, localPath);
       return localPath;
     } catch (e) {
       lastError = e;
+      if (
+        e instanceof TtsRateLimitedError &&
+        rateLimitWaits < TTS_MAX_RATE_LIMIT_WAITS
+      ) {
+        // Per-user TTS budget reached (long programme preloading): wait for
+        // the server's window instead of failing the competition start.
+        rateLimitWaits++;
+        attempt--;
+        logger.warn("[TtsService] Rate limited, waiting", {
+          retryAfterMs: e.retryAfterMs,
+        });
+        await new Promise((resolve) => setTimeout(resolve, e.retryAfterMs));
+        continue;
+      }
       logger.warn("[TtsService] Download Error", { attempt, error: e });
     }
   }

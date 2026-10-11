@@ -1,13 +1,3 @@
-import { Readable } from "stream";
-
-jest.mock("fs", () => {
-  const actual = jest.requireActual<typeof import("fs")>("fs");
-  return {
-    ...actual,
-    createReadStream: jest.fn(() => Readable.from(["audio"])),
-  };
-});
-
 import { INestApplication } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import request from "supertest";
@@ -42,24 +32,16 @@ describe("TtsController (e2e)", () => {
     await app.close();
   });
 
-  it("/api/v1/tts (POST) should return 400 when text is missing", () => {
-    return request(app.getHttpServer() as Parameters<typeof request>[0])
-      .post("/api/v1/tts")
-      .send({})
-      .expect(400);
-  });
-
-  it("/api/v1/tts (POST) should stream audio when text provided", () => {
-    (ttsService.getTtsAudio as jest.Mock).mockResolvedValue("/tmp/audio.mp3");
-
-    return request(app.getHttpServer() as Parameters<typeof request>[0])
-      .post("/api/v1/tts")
-      .send({ text: "Hello" })
-      .expect(201)
-      .expect(() => {
-        expect(ttsService.getTtsAudio as jest.Mock).toHaveBeenCalledWith(
-          "Hello",
-        );
-      });
-  });
+  // Auth, validation and throttling are covered over HTTP with the real guard
+  // chain in src/tts/tts.http.spec.ts; here: the route is guarded in AppModule.
+  it.each([{}, { text: "Hello" }])(
+    "/api/v1/tts (POST) returns 401 without a token (%j)",
+    async (body) => {
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post("/api/v1/tts")
+        .send(body)
+        .expect(401);
+      expect(ttsService.getTtsAudio as jest.Mock).not.toHaveBeenCalled();
+    },
+  );
 });

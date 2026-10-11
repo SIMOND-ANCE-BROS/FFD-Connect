@@ -10756,7 +10756,7 @@
     },
     "/tts": {
       "post": {
-        "description": "Convertit un texte en fichier audio MP3 en utilisant la synthèse vocale. Le fichier est mis en cache pour éviter les régénérations.",
+        "description": "Convertit un texte (1 à 500 caractères) en fichier audio MP3 en utilisant la synthèse vocale. Authentification requise, limité à 60 requêtes par minute et par utilisateur. Le fichier est mis en cache pour éviter les régénérations.",
         "operationId": "TtsController_speak",
         "parameters": [],
         "requestBody": {
@@ -10764,17 +10764,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "string",
-                    "description": "Texte à convertir en audio",
-                    "example": "Bienvenue sur FFD Connect",
-                    "minLength": 1,
-                    "maxLength": 500
-                  }
-                },
-                "required": ["text"]
+                "$ref": "#/components/schemas/TtsRequestDto"
               }
             }
           }
@@ -10792,7 +10782,7 @@
             }
           },
           "400": {
-            "description": "Texte manquant ou invalide",
+            "description": "Requête invalide - Erreur de validation",
             "content": {
               "application/json": {
                 "schema": {
@@ -10803,8 +10793,15 @@
                       "example": 400
                     },
                     "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
                       "type": "string",
-                      "example": "Text is required"
+                      "example": "Bad Request"
                     }
                   }
                 }
@@ -10952,6 +10949,11 @@
             }
           }
         },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
         "summary": "Génère un fichier audio à partir d'un texte",
         "tags": ["tts"]
       }
@@ -25993,6 +25995,19 @@
           }
         },
         "required": ["reason"]
+      },
+      "TtsRequestDto": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Texte à convertir en audio",
+            "example": "Bienvenue sur FFD Connect",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": ["text"]
       },
       "ConnectHelloAssoDto": {
         "type": "object",

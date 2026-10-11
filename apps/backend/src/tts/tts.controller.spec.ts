@@ -16,6 +16,7 @@ jest.mock("fs", () => ({
 }));
 
 import * as fs from "fs";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { TtsController } from "./tts.controller";
 import { TtsService } from "./tts.service";
 
@@ -35,34 +36,21 @@ describe("TtsController", () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TtsController],
       providers: [{ provide: TtsService, useValue: mockTtsService }],
-    }).compile();
+    })
+      // Guards and validation are covered over HTTP in tts.http.spec.ts.
+      .overrideGuard(ThrottlerUserGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<TtsController>(TtsController);
   });
 
   describe("speak", () => {
-    it("throws BAD_REQUEST when text is an empty string", async () => {
-      const res = makeRes() as unknown as Response;
-
-      await expect(controller.speak("", res)).rejects.toThrow(
-        new HttpException("Text is required", HttpStatus.BAD_REQUEST),
-      );
-      expect(mockTtsService.getTtsAudio).not.toHaveBeenCalled();
-    });
-
-    it("throws BAD_REQUEST when text is undefined / falsy", async () => {
-      const res = makeRes() as unknown as Response;
-
-      await expect(
-        controller.speak(undefined as unknown as string, res),
-      ).rejects.toThrow(HttpException);
-    });
-
     it("calls service.getTtsAudio with the provided text on success", async () => {
       const res = makeRes() as unknown as Response;
       mockTtsService.getTtsAudio.mockResolvedValue("/cache/hello.mp3");
 
-      await controller.speak("Hello", res);
+      await controller.speak({ text: "Hello" }, res);
 
       expect(mockTtsService.getTtsAudio).toHaveBeenCalledWith("Hello");
     });
@@ -71,7 +59,7 @@ describe("TtsController", () => {
       const res = makeRes() as unknown as Response;
       mockTtsService.getTtsAudio.mockResolvedValue("/cache/hello.mp3");
 
-      await controller.speak("Hello", res);
+      await controller.speak({ text: "Hello" }, res);
 
       expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "audio/mpeg");
     });
@@ -80,7 +68,7 @@ describe("TtsController", () => {
       const res = makeRes() as unknown as Response;
       mockTtsService.getTtsAudio.mockResolvedValue("/cache/bonjour.mp3");
 
-      await controller.speak("Bonjour", res);
+      await controller.speak({ text: "Bonjour" }, res);
 
       expect(fs.createReadStream).toHaveBeenCalledWith("/cache/bonjour.mp3");
     });
@@ -89,7 +77,7 @@ describe("TtsController", () => {
       const res = makeRes() as unknown as Response;
       mockTtsService.getTtsAudio.mockResolvedValue("/cache/audio.mp3");
 
-      await controller.speak("Test", res);
+      await controller.speak({ text: "Test" }, res);
 
       expect(mockPipe).toHaveBeenCalledWith(res);
     });
@@ -98,7 +86,7 @@ describe("TtsController", () => {
       const res = makeRes() as unknown as Response;
       mockTtsService.getTtsAudio.mockRejectedValue(new Error("API Error"));
 
-      await expect(controller.speak("Hello", res)).rejects.toThrow(
+      await expect(controller.speak({ text: "Hello" }, res)).rejects.toThrow(
         new HttpException(
           "TTS Generation failed: API Error",
           HttpStatus.INTERNAL_SERVER_ERROR,
@@ -111,7 +99,7 @@ describe("TtsController", () => {
       mockTtsService.getTtsAudio.mockRejectedValue(new Error("quota exceeded"));
 
       try {
-        await controller.speak("Test", res);
+        await controller.speak({ text: "Test" }, res);
         fail("Expected HttpException to be thrown");
       } catch (err) {
         expect(err).toBeInstanceOf(HttpException);
@@ -125,7 +113,7 @@ describe("TtsController", () => {
       const res = makeRes() as unknown as Response;
       mockTtsService.getTtsAudio.mockRejectedValue(new Error("fail"));
 
-      await expect(controller.speak("Hello", res)).rejects.toThrow(
+      await expect(controller.speak({ text: "Hello" }, res)).rejects.toThrow(
         HttpException,
       );
       expect(fs.createReadStream).not.toHaveBeenCalled();
