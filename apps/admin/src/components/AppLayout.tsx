@@ -25,18 +25,27 @@ import { useSession } from '../session/sessionStore';
 /** Queues whose pending count is shown as a badge in the menu. */
 type Queue = 'moderation' | 'renewals';
 
-interface NavItem {
+interface NavLeaf {
   to: string;
   label: string;
   queue?: Queue;
 }
 
+/** A section of the menu: a page, or a group of related pages. */
+type NavItem = NavLeaf | { label: string; children: readonly NavLeaf[] };
+
 /** Menu of the back-office, in display order: add a section with one line here. */
 export const NAV_ITEMS: readonly NavItem[] = [
+  { to: '/', label: 'Tableau de bord' },
   { to: '/users', label: 'Utilisateurs' },
   { to: '/clubs', label: 'Clubs' },
-  { to: '/tracks', label: 'Musiques' },
-  { to: '/moderation', label: 'Modération', queue: 'moderation' },
+  {
+    label: 'Musiques',
+    children: [
+      { to: '/tracks', label: 'Bibliothèque' },
+      { to: '/moderation', label: 'Modération', queue: 'moderation' },
+    ],
+  },
   { to: '/license-renewals', label: 'Renouvellements', queue: 'renewals' },
   { to: '/audit-log', label: "Journal d'audit" },
   { to: '/stats', label: 'Statistiques' },
@@ -54,6 +63,8 @@ const countBadge = (value: number) =>
   ) : null;
 
 const isActive = (pathname: string, to: string) => pathname === to || pathname.startsWith(`${to}/`);
+
+const NAV_LINK_STYLE = { borderRadius: 'var(--mantine-radius-md)' };
 
 function ColorSchemeToggle() {
   const { setColorScheme } = useMantineColorScheme();
@@ -174,19 +185,32 @@ export function AppLayout() {
       <AppShell.Navbar id="admin-navbar" aria-label="Menu principal" component="nav">
         <AppShell.Section grow component={ScrollArea} p="sm">
           <Stack gap={2}>
-            {NAV_ITEMS.map((item) => (
-              <NavLink
-                key={item.to}
-                component={RouterLink}
-                to={item.to}
-                label={item.label}
-                active={isActive(pathname, item.to)}
-                rightSection={item.queue ? countBadge(counts[item.queue]) : undefined}
-                onClick={closeNav}
-                style={{ borderRadius: 'var(--mantine-radius-md)' }}
-                fw={500}
-              />
-            ))}
+            {NAV_ITEMS.map((item) => {
+              const leaf = (l: NavLeaf) => (
+                <NavLink
+                  key={l.to}
+                  component={RouterLink}
+                  to={l.to}
+                  label={l.label}
+                  active={isActive(pathname, l.to)}
+                  rightSection={l.queue ? countBadge(counts[l.queue]) : undefined}
+                  onClick={closeNav}
+                  style={NAV_LINK_STYLE}
+                  fw={500}
+                />
+              );
+              if (!('children' in item)) return leaf(item);
+              return (
+                <Box key={item.label} role="group" aria-labelledby={`nav-${item.label}`} mt={4}>
+                  <Text id={`nav-${item.label}`} size="sm" fw={500} px="sm" py={6}>
+                    {item.label}
+                  </Text>
+                  <Stack gap={2} pl="md">
+                    {item.children.map(leaf)}
+                  </Stack>
+                </Box>
+              );
+            })}
           </Stack>
         </AppShell.Section>
         <AppShell.Section

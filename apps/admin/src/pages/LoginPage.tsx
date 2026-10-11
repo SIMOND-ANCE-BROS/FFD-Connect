@@ -83,7 +83,7 @@ export function LoginPage() {
         return;
       }
       setSession({ accessToken: data.access_token, refreshToken: data.refresh_token, user });
-      navigate('/users', { replace: true });
+      navigate('/', { replace: true });
     } catch {
       setError(UNAVAILABLE_MESSAGE);
     } finally {
