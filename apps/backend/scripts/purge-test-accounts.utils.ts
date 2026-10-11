@@ -20,7 +20,15 @@ const TEST_EMAIL_DOMAIN = "@test.com";
  * flagged yet (the purge runs before the seed that flags it), and deleting it
  * would change its id and end the reviewers' sessions.
  */
-export const STORE_REVIEW_EMAIL = "licensee@test.com";
+export const STORE_REVIEW_EMAIL = "demo@ffd.gabin-simond.fr";
+
+/**
+ * Former email of the account (an `@test.com` address, so the purge would
+ * target it). Kept excluded during the transition: until the seed has renamed
+ * the account in place, deleting it would change its id and end the
+ * reviewers' sessions.
+ */
+export const LEGACY_STORE_REVIEW_EMAIL = "licensee@test.com";
 
 /** Fixed ids of seeded rows (`seed-scan-user-1`…). */
 const SEED_ID_PREFIX = "seed-";
@@ -29,7 +37,10 @@ const SEED_ID_PREFIX = "seed-";
 export const TEST_CLUB_NAMES: readonly string[] = ["Club Démo Bêta"];
 
 /** Club of the store-review account (seed-profile-test-accounts.ts): kept. */
-export const STORE_REVIEW_CLUB_NAME = "Club Test FFD";
+export const STORE_REVIEW_CLUB_NAME = "Club Démo FFD Connect";
+
+/** Former club name, kept excluded until the seed has renamed the club. */
+export const LEGACY_STORE_REVIEW_CLUB_NAME = "Club Test FFD";
 
 /** License numbers created by the staging seeds for the purged accounts. */
 const TEST_LICENSE_NUMBER = /^(SCAN-TEST-\d+|BETA-EXPIRY-TEST)$/;
@@ -50,7 +61,13 @@ export interface PurgeClubCandidate {
 
 export function isTestUser(user: PurgeUserCandidate): boolean {
   const email = user.email.trim().toLowerCase();
-  if (user.isStoreReview || email === STORE_REVIEW_EMAIL) return false;
+  if (
+    user.isStoreReview ||
+    email === STORE_REVIEW_EMAIL ||
+    email === LEGACY_STORE_REVIEW_EMAIL
+  ) {
+    return false;
+  }
   return (
     email.endsWith(TEST_EMAIL_DOMAIN) || user.id.startsWith(SEED_ID_PREFIX)
   );
@@ -66,6 +83,12 @@ const TEST_CLUB_NAME_SET = new Set(
   TEST_CLUB_NAMES.map((n) => n.toLocaleLowerCase("fr")),
 );
 
+const STORE_REVIEW_CLUB_NAME_SET = new Set(
+  [STORE_REVIEW_CLUB_NAME, LEGACY_STORE_REVIEW_CLUB_NAME].map((n) =>
+    n.toLocaleLowerCase("fr"),
+  ),
+);
+
 /**
  * A seeded club goes only when none of its members survives the purge: a club
  * a real account was attached to (by hand, or a tester who picked it) stays.
@@ -77,6 +100,9 @@ export function selectTestClubs<T extends PurgeClubCandidate>(
   return clubs.filter(
     (club) =>
       !club.isStoreReview &&
+      !STORE_REVIEW_CLUB_NAME_SET.has(
+        club.name.trim().toLocaleLowerCase("fr"),
+      ) &&
       TEST_CLUB_NAME_SET.has(club.name.trim().toLocaleLowerCase("fr")) &&
       club.memberIds.every((id) => purgedUserIds.has(id)),
   );

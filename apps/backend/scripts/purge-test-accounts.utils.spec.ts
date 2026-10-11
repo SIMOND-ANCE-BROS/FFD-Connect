@@ -1,4 +1,8 @@
 import {
+  LEGACY_STORE_REVIEW_CLUB_NAME,
+  LEGACY_STORE_REVIEW_EMAIL,
+  STORE_REVIEW_CLUB_NAME,
+  STORE_REVIEW_EMAIL,
   isTestLicenseNumber,
   isTestUser,
   selectTestClubs,
@@ -33,9 +37,16 @@ describe("isTestUser", () => {
   });
 
   it("always keeps the store-review account", () => {
-    expect(isTestUser(user("u1", "licensee@test.com", true))).toBe(false);
+    expect(isTestUser(user("u1", STORE_REVIEW_EMAIL, true))).toBe(false);
     // Not flagged yet (first boot after the migration): kept by email.
-    expect(isTestUser(user("u1", " Licensee@Test.com", false))).toBe(false);
+    expect(isTestUser(user("u1", ` ${STORE_REVIEW_EMAIL.toUpperCase()}`))).toBe(
+      false,
+    );
+    // Transition: legacy @test.com email is kept until the in-place rename.
+    expect(
+      isTestUser(user("u1", ` ${LEGACY_STORE_REVIEW_EMAIL.toUpperCase()}`)),
+    ).toBe(false);
+    expect(isTestUser(user("u1", "licensee@test.com"))).toBe(false);
     expect(isTestUser(user("seed-x", "x@test.com", true))).toBe(false);
   });
 });
@@ -45,7 +56,7 @@ describe("selectTestUsers", () => {
     const rows = [
       user("a", "admin@test.com"),
       user("b", "real@example.org"),
-      user("c", "licensee@test.com", true),
+      user("c", STORE_REVIEW_EMAIL, true),
       user("seed-scan-user-2", "scan2@test.com"),
     ];
     expect(selectTestUsers(rows).map((u) => u.id)).toEqual([
@@ -80,8 +91,9 @@ describe("selectTestClubs", () => {
 
   it("keeps the store-review club, flagged or not yet", () => {
     const clubs = [
-      club("c1", "Club Test FFD", [], true),
-      club("c2", "Club Test FFD", []),
+      club("c1", STORE_REVIEW_CLUB_NAME, [], true),
+      club("c2", STORE_REVIEW_CLUB_NAME, []),
+      club("c4", LEGACY_STORE_REVIEW_CLUB_NAME, []),
       club("c3", "Club Démo Bêta", [], true),
     ];
     expect(selectTestClubs(clubs, new Set())).toEqual([]);

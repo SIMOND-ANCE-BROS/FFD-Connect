@@ -1,6 +1,6 @@
 /**
  * Seed de données de CARRIÈRE du compte de validation des stores
- * (`isStoreReview`, licensee@test.com) — staging/beta uniquement.
+ * (`isStoreReview`, retrouvé par drapeau) — staging/beta uniquement.
  *
  * Peuple compétitions + épreuves + inscriptions + résultats rattachés à ce
  * compte, pour que les relecteurs App Store / Google Play voient les écrans
