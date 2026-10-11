@@ -28,6 +28,7 @@ describe("catalogue des notifications", () => {
       [NotificationType.NEW_COMPETITION]: true,
       [NotificationType.CLUB_MEMBER_REGISTRATION]: false,
       [NotificationType.CLUB_PARTNERSHIP]: true,
+      [NotificationType.CLUB_PAYMENT_RECEIVED]: true,
       [NotificationType.TRACK_REPORT]: true,
       [NotificationType.LICENSE_RENEWAL_TO_REVIEW]: true,
       [NotificationType.TRACK_CORRECTION_DECISION]: true,
@@ -97,6 +98,18 @@ describe("catalogue des notifications", () => {
       );
     });
 
+    it("keeps the HelloAsso payment type dormant until its producer ships (#39)", () => {
+      // Configurable before anything emits it, it would be a switch with no
+      // effect, and a toggle would write an enum value the rollback image
+      // cannot read.
+      expect(isConfigurable(NotificationType.CLUB_PAYMENT_RECEIVED)).toBe(
+        false,
+      );
+      expect(CONFIGURABLE_NOTIFICATION_TYPES).not.toContain(
+        NotificationType.CLUB_PAYMENT_RECEIVED,
+      );
+    });
+
     it("expose tous les autres types, dans l'ordre de déclaration de l'enum", () => {
       // L'ordre est le contrat d'affichage de l'écran de réglages.
       expect(CONFIGURABLE_NOTIFICATION_TYPES).toEqual([
@@ -138,6 +151,8 @@ describe("catalogue des notifications", () => {
       [NotificationType.CLUB_MEMBER_REGISTRATION]: [UserRole.CLUB],
       // notifyClubOrganizersForClub : where { role: "CLUB" }
       [NotificationType.CLUB_PARTNERSHIP]: [UserRole.CLUB],
+      // Organizer club's managers: withActiveRole(CLUB).
+      [NotificationType.CLUB_PAYMENT_RECEIVED]: [UserRole.CLUB],
       // reportTrack : where { role: ADMIN }
       [NotificationType.TRACK_REPORT]: [UserRole.ADMIN],
       // notifyToReview : withActiveRole(ADMIN)
