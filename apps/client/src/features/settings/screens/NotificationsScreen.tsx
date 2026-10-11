@@ -45,6 +45,8 @@ export const NotificationsScreen = ({ navigation }: Props) => {
       const target = notificationTargetOf(item.data);
       if (target?.screen === "CompetitionDetail") {
         navigation.navigate("CompetitionDetail", target.params);
+      } else if (target?.screen === "LicenseRenewal") {
+        navigation.navigate("LicenseRenewal");
       }
     },
     [navigation],

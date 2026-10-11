@@ -18,6 +18,7 @@ import { AdminAuditService } from "../admin/admin-audit.service";
 import { diffFields } from "../admin/admin-audit.util";
 import type { AuditEntry } from "../admin/dto/admin-audit.dto";
 import { withActiveRole } from "../auth/roles";
+import { MAX_ADMINS_NOTIFIED } from "../notifications/admin-recipients";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UpdateTrackDto } from "../tracks/dto/update-track.dto";
@@ -70,9 +71,6 @@ export const MAX_PENDING_CORRECTIONS_PER_USER = 20;
  * compteur à jour.
  */
 export const MAX_SERIALIZABLE_ATTEMPTS = 3;
-
-/** Borne de la lecture des administrateurs à notifier. */
-export const MAX_ADMINS_NOTIFIED = 100;
 
 /** Titre de la notification admin pour une nouvelle proposition. */
 export const NEW_CORRECTION_NOTIFICATION_TITLE = "Proposition de correction";

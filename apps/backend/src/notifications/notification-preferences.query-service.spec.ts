@@ -114,12 +114,14 @@ describe("NotificationPreferencesQueryService", () => {
       expect(types).not.toContain(NotificationType.CLUB_MEMBER_REGISTRATION);
       expect(types).not.toContain(NotificationType.CLUB_PARTNERSHIP);
       expect(types).not.toContain(NotificationType.TRACK_REPORT);
+      expect(types).not.toContain(NotificationType.LICENSE_RENEWAL_TO_REVIEW);
       // Mais il garde tout ce qui le concerne.
       expect(types).toEqual([
         NotificationType.REGISTRATION_STATUS,
         NotificationType.COMPETITION_RESULTS,
         NotificationType.NEW_COMPETITION,
         NotificationType.TRACK_CORRECTION_DECISION,
+        NotificationType.LICENSE_RENEWAL_DECISION,
       ]);
     });
 

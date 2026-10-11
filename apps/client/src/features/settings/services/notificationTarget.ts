@@ -35,6 +35,12 @@ const stringField = (data: unknown, key: string): string | null => {
  * l'écran ne bouge pas, la push ouvre le centre de notifications.
  */
 export function notificationTargetOf(data: unknown): NotificationTarget | null {
+  // Decision on MY licence renewal (#269): the renewal screen shows its
+  // outcome. The administrators' LICENSE_RENEWAL_TO_REVIEW has no mobile
+  // screen (moderation lives in the back-office): it falls through to null.
+  if (stringField(data, "type") === "LICENSE_RENEWAL_DECISION") {
+    return { screen: "LicenseRenewal", params: undefined };
+  }
   const competitionId = stringField(data, "competitionId");
   if (competitionId) {
     return { screen: "CompetitionDetail", params: { competitionId } };
