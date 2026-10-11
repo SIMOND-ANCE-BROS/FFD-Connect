@@ -17,6 +17,7 @@ import { RootStackParamList } from "../../../navigation/types";
 import api from "../../../services/api";
 import type { CareerResult } from "../../../services/BackendService";
 import { LicenseRenewalBanner } from "../../license/components/LicenseRenewalBanner";
+import { useRefreshRenewalStatusIfPending } from "../../license/hooks/useRenewalPending";
 import {
   type CompetitionLevelProfile,
   formatCompetitionLevels,
@@ -28,6 +29,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "Profile">;
 
 export const ProfileScreen = ({ navigation }: Props) => {
   const { theme: currentTheme } = useTheme();
+  const refreshRenewalStatus = useRefreshRenewalStatusIfPending();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -79,7 +81,9 @@ export const ProfileScreen = ({ navigation }: Props) => {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     void loadData();
-  }, [loadData]);
+    // Only re-reads a PENDING renewal status (#268): no request otherwise.
+    void refreshRenewalStatus();
+  }, [loadData, refreshRenewalStatus]);
 
   if (loading) {
     return (
@@ -104,6 +108,7 @@ export const ProfileScreen = ({ navigation }: Props) => {
         backgroundColor={currentTheme.background}
       />
       <ScrollView
+        testID="profile-scroll"
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl

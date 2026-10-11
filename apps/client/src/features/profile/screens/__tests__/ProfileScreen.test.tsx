@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
@@ -26,8 +26,10 @@ jest.mock("../../../license/components/LicenseExpiryBanner", () => ({
   LicenseExpiryBanner: () => null,
 }));
 const mockRenewalPending = jest.fn(() => false);
+const mockRefreshRenewalStatus = jest.fn().mockResolvedValue(undefined);
 jest.mock("../../../license/hooks/useRenewalPending", () => ({
   useRenewalPending: () => mockRenewalPending(),
+  useRefreshRenewalStatusIfPending: () => mockRefreshRenewalStatus,
 }));
 jest.mock("../../../../components/AppText", () => ({
   AppText: ({ children }: { children: React.ReactNode }) => {
@@ -104,6 +106,27 @@ describe("ProfileScreen", () => {
     );
     const { navigate } = mockNavigation as unknown as { navigate: jest.Mock };
     expect(navigate).toHaveBeenCalledWith("LicenseRenewal");
+  });
+
+  it("re-reads a pending renewal status on pull-to-refresh (#268)", async () => {
+    mockGet.mockImplementation((url: string) =>
+      url === "/licenses/my"
+        ? Promise.resolve({ data: null })
+        : Promise.resolve({ data: { results: [] } }),
+    );
+
+    const { findByText, getByTestId } = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+    await findByText("Aucune licence associée");
+    expect(mockRefreshRenewalStatus).not.toHaveBeenCalled();
+
+    const refreshControl = getByTestId("profile-scroll").props
+      .refreshControl as React.ReactElement<{ onRefresh: () => void }>;
+    await act(async () => {
+      refreshControl.props.onRefresh();
+    });
+    expect(mockRefreshRenewalStatus).toHaveBeenCalledTimes(1);
   });
 
   it("renders the license when the user has one", async () => {
