@@ -109,6 +109,35 @@ describe("AdminTracksQueryService", () => {
     );
   });
 
+  it.each([
+    ["title", "asc", [{ title: "asc" }, { id: "asc" }]],
+    ["artist", "desc", [{ artist: "desc" }, { title: "desc" }, { id: "desc" }]],
+    [
+      "style",
+      "asc",
+      [
+        { style: { sort: "asc", nulls: "last" } },
+        { title: "asc" },
+        { id: "asc" },
+      ],
+    ],
+    ["bpm", "desc", [{ bpm: "desc" }, { id: "desc" }]],
+    [
+      "status",
+      "asc",
+      [{ status: "asc" }, { createdAt: "desc" }, { id: "asc" }],
+    ],
+    ["createdAt", "asc", [{ createdAt: "asc" }, { id: "asc" }]],
+  ] as const)(
+    "sorts the whole catalogue on %s %s",
+    async (sortBy, sortOrder, orderBy) => {
+      prisma.track.count.mockResolvedValue(0);
+      prisma.track.findMany.mockResolvedValue([]);
+      await service.list({ sortBy, sortOrder });
+      expect(prisma.track.findMany.mock.calls[0][0]?.orderBy).toEqual(orderBy);
+    },
+  );
+
   it("defaults to the first 20 tracks", async () => {
     prisma.track.count.mockResolvedValue(0);
     prisma.track.findMany.mockResolvedValue([]);

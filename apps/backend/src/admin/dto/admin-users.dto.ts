@@ -11,6 +11,11 @@ import {
   MaxLength,
 } from "class-validator";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
+import {
+  SortByParam,
+  SortOrderParam,
+  type SortOrder,
+} from "../../common/dto/sort-params";
 import { AdminPageMetaDto } from "./admin-audit.dto";
 
 export const LICENSE_STATUSES = ["ACTIVE", "EXPIRED"] as const;
@@ -18,6 +23,19 @@ export type LicenseStatus = (typeof LICENSE_STATUSES)[number];
 
 export const ACCOUNT_STATUSES = ["active", "disabled"] as const;
 export type AccountStatusFilter = (typeof ACCOUNT_STATUSES)[number];
+
+/** Columns the back-office user list can be sorted on (#443). */
+export const ADMIN_USERS_SORT_FIELDS = [
+  "name",
+  "email",
+  "role",
+  "club",
+  "category",
+  "ageGroup",
+  "createdAt",
+  "lastLoginAt",
+] as const;
+export type AdminUsersSortField = (typeof ADMIN_USERS_SORT_FIELDS)[number];
 
 export class ListAdminUsersQueryDto extends PaginationParamsDto {
   @ApiPropertyOptional({ description: "Nom, prénom ou email" })
@@ -59,6 +77,12 @@ export class ListAdminUsersQueryDto extends PaginationParamsDto {
   @IsOptional()
   @IsDateString()
   createdTo?: string;
+
+  @SortByParam(ADMIN_USERS_SORT_FIELDS)
+  sortBy?: AdminUsersSortField;
+
+  @SortOrderParam()
+  sortOrder?: SortOrder;
 }
 
 export class AdminUserListItemDto {
@@ -82,7 +106,9 @@ export class AdminUserListItemDto {
   @ApiProperty({ nullable: true, type: String }) ageGroup!: string | null;
   @ApiProperty({ enum: [...LICENSE_STATUSES, null], nullable: true })
   licenseStatus!: LicenseStatus | null;
+  @ApiProperty({ nullable: true, type: String }) licenseNumber!: string | null;
   @ApiProperty() createdAt!: Date;
+  @ApiProperty({ nullable: true, type: Date }) lastLoginAt!: Date | null;
   @ApiProperty({ nullable: true, type: Date }) disabledAt!: Date | null;
   @ApiProperty({
     description:
@@ -122,9 +148,7 @@ export class AdminUserDetailDto extends AdminUserListItemDto {
   competitionLevelStandard!: string | null;
   @ApiProperty({ nullable: true, type: String }) wdsfMin!: string | null;
   @ApiProperty({ nullable: true, type: Date }) wdsfExpiresOn!: Date | null;
-  @ApiProperty({ nullable: true, type: String }) licenseNumber!: string | null;
   @ApiProperty({ nullable: true, type: Date }) licenseValidUntil!: Date | null;
-  @ApiProperty({ nullable: true, type: Date }) lastLoginAt!: Date | null;
   @ApiProperty({
     nullable: true,
     type: Date,

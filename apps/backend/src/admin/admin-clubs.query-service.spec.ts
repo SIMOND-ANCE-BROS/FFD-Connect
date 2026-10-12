@@ -40,6 +40,24 @@ describe("AdminClubsQueryService", () => {
   });
 
   describe("list", () => {
+    it.each([
+      ["name", "desc", [{ name: "desc" }, { id: "desc" }]],
+      [
+        "registrationMode",
+        "asc",
+        [{ registrationMode: "asc" }, { name: "asc" }, { id: "asc" }],
+      ],
+      ["createdAt", "desc", [{ createdAt: "desc" }, { id: "desc" }]],
+    ] as const)(
+      "sorts the whole list on %s %s",
+      async (sortBy, sortOrder, orderBy) => {
+        prisma.club.count.mockResolvedValue(0);
+        prisma.club.findMany.mockResolvedValue([]);
+        await service.list({ sortBy, sortOrder });
+        expect(prisma.club.findMany.mock.calls[0][0]?.orderBy).toEqual(orderBy);
+      },
+    );
+
     it("filters, sorts by name and adds counts and the HelloAsso flag without reading secrets", async () => {
       prisma.club.count.mockResolvedValue(2);
       prisma.club.findMany

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { rolesOf, withRole } from "../auth/roles";
+import { listOrderBy, type SortOrder } from "../common/dto/sort-params";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { isLicenseExpired } from "../licenses/license-expiry";
@@ -13,6 +14,7 @@ import {
   AdminUserDetailDto,
   AdminUserListItemDto,
   AdminUsersPageDto,
+  type AdminUsersSortField,
   LicenseStatus,
   ListAdminUsersQueryDto,
 } from "./dto/admin-users.dto";
@@ -21,6 +23,25 @@ const DEFAULT_TAKE = 50;
 const DAY_MS = 86_400_000;
 
 type ListRow = Prisma.UserGetPayload<{ select: typeof adminUserListSelect }>;
+type UserOrder = Prisma.UserOrderByWithRelationInput;
+
+/** Empty values last whatever the direction; id breaks ties (#443). */
+const USER_ORDERS: Record<AdminUsersSortField, (o: SortOrder) => UserOrder[]> =
+  {
+    name: (o) => [{ lastName: o }, { firstName: o }, { id: o }],
+    email: (o) => [{ email: o }, { id: o }],
+    role: (o) => [{ role: o }, { id: o }],
+    club: (o) => [{ clubName: { sort: o, nulls: "last" } }, { id: o }],
+    category: (o) => [{ category: { sort: o, nulls: "last" } }, { id: o }],
+    ageGroup: (o) => [{ ageGroup: { sort: o, nulls: "last" } }, { id: o }],
+    createdAt: (o) => [{ createdAt: o }, { id: o }],
+    lastLoginAt: (o) => [
+      { lastLoginAt: { sort: o, nulls: "last" } },
+      { id: o },
+    ],
+  };
+// id breaks createdAt ties so offset pages never overlap or skip rows.
+const DEFAULT_USER_ORDER: UserOrder[] = [{ createdAt: "desc" }, { id: "desc" }];
 
 export function licenseStatus(
   license: { validUntil: Date } | null,
@@ -37,6 +58,7 @@ function toListItem(row: ListRow, now: Date): AdminUserListItemDto {
     ...rest,
     roles: rolesOf(rest),
     licenseStatus: licenseStatus(license, now),
+    licenseNumber: license?.number ?? null,
   };
 }
 
@@ -79,8 +101,12 @@ export class AdminUsersQueryService {
       this.prisma.user.count({ where }),
       this.prisma.user.findMany({
         where,
-        // id breaks createdAt ties so offset pages never overlap or skip rows.
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        orderBy: listOrderBy(
+          q.sortBy,
+          q.sortOrder,
+          USER_ORDERS,
+          DEFAULT_USER_ORDER,
+        ),
         skip,
         take,
         select: adminUserListSelect,

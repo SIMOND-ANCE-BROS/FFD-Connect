@@ -2040,6 +2040,26 @@
               "type": "string",
               "enum": ["active", "disabled"]
             }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": ["name", "registrationMode", "createdAt"]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            }
           }
         ],
         "responses": {
@@ -3460,6 +3480,57 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "action",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "USER_UPDATE",
+                "CLUB_ACCOUNT_CREATE",
+                "INVITATION_RESEND",
+                "USER_CREATE",
+                "USER_DISABLE",
+                "USER_ENABLE",
+                "USER_DELETE",
+                "CLUB_CREATE",
+                "CLUB_UPDATE",
+                "CLUB_DISABLE",
+                "CLUB_ENABLE",
+                "CLUB_DELETE",
+                "TRACK_CORRECTION_APPROVE",
+                "TRACK_CORRECTION_REJECT",
+                "TRACK_CREATE",
+                "TRACK_UPDATE",
+                "TRACK_DELETE",
+                "LICENSE_RENEWAL_VIEW",
+                "LICENSE_RENEWAL_DOCUMENT_VIEW",
+                "LICENSE_RENEWAL_APPROVE",
+                "LICENSE_RENEWAL_REJECT"
+              ]
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": ["createdAt"]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            }
           }
         ],
         "responses": {
@@ -3742,6 +3813,35 @@
             "description": "Inclus, AAAA-MM-JJ",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "name",
+                "email",
+                "role",
+                "club",
+                "category",
+                "ageGroup",
+                "createdAt",
+                "lastLoginAt"
+              ]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
             }
           }
         ],
@@ -8498,6 +8598,26 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": ["title", "artist", "style", "bpm", "status", "createdAt"]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            }
           }
         ],
         "responses": {
@@ -9555,6 +9675,26 @@
             "schema": {
               "format": "uuid",
               "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": ["createdAt", "reason", "track"]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
             }
           }
         ],
@@ -22588,6 +22728,32 @@
               "default": 20,
               "type": "number"
             }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "name",
+                "licenseNumber",
+                "validUntil",
+                "submittedAt",
+                "reviewedAt"
+              ]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            }
           }
         ],
         "responses": {
@@ -24606,9 +24772,18 @@
             "enum": ["ACTIVE", "EXPIRED", null],
             "nullable": true
           },
+          "licenseNumber": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "lastLoginAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
           },
           "disabledAt": {
             "format": "date-time",
@@ -24633,7 +24808,9 @@
           "category",
           "ageGroup",
           "licenseStatus",
+          "licenseNumber",
           "createdAt",
+          "lastLoginAt",
           "disabledAt",
           "isStoreReview"
         ]
@@ -24723,9 +24900,18 @@
             "enum": ["ACTIVE", "EXPIRED", null],
             "nullable": true
           },
+          "licenseNumber": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "lastLoginAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
           },
           "disabledAt": {
             "format": "date-time",
@@ -24784,16 +24970,7 @@
             "type": "string",
             "nullable": true
           },
-          "licenseNumber": {
-            "type": "string",
-            "nullable": true
-          },
           "licenseValidUntil": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "lastLoginAt": {
             "format": "date-time",
             "type": "string",
             "nullable": true
@@ -24826,7 +25003,9 @@
           "category",
           "ageGroup",
           "licenseStatus",
+          "licenseNumber",
           "createdAt",
+          "lastLoginAt",
           "disabledAt",
           "isStoreReview",
           "birthDate",
@@ -24838,9 +25017,7 @@
           "competitionLevelStandard",
           "wdsfMin",
           "wdsfExpiresOn",
-          "licenseNumber",
           "licenseValidUntil",
-          "lastLoginAt",
           "clubDisabledAt",
           "createdByAdmin",
           "updatedAt"
