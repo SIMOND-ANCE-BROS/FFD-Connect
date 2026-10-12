@@ -990,6 +990,19 @@ export const adminUserEditableSelect = {
   extraRoles: true,
 } as const;
 
+/**
+ * Back-office change of the login email / licence number (#448): current
+ * values for the audit diff, the name for the notice to the old address, the
+ * store-review flag (its email is the one Apple / Google log in with).
+ */
+export const adminUserIdentifiersSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  isStoreReview: true,
+  license: { select: { id: true, number: true } },
+} as const;
+
 /** Admin invitation resend: who to mail and whether they ever logged in. */
 export const adminInvitationTargetSelect = {
   id: true,
