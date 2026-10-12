@@ -1099,6 +1099,7 @@ describe("UsersService", () => {
       expect(seats.select).toEqual({
         seatLabel: true,
         status: true,
+        cancelReason: true,
         createdAt: true,
         competition: { select: { title: true, date: true } },
       });

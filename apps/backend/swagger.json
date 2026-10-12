@@ -23590,7 +23590,7 @@
     },
     "/payment/webhook": {
       "post": {
-        "description": "Reçoit les notifications HelloAsso. Le contenu de la notification n'est jamais cru : le paiement est relu sur l'API HelloAsso (intention de paiement de la réservation, identifiants du club). Signature `x-ha-signature` vérifiée si une clé partenaire est configurée. Une réservation n'est confirmée que si l'ordre est payé, du montant attendu, pour la bonne compétition ; sinon elle reste en attente et la réponse reste 200 (pas de rejeu). 503 si HelloAsso est injoignable (rejeu).",
+        "description": "Reçoit les notifications HelloAsso. Le contenu de la notification n'est jamais cru : le paiement est relu sur l'API HelloAsso (intention de paiement de la réservation, identifiants du club). Signature `x-ha-signature` vérifiée si une clé partenaire est configurée. Une réservation n'est confirmée que si l'ordre est payé, du montant attendu, pour la bonne compétition ; sinon elle reste en attente et la réponse reste 200 (pas de rejeu). Un paiement remboursé (`Refunded`) ou contesté (`Contested`), confirmé par l'API HelloAsso, libère la place (`CANCELLED`). 503 si HelloAsso est injoignable (rejeu).",
         "operationId": "PaymentController_handleWebhook",
         "parameters": [],
         "requestBody": {
@@ -27426,6 +27426,10 @@
           "checkoutIntentId": {
             "type": "number",
             "example": 4242
+          },
+          "state": {
+            "type": "string",
+            "example": "Refunded"
           },
           "payments": {
             "type": "array",

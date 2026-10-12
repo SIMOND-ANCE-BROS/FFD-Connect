@@ -11,6 +11,7 @@ C'est une zone sensible : validation DTO obligatoire sur tous les endpoints ; le
 - Creation d'un checkout HelloAsso pour une reservation de place (`SeatBooking`).
 - Reservation en attente (`PENDING`) avec expiration a 15 minutes.
 - Reception du webhook HelloAsso et confirmation de la reservation (`CONFIRMED`).
+- Liberation de la place quand le paiement est rembourse ou conteste (#403) : `CONFIRMED` → `CANCELLED`, motif dans `SeatBooking.cancelReason`.
 - Utilisation des identifiants HelloAsso du club organisateur (resolus depuis la competition).
 - Cache des tokens OAuth HelloAsso par `clientId`.
 
@@ -46,6 +47,7 @@ Backend :
 - La reservation est creee en statut `PENDING` avec `expiresAt = now + 15 min` avant l'appel HelloAsso ; en cas d'echec de l'initiation, la reservation est supprimee et l'appel renvoie `400`.
 - L'`id` du checkout intent est stocke dans `SeatBooking.paymentId`.
 - La confirmation passe la reservation en `CONFIRMED` ; elle est declenchee uniquement par le webhook, jamais par le client.
+- Remboursement / contestation (#403) : une notification `Payment` dont l'etat annonce est `Refunded` ou `Contested` declenche la relecture du paiement (`GET /v5/payments/{id}`, puis `GET /v5/orders/{id}` si l'identifiant d'intention manque) avec les identifiants du club. Si HelloAsso confirme l'etat et que le paiement appartient bien a l'intention de la reservation (`SeatBooking.paymentId`), une reservation `CONFIRMED` passe en `CANCELLED` avec `cancelReason` = `HELLOASSO_REFUNDED` ou `HELLOASSO_CONTESTED`. Ecriture conditionnelle (idempotente) ; `Refunding` (en cours, peut echouer) ne libere rien ; une contestation gagnee ensuite ne rend pas la place (traitement manuel par l'organisateur). Liberation et rejets tracees dans Sentry (`helloasso-seat-released`, `helloasso-payment-rejected`, identifiants seulement).
 - Validation DTO obligatoire sur tous les endpoints (zone sensible).
 
 ## 6) Flux principal (HelloAsso)
