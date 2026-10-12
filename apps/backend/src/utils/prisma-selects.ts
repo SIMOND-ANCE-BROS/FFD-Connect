@@ -804,6 +804,8 @@ export const trackCorrectionMineSelect = {
 export const trackCorrectionDecisionSelect = {
   id: true,
   trackId: true,
+  // DELETE (#446) is approved by hiding the track, not by a patch.
+  reason: true,
   status: true,
   proposedById: true,
   proposedTitle: true,
@@ -821,6 +823,8 @@ export const trackCorrectionDecisionSelect = {
  * Track fields an approved correction may change, read just before and just
  * after the update inside the decision transaction: the audit row then holds
  * what was really applied (MPM recalculated on a dance change, sorted clashes).
+ * `blacklisted` is what an approved deletion request (#446) changes; only the
+ * fields that differ are logged, so it stays out of the other approvals.
  */
 export const trackCorrectionAuditTrackSelect = {
   title: true,
@@ -828,6 +832,17 @@ export const trackCorrectionAuditTrackSelect = {
   style: true,
   bpm: true,
   clashTimecodes: true,
+  blacklisted: true,
+} as const;
+
+/**
+ * The other pending proposals of a track removed from the library by an
+ * approved deletion request (#446): rejected in the same transaction, then
+ * their authors are told.
+ */
+export const trackCorrectionSupersededSelect = {
+  id: true,
+  proposedById: true,
 } as const;
 
 /**

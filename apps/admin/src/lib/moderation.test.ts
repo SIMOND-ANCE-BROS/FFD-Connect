@@ -9,7 +9,9 @@ import {
   moderationFilter,
   nextPendingFilter,
   parseTimecode,
+  isDeletionRequest,
   proposalSummary,
+  REASON_LABELS,
   readModerationParams,
   roundTenth,
   trackAudioUrl,
@@ -146,6 +148,14 @@ describe('proposalSummary', () => {
   it('tells « no clash » apart from « no value proposed »', () => {
     expect(proposalSummary({ ...none, clashTimecodes: [] })).toBe('Aucun clash');
     expect(proposalSummary(none)).toBe('Message seul');
+  });
+
+  it('summarises a deletion request (#446)', () => {
+    expect(proposalSummary(none, 'DELETE')).toBe('Retirer la musique de la bibliothèque');
+    expect(proposalSummary({ ...none, bpm: 62 }, 'MPM')).toBe('MPM 62');
+    expect(isDeletionRequest({ reason: 'DELETE' })).toBe(true);
+    expect(isDeletionRequest({ reason: 'OTHER' })).toBe(false);
+    expect(REASON_LABELS.DELETE).toBe('Suppression');
   });
 });
 

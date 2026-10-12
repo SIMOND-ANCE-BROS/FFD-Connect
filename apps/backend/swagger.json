@@ -26527,7 +26527,7 @@
           },
           "message": {
             "type": "string",
-            "description": "Précisions libres pour l'administrateur",
+            "description": "Précisions libres pour l'administrateur. Obligatoire pour une proposition de suppression (`DELETE`) : pourquoi retirer la musique (doublon, mauvais fichier…).",
             "maxLength": 500
           }
         },

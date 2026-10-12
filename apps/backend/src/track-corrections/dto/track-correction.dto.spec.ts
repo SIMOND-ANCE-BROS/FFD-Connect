@@ -10,7 +10,6 @@ import { PASO_MAX_CLASHES } from "../../tracks/paso-clashes";
 import {
   ApproveTrackCorrectionDto,
   CreateTrackCorrectionDto,
-  PROPOSABLE_REASONS,
 } from "./track-correction.dto";
 
 /**
@@ -61,27 +60,46 @@ describe("bornes des clashs paso doble", () => {
   });
 });
 
-/**
- * `DELETE` (#446) part seul, avant son producteur : la base et le client
- * Prisma le connaissent, mais aucune route ne l'accepte encore.
- */
-describe("motif DELETE (livré avant son producteur)", () => {
+/** Proposition de suppression (#446) : le motif libre est obligatoire. */
+describe("motif DELETE", () => {
   const failed = <T extends object>(cls: new () => T, payload: object) =>
     validateSync(plainToInstance(cls, payload)).map((e) => e.property);
+  const trackId = "8b0f2c1e-4a9d-4c3b-9f1e-2a7d5c6b8e90";
 
-  it("est refusé par POST /track-corrections", () => {
+  it("est accepté par POST /track-corrections avec un message", () => {
     expect(
       failed(CreateTrackCorrectionDto, {
-        trackId: "8b0f2c1e-4a9d-4c3b-9f1e-2a7d5c6b8e90",
+        trackId,
         reason: TrackCorrectionReason.DELETE,
         message: "Doublon",
       }),
-    ).toEqual(["reason"]);
+    ).toEqual([]);
   });
 
-  it("n'est pas proposable, les autres motifs le restent", () => {
-    expect(PROPOSABLE_REASONS).not.toContain(TrackCorrectionReason.DELETE);
-    expect(PROPOSABLE_REASONS).toContain(TrackCorrectionReason.OTHER);
+  it("exige un message", () => {
+    expect(
+      failed(CreateTrackCorrectionDto, {
+        trackId,
+        reason: TrackCorrectionReason.DELETE,
+      }),
+    ).toEqual(["message"]);
+  });
+
+  it("le message reste facultatif pour les autres motifs", () => {
+    expect(
+      failed(CreateTrackCorrectionDto, {
+        trackId,
+        reason: TrackCorrectionReason.TITLE,
+        title: "Nouveau",
+      }),
+    ).toEqual([]);
+    expect(
+      failed(CreateTrackCorrectionDto, {
+        trackId,
+        reason: TrackCorrectionReason.OTHER,
+        message: 42,
+      }),
+    ).toEqual(["message"]);
   });
 
   it("est refusé par la route historique de signalement", () => {

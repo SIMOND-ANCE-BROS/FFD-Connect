@@ -154,6 +154,57 @@ describe("Track corrections (integration, real DB)", () => {
     );
   });
 
+  it("an approved deletion request hides the track and rejects the other pending proposals", async () => {
+    const adminId = await admin();
+    const trackId = await track("Doublon", "Orchestre");
+    const id = await correction(trackId, TrackCorrectionReason.DELETE, {
+      message: "Doublon",
+    });
+    const other = await correction(trackId, TrackCorrectionReason.TITLE, {
+      message: "typo",
+    });
+
+    await service.approve(id, adminId, {});
+
+    const hidden = await prisma.track.findUnique({
+      where: { id: trackId },
+      select: { blacklisted: true },
+    });
+    // Soft delete only: the row is still there, out of the library.
+    expect(hidden).toEqual({ blacklisted: true });
+    const superseded = await prisma.trackCorrection.findUnique({
+      where: { id: other },
+      select: { status: true, reviewComment: true, reviewedById: true },
+    });
+    expect(superseded).toEqual({
+      status: TrackCorrectionStatus.REJECTED,
+      reviewComment: "Musique retirée de la bibliothèque",
+      reviewedById: adminId,
+    });
+    const rows = await prisma.adminAuditLog.findMany({
+      where: { targetId: { in: [id, other] } },
+      select: { targetId: true, action: true, before: true, after: true },
+      take: 10,
+    });
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        {
+          targetId: id,
+          action: "TRACK_CORRECTION_APPROVE",
+          before: { trackId, blacklisted: false },
+          after: { trackId, blacklisted: true },
+        },
+        {
+          targetId: other,
+          action: "TRACK_CORRECTION_REJECT",
+          before: null,
+          after: { trackId },
+        },
+      ]),
+    );
+    expect(rows).toHaveLength(2);
+  });
+
   it("a rejection writes a trackId-only row", async () => {
     const adminId = await admin();
     const trackId = await track("Rumba", "Orchestre");

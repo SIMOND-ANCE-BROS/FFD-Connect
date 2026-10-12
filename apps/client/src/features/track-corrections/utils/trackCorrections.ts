@@ -28,7 +28,13 @@ const FORM_REASONS: readonly TrackCorrectionReason[] = [
   "DANCE",
   "MPM",
   "OTHER",
+  "DELETE",
 ];
+
+/** Libellé du formulaire quand il diffère de celui de la liste (#446). */
+const FORM_LABELS: Partial<Record<TrackCorrectionReason, string>> = {
+  DELETE: "Proposer la suppression",
+};
 
 /**
  * Motifs proposés à l'utilisateur dans le formulaire. Pas de clashs : ils ont
@@ -37,7 +43,15 @@ const FORM_REASONS: readonly TrackCorrectionReason[] = [
 export const CORRECTION_REASONS: {
   value: TrackCorrectionReason;
   label: string;
-}[] = FORM_REASONS.map((value) => ({ value, label: REASON_LABELS[value] }));
+}[] = FORM_REASONS.map((value) => ({
+  value,
+  label: FORM_LABELS[value] ?? REASON_LABELS[value],
+}));
+
+/** Vrai pour une demande de retrait de la musique (#446). */
+export const isDeletionRequest = (item: {
+  reason: TrackCorrectionReason;
+}): boolean => item.reason === "DELETE";
 
 /** Libellé d'un motif ; un motif inconnu de cette version s'affiche tel quel. */
 export function reasonLabel(reason: TrackCorrectionReason): string {
