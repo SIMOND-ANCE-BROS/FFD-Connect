@@ -28,16 +28,21 @@ on:
           Promote staging → bêta testeurs (iOS TestFlight + Android Google
           Play). resume = reprendre un build beta EXISTANT (tag/release, envoi
           si besoin, distribution) sans rebuild : renseigner build_id.
+          distribute = distribuer un build fait HORS EAS (eas build --local)
+          et déjà envoyé au store : renseigner build_number et platform (ios
+          ou android).
         required: true
         type: choice
         options:
           - ota
           - build
           - resume
+          - distribute
       platform:
         description: >-
           action=build / resume : plateforme(s) visée(s). all = iOS (TestFlight)
           et Android (Google Play, test fermé) en parallèle, mêmes étapes.
+          action=distribute : ios ou android obligatoire (all refusé).
         required: false
         default: all
         type: choice
@@ -49,6 +54,14 @@ on:
         description: >-
           action=resume uniquement : ID EAS du build beta à reprendre, iOS ou
           Android (UUID, affiché dans le résumé du run qui l'a lancé).
+        required: false
+        type: string
+      build_number:
+        description: >-
+          action=distribute uniquement : numéro du build local tel que l'affiche
+          le store (CFBundleVersion iOS / versionCode Android), chiffres seuls
+          (ex. 26). Le build doit déjà être envoyé sur App Store Connect /
+          la piste alpha de Google Play.
         required: false
         type: string
       toTest:
@@ -613,6 +626,11 @@ jobs:
   #   - resume → reprend un build `beta` DÉJÀ FAIT (input build_id, et
   #              `platform` si on veut viser une seule jambe), sans rebuild
   #              (0 $) : tag/release, envoi s'il n'a pas abouti, distribution.
+  #   - distribute → build fait HORS EAS (`eas build --local`, quota iOS du
+  #              plan gratuit épuisé) et envoyé au store à la main : aucun
+  #              enregistrement EAS, seul le numéro de build (input
+  #              build_number, platform ios OU android) l'identifie. Ni build,
+  #              ni eas-cli, ni envoi : notes, tag/release, puis distribution.
   # DEUX approbations humaines (environnement `testflight-beta` : relecteur
   # obligatoire, branches restreintes ; le nom date d'avant Android) :
   #   1. promote-beta — « on lance le build / l'envoi ? » ;
@@ -706,9 +724,20 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Setup pnpm & Node
+        if: inputs.action != 'distribute'
         uses: ./.github/actions/setup-pnpm
 
+      # distribute : ni eas-cli ni dépendances (le générateur de notes n'importe
+      # que des modules intégrés) — Node seul, et pas de jeton Expo exposé.
+      - name: Setup Node (distribute)
+        if: inputs.action == 'distribute'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
       - name: Setup EAS CLI
+        if: inputs.action != 'distribute'
         uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
         with:
           eas-version: latest
@@ -780,6 +809,71 @@ jobs:
           echo "## 🔁 Reprise du build $PLATFORM_NAME beta $NUMBER (\`$BUILD_ID\`, commit ${COMMIT:0:7}) — aucun rebuild" \
             >> "$GITHUB_STEP_SUMMARY"
 
+      # action=distribute : build LOCAL (`eas build --local`), déjà envoyé au
+      # store hors CI (Transporter / `eas submit --path` / Play Console). Pas
+      # d'ID EAS : on se place sur le commit qu'il décrit — celui d'un tag
+      # `beta-*-<plateforme>-<n°>` s'il existe déjà (posé à la main quand
+      # staging a avancé depuis le build), sinon la pointe de staging — puis
+      # notes, tag/release (idempotents) et passage de relais à
+      # distribute-beta, qui attend lui-même que le store ait traité le build.
+      - name: Resolve local beta build (distribute)
+        id: local
+        if: inputs.action == 'distribute'
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number }}
+          REQUESTED: ${{ inputs.platform }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          if [ "$REQUESTED" != "ios" ] && [ "$REQUESTED" != "android" ]; then
+            echo "::error::action=distribute exige platform=ios ou platform=android (reçu : all) : un numéro de build ne désigne qu'un seul store"
+            exit 1
+          fi
+          # [[ =~ ]] ancre sur la chaîne entière (pas de « 26⏎… »). Pas de zéro
+          # en tête : « 026 » donnerait un tag différent du numéro affiché.
+          if ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]{0,8}$ ]]; then
+            echo "::error::action=distribute exige build_number = numéro du build en chiffres seuls (ex. 26)"
+            exit 1
+          fi
+          mapfile -t TAGS < <(git tag -l "beta-*-$PLATFORM-$BUILD_NUMBER")
+          TAG=""
+          case "${#TAGS[@]}" in
+            0) echo "Aucun tag pour le build $PLATFORM_NAME $BUILD_NUMBER : il décrira la pointe de staging." ;;
+            1) TAG="${TAGS[0]}" ;;
+            *)
+              echo "::error::plusieurs tags pour le build $PLATFORM_NAME $BUILD_NUMBER (${TAGS[*]}) : n'en garder qu'un"
+              exit 1
+              ;;
+          esac
+          if [ -n "$TAG" ]; then
+            COMMIT=$(git rev-list -n 1 "refs/tags/$TAG")
+            if ! git merge-base --is-ancestor "$COMMIT" HEAD 2> /dev/null; then
+              echo "::error::le commit ${COMMIT:0:7} du tag $TAG n'est pas dans l'historique de staging"
+              exit 1
+            fi
+            git checkout --quiet --detach "$COMMIT"
+          fi
+          VERSION=$(sed -nE 's/.*version: "([^"]+)", \/\/ x-release-please-version.*/\1/p' apps/client/app.config.js)
+          if [ -z "$VERSION" ]; then
+            echo "::error::version introuvable dans apps/client/app.config.js (annotation x-release-please-version)"
+            exit 1
+          fi
+          # L'étape Tag recalcule ce nom : un tag existant d'une autre version
+          # donnerait sinon un SECOND tag pour le même build.
+          if [ -n "$TAG" ] && [ "$TAG" != "beta-$VERSION-$PLATFORM-$BUILD_NUMBER" ]; then
+            echo "::error::tag $TAG incohérent avec la version $VERSION de son commit (attendu beta-$VERSION-$PLATFORM-$BUILD_NUMBER)"
+            exit 1
+          fi
+          {
+            echo "number=$BUILD_NUMBER"
+            # Envoi au store fait hors CI : distribute-beta ne part que sur
+            # submit_state=finished, et son script attend de toute façon que
+            # le store ait reçu et traité ce numéro (--timeout 45).
+            echo "submit_state=finished"
+          } >> "$GITHUB_OUTPUT"
+          echo "## $PLATFORM_ICON Build local $PLATFORM_NAME beta $BUILD_NUMBER (commit $(git rev-parse --short HEAD)${TAG:+, tag $TAG}) — ni build ni envoi par la CI" \
+            >> "$GITHUB_STEP_SUMMARY"
+
       # Deux textes, deux publics :
       # - beta-notes.txt → testeurs (What to Test, notes Play) : EN FRANÇAIS,
       #   tiré de la section « ## Pour les testeurs » des PR depuis le tag bêta
@@ -792,6 +886,10 @@ jobs:
       # 500) : « À tester » d'abord, puis des points entiers et « … et d'autres
       # corrections et améliorations. » (tester-notes.mjs). Des notes saisies à
       # la main restent coupées par le store / les scripts de distribution.
+      # Le générateur vient du commit du WORKFLOW (github.sha : la réf du
+      # dispatch, develop), pas de l'arbre décrit (staging) : le workflow lui
+      # passe des options (--to-test) qu'un générateur plus ancien ignorerait
+      # sans erreur — « À tester » aurait alors disparu des stores.
       - name: Generate tester notes
         id: notes
         if: steps.resolve.outputs.skip != 'true'
@@ -812,14 +910,21 @@ jobs:
           if [ "$PLATFORM" = "ios" ] || [ "$PLATFORM" = "android" ]; then
             BASE=(--platform "$PLATFORM")
           fi
+          GEN="$RUNNER_TEMP/changelog-tools"
+          mkdir -p "$GEN"
+          git cat-file -e "$GITHUB_SHA^{commit}" 2> /dev/null \
+            || git fetch --quiet --no-tags --depth=1 origin "$GITHUB_SHA"
+          for f in generate-changelog.mjs tester-notes.mjs; do
+            git show "$GITHUB_SHA:scripts/$f" > "$GEN/$f"
+          done
           if [ -n "$NOTES" ]; then
             printf '%s\n' "$NOTES" > beta-notes.md
             cp beta-notes.md beta-notes.txt
           else
             # Sans titre : la release porte déjà « Beta iOS 1.0.0 (19) ».
-            node scripts/generate-changelog.mjs "${BASE[@]}" --format markdown --heading none > beta-notes.md
+            node "$GEN/generate-changelog.mjs" "${BASE[@]}" --format markdown --heading none > beta-notes.md
             # « À tester » est intégré par le générateur, dans la limite du store.
-            node scripts/generate-changelog.mjs "${BASE[@]}" --format testers --to-test "$TO_TEST" > beta-notes.txt
+            node "$GEN/generate-changelog.mjs" "${BASE[@]}" --format testers --to-test "$TO_TEST" > beta-notes.txt
           fi
           if [ -n "$TO_TEST" ]; then
             # Un point par élément séparé par « ; », espaces de bord retirés.
@@ -951,22 +1056,27 @@ jobs:
       # `beta-<version>-<ios|android>-<build number>`, the number TestFlight /
       # Play display ("1.0.0 (18)"). An OTA is tagged too: without it the next
       # changelog (built from the last `beta-*` tag) would announce changes
-      # testers already received. Idempotent: a resume skips it.
+      # testers already received. Idempotent: a resume or a distribute skips it
+      # when the release exists (a local build's tag may be created by hand).
       - name: Tag & GitHub Release (beta, prerelease)
         id: tag
         if: >-
           !cancelled()
           && (steps.build.outputs.number != ''
           || steps.resolve.outputs.number != ''
+          || steps.local.outputs.number != ''
           || steps.ota.outcome == 'success')
         env:
           GH_TOKEN: ${{ github.token }}
           ACTION: ${{ inputs.action }}
           PLATFORM: ${{ matrix.platform }}
-          BUILD_NUMBER: ${{ steps.build.outputs.number || steps.resolve.outputs.number }}
+          BUILD_NUMBER: >-
+            ${{ steps.build.outputs.number || steps.resolve.outputs.number
+            || steps.local.outputs.number }}
         run: |
           set -euo pipefail
-          # Pointe de staging (build), ou commit du build repris (resume).
+          # Pointe de staging (build), commit du build repris (resume), ou
+          # commit du tag existant / pointe de staging (distribute).
           SHA=$(git rev-parse HEAD)
           VERSION=$(sed -nE 's/.*version: "([^"]+)", \/\/ x-release-please-version.*/\1/p' apps/client/app.config.js)
           if [ -z "$VERSION" ]; then
@@ -1102,10 +1212,13 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
           SKIP: ${{ steps.resolve.outputs.skip }}
           BUILD_ID: ${{ steps.build.outputs.id || steps.resolve.outputs.id }}
-          BUILD_NUMBER: ${{ steps.build.outputs.number || steps.resolve.outputs.number }}
+          BUILD_NUMBER: >-
+            ${{ steps.build.outputs.number || steps.resolve.outputs.number
+            || steps.local.outputs.number }}
           BUILD_STATE: ${{ steps.build.outputs.state }}
           TAG_OUTCOME: ${{ steps.tag.outcome }}
-          SUBMIT_STATE: ${{ steps.submit.outputs.state }}
+          # distribute : envoi fait hors CI (étape « Resolve local beta build »).
+          SUBMIT_STATE: ${{ steps.submit.outputs.state || steps.local.outputs.submit_state }}
         run: |
           set -euo pipefail
           D="$RUNNER_TEMP/beta-state"
@@ -1476,10 +1589,19 @@ jobs:
             sf() { jq -r --arg k "$1" '.[$k] // empty | tostring' "$S"; }
             [ "$(sf skip)" != "true" ] || continue # resume : jambe de l'autre plateforme
             BUILD_ID=$(sf build_id)
+            BUILD_NUMBER=$(sf build_number)
             BUILD_STATE=$(sf build_state)
             TAG_OUTCOME=$(sf tag_outcome)
             SUBMIT_STATE=$(sf submit_state)
-            if [ -z "$BUILD_ID" ]; then
+            if [ -n "$BUILD_ID" ]; then
+              CMD="gh workflow run eas-build.yml --ref $REF -f action=resume -f platform=$PLATFORM -f build_id=$BUILD_ID"
+              BUILD_LABEL="${BUILD_STATE:-repris}"
+            elif [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]{0,8}$ ]]; then
+              # distribute : build local, sans ID EAS — on le reprend par son
+              # numéro (validé : l'état vient d'un job non fiable).
+              CMD="gh workflow run eas-build.yml --ref $REF -f action=distribute -f platform=$PLATFORM -f build_number=$BUILD_NUMBER"
+              BUILD_LABEL="local (hors EAS)"
+            else
               continue # rien n'a été construit ni repris : l'erreur est dans l'étape fautive
             fi
             if [ "$BUILD_STATE" = "failed" ]; then
@@ -1495,14 +1617,13 @@ jobs:
               echo "✅ Promotion $PLATFORM complète." >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
-            CMD="gh workflow run eas-build.yml --ref $REF -f action=resume -f platform=$PLATFORM -f build_id=$BUILD_ID"
             echo "::warning::promotion $PLATFORM incomplète (tag=${TAG_OUTCOME:-skipped} submit=${SUBMIT_STATE:-skipped} distribution=$DIST) - reprendre SANS rebuild : $CMD"
             {
               echo "## ⚠️ Promotion $PLATFORM incomplète — reprise sans rebuild (0 \$)"
               echo
               echo "| Étape | État |"
               echo "| --- | --- |"
-              echo "| Build | ${BUILD_STATE:-repris} |"
+              echo "| Build | $BUILD_LABEL |"
               echo "| Tag & Release | ${TAG_OUTCOME:-skipped} |"
               echo "| Envoi au store | ${SUBMIT_STATE:-skipped} |"
               echo "| Distribution (2ᵉ approbation) | $DIST |"
@@ -1513,7 +1634,7 @@ jobs:
               echo "$CMD"
               echo '```'
               echo
-              echo "Ou Actions → EAS Build & Update → Run workflow : \`action = resume\`, \`platform = $PLATFORM\`, \`build_id\` ci-dessus. La reprise redemande les deux approbations."
+              echo "Ou Actions → EAS Build & Update → Run workflow avec les valeurs de la commande ci-dessus. La reprise redemande les deux approbations."
             } >> "$GITHUB_STEP_SUMMARY"
           done
 
