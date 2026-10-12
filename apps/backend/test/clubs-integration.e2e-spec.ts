@@ -6,6 +6,7 @@ import {
 } from "@prisma/client";
 import { AppModule } from "./../src/app.module";
 import { ClubsHelloAssoService } from "./../src/clubs/clubs-helloasso.service";
+import { SecretCipherService } from "./../src/common/crypto/secret-cipher.service";
 import { ClubsService } from "./../src/clubs/clubs.service";
 import { PartnershipQueryService } from "./../src/clubs/partnership-query.service";
 import { PartnershipService } from "./../src/clubs/partnership.service";
@@ -554,6 +555,43 @@ describe("ClubsService (integration with real DB)", () => {
       expect(status.helloAssoConnected).toBe(true);
       expect(status.organizationSlug).toBe("test-org");
       // Remise à zéro
+      await prisma.club.update({
+        where: { id: clubAId },
+        data: {
+          helloAssoClientId: null,
+          helloAssoClientSecret: null,
+          helloAssoOrgSlug: null,
+        },
+      });
+    });
+
+    it("chiffre le secret au repos si une clé est posée et ne l'expose jamais (#389)", async () => {
+      const secret = `e2e-secret-${suffix}`;
+      await helloAssoService.connectHelloAsso(organizerAId, {
+        clientId: "test-client-id",
+        clientSecret: secret,
+        organizationSlug: "test-org",
+      });
+
+      const stored = await prisma.club.findUnique({
+        where: { id: clubAId },
+        select: { helloAssoClientSecret: true },
+      });
+      // The e2e environment may run without SECRETS_ENCRYPTION_KEY: then the
+      // secret stays in plaintext (deploy-safe mode), otherwise it is sealed.
+      if (moduleFixture.get(SecretCipherService).isEnabled) {
+        expect(stored?.helloAssoClientSecret).toMatch(/^v1:/);
+        expect(stored?.helloAssoClientSecret).not.toContain(secret);
+      } else {
+        expect(stored?.helloAssoClientSecret).toBe(secret);
+      }
+
+      const status =
+        await helloAssoService.getMyClubHelloAssoStatus(organizerAId);
+      expect(status.helloAssoConnected).toBe(true);
+      expect(JSON.stringify(status)).not.toContain(secret);
+      expect(status).not.toHaveProperty("helloAssoClientSecret");
+
       await prisma.club.update({
         where: { id: clubAId },
         data: {

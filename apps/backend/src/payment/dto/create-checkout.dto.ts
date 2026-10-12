@@ -17,7 +17,18 @@ export class CreateCheckoutDto {
   @IsOptional()
   seatLabel?: string;
 
-  @ApiProperty({ example: 10.5 })
+  /**
+   * Ignored (#381): the amount is computed server-side from the competition
+   * layout. Still accepted so that older clients sending it are not rejected
+   * by the global `forbidNonWhitelisted` validation.
+   */
+  @ApiPropertyOptional({
+    deprecated: true,
+    description:
+      "Ignoré : le montant est calculé côté serveur à partir du tarif de la place.",
+    example: 1500,
+  })
+  @IsOptional()
   @IsNumber()
-  amount!: number;
+  amount?: number;
 }
