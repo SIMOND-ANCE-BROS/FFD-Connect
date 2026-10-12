@@ -388,6 +388,7 @@ export const competitionSeatPricingSelect = {
 export const seatBookingPaymentCheckSelect = {
   id: true,
   competitionId: true,
+  status: true,
   paymentId: true,
   expectedAmountCents: true,
 } as const;

@@ -155,6 +155,23 @@ describe("Payment checkout + HelloAsso webhook (integration, real DB)", () => {
     expect(after.status).toBe("PENDING");
   });
 
+  it("never revives a cancelled booking, even for a correct payment", async () => {
+    const booking = await checkout();
+    await prisma.seatBooking.update({
+      where: { id: booking.id },
+      data: { status: "CANCELLED" },
+    });
+
+    await service.handleOrderWebhook(
+      order(booking.id, { amount: SEAT_PRICE_CENTS, state: "Authorized" }),
+    );
+
+    const after = await prisma.seatBooking.findUniqueOrThrow({
+      where: { id: booking.id },
+    });
+    expect(after.status).toBe("CANCELLED");
+  });
+
   it("confirms the booking for a paid order of the expected amount", async () => {
     const booking = await checkout();
 

@@ -14,6 +14,7 @@ import { HelloAssoService } from "./hello-asso.service";
 import {
   checkOrderAgainstBooking,
   getWebhookMetadata,
+  type OrderRejectionReason,
 } from "./helloasso-order-check";
 import { resolveSeatPriceCents } from "./seat-pricing";
 
@@ -124,9 +125,18 @@ export class PaymentService {
   /**
    * Signed HelloAsso `Order` notification (#381): confirms the booking only
    * when the order is paid, for the expected amount, on the booking's
-   * competition and checkout intent. A rejection never throws — HelloAsso
-   * gets a 2xx and does not retry — but is logged and reported to Sentry
+   * competition and checkout intent (fail-closed, see
+   * `checkOrderAgainstBooking`). A rejection never throws — HelloAsso gets a
+   * 2xx and does not retry — but is logged and reported to Sentry
    * (identifiers only, no personal data).
+   *
+   * A legacy booking (created before #381, no stored expected amount) is
+   * rejected rather than compared against today's layout price: the price may
+   * have changed since, and such holds expired after 15 minutes anyway.
+   *
+   * The transition is a conditional update (PENDING + same expected amount)
+   * so a booking cancelled or re-priced between the read and the write is
+   * never confirmed.
    */
   async handleOrderWebhook(payload: WebhookPayloadDto): Promise<void> {
     const bookingId = getWebhookMetadata(payload)?.bookingId;
@@ -141,6 +151,11 @@ export class PaymentService {
       this.rejectOrder(bookingId, orderId, "booking_not_found");
       return;
     }
+    if (booking.status === "CONFIRMED") {
+      // HelloAsso redelivery of an order already processed: nothing to do.
+      this.logger.log(`Booking ${bookingId} already confirmed`);
+      return;
+    }
 
     const reason = checkOrderAgainstBooking(payload, booking);
     if (reason) {
@@ -148,13 +163,21 @@ export class PaymentService {
       return;
     }
 
-    await this.confirmBooking(booking.id);
+    const { count } = await this.prisma.seatBooking.updateMany({
+      where: {
+        id: booking.id,
+        status: "PENDING",
+        expectedAmountCents: booking.expectedAmountCents,
+      },
+      data: { status: "CONFIRMED" },
+    });
+    if (count === 0) this.rejectOrder(bookingId, orderId, "not_pending");
   }
 
   private rejectOrder(
     bookingId: string,
     orderId: number | undefined,
-    reason: string,
+    reason: OrderRejectionReason,
   ): void {
     this.logger.error(
       `HelloAsso order ${orderId ?? "?"} rejected for booking ${bookingId}: ${reason}`,
