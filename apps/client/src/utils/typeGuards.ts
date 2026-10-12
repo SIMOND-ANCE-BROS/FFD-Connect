@@ -43,7 +43,8 @@ export function toThemePreference(value: string): ThemePreference {
   return "system"; // Valeur par défaut
 }
 
-export type CompetitionFilter = "ALL" | "OPEN" | "DRAFT";
+/** Filter of the club competition list (#441): all, upcoming (incl. live), past. */
+export type CompetitionFilter = "ALL" | "UPCOMING" | "PAST";
 
 /**
  * Type guard pour valider CompetitionFilter
@@ -51,7 +52,7 @@ export type CompetitionFilter = "ALL" | "OPEN" | "DRAFT";
 export function isValidCompetitionFilter(
   value: string,
 ): value is CompetitionFilter {
-  return ["ALL", "OPEN", "DRAFT"].includes(value);
+  return ["ALL", "UPCOMING", "PAST"].includes(value);
 }
 
 /**
