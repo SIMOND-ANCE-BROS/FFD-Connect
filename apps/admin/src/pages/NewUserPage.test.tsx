@@ -1,23 +1,35 @@
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import userEvent, { type UserEvent } from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { vi } from 'vitest';
+import { describe, vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { NewUserPage } from './NewUserPage';
 
+// Every keystroke re-renders the whole Mantine form, which pushed these flows past
+// Vitest's 5 s budget under full-suite load (#257). No test here depends on
+// per-character input, so text is pasted in one event and actions get no delay.
+let user: UserEvent;
+
+/** Fills an empty text field in one input event (paste) instead of one per character. */
+async function fill(input: HTMLElement, text: string) {
+  await user.click(input);
+  await user.paste(text);
+}
+
 /** Picks an option in a Mantine Select (every listbox stays mounted in jsdom). */
 async function pickOption(input: HTMLElement, name: string) {
-  await userEvent.click(input);
+  await user.click(input);
   const listbox = document.getElementById(input.getAttribute('aria-controls') ?? '');
   if (!listbox) throw new Error('listbox not found');
-  await userEvent.click(within(listbox).getByRole('option', { name, hidden: true }));
+  await user.click(within(listbox).getByRole('option', { name, hidden: true }));
 }
 
 function renderPage() {
   return render(
-    <MantineProvider>
+    // env="test": no transitions or portals, so dialogs and dropdowns render at once.
+    <MantineProvider env="test">
       <QueryClientProvider
         client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
       >
@@ -33,16 +45,22 @@ function renderPage() {
 }
 
 async function fillIdentity() {
-  await userEvent.type(await screen.findByLabelText(/^Email/), 'jeanne@x.fr');
-  await userEvent.type(screen.getByLabelText(/^Prénom/), 'Jeanne');
-  await userEvent.type(screen.getByLabelText(/^Nom de famille/), 'Martin');
+  await fill(await screen.findByLabelText(/^Email/), 'jeanne@x.fr');
+  await fill(screen.getByLabelText(/^Prénom/), 'Jeanne');
+  await fill(screen.getByLabelText(/^Nom de famille/), 'Martin');
 }
 
-const submit = () => userEvent.click(screen.getByRole('button', { name: /créer l'utilisateur/i }));
+const submit = () => user.click(screen.getByRole('button', { name: /créer l'utilisateur/i }));
 
-describe('NewUserPage', () => {
+// Residual explicit timeout (#257): each test drives a whole Mantine form (render,
+// async reference data, several full re-renders) and the first one of the file also
+// pays the cold render of the Mantine tree. Under a loaded full-suite run that still
+// lands around Vitest's 5 s default even with pasted input, so give it headroom
+// rather than let the suite flake. A real hang still fails, just later.
+describe('NewUserPage', { timeout: 15_000 }, () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    user = userEvent.setup({ delay: null });
     vi.spyOn(sdk, 'adminControllerClubOptions').mockResolvedValue({
       data: [{ id: 'c1', name: 'Club A' }],
       error: undefined,
@@ -66,7 +84,7 @@ describe('NewUserPage', () => {
     } as never);
     renderPage();
     await fillIdentity();
-    await userEvent.type(await screen.findByLabelText('Classement national'), '12');
+    await fill(await screen.findByLabelText('Classement national'), '12');
     await submit();
     expect(create).toHaveBeenCalledWith({
       body: {
@@ -110,7 +128,7 @@ describe('NewUserPage', () => {
     expect(screen.queryByRole('radio', { name: 'Nouveau club' })).toBeNull();
     expect(screen.getByLabelText('Club (facultatif)', { selector: 'input' })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('radio', { name: 'Club' }));
+    await user.click(screen.getByRole('radio', { name: 'Club' }));
     expect(screen.getByRole('radio', { name: 'Nouveau club' })).toBeInTheDocument();
     expect(screen.queryByLabelText('Classement national')).toBeNull();
     await submit();
@@ -125,9 +143,9 @@ describe('NewUserPage', () => {
     } as never);
     renderPage();
     await fillIdentity();
-    await userEvent.click(screen.getByRole('radio', { name: 'Club' }));
-    await userEvent.click(screen.getByRole('radio', { name: 'Nouveau club' }));
-    await userEvent.type(screen.getByLabelText(/^Nom du nouveau club/), 'Club Neuf');
+    await user.click(screen.getByRole('radio', { name: 'Club' }));
+    await user.click(screen.getByRole('radio', { name: 'Nouveau club' }));
+    await fill(screen.getByLabelText(/^Nom du nouveau club/), 'Club Neuf');
     await submit();
     expect(create).toHaveBeenCalledWith({
       body: {
@@ -148,12 +166,12 @@ describe('NewUserPage', () => {
     } as never);
     renderPage();
     await fillIdentity();
-    await userEvent.click(screen.getByRole('radio', { name: 'Club' }));
-    await userEvent.click(screen.getByRole('radio', { name: 'Nouveau club' }));
-    await userEvent.type(screen.getByLabelText(/^Nom du nouveau club/), 'Club A');
+    await user.click(screen.getByRole('radio', { name: 'Club' }));
+    await user.click(screen.getByRole('radio', { name: 'Nouveau club' }));
+    await fill(screen.getByLabelText(/^Nom du nouveau club/), 'Club A');
     await submit();
     expect(await screen.findByText(/un club porte déjà ce nom/i)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /utiliser « club a »/i }));
+    await user.click(screen.getByRole('button', { name: /utiliser « club a »/i }));
     expect(screen.getByRole('radio', { name: 'Club existant' })).toBeChecked();
   });
 
@@ -186,7 +204,7 @@ describe('NewUserPage', () => {
 
   it('offers every role but the main one and Admin as extra roles', async () => {
     renderPage();
-    await fillIdentity();
+    await screen.findByLabelText(/^Email/);
     expect(screen.getByRole('checkbox', { name: 'Club' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: 'Staff' })).toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: 'Licencié' })).toBeNull();
@@ -195,13 +213,13 @@ describe('NewUserPage', () => {
 
   it('drops a role from the extras when it becomes the main role', async () => {
     renderPage();
-    await fillIdentity();
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Staff' }));
+    await screen.findByLabelText(/^Email/);
+    await user.click(screen.getByRole('checkbox', { name: 'Staff' }));
     expect(screen.getByRole('checkbox', { name: 'Staff' })).toBeChecked();
-    await userEvent.click(screen.getByRole('radio', { name: 'Staff' }));
+    await user.click(screen.getByRole('radio', { name: 'Staff' }));
     expect(screen.queryByRole('checkbox', { name: 'Staff' })).toBeNull();
     expect(screen.getByRole('checkbox', { name: 'Licencié' })).not.toBeChecked();
-    await userEvent.click(screen.getByRole('radio', { name: 'Licencié' }));
+    await user.click(screen.getByRole('radio', { name: 'Licencié' }));
     expect(screen.getByRole('checkbox', { name: 'Staff' })).not.toBeChecked();
   });
 
@@ -212,7 +230,7 @@ describe('NewUserPage', () => {
     } as never);
     renderPage();
     await fillIdentity();
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Staff' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Staff' }));
     await submit();
     expect(create).toHaveBeenCalledWith({
       body: {
@@ -229,7 +247,7 @@ describe('NewUserPage', () => {
     const create = vi.spyOn(sdk, 'adminControllerCreateUser');
     renderPage();
     await fillIdentity();
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Club' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Club' }));
     await submit();
     expect(
       await screen.findByText('Un rôle Club supplémentaire nécessite un club'),
