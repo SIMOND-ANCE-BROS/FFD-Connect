@@ -1,10 +1,9 @@
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { screen, waitFor, within } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { Route, Routes, useLocation } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { renderWithProviders, setupUser } from '../test/render';
 import { UNAVAILABLE_MESSAGE } from '../lib/apiError';
 import { StatsPage } from './StatsPage';
 
@@ -73,35 +72,31 @@ function Probe() {
 }
 
 function renderPage(path = '/stats') {
-  return render(
-    <MantineProvider>
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route
-              path="/stats"
-              element={
-                <>
-                  <StatsPage />
-                  <Probe />
-                </>
-              }
-            />
-            <Route path="/clubs/:id" element={<Probe />} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+  return renderWithProviders(
+    <Routes>
+      <Route
+        path="/stats"
+        element={
+          <>
+            <StatsPage />
+            <Probe />
+          </>
+        }
+      />
+      <Route path="/clubs/:id" element={<Probe />} />
+    </Routes>,
+    { route: path },
   );
 }
 
 const ok = (data: object) => ({ data, error: undefined }) as never;
 
+let user: UserEvent;
+
 describe('StatsPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    user = setupUser();
   });
 
   it('shows the key figures of every block, the clubs table and the history note', async () => {
@@ -135,7 +130,7 @@ describe('StatsPage', () => {
     renderPage();
     await screen.findByRole('heading', { name: 'Utilisateurs' });
     expect(get).toHaveBeenLastCalledWith({ query: { period: '12w' } });
-    await userEvent.click(screen.getByRole('radio', { name: '6 mois' }));
+    await user.click(screen.getByRole('radio', { name: '6 mois' }));
     await waitFor(() => expect(get).toHaveBeenLastCalledWith({ query: { period: '6m' } }));
     expect(screen.getByTestId('location')).toHaveTextContent('/stats?period=6m');
   });
@@ -153,7 +148,7 @@ describe('StatsPage', () => {
     const get = vi.spyOn(sdk, 'adminStatsControllerGet').mockResolvedValue(ok(stats()));
     renderPage();
     await screen.findByRole('heading', { name: 'Utilisateurs' });
-    await userEvent.click(screen.getByRole('button', { name: 'Actualiser' }));
+    await user.click(screen.getByRole('button', { name: 'Actualiser' }));
     await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
   });
 

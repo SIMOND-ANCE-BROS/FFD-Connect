@@ -1,11 +1,10 @@
-import { MantineProvider } from '@mantine/core';
 import { Notifications, notifications } from '@mantine/notifications';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { act, screen, within } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { Route, Routes } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { fill, renderWithProviders, setupUser } from '../test/render';
 import { ClubDetailPage } from './ClubDetailPage';
 
 const empty = {
@@ -55,26 +54,24 @@ function renderPage(club: object) {
     data: club,
     error: undefined,
   } as never);
-  return render(
-    <MantineProvider>
+  return renderWithProviders(
+    <>
       <Notifications />
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={['/clubs/c1']}>
-          <Routes>
-            <Route path="/clubs/:id" element={<ClubDetailPage />} />
-            <Route path="/clubs" element={<p>clubs list</p>} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+      <Routes>
+        <Route path="/clubs/:id" element={<ClubDetailPage />} />
+        <Route path="/clubs" element={<p>clubs list</p>} />
+      </Routes>
+    </>,
+    { route: '/clubs/c1' },
   );
 }
+
+let user: UserEvent;
 
 describe('ClubDetailPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    user = setupUser();
     vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue({
       data: { data: [], meta: { total: 0, skip: 0, take: 20, hasMore: false } },
       error: undefined,
@@ -88,14 +85,13 @@ describe('ClubDetailPage', () => {
     } as never);
     renderPage(empty);
     const name = await screen.findByLabelText(/^Nom du club/);
-    await userEvent.clear(name);
-    await userEvent.type(name, 'Club Z');
-    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await fill(user, name, 'Club Z');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Club A');
     expect(dialog).toHaveTextContent('Club Z');
     expect(dialog).toHaveTextContent(/reporté/);
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     expect(patch).toHaveBeenCalledWith({ path: { id: 'c1' }, body: { name: 'Club Z' } });
   });
 
@@ -107,11 +103,10 @@ describe('ClubDetailPage', () => {
     } as never);
     renderPage(empty);
     const name = await screen.findByLabelText(/^Nom du club/);
-    await userEvent.clear(name);
-    await userEvent.type(name, 'Club B');
-    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await fill(user, name, 'Club B');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     expect(await within(dialog).findByText('Un club porte déjà ce nom')).toBeInTheDocument();
   });
 
@@ -125,11 +120,10 @@ describe('ClubDetailPage', () => {
     } as never);
     renderPage(empty);
     const name = await screen.findByLabelText(/^Nom du club/);
-    await userEvent.clear(name);
-    await userEvent.type(name, 'Club Z');
-    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+    await fill(user, name, 'Club Z');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     expect(await within(dialog).findByText(message)).toBeInTheDocument();
   });
 
@@ -139,10 +133,10 @@ describe('ClubDetailPage', () => {
       error: undefined,
     } as never);
     renderPage(empty);
-    await userEvent.click(await screen.findByRole('button', { name: 'Désactiver le club' }));
+    await user.click(await screen.findByRole('button', { name: 'Désactiver le club' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(/licenciés ne sont pas affectés/);
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Désactiver' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Désactiver' }));
     expect(setStatus).toHaveBeenCalledWith({ path: { id: 'c1' }, body: { active: false } });
   });
 
@@ -152,7 +146,7 @@ describe('ClubDetailPage', () => {
     expect(screen.getByText('1 compte Club')).toBeInTheDocument();
     expect(screen.getByText('1 compétition organisée')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Supprimer le club' })).toBeDisabled();
-    await userEvent.click(screen.getByRole('button', { name: 'Désactiver à la place' }));
+    await user.click(screen.getByRole('button', { name: 'Désactiver à la place' }));
     expect(await screen.findByRole('dialog')).toHaveTextContent('Désactiver ce club');
   });
 
@@ -165,14 +159,14 @@ describe('ClubDetailPage', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeEnabled();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Supprimer le club' }));
+    await user.click(screen.getByRole('button', { name: 'Supprimer le club' }));
     let dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(
       'Ce club est utilisé pour les validations App Store / Google Play : il ne peut pas être supprimé.',
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Compris' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Compris' }));
 
-    await userEvent.click(screen.getByRole('button', { name: 'Désactiver le club' }));
+    await user.click(screen.getByRole('button', { name: 'Désactiver le club' }));
     dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(/il ne peut pas être désactivé/);
     expect(remove).not.toHaveBeenCalled();
@@ -186,8 +180,8 @@ describe('ClubDetailPage', () => {
       response: new Response(null, { status: 204 }),
     } as never);
     renderPage(empty);
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le club' }));
-    await userEvent.click(
+    await user.click(await screen.findByRole('button', { name: 'Supprimer le club' }));
+    await user.click(
       within(await screen.findByRole('dialog')).getByRole('button', {
         name: 'Supprimer définitivement',
       }),
@@ -211,9 +205,9 @@ describe('ClubDetailPage', () => {
       response: new Response(null, { status: 409 }),
     } as never);
     renderPage(empty);
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le club' }));
+    await user.click(await screen.findByRole('button', { name: 'Supprimer le club' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     expect(await within(dialog).findByText('1 membre')).toBeInTheDocument();
     expect(within(dialog).getByText('2 couples rattachés')).toBeInTheDocument();
   });
@@ -245,9 +239,9 @@ describe('ClubDetailPage', () => {
       response: undefined,
     } as never);
     renderPage(empty);
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le club' }));
+    await user.click(await screen.findByRole('button', { name: 'Supprimer le club' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     expect(await within(dialog).findByText(/Serveur injoignable/)).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Supprimer définitivement' })).toBeEnabled();
     expect(within(dialog).queryByRole('button', { name: 'Désactiver à la place' })).toBeNull();
@@ -272,9 +266,9 @@ describe('ClubDetailPage', () => {
 
   describe('Lier un membre', () => {
     // Mantine keeps notifications in a module-level store.
-    afterEach(() => notifications.clean());
+    afterEach(() => act(() => notifications.clean()));
 
-    const user = (o: object) => ({
+    const candidate = (o: object) => ({
       id: 'u9',
       email: 'anna@x.fr',
       firstName: 'Anna',
@@ -297,12 +291,12 @@ describe('ClubDetailPage', () => {
         error: undefined,
       } as never);
     const openSearch = async (term = 'anna') => {
-      await userEvent.click(await screen.findByRole('button', { name: 'Lier un membre' }));
-      await userEvent.type(await screen.findByLabelText('Rechercher un utilisateur'), term);
+      await user.click(await screen.findByRole('button', { name: 'Lier un membre' }));
+      await fill(user, await screen.findByLabelText('Rechercher un utilisateur'), term);
     };
 
     it('patches a user without club directly, then confirms with a notification', async () => {
-      const list = search(user({}));
+      const list = search(candidate({}));
       const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
         data: { id: 'u9' },
         error: undefined,
@@ -313,13 +307,13 @@ describe('ClubDetailPage', () => {
       expect(screen.getByText('Sans club')).toBeInTheDocument();
       expect(list).toHaveBeenCalledWith({ query: { search: 'anna', skip: 0, take: 10 } });
 
-      await userEvent.click(screen.getByRole('button', { name: 'Ajouter Anna Petit' }));
+      await user.click(screen.getByRole('button', { name: 'Ajouter Anna Petit' }));
       expect(patch).toHaveBeenCalledWith({ path: { id: 'u9' }, body: { clubId: 'c1' } });
       expect(await screen.findByText('Membre ajouté au club')).toBeInTheDocument();
     });
 
     it('asks for confirmation before moving a user out of another club', async () => {
-      search(user({ clubId: 'c2', clubName: 'Club B' }));
+      search(candidate({ clubId: 'c2', clubName: 'Club B' }));
       const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
         data: { id: 'u9' },
         error: undefined,
@@ -328,17 +322,17 @@ describe('ClubDetailPage', () => {
       await openSearch();
       expect(await screen.findByText('Club B')).toBeInTheDocument();
 
-      await userEvent.click(screen.getByRole('button', { name: 'Ajouter Anna Petit' }));
+      await user.click(screen.getByRole('button', { name: 'Ajouter Anna Petit' }));
       expect(await screen.findByText('Anna Petit quitte Club B pour Club A')).toBeInTheDocument();
       expect(patch).not.toHaveBeenCalled();
 
-      await userEvent.click(screen.getByRole('button', { name: 'Confirmer' }));
+      await user.click(screen.getByRole('button', { name: 'Confirmer' }));
       expect(patch).toHaveBeenCalledWith({ path: { id: 'u9' }, body: { clubId: 'c1' } });
       expect(await screen.findByText('Membre ajouté au club')).toBeInTheDocument();
     });
 
     it('shows the role badges of each result', async () => {
-      search(user({ role: 'STAFF', extraRoles: ['CLUB'] }));
+      search(candidate({ role: 'STAFF', extraRoles: ['CLUB'] }));
       renderPage(empty);
       await openSearch();
       const row = (await screen.findByText('anna@x.fr')).closest('tr') as HTMLElement;
@@ -347,28 +341,28 @@ describe('ClubDetailPage', () => {
     });
 
     it('confirms before linking a user holding the CLUB role, even without a club', async () => {
-      search(user({ extraRoles: ['CLUB'], roles: ['LICENSEE', 'CLUB'] }));
+      search(candidate({ extraRoles: ['CLUB'], roles: ['LICENSEE', 'CLUB'] }));
       const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
         data: { id: 'u9' },
         error: undefined,
       } as never);
       renderPage(empty);
       await openSearch();
-      await userEvent.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
+      await user.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
       expect(
         await screen.findByText('Anna Petit deviendra gestionnaire de Club A'),
       ).toBeInTheDocument();
       expect(screen.queryByText(/quitte/)).toBeNull();
       expect(patch).not.toHaveBeenCalled();
-      await userEvent.click(screen.getByRole('button', { name: 'Confirmer' }));
+      await user.click(screen.getByRole('button', { name: 'Confirmer' }));
       expect(patch).toHaveBeenCalledWith({ path: { id: 'u9' }, body: { clubId: 'c1' } });
     });
 
     it('mentions both the manager role and the club left', async () => {
-      search(user({ role: 'CLUB', clubId: 'c2', clubName: 'Club B' }));
+      search(candidate({ role: 'CLUB', clubId: 'c2', clubName: 'Club B' }));
       renderPage(empty);
       await openSearch();
-      await userEvent.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
+      await user.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
       expect(
         await screen.findByText('Anna Petit deviendra gestionnaire de Club A'),
       ).toBeInTheDocument();
@@ -376,21 +370,21 @@ describe('ClubDetailPage', () => {
     });
 
     it('links a legacy user whose club name is this club (any case) directly', async () => {
-      search(user({ clubId: null, clubName: 'club a' }));
+      search(candidate({ clubId: null, clubName: 'club a' }));
       const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
         data: { id: 'u9' },
         error: undefined,
       } as never);
       renderPage(empty);
       await openSearch();
-      await userEvent.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
+      await user.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
       expect(patch).toHaveBeenCalledWith({ path: { id: 'u9' }, body: { clubId: 'c1' } });
       expect(screen.queryByText(/quitte/)).toBeNull();
     });
 
     it('asks to refine the search when there are more results than shown', async () => {
       vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue({
-        data: { data: [user({})], meta: { total: 25, skip: 0, take: 10, hasMore: true } },
+        data: { data: [candidate({})], meta: { total: 25, skip: 0, take: 10, hasMore: true } },
         error: undefined,
       } as never);
       renderPage(empty);
@@ -399,18 +393,18 @@ describe('ClubDetailPage', () => {
     });
 
     it('goes back to the results when the move is cancelled', async () => {
-      search(user({ clubId: 'c2', clubName: 'Club B' }));
+      search(candidate({ clubId: 'c2', clubName: 'Club B' }));
       const patch = vi.spyOn(sdk, 'adminControllerUpdateUser');
       renderPage(empty);
       await openSearch();
-      await userEvent.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
-      await userEvent.click(await screen.findByRole('button', { name: 'Annuler' }));
+      await user.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
+      await user.click(await screen.findByRole('button', { name: 'Annuler' }));
       expect(await screen.findByText('anna@x.fr')).toBeInTheDocument();
       expect(patch).not.toHaveBeenCalled();
     });
 
     it('does not offer a user who already belongs to this club', async () => {
-      search(user({ id: 'u1', clubId: 'c1', clubName: 'Club A' }));
+      search(candidate({ id: 'u1', clubId: 'c1', clubName: 'Club A' }));
       renderPage(empty);
       await openSearch();
       expect(await screen.findByText('Déjà membre')).toBeInTheDocument();
@@ -418,7 +412,7 @@ describe('ClubDetailPage', () => {
     });
 
     it('shows the server error verbatim', async () => {
-      search(user({}));
+      search(candidate({}));
       vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
         data: undefined,
         error: { message: 'Un rôle Club supplémentaire nécessite un club' },
@@ -426,7 +420,7 @@ describe('ClubDetailPage', () => {
       } as never);
       renderPage(empty);
       await openSearch();
-      await userEvent.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
+      await user.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
       expect(
         await screen.findByText('Un rôle Club supplémentaire nécessite un club'),
       ).toBeInTheDocument();
@@ -434,7 +428,7 @@ describe('ClubDetailPage', () => {
     });
 
     it('shows the server error on the confirmation step too', async () => {
-      search(user({ clubId: 'c2', clubName: 'Club B' }));
+      search(candidate({ clubId: 'c2', clubName: 'Club B' }));
       vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
         data: undefined,
         error: { message: 'Ce club est désactivé.' },
@@ -442,23 +436,23 @@ describe('ClubDetailPage', () => {
       } as never);
       renderPage(empty);
       await openSearch();
-      await userEvent.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
-      await userEvent.click(await screen.findByRole('button', { name: 'Confirmer' }));
+      await user.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
+      await user.click(await screen.findByRole('button', { name: 'Confirmer' }));
       expect(await screen.findByText('Ce club est désactivé.')).toBeInTheDocument();
     });
 
     it('waits for two characters and reports an empty or failed search', async () => {
       const list = search();
       renderPage(empty);
-      await userEvent.click(await screen.findByRole('button', { name: 'Lier un membre' }));
-      await userEvent.type(await screen.findByLabelText('Rechercher un utilisateur'), 'a');
+      await user.click(await screen.findByRole('button', { name: 'Lier un membre' }));
+      await user.type(await screen.findByLabelText('Rechercher un utilisateur'), 'a');
       expect(screen.getByText('Saisissez au moins 2 caractères.')).toBeInTheDocument();
       expect(list).not.toHaveBeenCalled();
-      await userEvent.type(screen.getByLabelText('Rechercher un utilisateur'), 'b');
+      await user.type(screen.getByLabelText('Rechercher un utilisateur'), 'b');
       expect(await screen.findByText('Aucun utilisateur trouvé.')).toBeInTheDocument();
 
       list.mockResolvedValue({ data: undefined, error: { message: 'Panne' } } as never);
-      await userEvent.type(screen.getByLabelText('Rechercher un utilisateur'), 'c');
+      await user.type(screen.getByLabelText('Rechercher un utilisateur'), 'c');
       expect(await screen.findByText('Panne')).toBeInTheDocument();
     });
   });

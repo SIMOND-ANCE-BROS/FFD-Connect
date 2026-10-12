@@ -1,10 +1,9 @@
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { screen, waitFor, within } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { Route, Routes } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { renderWithProviders, setupUser } from '../test/render';
 import { pendingCountQuery } from '../api/queries';
 import { useSession } from '../session/sessionStore';
 import { AppLayout, NAV_ITEMS } from './AppLayout';
@@ -22,29 +21,25 @@ const renewalsSpy = (total: number) =>
   } as never);
 
 function renderLayout(path = '/users') {
-  return render(
-    <MantineProvider>
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route element={<AppLayout />}>
-              <Route path="/users" element={<p>content</p>} />
-              <Route path="/users/:id" element={<p>user page</p>} />
-              <Route path="/clubs" element={<p>clubs page</p>} />
-            </Route>
-            <Route path="/login" element={<p>login page</p>} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+  return renderWithProviders(
+    <Routes>
+      <Route element={<AppLayout />}>
+        <Route path="/users" element={<p>content</p>} />
+        <Route path="/users/:id" element={<p>user page</p>} />
+        <Route path="/clubs" element={<p>clubs page</p>} />
+      </Route>
+      <Route path="/login" element={<p>login page</p>} />
+    </Routes>,
+    { route: path },
   );
 }
+
+let user: UserEvent;
 
 describe('AppLayout', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    user = setupUser();
     renewalsSpy(0);
   });
 
@@ -86,7 +81,7 @@ describe('AppLayout', () => {
     const link = screen.getByRole('link', { name: /^Renouvellements/ });
     expect(await within(link).findByText('2')).toBeInTheDocument();
     expect(spy).toHaveBeenCalledWith({ query: { status: 'PENDING', take: 1 } });
-    await userEvent.click(screen.getByRole('link', { name: 'Clubs' }));
+    await user.click(screen.getByRole('link', { name: 'Clubs' }));
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
   });
 
@@ -111,12 +106,12 @@ describe('AppLayout', () => {
     const burger = screen.getByRole('button', { name: 'Ouvrir le menu' });
     expect(burger).toHaveAttribute('aria-expanded', 'false');
     expect(burger).toHaveAttribute('aria-controls', 'admin-navbar');
-    await userEvent.click(burger);
+    await user.click(burger);
     expect(screen.getByRole('button', { name: 'Fermer le menu' })).toHaveAttribute(
       'aria-expanded',
       'true',
     );
-    await userEvent.click(screen.getByRole('link', { name: 'Clubs' }));
+    await user.click(screen.getByRole('link', { name: 'Clubs' }));
     expect(await screen.findByText('clubs page')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ouvrir le menu' })).toHaveAttribute(
       'aria-expanded',
@@ -127,8 +122,8 @@ describe('AppLayout', () => {
   it('closes the phone menu when tapping the current section again', async () => {
     countSpy(0);
     renderLayout();
-    await userEvent.click(screen.getByRole('button', { name: 'Ouvrir le menu' }));
-    await userEvent.click(screen.getByRole('link', { name: 'Utilisateurs' }));
+    await user.click(screen.getByRole('button', { name: 'Ouvrir le menu' }));
+    await user.click(screen.getByRole('link', { name: 'Utilisateurs' }));
     expect(screen.getByRole('button', { name: 'Ouvrir le menu' })).toHaveAttribute(
       'aria-expanded',
       'false',
@@ -181,7 +176,7 @@ describe('AppLayout', () => {
     renderLayout();
     // The header button (desktop) and the menu footer button (phone) share the action.
     const [logout] = screen.getAllByRole('button', { name: 'Déconnexion' });
-    await userEvent.click(logout);
+    await user.click(logout);
     expect(await screen.findByText('login page')).toBeInTheDocument();
     expect(useSession.getState().user).toBeNull();
   });
@@ -191,7 +186,7 @@ describe('AppLayout', () => {
     renderLayout();
     await screen.findByText('3');
     expect(spy).toHaveBeenCalledTimes(1);
-    await userEvent.click(screen.getByRole('link', { name: 'Clubs' }));
+    await user.click(screen.getByRole('link', { name: 'Clubs' }));
     expect(await screen.findByText('clubs page')).toBeInTheDocument();
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     expect(pendingCountQuery.refetchInterval).toBeUndefined();

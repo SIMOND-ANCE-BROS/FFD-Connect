@@ -3,9 +3,16 @@
  * Must be run AFTER `nest build` (or `pnpm run build`) so that dist/ contains
  * the properly compiled files with emitDecoratorMetadata.
  *
- * Usage: node scripts/export-swagger.js
+ * Usage: tsx scripts/export-swagger.ts
+ *
+ * Run the source with tsx, not the compiled dist/scripts copy: paths below are
+ * resolved from __dirname, so the compiled copy would write to dist/swagger.json.
  */
-const path = require("path");
+import * as fs from "fs";
+import * as path from "path";
+import type { Type } from "@nestjs/common";
+import { NestFactory } from "@nestjs/core";
+import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 
 /**
  * Placeholders for the env vars the config validation requires (#256). The
@@ -13,27 +20,32 @@ const path = require("path");
  * a token, so any well-formed value works; real values, when set, win. Same
  * values as the CI `backend-build` job, so the spec is identical either way.
  */
-const EXPORT_ENV_DEFAULTS = {
+const EXPORT_ENV_DEFAULTS: Record<string, string> = {
   DATABASE_URL: "postgresql://localhost/dummy",
   JWT_SECRET: "test-secret-key-for-swagger-export-only",
 };
 for (const [name, value] of Object.entries(EXPORT_ENV_DEFAULTS)) {
-  if (!process.env[name]) {
+  // An empty value counts as unset (it would fail the config validation).
+  const current = process.env[name];
+  if (current === undefined || current === "") {
     process.env[name] = value;
   }
 }
 
-async function generate() {
+/** Loads a class from the compiled dist/ (decorator metadata is only there). */
+function requireCompiled(relativePath: string, exportName: string): Type {
+  const loaded = require(path.resolve(__dirname, relativePath)) as Record<
+    string,
+    Type
+  >;
+  return loaded[exportName];
+}
+
+async function generate(): Promise<void> {
   console.log("🚀 Starting Swagger export...");
 
   // Import from compiled dist — requires nest build to have been run first
-  const { NestFactory } = require("@nestjs/core");
-  const { SwaggerModule, DocumentBuilder } = require("@nestjs/swagger");
-  const fs = require("fs");
-
-  const { AppModule } = require(
-    path.resolve(__dirname, "../dist/src/app.module"),
-  );
+  const AppModule = requireCompiled("../dist/src/app.module", "AppModule");
 
   // abortOnError: false — otherwise Nest calls process.exit(1) itself on a
   // bootstrap error (e.g. invalid env), and with the logger off the command
@@ -76,23 +88,25 @@ async function generate() {
     "HealthModule",
   ];
 
+  // Per-module dry run: pinpoints which module breaks document generation.
   for (const moduleName of modules) {
     try {
       console.log(`🔍 Testing module: ${moduleName}...`);
-      const moduleClass = require(
-        path.resolve(
-          __dirname,
-          `../dist/src/${moduleName.toLowerCase().replace("module", "")}/${moduleName.toLowerCase().replace("module", ".module")}`,
-        ),
-      )[moduleName];
+      const dir = moduleName.toLowerCase().replace("module", "");
+      const file = moduleName.toLowerCase().replace("module", ".module");
+      const moduleClass = requireCompiled(
+        `../dist/src/${dir}/${file}`,
+        moduleName,
+      );
 
-      const doc = SwaggerModule.createDocument(app, config, {
+      SwaggerModule.createDocument(app, config, {
         include: [moduleClass],
       });
       console.log(`✅ ${moduleName} is clean.`);
     } catch (err) {
-      console.error(`❌ Error in ${moduleName}:`, err.message);
-      if (err.message.includes("circular")) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`❌ Error in ${moduleName}:`, message);
+      if (message.includes("circular")) {
         console.error(`!!! CIRCULAR DEPENDENCY FOUND IN ${moduleName} !!!`);
       }
     }
@@ -109,7 +123,7 @@ async function generate() {
   process.exit(0);
 }
 
-generate().catch((err) => {
+generate().catch((err: unknown) => {
   console.error("❌ Error generating swagger spec:", err);
   process.exit(1);
 });

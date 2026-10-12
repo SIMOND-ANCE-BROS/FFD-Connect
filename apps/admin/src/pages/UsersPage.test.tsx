@@ -1,10 +1,9 @@
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter, useLocation } from 'react-router';
+import { screen, waitFor, within } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { useLocation } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { fill, renderWithProviders, setupUser } from '../test/render';
 import { mockPhoneViewport } from '../test/viewport';
 import { UsersPage } from './UsersPage';
 
@@ -54,23 +53,20 @@ function LocationProbe() {
 }
 
 function renderPage() {
-  return render(
-    <MantineProvider>
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter>
-          <UsersPage />
-          <LocationProbe />
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+  return renderWithProviders(
+    <>
+      <UsersPage />
+      <LocationProbe />
+    </>,
   );
 }
+
+let user: UserEvent;
 
 describe('UsersPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    user = setupUser();
     vi.spyOn(sdk, 'adminControllerClubOptions').mockResolvedValue({
       data: [{ id: 'c1', name: 'Club A' }],
       error: undefined,
@@ -94,7 +90,7 @@ describe('UsersPage', () => {
     expect(screen.getByRole('textbox', { name: 'Rechercher un utilisateur' })).toBeInTheDocument();
     expect(screen.getByLabelText('Date d’inscription')).toBeInTheDocument();
     link.focus();
-    await userEvent.keyboard('{Enter}');
+    await user.keyboard('{Enter}');
     expect(screen.getByTestId('location')).toHaveTextContent('/users/u1');
   });
 
@@ -125,7 +121,7 @@ describe('UsersPage', () => {
     const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(1) as never);
     renderPage();
     await screen.findByText('jeanne@x.fr');
-    await userEvent.type(screen.getByPlaceholderText(/nom, prénom ou email/i), 'mar');
+    await fill(user, screen.getByPlaceholderText(/nom, prénom ou email/i), 'mar');
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({
         query: expect.objectContaining({ search: 'mar', skip: 0 }),
@@ -171,7 +167,7 @@ describe('UsersPage', () => {
     const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(1) as never);
     renderPage();
     await screen.findByText('jeanne@x.fr');
-    await userEvent.click(screen.getByText('Désactivés'));
+    await user.click(screen.getByText('Désactivés'));
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({
         query: expect.objectContaining({ status: 'disabled', skip: 0 }),
@@ -189,7 +185,7 @@ describe('UsersPage', () => {
       expect(screen.getByPlaceholderText(/nom, prénom ou email/i)).toBeVisible();
       const toggle = screen.getByRole('button', { name: 'Filtres' });
       expect(toggle).toHaveAttribute('aria-expanded', 'false');
-      await userEvent.click(toggle);
+      await user.click(toggle);
       expect(toggle).toHaveAttribute('aria-expanded', 'true');
       expect(screen.getByPlaceholderText('Rôle')).toBeInTheDocument();
       // Cards, not the desktop table.
@@ -204,8 +200,8 @@ describe('UsersPage', () => {
       const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(1) as never);
       renderPage();
       await screen.findByText('jeanne@x.fr');
-      await userEvent.click(screen.getByRole('button', { name: 'Filtres' }));
-      await userEvent.click(screen.getByText('Désactivés'));
+      await user.click(screen.getByRole('button', { name: 'Filtres' }));
+      await user.click(screen.getByText('Désactivés'));
       expect(await screen.findByRole('button', { name: 'Filtres (1)' })).toBeInTheDocument();
       await waitFor(() =>
         expect(spy).toHaveBeenLastCalledWith({
@@ -213,9 +209,9 @@ describe('UsersPage', () => {
         }),
       );
       // The search is always visible: it never counts as a folded filter.
-      await userEvent.type(screen.getByPlaceholderText(/nom, prénom ou email/i), 'mar');
+      await fill(user, screen.getByPlaceholderText(/nom, prénom ou email/i), 'mar');
       expect(screen.getByRole('button', { name: 'Filtres (1)' })).toBeInTheDocument();
-      await userEvent.click(screen.getByRole('button', { name: 'Réinitialiser' }));
+      await user.click(screen.getByRole('button', { name: 'Réinitialiser' }));
       expect(await screen.findByRole('button', { name: 'Filtres' })).toBeInTheDocument();
       await waitFor(() =>
         expect(spy).toHaveBeenLastCalledWith({

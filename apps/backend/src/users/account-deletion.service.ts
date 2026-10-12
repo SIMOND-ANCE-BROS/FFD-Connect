@@ -7,6 +7,7 @@ import {
   licenseRenewalDocumentFileSelect,
   resultAnonymizationSelect,
 } from "../utils/prisma-selects";
+import { buildPartnerNameScrubOps } from "./partner-name-scrub";
 
 /**
  * Borne de la lecture des documents de renouvellement à purger : un brouillon
@@ -80,6 +81,9 @@ export function anonymizeResultDetails(
  * Inscriptions d'autrui en tant que partenaire : anonymisées explicitement
  * (partnerUserId ET partnerName, copie du nom complet → null ; null est
  * déjà géré partout à l'affichage).
+ * Copies du nom sans identifiant (#395) : inscription du partenaire créée
+ * par l'import sans partnerUserId, libellé d'un résultat de couple rattaché
+ * au partenaire — cf. buildPartnerNameScrubOps (partner-name-scrub.ts).
  * Suppressions explicites (FK sans onDelete → RESTRICT) : registrations,
  * seatBookings, notifications ; bugReports (userId sans FK).
  * Résultats de compétition (Result.userId sans FK, #382) : ANONYMISÉS, pas
@@ -134,6 +138,13 @@ export class AccountDeletionService {
         `Account deletion: renewal document read hit the ${MAX_RENEWAL_DOCUMENTS_TO_PURGE} cap — remaining files may be orphaned, run scripts/list-orphan-renewal-blobs.ts`,
       );
     }
+    // Read before the transaction: it deletes the user's own registrations,
+    // which locate the couple (event + bib).
+    const partnerNameScrub = await buildPartnerNameScrubOps(
+      this.prisma,
+      userId,
+      this.logger,
+    );
     const results = await this.prisma.result.findMany({
       where: { userId },
       select: resultAnonymizationSelect,
@@ -165,6 +176,7 @@ export class AccountDeletionService {
         where: { partnerUserId: userId },
         data: { partnerUserId: null, partnerName: null },
       }),
+      ...partnerNameScrub.ops,
       // Le SetNull de proposedById laisserait le commentaire libre, qui peut
       // identifier son auteur : il est effacé avant la suppression du compte.
       this.prisma.trackCorrection.updateMany({
@@ -188,16 +200,18 @@ export class AccountDeletionService {
       documents.map((d) => d.filePath),
       "account-deletion",
     );
-    await this.invalidateResultCaches(results);
+    await this.invalidateResultCaches([
+      ...results.map((r) => r.event.competitionId),
+      // Couple results of the partner whose label was scrubbed (#395).
+      ...partnerNameScrub.competitionIds,
+    ]);
   }
 
   /** Best-effort : un échec Redis n'annule pas une suppression déjà faite. */
   private async invalidateResultCaches(
-    results: { event: { competitionId: string } }[],
+    affectedCompetitionIds: string[],
   ): Promise<void> {
-    const competitionIds = [
-      ...new Set(results.map((r) => r.event.competitionId)),
-    ];
+    const competitionIds = [...new Set(affectedCompetitionIds)];
     const outcomes = await Promise.allSettled(
       competitionIds.map((id) => this.competitionCache.invalidateResults(id)),
     );

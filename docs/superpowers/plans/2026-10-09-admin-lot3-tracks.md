@@ -72,7 +72,7 @@
   The integration `globalSetup` runs `prisma db push` on that database, which adds `contentHash` there. The test DB has no migration history: if you ever need `prisma migrate deploy` and it fails with **P3005**, use `prisma db push` against **that same DB only**. Never run `prisma db push`, `prisma migrate dev`, `migrate reset` or the full `test:e2e` / `test:integration` scripts against any other database. The migration of Task 1 is produced **offline** with `prisma migrate diff`.
 - **Admin SPA:** `pnpm --filter admin exec vitest run <paths> --testTimeout=60000`. The machine is often heavily loaded; the `pnpm test -- --flag` form drops the flag, so always use `exec vitest run`. jsdom 27 has **no `Blob.arrayBuffer()`**: code and tests read files through `FileReader` (`lib/files.ts`); `crypto.subtle` and `TextEncoder` / `TextDecoder` are available (checked on this machine).
 - **Mobile client:** `pnpm --filter client exec jest <path>`.
-- **Swagger.** `pnpm docs:export` fails from the repo root. Run the steps by hand (Task 5): `cd apps/backend && pnpm run build && node scripts/export-swagger.js`, copy to `apps/docs/public/swagger.json`, run Prettier on both, then regenerate both clients (`pnpm --filter admin exec openapi-ts`, `pnpm --filter client exec openapi-ts`; the generated folders are gitignored).
+- **Swagger.** `pnpm docs:export` fails from the repo root. Run the steps by hand (Task 5): `cd apps/backend && pnpm run build && pnpm exec tsx scripts/export-swagger.ts`, copy to `apps/docs/public/swagger.json`, run Prettier on both, then regenerate both clients (`pnpm --filter admin exec openapi-ts`, `pnpm --filter client exec openapi-ts`; the generated folders are gitignored).
 - **Final step:** `pnpm preflight`.
 
 ## Review Focus
@@ -3998,7 +3998,7 @@ Claude-Session: https://claude.ai/code/session_01MKDz7abPk4VsUPmwi8Dkkv"
 ```bash
 cd apps/backend
 pnpm run build
-node scripts/export-swagger.js
+pnpm exec tsx scripts/export-swagger.ts
 cp swagger.json ../docs/public/swagger.json
 pnpm exec prettier --write swagger.json ../docs/public/swagger.json
 node -e 'const s=require("./swagger.json");console.log(Object.keys(s.paths).filter((p)=>p.startsWith("/admin/tracks")).sort().join("\n"))'
