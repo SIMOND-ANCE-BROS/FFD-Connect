@@ -1,0 +1,297 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
+import { Test } from "@nestjs/testing";
+import { Prisma } from "@prisma/client";
+import {
+  createMockPrismaService,
+  MockPrismaService,
+} from "../../test/mocks/prisma.mock";
+import { EmailService } from "../auth/email.service";
+import { PrismaService } from "../prisma/prisma.service";
+import { AdminAuditService } from "./admin-audit.service";
+import {
+  AdminUserIdentifiersService,
+  EMAIL_TAKEN,
+  LICENSE_NUMBER_TAKEN,
+  NO_LICENSE,
+  STORE_REVIEW_EMAIL,
+} from "./admin-user-identifiers.service";
+import { AdminUsersQueryService } from "./admin-users.query-service";
+
+const current = {
+  id: "u1",
+  email: "jeanne@x.fr",
+  firstName: "Jeanne",
+  isStoreReview: false,
+  license: { id: "l1", number: "FFD-1" },
+};
+
+const p2002 = (target: string[]) =>
+  new Prisma.PrismaClientKnownRequestError("dup", {
+    code: "P2002",
+    clientVersion: "x",
+    meta: { target },
+  });
+
+describe("AdminUserIdentifiersService", () => {
+  let service: AdminUserIdentifiersService;
+  let prisma: MockPrismaService;
+  let audit: { record: jest.Mock };
+  let query: { detail: jest.Mock };
+  let email: { sendEmailChangedNotice: jest.Mock };
+
+  beforeEach(async () => {
+    prisma = createMockPrismaService();
+    prisma.$transaction.mockImplementation(((fn: (tx: unknown) => unknown) =>
+      fn(prisma)) as never);
+    prisma.user.findUnique.mockResolvedValue(current as never);
+    prisma.user.findFirst.mockResolvedValue(null);
+    prisma.license.findUnique.mockResolvedValue(null);
+    audit = { record: jest.fn() };
+    query = { detail: jest.fn().mockResolvedValue({ id: "u1" }) };
+    email = { sendEmailChangedNotice: jest.fn().mockResolvedValue(undefined) };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        AdminUserIdentifiersService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AdminAuditService, useValue: audit },
+        { provide: AdminUsersQueryService, useValue: query },
+        { provide: EmailService, useValue: email },
+      ],
+    }).compile();
+    service = moduleRef.get(AdminUserIdentifiersService);
+  });
+
+  describe("email change", () => {
+    it("writes the email, revokes sessions and pending links, audits old -> new, then tells the old address", async () => {
+      await expect(
+        service.update("admin-1", "u1", { email: "new@x.fr" }),
+      ).resolves.toEqual({ user: { id: "u1" }, previousEmailNotified: true });
+
+      expect(prisma.user.findFirst).toHaveBeenCalledWith({
+        where: {
+          email: { equals: "new@x.fr", mode: "insensitive" },
+          id: { not: "u1" },
+        },
+        select: { id: true },
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: "u1" },
+        data: { email: "new@x.fr" },
+        select: { id: true },
+      });
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: "u1", revoked: false },
+        data: { revoked: true, revokedAt: expect.any(Date) },
+      });
+      expect(prisma.passwordResetToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: "u1", used: false },
+        data: { used: true, usedAt: expect.any(Date) },
+      });
+      expect(prisma.license.update).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(prisma, {
+        actorId: "admin-1",
+        action: "USER_IDENTIFIERS_UPDATE",
+        targetType: "USER",
+        targetId: "u1",
+        before: { email: "jeanne@x.fr" },
+        after: { email: "new@x.fr" },
+      });
+      expect(email.sendEmailChangedNotice).toHaveBeenCalledWith(
+        "jeanne@x.fr",
+        "Jeanne",
+      );
+    });
+
+    it("refuses an email held by another account (case-insensitive lookup) with a 409", async () => {
+      prisma.user.findFirst.mockResolvedValue({ id: "u2" } as never);
+      await expect(
+        service.update("admin-1", "u1", { email: "taken@x.fr" }),
+      ).rejects.toEqual(new ConflictException(EMAIL_TAKEN));
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(email.sendEmailChangedNotice).not.toHaveBeenCalled();
+    });
+
+    it("treats the same address in another stored casing as no change", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...current,
+        email: "Jeanne@X.fr",
+      } as never);
+      await expect(
+        service.update("admin-1", "u1", { email: "jeanne@x.fr" }),
+      ).resolves.toEqual({ user: { id: "u1" }, previousEmailNotified: null });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(email.sendEmailChangedNotice).not.toHaveBeenCalled();
+    });
+
+    it("never changes the store-review account's email", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...current,
+        isStoreReview: true,
+      } as never);
+      await expect(
+        service.update("admin-1", "u1", { email: "new@x.fr" }),
+      ).rejects.toEqual(new ForbiddenException(STORE_REVIEW_EMAIL));
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it("keeps the committed change when the notice fails, and logs only the user id", async () => {
+      email.sendEmailChangedNotice.mockRejectedValue(new Error("smtp down"));
+      const warn = jest
+        .spyOn(Logger.prototype, "warn")
+        .mockImplementation(() => undefined);
+      await expect(
+        service.update("admin-1", "u1", { email: "new@x.fr" }),
+      ).resolves.toEqual({ user: { id: "u1" }, previousEmailNotified: false });
+      expect(prisma.user.update).toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith(
+        "Email-changed notice not sent for user u1: smtp down",
+      );
+      const logged = JSON.stringify(warn.mock.calls);
+      expect(logged).not.toContain("jeanne@x.fr");
+      expect(logged).not.toContain("new@x.fr");
+      warn.mockRestore();
+    });
+
+    it("reports a non-Error mail failure as a failed notice", async () => {
+      email.sendEmailChangedNotice.mockRejectedValue("nope");
+      const warn = jest
+        .spyOn(Logger.prototype, "warn")
+        .mockImplementation(() => undefined);
+      await expect(
+        service.update("admin-1", "u1", { email: "new@x.fr" }),
+      ).resolves.toMatchObject({ previousEmailNotified: false });
+      expect(warn).toHaveBeenCalledWith(
+        "Email-changed notice not sent for user u1: nope",
+      );
+      warn.mockRestore();
+    });
+
+    it("maps a lost email race (P2002) to the same 409", async () => {
+      prisma.user.update.mockRejectedValue(p2002(["email"]));
+      await expect(
+        service.update("admin-1", "u1", { email: "new@x.fr" }),
+      ).rejects.toEqual(new ConflictException(EMAIL_TAKEN));
+      expect(email.sendEmailChangedNotice).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("licence number change", () => {
+    it("renames the attached licence in place and audits old -> new, without touching sessions", async () => {
+      await expect(
+        service.update("admin-1", "u1", { licenseNumber: "FFD-2" }),
+      ).resolves.toEqual({ user: { id: "u1" }, previousEmailNotified: null });
+
+      expect(prisma.license.findUnique).toHaveBeenCalledWith({
+        where: { number: "FFD-2" },
+        select: { id: true },
+      });
+      expect(prisma.license.update).toHaveBeenCalledWith({
+        where: { id: "l1" },
+        data: { number: "FFD-2" },
+        select: { id: true },
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(audit.record).toHaveBeenCalledWith(prisma, {
+        actorId: "admin-1",
+        action: "USER_IDENTIFIERS_UPDATE",
+        targetType: "USER",
+        targetId: "u1",
+        before: { licenseNumber: "FFD-1" },
+        after: { licenseNumber: "FFD-2" },
+      });
+      expect(email.sendEmailChangedNotice).not.toHaveBeenCalled();
+    });
+
+    it("refuses a number already held by another licence with a 409", async () => {
+      prisma.license.findUnique.mockResolvedValue({ id: "l2" } as never);
+      await expect(
+        service.update("admin-1", "u1", { licenseNumber: "FFD-2" }),
+      ).rejects.toEqual(new ConflictException(LICENSE_NUMBER_TAKEN));
+      expect(prisma.license.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it("refuses a number on an account without a licence", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...current,
+        license: null,
+      } as never);
+      await expect(
+        service.update("admin-1", "u1", { licenseNumber: "FFD-2" }),
+      ).rejects.toEqual(new BadRequestException(NO_LICENSE));
+    });
+
+    it("maps a lost number race (P2002) to the same 409", async () => {
+      prisma.license.update.mockRejectedValue(p2002(["number"]));
+      await expect(
+        service.update("admin-1", "u1", { licenseNumber: "FFD-2" }),
+      ).rejects.toEqual(new ConflictException(LICENSE_NUMBER_TAKEN));
+    });
+
+    it("writes nothing when the number is unchanged", async () => {
+      await service.update("admin-1", "u1", { licenseNumber: "FFD-1" });
+      expect(prisma.license.findUnique).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+    });
+  });
+
+  it("changes both identifiers in one audit row", async () => {
+    await service.update("admin-1", "u1", {
+      email: "new@x.fr",
+      licenseNumber: "FFD-2",
+    });
+    expect(audit.record).toHaveBeenCalledTimes(1);
+    expect(audit.record).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        before: { email: "jeanne@x.fr", licenseNumber: "FFD-1" },
+        after: { email: "new@x.fr", licenseNumber: "FFD-2" },
+      }),
+    );
+  });
+
+  it("requires at least one identifier", async () => {
+    await expect(service.update("admin-1", "u1", {})).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("refuses to change the acting admin's own identifiers", async () => {
+    await expect(
+      service.update("u1", "u1", { email: "new@x.fr" }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("404s on an unknown user", async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    await expect(
+      service.update("admin-1", "u1", { email: "new@x.fr" }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("rethrows a unique violation on another column, and any other error", async () => {
+    prisma.license.update.mockRejectedValueOnce(p2002(["other"]));
+    await expect(
+      service.update("admin-1", "u1", { licenseNumber: "FFD-2" }),
+    ).rejects.toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+
+    const boom = new Error("db down");
+    prisma.license.update.mockRejectedValueOnce(boom);
+    await expect(
+      service.update("admin-1", "u1", { licenseNumber: "FFD-2" }),
+    ).rejects.toBe(boom);
+  });
+});

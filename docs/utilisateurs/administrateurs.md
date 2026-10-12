@@ -39,6 +39,14 @@ La création ne propose pas directement le rôle Admin. Une éventuelle attribut
 
 Un rôle Club nécessite un club cohérent. Après un changement de rôles, demandez à la personne de rouvrir les **Réglages** de l’app pour actualiser ses espaces. Changer un rôle modifie des droits : ce n’est pas une simple préférence d’affichage. Les protections empêchent notamment de retirer son propre accès administrateur.
 
+### Corriger l’email ou le numéro de licence
+
+Sur la fiche, cliquez sur **Modifier l’email ou la licence**, corrigez l’email et/ou le numéro de licence, puis confirmez.
+
+- Changer l’email déconnecte la personne de toutes ses sessions : elle se reconnecte avec la nouvelle adresse et son mot de passe habituel. L’ancienne adresse reçoit un message d’information. Les liens de mot de passe déjà envoyés ne fonctionnent plus : pour un compte jamais connecté, renvoyez l’invitation.
+- Le numéro de licence ne peut être modifié que si une licence est rattachée au compte. Un pass Wallet déjà installé garde l’ancien numéro : la personne doit le réajouter depuis l’app.
+- Un email ou un numéro déjà utilisé par un autre compte est refusé. Vous ne pouvez pas modifier vos propres identifiants.
+
 ## Gérer un club
 
 1. Ouvrez **Clubs**, puis la fiche concernée.

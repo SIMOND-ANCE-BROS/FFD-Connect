@@ -1,6 +1,7 @@
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
-import { EmailService } from "./email.service";
+import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
+import { EMAIL_SEND_TIMEOUT_MS, EmailService } from "./email.service";
 
 const mockSend = jest.fn();
 jest.mock("resend", () => ({
@@ -24,6 +25,7 @@ describe("EmailService", () => {
         providers: [
           EmailService,
           { provide: ConfigService, useValue: mockConfigService },
+          CircuitBreakerService,
         ],
       }).compile();
       service = module.get<EmailService>(EmailService);
@@ -66,10 +68,18 @@ describe("EmailService", () => {
         providers: [
           EmailService,
           { provide: ConfigService, useValue: mockConfigService },
+          CircuitBreakerService,
         ],
       }).compile();
       service = module.get<EmailService>(EmailService);
       jest.clearAllMocks();
+    });
+
+    it("skips the email-changed notice when Resend is not configured", async () => {
+      await expect(
+        service.sendEmailChangedNotice("old@x.fr", "Jo"),
+      ).resolves.toBeUndefined();
+      expect(mockSend).not.toHaveBeenCalled();
     });
 
     it("only logs when Resend is not configured", async () => {
@@ -93,6 +103,7 @@ describe("EmailService", () => {
         providers: [
           EmailService,
           { provide: ConfigService, useValue: mockConfigService },
+          CircuitBreakerService,
         ],
       }).compile();
       service = module.get<EmailService>(EmailService);
@@ -116,6 +127,41 @@ describe("EmailService", () => {
       expect(mockSend.mock.calls[0][0].html).toContain(
         "https://app.com/reset?token=token456",
       );
+    });
+
+    it("sends the email-changed notice to the previous address, without the new one", async () => {
+      await service.sendEmailChangedNotice("old@x.fr", "<Jo>");
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "old@x.fr",
+          from: "noreply@test.com",
+          subject: "L'email de votre compte FFD Connect a été modifié",
+        }),
+      );
+      const html = mockSend.mock.calls[0][0].html as string;
+      expect(html).toContain("Bonjour Jo,");
+      expect(html).not.toContain("<Jo>");
+      expect(html).not.toContain("href");
+    });
+
+    it("throws when Resend refuses the email-changed notice", async () => {
+      mockSend.mockResolvedValue({ data: null, error: { message: "boom" } });
+      await expect(
+        service.sendEmailChangedNotice("old@x.fr", "Jo"),
+      ).rejects.toThrow("Failed to send email: boom");
+    });
+
+    it("bounds the email-changed notice with a timeout", async () => {
+      jest.useFakeTimers();
+      try {
+        mockSend.mockReturnValue(new Promise(() => undefined));
+        const sent = service.sendEmailChangedNotice("old@x.fr", "Jo");
+        const assertion = expect(sent).rejects.toThrow(/timed out/);
+        await jest.advanceTimersByTimeAsync(EMAIL_SEND_TIMEOUT_MS + 1);
+        await assertion;
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it("should throw when Resend returns error", async () => {

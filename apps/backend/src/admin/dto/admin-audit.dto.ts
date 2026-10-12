@@ -11,6 +11,8 @@ export const AUDIT_ACTIONS = [
   "USER_DISABLE",
   "USER_ENABLE",
   "USER_DELETE",
+  // Login email and / or licence number changed by an administrator (#448).
+  "USER_IDENTIFIERS_UPDATE",
   "CLUB_CREATE",
   "CLUB_UPDATE",
   "CLUB_DISABLE",

@@ -31,6 +31,7 @@ import { AdminAuditService } from "./admin-audit.service";
 import { AdminClubsQueryService } from "./admin-clubs.query-service";
 import { AdminClubsService } from "./admin-clubs.service";
 import { AdminUserAccountsService } from "./admin-user-accounts.service";
+import { AdminUserIdentifiersService } from "./admin-user-identifiers.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminReferenceService } from "./admin-reference.service";
@@ -56,6 +57,10 @@ import {
   InvitationResultDto,
 } from "./dto/admin-user-accounts.dto";
 import { UpdateAdminUserDto } from "./dto/update-admin-user.dto";
+import {
+  AdminUserIdentifiersUpdatedDto,
+  UpdateAdminUserIdentifiersDto,
+} from "./dto/admin-user-identifiers.dto";
 import {
   AdminClubOptionDto,
   AdminReferenceDataDto,
@@ -85,6 +90,7 @@ export class AdminController {
     private readonly userAccounts: AdminUserAccountsService,
     private readonly clubsQuery: AdminClubsQueryService,
     private readonly clubs: AdminClubsService,
+    private readonly userIdentifiers: AdminUserIdentifiersService,
   ) {}
 
   @StoreReviewReadable()
@@ -223,6 +229,37 @@ export class AdminController {
     @Req() req: RequestWithUser,
   ): Promise<AdminUserDetailDto> {
     return this.users.update(req.user.userId, id, dto);
+  }
+
+  @Patch("users/:id/identifiers")
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @ApiOperation({
+    summary:
+      "Modifier l'email de connexion et / ou le numéro de licence d'un utilisateur",
+    description:
+      "Un changement d'email ferme les sessions du compte, invalide les liens de mot de passe en attente et prévient l'ancienne adresse. Le numéro est modifié sur la licence rattachée.",
+  })
+  @ApiParam({ name: "id", format: "uuid" })
+  @ApiResponse({ status: 200, type: AdminUserIdentifiersUpdatedDto })
+  @ApiResponse({
+    status: 400,
+    description: "Format invalide, champ manquant, ou compte sans licence",
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Son propre compte, ou email du compte de validation App Store / Google Play",
+  })
+  @ApiResponse({
+    status: 409,
+    description: "Email ou numéro de licence déjà utilisé",
+  })
+  updateUserIdentifiers(
+    @Param("id", ParseUUIDPipe) id: string,
+    @Body() dto: UpdateAdminUserIdentifiersDto,
+    @Req() req: RequestWithUser,
+  ): Promise<AdminUserIdentifiersUpdatedDto> {
+    return this.userIdentifiers.update(req.user.userId, id, dto);
   }
 
   @Post("users/:id/status")
