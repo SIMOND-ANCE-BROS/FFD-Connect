@@ -28,7 +28,7 @@ export const MAX_RESULTS_TO_ANONYMIZE = 1000;
  * La colonne reste NOT NULL exprès : le client Prisma d'une image antérieure
  * (rollback automatique du déploiement) lit `userId` comme `String` requis et
  * planterait sur un NULL. Reprise des comptes supprimés avant le correctif :
- * migration 20261012120000_result_anonymize_deleted_users.
+ * migration 20261012130000_result_anonymize_deleted_users.
  */
 export const DELETED_USER_ID = "00000000-0000-0000-0000-000000000000";
 
