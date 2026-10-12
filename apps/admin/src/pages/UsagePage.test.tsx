@@ -1,10 +1,9 @@
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { screen, waitFor, within } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { Route, Routes, useLocation } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { renderWithProviders, setupUser } from '../test/render';
 import { UNAVAILABLE_MESSAGE } from '../lib/apiError';
 import { UsagePage } from './UsagePage';
 
@@ -56,33 +55,29 @@ function Probe() {
 }
 
 function renderPage(path = '/usage') {
-  return render(
-    <MantineProvider>
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route
-              path="/usage"
-              element={
-                <>
-                  <UsagePage />
-                  <Probe />
-                </>
-              }
-            />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+  return renderWithProviders(
+    <Routes>
+      <Route
+        path="/usage"
+        element={
+          <>
+            <UsagePage />
+            <Probe />
+          </>
+        }
+      />
+    </Routes>,
+    { route: path },
   );
 }
 const ok = (data: object) => ({ data, error: undefined }) as never;
 
+let user: UserEvent;
+
 describe('UsagePage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    user = setupUser();
   });
 
   it('shows the figures, the day × hour grid with its accessible table, and the tables', async () => {
@@ -115,9 +110,9 @@ describe('UsagePage', () => {
     renderPage();
     await screen.findByText('Installations actives / jour');
     expect(get).toHaveBeenLastCalledWith({ query: { period: '30d' } });
-    await userEvent.click(screen.getByRole('radio', { name: '7 jours' }));
+    await user.click(screen.getByRole('radio', { name: '7 jours' }));
     await waitFor(() => expect(get).toHaveBeenLastCalledWith({ query: { period: '7d' } }));
-    await userEvent.click(screen.getByRole('radio', { name: 'Club' }));
+    await user.click(screen.getByRole('radio', { name: 'Club' }));
     await waitFor(() =>
       expect(get).toHaveBeenLastCalledWith({ query: { period: '7d', space: 'CLUB' } }),
     );

@@ -82,18 +82,28 @@ const BREAKER_CONFIGS: Record<BreakerKey, BreakerConfig> = {
   },
 };
 
+/**
+ * Upper bound on scoped breakers kept in memory (one per scope, e.g. per
+ * HelloAsso organisation). The oldest scope is dropped beyond it: losing a
+ * breaker's history only resets it to CLOSED.
+ */
+export const MAX_SCOPED_BREAKERS = 500;
+
 @Injectable()
 export class CircuitBreakerService {
   private readonly logger = new Logger(CircuitBreakerService.name);
   private readonly breakers = new Map<
-    BreakerKey,
+    string,
     CircuitBreaker<[() => Promise<unknown>], unknown>
   >();
 
   private getBreaker(
     key: BreakerKey,
+    scope?: string,
   ): CircuitBreaker<[() => Promise<unknown>], unknown> {
-    if (!this.breakers.has(key)) {
+    const id = scope === undefined ? key : `${key}:${scope}`;
+    if (!this.breakers.has(id)) {
+      if (scope !== undefined) this.evictOldestScopedIfFull();
       const config = BREAKER_CONFIGS[key];
       const breaker = new CircuitBreaker(
         async (fn: () => Promise<unknown>) => fn(),
@@ -107,30 +117,47 @@ export class CircuitBreakerService {
 
       breaker.on("open", () =>
         this.logger.warn(
-          `Circuit breaker OPEN for ${key}`,
+          `Circuit breaker OPEN for ${id}`,
           CircuitBreakerService.name,
         ),
       );
       breaker.on("halfOpen", () =>
         this.logger.log(
-          `Circuit breaker HALF-OPEN for ${key}`,
+          `Circuit breaker HALF-OPEN for ${id}`,
           CircuitBreakerService.name,
         ),
       );
       breaker.on("close", () =>
         this.logger.log(
-          `Circuit breaker CLOSED for ${key}`,
+          `Circuit breaker CLOSED for ${id}`,
           CircuitBreakerService.name,
         ),
       );
 
-      this.breakers.set(key, breaker);
+      this.breakers.set(id, breaker);
     }
-    return this.breakers.get(key)!;
+    return this.breakers.get(id)!;
   }
 
-  async fire<T>(key: BreakerKey, fn: () => Promise<T>): Promise<T> {
-    const breaker = this.getBreaker(key);
+  private evictOldestScopedIfFull(): void {
+    const scoped = [...this.breakers.keys()].filter((id) => id.includes(":"));
+    if (scoped.length < MAX_SCOPED_BREAKERS) return;
+    const oldest = scoped[0];
+    this.breakers.get(oldest)?.shutdown();
+    this.breakers.delete(oldest);
+  }
+
+  /**
+   * Runs `fn` through the breaker of `key`. With a `scope` (e.g. a HelloAsso
+   * organisation), failures are counted per scope: one tenant's outage or
+   * bad credentials never opens the breaker for the others.
+   */
+  async fire<T>(
+    key: BreakerKey,
+    fn: () => Promise<T>,
+    scope?: string,
+  ): Promise<T> {
+    const breaker = this.getBreaker(key, scope);
     try {
       return (await breaker.fire(fn)) as T;
     } catch (err) {

@@ -8,6 +8,8 @@ import request from "supertest";
 import { AppModule } from "./../src/app.module";
 import { JwtAuthGuard } from "./../src/auth/jwt-auth.guard";
 import { WebhookSignatureGuard } from "./../src/payment/guards/webhook-signature.guard";
+import { HelloAssoNotificationService } from "./../src/payment/helloasso-notification.service";
+import { SeatReleaseService } from "./../src/payment/seat-release.service";
 import { PaymentService } from "./../src/payment/payment.service";
 import { RedisService } from "./../src/redis/redis.service";
 import { applyE2EOverrides, configureTestApp } from "./test-app.factory";
@@ -27,6 +29,10 @@ describe("PaymentController (e2e)", () => {
     },
   };
 
+  const seatReleaseService = {
+    handlePaymentNotification: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeAll(async () => {
     paymentService = {
       createCheckout: jest.fn(),
@@ -39,6 +45,16 @@ describe("PaymentController (e2e)", () => {
       })
         .overrideProvider(PaymentService)
         .useValue(paymentService)
+        // Passthrough: this suite checks HTTP parsing; the API re-read (#404)
+        // is covered by helloasso-notification.service.spec.ts.
+        .overrideProvider(HelloAssoNotificationService)
+        .useValue({
+          resolveOrderNotification: jest.fn((payload: unknown) =>
+            Promise.resolve(payload),
+          ),
+        })
+        .overrideProvider(SeatReleaseService)
+        .useValue(seatReleaseService)
         .overrideProvider(RedisService)
         .useValue({
           get: jest.fn().mockResolvedValue(null),
@@ -239,7 +255,7 @@ describe("PaymentController (e2e)", () => {
         .expect(400);
     });
 
-    it("acknowledges a real Payment event without processing it", async () => {
+    it("hands a real Payment notification to the seat release (#403)", async () => {
       await request(http())
         .post("/api/v1/payment/webhook")
         .send({
@@ -247,15 +263,24 @@ describe("PaymentController (e2e)", () => {
           data: {
             id: 555,
             amount: 1500,
-            state: "Authorized",
+            state: "Refunded",
             order: { id: 98765, formType: "Checkout" },
             payer: { email: "payer@example.com" },
+            refundOperations: [{ id: 419, amount: 1500, status: "PROCESSED" }],
           },
           metadata: { bookingId: "booking-1", competitionId: "comp-1" },
         })
         .expect(200);
 
       expect(paymentService.handleOrderWebhook).not.toHaveBeenCalled();
+      expect(
+        seatReleaseService.handlePaymentNotification,
+      ).toHaveBeenCalledTimes(1);
+      const payload =
+        seatReleaseService.handlePaymentNotification.mock.calls[0][0];
+      // Declared fields kept (payment id, state), the rest stripped.
+      expect(payload.data).toEqual({ id: 555, state: "Refunded" });
+      expect(payload.metadata.bookingId).toBe("booking-1");
     });
 
     it("returns 200 without auth (webhook is public)", () => {

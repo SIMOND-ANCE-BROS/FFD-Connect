@@ -3,10 +3,12 @@ import { Prisma } from "@prisma/client";
 import { CompetitionCacheService } from "../competitions/services/competition-cache.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
+import { licenseRenewalDocumentFileSelect } from "../utils/prisma-selects";
 import {
-  licenseRenewalDocumentFileSelect,
-  resultAnonymizationSelect,
-} from "../utils/prisma-selects";
+  affectedResultCompetitionIds,
+  buildAccountDeletionOperations,
+  prepareAccountDeletion,
+} from "./account-deletion.core";
 
 /**
  * Borne de la lecture des documents de renouvellement à purger : un brouillon
@@ -15,59 +17,15 @@ import {
 export const MAX_RENEWAL_DOCUMENTS_TO_PURGE = 200;
 
 /**
- * Borne de la lecture des résultats à anonymiser (un résultat par épreuve
- * finale, quelques dizaines par saison). Au-delà, le filet `updateMany` de la
- * transaction anonymise quand même le reste (details vidé).
- */
-export const MAX_RESULTS_TO_ANONYMIZE = 1000;
-
-/**
- * Valeur sentinelle de `Result.userId` pour un résultat anonymisé (#382) :
- * l'UUID nul, jamais attribué à un compte (User.id = uuid v4 aléatoire), donc
- * jamais renvoyé par une requête « résultats de l'utilisateur X ».
- * La colonne reste NOT NULL exprès : le client Prisma d'une image antérieure
- * (rollback automatique du déploiement) lit `userId` comme `String` requis et
- * planterait sur un NULL. Reprise des comptes supprimés avant le correctif :
- * migration 20261012130000_result_anonymize_deleted_users.
- */
-export const DELETED_USER_ID = "00000000-0000-0000-0000-000000000000";
-
-/**
- * Clés de `Result.details` (JSON libre d'import) conservées à l'anonymisation :
- * elles décrivent l'épreuve ou la prestation, pas la personne. Tout le reste
- * part — `participant` (nom du couple), `name`, `bib` (dossard), `club` et
- * toute clé inconnue : liste blanche plutôt que liste noire.
- */
-export const ANONYMIZED_RESULT_DETAIL_KEYS = [
-  "totalParticipants",
-  "status",
-  "marks",
-] as const;
-
-/**
- * Réduit `details` aux clés non identifiantes. Toujours un objet (jamais
- * null) : l'écran des résultats en direct lit `details.participant` sans
- * garde et retombe alors sur son libellé générique.
- */
-export function anonymizeResultDetails(
-  details: Prisma.JsonValue,
-): Prisma.InputJsonObject {
-  const kept: Record<string, Prisma.InputJsonValue> = {};
-  if (details && typeof details === "object" && !Array.isArray(details)) {
-    for (const key of ANONYMIZED_RESULT_DETAIL_KEYS) {
-      const value = details[key];
-      if (value !== undefined && value !== null) kept[key] = value;
-    }
-  }
-  return kept;
-}
-
-/**
  * Droit à l'oubli (RGPD art. 17) : cœur de la suppression définitive d'un
  * compte, partagé par la suppression in-app (Apple 5.1.1(v)) et par la
  * suppression depuis le back-office admin. Aucune vérification d'autorisation
  * ici : l'appelant a déjà vérifié le mot de passe (self-service) ou le rôle
  * ADMIN + l'email recopié (back-office).
+ *
+ * Les opérations de la transaction viennent de buildAccountDeletionOperations
+ * (account-deletion.core.ts), partagée avec la purge des comptes de test en
+ * staging (#412) : une seule liste des relations supprimées / anonymisées.
  *
  * Cascades Prisma (schéma) : refreshTokens, passwordResetTokens,
  * deviceTokens, notificationPrefs, partnerships, soloTeamMemberships,
@@ -80,6 +38,14 @@ export function anonymizeResultDetails(
  * Inscriptions d'autrui en tant que partenaire : anonymisées explicitement
  * (partnerUserId ET partnerName, copie du nom complet → null ; null est
  * déjà géré partout à l'affichage).
+ * Copies du nom sans identifiant (#395) : inscription du partenaire créée
+ * par l'import sans partnerUserId, libellé d'un résultat de couple rattaché
+ * au partenaire — cf. buildPartnerNameScrubOps (partner-name-scrub.ts).
+ * Notifications reçues par d'autres (gestionnaires de club, #423) qui
+ * nomment l'utilisateur : conservées dans le fil de leur destinataire, nom
+ * remplacé par « Membre supprimé » / « Partenaire supprimé », retrouvées par
+ * l'inscription ou le partenariat lié — cf. buildNotificationNameScrubOps
+ * (notification-name-scrub.ts).
  * Suppressions explicites (FK sans onDelete → RESTRICT) : registrations,
  * seatBookings, notifications ; bugReports (userId sans FK).
  * Résultats de compétition (Result.userId sans FK, #382) : ANONYMISÉS, pas
@@ -134,70 +100,22 @@ export class AccountDeletionService {
         `Account deletion: renewal document read hit the ${MAX_RENEWAL_DOCUMENTS_TO_PURGE} cap — remaining files may be orphaned, run scripts/list-orphan-renewal-blobs.ts`,
       );
     }
-    const results = await this.prisma.result.findMany({
-      where: { userId },
-      select: resultAnonymizationSelect,
-      take: MAX_RESULTS_TO_ANONYMIZE,
-    });
+    const plan = await prepareAccountDeletion(this.prisma, userId, this.logger);
     await this.prisma.$transaction([
-      // Résultats : anonymisés ligne par ligne (details réduit), puis un filet
-      // pour ceux au-delà de la borne ou créés entre-temps : aucune ligne ne
-      // garde l'ancien userId à la sortie de la transaction.
-      ...results.map((r) =>
-        this.prisma.result.update({
-          where: { id: r.id },
-          data: {
-            userId: DELETED_USER_ID,
-            details: anonymizeResultDetails(r.details),
-          },
-        }),
-      ),
-      this.prisma.result.updateMany({
-        where: { userId },
-        data: { userId: DELETED_USER_ID, details: {} },
-      }),
-      this.prisma.notification.deleteMany({ where: { userId } }),
-      this.prisma.seatBooking.deleteMany({ where: { userId } }),
-      this.prisma.registration.deleteMany({ where: { userId } }),
-      // Inscriptions d'autrui où l'utilisateur est partenaire : la FK passerait
-      // en SetNull, mais partnerName garde une copie de son nom complet.
-      this.prisma.registration.updateMany({
-        where: { partnerUserId: userId },
-        data: { partnerUserId: null, partnerName: null },
-      }),
-      // Le SetNull de proposedById laisserait le commentaire libre, qui peut
-      // identifier son auteur : il est effacé avant la suppression du compte.
-      this.prisma.trackCorrection.updateMany({
-        where: { proposedById: userId },
-        data: { message: null },
-      }),
-      // BugReport.userId n'a pas de FK (report.prisma) : suppression explicite.
-      this.prisma.bugReport.deleteMany({ where: { userId } }),
-      // Keep the audit trail but strip what may identify the person (before /
-      // after hold names, emails...). Must run before the caller's own ops so
-      // the USER_DELETE row appended below keeps its { role }. Rows the user
-      // authored as an admin stay (actorId -> SetNull).
-      this.prisma.adminAuditLog.updateMany({
-        where: { targetType: "USER", targetId: userId },
-        data: { before: Prisma.DbNull, after: Prisma.DbNull },
-      }),
-      this.prisma.user.delete({ where: { id: userId } }),
+      ...buildAccountDeletionOperations(this.prisma, userId, plan),
       ...alsoInTransaction,
     ]);
     await this.renewalDocumentFiles.deleteFiles(
       documents.map((d) => d.filePath),
       "account-deletion",
     );
-    await this.invalidateResultCaches(results);
+    await this.invalidateResultCaches(affectedResultCompetitionIds(plan));
   }
 
   /** Best-effort : un échec Redis n'annule pas une suppression déjà faite. */
   private async invalidateResultCaches(
-    results: { event: { competitionId: string } }[],
+    competitionIds: string[],
   ): Promise<void> {
-    const competitionIds = [
-      ...new Set(results.map((r) => r.event.competitionId)),
-    ];
     const outcomes = await Promise.allSettled(
       competitionIds.map((id) => this.competitionCache.invalidateResults(id)),
     );

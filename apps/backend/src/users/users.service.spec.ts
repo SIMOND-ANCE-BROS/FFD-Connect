@@ -1099,6 +1099,7 @@ describe("UsersService", () => {
       expect(seats.select).toEqual({
         seatLabel: true,
         status: true,
+        cancelReason: true,
         createdAt: true,
         competition: { select: { title: true, date: true } },
       });
@@ -1369,7 +1370,12 @@ describe("UsersService", () => {
       });
       prisma.$transaction.mockResolvedValue([] as never);
       prisma.licenseRenewalDocument.findMany.mockResolvedValue([]);
+      // Partner-name scrub (#395): no couple to look up.
+      prisma.registration.findMany.mockResolvedValue([]);
       prisma.result.findMany.mockResolvedValue([]);
+      // Notification name scrub (#423): nothing links here.
+      prisma.partnership.findMany.mockResolvedValue([]);
+      prisma.notification.findMany.mockResolvedValue([]);
     });
 
     afterEach(() => {

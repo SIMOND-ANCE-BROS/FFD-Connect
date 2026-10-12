@@ -1,10 +1,9 @@
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
-import userEvent, { type UserEvent } from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { screen } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { Route, Routes } from 'react-router';
 import { describe, vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { fill, pickOption, renderWithProviders, setupUser } from '../test/render';
 import { NewUserPage } from './NewUserPage';
 
 // Every keystroke re-renders the whole Mantine form, which pushed these flows past
@@ -12,42 +11,20 @@ import { NewUserPage } from './NewUserPage';
 // per-character input, so text is pasted in one event and actions get no delay.
 let user: UserEvent;
 
-/** Fills an empty text field in one input event (paste) instead of one per character. */
-async function fill(input: HTMLElement, text: string) {
-  await user.click(input);
-  await user.paste(text);
-}
-
-/** Picks an option in a Mantine Select (every listbox stays mounted in jsdom). */
-async function pickOption(input: HTMLElement, name: string) {
-  await user.click(input);
-  const listbox = document.getElementById(input.getAttribute('aria-controls') ?? '');
-  if (!listbox) throw new Error('listbox not found');
-  await user.click(within(listbox).getByRole('option', { name, hidden: true }));
-}
-
 function renderPage() {
-  return render(
-    // env="test": no transitions or portals, so dialogs and dropdowns render at once.
-    <MantineProvider env="test">
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={['/users/new']}>
-          <Routes>
-            <Route path="/users/new" element={<NewUserPage />} />
-            <Route path="/users/:id" element={<p>user page</p>} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+  return renderWithProviders(
+    <Routes>
+      <Route path="/users/new" element={<NewUserPage />} />
+      <Route path="/users/:id" element={<p>user page</p>} />
+    </Routes>,
+    { route: '/users/new' },
   );
 }
 
 async function fillIdentity() {
-  await fill(await screen.findByLabelText(/^Email/), 'jeanne@x.fr');
-  await fill(screen.getByLabelText(/^Prénom/), 'Jeanne');
-  await fill(screen.getByLabelText(/^Nom de famille/), 'Martin');
+  await fill(user, await screen.findByLabelText(/^Email/), 'jeanne@x.fr');
+  await fill(user, screen.getByLabelText(/^Prénom/), 'Jeanne');
+  await fill(user, screen.getByLabelText(/^Nom de famille/), 'Martin');
 }
 
 const submit = () => user.click(screen.getByRole('button', { name: /créer l'utilisateur/i }));
@@ -60,7 +37,7 @@ const submit = () => user.click(screen.getByRole('button', { name: /créer l'uti
 describe('NewUserPage', { timeout: 15_000 }, () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    user = userEvent.setup({ delay: null });
+    user = setupUser();
     vi.spyOn(sdk, 'adminControllerClubOptions').mockResolvedValue({
       data: [{ id: 'c1', name: 'Club A' }],
       error: undefined,
@@ -84,7 +61,7 @@ describe('NewUserPage', { timeout: 15_000 }, () => {
     } as never);
     renderPage();
     await fillIdentity();
-    await fill(await screen.findByLabelText('Classement national'), '12');
+    await fill(user, await screen.findByLabelText('Classement national'), '12');
     await submit();
     expect(create).toHaveBeenCalledWith({
       body: {
@@ -106,6 +83,7 @@ describe('NewUserPage', { timeout: 15_000 }, () => {
     renderPage();
     await fillIdentity();
     await pickOption(
+      user,
       await screen.findByLabelText('Niveau Latines', { selector: 'input' }),
       'Débutant',
     );
@@ -145,7 +123,7 @@ describe('NewUserPage', { timeout: 15_000 }, () => {
     await fillIdentity();
     await user.click(screen.getByRole('radio', { name: 'Club' }));
     await user.click(screen.getByRole('radio', { name: 'Nouveau club' }));
-    await fill(screen.getByLabelText(/^Nom du nouveau club/), 'Club Neuf');
+    await fill(user, screen.getByLabelText(/^Nom du nouveau club/), 'Club Neuf');
     await submit();
     expect(create).toHaveBeenCalledWith({
       body: {
@@ -168,7 +146,7 @@ describe('NewUserPage', { timeout: 15_000 }, () => {
     await fillIdentity();
     await user.click(screen.getByRole('radio', { name: 'Club' }));
     await user.click(screen.getByRole('radio', { name: 'Nouveau club' }));
-    await fill(screen.getByLabelText(/^Nom du nouveau club/), 'Club A');
+    await fill(user, screen.getByLabelText(/^Nom du nouveau club/), 'Club A');
     await submit();
     expect(await screen.findByText(/un club porte déjà ce nom/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /utiliser « club a »/i }));

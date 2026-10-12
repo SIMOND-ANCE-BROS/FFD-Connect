@@ -7,6 +7,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  MaxLength,
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
@@ -65,6 +66,17 @@ export class WebhookDataDto {
   @IsOptional()
   @IsInt()
   checkoutIntentId?: number;
+
+  /**
+   * State of the payment of a `Payment` event (Authorized, Refunded,
+   * Contested…). Untrusted: only used to skip notifications that cannot
+   * release a seat; the state acted upon is re-read from HelloAsso (#403).
+   */
+  @ApiPropertyOptional({ example: "Refunded" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  state?: string;
 
   @ApiPropertyOptional({ type: [WebhookPaymentDto] })
   @IsOptional()

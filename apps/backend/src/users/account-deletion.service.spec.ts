@@ -7,11 +7,11 @@ import { PrismaService } from "../prisma/prisma.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { resultAnonymizationSelect } from "../utils/prisma-selects";
 import {
-  AccountDeletionService,
   anonymizeResultDetails,
   DELETED_USER_ID,
   MAX_RESULTS_TO_ANONYMIZE,
-} from "./account-deletion.service";
+} from "./account-deletion.core";
+import { AccountDeletionService } from "./account-deletion.service";
 
 describe("AccountDeletionService", () => {
   let service: AccountDeletionService;
@@ -24,6 +24,9 @@ describe("AccountDeletionService", () => {
     prisma.$transaction.mockResolvedValue([] as never);
     prisma.licenseRenewalDocument.findMany.mockResolvedValue([]);
     prisma.result.findMany.mockResolvedValue([]);
+    prisma.registration.findMany.mockResolvedValue([]);
+    prisma.partnership.findMany.mockResolvedValue([]);
+    prisma.notification.findMany.mockResolvedValue([]);
     files = { deleteFiles: jest.fn().mockResolvedValue(new Set()) };
     cache = { invalidateResults: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
@@ -63,8 +66,100 @@ describe("AccountDeletionService", () => {
 
   it("checks no password: authorising the deletion is the caller's job", async () => {
     await service.deleteAccount("u1");
-    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    // The only user read is the name lookup of the partner-name scrub (#395).
+    expect(prisma.user.findUnique).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ password: true }),
+      }),
+    );
     expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  it("rewrites the organisers' notifications that name the user, in the same transaction, before the user row goes (#423)", async () => {
+    const marker = (op: string) => ({ op }) as never;
+    // Partner-name scrub: no name, so it reads nothing (#395).
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.registration.findMany.mockResolvedValue([{ id: "reg1" }] as never);
+    prisma.notification.findMany.mockResolvedValue([
+      {
+        id: "n1",
+        body: 'Alex MARTIN s\'est inscrit à "Open" - Latines Adulte.',
+        data: { type: "club_member_auto_registered", registrationId: "reg1" },
+      },
+    ] as never);
+    prisma.notification.updateMany.mockReturnValue(marker("organiserNotif"));
+    prisma.notification.deleteMany.mockReturnValue(marker("ownNotifs"));
+    prisma.user.delete.mockReturnValue(marker("user"));
+
+    await service.deleteAccount("u1");
+
+    expect(opsOf()).toEqual(["ownNotifs", "organiserNotif", "user"]);
+    expect(prisma.notification.updateMany).toHaveBeenCalledWith({
+      where: { id: "n1", userId: { not: "u1" } },
+      data: {
+        body: 'Membre supprimé s\'est inscrit à "Open" - Latines Adulte.',
+      },
+    });
+    expect(
+      prisma.notification.findMany.mock.invocationCallOrder[0],
+    ).toBeLessThan(prisma.$transaction.mock.invocationCallOrder[0]);
+  });
+
+  it("scrubs the partner-name copies in the same transaction, before the user row goes (#395)", async () => {
+    const marker = (op: string) => ({ op }) as never;
+    prisma.user.findUnique.mockResolvedValue({
+      id: "u1",
+      firstName: "Alex",
+      lastName: "MARTIN",
+    });
+    prisma.registration.findMany
+      .mockResolvedValueOnce([{ eventId: "e1", bibNumber: 12 }] as never)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: "reg-partner", partnerName: "Alex MARTIN" },
+      ] as never);
+    // Two result reads: the partner's couple result (scrub, userId: { not })
+    // and the user's own results (#382) — none here.
+    prisma.result.findMany.mockImplementation(
+      (args: { where: { userId: unknown } }) =>
+        Promise.resolve(
+          args.where.userId === "u1"
+            ? []
+            : [
+                {
+                  id: "r1",
+                  userId: "partner",
+                  details: { participant: "Sam PETIT / Alex MARTIN" },
+                  event: { competitionId: "c9" },
+                },
+              ],
+        ),
+    );
+    prisma.registration.updateMany.mockReturnValue(marker("partnerReg"));
+    // Couple-result scrub (details only) vs the user's own results sweep
+    // (userId -> tombstone): both are guarded updateMany calls.
+    prisma.result.updateMany.mockImplementation((args) =>
+      marker(
+        args && "userId" in (args.data ?? {}) ? "resultSweep" : "coupleResult",
+      ),
+    );
+    prisma.user.delete.mockReturnValue(marker("user"));
+
+    await service.deleteAccount("u1");
+
+    // partnerReg twice: the partnerUserId-linked rows, then the legacy ones.
+    expect(opsOf()).toEqual([
+      "resultSweep",
+      "partnerReg",
+      "partnerReg",
+      "coupleResult",
+      "user",
+    ]);
+    expect(
+      prisma.registration.findMany.mock.invocationCallOrder[0],
+    ).toBeLessThan(prisma.$transaction.mock.invocationCallOrder[0]);
+    // The rewritten couple result's competition gets its cache flushed.
+    expect(cache.invalidateResults).toHaveBeenCalledWith("c9");
   });
 
   it("purges the renewal files after the transaction", async () => {
@@ -116,19 +211,33 @@ describe("AccountDeletionService", () => {
 
       await service.deleteAccount("u1");
 
-      expect(prisma.result.update).toHaveBeenCalledTimes(3);
-      expect(prisma.result.update).toHaveBeenCalledWith({
-        where: { id: "r1" },
+      // 3 guarded per-row updates + the sweep; never a throwing `update`.
+      expect(prisma.result.update).not.toHaveBeenCalled();
+      expect(prisma.result.updateMany).toHaveBeenCalledTimes(4);
+      expect(prisma.result.updateMany).toHaveBeenCalledWith({
+        where: { id: "r1", userId: "u1" },
         data: { userId: DELETED_USER_ID, details: { totalParticipants: 8 } },
       });
-      expect(prisma.result.update).toHaveBeenCalledWith({
-        where: { id: "r2" },
+      expect(prisma.result.updateMany).toHaveBeenCalledWith({
+        where: { id: "r2", userId: "u1" },
         data: { userId: DELETED_USER_ID, details: {} },
       });
-      expect(prisma.result.update).toHaveBeenCalledWith({
-        where: { id: "r3" },
+      expect(prisma.result.updateMany).toHaveBeenCalledWith({
+        where: { id: "r3", userId: "u1" },
         data: { userId: DELETED_USER_ID, details: { marks: [1, 2] } },
       });
+    });
+
+    it("never rewrites a row whose owner changed between the read and the transaction (#412)", async () => {
+      prisma.result.findMany.mockResolvedValue([rows[0]] as never);
+
+      await service.deleteAccount("u1");
+
+      // Every result write is scoped to the deleted user's id: a row
+      // re-imported under another account matches no `where` and stays as is.
+      for (const [args] of prisma.result.updateMany.mock.calls) {
+        expect(args.where).toEqual(expect.objectContaining({ userId: "u1" }));
+      }
     });
 
     it("sweeps any row left with the user id (beyond the cap or created meanwhile)", async () => {
@@ -142,8 +251,11 @@ describe("AccountDeletionService", () => {
     it("anonymises the results in the same transaction, before the user row goes", async () => {
       prisma.result.findMany.mockResolvedValue([rows[0]] as never);
       const marker = (op: string) => ({ op }) as never;
-      prisma.result.update.mockReturnValue(marker("resultRow"));
-      prisma.result.updateMany.mockReturnValue(marker("resultSweep"));
+      prisma.result.updateMany.mockImplementation((args) =>
+        marker(
+          args && "id" in (args.where ?? {}) ? "resultRow" : "resultSweep",
+        ),
+      );
       prisma.user.delete.mockReturnValue(marker("user"));
 
       await service.deleteAccount("u1");

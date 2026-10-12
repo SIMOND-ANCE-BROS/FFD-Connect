@@ -10,18 +10,23 @@ import { LicenseQrService } from "../../licenses/qr/license-qr.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import {
+  competitionPublicResultsSelect,
   idOnlySelect,
   userNameSelect,
   volunteerTokenAuthSelect,
   volunteerTokenIssuedSelect,
 } from "../../utils/prisma-selects";
 import { hashToken } from "../../utils/token-hash.util";
-import { CompetitionCacheService } from "./competition-cache.service";
+import { CompetitionResultDto } from "../dto/competition-result.dto";
+import { toPublicResult } from "../public-result";
+import {
+  CompetitionCacheService,
+  resultsCacheKey,
+} from "./competition-cache.service";
 
 @Injectable()
 export class CompetitionResultsService {
   private readonly logger = new Logger(CompetitionResultsService.name);
-  private readonly CACHE_PREFIX = "competitions:";
   private readonly CACHE_TTL = 3600; // 1 heure
 
   constructor(
@@ -31,13 +36,18 @@ export class CompetitionResultsService {
     private readonly licenseQrService: LicenseQrService,
   ) {}
 
-  async getResults(competitionId: string): Promise<unknown> {
-    const cacheKey = `${this.CACHE_PREFIX}results:${competitionId}`;
+  /**
+   * Public results of a competition (no auth). Each row is built field by
+   * field from `publicResultSelect`: never `userId` (#413), even if the
+   * select grows. Cached under a versioned key (`resultsCacheKey`).
+   */
+  async getResults(competitionId: string): Promise<CompetitionResultDto[]> {
+    const cacheKey = resultsCacheKey(competitionId);
 
     const cached = await this.redisService.get(cacheKey);
     if (cached) {
       try {
-        return JSON.parse(cached) as unknown;
+        return JSON.parse(cached) as CompetitionResultDto[];
       } catch {
         this.logger.warn(
           `Corrupted cache entry for key "${cacheKey}", evicting`,
@@ -48,30 +58,23 @@ export class CompetitionResultsService {
 
     const competition = await this.prisma.competition.findUnique({
       where: { id: competitionId },
-      include: {
-        events: {
-          include: {
-            results: {
-              orderBy: { ranking: "asc" },
-            },
-          },
-        },
-      },
+      select: competitionPublicResultsSelect,
     });
 
     if (!competition) {
       throw new NotFoundException("Compétition non trouvée");
     }
 
-    const results = competition.events.flatMap((event) =>
-      event.results.map((res) => ({
-        ...res,
-        event: {
-          id: event.id,
-          category: event.category,
-          ageGroup: event.ageGroup,
-        },
-      })),
+    const results: CompetitionResultDto[] = competition.events.flatMap(
+      (event) =>
+        event.results.map((res) => ({
+          ...toPublicResult(res),
+          event: {
+            id: event.id,
+            category: event.category,
+            ageGroup: event.ageGroup,
+          },
+        })),
     );
 
     await this.redisService.set(

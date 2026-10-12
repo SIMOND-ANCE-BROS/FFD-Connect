@@ -35,6 +35,7 @@ import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
 import { CheckInDto, CheckInResponseDto } from "./dto/checkin.dto";
+import { CompetitionResultDto } from "./dto/competition-result.dto";
 import {
   CreateCompetitionDto,
   UpdateCompetitionDto,
@@ -656,7 +657,7 @@ export class CompetitionsController {
   @ApiOperation({
     summary: "Récupère les résultats d'une compétition",
     description:
-      "Retourne tous les résultats et classements pour une compétition donnée.",
+      "Endpoint public. Retourne tous les résultats et classements d'une compétition, épreuve par épreuve, classés par rang. Aucun identifiant de compte n'est exposé.",
   })
   @ApiParam({
     name: "id",
@@ -666,29 +667,13 @@ export class CompetitionsController {
   @ApiResponse({
     status: 200,
     description: "Résultats récupérés avec succès",
-    schema: {
-      type: "object",
-      properties: {
-        competitionId: { type: "string" },
-        results: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              eventId: { type: "string" },
-              eventName: { type: "string" },
-              rankings: { type: "array" },
-            },
-          },
-        },
-      },
-    },
+    type: [CompetitionResultDto],
   })
   @ApiResponse({
     status: 404,
     description: "Compétition non trouvée",
   })
-  getResults(@Param("id") id: string) {
+  getResults(@Param("id") id: string): Promise<CompetitionResultDto[]> {
     return this.resultsService.getResults(id);
   }
 

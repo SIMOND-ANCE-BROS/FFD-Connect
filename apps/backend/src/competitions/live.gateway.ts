@@ -11,6 +11,8 @@ import {
 } from "@nestjs/websockets";
 import { Server, Socket } from "socket.io";
 import { getWebSocketCorsOrigins } from "../config/cors.config";
+import { PublicResultDto } from "./dto/competition-result.dto";
+import { PublicResultSource, toPublicResult } from "./public-result";
 
 /**
  * Interface pour les données de mise à jour de heat
@@ -24,16 +26,25 @@ export interface HeatUpdateData {
 }
 
 /**
- * Interface pour les données de résultat publié
+ * Payload émis sur `result_published`. Forme publique uniquement (#429) :
+ * aucun identifiant de compte, même liste blanche que l'endpoint REST des
+ * résultats (`toPublicResult`).
  */
 export interface ResultPublishedData {
   competitionId: string;
   eventId: string;
-  results: Array<{
-    userId: string;
-    ranking: number;
-    score?: number;
-  }>;
+  results: PublicResultDto[];
+}
+
+/**
+ * Entrée de `broadcastResultPublished` : des lignes `Result` lues avec (au
+ * moins) `publicResultSelect`. Elles sont toujours remappées avant émission,
+ * donc une ligne plus large (identifiant de compte inclus) ne fuit pas.
+ */
+export interface ResultPublishedInput {
+  competitionId: string;
+  eventId: string;
+  results: PublicResultSource[];
 }
 
 /** Bucket de rate limiting par socket (sliding window) */
@@ -163,10 +174,15 @@ export class LiveGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   broadcastResultPublished(
     competitionId: string,
-    data: ResultPublishedData,
+    data: ResultPublishedInput,
   ): void {
+    const payload: ResultPublishedData = {
+      competitionId: data.competitionId,
+      eventId: data.eventId,
+      results: data.results.map(toPublicResult),
+    };
     this.server
       .to(`competition_${competitionId}`)
-      .emit("result_published", data);
+      .emit("result_published", payload);
   }
 }
