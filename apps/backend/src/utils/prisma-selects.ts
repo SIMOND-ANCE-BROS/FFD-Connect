@@ -915,6 +915,33 @@ export const adminClubListSelect = {
   createdAt: true,
 } as const;
 
+/**
+ * Club HelloAsso credentials, read ONLY by the payment flow
+ * (`getHelloAssoCredentialsForCompetition`). The secret is encrypted at rest
+ * (#389) and must never be returned by an API nor logged.
+ */
+export const clubHelloAssoCredentialsSelect = {
+  id: true,
+  helloAssoClientId: true,
+  helloAssoClientSecret: true,
+  helloAssoOrgSlug: true,
+} as const;
+
+/**
+ * Club HelloAsso status: what the organizer sees (connected + slug, mode).
+ * The secret is read only to know whether it is set — never returned.
+ */
+export const clubHelloAssoStatusSelect = {
+  name: true,
+  registrationMode: true,
+  helloAssoClientId: true,
+  helloAssoClientSecret: true,
+  helloAssoOrgSlug: true,
+} as const;
+
+/** Club identity only (id + name). */
+export const clubIdNameSelect = { id: true, name: true } as const;
+
 /** Back-office club page: one member row. */
 export const adminClubMemberSelect = {
   id: true,

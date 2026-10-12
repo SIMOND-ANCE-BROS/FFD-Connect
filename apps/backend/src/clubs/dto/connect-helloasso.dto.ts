@@ -1,5 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsNotEmpty, IsString, MinLength } from "class-validator";
+import { IsNotEmpty, IsString, MaxLength, MinLength } from "class-validator";
 
 export class ConnectHelloAssoDto {
   @ApiProperty({
@@ -13,11 +13,13 @@ export class ConnectHelloAssoDto {
 
   @ApiProperty({
     description: "Client Secret de l'application HelloAsso du club",
+    maxLength: 255,
     example: "your-client-secret",
   })
   @IsString()
   @IsNotEmpty()
   @MinLength(1)
+  @MaxLength(255)
   clientSecret!: string;
 
   @ApiProperty({
