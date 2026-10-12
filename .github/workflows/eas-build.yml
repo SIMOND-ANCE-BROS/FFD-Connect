@@ -113,6 +113,16 @@ env:
   # yet (the manual beta promotion, promote-beta, builds both platforms):
   # enabling it on preview/production is `ios android` here and nothing else.
   AUTO_BUILD_PLATFORMS: ios
+  # eas-cli version used by EVERY job of this workflow (#478). Pinned, never
+  # `latest`: on `eas build --local` eas-cli also runs
+  # `npx eas-cli-local-build-plugin@<its exact @expo/eas-build-job version>`,
+  # which handles the signing credentials — so this pin also fixes the plugin
+  # version (24.12.1 -> plugin 24.9.0; the plugin's own transitive deps still
+  # resolve at run time, npx has no lockfile). Dependabot cannot see this value:
+  # bump it by hand in a reviewed PR, with a version published >= 7 days ago
+  # (same bake rule as .github/dependabot.yml), after reading the eas-cli
+  # changelog (docs/exploitation/ci-cd.md, « Version d'eas-cli »).
+  EAS_CLI_VERSION: '24.12.1'
 
 jobs:
   # ============================================================
@@ -331,7 +341,7 @@ jobs:
         continue-on-error: true # see above
         uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
         with:
-          eas-version: latest
+          eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Decide native build by fingerprint
@@ -474,7 +484,7 @@ jobs:
       - name: Setup EAS CLI
         uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
         with:
-          eas-version: latest
+          eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Publish OTA update
@@ -511,7 +521,7 @@ jobs:
       - name: Setup EAS CLI
         uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
         with:
-          eas-version: latest
+          eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
       # Only the platforms the gate found without a build of the current
@@ -572,7 +582,7 @@ jobs:
       - name: Setup EAS CLI
         uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
         with:
-          eas-version: latest
+          eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Publish OTA update
@@ -635,8 +645,9 @@ jobs:
   #   - ota    → publie le JS courant de staging sur le canal beta (les deux
   #              plateformes d'un coup : une seule jambe « OTA »)
   #   - build  → par plateforme (input `platform`, défaut : les deux) :
-  #              notes → build natif `beta` → tag + release → envoi au store,
-  #              puis (job distribute-beta, 2ᵉ approbation) distribution
+  #              notes → build natif `beta` → envoi au store, puis tag +
+  #              release (job release-beta) et (job distribute-beta,
+  #              2ᵉ approbation) distribution
   #              (iOS : scripts/testflight-distribute.ts, groupe externe
   #              « Beta FFD » + « What to Test » + Beta App Review ; Android :
   #              scripts/play-distribute.ts, notes de version de la piste
@@ -653,15 +664,20 @@ jobs:
   #              enregistrement EAS, seul le numéro de build (input
   #              build_number, platform ios OU android) l'identifie. Ni build,
   #              ni eas-cli, ni envoi : notes, tag/release, puis distribution.
-  # DEUX approbations humaines (environnement `testflight-beta` : relecteur
-  # obligatoire, branches restreintes ; le nom date d'avant Android) :
-  #   1. promote-beta — « on lance le build / l'envoi ? » ;
-  #   2. distribute-beta — « le build est sur le store, on l'envoie aux
-  #      testeurs ? ».
-  # promote-beta n'a NI jeton OIDC NI clé de distribution : `pnpm install` et
-  # eas-cli@latest tournent ici. Les clés (Key Vault `ffd-connect-release-kv`,
-  # ADR-0020) ne sont lues que dans distribute-beta. beta-follow-up écrit la
-  # commande de reprise si la chaîne n'est pas allée au bout.
+  # DEUX approbations humaines, une par environnement (relecteur obligatoire,
+  # branches develop/staging seulement) :
+  #   1. promote-beta — environnement `testflight-build` (secrets du BUILD
+  #      seulement : config Firebase beta) — « on lance le build / l'envoi ? » ;
+  #   2. distribute-beta — environnement `testflight-beta` (clés de
+  #      distribution des stores ; le nom date d'avant Android) — « le build
+  #      est sur le store, on l'envoie aux testeurs ? ».
+  # promote-beta n'a NI jeton OIDC, NI clé de distribution, NI droit
+  # d'écriture sur le dépôt (contents: read, #477) : `pnpm install`, eas-cli,
+  # CocoaPods, Gradle et fastlane tournent ici. Le tag et la release sont posés
+  # par release-beta, petit job sans code tiers, à partir de l'état transmis ;
+  # les clés (Key Vault `ffd-connect-release-kv`, ADR-0020) ne sont lues que
+  # dans distribute-beta. beta-follow-up écrit la commande de reprise si la
+  # chaîne n'est pas allée au bout.
   #
   # Nommage identique sur les deux stores : tag `beta-<version>-<ios|android>-<n°>`
   # et release « Beta iOS 1.0.0 (18) » / « Beta Android 1.0.0 (12) », où n° est
@@ -669,9 +685,10 @@ jobs:
   #
   # Chaque attente a sa propre borne (incident 2026-10-06 : la soumission EAS
   # est restée 1 h 56 IN_QUEUE, le timeout du JOB l'a tuée et tag/release +
-  # distribution ont sauté). Un build fini n'est jamais perdu : il est tagué
-  # dès sa fin, et si l'envoi ou la distribution n'aboutit pas à temps la jambe
-  # se termine en avertissement avec la commande `action=resume` exacte.
+  # distribution ont sauté). Un build fini n'est jamais perdu : son état est
+  # transmis quoi qu'il arrive (always()) et release-beta le tague même si
+  # l'envoi échoue ; si l'envoi ou la distribution n'aboutit pas à temps la
+  # jambe se termine en avertissement avec la commande `action=resume` exacte.
   # ============================================================
   promote-beta:
     name: >-
@@ -705,13 +722,17 @@ jobs:
     # Approval #1: the environment carries a required reviewer (one approval
     # releases both legs). Its deployment record only keeps the LAST leg: what
     # went to each store is in the run summary and the tags.
+    # `testflight-build`, NOT `testflight-beta` (#479): this job runs
+    # third-party code, so its environment holds only what the build needs
+    # (FIREBASE_*_BETA_B64), never the store distribution keys.
     environment:
-      name: testflight-beta
-    # contents: write — créer la GitHub Release (changelog testeurs).
-    # PAS d'id-token : ce job exécute pnpm install et eas-cli@latest, il ne
-    # doit pas pouvoir obtenir le jeton qui ouvre le coffre des clés.
+      name: testflight-build
+    # contents: read only (#477) — the tag and the release are created by
+    # release-beta. No id-token: this job runs pnpm install, eas-cli, CocoaPods
+    # and Gradle, it must not be able to mint the token that opens the key
+    # vault. GH_TOKEN below only reads PR descriptions (tester notes).
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
@@ -719,7 +740,7 @@ jobs:
           # Historique complet + tags : le générateur remonte au dernier tag beta-*.
           fetch-depth: 0
           # Pas de token dans .git/config : `eas build` archive le projet, et
-          # l'étape GitHub Release passe GH_TOKEN explicitement.
+          # les notes lisent les PR avec un GH_TOKEN passé explicitement.
           persist-credentials: false
 
       # Seul endroit où iOS et Android diffèrent par des valeurs : tout le reste
@@ -802,7 +823,7 @@ jobs:
         if: inputs.action != 'distribute'
         uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
         with:
-          eas-version: latest
+          eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
       # action=resume : retrouve le build EXISTANT et se place sur son commit,
@@ -876,8 +897,9 @@ jobs:
       # d'ID EAS : on se place sur le commit qu'il décrit — celui d'un tag
       # `beta-*-<plateforme>-<n°>` s'il existe déjà (posé à la main quand
       # staging a avancé depuis le build), sinon la pointe de staging — puis
-      # notes, tag/release (idempotents) et passage de relais à
-      # distribute-beta, qui attend lui-même que le store ait traité le build.
+      # notes et passage de relais à release-beta (tag/release, idempotents)
+      # et à distribute-beta, qui attend lui-même que le store ait traité le
+      # build.
       - name: Resolve local beta build (distribute)
         id: local
         if: inputs.action == 'distribute'
@@ -1088,7 +1110,7 @@ jobs:
       # (autoIncrement : un échec consomme un numéro). Ce que le builder EAS
       # fournit et le runner non :
       # - les variables EAS « secret » de type file (config Firebase) : lues
-      #   ici depuis les secrets de l'environnement `testflight-beta`, décodées
+      #   ici depuis les secrets de l'environnement `testflight-build`, décodées
       #   dans $RUNNER_TEMP/eas-environment-secrets/ — nom de dossier imposé :
       #   fingerprint.config.js l'ignore, sinon l'empreinte calculée avant le
       #   build diffère de celle du build (« Runtime version … not equal ») ;
@@ -1110,6 +1132,12 @@ jobs:
           EXPO_PUBLIC_APP_ENV: beta
           SENTRY_DISABLE_AUTO_UPLOAD: 'true'
           EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: '1'
+          # Android : bundletool lit le versionCode DANS le .aab (#480 ; absent
+          # de l'image ubuntu-24.04). Jar officiel google/bundletool, vérifié
+          # par SHA-256 (empreinte publiée sur la release GitHub). Montée à la
+          # main : Dependabot ne suit pas ce téléchargement.
+          BUNDLETOOL_VERSION: '1.18.3'
+          BUNDLETOOL_SHA256: a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
           # CocoaPods exige une locale UTF-8.
           LANG: en_US.UTF-8
           LC_ALL: en_US.UTF-8
@@ -1142,7 +1170,7 @@ jobs:
           # build raté consomme un numéro) : format lisible et bonne app — le
           # fichier d'une autre variante donnerait des push mortes en silence.
           if [ -z "$FIREBASE_B64" ]; then
-            echo "::error::secret $SECRET absent de l'environnement testflight-beta (docs/exploitation/changelog-beta.md, « Build sur runner GitHub »)"
+            echo "::error::secret $SECRET absent de l'environnement testflight-build (docs/exploitation/changelog-beta.md, « Build sur runner GitHub »)"
             exit 1
           fi
           if ! printf '%s' "$FIREBASE_B64" | base64 --decode > "$FILE" 2> /dev/null; then
@@ -1163,6 +1191,18 @@ jobs:
           fi
           export "$VAR=$FILE"
 
+          # bundletool téléchargé et vérifié AVANT le build : après, un échec
+          # perdrait un numéro de build (et le binaire, non conservé).
+          if [ "$PLATFORM" = "android" ]; then
+            BUNDLETOOL="$RUNNER_TEMP/bundletool.jar"
+            curl -fsSL --retry 3 -o "$BUNDLETOOL" \
+              "https://github.com/google/bundletool/releases/download/$BUNDLETOOL_VERSION/bundletool-all-$BUNDLETOOL_VERSION.jar"
+            if [ "$(shasum -a 256 "$BUNDLETOOL" | cut -d ' ' -f 1)" != "$BUNDLETOOL_SHA256" ]; then
+              echo "::error::bundletool $BUNDLETOOL_VERSION : empreinte SHA-256 inattendue, build non lancé"
+              exit 1
+            fi
+          fi
+
           echo "## $PLATFORM_ICON Build $PLATFORM_NAME beta sur runner GitHub (\`eas build --local\`)" >> "$GITHUB_STEP_SUMMARY"
           if ! eas build --local --platform "$PLATFORM" --profile beta --non-interactive \
             --freeze-credentials --output "$OUT" < /dev/null; then
@@ -1171,10 +1211,11 @@ jobs:
             exit 1
           fi
 
-          # Numéro affiché par le store : lu DANS le binaire pour iOS (avec
-          # contrôle de l'identifiant), au compteur distant EAS pour Android
-          # (aucun outil ici pour lire un .aab ; le groupe de concurrence
-          # manual-beta sérialise les promotions).
+          # Numéro affiché par le store : lu DANS le binaire, avec contrôle de
+          # l'identifiant (Info.plist de l'IPA ; manifeste du .aab via
+          # bundletool). Jamais au compteur distant EAS : un build lancé en
+          # parallèle hors de ce run l'aurait avancé, et le tag ne décrirait
+          # plus le binaire envoyé (#480).
           if [ "$PLATFORM" = "ios" ]; then
             unzip -p "$OUT" 'Payload/*.app/Info.plist' > "$RUNNER_TEMP/Info.plist"
             BUNDLE=$(plutil -extract CFBundleIdentifier raw -o - "$RUNNER_TEMP/Info.plist" 2> /dev/null || true)
@@ -1186,8 +1227,17 @@ jobs:
               exit 1
             fi
           else
-            BUILD_NUMBER=$(eas build:version:get --platform android --profile beta --json < /dev/null 2> /dev/null \
-              | sed -n '/^{/,$p' | jq -r '.versionCode // empty' 2> /dev/null || true)
+            dump_manifest() {
+              "$JAVA_HOME/bin/java" -jar "$BUNDLETOOL" dump manifest --bundle="$OUT" --xpath="$1" 2> /dev/null \
+                | tr -d '[:space:]' || true
+            }
+            BUNDLE=$(dump_manifest /manifest/@package)
+            BUILD_NUMBER=$(dump_manifest /manifest/@android:versionCode)
+            if [ "$BUNDLE" != "$EXPECTED_ID" ]; then
+              echo "state=failed" >> "$GITHUB_OUTPUT"
+              echo "::error::binaire construit pour ${BUNDLE:-? (manifeste du .aab illisible par bundletool)}, attendu $EXPECTED_ID"
+              exit 1
+            fi
           fi
           SHA256=$(shasum -a 256 "$OUT" | cut -d ' ' -f 1)
           {
@@ -1243,77 +1293,9 @@ jobs:
           # Contrôle après coup : l'empreinte publiée est-elle bien celle vérifiée ?
           ../../scripts/check-ota-reach.sh beta "$RUNNER_TEMP/eas-update.json" --strict
 
-      # Published, not drafted: a draft release does NOT create its tag, and the
-      # tag is how we check out what a beta actually contained. `--prerelease`
-      # keeps these out of "latest release". Runs as soon as the BUILD exists
-      # (or the OTA is live), BEFORE submit and distribution: the tag describes
-      # the binary, which is already paid for, so a stuck submission (2026-10-06)
-      # or a failed distribution must never leave a build without its tag.
-      #
-      # Tag = what testers see, same scheme on both stores:
-      # `beta-<version>-<ios|android>-<build number>`, the number TestFlight /
-      # Play display ("1.0.0 (18)"). An OTA is tagged too: without it the next
-      # changelog (built from the last `beta-*` tag) would announce changes
-      # testers already received. Idempotent: a resume or a distribute skips it
-      # when the release exists (a local build's tag may be created by hand).
-      - name: Tag & GitHub Release (beta, prerelease)
-        id: tag
-        if: >-
-          !cancelled()
-          && (steps.build.outputs.number != ''
-          || steps.ghbuild.outputs.number != ''
-          || steps.resolve.outputs.number != ''
-          || (steps.local.outputs.number != '' && steps.notes.outcome == 'success')
-          || steps.ota.outcome == 'success')
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ACTION: ${{ inputs.action }}
-          PLATFORM: ${{ matrix.platform }}
-          BUILD_NUMBER: >-
-            ${{ steps.build.outputs.number || steps.ghbuild.outputs.number
-            || steps.resolve.outputs.number || steps.local.outputs.number }}
-          # Build sur runner GitHub : empreinte du binaire envoyé au store
-          # (le binaire lui-même ne quitte pas le runner).
-          BINARY_SHA256: ${{ steps.ghbuild.outputs.sha256 }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          # Pointe de staging (build), commit du build repris (resume), ou
-          # commit du tag existant / pointe de staging (distribute).
-          SHA=$(git rev-parse HEAD)
-          VERSION=$(sed -nE 's/.*version: "([^"]+)", \/\/ x-release-please-version.*/\1/p' apps/client/app.config.js)
-          if [ -z "$VERSION" ]; then
-            echo "::error::version introuvable dans apps/client/app.config.js (annotation x-release-please-version)"
-            exit 1
-          fi
-          if [ "$ACTION" = "ota" ]; then
-            TAG="beta-$VERSION-ota-$(date +%Y%m%d)-${SHA:0:7}"
-            TITLE="Beta OTA $VERSION — ${SHA:0:7}"
-            HEADER="OTA update on the beta channel (iOS and Android), commit ${SHA:0:7}."
-          else
-            TAG="beta-$VERSION-$PLATFORM-$BUILD_NUMBER"
-            TITLE="Beta $PLATFORM_NAME $VERSION ($BUILD_NUMBER)"
-            HEADER="$PLATFORM_NAME build $VERSION ($BUILD_NUMBER) — $STORE_NAME, commit ${SHA:0:7}."
-            if [ "$ACTION" = "distribute" ]; then
-              # Rien ne relie le binaire envoyé à la main à ce commit : le dire.
-              HEADER="$HEADER Local build (eas build --local), uploaded by hand: provenance NOT verified by CI (build local, provenance non vérifiée par la CI)."
-            fi
-            if [[ "$BINARY_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
-              # Relie le binaire du store à ce commit et à ce run.
-              HEADER="$HEADER Built on a GitHub Actions runner (eas build --local, $RUN_URL); SHA-256 of the submitted binary: \`$BINARY_SHA256\`."
-            fi
-          fi
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            echo "::notice::Release $TAG déjà présente (relance) — rien à faire."
-          else
-            printf '%s\n\n' "$HEADER" | cat - beta-notes.md > "$RUNNER_TEMP/release-notes.md"
-            gh release create "$TAG" \
-              --title "$TITLE" \
-              --notes-file "$RUNNER_TEMP/release-notes.md" \
-              --prerelease \
-              --target "$SHA"
-          fi
-          echo "🏷️ Tag \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+      # Tag & GitHub Release : job release-beta (#477), après ce job, à partir
+      # de l'état transmis (numéro de build, commit, empreinte, notes). Ce job
+      # exécute du code tiers et n'a donc plus contents: write.
 
       # Envoi au store, avec une attente BORNÉE : la file de soumission EAS
       # (plan gratuit) a déjà retenu une soumission 1 h 56 IN_QUEUE sans log.
@@ -1459,15 +1441,18 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/eas-environment-secrets"
           rm -f "$RUNNER_TEMP/ffd-connect-beta.ipa" "$RUNNER_TEMP/ffd-connect-beta.aab" \
-            "$RUNNER_TEMP/Info.plist" "$RUNNER_TEMP/eas-submit.log"
+            "$RUNNER_TEMP/Info.plist" "$RUNNER_TEMP/eas-submit.log" "$RUNNER_TEMP/bundletool.jar"
 
-      # Passage de relais à distribute-beta et au suivi : les sorties d'un job
-      # matriciel s'écrasent d'une jambe à l'autre, d'où un artefact PAR JAMBE
-      # (beta-state-<platform>). Rien de secret : ID et numéro de build, états
-      # du tag et de l'envoi, notes testeurs. `always()` : même un run annulé
-      # pendant l'attente laisse de quoi écrire la commande de reprise.
-      - name: Save hand-off state (distribute-beta, follow-up)
-        if: always() && inputs.action != 'ota'
+      # Passage de relais à release-beta, distribute-beta et au suivi : les
+      # sorties d'un job matriciel s'écrasent d'une jambe à l'autre, d'où un
+      # artefact PAR JAMBE (beta-state-<platform>, OTA comprise : release-beta
+      # la tague aussi). Rien de secret : ID et numéro de build, commit décrit,
+      # empreinte du binaire, état de l'envoi, notes testeurs et notes de
+      # release. `always()` : même un run annulé ou un job arrivé à son timeout
+      # laisse de quoi taguer le build déjà payé et écrire la commande de
+      # reprise.
+      - name: Save hand-off state (release-beta, distribute-beta, follow-up)
+        if: always()
         env:
           PLATFORM: ${{ matrix.platform }}
           SKIP: ${{ steps.resolve.outputs.skip }}
@@ -1478,7 +1463,20 @@ jobs:
           BUILD_STATE: ${{ steps.build.outputs.state || steps.ghbuild.outputs.state }}
           # github | eas pour action=build (où le binaire a été construit).
           BUILDER: ${{ inputs.action == 'build' && inputs.builder || '' }}
-          TAG_OUTCOME: ${{ steps.tag.outcome }}
+          # Build sur runner GitHub : empreinte du binaire envoyé au store
+          # (le binaire lui-même ne quitte pas le runner).
+          BINARY_SHA256: ${{ steps.ghbuild.outputs.sha256 }}
+          # Ce qui mérite un tag (ex-condition de l'étape Tag) : dès que le
+          # build existe (ou que l'OTA est en ligne), AVANT et indépendamment
+          # de l'envoi et de la distribution — le binaire est déjà payé, une
+          # soumission bloquée (2026-10-06) ne doit pas le laisser sans tag.
+          # distribute : seulement si les notes ont été générées.
+          RELEASE: >-
+            ${{ (steps.build.outputs.number != ''
+            || steps.ghbuild.outputs.number != ''
+            || steps.resolve.outputs.number != ''
+            || (steps.local.outputs.number != '' && steps.notes.outcome == 'success')
+            || steps.ota.outcome == 'success') && 'true' || 'false' }}
           # distribute : envoi fait hors CI (étape « Resolve local beta build »),
           # transmis seulement si les notes ont été générées — sinon pas de
           # distribution sans « What to Test ».
@@ -1490,27 +1488,238 @@ jobs:
           set -euo pipefail
           D="$RUNNER_TEMP/beta-state"
           mkdir -p "$D"
-          # Version marketing du commit décrit (HEAD : staging, build repris ou
-          # tag du build local) : distribute-beta la passe à
+          # Commit décrit (HEAD : pointe de staging, commit du build repris ou
+          # du tag du build local) : release-beta pose le tag dessus.
+          COMMIT=$(git rev-parse HEAD 2> /dev/null || true)
+          # Version marketing de ce commit : distribute-beta la passe à
           # testflight-distribute (--version) pour ne pas viser un homonyme.
           VERSION=$(sed -nE 's/.*version: "([^"]+)", \/\/ x-release-please-version.*/\1/p' apps/client/app.config.js 2> /dev/null || true)
           jq -n \
             --arg platform "$PLATFORM" --arg skip "${SKIP:-false}" \
             --arg build_id "$BUILD_ID" --arg build_number "$BUILD_NUMBER" \
-            --arg version "$VERSION" \
-            --arg build_state "$BUILD_STATE" --arg tag "$TAG_OUTCOME" --arg submit "$SUBMIT_STATE" \
-            --arg builder "$BUILDER" \
+            --arg version "$VERSION" --arg commit "$COMMIT" \
+            --arg build_state "$BUILD_STATE" --arg submit "$SUBMIT_STATE" \
+            --arg builder "$BUILDER" --arg sha256 "$BINARY_SHA256" --arg release "$RELEASE" \
             '{platform: $platform, skip: ($skip == "true"), build_id: $build_id,
-              build_number: $build_number, version: $version, build_state: $build_state,
-              tag_outcome: $tag, submit_state: $submit, builder: $builder}' > "$D/state.json"
+              build_number: $build_number, version: $version, commit: $commit,
+              build_state: $build_state, submit_state: $submit, builder: $builder,
+              binary_sha256: $sha256, release: ($release == "true")}' > "$D/state.json"
           if [ -f beta-notes.txt ]; then cp beta-notes.txt "$D/beta-notes.txt"; fi
+          if [ -f beta-notes.md ]; then cp beta-notes.md "$D/beta-notes.md"; fi
 
       - name: Upload hand-off state
-        if: always() && inputs.action != 'ota'
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: beta-state-${{ matrix.platform }}
           path: ${{ runner.temp }}/beta-state/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+  # ============================================================
+  # TAG & RELEASE BÊTA — seul job du flux bêta avec contents: write (#477)
+  # Sorti de promote-beta, qui exécute du code tiers (pnpm install, eas-cli,
+  # CocoaPods, Gradle, fastlane) : une dépendance compromise ne peut plus
+  # pousser de tag, de release ni de contenu. Ici : aucun code tiers — checkout
+  # (actions épinglées), git, jq et gh préinstallés sur le runner.
+  # Entrée = l'état transmis par promote-beta, DONNÉE NON FIABLE : chaque champ
+  # passe un motif ancré avant usage, le commit doit être dans l'historique de
+  # staging, et la version vient du dépôt (app.config.js de ce commit), pas de
+  # l'état. Pas d'environnement : rien de secret, pas d'approbation de plus.
+  # always() : un build fini est tagué même si promote-beta a échoué ensuite
+  # (envoi), a été annulé ou a atteint son timeout. Idempotent : une release
+  # déjà présente (relance, reprise, build local tagué à la main) est laissée.
+  # Tourne avant distribute-beta (needs), comme l'ancienne étape : le tag
+  # existe dès la distribution, et sert de base aux notes du run suivant.
+  # ============================================================
+  release-beta:
+    name: >-
+      Tag & release ${{ matrix.platform == 'ios' && 'iOS'
+      || matrix.platform == 'android' && 'Android' || 'OTA' }}
+      (${{ inputs.action }})
+    needs: [promote-beta]
+    if: >-
+      always() && github.event_name == 'workflow_dispatch'
+      && needs.promote-beta.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # Même expression que promote-beta (OTA comprise ; pas d'`include`).
+        platform: >-
+          ${{ fromJSON(inputs.action == 'ota' && '["ota"]'
+          || inputs.platform == 'ios' && '["ios"]'
+          || inputs.platform == 'android' && '["android"]'
+          || '["ios","android"]') }}
+    permissions:
+      contents: write
+    steps:
+      # Pas d'état (jambe échouée avant la fin, approbation refusée) : rien à
+      # taguer, et ni checkout ni lecture.
+      - name: Download hand-off state
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: beta-state-${{ matrix.platform }}
+          path: ${{ runner.temp }}/beta-state
+
+      # Historique de staging : contrôle d'ascendance du commit transmis et
+      # lecture de sa version. Arbre de travail réduit à un fichier.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        if: steps.download.outcome == 'success'
+        with:
+          ref: staging
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: apps/client/app.config.js
+          sparse-checkout-cone-mode: false
+
+      - name: Read hand-off state
+        id: state
+        if: steps.download.outcome == 'success'
+        env:
+          ACTION: ${{ inputs.action }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          S="$RUNNER_TEMP/beta-state/state.json"
+          if [ ! -f "$S" ]; then
+            echo "::notice::aucun état transmis par promote-beta ($PLATFORM) : rien à taguer"
+            exit 0
+          fi
+          # Seules des valeurs validées sortent d'ici ($GITHUB_OUTPUT, log) :
+          # [[ =~ ]] ancre sur la chaîne ENTIÈRE (pas de « 26⏎ready=true »).
+          field() { jq -r --arg k "$1" '.[$k] // empty | tostring' "$S"; }
+          if [ "$(field platform)" != "$PLATFORM" ]; then
+            echo "::error::état transmis pour une autre plateforme que $PLATFORM"
+            exit 1
+          fi
+          if [ "$(field skip)" = "true" ] || [ "$(field release)" != "true" ]; then
+            echo "Jambe $PLATFORM : rien à taguer (pas de build abouti / OTA non publiée, ou jambe sans objet)."
+            exit 0
+          fi
+          COMMIT=$(field commit)
+          if ! [[ "$COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::commit illisible dans l'état transmis"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$COMMIT" HEAD 2> /dev/null; then
+            echo "::error::le commit ${COMMIT:0:7} transmis n'est pas dans l'historique de staging"
+            exit 1
+          fi
+          BUILD_NUMBER=""
+          if [ "$ACTION" != "ota" ]; then
+            BUILD_NUMBER=$(field build_number)
+            if ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]{0,8}$ ]]; then
+              echo "::error::numéro de build illisible dans l'état transmis"
+              exit 1
+            fi
+          fi
+          # Facultative (build cloud, reprise, build local) : omise si invalide.
+          SHA256=$(field binary_sha256)
+          [[ "$SHA256" =~ ^[0-9a-f]{64}$ ]] || SHA256=""
+          # Version lue dans le DÉPÔT, au commit validé — pas dans l'état.
+          VERSION=$(git show "$COMMIT:apps/client/app.config.js" \
+            | sed -nE 's/.*version: "([^"]+)", \/\/ x-release-please-version.*/\1/p')
+          if ! [[ "$VERSION" =~ ^[0-9]{1,4}(\.[0-9]{1,4}){0,3}$ ]]; then
+            echo "::error::version introuvable dans apps/client/app.config.js (annotation x-release-please-version)"
+            exit 1
+          fi
+          {
+            echo "ready=true"
+            echo "commit=$COMMIT"
+            echo "build_number=$BUILD_NUMBER"
+            echo "sha256=$SHA256"
+            echo "version=$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      # Published, not drafted: a draft release does NOT create its tag, and the
+      # tag is how we check out what a beta actually contained. `--prerelease`
+      # keeps these out of "latest release".
+      #
+      # Tag = what testers see, same scheme on both stores:
+      # `beta-<version>-<ios|android>-<build number>`, the number TestFlight /
+      # Play display ("1.0.0 (18)"). An OTA is tagged too: without it the next
+      # changelog (built from the last `beta-*` tag) would announce changes
+      # testers already received. Idempotent: a resume or a distribute skips it
+      # when the release exists (a local build's tag may be created by hand).
+      # The notes body is text from the untrusted hand-off: it only ever goes
+      # into --notes-file, size-capped, never into a shell command or the log.
+      - name: Tag & GitHub Release (beta, prerelease)
+        id: tag
+        if: steps.state.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ACTION: ${{ inputs.action }}
+          PLATFORM: ${{ matrix.platform }}
+          SHA: ${{ steps.state.outputs.commit }}
+          BUILD_NUMBER: ${{ steps.state.outputs.build_number }}
+          VERSION: ${{ steps.state.outputs.version }}
+          BINARY_SHA256: ${{ steps.state.outputs.sha256 }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          case "$PLATFORM" in
+            ios) PLATFORM_NAME=iOS STORE_NAME='App Store Connect' ;;
+            android) PLATFORM_NAME=Android STORE_NAME='Google Play (closed testing)' ;;
+            *) PLATFORM_NAME=OTA STORE_NAME='' ;;
+          esac
+          if [ "$ACTION" = "ota" ]; then
+            TAG="beta-$VERSION-ota-$(date +%Y%m%d)-${SHA:0:7}"
+            TITLE="Beta OTA $VERSION — ${SHA:0:7}"
+            HEADER="OTA update on the beta channel (iOS and Android), commit ${SHA:0:7}."
+          else
+            TAG="beta-$VERSION-$PLATFORM-$BUILD_NUMBER"
+            TITLE="Beta $PLATFORM_NAME $VERSION ($BUILD_NUMBER)"
+            HEADER="$PLATFORM_NAME build $VERSION ($BUILD_NUMBER) — $STORE_NAME, commit ${SHA:0:7}."
+            if [ "$ACTION" = "distribute" ]; then
+              # Rien ne relie le binaire envoyé à la main à ce commit : le dire.
+              HEADER="$HEADER Local build (eas build --local), uploaded by hand: provenance NOT verified by CI (build local, provenance non vérifiée par la CI)."
+            fi
+            if [ -n "$BINARY_SHA256" ]; then
+              # Relie le binaire du store à ce commit et à ce run.
+              HEADER="$HEADER Built on a GitHub Actions runner (eas build --local, $RUN_URL); SHA-256 of the submitted binary: \`$BINARY_SHA256\`."
+            fi
+          fi
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "::notice::Release $TAG déjà présente (relance) — rien à faire."
+          else
+            NOTES="$RUNNER_TEMP/beta-state/beta-notes.md"
+            if [ ! -f "$NOTES" ]; then
+              echo "::error::notes de release absentes de l'état transmis (étape « Generate tester notes » de promote-beta)"
+              exit 1
+            fi
+            # Corps de release GitHub : 125 000 caractères au plus.
+            { printf '%s\n\n' "$HEADER"; head -c 100000 "$NOTES"; } > "$RUNNER_TEMP/release-notes.md"
+            gh release create "$TAG" \
+              --title "$TITLE" \
+              --notes-file "$RUNNER_TEMP/release-notes.md" \
+              --prerelease \
+              --target "$SHA"
+          fi
+          echo "🏷️ Tag \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save release result (follow-up)
+        if: always()
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          OUTCOME: ${{ steps.tag.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/beta-release"
+          jq -n --arg platform "$PLATFORM" --arg outcome "$OUTCOME" \
+            '{platform: $platform, tag_outcome: $outcome}' > "$RUNNER_TEMP/beta-release/release.json"
+
+      - name: Upload release result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: beta-release-${{ matrix.platform }}
+          path: ${{ runner.temp }}/beta-release/
           if-no-files-found: error
           overwrite: true
           retention-days: 7
@@ -1536,7 +1745,9 @@ jobs:
     name: >-
       Distribution ${{ matrix.platform == 'ios' && 'iOS · TestFlight'
       || 'Android · Google Play' }} (${{ inputs.action }})
-    needs: [promote-beta]
+    # release-beta d'abord (le tag existe avant la distribution, comme avant
+    # #477) ; son échec ne bloque pas la distribution (!cancelled()).
+    needs: [promote-beta, release-beta]
     # !cancelled() : une jambe de promote-beta en échec ne bloque pas l'autre.
     # Le test d'événement est indispensable : avec !cancelled(), un job dont
     # le `needs` est sauté tourne quand même (sinon : chaque run CI).
@@ -1615,8 +1826,8 @@ jobs:
             not_ready "jambe sans objet"
             exit 0
           fi
-          # L'état vient d'un job qui exécute du code non épinglé (pnpm install,
-          # eas-cli) : c'est une DONNÉE non fiable. Chaque champ est validé par
+          # L'état vient d'un job qui exécute du code tiers (pnpm install,
+          # eas-cli, CocoaPods, Gradle) : c'est une DONNÉE non fiable. Chaque champ est validé par
           # un motif strict avant toute utilisation ; aucune valeur brute n'est
           # écrite dans $GITHUB_OUTPUT ni dans le log (un saut de ligne y
           # injecterait `ready=true` ou une commande de workflow).
@@ -1840,7 +2051,7 @@ jobs:
   # ============================================================
   beta-follow-up:
     name: Bêta — suivi (reprise si incomplet)
-    needs: [promote-beta, distribute-beta]
+    needs: [promote-beta, release-beta, distribute-beta]
     if: >-
       always() && github.event_name == 'workflow_dispatch'
       && inputs.action != 'ota' && needs.promote-beta.result != 'skipped'
@@ -1855,6 +2066,13 @@ jobs:
         with:
           pattern: beta-state-*
           path: ${{ runner.temp }}/state
+
+      - name: Download release results
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: beta-release-*
+          path: ${{ runner.temp }}/release
 
       - name: Download distribution results
         continue-on-error: true
@@ -1872,13 +2090,16 @@ jobs:
           for PLATFORM in ios android; do
             S="$RUNNER_TEMP/state/beta-state-$PLATFORM/state.json"
             D="$RUNNER_TEMP/dist/beta-dist-$PLATFORM/dist.json"
+            T="$RUNNER_TEMP/release/beta-release-$PLATFORM/release.json"
             [ -f "$S" ] || continue # jambe non lancée, ou échouée avant tout build
             sf() { jq -r --arg k "$1" '.[$k] // empty | tostring' "$S"; }
             [ "$(sf skip)" != "true" ] || continue # resume : jambe de l'autre plateforme
             BUILD_ID=$(sf build_id)
             BUILD_NUMBER=$(sf build_number)
             BUILD_STATE=$(sf build_state)
-            TAG_OUTCOME=$(sf tag_outcome)
+            # Tag & release : posés par release-beta (#477), absent = non lancé.
+            TAG_OUTCOME=""
+            if [ -f "$T" ]; then TAG_OUTCOME=$(jq -r '.tag_outcome // empty | tostring' "$T"); fi
             SUBMIT_STATE=$(sf submit_state)
             BUILDER=$(sf builder)
             # État venu d'un job non fiable : chaque champ affiché ou recopié
@@ -1978,7 +2199,7 @@ jobs:
       - name: Setup EAS CLI
         uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
         with:
-          eas-version: latest
+          eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
       # Only the platforms the gate found without a build of the current
@@ -2035,7 +2256,7 @@ jobs:
       - name: Setup EAS CLI
         uses: expo/expo-github-action@eab7a230208c952974db8c3245cfd78402c7b385 # v9
         with:
-          eas-version: latest
+          eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Publish OTA update
