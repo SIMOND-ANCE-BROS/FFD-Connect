@@ -6,6 +6,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { OcrService } from "../utils/ocr.service";
 import { licenseBaseSelect } from "../utils/prisma-selects";
+import { licenseValidityFloor } from "./license-expiry";
 import { renewedLicenseValidUntil } from "./license-season";
 import { LicenseQrService } from "./qr/license-qr.service";
 import { AppleWalletPassGenerator } from "./wallet/apple-wallet-pass.generator";
@@ -109,7 +110,8 @@ export class LicensesService {
     const license = await this.prisma.license.findFirst({
       where: {
         number: licenseNumber,
-        validUntil: { gte: new Date() },
+        // Valid through the whole Paris day of validUntil (#384).
+        validUntil: { gte: licenseValidityFloor() },
       },
       select: {
         number: true,

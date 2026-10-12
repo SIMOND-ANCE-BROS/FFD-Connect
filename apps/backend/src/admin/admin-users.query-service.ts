@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { rolesOf, withRole } from "../auth/roles";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
+import { isLicenseExpired } from "../licenses/license-expiry";
 import { isCreatedByAdmin } from "./admin-audit.util";
 import {
   adminUserDetailSelect,
@@ -26,7 +27,8 @@ export function licenseStatus(
   now: Date,
 ): LicenseStatus | null {
   if (!license) return null;
-  return license.validUntil.getTime() >= now.getTime() ? "ACTIVE" : "EXPIRED";
+  // Valid through the whole Paris day of validUntil, like the app (#384).
+  return isLicenseExpired(license.validUntil, now) ? "EXPIRED" : "ACTIVE";
 }
 
 function toListItem(row: ListRow, now: Date): AdminUserListItemDto {
