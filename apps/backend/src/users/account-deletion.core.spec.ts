@@ -81,6 +81,10 @@ describe("account-deletion.core", () => {
         ...unknown[],
       ];
       expect(strings.join("?")).toContain('NOT EXISTS (SELECT 1 FROM "User"');
+      // Synthetic seed ids (seed-live-couple-*) are never swept.
+      expect(strings.join("?")).toContain(
+        `r."userId" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
+      );
       expect(values).toEqual([DELETED_USER_ID, MAX_ORPHANED_RESULTS]);
     });
 

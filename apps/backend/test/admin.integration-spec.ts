@@ -391,6 +391,16 @@ describe("Admin (integration, real DB)", () => {
           details: { participant: "Couple A", bib: "7", status: "OK" },
         },
       });
+      // Demo seed row (seed-checkin-test): synthetic, non-UUID id, kept.
+      const demo = await prisma.result.create({
+        data: {
+          eventId: event.id,
+          userId: `seed-live-couple-${event.id}-1`,
+          round: "Final",
+          ranking: 3,
+          details: { participant: "Couple C" },
+        },
+      });
       const kept = await prisma.result.create({
         data: {
           eventId: event.id,
@@ -415,6 +425,12 @@ describe("Admin (integration, real DB)", () => {
       ).toMatchObject({
         userId: survivor.id,
         details: { participant: "Couple B" },
+      });
+      expect(
+        await prisma.result.findUniqueOrThrow({ where: { id: demo.id } }),
+      ).toMatchObject({
+        userId: `seed-live-couple-${event.id}-1`,
+        details: { participant: "Couple C" },
       });
       // Tombstoned rows are never picked up again.
       await anonymizeOrphanedResults(prisma);

@@ -169,8 +169,18 @@ interface OrphanedResultRow {
  * Idempotent sweep of results whose `userId` points to no account and is not
  * the tombstone yet: left by a deletion path that did not anonymise them
  * (staging test-account purges before #412). Same treatment as a deletion.
- * The #396 data migration only ran once; this one can run at every boot
- * (nothing to do = one indexed read). Returns the number of rows anonymised.
+ * The #396 data migration only ran once; this one can run at every boot.
+ * Cost: an anti-join over the whole Result table (LIMIT bounds the rows
+ * returned, not scanned) — fine at staging volume.
+ *
+ * Only UUID-shaped `userId` values are swept (User.id defaults to uuid()):
+ * the staging demo seed (scripts/seed-checkin-test.ts) writes synthetic ids
+ * such as `seed-live-couple-*` on purpose, and a future importer could store
+ * a non-User identifier; neither must lose its names.
+ *
+ * STAGING / MAINTENANCE ONLY (called by scripts/purge-test-accounts.ts):
+ * never call it from the app. It irreversibly strips names from rankings.
+ * Returns the number of rows anonymised.
  */
 export async function anonymizeOrphanedResults(
   prisma: Pick<PrismaClient, "result" | "$queryRaw" | "$transaction">,
@@ -179,6 +189,7 @@ export async function anonymizeOrphanedResults(
     SELECT r."id", r."userId", r."details"
     FROM "Result" r
     WHERE r."userId" <> ${DELETED_USER_ID}
+      AND r."userId" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
       AND NOT EXISTS (SELECT 1 FROM "User" u WHERE u."id" = r."userId")
     LIMIT ${MAX_ORPHANED_RESULTS}`;
   if (orphans.length === 0) return 0;
