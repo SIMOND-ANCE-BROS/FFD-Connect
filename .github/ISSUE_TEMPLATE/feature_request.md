@@ -1,6 +1,6 @@
 ---
-name: Feature Request
-about: Suggest an idea for this project
+name: Nouvelle fonctionnalité
+about: Proposer une capacité nouvelle pour un utilisateur
 title: 'DOMAINE: résultat attendu'
 type: Feature
 assignees: ''
@@ -8,23 +8,32 @@ assignees: ''
 
 <!-- Conventions : docs/guides/gestion-des-issues.md — type d'issue, champs Priority et Effort (ou label icebox), labels de zone, milestone, epic parente. -->
 
-**Related Module**
+## Contexte
 
-- [ ] Connexion / Auth
-- [ ] Licences / Profile
-- [ ] Musique / Player
-- [ ] Compétition / Timing
-- [ ] Thème / UI
-- [ ] Autre
+<!-- Pourquoi on en parle, en une ou deux phrases ; epic ou parcours concerné. -->
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex: I'm always frustrated when [...]
+## Attendu
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+<!-- Le comportement visé, cas nominal et limites. -->
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+## Critères d'acceptation
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+- [ ] Vérifiable, un par ligne (inclure les tests à écrire)
+
+## Hors périmètre
+
+<!-- Ce qui n'est volontairement pas couvert. -->
+
+## Liens
+
+<!-- Epic parente, issues bloquantes, PR, ADR, doc. -->
+
+## Pour le public
+
+<!--
+Une phrase en français simple pour un danseur ou un club : ce qui change pour lui,
+sans jargon ni détail interne. Elle est affichée telle quelle sur la feuille de
+route du site vitrine : ajouter alors le label `roadmap`.
+Supprimer cette section si la fonctionnalité n'est pas visible par l'utilisateur
+(CI, dépendances, tests, sécurité interne, back-office seul).
+-->
