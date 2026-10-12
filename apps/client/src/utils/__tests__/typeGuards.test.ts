@@ -53,15 +53,15 @@ describe("typeGuards", () => {
   });
 
   describe("CompetitionFilter", () => {
-    it("isValidCompetitionFilter returns true for ALL, OPEN, DRAFT", () => {
+    it("isValidCompetitionFilter returns true for ALL, UPCOMING, PAST", () => {
       expect(isValidCompetitionFilter("ALL")).toBe(true);
-      expect(isValidCompetitionFilter("OPEN")).toBe(true);
-      expect(isValidCompetitionFilter("DRAFT")).toBe(true);
+      expect(isValidCompetitionFilter("UPCOMING")).toBe(true);
+      expect(isValidCompetitionFilter("PAST")).toBe(true);
     });
 
     it("toCompetitionFilter returns value when valid", () => {
-      expect(toCompetitionFilter("OPEN")).toBe("OPEN");
-      expect(toCompetitionFilter("DRAFT")).toBe("DRAFT");
+      expect(toCompetitionFilter("UPCOMING")).toBe("UPCOMING");
+      expect(toCompetitionFilter("PAST")).toBe("PAST");
     });
 
     it("toCompetitionFilter returns ALL as default when invalid", () => {

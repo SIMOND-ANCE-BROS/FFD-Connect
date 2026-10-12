@@ -1,14 +1,13 @@
-import { ApiCompetition } from "@ffd-connect/shared";
+import type { ApiCompetition } from "@ffd-connect/shared";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { Calendar, ChevronRight, MapPin, Plus } from "lucide-react-native";
+import React, { useMemo, useState } from "react";
 import {
-  Calendar,
-  ChevronRight,
-  MapPin,
-  Plus,
-  Users,
-} from "lucide-react-native";
-import React, { useState } from "react";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+  ActivityIndicator,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText } from "../../../components/AppText";
@@ -18,92 +17,91 @@ import { PinnedHeader } from "../../../components/PinnedHeader";
 import { SearchBar } from "../../../components/SearchBar";
 import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
-import { toCompetitionFilter } from "../../../utils/typeGuards";
+import {
+  type CompetitionFilter,
+  toCompetitionFilter,
+} from "../../../utils/typeGuards";
+import {
+  formatParisDate,
+  getEffectiveCompetitionStatus,
+} from "../../competitions/utils/competitionCard";
+import { useClubCompetitions } from "../hooks/useClubCompetitions";
 
-type CompetitionStatus = "DRAFT" | "OPEN" | "CLOSED" | "LIVE";
+type DisplayStatus = "UPCOMING" | "LIVE" | "PAST" | "CANCELLED";
 
-interface Competition extends Omit<ApiCompetition, "status"> {
-  status: CompetitionStatus;
-  registrants: number;
+/**
+ * Status shown on the card: CANCELLED as stored, otherwise derived from the
+ * date (a stored UPCOMING can be stale), like the public competition list.
+ */
+export function displayStatus(
+  competition: Pick<ApiCompetition, "status" | "date">,
+  now: Date = new Date(),
+): DisplayStatus {
+  if (competition.status === "CANCELLED") return "CANCELLED";
+  const effective = getEffectiveCompetitionStatus(
+    competition.status,
+    competition.date,
+    now,
+  );
+  return effective === "LIVE" || effective === "PAST" ? effective : "UPCOMING";
 }
 
-const MOCK_COMPETITIONS: Competition[] = [
-  {
-    id: "1",
-    title: "Grand Prix de Paris",
-    date: "12 Mars 2026",
-    location: "Gymnase Pierre de Coubertin, Paris",
-    status: "OPEN",
-    registrants: 142,
-  },
-  {
-    id: "2",
-    title: "Open de Danse Latine",
-    date: "15 Avril 2026",
-    location: "Salle Polyvalente, Lyon",
-    status: "DRAFT",
-    registrants: 0,
-  },
-  {
-    id: "3",
-    title: "Championnat Régional IDF",
-    date: "10 Janvier 2026",
-    location: "Stade Charléty",
-    status: "CLOSED",
-    registrants: 89,
-  },
-];
+const matchesFilter = (status: DisplayStatus, filter: CompetitionFilter) => {
+  if (filter === "UPCOMING") return status === "UPCOMING" || status === "LIVE";
+  if (filter === "PAST") return status === "PAST" || status === "CANCELLED";
+  return true;
+};
+
+const STATUS_COLORS: Record<DisplayStatus, string> = {
+  UPCOMING: "#4CAF50",
+  LIVE: "#E91E63",
+  PAST: "#9E9E9E",
+  CANCELLED: "#F44336",
+};
+
+const STATUS_LABELS: Record<DisplayStatus, string> = {
+  UPCOMING: "À venir",
+  LIVE: "En cours",
+  PAST: "Terminée",
+  CANCELLED: "Annulée",
+};
+
+const formatDate = (iso: string): string => {
+  if (Number.isNaN(new Date(iso).getTime())) return iso;
+  return formatParisDate(iso);
+};
 
 type Props = NativeStackScreenProps<RootStackParamList, "ClubCompetitions">;
 
 export const ClubCompetitionsScreen = ({ navigation }: Props) => {
   const { theme, isDark } = useTheme();
-  const [filter, setFilter] = useState<"ALL" | "OPEN" | "DRAFT">("ALL");
+  const [filter, setFilter] = useState<CompetitionFilter>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const insets = useSafeAreaInsets();
   const [headerH, setHeaderH] = useState(insets.top + 130);
+  const {
+    data: competitions = [],
+    isLoading,
+    isError,
+    isRefetching,
+    refetch,
+  } = useClubCompetitions();
 
-  const filteredData = MOCK_COMPETITIONS.filter((c) => {
-    if (filter !== "ALL" && c.status !== filter) return false;
+  const filteredData = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return true;
-    return (
-      c.title.toLowerCase().includes(q) || c.location.toLowerCase().includes(q)
-    );
-  });
+    return competitions.filter((c) => {
+      if (!matchesFilter(displayStatus(c), filter)) return false;
+      if (!q) return true;
+      return (
+        c.title.toLowerCase().includes(q) ||
+        c.location.toLowerCase().includes(q)
+      );
+    });
+  }, [competitions, filter, searchQuery]);
 
-  const getStatusColor = (status: Competition["status"]) => {
-    switch (status) {
-      case "OPEN":
-        return "#4CAF50";
-      case "DRAFT":
-        return "#FF9800";
-      case "LIVE":
-        return "#E91E63";
-      case "CLOSED":
-        return "#9E9E9E";
-      default:
-        return theme.text;
-    }
-  };
-
-  const getStatusLabel = (status: Competition["status"]) => {
-    switch (status) {
-      case "OPEN":
-        return "Inscriptions Ouvertes";
-      case "DRAFT":
-        return "Brouillon";
-      case "LIVE":
-        return "En Cours";
-      case "CLOSED":
-        return "Terminé";
-      default:
-        return status;
-    }
-  };
-
-  const renderItem = ({ item }: { item: Competition }) => {
-    const statusColor = getStatusColor(item.status);
+  const renderItem = ({ item }: { item: ApiCompetition }) => {
+    const status = displayStatus(item);
+    const statusColor = STATUS_COLORS[status];
 
     return (
       <TouchableOpacity
@@ -112,10 +110,7 @@ export const ClubCompetitionsScreen = ({ navigation }: Props) => {
         style={[styles.card, { backgroundColor: theme.surface }]}
         activeOpacity={0.7}
         onPress={() => {
-          // Navigate to detail or editing
-          navigation.navigate("ClubCompetitionEditor", {
-            competition: item as unknown as ApiCompetition,
-          });
+          navigation.navigate("ClubCompetitionEditor", { competition: item });
         }}
       >
         <View style={styles.cardHeader}>
@@ -132,22 +127,9 @@ export const ClubCompetitionsScreen = ({ navigation }: Props) => {
               variant="caption"
               style={[styles.statusLabel, { color: statusColor }]}
             >
-              {getStatusLabel(item.status)}
+              {STATUS_LABELS[status]}
             </AppText>
           </View>
-          {item.status === "OPEN" && (
-            <View
-              style={[
-                styles.registrantBadge,
-                { backgroundColor: theme.background },
-              ]}
-            >
-              <Users size={14} color={theme.textSecondary} />
-              <AppText variant="caption" style={styles.registrantCount}>
-                {item.registrants}
-              </AppText>
-            </View>
-          )}
         </View>
 
         <AppText variant="h3" style={[styles.cardTitle, { color: theme.text }]}>
@@ -157,7 +139,7 @@ export const ClubCompetitionsScreen = ({ navigation }: Props) => {
         <View style={styles.infoRow}>
           <Calendar size={16} color={theme.textSecondary} />
           <AppText variant="body" style={styles.infoText}>
-            {item.date}
+            {formatDate(item.date)}
           </AppText>
         </View>
 
@@ -178,24 +160,71 @@ export const ClubCompetitionsScreen = ({ navigation }: Props) => {
     );
   };
 
+  const renderEmpty = () => {
+    if (isError) {
+      return (
+        <View style={styles.emptyContainer} testID="club-competitions-error">
+          <AppText
+            variant="body"
+            style={[styles.emptyText, { color: theme.textSecondary }]}
+          >
+            Impossible de charger vos compétitions.
+          </AppText>
+          <TouchableOpacity
+            accessibilityRole="button"
+            testID="club-competitions-retry"
+            style={[styles.retryButton, { borderColor: theme.primary }]}
+            onPress={() => {
+              refetch().catch(() => {});
+            }}
+          >
+            <AppText variant="button" style={{ color: theme.primary }}>
+              Réessayer
+            </AppText>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    const hasFilter = filter !== "ALL" || searchQuery.trim() !== "";
+    return (
+      <View style={styles.emptyContainer} testID="club-competitions-empty">
+        <AppText
+          variant="body"
+          style={[styles.emptyText, { color: theme.textSecondary }]}
+        >
+          {hasFilter
+            ? "Aucune compétition trouvée."
+            : "Votre club n'organise encore aucune compétition. Touchez « Créer » pour en ajouter une."}
+        </AppText>
+      </View>
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <FlashList
-        data={filteredData}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingTop: headerH, paddingBottom: insets.bottom + 20 },
-        ]}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <AppText variant="body" style={{ color: theme.textSecondary }}>
-              Aucune compétition trouvée.
-            </AppText>
-          </View>
-        }
-      />
+      {isLoading ? (
+        <View
+          style={[styles.loadingContainer, { paddingTop: headerH }]}
+          testID="club-competitions-loading"
+        >
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      ) : (
+        <FlashList
+          data={filteredData}
+          renderItem={renderItem}
+          keyExtractor={(item) => item.id}
+          onRefresh={() => {
+            refetch().catch(() => {});
+          }}
+          refreshing={isRefetching}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingTop: headerH, paddingBottom: insets.bottom + 100 },
+          ]}
+          ListEmptyComponent={renderEmpty}
+        />
+      )}
 
       <PinnedHeader
         theme={theme}
@@ -218,8 +247,8 @@ export const ClubCompetitionsScreen = ({ navigation }: Props) => {
             testID="club-competitions-filter-tabs"
             options={[
               { label: "Toutes", value: "ALL" },
-              { label: "Ouvertes", value: "OPEN" },
-              { label: "Brouillons", value: "DRAFT" },
+              { label: "À venir", value: "UPCOMING" },
+              { label: "Passées", value: "PAST" },
             ]}
           />
         </View>
@@ -246,14 +275,6 @@ export const ClubCompetitionsScreen = ({ navigation }: Props) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.06)",
   },
   listContent: {
     padding: 20,
@@ -288,13 +309,6 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginRight: 6,
   },
-  registrantBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
   infoRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -325,13 +339,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginTop: 50,
+    paddingHorizontal: 20,
+  },
+  emptyText: {
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: "center",
   },
   statusLabel: {
     fontWeight: "bold",
-  },
-  registrantCount: {
-    color: "#64748b", // fallback for theme.textSecondary if needed, better use dynamic in array if possible
-    marginLeft: 4,
   },
   cardTitle: {
     marginBottom: 8,
