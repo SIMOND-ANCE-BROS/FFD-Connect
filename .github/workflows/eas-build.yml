@@ -787,8 +787,11 @@ jobs:
       # - beta-notes.md → release GitHub, pour l'équipe : liste technique des
       #   commits conventionnels (en anglais, comme les commits).
       # « À tester en priorité » (input toTest) passe en tête des deux ; l'input
-      # notes remplace la génération auto (relecture). Chaque store tronque à sa
-      # limite (TestFlight 4000 car., Play 500) : « À tester » survit à la coupe.
+      # notes remplace la génération auto (relecture). Le texte testeurs généré
+      # tient dans la limite du store (--platform : TestFlight 4000 car., Play
+      # 500) : « À tester » d'abord, puis des points entiers et « … et d'autres
+      # corrections et améliorations. » (tester-notes.mjs). Des notes saisies à
+      # la main restent coupées par le store / les scripts de distribution.
       - name: Generate tester notes
         id: notes
         if: steps.resolve.outputs.skip != 'true'
@@ -815,16 +818,19 @@ jobs:
           else
             # Sans titre : la release porte déjà « Beta iOS 1.0.0 (19) ».
             node scripts/generate-changelog.mjs "${BASE[@]}" --format markdown --heading none > beta-notes.md
-            node scripts/generate-changelog.mjs "${BASE[@]}" --format testers > beta-notes.txt
+            # « À tester » est intégré par le générateur, dans la limite du store.
+            node scripts/generate-changelog.mjs "${BASE[@]}" --format testers --to-test "$TO_TEST" > beta-notes.txt
           fi
           if [ -n "$TO_TEST" ]; then
             # Un point par élément séparé par « ; », espaces de bord retirés.
             mapfile -t ITEMS < <(printf '%s' "$TO_TEST" | tr ';' '\n' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' | grep -v '^$')
             if [ "${#ITEMS[@]}" -gt 0 ]; then
               { echo '### 🎯 Test first'; printf -- '- %s\n' "${ITEMS[@]}"; echo; cat beta-notes.md; } > "$RUNNER_TEMP/notes.md"
-              { echo 'À tester en priorité'; printf '• %s\n' "${ITEMS[@]}"; echo; cat beta-notes.txt; } > "$RUNNER_TEMP/notes.txt"
               mv "$RUNNER_TEMP/notes.md" beta-notes.md
-              mv "$RUNNER_TEMP/notes.txt" beta-notes.txt
+              if [ -n "$NOTES" ]; then
+                { echo 'À tester en priorité'; printf '• %s\n' "${ITEMS[@]}"; echo; cat beta-notes.txt; } > "$RUNNER_TEMP/notes.txt"
+                mv "$RUNNER_TEMP/notes.txt" beta-notes.txt
+              fi
             fi
           fi
           {

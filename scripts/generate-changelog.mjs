@@ -10,6 +10,7 @@
  *   node scripts/generate-changelog.mjs [--since <ref>] [--to <ref>]
  *                                       [--version <x.y.z>] [--format <fmt>]
  *                                       [--platform ios|android]
+ *                                       [--to-test "<a>; <b>"] [--max-length <n>]
  *
  *   --since    Réf de départ (exclue). Défaut : dernier tag `beta-*`, sinon
  *              dernier tag, sinon le premier commit du dépôt.
@@ -22,6 +23,11 @@
  *              d'une OTA (`beta-*-ota-*`, commune aux deux) : une promotion
  *              iOS seule ne doit pas déplacer la base des notes Android, et
  *              inversement. Sans tag de la plateforme, repli sur `beta-*`.
+ *              En format `testers`, fixe aussi la limite du store (iOS
+ *              « What to Test » 4000 car., Android notes Play 500).
+ *   --to-test  (testers) Points « À tester en priorité » séparés par « ; » :
+ *              placés en tête et jamais coupés par la limite.
+ *   --max-length (testers) Limite explicite, prioritaire sur --platform.
  *
  * `markdown`   → notes pour la GitHub Release / relecture.
  * `testflight` → texte brut compact pour le champ « What to Test » (TestFlight).
@@ -35,7 +41,13 @@
  */
 import { execFileSync } from 'node:child_process';
 
-import { extractTesterSection, prNumber, renderTesterNotes } from './tester-notes.mjs';
+import {
+  extractTesterSection,
+  parseToTest,
+  prNumber,
+  renderTesterNotes,
+  STORE_LIMITS,
+} from './tester-notes.mjs';
 
 // Types de commit exposés aux testeurs, dans l'ordre d'affichage. Tout le reste
 // (chore, test, docs, ci, build, style, refactor) est du bruit interne : exclu.
@@ -230,7 +242,18 @@ function main() {
   const format = args.format || 'markdown';
 
   if (format === 'testers') {
-    process.stdout.write(renderTesterNotes(collectTesterSections(since, to)) + '\n');
+    let maxLength = STORE_LIMITS[args.platform] ?? Infinity;
+    if (args['max-length'] !== undefined) {
+      maxLength = Number(args['max-length']);
+      if (!Number.isInteger(maxLength) || maxLength <= 0) {
+        throw new Error(`--max-length : entier positif attendu, reçu « ${args['max-length']} »`);
+      }
+    }
+    const notes = renderTesterNotes(collectTesterSections(since, to), {
+      toTest: parseToTest(args['to-test']),
+      maxLength,
+    });
+    process.stdout.write(notes + '\n');
     return;
   }
   const sections = collect(since, to);
