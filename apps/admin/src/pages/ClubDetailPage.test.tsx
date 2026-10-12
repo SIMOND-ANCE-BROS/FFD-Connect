@@ -295,40 +295,120 @@ describe('ClubDetailPage', () => {
       await fill(user, await screen.findByLabelText('Rechercher un utilisateur'), term);
     };
 
-    it('patches a user without club directly, then confirms with a notification', async () => {
-      const list = search(candidate({}));
-      const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
+    const patchOk = () =>
+      vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
         data: { id: 'u9' },
         error: undefined,
       } as never);
+    const tick = async (name: string) =>
+      user.click(await screen.findByRole('checkbox', { name: `Sélectionner ${name}` }));
+
+    it('reviews the selection once, then links the account', async () => {
+      const list = search(candidate({}));
+      const patch = patchOk();
       renderPage(empty);
       await openSearch();
       expect(await screen.findByText('anna@x.fr')).toBeInTheDocument();
       expect(screen.getByText('Sans club')).toBeInTheDocument();
       expect(list).toHaveBeenCalledWith({ query: { search: 'anna', skip: 0, take: 10 } });
+      expect(screen.getByRole('button', { name: 'Ajouter' })).toBeDisabled();
 
-      await user.click(screen.getByRole('button', { name: 'Ajouter Anna Petit' }));
-      expect(patch).toHaveBeenCalledWith({ path: { id: 'u9' }, body: { clubId: 'c1' } });
-      expect(await screen.findByText('Membre ajouté au club')).toBeInTheDocument();
-    });
-
-    it('asks for confirmation before moving a user out of another club', async () => {
-      search(candidate({ clubId: 'c2', clubName: 'Club B' }));
-      const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
-        data: { id: 'u9' },
-        error: undefined,
-      } as never);
-      renderPage(empty);
-      await openSearch();
-      expect(await screen.findByText('Club B')).toBeInTheDocument();
-
-      await user.click(screen.getByRole('button', { name: 'Ajouter Anna Petit' }));
-      expect(await screen.findByText('Anna Petit quitte Club B pour Club A')).toBeInTheDocument();
+      await tick('Anna Petit');
+      expect(screen.getByText('1 compte sélectionné')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Ajouter 1 compte' }));
+      expect(await screen.findByText('Ajouter 1 compte à Club A :')).toBeInTheDocument();
       expect(patch).not.toHaveBeenCalled();
 
       await user.click(screen.getByRole('button', { name: 'Confirmer' }));
       expect(patch).toHaveBeenCalledWith({ path: { id: 'u9' }, body: { clubId: 'c1' } });
-      expect(await screen.findByText('Membre ajouté au club')).toBeInTheDocument();
+      expect((await screen.findAllByText('1 membre ajouté')).length).toBeGreaterThan(0);
+      expect(screen.getByText('Ajouté')).toBeInTheDocument();
+    });
+
+    it('keeps the selection across searches and links every account in one go', async () => {
+      const list = search(candidate({}));
+      const patch = patchOk();
+      renderPage(empty);
+      await openSearch();
+      await tick('Anna Petit');
+
+      list.mockResolvedValue({
+        data: {
+          data: [candidate({ id: 'u8', firstName: 'Léo', lastName: 'Roux', email: 'leo@x.fr' })],
+          meta: { total: 1, skip: 0, take: 10, hasMore: false },
+        },
+        error: undefined,
+      } as never);
+      await fill(user, screen.getByLabelText('Rechercher un utilisateur'), 'roux');
+      expect(await screen.findByText('leo@x.fr')).toBeInTheDocument();
+      expect(screen.queryByText('anna@x.fr')).toBeNull();
+      await tick('Léo Roux');
+
+      expect(screen.getByText('2 comptes sélectionnés')).toBeInTheDocument();
+      expect(screen.getByText('Anna Petit')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Ajouter 2 comptes' }));
+      await user.click(await screen.findByRole('button', { name: 'Confirmer' }));
+
+      expect(patch).toHaveBeenCalledTimes(2);
+      expect(patch).toHaveBeenNthCalledWith(1, { path: { id: 'u9' }, body: { clubId: 'c1' } });
+      expect(patch).toHaveBeenNthCalledWith(2, { path: { id: 'u8' }, body: { clubId: 'c1' } });
+      expect((await screen.findAllByText('2 membres ajoutés')).length).toBeGreaterThan(0);
+    });
+
+    it('unticks an account from the selection summary', async () => {
+      search(candidate({}));
+      renderPage(empty);
+      await openSearch();
+      await tick('Anna Petit');
+      await user.click(screen.getByRole('button', { name: 'Retirer Anna Petit' }));
+      expect(screen.queryByText('1 compte sélectionné')).toBeNull();
+      expect(screen.getByRole('checkbox', { name: 'Sélectionner Anna Petit' })).not.toBeChecked();
+    });
+
+    it('reports each refused account without cancelling the others, then retries them', async () => {
+      search(
+        candidate({}),
+        candidate({ id: 'u8', firstName: 'Léo', lastName: 'Roux', email: 'leo@x.fr' }),
+      );
+      const patch = vi
+        .spyOn(sdk, 'adminControllerUpdateUser')
+        .mockResolvedValueOnce({
+          data: undefined,
+          error: { message: 'Ce compte est désactivé.' },
+          response: new Response(null, { status: 400 }),
+        } as never)
+        .mockResolvedValueOnce({ data: { id: 'u8' }, error: undefined } as never);
+      renderPage(empty);
+      await openSearch();
+      await tick('Anna Petit');
+      await tick('Léo Roux');
+      await user.click(screen.getByRole('button', { name: 'Ajouter 2 comptes' }));
+      await user.click(await screen.findByRole('button', { name: 'Confirmer' }));
+
+      expect(await screen.findByText('Ce compte est désactivé.')).toBeInTheDocument();
+      expect(patch).toHaveBeenCalledTimes(2);
+      expect(screen.getByText('Refusé')).toBeInTheDocument();
+      expect(screen.getByText('Ajouté')).toBeInTheDocument();
+      expect(screen.getAllByText('1 membre ajouté, 1 refusé').length).toBeGreaterThan(0);
+
+      await user.click(screen.getByRole('button', { name: 'Revenir aux refusés' }));
+      expect(await screen.findByText('1 compte sélectionné')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Retirer Anna Petit' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Retirer Léo Roux' })).toBeNull();
+    });
+
+    it('warns in the review before moving a user out of another club', async () => {
+      search(candidate({ clubId: 'c2', clubName: 'Club B' }));
+      const patch = patchOk();
+      renderPage(empty);
+      await openSearch();
+      expect(await screen.findByText('Club B')).toBeInTheDocument();
+      await tick('Anna Petit');
+      await user.click(screen.getByRole('button', { name: 'Ajouter 1 compte' }));
+      expect(await screen.findByText('Anna Petit quitte Club B pour Club A')).toBeInTheDocument();
+      expect(screen.queryByText(/gestionnaire/)).toBeNull();
+      await user.click(screen.getByRole('button', { name: 'Confirmer' }));
+      expect(patch).toHaveBeenCalledWith({ path: { id: 'u9' }, body: { clubId: 'c1' } });
     });
 
     it('shows the role badges of each result', async () => {
@@ -340,45 +420,37 @@ describe('ClubDetailPage', () => {
       expect(within(row).getByText('+ Club')).toBeInTheDocument();
     });
 
-    it('confirms before linking a user holding the CLUB role, even without a club', async () => {
+    it('warns that a CLUB-role holder becomes the manager, even without a club', async () => {
       search(candidate({ extraRoles: ['CLUB'], roles: ['LICENSEE', 'CLUB'] }));
-      const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
-        data: { id: 'u9' },
-        error: undefined,
-      } as never);
       renderPage(empty);
       await openSearch();
-      await user.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
+      await tick('Anna Petit');
+      await user.click(screen.getByRole('button', { name: 'Ajouter 1 compte' }));
       expect(
         await screen.findByText('Anna Petit deviendra gestionnaire de Club A'),
       ).toBeInTheDocument();
       expect(screen.queryByText(/quitte/)).toBeNull();
-      expect(patch).not.toHaveBeenCalled();
-      await user.click(screen.getByRole('button', { name: 'Confirmer' }));
-      expect(patch).toHaveBeenCalledWith({ path: { id: 'u9' }, body: { clubId: 'c1' } });
     });
 
     it('mentions both the manager role and the club left', async () => {
       search(candidate({ role: 'CLUB', clubId: 'c2', clubName: 'Club B' }));
       renderPage(empty);
       await openSearch();
-      await user.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
+      await tick('Anna Petit');
+      await user.click(screen.getByRole('button', { name: 'Ajouter 1 compte' }));
       expect(
         await screen.findByText('Anna Petit deviendra gestionnaire de Club A'),
       ).toBeInTheDocument();
       expect(screen.getByText('Anna Petit quitte Club B pour Club A')).toBeInTheDocument();
     });
 
-    it('links a legacy user whose club name is this club (any case) directly', async () => {
+    it('does not warn for a legacy user whose club name is this club (any case)', async () => {
       search(candidate({ clubId: null, clubName: 'club a' }));
-      const patch = vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
-        data: { id: 'u9' },
-        error: undefined,
-      } as never);
       renderPage(empty);
       await openSearch();
-      await user.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
-      expect(patch).toHaveBeenCalledWith({ path: { id: 'u9' }, body: { clubId: 'c1' } });
+      await tick('Anna Petit');
+      await user.click(screen.getByRole('button', { name: 'Ajouter 1 compte' }));
+      expect(await screen.findByText('Ajouter 1 compte à Club A :')).toBeInTheDocument();
       expect(screen.queryByText(/quitte/)).toBeNull();
     });
 
@@ -392,14 +464,16 @@ describe('ClubDetailPage', () => {
       expect(await screen.findByText('Affinez la recherche')).toBeInTheDocument();
     });
 
-    it('goes back to the results when the move is cancelled', async () => {
+    it('goes back to the selection when the review is cancelled', async () => {
       search(candidate({ clubId: 'c2', clubName: 'Club B' }));
       const patch = vi.spyOn(sdk, 'adminControllerUpdateUser');
       renderPage(empty);
       await openSearch();
-      await user.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
+      await tick('Anna Petit');
+      await user.click(screen.getByRole('button', { name: 'Ajouter 1 compte' }));
       await user.click(await screen.findByRole('button', { name: 'Annuler' }));
       expect(await screen.findByText('anna@x.fr')).toBeInTheDocument();
+      expect(screen.getByText('1 compte sélectionné')).toBeInTheDocument();
       expect(patch).not.toHaveBeenCalled();
     });
 
@@ -408,37 +482,7 @@ describe('ClubDetailPage', () => {
       renderPage(empty);
       await openSearch();
       expect(await screen.findByText('Déjà membre')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Ajouter Anna Petit' })).toBeNull();
-    });
-
-    it('shows the server error verbatim', async () => {
-      search(candidate({}));
-      vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
-        data: undefined,
-        error: { message: 'Un rôle Club supplémentaire nécessite un club' },
-        response: new Response(null, { status: 400 }),
-      } as never);
-      renderPage(empty);
-      await openSearch();
-      await user.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
-      expect(
-        await screen.findByText('Un rôle Club supplémentaire nécessite un club'),
-      ).toBeInTheDocument();
-      expect(screen.queryByText('Membre ajouté au club')).toBeNull();
-    });
-
-    it('shows the server error on the confirmation step too', async () => {
-      search(candidate({ clubId: 'c2', clubName: 'Club B' }));
-      vi.spyOn(sdk, 'adminControllerUpdateUser').mockResolvedValue({
-        data: undefined,
-        error: { message: 'Ce club est désactivé.' },
-        response: new Response(null, { status: 400 }),
-      } as never);
-      renderPage(empty);
-      await openSearch();
-      await user.click(await screen.findByRole('button', { name: 'Ajouter Anna Petit' }));
-      await user.click(await screen.findByRole('button', { name: 'Confirmer' }));
-      expect(await screen.findByText('Ce club est désactivé.')).toBeInTheDocument();
+      expect(screen.queryByRole('checkbox', { name: 'Sélectionner Anna Petit' })).toBeNull();
     });
 
     it('waits for two characters and reports an empty or failed search', async () => {
