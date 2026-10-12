@@ -51,6 +51,9 @@ export type MockPrismaService = Partial<
   license: {
     findUnique: jest.Mock;
   };
+  retiredLicenseNumber: {
+    findUnique: jest.Mock;
+  };
   result: {
     findMany: jest.Mock;
   };
@@ -106,6 +109,9 @@ export function createMockPrismaService(): MockPrismaService {
       update: jest.fn(),
     },
     license: {
+      findUnique: jest.fn(),
+    },
+    retiredLicenseNumber: {
       findUnique: jest.fn(),
     },
     result: {

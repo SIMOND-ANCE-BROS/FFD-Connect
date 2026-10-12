@@ -639,6 +639,20 @@ export const userNameSelect = {
   lastName: true,
 } as const;
 
+/**
+ * Licence résolue au check-in par QR : son id (comparé à celui que porte un QR
+ * signé v2, #466) et le nom de son titulaire.
+ */
+export const checkInLicenseSelect = {
+  id: true,
+  user: { select: userNameSelect },
+} as const;
+
+/** Existence d'un numéro de licence retiré (clé primaire seule, #466). */
+export const retiredLicenseNumberSelect = {
+  number: true,
+} as const;
+
 /** Licence telle que la file de modération l'affiche : numéro et validité. */
 export const licenseNumberValiditySelect = {
   number: true,

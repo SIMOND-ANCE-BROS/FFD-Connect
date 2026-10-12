@@ -12,6 +12,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import {
   adminUserIdentifiersSelect,
   idOnlySelect,
+  retiredLicenseNumberSelect,
 } from "../utils/prisma-selects";
 import { AdminAuditService } from "./admin-audit.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
@@ -63,8 +64,11 @@ interface IdentifiersChange {
  *   its validity, renewals and the user link stay; QR codes and Wallet passes
  *   are generated from the current number. Uniqueness is exact, like every
  *   lookup by number (registration, check-in): 409 on a taken number.
- *   QR codes and Wallet passes already issued carry the old number and are
- *   NOT invalidated: they must be regenerated from the app.
+ *   QR codes and Wallet passes already issued carry the old number: a signed
+ *   v2 QR also carries the licence id, so the check-in tells it no longer
+ *   matches (#466); the old number is recorded as retired so a number-only
+ *   QR (v1, unsigned) is refused for it. Either way the holder regenerates
+ *   the QR from the app (and re-adds the Wallet pass).
  *
  * The audit row holds the previous and new values; application logs only
  * ever carry the user id.
@@ -185,6 +189,18 @@ export class AdminUserIdentifiersService {
         where: { id: current.license.id },
         data: { number: after.licenseNumber },
         select: idOnlySelect,
+      });
+      // #466: QR codes bound to the number alone (signed v1, legacy unsigned)
+      // must never resolve this number again — it may be reassigned. Signed
+      // v2 QR codes carry the licence id and need no bookkeeping.
+      await tx.retiredLicenseNumber.upsert({
+        where: { number: current.license.number },
+        create: {
+          number: current.license.number,
+          licenseId: current.license.id,
+        },
+        update: { licenseId: current.license.id, retiredAt: new Date() },
+        select: retiredLicenseNumberSelect,
       });
     }
 

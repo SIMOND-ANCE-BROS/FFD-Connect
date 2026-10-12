@@ -1,10 +1,13 @@
 import { Logger } from "@nestjs/common";
+import { createHmac } from "crypto";
 import { ConfigService } from "@nestjs/config";
 import { buildSignedLicenseQr } from "./license-qr";
 import { LicenseQrService } from "./license-qr.service";
 
 const SECRET = "k".repeat(40);
+const LICENSE_ID = "lic-uuid-1";
 const LICENSE = {
+  id: LICENSE_ID,
   number: "FFD-123456",
   validUntil: new Date("2026-08-31T23:59:59.000Z"),
 };
@@ -14,6 +17,16 @@ const LEGACY_QR = JSON.stringify({
   name: "DOE John",
   valid: true,
   type: "FFD",
+});
+
+/** Number-only v1 QR as issued before #466, signed independently. */
+const V1_QR = JSON.stringify({
+  v: 1,
+  id: "FFD-123456",
+  exp: "2026-08-31",
+  sig: createHmac("sha256", SECRET)
+    .update(JSON.stringify(["ffd-license-qr", 1, "FFD-123456", "2026-08-31"]))
+    .digest("base64url"),
 });
 
 function makeService(env: Record<string, string | undefined>) {
@@ -163,6 +176,7 @@ describe("LicenseQrService", () => {
         expect(service.verify(tamperedQr, NOW)).toEqual({
           identifier: "FFD-999999",
           signedLicenseNumber: false,
+          licenseId: null,
           accepted: true,
           mode: "off",
           status: "NOT_CHECKED",
@@ -195,6 +209,7 @@ describe("LicenseQrService", () => {
         expect(service.verify(signedQr, NOW)).toEqual({
           identifier: "FFD-123456",
           signedLicenseNumber: true,
+          licenseId: LICENSE_ID,
           accepted: true,
           mode: "warn",
           status: "VALID",
@@ -204,6 +219,7 @@ describe("LicenseQrService", () => {
 
       it("uses the current date by default", () => {
         const future = {
+          id: LICENSE_ID,
           number: "FFD-1",
           validUntil: new Date(Date.now() + 86_400_000 * 30),
         };
@@ -216,6 +232,7 @@ describe("LicenseQrService", () => {
         expect(service.verify(LEGACY_QR, NOW)).toEqual({
           identifier: "FFD-123456",
           signedLicenseNumber: false,
+          licenseId: null,
           accepted: true,
           mode: "warn",
           status: "UNSIGNED",
@@ -237,6 +254,31 @@ describe("LicenseQrService", () => {
         expect(
           service.verify(JSON.stringify({ id: "FFD-1", sig: "x" }), NOW),
         ).toMatchObject({ status: "INVALID_SIGNATURE", accepted: true });
+      });
+
+      it("accepts a genuine v1 QR, bound to its number only", () => {
+        expect(service.verify(V1_QR, NOW)).toEqual({
+          identifier: "FFD-123456",
+          signedLicenseNumber: true,
+          licenseId: null,
+          accepted: true,
+          mode: "warn",
+          status: "VALID",
+          warning: null,
+        });
+      });
+
+      it("flags a licence mismatch without refusing it", () => {
+        expect(service.licenseMismatch(service.verify(signedQr, NOW))).toEqual({
+          identifier: "FFD-123456",
+          signedLicenseNumber: true,
+          licenseId: LICENSE_ID,
+          accepted: true,
+          mode: "warn",
+          status: "LICENSE_MISMATCH",
+          warning:
+            "QR non vérifié : numéro de licence modifié depuis l'émission du QR",
+        });
       });
 
       it("accepts an expired QR with a warning", () => {
@@ -277,6 +319,27 @@ describe("LicenseQrService", () => {
         expect(service.verify("FFD-123456", NOW)).toMatchObject({
           accepted: false,
           status: "UNSIGNED",
+        });
+      });
+
+      it("accepts a genuine v1 QR (transition, bounded by its expiry)", () => {
+        expect(service.verify(V1_QR, NOW)).toMatchObject({
+          accepted: true,
+          status: "VALID",
+          licenseId: null,
+        });
+        expect(service.verify(V1_QR, expiredNow)).toMatchObject({
+          accepted: false,
+          status: "EXPIRED",
+        });
+      });
+
+      it("refuses a licence mismatch", () => {
+        expect(
+          service.licenseMismatch(service.verify(signedQr, NOW)),
+        ).toMatchObject({
+          accepted: false,
+          status: "LICENSE_MISMATCH",
         });
       });
 

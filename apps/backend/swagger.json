@@ -27193,8 +27193,8 @@
         "properties": {
           "qrData": {
             "type": "string",
-            "description": "Contenu du QR de licence scanné : QR signé (#168), ancien JSON non signé, ou identifiant brut",
-            "example": "{\"v\":1,\"id\":\"FFD-123456\",\"exp\":\"2026-08-31\",\"sig\":\"…\"}",
+            "description": "Contenu du QR de licence scanné : QR signé lié à la licence (v2, #466), QR signé v1 (#168, accepté jusqu'à son expiration), ancien JSON non signé, ou identifiant brut",
+            "example": "{\"v\":2,\"id\":\"FFD-123456\",\"lid\":\"3f0c…\",\"exp\":\"2026-08-31\",\"sig\":\"…\"}",
             "maxLength": 512
           }
         },
@@ -27252,8 +27252,10 @@
               "VALID",
               "UNSIGNED",
               "INVALID_SIGNATURE",
-              "EXPIRED"
-            ]
+              "EXPIRED",
+              "LICENSE_MISMATCH"
+            ],
+            "description": "LICENSE_MISMATCH : QR authentique émis avant un changement de numéro de licence (#466) — accepté en mode warn pour la licence d'origine, refusé en enforce"
           },
           "warning": {
             "type": "string",
