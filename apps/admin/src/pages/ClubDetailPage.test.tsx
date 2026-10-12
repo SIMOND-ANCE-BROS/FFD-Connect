@@ -2,7 +2,7 @@ import { Notifications, notifications } from '@mantine/notifications';
 import { act, screen, within } from '@testing-library/react';
 import { type UserEvent } from '@testing-library/user-event';
 import { Route, Routes } from 'react-router';
-import { vi } from 'vitest';
+import { describe, vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { fill, renderWithProviders, setupUser } from '../test/render';
 import { ClubDetailPage } from './ClubDetailPage';
