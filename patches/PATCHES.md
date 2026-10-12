@@ -26,29 +26,92 @@ Aucun plugin ne sert aujourd'hui de **correctif** de dépendance. L'ancien `with
 
 # Overrides pnpm (`pnpm-workspace.yaml` → `overrides`)
 
-Les overrides forcent une version unique d'une dépendance transitive dans tout le monorepo.
-A réévaluer lors de chaque montée de version majeure.
+Les overrides forcent la résolution d'une dépendance (souvent transitive) dans tout le monorepo. Le YAML fait foi ; ses commentaires portent le détail de chaque décision, ce tableau en donne la vue d'ensemble.
 
-| Package                                                               | Version   | Raison                                                                |
-| --------------------------------------------------------------------- | --------- | --------------------------------------------------------------------- |
-| `typescript`                                                          | ^5.6.0    | Alignement monorepo sur TS 5.6+ (moduleResolution nodenext)           |
-| `ansi-styles`                                                         | 4.3.0     | Eviter les doublons ESM/CJS qui cassent chalk dans certains contextes |
-| `react`, `react-dom`, `react-test-renderer`                           | 19.2.3    | Version unique React 19 dans tout le monorepo (SDK 57)                |
-| `@types/react`, `@types/react-dom`                                    | ~19.2.x   | Alignement types React 19                                             |
-| `hermes-parser`, `hermes-estree`, `babel-plugin-syntax-hermes-parser` | 0.36.0    | Version hermes alignee sur RN 0.86 (toolchain SDK 57)                 |
-| `multer`                                                              | >=2.1.1   | **Securite** : CVE fix (file upload vulnerability)                    |
-| `serialize-javascript`                                                | >=7.0.3   | **Securite** : CVE-2024-11831 (XSS via serialized output)             |
-| `rollup`                                                              | >=4.59.0  | **Securite** : CVE fix (path traversal)                               |
-| `hono`                                                                | >=4.12.4  | **Securite** : CVE fix                                                |
-| `fast-xml-parser`                                                     | >=5.3.6   | **Securite** : CVE fix (XXE/prototype pollution)                      |
-| `svgo`                                                                | >=4.0.1   | **Securite** : CVE fix                                                |
-| `@hono/node-server`                                                   | >=1.19.10 | **Securite** : CVE fix                                                |
-| `flatted`                                                             | >=3.4.2   | **Securite** : prototype pollution fix                                |
-| `effect`                                                              | >=3.20.0  | **Securite** : CVE fix                                                |
-| `socket.io-parser`                                                    | >=4.2.6   | **Securite** : CVE fix (DoS)                                          |
-| `h3`                                                                  | >=1.15.6  | **Securite** : CVE fix                                                |
-| `handlebars`                                                          | >=4.7.9   | **Securite** : CVE fix (prototype pollution)                          |
-| `node-forge`                                                          | >=1.4.0   | **Securite** : CVE fix (timing attack)                                |
-| `picomatch`                                                           | >=4.0.4   | **Securite** : ReDoS fix                                              |
-| `path-to-regexp`                                                      | >=8.4.0   | **Securite** : ReDoS fix                                              |
-| `lodash`                                                              | >=4.18.0  | **Securite** : prototype pollution fix                                |
+> **Règle** : tout ajout, retrait ou changement de version dans `overrides` met à jour ce tableau **dans le même commit** (sélecteur et version identiques au YAML). À réévaluer à chaque montée de version majeure.
+>
+> Forme à privilégier pour un correctif de sécurité : `paquet@<plage vulnérable>` → version corrigée, ou `^` dans la ligne majeure. Jamais de `>=` nu sur un nouvel override : il autorise un saut de majeure (piège `nanoid` 5 ESM-only, 23 suites Jest cassées) et fige la résolution au lieu de poser une simple borne basse (piège `axios`).
+
+État au 2026-10-12 : 70 entrées, 65 paquets.
+
+## Pins de compatibilité
+
+Ces overrides ne corrigent pas de faille : ils verrouillent une version ou une ligne majeure dont dépend le fonctionnement du monorepo. Les lever demande une vérification fonctionnelle, pas seulement un audit.
+
+| Override                                                              | Version | Raison                                                                                                                                                                                                                                                                                                                                                                   |
+| --------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `typescript`                                                          | ^5.6.0  | Alignement du monorepo sur TS 5.6+ (`moduleResolution` nodenext).                                                                                                                                                                                                                                                                                                        |
+| `ansi-styles`                                                         | 4.3.0   | Évite les doublons ESM/CJS qui cassent `chalk` dans certains contextes.                                                                                                                                                                                                                                                                                                  |
+| `react`, `react-dom`                                                  | 19.2.3  | Version unique de React 19 dans tout le monorepo (Expo SDK 57).                                                                                                                                                                                                                                                                                                          |
+| `@types/react`, `@types/react-dom`                                    | ~19.2.0 | Types alignés sur React 19.2.                                                                                                                                                                                                                                                                                                                                            |
+| `hermes-parser`, `hermes-estree`, `babel-plugin-syntax-hermes-parser` | 0.36.0  | Toolchain Hermes alignée sur RN 0.86 (SDK 57).                                                                                                                                                                                                                                                                                                                           |
+| `effect`                                                              | ^3.22.2 | **Bloque la ligne 3.x.** `@prisma/config` utilise `Either`, supprimé en 4.0.0 (`defineConfig` jette « Cannot read properties of undefined (reading 'right') »). Invisible dans le workspace, mais le `pnpm deploy --prod` du Dockerfile backend re-résout l'arbre : sans ce pin il prenait la 4.0.0 et cassait le build de l'image puis `prisma migrate deploy` au boot. |
+| `@babel/core`                                                         | ^7.29.6 | **Bloque Babel 7.** Le peer `@babel/core` de `babel-jest` / `ts-jest` accepte Babel 8, dont `loadPartialConfig` est devenu asynchrone : 123 suites client sur 123 tombent. À lever quand `babel-jest` supportera Babel 8.                                                                                                                                                |
+
+## Planchers de sécurité
+
+Correctifs d'avis (Dependabot / osv-scanner) sur des dépendances transitives ou de dev. Le détail (avis, consommateurs, choix de la forme) est dans les commentaires du YAML quand il existe.
+
+| Override                            | Version  | Raison                                                                                                                                                                |
+| ----------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `multer`                            | ^2.4.0   | Avis upload de fichiers ; `^` depuis #679 (ex-`>=` nu).                                                                                                               |
+| `serialize-javascript`              | >=7.0.3  | CVE-2024-11831 (XSS via la sortie sérialisée).                                                                                                                        |
+| `rollup`                            | >=4.59.0 | Avis path traversal.                                                                                                                                                  |
+| `hono@<4.12.34`                     | 4.12.34  | Avis hono ; forme ciblée « plage vulnérable → version corrigée ».                                                                                                     |
+| `fast-xml-parser`                   | >=5.10.1 | Avis XXE / prototype pollution.                                                                                                                                       |
+| `svgo`                              | >=4.0.2  | Avis svgo.                                                                                                                                                            |
+| `@hono/node-server@<1.19.15`        | 1.19.15  | Avis `@hono/node-server`, ligne 1.x.                                                                                                                                  |
+| `@hono/node-server@>=2.0.0 <=2.0.9` | 2.0.10   | Même avis, ligne 2.x (un correctif par ligne majeure).                                                                                                                |
+| `flatted`                           | >=3.4.2  | Prototype pollution.                                                                                                                                                  |
+| `socket.io-parser`                  | >=4.2.7  | Avis DoS.                                                                                                                                                             |
+| `h3`                                | >=1.15.6 | Avis h3.                                                                                                                                                              |
+| `handlebars`                        | >=4.7.10 | Prototype pollution.                                                                                                                                                  |
+| `node-forge`                        | >=1.4.0  | Avis timing. Déjà sur la dernière version publiée : gardé contre une régression ; l'avis sans correctif amont (GHSA-86w9-cpqp-85rv) vit dans `audit-exceptions.json`. |
+| `picomatch`                         | >=4.0.4  | ReDoS.                                                                                                                                                                |
+| `path-to-regexp`                    | >=8.4.0  | ReDoS.                                                                                                                                                                |
+| `lodash`                            | >=4.18.0 | Prototype pollution.                                                                                                                                                  |
+| `protobufjs`                        | >=8.6.6  | Avis protobufjs (transitif Google Cloud / gRPC).                                                                                                                      |
+| `vite`                              | >=8.0.16 | Avis vite (admin, landing, docs, Vitest).                                                                                                                             |
+| `@xmldom/xmldom`                    | 0.8.15   | Avis xmldom ; version exacte dans la ligne 0.8 tirée par l'outillage Expo (plist).                                                                                    |
+| `axios`                             | ^1.20.0  | 7 avis high. L'ancien `>=1.16.0` figeait la résolution à 1.18.1 malgré les manifestes en `^1.20.0` ; `^` pour rester dans la ligne 1.x.                               |
+| `fast-xml-builder`                  | >=1.1.7  | Avis fast-xml-builder.                                                                                                                                                |
+| `fast-uri`                          | ^4.1.4   | Avis fast-uri ; `^` depuis #679.                                                                                                                                      |
+| `astro`                             | ^7.2.8   | GHSA-26w7-cxv4-gfx2 (critique). Tire `cookie ^2` : `apps/docs` garde `cookie ^2` en dépendance directe (sinon « parseCookie not found » au prérendu).                 |
+| `shell-quote@<1.11.0`               | ^1.11.0  | GHSA-pqg4-j6r4-53mv (critique, injection via `quote()`), via `launch-editor` / `react-devtools-core`.                                                                 |
+| `devalue`                           | ^5.9.2   | Avis devalue ; `^` depuis #679.                                                                                                                                       |
+| `form-data`                         | >=4.0.6  | Avis form-data.                                                                                                                                                       |
+| `@grpc/grpc-js`                     | ^1.14.5  | GHSA-m9gg-hp2v-232j (`>=1.14.0 <1.14.5`) ; l'ancien plancher 1.14.4 était sur la version vulnérable.                                                                  |
+| `ws`                                | >=8.21.0 | Avis ws.                                                                                                                                                              |
+| `qs`                                | ^6.16.0  | Avis qs ; `^` depuis #679.                                                                                                                                            |
+| `esbuild`                           | >=0.28.1 | Avis esbuild.                                                                                                                                                         |
+| `@tootallnate/once`                 | >=2.0.1  | Avis Dependabot (2026-07), dépendance transitive.                                                                                                                     |
+| `joi`                               | ^18.2.5  | Avis joi ; `^` depuis #679.                                                                                                                                           |
+| `launch-editor`                     | >=2.14.1 | Avis Dependabot (2026-07), outillage de dev.                                                                                                                          |
+| `smol-toml`                         | ^1.7.1   | Avis smol-toml ; `^` depuis #679.                                                                                                                                     |
+| `yaml`                              | >=2.8.3  | Avis Dependabot (2026-07), dépendance transitive.                                                                                                                     |
+| `websocket-driver`                  | >=0.7.5  | GHSA-xv26-6w52-cph6 (critique), via `faye-websocket` ← `@firebase/database`.                                                                                          |
+| `js-yaml@>=3.0.0 <3.15.2`           | 3.15.2   | GHSA-r3ph-w7gj-g6xm ; un plancher par ligne majeure (aucun consommateur v3 poussé en v4).                                                                             |
+| `js-yaml@>=4.0.0 <4.3.2`            | 4.3.2    | Idem, ligne 4.x.                                                                                                                                                      |
+| `js-yaml@>=5.0.0 <5.4.1`            | 5.4.1    | Idem, ligne 5.x.                                                                                                                                                      |
+| `brace-expansion@<1.1.21`           | 1.1.21   | GHSA-q2hr-2g5m-vwhr ; trois lignes majeures coexistent, un correctif par ligne.                                                                                       |
+| `brace-expansion@>=2.0.0 <2.1.7`    | 2.1.7    | Idem, ligne 2.x.                                                                                                                                                      |
+| `brace-expansion@>=4.0.0 <5.0.12`   | 5.0.12   | Idem, lignes 4.x / 5.x.                                                                                                                                               |
+| `deepmerge-ts@<8.0.0`               | 8.0.0    | Avis deepmerge-ts (2026-08-29).                                                                                                                                       |
+| `engine.io@>=4.1.0 <6.6.10`         | 6.6.10   | Avis engine.io (2026-08-29).                                                                                                                                          |
+| `nanoid@<3.3.18`                    | 3.3.18   | Avis dans la ligne 3.x, corrigé en 3.x. **Ne pas** passer en `>=` : la 5.x est ESM-only et casse 23 suites Jest CJS.                                                  |
+| `postcss@<=8.5.22`                  | 8.5.23   | Avis postcss (2026-08-29).                                                                                                                                            |
+| `sharp@<0.35.4`                     | 0.35.4   | Avis libheif embarqué par sharp (remonté par osv comme avis astro critique).                                                                                          |
+| `valibot@<=1.4.1`                   | 1.4.2    | Avis valibot (2026-08-29).                                                                                                                                            |
+| `body-parser@>=2.0.0 <2.3.0`        | 2.3.0    | Avis body-parser, ligne 2.x (2026-08-29).                                                                                                                             |
+| `browserslist@<=4.28.6`             | 4.28.7   | GHSA-73wf-gq98-2v4g (prototype) et GHSA-c83g-rgw3-j3cx (OOM).                                                                                                         |
+| `mysql2@<3.23.1`                    | 3.23.1   | GHSA-3f6p-5ww8-9rcr. Transitif via `@prisma/dev`, jamais exécuté (Postgres uniquement).                                                                               |
+| `@humanfs/node@<0.16.8`             | 0.16.8   | Avis `@humanfs/node` (outillage ESLint).                                                                                                                              |
+| `compression@<1.8.2`                | 1.8.2    | Avis publié le 2026-10-05, détecté par osv-scanner.                                                                                                                   |
+| `proxy-addr@<2.0.8`                 | 2.0.8    | Idem.                                                                                                                                                                 |
+| `source-map-js@<1.2.2`              | 1.2.2    | Idem.                                                                                                                                                                 |
+| `@fastify/busboy@<3.2.2`            | ^3.2.2   | Avis `<3.2.2` ; seul consommateur `firebase-admin` (`^3.0.0`).                                                                                                        |
+| `fast-copy@>=4.0.0 <4.1.0`          | ^4.1.0   | Avis `>=4.0.0 <4.1.0` ; seul consommateur `pino-pretty`, exports CJS/ESM inchangés.                                                                                   |
+| `uuid@<11.1.1`                      | ^11.1.1  | GHSA-w5hq-g745-h8pq ; correctif seulement en 11.x, consommateurs (`xcode`, `gaxios`) n'appellent que `v4()`. Forme bornée : la 12.x (ESM-only) reste hors d'atteinte. |
+| `postcss-selector-parser@<7.1.6`    | ^7.1.6   | GHSA-rj75-hqrm-r3gf ; correctif seulement en 7.x, seul consommateur `postcss-nested` (site docs), compatible.                                                         |
+
+Les avis volontairement **non** corrigés par un override (pas de correctif amont, ou correctif qui casse plus qu'il ne répare : `ajv`, `decode-uri-component`, `http-cache-semantics`, `sprintf-js`, `braces`, `image-size`…) sont justifiés dans les commentaires du YAML. Ceux que la porte d'audit remonte encore (`braces`, `http-cache-semantics`, `image-size`, `node-forge`) sont acceptés dans `audit-exceptions.json`.
