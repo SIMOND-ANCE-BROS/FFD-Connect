@@ -7,11 +7,11 @@ import { PrismaService } from "../prisma/prisma.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { resultAnonymizationSelect } from "../utils/prisma-selects";
 import {
-  AccountDeletionService,
   anonymizeResultDetails,
   DELETED_USER_ID,
   MAX_RESULTS_TO_ANONYMIZE,
-} from "./account-deletion.service";
+} from "./account-deletion.core";
+import { AccountDeletionService } from "./account-deletion.service";
 
 describe("AccountDeletionService", () => {
   let service: AccountDeletionService;

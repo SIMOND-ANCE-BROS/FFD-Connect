@@ -9,13 +9,6 @@ import {
   findResultsToAnonymize,
 } from "./account-deletion.core";
 
-export {
-  ANONYMIZED_RESULT_DETAIL_KEYS,
-  anonymizeResultDetails,
-  DELETED_USER_ID,
-  MAX_RESULTS_TO_ANONYMIZE,
-} from "./account-deletion.core";
-
 /**
  * Borne de la lecture des documents de renouvellement à purger : un brouillon
  * porte au plus un document par type, quelques demandes par saison.
