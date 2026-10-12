@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { PaymentController } from "./payment.controller";
 import { PaymentService } from "./payment.service";
 import { WebhookSignatureGuard } from "./guards/webhook-signature.guard";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { HelloAssoNotificationService } from "./helloasso-notification.service";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 
@@ -36,6 +37,8 @@ describe("PaymentController", () => {
       ],
     })
       .overrideGuard(WebhookSignatureGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(ThrottlerUserGuard)
       .useValue({ canActivate: () => true })
       .compile();
 

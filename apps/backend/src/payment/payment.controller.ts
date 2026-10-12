@@ -15,6 +15,8 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
+import { Throttle } from "@nestjs/throttler";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
@@ -33,14 +35,18 @@ export class PaymentController {
     private readonly helloAssoNotificationService: HelloAssoNotificationService,
   ) {}
 
-  @UseGuards(JwtAuthGuard)
+  // Per user (#402): a checkout holds the seat for 15 minutes, so a burst of
+  // checkouts must not let one account lock a whole venue.
+  @UseGuards(JwtAuthGuard, ThrottlerUserGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @Post("checkout")
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Crée un checkout HelloAsso",
     description:
       "Initie un paiement via HelloAsso pour une réservation de place en compétition. " +
-      "Le montant est celui du tarif de la place (`priceCents` de l'élément du plan), jamais celui envoyé par le client.",
+      "Le montant est celui du tarif de la place (`priceCents` de l'élément du plan), jamais celui envoyé par le client. " +
+      "La place est retenue 15 minutes ; une place ne peut avoir qu'une réservation active (409 si elle est déjà prise).",
   })
   @ApiBody({ type: CreateCheckoutDto })
   @ApiResponse({ status: 201, description: "Checkout intent créé" })
