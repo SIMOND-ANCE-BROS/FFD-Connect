@@ -157,8 +157,16 @@ export function parseTimecode(text: string): number | null {
   return seconds <= MAX_CLASH_SECONDS ? roundTenth(seconds) : null;
 }
 
+/** A request to remove the track from the library (#446): approving it hides the track. */
+export const isDeletionRequest = (c: Pick<TrackCorrectionAdminDto, 'reason'>): boolean =>
+  c.reason === 'DELETE';
+
 /** One-line summary of the proposed values, for the queue table. */
-export function proposalSummary(p: TrackCorrectionAdminDto['proposed']): string {
+export function proposalSummary(
+  p: TrackCorrectionAdminDto['proposed'],
+  reason?: TrackCorrectionReason,
+): string {
+  if (reason === 'DELETE') return 'Retirer la musique de la bibliothèque';
   const parts: string[] = [];
   if (p.title !== null) parts.push(`Titre « ${p.title} »`);
   if (p.artist !== null) parts.push(`Artiste « ${p.artist} »`);

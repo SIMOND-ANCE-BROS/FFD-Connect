@@ -37,6 +37,8 @@ import {
   MAX_PENDING_CORRECTIONS_PER_USER,
   MAX_PENDING_CORRECTIONS_PER_USER_PER_TRACK,
   MAX_SERIALIZABLE_ATTEMPTS,
+  MAX_SUPERSEDED_CORRECTIONS,
+  TRACK_REMOVED_REJECTION_COMMENT,
   TrackCorrectionsService,
 } from "./track-corrections.service";
 import { TrackCorrectionsQueryService } from "./track-corrections.query-service";
@@ -972,6 +974,254 @@ describe("TrackCorrectionsService", () => {
       );
 
       expect(audit.record).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── deletion requests (#446) ──────────────────────────────────────────────
+
+  describe("proposition de suppression (DELETE)", () => {
+    const deletionDto = {
+      trackId: "t1",
+      reason: TrackCorrectionReason.DELETE,
+      message: "  Doublon de la piste 12  ",
+    };
+
+    describe("create", () => {
+      beforeEach(() => {
+        givenTrack();
+        givenAdmins(["admin-1"]);
+        tx.trackCorrection.count.mockResolvedValue(0);
+        tx.trackCorrection.create.mockResolvedValue(
+          createdRow({
+            reason: TrackCorrectionReason.DELETE,
+            proposedBpm: null,
+          }) as never,
+        );
+      });
+
+      it("enregistre le motif seul (aucune valeur), message nettoyé", async () => {
+        await service.create("u1", {
+          ...deletionDto,
+          title: "Autre titre",
+          bpm: 99,
+          clashTimecodes: [10],
+        });
+        expect(createData()).toEqual({
+          trackId: "t1",
+          proposedById: "u1",
+          reason: TrackCorrectionReason.DELETE,
+          message: "Doublon de la piste 12",
+          proposedTitle: null,
+          proposedArtist: null,
+          proposedStyle: null,
+          proposedBpm: null,
+          proposesClashes: false,
+          proposedClashTimecodes: [],
+        });
+      });
+
+      it.each([undefined, "   "])(
+        "400 sans motif (message %p)",
+        async (message) => {
+          await expect(
+            service.create("u1", { ...deletionDto, message }),
+          ).rejects.toThrow(
+            new BadRequestException(
+              "Indiquez pourquoi retirer cette musique (doublon, mauvais fichier…).",
+            ),
+          );
+          expect(tx.trackCorrection.create).not.toHaveBeenCalled();
+        },
+      );
+
+      it("409 si l'utilisateur a déjà une demande de suppression en attente sur la piste", async () => {
+        tx.trackCorrection.count.mockResolvedValueOnce(1);
+        await expect(service.create("u1", deletionDto)).rejects.toThrow(
+          ConflictException,
+        );
+        expect(tx.trackCorrection.count).toHaveBeenCalledWith({
+          where: {
+            proposedById: "u1",
+            trackId: "t1",
+            status: TrackCorrectionStatus.PENDING,
+            reason: TrackCorrectionReason.DELETE,
+          },
+        });
+        expect(tx.trackCorrection.create).not.toHaveBeenCalled();
+      });
+
+      it("les autres motifs ne sont pas soumis à l'unicité", async () => {
+        await service.create("u1", {
+          trackId: "t1",
+          reason: TrackCorrectionReason.MPM,
+          bpm: 62,
+        });
+        expect(tx.trackCorrection.count).toHaveBeenCalledTimes(2);
+        for (const [args] of tx.trackCorrection.count.mock.calls) {
+          expect(args?.where).not.toHaveProperty("reason");
+        }
+      });
+
+      it("notifie les admins d'une demande de suppression", async () => {
+        await service.create("u1", deletionDto);
+        expect(notifications.sendToUsers).toHaveBeenCalledWith(
+          ["admin-1"],
+          NotificationType.TRACK_REPORT,
+          "Proposition de correction",
+          "«España Cañí» — Suppression de la musique demandée",
+          { type: "TRACK_CORRECTION", correctionId: "c1", trackId: "t1" },
+        );
+      });
+    });
+
+    describe("approve", () => {
+      const before = { ...TRACK, blacklisted: false };
+      const after = { ...TRACK, blacklisted: true };
+
+      beforeEach(() => {
+        prisma.trackCorrection.findUnique.mockResolvedValue(
+          decisionRow({
+            reason: TrackCorrectionReason.DELETE,
+            proposedTitle: null,
+            proposedBpm: null,
+          }) as never,
+        );
+        tx.trackCorrection.updateMany.mockResolvedValue({ count: 1 });
+        tx.track.findUnique
+          .mockResolvedValueOnce(before as never)
+          .mockResolvedValueOnce(after as never);
+        tx.trackCorrection.findMany.mockResolvedValue([
+          { id: "c2", proposedById: "u2" },
+          { id: "c3", proposedById: null },
+        ] as never);
+      });
+
+      it("masque la piste (blacklisted), sans valeur de l'admin ni suppression", async () => {
+        const result = await service.approve("c1", "admin-1", {
+          title: "ignoré",
+          comment: "Doublon confirmé",
+        });
+        expect(tracks.updateTrack).toHaveBeenCalledWith(
+          "t1",
+          "admin-1",
+          true,
+          { blacklisted: true },
+          tx,
+          { skipAudit: true },
+        );
+        expect(tx.track.delete).not.toHaveBeenCalled();
+        expect(result).toEqual({ id: "c1" });
+      });
+
+      it("journalise blacklisted false → true dans la transaction", async () => {
+        await service.approve("c1", "admin-1", {});
+        expect(audit.record).toHaveBeenCalledWith(tx, {
+          actorId: "admin-1",
+          action: "TRACK_CORRECTION_APPROVE",
+          targetType: "TRACK_CORRECTION",
+          targetId: "c1",
+          before: { trackId: "t1", blacklisted: false },
+          after: { trackId: "t1", blacklisted: true },
+        });
+      });
+
+      it("refuse d'office les autres propositions en attente, chacune journalisée", async () => {
+        await service.approve("c1", "admin-1", {});
+        expect(tx.trackCorrection.findMany).toHaveBeenCalledWith({
+          where: {
+            trackId: "t1",
+            status: TrackCorrectionStatus.PENDING,
+            id: { not: "c1" },
+          },
+          select: { id: true, proposedById: true },
+          orderBy: { createdAt: "asc" },
+          take: MAX_SUPERSEDED_CORRECTIONS,
+        });
+        for (const id of ["c2", "c3"]) {
+          expect(tx.trackCorrection.updateMany).toHaveBeenCalledWith({
+            where: { id, status: TrackCorrectionStatus.PENDING },
+            data: {
+              status: TrackCorrectionStatus.REJECTED,
+              reviewedById: "admin-1",
+              reviewComment: TRACK_REMOVED_REJECTION_COMMENT,
+              reviewedAt: expect.any(Date),
+            },
+          });
+          expect(audit.record).toHaveBeenCalledWith(tx, {
+            actorId: "admin-1",
+            action: "TRACK_CORRECTION_REJECT",
+            targetType: "TRACK_CORRECTION",
+            targetId: id,
+            after: { trackId: "t1" },
+          });
+        }
+      });
+
+      it("notifie l'auteur de la suppression et ceux des propositions refusées", async () => {
+        await service.approve("c1", "admin-1", {});
+        expect(notifications.sendToUser).toHaveBeenCalledWith(
+          "u1",
+          NotificationType.TRACK_CORRECTION_DECISION,
+          "Proposition validée",
+          "«España Cañí» : votre proposition de suppression a été validée, la musique est retirée de la bibliothèque.",
+          expect.objectContaining({ correctionId: "c1" }),
+        );
+        expect(notifications.sendToUser).toHaveBeenCalledWith(
+          "u2",
+          NotificationType.TRACK_CORRECTION_DECISION,
+          "Proposition refusée",
+          "«España Cañí» : votre proposition de correction a été refusée. Commentaire : Musique retirée de la bibliothèque",
+          {
+            type: "TRACK_CORRECTION_DECISION",
+            correctionId: "c2",
+            trackId: "t1",
+            status: TrackCorrectionStatus.REJECTED,
+          },
+        );
+        // c3's author deleted their account: nobody to tell.
+        expect(notifications.sendToUser).toHaveBeenCalledTimes(2);
+      });
+
+      it("une proposition tranchée en parallèle garde sa décision (ni audit ni notification)", async () => {
+        tx.trackCorrection.updateMany
+          .mockResolvedValueOnce({ count: 1 }) // claim c1
+          .mockResolvedValueOnce({ count: 0 }) // c2 decided meanwhile
+          .mockResolvedValueOnce({ count: 1 }); // c3
+        await service.approve("c1", "admin-1", {});
+        expect(audit.record).not.toHaveBeenCalledWith(
+          tx,
+          expect.objectContaining({ targetId: "c2" }),
+        );
+        expect(notifications.sendToUser).not.toHaveBeenCalledWith(
+          "u2",
+          expect.anything(),
+          expect.anything(),
+          expect.anything(),
+          expect.anything(),
+        );
+      });
+
+      it("409 si déjà tranchée : la piste reste visible, rien d'autre n'est refusé", async () => {
+        tx.trackCorrection.updateMany.mockResolvedValue({ count: 0 });
+        await expect(service.approve("c1", "admin-1", {})).rejects.toThrow(
+          ConflictException,
+        );
+        expect(tracks.updateTrack).not.toHaveBeenCalled();
+        expect(tx.trackCorrection.findMany).not.toHaveBeenCalled();
+        expect(notifications.sendToUser).not.toHaveBeenCalled();
+      });
+
+      it("refus d'une suppression : notification dédiée, la piste ne change pas", async () => {
+        await service.reject("c1", "admin-1", {});
+        expect(tracks.updateTrack).not.toHaveBeenCalled();
+        expect(notifications.sendToUser).toHaveBeenCalledWith(
+          "u1",
+          NotificationType.TRACK_CORRECTION_DECISION,
+          "Proposition refusée",
+          "«España Cañí» : votre proposition de suppression a été refusée.",
+          expect.anything(),
+        );
+      });
     });
   });
 

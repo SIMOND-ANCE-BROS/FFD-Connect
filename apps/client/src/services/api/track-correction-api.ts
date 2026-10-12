@@ -53,6 +53,7 @@ const MESSAGES: Record<Operation, Partial<Record<number, string>>> = {
   create: {
     400: "Rien à corriger : modifiez au moins une valeur ou ajoutez un commentaire.",
     404: "Cette musique n'est plus disponible.",
+    409: "Vous avez déjà une demande en attente pour cette musique. Attendez la décision d'un administrateur.",
     429: "Vous avez déjà plusieurs propositions en attente sur cette musique. Attendez qu'un administrateur les traite.",
   },
   review: {

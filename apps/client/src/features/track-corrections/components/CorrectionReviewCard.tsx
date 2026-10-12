@@ -23,6 +23,7 @@ import {
   formatClashListForEdit,
   formatCorrectionDate,
   isDanceOnlyChange,
+  isDeletionRequest,
   MESSAGE_MAX_LENGTH,
   MPM_MAX,
   MPM_MIN,
@@ -142,6 +143,7 @@ export const CorrectionReviewCard = ({
   const diff = buildCorrectionDiff(item);
   const hasEditable = diff.some((line) => line.field !== "resultingBpm");
   const danceOnly = isDanceOnlyChange(item);
+  const deletion = isDeletionRequest(item);
   const busy = review.isPending;
 
   const handleError = (error: unknown) => {
@@ -194,7 +196,9 @@ export const CorrectionReviewCard = ({
         onDecided?.(item.id);
         Alert.alert(
           "Proposition validée",
-          "La musique est corrigée et l'auteur est prévenu.",
+          deletion
+            ? "La musique est retirée de la bibliothèque et l'auteur est prévenu."
+            : "La musique est corrigée et l'auteur est prévenu.",
         );
       })
       .catch(handleError);
@@ -206,7 +210,9 @@ export const CorrectionReviewCard = ({
         ? "Valider la proposition ?"
         : "Refuser la proposition ?",
       decision === "approve"
-        ? "Les valeurs proposées seront appliquées à la musique."
+        ? deletion
+          ? "La musique sera retirée de la bibliothèque (masquée, pas supprimée). Les autres propositions en attente sur cette musique seront refusées."
+          : "Les valeurs proposées seront appliquées à la musique."
         : "La musique restera inchangée.",
       [
         { text: "Annuler", style: "cancel" },
@@ -255,6 +261,20 @@ export const CorrectionReviewCard = ({
         {reasonLabel(item.reason)} · {item.proposer?.name ?? "Compte supprimé"}{" "}
         · {formatCorrectionDate(item.createdAt)}
       </AppText>
+
+      {deletion && (
+        <AppText
+          variant="body"
+          weight="600"
+          color={theme.text}
+          style={styles.meta}
+          testID={`correction-delete-${item.id}`}
+        >
+          {item.status === "APPROVED"
+            ? "Musique retirée de la bibliothèque"
+            : "Demande de retrait de la bibliothèque"}
+        </AppText>
+      )}
 
       {diff.map((line) => (
         <View key={line.field} style={styles.diffRow}>
