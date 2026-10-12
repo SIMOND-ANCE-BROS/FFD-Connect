@@ -373,6 +373,26 @@ export const seatBookingExportSelect = {
 } as const;
 
 /**
+ * Checkout HelloAsso (#381) : le plan de salle porte le tarif de chaque
+ * élément (`priceCents`). Le montant est lu ici, jamais dans la requête.
+ */
+export const competitionSeatPricingSelect = {
+  id: true,
+  layout: true,
+} as const;
+
+/**
+ * Webhook HelloAsso (#381) : champs d'une réservation nécessaires pour
+ * vérifier qu'une commande payée lui correspond bien.
+ */
+export const seatBookingPaymentCheckSelect = {
+  id: true,
+  competitionId: true,
+  paymentId: true,
+  expectedAmountCents: true,
+} as const;
+
+/**
  * Export RGPD (#251) : contexte d'une épreuve (spécialité, classe d'âge,
  * niveau, type, compétition). Aucune donnée de personne.
  */

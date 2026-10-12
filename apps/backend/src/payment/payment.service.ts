@@ -1,10 +1,21 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import * as Sentry from "@sentry/nestjs";
 import { ClubsHelloAssoService } from "../clubs/clubs-helloasso.service";
 import { handlePrismaError } from "../utils/prisma-errors.util";
 import { PrismaService } from "../prisma/prisma.service";
+import {
+  competitionSeatPricingSelect,
+  seatBookingPaymentCheckSelect,
+} from "../utils/prisma-selects";
 import { CreateCheckoutDto } from "./dto/create-checkout.dto";
+import { WebhookPayloadDto } from "./dto/webhook-payload.dto";
 import { HelloAssoService } from "./hello-asso.service";
+import {
+  checkOrderAgainstBooking,
+  getWebhookMetadata,
+} from "./helloasso-order-check";
+import { resolveSeatPriceCents } from "./seat-pricing";
 
 @Injectable()
 export class PaymentService {
@@ -30,7 +41,21 @@ export class PaymentService {
       );
     }
 
-    // 2. Charger l'utilisateur pour les infos paiement
+    // 2. Prix de la place, fixé côté serveur (#381) : `body.amount` est ignoré
+    const competition = await this.prisma.competition.findUnique({
+      where: { id: body.competitionId },
+      select: competitionSeatPricingSelect,
+    });
+    const amountCents = competition
+      ? resolveSeatPriceCents(competition.layout, body.itemId)
+      : null;
+    if (amountCents === null) {
+      throw new BadRequestException(
+        "Aucun tarif n'est défini pour cette place : le paiement en ligne est indisponible.",
+      );
+    }
+
+    // 3. Charger l'utilisateur pour les infos paiement
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, email: true, firstName: true, lastName: true },
@@ -39,7 +64,7 @@ export class PaymentService {
       throw new BadRequestException("User not found");
     }
 
-    // 3. Créer une réservation en attente
+    // 4. Créer une réservation en attente
     let booking;
     try {
       booking = await this.prisma.seatBooking.create({
@@ -49,6 +74,7 @@ export class PaymentService {
           itemId: body.itemId,
           seatLabel: body.seatLabel,
           status: "PENDING",
+          expectedAmountCents: amountCents,
           expiresAt: new Date(Date.now() + 15 * 60 * 1000), // 15 min
         },
       });
@@ -64,7 +90,7 @@ export class PaymentService {
         credentials,
         appBaseUrl,
         {
-          amount: body.amount,
+          amount: amountCents,
           label: `Place Compétition - ${body.seatLabel ?? body.itemId}`,
           consumerEmail: user.email,
           consumerFirstName: user.firstName,
@@ -78,7 +104,8 @@ export class PaymentService {
 
       await this.prisma.seatBooking.update({
         where: { id: booking.id },
-        data: { paymentId: intent.id },
+        // HelloAsso returns a numeric id; the column is a string.
+        data: { paymentId: String(intent.id) },
       });
 
       return intent;
@@ -92,6 +119,51 @@ export class PaymentService {
         .catch(() => {});
       throw new BadRequestException("Échec de l'initiation du paiement");
     }
+  }
+
+  /**
+   * Signed HelloAsso `Order` notification (#381): confirms the booking only
+   * when the order is paid, for the expected amount, on the booking's
+   * competition and checkout intent. A rejection never throws — HelloAsso
+   * gets a 2xx and does not retry — but is logged and reported to Sentry
+   * (identifiers only, no personal data).
+   */
+  async handleOrderWebhook(payload: WebhookPayloadDto): Promise<void> {
+    const bookingId = getWebhookMetadata(payload)?.bookingId;
+    if (!bookingId) return; // Not a seat-booking checkout.
+
+    const orderId = payload.data.id;
+    const booking = await this.prisma.seatBooking.findUnique({
+      where: { id: bookingId },
+      select: seatBookingPaymentCheckSelect,
+    });
+    if (!booking) {
+      this.rejectOrder(bookingId, orderId, "booking_not_found");
+      return;
+    }
+
+    const reason = checkOrderAgainstBooking(payload, booking);
+    if (reason) {
+      this.rejectOrder(bookingId, orderId, reason);
+      return;
+    }
+
+    await this.confirmBooking(booking.id);
+  }
+
+  private rejectOrder(
+    bookingId: string,
+    orderId: number | undefined,
+    reason: string,
+  ): void {
+    this.logger.error(
+      `HelloAsso order ${orderId ?? "?"} rejected for booking ${bookingId}: ${reason}`,
+    );
+    Sentry.captureMessage("HelloAsso order rejected", {
+      level: "error",
+      tags: { payment: "helloasso-order-rejected", reason },
+      extra: { bookingId, orderId },
+    });
   }
 
   async confirmBooking(bookingId: string): Promise<void> {
