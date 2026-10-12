@@ -26875,7 +26875,8 @@
           },
           "majorSubType": {
             "type": "string",
-            "description": "Requis si competitionType=MAJEURE."
+            "description": "Requis si competitionType=MAJEURE. `null` l'efface (compétition passée à un autre type).",
+            "nullable": true
           },
           "type": {
             "type": "string",

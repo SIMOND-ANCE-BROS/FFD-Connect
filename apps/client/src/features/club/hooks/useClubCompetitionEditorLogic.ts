@@ -7,6 +7,13 @@ import {
 } from "../../license/services/CheckinService";
 import { CompetitionService } from "../services/CompetitionService";
 import {
+  buildCompetitionPayload,
+  buildCompetitionUpdatePayload,
+  parseCompetitionDate,
+  toApiCompetitionStatus,
+  type CompetitionEditorForm,
+} from "./competitionPayload";
+import {
   MAJOR_SUB_TYPES,
   isValidCompetitionStatus,
   type Competition,
@@ -23,6 +30,13 @@ import { useTimingEditor } from "./useTimingEditor";
 export * from "./useClubCompetitionEditorLogic.types";
 
 const logger = createLogger("useClubCompetitionEditorLogic");
+
+const formatDisplayDate = (value: Date) =>
+  value.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 
 interface UseClubCompetitionEditorLogicProps {
   initialCompetition?: Partial<Competition>;
@@ -47,15 +61,25 @@ export const useClubCompetitionEditorLogic = ({
 
   // --- GENERAL STATE ---
   const [title, setTitle] = useState(initialCompetition.title ?? "");
+  // Only the API statuses are offered (#417): legacy DRAFT/OPEN/CLOSED map
+  // onto them so the segmented control highlights a valid choice.
   const [status, setStatus] = useState<CompetitionStatus>(
-    initialCompetition.status &&
-      isValidCompetitionStatus(initialCompetition.status)
-      ? initialCompetition.status
-      : "DRAFT",
+    toApiCompetitionStatus(
+      initialCompetition.status &&
+        isValidCompetitionStatus(initialCompetition.status)
+        ? initialCompetition.status
+        : "UPCOMING",
+    ),
   );
-  const [date, setDate] = useState(new Date());
+  // The API wants an ISO date: keep the picked Date, the text is display only.
+  // A date that isn't ISO (e.g. a display label) counts as not picked yet.
+  const initialDate = parseCompetitionDate(initialCompetition.date);
+  const [date, setDate] = useState(initialDate ?? new Date());
+  const [hasDate, setHasDate] = useState(initialDate !== null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [dateText, setDateText] = useState(initialCompetition.date ?? "");
+  const [dateText, setDateText] = useState(
+    initialDate ? formatDisplayDate(initialDate) : "",
+  );
   const [location, setLocation] = useState(initialCompetition.location ?? "");
   const [competitionType, setCompetitionType] = useState<CompetitionType>(
     // competitionType may be absent when creating a new competition, default to "PROXIMITE"
@@ -100,7 +124,7 @@ export const useClubCompetitionEditorLogic = ({
 
   // --- ACTIONS ---
   const handleSave = async () => {
-    if (!title || !dateText || !location) {
+    if (!title || !hasDate || !location) {
       Alert.alert(
         "Erreur",
         'Veuillez remplir les champs obligatoires dans "Général"',
@@ -121,41 +145,28 @@ export const useClubCompetitionEditorLogic = ({
       return;
     }
 
-    const payload = isEvent
-      ? {
-          title,
-          status,
-          date: dateText,
-          location,
-          type: kind,
-          eventsDescription,
-          ticketingUrl,
-        }
-      : {
-          title,
-          status,
-          date: dateText,
-          location,
-          type: kind,
-          competitionType,
-          majorSubType:
-            competitionType === "MAJEURE" && majorSubType ? majorSubType : null,
-          events: eventEditor.events,
-          schedule: timingEditor.schedule,
-          eventsDescription,
-          ticketingUrl,
-          layout: layoutEditor.layoutItems,
-        };
-    logger.debug("Saving Competition:", payload);
+    const form: CompetitionEditorForm = {
+      kind,
+      title,
+      status,
+      date,
+      location,
+      competitionType,
+      majorSubType,
+      eventsDescription,
+      ticketingUrl,
+      layoutItems: layoutEditor.layoutItems,
+    };
+    logger.debug("Saving Competition:", form);
 
     try {
       if (isEditing && initialCompetition.id) {
         await CompetitionService.update(
           initialCompetition.id,
-          payload as Partial<Competition>,
+          buildCompetitionUpdatePayload(form),
         );
       } else {
-        await CompetitionService.create(payload as Omit<Competition, "id">);
+        await CompetitionService.create(buildCompetitionPayload(form));
       }
 
       Alert.alert(
@@ -195,13 +206,8 @@ export const useClubCompetitionEditorLogic = ({
     setShowDatePicker(false);
     if (selectedDate) {
       setDate(selectedDate);
-      setDateText(
-        selectedDate.toLocaleDateString("fr-FR", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        }),
-      );
+      setHasDate(true);
+      setDateText(formatDisplayDate(selectedDate));
     }
   };
 
@@ -220,7 +226,6 @@ export const useClubCompetitionEditorLogic = ({
     showDatePicker,
     setShowDatePicker,
     dateText,
-    setDateText,
     location,
     setLocation,
     competitionType,

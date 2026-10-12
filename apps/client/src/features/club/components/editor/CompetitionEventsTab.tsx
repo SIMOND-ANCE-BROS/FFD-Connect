@@ -12,6 +12,7 @@ import {
   type EventItem,
   type EventKind,
 } from "../../hooks/useClubCompetitionEditorLogic";
+import { NotSavedNotice } from "./NotSavedNotice";
 import { styles } from "./competition-editor.styles";
 import { formatDiscipline } from "../../../../utils/discipline";
 
@@ -75,6 +76,11 @@ export const CompetitionEventsTab: React.FC<Props> = ({
           Définissez les catégories ouvertes à l'inscription.
         </AppText>
       </View>
+      <NotSavedNotice
+        theme={theme}
+        testID="competition-events-not-saved"
+        message="Aperçu : les épreuves ne sont pas encore enregistrées avec la compétition."
+      />
 
       {events.map((event) => (
         <View

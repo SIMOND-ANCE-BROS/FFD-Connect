@@ -136,11 +136,15 @@ export class UpdateCompetitionDto {
   competitionType?: CompetitionType;
 
   @ApiPropertyOptional({
-    description: "Requis si competitionType=MAJEURE.",
+    description:
+      "Requis si competitionType=MAJEURE. `null` l'efface (compétition passée à un autre type).",
+    // Explicit: the `string | null` union otherwise reflects as `type: object`.
+    type: String,
+    nullable: true,
   })
   @IsString()
   @IsOptional()
-  majorSubType?: string;
+  majorSubType?: string | null;
 
   @ApiPropertyOptional({
     description:
