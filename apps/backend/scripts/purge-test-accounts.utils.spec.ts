@@ -1,7 +1,13 @@
 import {
+  DELETED_USER_ID,
+  buildAccountDeletionOperations,
+} from "../src/users/account-deletion.core";
+import {
   LEGACY_STORE_REVIEW_EMAIL,
+  PurgeUserPrisma,
   STORE_REVIEW_CLUB_NAME,
   STORE_REVIEW_EMAIL,
+  buildPurgeUserOperations,
   isTestLicenseNumber,
   isTestUser,
   selectTestClubs,
@@ -115,4 +121,76 @@ describe("isTestLicenseNumber", () => {
     "SCAN-TEST-",
     "X-SCAN-TEST-1",
   ])("keeps license %s", (n) => expect(isTestLicenseNumber(n)).toBe(false));
+});
+
+describe("buildPurgeUserOperations (#412)", () => {
+  /**
+   * Prisma stand-in recording each operation as "<delegate>.<method>" + args,
+   * so the purge transaction can be compared with the account deletion core.
+   */
+  const recordingPrisma = () =>
+    new Proxy(
+      {},
+      {
+        get: (_target, delegate: string) =>
+          new Proxy(
+            {},
+            {
+              get: (_t, method: string) => (args: unknown) => ({
+                op: `${delegate}.${method}`,
+                args,
+              }),
+            },
+          ),
+      },
+    ) as unknown as PurgeUserPrisma;
+
+  const results = [{ id: "r1", details: { participant: "X", status: "OK" } }];
+
+  it("deletes the seeded licenses, then runs the exact account deletion core", () => {
+    const ops = buildPurgeUserOperations(
+      recordingPrisma(),
+      "u1",
+      ["l1"],
+      results,
+    );
+
+    expect(ops[0]).toEqual({
+      op: "license.deleteMany",
+      args: { where: { id: { in: ["l1"] } } },
+    });
+    // Single list of relations: whatever the core does, the purge does too.
+    expect(ops.slice(1)).toEqual(
+      buildAccountDeletionOperations(recordingPrisma(), "u1", results),
+    );
+  });
+
+  it("anonymises the results with the tombstone and the admin audit rows", () => {
+    const ops = buildPurgeUserOperations(
+      recordingPrisma(),
+      "u1",
+      [],
+      results,
+    ) as unknown as { op: string; args: unknown }[];
+
+    expect(ops).toContainEqual({
+      op: "result.updateMany",
+      args: {
+        where: { id: "r1", userId: "u1" },
+        data: { userId: DELETED_USER_ID, details: { status: "OK" } },
+      },
+    });
+    expect(ops).toContainEqual({
+      op: "result.updateMany",
+      args: {
+        where: { userId: "u1" },
+        data: { userId: DELETED_USER_ID, details: {} },
+      },
+    });
+    expect(ops.map((o) => o.op)).toContain("adminAuditLog.updateMany");
+    expect(ops[ops.length - 1]).toEqual({
+      op: "user.delete",
+      args: { where: { id: "u1" } },
+    });
+  });
 });

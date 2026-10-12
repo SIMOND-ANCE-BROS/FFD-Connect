@@ -9,14 +9,16 @@
  * (seed-scan-user-*). Selection rules: purge-test-accounts.utils.ts — never a
  * real beta tester (they do not use @test.com nor seeded ids).
  *
- * Per account, in one transaction (same core as AccountDeletionService):
- * rows without cascade (registrations, seat bookings, notifications, bug
- * reports) are deleted, registrations naming the account as partner are
- * anonymised, seeded licenses (SCAN-TEST-*, BETA-EXPIRY-TEST) are deleted
- * while any other license is only unlinked (Prisma SetNull), then the user
- * row goes (cascades: tokens, partnerships, solo-team memberships, renewal
- * requests, notification preferences, device tokens). Clubs go last, once
- * none of their members survives.
+ * Per account, in one transaction: seeded licenses (SCAN-TEST-*,
+ * BETA-EXPIRY-TEST) are deleted (any other license is only unlinked, Prisma
+ * SetNull), then the SAME deletion core as AccountDeletionService
+ * (src/users/account-deletion.core.ts, #412) runs: competition results
+ * anonymised (DELETED_USER_ID tombstone), rows without cascade deleted,
+ * partner registrations and admin audit rows anonymised, user row deleted.
+ * Clubs go last, once none of their members survives. Then results already
+ * orphaned by earlier purges are anonymised (idempotent sweep).
+ * Not done here (no Redis / storage client in the script): results cache
+ * invalidation (1 h TTL) and renewal document files.
  *
  * Idempotent: nothing to purge = no-op. `--dry-run` lists without deleting.
  * Run at container boot (docker-entrypoint.sh) ONLY when SEED_TEST_TRACKS=true
@@ -24,11 +26,16 @@
  * store-review account). A failure never blocks the boot.
  */
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import "dotenv/config";
 import { Pool } from "pg";
 import {
+  anonymizeOrphanedResults,
+  findResultsToAnonymize,
+} from "../src/users/account-deletion.core";
+import {
   TEST_CLUB_NAMES,
+  buildPurgeUserOperations,
   isTestLicenseNumber,
   selectTestClubs,
   selectTestUsers,
@@ -54,30 +61,43 @@ async function purgeUser(user: { id: string; email: string }): Promise<void> {
     .filter((l) => isTestLicenseNumber(l.number))
     .map((l) => l.id);
 
-  const [notifications, seats, registrations, , , , licensesDeleted] =
-    await prisma.$transaction([
-      prisma.notification.deleteMany({ where: { userId: user.id } }),
-      prisma.seatBooking.deleteMany({ where: { userId: user.id } }),
-      prisma.registration.deleteMany({ where: { userId: user.id } }),
-      prisma.registration.updateMany({
-        where: { partnerUserId: user.id },
-        data: { partnerUserId: null, partnerName: null },
-      }),
-      prisma.trackCorrection.updateMany({
-        where: { proposedById: user.id },
-        data: { message: null },
-      }),
-      prisma.bugReport.deleteMany({ where: { userId: user.id } }),
-      prisma.license.deleteMany({ where: { id: { in: seededLicenseIds } } }),
-      prisma.user.delete({ where: { id: user.id }, select: { id: true } }),
-    ]);
+  const results = await findResultsToAnonymize(prisma, user.id);
+
+  const [licensesDeleted] = (await prisma.$transaction(
+    buildPurgeUserOperations(prisma, user.id, seededLicenseIds, results),
+  )) as [Prisma.BatchPayload, ...unknown[]];
   const unlinked = licenses.length - licensesDeleted.count;
   console.log(
-    `${TAG}   ✓ user ${user.email} (${user.id}): ${registrations.count} registration(s), ${seats.count} seat booking(s), ${notifications.count} notification(s), ${licensesDeleted.count} seeded license(s) deleted, ${unlinked} license(s) unlinked`,
+    `${TAG}   ✓ user ${user.email} (${user.id}): ${results.length} result(s) anonymised, ${licensesDeleted.count} seeded license(s) deleted, ${unlinked} license(s) unlinked`,
   );
 }
 
+/**
+ * Results already orphaned by purges that predate #412 (the #396 data
+ * migration ran once, and later purges kept leaving rows behind). Idempotent:
+ * nothing to do = one read.
+ */
+async function sweepOrphanedResults(): Promise<void> {
+  if (DRY_RUN) return;
+  try {
+    const count = await anonymizeOrphanedResults(prisma);
+    if (count > 0) {
+      console.log(`${TAG} Anonymised ${count} orphaned result(s).`);
+    }
+  } catch (error) {
+    console.warn(
+      `${TAG}   ⚠ orphaned results: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exitCode = 1;
+  }
+}
+
 async function main(): Promise<void> {
+  await purgeAccounts();
+  await sweepOrphanedResults();
+}
+
+async function purgeAccounts(): Promise<void> {
   const candidates = await prisma.user.findMany({
     where: {
       OR: [

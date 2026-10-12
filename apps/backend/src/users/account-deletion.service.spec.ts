@@ -116,19 +116,33 @@ describe("AccountDeletionService", () => {
 
       await service.deleteAccount("u1");
 
-      expect(prisma.result.update).toHaveBeenCalledTimes(3);
-      expect(prisma.result.update).toHaveBeenCalledWith({
-        where: { id: "r1" },
+      // 3 guarded per-row updates + the sweep; never a throwing `update`.
+      expect(prisma.result.update).not.toHaveBeenCalled();
+      expect(prisma.result.updateMany).toHaveBeenCalledTimes(4);
+      expect(prisma.result.updateMany).toHaveBeenCalledWith({
+        where: { id: "r1", userId: "u1" },
         data: { userId: DELETED_USER_ID, details: { totalParticipants: 8 } },
       });
-      expect(prisma.result.update).toHaveBeenCalledWith({
-        where: { id: "r2" },
+      expect(prisma.result.updateMany).toHaveBeenCalledWith({
+        where: { id: "r2", userId: "u1" },
         data: { userId: DELETED_USER_ID, details: {} },
       });
-      expect(prisma.result.update).toHaveBeenCalledWith({
-        where: { id: "r3" },
+      expect(prisma.result.updateMany).toHaveBeenCalledWith({
+        where: { id: "r3", userId: "u1" },
         data: { userId: DELETED_USER_ID, details: { marks: [1, 2] } },
       });
+    });
+
+    it("never rewrites a row whose owner changed between the read and the transaction (#412)", async () => {
+      prisma.result.findMany.mockResolvedValue([rows[0]] as never);
+
+      await service.deleteAccount("u1");
+
+      // Every result write is scoped to the deleted user's id: a row
+      // re-imported under another account matches no `where` and stays as is.
+      for (const [args] of prisma.result.updateMany.mock.calls) {
+        expect(args.where).toEqual(expect.objectContaining({ userId: "u1" }));
+      }
     });
 
     it("sweeps any row left with the user id (beyond the cap or created meanwhile)", async () => {
@@ -142,8 +156,11 @@ describe("AccountDeletionService", () => {
     it("anonymises the results in the same transaction, before the user row goes", async () => {
       prisma.result.findMany.mockResolvedValue([rows[0]] as never);
       const marker = (op: string) => ({ op }) as never;
-      prisma.result.update.mockReturnValue(marker("resultRow"));
-      prisma.result.updateMany.mockReturnValue(marker("resultSweep"));
+      prisma.result.updateMany.mockImplementation((args) =>
+        marker(
+          args && "id" in (args.where ?? {}) ? "resultRow" : "resultSweep",
+        ),
+      );
       prisma.user.delete.mockReturnValue(marker("user"));
 
       await service.deleteAccount("u1");
