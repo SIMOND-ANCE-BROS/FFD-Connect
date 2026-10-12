@@ -40,6 +40,7 @@ import {
 } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
 import { StoreReviewBlockedModal, StoreReviewNotice } from '../components/StoreReview';
+import { UserIdentifiersModal } from '../components/UserIdentifiersModal';
 import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { ROLE_LABELS } from '../lib/labels';
@@ -77,6 +78,7 @@ export function UserDetailPage() {
   const navigate = useNavigate();
   const [statusOpen, setStatusOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [identifiersOpen, setIdentifiersOpen] = useState(false);
   const [typedEmail, setTypedEmail] = useState('');
   const [blocked, setBlocked] = useState<ProtectedAction | null>(null);
 
@@ -283,7 +285,21 @@ export function UserDetailPage() {
             {u.lastLoginAt ? dayjs(u.lastLoginAt).format('DD/MM/YYYY HH:mm') : 'inconnue'}
           </Text>
         </SimpleGrid>
+        {!isSelf && (
+          <Group mt="sm">
+            <Button size="xs" variant="light" onClick={() => setIdentifiersOpen(true)}>
+              Modifier l'email ou la licence
+            </Button>
+          </Group>
+        )}
       </Card>
+      {!isSelf && (
+        <UserIdentifiersModal
+          user={u}
+          opened={identifiersOpen}
+          onClose={() => setIdentifiersOpen(false)}
+        />
+      )}
       <form onSubmit={onSubmit}>
         <Stack>
           <Fieldset legend="Identité et club">

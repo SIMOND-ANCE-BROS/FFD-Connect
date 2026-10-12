@@ -19,6 +19,7 @@ const LABELS: Record<string, string> = {
   role: 'Rôle',
   extraRoles: 'Rôles supplémentaires',
   email: 'Email',
+  licenseNumber: 'N° de licence',
   name: 'Nom du club',
   registrationMode: "Mode d'inscription",
   title: 'Titre',
