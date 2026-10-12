@@ -22,6 +22,17 @@ export const MAX_RENEWAL_DOCUMENTS_TO_PURGE = 200;
 export const MAX_RESULTS_TO_ANONYMIZE = 1000;
 
 /**
+ * Valeur sentinelle de `Result.userId` pour un résultat anonymisé (#382) :
+ * l'UUID nul, jamais attribué à un compte (User.id = uuid v4 aléatoire), donc
+ * jamais renvoyé par une requête « résultats de l'utilisateur X ».
+ * La colonne reste NOT NULL exprès : le client Prisma d'une image antérieure
+ * (rollback automatique du déploiement) lit `userId` comme `String` requis et
+ * planterait sur un NULL. Reprise des comptes supprimés avant le correctif :
+ * migration 20261012120000_result_anonymize_deleted_users.
+ */
+export const DELETED_USER_ID = "00000000-0000-0000-0000-000000000000";
+
+/**
  * Clés de `Result.details` (JSON libre d'import) conservées à l'anonymisation :
  * elles décrivent l'épreuve ou la prestation, pas la personne. Tout le reste
  * part — `participant` (nom du couple), `name`, `bib` (dossard), `club` et
@@ -74,7 +85,7 @@ export function anonymizeResultDetails(
  * Résultats de compétition (Result.userId sans FK, #382) : ANONYMISÉS, pas
  * supprimés. Une ligne est le classement d'un couple dans une épreuve ; la
  * supprimer créerait un trou dans le classement publié des autres couples.
- * userId → null et details réduit aux clés non identifiantes (le nom du
+ * userId → DELETED_USER_ID (sentinelle, la colonne reste NOT NULL) et details réduit aux clés non identifiantes (le nom du
  * couple, le dossard et le club partent) : la ligne ne permet plus de
  * réidentifier la personne. Le cache Redis des résultats des compétitions
  * concernées est invalidé après la transaction (best-effort, TTL 1 h sinon).
@@ -136,14 +147,14 @@ export class AccountDeletionService {
         this.prisma.result.update({
           where: { id: r.id },
           data: {
-            userId: null,
+            userId: DELETED_USER_ID,
             details: anonymizeResultDetails(r.details),
           },
         }),
       ),
       this.prisma.result.updateMany({
         where: { userId },
-        data: { userId: null, details: {} },
+        data: { userId: DELETED_USER_ID, details: {} },
       }),
       this.prisma.notification.deleteMany({ where: { userId } }),
       this.prisma.seatBooking.deleteMany({ where: { userId } }),

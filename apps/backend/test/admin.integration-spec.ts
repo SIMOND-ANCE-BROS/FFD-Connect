@@ -12,6 +12,7 @@ import { AuthService } from "../src/auth/auth.service";
 import { AuthTokenService } from "../src/auth/auth-token.service";
 import { JwtStrategy } from "../src/auth/jwt.strategy";
 import { PrismaService } from "../src/prisma/prisma.service";
+import { DELETED_USER_ID } from "../src/users/account-deletion.service";
 import { buildServiceModule } from "./integration-app.builder";
 
 const PASSWORD = "Secret-123!";
@@ -339,7 +340,7 @@ describe("Admin (integration, real DB)", () => {
         where: { id: mine.id },
       });
       expect(anonymised).toMatchObject({
-        userId: null,
+        userId: DELETED_USER_ID,
         ranking: 1,
         details: { totalParticipants: 2 },
       });

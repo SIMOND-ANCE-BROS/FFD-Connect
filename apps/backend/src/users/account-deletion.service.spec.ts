@@ -9,6 +9,7 @@ import { resultAnonymizationSelect } from "../utils/prisma-selects";
 import {
   AccountDeletionService,
   anonymizeResultDetails,
+  DELETED_USER_ID,
   MAX_RESULTS_TO_ANONYMIZE,
 } from "./account-deletion.service";
 
@@ -118,15 +119,15 @@ describe("AccountDeletionService", () => {
       expect(prisma.result.update).toHaveBeenCalledTimes(3);
       expect(prisma.result.update).toHaveBeenCalledWith({
         where: { id: "r1" },
-        data: { userId: null, details: { totalParticipants: 8 } },
+        data: { userId: DELETED_USER_ID, details: { totalParticipants: 8 } },
       });
       expect(prisma.result.update).toHaveBeenCalledWith({
         where: { id: "r2" },
-        data: { userId: null, details: {} },
+        data: { userId: DELETED_USER_ID, details: {} },
       });
       expect(prisma.result.update).toHaveBeenCalledWith({
         where: { id: "r3" },
-        data: { userId: null, details: { marks: [1, 2] } },
+        data: { userId: DELETED_USER_ID, details: { marks: [1, 2] } },
       });
     });
 
@@ -134,7 +135,7 @@ describe("AccountDeletionService", () => {
       await service.deleteAccount("u1");
       expect(prisma.result.updateMany).toHaveBeenCalledWith({
         where: { userId: "u1" },
-        data: { userId: null, details: {} },
+        data: { userId: DELETED_USER_ID, details: {} },
       });
     });
 

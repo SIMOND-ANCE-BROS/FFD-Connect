@@ -149,9 +149,7 @@ model Registration {
 model Result {
   id        String   @id @default(uuid())
   eventId   String
-  /// Compte du licencié. Pas de FK (import par nom). null = résultat anonymisé
-  /// à la suppression du compte (RGPD, #382) : la ligne reste pour le classement.
-  userId    String?
+  userId    String
   round     String
   ranking   Int
   details   Json?
