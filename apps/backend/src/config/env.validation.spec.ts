@@ -188,6 +188,33 @@ describe("validate (env.validation)", () => {
       expect(result.HELLOASSO_WEBHOOK_SECRET).toBe("whsec_123");
     });
 
+    it("accepte HELLOASSO_API_URL sur l'hôte sandbox (#404)", () => {
+      const result = validate({
+        ...VALID_BASE,
+        HELLOASSO_API_URL: "https://api.helloasso-sandbox.com",
+      });
+      expect(result.HELLOASSO_API_URL).toBe(
+        "https://api.helloasso-sandbox.com",
+      );
+    });
+
+    it("refuse un HELLOASSO_API_URL hors HelloAsso (#404)", () => {
+      expect(() =>
+        validate({
+          ...VALID_BASE,
+          HELLOASSO_API_URL: "https://attacker.example.com",
+        }),
+      ).toThrow();
+    });
+
+    it("accepte HELLOASSO_SIGNATURE_KEY optionnel", () => {
+      const result = validate({
+        ...VALID_BASE,
+        HELLOASSO_SIGNATURE_KEY: "partner-key",
+      });
+      expect(result.HELLOASSO_SIGNATURE_KEY).toBe("partner-key");
+    });
+
     it("accepte APP_URL optionnel", () => {
       const result = validate({
         ...VALID_BASE,

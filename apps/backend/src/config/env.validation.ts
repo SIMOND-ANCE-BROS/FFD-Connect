@@ -1,4 +1,5 @@
 import { plainToInstance } from "class-transformer";
+import { HELLOASSO_API_URLS } from "../payment/helloasso-api-urls";
 import {
   IsEnum,
   IsIn,
@@ -175,7 +176,23 @@ class EnvironmentVariables {
   @IsOptional()
   GITHUB_REPO?: string;
 
-  // HelloAsso (paiement — webhook secret requis si les webhooks sont configurés)
+  // HelloAsso (#404). Hôte de l'API : production par défaut, sandbox possible
+  // en staging. Liste fermée : les identifiants des clubs ne partent que vers
+  // HelloAsso.
+  @IsIn(HELLOASSO_API_URLS)
+  @IsOptional()
+  HELLOASSO_API_URL?: string;
+
+  // Clé de signature `signatureKey` des notifications HelloAsso — compte
+  // PARTENAIRE uniquement (les associations ne reçoivent pas de signature).
+  // Présente ⇒ toute notification sans `x-ha-signature` valide est rejetée.
+  @IsString()
+  @IsOptional()
+  HELLOASSO_SIGNATURE_KEY?: string;
+
+  // Obsolète depuis #404 (HelloAsso n'a jamais envoyé l'en-tête attendu) :
+  // ignoré, gardé pour ne pas refuser le démarrage d'un environnement qui le
+  // définit encore.
   @IsString()
   @IsOptional()
   HELLOASSO_WEBHOOK_SECRET?: string;

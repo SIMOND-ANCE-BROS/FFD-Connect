@@ -29,4 +29,28 @@ describe("ConnectHelloAssoDto", () => {
       "clientSecret",
     );
   });
+
+  it("accepts a real HelloAsso slug (#404)", () => {
+    expect(
+      errorsFor({ ...valid, organizationSlug: "simond-ance-bros-sdb" }),
+    ).toEqual([]);
+  });
+
+  it("normalises case and spaces of a typed slug", () => {
+    const dto = plainToInstance(ConnectHelloAssoDto, {
+      ...valid,
+      organizationSlug: "  Mon-Club ",
+    });
+    expect(validateSync(dto)).toEqual([]);
+    expect(dto.organizationSlug).toBe("mon-club");
+  });
+
+  it.each(["..", "a/b", "club slug", "x".repeat(256)])(
+    "rejects the slug %p, which could alter the API path (#404)",
+    (organizationSlug) => {
+      expect(errorsFor({ ...valid, organizationSlug })).toContain(
+        "organizationSlug",
+      );
+    },
+  );
 });

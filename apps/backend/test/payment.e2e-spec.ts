@@ -8,6 +8,7 @@ import request from "supertest";
 import { AppModule } from "./../src/app.module";
 import { JwtAuthGuard } from "./../src/auth/jwt-auth.guard";
 import { WebhookSignatureGuard } from "./../src/payment/guards/webhook-signature.guard";
+import { HelloAssoNotificationService } from "./../src/payment/helloasso-notification.service";
 import { PaymentService } from "./../src/payment/payment.service";
 import { RedisService } from "./../src/redis/redis.service";
 import { applyE2EOverrides, configureTestApp } from "./test-app.factory";
@@ -39,6 +40,14 @@ describe("PaymentController (e2e)", () => {
       })
         .overrideProvider(PaymentService)
         .useValue(paymentService)
+        // Passthrough: this suite checks HTTP parsing; the API re-read (#404)
+        // is covered by helloasso-notification.service.spec.ts.
+        .overrideProvider(HelloAssoNotificationService)
+        .useValue({
+          resolveOrderNotification: jest.fn((payload: unknown) =>
+            Promise.resolve(payload),
+          ),
+        })
         .overrideProvider(RedisService)
         .useValue({
           get: jest.fn().mockResolvedValue(null),

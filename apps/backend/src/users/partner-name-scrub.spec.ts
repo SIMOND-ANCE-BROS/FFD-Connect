@@ -1,12 +1,10 @@
-import { Logger } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { mockDeep, MockProxy } from "jest-mock-extended";
-import { PrismaService } from "../prisma/prisma.service";
 import {
   registrationEventBibSelect,
   registrationEventHolderSelect,
   registrationPartnerNameSelect,
-  resultAnonymizationSelect,
+  partnerCoupleResultSelect,
   userNameSelect,
 } from "../utils/prisma-selects";
 import {
@@ -20,12 +18,7 @@ describe("buildPartnerNameScrubOps", () => {
   const marker = (op: string) => ({ op }) as never;
 
   // Typed unknown[]: the ops are PrismaPromises, never awaited by the tests.
-  const scrub = () =>
-    buildPartnerNameScrubOps(
-      prisma as unknown as PrismaService,
-      "deleted",
-      logger as unknown as Logger,
-    );
+  const scrub = () => buildPartnerNameScrubOps(prisma, "deleted", logger);
   const run = async (): Promise<unknown[]> => (await scrub()).ops;
 
   beforeEach(() => {
@@ -39,7 +32,7 @@ describe("buildPartnerNameScrubOps", () => {
     prisma.registration.findMany.mockResolvedValue([]);
     prisma.result.findMany.mockResolvedValue([]);
     prisma.registration.updateMany.mockReturnValue(marker("legacyReg"));
-    prisma.result.update.mockReturnValue(marker("result"));
+    prisma.result.updateMany.mockReturnValue(marker("result"));
   });
 
   it("does nothing when the user no longer exists", async () => {
@@ -139,7 +132,7 @@ describe("buildPartnerNameScrubOps", () => {
           { eventId: "e2", userId: "partner" },
         ],
       },
-      select: resultAnonymizationSelect,
+      select: partnerCoupleResultSelect,
       take: MAX_PARTNER_SCRUB_ROWS,
     });
   });
@@ -151,22 +144,33 @@ describe("buildPartnerNameScrubOps", () => {
     prisma.result.findMany.mockResolvedValue([
       {
         id: "r1",
+        userId: "partner",
         details: { participant: "Sam PETIT / Alex MARTIN", bib: "7" },
         event: { competitionId: "c1" },
       },
       {
         id: "r2",
+        userId: "partner",
         details: { participant: "Sam PETIT / Lou BLANC" },
         event: { competitionId: "c2" },
       },
-      { id: "r3", details: null, event: { competitionId: "c3" } },
+      {
+        id: "r3",
+        userId: "partner",
+        details: null,
+        event: { competitionId: "c3" },
+      },
     ] as never);
 
     const { ops, competitionIds } = await scrub();
 
-    expect(prisma.result.update).toHaveBeenCalledTimes(1);
-    expect(prisma.result.update).toHaveBeenCalledWith({
-      where: { id: "r1" },
+    // Never a throwing `update`: a guarded `updateMany` (#395 follow-up).
+    expect(prisma.result.update).not.toHaveBeenCalled();
+    expect(prisma.result.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.result.updateMany).toHaveBeenCalledWith({
+      // Guarded on the partner's userId: a row that changed owner or was
+      // deleted between the read and the transaction is left alone.
+      where: { id: "r1", userId: "partner" },
       data: {
         details: { participant: "Sam PETIT / Partenaire supprimé", bib: "7" },
       },

@@ -1,7 +1,5 @@
-import { Logger } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { mockDeep, MockProxy } from "jest-mock-extended";
-import { PrismaService } from "../prisma/prisma.service";
 import {
   idOnlySelect,
   notificationNameScrubSelect,
@@ -18,12 +16,7 @@ describe("buildNotificationNameScrubOps (#423)", () => {
   let prisma: MockProxy<PrismaClient>;
   let logger: { warn: jest.Mock };
 
-  const run = () =>
-    buildNotificationNameScrubOps(
-      prisma as unknown as PrismaService,
-      "deleted",
-      logger as unknown as Logger,
-    );
+  const run = () => buildNotificationNameScrubOps(prisma, "deleted", logger);
 
   /** Each op is the update call's argument, so tests read what is written. */
   const updates = () =>

@@ -25,3 +25,4 @@ Ce dossier contient les ADRs (Architecture Decision Records) du projet FFD-Conne
 | [0019](0019-strategie-environnements-prod-staging.md)            | Strategie d'environnements prod/staging (infra partagee)   | accepted   | 2026-07-08 |
 | [0020](0020-key-vault-cles-distribution.md)                      | Key Vault, source de verite des cles de distribution       | proposed   | 2026-10-07 |
 | [0021](0021-moderation-humaine-renouvellements-donnees-sante.md) | Moderation humaine des renouvellements et donnees de sante | proposed   | 2026-10-10 |
+| [0022](0022-notifications-helloasso-relues-sur-api.md)           | Notifications HelloAsso relues sur l'API                   | proposed   | 2026-10-12 |

@@ -1,11 +1,9 @@
-import { Logger } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import {
   isClubMemberNotificationType,
   isPartnershipNotificationType,
   PARTNERSHIP_MEMBER_DATA_KEYS,
 } from "../notifications/member-name-copy";
-import { PrismaService } from "../prisma/prisma.service";
 import {
   idOnlySelect,
   notificationNameScrubSelect,
@@ -16,6 +14,13 @@ import {
   scrubCoupleNotificationBody,
   withoutDeletedMemberIds,
 } from "./notification-name-scrub.utils";
+import type { PartnerNameScrubLogger } from "./partner-name-scrub";
+
+/** Prisma delegates the scrub reads and writes (PrismaService or a script client). */
+export type NotificationNameScrubPrisma = Pick<
+  PrismaClient,
+  "registration" | "partnership" | "notification"
+>;
 
 /**
  * Bound of each read below (registrations, partnerships, one page of
@@ -53,9 +58,9 @@ export const MAX_NOTIFICATION_SCRUB_PAGES = 10;
  * partenariats partent en cascade) ; renvoie les écritures à y ajouter.
  */
 export async function buildNotificationNameScrubOps(
-  prisma: PrismaService,
+  prisma: NotificationNameScrubPrisma,
   userId: string,
-  logger: Logger,
+  logger: PartnerNameScrubLogger,
 ): Promise<Prisma.PrismaPromise<unknown>[]> {
   const [registrations, partnerships] = await Promise.all([
     prisma.registration.findMany({

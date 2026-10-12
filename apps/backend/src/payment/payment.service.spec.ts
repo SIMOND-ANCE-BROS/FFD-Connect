@@ -1,7 +1,7 @@
-import { BadRequestException, Logger } from "@nestjs/common";
+import { BadRequestException, ConflictException, Logger } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigService } from "@nestjs/config";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import * as Sentry from "@sentry/nestjs";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
 import type { WebhookPayloadDto } from "./dto/webhook-payload.dto";
@@ -473,6 +473,61 @@ describe("PaymentService", () => {
     });
   });
 
+  describe("createCheckout — one active booking per seat (#401, #402)", () => {
+    beforeEach(() => {
+      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
+        mockCredentials,
+      );
+      prisma.user.findUnique.mockResolvedValue(mockUser as any);
+      prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
+      helloAssoService.createCheckoutIntent.mockResolvedValue(mockIntent);
+      prisma.seatBooking.update.mockResolvedValue(mockBooking as any);
+    });
+
+    it("releases the seat's expired holds before creating the new one", async () => {
+      await service.createCheckout("user-1", mockDto);
+
+      expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith({
+        where: {
+          competitionId: "comp-1",
+          itemId: "item-1",
+          status: "PENDING",
+          OR: [{ expiresAt: null }, { expiresAt: { lte: expect.any(Date) } }],
+        },
+        data: { status: "EXPIRED" },
+      });
+      expect(
+        prisma.seatBooking.updateMany.mock.invocationCallOrder[0],
+      ).toBeLessThan(prisma.seatBooking.create.mock.invocationCallOrder[0]);
+    });
+
+    it("holds the seat for 15 minutes", async () => {
+      const before = Date.now();
+      await service.createCheckout("user-1", mockDto);
+
+      const { expiresAt } = prisma.seatBooking.create.mock.calls[0][0].data;
+      const ms = (expiresAt as Date).getTime() - before;
+      expect(ms).toBeGreaterThanOrEqual(15 * 60 * 1000);
+      expect(ms).toBeLessThan(15 * 60 * 1000 + 5000);
+    });
+
+    it("answers 409 without any HelloAsso intent when the seat is taken", async () => {
+      prisma.seatBooking.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError("Unique constraint", {
+          code: "P2002",
+          clientVersion: "7",
+        }),
+      );
+
+      const call = service.createCheckout("user-1", mockDto);
+
+      await expect(call).rejects.toThrow(ConflictException);
+      await expect(call).rejects.toThrow(/déjà réservée/);
+      expect(helloAssoService.createCheckoutIntent).not.toHaveBeenCalled();
+    });
+  });
+
   describe("handleOrderWebhook (#381)", () => {
     const bookingForCheck = {
       id: "booking-1",
@@ -480,6 +535,7 @@ describe("PaymentService", () => {
       status: "PENDING",
       paymentId: "4242",
       expectedAmountCents: 1500,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
     };
 
     const paidOrder = (
@@ -500,7 +556,12 @@ describe("PaymentService", () => {
     });
 
     const confirmCall = {
-      where: { id: "booking-1", status: "PENDING", expectedAmountCents: 1500 },
+      where: {
+        id: "booking-1",
+        status: "PENDING",
+        expectedAmountCents: 1500,
+        expiresAt: { gt: expect.any(Date) },
+      },
       data: { status: "CONFIRMED" },
     };
 
@@ -534,6 +595,7 @@ describe("PaymentService", () => {
           status: true,
           paymentId: true,
           expectedAmountCents: true,
+          expiresAt: true,
         },
       });
       expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith(confirmCall);
@@ -596,7 +658,7 @@ describe("PaymentService", () => {
       expectRejected("booking_not_found");
     });
 
-    it.each(["CANCELLED", "EXPIRED", "SOMETHING_NEW"])(
+    it.each(["CANCELLED", "SOMETHING_NEW"])(
       "rejects an order for a %s booking (only PENDING transitions)",
       async (status) => {
         prisma.seatBooking.findUnique.mockResolvedValue({
@@ -758,35 +820,134 @@ describe("PaymentService", () => {
       errorSpy.mockRestore();
     });
 
+    describe("late payment of an expired hold (#401)", () => {
+      const expireCall = {
+        where: {
+          id: "booking-1",
+          status: "PENDING",
+          OR: [{ expiresAt: null }, { expiresAt: { lte: expect.any(Date) } }],
+        },
+        data: { status: "EXPIRED" },
+      };
+
+      const expectRefundFlagged = () => {
+        expect(prisma.seatBooking.updateMany).not.toHaveBeenCalledWith(
+          confirmCall,
+        );
+        expectRefundAlert();
+      };
+
+      const expectRefundAlert = () => {
+        expect(Sentry.captureMessage).toHaveBeenCalledWith(
+          "HelloAsso order rejected",
+          expect.objectContaining({
+            level: "error",
+            tags: expect.objectContaining({
+              reason: "booking_expired",
+              refund: "required",
+            }),
+            extra: { bookingId: "booking-1", orderId: 98765 },
+          }),
+        );
+      };
+
+      it("does not confirm a PENDING hold past its deadline and frees the seat", async () => {
+        prisma.seatBooking.findUnique.mockResolvedValue({
+          ...bookingForCheck,
+          expiresAt: new Date(Date.now() - 1000),
+        } as any);
+
+        await service.handleOrderWebhook(paidOrder());
+
+        expectRefundFlagged();
+        expect(prisma.seatBooking.updateMany).toHaveBeenCalledTimes(1);
+        expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith(expireCall);
+      });
+
+      it("does not confirm a PENDING hold without a deadline (fail-closed)", async () => {
+        prisma.seatBooking.findUnique.mockResolvedValue({
+          ...bookingForCheck,
+          expiresAt: null,
+        } as any);
+
+        await service.handleOrderWebhook(paidOrder());
+
+        expectRefundFlagged();
+      });
+
+      it("flags a paid order for a hold already switched to EXPIRED", async () => {
+        prisma.seatBooking.findUnique.mockResolvedValue({
+          ...bookingForCheck,
+          status: "EXPIRED",
+          expiresAt: new Date(Date.now() - 60_000),
+        } as any);
+
+        await service.handleOrderWebhook(paidOrder());
+
+        expectRefundFlagged();
+        expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
+      });
+
+      it("still reports a forged order on an expired hold as a forgery, not a refund", async () => {
+        prisma.seatBooking.findUnique.mockResolvedValue({
+          ...bookingForCheck,
+          status: "EXPIRED",
+        } as any);
+
+        await service.handleOrderWebhook(paidOrder({ checkoutIntentId: 1 }));
+
+        expectRejected("checkout_intent_mismatch");
+        expect(Sentry.captureMessage).toHaveBeenCalledWith(
+          "HelloAsso order rejected",
+          expect.objectContaining({
+            tags: {
+              payment: "helloasso-order-rejected",
+              reason: "checkout_intent_mismatch",
+            },
+          }),
+        );
+      });
+
+      it("does not flag a refund when a concurrent redelivery already confirmed the seat", async () => {
+        prisma.seatBooking.findUnique
+          .mockResolvedValueOnce(bookingForCheck as any)
+          .mockResolvedValueOnce({
+            ...bookingForCheck,
+            status: "CONFIRMED",
+          } as any);
+        prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+
+        await service.handleOrderWebhook(paidOrder());
+
+        expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      });
+
+      it("flags a hold that expired between the read and the write", async () => {
+        prisma.seatBooking.findUnique
+          .mockResolvedValueOnce({
+            ...bookingForCheck,
+            expiresAt: new Date(Date.now() + 5),
+          } as any)
+          .mockResolvedValueOnce({
+            ...bookingForCheck,
+            expiresAt: new Date(Date.now() - 1),
+          } as any);
+        prisma.seatBooking.updateMany.mockImplementationOnce(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          return { count: 0 };
+        });
+
+        await service.handleOrderWebhook(paidOrder());
+
+        expectRefundAlert();
+      });
+    });
+
     it("propagates database errors so HelloAsso retries", async () => {
       prisma.seatBooking.findUnique.mockRejectedValue(new Error("DB down"));
 
       await expect(service.handleOrderWebhook(paidOrder())).rejects.toThrow(
         "DB down",
-      );
-    });
-  });
-
-  describe("confirmBooking", () => {
-    it("calls seatBooking.update with CONFIRMED status", async () => {
-      prisma.seatBooking.update.mockResolvedValue({
-        ...mockBooking,
-        status: "CONFIRMED",
-      } as any);
-
-      await service.confirmBooking("booking-1");
-
-      expect(prisma.seatBooking.update).toHaveBeenCalledWith({
-        where: { id: "booking-1" },
-        data: { status: "CONFIRMED" },
-      });
-    });
-
-    it("propagates prisma errors", async () => {
-      prisma.seatBooking.update.mockRejectedValue(new Error("DB error"));
-
-      await expect(service.confirmBooking("booking-1")).rejects.toThrow(
-        "DB error",
       );
     });
   });

@@ -15,28 +15,38 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
+import { Throttle } from "@nestjs/throttler";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { CreateCheckoutDto } from "./dto/create-checkout.dto";
 import { WebhookPayloadDto } from "./dto/webhook-payload.dto";
 import { WebhookSignatureGuard } from "./guards/webhook-signature.guard";
+import { HelloAssoNotificationService } from "./helloasso-notification.service";
 import { PaymentService } from "./payment.service";
 
 @ApiTags("payment")
 @ApiCommonErrorResponses()
 @Controller("payment")
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(
+    private readonly paymentService: PaymentService,
+    private readonly helloAssoNotificationService: HelloAssoNotificationService,
+  ) {}
 
-  @UseGuards(JwtAuthGuard)
+  // Per user (#402): a checkout holds the seat for 15 minutes, so a burst of
+  // checkouts must not let one account lock a whole venue.
+  @UseGuards(JwtAuthGuard, ThrottlerUserGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @Post("checkout")
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Crée un checkout HelloAsso",
     description:
       "Initie un paiement via HelloAsso pour une réservation de place en compétition. " +
-      "Le montant est celui du tarif de la place (`priceCents` de l'élément du plan), jamais celui envoyé par le client.",
+      "Le montant est celui du tarif de la place (`priceCents` de l'élément du plan), jamais celui envoyé par le client. " +
+      "La place est retenue 15 minutes ; une place ne peut avoir qu'une réservation active (409 si elle est déjà prise).",
   })
   @ApiBody({ type: CreateCheckoutDto })
   @ApiResponse({ status: 201, description: "Checkout intent créé" })
@@ -58,13 +68,20 @@ export class PaymentController {
   @ApiOperation({
     summary: "Webhook HelloAsso",
     description:
-      "Reçoit les notifications de paiement HelloAsso. Vérifié par signature HMAC-SHA256. " +
+      "Reçoit les notifications HelloAsso. Le contenu de la notification n'est jamais cru : " +
+      "le paiement est relu sur l'API HelloAsso (intention de paiement de la réservation, identifiants du club). " +
+      "Signature `x-ha-signature` vérifiée si une clé partenaire est configurée. " +
       "Une réservation n'est confirmée que si l'ordre est payé, du montant attendu, pour la bonne compétition ; " +
-      "sinon elle reste en attente et la réponse reste 200 (pas de rejeu).",
+      "sinon elle reste en attente et la réponse reste 200 (pas de rejeu). 503 si HelloAsso est injoignable (rejeu).",
   })
   @ApiBody({ type: WebhookPayloadDto })
   @ApiResponse({ status: 200, description: "Webhook traité" })
   @ApiResponse({ status: 401, description: "Signature invalide" })
+  @ApiResponse({
+    status: 503,
+    description:
+      "HelloAsso injoignable ou paiement pas encore autorisé : HelloAsso rejouera la notification",
+  })
   async handleWebhook(
     // HelloAsso sends many fields we don't declare: the global pipe's
     // `forbidNonWhitelisted` would answer 400 (and trigger retries). The
@@ -82,7 +99,12 @@ export class PaymentController {
     payload: Readonly<WebhookPayloadDto>,
   ) {
     if (payload.eventType === "Order") {
-      await this.paymentService.handleOrderWebhook(payload);
+      // Never the received body: the order as HelloAsso's API reports it.
+      const verified =
+        await this.helloAssoNotificationService.resolveOrderNotification(
+          payload,
+        );
+      if (verified) await this.paymentService.handleOrderWebhook(verified);
     }
     return { received: true };
   }

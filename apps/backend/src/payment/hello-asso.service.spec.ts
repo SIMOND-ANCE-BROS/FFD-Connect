@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { ConfigService } from "@nestjs/config";
 import type { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
 import { HelloAssoService } from "./hello-asso.service";
 
@@ -31,6 +32,7 @@ describe("HelloAssoService", () => {
     };
     service = new HelloAssoService(
       mockCircuitBreaker as unknown as CircuitBreakerService,
+      { get: jest.fn() } as unknown as ConfigService,
     );
   });
 
@@ -207,7 +209,7 @@ describe("HelloAssoService", () => {
 
       const checkoutCall = mockedAxios.post.mock.calls[1];
       expect(checkoutCall[0]).toBe(
-        `https://api.helloasso.com/v1/organizations/${credentials.organizationSlug}/checkout-intents`,
+        `https://api.helloasso.com/v5/organizations/${credentials.organizationSlug}/checkout-intents`,
       );
     });
 

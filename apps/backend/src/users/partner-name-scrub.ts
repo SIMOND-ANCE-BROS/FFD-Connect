@@ -1,11 +1,9 @@
-import { Logger } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
-import { PrismaService } from "../prisma/prisma.service";
+import { Prisma, PrismaClient } from "@prisma/client";
 import {
   registrationEventBibSelect,
   registrationEventHolderSelect,
+  partnerCoupleResultSelect,
   registrationPartnerNameSelect,
-  resultAnonymizationSelect,
   userNameSelect,
 } from "../utils/prisma-selects";
 import {
@@ -48,10 +46,21 @@ export interface PartnerNameScrub {
   competitionIds: string[];
 }
 
+/** Prisma delegates the scrub reads and writes (PrismaService or a script client). */
+export type PartnerNameScrubPrisma = Pick<
+  PrismaClient,
+  "user" | "registration" | "result"
+>;
+
+/** Where the cap warning goes (Nest Logger, or console in a script). */
+export interface PartnerNameScrubLogger {
+  warn(message: string): void;
+}
+
 export async function buildPartnerNameScrubOps(
-  prisma: PrismaService,
+  prisma: PartnerNameScrubPrisma,
   userId: string,
-  logger: Logger,
+  logger: PartnerNameScrubLogger,
 ): Promise<PartnerNameScrub> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -107,7 +116,7 @@ export async function buildPartnerNameScrubOps(
       ? []
       : await prisma.result.findMany({
           where: { userId: { not: userId }, OR: resultFilters },
-          select: resultAnonymizationSelect,
+          select: partnerCoupleResultSelect,
           take: MAX_PARTNER_SCRUB_ROWS,
         });
 
@@ -139,8 +148,11 @@ export async function buildPartnerNameScrubOps(
     if (!scrubbed) continue;
     competitionIds.add(result.event.competitionId);
     ops.push(
-      prisma.result.update({
-        where: { id: result.id },
+      // Guarded on the partner's userId read above: a row re-imported under
+      // another account or deleted meanwhile matches nothing (0 rows)
+      // instead of being rewritten or failing the whole deletion.
+      prisma.result.updateMany({
+        where: { id: result.id, userId: result.userId },
         data: {
           details: {
             ...(result.details as Prisma.JsonObject),
