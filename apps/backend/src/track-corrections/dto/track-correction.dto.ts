@@ -49,7 +49,7 @@ export type TrackCorrectionSortField =
  * Motifs qu'une proposition peut porter. `DELETE` (#446) est connu de la base
  * et du client Prisma mais refusé tant que la révision qui en porte les règles
  * n'est pas déployée : l'enum part seul, avant son producteur (cf. migration
- * 20261012180000_track_correction_delete_reason).
+ * 20261012190000_track_correction_delete_reason).
  */
 export const PROPOSABLE_REASONS: readonly TrackCorrectionReason[] =
   Object.values(TrackCorrectionReason).filter(
