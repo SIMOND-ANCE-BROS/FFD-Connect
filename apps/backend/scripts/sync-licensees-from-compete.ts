@@ -781,6 +781,9 @@ Exemples:
               eventId: event.id,
               userId: u1,
               partnerName: coupleNames[1],
+              // Link the partner by id (#395): account deletion finds the
+              // registrations naming someone through partnerUserId.
+              partnerUserId: u2,
               status: RegistrationStatus.CONFIRMED,
               bibNumber: bib,
               checkedIn: true,
@@ -798,6 +801,7 @@ Exemples:
                 eventId: event.id,
                 userId: u2,
                 partnerName: coupleNames[0],
+                partnerUserId: u1,
                 status: RegistrationStatus.CONFIRMED,
                 bibNumber: bib,
                 checkedIn: true,

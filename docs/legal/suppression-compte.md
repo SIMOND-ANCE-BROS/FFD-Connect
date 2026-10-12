@@ -1,6 +1,6 @@
 # Supprimer son compte FFD Connect
 
-_Dernière mise à jour : 8 octobre 2026_
+_Dernière mise à jour : 12 octobre 2026_
 
 Cette page explique comment supprimer votre compte de l'application **FFD Connect**
 (y compris sa version de test **FFD Connect Beta**), éditée par Gabin Simond, et ce
@@ -58,8 +58,8 @@ propre ou relèvent d'une obligation légale :
 - **Propositions de correction de musiques** : conservées **sans lien** avec votre
   compte, commentaire effacé.
 - **Inscriptions de vos partenaires** : si vous étiez inscrit·e comme partenaire
-  d'une autre personne, son inscription est conservée, mais votre nom en est retiré.
-- **Résultats de compétition** : conservés **sans aucun lien** avec votre compte ni avec votre nom, afin de ne pas fausser le classement des autres couples (seuls l'épreuve, le tour et le classement subsistent). Les classements de la FFD étant publics à la source, il s'agit d'une **pseudonymisation** et non d'une anonymisation complète.
+  d'une autre personne, son inscription est conservée, mais votre nom en est retiré lorsque le lien avec votre compte peut être établi (un nom saisi librement, sans lien avec un compte, ne peut pas être retrouvé).
+- **Résultats de compétition** : conservés **sans aucun lien** avec votre compte ni avec votre nom, afin de ne pas fausser le classement des autres couples (seuls l'épreuve, le tour et le classement subsistent). Les classements de la FFD étant publics à la source, il s'agit d'une **pseudonymisation** et non d'une anonymisation complète. Si le résultat de votre couple est rattaché au compte de votre partenaire, il reste le sien : la partie du libellé qui vous nomme est remplacée par « Partenaire supprimé », lorsque l'épreuve permet de faire le lien avec votre compte.
 - **Paiements** : les transactions réalisées via HelloAsso sont conservées par
   HelloAsso selon ses propres obligations comptables.
 - **Journal des accès d'assistance** : si un administrateur a consulté votre compte

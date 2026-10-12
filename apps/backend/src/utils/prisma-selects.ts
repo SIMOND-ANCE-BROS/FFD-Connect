@@ -1067,3 +1067,41 @@ export const competitionEventsDeductionSelect = {
     take: 500,
   },
 } as const;
+
+/**
+ * Account deletion (#395): the deleted user's own registrations, read before
+ * the transaction deletes them. Event + bib identify the couple, to find the
+ * partner's legacy registration and the couple's result row.
+ */
+export const registrationEventBibSelect = {
+  eventId: true,
+  bibNumber: true,
+} as const;
+
+/**
+ * Account deletion (#395): registrations naming the deleted user as partner.
+ * Event + holder locate the couple's result row, attached to the holder.
+ */
+export const registrationEventHolderSelect = {
+  eventId: true,
+  userId: true,
+} as const;
+
+/** Account deletion (#395): partner registrations to confirm by name. */
+export const registrationPartnerNameSelect = {
+  id: true,
+  partnerName: true,
+} as const;
+
+/**
+ * Backfill of Registration.partnerUserId (#395): the registration, its
+ * holder's name (to confirm the reciprocal partnerName) and its couple key.
+ */
+export const registrationPartnerBackfillSelect = {
+  id: true,
+  eventId: true,
+  userId: true,
+  bibNumber: true,
+  partnerName: true,
+  user: { select: userNameSelect },
+} as const;
