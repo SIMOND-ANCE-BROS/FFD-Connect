@@ -64,6 +64,7 @@ describe("backfillRegistrationPartnerUsers", () => {
         ],
       },
       select: registrationPartnerBackfillSelect,
+      orderBy: { id: "asc" },
       take: BACKFILL_MAX_MIRRORS,
     });
     expect(prisma.registration.findMany).toHaveBeenNthCalledWith(

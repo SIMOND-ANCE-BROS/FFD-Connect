@@ -117,12 +117,13 @@ inscription propre ou sans dossard (0) ne peut pas être relié — la suppressi
 quand même ce cas par épreuve + dossard.
 
 Idempotent (seules les lignes à `partnerUserId` NULL sont lues et écrites), n'affiche que des
-compteurs. **À lancer une fois après le déploiement**, `--dry-run` d'abord :
+compteurs. **À lancer une fois après le déploiement** : sans option, il simule (dry run) ;
+`--apply` écrit.
 
 ```bash
-node dist/scripts/backfill-registration-partner-user.js --dry-run   # dans le conteneur
-node dist/scripts/backfill-registration-partner-user.js
-pnpm exec tsx scripts/backfill-registration-partner-user.ts --dry-run # en local
+node dist/scripts/backfill-registration-partner-user.js           # dans le conteneur, simulation
+node dist/scripts/backfill-registration-partner-user.js --apply   # écriture
+pnpm exec tsx scripts/backfill-registration-partner-user.ts       # en local, simulation
 ```
 
 ---

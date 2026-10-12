@@ -62,6 +62,8 @@ export async function backfillRegistrationPartnerUsers(
     const mirrors = await prisma.registration.findMany({
       where: { OR: couples },
       select: registrationPartnerBackfillSelect,
+      // Deterministic page when the cap is hit (counted in cappedPages).
+      orderBy: { id: "asc" },
       take: BACKFILL_MAX_MIRRORS,
     });
     if (mirrors.length === BACKFILL_MAX_MIRRORS) report.cappedPages++;

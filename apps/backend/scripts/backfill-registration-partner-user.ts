@@ -20,11 +20,12 @@
  * the event+bib mirror at deletion time (partner-name-scrub.ts).
  *
  * Idempotent: only rows with `partnerUserId` NULL are read and written (the
- * write re-checks it). `--dry-run` reports without writing.
+ * write re-checks it). Dry run by default (reports without writing);
+ * `--apply` writes.
  *
  * Run once after the deploy (ops step), inside the backend container:
- *   node dist/scripts/backfill-registration-partner-user.js --dry-run
  *   node dist/scripts/backfill-registration-partner-user.js
+ *   node dist/scripts/backfill-registration-partner-user.js --apply
  * Locally: pnpm --filter backend exec tsx scripts/backfill-registration-partner-user.ts
  */
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -41,7 +42,8 @@ const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
-const DRY_RUN = process.argv.includes("--dry-run");
+// Writes only on explicit request: a bare run is a dry run.
+const DRY_RUN = !process.argv.includes("--apply");
 const TAG = "🔗 [backfill-registration-partner-user]";
 
 async function main(): Promise<void> {
@@ -59,7 +61,10 @@ async function main(): Promise<void> {
 
 main()
   .catch((e: unknown) => {
-    console.error(`${TAG} failed:`, e);
+    // Message only: a full Prisma error may echo row values.
+    console.error(
+      `${TAG} failed: ${e instanceof Error ? e.message : String(e)}`,
+    );
     process.exitCode = 1;
   })
   .finally(async () => {
