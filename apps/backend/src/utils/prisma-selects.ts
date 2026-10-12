@@ -609,7 +609,8 @@ export const licenseRenewalApprovalTargetSelect = {
     select: {
       category: true,
       clubName: true,
-      license: { select: { number: true, validUntil: true } },
+      // `id`: the number a renewal replaces is retired against it (#466).
+      license: { select: { id: true, number: true, validUntil: true } },
     },
   },
 } as const;

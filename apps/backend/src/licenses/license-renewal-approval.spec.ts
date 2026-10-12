@@ -26,6 +26,7 @@ describe("approvePendingRenewal", () => {
       updateMany: jest.fn(),
     },
     license: { upsert: jest.fn() },
+    retiredLicenseNumber: { upsert: jest.fn() },
   };
   const client = tx as unknown as Prisma.TransactionClient;
 
@@ -33,7 +34,7 @@ describe("approvePendingRenewal", () => {
     o: {
       status?: LicenseRenewalStatus;
       ocrNumber?: string | null;
-      license?: { number: string; validUntil: Date } | null;
+      license?: { id?: string; number: string; validUntil: Date } | null;
     } = {},
   ) => ({
     status: o.status ?? LicenseRenewalStatus.PENDING,
@@ -55,7 +56,7 @@ describe("approvePendingRenewal", () => {
     user: {
       category: "Elite",
       clubName: "CVDS",
-      license: o.license ?? null,
+      license: o.license ? { id: "L1", ...o.license } : null,
     },
   });
 
@@ -162,6 +163,8 @@ describe("approvePendingRenewal", () => {
 
     expect(result.validUntil).toEqual(later);
     expect(result.licenseNumber).toBe("FFD-OLD");
+    expect(result.previousLicenseNumber).toBeNull();
+    expect(tx.retiredLicenseNumber.upsert).not.toHaveBeenCalled();
   });
 
   it("the administrator's number wins and replaces an existing licence number (#262)", async () => {
@@ -187,6 +190,73 @@ describe("approvePendingRenewal", () => {
         create: expect.objectContaining({ number: "FFD-CONFIRMED" }) as unknown,
       }),
     );
+    // #466: the replaced number is retired, in the same transaction.
+    expect(result.previousLicenseNumber).toBe("FFD-OLD");
+    expect(tx.retiredLicenseNumber.upsert).toHaveBeenCalledWith({
+      where: { number: "FFD-OLD" },
+      create: { number: "FFD-OLD", licenseId: "L1" },
+      update: { licenseId: "L1", retiredAt: expect.any(Date) as unknown },
+      select: { number: true },
+    });
+  });
+
+  it("retires nothing when the confirmed number is the current one", async () => {
+    tx.licenseRenewalRequest.findUnique.mockResolvedValue(
+      target({
+        license: {
+          number: "FFD-OLD",
+          validUntil: new Date("2026-08-31T21:59:59.999Z"),
+        },
+      }),
+    );
+
+    const result = await approvePendingRenewal(client, "req-1", {
+      reviewerId: "admin-1",
+      licenseNumber: " FFD-OLD ",
+      now: new Date("2027-03-15T10:00:00.000Z"),
+    });
+
+    expect(result.previousLicenseNumber).toBeNull();
+    expect(tx.retiredLicenseNumber.upsert).not.toHaveBeenCalled();
+  });
+
+  it("retires nothing when a first licence is created with the confirmed number", async () => {
+    tx.licenseRenewalRequest.findUnique.mockResolvedValue(target());
+
+    const result = await approvePendingRenewal(client, "req-1", {
+      reviewerId: "admin-1",
+      licenseNumber: "FFD-NEW",
+      now: new Date("2027-03-15T10:00:00.000Z"),
+    });
+
+    expect(result.previousLicenseNumber).toBeNull();
+    expect(tx.retiredLicenseNumber.upsert).not.toHaveBeenCalled();
+  });
+
+  it("does not retire the number when the renamed licence write fails", async () => {
+    tx.licenseRenewalRequest.findUnique.mockResolvedValue(
+      target({
+        license: {
+          number: "FFD-OLD",
+          validUntil: new Date("2026-08-31T21:59:59.999Z"),
+        },
+      }),
+    );
+    tx.license.upsert.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint", {
+        code: "P2002",
+        clientVersion: "7",
+      }),
+    );
+
+    await expect(
+      approvePendingRenewal(client, "req-1", {
+        reviewerId: "admin-1",
+        licenseNumber: "FFD-TAKEN",
+        now: new Date(),
+      }),
+    ).rejects.toBeInstanceOf(LicenseNumberTakenException);
+    expect(tx.retiredLicenseNumber.upsert).not.toHaveBeenCalled();
   });
 
   it("falls back to the existing licence number when OCR read none", async () => {

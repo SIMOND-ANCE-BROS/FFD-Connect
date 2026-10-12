@@ -281,6 +281,52 @@ describe("Licence renewal moderation (integration, real DB)", () => {
     expect(res.body.reviewedBy.id).toBe(admin.id);
   });
 
+  it("retires the number an approval replaces, in the same transaction (#466)", async () => {
+    const admin = await createUser(UserRole.ADMIN);
+    const licensee = await createUser(UserRole.LICENSEE);
+    const oldNumber = `FFD-OLD-${randomUUID().slice(0, 8)}`;
+    const newNumber = `FFD-NEW-${randomUUID().slice(0, 8)}`;
+    const license = await prisma.license.create({
+      data: {
+        userId: licensee.id,
+        number: oldNumber,
+        validUntil: new Date("2026-08-31T21:59:59.999Z"),
+        category: "Standard",
+        clubName: "Club",
+      },
+      select: { id: true },
+    });
+    const pending = await pendingRequest(licensee.id);
+
+    await request(server())
+      .post(`/api/v1/admin/license-renewals/${pending.id}/approve`)
+      .set("Authorization", bearer(admin))
+      .send({ licenseNumber: newNumber })
+      .expect(200);
+
+    try {
+      expect(
+        await prisma.retiredLicenseNumber.findUnique({
+          where: { number: oldNumber },
+          select: { licenseId: true },
+        }),
+      ).toEqual({ licenseId: license.id });
+      const approval = await prisma.adminAuditLog.findFirst({
+        where: { targetId: pending.id, action: "LICENSE_RENEWAL_APPROVE" },
+        select: { before: true, after: true },
+      });
+      expect(approval?.before).toEqual({
+        status: "PENDING",
+        licenseNumber: oldNumber,
+      });
+      expect(approval?.after).toMatchObject({ licenseNumber: newNumber });
+    } finally {
+      await prisma.retiredLicenseNumber.deleteMany({
+        where: { number: oldNumber },
+      });
+    }
+  });
+
   it("rejects with a reason, brings the purge forward, and the purge erases the comment", async () => {
     const admin = await createUser(UserRole.ADMIN);
     const licensee = await createUser(UserRole.LICENSEE);

@@ -14,6 +14,7 @@ import {
 } from "../utils/prisma-selects";
 import { normalizeLicenseNumber } from "./license-number.util";
 import { renewedLicenseValidUntil } from "./license-season";
+import { retireLicenseNumber } from "./retired-license-number";
 import { pickRenewalOcrData } from "./renewal-ocr-data.util";
 
 export interface RenewalApprovalOptions {
@@ -33,6 +34,12 @@ export interface RenewalApprovalResult {
   validUntil: Date;
   /** Number of the licence after approval. */
   licenseNumber: string;
+  /**
+   * Number the approval replaced on the existing licence (administrator's
+   * confirmed number differing from it), retired for QR check-in (#466).
+   * Null when the number did not change.
+   */
+  previousLicenseNumber: string | null;
 }
 
 /** 409 of a decision that lost the race, or of an already decided request. */
@@ -144,9 +151,21 @@ export async function approvePendingRenewal(
     throw error;
   }
 
+  // A confirmed number replacing the existing one renames the licence: the
+  // old number may be reassigned, QR codes bound to it alone must never
+  // resolve it again (#466).
+  const previousLicenseNumber =
+    existing?.number && confirmedNumber && confirmedNumber !== existing.number
+      ? existing.number
+      : null;
+  if (existing && previousLicenseNumber) {
+    await retireLicenseNumber(tx, previousLicenseNumber, existing.id);
+  }
+
   return {
     validUntil,
     licenseNumber: confirmedNumber ?? existing?.number ?? licenseNumber,
+    previousLicenseNumber,
   };
 }
 

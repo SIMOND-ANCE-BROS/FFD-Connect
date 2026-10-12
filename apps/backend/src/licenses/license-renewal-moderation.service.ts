@@ -72,10 +72,19 @@ export class LicenseRenewalModerationService {
         action: "LICENSE_RENEWAL_APPROVE",
         targetType: "LICENSE_RENEWAL",
         targetId: requestId,
-        before: { status: LicenseRenewalStatus.PENDING },
+        // The previous number is kept when the approval replaced it (#466).
+        before: {
+          status: LicenseRenewalStatus.PENDING,
+          ...(approval.previousLicenseNumber && {
+            licenseNumber: approval.previousLicenseNumber,
+          }),
+        },
         after: {
           status: LicenseRenewalStatus.APPROVED,
           validUntil: approval.validUntil.toISOString(),
+          ...(approval.previousLicenseNumber && {
+            licenseNumber: approval.licenseNumber,
+          }),
         },
       });
       return approval;

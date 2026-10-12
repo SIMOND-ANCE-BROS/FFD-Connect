@@ -12,8 +12,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import {
   adminUserIdentifiersSelect,
   idOnlySelect,
-  retiredLicenseNumberSelect,
 } from "../utils/prisma-selects";
+import { retireLicenseNumber } from "../licenses/retired-license-number";
 import { AdminAuditService } from "./admin-audit.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import {
@@ -190,18 +190,9 @@ export class AdminUserIdentifiersService {
         data: { number: after.licenseNumber },
         select: idOnlySelect,
       });
-      // #466: QR codes bound to the number alone (signed v1, legacy unsigned)
-      // must never resolve this number again — it may be reassigned. Signed
-      // v2 QR codes carry the licence id and need no bookkeeping.
-      await tx.retiredLicenseNumber.upsert({
-        where: { number: current.license.number },
-        create: {
-          number: current.license.number,
-          licenseId: current.license.id,
-        },
-        update: { licenseId: current.license.id, retiredAt: new Date() },
-        select: retiredLicenseNumberSelect,
-      });
+      // #466: the old number may be reassigned — QR codes bound to it alone
+      // must never resolve it again.
+      await retireLicenseNumber(tx, current.license.number, current.license.id);
     }
 
     await this.audit.record(tx, {

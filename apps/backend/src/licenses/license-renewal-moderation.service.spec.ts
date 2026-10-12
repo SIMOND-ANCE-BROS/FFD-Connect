@@ -30,6 +30,7 @@ describe("LicenseRenewalModerationService", () => {
     },
     licenseRenewalDocument: { updateMany: jest.fn(), count: jest.fn() },
     license: { upsert: jest.fn() },
+    retiredLicenseNumber: { upsert: jest.fn() },
   };
   const audit = { record: jest.fn() };
   const query = { detailAfterDecision: jest.fn() };
@@ -148,6 +149,38 @@ describe("LicenseRenewalModerationService", () => {
       for (const leak of ["isApte", "Dr X", "2027-01-02", "doctor"]) {
         expect(serialized).not.toContain(leak);
       }
+    });
+
+    it("retires a replaced licence number and audits old -> new (#466)", async () => {
+      prisma.licenseRenewalRequest.findUnique.mockResolvedValue({
+        ...approvalTarget,
+        user: {
+          ...approvalTarget.user,
+          license: {
+            id: "L1",
+            number: "FFD-OLD",
+            validUntil: new Date("2026-08-31T21:59:59.999Z"),
+          },
+        },
+      });
+
+      await service.approve("admin-1", "req-1", { licenseNumber: "FFD-9" });
+
+      expect(prisma.retiredLicenseNumber.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { number: "FFD-OLD" },
+          create: { number: "FFD-OLD", licenseId: "L1" },
+        }),
+      );
+      expect(auditEntry().before).toEqual({
+        status: "PENDING",
+        licenseNumber: "FFD-OLD",
+      });
+      expect(auditEntry().after).toEqual({
+        status: "APPROVED",
+        validUntil: "2027-08-31T21:59:59.999Z",
+        licenseNumber: "FFD-9",
+      });
     });
 
     it("no audit row when the concurrent claim lost (409)", async () => {
