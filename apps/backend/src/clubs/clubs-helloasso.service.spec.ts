@@ -1,13 +1,26 @@
 // apps/backend/src/clubs/clubs-helloasso.service.spec.ts
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Logger, NotFoundException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Test } from "@nestjs/testing";
+import { randomBytes } from "crypto";
 import { ClubRegistrationMode, PrismaClient, UserRole } from "@prisma/client";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
+import {
+  encryptSecret,
+  isEncryptedSecret,
+} from "../common/crypto/secret-cipher";
+import { SecretCipherService } from "../common/crypto/secret-cipher.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ClubsService } from "./clubs.service";
 import { ClubsHelloAssoService } from "./clubs-helloasso.service";
 
 type MockPrisma = DeepMockProxy<PrismaClient>;
+
+/** ConfigService stub exposing only the encryption keys (#389). */
+const cipherWith = (keys: Record<string, string | undefined> = {}) =>
+  new SecretCipherService({
+    get: (name: string) => keys[name],
+  } as unknown as ConfigService);
 
 // Helper factories
 const makeUser = (overrides: Record<string, unknown> = {}) => ({
@@ -56,6 +69,8 @@ describe("ClubsHelloAssoService", () => {
         ClubsHelloAssoService,
         { provide: PrismaService, useValue: prisma },
         { provide: ClubsService, useValue: clubsService },
+        // No key configured: plaintext mode, as on an environment without it.
+        { provide: SecretCipherService, useValue: cipherWith() },
       ],
     }).compile();
 
@@ -308,6 +323,197 @@ describe("ClubsHelloAssoService", () => {
         clientSecret: "s",
         organizationSlug: "slug",
       });
+    });
+  });
+
+  // ----------------------------------------------------------------
+  // Encryption at rest of the HelloAsso secret (#389)
+  // ----------------------------------------------------------------
+  describe("HelloAsso secret encryption at rest (#389)", () => {
+    const key = randomBytes(32);
+    const previousKey = randomBytes(32);
+    const SECRET = "club-helloasso-secret";
+    let encrypting: ClubsHelloAssoService;
+
+    const mockCompetitionClub = (storedSecret: string) => {
+      prisma.competition.findUnique.mockResolvedValue({
+        organizer: "Test Club",
+      } as never);
+      prisma.club.findFirst.mockResolvedValue({
+        id: "club-1",
+        helloAssoClientId: "id",
+        helloAssoClientSecret: storedSecret,
+        helloAssoOrgSlug: "slug",
+      } as never);
+    };
+
+    beforeEach(() => {
+      encrypting = new ClubsHelloAssoService(
+        prisma as unknown as PrismaService,
+        clubsService as unknown as ClubsService,
+        cipherWith({
+          SECRETS_ENCRYPTION_KEY: key.toString("base64"),
+          SECRETS_ENCRYPTION_KEY_PREVIOUS: previousKey.toString("base64"),
+        }),
+      );
+      prisma.club.updateMany.mockResolvedValue({ count: 1 });
+    });
+
+    it("writes the secret encrypted when a key is configured", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser() as never);
+      prisma.club.findUnique.mockResolvedValue(makeClub() as never);
+
+      await encrypting.connectHelloAsso("user-1", {
+        clientId: "id",
+        clientSecret: SECRET,
+        organizationSlug: "slug",
+      });
+
+      const stored = prisma.club.update.mock.calls[0][0].data
+        .helloAssoClientSecret as string;
+      expect(stored).not.toContain(SECRET);
+      expect(isEncryptedSecret(stored)).toBe(true);
+    });
+
+    it("writes the secret in plaintext when no key is configured", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser() as never);
+      prisma.club.findUnique.mockResolvedValue(makeClub() as never);
+
+      await service.connectHelloAsso("user-1", {
+        clientId: "id",
+        clientSecret: SECRET,
+        organizationSlug: "slug",
+      });
+
+      expect(
+        prisma.club.update.mock.calls[0][0].data.helloAssoClientSecret,
+      ).toBe(SECRET);
+    });
+
+    it("decrypts an encrypted secret without rewriting it", async () => {
+      mockCompetitionClub(encryptSecret(SECRET, key));
+
+      const result =
+        await encrypting.getHelloAssoCredentialsForCompetition("comp-1");
+
+      expect(result).toEqual({
+        clientId: "id",
+        clientSecret: SECRET,
+        organizationSlug: "slug",
+      });
+      expect(prisma.club.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("reads a legacy plaintext secret and lazily re-encrypts it", async () => {
+      mockCompetitionClub(SECRET);
+
+      const result =
+        await encrypting.getHelloAssoCredentialsForCompetition("comp-1");
+
+      expect(result?.clientSecret).toBe(SECRET);
+      expect(prisma.club.updateMany).toHaveBeenCalledTimes(1);
+      const args = prisma.club.updateMany.mock.calls[0][0];
+      // Compare-and-set on the legacy value: a concurrent reconnect wins.
+      expect(args.where).toEqual({
+        id: "club-1",
+        helloAssoClientSecret: SECRET,
+      });
+      const rewritten = args.data.helloAssoClientSecret as string;
+      expect(isEncryptedSecret(rewritten)).toBe(true);
+      expect(rewritten).not.toContain(SECRET);
+    });
+
+    it("re-encrypts a secret encrypted with the previous key (rotation)", async () => {
+      const oldValue = encryptSecret(SECRET, previousKey);
+      mockCompetitionClub(oldValue);
+
+      const result =
+        await encrypting.getHelloAssoCredentialsForCompetition("comp-1");
+
+      expect(result?.clientSecret).toBe(SECRET);
+      const args = prisma.club.updateMany.mock.calls[0][0];
+      expect(args.where).toEqual({
+        id: "club-1",
+        helloAssoClientSecret: oldValue,
+      });
+      expect(args.data.helloAssoClientSecret).not.toBe(oldValue);
+    });
+
+    it("still returns the credentials when the lazy re-encryption fails", async () => {
+      mockCompetitionClub(SECRET);
+      prisma.club.updateMany.mockRejectedValue(
+        new Error(`query failed with ${SECRET}`),
+      );
+      const warn = jest
+        .spyOn(Logger.prototype, "warn")
+        .mockImplementation(() => undefined);
+
+      const result =
+        await encrypting.getHelloAssoCredentialsForCompetition("comp-1");
+
+      expect(result?.clientSecret).toBe(SECRET);
+      expect(warn).toHaveBeenCalledTimes(1);
+      // The Prisma error message may echo the query: never logged.
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(SECRET);
+      warn.mockRestore();
+    });
+
+    it("keeps a legacy plaintext secret readable and untouched without a key", async () => {
+      mockCompetitionClub(SECRET);
+
+      const result =
+        await service.getHelloAssoCredentialsForCompetition("comp-1");
+
+      expect(result?.clientSecret).toBe(SECRET);
+      expect(prisma.club.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("treats the club as not connected when the secret cannot be decrypted", async () => {
+      const stored = encryptSecret(SECRET, randomBytes(32));
+      mockCompetitionClub(stored);
+      const error = jest
+        .spyOn(Logger.prototype, "error")
+        .mockImplementation(() => undefined);
+
+      const result =
+        await encrypting.getHelloAssoCredentialsForCompetition("comp-1");
+
+      expect(result).toBeNull();
+      expect(JSON.stringify(error.mock.calls)).not.toContain(stored);
+      expect(JSON.stringify(error.mock.calls)).not.toContain(SECRET);
+      error.mockRestore();
+    });
+
+    it("treats an encrypted secret as unreadable when the key is missing", async () => {
+      mockCompetitionClub(encryptSecret(SECRET, key));
+      const error = jest
+        .spyOn(Logger.prototype, "error")
+        .mockImplementation(() => undefined);
+
+      const result =
+        await service.getHelloAssoCredentialsForCompetition("comp-1");
+
+      expect(result).toBeNull();
+      expect(error).toHaveBeenCalledTimes(1);
+      error.mockRestore();
+    });
+
+    it("never returns the secret in the club HelloAsso status", async () => {
+      prisma.user.findUnique.mockResolvedValue(makeUser() as never);
+      prisma.club.findUnique.mockResolvedValue(
+        makeClub({
+          helloAssoClientId: "id",
+          helloAssoClientSecret: encryptSecret(SECRET, key),
+          helloAssoOrgSlug: "slug",
+        }) as never,
+      );
+
+      const status = await encrypting.getMyClubHelloAssoStatus("user-1");
+
+      expect(status.helloAssoConnected).toBe(true);
+      expect(Object.keys(status)).not.toContain("helloAssoClientSecret");
+      expect(JSON.stringify(status)).not.toContain(SECRET);
+      expect(JSON.stringify(status)).not.toContain("v1:");
     });
   });
 

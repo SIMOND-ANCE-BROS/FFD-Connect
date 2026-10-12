@@ -8,6 +8,7 @@ import {
   IsString,
   validateSync,
   Min,
+  Matches,
   Max,
   MinLength,
 } from "class-validator";
@@ -20,6 +21,14 @@ enum Environment {
   Production = "production",
   Test = "test",
 }
+
+/**
+ * 32 octets en base64 : 43 caractères + un `=` de remplissage. Une valeur vide
+ * vaut absence (chiffrement désactivé), pas une erreur.
+ */
+const SECRET_KEY_BASE64 = /^\s*(?:[A-Za-z0-9+/]{43}=)?\s*$/;
+const SECRET_KEY_MESSAGE =
+  "must be a base64-encoded 32-byte key (openssl rand -base64 32)";
 
 /**
  * Classe de validation pour les variables d'environnement
@@ -170,6 +179,21 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   HELLOASSO_WEBHOOK_SECRET?: string;
+
+  // Chiffrement au repos des secrets tiers en base (secret HelloAsso des clubs,
+  // #389). Clé AES-256 de 32 octets encodée en base64 (`openssl rand -base64
+  // 32`), alimentée par Key Vault. Absente ⇒ chiffrement désactivé (secrets
+  // écrits et lus en clair, avertissement au démarrage) : le backend démarre.
+  // Présente mais mal formée ⇒ démarrage refusé.
+  @Matches(SECRET_KEY_BASE64, { message: SECRET_KEY_MESSAGE })
+  @IsOptional()
+  SECRETS_ENCRYPTION_KEY?: string;
+
+  // Clé précédente pendant une rotation : sert uniquement à déchiffrer, les
+  // valeurs qu'elle ouvre sont rechiffrées avec la clé courante.
+  @Matches(SECRET_KEY_BASE64, { message: SECRET_KEY_MESSAGE })
+  @IsOptional()
+  SECRETS_ENCRYPTION_KEY_PREVIOUS?: string;
 
   // URL de l'application (utilisée dans les emails et callbacks HelloAsso)
   @IsString()

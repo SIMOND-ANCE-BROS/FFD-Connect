@@ -278,4 +278,42 @@ describe("validate (env.validation)", () => {
       });
     });
   });
+
+  describe("clé de chiffrement des secrets (#389)", () => {
+    // 32 octets à zéro : valeur de test, jamais une vraie clé.
+    const KEY = Buffer.alloc(32).toString("base64");
+
+    it("démarre sans clé (chiffrement désactivé)", () => {
+      const result = validate(VALID_BASE);
+      expect(result.SECRETS_ENCRYPTION_KEY).toBeUndefined();
+    });
+
+    it("démarre avec une clé vide (équivaut à l'absence)", () => {
+      expect(() =>
+        validate({ ...VALID_BASE, SECRETS_ENCRYPTION_KEY: "" }),
+      ).not.toThrow();
+    });
+
+    it("accepte une clé base64 de 32 octets et une clé précédente", () => {
+      expect(() =>
+        validate({
+          ...VALID_BASE,
+          SECRETS_ENCRYPTION_KEY: KEY,
+          SECRETS_ENCRYPTION_KEY_PREVIOUS: `${KEY}\n`,
+        }),
+      ).not.toThrow();
+    });
+
+    it.each([
+      ["trop courte", Buffer.alloc(16).toString("base64")],
+      ["pas du base64", "x".repeat(43) + "!"],
+    ])("refuse une clé %s", (_label, value) => {
+      expect(() =>
+        validate({ ...VALID_BASE, SECRETS_ENCRYPTION_KEY: value }),
+      ).toThrow("must be a base64-encoded 32-byte key");
+      expect(() =>
+        validate({ ...VALID_BASE, SECRETS_ENCRYPTION_KEY_PREVIOUS: value }),
+      ).toThrow("must be a base64-encoded 32-byte key");
+    });
+  });
 });

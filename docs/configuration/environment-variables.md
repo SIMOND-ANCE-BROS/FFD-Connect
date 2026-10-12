@@ -156,6 +156,15 @@ modes d'authentification (token API v2 ou Basic Auth v1).
 | -------------------------- | ------ | -------------------------------------------- |
 | `HELLOASSO_WEBHOOK_SECRET` | —      | Secret de validation des webhooks HelloAsso. |
 
+## Chiffrement des secrets tiers au repos (#389)
+
+| Variable                          | Défaut | Rôle                                                                                                                                                                                                                                                               |
+| --------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SECRETS_ENCRYPTION_KEY`          | —      | Clé AES-256-GCM (32 octets en base64, `openssl rand -base64 32`) qui chiffre en base le secret HelloAsso des clubs. **Absente → chiffrement désactivé** : secrets écrits et lus en clair, avertissement au démarrage. Présente mais mal formée → démarrage refusé. |
+| `SECRETS_ENCRYPTION_KEY_PREVIOUS` | —      | Clé précédente pendant une rotation : sert uniquement à déchiffrer, les valeurs qu'elle ouvre sont rechiffrées avec la clé courante.                                                                                                                               |
+
+Création, câblage Key Vault et rotation : [runbook](../exploitation/chiffrement-secrets-clubs.md). **Ne jamais retirer une clé tant que des valeurs chiffrées avec elle existent en base** : les clubs concernés apparaîtraient comme « HelloAsso non connecté ».
+
 ## QR de licence signé (#168)
 
 | Variable            | Défaut | Rôle                                                                                                                                                                                                                                             |
