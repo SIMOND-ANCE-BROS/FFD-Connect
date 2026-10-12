@@ -15,6 +15,7 @@ export const REASON_LABELS: Record<TrackCorrectionReason, string> = {
   MPM: 'MPM',
   PASO_CLASH: 'Clashes paso',
   OTHER: 'Autre',
+  DELETE: 'Suppression',
 };
 
 export const REASONS = Object.keys(REASON_LABELS) as TrackCorrectionReason[];

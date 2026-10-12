@@ -26025,7 +26025,7 @@
       },
       "TrackCorrectionReason": {
         "type": "string",
-        "enum": ["TITLE", "ARTIST", "DANCE", "MPM", "PASO_CLASH", "OTHER"],
+        "enum": ["TITLE", "ARTIST", "DANCE", "MPM", "PASO_CLASH", "OTHER", "DELETE"],
         "description": "Métadonnée jugée incorrecte"
       },
       "CreateTrackCorrectionDto": {

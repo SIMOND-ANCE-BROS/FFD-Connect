@@ -170,6 +170,7 @@ describe("libellés", () => {
   it("traduit les motifs", () => {
     expect(reasonLabel("PASO_CLASH")).toBe("Clashs paso doble");
     expect(reasonLabel("MPM")).toBe("MPM");
+    expect(reasonLabel("DELETE")).toBe("Suppression de la musique");
   });
 
   it("le formulaire ne propose pas les clashs, qui gardent leur libellé (#445)", () => {
