@@ -60,4 +60,3 @@ Specificites:
 - Exposition de donnees sensibles dans les logs de report (a sanitiser).
 - Volume potentiel des pieces jointes image.
 - Les metrics doivent rester coherentes avec les alertes ops.
-

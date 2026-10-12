@@ -4,8 +4,6 @@ PROPOSITION DE DÉVELOPPEMENT & SPÉCIFICATIONS
 
 MÉTADONNÉES DU DOCUMENT
 
-
-
 Projet
 
 Écosystème Mobile Fédéral & Plateforme de Services
@@ -126,21 +124,13 @@ FAIBLESSES (Weaknesses)
 
 - Expertise métier "Danseur" + "Ingénieur".
 
-
-
 - Coût maîtrisé (Développement interne).
 
-
-
 - Souveraineté des données (Pas de SAAS tiers).
-
-
 
 - Fonctionnalités exclusives (Audio Pitch, WDSF).
 
 - Dépendance à un Lead Developer unique (Risque "Bus Factor").
-
-
 
 (Mitigation : Documentation stricte & Open Source interne).
 
@@ -150,25 +140,15 @@ MENACES (Threats)
 
 - Image moderne auprès des jeunes (Gen Z).
 
-
-
 - Valorisation de la licence (Service tangible).
 
-
-
 - Réduction empreinte carbone (Dématérialisation).
-
-
 
 - Fidélisation via les outils communautaires.
 
 - Résistance au changement (Clubs conservateurs).
 
-
-
 - Instabilité des réseaux dans certains gymnases.
-
-
 
 (Mitigation : Mode Offline-First natif).
 
@@ -339,25 +319,24 @@ Modération : Validation manuelle des certificats rejetés par l'IA.
 4.1. Schéma d'Architecture
 
 graph TD
-    User[Smartphone Danseur] -- HTTPS / TLS 1.3 --> LB[Load Balancer]
-    Admin[Admin FFD Web] -- HTTPS --> LB
-    
+User[Smartphone Danseur] -- HTTPS / TLS 1.3 --> LB[Load Balancer]
+Admin[Admin FFD Web] -- HTTPS --> LB
+
     subgraph "Infrastructure Cloud (Souveraine)"
         LB --> API_Core[API Core System\n(NestJS)]
         LB --> API_Stream[Serveur WebSocket\n(Live Timing)]
-        
+
         API_Core --> DB[(PostgreSQL\nDonnées Métier)]
         API_Stream --> Redis[(Redis Cache\nTemps Réel)]
-        
+
         API_Core -- Stockage Chiffré --> S3[Coffre-fort Documents]
     end
-    
+
     subgraph "Intégrations Externes"
         API_Core -- REST --> FFD_Legacy[SI Fédéral (Extranet)]
         API_Core -- REST --> WDSF[API Monde]
         Scrutelle[Logiciel Compétition] -- Push Data --> API_Stream
     end
-
 
 4.2. Stack & Sécurité
 

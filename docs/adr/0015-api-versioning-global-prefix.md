@@ -15,16 +15,19 @@ Apply a global prefix `/api/v1` on all routes, except `/health` which is exclude
 ## Alternatives Considered
 
 ### Alternative 1: No versioning
+
 - **Pros**: Simplest approach, no prefix overhead
 - **Cons**: Breaking changes immediately affect all clients
 - **Why not**: Unacceptable risk given app store update lag
 
 ### Alternative 2: Header-based versioning (Accept-Version)
+
 - **Pros**: Clean URLs, flexible
 - **Cons**: Harder to route at the infrastructure level, harder to cache
 - **Why not**: Adds complexity without meaningful benefit for our use case
 
 ### Alternative 3: Subdomain versioning (v1.api.example.com)
+
 - **Pros**: Clean separation, independent deployments possible
 - **Cons**: DNS and certificate management overhead
 - **Why not**: Infrastructure complexity disproportionate to our scale
@@ -32,11 +35,13 @@ Apply a global prefix `/api/v1` on all routes, except `/health` which is exclude
 ## Consequences
 
 ### Positive
+
 - Simple, explicit, and easily routable at the reverse proxy level
 - When v2 is needed, both versions can coexist in the same deployment
 - Mobile clients pin to their API version and upgrade on their own schedule
 
 ### Negative
+
 - All routes carry the `/api/v1` prefix, slightly longer URLs
 - No built-in mechanism to deprecate or sunset old versions — requires manual tracking
 - Health endpoint exception is a special case that must be documented

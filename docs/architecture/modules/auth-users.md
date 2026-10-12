@@ -69,4 +69,3 @@ Comportements client:
 - La coherence role backend/client est critique pour la securite UX.
 - Le nettoyage automatique sur `401` peut deconnecter abruptement en cas de backend instable.
 - Toute evolution de format de reponse login doit rester compatible avec `AuthService`.
-

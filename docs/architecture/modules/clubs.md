@@ -72,4 +72,3 @@ Ecrans relies:
 - Couplage fort avec `competitions` et `career`.
 - Les incoherences de statut partenariat creent des blocages d'inscription.
 - Le filtrage client ne remplace pas les controles d'autorisation backend.
-

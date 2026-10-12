@@ -49,4 +49,3 @@ Points client principaux:
 - Le module depend de la qualite des donnees des autres domaines.
 - Forte sensibilite aux regressions de jointure/aggregation cote backend.
 - Les performances doivent rester stables pour les profils riches en historique.
-
