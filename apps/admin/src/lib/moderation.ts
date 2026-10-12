@@ -103,6 +103,13 @@ export function moderationFilter(state: ModerationUrlState, take: number): Moder
 export const nextPendingFilter = (params: URLSearchParams): ModerationFilter =>
   moderationFilter({ ...readModerationParams(params), status: 'PENDING', page: 1 }, 1);
 
+/**
+ * Clashes only make sense for a paso doble: same test as the mobile player
+ * (`isPasoDoble`), tolerant of case and of a legacy spelling.
+ */
+export const isPasoDoble = (style: string | null | undefined): boolean =>
+  !!style && style.toLowerCase().includes('paso');
+
 /** Rounded to the tenth of a second, the precision of « Marquer ici ». */
 export const roundTenth = (seconds: number): number => Math.round(seconds * 10) / 10;
 

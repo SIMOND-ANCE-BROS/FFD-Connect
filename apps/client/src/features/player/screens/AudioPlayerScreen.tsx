@@ -313,14 +313,6 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
           visible
           onClose={() => setCorrectionVisible(false)}
           track={correctionTrack}
-          onProposeClashes={
-            canProposeClashes || canEditClashes
-              ? () => {
-                  setCorrectionVisible(false);
-                  setClashEditorMode(canEditClashes ? "edit" : "propose");
-                }
-              : undefined
-          }
         />
       )}
     </SafeAreaView>

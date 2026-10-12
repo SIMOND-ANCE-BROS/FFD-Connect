@@ -1,5 +1,4 @@
 import { BlurView } from "expo-blur";
-import { SlidersHorizontal } from "lucide-react-native";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -48,11 +47,6 @@ interface TrackCorrectionModalProps {
   track: CorrectableTrack | null;
   /** Motif présélectionné à l'ouverture. */
   initialReason?: TrackCorrectionReason;
-  /**
-   * Fourni quand le lecteur peut ouvrir l'éditeur de clashs sur cette piste
-   * (paso doble en cours de lecture). Sans lui, on explique où le trouver.
-   */
-  onProposeClashes?: () => void;
 }
 
 export const CORRECTION_SENT_TITLE = "Merci !";
@@ -60,8 +54,9 @@ export const CORRECTION_SENT_MESSAGE =
   "Proposition envoyée aux administrateurs.";
 
 /**
- * Proposition de correction d'une piste (titre, artiste, danse, MPM, clashs
- * paso doble, autre). Ouvert à tout utilisateur connecté : les champs sont
+ * Proposition de correction d'une piste (titre, artiste, danse, MPM, autre).
+ * Les clashs paso doble ont leur parcours dédié dans le lecteur (« Proposer
+ * les clashs »), absent de ce formulaire. Ouvert à tout utilisateur connecté : les champs sont
  * pré-remplis avec les valeurs actuelles, l'utilisateur corrige et peut
  * ajouter un commentaire. Un administrateur valide ou refuse ensuite.
  */
@@ -70,7 +65,6 @@ export const TrackCorrectionModal = ({
   onClose,
   track,
   initialReason,
-  onProposeClashes,
 }: TrackCorrectionModalProps) => {
   const { theme: currentTheme, isDark } = useTheme();
   const createCorrection = useCreateTrackCorrection();
@@ -249,39 +243,6 @@ export const TrackCorrectionModal = ({
               </Text>
             ) : null}
           </>
-        );
-      case "PASO_CLASH":
-        return (
-          <View
-            style={[styles.infoBox, { borderColor: currentTheme.border }]}
-            testID="correction-clash-info"
-          >
-            <Text style={[styles.infoText, { color: currentTheme.text }]}>
-              Les clashs se placent en écoutant la musique : ouvrez-la dans le
-              lecteur puis touchez « Proposer les clashs » sous la barre de
-              progression. Vous pouvez aussi décrire le problème ci-dessous.
-            </Text>
-            {onProposeClashes ? (
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel="Placer les clashs"
-                accessibilityHint="Ouvre l'éditeur des clashs sur la musique en cours"
-                testID="correction-open-clash-editor"
-                onPress={onProposeClashes}
-                style={styles.infoAction}
-              >
-                <SlidersHorizontal size={16} color={currentTheme.primary} />
-                <Text
-                  style={[
-                    styles.infoActionText,
-                    { color: currentTheme.primary },
-                  ]}
-                >
-                  Placer les clashs maintenant
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
         );
       default:
         return null;
@@ -515,26 +476,6 @@ const styles = StyleSheet.create({
   multiline: {
     minHeight: 80,
     textAlignVertical: "top",
-  },
-  infoBox: {
-    marginTop: 14,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  infoText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  infoAction: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 10,
-    paddingVertical: 6,
-  },
-  infoActionText: {
-    fontWeight: "600",
   },
   button: {
     padding: 15,
