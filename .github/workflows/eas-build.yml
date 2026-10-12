@@ -1685,11 +1685,27 @@ jobs:
               HEADER="$HEADER Built on a GitHub Actions runner (eas build --local, $RUN_URL); SHA-256 of the submitted binary: \`$BINARY_SHA256\`."
             fi
           fi
+          # Tag déjà présent (relance, reprise, tag posé à la main) : il doit
+          # désigner le commit validé. Sinon un promote-beta compromis aurait
+          # pu réserver d'avance le tag du build suivant sur un vieux commit.
+          if OBJ=$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq '.object.type + " " + .object.sha' 2> /dev/null); then
+            read -r OBJ_TYPE OBJ_SHA <<< "$OBJ"
+            # Tag annoté : déréférencer jusqu'au commit.
+            if [ "$OBJ_TYPE" = "tag" ]; then
+              OBJ_SHA=$(gh api "repos/$GH_REPO/git/tags/$OBJ_SHA" --jq '.object.sha')
+            fi
+            if [ "$OBJ_SHA" != "$SHA" ]; then
+              echo "::error::le tag $TAG existe déjà sur ${OBJ_SHA:0:7}, pas sur le commit validé ${SHA:0:7} : rien n'est créé, vérifier ce tag"
+              exit 1
+            fi
+          fi
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "::notice::Release $TAG déjà présente (relance) — rien à faire."
           else
             NOTES="$RUNNER_TEMP/beta-state/beta-notes.md"
-            if [ ! -f "$NOTES" ]; then
+            # Fichier ordinaire seulement : un lien symbolique glissé dans
+            # l'artefact ferait lire un autre fichier du runner.
+            if [ ! -f "$NOTES" ] || [ -L "$NOTES" ]; then
               echo "::error::notes de release absentes de l'état transmis (étape « Generate tester notes » de promote-beta)"
               exit 1
             fi
