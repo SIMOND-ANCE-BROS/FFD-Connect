@@ -5,13 +5,17 @@
 -- only constrain non-NULL values. The previous revision only writes rows
 -- with "seatIndex" / "pendingSlot" NULL: "SeatBooking_active_item_legacy_key"
 -- gives those rows exactly the guarantee of the index it replaces (one active
--- booking per element), so a rollback keeps working.
+-- booking per element), so a rollback keeps working AMONG ITS OWN ROWS. It
+-- does not see per-seat rows: once seats were sold per seat, a rolled-back
+-- revision may sell a whole element next to them, and ignores payments made
+-- on replaced checkout intents — roll forward rather than stay rolled back.
 
 -- AlterTable
 ALTER TABLE "SeatBooking" ADD COLUMN     "checkoutCreatedAt" TIMESTAMP(3),
 ADD COLUMN     "checkoutRedirectUrl" TEXT,
 ADD COLUMN     "pendingSlot" SMALLINT,
 ADD COLUMN     "refundOwedAt" TIMESTAMP(3),
+ADD COLUMN     "refundOwedPaymentIds" TEXT[] DEFAULT ARRAY[]::TEXT[],
 ADD COLUMN     "seatIndex" INTEGER,
 ADD COLUMN     "supersededPaymentIds" TEXT[] DEFAULT ARRAY[]::TEXT[];
 

@@ -199,7 +199,11 @@ model SeatBooking {
   supersededPaymentIds String[] @default([])
   checkoutRedirectUrl  String?  // HelloAsso redirect of `paymentId`, returned only to the booking owner (#428)
   checkoutCreatedAt    DateTime? // When `paymentId` was created (redirect valid 15 min)
-  refundOwedAt  DateTime?       // Paid but no seat granted (late or duplicate payment): refund owed (#428, #438)
+  // Paid but no seat granted (late or duplicate payment): refund owed, one
+  // entry per checkout intent to refund; `refundOwedAt` is set while the
+  // list is not empty (#428, refunds made by hand by the club, #438).
+  refundOwedPaymentIds String[] @default([])
+  refundOwedAt  DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 

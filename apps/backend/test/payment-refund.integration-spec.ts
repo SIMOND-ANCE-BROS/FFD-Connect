@@ -253,6 +253,7 @@ describe("HelloAsso refund / dispute releases the seat (#403, real DB)", () => {
         paymentId: String(CHECKOUT_INTENT_ID),
         expectedAmountCents: 1500,
         refundOwedAt: new Date(),
+        refundOwedPaymentIds: [String(CHECKOUT_INTENT_ID)],
       },
     });
     helloAssoSays("Refunded");
@@ -261,12 +262,18 @@ describe("HelloAsso refund / dispute releases the seat (#403, real DB)", () => {
 
     const after = await prisma.seatBooking.findUniqueOrThrow({
       where: { id: booking.id },
-      select: { status: true, cancelReason: true, refundOwedAt: true },
+      select: {
+        status: true,
+        cancelReason: true,
+        refundOwedAt: true,
+        refundOwedPaymentIds: true,
+      },
     });
     expect(after).toEqual({
       status: "EXPIRED",
       cancelReason: "HELLOASSO_REFUNDED",
       refundOwedAt: null,
+      refundOwedPaymentIds: [],
     });
   });
 });

@@ -23,7 +23,7 @@ describe("HelloAssoNotificationService (#404)", () => {
     paymentId: "4242",
     expectedAmountCents: 1500,
     supersededPaymentIds: [] as string[],
-    refundOwedAt: null as Date | null,
+    refundOwedPaymentIds: [] as string[],
   };
   /** What a real HelloAsso checkout intent looks like once paid. */
   const paidIntent = {

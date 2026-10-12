@@ -23,7 +23,7 @@ function formatEuros(cents: number | null): string {
  * HelloAsso payment arrived for a seat that was not granted (hold expired,
  * or the seat was already paid). Refunds are made by hand by the club from
  * its HelloAsso back-office (#438); the resulting `Refunded` notification
- * clears the booking's `refundOwedAt` (`SeatReleaseService`).
+ * removes that payment from the booking's `refundOwedPaymentIds` (`SeatReleaseService`).
  *
  * Recipients: the club's managers (active CLUB role), as for the other club
  * notifications. The message carries no personal data of the payer: the

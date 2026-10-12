@@ -116,7 +116,7 @@ export class SeatReleaseService {
       );
     }
     const releasable = booking.status === "CONFIRMED";
-    const refundOwed = booking.refundOwedAt !== null;
+    const refundOwed = booking.refundOwedPaymentIds.length > 0;
     if ((!releasable && !refundOwed) || !booking.paymentId) {
       // Nothing to release nor refund owed (expired, already released…): no
       // call to HelloAsso, so replays cannot amplify.
@@ -176,7 +176,12 @@ export class SeatReleaseService {
     }
 
     if (!seatPayment) {
-      return this.settleRefundOwed(booking, paymentId, reason);
+      return this.settleRefundOwed(
+        booking,
+        String(checkoutIntentId),
+        paymentId,
+        reason,
+      );
     }
 
     const { count } = await this.prisma.seatBooking.updateMany({
@@ -204,26 +209,39 @@ export class SeatReleaseService {
    * stays paid by its own payment); an expired booking records why.
    */
   private async settleRefundOwed(
-    booking: { id: string; status: string; refundOwedAt: Date | null },
+    booking: { id: string; status: string; refundOwedPaymentIds: string[] },
+    checkoutIntentId: string,
     paymentId: number,
     reason: string,
   ): Promise<void> {
-    if (booking.refundOwedAt === null) {
+    if (!booking.refundOwedPaymentIds.includes(checkoutIntentId)) {
       this.logger.warn(
-        `HelloAsso payment ${paymentId} of booking ${booking.id} is not the seat's payment and no refund was owed: ignored`,
+        `HelloAsso payment ${paymentId} of booking ${booking.id} is not the seat's payment and no refund was owed for it: ignored`,
       );
       return;
     }
+    const remaining = booking.refundOwedPaymentIds.filter(
+      (id) => id !== checkoutIntentId,
+    );
+    // Optimistic: only against the list just read, so that a refund flagged
+    // or settled concurrently is never lost (the redelivery retries).
     const { count } = await this.prisma.seatBooking.updateMany({
-      where: { id: booking.id, refundOwedAt: { not: null } },
+      where: {
+        id: booking.id,
+        refundOwedPaymentIds: { equals: booking.refundOwedPaymentIds },
+      },
       data: {
-        refundOwedAt: null,
+        refundOwedPaymentIds: { set: remaining },
+        ...(remaining.length === 0 ? { refundOwedAt: null } : {}),
         ...(booking.status === "EXPIRED" ? { cancelReason: reason } : {}),
       },
     });
     if (count === 0) {
-      this.logger.log(`Refund of booking ${booking.id} already settled`);
-      return;
+      // Changed since the read (another refund flagged or settled): let
+      // HelloAsso redeliver, the next pass works on the fresh list.
+      throw new ServiceUnavailableException(
+        "Booking changed while settling its refund, notification to be redelivered",
+      );
     }
     this.logger.warn(
       `Refund owed on booking ${booking.id} settled: HelloAsso payment ${paymentId} ${reason}`,

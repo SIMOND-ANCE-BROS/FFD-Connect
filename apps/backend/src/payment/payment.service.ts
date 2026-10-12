@@ -353,7 +353,24 @@ export class PaymentService {
     const now = new Date();
     const reason = checkOrderAgainstBooking(payload, booking, now);
     if (reason && REFUND_REQUIRED_REASONS.has(reason)) {
-      await this.flagRefundOwed(booking, now, orderId, reason);
+      // Only reached once the order is proven to be on one of the booking's
+      // intents (`checkOrderAgainstBooking`): `paidIntent` is defined.
+      await this.flagRefundOwed(
+        booking,
+        now,
+        paidIntent as string,
+        orderId,
+        reason,
+      );
+      return;
+    }
+    if (reason && booking.status === "CONFIRMED") {
+      // An earlier intent of a confirmed seat that is not (or no longer)
+      // paid: anyone can name it in a forged notification — logged only,
+      // never sent to Sentry (quota).
+      this.logger.warn(
+        `HelloAsso order ${orderId ?? "?"} on an earlier intent of confirmed booking ${bookingId}: ${reason}`,
+      );
       return;
     }
     if (reason) {
@@ -404,6 +421,7 @@ export class PaymentService {
         await this.flagRefundOwed(
           current,
           new Date(),
+          confirmedIntent,
           orderId,
           "booking_expired",
         );
@@ -423,17 +441,19 @@ export class PaymentService {
 
   /**
    * Money collected for a seat not granted (#428): the lapsed hold switches
-   * to EXPIRED, the booking is flagged `refundOwedAt` (once: the alert is
-   * sent only by the write that sets it, so redeliveries do not repeat it)
+   * to EXPIRED, the paid intent is recorded in `refundOwedPaymentIds` (once
+   * per intent: the alert is sent only by the write that adds it, so
+   * redeliveries do not repeat it, while each further payment is alerted)
    * and the organising club is told to refund the payer.
    *
    * Refunds are manual for now (#438): the club refunds from its HelloAsso
-   * back-office, and the `Refunded` notification clears the flag
-   * (`SeatReleaseService`).
+   * back-office, and the `Refunded` notification of that payment removes
+   * its entry (`SeatReleaseService`).
    */
   private async flagRefundOwed(
     booking: BookingPaymentCheck,
     now: Date,
+    paidIntent: string,
     orderId: number | undefined,
     reason: OrderRejectionReason,
   ): Promise<void> {
@@ -447,10 +467,13 @@ export class PaymentService {
     const { count } = await this.prisma.seatBooking.updateMany({
       where: {
         id: booking.id,
-        refundOwedAt: null,
         status: { in: ["EXPIRED", "CONFIRMED"] },
+        NOT: { refundOwedPaymentIds: { has: paidIntent } },
       },
-      data: { refundOwedAt: now },
+      data: {
+        refundOwedPaymentIds: { push: paidIntent },
+        refundOwedAt: now,
+      },
     });
     this.rejectOrder(booking.id, orderId, reason);
     if (count === 1) {

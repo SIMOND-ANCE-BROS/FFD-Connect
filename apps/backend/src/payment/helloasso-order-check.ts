@@ -24,7 +24,8 @@ export type OrderRejectionReason =
  * Rejections where a genuine, fully paid order could not be honoured: the
  * money is collected but no seat is granted (late payment, #401) or the seat
  * was already paid through another checkout intent of the same booking
- * (resumed payment paid twice, #428). The booking is flagged `refundOwedAt`
+ * (resumed payment paid twice, #428). The intent is recorded in
+ * `refundOwedPaymentIds` (and `refundOwedAt` set)
  * and the organising club refunds the payer from its HelloAsso back-office
  * (manual refund, decided in #438).
  */
@@ -40,6 +41,8 @@ export interface BookingPaymentCheck {
   expiresAt: Date | null;
   /** Earlier checkout intents of a resumed payment (#428). */
   supersededPaymentIds: string[];
+  /** Checkout intents whose payment is owed back (#428). */
+  refundOwedPaymentIds: string[];
 }
 
 /**

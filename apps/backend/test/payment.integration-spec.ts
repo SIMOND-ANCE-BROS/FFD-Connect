@@ -741,6 +741,7 @@ describe("Payment checkout + HelloAsso webhook (integration, real DB)", () => {
         });
         expect(twice.status).toBe("CONFIRMED");
         expect(twice.refundOwedAt).not.toBeNull();
+        expect(twice.refundOwedPaymentIds).toEqual([String(again.id)]);
       });
     });
 
@@ -762,6 +763,7 @@ describe("Payment checkout + HelloAsso webhook (integration, real DB)", () => {
       });
       expect(after.status).toBe("EXPIRED");
       expect(after.refundOwedAt).not.toBeNull();
+      expect(after.refundOwedPaymentIds).toEqual([after.paymentId]);
       expect(notifications.sendToUsers).toHaveBeenCalledTimes(1);
       expect(notifications.sendToUsers).toHaveBeenCalledWith(
         [clubManagerId],

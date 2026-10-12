@@ -448,7 +448,7 @@ export const seatBookingPaymentCheckSelect = {
   expiresAt: true,
   // Earlier checkout intents of a resumed payment, still payable (#428)
   supersededPaymentIds: true,
-  refundOwedAt: true,
+  refundOwedPaymentIds: true,
 } as const;
 
 /**

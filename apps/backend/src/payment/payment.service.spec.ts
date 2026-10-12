@@ -506,7 +506,7 @@ describe("PaymentService", () => {
       expectedAmountCents: 1500,
       expiresAt: new Date(Date.now() + 10 * 60 * 1000),
       supersededPaymentIds: [] as string[],
-      refundOwedAt: null,
+      refundOwedPaymentIds: [] as string[],
     };
 
     const paidOrder = (
@@ -808,10 +808,13 @@ describe("PaymentService", () => {
       const markerCall = {
         where: {
           id: "booking-1",
-          refundOwedAt: null,
           status: { in: ["EXPIRED", "CONFIRMED"] },
+          NOT: { refundOwedPaymentIds: { has: "4242" } },
         },
-        data: { refundOwedAt: expect.any(Date) },
+        data: {
+          refundOwedPaymentIds: { push: "4242" },
+          refundOwedAt: expect.any(Date),
+        },
       };
 
       const expectRefundFlagged = () => {
@@ -932,11 +935,11 @@ describe("PaymentService", () => {
         expect(refundOwedAlert.alertClub).toHaveBeenCalled();
       });
 
-      it("does not alert the club twice when the refund is already flagged", async () => {
+      it("does not alert the club twice for the same payment", async () => {
         prisma.seatBooking.findUnique.mockResolvedValue({
           ...bookingForCheck,
           status: "EXPIRED",
-          refundOwedAt: new Date(),
+          refundOwedPaymentIds: ["4242"],
         } as any);
         prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
 
@@ -990,10 +993,13 @@ describe("PaymentService", () => {
         expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith({
           where: {
             id: "booking-1",
-            refundOwedAt: null,
             status: { in: ["EXPIRED", "CONFIRMED"] },
+            NOT: { refundOwedPaymentIds: { has: "4242" } },
           },
-          data: { refundOwedAt: expect.any(Date) },
+          data: {
+            refundOwedPaymentIds: { push: "4242" },
+            refundOwedAt: expect.any(Date),
+          },
         });
         expect(Sentry.captureMessage).toHaveBeenCalledWith(
           "HelloAsso order rejected",
@@ -1008,6 +1014,20 @@ describe("PaymentService", () => {
           "booking-1",
           98765,
         );
+      });
+
+      it("only logs an unpaid earlier intent of a confirmed seat (forgeable, no Sentry)", async () => {
+        prisma.seatBooking.findUnique.mockResolvedValue({
+          ...resumed,
+          status: "CONFIRMED",
+        } as any);
+
+        await service.handleOrderWebhook(
+          paidOrder({ payments: [{ amount: 1500, state: "Refunded" }] }),
+        );
+
+        expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
+        expect(Sentry.captureMessage).not.toHaveBeenCalled();
       });
 
       it("asks HelloAsso to redeliver when the booking was resumed during the confirmation", async () => {
