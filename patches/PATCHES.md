@@ -20,7 +20,7 @@ Historique : le patch `react-native-track-player@4.1.2` a disparu avec le passag
 
 Certains réglages natifs ne passent pas par `pnpm patch` mais par un **plugin de config Expo** (`apps/client/plugins/`) exécuté au prebuild. La liste active fait foi : tableau `plugins` de `apps/client/app.config.js`.
 
-Aucun plugin ne sert aujourd'hui de **correctif** de dépendance. L'ancien `withFaceIDiOS26Fix.js` (réécriture de `LocalAuthenticationModule.swift`) a été retiré de `app.config.js` : le diagnostic sur appareil a montré qu'aucune exception n'était levée, la vraie cause était `NSFaceIDUsageDescription` (désormais posée dans `ios.infoPlist`).
+Aucun plugin ne sert aujourd'hui de **correctif** de dépendance. L'ancien `withFaceIDiOS26Fix.js` (réécriture de `LocalAuthenticationModule.swift`) a été retiré de `app.config.js` puis supprimé du dépôt (#365) : le diagnostic sur appareil a montré qu'aucune exception n'était levée, la vraie cause était `NSFaceIDUsageDescription` (désormais posée dans `ios.infoPlist`). `withKeyboardManager.js` (pod IQKeyboardManager, incompatible RN 0.86) a suivi le même chemin : la barre clavier passe par `react-native-keyboard-controller`.
 
 ---
 

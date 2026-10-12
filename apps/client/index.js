@@ -137,27 +137,6 @@ if (sentryDsn && !sentryDisabled && Platform.OS !== "web") {
   );
 }
 
-// Barre native clavier iOS (^ v ✓) — désactivé sur iOS 26+ : la lib hook le
-// main run loop et provoque un crash natif dans RCTJSTimerExecutor (Data Abort
-// far=0). Ré-activable quand react-native-keyboard-manager sera mis à jour.
-if (typeof window !== "undefined" && Platform.OS === "ios") {
-  const iosVersion = parseInt(String(Platform.Version), 10);
-  const isIOS26Plus = Number.isFinite(iosVersion) && iosVersion >= 26;
-  if (!isIOS26Plus) {
-    try {
-      const KeyboardManager = require("react-native-keyboard-manager").default;
-      if (KeyboardManager) {
-        KeyboardManager.setEnable(true);
-        KeyboardManager.setEnableAutoToolbar(true);
-        KeyboardManager.setToolbarPreviousNextButtonEnable(true);
-        KeyboardManager.setToolbarDoneBarButtonItemText("Terminé");
-      }
-    } catch {
-      // Attendu dans Expo Go (module natif absent)
-    }
-  }
-}
-
 // Audio now runs on expo-audio (see src/utils/TrackPlayerWrapper.ts). No headless
 // playback service to register — react-native-track-player has been retired.
 
