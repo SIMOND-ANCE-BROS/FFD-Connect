@@ -329,6 +329,11 @@ module.exports = {
             // release build crashes on a stripped class.
             enableMinifyInReleaseBuilds: true,
             enableShrinkResourcesInReleaseBuilds: true,
+            // Only ARM ABIs (#361). x86 / x86_64 only serve emulators and rare
+            // x86 devices (ChromeOS); dropping them halves the native C++
+            // compile time on EAS (reanimated CMake is the critical path).
+            // Maps to `reactNativeArchitectures` in gradle.properties.
+            buildArchs: ["armeabi-v7a", "arm64-v8a"],
           },
         },
       ],
