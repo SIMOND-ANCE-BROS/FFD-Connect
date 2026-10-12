@@ -2,8 +2,8 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import {
   registrationEventBibSelect,
   registrationEventHolderSelect,
+  partnerCoupleResultSelect,
   registrationPartnerNameSelect,
-  resultAnonymizationSelect,
   userNameSelect,
 } from "../utils/prisma-selects";
 import {
@@ -116,7 +116,7 @@ export async function buildPartnerNameScrubOps(
       ? []
       : await prisma.result.findMany({
           where: { userId: { not: userId }, OR: resultFilters },
-          select: resultAnonymizationSelect,
+          select: partnerCoupleResultSelect,
           take: MAX_PARTNER_SCRUB_ROWS,
         });
 
@@ -148,8 +148,11 @@ export async function buildPartnerNameScrubOps(
     if (!scrubbed) continue;
     competitionIds.add(result.event.competitionId);
     ops.push(
-      prisma.result.update({
-        where: { id: result.id },
+      // Guarded on the partner's userId read above: a row re-imported under
+      // another account or deleted meanwhile matches nothing (0 rows)
+      // instead of being rewritten or failing the whole deletion.
+      prisma.result.updateMany({
+        where: { id: result.id, userId: result.userId },
         data: {
           details: {
             ...(result.details as Prisma.JsonObject),
