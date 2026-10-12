@@ -831,7 +831,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     if: always()
+    # `changes` is listed so that a failed change detection turns the gate red:
+    # every job below needs it, so its failure would otherwise leave them all
+    # `skipped` — which this gate counts as success. In the develop merge queue
+    # that would merge an untested combination (#493).
     needs:
+      - changes
       - backend-test
       - backend-build
       - client
@@ -846,6 +851,7 @@ jobs:
       - name: Check job results
         env:
           RESULTS: |
+            changes=${{ needs.changes.result }}
             backend-test=${{ needs.backend-test.result }}
             backend-build=${{ needs.backend-build.result }}
             client=${{ needs.client.result }}

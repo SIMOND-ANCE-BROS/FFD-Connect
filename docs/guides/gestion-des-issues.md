@@ -228,8 +228,11 @@ PR vers `develop`, des promotions vers `staging` et des issues :
 Le **même mot-clé** vaut pour les messages de commit : un squash merge recopie
 les messages des commits dans le commit final, et GitHub ferme toute issue
 qu'il y trouve après `Closes` / `Fixes` / `Resolves`, même si la PR dit
-`Refs`. Au merge, on vérifie le message du squash (`gh pr merge --squash
---body …` pour le réécrire) ; si une issue s'est fermée par erreur, on la
+`Refs`. Avec la file de fusion de `develop` (#493), le message du squash est
+le titre + la description de la PR : ce sont ses `Refs` / `Closes` qui font
+foi, mais on évite quand même `Closes` dans un message de commit d'une PR
+`Refs`. Sans file, on vérifie le message du squash au merge (`gh pr merge
+--squash --body …` pour le réécrire). Si une issue s'est fermée par erreur, on la
 rouvre avec un commentaire et on la remet `Merged` (ou `In Beta` si la
 promotion a déjà eu lieu).
 

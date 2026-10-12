@@ -86,13 +86,31 @@ jobs:
               PR_URL=$(gh pr list --head "$SOURCE" --base "$TARGET" --state open --json url -q '.[0].url' 2>/dev/null || true)
             fi
 
-            # Enable auto-merge so clean PRs land without manual intervention.
+            # Enable auto-merge so clean PRs land without manual intervention
+            # (staging/master targets; see the merge-queue case below).
             # Uses --merge (not --squash) to preserve the full commit history
             # from the source branch. This keeps git merge-base accurate for
             # future merge-back diffs and avoids phantom conflicts.
+            #
+            # A merge queue imposes ITS merge method (squash on develop, #493)
+            # and `gh pr merge --auto` on such a branch enqueues the PR: the
+            # merge-back would be squashed, develop would lose the source's
+            # ancestry, and the cascade would drift into phantom conflicts.
+            # So when the target has a merge_queue rule, no auto-merge: an
+            # admin merges it by hand with --merge --admin (bypassing the queue)
+            # once CI Success is green. If the rules lookup fails, same fail-safe
+            # path: a merge-back left open is recoverable, a squashed one is not.
             if [ -n "$PR_URL" ]; then
               echo "PR: $PR_URL"
-              gh pr merge --auto --merge "$PR_URL" 2>/dev/null || echo "Auto-merge already enabled or not available"
+              QUEUE_RULES=$(gh api "repos/$GITHUB_REPOSITORY/rules/branches/$TARGET" \
+                --jq '[.[] | select(.type == "merge_queue")] | length' 2>/dev/null || echo "unknown")
+              if [ "$QUEUE_RULES" = "0" ]; then
+                gh pr merge --auto --merge "$PR_URL" 2>/dev/null || echo "Auto-merge already enabled or not available"
+              else
+                MSG="$TARGET is behind a merge queue (or its rules could not be read: $QUEUE_RULES) - no auto-merge. Once CI Success is green: gh pr merge $PR_URL --merge --admin"
+                echo "::notice::$MSG"
+                echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
+              fi
             else
               # A warning let the job exit 0: the workflow reported itself
               # healthy while producing nothing, and the drift ran for three
