@@ -308,7 +308,7 @@ jobs:
         # dist/swagger.json, so the freshness diff below never saw a change and
         # always passed (the check was a silent no-op).
         run: |
-          node scripts/export-swagger.js
+          pnpm exec tsx scripts/export-swagger.ts
           cp swagger.json ../docs/public/swagger.json
           # The export writes raw JSON.stringify; the committed spec is
           # prettier-formatted (and format:check enforces it). Format here too so

@@ -28,7 +28,7 @@
     "seed:e2e": "tsx prisma/seed-e2e.ts",
     "sync:compete": "tsx scripts/sync-licensees-from-compete.ts",
     "kill-port": "tsx scripts/kill-port.ts",
-    "docs:export": "pnpm run build && node scripts/export-swagger.js",
+    "docs:export": "pnpm run build && tsx scripts/export-swagger.ts",
     "typecheck": "tsc --noEmit",
     "test:mutation": "stryker run",
     "test:mutation:ci": "stryker run --reporters progress,html"
