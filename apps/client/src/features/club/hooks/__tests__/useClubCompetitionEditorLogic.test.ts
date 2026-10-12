@@ -52,7 +52,8 @@ describe("useClubCompetitionEditorLogic", () => {
     );
 
     expect(result.current.title).toBe("");
-    expect(result.current.status).toBe("DRAFT");
+    expect(result.current.status).toBe("UPCOMING");
+    expect(result.current.dateText).toBe("");
     expect(result.current.events.length).toBeGreaterThan(0);
     expect(result.current.schedule.length).toBeGreaterThan(0);
   });
@@ -74,9 +75,28 @@ describe("useClubCompetitionEditorLogic", () => {
     );
 
     expect(result.current.title).toBe("Existing Comp");
-    expect(result.current.status).toBe("OPEN");
-    expect(result.current.dateText).toBe("12/12/2025");
+    // Legacy editor status mapped onto the API enum (#417).
+    expect(result.current.status).toBe("UPCOMING");
+    // Not an ISO date: shown as « Sélectionner une date », must be picked.
+    expect(result.current.dateText).toBe("");
     expect(result.current.isEditing).toBe(true);
+  });
+
+  it("initializes the date from an ISO API date", async () => {
+    const { result } = await renderHook(() =>
+      useClubCompetitionEditorLogic({
+        initialCompetition: {
+          id: "c1",
+          date: "2026-05-15T10:00:00.000Z",
+          status: "PAST",
+        },
+        navigation: mockNavigation,
+      }),
+    );
+
+    expect(result.current.status).toBe("PAST");
+    expect(result.current.dateText).toBe("15 mai 2026");
+    expect(result.current.date.toISOString()).toBe("2026-05-15T10:00:00.000Z");
   });
 
   describe("Events Management", () => {
@@ -282,15 +302,36 @@ describe("useClubCompetitionEditorLogic", () => {
       expect(mockNavigation.goBack).not.toHaveBeenCalled();
     });
 
-    it("navigates back on successful save", async () => {
+    it("alerts when no date was picked", async () => {
       const { result } = await renderHook(() =>
         useClubCompetitionEditorLogic({ navigation: mockNavigation }),
       );
 
       await act(() => {
         result.current.setTitle("Valid Title");
-        result.current.setDateText("12/12/2024");
         result.current.setLocation("Paris");
+      });
+      await act(async () => {
+        await result.current.handleSave();
+      });
+
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Erreur",
+        expect.stringContaining("champs obligatoires"),
+      );
+      expect(CompetitionService.create).not.toHaveBeenCalled();
+    });
+
+    it("creates a competition with the API payload and navigates back (#417)", async () => {
+      const { result } = await renderHook(() =>
+        useClubCompetitionEditorLogic({ navigation: mockNavigation }),
+      );
+
+      await act(() => {
+        result.current.setTitle("Valid Title");
+        result.current.onDateChange(undefined, new Date(2024, 11, 12, 15));
+        result.current.setLocation("Paris");
+        result.current.setTicketingUrl("");
       });
 
       (CompetitionService.create as jest.Mock).mockResolvedValueOnce({});
@@ -298,6 +339,21 @@ describe("useClubCompetitionEditorLogic", () => {
       await act(async () => {
         await result.current.handleSave();
       });
+
+      expect(CompetitionService.create).toHaveBeenCalledWith({
+        title: "Valid Title",
+        status: "UPCOMING",
+        date: "2024-12-12",
+        location: "Paris",
+        type: "COMPETITION",
+        competitionType: "PROXIMITE",
+        eventsDescription: "",
+        layout: [],
+      });
+      // The tabs « Épreuves » / « Timing » aren't persisted: never sent.
+      const body = (CompetitionService.create as jest.Mock).mock.calls[0][0];
+      expect(body).not.toHaveProperty("events");
+      expect(body).not.toHaveProperty("schedule");
 
       expect(Alert.alert).toHaveBeenCalledWith(
         "Succès",
@@ -311,6 +367,68 @@ describe("useClubCompetitionEditorLogic", () => {
       okButton.onPress();
 
       expect(mockNavigation.goBack).toHaveBeenCalled();
+    });
+
+    it("updates an existing competition with the API payload (#417)", async () => {
+      const { result } = await renderHook(() =>
+        useClubCompetitionEditorLogic({
+          initialCompetition: {
+            id: "comp-1",
+            title: "Existing",
+            status: "UPCOMING",
+            date: "2026-05-15T00:00:00.000Z",
+            location: "Lyon",
+            competitionType: "NATIONALE",
+            ticketingUrl: "https://www.helloasso.com/x",
+          },
+          navigation: mockNavigation,
+        }),
+      );
+
+      (CompetitionService.update as jest.Mock).mockResolvedValueOnce({});
+
+      await act(async () => {
+        await result.current.handleSave();
+      });
+
+      expect(CompetitionService.create).not.toHaveBeenCalled();
+      expect(CompetitionService.update).toHaveBeenCalledWith("comp-1", {
+        title: "Existing",
+        status: "UPCOMING",
+        date: expect.stringMatching(/^2026-05-1[45]$/),
+        location: "Lyon",
+        type: "COMPETITION",
+        competitionType: "NATIONALE",
+        majorSubType: null,
+        eventsDescription: "",
+        ticketingUrl: "https://www.helloasso.com/x",
+        layout: [],
+      });
+    });
+
+    it("alerts when the API rejects the save", async () => {
+      const { result } = await renderHook(() =>
+        useClubCompetitionEditorLogic({ navigation: mockNavigation }),
+      );
+
+      await act(() => {
+        result.current.setTitle("Valid Title");
+        result.current.onDateChange(undefined, new Date(2024, 11, 12));
+        result.current.setLocation("Paris");
+      });
+      (CompetitionService.create as jest.Mock).mockRejectedValueOnce(
+        new Error("400"),
+      );
+
+      await act(async () => {
+        await result.current.handleSave();
+      });
+
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Erreur",
+        "Impossible de sauvegarder la compétition",
+      );
+      expect(mockNavigation.goBack).not.toHaveBeenCalled();
     });
   });
 

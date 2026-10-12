@@ -134,13 +134,17 @@ export const NOTIFICATION_CATALOG: Readonly<
       "Quand un couple inter-club impliquant votre club est proposé, validé, refusé ou clôturé.",
   },
 
-  // ── HelloAsso payment received (#39): IN-APP FEED ONLY ──────────────────────
+  // ── HelloAsso payments (#39, #428) ──────────────────────────────────────
   //
-  // PaymentNotificationService.notifyPaymentReceived writes it to the feed of
-  // the organizer club's managers (`withActiveRole(CLUB)`), WITHOUT push.
-  // Preferences only filter the push (the feed is always written), so a
-  // switch would govern nothing: it stays `configurable: false` until a push
-  // is decided for it — that revision makes it configurable.
+  // Two producers, IN-APP FEED ONLY for "payment received":
+  // - PaymentNotificationService.notifyPaymentReceived (#39) writes it to the
+  //   feed of the organizer club's managers (`withActiveRole(CLUB)`), WITHOUT
+  //   push, when a seat payment is confirmed;
+  // - the "refund owed" alert of #428 (a payment arrived for a seat that was
+  //   not granted; the club refunds it by hand, #438).
+  // Kept `configurable: false`, i.e. always sent: a club must not be able to
+  // mute money it owes back. Revisit if "payment received" gets a push — a
+  // club may want to mute that one, not the refund alert.
   [NotificationType.CLUB_PAYMENT_RECEIVED]: {
     defaultEnabled: true,
     configurable: false,

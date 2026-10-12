@@ -676,4 +676,42 @@ describe("CompetitionQueryService (integration with real DB)", () => {
       await prisma.competition.delete({ where: { id: futureComp.id } });
     });
   });
+
+  // ─────────────────────────────────────────────
+  // findOrganizedByClub (#441)
+  // ─────────────────────────────────────────────
+  describe("findOrganizedByClub", () => {
+    it("CLUB account → only the competitions its club organizes, with layout", async () => {
+      const result = await queryService.findOrganizedByClub(clubOrgUserId);
+      const ids = result.map((c) => c.id);
+      expect(ids).toContain(comp1Id);
+      expect(ids).not.toContain(comp2Id);
+      expect(ids).not.toContain(comp3Id);
+      expect(ids).not.toContain(todayCompId);
+      expect(result.find((c) => c.id === comp1Id)).toHaveProperty("layout");
+    });
+
+    it("matches the organizer whatever its case", async () => {
+      const upper = await prisma.competition.create({
+        data: {
+          title: `Query Upper ${suffix}`,
+          date: new Date("2025-09-01"),
+          location: "Nice",
+          organizer: organizerClubName.toUpperCase(),
+        },
+      });
+      try {
+        const result = await queryService.findOrganizedByClub(clubOrgUserId);
+        expect(result.map((c) => c.id)).toContain(upper.id);
+      } finally {
+        await prisma.competition.delete({ where: { id: upper.id } });
+      }
+    });
+
+    it("licensee without the CLUB role → empty list", async () => {
+      await expect(
+        queryService.findOrganizedByClub(licenseeUserId),
+      ).resolves.toEqual([]);
+    });
+  });
 });

@@ -7,12 +7,10 @@
  * here — never from the client request.
  */
 
+import { findLayoutElement } from "./seat-layout";
+
 /** Upper bound on a seat price (10 000 EUR): guards against garbage data. */
 export const MAX_SEAT_PRICE_CENTS = 1_000_000;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /**
  * Returns the price in cents of the layout element `itemId`, or `null` when
@@ -22,11 +20,8 @@ export function resolveSeatPriceCents(
   layout: unknown,
   itemId: string,
 ): number | null {
-  if (!Array.isArray(layout)) return null;
-  const item: unknown = layout.find(
-    (entry: unknown) => isRecord(entry) && entry.id === itemId,
-  );
-  if (!isRecord(item)) return null;
+  const item = findLayoutElement(layout, itemId);
+  if (!item) return null;
   const price = item.priceCents;
   if (
     typeof price !== "number" ||

@@ -83,9 +83,9 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
         testID="competition-editor-status-tabs"
         onChange={(val: string) => setStatus(toCompetitionStatus(val))}
         options={[
-          { label: "Brouillon", value: "DRAFT" },
-          { label: "Ouverte", value: "OPEN" },
-          { label: "Terminée", value: "CLOSED" },
+          { label: "À venir", value: "UPCOMING" },
+          { label: "Terminée", value: "PAST" },
+          { label: "Annulée", value: "CANCELLED" },
         ]}
       />
     </View>

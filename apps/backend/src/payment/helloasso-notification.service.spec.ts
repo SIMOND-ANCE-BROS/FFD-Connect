@@ -22,6 +22,8 @@ describe("HelloAssoNotificationService (#404)", () => {
     status: "PENDING",
     paymentId: "4242",
     expectedAmountCents: 1500,
+    supersededPaymentIds: [] as string[],
+    refundOwedPaymentIds: [] as string[],
   };
   /** What a real HelloAsso checkout intent looks like once paid. */
   const paidIntent = {
@@ -270,5 +272,51 @@ describe("HelloAssoNotificationService (#404)", () => {
     await service.resolveOrderNotification(notification);
 
     expect(getCheckoutIntent).toHaveBeenCalled();
+  });
+  describe("resumed payments (#428)", () => {
+    const resumed = {
+      ...booking,
+      paymentId: "5000",
+      supersededPaymentIds: ["4242"],
+    };
+    const naming = (checkoutIntentId: number): WebhookPayloadDto => ({
+      ...notification,
+      data: { ...notification.data, checkoutIntentId },
+    });
+
+    it("re-reads an earlier intent of the booking that the notification names", async () => {
+      findUnique.mockResolvedValue(resumed);
+
+      const verified = await service.resolveOrderNotification(naming(4242));
+
+      expect(getCheckoutIntent).toHaveBeenCalledWith(credentials, "4242");
+      expect(verified?.data.checkoutIntentId).toBe(4242);
+    });
+
+    it("re-reads the current intent when the named one is not the booking's", async () => {
+      findUnique.mockResolvedValue(resumed);
+
+      await service.resolveOrderNotification(naming(777));
+
+      expect(getCheckoutIntent).toHaveBeenCalledWith(credentials, "5000");
+    });
+
+    it("re-reads an earlier intent of a CONFIRMED booking (second payment)", async () => {
+      findUnique.mockResolvedValue({ ...resumed, status: "CONFIRMED" });
+
+      const verified = await service.resolveOrderNotification(naming(4242));
+
+      expect(getCheckoutIntent).toHaveBeenCalledWith(credentials, "4242");
+      expect(verified).not.toBeNull();
+    });
+
+    it("never re-reads a CONFIRMED booking's current intent", async () => {
+      findUnique.mockResolvedValue({ ...resumed, status: "CONFIRMED" });
+
+      await expect(
+        service.resolveOrderNotification(naming(5000)),
+      ).resolves.toBeNull();
+      expect(getCheckoutIntent).not.toHaveBeenCalled();
+    });
   });
 });

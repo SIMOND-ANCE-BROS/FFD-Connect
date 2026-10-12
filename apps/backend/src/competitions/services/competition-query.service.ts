@@ -3,6 +3,7 @@ import { Prisma, RegistrationStatus, UserRole } from "@prisma/client";
 import { hasRole } from "../../auth/roles";
 import {
   userEligibilityProfileSelect,
+  userRolesClubNameSelect,
   userRolesClubSelect,
 } from "../../utils/prisma-selects";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
@@ -49,6 +50,9 @@ export const COMPETITION_BASE_SELECT = {
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.CompetitionSelect;
+
+/** Upper bound of a club's competition list (GET /competitions/club/mine). */
+export const CLUB_COMPETITIONS_LIMIT = 100;
 
 const EVENT_BASE_SELECT = {
   id: true,
@@ -387,5 +391,40 @@ export class CompetitionQueryService {
       ...r,
       competition: compMap.get(r.event.competitionId) ?? null,
     }));
+  }
+
+  /**
+   * Competitions organized by the caller's club (#441), most recent first:
+   * `Competition.organizer` equals the club's name, ignoring case — the name a
+   * CLUB account stamps on the competitions it creates. Includes `layout` so
+   * the editor opened from this list doesn't wipe the seat plan on save.
+   * Empty for an account without an active CLUB role or without a club.
+   */
+  async findOrganizedByClub(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: userRolesClubNameSelect,
+    });
+    if (!user || !hasRole(user, UserRole.CLUB)) return [];
+
+    const clubNames = [
+      ...new Set(
+        [user.club?.name, user.clubName]
+          .map((name) => name?.trim())
+          .filter((name): name is string => !!name),
+      ),
+    ];
+    if (clubNames.length === 0) return [];
+
+    return this.prisma.competition.findMany({
+      where: {
+        OR: clubNames.map((name) => ({
+          organizer: { equals: name, mode: "insensitive" as const },
+        })),
+      },
+      select: COMPETITION_BASE_SELECT,
+      orderBy: { date: "desc" },
+      take: CLUB_COMPETITIONS_LIMIT,
+    });
   }
 }

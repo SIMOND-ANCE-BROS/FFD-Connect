@@ -22,6 +22,7 @@ import { AppText } from "../../../../components/AppText";
 import { FluidSegmentedTab } from "../../../../components/FluidSegmentedTab";
 import { AppTheme } from "../../../../context/ThemeContext";
 import { ScheduleItem } from "../../hooks/useClubCompetitionEditorLogic";
+import { NotSavedNotice } from "./NotSavedNotice";
 import { styles } from "./competition-editor.styles";
 
 interface Props {
@@ -154,6 +155,11 @@ export function CompetitionTimingTab({
             Organisez le planning par glisser-déposer.
           </AppText>
         </View>
+        <NotSavedNotice
+          theme={theme}
+          testID="competition-timing-not-saved"
+          message="Aperçu : le planning n'est pas encore enregistré avec la compétition."
+        />
 
         <DraggableFlatList
           data={schedule}

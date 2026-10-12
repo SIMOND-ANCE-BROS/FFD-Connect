@@ -203,6 +203,24 @@ export class CompetitionsController {
     return this.queryService.getPendingRegistrationsForClub(req.user.userId);
   }
 
+  @Get("club/mine")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Compétitions organisées par le club du compte",
+    description:
+      "Compétitions dont l'organisateur est le club du compte (nom comparé sans tenir compte de la casse), de la plus récente à la plus ancienne, 100 au plus. Vide pour un compte sans rôle club actif ou sans club.",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Compétitions du club (champs de base, plan de salle inclus)",
+    schema: { type: "array", items: { type: "object" } },
+  })
+  getClubCompetitions(@Request() req: RequestWithUser) {
+    return this.queryService.findOrganizedByClub(req.user.userId);
+  }
+
   @Post("register-member")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
