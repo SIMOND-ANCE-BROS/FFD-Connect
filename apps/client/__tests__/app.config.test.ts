@@ -5,6 +5,7 @@
  * config must not depend on that file existing — otherwise EAS rejects the
  * build with "Runtime version mismatch" and no OTA reaches any binary.
  */
+import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
@@ -332,6 +333,44 @@ describe("app.config.js — EAS Update code signing", () => {
     expect(pem).toMatch(/^-----BEGIN CERTIFICATE-----/);
     expect(pem).not.toMatch(/PRIVATE KEY/);
     expect(fs.readdirSync(path.dirname(certPath))).toEqual(["certificate.pem"]);
+  });
+});
+
+describe("app.config.js — OTA signing certificate pinning", () => {
+  // Rotation guard (docs/exploitation/signature-ota.md, « Rotation »): a new
+  // certificate needs a new keyid, a new native build per channel and the new
+  // private key in the EXPO_UPDATES_PRIVATE_KEY environment secrets. Update
+  // this pair only while following that checklist.
+  const PINNED = {
+    keyid: "main",
+    certificateSha256:
+      "29d4785755b46f6c61705ac3912ff9ac17e5fc9b7d7aa124980fb65ed302d9de",
+  };
+
+  beforeAll(() => {
+    jest.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("changes the keyid whenever the certificate changes", () => {
+    const { updates } = loadConfig({ EXPO_PUBLIC_APP_ENV: "production" });
+    const pem = fs.readFileSync(
+      path.resolve(__dirname, "..", updates.codeSigningCertificate ?? ""),
+      "utf8",
+    );
+    const der = Buffer.from(
+      pem.replace(/-----(BEGIN|END) CERTIFICATE-----|\s/g, ""),
+      "base64",
+    );
+    const sha256 = crypto.createHash("sha256").update(der).digest("hex");
+
+    expect({
+      keyid: updates.codeSigningMetadata?.keyid,
+      certificateSha256: sha256,
+    }).toEqual(PINNED);
   });
 });
 
