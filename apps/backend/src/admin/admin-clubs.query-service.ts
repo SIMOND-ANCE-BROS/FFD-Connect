@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, UserRole } from "@prisma/client";
 import { withRole } from "../auth/roles";
+import { listOrderBy, type SortOrder } from "../common/dto/sort-params";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -12,6 +13,7 @@ import { clubUsage } from "./admin-club-usage";
 import {
   AdminClubDetailDto,
   AdminClubsPageDto,
+  type AdminClubsSortField,
   ListAdminClubsQueryDto,
 } from "./dto/admin-clubs.dto";
 import { AdminClubOptionDto } from "./dto/admin-reference.dto";
@@ -20,6 +22,20 @@ const DEFAULT_TAKE = 50;
 /** Clubs are a small, federation-wide list; 1000 is a safety bound. */
 const MAX_CLUBS = 1000;
 const MAX_MEMBERS = 200;
+
+type ClubOrder = Prisma.ClubOrderByWithRelationInput;
+
+const CLUB_ORDERS: Record<AdminClubsSortField, (o: SortOrder) => ClubOrder[]> =
+  {
+    name: (o) => [{ name: o }, { id: o }],
+    registrationMode: (o) => [
+      { registrationMode: o },
+      { name: "asc" },
+      { id: o },
+    ],
+    createdAt: (o) => [{ createdAt: o }, { id: o }],
+  };
+const DEFAULT_CLUB_ORDER: ClubOrder[] = [{ name: "asc" }, { id: "asc" }];
 
 interface MemberCounts {
   memberCount: number;
@@ -45,7 +61,12 @@ export class AdminClubsQueryService {
       this.prisma.club.count({ where }),
       this.prisma.club.findMany({
         where,
-        orderBy: [{ name: "asc" }, { id: "asc" }],
+        orderBy: listOrderBy(
+          q.sortBy,
+          q.sortOrder,
+          CLUB_ORDERS,
+          DEFAULT_CLUB_ORDER,
+        ),
         skip,
         take,
         select: adminClubListSelect,

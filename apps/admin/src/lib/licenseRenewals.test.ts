@@ -9,16 +9,21 @@ import {
 
 describe('renewal URL params', () => {
   it('defaults to the « À traiter » tab, first page', () => {
-    expect(readRenewalParams(new URLSearchParams())).toEqual({ status: 'PENDING', page: 1 });
-    expect(readRenewalParams(new URLSearchParams('status=DRAFT&page=-1'))).toEqual({
+    expect(readRenewalParams(new URLSearchParams())).toEqual({
       status: 'PENDING',
       page: 1,
+      sort: null,
+    });
+    expect(readRenewalParams(new URLSearchParams('status=DRAFT&page=-1&sort=email'))).toEqual({
+      status: 'PENDING',
+      page: 1,
+      sort: null,
     });
   });
 
   it('reads and writes the decided tabs and the page', () => {
     const params = new URLSearchParams('status=REJECTED&page=3');
-    expect(readRenewalParams(params)).toEqual({ status: 'REJECTED', page: 3 });
+    expect(readRenewalParams(params)).toEqual({ status: 'REJECTED', page: 3, sort: null });
     expect(writeRenewalParams(params, { page: 4 }).toString()).toBe('status=REJECTED&page=4');
   });
 
@@ -27,12 +32,22 @@ describe('renewal URL params', () => {
     expect(writeRenewalParams(params, { status: 'PENDING' }).toString()).toBe('');
   });
 
+  it('keeps a column sort in the URL, from the first page', () => {
+    const params = new URLSearchParams('status=APPROVED&page=2');
+    const next = writeRenewalParams(params, { sort: { by: 'reviewedAt', order: 'desc' } });
+    expect(next.toString()).toBe('status=APPROVED&sort=reviewedAt&order=desc');
+    expect(readRenewalParams(next).sort).toEqual({ by: 'reviewedAt', order: 'desc' });
+  });
+
   it('builds the API filter of one page', () => {
-    expect(listFilter({ status: 'APPROVED', page: 2 }, 50)).toEqual({
+    expect(listFilter({ status: 'APPROVED', page: 2, sort: null }, 50)).toEqual({
       status: 'APPROVED',
       skip: 50,
       take: 50,
     });
+    expect(
+      listFilter({ status: 'PENDING', page: 1, sort: { by: 'name', order: 'asc' } }, 50),
+    ).toEqual({ status: 'PENDING', sortBy: 'name', sortOrder: 'asc', skip: 0, take: 50 });
   });
 });
 

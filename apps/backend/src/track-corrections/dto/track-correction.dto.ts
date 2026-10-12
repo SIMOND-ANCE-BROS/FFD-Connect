@@ -5,6 +5,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsEnum,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -15,6 +16,11 @@ import {
   MinLength,
 } from "class-validator";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
+import {
+  SortByParam,
+  SortOrderParam,
+  type SortOrder,
+} from "../../common/dto/sort-params";
 import { PASO_MAX_CLASHES } from "../../tracks/paso-clashes";
 
 /** Longueur maximale du commentaire libre (auteur ou administrateur). */
@@ -29,6 +35,26 @@ export const TRACK_CORRECTION_MAX_CLASHES = PASO_MAX_CLASHES;
 
 /** Timecode maximal d'un clash (secondes) : une musique de compétition dure ~2 min. */
 export const TRACK_CORRECTION_MAX_CLASH_SECONDS = 3600;
+
+/** Columns the moderation queue can be sorted on (#443); `track` = its title. */
+export const TRACK_CORRECTION_SORT_FIELDS = [
+  "createdAt",
+  "reason",
+  "track",
+] as const;
+export type TrackCorrectionSortField =
+  (typeof TRACK_CORRECTION_SORT_FIELDS)[number];
+
+/**
+ * Motifs qu'une proposition peut porter. `DELETE` (#446) est connu de la base
+ * et du client Prisma mais refusé tant que la révision qui en porte les règles
+ * n'est pas déployée : l'enum part seul, avant son producteur (cf. migration
+ * 20261012190000_track_correction_delete_reason).
+ */
+export const PROPOSABLE_REASONS: readonly TrackCorrectionReason[] =
+  Object.values(TrackCorrectionReason).filter(
+    (reason) => reason !== TrackCorrectionReason.DELETE,
+  );
 
 /** Bounds of the moderation queue search (track title or artist). */
 export const TRACK_CORRECTION_SEARCH_MIN_LENGTH = 2;
@@ -122,6 +148,9 @@ export class CreateTrackCorrectionDto extends TrackCorrectionValuesDto {
     description: "Métadonnée jugée incorrecte",
   })
   @IsEnum(TrackCorrectionReason)
+  @IsIn(PROPOSABLE_REASONS, {
+    message: "Ce motif n'est pas encore disponible.",
+  })
   reason!: TrackCorrectionReason;
 
   @ApiPropertyOptional({
@@ -214,4 +243,10 @@ export class ListTrackCorrectionsQueryDto extends PaginationParamsDto {
   @IsOptional()
   @IsUUID()
   trackId?: string;
+
+  @SortByParam(TRACK_CORRECTION_SORT_FIELDS)
+  sortBy?: TrackCorrectionSortField;
+
+  @SortOrderParam()
+  sortOrder?: SortOrder;
 }

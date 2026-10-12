@@ -6,6 +6,7 @@ import type {
   LicenseRenewalStatus,
 } from '../api/generated/types.gen';
 import type { LicenseRenewalsFilter } from '../api/queries';
+import { readSort, type SortState, sortQuery, writeSort } from './listSort';
 
 /** Tabs of the queue: a draft is never shown (the licensee has not submitted it). */
 export type RenewalTab = Extract<LicenseRenewalStatus, 'PENDING' | 'APPROVED' | 'REJECTED'>;
@@ -47,25 +48,37 @@ export const REJECTION_REASONS = Object.keys(REJECTION_REASON_LABELS) as Rejecti
 /** Same bound as the API. */
 export const COMMENT_MAX_LENGTH = 500;
 
+export type RenewalsSortField = NonNullable<LicenseRenewalsFilter['sortBy']>;
+export const RENEWALS_SORT_FIELDS = [
+  'name',
+  'licenseNumber',
+  'validUntil',
+  'submittedAt',
+  'reviewedAt',
+] as const satisfies readonly RenewalsSortField[];
+
 export interface RenewalsUrlState {
   status: RenewalTab;
   page: number;
+  /** Column sort (#443); null: oldest submission first. */
+  sort: SortState<RenewalsSortField> | null;
 }
 
 const isTab = (value: string | null): value is RenewalTab =>
   TAB_OPTIONS.some((o) => o.value === value);
 
-/** Filter kept in the URL: `?status=REJECTED&page=2` (defaults omitted). */
+/** Filter kept in the URL: `?status=REJECTED&sort=name&order=asc&page=2` (defaults omitted). */
 export function readRenewalParams(params: URLSearchParams): RenewalsUrlState {
   const status = params.get('status');
   const page = Number(params.get('page'));
   return {
     status: isTab(status) ? status : 'PENDING',
     page: Number.isInteger(page) && page > 1 ? page : 1,
+    sort: readSort(params, RENEWALS_SORT_FIELDS),
   };
 }
 
-/** New params with `patch` applied; a tab change goes back to the first page. */
+/** New params with `patch` applied; a tab or sort change goes back to the first page. */
 export function writeRenewalParams(
   current: URLSearchParams,
   patch: Partial<RenewalsUrlState>,
@@ -74,12 +87,14 @@ export function writeRenewalParams(
   if (patch.page === undefined) next.page = 1;
   const params = new URLSearchParams();
   if (next.status !== 'PENDING') params.set('status', next.status);
+  writeSort(params, next.sort);
   if (next.page > 1) params.set('page', String(next.page));
   return params;
 }
 
 export const listFilter = (state: RenewalsUrlState, take: number): LicenseRenewalsFilter => ({
   status: state.status,
+  ...sortQuery(state.sort),
   skip: (state.page - 1) * take,
   take,
 });

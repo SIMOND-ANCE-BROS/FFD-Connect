@@ -18,6 +18,11 @@ import {
 } from "class-validator";
 import { AdminPageMetaDto } from "../../admin/dto/admin-audit.dto";
 import {
+  SortByParam,
+  SortOrderParam,
+  type SortOrder,
+} from "../../common/dto/sort-params";
+import {
   LICENSE_NUMBER_MAX_LENGTH,
   LICENSE_NUMBER_PATTERN,
 } from "../license-number.util";
@@ -64,6 +69,17 @@ const trimToUndefined = ({ value }: { value: unknown }): unknown => {
   return trimmed === "" ? undefined : trimmed;
 };
 
+/** Columns the renewal queue can be sorted on (#443); `name` = the licensee. */
+export const ADMIN_RENEWALS_SORT_FIELDS = [
+  "name",
+  "licenseNumber",
+  "validUntil",
+  "submittedAt",
+  "reviewedAt",
+] as const;
+export type AdminRenewalsSortField =
+  (typeof ADMIN_RENEWALS_SORT_FIELDS)[number];
+
 export class ListAdminLicenseRenewalsQueryDto {
   @ApiPropertyOptional({
     enum: LicenseRenewalStatus,
@@ -93,6 +109,12 @@ export class ListAdminLicenseRenewalsQueryDto {
   @Min(1)
   @Max(ADMIN_RENEWAL_PAGE_MAX)
   take?: number;
+
+  @SortByParam(ADMIN_RENEWALS_SORT_FIELDS)
+  sortBy?: AdminRenewalsSortField;
+
+  @SortOrderParam()
+  sortOrder?: SortOrder;
 }
 
 export class ApproveLicenseRenewalDto {

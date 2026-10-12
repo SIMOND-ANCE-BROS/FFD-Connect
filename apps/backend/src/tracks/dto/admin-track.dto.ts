@@ -11,10 +11,26 @@ import {
 } from "class-validator";
 import { AdminPageMetaDto } from "../../admin/dto/admin-audit.dto";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
+import {
+  SortByParam,
+  SortOrderParam,
+  type SortOrder,
+} from "../../common/dto/sort-params";
 
 /** Bounds of the catalogue search (track title or artist). */
 export const ADMIN_TRACK_SEARCH_MIN_LENGTH = 2;
 export const ADMIN_TRACK_SEARCH_MAX_LENGTH = 100;
+
+/** Columns the back-office catalogue can be sorted on (#443). */
+export const ADMIN_TRACKS_SORT_FIELDS = [
+  "title",
+  "artist",
+  "style",
+  "bpm",
+  "status",
+  "createdAt",
+] as const;
+export type AdminTracksSortField = (typeof ADMIN_TRACKS_SORT_FIELDS)[number];
 
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === "string" ? value.trim() : value;
@@ -90,6 +106,12 @@ export class ListAdminTracksQueryDto extends PaginationParamsDto {
   @Transform(toFlag)
   @IsBoolean()
   ambiance?: boolean;
+
+  @SortByParam(ADMIN_TRACKS_SORT_FIELDS)
+  sortBy?: AdminTracksSortField;
+
+  @SortOrderParam()
+  sortOrder?: SortOrder;
 }
 
 /** One track as the back-office sees it (real title, moderation flags, status). */

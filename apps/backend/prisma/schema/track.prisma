@@ -42,12 +42,18 @@ model Track {
 
   @@index([submittedById])
   @@index([sourceKey, status])
+  @@index([createdAt]) // back-office : catalogue trié par date d'ajout (défaut)
+  @@index([title]) // back-office : tri par titre
 }
 
 /// Motif d'une proposition de correction : la métadonnée que l'utilisateur
 /// estime incorrecte. Mêmes valeurs que `ReportTrackReason` (DTO historique
 /// de POST /tracks/:id/report), pour que les anciens signalements atterrissent
 /// dans la même file de modération.
+///
+/// `DELETE` : proposition de retirer la musique de la bibliothèque (doublon,
+/// mauvais fichier…), sans valeur proposée ; jamais accepté par la route
+/// historique de signalement (#446).
 enum TrackCorrectionReason {
   TITLE
   ARTIST
@@ -55,6 +61,7 @@ enum TrackCorrectionReason {
   MPM
   PASO_CLASH
   OTHER
+  DELETE
 }
 
 /// Cycle de vie d'une proposition de correction : en attente de décision d'un

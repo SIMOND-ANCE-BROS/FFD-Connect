@@ -13,7 +13,8 @@ type BreakerKey =
   | "fcm"
   | "azure-blob"
   | "azure-blob-write"
-  | "ffd-documents";
+  | "ffd-documents"
+  | "email";
 
 interface BreakerConfig {
   errorThresholdPercentage: number;
@@ -78,6 +79,14 @@ const BREAKER_CONFIGS: Record<BreakerKey, BreakerConfig> = {
     errorThresholdPercentage: 50,
     timeout: 25_000,
     resetTimeout: 60_000,
+    volumeThreshold: 5,
+  },
+  // Transactional email (Resend). Best-effort notices only: the caller
+  // degrades gracefully, so a mail outage never fails the business write.
+  email: {
+    errorThresholdPercentage: 50,
+    timeout: 10_000,
+    resetTimeout: 30_000,
     volumeThreshold: 5,
   },
 };

@@ -2040,6 +2040,26 @@
               "type": "string",
               "enum": ["active", "disabled"]
             }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": ["name", "registrationMode", "createdAt"]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            }
           }
         ],
         "responses": {
@@ -3460,6 +3480,58 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "action",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "USER_UPDATE",
+                "CLUB_ACCOUNT_CREATE",
+                "INVITATION_RESEND",
+                "USER_CREATE",
+                "USER_DISABLE",
+                "USER_ENABLE",
+                "USER_DELETE",
+                "USER_IDENTIFIERS_UPDATE",
+                "CLUB_CREATE",
+                "CLUB_UPDATE",
+                "CLUB_DISABLE",
+                "CLUB_ENABLE",
+                "CLUB_DELETE",
+                "TRACK_CORRECTION_APPROVE",
+                "TRACK_CORRECTION_REJECT",
+                "TRACK_CREATE",
+                "TRACK_UPDATE",
+                "TRACK_DELETE",
+                "LICENSE_RENEWAL_VIEW",
+                "LICENSE_RENEWAL_DOCUMENT_VIEW",
+                "LICENSE_RENEWAL_APPROVE",
+                "LICENSE_RENEWAL_REJECT"
+              ]
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": ["createdAt"]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            }
           }
         ],
         "responses": {
@@ -3742,6 +3814,35 @@
             "description": "Inclus, AAAA-MM-JJ",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "name",
+                "email",
+                "role",
+                "club",
+                "category",
+                "ageGroup",
+                "createdAt",
+                "lastLoginAt"
+              ]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
             }
           }
         ],
@@ -4711,6 +4812,157 @@
           }
         ],
         "summary": "Supprimer définitivement un utilisateur (RGPD)",
+        "tags": ["admin"]
+      }
+    },
+    "/admin/users/{id}/identifiers": {
+      "patch": {
+        "description": "Un changement d'email ferme les sessions du compte, invalide les liens de mot de passe en attente et prévient l'ancienne adresse. Le numéro est modifié sur la licence rattachée.",
+        "operationId": "AdminController_updateUserIdentifiers",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAdminUserIdentifiersDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserIdentifiersUpdatedDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Format invalide, champ manquant, ou compte sans licence"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Son propre compte, ou compte de validation App Store / Google Play"
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Email ou numéro de licence déjà utilisé"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Modifier l'email de connexion et / ou le numéro de licence d'un utilisateur",
         "tags": ["admin"]
       }
     },
@@ -8498,6 +8750,26 @@
             "schema": {
               "type": "boolean"
             }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": ["title", "artist", "style", "bpm", "status", "createdAt"]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            }
           }
         ],
         "responses": {
@@ -9555,6 +9827,26 @@
             "schema": {
               "format": "uuid",
               "type": "string"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": ["createdAt", "reason", "track"]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
             }
           }
         ],
@@ -15807,6 +16099,209 @@
           }
         ],
         "summary": "Inscriptions en attente de validation (club)",
+        "tags": ["competitions"]
+      }
+    },
+    "/competitions/club/mine": {
+      "get": {
+        "description": "Compétitions dont l'organisateur est le club du compte (nom comparé sans tenir compte de la casse), de la plus récente à la plus ancienne, 100 au plus. Vide pour un compte sans rôle club actif ou sans club.",
+        "operationId": "CompetitionsController_getClubCompetitions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Compétitions du club (champs de base, plan de salle inclus)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Compétitions organisées par le club du compte",
         "tags": ["competitions"]
       }
     },
@@ -22385,6 +22880,32 @@
               "default": 20,
               "type": "number"
             }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "name",
+                "licenseNumber",
+                "validUntil",
+                "submittedAt",
+                "reviewedAt"
+              ]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            }
           }
         ],
         "responses": {
@@ -23435,7 +23956,7 @@
     },
     "/payment/checkout": {
       "post": {
-        "description": "Initie un paiement via HelloAsso pour une réservation de place en compétition. Le montant est celui du tarif de la place (`priceCents` de l'élément du plan), jamais celui envoyé par le client. La place est retenue 15 minutes ; une place ne peut avoir qu'une réservation active (409 si elle est déjà prise).",
+        "description": "Initie un paiement via HelloAsso pour UNE place d'un élément du plan (vente à la place). Élément numéroté (table, gradin) : `seatIndex` désigne la place (absent : première place libre). Placement libre (autre élément) : pas de `seatIndex`, une place parmi la capacité. Le montant est celui du tarif d'une place (`priceCents` de l'élément), jamais celui envoyé par le client. La place est retenue 50 minutes. 409 si elle est déjà prise, si l'élément est complet ou si l'utilisateur a déjà 4 réservations en attente pour la compétition. Un nouveau checkout sur sa propre place en attente reprend le paiement (`resumed: true`).",
         "operationId": "PaymentController_createCheckout",
         "parameters": [],
         "requestBody": {
@@ -23450,10 +23971,17 @@
         },
         "responses": {
           "201": {
-            "description": "Checkout intent créé"
+            "description": "Checkout intent créé ou repris",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutResponseDto"
+                }
+              }
+            }
           },
           "400": {
-            "description": "Club sans HelloAsso, place sans tarif ou données invalides"
+            "description": "Club sans HelloAsso, place sans tarif, place inexistante ou verrouillée, données invalides"
           },
           "401": {
             "description": "Non authentifié"
@@ -23507,28 +24035,7 @@
             }
           },
           "409": {
-            "description": "Conflit - La ressource existe déjà",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 409
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Resource already exists"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Conflict"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Place déjà réservée, élément complet, 4 réservations en attente, ou paiement déjà en cours"
           },
           "429": {
             "description": "Trop de requêtes - Rate limit dépassé",
@@ -23577,6 +24084,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "HelloAsso injoignable lors de la reprise d'un paiement"
           }
         },
         "security": [
@@ -24281,6 +24791,7 @@
               "USER_DISABLE",
               "USER_ENABLE",
               "USER_DELETE",
+              "USER_IDENTIFIERS_UPDATE",
               "CLUB_CREATE",
               "CLUB_UPDATE",
               "CLUB_DISABLE",
@@ -24414,9 +24925,18 @@
             "enum": ["ACTIVE", "EXPIRED", null],
             "nullable": true
           },
+          "licenseNumber": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "lastLoginAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
           },
           "disabledAt": {
             "format": "date-time",
@@ -24441,7 +24961,9 @@
           "category",
           "ageGroup",
           "licenseStatus",
+          "licenseNumber",
           "createdAt",
+          "lastLoginAt",
           "disabledAt",
           "isStoreReview"
         ]
@@ -24531,9 +25053,18 @@
             "enum": ["ACTIVE", "EXPIRED", null],
             "nullable": true
           },
+          "licenseNumber": {
+            "type": "string",
+            "nullable": true
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "lastLoginAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
           },
           "disabledAt": {
             "format": "date-time",
@@ -24592,16 +25123,7 @@
             "type": "string",
             "nullable": true
           },
-          "licenseNumber": {
-            "type": "string",
-            "nullable": true
-          },
           "licenseValidUntil": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "lastLoginAt": {
             "format": "date-time",
             "type": "string",
             "nullable": true
@@ -24634,7 +25156,9 @@
           "category",
           "ageGroup",
           "licenseStatus",
+          "licenseNumber",
           "createdAt",
+          "lastLoginAt",
           "disabledAt",
           "isStoreReview",
           "birthDate",
@@ -24646,9 +25170,7 @@
           "competitionLevelStandard",
           "wdsfMin",
           "wdsfExpiresOn",
-          "licenseNumber",
           "licenseValidUntil",
-          "lastLoginAt",
           "clubDisabledAt",
           "createdByAdmin",
           "updatedAt"
@@ -24768,6 +25290,36 @@
             }
           }
         }
+      },
+      "UpdateAdminUserIdentifiersDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Nouvel email de connexion (normalisé en minuscules, sans espaces). Ferme les sessions du compte et prévient l'ancienne adresse.",
+            "maxLength": 254
+          },
+          "licenseNumber": {
+            "type": "string",
+            "description": "Nouveau numéro de la licence rattachée au compte (le compte doit déjà avoir une licence).",
+            "maxLength": 32,
+            "example": "FFD-123456"
+          }
+        }
+      },
+      "AdminUserIdentifiersUpdatedDto": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/AdminUserDetailDto"
+          },
+          "previousEmailNotified": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Email changé : true si l'ancienne adresse a été prévenue, false si l'envoi a échoué. null si l'email n'a pas changé."
+          }
+        },
+        "required": ["user", "previousEmailNotified"]
       },
       "DeleteAdminUserDto": {
         "type": "object",
@@ -25916,7 +26468,15 @@
       },
       "TrackCorrectionReason": {
         "type": "string",
-        "enum": ["TITLE", "ARTIST", "DANCE", "MPM", "PASO_CLASH", "OTHER"],
+        "enum": [
+          "TITLE",
+          "ARTIST",
+          "DANCE",
+          "MPM",
+          "PASO_CLASH",
+          "OTHER",
+          "DELETE"
+        ],
         "description": "Métadonnée jugée incorrecte"
       },
       "CreateTrackCorrectionDto": {
@@ -26875,7 +27435,8 @@
           },
           "majorSubType": {
             "type": "string",
-            "description": "Requis si competitionType=MAJEURE."
+            "description": "Requis si competitionType=MAJEURE. `null` l'efface (compétition passée à un autre type).",
+            "nullable": true
           },
           "type": {
             "type": "string",
@@ -27369,9 +27930,17 @@
             "type": "string",
             "example": "item-uuid"
           },
+          "seatIndex": {
+            "type": "number",
+            "example": 4,
+            "minimum": 0,
+            "maximum": 999,
+            "description": "Indice de la place sur l'élément numéroté (table : 0 à capacité-1 ; gradin : rang × colonnes + colonne). Absent : le serveur attribue la première place libre. Interdit sur un élément en placement libre."
+          },
           "seatLabel": {
             "type": "string",
-            "example": "Rang A, Place 5"
+            "example": "Rang A, Place 5",
+            "description": "Libellé d'affichage, jamais utilisé pour identifier la place."
           },
           "amount": {
             "type": "number",
@@ -27381,6 +27950,48 @@
           }
         },
         "required": ["competitionId", "itemId"]
+      },
+      "CheckoutResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 12345,
+            "description": "Id HelloAsso du checkout"
+          },
+          "redirectUrl": {
+            "type": "string",
+            "example": "https://www.helloasso.com/...",
+            "description": "Page de paiement HelloAsso (valable 15 minutes après sa création)."
+          },
+          "bookingId": {
+            "type": "string",
+            "example": "booking-uuid"
+          },
+          "seatIndex": {
+            "type": "number",
+            "example": 4,
+            "nullable": true,
+            "description": "Place attribuée (élément numéroté) ; null en placement libre."
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Fin de la retenue de la place si le paiement n'aboutit pas."
+          },
+          "resumed": {
+            "type": "boolean",
+            "description": "true : reprise d'une réservation en attente de l'utilisateur sur cette place."
+          }
+        },
+        "required": [
+          "id",
+          "redirectUrl",
+          "bookingId",
+          "seatIndex",
+          "expiresAt",
+          "resumed"
+        ]
       },
       "WebhookPaymentDto": {
         "type": "object",

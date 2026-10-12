@@ -1,9 +1,11 @@
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { openColumnFilter, sortButton } from '../test/dataTable';
+import { pickOption, renderWithProviders, setupUser } from '../test/render';
 import { AuditLogPage } from './AuditLogPage';
 
 describe('AuditLogPage', () => {
@@ -294,5 +296,45 @@ describe('AuditLogPage', () => {
     );
     expect(screen.getByText('31/08/2027')).toBeInTheDocument();
     expect(screen.queryByText(/2027-08-31T/)).toBeNull();
+  });
+
+  it('filters on the action and the target type, sorts on the date, all in the URL', async () => {
+    const user = setupUser();
+    const spy = vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue({
+      data: { data: [], meta: { total: 0, skip: 0, take: 50, hasMore: false } },
+      error: undefined,
+    } as never);
+    function Probe() {
+      const { pathname, search } = useLocation();
+      return <p data-testid="location">{pathname + search}</p>;
+    }
+    renderWithProviders(
+      <>
+        <AuditLogPage />
+        <Probe />
+      </>,
+      { route: '/audit?target=CLUB' },
+    );
+    expect(await screen.findByText('Aucune entrée')).toBeInTheDocument();
+    expect(spy).toHaveBeenLastCalledWith({ query: { targetType: 'CLUB', skip: 0, take: 50 } });
+    await openColumnFilter(user, 'Action');
+    await pickOption(user, screen.getByRole('textbox', { name: 'Action' }), 'Suppression de club');
+    await waitFor(() =>
+      expect(spy).toHaveBeenLastCalledWith({
+        query: { action: 'CLUB_DELETE', targetType: 'CLUB', skip: 0, take: 50 },
+      }),
+    );
+    await user.click(sortButton('Date'));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/audit?action=CLUB_DELETE&target=CLUB&sort=createdAt&order=asc',
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Réinitialiser les filtres (2)' }));
+    await waitFor(() =>
+      expect(spy).toHaveBeenLastCalledWith({
+        query: { sortBy: 'createdAt', sortOrder: 'asc', skip: 0, take: 50 },
+      }),
+    );
   });
 });

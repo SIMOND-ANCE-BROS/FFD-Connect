@@ -4,6 +4,7 @@ import { useLocation } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { fill, renderWithProviders, setupUser } from '../test/render';
+import { columnFilterButton, openColumnFilter, sortButton } from '../test/dataTable';
 import { mockPhoneViewport } from '../test/viewport';
 import { UsersPage } from './UsersPage';
 
@@ -49,15 +50,17 @@ const page = (n: number) => ({
 });
 
 function LocationProbe() {
-  return <p data-testid="location">{useLocation().pathname}</p>;
+  const { pathname, search } = useLocation();
+  return <p data-testid="location">{pathname + search}</p>;
 }
 
-function renderPage() {
+function renderPage(route = '/') {
   return renderWithProviders(
     <>
       <UsersPage />
       <LocationProbe />
     </>,
+    { route },
   );
 }
 
@@ -88,6 +91,7 @@ describe('UsersPage', () => {
     renderPage();
     const link = await screen.findByRole('link', { name: 'Martin Jeanne' });
     expect(screen.getByRole('textbox', { name: 'Rechercher un utilisateur' })).toBeInTheDocument();
+    await openColumnFilter(user, 'Inscription');
     expect(screen.getByLabelText('Date d’inscription')).toBeInTheDocument();
     link.focus();
     await user.keyboard('{Enter}');
@@ -167,12 +171,15 @@ describe('UsersPage', () => {
     const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(1) as never);
     renderPage();
     await screen.findByText('jeanne@x.fr');
+    await openColumnFilter(user, 'Compte');
     await user.click(screen.getByText('Désactivés'));
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({
         query: expect.objectContaining({ status: 'disabled', skip: 0 }),
       }),
     );
+    expect(screen.getByTestId('location')).toHaveTextContent('/?status=disabled');
+    expect(columnFilterButton('Compte')).toHaveAccessibleName('Filtrer : Compte (filtre actif)');
   });
 
   describe('on a phone', () => {
@@ -211,7 +218,7 @@ describe('UsersPage', () => {
       // The search is always visible: it never counts as a folded filter.
       await fill(user, screen.getByPlaceholderText(/nom, prénom ou email/i), 'mar');
       expect(screen.getByRole('button', { name: 'Filtres (1)' })).toBeInTheDocument();
-      await user.click(screen.getByRole('button', { name: 'Réinitialiser' }));
+      await user.click(screen.getByRole('button', { name: 'Réinitialiser les filtres (1)' }));
       expect(await screen.findByRole('button', { name: 'Filtres' })).toBeInTheDocument();
       await waitFor(() =>
         expect(spy).toHaveBeenLastCalledWith({
@@ -221,14 +228,79 @@ describe('UsersPage', () => {
     });
   });
 
-  it('shows every filter at once on a desktop, without a « Filtres » button', async () => {
+  it('on a desktop, puts the filters in the column headers, without a « Filtres » button', async () => {
     vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(2) as never);
     renderPage();
     await screen.findByText('jeanne@x.fr');
     expect(screen.queryByRole('button', { name: /^Filtres/ })).toBeNull();
+    expect(screen.queryByPlaceholderText('Rôle')).toBeNull();
+    await openColumnFilter(user, 'Rôle principal');
     expect(screen.getByPlaceholderText('Rôle')).toBeVisible();
-    expect(screen.getByText('Désactivés')).toBeInTheDocument();
     expect(screen.getByRole('table')).toBeInTheDocument();
+  });
+
+  it('restores filters, sort and page from the URL and sends them to the API', async () => {
+    const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(120) as never);
+    const club = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+    renderPage(
+      `/?q=mar&role=CLUB&club=${club}&category=Latin&status=active&from=2026-09-01&to=2026-09-30&sort=name&order=desc&page=2`,
+    );
+    await screen.findByText('jeanne@x.fr');
+    expect(spy).toHaveBeenCalledWith({
+      query: {
+        search: 'mar',
+        role: 'CLUB',
+        clubId: club,
+        category: 'Latin',
+        status: 'active',
+        createdFrom: '2026-09-01',
+        createdTo: '2026-09-30',
+        sortBy: 'name',
+        sortOrder: 'desc',
+        skip: 50,
+        take: 50,
+      },
+    });
+    expect(screen.getByRole('textbox', { name: 'Rechercher un utilisateur' })).toHaveValue('mar');
+    expect(screen.getByRole('columnheader', { name: 'Nom' })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
+    await user.click(screen.getByRole('button', { name: 'Réinitialiser les filtres (5)' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent('/?q=mar&sort=name&order=desc'),
+    );
+  });
+
+  it('sorts the whole list from a header, from the first page', async () => {
+    const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(120) as never);
+    renderPage('/?page=3');
+    await screen.findByText('jeanne@x.fr');
+    await user.click(sortButton('Club'));
+    await waitFor(() =>
+      expect(spy).toHaveBeenLastCalledWith({
+        query: { sortBy: 'club', sortOrder: 'asc', skip: 0, take: 50 },
+      }),
+    );
+    expect(screen.getByTestId('location')).toHaveTextContent('/?sort=club&order=asc');
+  });
+
+  it('offers the licence number and the last login as optional columns', async () => {
+    const res = page(1);
+    res.data.data[0] = {
+      ...res.data.data[0],
+      licenseNumber: 'FFD-42',
+      lastLoginAt: '2026-10-01T08:00:00.000Z',
+    } as never;
+    vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(res as never);
+    renderPage();
+    await screen.findByText('jeanne@x.fr');
+    expect(screen.queryByText('FFD-42')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Colonnes' }));
+    await user.click(screen.getByRole('checkbox', { name: 'N° de licence' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Dernière connexion' }));
+    expect(screen.getByText('FFD-42')).toBeInTheDocument();
+    expect(screen.getByText('01/10/2026')).toBeInTheDocument();
   });
 
   it('shows a badge per extra role', async () => {

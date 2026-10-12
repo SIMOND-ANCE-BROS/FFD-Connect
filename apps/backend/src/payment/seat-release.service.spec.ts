@@ -25,6 +25,8 @@ describe("SeatReleaseService (#403)", () => {
     status: "CONFIRMED",
     paymentId: "4242",
     expectedAmountCents: 1500,
+    supersededPaymentIds: [] as string[],
+    refundOwedPaymentIds: [] as string[],
   };
   const refundNotification: WebhookPayloadDto = {
     eventType: "Payment",
@@ -274,5 +276,147 @@ describe("SeatReleaseService (#403)", () => {
     await expect(
       service.handlePaymentNotification(refundNotification),
     ).rejects.toThrow(ServiceUnavailableException);
+  });
+  describe("refund owed (#428)", () => {
+    const refundOwedPaymentIds = ["4242"];
+
+    it.each([
+      ["Refunded", "HELLOASSO_REFUNDED"],
+      ["Contested", "HELLOASSO_CONTESTED"],
+    ])(
+      "settles the refund owed on an EXPIRED booking when HelloAsso says %s",
+      async (state, reason) => {
+        findUnique.mockResolvedValue({
+          ...confirmed,
+          status: "EXPIRED",
+          refundOwedPaymentIds,
+        });
+        getPayment.mockResolvedValue(
+          payment(state, { id: 98765, checkoutIntentId: 4242 }),
+        );
+
+        await service.handlePaymentNotification({
+          ...refundNotification,
+          data: { id: 555, state },
+        });
+
+        expect(updateMany).toHaveBeenCalledTimes(1);
+        expect(updateMany).toHaveBeenCalledWith({
+          where: {
+            id: BOOKING_ID,
+            refundOwedPaymentIds: { equals: ["4242"] },
+          },
+          data: {
+            refundOwedPaymentIds: { set: [] },
+            refundOwedAt: null,
+            cancelReason: reason,
+          },
+        });
+        expect(Sentry.captureMessage).toHaveBeenCalledWith(
+          "HelloAsso refund owed settled",
+          expect.objectContaining({
+            tags: { payment: "helloasso-refund-settled", reason },
+          }),
+        );
+      },
+    );
+
+    it("keeps a confirmed seat when the refunded payment is its duplicate", async () => {
+      findUnique.mockResolvedValue({
+        ...confirmed,
+        paymentId: "5000",
+        supersededPaymentIds: ["4242"],
+        refundOwedPaymentIds,
+      });
+
+      await service.handlePaymentNotification(refundNotification);
+
+      expect(updateMany).toHaveBeenCalledTimes(1);
+      expect(updateMany).toHaveBeenCalledWith({
+        where: {
+          id: BOOKING_ID,
+          refundOwedPaymentIds: { equals: ["4242"] },
+        },
+        data: { refundOwedPaymentIds: { set: [] }, refundOwedAt: null },
+      });
+    });
+
+    it("ignores the refund of an earlier intent when no refund was owed", async () => {
+      findUnique.mockResolvedValue({
+        ...confirmed,
+        paymentId: "5000",
+        supersededPaymentIds: ["4242"],
+      });
+
+      await service.handlePaymentNotification(refundNotification);
+
+      expect(updateMany).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it("keeps the other refunds owed and their marker", async () => {
+      findUnique.mockResolvedValue({
+        ...confirmed,
+        status: "EXPIRED",
+        supersededPaymentIds: ["4300"],
+        refundOwedPaymentIds: ["4300", "4242"],
+      });
+
+      await service.handlePaymentNotification(refundNotification);
+
+      expect(updateMany).toHaveBeenCalledWith({
+        where: {
+          id: BOOKING_ID,
+          refundOwedPaymentIds: { equals: ["4300", "4242"] },
+        },
+        data: {
+          refundOwedPaymentIds: { set: ["4300"] },
+          cancelReason: "HELLOASSO_REFUNDED",
+        },
+      });
+    });
+
+    it("ignores the refund of a payment that was not owed back", async () => {
+      findUnique.mockResolvedValue({
+        ...confirmed,
+        status: "EXPIRED",
+        supersededPaymentIds: ["4300"],
+        refundOwedPaymentIds: ["4300"],
+      });
+
+      await service.handlePaymentNotification(refundNotification);
+
+      expect(updateMany).not.toHaveBeenCalled();
+    });
+
+    it("asks for a redelivery when the refunds owed changed meanwhile", async () => {
+      findUnique.mockResolvedValue({
+        ...confirmed,
+        status: "EXPIRED",
+        refundOwedPaymentIds,
+      });
+      updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.handlePaymentNotification(refundNotification),
+      ).rejects.toThrow(ServiceUnavailableException);
+
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it("still rejects a payment of an intent that is not the booking's", async () => {
+      findUnique.mockResolvedValue({
+        ...confirmed,
+        status: "EXPIRED",
+        refundOwedPaymentIds,
+      });
+      getPayment.mockResolvedValue(
+        payment("Refunded", { id: 98765, checkoutIntentId: 1 }),
+      );
+
+      await service.handlePaymentNotification(refundNotification);
+
+      expect(updateMany).not.toHaveBeenCalled();
+    });
   });
 });

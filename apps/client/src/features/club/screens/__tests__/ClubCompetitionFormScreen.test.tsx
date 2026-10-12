@@ -94,6 +94,7 @@ jest.mock("lucide-react-native", () => {
     Copy: MockIcon,
     Edit2: MockIcon,
     GripVertical: MockIcon,
+    Info: MockIcon,
     Plus: MockIcon,
     Trash2: MockIcon,
     Users: MockIcon,
@@ -187,17 +188,22 @@ describe("ClubCompetitionFormScreen", () => {
       />,
     );
 
-    // Initial tab is Général
+    // Initial tab is Général, offering only the API statuses (#417)
     expect(getByText("Informations Générales")).toBeTruthy();
+    expect(getByText("À venir")).toBeTruthy();
+    expect(queryByText("Brouillon")).toBeNull();
 
     // Switch to Épreuves (Tab value EVENTS)
     await fireEvent.press(getByTestId("tab-EVENTS"));
     expect(getByText("Ajouter une épreuve")).toBeTruthy();
     expect(queryByText("Informations Générales")).toBeNull();
+    // Not persisted by the API yet: the tab says so (#417)
+    expect(getByTestId("competition-events-not-saved")).toBeTruthy();
 
     // Switch to Planning (Tab value TIMING)
     await fireEvent.press(getByTestId("tab-TIMING"));
     expect(getByText("Ajouter un créneau")).toBeTruthy();
+    expect(getByTestId("competition-timing-not-saved")).toBeTruthy();
   });
 
   it("a11y (#386): text inputs are announced with French labels", async () => {

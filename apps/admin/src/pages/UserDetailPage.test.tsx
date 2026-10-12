@@ -227,6 +227,32 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
     expect(screen.queryByRole('button', { name: /renvoyer l'invitation/i })).toBeNull();
   });
 
+  it('edits the email from its own modal and shows the updated card', async () => {
+    const patch = vi.spyOn(sdk, 'adminControllerUpdateUserIdentifiers').mockResolvedValue({
+      data: { user: { ...detail, email: 'new@x.fr' }, previousEmailNotified: true },
+      error: undefined,
+    } as never);
+    renderPage();
+    await user.click(
+      await screen.findByRole('button', { name: /modifier l'email ou la licence/i }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    await fill(user, within(dialog).getByLabelText(/Email de connexion/), 'new@x.fr');
+    await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
+    expect(patch).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { email: 'new@x.fr' } });
+    expect(await screen.findByText('Email : new@x.fr')).toBeInTheDocument();
+  });
+
+  it("does not offer to edit the admin's own identifiers", async () => {
+    vi.spyOn(sdk, 'adminControllerGetUser').mockResolvedValue({
+      data: { ...detail, id: 'admin-1', role: 'ADMIN' },
+      error: undefined,
+    } as never);
+    renderPage();
+    expect(await screen.findByText(/Dernière connexion/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /modifier l'email ou la licence/i })).toBeNull();
+  });
+
   it('shows an unrecorded last login as "inconnue", not "jamais"', async () => {
     renderPage();
     expect(await screen.findByText(/Dernière connexion :\s*inconnue/)).toBeInTheDocument();

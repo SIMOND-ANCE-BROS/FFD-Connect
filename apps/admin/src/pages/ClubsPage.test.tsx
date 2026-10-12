@@ -1,10 +1,10 @@
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { screen, waitFor, within } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { useLocation } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { openColumnFilter, sortButton } from '../test/dataTable';
+import { renderWithProviders, setupUser } from '../test/render';
 import { ClubsPage } from './ClubsPage';
 
 const page = {
@@ -36,22 +36,28 @@ const page = {
   error: undefined,
 };
 
-function renderPage() {
-  return render(
-    <MantineProvider>
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter>
-          <ClubsPage />
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+function LocationProbe() {
+  const { pathname, search } = useLocation();
+  return <p data-testid="location">{pathname + search}</p>;
+}
+
+function renderPage(route = '/clubs') {
+  return renderWithProviders(
+    <>
+      <ClubsPage />
+      <LocationProbe />
+    </>,
+    { route },
   );
 }
 
+let userEvent: UserEvent;
+
 describe('ClubsPage', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    userEvent = setupUser();
+  });
 
   it('lists clubs with their counts, HelloAsso badge, mode and status', async () => {
     vi.spyOn(sdk, 'adminControllerListClubs').mockResolvedValue(page as never);
@@ -85,6 +91,7 @@ describe('ClubsPage', () => {
     renderPage();
     await screen.findByRole('link', { name: 'Club A' });
     await userEvent.type(screen.getByPlaceholderText(/nom du club/i), 'cl');
+    await openColumnFilter(userEvent, 'Statut');
     await userEvent.click(screen.getByText('Désactivés'));
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({
@@ -116,11 +123,29 @@ describe('ClubsPage', () => {
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({ query: expect.objectContaining({ skip: 50 }) }),
     );
+    await openColumnFilter(userEvent, 'Statut');
     await userEvent.click(screen.getByText('Désactivés'));
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({
         query: expect.objectContaining({ status: 'disabled', skip: 0 }),
       }),
+    );
+    expect(screen.getByTestId('location')).toHaveTextContent('/clubs?status=disabled');
+  });
+
+  it('sorts on the creation date, kept in the URL', async () => {
+    const spy = vi.spyOn(sdk, 'adminControllerListClubs').mockResolvedValue(page as never);
+    renderPage('/clubs?q=club');
+    await screen.findByRole('link', { name: 'Club A' });
+    expect(screen.getByPlaceholderText(/nom du club/i)).toHaveValue('club');
+    await userEvent.click(sortButton('Création'));
+    await waitFor(() =>
+      expect(spy).toHaveBeenLastCalledWith({
+        query: { search: 'club', sortBy: 'createdAt', sortOrder: 'asc', skip: 0, take: 50 },
+      }),
+    );
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/clubs?q=club&sort=createdAt&order=asc',
     );
   });
 

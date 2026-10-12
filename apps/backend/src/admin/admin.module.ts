@@ -11,6 +11,7 @@ import { AdminStatsController } from "./admin-stats.controller";
 import { AdminReferenceService } from "./admin-reference.service";
 import { AdminStatsQueryService } from "./admin-stats.query-service";
 import { AdminUserAccountsService } from "./admin-user-accounts.service";
+import { AdminUserIdentifiersService } from "./admin-user-identifiers.service";
 
 @Module({
   imports: [AdminAuditModule, AuthModule, UsersModule],
@@ -21,6 +22,7 @@ import { AdminUserAccountsService } from "./admin-user-accounts.service";
     AdminReferenceService,
     AdminStatsQueryService,
     AdminUserAccountsService,
+    AdminUserIdentifiersService,
     AdminUsersQueryService,
     AdminUsersService,
   ],

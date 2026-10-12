@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { listOrderBy, type SortOrder } from "../common/dto/sort-params";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { adminAuditLogSelect } from "../utils/prisma-selects";
@@ -8,11 +9,21 @@ import {
   AuditEntry,
   AuditLogEntryDto,
   AuditLogPageDto,
+  type AuditSortField,
   AuditTargetType,
   ListAuditLogQueryDto,
 } from "./dto/admin-audit.dto";
 
 const DEFAULT_TAKE = 20;
+
+type AuditOrder = Prisma.AdminAuditLogOrderByWithRelationInput;
+const AUDIT_ORDERS: Record<AuditSortField, (o: SortOrder) => AuditOrder[]> = {
+  createdAt: (o) => [{ createdAt: o }, { id: o }],
+};
+const DEFAULT_AUDIT_ORDER: AuditOrder[] = [
+  { createdAt: "desc" },
+  { id: "desc" },
+];
 
 type AuditRow = Prisma.AdminAuditLogGetPayload<{
   select: typeof adminAuditLogSelect;
@@ -75,12 +86,18 @@ export class AdminAuditService {
       ...(query.actorId && { actorId: query.actorId }),
       ...(query.targetType && { targetType: query.targetType }),
       ...(query.targetId && { targetId: query.targetId }),
+      ...(query.action && { action: query.action }),
     };
     const [total, rows] = await Promise.all([
       this.prisma.adminAuditLog.count({ where }),
       this.prisma.adminAuditLog.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy: listOrderBy(
+          query.sortBy,
+          query.sortOrder,
+          AUDIT_ORDERS,
+          DEFAULT_AUDIT_ORDER,
+        ),
         skip,
         take,
         select: adminAuditLogSelect,

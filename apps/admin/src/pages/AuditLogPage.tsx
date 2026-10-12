@@ -1,16 +1,25 @@
-import { Alert, Anchor, Group, Pagination, Paper, Stack, Table, Text } from '@mantine/core';
+import { Anchor, Group, Pagination, Paper, Select, Stack, Text } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { useState } from 'react';
 import { Link } from 'react-router';
 import type { AuditLogEntryDto } from '../api/generated/types.gen';
 import { auditQuery } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
-import { EmptyState, ListSkeleton } from '../components/ListStates';
+import { DataTable, type DataTableColumn } from '../components/DataTable';
+import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
+import {
+  type AuditAction,
+  auditFilter,
+  type AuditTargetType,
+  readAuditParams,
+  TARGET_TYPE_LABELS,
+  writeAuditParams,
+} from '../lib/auditList';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { formatLicenseValidUntil } from '../lib/licenseDate';
-import { useIsMobile } from '../lib/useIsMobile';
+import type { SortState } from '../lib/listSort';
+import { useListParams } from '../lib/useListParams';
 
 const PAGE_SIZE = 50;
 
@@ -70,115 +79,130 @@ function Target({ entry }: { entry: AuditLogEntryDto }) {
   );
 }
 
+const ACTION_OPTIONS = Object.entries(ACTION_LABELS).map(([value, label]) => ({ value, label }));
+const TARGET_OPTIONS = Object.entries(TARGET_TYPE_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}));
+
+const createdAt = (e: AuditLogEntryDto) => dayjs(e.createdAt).format('DD/MM/YYYY HH:mm');
+const actor = (e: AuditLogEntryDto) => e.actorName ?? 'admin supprimé';
+const actionLabel = (e: AuditLogEntryDto) => ACTION_LABELS[e.action] ?? e.action;
+
+function Detail({ entry }: { entry: AuditLogEntryDto }) {
+  const change = visibleChange(entry);
+  return change && <ChangeSummary before={change.before} after={change.after} />;
+}
+
 export function AuditLogPage() {
-  const [pageIndex, setPageIndex] = useState(1);
-  const isMobile = useIsMobile();
+  const [state, update] = useListParams(readAuditParams, writeAuditParams);
   const log = useQuery({
-    ...auditQuery({
-      skip: (pageIndex - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-    }),
+    ...auditQuery(auditFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
   });
-  const header = (
-    <PageHeader
-      title="Journal d'audit"
-      description="Chaque modification faite depuis le back-office, la plus récente en premier."
-    />
-  );
-  if (log.isError) {
-    return (
-      <Stack>
-        {header}
-        <Alert color="red">Impossible de charger le journal.</Alert>
-      </Stack>
-    );
-  }
-  if (!log.data) {
-    return (
-      <Stack>
-        {header}
-        <ListSkeleton />
-      </Stack>
-    );
-  }
-  const total = log.data.meta.total;
-  const entries = log.data.data;
+  const total = log.data?.meta.total ?? 0;
+
+  // The journal sorts on its date only.
+  const onSortChange = (sort: SortState | null) =>
+    update({ sort: sort?.by === 'createdAt' ? { by: 'createdAt', order: sort.order } : null });
+
+  const columns: DataTableColumn<AuditLogEntryDto>[] = [
+    { key: 'createdAt', label: 'Date', sortField: 'createdAt', nowrap: true, cell: createdAt },
+    { key: 'actor', label: 'Admin', cell: actor },
+    {
+      key: 'action',
+      label: 'Action',
+      required: true,
+      cell: actionLabel,
+      filter: {
+        active: state.action !== null,
+        content: (
+          <Select
+            aria-label="Action"
+            placeholder="Action"
+            clearable
+            searchable
+            comboboxProps={{ withinPortal: false }}
+            data={ACTION_OPTIONS}
+            value={state.action}
+            onChange={(v) => update({ action: v as AuditAction | null })}
+          />
+        ),
+      },
+    },
+    {
+      key: 'target',
+      label: 'Cible',
+      cell: (e) => <Target entry={e} />,
+      filter: {
+        active: state.targetType !== null,
+        content: (
+          <Select
+            aria-label="Type de cible"
+            placeholder="Type de cible"
+            clearable
+            comboboxProps={{ withinPortal: false }}
+            data={TARGET_OPTIONS}
+            value={state.targetType}
+            onChange={(v) => update({ targetType: v as AuditTargetType | null })}
+          />
+        ),
+      },
+    },
+    { key: 'detail', label: 'Détail', cell: (e) => <Detail entry={e} /> },
+  ];
+
   return (
     <Stack>
-      {header}
-      {entries.length === 0 ? (
-        <EmptyState title="Journal vide">Aucune modification n'a encore été faite.</EmptyState>
-      ) : isMobile ? (
-        <Stack gap="xs">
-          {entries.map((e) => {
-            const change = visibleChange(e);
-            return (
-              <Paper key={e.id} withBorder p="sm">
-                <Stack gap={6}>
-                  <Group justify="space-between" gap="xs" wrap="nowrap" align="flex-start">
-                    <Text fw={600} size="sm">
-                      {ACTION_LABELS[e.action] ?? e.action}
-                    </Text>
-                    <Text
-                      size="xs"
-                      c="dimmed"
-                      className="app-tabular"
-                      style={{ whiteSpace: 'nowrap' }}
-                    >
-                      {dayjs(e.createdAt).format('DD/MM/YYYY HH:mm')}
-                    </Text>
-                  </Group>
-                  <Text size="sm" c="dimmed">
-                    Par {e.actorName ?? 'admin supprimé'}
-                  </Text>
-                  {change && <ChangeSummary before={change.before} after={change.after} />}
-                  <Target entry={e} />
-                </Stack>
-              </Paper>
-            );
-          })}
-        </Stack>
-      ) : (
-        <Table.ScrollContainer minWidth={820}>
-          <Table>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Date</Table.Th>
-                <Table.Th>Admin</Table.Th>
-                <Table.Th>Action</Table.Th>
-                <Table.Th>Cible</Table.Th>
-                <Table.Th>Détail</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {entries.map((e) => {
-                const change = visibleChange(e);
-                return (
-                  <Table.Tr key={e.id}>
-                    <Table.Td style={{ whiteSpace: 'nowrap' }}>
-                      {dayjs(e.createdAt).format('DD/MM/YYYY HH:mm')}
-                    </Table.Td>
-                    <Table.Td>{e.actorName ?? 'admin supprimé'}</Table.Td>
-                    <Table.Td>{ACTION_LABELS[e.action] ?? e.action}</Table.Td>
-                    <Table.Td>
-                      <Target entry={e} />
-                    </Table.Td>
-                    <Table.Td>
-                      {change && <ChangeSummary before={change.before} after={change.after} />}
-                    </Table.Td>
-                  </Table.Tr>
-                );
-              })}
-            </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
-      )}
-      {total > PAGE_SIZE && (
+      <PageHeader
+        title="Journal d'audit"
+        description="Chaque modification faite depuis le back-office, la plus récente en premier."
+      />
+      <DataTable
+        tableId="audit-log"
+        columns={columns}
+        rows={log.data?.data ?? []}
+        rowKey={(e) => e.id}
+        sort={state.sort}
+        onSortChange={onSortChange}
+        onResetFilters={() => update({ action: null, targetType: null })}
+        minWidth={820}
+        loading={!log.data && !log.isError}
+        error={log.isError && 'Impossible de charger le journal.'}
+        empty={
+          state.action || state.targetType ? (
+            <EmptyState title="Aucune entrée">
+              Aucune modification ne correspond à ces filtres.
+            </EmptyState>
+          ) : (
+            <EmptyState title="Journal vide">Aucune modification n'a encore été faite.</EmptyState>
+          )
+        }
+        renderCard={(e) => (
+          <Paper withBorder p="sm">
+            <Stack gap={6}>
+              <Group justify="space-between" gap="xs" wrap="nowrap" align="flex-start">
+                <Text fw={600} size="sm">
+                  {actionLabel(e)}
+                </Text>
+                <Text size="xs" c="dimmed" className="app-tabular" style={{ whiteSpace: 'nowrap' }}>
+                  {createdAt(e)}
+                </Text>
+              </Group>
+              <Text size="sm" c="dimmed">
+                Par {actor(e)}
+              </Text>
+              <Detail entry={e} />
+              <Target entry={e} />
+            </Stack>
+          </Paper>
+        )}
+      />
+      {!log.isError && total > PAGE_SIZE && (
         <Pagination
           total={Math.ceil(total / PAGE_SIZE)}
-          value={pageIndex}
-          onChange={setPageIndex}
+          value={state.page}
+          onChange={(page) => update({ page })}
         />
       )}
     </Stack>

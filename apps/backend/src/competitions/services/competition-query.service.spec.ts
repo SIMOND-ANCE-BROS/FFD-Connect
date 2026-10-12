@@ -3,7 +3,10 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import { createMockPrismaService } from "../__mocks__/types";
-import { CompetitionQueryService } from "./competition-query.service";
+import {
+  CLUB_COMPETITIONS_LIMIT,
+  CompetitionQueryService,
+} from "./competition-query.service";
 
 const mockPrismaService = createMockPrismaService();
 const mockRedisService = {
@@ -587,6 +590,85 @@ describe("CompetitionQueryService", () => {
       expect(result[0].competition).toEqual(
         expect.objectContaining({ id: "comp-1", title: "Championnat 2026" }),
       );
+    });
+  });
+
+  describe("findOrganizedByClub", () => {
+    it("returns the competitions whose organizer is the club, bounded", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        extraRoles: [],
+        clubId: "club-1",
+        clubName: " Club Test ",
+        club: { disabledAt: null, name: "Club Test" },
+      });
+      mockPrismaService.competition.findMany.mockResolvedValue([
+        mockCompetition,
+      ]);
+
+      const result = await service.findOrganizedByClub("user-1");
+
+      expect(result).toEqual([mockCompetition]);
+      expect(mockPrismaService.competition.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [{ organizer: { equals: "Club Test", mode: "insensitive" } }],
+          },
+          orderBy: { date: "desc" },
+          take: CLUB_COMPETITIONS_LIMIT,
+          select: expect.objectContaining({ id: true, layout: true }),
+        }),
+      );
+    });
+
+    it("matches both the club relation and the legacy club name", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubName: "Ancien Nom",
+        club: { disabledAt: null, name: "Club Test" },
+      });
+      mockPrismaService.competition.findMany.mockResolvedValue([]);
+
+      await service.findOrganizedByClub("user-1");
+
+      expect(mockPrismaService.competition.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [
+              { organizer: { equals: "Club Test", mode: "insensitive" } },
+              { organizer: { equals: "Ancien Nom", mode: "insensitive" } },
+            ],
+          },
+        }),
+      );
+    });
+
+    it.each([
+      ["an unknown account", null],
+      [
+        "an account without the CLUB role",
+        { role: "LICENSEE", clubName: "Club Test" },
+      ],
+      [
+        "an extra CLUB role of a disabled club",
+        {
+          role: "LICENSEE",
+          extraRoles: ["CLUB"],
+          clubName: null,
+          club: { disabledAt: new Date(), name: "Club Test" },
+        },
+      ],
+      [
+        "a CLUB account without a club",
+        { role: "CLUB", clubName: "  ", club: null },
+      ],
+    ])("returns an empty list for %s", async (_label, user) => {
+      mockPrismaService.user.findUnique.mockResolvedValue(user);
+
+      const result = await service.findOrganizedByClub("user-1");
+
+      expect(result).toEqual([]);
+      expect(mockPrismaService.competition.findMany).not.toHaveBeenCalled();
     });
   });
 });

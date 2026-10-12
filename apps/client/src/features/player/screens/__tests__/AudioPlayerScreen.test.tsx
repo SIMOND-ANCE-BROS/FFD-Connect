@@ -218,17 +218,18 @@ describe("AudioPlayerScreen", () => {
       expect(getByTestId("paso-propose")).toBeTruthy();
     });
 
-    it("depuis le formulaire, « Clashs paso doble » ouvre l'éditeur sur un paso", async () => {
+    it("le formulaire de correction ne propose plus les clashs, même sur un paso (#445)", async () => {
       useAuthStore.setState({ role: "LICENSEE", isGuest: false });
       withTrack("Paso Doble");
-      const { getByTestId, getByText } = await renderWithQuery(
+      const { getByTestId, queryByTestId } = await renderWithQuery(
         <AudioPlayerScreen {...createTestProps()} />,
       );
 
       await fireEvent.press(getByTestId("player-propose-correction-button"));
-      await fireEvent.press(getByTestId("correction-reason-PASO_CLASH"));
-      await fireEvent.press(getByTestId("correction-open-clash-editor"));
-      expect(getByText("Proposer les appels")).toBeTruthy();
+      expect(getByTestId("correction-reason-TITLE")).toBeTruthy();
+      expect(queryByTestId("correction-reason-PASO_CLASH")).toBeNull();
+      // Le parcours dédié reste disponible sous la barre de progression.
+      expect(getByTestId("paso-propose-clashes-button")).toBeTruthy();
     });
 
     it("un admin garde « Éditer les appels » et a aussi le raccourci de correction", async () => {

@@ -38,6 +38,7 @@ import {
   formatTimecode,
   initialReviewValues,
   insertTemplate,
+  isPasoDoble,
   nextPendingFilter,
   REASON_LABELS,
   REJECT_TEMPLATES,
@@ -57,6 +58,14 @@ const FIELDS: { key: ComparedField; label: string }[] = [
   { key: 'bpm', label: 'MPM' },
   { key: 'clashTimecodes', label: 'Clashes paso' },
 ];
+
+/**
+ * Clashes are shown for a paso doble only: the track's dance or the proposed
+ * one. A proposal that carries clashes (« Proposer les clashs » from the
+ * player) keeps them visible whatever the dance, so it can still be decided.
+ */
+const hasClashes = (c: TrackCorrectionAdminDto): boolean =>
+  isPasoDoble(c.track.style) || isPasoDoble(c.proposed.style) || c.proposed.clashTimecodes !== null;
 
 function show(value: unknown): string {
   if (value === null || value === undefined) return '—';
@@ -109,6 +118,7 @@ function CorrectionReview({ id }: { id: string }) {
   if (!item.data) return <ListSkeleton rows={5} />;
   const c = item.data;
   const badge = STATUS_BADGES[c.status];
+  const paso = hasClashes(c);
 
   return (
     <Stack>
@@ -174,7 +184,7 @@ function CorrectionReview({ id }: { id: string }) {
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {FIELDS.map(({ key, label }) => (
+          {FIELDS.filter(({ key }) => paso || key !== 'clashTimecodes').map(({ key, label }) => (
             <Table.Tr key={key}>
               <Table.Td>{label}</Table.Td>
               <Table.Td>{show(c.track[key])}</Table.Td>
@@ -231,7 +241,12 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
   const [values, setValues] = useState<ReviewValues>(initial);
   const [comment, setComment] = useState('');
   const [confirm, setConfirm] = useState<Decision | null>(null);
-  const overrides = approveOverrides(initial, values);
+  // The admin may turn the dance into a paso doble here: the editor follows.
+  const paso = hasClashes(c) || isPasoDoble(values.style);
+  const overrides = approveOverrides(
+    initial,
+    paso ? values : { ...values, clashes: initial.clashes },
+  );
   const preview = approvalPreview(c, overrides);
   const trimmed = comment.trim();
 
@@ -320,11 +335,13 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
               onChange={(v) => set('bpm', v)}
             />
           </SimpleGrid>
-          <ClashEditor
-            value={values.clashes}
-            onChange={(v) => set('clashes', v)}
-            audioRef={audioRef}
-          />
+          {paso && (
+            <ClashEditor
+              value={values.clashes}
+              onChange={(v) => set('clashes', v)}
+              audioRef={audioRef}
+            />
+          )}
           <Textarea
             label="Commentaire (transmis à l'auteur)"
             autosize
@@ -364,7 +381,7 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
         <Stack>
           {confirm === 'approve' &&
             (Object.keys(preview.after).length > 0 ? (
-              <ChangeSummary before={preview.before} after={preview.after} />
+              <ChangeSummary before={preview.before} after={preview.after} showClashes={paso} />
             ) : (
               <Text size="sm">La musique ne change pas.</Text>
             ))}

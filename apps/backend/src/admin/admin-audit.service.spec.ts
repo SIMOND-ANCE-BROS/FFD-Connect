@@ -94,13 +94,26 @@ describe("AdminAuditService", () => {
 
     expect(prisma.adminAuditLog.findMany).toHaveBeenCalledWith({
       where: { targetType: "USER", targetId: "u1" },
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: 0,
       take: 20,
       select: adminAuditLogSelect,
     });
     expect(page.meta.total).toBe(1);
     expect(page.data[0].actorName).toBe("Gabin S");
+  });
+
+  it("filters on the action and sorts oldest first on request", async () => {
+    prisma.adminAuditLog.count.mockResolvedValue(0);
+    prisma.adminAuditLog.findMany.mockResolvedValue([]);
+    await service.list({
+      action: "USER_DELETE",
+      sortBy: "createdAt",
+      sortOrder: "asc",
+    });
+    const args = prisma.adminAuditLog.findMany.mock.calls[0][0];
+    expect(args?.where).toEqual({ action: "USER_DELETE" });
+    expect(args?.orderBy).toEqual([{ createdAt: "asc" }, { id: "asc" }]);
   });
 
   it("reports a deleted author as null", async () => {

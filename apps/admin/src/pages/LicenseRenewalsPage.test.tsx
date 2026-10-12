@@ -131,6 +131,29 @@ describe('LicenseRenewalsPage', () => {
     });
   });
 
+  it('sorts the queue from a header, kept in the URL with the tab', async () => {
+    const list = vi
+      .spyOn(sdk, 'adminLicenseRenewalsControllerList')
+      .mockResolvedValue(page([row()]) as never);
+    renderPage('/license-renewals?status=APPROVED');
+    await screen.findByRole('link', { name: 'Eva Martin' });
+    await userEvent.click(screen.getByRole('button', { name: 'Traitée le' }));
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith({
+        query: {
+          status: 'APPROVED',
+          sortBy: 'reviewedAt',
+          sortOrder: 'asc',
+          skip: 0,
+          take: 50,
+        },
+      }),
+    );
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/license-renewals?status=APPROVED&sort=reviewedAt&order=asc',
+    );
+  });
+
   it('opens a request', async () => {
     vi.spyOn(sdk, 'adminLicenseRenewalsControllerList').mockResolvedValue(page([row()]) as never);
     renderPage();

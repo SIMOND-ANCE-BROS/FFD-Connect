@@ -2,6 +2,11 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { UserRole } from "@prisma/client";
 import { Resend } from "resend";
+import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
+import { withTimeout } from "../utils/timeout.utils";
+
+/** Upper bound of one Resend call made through the circuit breaker. */
+export const EMAIL_SEND_TIMEOUT_MS = 8_000;
 
 /** Roles an admin can create and invite. ADMIN is granted afterwards, never invited. */
 export type InvitationRole = Exclude<UserRole, "ADMIN">;
@@ -41,7 +46,10 @@ export class EmailService {
   private readonly resend: Resend | null = null;
   private readonly fromEmail: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly breaker: CircuitBreakerService,
+  ) {
     const apiKey = this.configService.get<string>("RESEND_API_KEY");
     this.fromEmail =
       this.configService.get<string>("RESEND_FROM_EMAIL") ??
@@ -141,6 +149,53 @@ export class EmailService {
       throw new Error(`Failed to send email: ${error.message}`);
     }
     this.logger.log(`Invitation email sent to ${email} (ID: ${data.id})`);
+  }
+
+  /**
+   * Security notice to the PREVIOUS login address after an administrator
+   * changed it (#448). It names neither the new address nor any link: the
+   * person only learns that the change happened and whom to contact.
+   * Circuit breaker + timeout; throws on failure, the caller degrades.
+   */
+  async sendEmailChangedNotice(
+    previousEmail: string,
+    firstName: string,
+  ): Promise<void> {
+    if (!this.resend) {
+      this.logger.log("Email-changed notice not sent (no Resend config)");
+      return;
+    }
+    const resend = this.resend;
+    const { error } = await this.breaker.fire("email", () =>
+      withTimeout(
+        resend.emails.send({
+          from: this.fromEmail,
+          to: previousEmail,
+          subject: "L'email de votre compte FFD Connect a été modifié",
+          html: this.getEmailChangedTemplate(firstName),
+        }),
+        EMAIL_SEND_TIMEOUT_MS,
+        "resend:email-changed",
+      ),
+    );
+    if (error) {
+      throw new Error(`Failed to send email: ${error.message}`);
+    }
+  }
+
+  private getEmailChangedTemplate(firstName: string): string {
+    const safeName = firstName.replace(/[<>&"']/g, "");
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head><meta charset="utf-8"><title>Email de votre compte modifié</title></head>
+        <body style="font-family: Arial, sans-serif; color: #222; max-width: 560px; margin: auto;">
+          <p>Bonjour ${safeName},</p>
+          <p>Un administrateur de FFD Connect a modifié l'adresse email de connexion de votre compte. Cette adresse-ci n'est plus associée à votre compte.</p>
+          <p>Par sécurité, vos sessions ouvertes ont été fermées : reconnectez-vous avec votre nouvelle adresse et votre mot de passe habituel.</p>
+          <p>Si vous n'êtes pas à l'origine de cette demande, contactez au plus vite votre club ou la fédération.</p>
+        </body>
+      </html>`;
   }
 
   private getInvitationEmailTemplate(

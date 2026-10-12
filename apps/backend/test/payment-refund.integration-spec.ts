@@ -243,4 +243,37 @@ describe("HelloAsso refund / dispute releases the seat (#403, real DB)", () => {
     });
     expect(getPayment).not.toHaveBeenCalled();
   });
+  it("settles the refund owed on a late payment once the club refunded it (#428)", async () => {
+    const booking = await prisma.seatBooking.create({
+      data: {
+        competitionId,
+        userId,
+        itemId: `table-${++seatCounter}`,
+        status: "EXPIRED",
+        paymentId: String(CHECKOUT_INTENT_ID),
+        expectedAmountCents: 1500,
+        refundOwedAt: new Date(),
+        refundOwedPaymentIds: [String(CHECKOUT_INTENT_ID)],
+      },
+    });
+    helloAssoSays("Refunded");
+
+    await controller.handleWebhook(notification(booking.id, "Refunded"));
+
+    const after = await prisma.seatBooking.findUniqueOrThrow({
+      where: { id: booking.id },
+      select: {
+        status: true,
+        cancelReason: true,
+        refundOwedAt: true,
+        refundOwedPaymentIds: true,
+      },
+    });
+    expect(after).toEqual({
+      status: "EXPIRED",
+      cancelReason: "HELLOASSO_REFUNDED",
+      refundOwedAt: null,
+      refundOwedPaymentIds: [],
+    });
+  });
 });

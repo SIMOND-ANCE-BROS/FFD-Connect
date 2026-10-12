@@ -955,6 +955,111 @@ describe("CompetitionsController HTTP Integration", () => {
       expect(created.organizer).toBe(`Club ${suffix}`);
     });
 
+    describe("club competition editor payload (#417)", () => {
+      // Exact body built by apps/client buildCompetitionPayload for a
+      // « Compétition » — the editor used to add events/schedule, a French
+      // date, status DRAFT and an empty ticketingUrl, all rejected with 400.
+      const editorPayload = {
+        title: `Editor ${suffix}`,
+        status: CompetitionStatus.UPCOMING,
+        date: "2026-10-12",
+        location: "Lyon",
+        type: "COMPETITION",
+        competitionType: "MAJEURE",
+        majorSubType: "CHAMPIONNAT_REGIONAL",
+        eventsDescription: "",
+        layout: [
+          {
+            id: "t1",
+            type: "TABLE",
+            label: "Table 1",
+            capacity: 8,
+            x: 10,
+            y: 10,
+            width: 15,
+            height: 10,
+          },
+        ],
+      };
+
+      const makeClubUser = async () => {
+        const club = await makeUser(UserRole.CLUB);
+        await prisma.user.update({
+          where: { id: club.user.id },
+          data: { clubName: `Editor Club ${suffix}` },
+        });
+        return club;
+      };
+
+      it("rejects the pre-#417 events/schedule fields with 400", async () => {
+        const { token } = await makeClubUser();
+
+        const res = await request(app.getHttpServer())
+          .post("/api/v1/competitions")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ ...editorPayload, events: [], schedule: [] })
+          .expect(400);
+
+        expect(res.body.message).toEqual(
+          expect.arrayContaining([
+            "property events should not exist",
+            "property schedule should not exist",
+          ]),
+        );
+      });
+
+      it("creates then updates a competition from the editor payload", async () => {
+        const { token } = await makeClubUser();
+
+        const created = await request(app.getHttpServer())
+          .post("/api/v1/competitions")
+          .set("Authorization", `Bearer ${token}`)
+          .send(editorPayload)
+          .expect(201);
+
+        const stored = await prisma.competition.findUniqueOrThrow({
+          where: { id: created.body.id },
+          select: {
+            date: true,
+            type: true,
+            competitionType: true,
+            majorSubType: true,
+            layout: true,
+          },
+        });
+        expect(stored.date.toISOString()).toBe("2026-10-12T00:00:00.000Z");
+        expect(stored.type).toBe("COMPETITION");
+        expect(stored.majorSubType).toBe("CHAMPIONNAT_REGIONAL");
+        expect(stored.layout).toEqual(editorPayload.layout);
+
+        // Switching away from MAJEURE: the editor sends majorSubType: null.
+        await request(app.getHttpServer())
+          .patch(`/api/v1/competitions/${created.body.id}`)
+          .set("Authorization", `Bearer ${token}`)
+          .send({
+            ...editorPayload,
+            competitionType: "PROXIMITE",
+            majorSubType: null,
+            ticketingUrl: "https://www.helloasso.com/associations/x",
+          })
+          .expect(200);
+
+        const updated = await prisma.competition.findUniqueOrThrow({
+          where: { id: created.body.id },
+          select: {
+            competitionType: true,
+            majorSubType: true,
+            ticketingUrl: true,
+          },
+        });
+        expect(updated).toEqual({
+          competitionType: "PROXIMITE",
+          majorSubType: null,
+          ticketingUrl: "https://www.helloasso.com/associations/x",
+        });
+      });
+    });
+
     it("returns 401 without token", async () => {
       await request(app.getHttpServer())
         .post("/api/v1/competitions")

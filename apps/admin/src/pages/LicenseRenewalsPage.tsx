@@ -1,43 +1,48 @@
-import { PageHeader } from '../components/PageHeader';
-import { EmptyState, ListSkeleton } from '../components/ListStates';
-import { RecordCard, RecordLine, RecordList } from '../components/RecordCard';
-import { useIsMobile } from '../lib/useIsMobile';
-import {
-  Alert,
-  Anchor,
-  Badge,
-  Pagination,
-  SegmentedControl,
-  Stack,
-  Table,
-  Text,
-} from '@mantine/core';
+import { Anchor, Badge, Pagination, SegmentedControl, Stack, Text } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { Link, useLocation, useSearchParams } from 'react-router';
+import { Link, useLocation } from 'react-router';
+import type { AdminLicenseRenewalListItemDto } from '../api/generated/types.gen';
 import { licenseRenewalsQuery } from '../api/queries';
+import { DataTable, type DataTableColumn } from '../components/DataTable';
+import { EmptyState } from '../components/ListStates';
+import { PageHeader } from '../components/PageHeader';
+import { RecordCard, RecordLine } from '../components/RecordCard';
 import { apiErrorMessage } from '../lib/apiError';
 import { formatLicenseValidUntil } from '../lib/licenseDate';
 import {
   DOCUMENT_LABELS,
   listFilter,
   readRenewalParams,
-  type RenewalsUrlState,
+  RENEWALS_SORT_FIELDS,
+  type RenewalsSortField,
   type RenewalTab,
   TAB_OPTIONS,
   writeRenewalParams,
 } from '../lib/licenseRenewals';
+import type { SortState } from '../lib/listSort';
+import { useListParams } from '../lib/useListParams';
+import { useIsMobile } from '../lib/useIsMobile';
 
 const PAGE_SIZE = 50;
 
+type Renewal = AdminLicenseRenewalListItemDto;
+
 const dateTime = (iso: string | null) => (iso ? dayjs(iso).format('DD/MM/YYYY HH:mm') : '—');
+const isRenewalsSortField = (value: string): value is RenewalsSortField =>
+  RENEWALS_SORT_FIELDS.some((f) => f === value);
+
+const validUntil = (r: Renewal) =>
+  r.user.license ? formatLicenseValidUntil(r.user.license.validUntil) : '—';
+const documents = (r: Renewal) =>
+  r.documents.length > 0 ? r.documents.map((d) => DOCUMENT_LABELS[d.type]).join(', ') : 'Aucun';
+const reviewer = (r: Renewal) =>
+  r.reviewedBy ? `${r.reviewedBy.firstName} ${r.reviewedBy.lastName}` : 'Validation automatique';
 
 /** Queue of licence renewals (#267): nothing here reads a document. */
 export function LicenseRenewalsPage() {
   const { search } = useLocation();
-  const [params, setParams] = useSearchParams();
-  const state = readRenewalParams(params);
-  const update = (patch: Partial<RenewalsUrlState>) => setParams(writeRenewalParams(params, patch));
+  const [state, update] = useListParams(readRenewalParams, writeRenewalParams);
   const list = useQuery({
     ...licenseRenewalsQuery(listFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
@@ -45,6 +50,64 @@ export function LicenseRenewalsPage() {
   const total = list.data?.meta.total ?? 0;
   const isMobile = useIsMobile();
   const decided = state.status !== 'PENDING';
+  const detailPath = (r: Renewal) => `/license-renewals/${r.id}${search}`;
+
+  const onSortChange = (sort: SortState | null) =>
+    update({
+      sort: sort && isRenewalsSortField(sort.by) ? { by: sort.by, order: sort.order } : null,
+    });
+
+  const columns: DataTableColumn<Renewal>[] = [
+    {
+      key: 'name',
+      label: 'Licencié',
+      required: true,
+      sortField: 'name',
+      cell: (r) => (
+        <Anchor component={Link} to={`/users/${r.user.id}`} size="sm">
+          {r.user.firstName} {r.user.lastName}
+        </Anchor>
+      ),
+    },
+    {
+      key: 'licenseNumber',
+      label: 'N° de licence',
+      sortField: 'licenseNumber',
+      cell: (r) => r.user.license?.number ?? '—',
+    },
+    { key: 'validUntil', label: 'Fin de validité', sortField: 'validUntil', cell: validUntil },
+    { key: 'documents', label: 'Documents', cell: documents },
+    {
+      key: 'submittedAt',
+      label: 'Soumise le',
+      sortField: 'submittedAt',
+      nowrap: true,
+      cell: (r) => dateTime(r.submittedAt),
+    },
+    // A pending request has no decision yet: these columns would be empty.
+    ...(decided
+      ? [
+          {
+            key: 'reviewedAt',
+            label: 'Traitée le',
+            sortField: 'reviewedAt',
+            nowrap: true,
+            cell: (r: Renewal) => dateTime(r.reviewedAt),
+          },
+          { key: 'reviewedBy', label: 'Par', cell: reviewer },
+        ]
+      : []),
+    {
+      key: 'open',
+      label: '',
+      required: true,
+      cell: (r) => (
+        <Anchor component={Link} to={detailPath(r)} size="sm">
+          {decided ? 'Voir' : 'Traiter'}
+        </Anchor>
+      ),
+    },
+  ];
 
   return (
     <Stack>
@@ -59,119 +122,49 @@ export function LicenseRenewalsPage() {
         value={state.status}
         onChange={(v) => update({ status: v as RenewalTab })}
       />
-      {list.isError ? (
-        <Alert color="red">
-          {apiErrorMessage(list.error, 'Impossible de charger les demandes.')}
-        </Alert>
-      ) : list.isPending ? (
-        <ListSkeleton />
-      ) : (
-        <>
+      <DataTable
+        tableId="license-renewals"
+        columns={columns}
+        rows={list.data?.data ?? []}
+        rowKey={(r) => r.id}
+        sort={state.sort}
+        onSortChange={onSortChange}
+        minWidth={820}
+        loading={list.isPending}
+        error={list.isError && apiErrorMessage(list.error, 'Impossible de charger les demandes.')}
+        summary={
           <Text size="sm" c="dimmed">
             {total} demande{total > 1 ? 's' : ''}
           </Text>
-          {total === 0 ? (
-            <EmptyState title="Aucune demande">
-              Aucun renouvellement dans cette catégorie.
-            </EmptyState>
-          ) : isMobile ? (
-            <RecordList>
-              {(list.data?.data ?? []).map((r) => (
-                <RecordCard
-                  key={r.id}
-                  to={`/license-renewals/${r.id}${search}`}
-                  title={`${r.user.firstName} ${r.user.lastName}`}
-                  badges={
-                    <Badge variant="light">{decided ? 'Voir la décision' : 'À traiter'}</Badge>
-                  }
-                >
-                  <RecordLine label="N° de licence">{r.user.license?.number ?? '—'}</RecordLine>
-                  <RecordLine label="Fin de validité">
-                    {r.user.license ? formatLicenseValidUntil(r.user.license.validUntil) : '—'}
-                  </RecordLine>
-                  <RecordLine label="Documents">
-                    {r.documents.length
-                      ? r.documents.map((d) => DOCUMENT_LABELS[d.type]).join(', ')
-                      : 'Aucun'}
-                  </RecordLine>
-                  <RecordLine label="Soumise le">{dateTime(r.submittedAt)}</RecordLine>
-                  {decided && (
-                    <>
-                      <RecordLine label="Traitée le">{dateTime(r.reviewedAt)}</RecordLine>
-                      <RecordLine label="Par">
-                        {r.reviewedBy
-                          ? `${r.reviewedBy.firstName} ${r.reviewedBy.lastName}`
-                          : 'Validation automatique'}
-                      </RecordLine>
-                    </>
-                  )}
-                </RecordCard>
-              ))}
-            </RecordList>
-          ) : (
-            <Table.ScrollContainer minWidth={820}>
-              <Table striped highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Licencié</Table.Th>
-                    <Table.Th>N° de licence</Table.Th>
-                    <Table.Th>Fin de validité</Table.Th>
-                    <Table.Th>Documents</Table.Th>
-                    <Table.Th>Soumise le</Table.Th>
-                    {decided && <Table.Th>Traitée le</Table.Th>}
-                    {decided && <Table.Th>Par</Table.Th>}
-                    <Table.Th />
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {(list.data?.data ?? []).map((r) => (
-                    <Table.Tr key={r.id}>
-                      <Table.Td>
-                        <Anchor component={Link} to={`/users/${r.user.id}`} size="sm">
-                          {r.user.firstName} {r.user.lastName}
-                        </Anchor>
-                      </Table.Td>
-                      <Table.Td>{r.user.license?.number ?? '—'}</Table.Td>
-                      <Table.Td>
-                        {r.user.license ? formatLicenseValidUntil(r.user.license.validUntil) : '—'}
-                      </Table.Td>
-                      <Table.Td>
-                        {r.documents.length > 0
-                          ? r.documents.map((d) => DOCUMENT_LABELS[d.type]).join(', ')
-                          : 'Aucun'}
-                      </Table.Td>
-                      <Table.Td>{dateTime(r.submittedAt)}</Table.Td>
-                      {decided && <Table.Td>{dateTime(r.reviewedAt)}</Table.Td>}
-                      {decided && (
-                        <Table.Td>
-                          {r.reviewedBy
-                            ? `${r.reviewedBy.firstName} ${r.reviewedBy.lastName}`
-                            : 'Validation automatique'}
-                        </Table.Td>
-                      )}
-                      <Table.Td>
-                        <Anchor
-                          component={Link}
-                          to={`/license-renewals/${r.id}${search}`}
-                          size="sm"
-                        >
-                          {decided ? 'Voir' : 'Traiter'}
-                        </Anchor>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
-          )}
-          {total > PAGE_SIZE && (
-            <Pagination
-              total={Math.ceil(total / PAGE_SIZE)}
-              value={state.page}
-              onChange={(pageIndex) => update({ page: pageIndex })}
-            />
-          )}
-        </>
+        }
+        empty={
+          <EmptyState title="Aucune demande">Aucun renouvellement dans cette catégorie.</EmptyState>
+        }
+        renderCard={(r) => (
+          <RecordCard
+            to={detailPath(r)}
+            title={`${r.user.firstName} ${r.user.lastName}`}
+            badges={<Badge variant="light">{decided ? 'Voir la décision' : 'À traiter'}</Badge>}
+          >
+            <RecordLine label="N° de licence">{r.user.license?.number ?? '—'}</RecordLine>
+            <RecordLine label="Fin de validité">{validUntil(r)}</RecordLine>
+            <RecordLine label="Documents">{documents(r)}</RecordLine>
+            <RecordLine label="Soumise le">{dateTime(r.submittedAt)}</RecordLine>
+            {decided && (
+              <>
+                <RecordLine label="Traitée le">{dateTime(r.reviewedAt)}</RecordLine>
+                <RecordLine label="Par">{reviewer(r)}</RecordLine>
+              </>
+            )}
+          </RecordCard>
+        )}
+      />
+      {!list.isError && total > PAGE_SIZE && (
+        <Pagination
+          total={Math.ceil(total / PAGE_SIZE)}
+          value={state.page}
+          onChange={(page) => update({ page })}
+        />
       )}
     </Stack>
   );

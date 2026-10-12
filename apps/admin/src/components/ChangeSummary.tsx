@@ -19,6 +19,7 @@ const LABELS: Record<string, string> = {
   role: 'Rôle',
   extraRoles: 'Rôles supplémentaires',
   email: 'Email',
+  licenseNumber: 'N° de licence',
   name: 'Nom du club',
   registrationMode: "Mode d'inscription",
   title: 'Titre',
@@ -63,9 +64,12 @@ function display(key: string, value: unknown): string {
 export function ChangeSummary({
   before,
   after,
+  showClashes = true,
 }: {
   before: Record<string, unknown>;
   after: Record<string, unknown>;
+  /** False for a track that is not a paso doble: its clash row is hidden. */
+  showClashes?: boolean;
 }) {
   return (
     <Table>
@@ -80,6 +84,7 @@ export function ChangeSummary({
         {Object.keys(after)
           // Audit rows carry both clubId and clubName: show the name only.
           .filter((k) => !(k === 'clubId' && 'clubName' in after))
+          .filter((k) => showClashes || k !== 'clashTimecodes')
           .map((k) => (
             <Table.Tr key={k}>
               <Table.Td>{LABELS[k] ?? k}</Table.Td>

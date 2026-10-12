@@ -6,21 +6,43 @@ import type {
   TrackCorrectionStatus,
 } from "../../../services/api/track-correction-api";
 
-/** Motifs proposés à l'utilisateur, dans l'ordre d'affichage. */
+/**
+ * Libellé de chaque motif, y compris ceux absents du formulaire : les clashs
+ * paso doble se proposent depuis le lecteur (« Proposer les clashs »), mais
+ * « Mes propositions » et la revue affichent toujours leur motif.
+ */
+export const REASON_LABELS: Record<TrackCorrectionReason, string> = {
+  TITLE: "Titre",
+  ARTIST: "Artiste",
+  DANCE: "Danse (catégorie)",
+  MPM: "MPM",
+  PASO_CLASH: "Clashs paso doble",
+  OTHER: "Autre",
+  DELETE: "Suppression de la musique",
+};
+
+/** Motifs de « Signaler / proposer une correction », dans l'ordre d'affichage. */
+const FORM_REASONS: readonly TrackCorrectionReason[] = [
+  "TITLE",
+  "ARTIST",
+  "DANCE",
+  "MPM",
+  "OTHER",
+];
+
+/**
+ * Motifs proposés à l'utilisateur dans le formulaire. Pas de clashs : ils ont
+ * leur parcours dédié dans le lecteur (#445).
+ */
 export const CORRECTION_REASONS: {
   value: TrackCorrectionReason;
   label: string;
-}[] = [
-  { value: "TITLE", label: "Titre" },
-  { value: "ARTIST", label: "Artiste" },
-  { value: "DANCE", label: "Danse (catégorie)" },
-  { value: "MPM", label: "MPM" },
-  { value: "PASO_CLASH", label: "Clashs paso doble" },
-  { value: "OTHER", label: "Autre" },
-];
+}[] = FORM_REASONS.map((value) => ({ value, label: REASON_LABELS[value] }));
 
+/** Libellé d'un motif ; un motif inconnu de cette version s'affiche tel quel. */
 export function reasonLabel(reason: TrackCorrectionReason): string {
-  return CORRECTION_REASONS.find((r) => r.value === reason)?.label ?? reason;
+  const labels: Partial<Record<string, string>> = REASON_LABELS;
+  return labels[reason] ?? reason;
 }
 
 export const STATUS_LABELS: Record<TrackCorrectionStatus, string> = {

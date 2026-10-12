@@ -1,6 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsIn, IsOptional, IsUUID } from "class-validator";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
+import {
+  SortByParam,
+  SortOrderParam,
+  type SortOrder,
+} from "../../common/dto/sort-params";
 
 export const AUDIT_ACTIONS = [
   "USER_UPDATE",
@@ -11,6 +16,8 @@ export const AUDIT_ACTIONS = [
   "USER_DISABLE",
   "USER_ENABLE",
   "USER_DELETE",
+  // Login email and / or licence number changed by an administrator (#448).
+  "USER_IDENTIFIERS_UPDATE",
   "CLUB_CREATE",
   "CLUB_UPDATE",
   "CLUB_DISABLE",
@@ -41,6 +48,10 @@ export const AUDIT_TARGET_TYPES = [
 ] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 
+/** The journal sorts on its date only (#443): action codes have no useful order. */
+export const AUDIT_SORT_FIELDS = ["createdAt"] as const;
+export type AuditSortField = (typeof AUDIT_SORT_FIELDS)[number];
+
 export interface AuditEntry {
   actorId: string;
   action: AuditAction;
@@ -65,6 +76,17 @@ export class ListAuditLogQueryDto extends PaginationParamsDto {
   @IsOptional()
   @IsUUID()
   targetId?: string;
+
+  @ApiPropertyOptional({ enum: AUDIT_ACTIONS })
+  @IsOptional()
+  @IsIn(AUDIT_ACTIONS)
+  action?: AuditAction;
+
+  @SortByParam(AUDIT_SORT_FIELDS)
+  sortBy?: AuditSortField;
+
+  @SortOrderParam()
+  sortOrder?: SortOrder;
 }
 
 export class AuditLogEntryDto {

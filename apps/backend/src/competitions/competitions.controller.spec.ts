@@ -31,6 +31,7 @@ describe("CompetitionsController", () => {
     findActiveCompetition: jest.fn(),
     findOne: jest.fn(),
     findOneForUser: jest.fn(),
+    findOrganizedByClub: jest.fn(),
   };
 
   const mockRegistrationService = {
@@ -115,6 +116,22 @@ describe("CompetitionsController", () => {
       await expect(controller.findAll(req("user123"), {})).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe("getClubCompetitions", () => {
+    it("lists the competitions of the caller's club", async () => {
+      const competitions = [{ id: "comp-1", title: "Gala du club" }];
+      queryService.findOrganizedByClub.mockResolvedValue(competitions as any);
+
+      const result = await controller.getClubCompetitions({
+        user: { userId: "club-user", role: "CLUB" },
+      } as any);
+
+      expect(queryService.findOrganizedByClub).toHaveBeenCalledWith(
+        "club-user",
+      );
+      expect(result).toBe(competitions);
     });
   });
 

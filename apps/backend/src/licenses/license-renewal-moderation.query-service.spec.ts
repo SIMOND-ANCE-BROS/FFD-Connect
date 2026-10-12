@@ -98,6 +98,46 @@ describe("LicenseRenewalModerationQueryService", () => {
       );
     });
 
+    it.each([
+      [
+        "name",
+        "asc",
+        [
+          { user: { lastName: "asc" } },
+          { user: { firstName: "asc" } },
+          { id: "asc" },
+        ],
+      ],
+      [
+        "licenseNumber",
+        "desc",
+        [{ user: { license: { number: "desc" } } }, { id: "desc" }],
+      ],
+      [
+        "validUntil",
+        "asc",
+        [{ user: { license: { validUntil: "asc" } } }, { id: "asc" }],
+      ],
+      [
+        "submittedAt",
+        "desc",
+        [{ submittedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
+      ],
+      [
+        "reviewedAt",
+        "asc",
+        [{ reviewedAt: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+      ],
+    ] as const)(
+      "sorts the whole queue on %s %s",
+      async (sortBy, sortOrder, orderBy) => {
+        await service.list({ sortBy, sortOrder });
+        expect(
+          prisma.licenseRenewalRequest.findMany.mock.calls[0][0]?.orderBy,
+        ).toEqual(orderBy);
+      },
+    );
+
     it("filters by the requested status and paginates", async () => {
       prisma.licenseRenewalRequest.count.mockResolvedValue(3);
       prisma.licenseRenewalRequest.findMany.mockResolvedValue([

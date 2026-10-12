@@ -88,13 +88,30 @@ export class HelloAssoNotificationService {
       select: seatBookingPaymentCheckSelect,
     });
     if (!booking) return this.ignore(bookingId, "booking_not_found");
-    if (!REREAD_STATUSES.has(booking.status)) {
+
+    // The intent to re-read: the booking's current one, unless the
+    // notification names one of the booking's EARLIER intents (payment
+    // resumed, #428: the payer may complete a page opened before). Only ids
+    // we stored are ever read — never an arbitrary id from the body.
+    const claimedIntentId = payload.data.checkoutIntentId;
+    const earlierIntent =
+      claimedIntentId !== undefined &&
+      booking.supersededPaymentIds.includes(String(claimedIntentId))
+        ? String(claimedIntentId)
+        : null;
+    // A confirmed seat is only worth a re-read for an earlier intent: it may
+    // have been paid as well (duplicate payment, refund owed).
+    const worthReading =
+      REREAD_STATUSES.has(booking.status) ||
+      (booking.status === "CONFIRMED" && earlierIntent !== null);
+    if (!worthReading) {
       this.logger.log(
         `HelloAsso notification for booking ${bookingId} in status ${booking.status}: nothing to do`,
       );
       return null;
     }
     if (!booking.paymentId) return this.ignore(bookingId, "no_checkout_intent");
+    const intentId = earlierIntent ?? booking.paymentId;
 
     const credentials =
       await this.clubsHelloAssoService.getHelloAssoCredentialsForCompetition(
@@ -106,7 +123,7 @@ export class HelloAssoNotificationService {
     try {
       read = await this.helloAssoService.getCheckoutIntent(
         credentials,
-        booking.paymentId,
+        intentId,
       );
     } catch {
       throw new ServiceUnavailableException(
@@ -126,7 +143,7 @@ export class HelloAssoNotificationService {
       // HelloAsso exposes the order only once the payment is authorized: the
       // notification may be ahead of it. Let HelloAsso redeliver it.
       this.logger.warn(
-        `HelloAsso checkout intent ${booking.paymentId} has no authorized order yet (booking ${bookingId})`,
+        `HelloAsso checkout intent ${intentId} has no authorized order yet (booking ${bookingId})`,
       );
       throw new ServiceUnavailableException(
         "Payment not yet authorized, notification to be redelivered",

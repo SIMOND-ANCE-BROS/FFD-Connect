@@ -427,6 +427,24 @@ export const seatBookingExportSelect = {
 } as const;
 
 /**
+ * HelloAsso payment notification (#39): what the organizer club is told about
+ * a confirmed booking, and how to find that club (competition `organizer`).
+ * Never the payer's identity nor the external payment reference.
+ */
+export const seatBookingPaymentNotificationSelect = {
+  id: true,
+  seatLabel: true,
+  competition: { select: { id: true, title: true, organizer: true } },
+} as const;
+
+/** A club's identity and status, to address its managers. */
+export const clubRecipientSelect = {
+  id: true,
+  name: true,
+  disabledAt: true,
+} as const;
+
+/**
  * Checkout HelloAsso (#381) : le plan de salle porte le tarif de chaque
  * élément (`priceCents`). Le montant est lu ici, jamais dans la requête.
  */
@@ -446,6 +464,43 @@ export const seatBookingPaymentCheckSelect = {
   paymentId: true,
   expectedAmountCents: true,
   expiresAt: true,
+  // Earlier checkout intents of a resumed payment, still payable (#428)
+  supersededPaymentIds: true,
+  refundOwedPaymentIds: true,
+} as const;
+
+/**
+ * Checkout (#428) : réservation en attente d'un utilisateur, reprise par un
+ * nouveau checkout sur la même place. `checkoutRedirectUrl` n'est rendu qu'à
+ * son propriétaire.
+ */
+export const seatBookingHoldSelect = {
+  id: true,
+  seatIndex: true,
+  expiresAt: true,
+  createdAt: true,
+  expectedAmountCents: true,
+  paymentId: true,
+  checkoutRedirectUrl: true,
+  checkoutCreatedAt: true,
+  supersededPaymentIds: true,
+} as const;
+
+/** Checkout (#428) : place occupée par une réservation active. */
+export const seatBookingSeatIndexSelect = { seatIndex: true } as const;
+
+/** Checkout (#428) : créneau de réservation en attente (plafond de 4). */
+export const seatBookingPendingSlotSelect = { pendingSlot: true } as const;
+
+/**
+ * Alerte « remboursement à faire » (#428) : de quoi retrouver le paiement
+ * dans HelloAsso, sans donnée personnelle du payeur.
+ */
+export const seatBookingRefundAlertSelect = {
+  id: true,
+  seatIndex: true, // never the free-text seatLabel, typed by the buyer
+  expectedAmountCents: true,
+  competition: { select: { id: true, title: true, organizer: true } },
 } as const;
 
 /**
@@ -889,6 +944,7 @@ export const adminUserListSelect = {
   category: true,
   ageGroup: true,
   createdAt: true,
+  lastLoginAt: true,
   disabledAt: true,
   isStoreReview: true,
   license: { select: { number: true, validUntil: true } },
@@ -932,6 +988,19 @@ export const adminUserEditableSelect = {
   nationalRanking: true,
   role: true,
   extraRoles: true,
+} as const;
+
+/**
+ * Back-office change of the login email / licence number (#448): current
+ * values for the audit diff, the name for the notice to the old address, the
+ * store-review flag (its email is the one Apple / Google log in with).
+ */
+export const adminUserIdentifiersSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  isStoreReview: true,
+  license: { select: { id: true, number: true } },
 } as const;
 
 /** Admin invitation resend: who to mail and whether they ever logged in. */

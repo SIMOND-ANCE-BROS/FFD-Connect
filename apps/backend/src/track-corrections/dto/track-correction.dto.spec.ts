@@ -1,11 +1,16 @@
 import { TrackCorrectionReason } from "@prisma/client";
 import { plainToInstance } from "class-transformer";
 import { validateSync } from "class-validator";
+import {
+  LEGACY_REPORT_REASONS,
+  ReportTrackDto,
+} from "../../tracks/dto/report-track.dto";
 import { UpdateTrackDto } from "../../tracks/dto/update-track.dto";
 import { PASO_MAX_CLASHES } from "../../tracks/paso-clashes";
 import {
   ApproveTrackCorrectionDto,
   CreateTrackCorrectionDto,
+  PROPOSABLE_REASONS,
 } from "./track-correction.dto";
 
 /**
@@ -53,5 +58,39 @@ describe("bornes des clashs paso doble", () => {
     expect(failed(UpdateTrackDto, { clashTimecodes: [40, 80, 120] })).toEqual(
       [],
     );
+  });
+});
+
+/**
+ * `DELETE` (#446) part seul, avant son producteur : la base et le client
+ * Prisma le connaissent, mais aucune route ne l'accepte encore.
+ */
+describe("motif DELETE (livré avant son producteur)", () => {
+  const failed = <T extends object>(cls: new () => T, payload: object) =>
+    validateSync(plainToInstance(cls, payload)).map((e) => e.property);
+
+  it("est refusé par POST /track-corrections", () => {
+    expect(
+      failed(CreateTrackCorrectionDto, {
+        trackId: "8b0f2c1e-4a9d-4c3b-9f1e-2a7d5c6b8e90",
+        reason: TrackCorrectionReason.DELETE,
+        message: "Doublon",
+      }),
+    ).toEqual(["reason"]);
+  });
+
+  it("n'est pas proposable, les autres motifs le restent", () => {
+    expect(PROPOSABLE_REASONS).not.toContain(TrackCorrectionReason.DELETE);
+    expect(PROPOSABLE_REASONS).toContain(TrackCorrectionReason.OTHER);
+  });
+
+  it("est refusé par la route historique de signalement", () => {
+    expect(
+      failed(ReportTrackDto, { reason: TrackCorrectionReason.DELETE }),
+    ).toEqual(["reason"]);
+    expect(
+      failed(ReportTrackDto, { reason: TrackCorrectionReason.OTHER }),
+    ).toEqual([]);
+    expect(LEGACY_REPORT_REASONS).not.toContain(TrackCorrectionReason.DELETE);
   });
 });

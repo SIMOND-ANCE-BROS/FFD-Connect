@@ -1,11 +1,13 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { listOrderBy, type SortOrder } from "../common/dto/sort-params";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { adminTrackSelect } from "../utils/prisma-selects";
 import {
   AdminTrackDto,
   AdminTracksPageDto,
+  type AdminTracksSortField,
   ListAdminTracksQueryDto,
 } from "./dto/admin-track.dto";
 import {
@@ -14,6 +16,27 @@ import {
 } from "./track-visibility.util";
 
 const DEFAULT_TAKE = 20;
+
+type TrackOrder = Prisma.TrackOrderByWithRelationInput;
+const TRACK_ORDERS: Record<
+  AdminTracksSortField,
+  (o: SortOrder) => TrackOrder[]
+> = {
+  title: (o) => [{ title: o }, { id: o }],
+  artist: (o) => [{ artist: o }, { title: o }, { id: o }],
+  style: (o) => [
+    { style: { sort: o, nulls: "last" } },
+    { title: o },
+    { id: o },
+  ],
+  bpm: (o) => [{ bpm: o }, { id: o }],
+  status: (o) => [{ status: o }, { createdAt: "desc" }, { id: o }],
+  createdAt: (o) => [{ createdAt: o }, { id: o }],
+};
+const DEFAULT_TRACK_ORDER: TrackOrder[] = [
+  { createdAt: "desc" },
+  { id: "desc" },
+];
 
 type AdminTrackRow = Prisma.TrackGetPayload<{
   select: typeof adminTrackSelect;
@@ -65,7 +88,12 @@ export class AdminTracksQueryService {
       this.prisma.track.count({ where }),
       this.prisma.track.findMany({
         where,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        orderBy: listOrderBy(
+          query.sortBy,
+          query.sortOrder,
+          TRACK_ORDERS,
+          DEFAULT_TRACK_ORDER,
+        ),
         skip,
         take,
         select: adminTrackSelect,
