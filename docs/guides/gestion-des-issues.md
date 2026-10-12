@@ -62,6 +62,10 @@ Le comportement visé, cas nominal et limites.
 
 - [ ] Vérifiable, un par ligne (inclure les tests à écrire)
 
+## Pour le public ← facultatif, seulement avec le label `roadmap` (§5)
+
+Une phrase pour un danseur ou un club, sans jargon : ce qui change pour lui.
+
 ## Hors périmètre
 
 Ce qui n'est volontairement pas couvert.
@@ -132,6 +136,15 @@ Chaque issue ouverte porte aussi des **labels** :
    `player`.
 4. **Un statut** si pertinent : `blocked` (une autre issue ou un tiers
    bloque), `needs-device-test` (code livré, reste une validation sur appareil).
+5. `roadmap` pour une évolution à annoncer sur la feuille de route publique du
+   site vitrine (section « Le projet »). Le site lit directement l'API GitHub
+   publique et n'affiche une issue `roadmap` **que si** sa description contient
+   une section `## Pour le public` non vide : une phrase écrite pour un danseur
+   ou un club, sans jargon (premier paragraphe seulement, Markdown retiré).
+   Seul ce texte est publié, regroupé par milestone ouverte — ni le titre, ni
+   les labels, ni le reste de la description. Une issue technique (CI,
+   dépendances, tests, infra, sécurité interne, dette) ne porte **jamais** ce
+   label.
 
 On réutilise les labels existants ; on n'en crée un nouveau qu'en le
 documentant ici.
