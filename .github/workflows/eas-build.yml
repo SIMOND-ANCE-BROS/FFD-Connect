@@ -6,11 +6,13 @@ name: EAS Build & Update
 # Keep the " <branch> @ <40-hex sha>" suffix (same contract as deploy-backend).
 # A manual run gets a title that never matches it, and names what will be
 # shipped (action, platform, build number) so the approver sees it on the
-# approval screen before releasing a build to testers.
+# approval screen before releasing a build to testers (and, for a build,
+# where it runs: GitHub runner or EAS cloud).
 run-name: >-
   EAS Build & Update · ${{ github.event_name == 'workflow_dispatch'
-  && format('bêta {0} {1}{2} ({3})', inputs.action, inputs.platform,
+  && format('bêta {0} {1}{2}{3} ({4})', inputs.action, inputs.platform,
   inputs.build_number != '' && format(' n°{0}', inputs.build_number) || '',
+  inputs.action == 'build' && format(' via {0}', inputs.builder) || '',
   github.ref_name)
   || format('{0} @ {1}', github.event.workflow_run.head_branch, github.event.workflow_run.head_sha) }}
 
@@ -54,6 +56,18 @@ on:
           - all
           - ios
           - android
+      builder:
+        description: >-
+          action=build uniquement : où construire le binaire. github = runner
+          GitHub (`eas build --local` : iOS sur macOS, Android sur Ubuntu ;
+          gratuit en dépôt public, hors quota EAS), puis `eas submit --path`.
+          eas = build dans le cloud EAS (quota du plan gratuit).
+        required: false
+        default: github
+        type: choice
+        options:
+          - github
+          - eas
       build_id:
         description: >-
           action=resume uniquement : ID EAS du build beta à reprendre, iOS ou
@@ -627,6 +641,10 @@ jobs:
   #              « Beta FFD » + « What to Test » + Beta App Review ; Android :
   #              scripts/play-distribute.ts, notes de version de la piste
   #              `alpha`, test fermé). Plan EAS gratuit.
+  #              Input `builder` : `github` (défaut) construit SUR LE RUNNER
+  #              (`eas build --local` : iOS sur macos-26, Android sur Ubuntu),
+  #              hors quota EAS et gratuit en dépôt public, puis envoie le
+  #              binaire avec `eas submit --path` ; `eas` = build cloud EAS.
   #   - resume → reprend un build `beta` DÉJÀ FAIT (input build_id, et
   #              `platform` si on veut viser une seule jambe), sans rebuild
   #              (0 $) : tag/release, envoi s'il n'a pas abouti, distribution.
@@ -661,7 +679,13 @@ jobs:
       || matrix.platform == 'android' && 'Android · Google Play' || 'OTA' }}
       (${{ inputs.action }})
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
+    # macOS seulement pour la jambe iOS d'un build sur runner GitHub (Xcode) ;
+    # tout le reste (OTA, resume, distribute, build cloud EAS, Android) sur
+    # Ubuntu. Les étapes de ce job restent compatibles bash 3.2 (/bin/bash de
+    # macOS) : ni `mapfile`, ni `sed -i`, ni tableau vide développé sous set -u.
+    runs-on: >-
+      ${{ inputs.action == 'build' && inputs.builder != 'eas'
+      && matrix.platform == 'ios' && 'macos-26' || 'ubuntu-24.04' }}
     strategy:
       # Une plateforme en échec n'interrompt pas l'autre.
       fail-fast: false
@@ -675,8 +699,8 @@ jobs:
         # une (platform=ios ferait aussi tourner Android). Les valeurs propres à
         # chaque store sont posées par l'étape « Platform settings ».
     # Filet de sécurité seulement : chaque attente est bornée par l'étape
-    # (build 75 + envoi 35 min) et la somme reste en dessous, pour que l'état
-    # de reprise soit toujours transmis au suivi.
+    # (build 75 min cloud / 100 min runner + envoi 35 min) et la somme reste en
+    # dessous, pour que l'état de reprise soit toujours transmis au suivi.
     timeout-minutes: 180
     # Approval #1: the environment carries a required reviewer (one approval
     # releases both legs). Its deployment record only keeps the LAST leg: what
@@ -726,6 +750,40 @@ jobs:
             echo "STORE_NAME=$STORE"
             echo "NOTES_TITLE=$NOTES_TITLE"
           } >> "$GITHUB_ENV"
+
+      # Build iOS sur runner : Xcode ÉPINGLÉ, pour qu'un changement du Xcode par
+      # défaut de l'image ne change pas le binaire en silence. 26.6 compile
+      # expo-modules-jsi 57.1.1 (26.3 non : #468). Chemin vérifié sur l'image
+      # macos-26 (actions/runner-images, macos-26-arm64-Readme.md) ; fastlane et
+      # CocoaPods, requis par `eas build --local`, y sont préinstallés.
+      - name: Select Xcode (GitHub build, iOS)
+        if: >-
+          inputs.action == 'build' && inputs.builder != 'eas'
+          && matrix.platform == 'ios'
+        env:
+          XCODE_APP: /Applications/Xcode_26.6.app
+        run: |
+          set -euo pipefail
+          if [ ! -d "$XCODE_APP" ]; then
+            echo "::error::$XCODE_APP absent de l'image macos-26 : choisir un Xcode présent (actions/runner-images)"
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_APP"
+          xcodebuild -version
+          for tool in fastlane pod; do
+            command -v "$tool" > /dev/null || { echo "::error::$tool absent du runner"; exit 1; }
+          done
+
+      # Build Android sur runner : ~14 Go libres sur ubuntu-24.04, juste pour
+      # le workspace + Gradle. On retire des SDK inutiles ici (pas Android).
+      - name: Free disk space (GitHub build, Android)
+        if: >-
+          inputs.action == 'build' && inputs.builder != 'eas'
+          && matrix.platform == 'android'
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost \
+            "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}/CodeQL"
+          df -h /
 
       - name: Setup pnpm & Node
         if: inputs.action != 'distribute'
@@ -932,7 +990,12 @@ jobs:
           fi
           if [ -n "$TO_TEST" ]; then
             # Un point par élément séparé par « ; », espaces de bord retirés.
-            mapfile -t ITEMS < <(printf '%s' "$TO_TEST" | tr ';' '\n' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' | grep -v '^$')
+            # Boucle read plutôt que mapfile : la jambe iOS d'un build sur
+            # runner GitHub tourne sous le bash 3.2 de macOS.
+            ITEMS=()
+            while IFS= read -r item || [ -n "$item" ]; do
+              if [ -n "$item" ]; then ITEMS+=("$item"); fi
+            done < <(printf '%s\n' "$TO_TEST" | tr ';' '\n' | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
             if [ "${#ITEMS[@]}" -gt 0 ]; then
               { echo '### 🎯 Test first'; printf -- '- %s\n' "${ITEMS[@]}"; echo; cat beta-notes.md; } > "$RUNNER_TEMP/notes.md"
               mv "$RUNNER_TEMP/notes.md" beta-notes.md
@@ -958,14 +1021,14 @@ jobs:
             beta-notes.md
             beta-notes.txt
 
-      # Build natif `beta`. Lancé sans --wait pour connaître son ID tout de
+      # builder=eas — build natif `beta` dans le cloud EAS. Lancé sans --wait pour connaître son ID tout de
       # suite (il est écrit dans le résumé : une reprise reste possible même si
       # l'attente expire), puis attente BORNÉE de sa fin (file EAS gratuite +
       # ~10-30 min de build). Sortie JSON hors de l'arbre (RUNNER_TEMP) : rien
       # d'ajouté à l'archive envoyée à EAS.
-      - name: Build beta
+      - name: Build beta (EAS cloud)
         id: build
-        if: inputs.action == 'build'
+        if: inputs.action == 'build' && inputs.builder == 'eas'
         working-directory: apps/client
         timeout-minutes: 75
         env:
@@ -1017,6 +1080,137 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Build $PLATFORM_NAME beta **$BUILD_NUMBER** terminé." >> "$GITHUB_STEP_SUMMARY"
 
+      # builder=github — build natif `beta` SUR CE RUNNER (`eas build --local`),
+      # hors quota EAS (plan gratuit : quota iOS épuisé jusqu'au 2026-11-01).
+      # Même profil, mêmes credentials de signature (gérés par EAS, téléchargés
+      # par eas-cli avec EXPO_TOKEN, qui permettait déjà de les lire ici ;
+      # --freeze-credentials : jamais modifiés), même compteur de build distant
+      # (autoIncrement : un échec consomme un numéro). Ce que le builder EAS
+      # fournit et le runner non :
+      # - les variables EAS « secret » de type file (config Firebase) : lues
+      #   ici depuis les secrets de l'environnement `testflight-beta`, décodées
+      #   dans $RUNNER_TEMP/eas-environment-secrets/ — nom de dossier imposé :
+      #   fingerprint.config.js l'ignore, sinon l'empreinte calculée avant le
+      #   build diffère de celle du build (« Runtime version … not equal ») ;
+      # - SENTRY_AUTH_TOKEN (secret EAS) : pas d'envoi des source maps
+      #   (SENTRY_DISABLE_AUTO_UPLOAD) ; les crashs remontent quand même.
+      # Les variables EAS « sensitive » (clés Maps, WAKE_KEY…) sont, elles,
+      # chargées par eas-cli en local.
+      - name: Build beta (GitHub runner)
+        id: ghbuild
+        if: inputs.action == 'build' && inputs.builder != 'eas'
+        working-directory: apps/client
+        timeout-minutes: 100
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          # Seul le fichier de la jambe est transmis à l'étape.
+          FIREBASE_B64: >-
+            ${{ matrix.platform == 'ios' && secrets.FIREBASE_IOS_PLIST_BETA_B64
+            || matrix.platform == 'android' && secrets.FIREBASE_ANDROID_JSON_BETA_B64 || '' }}
+          EXPO_PUBLIC_APP_ENV: beta
+          SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+          EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: '1'
+          # CocoaPods exige une locale UTF-8.
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
+        run: |
+          set -euo pipefail
+          umask 077
+          SECRETS_DIR="$RUNNER_TEMP/eas-environment-secrets"
+          rm -rf "$SECRETS_DIR"
+          mkdir -p "$SECRETS_DIR"
+          trap 'rm -rf "$SECRETS_DIR"' EXIT
+          case "$PLATFORM" in
+            ios)
+              SECRET=FIREBASE_IOS_PLIST_BETA_B64 VAR=GOOGLE_SERVICE_INFO_PLIST_BETA
+              FILE="$SECRETS_DIR/GoogleService-Info.beta.plist" OUT="$RUNNER_TEMP/ffd-connect-beta.ipa"
+              ;;
+            android)
+              SECRET=FIREBASE_ANDROID_JSON_BETA_B64 VAR=GOOGLE_SERVICES_JSON_BETA
+              FILE="$SECRETS_DIR/google-services.beta.json" OUT="$RUNNER_TEMP/ffd-connect-beta.aab"
+              # JDK 17 (React Native 0.86), quel que soit le JDK par défaut.
+              export JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME}"
+              ;;
+            *)
+              echo "::error::plateforme inattendue : $PLATFORM"
+              exit 1
+              ;;
+          esac
+          EXPECTED_ID=fr.ffdanse.connect.beta
+
+          # Config Firebase : jamais affichée. Vérifiée AVANT le build (un
+          # build raté consomme un numéro) : format lisible et bonne app — le
+          # fichier d'une autre variante donnerait des push mortes en silence.
+          if [ -z "$FIREBASE_B64" ]; then
+            echo "::error::secret $SECRET absent de l'environnement testflight-beta (docs/exploitation/changelog-beta.md, « Build sur runner GitHub »)"
+            exit 1
+          fi
+          if ! printf '%s' "$FIREBASE_B64" | base64 --decode > "$FILE" 2> /dev/null; then
+            echo "::error::secret $SECRET : base64 illisible"
+            exit 1
+          fi
+          unset FIREBASE_B64
+          if [ "$PLATFORM" = "ios" ]; then
+            FOUND_ID=$(plutil -extract BUNDLE_ID raw -o - "$FILE" 2> /dev/null || true)
+            if [ "$FOUND_ID" != "$EXPECTED_ID" ]; then
+              echo "::error::secret $SECRET : BUNDLE_ID ${FOUND_ID:-illisible}, attendu $EXPECTED_ID"
+              exit 1
+            fi
+          elif ! jq -e --arg p "$EXPECTED_ID" \
+            'any(.client[]?; .client_info.android_client_info.package_name == $p)' "$FILE" > /dev/null 2>&1; then
+            echo "::error::secret $SECRET : aucun client Android $EXPECTED_ID dans ce google-services.json"
+            exit 1
+          fi
+          export "$VAR=$FILE"
+
+          echo "## $PLATFORM_ICON Build $PLATFORM_NAME beta sur runner GitHub (\`eas build --local\`)" >> "$GITHUB_STEP_SUMMARY"
+          if ! eas build --local --platform "$PLATFORM" --profile beta --non-interactive \
+            --freeze-credentials --output "$OUT" < /dev/null; then
+            echo "state=failed" >> "$GITHUB_OUTPUT"
+            echo "::error::eas build --local a échoué (numéro de build distant consommé : le prochain build prendra le suivant)"
+            exit 1
+          fi
+
+          # Numéro affiché par le store : lu DANS le binaire pour iOS (avec
+          # contrôle de l'identifiant), au compteur distant EAS pour Android
+          # (aucun outil ici pour lire un .aab ; le groupe de concurrence
+          # manual-beta sérialise les promotions).
+          if [ "$PLATFORM" = "ios" ]; then
+            unzip -p "$OUT" 'Payload/*.app/Info.plist' > "$RUNNER_TEMP/Info.plist"
+            BUNDLE=$(plutil -extract CFBundleIdentifier raw -o - "$RUNNER_TEMP/Info.plist" 2> /dev/null || true)
+            BUILD_NUMBER=$(plutil -extract CFBundleVersion raw -o - "$RUNNER_TEMP/Info.plist" 2> /dev/null || true)
+            rm -f "$RUNNER_TEMP/Info.plist"
+            if [ "$BUNDLE" != "$EXPECTED_ID" ]; then
+              echo "state=failed" >> "$GITHUB_OUTPUT"
+              echo "::error::binaire construit pour ${BUNDLE:-?}, attendu $EXPECTED_ID"
+              exit 1
+            fi
+          else
+            BUILD_NUMBER=$(eas build:version:get --platform android --profile beta --json < /dev/null 2> /dev/null \
+              | sed -n '/^{/,$p' | jq -r '.versionCode // empty' 2> /dev/null || true)
+          fi
+          SHA256=$(shasum -a 256 "$OUT" | cut -d ' ' -f 1)
+          {
+            echo "path=$OUT"
+            echo "sha256=$SHA256"
+          } >> "$GITHUB_OUTPUT"
+          if ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]{0,8}$ ]]; then
+            echo "state=pending" >> "$GITHUB_OUTPUT"
+            echo "::warning::build fini mais numéro de build illisible : binaire non envoyé (il n'est pas conservé), relancer action=build"
+            exit 0
+          fi
+          {
+            echo "state=finished"
+            echo "number=$BUILD_NUMBER"
+          } >> "$GITHUB_OUTPUT"
+          echo "Build $PLATFORM_NAME beta **$BUILD_NUMBER** terminé — SHA-256 \`$SHA256\`." >> "$GITHUB_STEP_SUMMARY"
+
+      # PAS d'artefact du binaire : dépôt PUBLIC, les artefacts y sont
+      # téléchargeables par tout compte GitHub, et le binaire embarque les
+      # variables EAS « sensitive » (clés Maps, WAKE_KEY…). Seule son empreinte
+      # SHA-256 sort du runner (résumé + release). Un envoi raté se refait par
+      # un nouveau build.
+
       - name: Publish OTA update (beta)
         id: ota
         if: inputs.action == 'ota'
@@ -1067,6 +1261,7 @@ jobs:
         if: >-
           !cancelled()
           && (steps.build.outputs.number != ''
+          || steps.ghbuild.outputs.number != ''
           || steps.resolve.outputs.number != ''
           || (steps.local.outputs.number != '' && steps.notes.outcome == 'success')
           || steps.ota.outcome == 'success')
@@ -1075,8 +1270,12 @@ jobs:
           ACTION: ${{ inputs.action }}
           PLATFORM: ${{ matrix.platform }}
           BUILD_NUMBER: >-
-            ${{ steps.build.outputs.number || steps.resolve.outputs.number
-            || steps.local.outputs.number }}
+            ${{ steps.build.outputs.number || steps.ghbuild.outputs.number
+            || steps.resolve.outputs.number || steps.local.outputs.number }}
+          # Build sur runner GitHub : empreinte du binaire envoyé au store
+          # (le binaire lui-même ne quitte pas le runner).
+          BINARY_SHA256: ${{ steps.ghbuild.outputs.sha256 }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           # Pointe de staging (build), commit du build repris (resume), ou
@@ -1098,6 +1297,10 @@ jobs:
             if [ "$ACTION" = "distribute" ]; then
               # Rien ne relie le binaire envoyé à la main à ce commit : le dire.
               HEADER="$HEADER Local build (eas build --local), uploaded by hand: provenance NOT verified by CI (build local, provenance non vérifiée par la CI)."
+            fi
+            if [[ "$BINARY_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+              # Relie le binaire du store à ce commit et à ce run.
+              HEADER="$HEADER Built on a GitHub Actions runner (eas build --local, $RUN_URL); SHA-256 of the submitted binary: \`$BINARY_SHA256\`."
             fi
           fi
           if gh release view "$TAG" > /dev/null 2>&1; then
@@ -1123,11 +1326,16 @@ jobs:
       # EXPO_PUBLIC_APP_ENV=beta : sans lui, app.config.js retombe sur la variante
       # development et la CLI cherche les credentials de fr.ffdanse.connect.dev
       # (cf. scripts/submit-beta.ts).
+      # Build sur runner GitHub : pas d'ID EAS, `eas submit --path` téléverse
+      # le binaire et EAS l'envoie avec SES clés (comme pour un build cloud :
+      # aucune clé de distribution ici). Une seule tentative ; soumission
+      # restée en file : action=distribute une fois FINISHED (voir le suivi).
       - name: Submit to store
         id: submit
         if: >-
           !cancelled()
-          && (steps.build.outputs.number != '' || steps.resolve.outputs.number != '')
+          && (steps.build.outputs.number != '' || steps.resolve.outputs.number != ''
+          || steps.ghbuild.outputs.number != '')
         working-directory: apps/client
         timeout-minutes: 35
         env:
@@ -1135,6 +1343,8 @@ jobs:
           ACTION: ${{ inputs.action }}
           PLATFORM: ${{ matrix.platform }}
           BUILD_ID: ${{ steps.build.outputs.id || steps.resolve.outputs.id }}
+          BINARY_PATH: ${{ steps.ghbuild.outputs.number != '' && steps.ghbuild.outputs.path || '' }}
+          BUILD_NUMBER: ${{ steps.ghbuild.outputs.number }}
           SUBMIT_WAIT_MIN: '30'
         run: |
           set -euo pipefail
@@ -1151,52 +1361,84 @@ jobs:
           }
           SUB_ID=""
           SUB_STATUS=""
-          if [ "$ACTION" = "resume" ]; then
-            if ! found=$(latest_submission); then
-              echo "::error::liste des soumissions EAS illisible : pas de nouvel envoi à l'aveugle (risque de doublon). Relancer la reprise."
+          if [ -n "$BINARY_PATH" ]; then
+            # La sortie de `eas submit` porte l'URL de la soumission
+            # (…/submissions/<uuid>) ; à défaut, la plus récente créée depuis.
+            SINCE=$(date -u +%Y-%m-%dT%H:%M:%S)
+            if ! eas submit --platform "$PLATFORM" --profile beta --path "$BINARY_PATH" \
+              --non-interactive --no-wait < /dev/null 2>&1 | tee "$RUNNER_TEMP/eas-submit.log"; then
+              echo "state=failed" >> "$GITHUB_OUTPUT"
+              echo "::error::eas submit --path a échoué : le binaire n'est pas conservé (dépôt public), relancer action=build (le build $BUILD_NUMBER est perdu)"
               exit 1
             fi
-            read -r SUB_ID SUB_STATUS <<< "$found" || true
-          fi
-
-          case "$SUB_STATUS" in
-            FINISHED)
-              echo "Soumission $SUB_ID déjà terminée : rien à renvoyer."
-              ;;
-            AWAITING_BUILD | IN_QUEUE | IN_PROGRESS)
-              echo "Soumission $SUB_ID déjà en cours ($SUB_STATUS) : on l'attend, sans doublon."
-              ;;
-            *)
-              [ -z "$SUB_STATUS" ] || echo "Soumission précédente $SUB_ID terminée en $SUB_STATUS : nouvel envoi."
-              OLD_ID="$SUB_ID"
-              eas submit --platform "$PLATFORM" --profile beta --id "$BUILD_ID" --non-interactive --no-wait < /dev/null
-              SUB_ID=""
-              for _ in 1 2 3 4 5 6; do
-                found=$(latest_submission || true)
-                read -r SUB_ID SUB_STATUS <<< "$found" || true
-                if [ -n "$SUB_ID" ] && [ "$SUB_ID" != "$OLD_ID" ]; then break; fi
-                SUB_ID=""
-                sleep 10
-              done
-              if [ -z "$SUB_ID" ]; then
-                echo "state=pending" >> "$GITHUB_OUTPUT"
-                echo "::warning::soumission créée mais introuvable dans eas submit:list - vérifier sur expo.dev puis reprendre"
-                exit 0
+            SUB_ID=$(grep -oE 'submissions/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
+              "$RUNNER_TEMP/eas-submit.log" | head -n 1 | cut -d / -f 2 || true)
+            for _ in 1 2 3 4 5 6; do
+              [ -z "$SUB_ID" ] || break
+              sleep 10
+              SUB_ID=$(eas submit:list --platform "$PLATFORM" --limit 10 --json --non-interactive < /dev/null 2> /dev/null \
+                | sed -n '/^\[/,$p' \
+                | jq -r --arg t "$SINCE" '[.[] | select(.createdAt >= $t)] | sort_by(.createdAt) | last | .id // empty' \
+                  2> /dev/null || true)
+            done
+            if ! [[ "$SUB_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+              echo "state=pending" >> "$GITHUB_OUTPUT"
+              echo "::warning::soumission du build $BUILD_NUMBER introuvable - vérifier sur expo.dev (eas submit:list -p $PLATFORM) puis, une fois FINISHED : action=distribute build_number=$BUILD_NUMBER"
+              exit 0
+            fi
+          else
+            if [ "$ACTION" = "resume" ]; then
+              if ! found=$(latest_submission); then
+                echo "::error::liste des soumissions EAS illisible : pas de nouvel envoi à l'aveugle (risque de doublon). Relancer la reprise."
+                exit 1
               fi
-              ;;
-          esac
+              read -r SUB_ID SUB_STATUS <<< "$found" || true
+            fi
+
+            case "$SUB_STATUS" in
+              FINISHED)
+                echo "Soumission $SUB_ID déjà terminée : rien à renvoyer."
+                ;;
+              AWAITING_BUILD | IN_QUEUE | IN_PROGRESS)
+                echo "Soumission $SUB_ID déjà en cours ($SUB_STATUS) : on l'attend, sans doublon."
+                ;;
+              *)
+                [ -z "$SUB_STATUS" ] || echo "Soumission précédente $SUB_ID terminée en $SUB_STATUS : nouvel envoi."
+                OLD_ID="$SUB_ID"
+                eas submit --platform "$PLATFORM" --profile beta --id "$BUILD_ID" --non-interactive --no-wait < /dev/null
+                SUB_ID=""
+                for _ in 1 2 3 4 5 6; do
+                  found=$(latest_submission || true)
+                  read -r SUB_ID SUB_STATUS <<< "$found" || true
+                  if [ -n "$SUB_ID" ] && [ "$SUB_ID" != "$OLD_ID" ]; then break; fi
+                  SUB_ID=""
+                  sleep 10
+                done
+                if [ -z "$SUB_ID" ]; then
+                  echo "state=pending" >> "$GITHUB_OUTPUT"
+                  echo "::warning::soumission créée mais introuvable dans eas submit:list - vérifier sur expo.dev puis reprendre"
+                  exit 0
+                fi
+                ;;
+            esac
+          fi
           echo "submission=$SUB_ID" >> "$GITHUB_OUTPUT"
 
           deadline=$(( $(date +%s) + SUBMIT_WAIT_MIN * 60 ))
           while [ "$SUB_STATUS" != "FINISHED" ]; do
             if [ "$SUB_STATUS" = "ERRORED" ] || [ "$SUB_STATUS" = "CANCELED" ]; then
               echo "state=failed" >> "$GITHUB_OUTPUT"
-              echo "::error::soumission $SUB_ID terminée en $SUB_STATUS (logs : eas submit:view $SUB_ID). La reprise la relancera."
+              if [ -n "$BINARY_PATH" ]; then
+                echo "::error::soumission $SUB_ID terminée en $SUB_STATUS (logs : eas submit:view $SUB_ID). Si eas submit:retry $SUB_ID n'y fait rien : relancer action=build (le binaire n'est pas conservé)."
+              else
+                echo "::error::soumission $SUB_ID terminée en $SUB_STATUS (logs : eas submit:view $SUB_ID). La reprise la relancera."
+              fi
               exit 1
             fi
             if [ "$(date +%s)" -ge "$deadline" ]; then
               echo "state=pending" >> "$GITHUB_OUTPUT"
-              echo "::warning::soumission $SUB_ID toujours ${SUB_STATUS:-illisible} après $SUBMIT_WAIT_MIN min (file EAS) - elle continue chez EAS ; reprendre avec action=resume"
+              if [ -n "$BINARY_PATH" ]; then RESUME="action=distribute build_number=$BUILD_NUMBER"; else RESUME="action=resume"; fi
+              echo "::warning::soumission $SUB_ID toujours ${SUB_STATUS:-illisible} après $SUBMIT_WAIT_MIN min (file EAS) - elle continue chez EAS ; une fois FINISHED, reprendre avec $RESUME"
               echo "⏳ Soumission \`$SUB_ID\` encore **${SUB_STATUS:-illisible}** après $SUBMIT_WAIT_MIN min." >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
@@ -1208,6 +1450,16 @@ jobs:
           done
           echo "state=finished" >> "$GITHUB_OUTPUT"
           echo "📤 Envoyé sur $STORE_NAME (soumission \`$SUB_ID\`)" >> "$GITHUB_STEP_SUMMARY"
+
+      # Filet de l'étape de build (dont le trap efface déjà la config Firebase) :
+      # même après un timeout ou une annulation, rien de décodé ni le binaire
+      # ne reste sur le runner. Aucun listage : seulement des suppressions.
+      - name: Clean up build secrets and binary (GitHub build)
+        if: always() && inputs.action == 'build' && inputs.builder != 'eas'
+        run: |
+          rm -rf "$RUNNER_TEMP/eas-environment-secrets"
+          rm -f "$RUNNER_TEMP/ffd-connect-beta.ipa" "$RUNNER_TEMP/ffd-connect-beta.aab" \
+            "$RUNNER_TEMP/Info.plist" "$RUNNER_TEMP/eas-submit.log"
 
       # Passage de relais à distribute-beta et au suivi : les sorties d'un job
       # matriciel s'écrasent d'une jambe à l'autre, d'où un artefact PAR JAMBE
@@ -1221,9 +1473,11 @@ jobs:
           SKIP: ${{ steps.resolve.outputs.skip }}
           BUILD_ID: ${{ steps.build.outputs.id || steps.resolve.outputs.id }}
           BUILD_NUMBER: >-
-            ${{ steps.build.outputs.number || steps.resolve.outputs.number
-            || steps.local.outputs.number }}
-          BUILD_STATE: ${{ steps.build.outputs.state }}
+            ${{ steps.build.outputs.number || steps.ghbuild.outputs.number
+            || steps.resolve.outputs.number || steps.local.outputs.number }}
+          BUILD_STATE: ${{ steps.build.outputs.state || steps.ghbuild.outputs.state }}
+          # github | eas pour action=build (où le binaire a été construit).
+          BUILDER: ${{ inputs.action == 'build' && inputs.builder || '' }}
           TAG_OUTCOME: ${{ steps.tag.outcome }}
           # distribute : envoi fait hors CI (étape « Resolve local beta build »),
           # transmis seulement si les notes ont été générées — sinon pas de
@@ -1245,9 +1499,10 @@ jobs:
             --arg build_id "$BUILD_ID" --arg build_number "$BUILD_NUMBER" \
             --arg version "$VERSION" \
             --arg build_state "$BUILD_STATE" --arg tag "$TAG_OUTCOME" --arg submit "$SUBMIT_STATE" \
+            --arg builder "$BUILDER" \
             '{platform: $platform, skip: ($skip == "true"), build_id: $build_id,
               build_number: $build_number, version: $version, build_state: $build_state,
-              tag_outcome: $tag, submit_state: $submit}' > "$D/state.json"
+              tag_outcome: $tag, submit_state: $submit, builder: $builder}' > "$D/state.json"
           if [ -f beta-notes.txt ]; then cp beta-notes.txt "$D/beta-notes.txt"; fi
 
       - name: Upload hand-off state
@@ -1625,12 +1880,14 @@ jobs:
             BUILD_STATE=$(sf build_state)
             TAG_OUTCOME=$(sf tag_outcome)
             SUBMIT_STATE=$(sf submit_state)
+            BUILDER=$(sf builder)
             # État venu d'un job non fiable : chaque champ affiché ou recopié
             # dans une commande passe un motif strict (comme distribute-beta) ;
             # un saut de ligne injecterait sinon une commande de workflow.
             if ! [[ "$BUILD_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
               BUILD_ID=""
             fi
+            [[ "$BUILDER" =~ ^(github|eas)$ ]] || BUILDER=""
             for v in BUILD_STATE TAG_OUTCOME SUBMIT_STATE; do
               if [ -n "${!v}" ] && ! [[ "${!v}" =~ ^[a-z_]{1,20}$ ]]; then
                 printf -v "$v" '%s' invalide
@@ -1644,11 +1901,22 @@ jobs:
               # numéro (validé : l'état vient d'un job non fiable).
               CMD="gh workflow run eas-build.yml --ref $REF -f action=distribute -f platform=$PLATFORM -f build_number=$BUILD_NUMBER"
               BUILD_LABEL="local (hors EAS)"
+              if [ "$BUILDER" = "github" ]; then
+                BUILD_LABEL="runner GitHub"
+              fi
             else
               continue # rien n'a été construit ni repris : l'erreur est dans l'étape fautive
             fi
             if [ "$BUILD_STATE" = "failed" ]; then
               echo "::error::le build $PLATFORM $BUILD_ID a échoué chez EAS : un nouveau build (action=build) est nécessaire"
+              continue
+            fi
+            # Build sur runner dont l'envoi n'a pas abouti : action=distribute
+            # suppose le binaire déjà sur le store, et le binaire n'est pas
+            # conservé (dépôt public). Soumission en file (pending) : attendre
+            # puis $CMD ; sinon (échec), seul un nouveau build reste possible.
+            if [ "$BUILDER" = "github" ] && [ "$SUBMIT_STATE" != "finished" ] && [ "$SUBMIT_STATE" != "pending" ]; then
+              echo "::error::build $PLATFORM $BUILD_NUMBER construit sur le runner mais pas envoyé au store (${SUBMIT_STATE:-non tenté}) : binaire non conservé, relancer action=build"
               continue
             fi
             if [ -f "$D" ]; then
