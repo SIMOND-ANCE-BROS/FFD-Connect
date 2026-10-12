@@ -322,6 +322,59 @@ describe("HelloAssoService — contrats HTTP", () => {
       expect(outcomes).toEqual(["success", "success"]);
     });
 
+    it("ne compte pas des identifiants refusés (401) comme une panne, et échoue quand même", async () => {
+      const outcomes: string[] = [];
+      const observingBreaker = {
+        fire: jest.fn(async (_key: string, fn: () => Promise<unknown>) => {
+          try {
+            const value = await fn();
+            outcomes.push("success");
+            return value;
+          } catch (error) {
+            outcomes.push("failure");
+            throw error;
+          }
+        }),
+      } as unknown as CircuitBreakerService;
+      const observed = new HelloAssoService(observingBreaker, {
+        get: jest.fn(),
+      } as unknown as ConfigService);
+      const errorSpy = jest
+        .spyOn(Logger.prototype, "error")
+        .mockImplementation(() => undefined);
+      nock(HELLOASSO_API)
+        .post("/oauth2/token")
+        .reply(401, { error: "invalid_client" });
+
+      await expect(
+        observed.getCheckoutIntent(credentials, "4242"),
+      ).rejects.toThrow();
+      errorSpy.mockRestore();
+
+      expect(outcomes).toEqual(["success"]);
+    });
+
+    it("isole le coupe-circuit par organisation HelloAsso", async () => {
+      const fire = jest.fn(
+        (_key: string, fn: () => Promise<unknown>, _scope?: string) => fn(),
+      );
+      const scoped = new HelloAssoService(
+        { fire } as unknown as CircuitBreakerService,
+        { get: jest.fn() } as unknown as ConfigService,
+      );
+      tokenOk();
+      nock(HELLOASSO_API)
+        .get("/v5/organizations/org-slug/checkout-intents/4242")
+        .reply(200, { id: 4242 });
+
+      await scoped.getCheckoutIntent(credentials, "4242");
+
+      expect(fire.mock.calls.map((call) => [call[0], call[2]])).toEqual([
+        ["helloasso", "org-slug"],
+        ["helloasso", "org-slug"],
+      ]);
+    });
+
     it("propage les autres erreurs (5xx) pour que la notification soit rejouée", async () => {
       tokenOk();
       nock(HELLOASSO_API)
