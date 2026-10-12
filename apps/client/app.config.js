@@ -350,15 +350,10 @@ module.exports = {
       // non-problem. The real cause is a missing/ineffective NSFaceIDUsageDescription
       // (canEvaluatePolicy → biometryNotAvailable), now set explicitly in
       // ios.infoPlist above.
-      // Barre native clavier iOS (^ v ✓) - IQKeyboardManager
-      // DISABLED on SDK 57 / RN 0.86: react-native-keyboard-manager's native
-      // category on RCTBaseTextInputView (setDefaultInputAccessoryView_backup)
-      // no longer compiles against the reorganized RN 0.86 headers
-      // (XCODE_BUILD_ERROR: "cannot find interface declaration for
-      // 'RCTBaseTextInputView'"). Removed the pod plugin + npm dep to unblock
-      // the build; the native keyboard toolbar is gone until a RN-0.86-compatible
-      // keyboard manager is wired up.
-      // "./plugins/withKeyboardManager.js",
+      // NOTE: the IQKeyboardManager pod plugin is gone too —
+      // react-native-keyboard-manager no longer compiles against RN 0.86. The
+      // keyboard toolbar (prev / next / Terminé) is now JS-side:
+      // react-native-keyboard-controller + GlassKeyboardToolbar (App.tsx).
       // Firebase - App & Messaging (notifications push). RE-ENABLED.
       // These were switched off on a mere SUSPICION while bisecting the
       // iOS 26.3.1 SIGABRT (Messaging swizzles UIApplicationDelegate's APNs

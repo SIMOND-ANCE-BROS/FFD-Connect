@@ -175,7 +175,7 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
             style={styles.inputIcon}
           />
           <TextInput
-            accessibilityLabel="Text input field"
+            accessibilityLabel="Nom de l'événement"
             accessibilityHint="Saisissez le nom de l'événement"
             testID="competition-editor-title-input"
             style={[styles.input, { color: theme.text }]}

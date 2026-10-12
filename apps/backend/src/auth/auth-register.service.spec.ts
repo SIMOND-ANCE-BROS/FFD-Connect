@@ -168,6 +168,77 @@ describe("AuthService.register", () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  describe("licence expiry follows the Paris calendar day (#384)", () => {
+    // Only Date is faked: bcrypt and Nest keep their real timers.
+    const fakeNow = (iso: string) =>
+      jest.useFakeTimers({
+        now: new Date(iso),
+        doNotFake: [
+          "nextTick",
+          "setImmediate",
+          "clearImmediate",
+          "setTimeout",
+          "clearTimeout",
+          "setInterval",
+          "clearInterval",
+          "queueMicrotask",
+          "hrtime",
+          "performance",
+        ],
+      });
+
+    afterEach(() => jest.useRealTimers());
+
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      // 10:00 Paris (CEST) on 2026-10-12.
+      prisma.license.findUnique.mockResolvedValue({
+        ...validLicense,
+        validUntil: new Date("2026-10-12T08:00:00Z"),
+      });
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) =>
+          fn({
+            user: {
+              create: jest.fn().mockResolvedValue({
+                id: "user-1",
+                email: "new@example.com",
+                role: "LICENSEE",
+              }),
+            },
+            license: { update: jest.fn().mockResolvedValue({}) },
+          }),
+      );
+    });
+
+    const register = () =>
+      authService.register(
+        "new@example.com",
+        "MonPass1!abc",
+        "FFD-2025-001",
+        "Dupont",
+      );
+
+    it("accepts the licence at 23:00 Paris on the day of validUntil", async () => {
+      fakeNow("2026-10-12T21:00:00Z");
+
+      await expect(register()).resolves.toMatchObject({
+        access_token: "jwt-tok",
+      });
+    });
+
+    it("rejects the licence at 00:01 Paris the next day", async () => {
+      fakeNow("2026-10-12T22:01:00Z");
+
+      await expect(register()).rejects.toThrow(
+        new BadRequestException(
+          "Cette licence a expiré. Contactez votre club pour le renouvellement.",
+        ),
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
   it("rejects weak password", async () => {
     await expect(
       authService.register("new@example.com", "weak", "FFD-2025-001", "Dupont"),

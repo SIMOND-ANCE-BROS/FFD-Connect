@@ -14,6 +14,7 @@ import { getAppIdentity } from "../../../utils/appIdentity";
 import { createLogger } from "../../../utils/logger";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 import { UserRole } from "../../auth/services/AuthService";
+import { computeLicenseExpiry } from "../../license/utils/licenseExpiry";
 import type { HelloAssoStatus } from "../../club/services/ClubService";
 import { ClubService } from "../../club/services/ClubService";
 import { usage } from "../../../services/analytics/usage";
@@ -132,15 +133,15 @@ export const useSettingsLogic = ({
         } catch (error) {
           logger.warn("[Settings] Role sync failed", error);
         }
-        if (profile.license?.validUntil) {
-          const now = new Date();
-          const expiry = new Date(profile.license.validUntil);
-          const diffMs = expiry.getTime() - now.getTime();
-          const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-          setLicenseExpiryDays(days > 0 && days <= 30 ? days : null);
-        } else {
-          setLicenseExpiryDays(null);
-        }
+        // Same rules as the License screen (#255): Paris calendar days, the
+        // reminder only while the license expires within 30 days (an expired
+        // license is handled on the License screen, not here).
+        const expiry = computeLicenseExpiry(profile.license?.validUntil);
+        setLicenseExpiryDays(
+          expiry.status === "warning" || expiry.status === "urgent"
+            ? expiry.days
+            : null,
+        );
       } catch {
         setLicenseExpiryDays(null);
       }

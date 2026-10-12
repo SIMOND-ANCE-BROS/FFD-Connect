@@ -26,6 +26,7 @@ import { AppDemo, type DemoView } from './components/ffd-demo';
 import { SiteHeader, SiteFooter } from './components/site-chrome';
 import { repository, betaUrl } from './lib/ffd';
 import { MovementLine } from './components/movement-line';
+import { PublicRoadmap } from './RoadmapSection';
 
 const modules: {
   id: DemoView;
@@ -154,13 +155,6 @@ const profiles = {
   },
 };
 type Profile = keyof typeof profiles;
-type Issue = {
-  number: number;
-  title: string;
-  html_url: string;
-  milestone: { title: string } | null;
-};
-
 function usePageMotion() {
   useEffect(() => {
     const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -192,103 +186,6 @@ function usePageMotion() {
       delete document.documentElement.dataset.motion;
     };
   }, []);
-}
-
-function Roadmap() {
-  const [data, setData] = useState<Issue[] | null>(null);
-  const [error, setError] = useState(false);
-  const section = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    let started = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (started || !entries.some((entry) => entry.isIntersecting)) return;
-        started = true;
-        observer.disconnect();
-        timer = setTimeout(() => {
-          setError(true);
-          controller.abort();
-        }, 6500);
-        fetch(
-          'https://api.github.com/repos/SIMOND-ANCE-BROS/FFD-Connect/issues?state=open&per_page=20&sort=updated',
-          { signal: controller.signal },
-        )
-          .then((response) => {
-            if (!response.ok) throw new Error();
-            return response.json() as Promise<(Issue & { pull_request?: unknown })[]>;
-          })
-          .then((result) => {
-            clearTimeout(timer);
-            setData(result.filter((issue) => !issue.pull_request));
-          })
-          .catch(() => {
-            clearTimeout(timer);
-            if (!controller.signal.aborted) setError(true);
-          });
-      },
-      { rootMargin: '400px' },
-    );
-    if (section.current) observer.observe(section.current);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-      observer.disconnect();
-    };
-  }, []);
-  return (
-    <div
-      className="project-feed"
-      ref={section}
-      aria-live="polite"
-      aria-busy={data === null && !error}
-    >
-      {error ? (
-        <div className="feed-fallback">
-          <GitBranch size={28} />
-          <h3>Le suivi continue sur GitHub.</h3>
-          <p>
-            Les sujets en cours ne peuvent pas être affichés ici pour le moment. Retrouvez-les
-            directement dans le dépôt.
-          </p>
-          <a className="text-link" href={repository + '/issues'} target="_blank" rel="noreferrer">
-            Consulter les sujets en cours
-          </a>
-        </div>
-      ) : data === null ? (
-        <div className="feed-loading">
-          <span aria-hidden="true" />
-          <p>Chargement des sujets en cours…</p>
-        </div>
-      ) : data.length === 0 ? (
-        <div className="feed-fallback">
-          <Check size={28} />
-          <h3>Aucun sujet ouvert à afficher.</h3>
-          <a className="text-link" href={repository + '/issues'} target="_blank" rel="noreferrer">
-            Voir l’historique du projet
-          </a>
-        </div>
-      ) : (
-        <ol className="project-issues">
-          {data.slice(0, 4).map((issue) => (
-            <li key={issue.number}>
-              <a href={issue.html_url} target="_blank" rel="noreferrer">
-                <span className="issue-index">#{issue.number}</span>
-                <div>
-                  <h3>{issue.title}</h3>
-                  {issue.milestone && (
-                    <span className="issue-milestone">{issue.milestone.title}</span>
-                  )}
-                </div>
-                <Plus size={18} aria-hidden="true" />
-              </a>
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
-  );
 }
 
 export default function App() {
@@ -659,10 +556,10 @@ export default function App() {
             <div className="project-tracker" data-reveal>
               <div className="project-source">
                 <GitBranch size={21} />
-                <span>Les sujets en cours</span>
+                <span>Feuille de route</span>
                 <span>GITHUB</span>
               </div>
-              <Roadmap />
+              <PublicRoadmap />
               <a className="tracker-footer" href={repository} target="_blank" rel="noreferrer">
                 SIMOND-ANCE-BROS / FFD-Connect
               </a>

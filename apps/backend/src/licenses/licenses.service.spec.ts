@@ -271,5 +271,37 @@ describe("LicensesService", () => {
       expect(result.isValid).toBe(false);
       expect(result.holder).toBeNull();
     });
+
+    describe("Paris calendar day rule (#384)", () => {
+      afterEach(() => jest.useRealTimers());
+
+      // A license whose validUntil is 10:00 Paris (CEST) on 2026-10-12 must
+      // match the filter at 23:00 Paris that day, and not at 00:01 on D+1.
+      const validUntil = new Date("2026-10-12T08:00:00Z");
+      const filterAt = async (nowIso: string): Promise<Date> => {
+        jest.useFakeTimers({ now: new Date(nowIso) });
+        mockPrisma.license.findFirst.mockResolvedValue(null);
+        await service.validateStaffLicense("123");
+        const where = (
+          mockPrisma.license.findFirst.mock.calls.at(-1) as [
+            { where: { number: string; validUntil: { gte: Date } } },
+          ]
+        )[0].where;
+        expect(where.number).toBe("123");
+        return where.validUntil.gte;
+      };
+
+      it("filters from 00:00 Paris of the current day", async () => {
+        const floor = await filterAt("2026-10-12T21:00:00Z");
+        expect(floor).toEqual(new Date("2026-10-11T22:00:00Z"));
+        expect(validUntil.getTime()).toBeGreaterThanOrEqual(floor.getTime());
+      });
+
+      it("excludes the license from 00:01 Paris the next day", async () => {
+        const floor = await filterAt("2026-10-12T22:01:00Z");
+        expect(floor).toEqual(new Date("2026-10-12T22:00:00Z"));
+        expect(validUntil.getTime()).toBeLessThan(floor.getTime());
+      });
+    });
   });
 });

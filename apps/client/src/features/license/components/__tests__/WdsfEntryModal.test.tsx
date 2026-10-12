@@ -44,6 +44,27 @@ describe("WdsfEntryModal", () => {
     expect(getByTestId("wdsf-modal-input")).toBeTruthy();
   });
 
+  it("a11y (#386): the MIN input is announced with a French label", async () => {
+    const { getByLabelText, queryByLabelText } = await render(
+      <ThemeContext.Provider value={themeMock as never}>
+        <WdsfEntryModal
+          visible={true}
+          onClose={mockOnClose}
+          onVerify={mockOnVerify}
+          loading={false}
+          error={null}
+          theme={themeMock.theme as never}
+          testID="wdsf-modal"
+        />
+      </ThemeContext.Provider>,
+    );
+
+    expect(getByLabelText("Numéro MIN WDSF").props.testID).toBe(
+      "wdsf-modal-input",
+    );
+    expect(queryByLabelText("Text input field")).toBeNull();
+  });
+
   it("calls onVerify with MIN value when verify button is pressed", async () => {
     const { getByTestId } = await render(
       <ThemeContext.Provider value={themeMock as never}>

@@ -94,6 +94,18 @@ export function parisEndOfDay(day: string): Date {
   return new Date(instant);
 }
 
+/**
+ * Instant at which the calendar day `day` (`YYYY-MM-DD`) starts in
+ * Europe/Paris (midnight Paris time), i.e. the end of the previous day.
+ */
+export function parisStartOfDay(day: string): Date {
+  const [year, month, date] = day.split("-").map(Number);
+  const previousDay = new Date(Date.UTC(year, month - 1, date - 1))
+    .toISOString()
+    .slice(0, 10);
+  return parisEndOfDay(previousDay);
+}
+
 /** True when `day` (`YYYY-MM-DD`) is a real calendar date. */
 function isCalendarDay(day: string): boolean {
   const parsed = new Date(`${day}T00:00:00.000Z`);

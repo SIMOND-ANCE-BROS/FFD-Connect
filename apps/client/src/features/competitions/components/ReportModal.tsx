@@ -394,7 +394,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
             Titre <Text style={styles.asterisk}>*</Text>
           </Text>
           <TextInput
-            accessibilityLabel="Text input field"
+            accessibilityLabel="Titre du rapport"
             accessibilityHint="Saisissez un titre pour ce rapport"
             style={[
               styles.input,
@@ -419,7 +419,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
             Description <Text style={styles.asterisk}>*</Text>
           </Text>
           <TextInput
-            accessibilityLabel="Text input field"
+            accessibilityLabel="Description du rapport"
             accessibilityHint="Décrivez avec plus de détails ce qui se passe ou votre suggestion"
             style={[
               styles.input,
@@ -450,7 +450,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                 Étapes pour reproduire
               </Text>
               <TextInput
-                accessibilityLabel="Text input field"
+                accessibilityLabel="Étapes pour reproduire"
                 accessibilityHint="Si c'est un bug, indiquez comment le reproduire pas à pas"
                 style={[
                   styles.input,

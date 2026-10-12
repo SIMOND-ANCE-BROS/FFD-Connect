@@ -3,14 +3,9 @@
  * Extraits de CompetitionsScreen pour être testables.
  */
 
-const PARIS_TZ = "Europe/Paris";
+import { parisDayIndex } from "../../../utils/parisDay";
 
-/** Index de jour calendaire (heure de Paris) pour un diff en jours entiers. */
-function parisDayIndex(d: Date): number {
-  // 'en-CA' → "YYYY-MM-DD" ; on le réinterprète en UTC minuit pour l'index.
-  const ymd = d.toLocaleDateString("en-CA", { timeZone: PARIS_TZ });
-  return Math.floor(new Date(`${ymd}T00:00:00Z`).getTime() / 86_400_000);
-}
+const PARIS_TZ = "Europe/Paris";
 
 /**
  * Jours calendaires (Paris) avant la deadline d'inscription, si elle est dans

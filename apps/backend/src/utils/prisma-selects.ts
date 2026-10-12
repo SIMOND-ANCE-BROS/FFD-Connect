@@ -291,6 +291,17 @@ export const licenseRenewalDocumentFileSelect = {
 } as const;
 
 /**
+ * Suppression de compte (RGPD art. 17, #382) : résultats de compétition à
+ * anonymiser. `details` est lu pour n'en garder que les clés non
+ * identifiantes ; la compétition sert à invalider le cache des résultats.
+ */
+export const resultAnonymizationSelect = {
+  id: true,
+  details: true,
+  event: { select: { competitionId: true } },
+} as const;
+
+/**
  * Document de renouvellement tel que l'API le renvoie (#224). `ocrData` est lu
  * pour le résumé affiché dans l'app, mais ne sort JAMAIS tel quel : il passe
  * par `toRenewalDocumentResponse`, qui ne garde que les champs utiles (jamais
@@ -383,16 +394,117 @@ export const seatBookingPaymentNotificationSelect = {
   competition: { select: { id: true, title: true, organizer: true } },
 } as const;
 
-/** Status of a booking a HelloAsso payment could not confirm (#39). */
-export const seatBookingStatusSelect = {
-  status: true,
-} as const;
-
 /** A club's identity and status, to address its managers. */
 export const clubRecipientSelect = {
   id: true,
   name: true,
   disabledAt: true,
+} as const;
+
+/**
+ * Checkout HelloAsso (#381) : le plan de salle porte le tarif de chaque
+ * élément (`priceCents`). Le montant est lu ici, jamais dans la requête.
+ */
+export const competitionSeatPricingSelect = {
+  id: true,
+  layout: true,
+} as const;
+
+/**
+ * Webhook HelloAsso (#381) : champs d'une réservation nécessaires pour
+ * vérifier qu'une commande payée lui correspond bien.
+ */
+export const seatBookingPaymentCheckSelect = {
+  id: true,
+  competitionId: true,
+  status: true,
+  paymentId: true,
+  expectedAmountCents: true,
+} as const;
+
+/**
+ * Export RGPD (#251) : contexte d'une épreuve (spécialité, classe d'âge,
+ * niveau, type, compétition). Aucune donnée de personne.
+ */
+export const exportEventContextSelect = {
+  category: true,
+  ageGroup: true,
+  level: true,
+  eventType: true,
+  competition: { select: { title: true, date: true } },
+} as const;
+
+/**
+ * Export RGPD (#251) : résultats de compétition. `details` est lu pour n'en
+ * extraire que `totalParticipants` (cf. UsersService.exportMyData) : son
+ * libellé `participant` nomme le couple, donc aussi le partenaire (tiers).
+ */
+export const resultExportSelect = {
+  round: true,
+  ranking: true,
+  details: true,
+  createdAt: true,
+  event: { select: exportEventContextSelect },
+} as const;
+
+/**
+ * Export RGPD (#251) : inscriptions où l'utilisateur est le PARTENAIRE.
+ * Contexte de l'épreuve uniquement : ni l'identité du licencié qui a inscrit
+ * le couple (userId, user), ni le règlement de son inscription (feePaid).
+ */
+export const partnerRegistrationExportSelect = {
+  status: true,
+  bibNumber: true,
+  coupleAgeGroup: true,
+  createdAt: true,
+  event: { select: exportEventContextSelect },
+} as const;
+
+/**
+ * Export RGPD (#251) : musiques proposées par l'utilisateur. Les drapeaux de
+ * modération sont lus pour masquer le nom d'une piste modérée
+ * (publicTrackName), comme pour les propositions de correction.
+ */
+export const submittedTrackExportSelect = {
+  title: true,
+  artist: true,
+  titleMasked: true,
+  blacklisted: true,
+  status: true,
+  createdAt: true,
+} as const;
+
+/**
+ * Export RGPD (#251) : signalements envoyés depuis l'app (message, appareil,
+ * date). La pile d'erreur, purement technique, reste interne.
+ */
+export const bugReportExportSelect = {
+  message: true,
+  deviceInfo: true,
+  createdAt: true,
+} as const;
+
+/**
+ * Export RGPD (#251) : sessions « se connecter en tant que » ciblant
+ * l'utilisateur. Date, motif et RÔLE de l'auteur seulement : ni son
+ * identifiant (actorId) ni son adresse IP, données d'un tiers.
+ */
+export const impersonationLogExportSelect = {
+  actorRole: true,
+  reason: true,
+  startedAt: true,
+  endedAt: true,
+} as const;
+
+/**
+ * Export RGPD (#251) : sessions de connexion (refresh tokens) en
+ * MÉTADONNÉES. Jamais le hash du token (`token`), secret d'authentification.
+ */
+export const refreshTokenExportSelect = {
+  createdAt: true,
+  expiresAt: true,
+  revoked: true,
+  revokedAt: true,
 } as const;
 
 /** Dépôt d'un document : statut de la demande + fichiers déjà déposés. */
@@ -841,6 +953,33 @@ export const adminClubListSelect = {
   isStoreReview: true,
   createdAt: true,
 } as const;
+
+/**
+ * Club HelloAsso credentials, read ONLY by the payment flow
+ * (`getHelloAssoCredentialsForCompetition`). The secret is encrypted at rest
+ * (#389) and must never be returned by an API nor logged.
+ */
+export const clubHelloAssoCredentialsSelect = {
+  id: true,
+  helloAssoClientId: true,
+  helloAssoClientSecret: true,
+  helloAssoOrgSlug: true,
+} as const;
+
+/**
+ * Club HelloAsso status: what the organizer sees (connected + slug, mode).
+ * The secret is read only to know whether it is set — never returned.
+ */
+export const clubHelloAssoStatusSelect = {
+  name: true,
+  registrationMode: true,
+  helloAssoClientId: true,
+  helloAssoClientSecret: true,
+  helloAssoOrgSlug: true,
+} as const;
+
+/** Club identity only (id + name). */
+export const clubIdNameSelect = { id: true, name: true } as const;
 
 /** Back-office club page: one member row. */
 export const adminClubMemberSelect = {

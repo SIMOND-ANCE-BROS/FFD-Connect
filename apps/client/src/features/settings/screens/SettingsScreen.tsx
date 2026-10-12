@@ -32,6 +32,7 @@ import { HelloAssoModal } from "../components/HelloAssoModal";
 import { SettingsPrivacySection } from "../components/SettingsPrivacySection";
 import { exportAndShareMyData } from "../services/PrivacyService";
 import { LegalDoc } from "../../legal/legalContent";
+import { formatLicenseExpiryCountdown } from "../../license/utils/licenseExpiry";
 import { styles } from "../components/settings.styles";
 import type { UserRole } from "../../auth/services/AuthService";
 import { SpaceSelector } from "../components/SpaceSelector";
@@ -342,9 +343,8 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
               color={currentTheme.warning}
               style={licenseExpiryStyles.text}
             >
-              Votre licence expire dans {licenseExpiryDays} jour
-              {licenseExpiryDays > 1 ? "s" : ""}. Contactez votre club pour le
-              renouvellement.
+              {formatLicenseExpiryCountdown(licenseExpiryDays)}. Contactez votre
+              club pour le renouvellement.
             </AppText>
           </View>
         )}

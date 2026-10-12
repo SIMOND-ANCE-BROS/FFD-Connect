@@ -164,7 +164,7 @@ export const WdsfEntryModal: React.FC<WdsfEntryModalProps> = ({
               </View>
 
               <TextInput
-                accessibilityLabel="Text input field"
+                accessibilityLabel="Numéro MIN WDSF"
                 accessibilityHint="Saisissez votre numéro MIN WDSF"
                 testID="wdsf-modal-input"
                 style={[

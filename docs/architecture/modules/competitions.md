@@ -80,4 +80,3 @@ Navigation ecrans relies:
 - Forte densite fonctionnelle: fort risque de regressions inter-domaines.
 - Check-in et inscriptions doivent etre idempotents cote API.
 - La coherence des statuts competition/registration conditionne toute l'UX.
-

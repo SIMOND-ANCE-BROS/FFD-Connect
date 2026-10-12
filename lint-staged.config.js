@@ -5,10 +5,11 @@ const path = require('path');
 const excludeGenerated = (files) => files.filter((f) => !f.includes(path.join('api', 'generated')));
 
 module.exports = {
-  // Catch-all: format any staged file Prettier understands (md, json, yml, css, etc.)
+  // Catch-all: format any staged file Prettier understands (md, json, yml, css, etc.).
+  // A glob without a slash matches the basename, so this already covers every
+  // directory (apps/, docs/, patches/, .github/…) — no per-directory duplicate,
+  // which would run two concurrent `prettier --write` on the same file.
   '*.{md,json,yml,yaml,css}': ['prettier --write'],
-  'apps/**/*.{md,json,yml,yaml,css}': ['prettier --write'],
-  'docs/**/*.md': ['prettier --write'],
   'apps/backend/src/**/*.ts': ['eslint --fix -c apps/backend/eslint.config.js', 'prettier --write'],
   'apps/client/src/**/*.{ts,tsx}': (files) => {
     const filtered = excludeGenerated(files);

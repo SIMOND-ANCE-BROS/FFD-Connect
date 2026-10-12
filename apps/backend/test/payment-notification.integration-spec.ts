@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { TestingModule } from "@nestjs/testing";
 import { BookingStatus, NotificationType, UserRole } from "@prisma/client";
 import { NotificationsService } from "../src/notifications/notifications.service";
+import type { WebhookPayloadDto } from "../src/payment/dto/webhook-payload.dto";
 import { PaymentService } from "../src/payment/payment.service";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { buildServiceModule } from "./integration-app.builder";
@@ -9,7 +10,8 @@ import { buildServiceModule } from "./integration-app.builder";
 /**
  * HelloAsso payment notification (#39) on a real database: the REAL
  * NotificationsService (Firebase not configured, and this type is feed-only
- * anyway) behind PaymentService.confirmBooking, the method the webhook calls.
+ * anyway) behind PaymentService.handleOrderWebhook, the method the webhook
+ * calls, fed with orders that pass the #381 checks.
  * Also proves CLUB_PAYMENT_RECEIVED exists in the migrated Postgres enum.
  */
 describe("HelloAsso payment notification (integration, real DB)", () => {
@@ -51,6 +53,9 @@ describe("HelloAsso payment notification (integration, real DB)", () => {
     return club;
   };
 
+  const AMOUNT_CENTS = 1500;
+  const checkoutIntentId = 4242;
+
   /** A competition organised by `club`, and a PENDING booking on it. */
   const pendingBooking = async (club: { name: string }, payerId: string) => {
     const competition = await prisma.competition.create({
@@ -70,10 +75,26 @@ describe("HelloAsso payment notification (integration, real DB)", () => {
         itemId: "item-1",
         seatLabel: "Rang A, Place 5",
         status: BookingStatus.PENDING,
+        paymentId: String(checkoutIntentId),
+        expectedAmountCents: AMOUNT_CENTS,
       },
-      select: { id: true },
+      select: { id: true, competitionId: true },
     });
   };
+
+  /** A signed-and-valid HelloAsso `Order` paying `booking` in full. */
+  const paidOrder = (booking: {
+    id: string;
+    competitionId: string;
+  }): WebhookPayloadDto => ({
+    eventType: "Order",
+    metadata: { bookingId: booking.id, competitionId: booking.competitionId },
+    data: {
+      id: 98765,
+      checkoutIntentId,
+      payments: [{ id: 1, amount: AMOUNT_CENTS, state: "Authorized" }],
+    },
+  });
 
   const paymentRows = (userId: string) =>
     prisma.notification.findMany({
@@ -123,8 +144,8 @@ describe("HelloAsso payment notification (integration, real DB)", () => {
     const member = await createUser(UserRole.LICENSEE, club);
     const booking = await pendingBooking(club, member.id);
 
-    await payments.confirmBooking(booking.id);
-    await payments.confirmBooking(booking.id); // HelloAsso replay
+    await payments.handleOrderWebhook(paidOrder(booking));
+    await payments.handleOrderWebhook(paidOrder(booking)); // HelloAsso replay
 
     const rows = await paymentRows(manager.id);
     expect(rows).toHaveLength(1);
@@ -158,7 +179,9 @@ describe("HelloAsso payment notification (integration, real DB)", () => {
       select: { id: true },
     });
 
-    await expect(payments.confirmBooking(booking.id)).resolves.toBeUndefined();
+    await expect(
+      payments.handleOrderWebhook(paidOrder(booking)),
+    ).resolves.toBeUndefined();
 
     expect(
       await prisma.seatBooking.findUnique({
@@ -171,7 +194,9 @@ describe("HelloAsso payment notification (integration, real DB)", () => {
 
   it("answers without throwing for an unknown booking", async () => {
     await expect(
-      payments.confirmBooking(randomUUID()),
+      payments.handleOrderWebhook(
+        paidOrder({ id: randomUUID(), competitionId: randomUUID() }),
+      ),
     ).resolves.toBeUndefined();
   });
 
@@ -184,7 +209,9 @@ describe("HelloAsso payment notification (integration, real DB)", () => {
       .spyOn(notifications, "createManyForUsers")
       .mockRejectedValue(new Error("feed down"));
 
-    await expect(payments.confirmBooking(booking.id)).resolves.toBeUndefined();
+    await expect(
+      payments.handleOrderWebhook(paidOrder(booking)),
+    ).resolves.toBeUndefined();
 
     expect(
       await prisma.seatBooking.findUnique({

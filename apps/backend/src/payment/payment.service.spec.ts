@@ -2,8 +2,12 @@ import { BadRequestException, Logger } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigService } from "@nestjs/config";
 import { PrismaClient } from "@prisma/client";
+import * as Sentry from "@sentry/nestjs";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
+import type { WebhookPayloadDto } from "./dto/webhook-payload.dto";
 import { PaymentService } from "./payment.service";
+
+jest.mock("@sentry/nestjs", () => ({ captureMessage: jest.fn() }));
 import { HelloAssoService } from "./hello-asso.service";
 import { ClubsHelloAssoService } from "../clubs/clubs-helloasso.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -56,7 +60,17 @@ describe("PaymentService", () => {
     competitionId: "comp-1",
     itemId: "item-1",
     seatLabel: "A1",
-    amount: 1500,
+    // Tampered amount sent by the client: must be ignored (#381).
+    amount: 1,
+  };
+
+  const SEAT_PRICE_CENTS = 1500;
+  const mockCompetition = {
+    id: "comp-1",
+    layout: [
+      { id: "other-item", priceCents: 9900 },
+      { id: "item-1", label: "Table 1", priceCents: SEAT_PRICE_CENTS },
+    ],
   };
 
   beforeEach(async () => {
@@ -93,6 +107,7 @@ describe("PaymentService", () => {
     }).compile();
 
     service = module.get<PaymentService>(PaymentService);
+    prisma.competition.findUnique.mockResolvedValue(mockCompetition as any);
   });
 
   describe("createCheckout", () => {
@@ -168,6 +183,7 @@ describe("PaymentService", () => {
             itemId: mockDto.itemId,
             seatLabel: mockDto.seatLabel,
             status: "PENDING",
+            expectedAmountCents: SEAT_PRICE_CENTS,
           }),
         }),
       );
@@ -191,7 +207,7 @@ describe("PaymentService", () => {
         mockCredentials,
         expect.any(String),
         expect.objectContaining({
-          amount: mockDto.amount,
+          amount: SEAT_PRICE_CENTS,
           consumerEmail: mockUser.email,
           consumerFirstName: mockUser.firstName,
           consumerLastName: mockUser.lastName,
@@ -384,105 +400,474 @@ describe("PaymentService", () => {
     });
   });
 
-  describe("confirmBooking", () => {
-    it("confirms the booking with a conditional write and notifies the club once", async () => {
-      prisma.seatBooking.updateMany.mockResolvedValue({ count: 1 });
+  describe("createCheckout — server-side price (#381)", () => {
+    beforeEach(() => {
+      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
+        mockCredentials,
+      );
+      prisma.user.findUnique.mockResolvedValue(mockUser as any);
+      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
+      helloAssoService.createCheckoutIntent.mockResolvedValue(mockIntent);
+      prisma.seatBooking.update.mockResolvedValue(mockBooking as any);
+    });
 
-      await service.confirmBooking("booking-1");
+    it("ignores the client amount and charges the layout price", async () => {
+      await service.createCheckout("user-1", { ...mockDto, amount: 1 });
 
-      expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith({
-        where: { id: "booking-1", status: "PENDING" },
-        data: { status: "CONFIRMED" },
+      expect(prisma.competition.findUnique).toHaveBeenCalledWith({
+        where: { id: "comp-1" },
+        select: { id: true, layout: true },
       });
-      expect(
-        paymentNotificationService.notifyPaymentReceived,
-      ).toHaveBeenCalledTimes(1);
-      expect(
-        paymentNotificationService.notifyPaymentReceived,
-      ).toHaveBeenCalledWith("booking-1");
+      const params = helloAssoService.createCheckoutIntent.mock.calls[0][2];
+      expect(params.amount).toBe(SEAT_PRICE_CENTS);
     });
 
-    it("ignores a webhook replay: no second notification", async () => {
-      prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+    it("works for a client that no longer sends an amount", async () => {
+      await service.createCheckout("user-1", {
+        competitionId: "comp-1",
+        itemId: "item-1",
+      });
+
+      const params = helloAssoService.createCheckoutIntent.mock.calls[0][2];
+      expect(params.amount).toBe(SEAT_PRICE_CENTS);
+    });
+
+    it("stores the numeric HelloAsso intent id as a string", async () => {
+      helloAssoService.createCheckoutIntent.mockResolvedValue({
+        ...mockIntent,
+        id: 4242 as unknown as string,
+      });
+
+      await service.createCheckout("user-1", mockDto);
+
+      expect(prisma.seatBooking.update).toHaveBeenCalledWith({
+        where: { id: mockBooking.id },
+        data: { paymentId: "4242" },
+      });
+    });
+
+    it.each([
+      ["the competition does not exist", null],
+      ["the layout is empty", { id: "comp-1", layout: [] }],
+      ["the layout is not an array", { id: "comp-1", layout: null }],
+      [
+        "the item has no price",
+        { id: "comp-1", layout: [{ id: "item-1", label: "Table 1" }] },
+      ],
+      [
+        "the item price is zero",
+        { id: "comp-1", layout: [{ id: "item-1", priceCents: 0 }] },
+      ],
+      [
+        "the item price is not an integer",
+        { id: "comp-1", layout: [{ id: "item-1", priceCents: 10.5 }] },
+      ],
+      [
+        "the item price is a string",
+        { id: "comp-1", layout: [{ id: "item-1", priceCents: "1500" }] },
+      ],
+      [
+        "the item price is absurdly high",
+        { id: "comp-1", layout: [{ id: "item-1", priceCents: 1_000_001 }] },
+      ],
+      [
+        "the item is not in the layout",
+        { id: "comp-1", layout: [{ id: "other", priceCents: 1500 }, "junk"] },
+      ],
+    ])("refuses the checkout when %s", async (_label, competition) => {
+      prisma.competition.findUnique.mockResolvedValue(competition as any);
+
+      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
+        /Aucun tarif/,
+      );
+      expect(prisma.seatBooking.create).not.toHaveBeenCalled();
+      expect(helloAssoService.createCheckoutIntent).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("handleOrderWebhook (#381)", () => {
+    const bookingForCheck = {
+      id: "booking-1",
+      competitionId: "comp-1",
+      status: "PENDING",
+      paymentId: "4242",
+      expectedAmountCents: 1500,
+    };
+
+    const paidOrder = (
+      overrides: Partial<WebhookPayloadDto["data"]> = {},
+      rootMetadata: WebhookPayloadDto["metadata"] = {
+        bookingId: "booking-1",
+        competitionId: "comp-1",
+      },
+    ): WebhookPayloadDto => ({
+      eventType: "Order",
+      metadata: rootMetadata,
+      data: {
+        id: 98765,
+        checkoutIntentId: 4242,
+        payments: [{ id: 1, amount: 1500, state: "Authorized" }],
+        ...overrides,
+      },
+    });
+
+    const confirmCall = {
+      where: { id: "booking-1", status: "PENDING", expectedAmountCents: 1500 },
+      data: { status: "CONFIRMED" },
+    };
+
+    beforeEach(() => {
+      prisma.seatBooking.findUnique.mockResolvedValue(bookingForCheck as any);
+      prisma.seatBooking.updateMany.mockResolvedValue({ count: 1 });
+      (Sentry.captureMessage as jest.Mock).mockClear();
+    });
+
+    const expectRejected = (reason: string) => {
+      expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
+      expect(prisma.seatBooking.update).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        "HelloAsso order rejected",
+        expect.objectContaining({
+          level: "error",
+          tags: expect.objectContaining({ reason }),
+          extra: expect.objectContaining({ bookingId: "booking-1" }),
+        }),
+      );
+    };
+
+    it("confirms a paid order of the expected amount (happy path)", async () => {
+      await service.handleOrderWebhook(paidOrder());
+
+      expect(prisma.seatBooking.findUnique).toHaveBeenCalledWith({
+        where: { id: "booking-1" },
+        select: {
+          id: true,
+          competitionId: true,
+          status: true,
+          paymentId: true,
+          expectedAmountCents: true,
+        },
+      });
+      expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith(confirmCall);
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it("accepts the legacy data.metadata location", async () => {
+      await service.handleOrderWebhook({
+        eventType: "Order",
+        data: {
+          checkoutIntentId: 4242,
+          metadata: { bookingId: "booking-1", competitionId: "comp-1" },
+          payments: [{ amount: 1500, state: "Authorized" }],
+        },
+      });
+
+      expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith(confirmCall);
+    });
+
+    it("sums several paid payments and ignores unpaid ones", async () => {
+      await service.handleOrderWebhook(
+        paidOrder({
+          payments: [
+            { amount: 1000, state: "Authorized" },
+            { amount: 700, state: "Refused" },
+            { amount: 500, state: "Authorized" },
+          ],
+        }),
+      );
+
+      expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith(confirmCall);
+    });
+
+    it("ignores orders that carry no bookingId", async () => {
+      await service.handleOrderWebhook(paidOrder({}, { competitionId: "x" }));
+      await service.handleOrderWebhook({ eventType: "Order", data: {} });
+
+      expect(prisma.seatBooking.findUnique).not.toHaveBeenCalled();
+      expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it("does nothing (and does not alert) for an already confirmed booking", async () => {
       prisma.seatBooking.findUnique.mockResolvedValue({
+        ...bookingForCheck,
         status: "CONFIRMED",
-      } as never);
+      } as any);
 
-      await expect(
-        service.confirmBooking("booking-1"),
-      ).resolves.toBeUndefined();
+      await service.handleOrderWebhook(paidOrder());
 
-      expect(
-        paymentNotificationService.notifyPaymentReceived,
-      ).not.toHaveBeenCalled();
+      expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
     });
 
-    it("notifies only the first of two deliveries of the same payment", async () => {
-      prisma.seatBooking.updateMany
-        .mockResolvedValueOnce({ count: 1 })
-        .mockResolvedValueOnce({ count: 0 });
-      prisma.seatBooking.findUnique.mockResolvedValue({
-        status: "CONFIRMED",
-      } as never);
-
-      await service.confirmBooking("booking-1");
-      await service.confirmBooking("booking-1");
-
-      expect(
-        paymentNotificationService.notifyPaymentReceived,
-      ).toHaveBeenCalledTimes(1);
-    });
-
-    it("answers 2xx for an unknown booking and logs the reconciliation error", async () => {
-      const error = jest
-        .spyOn(Logger.prototype, "error")
-        .mockImplementation(() => undefined);
-      prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+    it("rejects an order whose booking does not exist", async () => {
       prisma.seatBooking.findUnique.mockResolvedValue(null);
 
-      await expect(service.confirmBooking("missing")).resolves.toBeUndefined();
+      await service.handleOrderWebhook(paidOrder());
 
-      expect(error).toHaveBeenCalledWith(
-        "HelloAsso payment for unknown booking missing",
-      );
-      expect(
-        paymentNotificationService.notifyPaymentReceived,
-      ).not.toHaveBeenCalled();
-      error.mockRestore();
+      expectRejected("booking_not_found");
     });
 
-    it.each(["CANCELLED", "EXPIRED"])(
-      "never resurrects a %s booking: logs an error, no notification",
+    it.each(["CANCELLED", "EXPIRED", "SOMETHING_NEW"])(
+      "rejects an order for a %s booking (only PENDING transitions)",
       async (status) => {
-        const error = jest
-          .spyOn(Logger.prototype, "error")
-          .mockImplementation(() => undefined);
-        prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
-        prisma.seatBooking.findUnique.mockResolvedValue({ status } as never);
+        prisma.seatBooking.findUnique.mockResolvedValue({
+          ...bookingForCheck,
+          status,
+        } as any);
 
-        await expect(
-          service.confirmBooking("booking-1"),
-        ).resolves.toBeUndefined();
+        await service.handleOrderWebhook(paidOrder());
 
-        expect(error).toHaveBeenCalledWith(
-          `HelloAsso payment for booking booking-1 in status ${status}: not confirmed`,
+        expectRejected("not_pending");
+      },
+    );
+
+    it("rejects when the booking changed between the read and the write", async () => {
+      prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+
+      await service.handleOrderWebhook(paidOrder());
+
+      expect(Sentry.captureMessage).toHaveBeenCalledWith(
+        "HelloAsso order rejected",
+        expect.objectContaining({
+          tags: expect.objectContaining({ reason: "not_pending" }),
+        }),
+      );
+    });
+
+    describe("organizer club notification (#39)", () => {
+      it("notifies the organizer club once the booking is confirmed", async () => {
+        await service.handleOrderWebhook(paidOrder());
+
+        expect(
+          paymentNotificationService.notifyPaymentReceived,
+        ).toHaveBeenCalledTimes(1);
+        expect(
+          paymentNotificationService.notifyPaymentReceived,
+        ).toHaveBeenCalledWith("booking-1");
+        expect(
+          prisma.seatBooking.updateMany.mock.invocationCallOrder[0],
+        ).toBeLessThan(
+          paymentNotificationService.notifyPaymentReceived.mock
+            .invocationCallOrder[0],
+        );
+      });
+
+      it("does not notify again on a redelivery of a confirmed booking", async () => {
+        prisma.seatBooking.findUnique.mockResolvedValue({
+          ...bookingForCheck,
+          status: "CONFIRMED",
+        } as any);
+
+        await service.handleOrderWebhook(paidOrder());
+
+        expect(
+          paymentNotificationService.notifyPaymentReceived,
+        ).not.toHaveBeenCalled();
+      });
+
+      it("notifies only the delivery that wins the PENDING -> CONFIRMED transition", async () => {
+        prisma.seatBooking.updateMany
+          .mockResolvedValueOnce({ count: 1 })
+          .mockResolvedValueOnce({ count: 0 });
+
+        await service.handleOrderWebhook(paidOrder());
+        await service.handleOrderWebhook(paidOrder());
+
+        expect(
+          paymentNotificationService.notifyPaymentReceived,
+        ).toHaveBeenCalledTimes(1);
+      });
+
+      it("never notifies for a rejected order", async () => {
+        await service.handleOrderWebhook(
+          paidOrder({ payments: [{ amount: 1, state: "Authorized" }] }),
+        );
+        prisma.seatBooking.findUnique.mockResolvedValue(null);
+        await service.handleOrderWebhook(paidOrder());
+
+        expect(
+          paymentNotificationService.notifyPaymentReceived,
+        ).not.toHaveBeenCalled();
+      });
+
+      it("does not notify when the database write fails", async () => {
+        prisma.seatBooking.updateMany.mockRejectedValue(new Error("DB down"));
+
+        await expect(service.handleOrderWebhook(paidOrder())).rejects.toThrow(
+          "DB down",
         );
         expect(
           paymentNotificationService.notifyPaymentReceived,
         ).not.toHaveBeenCalled();
-        error.mockRestore();
+      });
+    });
+
+    it("rejects an unpaid order (refused payment)", async () => {
+      await service.handleOrderWebhook(
+        paidOrder({ payments: [{ amount: 1500, state: "Refused" }] }),
+      );
+
+      expectRejected("not_paid");
+    });
+
+    it.each(["Pending", "Refunded", "Unknown", "Processed", "authorized", ""])(
+      "rejects a payment in a non allow-listed state (%p)",
+      async (state) => {
+        await service.handleOrderWebhook(
+          paidOrder({ payments: [{ amount: 1500, state }] }),
+        );
+
+        expectRejected("not_paid");
       },
     );
 
+    it("rejects an order without any payment", async () => {
+      await service.handleOrderWebhook(paidOrder({ payments: undefined }));
+
+      expectRejected("not_paid");
+    });
+
+    it.each([
+      ["a missing amount", { state: "Authorized" }],
+      ["a decimal (euros) amount", { amount: 15.0001, state: "Authorized" }],
+      ["a negative amount", { amount: -1500, state: "Authorized" }],
+      ["a string amount", { amount: "1500", state: "Authorized" }],
+      ["a missing state", { amount: 1500 }],
+    ])("rejects a payment with %s", async (_label, payment) => {
+      await service.handleOrderWebhook(
+        paidOrder({
+          payments: [payment as unknown as { amount: number; state: string }],
+        }),
+      );
+
+      expectRejected("invalid_payment");
+    });
+
+    it("rejects an amount in euros instead of cents", async () => {
+      await service.handleOrderWebhook(
+        paidOrder({ payments: [{ amount: 15, state: "Authorized" }] }),
+      );
+
+      expectRejected("amount_mismatch");
+    });
+
+    it("rejects an order paid with a tampered (lower) amount", async () => {
+      await service.handleOrderWebhook(
+        paidOrder({ payments: [{ amount: 1, state: "Authorized" }] }),
+      );
+
+      expectRejected("amount_mismatch");
+    });
+
+    it("rejects an order paid with a higher amount", async () => {
+      await service.handleOrderWebhook(
+        paidOrder({ payments: [{ amount: 1501, state: "Authorized" }] }),
+      );
+
+      expectRejected("amount_mismatch");
+    });
+
+    it("rejects an order for another competition", async () => {
+      await service.handleOrderWebhook(
+        paidOrder(
+          {},
+          { bookingId: "booking-1", competitionId: "another-competition" },
+        ),
+      );
+
+      expectRejected("competition_mismatch");
+    });
+
+    it("rejects an order whose metadata has no competitionId", async () => {
+      await service.handleOrderWebhook(
+        paidOrder({}, { bookingId: "booking-1" }),
+      );
+
+      expectRejected("competition_mismatch");
+    });
+
+    it("rejects an order from another checkout intent", async () => {
+      await service.handleOrderWebhook(paidOrder({ checkoutIntentId: 1 }));
+
+      expectRejected("checkout_intent_mismatch");
+    });
+
+    it("rejects an order without checkoutIntentId", async () => {
+      await service.handleOrderWebhook(
+        paidOrder({ checkoutIntentId: undefined }),
+      );
+
+      expectRejected("checkout_intent_mismatch");
+    });
+
+    it("rejects when the booking has no recorded checkout intent", async () => {
+      prisma.seatBooking.findUnique.mockResolvedValue({
+        ...bookingForCheck,
+        paymentId: null,
+      } as any);
+
+      await service.handleOrderWebhook(paidOrder());
+
+      expectRejected("checkout_intent_mismatch");
+    });
+
+    it("rejects a booking created before #381 (no expected amount)", async () => {
+      prisma.seatBooking.findUnique.mockResolvedValue({
+        ...bookingForCheck,
+        expectedAmountCents: null,
+      } as any);
+
+      await service.handleOrderWebhook(paidOrder());
+
+      expectRejected("no_expected_amount");
+    });
+
+    it("logs only identifiers on rejection", async () => {
+      const errorSpy = jest
+        .spyOn(Logger.prototype, "error")
+        .mockImplementation(() => undefined);
+
+      await service.handleOrderWebhook(
+        paidOrder({ payments: [{ amount: 1, state: "Authorized" }] }),
+      );
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "HelloAsso order 98765 rejected for booking booking-1: amount_mismatch",
+      );
+      errorSpy.mockRestore();
+    });
+
+    it("propagates database errors so HelloAsso retries", async () => {
+      prisma.seatBooking.findUnique.mockRejectedValue(new Error("DB down"));
+
+      await expect(service.handleOrderWebhook(paidOrder())).rejects.toThrow(
+        "DB down",
+      );
+    });
+  });
+
+  describe("confirmBooking", () => {
+    it("calls seatBooking.update with CONFIRMED status", async () => {
+      prisma.seatBooking.update.mockResolvedValue({
+        ...mockBooking,
+        status: "CONFIRMED",
+      } as any);
+
+      await service.confirmBooking("booking-1");
+
+      expect(prisma.seatBooking.update).toHaveBeenCalledWith({
+        where: { id: "booking-1" },
+        data: { status: "CONFIRMED" },
+      });
+    });
+
     it("propagates prisma errors", async () => {
-      prisma.seatBooking.updateMany.mockRejectedValue(new Error("DB error"));
+      prisma.seatBooking.update.mockRejectedValue(new Error("DB error"));
 
       await expect(service.confirmBooking("booking-1")).rejects.toThrow(
         "DB error",
       );
-      expect(
-        paymentNotificationService.notifyPaymentReceived,
-      ).not.toHaveBeenCalled();
     });
   });
 });

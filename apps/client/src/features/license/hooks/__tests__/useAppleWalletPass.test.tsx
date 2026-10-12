@@ -83,6 +83,29 @@ describe("canAddLicenseToAppleWallet", () => {
   it("is false without a license", () => {
     expect(canAddLicenseToAppleWallet(null, "ios", now)).toBe(false);
   });
+
+  // #255: end of August 31 in Paris; the button must go away right after it.
+  const seasonEnd = license({ validUntilRaw: "2027-08-31T21:59:59.999Z" });
+
+  it("is true on the last day of validity (#255)", () => {
+    expect(
+      canAddLicenseToAppleWallet(
+        seasonEnd,
+        "ios",
+        new Date("2027-08-31T10:00:00Z"),
+      ),
+    ).toBe(true);
+  });
+
+  it("is false on the day after the end of validity (#255)", () => {
+    expect(
+      canAddLicenseToAppleWallet(
+        seasonEnd,
+        "ios",
+        new Date("2027-09-01T10:00:00Z"),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("useAppleWalletPass", () => {

@@ -2,20 +2,32 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { ClubRegistrationMode, UserRole } from "@prisma/client";
 import { hasRole } from "../auth/roles";
-import { userRolesClubSelect } from "../utils/prisma-selects";
+import { SecretDecryptionError } from "../common/crypto/secret-cipher";
+import { SecretCipherService } from "../common/crypto/secret-cipher.service";
+import { clubHelloAssoSecretContext } from "../common/crypto/secret-contexts";
+import {
+  clubHelloAssoCredentialsSelect,
+  clubHelloAssoStatusSelect,
+  clubIdNameSelect,
+  userRolesClubSelect,
+} from "../utils/prisma-selects";
 import { PrismaService } from "../prisma/prisma.service";
 import { ClubsService } from "./clubs.service";
 import type { ConnectHelloAssoDto } from "./dto/connect-helloasso.dto";
 
 @Injectable()
 export class ClubsHelloAssoService {
+  private readonly logger = new Logger(ClubsHelloAssoService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly clubsService: ClubsService,
+    private readonly secretCipher: SecretCipherService,
   ) {}
 
   async getMyClubHelloAssoStatus(organizerUserId: string): Promise<{
@@ -37,7 +49,10 @@ export class ClubsHelloAssoService {
       );
     }
     const club = user.clubId
-      ? await this.prisma.club.findUnique({ where: { id: user.clubId } })
+      ? await this.prisma.club.findUnique({
+          where: { id: user.clubId },
+          select: clubHelloAssoStatusSelect,
+        })
       : user.clubName?.trim()
         ? await this.clubsService.findOrCreateByName(user.clubName)
         : null;
@@ -147,7 +162,10 @@ export class ClubsHelloAssoService {
       throw new BadRequestException("Only organizers can connect HelloAsso");
     }
     const club = user.clubId
-      ? await this.prisma.club.findUnique({ where: { id: user.clubId } })
+      ? await this.prisma.club.findUnique({
+          where: { id: user.clubId },
+          select: clubIdNameSelect,
+        })
       : user.clubName?.trim()
         ? await this.clubsService.findOrCreateByName(user.clubName)
         : null;
@@ -160,7 +178,11 @@ export class ClubsHelloAssoService {
       where: { id: club.id },
       data: {
         helloAssoClientId: dto.clientId,
-        helloAssoClientSecret: dto.clientSecret,
+        // Encrypted at rest (#389); plaintext only while no key is configured.
+        helloAssoClientSecret: this.secretCipher.encrypt(
+          dto.clientSecret,
+          clubHelloAssoSecretContext(club.id),
+        ),
         helloAssoOrgSlug: dto.organizationSlug,
       },
     });
@@ -192,6 +214,7 @@ export class ClubsHelloAssoService {
       where: {
         name: { equals: competition.organizer.trim(), mode: "insensitive" },
       },
+      select: clubHelloAssoCredentialsSelect,
     });
     if (
       !club?.helloAssoClientId ||
@@ -201,10 +224,70 @@ export class ClubsHelloAssoService {
       return null;
     }
 
+    let clientSecret: string;
+    let needsReEncryption: boolean;
+    try {
+      ({ plaintext: clientSecret, needsReEncryption } =
+        this.secretCipher.decrypt(
+          club.helloAssoClientSecret,
+          clubHelloAssoSecretContext(club.id),
+        ));
+    } catch (error) {
+      // Never log the stored value. Without readable credentials the club is
+      // treated as not connected (same as before it connected HelloAsso).
+      this.logger.error(
+        `HelloAsso secret of club ${club.id} could not be decrypted: ${
+          error instanceof SecretDecryptionError
+            ? error.message
+            : "unexpected error"
+        }`,
+      );
+      return null;
+    }
+    if (needsReEncryption) {
+      await this.reEncryptSecret(
+        club.id,
+        club.helloAssoClientSecret,
+        clientSecret,
+      );
+    }
+
     return {
       clientId: club.helloAssoClientId,
-      clientSecret: club.helloAssoClientSecret,
+      clientSecret,
       organizationSlug: club.helloAssoOrgSlug,
     };
+  }
+
+  /**
+   * Lazy migration (#389): rewrites a legacy plaintext secret (or one
+   * encrypted with the previous key) with the current key. Compare-and-set on
+   * the stored value so a concurrent `connectHelloAsso` is never overwritten.
+   * Best effort: a failure is logged and never breaks the payment flow.
+   */
+  private async reEncryptSecret(
+    clubId: string,
+    storedValue: string,
+    plaintext: string,
+  ): Promise<void> {
+    try {
+      await this.prisma.club.updateMany({
+        where: { id: clubId, helloAssoClientSecret: storedValue },
+        data: {
+          helloAssoClientSecret: this.secretCipher.encrypt(
+            plaintext,
+            clubHelloAssoSecretContext(clubId),
+          ),
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        // Error name only: a Prisma error message can echo the query
+        // arguments, i.e. the secret.
+        `HelloAsso secret of club ${clubId} could not be re-encrypted (${
+          error instanceof Error ? error.name : "unknown error"
+        })`,
+      );
+    }
   }
 }

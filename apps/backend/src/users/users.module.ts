@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { CompetitionCacheService } from "../competitions/services/competition-cache.service";
 import { AccountDeletionService } from "./account-deletion.service";
 import { UsersService } from "./users.service";
 import { UsersController } from "./users.controller";
@@ -10,7 +11,7 @@ import { WdsfModule } from "../wdsf/wdsf.module";
 @Module({
   imports: [PrismaModule, LicenseQrModule, AppleWalletModule, WdsfModule],
   controllers: [UsersController],
-  providers: [UsersService, AccountDeletionService],
+  providers: [UsersService, AccountDeletionService, CompetitionCacheService],
   exports: [UsersService, AccountDeletionService],
 })
 export class UsersModule {}

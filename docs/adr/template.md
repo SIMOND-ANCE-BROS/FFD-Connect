@@ -15,11 +15,13 @@ What is the change that we're proposing and/or doing?
 ## Alternatives Considered
 
 ### Alternative 1: [Name]
+
 - **Pros**: [benefits]
 - **Cons**: [drawbacks]
 - **Why not**: [specific reason this was rejected]
 
 ### Alternative 2: [Name]
+
 - **Pros**: [benefits]
 - **Cons**: [drawbacks]
 - **Why not**: [specific reason this was rejected]
@@ -27,12 +29,15 @@ What is the change that we're proposing and/or doing?
 ## Consequences
 
 ### Positive
+
 - [benefit 1]
 - [benefit 2]
 
 ### Negative
+
 - [trade-off 1]
 - [trade-off 2]
 
 ### Risks
+
 - [risk and mitigation]
