@@ -46,6 +46,23 @@ describe('extractPublicSummary', () => {
     ).toBe('Première ligne suite.');
   });
 
+  it('reads a section appended at the end of the body', () => {
+    expect(
+      extractPublicSummary(
+        '## Contexte\n\nX\n\n## Liens\n\n- #1\n\n## Pour le public\n\nTexte final.\n',
+      ),
+    ).toBe('Texte final.');
+  });
+
+  it('skips the template comment, even when followed by a blank line', () => {
+    expect(
+      extractPublicSummary(
+        '## Pour le public\n\n<!--\nConsigne\n\nsur deux paragraphes.\n-->\n\nTexte.\n',
+      ),
+    ).toBe('Texte.');
+    expect(extractPublicSummary('<!-- ## Pour le public -->\nTexte.')).toBeNull();
+  });
+
   it('handles CRLF bodies', () => {
     expect(
       extractPublicSummary('## Contexte\r\n\r\nX\r\n\r\n## Pour le public\r\n\r\nTexte.\r\n'),

@@ -82,7 +82,12 @@ export function stripMarkdown(markdown: string): string {
  */
 export function extractPublicSummary(body: string | null | undefined): string | null {
   if (!body) return null;
-  const lines = body.replace(/\r\n?/g, '\n').split('\n');
+  // HTML comments (template hints) are dropped first so that they neither count
+  // as the first paragraph nor hide a heading.
+  const lines = body
+    .replace(/\r\n?/g, '\n')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .split('\n');
   const heading = new RegExp(`^##\\s+${PUBLIC_SECTION_TITLE}\\s*#*\\s*$`, 'i');
   const start = lines.findIndex((line) => heading.test(line.trim()));
   if (start === -1) return null;
@@ -101,7 +106,7 @@ export function extractPublicSummary(body: string | null | undefined): string | 
   return text === '' ? null : text;
 }
 
-/** "déc. 2026" style label, or null when the date is absent or invalid. */
+/** "décembre 2026" style label, or null when the date is absent or invalid. */
 export function formatDue(dueOn: string | null): string | null {
   if (!dueOn) return null;
   const date = new Date(dueOn);
