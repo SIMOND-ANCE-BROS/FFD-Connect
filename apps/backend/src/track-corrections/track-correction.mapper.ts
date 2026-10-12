@@ -40,6 +40,7 @@ export const TRACK_CORRECTION_REASON_LABELS: Readonly<
   [TrackCorrectionReason.MPM]: "MPM",
   [TrackCorrectionReason.PASO_CLASH]: "Clash paso doble",
   [TrackCorrectionReason.OTHER]: "Autre",
+  [TrackCorrectionReason.DELETE]: "Suppression",
 };
 
 /** « Prénom Nom », sans espace parasite si l'un des deux est vide. */

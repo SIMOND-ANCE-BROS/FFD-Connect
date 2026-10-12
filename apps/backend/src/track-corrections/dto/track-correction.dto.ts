@@ -5,6 +5,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsEnum,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -43,6 +44,17 @@ export const TRACK_CORRECTION_SORT_FIELDS = [
 ] as const;
 export type TrackCorrectionSortField =
   (typeof TRACK_CORRECTION_SORT_FIELDS)[number];
+
+/**
+ * Motifs qu'une proposition peut porter. `DELETE` (#446) est connu de la base
+ * et du client Prisma mais refusé tant que la révision qui en porte les règles
+ * n'est pas déployée : l'enum part seul, avant son producteur (cf. migration
+ * 20261012170000_track_correction_delete_reason).
+ */
+export const PROPOSABLE_REASONS: readonly TrackCorrectionReason[] =
+  Object.values(TrackCorrectionReason).filter(
+    (reason) => reason !== TrackCorrectionReason.DELETE,
+  );
 
 /** Bounds of the moderation queue search (track title or artist). */
 export const TRACK_CORRECTION_SEARCH_MIN_LENGTH = 2;
@@ -136,6 +148,9 @@ export class CreateTrackCorrectionDto extends TrackCorrectionValuesDto {
     description: "Métadonnée jugée incorrecte",
   })
   @IsEnum(TrackCorrectionReason)
+  @IsIn(PROPOSABLE_REASONS, {
+    message: "Ce motif n'est pas encore disponible.",
+  })
   reason!: TrackCorrectionReason;
 
   @ApiPropertyOptional({
