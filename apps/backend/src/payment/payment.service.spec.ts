@@ -766,28 +766,4 @@ describe("PaymentService", () => {
       );
     });
   });
-
-  describe("confirmBooking", () => {
-    it("calls seatBooking.update with CONFIRMED status", async () => {
-      prisma.seatBooking.update.mockResolvedValue({
-        ...mockBooking,
-        status: "CONFIRMED",
-      } as any);
-
-      await service.confirmBooking("booking-1");
-
-      expect(prisma.seatBooking.update).toHaveBeenCalledWith({
-        where: { id: "booking-1" },
-        data: { status: "CONFIRMED" },
-      });
-    });
-
-    it("propagates prisma errors", async () => {
-      prisma.seatBooking.update.mockRejectedValue(new Error("DB error"));
-
-      await expect(service.confirmBooking("booking-1")).rejects.toThrow(
-        "DB error",
-      );
-    });
-  });
 });

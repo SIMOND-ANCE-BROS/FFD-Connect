@@ -189,11 +189,4 @@ export class PaymentService {
       extra: { bookingId, orderId },
     });
   }
-
-  async confirmBooking(bookingId: string): Promise<void> {
-    await this.prisma.seatBooking.update({
-      where: { id: bookingId },
-      data: { status: "CONFIRMED" },
-    });
-  }
 }
