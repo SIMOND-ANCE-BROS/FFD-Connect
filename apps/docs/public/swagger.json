@@ -23128,7 +23128,7 @@
     },
     "/payment/checkout": {
       "post": {
-        "description": "Initie un paiement via HelloAsso pour une réservation de place en compétition. Le montant est celui du tarif de la place (`priceCents` de l'élément du plan), jamais celui envoyé par le client.",
+        "description": "Initie un paiement via HelloAsso pour une réservation de place en compétition. Le montant est celui du tarif de la place (`priceCents` de l'élément du plan), jamais celui envoyé par le client. La place est retenue 15 minutes ; une place ne peut avoir qu'une réservation active (409 si elle est déjà prise).",
         "operationId": "PaymentController_createCheckout",
         "parameters": [],
         "requestBody": {
