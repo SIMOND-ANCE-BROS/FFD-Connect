@@ -131,8 +131,9 @@ export class PaymentService {
    * (identifiers only, no personal data).
    *
    * A legacy booking (created before #381, no stored expected amount) is
-   * rejected rather than compared against today's layout price: the price may
-   * have changed since, and such holds expired after 15 minutes anyway.
+   * rejected rather than compared against today's layout price, which may
+   * have changed since. (`expiresAt` is set at checkout but nothing enforces
+   * it yet: a late payment for a still-PENDING booking is confirmed.)
    *
    * The transition is a conditional update (PENDING + same expected amount)
    * so a booking cancelled or re-priced between the read and the write is

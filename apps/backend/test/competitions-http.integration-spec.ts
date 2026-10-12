@@ -906,8 +906,27 @@ describe("CompetitionsController HTTP Integration", () => {
         .expect(403);
     });
 
-    it("returns 201 when a CLUB user creates a competition", async () => {
+    it("returns 403 when a CLUB user without a club creates a competition (#381)", async () => {
       const { token } = await makeUser(UserRole.CLUB);
+
+      await request(app.getHttpServer())
+        .post("/api/v1/competitions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          title: `Clubless ${suffix}`,
+          date: "2026-09-01",
+          location: "Lyon",
+          status: CompetitionStatus.UPCOMING,
+        })
+        .expect(403);
+    });
+
+    it("returns 201 when a CLUB user creates a competition", async () => {
+      const { user, token } = await makeUser(UserRole.CLUB);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { clubName: `Club ${suffix}` },
+      });
 
       const res = await request(app.getHttpServer())
         .post("/api/v1/competitions")
@@ -922,6 +941,11 @@ describe("CompetitionsController HTTP Integration", () => {
 
       expect(res.body).toHaveProperty("id");
       expect(res.body.location).toBe("Lyon");
+      const created = await prisma.competition.findUniqueOrThrow({
+        where: { id: res.body.id },
+        select: { organizer: true },
+      });
+      expect(created.organizer).toBe(`Club ${suffix}`);
     });
 
     it("returns 401 without token", async () => {

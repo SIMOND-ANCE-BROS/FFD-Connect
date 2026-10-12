@@ -3,13 +3,10 @@ import type { WebhookPayloadDto } from "./dto/webhook-payload.dto";
 /**
  * HelloAsso payment states that mean the money is actually collected — an
  * explicit allow-list: any other or unknown state never counts as paid.
- * `Authorized` is the card payment state; `Processed` is accepted as well
- * (HelloAsso uses it for processed items/payments).
+ * `Authorized` is the HelloAsso PaymentState of a collected payment
+ * (`Processed` is an ItemState, not a PaymentState, so it is not accepted).
  */
-export const PAID_PAYMENT_STATES: ReadonlySet<string> = new Set([
-  "Authorized",
-  "Processed",
-]);
+export const PAID_PAYMENT_STATES: ReadonlySet<string> = new Set(["Authorized"]);
 
 export type OrderRejectionReason =
   | "booking_not_found"
@@ -91,7 +88,7 @@ export function checkOrderAgainstBooking(
   }
 
   // Bookings created before #381 have no server-side amount: never confirm
-  // them on trust (they expired 15 minutes after their creation anyway).
+  // them on trust.
   if (!isValidCents(booking.expectedAmountCents)) return "no_expected_amount";
 
   const paid = paidAmountCents(payload);

@@ -8,6 +8,15 @@ import {
   IsUrl,
   ValidateIf,
 } from "class-validator";
+import { IsSeatLayout } from "./seat-layout.validator";
+
+const LAYOUT_API_PROPERTY = {
+  description:
+    "Plan de salle : éléments libres (`id`, `type`, `label`, position…). `priceCents` (optionnel, entier de 1 à 1 000 000) est le tarif de la place en centimes, facturé par le paiement HelloAsso.",
+  example: [{ id: "t1", type: "TABLE", label: "Table 1", priceCents: 1500 }],
+  type: "array",
+  items: { type: "object", additionalProperties: true },
+} as const;
 
 export class CreateCompetitionDto {
   @ApiProperty({ example: "Championnat de France 2026" })
@@ -41,8 +50,9 @@ export class CreateCompetitionDto {
   @IsOptional()
   ticketingUrl?: string;
 
-  @ApiPropertyOptional({ example: '[{"type": "TABLE", "label": "Table 1"}]' })
+  @ApiPropertyOptional(LAYOUT_API_PROPERTY)
   @IsOptional()
+  @IsSeatLayout()
   layout?: Record<string, unknown>[];
 
   @ApiPropertyOptional({ enum: CompetitionType })
@@ -115,8 +125,9 @@ export class UpdateCompetitionDto {
   @IsOptional()
   ticketingUrl?: string;
 
-  @ApiPropertyOptional({ example: '[{"type": "TABLE", "label": "Table 1"}]' })
+  @ApiPropertyOptional(LAYOUT_API_PROPERTY)
   @IsOptional()
+  @IsSeatLayout()
   layout?: Record<string, unknown>[];
 
   @ApiPropertyOptional({ enum: CompetitionType })

@@ -15038,6 +15038,7 @@
         "tags": ["competitions"]
       },
       "post": {
+        "description": "Créée par un compte club, la compétition a pour organisateur le club du compte.",
         "operationId": "CompetitionsController_create",
         "parameters": [],
         "requestBody": {
@@ -15109,28 +15110,7 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Compte club sans club rattaché"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -17633,6 +17613,7 @@
         "tags": ["competitions"]
       },
       "patch": {
+        "description": "STAFF et ADMIN : toute compétition. Compte club : seulement une compétition organisée par son club.",
         "operationId": "CompetitionsController_update",
         "parameters": [
           {
@@ -17714,52 +17695,10 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Compétition organisée par un autre club"
           },
           "404": {
-            "description": "Ressource non trouvée",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 404
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Resource not found"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Not Found"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Compétition non trouvée"
           },
           "409": {
             "description": "Conflit - La ressource existe déjà",
@@ -26810,10 +26749,19 @@
             "example": "https://www.helloasso.com/..."
           },
           "layout": {
-            "example": "[{\"type\": \"TABLE\", \"label\": \"Table 1\"}]",
             "type": "array",
+            "description": "Plan de salle : éléments libres (`id`, `type`, `label`, position…). `priceCents` (optionnel, entier de 1 à 1 000 000) est le tarif de la place en centimes, facturé par le paiement HelloAsso.",
+            "example": [
+              {
+                "id": "t1",
+                "type": "TABLE",
+                "label": "Table 1",
+                "priceCents": 1500
+              }
+            ],
             "items": {
-              "type": "string"
+              "type": "object",
+              "additionalProperties": true
             }
           },
           "competitionType": {
@@ -26866,10 +26814,19 @@
             "example": "https://www.helloasso.com/..."
           },
           "layout": {
-            "example": "[{\"type\": \"TABLE\", \"label\": \"Table 1\"}]",
             "type": "array",
+            "description": "Plan de salle : éléments libres (`id`, `type`, `label`, position…). `priceCents` (optionnel, entier de 1 à 1 000 000) est le tarif de la place en centimes, facturé par le paiement HelloAsso.",
+            "example": [
+              {
+                "id": "t1",
+                "type": "TABLE",
+                "label": "Table 1",
+                "priceCents": 1500
+              }
+            ],
             "items": {
-              "type": "string"
+              "type": "object",
+              "additionalProperties": true
             }
           },
           "competitionType": {

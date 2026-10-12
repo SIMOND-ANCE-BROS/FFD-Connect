@@ -100,7 +100,11 @@ export class CompetitionManagementService {
     }
   }
 
-  async create(data: CreateCompetitionDto) {
+  /**
+   * @param organizer organizing club name, stamped for a competition created
+   *   by a CLUB account (see CompetitionAccessService.organizerForNewCompetition).
+   */
+  async create(data: CreateCompetitionDto, organizer?: string) {
     const { date, layout, registrationDeadline, ...rest } = data;
     const competitionDate = new Date(date);
     const deadline =
@@ -111,6 +115,7 @@ export class CompetitionManagementService {
     return this.prisma.competition.create({
       data: {
         ...rest,
+        ...(organizer !== undefined && { organizer }),
         date: competitionDate,
         ...(deadline !== undefined && { registrationDeadline: deadline }),
         ...(layout !== undefined && {

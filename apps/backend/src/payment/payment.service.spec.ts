@@ -540,13 +540,13 @@ describe("PaymentService", () => {
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
     });
 
-    it("accepts the legacy data.metadata location and Processed state", async () => {
+    it("accepts the legacy data.metadata location", async () => {
       await service.handleOrderWebhook({
         eventType: "Order",
         data: {
           checkoutIntentId: 4242,
           metadata: { bookingId: "booking-1", competitionId: "comp-1" },
-          payments: [{ amount: 1500, state: "Processed" }],
+          payments: [{ amount: 1500, state: "Authorized" }],
         },
       });
 
@@ -631,7 +631,7 @@ describe("PaymentService", () => {
       expectRejected("not_paid");
     });
 
-    it.each(["Pending", "Refunded", "Unknown", "authorized", ""])(
+    it.each(["Pending", "Refunded", "Unknown", "Processed", "authorized", ""])(
       "rejects a payment in a non allow-listed state (%p)",
       async (state) => {
         await service.handleOrderWebhook(
