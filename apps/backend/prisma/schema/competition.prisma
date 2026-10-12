@@ -186,6 +186,7 @@ model SeatBooking {
   seatLabel     String?         // e.g. "Rang A, Place 5"
   status        BookingStatus   @default(PENDING)
   paymentId     String?         // External ID (HelloAsso)
+  expectedAmountCents Int?      // Server-side price in cents, fixed at checkout (#381)
   expiresAt     DateTime?       // For temporary holds
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt

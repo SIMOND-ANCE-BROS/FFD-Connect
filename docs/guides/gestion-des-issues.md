@@ -62,6 +62,11 @@ Le comportement visé, cas nominal et limites.
 
 - [ ] Vérifiable, un par ligne (inclure les tests à écrire)
 
+## Pour le public ← feature / epic visible par l'utilisateur
+
+Une phrase en français simple pour un danseur ou un club, publiée telle quelle
+sur le site vitrine (avec le label `roadmap`, §5).
+
 ## Hors périmètre
 
 Ce qui n'est volontairement pas couvert.
@@ -132,6 +137,21 @@ Chaque issue ouverte porte aussi des **labels** :
    `player`.
 4. **Un statut** si pertinent : `blocked` (une autre issue ou un tiers
    bloque), `needs-device-test` (code livré, reste une validation sur appareil).
+5. `roadmap` pour une évolution à annoncer sur la feuille de route publique du
+   site vitrine (section « Le projet »). À la création ou au tri d'une issue
+   `Feature` ou `Epic`, on se demande si un danseur ou un club la comprendrait
+   et s'y intéresserait. Si oui : label `roadmap` **et** section
+   `## Pour le public` (§3) — une phrase en français simple écrite pour un
+   utilisateur final, sans jargon ni détail interne. Le site lit directement
+   l'API GitHub publique et n'affiche une issue `roadmap` **que si** cette
+   section est non vide ; seul son premier paragraphe est publié, tel quel
+   (Markdown retiré), regroupé par milestone ouverte — ni le titre, ni les
+   labels, ni le reste de la description.
+   - **Jamais** pour la CI, les dépendances, les tests, la sécurité ou le RGPD
+     internes, l'infra, la dette, ce qui ne concerne que le back-office, ni
+     pour un correctif de bug.
+   - La phrase suit le périmètre : on la met à jour quand il change, et on
+     retire le label si la fonctionnalité est abandonnée.
 
 On réutilise les labels existants ; on n'en crée un nouveau qu'en le
 documentant ici.
