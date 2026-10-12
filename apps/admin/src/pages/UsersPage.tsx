@@ -1,40 +1,46 @@
 import {
-  Alert,
   Anchor,
   Badge,
   Button,
   Group,
   Pagination,
   SegmentedControl,
-  SimpleGrid,
   Select,
   Stack,
-  Table,
   Text,
   TextInput,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { useDebouncedValue } from '@mantine/hooks';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { UserRole } from '../api/generated/types.gen';
-import { FilterPanel } from '../components/FilterPanel';
-import { EmptyState, ListSkeleton } from '../components/ListStates';
+import type { AdminUserListItemDto, UserRole } from '../api/generated/types.gen';
+import { clubOptionsQuery, referenceQuery, usersQuery } from '../api/queries';
+import { DataTable, type DataTableColumn } from '../components/DataTable';
+import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
-import { RecordCard, RecordLine, RecordList } from '../components/RecordCard';
+import { RecordCard, RecordLine } from '../components/RecordCard';
 import { StoreReviewBadge } from '../components/StoreReview';
 import { apiErrorMessage } from '../lib/apiError';
 import { disciplineOptions, formatDiscipline } from '../lib/discipline';
-import { useIsMobile } from '../lib/useIsMobile';
 import {
   extraRoleLabels,
   ROLE_LABELS,
   STATUS_FILTER_OPTIONS,
   type StatusChoice,
 } from '../lib/labels';
-import { clubOptionsQuery, referenceQuery, usersQuery, type UsersFilter } from '../api/queries';
+import type { SortState } from '../lib/listSort';
+import { useListParams } from '../lib/useListParams';
+import {
+  readUsersParams,
+  USERS_FILTERS_CLEARED,
+  USERS_SORT_FIELDS,
+  type UsersSortField,
+  usersFilter,
+  type UsersUrlState,
+  writeUsersParams,
+} from '../lib/userList';
+import { useUrlSearch } from '../lib/useUrlSearch';
 
 const PAGE_SIZE = 50;
 
@@ -43,116 +49,212 @@ const LICENSE_LABEL: Record<'ACTIVE' | 'EXPIRED', string> = {
   EXPIRED: 'Expirée',
 };
 
+const date = (iso: string | null) => (iso ? dayjs(iso).format('DD/MM/YYYY') : '—');
+const isUsersSortField = (value: string): value is UsersSortField =>
+  USERS_SORT_FIELDS.some((f) => f === value);
+
+// Selects and date pickers inside a header menu keep their dropdown in the
+// menu: a portal would count as a click outside and close it.
+const IN_MENU = { withinPortal: false } as const;
+
+function ExtraRoles({ user }: { user: AdminUserListItemDto }) {
+  if (user.extraRoles.length === 0) return <>—</>;
+  return (
+    <Group gap={4}>
+      {extraRoleLabels(user.extraRoles).map((l) => (
+        <Badge key={l} variant="outline" size="sm">
+          {l}
+        </Badge>
+      ))}
+    </Group>
+  );
+}
+
 export function UsersPage() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState('');
-  const [debounced] = useDebouncedValue(search.trim(), 300);
-  const [role, setRole] = useState<UserRole | null>(null);
-  const [clubId, setClubId] = useState<string | null>(null);
-  const [category, setCategory] = useState<string | null>(null);
-  const [status, setStatus] = useState<StatusChoice>('all');
-  const [range, setRange] = useState<[string | null, string | null]>([null, null]);
-  const [pageIndex, setPageIndex] = useState(1);
-
-  const filters: UsersFilter = {
-    ...(debounced && { search: debounced }),
-    ...(role && { role }),
-    ...(clubId && { clubId }),
-    ...(category && { category }),
-    ...(status !== 'all' && { status }),
-    ...(range[0] && { createdFrom: dayjs(range[0]).format('YYYY-MM-DD') }),
-    ...(range[1] && { createdTo: dayjs(range[1]).format('YYYY-MM-DD') }),
-  };
-  // Any filter change goes back to the first page.
-  const filterKey = JSON.stringify(filters);
-  const [lastFilterKey, setLastFilterKey] = useState(filterKey);
-  if (filterKey !== lastFilterKey) {
-    setLastFilterKey(filterKey);
-    setPageIndex(1);
-  }
+  const [state, update] = useListParams(readUsersParams, (current, patch: Partial<UsersUrlState>) =>
+    writeUsersParams(current, patch),
+  );
+  const [search, setSearch] = useUrlSearch(state.q, (q) => update({ q }, { replace: true }));
 
   const users = useQuery({
-    ...usersQuery({
-      ...filters,
-      skip: (pageIndex - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-    }),
+    ...usersQuery(usersFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
   });
-  const clubs = useQuery(clubOptionsQuery(clubId));
+  const clubs = useQuery(clubOptionsQuery(state.clubId));
   const reference = useQuery(referenceQuery);
   const total = users.data?.meta.total ?? 0;
   const rows = users.data?.data ?? [];
-  const isMobile = useIsMobile();
-  // Search stays out of the count: it is always visible above the panel.
-  const activeFilters = [
-    role,
-    clubId,
-    category,
-    status !== 'all' || null,
-    range[0] ?? range[1],
-  ].filter(Boolean).length;
-  const resetFilters = () => {
-    setRole(null);
-    setClubId(null);
-    setCategory(null);
-    setStatus('all');
-    setRange([null, null]);
-  };
 
-  const searchInput = (
-    <TextInput
-      label="Rechercher un utilisateur"
-      placeholder="Nom, prénom ou email"
-      value={search}
-      onChange={(e) => setSearch(e.currentTarget.value)}
-    />
-  );
-  const secondaryFilters = (
-    <>
-      <Select
-        label="Rôle"
-        placeholder="Rôle"
-        clearable
-        data={reference.data?.roles ?? []}
-        value={role}
-        onChange={(v) => setRole(v as UserRole | null)}
-      />
-      <Select
-        label="Club"
-        placeholder="Club"
-        clearable
-        searchable
-        data={(clubs.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
-        value={clubId}
-        onChange={setClubId}
-      />
-      <Select
-        label="Catégorie"
-        placeholder="Catégorie"
-        clearable
-        data={disciplineOptions(reference.data?.categories ?? [])}
-        value={category}
-        onChange={setCategory}
-      />
-      <DatePickerInput
-        type="range"
-        label="Date d’inscription"
-        placeholder="Inscription entre…"
-        clearable
-        value={range}
-        onChange={setRange}
-      />
-    </>
-  );
-  const statusControl = (
-    <SegmentedControl
-      w={{ base: '100%', xs: 'fit-content' }}
-      data={STATUS_FILTER_OPTIONS}
-      value={status}
-      onChange={(v) => setStatus(v as StatusChoice)}
-    />
-  );
+  const onSortChange = (sort: SortState | null) =>
+    update({ sort: sort && isUsersSortField(sort.by) ? { by: sort.by, order: sort.order } : null });
+
+  const columns: DataTableColumn<AdminUserListItemDto>[] = [
+    {
+      key: 'name',
+      label: 'Nom',
+      required: true,
+      sortField: 'name',
+      cell: (u) => (
+        <>
+          <Anchor
+            component={Link}
+            to={`/users/${u.id}`}
+            onClick={(event) => event.stopPropagation()}
+            fw={600}
+          >
+            {u.lastName} {u.firstName}
+          </Anchor>
+          {u.isStoreReview && <StoreReviewBadge />}
+        </>
+      ),
+    },
+    { key: 'email', label: 'Email', sortField: 'email', cell: (u) => u.email },
+    {
+      key: 'role',
+      label: 'Rôle principal',
+      sortField: 'role',
+      cell: (u) => <Badge variant="light">{ROLE_LABELS[u.role]}</Badge>,
+      filter: {
+        active: state.role !== null,
+        content: (
+          <Select
+            label="Rôle (principal ou supplémentaire)"
+            placeholder="Rôle"
+            clearable
+            comboboxProps={IN_MENU}
+            data={Object.entries(ROLE_LABELS)
+              .filter(([value]) => reference.data?.roles.includes(value))
+              .map(([value, label]) => ({ value, label }))}
+            value={state.role}
+            onChange={(v) => update({ role: v as UserRole | null })}
+          />
+        ),
+      },
+    },
+    {
+      key: 'extraRoles',
+      label: 'Rôles supplémentaires',
+      cell: (u) => <ExtraRoles user={u} />,
+    },
+    {
+      key: 'status',
+      label: 'Compte',
+      cell: (u) =>
+        u.disabledAt ? (
+          <Badge color="red" variant="light">
+            Désactivé
+          </Badge>
+        ) : (
+          'Actif'
+        ),
+      filter: {
+        active: state.status !== 'all',
+        content: (
+          <SegmentedControl
+            orientation="vertical"
+            fullWidth
+            aria-label="Statut du compte"
+            data={STATUS_FILTER_OPTIONS}
+            value={state.status}
+            onChange={(v) => update({ status: v as StatusChoice })}
+          />
+        ),
+      },
+    },
+    {
+      key: 'club',
+      label: 'Club',
+      sortField: 'club',
+      cell: (u) => u.clubName ?? '—',
+      filter: {
+        active: state.clubId !== null,
+        content: (
+          <Select
+            aria-label="Club"
+            placeholder="Club"
+            clearable
+            searchable
+            comboboxProps={IN_MENU}
+            data={(clubs.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
+            value={state.clubId}
+            onChange={(v) => update({ clubId: v })}
+          />
+        ),
+      },
+    },
+    {
+      key: 'category',
+      label: 'Catégorie',
+      sortField: 'category',
+      cell: (u) => (u.category ? formatDiscipline(u.category) : '—'),
+      filter: {
+        active: state.category !== null,
+        content: (
+          <Select
+            aria-label="Catégorie"
+            placeholder="Catégorie"
+            clearable
+            comboboxProps={IN_MENU}
+            data={disciplineOptions(reference.data?.categories ?? [])}
+            value={state.category}
+            onChange={(v) => update({ category: v })}
+          />
+        ),
+      },
+    },
+    {
+      key: 'ageGroup',
+      label: "Classe d'âge",
+      sortField: 'ageGroup',
+      cell: (u) => u.ageGroup ?? '—',
+    },
+    {
+      key: 'license',
+      label: 'Licence',
+      cell: (u) => (u.licenseStatus ? LICENSE_LABEL[u.licenseStatus] : '—'),
+    },
+    {
+      key: 'licenseNumber',
+      label: 'N° de licence',
+      hiddenByDefault: true,
+      cell: (u) => u.licenseNumber ?? '—',
+    },
+    {
+      key: 'createdAt',
+      label: 'Inscription',
+      sortField: 'createdAt',
+      nowrap: true,
+      cell: (u) => date(u.createdAt),
+      filter: {
+        active: Boolean(state.createdFrom ?? state.createdTo),
+        content: (
+          <DatePickerInput
+            type="range"
+            label="Date d’inscription"
+            placeholder="Inscription entre…"
+            clearable
+            popoverProps={IN_MENU}
+            value={[state.createdFrom, state.createdTo]}
+            onChange={([from, to]) =>
+              update({
+                createdFrom: from ? dayjs(from).format('YYYY-MM-DD') : null,
+                createdTo: to ? dayjs(to).format('YYYY-MM-DD') : null,
+              })
+            }
+          />
+        ),
+      },
+    },
+    {
+      key: 'lastLoginAt',
+      label: 'Dernière connexion',
+      sortField: 'lastLoginAt',
+      hiddenByDefault: true,
+      nowrap: true,
+      cell: (u) => date(u.lastLoginAt),
+    },
+  ];
 
   return (
     <Stack>
@@ -164,158 +266,79 @@ export function UsersPage() {
           </Button>
         }
       />
-      {isMobile ? (
-        <>
-          {searchInput}
-          <FilterPanel activeCount={activeFilters} onReset={resetFilters}>
-            {secondaryFilters}
-            {statusControl}
-          </FilterPanel>
-        </>
-      ) : (
-        <>
-          <SimpleGrid cols={{ base: 1, xs: 2, lg: 5 }} spacing="sm">
-            {searchInput}
-            {secondaryFilters}
-          </SimpleGrid>
-          {statusControl}
-        </>
-      )}
-      {users.isError ? (
-        <Alert color="red">
-          {apiErrorMessage(users.error, 'Impossible de charger les utilisateurs.')}
-        </Alert>
-      ) : users.isPending ? (
-        <ListSkeleton />
-      ) : (
-        <>
+      <DataTable
+        tableId="users"
+        columns={columns}
+        rows={rows}
+        rowKey={(u) => u.id}
+        sort={state.sort}
+        onSortChange={onSortChange}
+        onResetFilters={() => update(USERS_FILTERS_CLEARED)}
+        onRowClick={(u) => navigate(`/users/${u.id}`)}
+        minWidth={960}
+        toolbar={
+          <TextInput
+            label="Rechercher un utilisateur"
+            placeholder="Nom, prénom ou email"
+            maw={{ sm: 360 }}
+            value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)}
+          />
+        }
+        loading={users.isPending}
+        error={
+          users.isError && apiErrorMessage(users.error, 'Impossible de charger les utilisateurs.')
+        }
+        summary={
           <Text size="sm" c="dimmed">
             {total} utilisateur{total > 1 ? 's' : ''}
           </Text>
-          {rows.length === 0 ? (
-            <EmptyState title="Aucun utilisateur">
-              Aucun compte ne correspond à ces filtres.
-            </EmptyState>
-          ) : isMobile ? (
-            <RecordList>
-              {rows.map((u) => (
-                <RecordCard
-                  key={u.id}
-                  to={`/users/${u.id}`}
-                  title={`${u.lastName} ${u.firstName}`}
-                  badges={
-                    <>
-                      <Badge variant="light">{ROLE_LABELS[u.role]}</Badge>
-                      {u.disabledAt && (
-                        <Badge color="red" variant="light">
-                          Désactivé
-                        </Badge>
-                      )}
-                      {u.isStoreReview && <StoreReviewBadge />}
-                    </>
-                  }
-                >
-                  <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
-                    {u.email}
-                  </Text>
-                  {u.extraRoles.length > 0 && (
-                    <Group gap={4}>
-                      {extraRoleLabels(u.extraRoles).map((l) => (
-                        <Badge key={l} variant="outline" size="sm">
-                          {l}
-                        </Badge>
-                      ))}
-                    </Group>
-                  )}
-                  {u.clubName && <RecordLine label="Club">{u.clubName}</RecordLine>}
-                  {u.category && (
-                    <RecordLine label="Catégorie">
-                      {formatDiscipline(u.category)}
-                      {u.ageGroup && ` · ${u.ageGroup}`}
-                    </RecordLine>
-                  )}
-                  <RecordLine label="Licence">
-                    {u.licenseStatus ? LICENSE_LABEL[u.licenseStatus] : '—'} · inscrit le{' '}
-                    {dayjs(u.createdAt).format('DD/MM/YYYY')}
-                  </RecordLine>
-                </RecordCard>
-              ))}
-            </RecordList>
-          ) : (
-            <Table.ScrollContainer minWidth={960}>
-              <Table striped highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Nom</Table.Th>
-                    <Table.Th>Email</Table.Th>
-                    <Table.Th>Rôle principal</Table.Th>
-                    <Table.Th>Rôles supplémentaires</Table.Th>
-                    <Table.Th>Club</Table.Th>
-                    <Table.Th>Catégorie</Table.Th>
-                    <Table.Th>Classe d'âge</Table.Th>
-                    <Table.Th>Licence</Table.Th>
-                    <Table.Th>Inscription</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {rows.map((u) => (
-                    <Table.Tr
-                      key={u.id}
-                      className="app-row-link"
-                      onClick={() => navigate(`/users/${u.id}`)}
-                    >
-                      <Table.Td>
-                        <Anchor
-                          component={Link}
-                          to={`/users/${u.id}`}
-                          onClick={(event) => event.stopPropagation()}
-                          fw={600}
-                        >
-                          {u.lastName} {u.firstName}
-                        </Anchor>
-                        {u.disabledAt && (
-                          <Badge color="red" variant="light" ml="xs">
-                            Désactivé
-                          </Badge>
-                        )}
-                        {u.isStoreReview && <StoreReviewBadge />}
-                      </Table.Td>
-                      <Table.Td>{u.email}</Table.Td>
-                      <Table.Td>
-                        <Badge variant="light">{ROLE_LABELS[u.role]}</Badge>
-                      </Table.Td>
-                      <Table.Td>
-                        {u.extraRoles.length ? (
-                          <Group gap={4}>
-                            {extraRoleLabels(u.extraRoles).map((l) => (
-                              <Badge key={l} variant="outline" size="sm">
-                                {l}
-                              </Badge>
-                            ))}
-                          </Group>
-                        ) : (
-                          '—'
-                        )}
-                      </Table.Td>
-                      <Table.Td>{u.clubName ?? '—'}</Table.Td>
-                      <Table.Td>{u.category ? formatDiscipline(u.category) : '—'}</Table.Td>
-                      <Table.Td>{u.ageGroup ?? '—'}</Table.Td>
-                      <Table.Td>{u.licenseStatus ? LICENSE_LABEL[u.licenseStatus] : '—'}</Table.Td>
-                      <Table.Td>{dayjs(u.createdAt).format('DD/MM/YYYY')}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
-          )}
-          {total > PAGE_SIZE && (
-            <Pagination
-              total={Math.ceil(total / PAGE_SIZE)}
-              value={pageIndex}
-              onChange={setPageIndex}
-            />
-          )}
-        </>
+        }
+        empty={
+          <EmptyState title="Aucun utilisateur">
+            Aucun compte ne correspond à ces filtres.
+          </EmptyState>
+        }
+        renderCard={(u) => (
+          <RecordCard
+            to={`/users/${u.id}`}
+            title={`${u.lastName} ${u.firstName}`}
+            badges={
+              <>
+                <Badge variant="light">{ROLE_LABELS[u.role]}</Badge>
+                {u.disabledAt && (
+                  <Badge color="red" variant="light">
+                    Désactivé
+                  </Badge>
+                )}
+                {u.isStoreReview && <StoreReviewBadge />}
+              </>
+            }
+          >
+            <Text size="sm" style={{ overflowWrap: 'anywhere' }}>
+              {u.email}
+            </Text>
+            {u.extraRoles.length > 0 && <ExtraRoles user={u} />}
+            {u.clubName && <RecordLine label="Club">{u.clubName}</RecordLine>}
+            {u.category && (
+              <RecordLine label="Catégorie">
+                {formatDiscipline(u.category)}
+                {u.ageGroup && ` · ${u.ageGroup}`}
+              </RecordLine>
+            )}
+            <RecordLine label="Licence">
+              {u.licenseStatus ? LICENSE_LABEL[u.licenseStatus] : '—'} · inscrit le{' '}
+              {date(u.createdAt)}
+            </RecordLine>
+          </RecordCard>
+        )}
+      />
+      {!users.isError && total > PAGE_SIZE && (
+        <Pagination
+          total={Math.ceil(total / PAGE_SIZE)}
+          value={state.page}
+          onChange={(page) => update({ page })}
+        />
       )}
     </Stack>
   );

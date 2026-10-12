@@ -6,6 +6,7 @@ import type {
 } from '../api/generated/types.gen';
 import type { TracksFilter } from '../api/queries';
 import { MIN_SEARCH_LENGTH, sortedUnique, trackAudioUrl } from './moderation';
+import { readSort, type SortState, sortQuery, writeSort } from './listSort';
 import { bpmForPatch } from './mpm';
 
 /** Import style options: the backend's TRACK_STYLE_OPTIONS, as the generated union. */
@@ -50,6 +51,16 @@ export const TRACK_STATUS_FILTERS: { value: TrackStatus | 'ALL'; label: string }
 /** The API refuses a longer search (400). */
 export const MAX_SEARCH_LENGTH = 100;
 
+export type TracksSortField = NonNullable<TracksFilter['sortBy']>;
+export const TRACKS_SORT_FIELDS = [
+  'title',
+  'artist',
+  'style',
+  'bpm',
+  'status',
+  'createdAt',
+] as const satisfies readonly TracksSortField[];
+
 export interface TracksUrlState {
   q: string;
   status: TrackStatus | null;
@@ -58,6 +69,8 @@ export interface TracksUrlState {
   ambiance: boolean;
   style: string;
   page: number;
+  /** Column sort (#443); absent: newest first. */
+  sort?: SortState<TracksSortField> | null;
 }
 
 const STATUSES: TrackStatus[] = ['READY', 'PENDING', 'ERROR'];
@@ -66,13 +79,14 @@ const isStatus = (value: string | null): value is TrackStatus =>
 
 /**
  * Filters kept in the URL:
- * `?q=paso&status=ERROR&blacklisted=true&titleMasked=true&ambiance=true&style=Rumba&page=2`.
+ * `?q=paso&status=ERROR&blacklisted=true&titleMasked=true&ambiance=true&style=Rumba&sort=bpm&order=desc&page=2`.
  */
 export function readTracksParams(params: URLSearchParams): TracksUrlState {
   const status = params.get('status');
   const q = (params.get('q') ?? '').trim().slice(0, MAX_SEARCH_LENGTH);
   const style = params.get('style') ?? '';
   const page = Number(params.get('page'));
+  const sort = readSort(params, TRACKS_SORT_FIELDS);
   return {
     q: q.length >= MIN_SEARCH_LENGTH ? q : '',
     status: isStatus(status) ? status : null,
@@ -81,6 +95,7 @@ export function readTracksParams(params: URLSearchParams): TracksUrlState {
     ambiance: params.get('ambiance') === 'true',
     style: DANCE_LABELS.some((dance) => dance === style) ? style : '',
     page: Number.isInteger(page) && page > 1 ? page : 1,
+    ...(sort && { sort }),
   };
 }
 
@@ -98,6 +113,7 @@ export function writeTracksParams(
   if (next.titleMasked) params.set('titleMasked', 'true');
   if (next.ambiance) params.set('ambiance', 'true');
   if (next.style) params.set('style', next.style);
+  writeSort(params, next.sort ?? null);
   if (next.page > 1) params.set('page', String(next.page));
   return params;
 }
@@ -111,6 +127,7 @@ export function tracksFilter(state: TracksUrlState, take: number): TracksFilter 
     ...(state.titleMasked && { titleMasked: true }),
     ...(state.ambiance && { ambiance: true }),
     ...(state.style && { style: state.style }),
+    ...sortQuery(state.sort ?? null),
     skip: (state.page - 1) * take,
     take,
   };

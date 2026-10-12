@@ -5,6 +5,7 @@ import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { renderWithProviders, setupUser, sleep } from '../test/render';
 import { UNAVAILABLE_MESSAGE } from '../lib/apiError';
+import { columnFilterButton, openColumnFilter, sortButton } from '../test/dataTable';
 import { mockPhoneViewport } from '../test/viewport';
 import { TracksPage } from './TracksPage';
 
@@ -89,15 +90,19 @@ describe('TracksPage', () => {
     expect(list).toHaveBeenCalledWith({
       query: { q: 'paso', status: 'ERROR', blacklisted: true, style: 'Rumba', skip: 50, take: 50 },
     });
+    await openColumnFilter(user, 'Titre');
     expect(screen.getByRole('checkbox', { name: 'Blacklistées' })).toBeChecked();
+    await openColumnFilter(user, 'Danse');
     expect(screen.getByRole('checkbox', { name: 'Ambiance' })).not.toBeChecked();
+    await openColumnFilter(user, 'Statut');
     expect(screen.getByRole('radio', { name: 'En erreur' })).toBeChecked();
   });
 
-  it('puts a chip in the URL and goes back to the first page', async () => {
+  it('puts a header filter in the URL and goes back to the first page', async () => {
     const list = vi.spyOn(sdk, 'adminTracksControllerList').mockResolvedValue(page([]) as never);
     renderPage('/tracks?page=3');
     await screen.findByText('Aucune musique');
+    await openColumnFilter(user, 'Danse');
     await user.click(screen.getByRole('checkbox', { name: 'Ambiance' }));
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent('/tracks?ambiance=true'),
@@ -109,6 +114,7 @@ describe('TracksPage', () => {
     const list = vi.spyOn(sdk, 'adminTracksControllerList').mockResolvedValue(page([]) as never);
     renderPage();
     await screen.findByText('Aucune musique');
+    await openColumnFilter(user, 'Statut');
     await user.click(screen.getByRole('radio', { name: 'En attente' }));
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith({ query: { status: 'PENDING', skip: 0, take: 50 } }),
@@ -156,18 +162,50 @@ describe('TracksPage', () => {
     expect(screen.getByRole('textbox', { name: 'Rechercher' })).toBeVisible();
     // Status, one flag and the dance; the search is not a folded filter.
     await user.click(screen.getByRole('button', { name: 'Filtres (3)' }));
-    await user.click(screen.getByRole('button', { name: 'Réinitialiser' }));
+    expect(screen.getByLabelText('Blacklistées')).toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Réinitialiser les filtres (3)' }));
     expect(await screen.findByRole('button', { name: 'Filtres' })).toBeInTheDocument();
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith({ query: { q: 'paso', skip: 0, take: 50 } }),
     );
   });
 
-  it('on a desktop, shows every filter without a « Filtres » button', async () => {
+  it('on a desktop, puts the filters in the column headers and flags the active ones', async () => {
     vi.spyOn(sdk, 'adminTracksControllerList').mockResolvedValue(page([]) as never);
-    renderPage();
+    renderPage('/tracks?style=Rumba');
     await screen.findByText('Aucune musique');
     expect(screen.queryByRole('button', { name: /^Filtres/ })).toBeNull();
+    // Closed menus: the filter controls only appear once a header menu opens.
+    expect(screen.queryByText('Blacklistées')).toBeNull();
+    expect(columnFilterButton('Danse')).toHaveAccessibleName('Filtrer : Danse (filtre actif)');
+    expect(columnFilterButton('Titre')).toHaveAccessibleName('Filtrer : Titre');
+    await openColumnFilter(user, 'Titre');
     expect(screen.getByText('Blacklistées')).toBeVisible();
+  });
+
+  it('sorts the whole catalogue from a header: ascending, descending, then default', async () => {
+    const list = vi.spyOn(sdk, 'adminTracksControllerList').mockResolvedValue(page([]) as never);
+    renderPage('/tracks?page=2');
+    await screen.findByText('Aucune musique');
+    await user.click(sortButton('MPM'));
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent('/tracks?sort=bpm&order=asc'),
+    );
+    expect(list).toHaveBeenLastCalledWith({
+      query: { sortBy: 'bpm', sortOrder: 'asc', skip: 0, take: 50 },
+    });
+    expect(screen.getByRole('columnheader', { name: 'MPM' })).toHaveAttribute(
+      'aria-sort',
+      'ascending',
+    );
+    await user.click(sortButton('MPM'));
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith({
+        query: { sortBy: 'bpm', sortOrder: 'desc', skip: 0, take: 50 },
+      }),
+    );
+    await user.click(sortButton('MPM'));
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/tracks$/));
+    expect(list).toHaveBeenLastCalledWith({ query: { skip: 0, take: 50 } });
   });
 });

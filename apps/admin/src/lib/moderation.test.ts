@@ -94,6 +94,18 @@ describe('moderation URL state', () => {
     ).toEqual({ status: 'PENDING', reason: ['MPM'], q: 'paso', skip: 0, take: 1 });
   });
 
+  it('keeps a column sort in the URL and the API filter, but not for « Proposition suivante »', () => {
+    const params = new URLSearchParams('reason=MPM&sort=track&order=desc&page=2');
+    const state = readModerationParams(params);
+    expect(state.sort).toEqual({ by: 'track', order: 'desc' });
+    expect(writeModerationParams(params, { page: 2 }).toString()).toBe(
+      'reason=MPM&sort=track&order=desc&page=2',
+    );
+    expect(moderationFilter(state, 50)).toMatchObject({ sortBy: 'track', sortOrder: 'desc' });
+    expect(nextPendingFilter(params)).not.toHaveProperty('sortBy');
+    expect(readModerationParams(new URLSearchParams('sort=proposer'))).not.toHaveProperty('sort');
+  });
+
   it('reads and writes the track filter, UUIDs only', () => {
     const id = '4f1c2a8e-1b2c-4d5e-8f90-123456789abc';
     expect(readModerationParams(new URLSearchParams(`track=${id}`))).toEqual({

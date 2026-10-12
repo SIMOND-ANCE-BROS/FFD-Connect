@@ -12,6 +12,8 @@ configure({ asyncUtilTimeout: 3000 });
 afterEach(() => {
   cleanup();
   sessionStorage.clear();
+  // Column choices of the lists (#444) must not leak from one test to the next.
+  localStorage.clear();
 });
 
 // Mantine needs matchMedia and ResizeObserver in jsdom.
