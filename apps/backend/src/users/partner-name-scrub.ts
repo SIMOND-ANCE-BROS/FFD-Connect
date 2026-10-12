@@ -1,6 +1,4 @@
-import { Logger } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
-import { PrismaService } from "../prisma/prisma.service";
+import { Prisma, PrismaClient } from "@prisma/client";
 import {
   registrationEventBibSelect,
   registrationEventHolderSelect,
@@ -48,10 +46,21 @@ export interface PartnerNameScrub {
   competitionIds: string[];
 }
 
+/** Prisma delegates the scrub reads and writes (PrismaService or a script client). */
+export type PartnerNameScrubPrisma = Pick<
+  PrismaClient,
+  "user" | "registration" | "result"
+>;
+
+/** Where the cap warning goes (Nest Logger, or console in a script). */
+export interface PartnerNameScrubLogger {
+  warn(message: string): void;
+}
+
 export async function buildPartnerNameScrubOps(
-  prisma: PrismaService,
+  prisma: PartnerNameScrubPrisma,
   userId: string,
-  logger: Logger,
+  logger: PartnerNameScrubLogger,
 ): Promise<PartnerNameScrub> {
   const user = await prisma.user.findUnique({
     where: { id: userId },

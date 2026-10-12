@@ -1,11 +1,17 @@
 /**
- * Pure selection rules of scripts/purge-test-accounts.ts (kept separate so they
- * can be unit-tested without a database).
+ * Selection rules and transaction builder of scripts/purge-test-accounts.ts
+ * (kept separate so they can be unit-tested without a database).
  *
  * Conservative on purpose: a real beta tester must never match. Only accounts
  * the staging seeds created are targeted, and the store-review account
  * (`isStoreReview`) is always kept.
  */
+import { PrismaClient } from "@prisma/client";
+import {
+  AccountDeletionPlan,
+  AccountDeletionPrisma,
+  buildAccountDeletionOperations,
+} from "../src/users/account-deletion.core";
 
 /**
  * Domain of every account the staging seeds created (profile switch,
@@ -110,4 +116,27 @@ export function selectTestClubs<T extends PurgeClubCandidate>(
  */
 export function isTestLicenseNumber(number: string): boolean {
   return TEST_LICENSE_NUMBER.test(number.trim());
+}
+
+export type PurgeUserPrisma = AccountDeletionPrisma &
+  Pick<PrismaClient, "license">;
+
+/**
+ * Transaction of one purged account: the purge's own step (seeded licenses
+ * deleted, first so the count is the first result) followed by the SAME
+ * deletion core as AccountDeletionService (#412) — results anonymised with
+ * the DELETED_USER_ID tombstone, partners' copies of the name scrubbed
+ * (#395), admin audit rows stripped, user row deleted
+ * last. Never re-list the user's relations here.
+ */
+export function buildPurgeUserOperations(
+  prisma: PurgeUserPrisma,
+  userId: string,
+  seededLicenseIds: readonly string[],
+  plan: AccountDeletionPlan,
+): ReturnType<typeof buildAccountDeletionOperations> {
+  return [
+    prisma.license.deleteMany({ where: { id: { in: [...seededLicenseIds] } } }),
+    ...buildAccountDeletionOperations(prisma, userId, plan),
+  ];
 }
