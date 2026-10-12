@@ -64,19 +64,23 @@ export class SecretCipherService {
     return this.currentKey !== null;
   }
 
-  /** Encrypts with the current key, or returns the plaintext when disabled. */
-  encrypt(plaintext: string): string {
+  /**
+   * Encrypts with the current key, bound to `context` (see
+   * `secret-contexts.ts`), or returns the plaintext when disabled.
+   */
+  encrypt(plaintext: string, context: string): string {
     return this.currentKey
-      ? encryptSecret(plaintext, this.currentKey)
+      ? encryptSecret(plaintext, this.currentKey, context)
       : plaintext;
   }
 
   /**
    * Opens a stored value. A value without the version prefix is legacy
    * plaintext and is returned as is. Throws {@link SecretDecryptionError}
-   * when an encrypted value cannot be opened (no key, wrong key, tampered).
+   * when an encrypted value cannot be opened (no key, wrong key, wrong
+   * context, tampered).
    */
-  decrypt(stored: string): DecryptedSecret {
+  decrypt(stored: string, context: string): DecryptedSecret {
     if (!isEncryptedSecret(stored)) {
       return { plaintext: stored, needsReEncryption: this.isEnabled };
     }
@@ -88,6 +92,7 @@ export class SecretCipherService {
     const { plaintext, keyIndex } = decryptSecretWithKeys(
       stored,
       this.decryptionKeys,
+      context,
     );
     return {
       plaintext,

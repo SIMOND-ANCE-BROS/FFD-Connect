@@ -9,8 +9,11 @@ import { ClubRegistrationMode, UserRole } from "@prisma/client";
 import { hasRole } from "../auth/roles";
 import { SecretDecryptionError } from "../common/crypto/secret-cipher";
 import { SecretCipherService } from "../common/crypto/secret-cipher.service";
+import { clubHelloAssoSecretContext } from "../common/crypto/secret-contexts";
 import {
   clubHelloAssoCredentialsSelect,
+  clubHelloAssoStatusSelect,
+  clubIdNameSelect,
   userRolesClubSelect,
 } from "../utils/prisma-selects";
 import { PrismaService } from "../prisma/prisma.service";
@@ -46,7 +49,10 @@ export class ClubsHelloAssoService {
       );
     }
     const club = user.clubId
-      ? await this.prisma.club.findUnique({ where: { id: user.clubId } })
+      ? await this.prisma.club.findUnique({
+          where: { id: user.clubId },
+          select: clubHelloAssoStatusSelect,
+        })
       : user.clubName?.trim()
         ? await this.clubsService.findOrCreateByName(user.clubName)
         : null;
@@ -156,7 +162,10 @@ export class ClubsHelloAssoService {
       throw new BadRequestException("Only organizers can connect HelloAsso");
     }
     const club = user.clubId
-      ? await this.prisma.club.findUnique({ where: { id: user.clubId } })
+      ? await this.prisma.club.findUnique({
+          where: { id: user.clubId },
+          select: clubIdNameSelect,
+        })
       : user.clubName?.trim()
         ? await this.clubsService.findOrCreateByName(user.clubName)
         : null;
@@ -170,7 +179,10 @@ export class ClubsHelloAssoService {
       data: {
         helloAssoClientId: dto.clientId,
         // Encrypted at rest (#389); plaintext only while no key is configured.
-        helloAssoClientSecret: this.secretCipher.encrypt(dto.clientSecret),
+        helloAssoClientSecret: this.secretCipher.encrypt(
+          dto.clientSecret,
+          clubHelloAssoSecretContext(club.id),
+        ),
         helloAssoOrgSlug: dto.organizationSlug,
       },
     });
@@ -216,7 +228,10 @@ export class ClubsHelloAssoService {
     let needsReEncryption: boolean;
     try {
       ({ plaintext: clientSecret, needsReEncryption } =
-        this.secretCipher.decrypt(club.helloAssoClientSecret));
+        this.secretCipher.decrypt(
+          club.helloAssoClientSecret,
+          clubHelloAssoSecretContext(club.id),
+        ));
     } catch (error) {
       // Never log the stored value. Without readable credentials the club is
       // treated as not connected (same as before it connected HelloAsso).
@@ -258,7 +273,12 @@ export class ClubsHelloAssoService {
     try {
       await this.prisma.club.updateMany({
         where: { id: clubId, helloAssoClientSecret: storedValue },
-        data: { helloAssoClientSecret: this.secretCipher.encrypt(plaintext) },
+        data: {
+          helloAssoClientSecret: this.secretCipher.encrypt(
+            plaintext,
+            clubHelloAssoSecretContext(clubId),
+          ),
+        },
       });
     } catch (error) {
       this.logger.warn(

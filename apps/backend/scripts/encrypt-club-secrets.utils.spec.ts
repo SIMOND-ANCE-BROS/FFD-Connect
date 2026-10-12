@@ -6,6 +6,7 @@ import {
   isEncryptedSecret,
 } from "../src/common/crypto/secret-cipher";
 import { SecretCipherService } from "../src/common/crypto/secret-cipher.service";
+import { clubHelloAssoSecretContext as ctx } from "../src/common/crypto/secret-contexts";
 import {
   ClubSecretRow,
   ClubSecretStore,
@@ -53,10 +54,16 @@ describe("migrateClubSecrets (#389)", () => {
   it("encrypts plaintext and previous-key secrets, keeps the rest, across pages", async () => {
     const store = memoryStore([
       { id: "a", helloAssoClientSecret: "plain-a" },
-      { id: "b", helloAssoClientSecret: encryptSecret("sec-b", key) },
-      { id: "c", helloAssoClientSecret: encryptSecret("sec-c", previous) },
+      { id: "b", helloAssoClientSecret: encryptSecret("sec-b", key, ctx("b")) },
+      {
+        id: "c",
+        helloAssoClientSecret: encryptSecret("sec-c", previous, ctx("c")),
+      },
       { id: "d", helloAssoClientSecret: null },
-      { id: "e", helloAssoClientSecret: encryptSecret("x", randomBytes(32)) },
+      {
+        id: "e",
+        helloAssoClientSecret: encryptSecret("x", randomBytes(32), ctx("e")),
+      },
     ]);
     const c = cipher();
 
@@ -72,12 +79,12 @@ describe("migrateClubSecrets (#389)", () => {
     const byId = Object.fromEntries(
       store.rows.map((r) => [r.id, r.helloAssoClientSecret]),
     );
-    expect(c.decrypt(byId.a as string)).toEqual({
+    expect(c.decrypt(byId.a as string, ctx("a"))).toEqual({
       plaintext: "plain-a",
       needsReEncryption: false,
     });
-    expect(c.decrypt(byId.c as string).plaintext).toBe("sec-c");
-    expect(c.decrypt(byId.c as string).needsReEncryption).toBe(false);
+    expect(c.decrypt(byId.c as string, ctx("c")).plaintext).toBe("sec-c");
+    expect(c.decrypt(byId.c as string, ctx("c")).needsReEncryption).toBe(false);
     expect(byId.d).toBeNull();
     expect(JSON.stringify(report)).not.toContain("plain-a");
   });
@@ -102,6 +109,17 @@ describe("migrateClubSecrets (#389)", () => {
     const report = await migrateClubSecrets(store, cipher());
 
     expect(report.skipped).toBe(1);
+    expect(report.migrated).toBe(0);
+  });
+
+  it("fails a ciphertext moved to another club (context bound)", async () => {
+    const store = memoryStore([
+      { id: "a", helloAssoClientSecret: encryptSecret("sec-b", key, ctx("b")) },
+    ]);
+
+    const report = await migrateClubSecrets(store, cipher());
+
+    expect(report.failed).toEqual(["a"]);
     expect(report.migrated).toBe(0);
   });
 

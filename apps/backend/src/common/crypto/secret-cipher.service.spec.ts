@@ -11,6 +11,7 @@ import {
 } from "./secret-cipher.service";
 
 const SECRET = "club-secret";
+const CTX = "club:c1:helloAssoClientSecret";
 
 const build = (keys: Record<string, string | undefined> = {}) =>
   new SecretCipherService({
@@ -39,18 +40,20 @@ describe("SecretCipherService (#389)", () => {
     });
 
     it("writes plaintext", () => {
-      expect(build().encrypt(SECRET)).toBe(SECRET);
+      expect(build().encrypt(SECRET, CTX)).toBe(SECRET);
     });
 
     it("reads legacy plaintext without asking for a re-encryption", () => {
-      expect(build().decrypt(SECRET)).toEqual({
+      expect(build().decrypt(SECRET, CTX)).toEqual({
         plaintext: SECRET,
         needsReEncryption: false,
       });
     });
 
     it("refuses to open an encrypted value", () => {
-      expect(() => build().decrypt(encryptSecret(SECRET, key))).toThrow(
+      expect(() =>
+        build().decrypt(encryptSecret(SECRET, key, CTX), CTX),
+      ).toThrow(
         `Encrypted secret found but ${SECRETS_ENCRYPTION_KEY} is not set`,
       );
     });
@@ -59,7 +62,9 @@ describe("SecretCipherService (#389)", () => {
       const service = build({
         [SECRETS_ENCRYPTION_KEY_PREVIOUS]: previous.toString("base64"),
       });
-      expect(service.decrypt(encryptSecret(SECRET, previous))).toEqual({
+      expect(
+        service.decrypt(encryptSecret(SECRET, previous, CTX), CTX),
+      ).toEqual({
         plaintext: SECRET,
         needsReEncryption: false,
       });
@@ -80,31 +85,40 @@ describe("SecretCipherService (#389)", () => {
 
     it("encrypts and decrypts", () => {
       const s = service();
-      const stored = s.encrypt(SECRET);
+      const stored = s.encrypt(SECRET, CTX);
       expect(isEncryptedSecret(stored)).toBe(true);
-      expect(s.decrypt(stored)).toEqual({
+      expect(s.decrypt(stored, CTX)).toEqual({
         plaintext: SECRET,
         needsReEncryption: false,
       });
     });
 
     it("passes legacy plaintext through and flags it for re-encryption", () => {
-      expect(service().decrypt(SECRET)).toEqual({
+      expect(service().decrypt(SECRET, CTX)).toEqual({
         plaintext: SECRET,
         needsReEncryption: true,
       });
     });
 
     it("flags a value encrypted with the previous key for re-encryption", () => {
-      expect(service().decrypt(encryptSecret(SECRET, previous))).toEqual({
+      expect(
+        service().decrypt(encryptSecret(SECRET, previous, CTX), CTX),
+      ).toEqual({
         plaintext: SECRET,
         needsReEncryption: true,
       });
     });
 
+    it("rejects a value decrypted under another context", () => {
+      const stored = service().encrypt(SECRET, CTX);
+      expect(() =>
+        service().decrypt(stored, "club:c2:helloAssoClientSecret"),
+      ).toThrow("authentication failed");
+    });
+
     it("rejects a value encrypted with an unknown key", () => {
       expect(() =>
-        service().decrypt(encryptSecret(SECRET, randomBytes(32))),
+        service().decrypt(encryptSecret(SECRET, randomBytes(32), CTX), CTX),
       ).toThrow("authentication failed");
     });
   });

@@ -9,6 +9,10 @@ import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
  *
  *   v1:<iv base64>:<tag base64>:<ciphertext base64>
  *
+ * Each value is bound to a context string (AAD, e.g.
+ * `club:<id>:helloAssoClientSecret`): swapping ciphertexts between rows or
+ * fields fails authentication.
+ *
  * The version prefix lets a value written before encryption (legacy
  * plaintext) be told apart from an encrypted one, and leaves room for a
  * future algorithm change. Pure functions: no config, no logging (callers
@@ -56,11 +60,23 @@ export function isEncryptedSecret(stored: string): boolean {
   return stored.startsWith(PREFIX);
 }
 
-/** Encrypts a plaintext secret with a 32-byte key. */
-export function encryptSecret(plaintext: string, key: Buffer): string {
+/**
+ * Encrypts a plaintext secret with a 32-byte key, bound to `context` as
+ * additional authenticated data (AAD): the value only decrypts with the same
+ * context, so a ciphertext copied to another row or field is rejected.
+ */
+export function encryptSecret(
+  plaintext: string,
+  key: Buffer,
+  context: string,
+): string {
   assertKey(key);
+  assertContext(context);
   const iv = randomBytes(IV_BYTES);
-  const cipher = createCipheriv(ALGORITHM, key, iv);
+  const cipher = createCipheriv(ALGORITHM, key, iv, {
+    authTagLength: TAG_BYTES,
+  });
+  cipher.setAAD(Buffer.from(context, "utf8"));
   const ciphertext = Buffer.concat([
     cipher.update(plaintext, "utf8"),
     cipher.final(),
@@ -75,12 +91,18 @@ export function encryptSecret(plaintext: string, key: Buffer): string {
 }
 
 /**
- * Decrypts a value produced by {@link encryptSecret} with one specific key.
- * Throws {@link SecretDecryptionError} on a malformed value, a tampered
- * value or a wrong key (GCM authentication failure).
+ * Decrypts a value produced by {@link encryptSecret} with one specific key
+ * and the same context. Throws {@link SecretDecryptionError} on a malformed
+ * value, a tampered value, a wrong key or a wrong context (GCM
+ * authentication failure).
  */
-export function decryptSecret(stored: string, key: Buffer): string {
+export function decryptSecret(
+  stored: string,
+  key: Buffer,
+  context: string,
+): string {
   assertKey(key);
+  assertContext(context);
   const parts = stored.split(":");
   if (parts.length !== 4 || parts[0] !== SECRET_CIPHER_VERSION) {
     throw new SecretDecryptionError("Malformed encrypted secret");
@@ -93,7 +115,10 @@ export function decryptSecret(stored: string, key: Buffer): string {
     throw new SecretDecryptionError("Malformed encrypted secret");
   }
   try {
-    const decipher = createDecipheriv(ALGORITHM, key, iv);
+    const decipher = createDecipheriv(ALGORITHM, key, iv, {
+      authTagLength: TAG_BYTES,
+    });
+    decipher.setAAD(Buffer.from(context, "utf8"));
     decipher.setAuthTag(tag);
     return Buffer.concat([
       decipher.update(ciphertext),
@@ -101,18 +126,19 @@ export function decryptSecret(stored: string, key: Buffer): string {
     ]).toString("utf8");
   } catch {
     throw new SecretDecryptionError(
-      "Encrypted secret authentication failed (wrong key or tampered value)",
+      "Encrypted secret authentication failed (wrong key, wrong context or tampered value)",
     );
   }
 }
 
 /**
- * Tries each key in order. Returns the plaintext and the index of the key
+ * Tries each key in order (same context). Returns the plaintext and the index of the key
  * that worked (0 = current key, > 0 = a previous key ⇒ re-encrypt).
  */
 export function decryptSecretWithKeys(
   stored: string,
   keys: readonly Buffer[],
+  context: string,
 ): { plaintext: string; keyIndex: number } {
   if (keys.length === 0) {
     throw new SecretDecryptionError("No decryption key configured");
@@ -120,7 +146,7 @@ export function decryptSecretWithKeys(
   let lastError: unknown;
   for (const [keyIndex, key] of keys.entries()) {
     try {
-      return { plaintext: decryptSecret(stored, key), keyIndex };
+      return { plaintext: decryptSecret(stored, key, context), keyIndex };
     } catch (error) {
       lastError = error;
     }
@@ -128,6 +154,12 @@ export function decryptSecretWithKeys(
   throw lastError instanceof SecretDecryptionError
     ? lastError
     : new SecretDecryptionError("Encrypted secret could not be decrypted");
+}
+
+function assertContext(context: string): void {
+  if (!context) {
+    throw new Error("Encryption context is required");
+  }
 }
 
 function assertKey(key: Buffer): void {

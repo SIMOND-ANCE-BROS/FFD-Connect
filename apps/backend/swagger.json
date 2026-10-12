@@ -26454,6 +26454,7 @@
           "clientSecret": {
             "type": "string",
             "description": "Client Secret de l'application HelloAsso du club",
+            "maxLength": 255,
             "example": "your-client-secret"
           },
           "organizationSlug": {

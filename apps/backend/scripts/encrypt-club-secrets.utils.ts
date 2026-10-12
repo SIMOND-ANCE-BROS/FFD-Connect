@@ -3,6 +3,7 @@
  * unit-tested without a database). See the script header for the run book.
  */
 import type { DecryptedSecret } from "../src/common/crypto/secret-cipher.service";
+import { clubHelloAssoSecretContext } from "../src/common/crypto/secret-contexts";
 
 export interface ClubSecretRow {
   id: string;
@@ -18,8 +19,8 @@ export interface ClubSecretStore {
 
 export interface SecretCipher {
   readonly isEnabled: boolean;
-  encrypt(plaintext: string): string;
-  decrypt(stored: string): DecryptedSecret;
+  encrypt(plaintext: string, context: string): string;
+  decrypt(stored: string, context: string): DecryptedSecret;
 }
 
 export interface ClubSecretMigrationReport {
@@ -65,9 +66,10 @@ export async function migrateClubSecrets(
       const stored = row.helloAssoClientSecret;
       if (!stored) continue;
       report.scanned += 1;
+      const context = clubHelloAssoSecretContext(row.id);
       let decrypted: DecryptedSecret;
       try {
-        decrypted = cipher.decrypt(stored);
+        decrypted = cipher.decrypt(stored, context);
       } catch {
         report.failed.push(row.id);
         continue;
@@ -79,7 +81,7 @@ export async function migrateClubSecrets(
       const count = await store.replaceSecret(
         row.id,
         stored,
-        cipher.encrypt(decrypted.plaintext),
+        cipher.encrypt(decrypted.plaintext, context),
       );
       if (count > 0) report.migrated += 1;
       else report.skipped += 1;
