@@ -49,6 +49,17 @@ interface TrackCorrectionModalProps {
   initialReason?: TrackCorrectionReason;
 }
 
+export const DELETE_REASON_REQUIRED =
+  "Indiquez pourquoi retirer cette musique (doublon, mauvais fichier…).";
+
+/** Libellé du champ commentaire : obligatoire pour « Autre » et la suppression. */
+function messageLabel(reason: TrackCorrectionReason | null): string {
+  if (reason === "OTHER") return "Décrivez le problème";
+  if (reason === "DELETE")
+    return "Pourquoi retirer cette musique ? (obligatoire)";
+  return "Commentaire (facultatif)";
+}
+
 export const CORRECTION_SENT_TITLE = "Merci !";
 export const CORRECTION_SENT_MESSAGE =
   "Proposition envoyée aux administrateurs.";
@@ -115,6 +126,10 @@ export const TrackCorrectionModal = ({
     const trimmedMessage = message.trim();
     if (trimmedMessage) body.message = trimmedMessage;
 
+    if (reason === "DELETE") {
+      // Aucune valeur : seul le motif, obligatoire, accompagne la demande.
+      return trimmedMessage ? body : DELETE_REASON_REQUIRED;
+    }
     if (reason === "TITLE") {
       const t = title.trim();
       if (t && t !== track.title) body.title = t;
@@ -244,6 +259,19 @@ export const TrackCorrectionModal = ({
             ) : null}
           </>
         );
+      case "DELETE":
+        return (
+          <View
+            style={[styles.infoBox, { borderColor: currentTheme.border }]}
+            testID="correction-delete-info"
+          >
+            <Text style={[styles.infoText, { color: currentTheme.text }]}>
+              Un administrateur vérifiera la demande. Si elle est acceptée, la
+              musique sera retirée de la bibliothèque pour tout le monde.
+              Indiquez pourquoi ci-dessous (doublon, mauvais fichier…).
+            </Text>
+          </View>
+        );
       default:
         return null;
     }
@@ -359,9 +387,7 @@ export const TrackCorrectionModal = ({
               <Text
                 style={[styles.label, { color: currentTheme.textSecondary }]}
               >
-                {reason === "OTHER"
-                  ? "Décrivez le problème"
-                  : "Commentaire (facultatif)"}
+                {messageLabel(reason)}
               </Text>
               <TextInput
                 accessibilityLabel="Commentaire pour les administrateurs"
@@ -372,7 +398,11 @@ export const TrackCorrectionModal = ({
                 onChangeText={setMessage}
                 multiline
                 maxLength={MESSAGE_MAX_LENGTH}
-                placeholder="Ex. source, version de la musique…"
+                placeholder={
+                  reason === "DELETE"
+                    ? "Ex. doublon de « … », mauvais fichier, son coupé…"
+                    : "Ex. source, version de la musique…"
+                }
                 placeholderTextColor={currentTheme.textSecondary}
               />
 
@@ -476,6 +506,16 @@ const styles = StyleSheet.create({
   multiline: {
     minHeight: 80,
     textAlignVertical: "top",
+  },
+  infoBox: {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  infoText: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   button: {
     padding: 15,

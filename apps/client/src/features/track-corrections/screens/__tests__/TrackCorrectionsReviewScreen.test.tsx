@@ -185,6 +185,42 @@ describe("TrackCorrectionsReviewScreen", () => {
     await waitFor(() => expect(api.approve).toHaveBeenCalledWith("c1", {}));
   });
 
+  it("demande de suppression : explique le retrait et valide sans valeur (#446)", async () => {
+    const alert = confirmWith("Valider");
+    api.list.mockResolvedValue(
+      page([
+        correction({
+          reason: "DELETE",
+          message: "Doublon",
+          proposed: {
+            title: null,
+            artist: null,
+            style: null,
+            bpm: null,
+            clashTimecodes: null,
+          },
+        }),
+      ]),
+    );
+    const { findByTestId, queryByTestId, getByText } = await renderScreen();
+
+    expect(await findByTestId("correction-delete-c1")).toBeTruthy();
+    expect(getByText("Demande de retrait de la bibliothèque")).toBeTruthy();
+    expect(queryByTestId("correction-adjust-c1")).toBeNull();
+    await fireEvent.press(await findByTestId("correction-approve-c1"));
+
+    await waitFor(() => expect(api.approve).toHaveBeenCalledWith("c1", {}));
+    expect(alert).toHaveBeenCalledWith(
+      "Valider la proposition ?",
+      expect.stringContaining("retirée de la bibliothèque"),
+      expect.any(Array),
+    );
+    expect(alert).toHaveBeenCalledWith(
+      "Proposition validée",
+      expect.stringContaining("retirée de la bibliothèque"),
+    );
+  });
+
   it("bloque un ajustement invalide", async () => {
     const alert = confirmWith("Valider");
     const { findByTestId, getByTestId } = await renderScreen();

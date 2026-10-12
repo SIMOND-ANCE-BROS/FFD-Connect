@@ -152,6 +152,52 @@ describe("MyTrackCorrectionsScreen", () => {
     expect(listMine).toHaveBeenLastCalledWith({ skip: 20, take: 20 });
   });
 
+  it("résume une demande de suppression selon son statut (#446)", () => {
+    const deletion = mine({
+      reason: "DELETE",
+      message: "Doublon",
+      proposed: {
+        title: null,
+        artist: null,
+        style: null,
+        bpm: null,
+        clashTimecodes: null,
+      },
+    });
+    expect(proposedSummary(deletion)).toEqual([
+      "Retrait de la bibliothèque demandé",
+    ]);
+    expect(proposedSummary({ ...deletion, status: "APPROVED" })).toEqual([
+      "Musique retirée de la bibliothèque",
+    ]);
+  });
+
+  it("affiche une demande de suppression avec son motif et son statut", async () => {
+    listMine.mockResolvedValue({
+      data: [
+        mine({
+          reason: "DELETE",
+          status: "APPROVED",
+          message: "Doublon",
+          trackTitle: "Musique retirée",
+          trackArtist: "",
+          proposed: {
+            title: null,
+            artist: null,
+            style: null,
+            bpm: null,
+            clashTimecodes: null,
+          },
+        }),
+      ],
+      meta: { total: 1, skip: 0, take: 20, hasMore: false },
+    });
+    const { findByText, getByText } = await renderScreen();
+    expect(await findByText(/Suppression de la musique/)).toBeTruthy();
+    expect(getByText("Musique retirée de la bibliothèque")).toBeTruthy();
+    expect(getByText("Votre commentaire : Doublon")).toBeTruthy();
+  });
+
   it("résume toutes les valeurs proposées", () => {
     expect(
       proposedSummary(
