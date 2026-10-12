@@ -30,6 +30,15 @@ export const SEAT_RELEASE_REASONS: ReadonlyMap<string, string> = new Map([
   ["Contested", "HELLOASSO_CONTESTED"],
 ]);
 
+/**
+ * Rejections a caller can provoke by naming another payment id in an
+ * unsigned notification: logged only, never sent to Sentry (quota).
+ */
+const FORGEABLE_REJECTIONS: ReadonlySet<SeatReleaseRejection> = new Set([
+  "payment_not_found",
+  "checkout_intent_mismatch",
+]);
+
 export type SeatReleaseRejection =
   | "payment_not_found"
   | "invalid_payment"
@@ -55,9 +64,10 @@ function isHelloAssoId(value: unknown): value is number {
  *
  * Fail-closed and idempotent: anything unreadable, unrelated or already
  * released changes nothing; the transition is a conditional write on
- * `CONFIRMED`. Releases and rejections seen AFTER the API re-read are sent to
- * Sentry (identifiers only); what anyone can trigger without a secret is only
- * logged. A HelloAsso outage answers 503 so that HelloAsso redelivers.
+ * `CONFIRMED`. Releases and HelloAsso-side anomalies are sent to Sentry
+ * (identifiers only); what anyone can trigger without a secret (unknown
+ * booking, another payment id) is only logged. A refund on a booking still
+ * PENDING answers 503 (redelivery), in case its order is being confirmed. A HelloAsso outage answers 503 so that HelloAsso redelivers.
  */
 @Injectable()
 export class SeatReleaseService {
@@ -96,6 +106,14 @@ export class SeatReleaseService {
         `HelloAsso ${claimedState} notification for unknown booking ${bookingId}: ignored`,
       );
       return;
+    }
+    if (booking.status === "PENDING") {
+      // The order may be confirmed in a moment from a re-read made just
+      // before this refund: ask HelloAsso to redeliver later rather than drop
+      // the refund (no outbound call, so no amplification).
+      throw new ServiceUnavailableException(
+        "Booking not confirmed yet, notification to be redelivered",
+      );
     }
     if (booking.status !== "CONFIRMED" || !booking.paymentId) {
       // Nothing to release (pending, expired, already released…): no call
@@ -205,9 +223,12 @@ export class SeatReleaseService {
     paymentId: number,
     reason: SeatReleaseRejection,
   ): void {
-    this.logger.error(
-      `HelloAsso payment ${paymentId} not applied to booking ${bookingId}: ${reason}`,
-    );
+    const message = `HelloAsso payment ${paymentId} not applied to booking ${bookingId}: ${reason}`;
+    if (FORGEABLE_REJECTIONS.has(reason)) {
+      this.logger.warn(message);
+      return;
+    }
+    this.logger.error(message);
     Sentry.captureMessage("HelloAsso payment notification rejected", {
       level: "error",
       tags: { payment: "helloasso-payment-rejected", reason },

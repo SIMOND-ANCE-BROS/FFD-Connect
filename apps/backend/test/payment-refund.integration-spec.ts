@@ -212,7 +212,7 @@ describe("HelloAsso refund / dispute releases the seat (#403, real DB)", () => {
     expect(getPayment).not.toHaveBeenCalled();
   });
 
-  it("never touches a booking that is not confirmed", async () => {
+  it("asks HelloAsso to redeliver a refund while the booking is still PENDING", async () => {
     const booking = await confirmedBooking();
     await prisma.seatBooking.update({
       where: { id: booking.id },
@@ -220,8 +220,27 @@ describe("HelloAsso refund / dispute releases the seat (#403, real DB)", () => {
     });
     helloAssoSays("Refunded");
 
+    await expect(
+      controller.handleWebhook(notification(booking.id, "Refunded")),
+    ).rejects.toThrow(); // 503
+    expect((await statusOf(booking.id)).status).toBe("PENDING");
+    expect(getPayment).not.toHaveBeenCalled();
+  });
+
+  it("never touches a booking that is already cancelled", async () => {
+    const booking = await confirmedBooking();
+    await prisma.seatBooking.update({
+      where: { id: booking.id },
+      data: { status: "CANCELLED" },
+    });
+    helloAssoSays("Refunded");
+
     await controller.handleWebhook(notification(booking.id, "Refunded"));
 
-    expect((await statusOf(booking.id)).status).toBe("PENDING");
+    expect(await statusOf(booking.id)).toEqual({
+      status: "CANCELLED",
+      cancelReason: null,
+    });
+    expect(getPayment).not.toHaveBeenCalled();
   });
 });

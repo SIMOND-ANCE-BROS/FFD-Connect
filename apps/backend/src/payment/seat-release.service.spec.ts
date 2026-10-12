@@ -145,7 +145,16 @@ describe("SeatReleaseService (#403)", () => {
     expect(Sentry.captureMessage).not.toHaveBeenCalled();
   });
 
-  it.each(["PENDING", "EXPIRED", "CANCELLED"])(
+  it("asks for a redelivery (503) while the booking is still PENDING", async () => {
+    findUnique.mockResolvedValue({ ...confirmed, status: "PENDING" });
+
+    await expect(
+      service.handlePaymentNotification(refundNotification),
+    ).rejects.toThrow(ServiceUnavailableException);
+    expect(getPayment).not.toHaveBeenCalled();
+  });
+
+  it.each(["EXPIRED", "CANCELLED"])(
     "never touches a %s booking",
     async (status) => {
       findUnique.mockResolvedValue({ ...confirmed, status });
@@ -176,6 +185,11 @@ describe("SeatReleaseService (#403)", () => {
     expect(updateMany).not.toHaveBeenCalled();
   });
 
+  const expectRejectedQuietly = () => {
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  };
+
   const expectRejected = (reason: string) => {
     expect(updateMany).not.toHaveBeenCalled();
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
@@ -191,7 +205,7 @@ describe("SeatReleaseService (#403)", () => {
 
     await service.handlePaymentNotification(refundNotification);
 
-    expectRejected("payment_not_found");
+    expectRejectedQuietly(); // forgeable: another payment id
   });
 
   it.each([
@@ -213,7 +227,7 @@ describe("SeatReleaseService (#403)", () => {
 
     await service.handlePaymentNotification(refundNotification);
 
-    expectRejected("checkout_intent_mismatch");
+    expectRejectedQuietly(); // forgeable: another payment of the org
   });
 
   it("reads the checkout intent from the order when the payment omits it", async () => {
