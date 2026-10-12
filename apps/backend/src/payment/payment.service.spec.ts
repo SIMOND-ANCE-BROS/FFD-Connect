@@ -1,27 +1,44 @@
-import { BadRequestException, ConflictException, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigService } from "@nestjs/config";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import * as Sentry from "@sentry/nestjs";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
-import type { WebhookPayloadDto } from "./dto/webhook-payload.dto";
-import { PaymentService } from "./payment.service";
-
-jest.mock("@sentry/nestjs", () => ({ captureMessage: jest.fn() }));
-import { HelloAssoService } from "./hello-asso.service";
 import { ClubsHelloAssoService } from "../clubs/clubs-helloasso.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { seatBookingPaymentCheckSelect } from "../utils/prisma-selects";
+import type { CreateCheckoutDto } from "./dto/create-checkout.dto";
+import type { WebhookPayloadDto } from "./dto/webhook-payload.dto";
+import { HelloAssoService } from "./hello-asso.service";
+import {
+  CHECKOUT_REDIRECT_REUSE_MS,
+  MAX_INTENTS_PER_BOOKING,
+  PaymentService,
+} from "./payment.service";
+import { RefundOwedAlertService } from "./refund-owed-alert.service";
+import { SeatHoldService, type HeldBooking } from "./seat-hold.service";
+
+jest.mock("@sentry/nestjs", () => ({ captureMessage: jest.fn() }));
 
 describe("PaymentService", () => {
   let service: PaymentService;
   let prisma: DeepMockProxy<PrismaClient>;
   let helloAssoService: jest.Mocked<
-    Pick<HelloAssoService, "createCheckoutIntent">
+    Pick<HelloAssoService, "createCheckoutIntent" | "getCheckoutIntent">
   >;
   let clubsService: jest.Mocked<
     Pick<ClubsHelloAssoService, "getHelloAssoCredentialsForCompetition">
   >;
   let configService: jest.Mocked<Pick<ConfigService, "get">>;
+  let seatHold: jest.Mocked<
+    Pick<SeatHoldService, "hold" | "recordIntent" | "replaceIntent" | "release">
+  >;
+  let refundOwedAlert: jest.Mocked<Pick<RefundOwedAlertService, "alertClub">>;
 
   const mockCredentials = {
     clientId: "client-id",
@@ -36,53 +53,65 @@ describe("PaymentService", () => {
     lastName: "Doe",
   };
 
-  const mockBooking = {
-    id: "booking-1",
-    competitionId: "comp-1",
-    userId: "user-1",
-    itemId: "item-1",
-    seatLabel: "A1",
-    status: "PENDING",
-    expiresAt: new Date(),
-    paymentId: null,
-  };
-
-  const mockIntent = {
-    id: "intent-1",
-    redirectUrl: "https://helloasso.com/checkout/intent-1",
-  };
-
-  const mockDto = {
-    competitionId: "comp-1",
-    itemId: "item-1",
-    seatLabel: "A1",
-    // Tampered amount sent by the client: must be ignored (#381).
-    amount: 1,
-  };
-
   const SEAT_PRICE_CENTS = 1500;
   const mockCompetition = {
     id: "comp-1",
     layout: [
       { id: "other-item", priceCents: 9900 },
-      { id: "item-1", label: "Table 1", priceCents: SEAT_PRICE_CENTS },
+      {
+        id: "item-1",
+        type: "TABLE",
+        label: "Table 1",
+        capacity: 8,
+        lockedSeats: [7],
+        priceCents: SEAT_PRICE_CENTS,
+      },
+      { id: "free-1", type: "OTHER", capacity: 20, priceCents: 800 },
     ],
   };
 
+  const mockDto: CreateCheckoutDto = {
+    competitionId: "comp-1",
+    itemId: "item-1",
+    seatIndex: 3,
+    seatLabel: "A1",
+    // Tampered amount sent by the client: must be ignored (#381).
+    amount: 1,
+  };
+
+  const holdExpiresAt = new Date(Date.now() + 50 * 60 * 1000);
+  const heldBooking = (overrides: Partial<HeldBooking> = {}): HeldBooking => ({
+    id: "booking-1",
+    seatIndex: 3,
+    expiresAt: holdExpiresAt,
+    createdAt: new Date(),
+    expectedAmountCents: SEAT_PRICE_CENTS,
+    paymentId: null,
+    checkoutRedirectUrl: null,
+    checkoutCreatedAt: null,
+    supersededPaymentIds: [],
+    ...overrides,
+  });
+
+  const intent = { id: 4242, redirectUrl: "https://helloasso.com/pay/4242" };
+
   beforeEach(async () => {
     prisma = mockDeep<PrismaClient>();
-
     helloAssoService = {
       createCheckoutIntent: jest.fn(),
+      getCheckoutIntent: jest.fn(),
     };
-
-    clubsService = {
-      getHelloAssoCredentialsForCompetition: jest.fn(),
-    };
-
+    clubsService = { getHelloAssoCredentialsForCompetition: jest.fn() };
     configService = {
       get: jest.fn().mockReturnValue("https://app.example.com"),
     };
+    seatHold = {
+      hold: jest.fn(),
+      recordIntent: jest.fn().mockResolvedValue(undefined),
+      replaceIntent: jest.fn(),
+      release: jest.fn().mockResolvedValue(undefined),
+    };
+    refundOwedAlert = { alertClub: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -91,6 +120,8 @@ describe("PaymentService", () => {
         { provide: HelloAssoService, useValue: helloAssoService },
         { provide: ClubsHelloAssoService, useValue: clubsService },
         { provide: ConfigService, useValue: configService },
+        { provide: SeatHoldService, useValue: seatHold },
+        { provide: RefundOwedAlertService, useValue: refundOwedAlert },
       ],
     }).compile();
 
@@ -99,339 +130,37 @@ describe("PaymentService", () => {
   });
 
   describe("createCheckout", () => {
-    it("throws BadRequestException when no HelloAsso credentials found", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        null,
-      );
-
-      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
-        BadRequestException,
-      );
-      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
-        /HelloAsso/,
-      );
-    });
-
-    it("does not call prisma when credentials are missing", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        null,
-      );
-
-      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
-        BadRequestException,
-      );
-      expect(prisma.user.findUnique).not.toHaveBeenCalled();
-    });
-
-    it("throws BadRequestException when user is not found", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(null);
-
-      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
-        BadRequestException,
-      );
-      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
-        "User not found",
-      );
-    });
-
-    it("does not create booking when user is not found", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(null);
-
-      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
-        BadRequestException,
-      );
-      expect(prisma.seatBooking.create).not.toHaveBeenCalled();
-    });
-
-    it("creates a PENDING booking with correct data", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
-      helloAssoService.createCheckoutIntent.mockResolvedValue(mockIntent);
-      prisma.seatBooking.update.mockResolvedValue({
-        ...mockBooking,
-        paymentId: "intent-1",
-      } as any);
-
-      await service.createCheckout("user-1", mockDto);
-
-      expect(prisma.seatBooking.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            competitionId: mockDto.competitionId,
-            userId: mockUser.id,
-            itemId: mockDto.itemId,
-            seatLabel: mockDto.seatLabel,
-            status: "PENDING",
-            expectedAmountCents: SEAT_PRICE_CENTS,
-          }),
-        }),
-      );
-    });
-
-    it("calls HelloAsso createCheckoutIntent with correct params", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
-      helloAssoService.createCheckoutIntent.mockResolvedValue(mockIntent);
-      prisma.seatBooking.update.mockResolvedValue({
-        ...mockBooking,
-        paymentId: "intent-1",
-      } as any);
-
-      await service.createCheckout("user-1", mockDto);
-
-      expect(helloAssoService.createCheckoutIntent).toHaveBeenCalledWith(
-        mockCredentials,
-        expect.any(String),
-        expect.objectContaining({
-          amount: SEAT_PRICE_CENTS,
-          consumerEmail: mockUser.email,
-          consumerFirstName: mockUser.firstName,
-          consumerLastName: mockUser.lastName,
-          metadata: expect.objectContaining({
-            bookingId: mockBooking.id,
-            competitionId: mockDto.competitionId,
-          }),
-        }),
-      );
-    });
-
-    it("updates booking paymentId after successful HelloAsso intent creation", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
-      helloAssoService.createCheckoutIntent.mockResolvedValue(mockIntent);
-      prisma.seatBooking.update.mockResolvedValue({
-        ...mockBooking,
-        paymentId: mockIntent.id,
-      } as any);
-
-      await service.createCheckout("user-1", mockDto);
-
-      expect(prisma.seatBooking.update).toHaveBeenCalledWith({
-        where: { id: mockBooking.id },
-        data: { paymentId: mockIntent.id },
-      });
-    });
-
-    it("returns the checkout intent on success", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
-      helloAssoService.createCheckoutIntent.mockResolvedValue(mockIntent);
-      prisma.seatBooking.update.mockResolvedValue({
-        ...mockBooking,
-        paymentId: mockIntent.id,
-      } as any);
-
-      const result = await service.createCheckout("user-1", mockDto);
-
-      expect(result).toEqual(mockIntent);
-    });
-
-    it("deletes booking when HelloAsso createCheckoutIntent throws", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
-      helloAssoService.createCheckoutIntent.mockRejectedValue(
-        new Error("HelloAsso API error"),
-      );
-      prisma.seatBooking.delete.mockResolvedValue(mockBooking as any);
-
-      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
-        BadRequestException,
-      );
-
-      expect(prisma.seatBooking.delete).toHaveBeenCalledWith({
-        where: { id: mockBooking.id },
-      });
-    });
-
-    it("throws BadRequestException when HelloAsso fails", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
-      helloAssoService.createCheckoutIntent.mockRejectedValue(
-        new Error("Network error"),
-      );
-      prisma.seatBooking.delete.mockResolvedValue(mockBooking as any);
-
-      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
-        BadRequestException,
-      );
-      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
-        /paiement/,
-      );
-    });
-
-    it("does not throw even if booking deletion fails during cleanup", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
-      helloAssoService.createCheckoutIntent.mockRejectedValue(
-        new Error("HelloAsso error"),
-      );
-      // Simulate deletion also failing — the service should swallow this
-      prisma.seatBooking.delete.mockRejectedValue(new Error("DB error"));
-
-      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
-        BadRequestException,
-      );
-    });
-
-    it("propagates error when seatBooking.create throws", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.create.mockRejectedValue(new Error("DB write error"));
-
-      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
-        "DB write error",
-      );
-      expect(helloAssoService.createCheckoutIntent).not.toHaveBeenCalled();
-    });
-
-    it("uses fallback APP_URL when configService returns undefined", async () => {
-      configService.get.mockReturnValue(undefined);
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
-      helloAssoService.createCheckoutIntent.mockResolvedValue(mockIntent);
-      prisma.seatBooking.update.mockResolvedValue({
-        ...mockBooking,
-        paymentId: mockIntent.id,
-      } as any);
-
-      const result = await service.createCheckout("user-1", mockDto);
-
-      expect(result).toEqual(mockIntent);
-      expect(helloAssoService.createCheckoutIntent).toHaveBeenCalledWith(
-        mockCredentials,
-        "https://app.example.com",
-        expect.any(Object),
-      );
-    });
-
-    it("uses seatLabel in the intent label when provided", async () => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
-      helloAssoService.createCheckoutIntent.mockResolvedValue(mockIntent);
-      prisma.seatBooking.update.mockResolvedValue({
-        ...mockBooking,
-        paymentId: mockIntent.id,
-      } as any);
-
-      await service.createCheckout("user-1", { ...mockDto, seatLabel: "B3" });
-
-      expect(helloAssoService.createCheckoutIntent).toHaveBeenCalledWith(
-        mockCredentials,
-        expect.any(String),
-        expect.objectContaining({ label: "Place Compétition - B3" }),
-      );
-    });
-
-    it("falls back to itemId in label when seatLabel is not provided", async () => {
-      const dtoWithoutSeatLabel = {
-        competitionId: "comp-1",
-        itemId: "item-1",
-        amount: 1500,
-      };
-      const bookingWithoutSeatLabel = { ...mockBooking, seatLabel: null };
-
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
-      );
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.create.mockResolvedValue(
-        bookingWithoutSeatLabel as any,
-      );
-      helloAssoService.createCheckoutIntent.mockResolvedValue(mockIntent);
-      prisma.seatBooking.update.mockResolvedValue({
-        ...bookingWithoutSeatLabel,
-        paymentId: mockIntent.id,
-      } as any);
-
-      await service.createCheckout("user-1", dtoWithoutSeatLabel);
-
-      expect(helloAssoService.createCheckoutIntent).toHaveBeenCalledWith(
-        mockCredentials,
-        expect.any(String),
-        expect.objectContaining({ label: "Place Compétition - item-1" }),
-      );
-    });
-  });
-
-  describe("createCheckout — server-side price (#381)", () => {
     beforeEach(() => {
       clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
         mockCredentials,
       );
       prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
-      helloAssoService.createCheckoutIntent.mockResolvedValue(mockIntent);
-      prisma.seatBooking.update.mockResolvedValue(mockBooking as any);
+      seatHold.hold.mockResolvedValue({
+        resumed: false,
+        booking: heldBooking(),
+      });
+      helloAssoService.createCheckoutIntent.mockResolvedValue(intent);
     });
 
-    it("ignores the client amount and charges the layout price", async () => {
-      await service.createCheckout("user-1", { ...mockDto, amount: 1 });
+    it("refuses when the organising club has not connected HelloAsso", async () => {
+      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
+        null,
+      );
 
-      expect(prisma.competition.findUnique).toHaveBeenCalledWith({
-        where: { id: "comp-1" },
-        select: { id: true, layout: true },
-      });
-      const params = helloAssoService.createCheckoutIntent.mock.calls[0][2];
-      expect(params.amount).toBe(SEAT_PRICE_CENTS);
+      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
+        /HelloAsso/,
+      );
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      expect(seatHold.hold).not.toHaveBeenCalled();
     });
 
-    it("works for a client that no longer sends an amount", async () => {
-      await service.createCheckout("user-1", {
-        competitionId: "comp-1",
-        itemId: "item-1",
-      });
+    it("refuses when the user does not exist", async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
 
-      const params = helloAssoService.createCheckoutIntent.mock.calls[0][2];
-      expect(params.amount).toBe(SEAT_PRICE_CENTS);
-    });
-
-    it("stores the numeric HelloAsso intent id as a string", async () => {
-      helloAssoService.createCheckoutIntent.mockResolvedValue({
-        ...mockIntent,
-        id: 4242 as unknown as string,
-      });
-
-      await service.createCheckout("user-1", mockDto);
-
-      expect(prisma.seatBooking.update).toHaveBeenCalledWith({
-        where: { id: mockBooking.id },
-        data: { paymentId: "4242" },
-      });
+      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
+        "User not found",
+      );
+      expect(seatHold.hold).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -468,63 +197,303 @@ describe("PaymentService", () => {
       await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
         /Aucun tarif/,
       );
-      expect(prisma.seatBooking.create).not.toHaveBeenCalled();
+      expect(seatHold.hold).not.toHaveBeenCalled();
       expect(helloAssoService.createCheckoutIntent).not.toHaveBeenCalled();
     });
-  });
 
-  describe("createCheckout — one active booking per seat (#401, #402)", () => {
-    beforeEach(() => {
-      clubsService.getHelloAssoCredentialsForCompetition.mockResolvedValue(
-        mockCredentials,
+    it("refuses a priced element without any bookable seat", async () => {
+      prisma.competition.findUnique.mockResolvedValue({
+        id: "comp-1",
+        layout: [{ id: "item-1", type: "TABLE", capacity: 0, priceCents: 1 }],
+      } as any);
+
+      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
+        BadRequestException,
       );
-      prisma.user.findUnique.mockResolvedValue(mockUser as any);
-      prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
-      prisma.seatBooking.create.mockResolvedValue(mockBooking as any);
-      helloAssoService.createCheckoutIntent.mockResolvedValue(mockIntent);
-      prisma.seatBooking.update.mockResolvedValue(mockBooking as any);
+      expect(seatHold.hold).not.toHaveBeenCalled();
     });
 
-    it("releases the seat's expired holds before creating the new one", async () => {
+    it("holds the requested seat of the element at the layout price", async () => {
       await service.createCheckout("user-1", mockDto);
 
-      expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith({
-        where: {
-          competitionId: "comp-1",
-          itemId: "item-1",
-          status: "PENDING",
-          OR: [{ expiresAt: null }, { expiresAt: { lte: expect.any(Date) } }],
-        },
-        data: { status: "EXPIRED" },
+      expect(prisma.competition.findUnique).toHaveBeenCalledWith({
+        where: { id: "comp-1" },
+        select: { id: true, layout: true },
       });
-      expect(
-        prisma.seatBooking.updateMany.mock.invocationCallOrder[0],
-      ).toBeLessThan(prisma.seatBooking.create.mock.invocationCallOrder[0]);
+      expect(seatHold.hold).toHaveBeenCalledWith({
+        userId: "user-1",
+        competitionId: "comp-1",
+        itemId: "item-1",
+        seats: { mode: "numbered", seats: 8, locked: new Set([7]) },
+        seatIndex: 3,
+        seatLabel: "A1",
+        amountCents: SEAT_PRICE_CENTS,
+      });
     });
 
-    it("holds the seat for 15 minutes", async () => {
-      const before = Date.now();
+    it("creates the HelloAsso intent with the server price, never the client's", async () => {
       await service.createCheckout("user-1", mockDto);
 
-      const { expiresAt } = prisma.seatBooking.create.mock.calls[0][0].data;
-      const ms = (expiresAt as Date).getTime() - before;
-      expect(ms).toBeGreaterThanOrEqual(15 * 60 * 1000);
-      expect(ms).toBeLessThan(15 * 60 * 1000 + 5000);
+      expect(helloAssoService.createCheckoutIntent).toHaveBeenCalledWith(
+        mockCredentials,
+        "https://app.example.com",
+        {
+          amount: SEAT_PRICE_CENTS,
+          label: "Place Compétition - A1",
+          consumerEmail: mockUser.email,
+          consumerFirstName: mockUser.firstName,
+          consumerLastName: mockUser.lastName,
+          metadata: { bookingId: "booking-1", competitionId: "comp-1" },
+        },
+      );
     });
 
-    it("answers 409 without any HelloAsso intent when the seat is taken", async () => {
-      prisma.seatBooking.create.mockRejectedValue(
-        new Prisma.PrismaClientKnownRequestError("Unique constraint", {
-          code: "P2002",
-          clientVersion: "7",
+    it("falls back to the item id in the label and to a default APP_URL", async () => {
+      configService.get.mockReturnValue(undefined);
+
+      await service.createCheckout("user-1", {
+        competitionId: "comp-1",
+        itemId: "item-1",
+      });
+
+      expect(helloAssoService.createCheckoutIntent).toHaveBeenCalledWith(
+        mockCredentials,
+        "https://app.example.com",
+        expect.objectContaining({ label: "Place Compétition - item-1" }),
+      );
+    });
+
+    it("records the intent (id as a string, redirect, creation time) and returns the seat", async () => {
+      const result = await service.createCheckout("user-1", mockDto);
+
+      expect(seatHold.recordIntent).toHaveBeenCalledWith(
+        "booking-1",
+        { id: "4242", redirectUrl: intent.redirectUrl },
+        expect.any(Date),
+      );
+      expect(result).toEqual({
+        id: 4242,
+        redirectUrl: intent.redirectUrl,
+        bookingId: "booking-1",
+        seatIndex: 3,
+        expiresAt: holdExpiresAt,
+        resumed: false,
+      });
+    });
+
+    it("never exposes the internal place slot of a free-placement element", async () => {
+      seatHold.hold.mockResolvedValue({
+        resumed: false,
+        booking: heldBooking({ seatIndex: 5 }),
+      });
+
+      const result = await service.createCheckout("user-1", {
+        competitionId: "comp-1",
+        itemId: "free-1",
+      });
+
+      expect(seatHold.hold).toHaveBeenCalledWith(
+        expect.objectContaining({
+          seats: { mode: "free", places: 20 },
+          amountCents: 800,
         }),
       );
+      expect(result.seatIndex).toBeNull();
+    });
 
-      const call = service.createCheckout("user-1", mockDto);
+    it("propagates the hold's refusal (409) without any HelloAsso intent", async () => {
+      seatHold.hold.mockRejectedValue(new ConflictException("taken"));
 
-      await expect(call).rejects.toThrow(ConflictException);
-      await expect(call).rejects.toThrow(/déjà réservée/);
+      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
+        ConflictException,
+      );
       expect(helloAssoService.createCheckoutIntent).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["the HelloAsso intent fails", "intent"],
+      ["recording the intent fails", "record"],
+    ])("releases the seat when %s", async (_label, failing) => {
+      if (failing === "intent") {
+        helloAssoService.createCheckoutIntent.mockRejectedValue(
+          new Error("HelloAsso down"),
+        );
+      } else {
+        seatHold.recordIntent.mockRejectedValue("db down");
+      }
+      jest.spyOn(Logger.prototype, "error").mockImplementation(() => {});
+
+      await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
+        "Échec de l'initiation du paiement",
+      );
+      expect(seatHold.release).toHaveBeenCalledWith("booking-1");
+    });
+
+    describe("resume of the user's own pending seat (#428)", () => {
+      const now = Date.now();
+      const resume = (overrides: Partial<HeldBooking>) =>
+        seatHold.hold.mockResolvedValue({
+          resumed: true,
+          booking: heldBooking({
+            paymentId: "4000",
+            checkoutRedirectUrl: "https://helloasso.com/pay/4000",
+            checkoutCreatedAt: new Date(now - 60_000),
+            ...overrides,
+          }),
+        });
+
+      it("returns the stored HelloAsso page while it is still valid", async () => {
+        resume({});
+
+        const result = await service.createCheckout("user-1", mockDto);
+
+        expect(result).toEqual({
+          id: 4000,
+          redirectUrl: "https://helloasso.com/pay/4000",
+          bookingId: "booking-1",
+          seatIndex: 3,
+          expiresAt: holdExpiresAt,
+          resumed: true,
+        });
+        expect(helloAssoService.createCheckoutIntent).not.toHaveBeenCalled();
+        expect(helloAssoService.getCheckoutIntent).not.toHaveBeenCalled();
+      });
+
+      it("creates a fresh intent at the booking's price once the page has expired", async () => {
+        resume({
+          checkoutCreatedAt: new Date(now - CHECKOUT_REDIRECT_REUSE_MS - 1),
+          expectedAmountCents: 1200,
+        });
+        helloAssoService.getCheckoutIntent.mockResolvedValue({
+          found: true,
+          value: { id: 4000 },
+        });
+        const extended = new Date(now + 60 * 60 * 1000);
+        seatHold.replaceIntent.mockResolvedValue({
+          replaced: true,
+          expiresAt: extended,
+        });
+
+        const result = await service.createCheckout("user-1", mockDto);
+
+        expect(helloAssoService.getCheckoutIntent).toHaveBeenCalledWith(
+          mockCredentials,
+          "4000",
+        );
+        expect(helloAssoService.createCheckoutIntent).toHaveBeenCalledWith(
+          mockCredentials,
+          expect.any(String),
+          expect.objectContaining({
+            amount: 1200,
+            metadata: { bookingId: "booking-1", competitionId: "comp-1" },
+          }),
+        );
+        expect(seatHold.replaceIntent).toHaveBeenCalledWith(
+          expect.objectContaining({ id: "booking-1", paymentId: "4000" }),
+          { id: "4242", redirectUrl: intent.redirectUrl },
+          expect.any(Date),
+        );
+        expect(result).toEqual(
+          expect.objectContaining({
+            id: 4242,
+            expiresAt: extended,
+            resumed: true,
+          }),
+        );
+        expect(seatHold.release).not.toHaveBeenCalled();
+      });
+
+      it("creates a fresh intent when no page was stored (booking from before #428)", async () => {
+        resume({ checkoutRedirectUrl: null, checkoutCreatedAt: null });
+        helloAssoService.getCheckoutIntent.mockResolvedValue({ found: false });
+        seatHold.replaceIntent.mockResolvedValue({
+          replaced: true,
+          expiresAt: holdExpiresAt,
+        });
+
+        await expect(
+          service.createCheckout("user-1", mockDto),
+        ).resolves.toEqual(expect.objectContaining({ id: 4242 }));
+      });
+
+      it.each([
+        ["no intent was created yet", { paymentId: null }],
+        ["the booking has no stored price", { expectedAmountCents: null }],
+      ])("answers 409 when %s", async (_label, overrides) => {
+        resume({ checkoutCreatedAt: null, ...overrides });
+
+        await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
+          ConflictException,
+        );
+        expect(helloAssoService.createCheckoutIntent).not.toHaveBeenCalled();
+      });
+
+      it("answers 409 after too many payment attempts", async () => {
+        resume({
+          checkoutCreatedAt: null,
+          supersededPaymentIds: Array.from(
+            { length: MAX_INTENTS_PER_BOOKING - 1 },
+            (_, i) => String(i + 1),
+          ),
+        });
+
+        await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
+          /Trop de tentatives/,
+        );
+        expect(helloAssoService.getCheckoutIntent).not.toHaveBeenCalled();
+      });
+
+      it("never replaces an intent HelloAsso already has a payment for", async () => {
+        resume({ checkoutCreatedAt: null });
+        helloAssoService.getCheckoutIntent.mockResolvedValue({
+          found: true,
+          value: { id: 4000, order: { id: 1 } },
+        });
+
+        await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
+          /paiement est déjà en cours/,
+        );
+        expect(helloAssoService.createCheckoutIntent).not.toHaveBeenCalled();
+      });
+
+      it("answers 503 when HelloAsso cannot be read", async () => {
+        resume({ checkoutCreatedAt: null });
+        helloAssoService.getCheckoutIntent.mockRejectedValue(
+          new Error("timeout"),
+        );
+
+        await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
+          ServiceUnavailableException,
+        );
+      });
+
+      it("keeps the hold when the fresh intent cannot be created", async () => {
+        resume({ checkoutCreatedAt: null });
+        helloAssoService.getCheckoutIntent.mockResolvedValue({ found: false });
+        helloAssoService.createCheckoutIntent.mockRejectedValue(
+          new Error("down"),
+        );
+        jest.spyOn(Logger.prototype, "error").mockImplementation(() => {});
+
+        await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(seatHold.release).not.toHaveBeenCalled();
+        expect(seatHold.replaceIntent).not.toHaveBeenCalled();
+      });
+
+      it("never hands out the fresh intent when the booking changed meanwhile", async () => {
+        resume({ checkoutCreatedAt: null });
+        helloAssoService.getCheckoutIntent.mockResolvedValue({ found: false });
+        seatHold.replaceIntent.mockResolvedValue({
+          replaced: false,
+          expiresAt: holdExpiresAt,
+        });
+
+        await expect(service.createCheckout("user-1", mockDto)).rejects.toThrow(
+          ConflictException,
+        );
+      });
     });
   });
 
@@ -536,6 +505,8 @@ describe("PaymentService", () => {
       paymentId: "4242",
       expectedAmountCents: 1500,
       expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      supersededPaymentIds: [] as string[],
+      refundOwedAt: null,
     };
 
     const paidOrder = (
@@ -559,10 +530,15 @@ describe("PaymentService", () => {
       where: {
         id: "booking-1",
         status: "PENDING",
+        paymentId: "4242",
         expectedAmountCents: 1500,
         expiresAt: { gt: expect.any(Date) },
       },
-      data: { status: "CONFIRMED" },
+      data: {
+        status: "CONFIRMED",
+        paymentId: "4242",
+        supersededPaymentIds: [],
+      },
     };
 
     beforeEach(() => {
@@ -589,14 +565,7 @@ describe("PaymentService", () => {
 
       expect(prisma.seatBooking.findUnique).toHaveBeenCalledWith({
         where: { id: "booking-1" },
-        select: {
-          id: true,
-          competitionId: true,
-          status: true,
-          paymentId: true,
-          expectedAmountCents: true,
-          expiresAt: true,
-        },
+        select: seatBookingPaymentCheckSelect,
       });
       expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith(confirmCall);
       expect(Sentry.captureMessage).not.toHaveBeenCalled();
@@ -673,6 +642,12 @@ describe("PaymentService", () => {
     );
 
     it("rejects when the booking changed between the read and the write", async () => {
+      prisma.seatBooking.findUnique
+        .mockResolvedValueOnce(bookingForCheck as any)
+        .mockResolvedValueOnce({
+          ...bookingForCheck,
+          status: "CANCELLED",
+        } as any);
       prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
 
       await service.handleOrderWebhook(paidOrder());
@@ -830,9 +805,23 @@ describe("PaymentService", () => {
         data: { status: "EXPIRED" },
       };
 
+      const markerCall = {
+        where: {
+          id: "booking-1",
+          refundOwedAt: null,
+          status: { in: ["EXPIRED", "CONFIRMED"] },
+        },
+        data: { refundOwedAt: expect.any(Date) },
+      };
+
       const expectRefundFlagged = () => {
         expect(prisma.seatBooking.updateMany).not.toHaveBeenCalledWith(
           confirmCall,
+        );
+        expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith(markerCall);
+        expect(refundOwedAlert.alertClub).toHaveBeenCalledWith(
+          "booking-1",
+          98765,
         );
         expectRefundAlert();
       };
@@ -860,7 +849,7 @@ describe("PaymentService", () => {
         await service.handleOrderWebhook(paidOrder());
 
         expectRefundFlagged();
-        expect(prisma.seatBooking.updateMany).toHaveBeenCalledTimes(1);
+        expect(prisma.seatBooking.updateMany).toHaveBeenCalledTimes(2);
         expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith(expireCall);
       });
 
@@ -885,7 +874,7 @@ describe("PaymentService", () => {
         await service.handleOrderWebhook(paidOrder());
 
         expectRefundFlagged();
-        expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
+        expect(prisma.seatBooking.updateMany).toHaveBeenCalledTimes(1);
       });
 
       it("still reports a forged order on an expired hold as a forgery, not a refund", async () => {
@@ -940,6 +929,97 @@ describe("PaymentService", () => {
         await service.handleOrderWebhook(paidOrder());
 
         expectRefundAlert();
+        expect(refundOwedAlert.alertClub).toHaveBeenCalled();
+      });
+
+      it("does not alert the club twice when the refund is already flagged", async () => {
+        prisma.seatBooking.findUnique.mockResolvedValue({
+          ...bookingForCheck,
+          status: "EXPIRED",
+          refundOwedAt: new Date(),
+        } as any);
+        prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+
+        await service.handleOrderWebhook(paidOrder());
+
+        expectRefundAlert();
+        expect(refundOwedAlert.alertClub).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("resumed payments (#428)", () => {
+      const resumed = {
+        ...bookingForCheck,
+        paymentId: "5000",
+        supersededPaymentIds: ["4242", "4300"],
+      };
+
+      it("confirms a payment made on an earlier intent of the booking", async () => {
+        prisma.seatBooking.findUnique.mockResolvedValue(resumed as any);
+
+        await service.handleOrderWebhook(paidOrder());
+
+        expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith({
+          where: { ...confirmCall.where, paymentId: "5000" },
+          data: {
+            status: "CONFIRMED",
+            paymentId: "4242",
+            supersededPaymentIds: ["4300", "5000"],
+          },
+        });
+        expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      });
+
+      it("still rejects an intent that is not one of the booking's", async () => {
+        prisma.seatBooking.findUnique.mockResolvedValue(resumed as any);
+
+        await service.handleOrderWebhook(paidOrder({ checkoutIntentId: 1 }));
+
+        expectRejected("checkout_intent_mismatch");
+      });
+
+      it("flags a refund for a second payment of a confirmed seat", async () => {
+        prisma.seatBooking.findUnique.mockResolvedValue({
+          ...resumed,
+          status: "CONFIRMED",
+        } as any);
+
+        await service.handleOrderWebhook(paidOrder());
+
+        expect(prisma.seatBooking.updateMany).toHaveBeenCalledTimes(1);
+        expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith({
+          where: {
+            id: "booking-1",
+            refundOwedAt: null,
+            status: { in: ["EXPIRED", "CONFIRMED"] },
+          },
+          data: { refundOwedAt: expect.any(Date) },
+        });
+        expect(Sentry.captureMessage).toHaveBeenCalledWith(
+          "HelloAsso order rejected",
+          expect.objectContaining({
+            tags: expect.objectContaining({
+              reason: "duplicate_payment",
+              refund: "required",
+            }),
+          }),
+        );
+        expect(refundOwedAlert.alertClub).toHaveBeenCalledWith(
+          "booking-1",
+          98765,
+        );
+      });
+
+      it("asks HelloAsso to redeliver when the booking was resumed during the confirmation", async () => {
+        prisma.seatBooking.findUnique
+          .mockResolvedValueOnce(bookingForCheck as any)
+          .mockResolvedValueOnce(resumed as any);
+        prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+
+        await expect(service.handleOrderWebhook(paidOrder())).rejects.toThrow(
+          ServiceUnavailableException,
+        );
+        expect(Sentry.captureMessage).not.toHaveBeenCalled();
       });
     });
 

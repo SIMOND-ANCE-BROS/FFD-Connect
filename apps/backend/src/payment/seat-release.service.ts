@@ -14,7 +14,7 @@ import {
   type HelloAssoCredentials,
   type HelloAssoReadResult,
 } from "./hello-asso.service";
-import { getWebhookMetadata } from "./helloasso-order-check";
+import { getWebhookMetadata, isBookingIntent } from "./helloasso-order-check";
 
 /**
  * HelloAsso payment states that release a confirmed seat (#403), with the
@@ -115,9 +115,11 @@ export class SeatReleaseService {
         "Booking not confirmed yet, notification to be redelivered",
       );
     }
-    if (booking.status !== "CONFIRMED" || !booking.paymentId) {
-      // Nothing to release (pending, expired, already released…): no call
-      // to HelloAsso, so replays cannot amplify.
+    const releasable = booking.status === "CONFIRMED";
+    const refundOwed = booking.refundOwedAt !== null;
+    if ((!releasable && !refundOwed) || !booking.paymentId) {
+      // Nothing to release nor refund owed (expired, already released…): no
+      // call to HelloAsso, so replays cannot amplify.
       this.logger.log(
         `HelloAsso ${claimedState} notification for booking ${bookingId} in status ${booking.status}: nothing to release`,
       );
@@ -157,9 +159,13 @@ export class SeatReleaseService {
     if (checkoutIntentId === null) {
       return this.reject(bookingId, paymentId, "order_not_found");
     }
-    if (String(checkoutIntentId) !== booking.paymentId) {
+    if (!isBookingIntent(booking, String(checkoutIntentId))) {
       return this.reject(bookingId, paymentId, "checkout_intent_mismatch");
     }
+    // The seat's own payment (current intent of a confirmed booking) releases
+    // the seat; any other payment of the booking is one we owed back (#428).
+    const seatPayment =
+      releasable && String(checkoutIntentId) === booking.paymentId;
 
     const reason = SEAT_RELEASE_REASONS.get(payment.state);
     if (!reason) {
@@ -167,6 +173,10 @@ export class SeatReleaseService {
         `HelloAsso payment ${paymentId} of booking ${bookingId} is ${payment.state} on HelloAsso (notification said ${claimedState}): seat kept`,
       );
       return;
+    }
+
+    if (!seatPayment) {
+      return this.settleRefundOwed(booking, paymentId, reason);
     }
 
     const { count } = await this.prisma.seatBooking.updateMany({
@@ -184,6 +194,44 @@ export class SeatReleaseService {
       level: "warning",
       tags: { payment: "helloasso-seat-released", reason },
       extra: { bookingId, paymentId },
+    });
+  }
+
+  /**
+   * A payment we owed back (late payment, or second payment of a confirmed
+   * seat, #428) was refunded — by hand by the club, #438 — or disputed: the
+   * refund is no longer owed. The seat itself is untouched (a confirmed seat
+   * stays paid by its own payment); an expired booking records why.
+   */
+  private async settleRefundOwed(
+    booking: { id: string; status: string; refundOwedAt: Date | null },
+    paymentId: number,
+    reason: string,
+  ): Promise<void> {
+    if (booking.refundOwedAt === null) {
+      this.logger.warn(
+        `HelloAsso payment ${paymentId} of booking ${booking.id} is not the seat's payment and no refund was owed: ignored`,
+      );
+      return;
+    }
+    const { count } = await this.prisma.seatBooking.updateMany({
+      where: { id: booking.id, refundOwedAt: { not: null } },
+      data: {
+        refundOwedAt: null,
+        ...(booking.status === "EXPIRED" ? { cancelReason: reason } : {}),
+      },
+    });
+    if (count === 0) {
+      this.logger.log(`Refund of booking ${booking.id} already settled`);
+      return;
+    }
+    this.logger.warn(
+      `Refund owed on booking ${booking.id} settled: HelloAsso payment ${paymentId} ${reason}`,
+    );
+    Sentry.captureMessage("HelloAsso refund owed settled", {
+      level: "info",
+      tags: { payment: "helloasso-refund-settled", reason },
+      extra: { bookingId: booking.id, paymentId },
     });
   }
 

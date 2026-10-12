@@ -6,6 +6,8 @@ import { HelloAssoService } from "./hello-asso.service";
 import { HelloAssoNotificationService } from "./helloasso-notification.service";
 import { PaymentController } from "./payment.controller";
 import { PaymentService } from "./payment.service";
+import { RefundOwedAlertService } from "./refund-owed-alert.service";
+import { SeatHoldService } from "./seat-hold.service";
 import { SeatReleaseService } from "./seat-release.service";
 
 @Module({
@@ -15,6 +17,8 @@ import { SeatReleaseService } from "./seat-release.service";
     HelloAssoService,
     HelloAssoNotificationService,
     PaymentService,
+    RefundOwedAlertService,
+    SeatHoldService,
     SeatReleaseService,
   ],
   exports: [HelloAssoService, PaymentService],

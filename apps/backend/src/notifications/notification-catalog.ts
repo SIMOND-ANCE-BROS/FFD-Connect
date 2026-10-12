@@ -134,13 +134,13 @@ export const NOTIFICATION_CATALOG: Readonly<
       "Quand un couple inter-club impliquant votre club est proposé, validé, refusé ou clôturé.",
   },
 
-  // ── HelloAsso payment received (#39): DORMANT ───────────────────────────────
+  // ── HelloAsso payments (#39, #428) ──────────────────────────────────────
   //
-  // Declared together with its migration, but no producer yet: it stays
-  // `configurable: false` until the revision that emits it ships. Made
-  // configurable now, it would show as a switch with no effect, and every
-  // toggle would write to the database an enum value that the previous image
-  // (the one a rollback falls back to) cannot read.
+  // First producer: the "refund owed" alert of #428 (a payment arrived for a
+  // seat that was not granted; the club refunds it by hand, #438). Kept
+  // `configurable: false`, i.e. always sent: a club must not be able to mute
+  // money it owes back. Revisit when the "payment received" producer (#39)
+  // ships — a club may want to mute that one, not the refund alert.
   [NotificationType.CLUB_PAYMENT_RECEIVED]: {
     defaultEnabled: true,
     configurable: false,

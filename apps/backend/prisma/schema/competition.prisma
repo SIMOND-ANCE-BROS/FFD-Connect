@@ -189,14 +189,33 @@ model SeatBooking {
   expectedAmountCents Int?      // Server-side price in cents, fixed at checkout (#381)
   expiresAt     DateTime?       // For temporary holds
   cancelReason  String?         // Why a seat was released, e.g. HELLOASSO_REFUNDED / HELLOASSO_CONTESTED (#403)
+  // Seat within the layout element (#428): numbered seat (TABLE / GRADIN,
+  // index = row * cols + col) or server-assigned place slot (free placement).
+  // NULL only on bookings made before #428 (whole element).
+  seatIndex     Int?
+  // 0..3 while PENDING: at most 4 pending bookings per user and competition (#428)
+  pendingSlot   Int?            @db.SmallInt
+  // Earlier checkout intents of this booking, replaced when the payment was resumed (#428)
+  supersededPaymentIds String[] @default([])
+  checkoutRedirectUrl  String?  // HelloAsso redirect of `paymentId`, returned only to the booking owner (#428)
+  checkoutCreatedAt    DateTime? // When `paymentId` was created (redirect valid 15 min)
+  refundOwedAt  DateTime?       // Paid but no seat granted (late or duplicate payment): refund owed (#428, #438)
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
   @@index([competitionId])
   @@index([userId])
   @@index([competitionId, itemId, seatLabel])
-  // One active booking per seat (#402): a PENDING hold or a CONFIRMED seat.
-  // EXPIRED/CANCELLED rows are history and never block the seat. An expired
-  // PENDING hold is switched to EXPIRED before a new checkout (#401).
-  @@unique([competitionId, itemId], map: "SeatBooking_active_seat_key", where: raw("(status = ANY (ARRAY['PENDING'::\"BookingStatus\", 'CONFIRMED'::\"BookingStatus\"]))"))
+  // One active booking per seat (#402, per seat since #428): a PENDING hold
+  // or a CONFIRMED seat. EXPIRED/CANCELLED rows are history and never block
+  // the seat. An expired PENDING hold is switched to EXPIRED before a new
+  // checkout (#401). Free placement: one row per place slot, so the element's
+  // capacity is enforced by the same index.
+  @@unique([competitionId, itemId, seatIndex], map: "SeatBooking_active_seat_index_key", where: raw("((status = ANY (ARRAY['PENDING'::\"BookingStatus\", 'CONFIRMED'::\"BookingStatus\"])) AND (\"seatIndex\" IS NOT NULL))"))
+  // Bookings without a seat index (before #428, or written by a rolled-back
+  // revision) keep the former guarantee: one active booking per element.
+  @@unique([competitionId, itemId], map: "SeatBooking_active_item_legacy_key", where: raw("((status = ANY (ARRAY['PENDING'::\"BookingStatus\", 'CONFIRMED'::\"BookingStatus\"])) AND (\"seatIndex\" IS NULL))"))
+  // At most 4 PENDING bookings per user and competition (#428): each takes
+  // one of the slots 0..3 (CHECK constraint in the migration).
+  @@unique([competitionId, userId, pendingSlot], map: "SeatBooking_pending_cap_key", where: raw("(status = 'PENDING'::\"BookingStatus\")"))
 }

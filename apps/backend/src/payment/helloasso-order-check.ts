@@ -17,15 +17,19 @@ export type OrderRejectionReason =
   | "invalid_payment"
   | "not_paid"
   | "amount_mismatch"
-  | "booking_expired";
+  | "booking_expired"
+  | "duplicate_payment";
 
 /**
  * Rejections where a genuine, fully paid order could not be honoured: the
- * money is collected but no seat is granted, so the payer must be refunded
- * (#401; automatic refund is #403).
+ * money is collected but no seat is granted (late payment, #401) or the seat
+ * was already paid through another checkout intent of the same booking
+ * (resumed payment paid twice, #428). The booking is flagged `refundOwedAt`
+ * and the organising club refunds the payer from its HelloAsso back-office
+ * (manual refund, decided in #438).
  */
 export const REFUND_REQUIRED_REASONS: ReadonlySet<OrderRejectionReason> =
-  new Set(["booking_expired"]);
+  new Set(["booking_expired", "duplicate_payment"]);
 
 export interface BookingPaymentCheck {
   id: string;
@@ -34,6 +38,23 @@ export interface BookingPaymentCheck {
   paymentId: string | null;
   expectedAmountCents: number | null;
   expiresAt: Date | null;
+  /** Earlier checkout intents of a resumed payment (#428). */
+  supersededPaymentIds: string[];
+}
+
+/**
+ * Whether `checkoutIntentId` is one of the booking's own checkout intents:
+ * the current one or one replaced when the payment was resumed (#428) — the
+ * payer may still complete a page opened before the resume.
+ */
+export function isBookingIntent(
+  booking: Pick<BookingPaymentCheck, "paymentId" | "supersededPaymentIds">,
+  checkoutIntentId: string,
+): boolean {
+  return (
+    checkoutIntentId === booking.paymentId ||
+    booking.supersededPaymentIds.includes(checkoutIntentId)
+  );
 }
 
 /**
@@ -88,7 +109,7 @@ export function paidAmountCents(payload: WebhookPayloadDto): number | null {
  * with `expectedAmountCents` and HelloAsso reports amounts in cents.
  *
  * Only a PENDING hold still within its deadline can be confirmed (#401). The
- * expiry is checked LAST, once the order is proven to be the genuine, fully
+ * expiry (and the duplicate payment of a confirmed seat, #428) is checked LAST, once the order is proven to be the genuine, fully
  * paid order of this booking: `booking_expired` therefore always means "money
  * collected for a seat we no longer hold" (refund required), never a forged
  * or partial order.
@@ -98,9 +119,14 @@ export function checkOrderAgainstBooking(
   booking: BookingPaymentCheck,
   now: Date,
 ): OrderRejectionReason | null {
-  // Only a hold awaiting payment (still running or lapsed) is examined: no
-  // revival of a cancelled booking, no double processing.
-  if (booking.status !== "PENDING" && booking.status !== "EXPIRED") {
+  // A hold awaiting payment (still running or lapsed), or a confirmed seat
+  // paid again through another of its intents (#428). Never a cancelled
+  // booking: no revival.
+  if (
+    booking.status !== "PENDING" &&
+    booking.status !== "EXPIRED" &&
+    booking.status !== "CONFIRMED"
+  ) {
     return "not_pending";
   }
 
@@ -113,7 +139,7 @@ export function checkOrderAgainstBooking(
   if (
     checkoutIntentId === undefined ||
     booking.paymentId === null ||
-    String(checkoutIntentId) !== booking.paymentId
+    !isBookingIntent(booking, String(checkoutIntentId))
   ) {
     return "checkout_intent_mismatch";
   }
@@ -127,6 +153,12 @@ export function checkOrderAgainstBooking(
   if (paid === 0) return "not_paid";
   if (paid !== booking.expectedAmountCents) return "amount_mismatch";
 
+  if (booking.status === "CONFIRMED") {
+    // Proven genuine and fully paid, but the seat is already paid through
+    // the booking's current intent: the caller only gets here for another
+    // intent of the booking (resumed payment paid twice).
+    return "duplicate_payment";
+  }
   if (booking.status === "EXPIRED" || isHoldExpired(booking, now)) {
     return "booking_expired";
   }
