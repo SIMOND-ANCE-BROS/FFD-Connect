@@ -59,6 +59,7 @@ propre ou relèvent d'une obligation légale :
   compte, commentaire effacé.
 - **Inscriptions de vos partenaires** : si vous étiez inscrit·e comme partenaire
   d'une autre personne, son inscription est conservée, mais votre nom en est retiré.
+- **Résultats de compétition** : conservés **sans aucun lien** avec votre compte ni avec votre nom, afin de ne pas fausser le classement des autres couples (seuls l'épreuve, le tour et le classement subsistent). Les classements de la FFD étant publics à la source, il s'agit d'une **pseudonymisation** et non d'une anonymisation complète.
 - **Paiements** : les transactions réalisées via HelloAsso sont conservées par
   HelloAsso selon ses propres obligations comptables.
 - **Journal des accès d'assistance** : si un administrateur a consulté votre compte
