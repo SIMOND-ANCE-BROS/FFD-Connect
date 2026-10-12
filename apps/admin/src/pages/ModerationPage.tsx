@@ -2,33 +2,36 @@ import {
   Alert,
   Anchor,
   Badge,
-  Chip,
+  Checkbox,
   Group,
   Pagination,
   ScrollArea,
   SegmentedControl,
   Stack,
-  Table,
   Text,
   TextInput,
 } from '@mantine/core';
-import { useDebouncedValue } from '@mantine/hooks';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
-import { FilterPanel } from '../components/FilterPanel';
-import { EmptyState, ListSkeleton } from '../components/ListStates';
-import { RecordCard, RecordLine, RecordList } from '../components/RecordCard';
-import { PageHeader } from '../components/PageHeader';
-import { useIsMobile } from '../lib/useIsMobile';
-import type { TrackCorrectionReason, TrackCorrectionStatus } from '../api/generated/types.gen';
+import { Link, useLocation, useNavigate } from 'react-router';
+import type {
+  TrackCorrectionAdminDto,
+  TrackCorrectionReason,
+  TrackCorrectionStatus,
+} from '../api/generated/types.gen';
 import { moderationListQuery } from '../api/queries';
+import { DataTable, type DataTableColumn } from '../components/DataTable';
+import { EmptyState } from '../components/ListStates';
+import { PageHeader } from '../components/PageHeader';
+import { RecordCard, RecordLine } from '../components/RecordCard';
 import { apiErrorMessage } from '../lib/apiError';
+import type { SortState } from '../lib/listSort';
+import { useListParams } from '../lib/useListParams';
 import {
   MIN_SEARCH_LENGTH,
+  MODERATION_SORT_FIELDS,
   moderationFilter,
-  type ModerationUrlState,
+  type ModerationSortField,
   proposalSummary,
   readModerationParams,
   REASON_LABELS,
@@ -36,73 +39,122 @@ import {
   STATUS_OPTIONS,
   writeModerationParams,
 } from '../lib/moderation';
+import { useUrlSearch } from '../lib/useUrlSearch';
 
 const PAGE_SIZE = 50;
+
+const isModerationSortField = (value: string): value is ModerationSortField =>
+  MODERATION_SORT_FIELDS.some((f) => f === value);
+
+const proposer = (c: TrackCorrectionAdminDto) => c.proposer?.name ?? 'Compte supprimé';
+const createdAt = (c: TrackCorrectionAdminDto) => dayjs(c.createdAt).format('DD/MM/YYYY HH:mm');
 
 export function ModerationPage() {
   const navigate = useNavigate();
   const { search: locationSearch } = useLocation();
-  const [params, setParams] = useSearchParams();
-  const state = readModerationParams(params);
-  const [search, setSearch] = useState(state.q);
-  const [debounced] = useDebouncedValue(search.trim(), 300);
-
-  // The search reaches the URL (and the API) once debounced and long enough,
-  // and only when the debounced input itself changed.
-  const paramsRef = useRef(params);
-  paramsRef.current = params;
-  const setParamsRef = useRef(setParams);
-  setParamsRef.current = setParams;
-  const written = useRef(state.q);
-  useEffect(() => {
-    const next = debounced.length >= MIN_SEARCH_LENGTH ? debounced : '';
-    if (next === readModerationParams(paramsRef.current).q) return;
-    written.current = next;
-    setParamsRef.current(writeModerationParams(paramsRef.current, { q: next }), {
-      replace: true,
-    });
-  }, [debounced]);
-
-  // Back/Forward (or any outside change of `q`) moves the input with it.
-  useEffect(() => {
-    if (state.q === written.current) return;
-    written.current = state.q;
-    setSearch(state.q);
-  }, [state.q]);
-
-  const update = (patch: Partial<ModerationUrlState>) =>
-    setParams(writeModerationParams(params, patch));
+  const [state, update] = useListParams(readModerationParams, writeModerationParams);
+  const [search, setSearch] = useUrlSearch(
+    state.q,
+    (q) => update({ q }, { replace: true }),
+    MIN_SEARCH_LENGTH,
+  );
 
   const list = useQuery({
     ...moderationListQuery(moderationFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
   });
   const total = list.data?.meta.total ?? 0;
-  const isMobile = useIsMobile();
+  const detailPath = (c: TrackCorrectionAdminDto) => `/moderation/${c.id}${locationSearch}`;
 
-  const reasonFilters = (
-    <Chip.Group
-      multiple
-      value={state.reasons}
-      onChange={(v) => update({ reasons: v as TrackCorrectionReason[] })}
-    >
-      <Group gap="xs">
-        {REASONS.map((reason) => (
-          <Chip key={reason} value={reason} size="sm">
-            {REASON_LABELS[reason]}
-          </Chip>
-        ))}
-      </Group>
-    </Chip.Group>
-  );
-  const searchInput = (
-    <TextInput
-      label="Rechercher une proposition"
-      placeholder="Titre ou artiste"
-      value={search}
-      onChange={(e) => setSearch(e.currentTarget.value)}
-    />
-  );
+  const onSortChange = (sort: SortState | null) =>
+    update({
+      sort: sort && isModerationSortField(sort.by) ? { by: sort.by, order: sort.order } : null,
+    });
+
+  const columns: DataTableColumn<TrackCorrectionAdminDto>[] = [
+    {
+      key: 'track',
+      label: 'Musique',
+      required: true,
+      sortField: 'track',
+      cell: (c) => (
+        <>
+          <Group gap="xs">
+            <Anchor
+              component={Link}
+              to={detailPath(c)}
+              size="sm"
+              fw={500}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {c.track.title}
+            </Anchor>
+            {c.track.titleMasked && (
+              <Badge size="xs" color="gray" variant="light">
+                Titre masqué
+              </Badge>
+            )}
+            {c.track.blacklisted && (
+              <Badge size="xs" color="red" variant="light">
+                Retirée
+              </Badge>
+            )}
+          </Group>
+          <Text size="xs" c="dimmed">
+            {c.track.artist}
+          </Text>
+        </>
+      ),
+    },
+    {
+      key: 'reason',
+      label: 'Motif',
+      sortField: 'reason',
+      cell: (c) => <Badge variant="light">{REASON_LABELS[c.reason]}</Badge>,
+      filter: {
+        active: state.reasons.length > 0,
+        content: (
+          <Checkbox.Group
+            aria-label="Motifs"
+            value={state.reasons}
+            onChange={(v) => update({ reasons: v as TrackCorrectionReason[] })}
+          >
+            <Stack gap="xs">
+              {REASONS.map((reason) => (
+                <Checkbox key={reason} value={reason} label={REASON_LABELS[reason]} />
+              ))}
+            </Stack>
+          </Checkbox.Group>
+        ),
+      },
+    },
+    { key: 'proposer', label: 'Proposée par', cell: proposer },
+    { key: 'createdAt', label: 'Date', sortField: 'createdAt', nowrap: true, cell: createdAt },
+    {
+      key: 'summary',
+      label: 'Changements proposés',
+      cell: (c) => proposalSummary(c.proposed),
+    },
+    {
+      key: 'message',
+      label: 'Message',
+      hiddenByDefault: true,
+      cell: (c) => c.message ?? '—',
+    },
+    {
+      key: 'reviewedAt',
+      label: 'Traitée le',
+      hiddenByDefault: true,
+      nowrap: true,
+      cell: (c) => (c.reviewedAt ? dayjs(c.reviewedAt).format('DD/MM/YYYY HH:mm') : '—'),
+    },
+    {
+      key: 'reviewer',
+      label: 'Traitée par',
+      hiddenByDefault: true,
+      cell: (c) => c.reviewer?.name ?? '—',
+    },
+  ];
 
   return (
     <Stack>
@@ -134,127 +186,66 @@ export function ModerationPage() {
           onChange={(v) => update({ status: v as TrackCorrectionStatus })}
         />
       </ScrollArea>
-      {isMobile ? (
-        <>
-          {searchInput}
-          <FilterPanel activeCount={state.reasons.length} onReset={() => update({ reasons: [] })}>
-            {reasonFilters}
-          </FilterPanel>
-        </>
-      ) : (
-        <>
-          {reasonFilters}
-          {searchInput}
-        </>
-      )}
-      {list.isError ? (
-        <Alert color="red">
-          {apiErrorMessage(list.error, 'Impossible de charger les propositions.')}
-        </Alert>
-      ) : list.isPending ? (
-        <ListSkeleton />
-      ) : (
-        <>
+      <DataTable
+        tableId="moderation"
+        columns={columns}
+        rows={list.data?.data ?? []}
+        rowKey={(c) => c.id}
+        sort={state.sort ?? null}
+        onSortChange={onSortChange}
+        onResetFilters={() => update({ reasons: [] })}
+        onRowClick={(c) => navigate(detailPath(c))}
+        minWidth={820}
+        toolbar={
+          <TextInput
+            label="Rechercher une proposition"
+            placeholder="Titre ou artiste"
+            maw={{ sm: 360 }}
+            value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)}
+          />
+        }
+        loading={list.isPending}
+        error={
+          list.isError && apiErrorMessage(list.error, 'Impossible de charger les propositions.')
+        }
+        summary={
           <Text size="sm" c="dimmed">
             {total} proposition{total > 1 ? 's' : ''}
           </Text>
-          {total === 0 ? (
-            <EmptyState title="Aucune proposition">
-              Aucune correction ne correspond à ces filtres.
-            </EmptyState>
-          ) : isMobile ? (
-            <RecordList>
-              {(list.data?.data ?? []).map((c) => (
-                <RecordCard
-                  key={c.id}
-                  to={`/moderation/${c.id}${locationSearch}`}
-                  title={c.track.title}
-                  badges={
-                    <>
-                      <Badge variant="light">{REASON_LABELS[c.reason]}</Badge>
-                      {c.track.titleMasked && <Badge color="gray">Titre masqué</Badge>}
-                      {c.track.blacklisted && <Badge color="red">Retirée</Badge>}
-                    </>
-                  }
-                >
-                  <Text size="sm" c="dimmed">
-                    {c.track.artist}
-                  </Text>
-                  <RecordLine label="Proposée par">
-                    {c.proposer?.name ?? 'Compte supprimé'}
-                  </RecordLine>
-                  <RecordLine label="Date">
-                    {dayjs(c.createdAt).format('DD/MM/YYYY HH:mm')}
-                  </RecordLine>
-                  <RecordLine label="Changements">{proposalSummary(c.proposed)}</RecordLine>
-                </RecordCard>
-              ))}
-            </RecordList>
-          ) : (
-            <Table.ScrollContainer minWidth={820}>
-              <Table striped highlightOnHover>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Musique</Table.Th>
-                    <Table.Th>Motif</Table.Th>
-                    <Table.Th>Proposée par</Table.Th>
-                    <Table.Th>Date</Table.Th>
-                    <Table.Th>Changements proposés</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {(list.data?.data ?? []).map((c) => (
-                    <Table.Tr
-                      key={c.id}
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => navigate(`/moderation/${c.id}${locationSearch}`)}
-                    >
-                      <Table.Td>
-                        <Group gap="xs">
-                          <Anchor
-                            component={Link}
-                            to={`/moderation/${c.id}${locationSearch}`}
-                            size="sm"
-                            fw={500}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {c.track.title}
-                          </Anchor>
-                          {c.track.titleMasked && (
-                            <Badge size="xs" color="gray" variant="light">
-                              Titre masqué
-                            </Badge>
-                          )}
-                          {c.track.blacklisted && (
-                            <Badge size="xs" color="red" variant="light">
-                              Retirée
-                            </Badge>
-                          )}
-                        </Group>
-                        <Text size="xs" c="dimmed">
-                          {c.track.artist}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge variant="light">{REASON_LABELS[c.reason]}</Badge>
-                      </Table.Td>
-                      <Table.Td>{c.proposer?.name ?? 'Compte supprimé'}</Table.Td>
-                      <Table.Td>{dayjs(c.createdAt).format('DD/MM/YYYY HH:mm')}</Table.Td>
-                      <Table.Td>{proposalSummary(c.proposed)}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
-          )}
-          {total > PAGE_SIZE && (
-            <Pagination
-              total={Math.ceil(total / PAGE_SIZE)}
-              value={state.page}
-              onChange={(pageIndex) => update({ page: pageIndex })}
-            />
-          )}
-        </>
+        }
+        empty={
+          <EmptyState title="Aucune proposition">
+            Aucune correction ne correspond à ces filtres.
+          </EmptyState>
+        }
+        renderCard={(c) => (
+          <RecordCard
+            to={detailPath(c)}
+            title={c.track.title}
+            badges={
+              <>
+                <Badge variant="light">{REASON_LABELS[c.reason]}</Badge>
+                {c.track.titleMasked && <Badge color="gray">Titre masqué</Badge>}
+                {c.track.blacklisted && <Badge color="red">Retirée</Badge>}
+              </>
+            }
+          >
+            <Text size="sm" c="dimmed">
+              {c.track.artist}
+            </Text>
+            <RecordLine label="Proposée par">{proposer(c)}</RecordLine>
+            <RecordLine label="Date">{createdAt(c)}</RecordLine>
+            <RecordLine label="Changements">{proposalSummary(c.proposed)}</RecordLine>
+          </RecordCard>
+        )}
+      />
+      {!list.isError && total > PAGE_SIZE && (
+        <Pagination
+          total={Math.ceil(total / PAGE_SIZE)}
+          value={state.page}
+          onChange={(page) => update({ page })}
+        />
       )}
     </Stack>
   );

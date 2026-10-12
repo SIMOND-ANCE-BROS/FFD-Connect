@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma, TrackCorrectionStatus } from "@prisma/client";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
+import { type SortOrder } from "../common/dto/sort-params";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { TracksService } from "../tracks/tracks.service";
@@ -13,7 +14,10 @@ import {
   TrackCorrectionAdminDto,
   TrackCorrectionAdminPageDto,
 } from "./dto/track-correction-response.dto";
-import { ListTrackCorrectionsQueryDto } from "./dto/track-correction.dto";
+import {
+  ListTrackCorrectionsQueryDto,
+  type TrackCorrectionSortField,
+} from "./dto/track-correction.dto";
 import {
   toAdminDto,
   toMineDto,
@@ -22,6 +26,16 @@ import {
 
 const DEFAULT_SKIP = 0;
 const DEFAULT_TAKE = 10;
+
+type CorrectionOrder = Prisma.TrackCorrectionOrderByWithRelationInput;
+const CORRECTION_ORDERS: Record<
+  TrackCorrectionSortField,
+  (o: SortOrder) => CorrectionOrder[]
+> = {
+  createdAt: (o) => [{ createdAt: o }, { id: o }],
+  reason: (o) => [{ reason: o }, { createdAt: "asc" }, { id: o }],
+  track: (o) => [{ track: { title: o } }, { createdAt: "asc" }, { id: o }],
+};
 
 /** Case-insensitive search on the track title OR artist (admin view: real title). */
 const trackSearchWhere = (q: string): Prisma.TrackWhereInput => ({
@@ -73,10 +87,13 @@ export class TrackCorrectionsQueryService {
       ...(query.q && { track: trackSearchWhere(query.q) }),
       ...(query.trackId && { trackId: query.trackId }),
     };
-    const orderBy: Prisma.TrackCorrectionOrderByWithRelationInput = {
-      createdAt:
-        query.status === TrackCorrectionStatus.PENDING ? "asc" : "desc",
-    };
+    // A column sort from the back-office (#443) replaces the queue order.
+    const orderBy: CorrectionOrder | CorrectionOrder[] = query.sortBy
+      ? CORRECTION_ORDERS[query.sortBy](query.sortOrder ?? "asc")
+      : {
+          createdAt:
+            query.status === TrackCorrectionStatus.PENDING ? "asc" : "desc",
+        };
 
     const [total, rows] = await Promise.all([
       this.prisma.trackCorrection.count({ where }),

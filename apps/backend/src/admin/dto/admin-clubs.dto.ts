@@ -12,11 +12,24 @@ import {
   ValidateIf,
 } from "class-validator";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
+import {
+  SortByParam,
+  SortOrderParam,
+  type SortOrder,
+} from "../../common/dto/sort-params";
 import { AdminPageMetaDto } from "./admin-audit.dto";
 import { ACCOUNT_STATUSES, type AccountStatusFilter } from "./admin-users.dto";
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === "string" ? value.trim() : value;
+
+/** Columns the back-office club list can be sorted on (#443). */
+export const ADMIN_CLUBS_SORT_FIELDS = [
+  "name",
+  "registrationMode",
+  "createdAt",
+] as const;
+export type AdminClubsSortField = (typeof ADMIN_CLUBS_SORT_FIELDS)[number];
 
 export class ListAdminClubsQueryDto extends PaginationParamsDto {
   @ApiPropertyOptional({ description: "Nom du club" })
@@ -30,6 +43,12 @@ export class ListAdminClubsQueryDto extends PaginationParamsDto {
   @IsOptional()
   @IsIn(ACCOUNT_STATUSES)
   status?: AccountStatusFilter;
+
+  @SortByParam(ADMIN_CLUBS_SORT_FIELDS)
+  sortBy?: AdminClubsSortField;
+
+  @SortOrderParam()
+  sortOrder?: SortOrder;
 }
 
 export class ClubOptionsQueryDto {

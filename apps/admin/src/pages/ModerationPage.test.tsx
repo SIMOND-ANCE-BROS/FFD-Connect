@@ -1,12 +1,11 @@
 import { mockPhoneViewport } from '../test/viewport';
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
+import { Route, Routes, useLocation, useNavigate } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
-import { sleep } from '../test/render';
+import { columnFilterButton, sortButton } from '../test/dataTable';
+import { renderWithProviders, sleep } from '../test/render';
 import { ModerationPage } from './ModerationPage';
 
 const item = (overrides: Record<string, unknown> = {}) => ({
@@ -56,29 +55,22 @@ function Probe() {
 }
 
 function renderPage(path = '/moderation') {
-  return render(
-    <MantineProvider>
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route
-              path="/moderation"
-              element={
-                <>
-                  <ModerationPage />
-                  <Probe />
-                  <Nav to="/moderation?q=zzz" />
-                  <Nav to="/moderation?status=APPROVED" />
-                </>
-              }
-            />
-            <Route path="/moderation/:id" element={<Probe />} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+  return renderWithProviders(
+    <Routes>
+      <Route
+        path="/moderation"
+        element={
+          <>
+            <ModerationPage />
+            <Probe />
+            <Nav to="/moderation?q=zzz" />
+            <Nav to="/moderation?status=APPROVED" />
+          </>
+        }
+      />
+      <Route path="/moderation/:id" element={<Probe />} />
+    </Routes>,
+    { route: path },
   );
 }
 
@@ -145,6 +137,7 @@ describe('ModerationPage', () => {
         take: 50,
       },
     });
+    await userEvent.click(columnFilterButton('Motif'));
     expect(screen.getByRole('checkbox', { name: 'MPM' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Titre' })).toBeChecked();
     expect(screen.getByRole('checkbox', { name: 'Danse' })).not.toBeChecked();
@@ -164,6 +157,7 @@ describe('ModerationPage', () => {
       }),
     );
     expect(location()).toBe('/moderation?status=REJECTED');
+    await userEvent.click(columnFilterButton('Motif'));
     await userEvent.click(screen.getByRole('checkbox', { name: 'Clashes paso' }));
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({
@@ -176,6 +170,28 @@ describe('ModerationPage', () => {
       }),
     );
     expect(location()).toBe('/moderation?status=REJECTED&reason=PASO_CLASH');
+  });
+
+  it('sorts on the track title, which replaces the queue order', async () => {
+    const spy = vi
+      .spyOn(sdk, 'trackCorrectionsControllerList')
+      .mockResolvedValue(page([item()]) as never);
+    renderPage('/moderation?reason=MPM');
+    await screen.findByText('España Cañí');
+    await userEvent.click(sortButton('Musique'));
+    await waitFor(() =>
+      expect(spy).toHaveBeenLastCalledWith({
+        query: {
+          status: 'PENDING',
+          reason: ['MPM'],
+          sortBy: 'track',
+          sortOrder: 'asc',
+          skip: 0,
+          take: 50,
+        },
+      }),
+    );
+    expect(location()).toBe('/moderation?reason=MPM&sort=track&order=asc');
   });
 
   it('does not send a one-letter search, then sends the debounced search', async () => {

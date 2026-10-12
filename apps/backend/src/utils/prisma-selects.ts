@@ -944,6 +944,7 @@ export const adminUserListSelect = {
   category: true,
   ageGroup: true,
   createdAt: true,
+  lastLoginAt: true,
   disabledAt: true,
   isStoreReview: true,
   license: { select: { number: true, validUntil: true } },

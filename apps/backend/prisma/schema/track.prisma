@@ -42,6 +42,8 @@ model Track {
 
   @@index([submittedById])
   @@index([sourceKey, status])
+  @@index([createdAt]) // back-office : catalogue trié par date d'ajout (défaut)
+  @@index([title]) // back-office : tri par titre
 }
 
 /// Motif d'une proposition de correction : la métadonnée que l'utilisateur

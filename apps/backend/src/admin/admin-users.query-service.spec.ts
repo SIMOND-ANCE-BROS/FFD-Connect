@@ -118,6 +118,54 @@ describe("AdminUsersQueryService", () => {
     });
   });
 
+  it.each([
+    ["name", "asc", [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }]],
+    ["email", "desc", [{ email: "desc" }, { id: "desc" }]],
+    ["role", "asc", [{ role: "asc" }, { id: "asc" }]],
+    [
+      "club",
+      "desc",
+      [{ clubName: { sort: "desc", nulls: "last" } }, { id: "desc" }],
+    ],
+    [
+      "category",
+      "asc",
+      [{ category: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+    ],
+    [
+      "ageGroup",
+      "asc",
+      [{ ageGroup: { sort: "asc", nulls: "last" } }, { id: "asc" }],
+    ],
+    ["createdAt", "asc", [{ createdAt: "asc" }, { id: "asc" }]],
+    [
+      "lastLoginAt",
+      "desc",
+      [{ lastLoginAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
+    ],
+  ] as const)(
+    "sorts the whole list on %s %s",
+    async (sortBy, sortOrder, orderBy) => {
+      prisma.user.count.mockResolvedValue(0);
+      prisma.user.findMany.mockResolvedValue([]);
+      await service.list({ sortBy, sortOrder });
+      expect(prisma.user.findMany.mock.calls[0][0]?.orderBy).toEqual(orderBy);
+    },
+  );
+
+  it("exposes the licence number and the last login on each item", async () => {
+    const at = new Date("2026-10-01T08:00:00Z");
+    prisma.user.count.mockResolvedValue(1);
+    prisma.user.findMany.mockResolvedValue([
+      { ...row, lastLoginAt: at },
+    ] as never);
+    const page = await service.list({});
+    expect(page.data[0]).toMatchObject({
+      licenseNumber: "L1",
+      lastLoginAt: at,
+    });
+  });
+
   it("detail lists the stored roles even when the club is disabled", async () => {
     prisma.user.findUnique.mockResolvedValue({
       ...row,

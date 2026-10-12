@@ -95,6 +95,23 @@ describe('catalogue URL state', () => {
     expect(writeTracksParams(current, { status: null }).toString()).toBe('');
   });
 
+  it('keeps a column sort in the URL and the API filter', () => {
+    const params = new URLSearchParams('style=Rumba&sort=bpm&order=desc');
+    const state = readTracksParams(params);
+    expect(state.sort).toEqual({ by: 'bpm', order: 'desc' });
+    expect(writeTracksParams(params, { page: 2 }).toString()).toBe(
+      'style=Rumba&sort=bpm&order=desc&page=2',
+    );
+    expect(tracksFilter(state, 50)).toEqual({
+      style: 'Rumba',
+      sortBy: 'bpm',
+      sortOrder: 'desc',
+      skip: 0,
+      take: 50,
+    });
+    expect(writeTracksParams(params, { sort: null }).toString()).toBe('style=Rumba');
+  });
+
   it('sends a chip as true only, never as false', () => {
     expect(tracksFilter(readTracksParams(new URLSearchParams()), 50)).toEqual({
       skip: 0,

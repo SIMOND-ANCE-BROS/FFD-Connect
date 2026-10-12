@@ -75,6 +75,34 @@ describe("TrackCorrectionsQueryService", () => {
   });
 
   describe("listForAdmin", () => {
+    it.each([
+      ["createdAt", "desc", [{ createdAt: "desc" }, { id: "desc" }]],
+      [
+        "reason",
+        "asc",
+        [{ reason: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+      ],
+      [
+        "track",
+        "desc",
+        [{ track: { title: "desc" } }, { createdAt: "asc" }, { id: "desc" }],
+      ],
+    ] as const)(
+      "un tri de colonne (%s %s) remplace l'ordre de la file",
+      async (sortBy, sortOrder, orderBy) => {
+        prisma.trackCorrection.count.mockResolvedValue(0);
+        prisma.trackCorrection.findMany.mockResolvedValue([]);
+        await service.listForAdmin({
+          status: TrackCorrectionStatus.PENDING,
+          sortBy,
+          sortOrder,
+        });
+        expect(
+          prisma.trackCorrection.findMany.mock.calls[0][0]?.orderBy,
+        ).toEqual(orderBy);
+      },
+    );
+
     it("filtre par statut, sert la file en attente de la plus ancienne à la plus récente, avec diff", async () => {
       prisma.trackCorrection.count.mockResolvedValue(1);
       prisma.trackCorrection.findMany.mockResolvedValue([adminRow] as never);

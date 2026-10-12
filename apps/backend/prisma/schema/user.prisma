@@ -68,6 +68,8 @@ model User {
   @@index([clubId])
   @@index([clubId, role]) // membres d'un club filtrés par rôle
   @@index([disabledAt])
+  @@index([createdAt]) // back-office : liste triée par date d'inscription (défaut)
+  @@index([lastName, firstName]) // back-office : tri par nom
 }
 
 enum UserRole {

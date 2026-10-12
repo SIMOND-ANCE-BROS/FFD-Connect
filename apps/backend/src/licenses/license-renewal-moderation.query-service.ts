@@ -10,6 +10,7 @@ import { extname } from "path";
 import { Readable } from "stream";
 import { AdminAuditService } from "../admin/admin-audit.service";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
+import { listOrderBy, type SortOrder } from "../common/dto/sort-params";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
@@ -25,11 +26,34 @@ import {
   ADMIN_RENEWAL_PAGE_DEFAULT,
   AdminLicenseRenewalDetailDto,
   AdminLicenseRenewalsPageDto,
+  type AdminRenewalsSortField,
   ListAdminLicenseRenewalsQueryDto,
   RenewalRejectionReason,
 } from "./dto/admin-license-renewal.dto";
 import { renewedLicenseValidUntil } from "./license-season";
 import { pickRenewalOcrData } from "./renewal-ocr-data.util";
+
+type RenewalOrder = Prisma.LicenseRenewalRequestOrderByWithRelationInput;
+const RENEWAL_ORDERS: Record<
+  AdminRenewalsSortField,
+  (o: SortOrder) => RenewalOrder[]
+> = {
+  name: (o) => [
+    { user: { lastName: o } },
+    { user: { firstName: o } },
+    { id: o },
+  ],
+  licenseNumber: (o) => [{ user: { license: { number: o } } }, { id: o }],
+  validUntil: (o) => [{ user: { license: { validUntil: o } } }, { id: o }],
+  submittedAt: (o) => [{ submittedAt: { sort: o, nulls: "last" } }, { id: o }],
+  reviewedAt: (o) => [{ reviewedAt: { sort: o, nulls: "last" } }, { id: o }],
+};
+/** Queue order: oldest submission first. */
+const DEFAULT_RENEWAL_ORDER: RenewalOrder[] = [
+  { submittedAt: { sort: "asc", nulls: "last" } },
+  { createdAt: "asc" },
+  { id: "asc" },
+];
 
 /** Other requests of the same user shown in the detail. */
 const HISTORY_TAKE = 20;
@@ -108,11 +132,12 @@ export class LicenseRenewalModerationQueryService {
       this.prisma.licenseRenewalRequest.count({ where }),
       this.prisma.licenseRenewalRequest.findMany({
         where,
-        orderBy: [
-          { submittedAt: { sort: "asc", nulls: "last" } },
-          { createdAt: "asc" },
-          { id: "asc" },
-        ],
+        orderBy: listOrderBy(
+          query.sortBy,
+          query.sortOrder,
+          RENEWAL_ORDERS,
+          DEFAULT_RENEWAL_ORDER,
+        ),
         skip,
         take,
         select: licenseRenewalAdminListSelect,
