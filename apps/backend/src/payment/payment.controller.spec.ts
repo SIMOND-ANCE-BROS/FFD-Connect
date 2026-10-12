@@ -9,7 +9,7 @@ describe("PaymentController", () => {
   let controller: PaymentController;
   const mockPaymentService = {
     createCheckout: jest.fn(),
-    confirmBooking: jest.fn(),
+    handleOrderWebhook: jest.fn(),
   };
 
   const mockRequest = {
@@ -38,7 +38,6 @@ describe("PaymentController", () => {
       competitionId: "comp-1",
       itemId: "item-1",
       seatLabel: "A1",
-      amount: 1500,
     };
     const intent = {
       id: "intent-1",
@@ -76,60 +75,41 @@ describe("PaymentController", () => {
   });
 
   describe("handleWebhook", () => {
-    it("calls confirmBooking when eventType is Order and bookingId is present", async () => {
-      mockPaymentService.confirmBooking.mockResolvedValue(undefined);
-
+    it("delegates Order events to paymentService.handleOrderWebhook", async () => {
+      mockPaymentService.handleOrderWebhook.mockResolvedValue(undefined);
       const payload = {
         eventType: "Order",
-        data: { metadata: { bookingId: "booking-1" } },
+        metadata: { bookingId: "booking-1" },
+        data: { id: 1, payments: [{ amount: 1500, state: "Authorized" }] },
       };
 
-      await controller.handleWebhook(payload);
+      const result = await controller.handleWebhook(payload);
 
-      expect(mockPaymentService.confirmBooking).toHaveBeenCalledWith(
-        "booking-1",
+      expect(mockPaymentService.handleOrderWebhook).toHaveBeenCalledWith(
+        payload,
       );
-    });
-
-    it("returns { received: true } when eventType is Order", async () => {
-      mockPaymentService.confirmBooking.mockResolvedValue(undefined);
-
-      const result = await controller.handleWebhook({
-        eventType: "Order",
-        data: { metadata: { bookingId: "booking-1" } },
-      });
-
       expect(result).toEqual({ received: true });
     });
 
-    it("does not call confirmBooking when eventType is not Order", async () => {
+    it("ignores non-Order events", async () => {
       const result = await controller.handleWebhook({
         eventType: "Payment",
-        data: { metadata: { bookingId: "booking-1" } },
-      });
-
-      expect(mockPaymentService.confirmBooking).not.toHaveBeenCalled();
-      expect(result).toEqual({ received: true });
-    });
-
-    it("does not call confirmBooking when metadata is absent", async () => {
-      const result = await controller.handleWebhook({
-        eventType: "Order",
+        metadata: { bookingId: "booking-1" },
         data: {},
       });
 
-      expect(mockPaymentService.confirmBooking).not.toHaveBeenCalled();
+      expect(mockPaymentService.handleOrderWebhook).not.toHaveBeenCalled();
       expect(result).toEqual({ received: true });
     });
 
-    it("does not call confirmBooking when bookingId is absent", async () => {
-      const result = await controller.handleWebhook({
-        eventType: "Order",
-        data: { metadata: { bookingId: "" } },
-      });
+    it("propagates unexpected errors (HelloAsso will retry)", async () => {
+      mockPaymentService.handleOrderWebhook.mockRejectedValue(
+        new Error("DB down"),
+      );
 
-      expect(mockPaymentService.confirmBooking).not.toHaveBeenCalled();
-      expect(result).toEqual({ received: true });
+      await expect(
+        controller.handleWebhook({ eventType: "Order", data: {} }),
+      ).rejects.toThrow("DB down");
     });
   });
 });

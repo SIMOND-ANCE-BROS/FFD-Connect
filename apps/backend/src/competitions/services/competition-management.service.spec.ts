@@ -149,6 +149,29 @@ describe("CompetitionManagementService", () => {
       );
       expect(result).toEqual(mockComp);
     });
+
+    it("stamps the organizer resolved for a CLUB account (#381)", async () => {
+      mockPrisma.competition.create.mockResolvedValue({ id: "comp-1" });
+
+      await service.create({ title: "T", date: "2026-06-01" } as any, "Club A");
+
+      expect(mockPrisma.competition.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ organizer: "Club A" }),
+        }),
+      );
+    });
+
+    it("leaves the organizer unset when none is given", async () => {
+      mockPrisma.competition.create.mockResolvedValue({ id: "comp-1" });
+
+      await service.create({ title: "T", date: "2026-06-01" } as any);
+
+      const arg = mockPrisma.competition.create.mock.calls[0][0] as {
+        data: Record<string, unknown>;
+      };
+      expect(arg.data).not.toHaveProperty("organizer");
+    });
   });
 
   // #821: the deadline check in CompetitionRegistrationService is only

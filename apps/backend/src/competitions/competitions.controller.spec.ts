@@ -61,6 +61,8 @@ describe("CompetitionsController", () => {
 
   const mockAccessService = {
     assertCanManageCheckIn: jest.fn(),
+    assertCanManageCompetition: jest.fn(),
+    organizerForNewCompetition: jest.fn(),
   };
 
   const req = (userId: string, role = "LICENSEE") =>
@@ -463,6 +465,50 @@ describe("CompetitionsController", () => {
 
       expect(managementService.getRegulationConstants).toHaveBeenCalledTimes(1);
       expect(result).toBe(constants);
+    });
+  });
+
+  describe("create / update ownership (#381)", () => {
+    const body = { title: "T", date: "2026-06-01T10:00:00Z", location: "L" };
+
+    it("creates with the organizer resolved for the caller", async () => {
+      mockAccessService.organizerForNewCompetition.mockResolvedValue("Club A");
+      mockManagementService.create.mockResolvedValue({ id: "c1" });
+      const r = req("club-user", "CLUB");
+
+      await expect(controller.create(body, r)).resolves.toEqual({ id: "c1" });
+
+      expect(mockAccessService.organizerForNewCompetition).toHaveBeenCalledWith(
+        r.user,
+      );
+      expect(mockManagementService.create).toHaveBeenCalledWith(body, "Club A");
+    });
+
+    it("checks ownership before updating", async () => {
+      mockAccessService.assertCanManageCompetition.mockResolvedValue(undefined);
+      mockManagementService.update.mockResolvedValue({ id: "c1" });
+      const r = req("club-user", "CLUB");
+
+      await controller.update("c1", { title: "New" }, r);
+
+      expect(mockAccessService.assertCanManageCompetition).toHaveBeenCalledWith(
+        "c1",
+        r.user,
+      );
+      expect(mockManagementService.update).toHaveBeenCalledWith("c1", {
+        title: "New",
+      });
+    });
+
+    it("does not update when the caller does not own the competition", async () => {
+      mockAccessService.assertCanManageCompetition.mockRejectedValue(
+        new ForbiddenException(),
+      );
+
+      await expect(
+        controller.update("c1", { title: "New" }, req("club-a", "CLUB")),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockManagementService.update).not.toHaveBeenCalled();
     });
   });
 });
