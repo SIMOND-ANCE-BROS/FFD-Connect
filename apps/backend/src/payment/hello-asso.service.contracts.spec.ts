@@ -340,4 +340,57 @@ describe("HelloAssoService — contrats HTTP", () => {
       expect(nock.pendingMocks()).toHaveLength(0);
     });
   });
+  describe("getPayment / getOrder (#403)", () => {
+    const tokenOk = () =>
+      nock(HELLOASSO_API)
+        .post("/oauth2/token")
+        .reply(200, { access_token: "tok-abc", expires_in: 3600 });
+
+    it("relit un paiement par son identifiant", async () => {
+      tokenOk();
+      nock(HELLOASSO_API, { reqheaders: { authorization: "Bearer tok-abc" } })
+        .get("/v5/payments/555")
+        .reply(200, {
+          id: 555,
+          amount: 1500,
+          state: "Refunded",
+          order: { id: 98765 },
+        });
+
+      await expect(service.getPayment(credentials, "555")).resolves.toEqual({
+        found: true,
+        value: expect.objectContaining({ state: "Refunded" }),
+      });
+    });
+
+    it("relit une commande par son identifiant", async () => {
+      tokenOk();
+      nock(HELLOASSO_API)
+        .get("/v5/orders/98765")
+        .reply(200, { id: 98765, checkoutIntentId: 4242 });
+
+      await expect(service.getOrder(credentials, "98765")).resolves.toEqual({
+        found: true,
+        value: expect.objectContaining({ checkoutIntentId: 4242 }),
+      });
+    });
+
+    it("renvoie found=false sur 404", async () => {
+      tokenOk();
+      nock(HELLOASSO_API).get("/v5/payments/555").reply(404, {});
+
+      await expect(service.getPayment(credentials, "555")).resolves.toEqual({
+        found: false,
+      });
+    });
+
+    it("refuse un identifiant non numérique sans appeler HelloAsso", async () => {
+      await expect(service.getPayment(credentials, "1/../x")).resolves.toEqual({
+        found: false,
+      });
+      await expect(service.getOrder(credentials, "abc")).resolves.toEqual({
+        found: false,
+      });
+    });
+  });
 });

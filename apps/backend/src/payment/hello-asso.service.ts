@@ -39,6 +39,20 @@ export interface HelloAssoCheckoutIntentDetail {
   order?: unknown;
 }
 
+/** `GET /v5/payments/{paymentId}` (#403), validated by the caller. */
+export interface HelloAssoPaymentDetail {
+  id?: unknown;
+  amount?: unknown;
+  state?: unknown;
+  order?: unknown;
+}
+
+/** `GET /v5/orders/{orderId}` (#403), validated by the caller. */
+export interface HelloAssoOrderDetail {
+  id?: unknown;
+  checkoutIntentId?: unknown;
+}
+
 /** HelloAsso ids are positive integers; other values never reach a URL. */
 const NUMERIC_ID = /^[1-9]\d{0,17}$/;
 
@@ -248,6 +262,34 @@ export class HelloAssoService {
       credentials,
       `${this.organizationUrl(credentials)}/checkout-intents/${checkoutIntentId}`,
       "HelloAsso.getCheckoutIntent",
+    );
+  }
+  /**
+   * Re-reads a payment from HelloAsso (#403): its current state (Authorized,
+   * Refunded, Contested…) whatever a notification claims.
+   */
+  async getPayment(
+    credentials: HelloAssoCredentials,
+    paymentId: string,
+  ): Promise<HelloAssoReadResult<HelloAssoPaymentDetail>> {
+    if (!NUMERIC_ID.test(paymentId)) return { found: false };
+    return this.get<HelloAssoPaymentDetail>(
+      credentials,
+      `${this.apiUrl}/v5/payments/${paymentId}`,
+      "HelloAsso.getPayment",
+    );
+  }
+
+  /** Re-reads an order from HelloAsso (#403), e.g. for its checkout intent id. */
+  async getOrder(
+    credentials: HelloAssoCredentials,
+    orderId: string,
+  ): Promise<HelloAssoReadResult<HelloAssoOrderDetail>> {
+    if (!NUMERIC_ID.test(orderId)) return { found: false };
+    return this.get<HelloAssoOrderDetail>(
+      credentials,
+      `${this.apiUrl}/v5/orders/${orderId}`,
+      "HelloAsso.getOrder",
     );
   }
 }

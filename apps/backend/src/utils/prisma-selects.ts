@@ -379,6 +379,7 @@ export const soloTeamMembershipExportSelect = {
 export const seatBookingExportSelect = {
   seatLabel: true,
   status: true,
+  cancelReason: true, // why a seat was released (refund / dispute, #403)
   createdAt: true,
   competition: { select: { title: true, date: true } },
 } as const;

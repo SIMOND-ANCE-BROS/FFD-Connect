@@ -23,6 +23,7 @@ import { WebhookPayloadDto } from "./dto/webhook-payload.dto";
 import { WebhookSignatureGuard } from "./guards/webhook-signature.guard";
 import { HelloAssoNotificationService } from "./helloasso-notification.service";
 import { PaymentService } from "./payment.service";
+import { SeatReleaseService } from "./seat-release.service";
 
 @ApiTags("payment")
 @ApiCommonErrorResponses()
@@ -31,6 +32,7 @@ export class PaymentController {
   constructor(
     private readonly paymentService: PaymentService,
     private readonly helloAssoNotificationService: HelloAssoNotificationService,
+    private readonly seatReleaseService: SeatReleaseService,
   ) {}
 
   @UseGuards(JwtAuthGuard)
@@ -66,7 +68,9 @@ export class PaymentController {
       "le paiement est relu sur l'API HelloAsso (intention de paiement de la réservation, identifiants du club). " +
       "Signature `x-ha-signature` vérifiée si une clé partenaire est configurée. " +
       "Une réservation n'est confirmée que si l'ordre est payé, du montant attendu, pour la bonne compétition ; " +
-      "sinon elle reste en attente et la réponse reste 200 (pas de rejeu). 503 si HelloAsso est injoignable (rejeu).",
+      "sinon elle reste en attente et la réponse reste 200 (pas de rejeu). " +
+      "Un paiement remboursé (`Refunded`) ou contesté (`Contested`), confirmé par l'API HelloAsso, libère la place (`CANCELLED`). " +
+      "503 si HelloAsso est injoignable (rejeu).",
   })
   @ApiBody({ type: WebhookPayloadDto })
   @ApiResponse({ status: 200, description: "Webhook traité" })
@@ -99,6 +103,9 @@ export class PaymentController {
           payload,
         );
       if (verified) await this.paymentService.handleOrderWebhook(verified);
+    } else if (payload.eventType === "Payment") {
+      // Refund / dispute releases the seat (#403), state re-read from HelloAsso.
+      await this.seatReleaseService.handlePaymentNotification(payload);
     }
     return { received: true };
   }

@@ -4,6 +4,7 @@ import { PaymentController } from "./payment.controller";
 import { PaymentService } from "./payment.service";
 import { WebhookSignatureGuard } from "./guards/webhook-signature.guard";
 import { HelloAssoNotificationService } from "./helloasso-notification.service";
+import { SeatReleaseService } from "./seat-release.service";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 
 describe("PaymentController", () => {
@@ -15,6 +16,10 @@ describe("PaymentController", () => {
 
   const mockNotificationService = {
     resolveOrderNotification: jest.fn(),
+  };
+
+  const mockSeatReleaseService = {
+    handlePaymentNotification: jest.fn(),
   };
 
   const mockRequest = {
@@ -32,6 +37,7 @@ describe("PaymentController", () => {
           provide: HelloAssoNotificationService,
           useValue: mockNotificationService,
         },
+        { provide: SeatReleaseService, useValue: mockSeatReleaseService },
         { provide: ConfigService, useValue: { get: jest.fn() } },
       ],
     })
@@ -123,17 +129,35 @@ describe("PaymentController", () => {
       expect(result).toEqual({ received: true });
     });
 
-    it("ignores non-Order events", async () => {
-      const result = await controller.handleWebhook({
+    it("delegates Payment events to the seat release (#403)", async () => {
+      const payload = {
         eventType: "Payment",
         metadata: { bookingId: "booking-1" },
-        data: {},
-      });
+        data: { id: 555, state: "Refunded" },
+      };
 
+      const result = await controller.handleWebhook(payload);
+
+      expect(
+        mockSeatReleaseService.handlePaymentNotification,
+      ).toHaveBeenCalledWith(payload);
       expect(mockPaymentService.handleOrderWebhook).not.toHaveBeenCalled();
       expect(
         mockNotificationService.resolveOrderNotification,
       ).not.toHaveBeenCalled();
+      expect(result).toEqual({ received: true });
+    });
+
+    it("acknowledges other event types without processing them", async () => {
+      const result = await controller.handleWebhook({
+        eventType: "Form",
+        data: {},
+      });
+
+      expect(
+        mockSeatReleaseService.handlePaymentNotification,
+      ).not.toHaveBeenCalled();
+      expect(mockPaymentService.handleOrderWebhook).not.toHaveBeenCalled();
       expect(result).toEqual({ received: true });
     });
 

@@ -188,6 +188,7 @@ model SeatBooking {
   paymentId     String?         // External ID (HelloAsso)
   expectedAmountCents Int?      // Server-side price in cents, fixed at checkout (#381)
   expiresAt     DateTime?       // For temporary holds
+  cancelReason  String?         // Why a seat was released, e.g. HELLOASSO_REFUNDED / HELLOASSO_CONTESTED (#403)
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
