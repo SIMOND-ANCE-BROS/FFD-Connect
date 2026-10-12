@@ -12,7 +12,10 @@ import { AuthService } from "../src/auth/auth.service";
 import { AuthTokenService } from "../src/auth/auth-token.service";
 import { JwtStrategy } from "../src/auth/jwt.strategy";
 import { PrismaService } from "../src/prisma/prisma.service";
-import { DELETED_USER_ID } from "../src/users/account-deletion.service";
+import {
+  anonymizeOrphanedResults,
+  DELETED_USER_ID,
+} from "../src/users/account-deletion.core";
 import { buildServiceModule } from "./integration-app.builder";
 
 const PASSWORD = "Secret-123!";
@@ -351,6 +354,73 @@ describe("Admin (integration, real DB)", () => {
         userId: other.id,
         details: { participant: "Couple B", totalParticipants: 2 },
       });
+    } finally {
+      await prisma.result.deleteMany({ where: { eventId: event.id } });
+      await prisma.event.delete({ where: { id: event.id } });
+    }
+  });
+
+  it("the orphaned-results sweep anonymises rows of vanished accounts only, idempotently (#412)", async () => {
+    const survivor = await create({ lastName: "Durand" });
+    const competition = await prisma.competition.create({
+      data: {
+        title: "Gala",
+        date: new Date("2027-01-01"),
+        location: "Paris",
+        organizer: "Club",
+      },
+    });
+    createdCompetitionIds.push(competition.id);
+    const event = await prisma.event.create({
+      data: {
+        competitionId: competition.id,
+        category: "Latin",
+        ageGroup: "Adulte",
+        eventType: "COUPLE",
+        level: "Intermédiaire",
+      },
+    });
+    try {
+      // Left behind by a pre-#412 purge: userId of an account that is gone.
+      const orphan = await prisma.result.create({
+        data: {
+          eventId: event.id,
+          userId: randomUUID(),
+          round: "Final",
+          ranking: 1,
+          details: { participant: "Couple A", bib: "7", status: "OK" },
+        },
+      });
+      const kept = await prisma.result.create({
+        data: {
+          eventId: event.id,
+          userId: survivor.id,
+          round: "Final",
+          ranking: 2,
+          details: { participant: "Couple B" },
+        },
+      });
+
+      expect(await anonymizeOrphanedResults(prisma)).toBeGreaterThanOrEqual(1);
+
+      expect(
+        await prisma.result.findUniqueOrThrow({ where: { id: orphan.id } }),
+      ).toMatchObject({
+        userId: DELETED_USER_ID,
+        ranking: 1,
+        details: { status: "OK" },
+      });
+      expect(
+        await prisma.result.findUniqueOrThrow({ where: { id: kept.id } }),
+      ).toMatchObject({
+        userId: survivor.id,
+        details: { participant: "Couple B" },
+      });
+      // Tombstoned rows are never picked up again.
+      await anonymizeOrphanedResults(prisma);
+      expect(
+        await prisma.result.findUniqueOrThrow({ where: { id: orphan.id } }),
+      ).toMatchObject({ userId: DELETED_USER_ID, details: { status: "OK" } });
     } finally {
       await prisma.result.deleteMany({ where: { eventId: event.id } });
       await prisma.event.delete({ where: { id: event.id } });
