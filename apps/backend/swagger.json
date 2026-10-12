@@ -4714,6 +4714,157 @@
         "tags": ["admin"]
       }
     },
+    "/admin/users/{id}/identifiers": {
+      "patch": {
+        "description": "Un changement d'email ferme les sessions du compte, invalide les liens de mot de passe en attente et prévient l'ancienne adresse. Le numéro est modifié sur la licence rattachée.",
+        "operationId": "AdminController_updateUserIdentifiers",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAdminUserIdentifiersDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserIdentifiersUpdatedDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Format invalide, champ manquant, ou compte sans licence"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Son propre compte, ou compte de validation App Store / Google Play"
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Email ou numéro de licence déjà utilisé"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Modifier l'email de connexion et / ou le numéro de licence d'un utilisateur",
+        "tags": ["admin"]
+      }
+    },
     "/admin/users/{id}/status": {
       "post": {
         "operationId": "AdminController_setUserStatus",
@@ -24473,6 +24624,7 @@
               "USER_DISABLE",
               "USER_ENABLE",
               "USER_DELETE",
+              "USER_IDENTIFIERS_UPDATE",
               "CLUB_CREATE",
               "CLUB_UPDATE",
               "CLUB_DISABLE",
@@ -24960,6 +25112,36 @@
             }
           }
         }
+      },
+      "UpdateAdminUserIdentifiersDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Nouvel email de connexion (normalisé en minuscules, sans espaces). Ferme les sessions du compte et prévient l'ancienne adresse.",
+            "maxLength": 254
+          },
+          "licenseNumber": {
+            "type": "string",
+            "description": "Nouveau numéro de la licence rattachée au compte (le compte doit déjà avoir une licence).",
+            "maxLength": 32,
+            "example": "FFD-123456"
+          }
+        }
+      },
+      "AdminUserIdentifiersUpdatedDto": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/AdminUserDetailDto"
+          },
+          "previousEmailNotified": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Email changé : true si l'ancienne adresse a été prévenue, false si l'envoi a échoué. null si l'email n'a pas changé."
+          }
+        },
+        "required": ["user", "previousEmailNotified"]
       },
       "DeleteAdminUserDto": {
         "type": "object",

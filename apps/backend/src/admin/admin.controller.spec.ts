@@ -9,6 +9,7 @@ import { AdminClubsQueryService } from "./admin-clubs.query-service";
 import { AdminClubsService } from "./admin-clubs.service";
 import { AdminReferenceService } from "./admin-reference.service";
 import { AdminUserAccountsService } from "./admin-user-accounts.service";
+import { AdminUserIdentifiersService } from "./admin-user-identifiers.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 import { AdminUsersService } from "./admin-users.service";
 import { AdminController } from "./admin.controller";
@@ -21,6 +22,7 @@ describe("AdminController", () => {
   const usersQuery = { list: jest.fn(), detail: jest.fn() };
   const users = { update: jest.fn(), setStatus: jest.fn(), delete: jest.fn() };
   const userAccounts = { create: jest.fn(), resendInvitation: jest.fn() };
+  const userIdentifiers = { update: jest.fn() };
   const clubsQuery = { list: jest.fn(), options: jest.fn(), detail: jest.fn() };
   const clubs = {
     create: jest.fn(),
@@ -37,6 +39,7 @@ describe("AdminController", () => {
     userAccounts as unknown as AdminUserAccountsService,
     clubsQuery as unknown as AdminClubsQueryService,
     clubs as unknown as AdminClubsService,
+    userIdentifiers as unknown as AdminUserIdentifiersService,
   );
 
   const req = {
@@ -53,6 +56,18 @@ describe("AdminController", () => {
     expect(Reflect.getMetadata(ROLES_KEY, AdminController)).toEqual([
       UserRole.ADMIN,
     ]);
+  });
+
+  it("delegates an identifiers change with the acting admin", async () => {
+    userIdentifiers.update.mockResolvedValue({
+      user: { id: "u1" },
+      previousEmailNotified: true,
+    });
+    const dto = { email: "new@x.fr" };
+    await expect(
+      controller.updateUserIdentifiers("u1", dto, req),
+    ).resolves.toEqual({ user: { id: "u1" }, previousEmailNotified: true });
+    expect(userIdentifiers.update).toHaveBeenCalledWith("admin-1", "u1", dto);
   });
 
   it("returns reference data", () => {
