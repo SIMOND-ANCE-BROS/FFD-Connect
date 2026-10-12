@@ -226,7 +226,7 @@ export const ResetPasswordScreen = ({
               >
                 <Lock size={20} color={currentTheme.textSecondary} />
                 <TextInput
-                  accessibilityLabel="Text input field"
+                  accessibilityLabel="Nouveau mot de passe"
                   accessibilityHint="Saisissez le nouveau mot de passe"
                   testID="reset-password-new-input"
                   style={[styles.input, { color: currentTheme.text }]}
@@ -267,7 +267,7 @@ export const ResetPasswordScreen = ({
               >
                 <Lock size={20} color={currentTheme.textSecondary} />
                 <TextInput
-                  accessibilityLabel="Text input field"
+                  accessibilityLabel="Confirmer le nouveau mot de passe"
                   accessibilityHint="Confirmez le nouveau mot de passe"
                   testID="reset-password-confirm-input"
                   style={[styles.input, { color: currentTheme.text }]}
