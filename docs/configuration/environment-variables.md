@@ -230,12 +230,12 @@ Stockage sans état des pistes audio et des certificats de licence.
 
 ## Flags
 
-| Variable               | Défaut | Rôle                                                                                                                                                                                                                                     |
-| ---------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ENABLE_IP_BLACKLIST`  | —      | Active le middleware de blacklist d'IP.                                                                                                                                                                                                  |
-| `SEED_TEST_TRACKS`     | —      | `"true"` → seed de pistes métronome de test au démarrage. Staging/beta **uniquement**, jamais en production.                                                                                                                             |
-| `BETA_AUTO_LICENSE`    | —      | `"true"` → un numéro de licence inconnu est auto-créé à l'inscription (voir ci-dessous). Staging **uniquement**, jamais en production.                                                                                                   |
-| `BETA_TESTER_LICENSES` | —      | Numéros de licence des bêta-testeurs à pré-seeder, séparés par des virgules (`scripts/seed-beta-testers.ts`, si `SEED_TEST_TRACKS=true`). Hors du code car ils encodent la date de naissance. Vide → seed sauté. Staging **uniquement**. |
+| Variable               | Défaut | Rôle                                                                                                                                                                                                                                                    |
+| ---------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ENABLE_IP_BLACKLIST`  | —      | `"true"` → active la liste noire **manuelle** d'IP : 403 si la clé Redis `blacklist:ip:<ip>` vaut `"true"` (posée à la main, avec un TTL). IP = `req.ip` via `TRUST_PROXY_HOPS`, IPv6 groupée par /64. Aucun blocage automatique. Désactivé par défaut. |
+| `SEED_TEST_TRACKS`     | —      | `"true"` → seed de pistes métronome de test au démarrage. Staging/beta **uniquement**, jamais en production.                                                                                                                                            |
+| `BETA_AUTO_LICENSE`    | —      | `"true"` → un numéro de licence inconnu est auto-créé à l'inscription (voir ci-dessous). Staging **uniquement**, jamais en production.                                                                                                                  |
+| `BETA_TESTER_LICENSES` | —      | Numéros de licence des bêta-testeurs à pré-seeder, séparés par des virgules (`scripts/seed-beta-testers.ts`, si `SEED_TEST_TRACKS=true`). Hors du code car ils encodent la date de naissance. Vide → seed sauté. Staging **uniquement**.                |
 
 ### `BETA_AUTO_LICENSE` (staging uniquement)
 
