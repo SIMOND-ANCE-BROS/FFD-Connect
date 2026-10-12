@@ -128,14 +128,5 @@
   "engines": {
     "node": ">=22"
   },
-  "expo": {
-    "doctor": {
-      "reactNativeDirectoryCheck": {
-        "exclude": [
-          "react-native-keyboard-manager"
-        ]
-      }
-    }
-  },
   "license": "UNLICENSED"
 }
