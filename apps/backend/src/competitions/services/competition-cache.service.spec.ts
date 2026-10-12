@@ -1,5 +1,8 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { CompetitionCacheService } from "./competition-cache.service";
+import {
+  CompetitionCacheService,
+  resultsCacheKey,
+} from "./competition-cache.service";
 import { RedisService } from "../../redis/redis.service";
 
 describe("CompetitionCacheService", () => {
@@ -95,13 +98,20 @@ describe("CompetitionCacheService", () => {
   });
 
   describe("invalidateResults", () => {
-    it("calls delete with the results key for the given competitionId", async () => {
+    it("deletes the versioned results key and the pre-#413 one", async () => {
       await service.invalidateResults("comp-7");
 
-      expect(redisService.delete).toHaveBeenCalledTimes(1);
+      expect(redisService.delete).toHaveBeenCalledTimes(2);
+      expect(redisService.delete).toHaveBeenCalledWith(
+        "competitions:results:v2:comp-7",
+      );
       expect(redisService.delete).toHaveBeenCalledWith(
         "competitions:results:comp-7",
       );
+    });
+
+    it("builds the versioned key read by the results service", () => {
+      expect(resultsCacheKey("comp-7")).toBe("competitions:results:v2:comp-7");
     });
 
     it("does not call deleteByPattern", async () => {
