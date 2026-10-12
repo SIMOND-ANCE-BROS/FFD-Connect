@@ -18,6 +18,7 @@ export const REASON_LABELS: Record<TrackCorrectionReason, string> = {
   MPM: "MPM",
   PASO_CLASH: "Clashs paso doble",
   OTHER: "Autre",
+  DELETE: "Suppression de la musique",
 };
 
 /** Motifs de « Signaler / proposer une correction », dans l'ordre d'affichage. */
