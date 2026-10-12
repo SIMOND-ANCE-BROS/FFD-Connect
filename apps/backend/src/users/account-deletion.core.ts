@@ -12,6 +12,12 @@
  */
 import { Prisma, PrismaClient } from "@prisma/client";
 import { resultAnonymizationSelect } from "../utils/prisma-selects";
+import {
+  buildPartnerNameScrubOps,
+  PartnerNameScrub,
+  PartnerNameScrubLogger,
+  PartnerNameScrubPrisma,
+} from "./partner-name-scrub";
 
 /**
  * Borne de la lecture des résultats à anonymiser (un résultat par épreuve
@@ -95,6 +101,47 @@ export function findResultsToAnonymize(
   });
 }
 
+/** Everything read BEFORE the deletion transaction. */
+export interface AccountDeletionPlan {
+  /** The user's own results, anonymised row by row (#382). */
+  results: readonly Pick<ResultToAnonymize, "id" | "details" | "event">[];
+  /** Copies of the user's name held by partners' rows (#395). */
+  partnerNameScrub: PartnerNameScrub;
+}
+
+/**
+ * Reads needed by the transaction, done before it: the partner-name scrub
+ * locates the couple through the user's own registrations, which the
+ * transaction deletes; the results' details are needed to keep their
+ * non-identifying keys.
+ */
+export async function prepareAccountDeletion(
+  prisma: PartnerNameScrubPrisma,
+  userId: string,
+  logger: PartnerNameScrubLogger,
+): Promise<AccountDeletionPlan> {
+  const partnerNameScrub = await buildPartnerNameScrubOps(
+    prisma,
+    userId,
+    logger,
+  );
+  const results = await findResultsToAnonymize(prisma, userId);
+  return { results, partnerNameScrub };
+}
+
+/** Competitions whose results cache is stale once the transaction ran. */
+export function affectedResultCompetitionIds(
+  plan: AccountDeletionPlan,
+): string[] {
+  return [
+    ...new Set([
+      ...plan.results.map((r) => r.event.competitionId),
+      // Couple results of the partner whose label was scrubbed (#395).
+      ...plan.partnerNameScrub.competitionIds,
+    ]),
+  ];
+}
+
 /**
  * Operations of the deletion transaction, in order; the user row goes last
  * (callers may append their own operations after it).
@@ -111,10 +158,10 @@ export function findResultsToAnonymize(
 export function buildAccountDeletionOperations(
   prisma: AccountDeletionPrisma,
   userId: string,
-  results: readonly Pick<ResultToAnonymize, "id" | "details">[],
+  plan: AccountDeletionPlan,
 ): Prisma.PrismaPromise<unknown>[] {
   return [
-    ...results.map((r) =>
+    ...plan.results.map((r) =>
       prisma.result.updateMany({
         where: { id: r.id, userId },
         data: {
@@ -136,6 +183,9 @@ export function buildAccountDeletionOperations(
       where: { partnerUserId: userId },
       data: { partnerUserId: null, partnerName: null },
     }),
+    // Name copies without an identifier (#395): legacy partner
+    // registrations and the partner's couple result label.
+    ...plan.partnerNameScrub.ops,
     // Le SetNull de proposedById laisserait le commentaire libre, qui peut
     // identifier son auteur : il est effacé avant la suppression du compte.
     prisma.trackCorrection.updateMany({

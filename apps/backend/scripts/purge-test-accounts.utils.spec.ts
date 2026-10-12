@@ -145,15 +145,23 @@ describe("buildPurgeUserOperations (#412)", () => {
       },
     ) as unknown as PurgeUserPrisma;
 
-  const results = [{ id: "r1", details: { participant: "X", status: "OK" } }];
+  const plan = {
+    results: [
+      {
+        id: "r1",
+        details: { participant: "X", status: "OK" },
+        event: { competitionId: "c1" },
+      },
+    ],
+    // #395 scrub ops are built before the transaction; the purge must run them.
+    partnerNameScrub: {
+      ops: [{ op: "partnerNameScrub" } as never],
+      competitionIds: [],
+    },
+  };
 
   it("deletes the seeded licenses, then runs the exact account deletion core", () => {
-    const ops = buildPurgeUserOperations(
-      recordingPrisma(),
-      "u1",
-      ["l1"],
-      results,
-    );
+    const ops = buildPurgeUserOperations(recordingPrisma(), "u1", ["l1"], plan);
 
     expect(ops[0]).toEqual({
       op: "license.deleteMany",
@@ -161,7 +169,7 @@ describe("buildPurgeUserOperations (#412)", () => {
     });
     // Single list of relations: whatever the core does, the purge does too.
     expect(ops.slice(1)).toEqual(
-      buildAccountDeletionOperations(recordingPrisma(), "u1", results),
+      buildAccountDeletionOperations(recordingPrisma(), "u1", plan),
     );
   });
 
@@ -170,7 +178,7 @@ describe("buildPurgeUserOperations (#412)", () => {
       recordingPrisma(),
       "u1",
       [],
-      results,
+      plan,
     ) as unknown as { op: string; args: unknown }[];
 
     expect(ops).toContainEqual({
@@ -188,6 +196,7 @@ describe("buildPurgeUserOperations (#412)", () => {
       },
     });
     expect(ops.map((o) => o.op)).toContain("adminAuditLog.updateMany");
+    expect(ops.map((o) => o.op)).toContain("partnerNameScrub");
     expect(ops[ops.length - 1]).toEqual({
       op: "user.delete",
       args: { where: { id: "u1" } },

@@ -14,7 +14,8 @@
  * SetNull), then the SAME deletion core as AccountDeletionService
  * (src/users/account-deletion.core.ts, #412) runs: competition results
  * anonymised (DELETED_USER_ID tombstone), rows without cascade deleted,
- * partner registrations and admin audit rows anonymised, user row deleted.
+ * partner registrations, partners' copies of the name (#395) and admin
+ * audit rows anonymised, user row deleted.
  * Clubs go last, once none of their members survives. Then results already
  * orphaned by earlier purges are anonymised (idempotent sweep).
  * Not done here (no Redis / storage client in the script): results cache
@@ -31,7 +32,7 @@ import "dotenv/config";
 import { Pool } from "pg";
 import {
   anonymizeOrphanedResults,
-  findResultsToAnonymize,
+  prepareAccountDeletion,
 } from "../src/users/account-deletion.core";
 import {
   TEST_CLUB_NAMES,
@@ -61,14 +62,16 @@ async function purgeUser(user: { id: string; email: string }): Promise<void> {
     .filter((l) => isTestLicenseNumber(l.number))
     .map((l) => l.id);
 
-  const results = await findResultsToAnonymize(prisma, user.id);
+  const plan = await prepareAccountDeletion(prisma, user.id, {
+    warn: (message) => console.warn(`${TAG}   ⚠ ${message}`),
+  });
 
   const [licensesDeleted] = (await prisma.$transaction(
-    buildPurgeUserOperations(prisma, user.id, seededLicenseIds, results),
+    buildPurgeUserOperations(prisma, user.id, seededLicenseIds, plan),
   )) as [Prisma.BatchPayload, ...unknown[]];
   const unlinked = licenses.length - licensesDeleted.count;
   console.log(
-    `${TAG}   ✓ user ${user.email} (${user.id}): ${results.length} result(s) anonymised, ${licensesDeleted.count} seeded license(s) deleted, ${unlinked} license(s) unlinked`,
+    `${TAG}   ✓ user ${user.email} (${user.id}): ${plan.results.length} result(s) anonymised, ${plan.partnerNameScrub.ops.length} partner name copy(ies) scrubbed, ${licensesDeleted.count} seeded license(s) deleted, ${unlinked} license(s) unlinked`,
   );
 }
 

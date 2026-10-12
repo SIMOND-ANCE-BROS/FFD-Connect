@@ -2,12 +2,14 @@ import { Prisma, PrismaClient } from "@prisma/client";
 import { mockDeep, MockProxy } from "jest-mock-extended";
 import { resultAnonymizationSelect } from "../utils/prisma-selects";
 import {
+  affectedResultCompetitionIds,
   anonymizeOrphanedResults,
   buildAccountDeletionOperations,
   DELETED_USER_ID,
   findResultsToAnonymize,
   MAX_ORPHANED_RESULTS,
   MAX_RESULTS_TO_ANONYMIZE,
+  prepareAccountDeletion,
 } from "./account-deletion.core";
 
 describe("account-deletion.core", () => {
@@ -40,9 +42,19 @@ describe("account-deletion.core", () => {
       prisma.adminAuditLog.updateMany.mockReturnValue(marker("audit"));
       prisma.user.delete.mockReturnValue(marker("user"));
 
-      const ops = buildAccountDeletionOperations(prisma, "u1", [
-        { id: "r1", details: { participant: "X", status: "FINAL" } },
-      ]) as unknown as { op: string }[];
+      const ops = buildAccountDeletionOperations(prisma, "u1", {
+        results: [
+          {
+            id: "r1",
+            details: { participant: "X", status: "FINAL" },
+            event: { competitionId: "c1" },
+          },
+        ],
+        partnerNameScrub: {
+          ops: [marker("partnerNameScrub")],
+          competitionIds: ["c9"],
+        },
+      }) as unknown as { op: string }[];
 
       expect(ops.map((o) => o.op)).toEqual([
         "result",
@@ -51,6 +63,8 @@ describe("account-deletion.core", () => {
         "seat",
         "registration",
         "partner",
+        // #395 scrub, before the user row (and its registrations) go.
+        "partnerNameScrub",
         "correction",
         "bug",
         "audit",
@@ -65,6 +79,32 @@ describe("account-deletion.core", () => {
         data: { before: Prisma.DbNull, after: Prisma.DbNull },
       });
       expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+    });
+  });
+
+  describe("prepareAccountDeletion", () => {
+    it("reads the partner-name scrub before the user's results, and lists the stale result caches", async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.result.findMany.mockResolvedValue([
+        { id: "r1", details: {}, event: { competitionId: "c1" } },
+        { id: "r2", details: {}, event: { competitionId: "c1" } },
+      ] as never);
+      const logger = { warn: jest.fn() };
+
+      const plan = await prepareAccountDeletion(prisma, "u1", logger);
+
+      // Unknown user: the scrub has nothing to do.
+      expect(plan.partnerNameScrub).toEqual({ ops: [], competitionIds: [] });
+      expect(plan.results).toHaveLength(2);
+      expect(prisma.user.findUnique.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.result.findMany.mock.invocationCallOrder[0],
+      );
+      expect(
+        affectedResultCompetitionIds({
+          ...plan,
+          partnerNameScrub: { ops: [], competitionIds: ["c9", "c1"] },
+        }),
+      ).toEqual(["c1", "c9"]);
     });
   });
 

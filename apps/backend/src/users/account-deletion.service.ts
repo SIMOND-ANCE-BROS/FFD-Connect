@@ -5,8 +5,9 @@ import { PrismaService } from "../prisma/prisma.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { licenseRenewalDocumentFileSelect } from "../utils/prisma-selects";
 import {
+  affectedResultCompetitionIds,
   buildAccountDeletionOperations,
-  findResultsToAnonymize,
+  prepareAccountDeletion,
 } from "./account-deletion.core";
 
 /**
@@ -37,6 +38,9 @@ export const MAX_RENEWAL_DOCUMENTS_TO_PURGE = 200;
  * Inscriptions d'autrui en tant que partenaire : anonymisées explicitement
  * (partnerUserId ET partnerName, copie du nom complet → null ; null est
  * déjà géré partout à l'affichage).
+ * Copies du nom sans identifiant (#395) : inscription du partenaire créée
+ * par l'import sans partnerUserId, libellé d'un résultat de couple rattaché
+ * au partenaire — cf. buildPartnerNameScrubOps (partner-name-scrub.ts).
  * Suppressions explicites (FK sans onDelete → RESTRICT) : registrations,
  * seatBookings, notifications ; bugReports (userId sans FK).
  * Résultats de compétition (Result.userId sans FK, #382) : ANONYMISÉS, pas
@@ -91,25 +95,22 @@ export class AccountDeletionService {
         `Account deletion: renewal document read hit the ${MAX_RENEWAL_DOCUMENTS_TO_PURGE} cap — remaining files may be orphaned, run scripts/list-orphan-renewal-blobs.ts`,
       );
     }
-    const results = await findResultsToAnonymize(this.prisma, userId);
+    const plan = await prepareAccountDeletion(this.prisma, userId, this.logger);
     await this.prisma.$transaction([
-      ...buildAccountDeletionOperations(this.prisma, userId, results),
+      ...buildAccountDeletionOperations(this.prisma, userId, plan),
       ...alsoInTransaction,
     ]);
     await this.renewalDocumentFiles.deleteFiles(
       documents.map((d) => d.filePath),
       "account-deletion",
     );
-    await this.invalidateResultCaches(results);
+    await this.invalidateResultCaches(affectedResultCompetitionIds(plan));
   }
 
   /** Best-effort : un échec Redis n'annule pas une suppression déjà faite. */
   private async invalidateResultCaches(
-    results: { event: { competitionId: string } }[],
+    competitionIds: string[],
   ): Promise<void> {
-    const competitionIds = [
-      ...new Set(results.map((r) => r.event.competitionId)),
-    ];
     const outcomes = await Promise.allSettled(
       competitionIds.map((id) => this.competitionCache.invalidateResults(id)),
     );

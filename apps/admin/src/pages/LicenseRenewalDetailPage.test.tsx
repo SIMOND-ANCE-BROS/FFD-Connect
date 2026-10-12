@@ -1,12 +1,13 @@
-import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { screen, waitFor, within } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { Route, Routes } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { fill, renderWithProviders, setupUser } from '../test/render';
 import { LicenseRenewalDetailPage } from './LicenseRenewalDetailPage';
+
+let user: UserEvent;
 
 const pending = {
   id: 'r1',
@@ -69,25 +70,23 @@ function renderPage(item: object) {
   vi.spyOn(sdk, 'adminLicenseRenewalsControllerList').mockResolvedValue(
     ok({ data: [], meta: { total: 0, skip: 0, take: 1, hasMore: false } }) as never,
   );
-  render(
-    <MantineProvider>
+  renderWithProviders(
+    <>
       <Notifications />
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={['/license-renewals/r1']}>
-          <Routes>
-            <Route path="/license-renewals/:id" element={<LicenseRenewalDetailPage />} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+      <Routes>
+        <Route path="/license-renewals/:id" element={<LicenseRenewalDetailPage />} />
+      </Routes>
+    </>,
+    { route: '/license-renewals/r1' },
   );
   return { detail };
 }
 
 describe('LicenseRenewalDetailPage', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    user = setupUser();
+  });
 
   it('shows the OCR readings as hints, never as a verdict, and loads no document by itself', async () => {
     const file = vi.spyOn(sdk, 'adminLicenseRenewalsControllerDocumentFile');
@@ -108,13 +107,13 @@ describe('LicenseRenewalDetailPage', () => {
       .spyOn(sdk, 'adminLicenseRenewalsControllerApprove')
       .mockResolvedValue(ok({ ...pending, status: 'APPROVED', renewsUntil: null }) as never);
     expect(await screen.findByLabelText('Numéro de licence')).toHaveValue('FFD-123');
-    await userEvent.click(screen.getByRole('button', { name: 'Approuver' }));
+    await user.click(screen.getByRole('button', { name: 'Approuver' }));
     const dialog = await screen.findByRole('dialog');
     expect(
       within(dialog).getByText('La licence n° FFD-123 sera renouvelée jusqu’au 31/08/2027.'),
     ).toBeInTheDocument();
     expect(within(dialog).queryByText(/Le numéro passera/)).toBeNull();
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     await waitFor(() => expect(approve).toHaveBeenCalledWith({ path: { id: 'r1' }, body: {} }));
   });
 
@@ -124,15 +123,14 @@ describe('LicenseRenewalDetailPage', () => {
       .spyOn(sdk, 'adminLicenseRenewalsControllerApprove')
       .mockResolvedValue(ok({ ...pending, status: 'APPROVED', renewsUntil: null }) as never);
     const number = await screen.findByLabelText('Numéro de licence');
-    await userEvent.clear(number);
-    await userEvent.type(number, 'FFD-778');
-    await userEvent.click(screen.getByRole('button', { name: 'Approuver' }));
+    await fill(user, number, 'FFD-778');
+    await user.click(screen.getByRole('button', { name: 'Approuver' }));
     const dialog = await screen.findByRole('dialog');
     expect(
       within(dialog).getByText('La licence n° FFD-778 sera renouvelée jusqu’au 31/08/2027.'),
     ).toBeInTheDocument();
     expect(within(dialog).getByText('Le numéro passera de FFD-123 à FFD-778.')).toBeInTheDocument();
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     await waitFor(() =>
       expect(approve).toHaveBeenCalledWith({
         path: { id: 'r1' },
@@ -152,14 +150,15 @@ describe('LicenseRenewalDetailPage', () => {
     const refuse = await screen.findByRole('button', { name: 'Refuser' });
     expect(refuse).toBeDisabled();
     expect(screen.getByText(/Ne saisissez aucun détail médical/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('radio', { name: 'Certificat trop ancien' }));
-    await userEvent.type(
+    await user.click(screen.getByRole('radio', { name: 'Certificat trop ancien' }));
+    await fill(
+      user,
       screen.getByLabelText('Commentaire au licencié (facultatif)'),
       '  Merci de déposer un certificat récent  ',
     );
-    await userEvent.click(refuse);
+    await user.click(refuse);
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     await waitFor(() =>
       expect(reject).toHaveBeenCalledWith({
         path: { id: 'r1' },
@@ -178,11 +177,10 @@ describe('LicenseRenewalDetailPage', () => {
       },
     } as never);
     const number = await screen.findByLabelText('Numéro de licence');
-    await userEvent.clear(number);
-    await userEvent.type(number, 'FFD-999');
-    await userEvent.click(screen.getByRole('button', { name: 'Approuver' }));
+    await fill(user, number, 'FFD-999');
+    await user.click(screen.getByRole('button', { name: 'Approuver' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     expect(
       await within(dialog).findByText('Ce numéro de licence est déjà attribué à un autre compte.'),
     ).toBeInTheDocument();
@@ -195,9 +193,9 @@ describe('LicenseRenewalDetailPage', () => {
       data: undefined,
       error: { statusCode: 409, message: 'Cette demande a déjà été traitée.' },
     } as never);
-    await userEvent.click(await screen.findByRole('button', { name: 'Approuver' }));
+    await user.click(await screen.findByRole('button', { name: 'Approuver' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     expect(await screen.findByText('Cette demande a déjà été traitée.')).toBeInTheDocument();
     await waitFor(() => expect(detail).toHaveBeenCalledTimes(2));
   });

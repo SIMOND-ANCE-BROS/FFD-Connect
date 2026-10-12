@@ -8,8 +8,8 @@
  */
 import { PrismaClient } from "@prisma/client";
 import {
+  AccountDeletionPlan,
   AccountDeletionPrisma,
-  ResultToAnonymize,
   buildAccountDeletionOperations,
 } from "../src/users/account-deletion.core";
 
@@ -125,17 +125,18 @@ export type PurgeUserPrisma = AccountDeletionPrisma &
  * Transaction of one purged account: the purge's own step (seeded licenses
  * deleted, first so the count is the first result) followed by the SAME
  * deletion core as AccountDeletionService (#412) — results anonymised with
- * the DELETED_USER_ID tombstone, admin audit rows stripped, user row deleted
+ * the DELETED_USER_ID tombstone, partners' copies of the name scrubbed
+ * (#395), admin audit rows stripped, user row deleted
  * last. Never re-list the user's relations here.
  */
 export function buildPurgeUserOperations(
   prisma: PurgeUserPrisma,
   userId: string,
   seededLicenseIds: readonly string[],
-  results: readonly Pick<ResultToAnonymize, "id" | "details">[],
+  plan: AccountDeletionPlan,
 ): ReturnType<typeof buildAccountDeletionOperations> {
   return [
     prisma.license.deleteMany({ where: { id: { in: [...seededLicenseIds] } } }),
-    ...buildAccountDeletionOperations(prisma, userId, results),
+    ...buildAccountDeletionOperations(prisma, userId, plan),
   ];
 }
