@@ -33,7 +33,7 @@
   export JWT_SECRET="test-secret-key-for-ci-min-32-chars!!" NODE_ENV=test
   ```
   Schema sync on that DB: `npx prisma db push`. Never touch the shared `ffd_connect` DB.
-- Swagger regeneration: `DATABASE_URL=postgresql://localhost/dummy JWT_SECRET=test-secret-key-for-swagger-export-only pnpm api:sync`.
+- Swagger regeneration: `pnpm api:sync` (the export script sets its own placeholder env vars, and reports bootstrap errors since #406).
 - Commits: conventional, English, ending with
   ```
   Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
