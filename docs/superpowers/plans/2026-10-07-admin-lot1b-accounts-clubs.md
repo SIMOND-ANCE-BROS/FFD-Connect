@@ -56,7 +56,7 @@
   pnpm exec jest --config test/jest-integration.json --runInBand --forceExit admin.integration-spec
   ```
   Never run `prisma db push`, `prisma migrate dev`, `migrate reset` or the full `test:e2e` / `test:integration` scripts against any other database. The migration in Task 1 is produced **offline** with `prisma migrate diff` (no database involved).
-- **Swagger.** `pnpm docs:export` fails from the repo root. Run the steps by hand (Task 8): `cd apps/backend && pnpm run build && node scripts/export-swagger.js`, then copy to `apps/docs/public/swagger.json` and run Prettier on both. Then regenerate the admin client with `pnpm --filter admin exec openapi-ts` (the generated folder is gitignored).
+- **Swagger.** `pnpm docs:export` fails from the repo root. Run the steps by hand (Task 8): `cd apps/backend && pnpm run build && pnpm exec tsx scripts/export-swagger.ts`, then copy to `apps/docs/public/swagger.json` and run Prettier on both. Then regenerate the admin client with `pnpm --filter admin exec openapi-ts` (the generated folder is gitignored).
 
 ## Review Focus
 
@@ -4524,7 +4524,7 @@ Expected: no errors; every threshold met, in particular `src/admin` (94 / 75 / 8
 ```bash
 cd apps/backend
 pnpm run build
-node scripts/export-swagger.js
+pnpm exec tsx scripts/export-swagger.ts
 cp swagger.json ../docs/public/swagger.json
 pnpm exec prettier --write swagger.json ../docs/public/swagger.json
 node -e 'const s=require("./swagger.json");console.log(Object.keys(s.paths).filter((p)=>p.startsWith("/admin")).sort().join("\n"))'

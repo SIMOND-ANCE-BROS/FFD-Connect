@@ -785,10 +785,7 @@ describe("CompetitionsController HTTP Integration", () => {
         .get(`/api/v1/competitions/${comp.id}/results`)
         .expect(200);
 
-      // The endpoint should return an array or an object with a results key
-      const isArray = Array.isArray(res.body);
-      const isObject = typeof res.body === "object" && res.body !== null;
-      expect(isArray || isObject).toBe(true);
+      expect(res.body).toEqual([]);
     });
 
     it("returns 404 for a non-existent competition", async () => {
@@ -816,27 +813,37 @@ describe("CompetitionsController HTTP Integration", () => {
         },
       });
 
-      await prisma.result.create({
+      const created = await prisma.result.create({
         data: {
           eventId: event.id,
           userId: user.id,
           ranking: 1,
           round: "FINAL",
+          details: { participant: "Couple A" },
         },
       });
 
+      // Public endpoint: no token.
       const res = await request(app.getHttpServer())
         .get(`/api/v1/competitions/${comp.id}/results`)
         .expect(200);
 
-      // Response is either an array with entries or an object containing results
-      const body = res.body as unknown;
-      if (Array.isArray(body)) {
-        expect(body.length).toBeGreaterThanOrEqual(1);
-      } else {
-        const obj = body as Record<string, unknown>;
-        expect(obj).toBeDefined();
-      }
+      // An array of minimised rows: never the couple's account id (#413).
+      expect(res.body).toEqual([
+        {
+          id: created.id,
+          eventId: event.id,
+          round: "FINAL",
+          ranking: 1,
+          details: { participant: "Couple A" },
+          event: {
+            id: event.id,
+            category: event.category,
+            ageGroup: "Solo Adulte",
+          },
+        },
+      ]);
+      expect(JSON.stringify(res.body)).not.toContain(user.id);
     });
   });
 
@@ -906,8 +913,27 @@ describe("CompetitionsController HTTP Integration", () => {
         .expect(403);
     });
 
-    it("returns 201 when a CLUB user creates a competition", async () => {
+    it("returns 403 when a CLUB user without a club creates a competition (#381)", async () => {
       const { token } = await makeUser(UserRole.CLUB);
+
+      await request(app.getHttpServer())
+        .post("/api/v1/competitions")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          title: `Clubless ${suffix}`,
+          date: "2026-09-01",
+          location: "Lyon",
+          status: CompetitionStatus.UPCOMING,
+        })
+        .expect(403);
+    });
+
+    it("returns 201 when a CLUB user creates a competition", async () => {
+      const { user, token } = await makeUser(UserRole.CLUB);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { clubName: `Club ${suffix}` },
+      });
 
       const res = await request(app.getHttpServer())
         .post("/api/v1/competitions")
@@ -922,6 +948,11 @@ describe("CompetitionsController HTTP Integration", () => {
 
       expect(res.body).toHaveProperty("id");
       expect(res.body.location).toBe("Lyon");
+      const created = await prisma.competition.findUniqueOrThrow({
+        where: { id: res.body.id },
+        select: { organizer: true },
+      });
+      expect(created.organizer).toBe(`Club ${suffix}`);
     });
 
     it("returns 401 without token", async () => {

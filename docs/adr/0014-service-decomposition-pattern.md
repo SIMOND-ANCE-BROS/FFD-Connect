@@ -15,16 +15,19 @@ Split services by responsibility: QueryService (reads), core Service (writes), a
 ## Alternatives Considered
 
 ### Alternative 1: Keep monolithic services
+
 - **Pros**: Simpler imports, single file to find all logic
 - **Cons**: Hard to test, large files, frequent merge conflicts
 - **Why not**: Complexity was already causing developer friction
 
 ### Alternative 2: Full CQRS
+
 - **Pros**: Clean read/write separation, event sourcing ready
 - **Cons**: Too formal for this scale, adds command/query bus overhead
 - **Why not**: Over-engineering for a team of this size
 
 ### Alternative 3: Repository pattern
+
 - **Pros**: Abstracts data access
 - **Cons**: Added abstraction layer without clear benefit given Prisma already provides a clean query API
 - **Why not**: Prisma already serves as the data access layer
@@ -32,11 +35,13 @@ Split services by responsibility: QueryService (reads), core Service (writes), a
 ## Consequences
 
 ### Positive
+
 - Single Responsibility Principle — each service has one clear purpose
 - Each file stays under 200 lines, improving readability
 - Services are testable in isolation with clear dependency graphs
 
 ### Negative
+
 - More files to navigate (mitigated by consistent naming conventions)
 - Import paths are longer
 - Requires discipline to maintain the decomposition as features grow

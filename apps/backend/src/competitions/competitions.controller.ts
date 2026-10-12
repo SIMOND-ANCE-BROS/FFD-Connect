@@ -35,6 +35,7 @@ import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
 import { CheckInDto, CheckInResponseDto } from "./dto/checkin.dto";
+import { CompetitionResultDto } from "./dto/competition-result.dto";
 import {
   CreateCompetitionDto,
   UpdateCompetitionDto,
@@ -656,7 +657,7 @@ export class CompetitionsController {
   @ApiOperation({
     summary: "Récupère les résultats d'une compétition",
     description:
-      "Retourne tous les résultats et classements pour une compétition donnée.",
+      "Endpoint public. Retourne tous les résultats et classements d'une compétition, épreuve par épreuve, classés par rang. Aucun identifiant de compte n'est exposé.",
   })
   @ApiParam({
     name: "id",
@@ -666,29 +667,13 @@ export class CompetitionsController {
   @ApiResponse({
     status: 200,
     description: "Résultats récupérés avec succès",
-    schema: {
-      type: "object",
-      properties: {
-        competitionId: { type: "string" },
-        results: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              eventId: { type: "string" },
-              eventName: { type: "string" },
-              rankings: { type: "array" },
-            },
-          },
-        },
-      },
-    },
+    type: [CompetitionResultDto],
   })
   @ApiResponse({
     status: 404,
     description: "Compétition non trouvée",
   })
-  getResults(@Param("id") id: string) {
+  getResults(@Param("id") id: string): Promise<CompetitionResultDto[]> {
     return this.resultsService.getResults(id);
   }
 
@@ -812,23 +797,51 @@ export class CompetitionsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Crée une nouvelle compétition" })
+  @ApiOperation({
+    summary: "Crée une nouvelle compétition",
+    description:
+      "Créée par un compte club, la compétition a pour organisateur le club du compte.",
+  })
   @ApiResponse({ status: 201, description: "Compétition créée avec succès" })
-  create(@Body() body: CreateCompetitionDto) {
-    return this.managementService.create(body);
+  @ApiResponse({
+    status: 403,
+    description: "Compte club sans club rattaché",
+  })
+  async create(
+    @Body() body: CreateCompetitionDto,
+    @Request() req: RequestWithUser,
+  ) {
+    const organizer = await this.accessService.organizerForNewCompetition(
+      req.user,
+    );
+    return this.managementService.create(body, organizer);
   }
 
   @Patch(":id")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Met à jour une compétition" })
+  @ApiOperation({
+    summary: "Met à jour une compétition",
+    description:
+      "STAFF et ADMIN : toute compétition. Compte club : seulement une compétition organisée par son club.",
+  })
   @ApiParam({ name: "id", description: "ID de la compétition" })
   @ApiResponse({
     status: 200,
     description: "Compétition mise à jour avec succès",
   })
-  update(@Param("id") id: string, @Body() body: UpdateCompetitionDto) {
+  @ApiResponse({
+    status: 403,
+    description: "Compétition organisée par un autre club",
+  })
+  @ApiResponse({ status: 404, description: "Compétition non trouvée" })
+  async update(
+    @Param("id") id: string,
+    @Body() body: UpdateCompetitionDto,
+    @Request() req: RequestWithUser,
+  ) {
+    await this.accessService.assertCanManageCompetition(id, req.user);
     return this.managementService.update(id, body);
   }
 }

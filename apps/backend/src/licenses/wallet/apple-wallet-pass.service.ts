@@ -12,7 +12,7 @@ import {
   walletPassTokenSelect,
 } from "../../utils/prisma-selects";
 import { hashToken } from "../../utils/token-hash.util";
-import { toLicenseQrExpiry } from "../qr/license-qr";
+import { isLicenseExpired } from "../license-expiry";
 import { ApplePassLicense } from "./apple-wallet-pass";
 import {
   APPLE_WALLET_UNAVAILABLE_MESSAGE,
@@ -90,7 +90,7 @@ export class AppleWalletPassService {
     });
     if (!license?.user) throw new NotFoundException(LICENSE_NOT_FOUND_MESSAGE);
     // Same rule as the signed QR: valid until the end of its day in Paris.
-    if (toLicenseQrExpiry(now) > toLicenseQrExpiry(license.validUntil)) {
+    if (isLicenseExpired(license.validUntil, now)) {
       throw new UnprocessableEntityException(LICENSE_EXPIRED_MESSAGE);
     }
     return {

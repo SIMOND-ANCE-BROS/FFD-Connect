@@ -1,10 +1,10 @@
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
-import { vi } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
+import { screen, waitFor, within } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { Route, Routes } from 'react-router';
+import { describe, vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { fill, pickOption, renderWithProviders, setupUser } from '../test/render';
 import { useSession } from '../session/sessionStore';
 import { UserDetailPage } from './UserDetailPage';
 
@@ -40,34 +40,30 @@ const detail = {
   createdByAdmin: true,
 };
 
-/** Picks an option in a Mantine Select (every listbox stays mounted in jsdom). */
-async function pickOption(input: HTMLElement, name: string) {
-  await userEvent.click(input);
-  const listbox = document.getElementById(input.getAttribute('aria-controls') ?? '');
-  if (!listbox) throw new Error('listbox not found');
-  await userEvent.click(within(listbox).getByRole('option', { name, hidden: true }));
-}
+// Every keystroke re-renders the whole Mantine form, which pushed these flows past
+// Vitest's 5 s budget under full-suite load (#257). No test here depends on
+// per-character input, so text is pasted in one event and actions get no delay.
+let user: UserEvent;
 
 function renderPage() {
-  return render(
-    <MantineProvider>
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={['/users/u1']}>
-          <Routes>
-            <Route path="/users/:id" element={<UserDetailPage />} />
-            <Route path="/users" element={<p>users list</p>} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+  return renderWithProviders(
+    <Routes>
+      <Route path="/users/:id" element={<UserDetailPage />} />
+      <Route path="/users" element={<p>users list</p>} />
+    </Routes>,
+    { route: '/users/u1' },
   );
 }
 
-describe('UserDetailPage', () => {
+// Residual explicit timeout (#257): each test drives a whole Mantine form (render,
+// async reference data, several full re-renders) and the first one of the file also
+// pays the cold render of the Mantine tree. Under a loaded full-suite run that still
+// lands around Vitest's 5 s default even with pasted input, so give it headroom
+// rather than let the suite flake. A real hang still fails, just later.
+describe('UserDetailPage', { timeout: 15_000 }, () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    user = setupUser();
     useSession.getState().setSession({
       accessToken: 'a',
       refreshToken: 'r',
@@ -112,13 +108,12 @@ describe('UserDetailPage', () => {
     } as never);
     renderPage();
     const lastName = await screen.findByLabelText(/^Nom/);
-    await userEvent.clear(lastName);
-    await userEvent.type(lastName, 'Durand');
-    await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+    await fill(user, lastName, 'Durand');
+    await user.click(screen.getByRole('button', { name: /enregistrer/i }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Martin');
     expect(dialog).toHaveTextContent('Durand');
-    await userEvent.click(screen.getByRole('button', { name: /confirmer/i }));
+    await user.click(screen.getByRole('button', { name: /confirmer/i }));
     expect(patch).toHaveBeenCalledWith({
       path: { id: 'u1' },
       body: { lastName: 'Durand' },
@@ -137,11 +132,11 @@ describe('UserDetailPage', () => {
     renderPage();
     const standard = await screen.findByLabelText('Niveau Standards', { selector: 'input' });
     expect(screen.getByLabelText('Niveau Latines', { selector: 'input' })).toHaveValue('Débutant');
-    await pickOption(standard, 'Débutant');
-    await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+    await pickOption(user, standard, 'Débutant');
+    await user.click(screen.getByRole('button', { name: /enregistrer/i }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Niveau Standards');
-    await userEvent.click(within(dialog).getByRole('button', { name: /confirmer/i }));
+    await user.click(within(dialog).getByRole('button', { name: /confirmer/i }));
     expect(patch).toHaveBeenCalledWith({
       path: { id: 'u1' },
       body: { competitionLevelStandard: 'Débutant' },
@@ -160,8 +155,8 @@ describe('UserDetailPage', () => {
   it('blocks the save when a required name is cleared', async () => {
     const patch = vi.spyOn(sdk, 'adminControllerUpdateUser');
     renderPage();
-    await userEvent.clear(await screen.findByLabelText(/^Nom/));
-    await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+    await user.clear(await screen.findByLabelText(/^Nom/));
+    await user.click(screen.getByRole('button', { name: /enregistrer/i }));
     expect(await screen.findByText('Obligatoire')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(patch).not.toHaveBeenCalled();
@@ -187,7 +182,7 @@ describe('UserDetailPage', () => {
       .spyOn(sdk, 'adminControllerResendInvitation')
       .mockResolvedValue({ data: { invitationSent: true }, error: undefined } as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: /renvoyer l'invitation/i }));
+    await user.click(await screen.findByRole('button', { name: /renvoyer l'invitation/i }));
     expect(resend).toHaveBeenCalledWith({ path: { id: 'u1' } });
   });
 
@@ -196,7 +191,7 @@ describe('UserDetailPage', () => {
       .spyOn(sdk, 'adminControllerResendInvitation')
       .mockResolvedValue({ data: { invitationSent: true }, error: undefined } as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: /renvoyer l'invitation/i }));
+    await user.click(await screen.findByRole('button', { name: /renvoyer l'invitation/i }));
     expect(resend).toHaveBeenCalledWith({ path: { id: 'u1' } });
   });
 
@@ -244,10 +239,10 @@ describe('UserDetailPage', () => {
       error: undefined,
     } as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Désactiver' }));
+    await user.click(await screen.findByRole('button', { name: 'Désactiver' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent(/déconnecté immédiatement/);
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Désactiver' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Désactiver' }));
     expect(setStatus).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { active: false } });
     expect(await screen.findByText('Compte désactivé')).toBeInTheDocument();
   });
@@ -262,8 +257,8 @@ describe('UserDetailPage', () => {
       error: undefined,
     } as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Réactiver' }));
-    await userEvent.click(
+    await user.click(await screen.findByRole('button', { name: 'Réactiver' }));
+    await user.click(
       within(await screen.findByRole('dialog')).getByRole('button', { name: 'Réactiver' }),
     );
     expect(setStatus).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { active: true } });
@@ -286,16 +281,15 @@ describe('UserDetailPage', () => {
       response: new Response(null, { status: 204 }),
     } as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
+    await user.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
     const dialog = await screen.findByRole('dialog');
     const confirm = within(dialog).getByRole('button', { name: 'Supprimer définitivement' });
     expect(confirm).toBeDisabled();
-    await userEvent.type(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.f');
+    await fill(user, within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.f');
     expect(confirm).toBeDisabled();
-    await userEvent.clear(within(dialog).getByLabelText(/recopiez l'email/i));
-    await userEvent.type(within(dialog).getByLabelText(/recopiez l'email/i), ' JEANNE@x.fr ');
+    await fill(user, within(dialog).getByLabelText(/recopiez l'email/i), ' JEANNE@x.fr ');
     expect(confirm).toBeEnabled();
-    await userEvent.click(confirm);
+    await user.click(confirm);
     expect(remove).toHaveBeenCalledWith({
       path: { id: 'u1' },
       body: { confirmEmail: 'JEANNE@x.fr' },
@@ -310,10 +304,10 @@ describe('UserDetailPage', () => {
       response: new Response(null, { status: 400 }),
     } as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
+    await user.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.type(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
+    await fill(user, within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
+    await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     expect(
       await within(dialog).findByText("L'email saisi ne correspond pas au compte"),
     ).toBeInTheDocument();
@@ -337,10 +331,10 @@ describe('UserDetailPage', () => {
       response: undefined,
     } as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
+    await user.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.type(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
+    await fill(user, within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
+    await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     expect(
       await within(dialog).findByText('Serveur injoignable, réessayez dans un instant.'),
     ).toBeInTheDocument();
@@ -358,18 +352,18 @@ describe('UserDetailPage', () => {
       response: new Response(null, { status: 204 }),
     } as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Désactiver' }));
-    await userEvent.click(
+    await user.click(await screen.findByRole('button', { name: 'Désactiver' }));
+    await user.click(
       within(await screen.findByRole('dialog')).getByRole('button', { name: 'Désactiver' }),
     );
     await screen.findByText('Compte désactivé');
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin', 'users'] });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     invalidate.mockClear();
-    await userEvent.click(screen.getByRole('button', { name: 'Supprimer le compte' }));
+    await user.click(screen.getByRole('button', { name: 'Supprimer le compte' }));
     const dialog = await screen.findByRole('dialog');
-    await userEvent.type(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
+    await fill(user, within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
+    await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     await screen.findByText('users list');
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin', 'users'] });
   });
@@ -393,20 +387,20 @@ describe('UserDetailPage', () => {
     it('explains instead of deleting', async () => {
       const remove = vi.spyOn(sdk, 'adminControllerDeleteUser');
       renderPage();
-      await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
+      await user.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
       const dialog = await screen.findByRole('dialog');
       expect(dialog).toHaveTextContent(
         'Ce compte est utilisé pour les validations App Store / Google Play : il ne peut pas être supprimé.',
       );
       expect(within(dialog).queryByLabelText(/recopiez l'email/i)).toBeNull();
-      await userEvent.click(within(dialog).getByRole('button', { name: 'Compris' }));
+      await user.click(within(dialog).getByRole('button', { name: 'Compris' }));
       expect(remove).not.toHaveBeenCalled();
     });
 
     it('explains instead of disabling', async () => {
       const setStatus = vi.spyOn(sdk, 'adminControllerSetUserStatus');
       renderPage();
-      await userEvent.click(await screen.findByRole('button', { name: 'Désactiver' }));
+      await user.click(await screen.findByRole('button', { name: 'Désactiver' }));
       const dialog = await screen.findByRole('dialog');
       expect(dialog).toHaveTextContent(/il ne peut pas être désactivé/);
       expect(within(dialog).queryByRole('button', { name: 'Désactiver' })).toBeNull();
@@ -423,8 +417,8 @@ describe('UserDetailPage', () => {
         error: undefined,
       } as never);
       renderPage();
-      await userEvent.click(await screen.findByRole('button', { name: 'Réactiver' }));
-      await userEvent.click(
+      await user.click(await screen.findByRole('button', { name: 'Réactiver' }));
+      await user.click(
         within(await screen.findByRole('dialog')).getByRole('button', { name: 'Réactiver' }),
       );
       expect(setStatus).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { active: true } });
@@ -445,12 +439,10 @@ describe('UserDetailPage', () => {
         response: new Response(null, { status: 403 }),
       } as never);
       renderPage();
-      await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
+      await user.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
       const dialog = await screen.findByRole('dialog');
-      await userEvent.type(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
-      await userEvent.click(
-        within(dialog).getByRole('button', { name: 'Supprimer définitivement' }),
-      );
+      await fill(user, within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
+      await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
       expect(await within(dialog).findByText(/il ne peut pas être supprimé/)).toBeInTheDocument();
     });
   });
@@ -461,11 +453,11 @@ describe('UserDetailPage', () => {
       error: undefined,
     } as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('checkbox', { name: 'Club' }));
-    await userEvent.click(screen.getByRole('button', { name: /enregistrer/i }));
+    await user.click(await screen.findByRole('checkbox', { name: 'Club' }));
+    await user.click(screen.getByRole('button', { name: /enregistrer/i }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Rôles supplémentaires');
-    await userEvent.click(screen.getByRole('button', { name: /confirmer/i }));
+    await user.click(screen.getByRole('button', { name: /confirmer/i }));
     expect(patch).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { extraRoles: ['CLUB'] } });
   });
 

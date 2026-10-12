@@ -291,6 +291,59 @@ export const licenseRenewalDocumentFileSelect = {
 } as const;
 
 /**
+ * Suppression de compte (RGPD art. 17, #382) : résultats de compétition à
+ * anonymiser. `details` est lu pour n'en garder que les clés non
+ * identifiantes ; la compétition sert à invalider le cache des résultats.
+ */
+export const resultAnonymizationSelect = {
+  id: true,
+  details: true,
+  event: { select: { competitionId: true } },
+} as const;
+
+/**
+ * Suppression de compte (#395) : résultat de couple rattaché au PARTENAIRE
+ * dont le libellé nomme la personne supprimée. `userId` (celui du
+ * partenaire) garde la réécriture : une ligne réattribuée ou supprimée entre
+ * la lecture et la transaction n'est pas touchée et ne fait pas échouer la
+ * suppression.
+ */
+export const partnerCoupleResultSelect = {
+  ...resultAnonymizationSelect,
+  userId: true,
+} as const;
+
+/**
+ * Ligne de résultat publiée par `GET /competitions/:id/results` (endpoint
+ * public, sans authentification). Minimisation (RGPD art. 5.1.c, #413) :
+ * jamais `userId` (identifiant interne du compte du couple), ni `createdAt`.
+ * Seuls les champs que l'écran des résultats affiche.
+ */
+export const publicResultSelect = {
+  id: true,
+  eventId: true,
+  round: true,
+  ranking: true,
+  details: true,
+} as const;
+
+/** Épreuves d'une compétition avec leurs résultats publics, classés. */
+export const competitionPublicResultsSelect = {
+  id: true,
+  events: {
+    select: {
+      id: true,
+      category: true,
+      ageGroup: true,
+      results: {
+        select: publicResultSelect,
+        orderBy: { ranking: "asc" },
+      },
+    },
+  },
+} as const;
+
+/**
  * Document de renouvellement tel que l'API le renvoie (#224). `ocrData` est lu
  * pour le résumé affiché dans l'app, mais ne sort JAMAIS tel quel : il passe
  * par `toRenewalDocumentResponse`, qui ne garde que les champs utiles (jamais
@@ -368,8 +421,116 @@ export const soloTeamMembershipExportSelect = {
 export const seatBookingExportSelect = {
   seatLabel: true,
   status: true,
+  cancelReason: true, // why a seat was released (refund / dispute, #403)
   createdAt: true,
   competition: { select: { title: true, date: true } },
+} as const;
+
+/**
+ * Checkout HelloAsso (#381) : le plan de salle porte le tarif de chaque
+ * élément (`priceCents`). Le montant est lu ici, jamais dans la requête.
+ */
+export const competitionSeatPricingSelect = {
+  id: true,
+  layout: true,
+} as const;
+
+/**
+ * Webhook HelloAsso (#381) : champs d'une réservation nécessaires pour
+ * vérifier qu'une commande payée lui correspond bien.
+ */
+export const seatBookingPaymentCheckSelect = {
+  id: true,
+  competitionId: true,
+  status: true,
+  paymentId: true,
+  expectedAmountCents: true,
+  expiresAt: true,
+} as const;
+
+/**
+ * Export RGPD (#251) : contexte d'une épreuve (spécialité, classe d'âge,
+ * niveau, type, compétition). Aucune donnée de personne.
+ */
+export const exportEventContextSelect = {
+  category: true,
+  ageGroup: true,
+  level: true,
+  eventType: true,
+  competition: { select: { title: true, date: true } },
+} as const;
+
+/**
+ * Export RGPD (#251) : résultats de compétition. `details` est lu pour n'en
+ * extraire que `totalParticipants` (cf. UsersService.exportMyData) : son
+ * libellé `participant` nomme le couple, donc aussi le partenaire (tiers).
+ */
+export const resultExportSelect = {
+  round: true,
+  ranking: true,
+  details: true,
+  createdAt: true,
+  event: { select: exportEventContextSelect },
+} as const;
+
+/**
+ * Export RGPD (#251) : inscriptions où l'utilisateur est le PARTENAIRE.
+ * Contexte de l'épreuve uniquement : ni l'identité du licencié qui a inscrit
+ * le couple (userId, user), ni le règlement de son inscription (feePaid).
+ */
+export const partnerRegistrationExportSelect = {
+  status: true,
+  bibNumber: true,
+  coupleAgeGroup: true,
+  createdAt: true,
+  event: { select: exportEventContextSelect },
+} as const;
+
+/**
+ * Export RGPD (#251) : musiques proposées par l'utilisateur. Les drapeaux de
+ * modération sont lus pour masquer le nom d'une piste modérée
+ * (publicTrackName), comme pour les propositions de correction.
+ */
+export const submittedTrackExportSelect = {
+  title: true,
+  artist: true,
+  titleMasked: true,
+  blacklisted: true,
+  status: true,
+  createdAt: true,
+} as const;
+
+/**
+ * Export RGPD (#251) : signalements envoyés depuis l'app (message, appareil,
+ * date). La pile d'erreur, purement technique, reste interne.
+ */
+export const bugReportExportSelect = {
+  message: true,
+  deviceInfo: true,
+  createdAt: true,
+} as const;
+
+/**
+ * Export RGPD (#251) : sessions « se connecter en tant que » ciblant
+ * l'utilisateur. Date, motif et RÔLE de l'auteur seulement : ni son
+ * identifiant (actorId) ni son adresse IP, données d'un tiers.
+ */
+export const impersonationLogExportSelect = {
+  actorRole: true,
+  reason: true,
+  startedAt: true,
+  endedAt: true,
+} as const;
+
+/**
+ * Export RGPD (#251) : sessions de connexion (refresh tokens) en
+ * MÉTADONNÉES. Jamais le hash du token (`token`), secret d'authentification.
+ */
+export const refreshTokenExportSelect = {
+  createdAt: true,
+  expiresAt: true,
+  revoked: true,
+  revokedAt: true,
 } as const;
 
 /** Dépôt d'un document : statut de la demande + fichiers déjà déposés. */
@@ -819,6 +980,33 @@ export const adminClubListSelect = {
   createdAt: true,
 } as const;
 
+/**
+ * Club HelloAsso credentials, read ONLY by the payment flow
+ * (`getHelloAssoCredentialsForCompetition`). The secret is encrypted at rest
+ * (#389) and must never be returned by an API nor logged.
+ */
+export const clubHelloAssoCredentialsSelect = {
+  id: true,
+  helloAssoClientId: true,
+  helloAssoClientSecret: true,
+  helloAssoOrgSlug: true,
+} as const;
+
+/**
+ * Club HelloAsso status: what the organizer sees (connected + slug, mode).
+ * The secret is read only to know whether it is set — never returned.
+ */
+export const clubHelloAssoStatusSelect = {
+  name: true,
+  registrationMode: true,
+  helloAssoClientId: true,
+  helloAssoClientSecret: true,
+  helloAssoOrgSlug: true,
+} as const;
+
+/** Club identity only (id + name). */
+export const clubIdNameSelect = { id: true, name: true } as const;
+
 /** Back-office club page: one member row. */
 export const adminClubMemberSelect = {
   id: true,
@@ -922,4 +1110,59 @@ export const competitionEventsDeductionSelect = {
     },
     take: 500,
   },
+} as const;
+
+/**
+ * Account deletion (#395): the deleted user's own registrations, read before
+ * the transaction deletes them. Event + bib identify the couple, to find the
+ * partner's legacy registration and the couple's result row.
+ */
+export const registrationEventBibSelect = {
+  eventId: true,
+  bibNumber: true,
+} as const;
+
+/**
+ * Account deletion (#395): registrations naming the deleted user as partner.
+ * Event + holder locate the couple's result row, attached to the holder.
+ */
+export const registrationEventHolderSelect = {
+  eventId: true,
+  userId: true,
+} as const;
+
+/** Account deletion (#395): partner registrations to confirm by name. */
+export const registrationPartnerNameSelect = {
+  id: true,
+  partnerName: true,
+} as const;
+
+/**
+ * Backfill of Registration.partnerUserId (#395): the registration, its
+ * holder's name (to confirm the reciprocal partnerName) and its couple key.
+ */
+export const registrationPartnerBackfillSelect = {
+  id: true,
+  eventId: true,
+  userId: true,
+  bibNumber: true,
+  partnerName: true,
+  user: { select: userNameSelect },
+} as const;
+
+/**
+ * Account deletion (#423): the user's partnerships, to locate their half of
+ * the couple label in the inter-club notifications sent to organisers.
+ */
+export const partnershipMembersSelect = {
+  id: true,
+  user1Id: true,
+  user2Id: true,
+} as const;
+
+/** Account deletion (#423): notifications whose body may name the user. */
+export const notificationNameScrubSelect = {
+  id: true,
+  body: true,
+  data: true,
 } as const;

@@ -8,13 +8,18 @@ import request from "supertest";
 import { AppModule } from "./../src/app.module";
 import { JwtAuthGuard } from "./../src/auth/jwt-auth.guard";
 import { WebhookSignatureGuard } from "./../src/payment/guards/webhook-signature.guard";
+import { HelloAssoNotificationService } from "./../src/payment/helloasso-notification.service";
+import { SeatReleaseService } from "./../src/payment/seat-release.service";
 import { PaymentService } from "./../src/payment/payment.service";
 import { RedisService } from "./../src/redis/redis.service";
 import { applyE2EOverrides, configureTestApp } from "./test-app.factory";
 
 describe("PaymentController (e2e)", () => {
   let app: INestApplication;
-  let paymentService: { createCheckout: jest.Mock; confirmBooking: jest.Mock };
+  let paymentService: {
+    createCheckout: jest.Mock;
+    handleOrderWebhook: jest.Mock;
+  };
 
   const mockAuthGuard = {
     canActivate: (context: ExecutionContext) => {
@@ -24,10 +29,14 @@ describe("PaymentController (e2e)", () => {
     },
   };
 
+  const seatReleaseService = {
+    handlePaymentNotification: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeAll(async () => {
     paymentService = {
       createCheckout: jest.fn(),
-      confirmBooking: jest.fn(),
+      handleOrderWebhook: jest.fn(),
     };
 
     const moduleFixture: TestingModule = await applyE2EOverrides(
@@ -36,6 +45,16 @@ describe("PaymentController (e2e)", () => {
       })
         .overrideProvider(PaymentService)
         .useValue(paymentService)
+        // Passthrough: this suite checks HTTP parsing; the API re-read (#404)
+        // is covered by helloasso-notification.service.spec.ts.
+        .overrideProvider(HelloAssoNotificationService)
+        .useValue({
+          resolveOrderNotification: jest.fn((payload: unknown) =>
+            Promise.resolve(payload),
+          ),
+        })
+        .overrideProvider(SeatReleaseService)
+        .useValue(seatReleaseService)
         .overrideProvider(RedisService)
         .useValue({
           get: jest.fn().mockResolvedValue(null),
@@ -67,6 +86,8 @@ describe("PaymentController (e2e)", () => {
     jest.clearAllMocks();
   });
 
+  const http = () => app.getHttpServer() as Parameters<typeof request>[0];
+
   // ─── POST /payment/checkout ───────────────────────────────────────────────
 
   describe("POST /payment/checkout", () => {
@@ -74,7 +95,6 @@ describe("PaymentController (e2e)", () => {
       competitionId: "comp-1",
       itemId: "item-1",
       seatLabel: "A1",
-      amount: 1500,
     };
 
     const mockIntent = {
@@ -85,7 +105,7 @@ describe("PaymentController (e2e)", () => {
     it("returns 201 with checkout intent on success", () => {
       paymentService.createCheckout.mockResolvedValue(mockIntent);
 
-      return request(app.getHttpServer() as Parameters<typeof request>[0])
+      return request(http())
         .post("/api/v1/payment/checkout")
         .send(validBody)
         .expect(201)
@@ -98,7 +118,7 @@ describe("PaymentController (e2e)", () => {
     it("calls PaymentService.createCheckout with userId from JWT and body", async () => {
       paymentService.createCheckout.mockResolvedValue(mockIntent);
 
-      await request(app.getHttpServer() as Parameters<typeof request>[0])
+      await request(http())
         .post("/api/v1/payment/checkout")
         .send(validBody)
         .expect(201);
@@ -109,6 +129,15 @@ describe("PaymentController (e2e)", () => {
       );
     });
 
+    it("still accepts the deprecated amount sent by older clients (#381)", async () => {
+      paymentService.createCheckout.mockResolvedValue(mockIntent);
+
+      await request(http())
+        .post("/api/v1/payment/checkout")
+        .send({ ...validBody, amount: 1 })
+        .expect(201);
+    });
+
     it("returns 400 when service throws BadRequestException", () => {
       paymentService.createCheckout.mockRejectedValue(
         new BadRequestException(
@@ -116,7 +145,7 @@ describe("PaymentController (e2e)", () => {
         ),
       );
 
-      return request(app.getHttpServer() as Parameters<typeof request>[0])
+      return request(http())
         .post("/api/v1/payment/checkout")
         .send(validBody)
         .expect(400);
@@ -125,16 +154,16 @@ describe("PaymentController (e2e)", () => {
     it("returns 400 when required field competitionId is missing", () => {
       paymentService.createCheckout.mockResolvedValue(mockIntent);
 
-      return request(app.getHttpServer() as Parameters<typeof request>[0])
+      return request(http())
         .post("/api/v1/payment/checkout")
-        .send({ itemId: "item-1", amount: 1500 })
+        .send({ itemId: "item-1" })
         .expect(400);
     });
 
     it("returns 400 when amount is not a number", () => {
       paymentService.createCheckout.mockResolvedValue(mockIntent);
 
-      return request(app.getHttpServer() as Parameters<typeof request>[0])
+      return request(http())
         .post("/api/v1/payment/checkout")
         .send({ ...validBody, amount: "not-a-number" })
         .expect(400);
@@ -144,25 +173,64 @@ describe("PaymentController (e2e)", () => {
   // ─── POST /payment/webhook ────────────────────────────────────────────────
 
   describe("POST /payment/webhook", () => {
-    it("returns 200 with { received: true } for Order events", () => {
-      paymentService.confirmBooking.mockResolvedValue(undefined);
+    /** Shape of a real HelloAsso `Order` notification (trimmed). */
+    const helloAssoOrder = {
+      eventType: "Order",
+      data: {
+        id: 98765,
+        checkoutIntentId: 4242,
+        formSlug: "checkout",
+        formType: "Checkout",
+        organizationSlug: "club",
+        date: "2026-10-12T10:00:00+02:00",
+        payer: { email: "payer@example.com", firstName: "A", lastName: "B" },
+        amount: { total: 1500, vat: 0, discount: 0 },
+        items: [{ id: 1, amount: 1500, state: "Processed", type: "Payment" }],
+        payments: [
+          {
+            id: 555,
+            amount: 1500,
+            state: "Authorized",
+            paymentMeans: "Card",
+            cashOutState: "Transfered",
+            refundOperations: [],
+          },
+        ],
+      },
+      metadata: { bookingId: "booking-1", competitionId: "comp-1" },
+    };
 
-      return request(app.getHttpServer() as Parameters<typeof request>[0])
+    it("accepts a real HelloAsso payload with undeclared fields (no 400)", async () => {
+      paymentService.handleOrderWebhook.mockResolvedValue(undefined);
+
+      await request(http())
         .post("/api/v1/payment/webhook")
-        .send({
-          eventType: "Order",
-          data: { metadata: { bookingId: "booking-1" } },
-        })
+        .send(helloAssoOrder)
         .expect(200)
         .expect((res) => {
           expect(res.body).toEqual({ received: true });
         });
+
+      expect(paymentService.handleOrderWebhook).toHaveBeenCalledTimes(1);
+      const payload = paymentService.handleOrderWebhook.mock.calls[0][0];
+      // Declared fields are kept, undeclared ones (payer…) are stripped.
+      expect(payload.metadata).toEqual({
+        bookingId: "booking-1",
+        competitionId: "comp-1",
+      });
+      expect(payload.data.id).toBe(98765);
+      expect(payload.data.checkoutIntentId).toBe(4242);
+      expect(payload.data.payments).toEqual([
+        { id: 555, amount: 1500, state: "Authorized" },
+      ]);
+      expect(payload.data.payer).toBeUndefined();
+      expect(payload.data.items).toBeUndefined();
     });
 
-    it("calls PaymentService.confirmBooking with bookingId for Order events", async () => {
-      paymentService.confirmBooking.mockResolvedValue(undefined);
+    it("still accepts the legacy data.metadata location", async () => {
+      paymentService.handleOrderWebhook.mockResolvedValue(undefined);
 
-      await request(app.getHttpServer() as Parameters<typeof request>[0])
+      await request(http())
         .post("/api/v1/payment/webhook")
         .send({
           eventType: "Order",
@@ -170,35 +238,53 @@ describe("PaymentController (e2e)", () => {
         })
         .expect(200);
 
-      expect(paymentService.confirmBooking).toHaveBeenCalledWith("booking-42");
+      const payload = paymentService.handleOrderWebhook.mock.calls[0][0];
+      expect(payload.data.metadata).toEqual({ bookingId: "booking-42" });
     });
 
-    it("does not call confirmBooking for non-Order events", async () => {
-      await request(app.getHttpServer() as Parameters<typeof request>[0])
+    it("returns 400 when a used field has the wrong type", () => {
+      return request(http())
+        .post("/api/v1/payment/webhook")
+        .send({
+          ...helloAssoOrder,
+          data: {
+            ...helloAssoOrder.data,
+            payments: [{ amount: "1500", state: "Authorized" }],
+          },
+        })
+        .expect(400);
+    });
+
+    it("hands a real Payment notification to the seat release (#403)", async () => {
+      await request(http())
         .post("/api/v1/payment/webhook")
         .send({
           eventType: "Payment",
-          data: { metadata: { bookingId: "booking-1" } },
+          data: {
+            id: 555,
+            amount: 1500,
+            state: "Refunded",
+            order: { id: 98765, formType: "Checkout" },
+            payer: { email: "payer@example.com" },
+            refundOperations: [{ id: 419, amount: 1500, status: "PROCESSED" }],
+          },
+          metadata: { bookingId: "booking-1", competitionId: "comp-1" },
         })
         .expect(200);
 
-      expect(paymentService.confirmBooking).not.toHaveBeenCalled();
-    });
-
-    it("does not call confirmBooking when metadata is absent", async () => {
-      await request(app.getHttpServer() as Parameters<typeof request>[0])
-        .post("/api/v1/payment/webhook")
-        .send({ eventType: "Order", data: {} })
-        .expect(200);
-
-      expect(paymentService.confirmBooking).not.toHaveBeenCalled();
+      expect(paymentService.handleOrderWebhook).not.toHaveBeenCalled();
+      expect(
+        seatReleaseService.handlePaymentNotification,
+      ).toHaveBeenCalledTimes(1);
+      const payload =
+        seatReleaseService.handlePaymentNotification.mock.calls[0][0];
+      // Declared fields kept (payment id, state), the rest stripped.
+      expect(payload.data).toEqual({ id: 555, state: "Refunded" });
+      expect(payload.metadata.bookingId).toBe("booking-1");
     });
 
     it("returns 200 without auth (webhook is public)", () => {
-      // Webhook doit être accessible sans JWT
-      paymentService.confirmBooking.mockResolvedValue(undefined);
-
-      return request(app.getHttpServer() as Parameters<typeof request>[0])
+      return request(http())
         .post("/api/v1/payment/webhook")
         .send({ eventType: "Other", data: {} })
         .expect(200);

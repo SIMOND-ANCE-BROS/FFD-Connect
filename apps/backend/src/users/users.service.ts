@@ -16,13 +16,20 @@ import { AppleWalletPassGenerator } from "../licenses/wallet/apple-wallet-pass.g
 import { PrismaService } from "../prisma/prisma.service";
 import { publicTrackName } from "../tracks/track-visibility.util";
 import {
+  bugReportExportSelect,
   competitionLevelsSelect,
   deviceTokenExportSelect,
+  exportEventContextSelect,
+  impersonationLogExportSelect,
   licenseBaseSelect,
   licenseRenewalRequestExportSelect,
   notificationPreferenceExportSelect,
+  partnerRegistrationExportSelect,
+  refreshTokenExportSelect,
+  resultExportSelect,
   seatBookingExportSelect,
   soloTeamMembershipExportSelect,
+  submittedTrackExportSelect,
   trackCorrectionExportSelect,
 } from "../utils/prisma-selects";
 import { pickRenewalOcrData } from "../licenses/renewal-ocr-data.util";
@@ -64,15 +71,7 @@ const EXPORT_REGISTRATION_SELECT = {
   feePaid: true,
   coupleAgeGroup: true,
   createdAt: true,
-  event: {
-    select: {
-      category: true,
-      ageGroup: true,
-      level: true,
-      eventType: true,
-      competition: { select: { title: true, date: true } },
-    },
-  },
+  event: { select: exportEventContextSelect },
 } satisfies Prisma.RegistrationSelect;
 
 /** Export RGPD : partenariats (sans données du partenaire — RGPD tiers). */
@@ -114,6 +113,15 @@ function buildWdsfFromUser(user: {
       resolveWdsfFederation(null, user.wdsfNationality) ||
       null,
   };
+}
+
+/** Nombre de participants lu dans `Result.details` (JSON libre d'import). */
+function totalParticipantsOf(details: Prisma.JsonValue): number | null {
+  if (details && typeof details === "object" && !Array.isArray(details)) {
+    const total = details.totalParticipants;
+    return typeof total === "number" ? total : null;
+  }
+  return null;
 }
 
 @Injectable()
@@ -431,6 +439,17 @@ export class UsersService {
    *
    * Les documents de renouvellement de licence n'exposent que la liste
    * blanche OCR (`pickRenewalOcrData`), jamais le texte brut ni le fichier.
+   *
+   * Arbitrages #251 (à revoir par le responsable de traitement) :
+   * - sessions d'impersonation ciblant l'utilisateur : date, motif et RÔLE de
+   *   l'auteur seulement, jamais son identité ni son IP (données d'un tiers) ;
+   * - sessions de connexion (refresh tokens) : métadonnées seulement (création,
+   *   expiration, révocation), jamais le hash du token ;
+   * - journal d'audit admin (`AdminAuditLog`, actions effectuées PAR
+   *   l'utilisateur en tant qu'admin) : EXCLU. C'est un journal de traçabilité
+   *   de l'activité d'administration, dont les lignes (`before`/`after`)
+   *   contiennent les données des comptes administrés, donc de tiers ; il reste
+   *   communicable sur demande écrite (art. 15), après occultation des tiers.
    */
   async exportMyData(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -441,6 +460,8 @@ export class UsersService {
         birthDate: true,
         nationalRanking: true,
         lastLoginAt: true,
+        // Date de désactivation du compte par un administrateur (#251).
+        disabledAt: true,
         license: {
           select: {
             number: true,
@@ -452,6 +473,13 @@ export class UsersService {
         },
         registrations: {
           select: EXPORT_REGISTRATION_SELECT,
+          orderBy: { createdAt: "desc" },
+          take: 500,
+        },
+        // Inscriptions où l'utilisateur est le partenaire (#251) : contexte
+        // de l'épreuve, sans les données du licencié qui a inscrit le couple.
+        registrationsAsPartner: {
+          select: partnerRegistrationExportSelect,
           orderBy: { createdAt: "desc" },
           take: 500,
         },
@@ -507,15 +535,57 @@ export class UsersService {
           orderBy: { createdAt: "desc" },
           take: 500,
         },
+        // Musiques proposées (#251) : nom filtré plus bas (publicTrackName).
+        submittedTracks: {
+          select: submittedTrackExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 500,
+        },
+        // Sessions de connexion (#251) : métadonnées seulement, jamais le
+        // hash du token (secret d'authentification).
+        refreshTokens: {
+          select: refreshTokenExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        },
+        // AdminAuditLog volontairement absent : cf. arbitrages ci-dessus.
       },
     });
     if (!user) {
       throw new NotFoundException("Utilisateur introuvable");
     }
+    // Tables sans relation Prisma vers User : requêtes dédiées, bornées.
+    const [results, bugReports, impersonations] = await Promise.all([
+      this.prisma.result.findMany({
+        where: { userId },
+        select: resultExportSelect,
+        orderBy: { createdAt: "desc" },
+        take: 1000,
+      }),
+      this.prisma.bugReport.findMany({
+        where: { userId },
+        select: bugReportExportSelect,
+        orderBy: { createdAt: "desc" },
+        take: 200,
+      }),
+      // Impersonations ciblant l'utilisateur : rôle de l'auteur, jamais son
+      // identité (cf. arbitrages ci-dessus).
+      this.prisma.impersonationLog.findMany({
+        where: { targetUserId: userId },
+        select: impersonationLogExportSelect,
+        orderBy: { startedAt: "desc" },
+        take: 200,
+      }),
+    ]);
     // Nom des pistes visées par les propositions : filtré comme partout côté
     // non-admin. L'export ne doit pas démasquer une piste modérée (titre
     // masqué ou piste blacklistée) que l'utilisateur a pu cibler.
-    const { trackCorrectionsProposed, licenseRenewalRequests, ...rest } = user;
+    const {
+      trackCorrectionsProposed,
+      licenseRenewalRequests,
+      submittedTracks,
+      ...rest
+    } = user;
     return {
       format: "ffd-connect-export-v1",
       exportedAt: new Date().toISOString(),
@@ -537,6 +607,21 @@ export class UsersService {
             track: publicTrackName(track),
           }),
         ),
+        submittedTracks: submittedTracks.map(
+          ({ status, createdAt, ...track }) => ({
+            ...publicTrackName(track),
+            status,
+            createdAt,
+          }),
+        ),
+        // Du JSON `details`, seul le nombre de participants est exporté : le
+        // libellé `participant` nomme aussi le partenaire (tiers).
+        results: results.map(({ details, ...result }) => ({
+          ...result,
+          totalParticipants: totalParticipantsOf(details),
+        })),
+        bugReports,
+        impersonationsReceived: impersonations,
       },
     };
   }

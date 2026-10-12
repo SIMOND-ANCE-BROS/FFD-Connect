@@ -6353,7 +6353,7 @@
     },
     "/users/me/export": {
       "get": {
-        "description": "Retourne en un seul JSON les données personnelles de l'utilisateur connecté actuellement couvertes par l'export (profil, licence, demandes de renouvellement de licence, inscriptions, partenariats, équipes solo, réservations de places, notifications, appareils, préférences, propositions de correction) — droit à la portabilité, RGPD art. 20. Ne contient jamais de secrets ni de données de tiers.",
+        "description": "Retourne en un seul JSON les données personnelles de l'utilisateur connecté actuellement couvertes par l'export (profil dont date de désactivation, licence, demandes de renouvellement de licence, inscriptions y compris en tant que partenaire, résultats de compétition, partenariats, équipes solo, réservations de places, notifications, appareils, préférences, propositions de correction, musiques proposées, signalements, sessions de connexion en métadonnées, sessions d'impersonation reçues avec le seul rôle de leur auteur) — droit à la portabilité, RGPD art. 20. Ne contient jamais de secrets ni de données de tiers ; le journal d'audit d'administration en est exclu.",
         "operationId": "UsersController_exportMyData",
         "parameters": [],
         "responses": {
@@ -14823,6 +14823,7 @@
         "tags": ["competitions"]
       },
       "post": {
+        "description": "Créée par un compte club, la compétition a pour organisateur le club du compte.",
         "operationId": "CompetitionsController_create",
         "parameters": [],
         "requestBody": {
@@ -14891,28 +14892,7 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Compte club sans club rattaché"
           },
           "404": {
             "description": "Ressource non trouvée",
@@ -17373,6 +17353,7 @@
         "tags": ["competitions"]
       },
       "patch": {
+        "description": "STAFF et ADMIN : toute compétition. Compte club : seulement une compétition organisée par son club.",
         "operationId": "CompetitionsController_update",
         "parameters": [
           {
@@ -17451,52 +17432,10 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Compétition organisée par un autre club"
           },
           "404": {
-            "description": "Ressource non trouvée",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 404
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Resource not found"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Not Found"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Compétition non trouvée"
           },
           "409": {
             "description": "Conflit - La ressource existe déjà",
@@ -17820,7 +17759,7 @@
     },
     "/competitions/{id}/results": {
       "get": {
-        "description": "Retourne tous les résultats et classements pour une compétition donnée.",
+        "description": "Endpoint public. Retourne tous les résultats et classements d'une compétition, épreuve par épreuve, classés par rang. Aucun identifiant de compte n'est exposé.",
         "operationId": "CompetitionsController_getResults",
         "parameters": [
           {
@@ -17840,28 +17779,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "competitionId": {
-                      "type": "string"
-                    },
-                    "results": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "eventId": {
-                            "type": "string"
-                          },
-                          "eventName": {
-                            "type": "string"
-                          },
-                          "rankings": {
-                            "type": "array"
-                          }
-                        }
-                      }
-                    }
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CompetitionResultDto"
                   }
                 }
               }
@@ -23189,7 +23109,7 @@
     },
     "/payment/checkout": {
       "post": {
-        "description": "Initie un paiement via HelloAsso pour une réservation de place en compétition.",
+        "description": "Initie un paiement via HelloAsso pour une réservation de place en compétition. Le montant est celui du tarif de la place (`priceCents` de l'élément du plan), jamais celui envoyé par le client. La place est retenue 15 minutes ; une place ne peut avoir qu'une réservation active (409 si elle est déjà prise).",
         "operationId": "PaymentController_createCheckout",
         "parameters": [],
         "requestBody": {
@@ -23207,7 +23127,7 @@
             "description": "Checkout intent créé"
           },
           "400": {
-            "description": "Club sans HelloAsso ou données invalides"
+            "description": "Club sans HelloAsso, place sans tarif ou données invalides"
           },
           "401": {
             "description": "Non authentifié"
@@ -23344,7 +23264,7 @@
     },
     "/payment/webhook": {
       "post": {
-        "description": "Reçoit les notifications de paiement HelloAsso. Vérifié par signature HMAC-SHA256.",
+        "description": "Reçoit les notifications HelloAsso. Le contenu de la notification n'est jamais cru : le paiement est relu sur l'API HelloAsso (intention de paiement de la réservation, identifiants du club). Signature `x-ha-signature` vérifiée si une clé partenaire est configurée. Une réservation n'est confirmée que si l'ordre est payé, du montant attendu, pour la bonne compétition ; sinon elle reste en attente et la réponse reste 200 (pas de rejeu). Un paiement remboursé (`Refunded`) ou contesté (`Contested`), confirmé par l'API HelloAsso, libère la place (`CANCELLED`). 503 si HelloAsso est injoignable (rejeu).",
         "operationId": "PaymentController_handleWebhook",
         "parameters": [],
         "requestBody": {
@@ -23510,6 +23430,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "HelloAsso injoignable ou paiement pas encore autorisé : HelloAsso rejouera la notification"
           }
         },
         "summary": "Webhook HelloAsso",
@@ -23655,7 +23578,7 @@
           },
           "reason": {
             "type": "string",
-            "description": "Raison de l'impersonation (obligatoire pour le staff, journalisée)."
+            "description": "Raison de l'impersonation (obligatoire pour le staff, journalisée). Elle est restituée à l'utilisateur ciblé dans son export RGPD (GET /users/me/export) : n'y écrire aucune donnée personnelle d'un tiers."
           }
         }
       },
@@ -26020,12 +25943,15 @@
           "clientSecret": {
             "type": "string",
             "description": "Client Secret de l'application HelloAsso du club",
+            "maxLength": 255,
             "example": "your-client-secret"
           },
           "organizationSlug": {
             "type": "string",
             "description": "Slug de l'organisation HelloAsso (visible dans l'URL du compte)",
-            "example": "mon-club-danse"
+            "example": "mon-club-danse",
+            "maxLength": 255,
+            "pattern": "^[a-z0-9-]+$"
           }
         },
         "required": ["clientId", "clientSecret", "organizationSlug"]
@@ -26208,6 +26134,59 @@
         },
         "required": ["eventId"]
       },
+      "CompetitionResultEventDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "category": {
+            "type": "string",
+            "example": "Latines"
+          },
+          "ageGroup": {
+            "type": "string",
+            "example": "Adultes"
+          }
+        },
+        "required": ["id", "category", "ageGroup"]
+      },
+      "CompetitionResultDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "eventId": {
+            "type": "string",
+            "example": "550e8400-e29b-41d4-a716-446655440001"
+          },
+          "round": {
+            "type": "string",
+            "example": "Finale"
+          },
+          "ranking": {
+            "type": "number",
+            "example": 1
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Détails publiés du classement (liste blanche) : participant / name (nom du couple), club, bib (dossard), status (QUALIFIED / ELIMINATED), marks, totalParticipants. Toujours un objet.",
+            "example": {
+              "participant": "Martin / Durand",
+              "status": "QUALIFIED",
+              "marks": 5
+            }
+          },
+          "event": {
+            "$ref": "#/components/schemas/CompetitionResultEventDto"
+          }
+        },
+        "required": ["id", "eventId", "round", "ranking", "details", "event"]
+      },
       "UnregisterEventDto": {
         "type": "object",
         "properties": {
@@ -26366,10 +26345,19 @@
             "example": "https://www.helloasso.com/..."
           },
           "layout": {
-            "example": "[{\"type\": \"TABLE\", \"label\": \"Table 1\"}]",
             "type": "array",
+            "description": "Plan de salle : éléments libres (`id`, `type`, `label`, position…). `priceCents` (optionnel, entier de 1 à 1 000 000) est le tarif de la place en centimes, facturé par le paiement HelloAsso.",
+            "example": [
+              {
+                "id": "t1",
+                "type": "TABLE",
+                "label": "Table 1",
+                "priceCents": 1500
+              }
+            ],
             "items": {
-              "type": "string"
+              "type": "object",
+              "additionalProperties": true
             }
           },
           "competitionType": {
@@ -26422,10 +26410,19 @@
             "example": "https://www.helloasso.com/..."
           },
           "layout": {
-            "example": "[{\"type\": \"TABLE\", \"label\": \"Table 1\"}]",
             "type": "array",
+            "description": "Plan de salle : éléments libres (`id`, `type`, `label`, position…). `priceCents` (optionnel, entier de 1 à 1 000 000) est le tarif de la place en centimes, facturé par le paiement HelloAsso.",
+            "example": [
+              {
+                "id": "t1",
+                "type": "TABLE",
+                "label": "Table 1",
+                "priceCents": 1500
+              }
+            ],
             "items": {
-              "type": "string"
+              "type": "object",
+              "additionalProperties": true
             }
           },
           "competitionType": {
@@ -26458,6 +26455,7 @@
               "NEW_COMPETITION",
               "CLUB_MEMBER_REGISTRATION",
               "CLUB_PARTNERSHIP",
+              "CLUB_PAYMENT_RECEIVED",
               "TRACK_REPORT",
               "LICENSE_RENEWAL_TO_REVIEW",
               "TRACK_CORRECTION_DECISION",
@@ -26496,6 +26494,7 @@
               "NEW_COMPETITION",
               "CLUB_MEMBER_REGISTRATION",
               "CLUB_PARTNERSHIP",
+              "CLUB_PAYMENT_RECEIVED",
               "TRACK_REPORT",
               "LICENSE_RENEWAL_TO_REVIEW",
               "TRACK_CORRECTION_DECISION",
@@ -26932,10 +26931,32 @@
           },
           "amount": {
             "type": "number",
-            "example": 10.5
+            "deprecated": true,
+            "description": "Ignoré : le montant est calculé côté serveur à partir du tarif de la place.",
+            "example": 1500
           }
         },
-        "required": ["competitionId", "itemId", "amount"]
+        "required": ["competitionId", "itemId"]
+      },
+      "WebhookPaymentDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 123456
+          },
+          "amount": {
+            "type": "number",
+            "example": 1500,
+            "description": "Montant en centimes"
+          },
+          "state": {
+            "type": "string",
+            "example": "Authorized",
+            "description": "État du paiement HelloAsso (Authorized, Refused, …)"
+          }
+        },
+        "required": ["amount", "state"]
       },
       "WebhookMetadataDto": {
         "type": "object",
@@ -26943,13 +26964,35 @@
           "bookingId": {
             "type": "string",
             "example": "booking-uuid"
+          },
+          "competitionId": {
+            "type": "string",
+            "example": "comp-uuid"
           }
-        },
-        "required": ["bookingId"]
+        }
       },
       "WebhookDataDto": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "number",
+            "example": 98765,
+            "description": "Identifiant de l'ordre"
+          },
+          "checkoutIntentId": {
+            "type": "number",
+            "example": 4242
+          },
+          "state": {
+            "type": "string",
+            "example": "Refunded"
+          },
+          "payments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookPaymentDto"
+            }
+          },
           "metadata": {
             "$ref": "#/components/schemas/WebhookMetadataDto"
           }
@@ -26964,6 +27007,9 @@
           },
           "data": {
             "$ref": "#/components/schemas/WebhookDataDto"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/WebhookMetadataDto"
           }
         },
         "required": ["eventType", "data"]

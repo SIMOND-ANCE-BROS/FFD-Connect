@@ -9,7 +9,7 @@ import { BullModule } from "@nestjs/bullmq";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ScheduleModule } from "@nestjs/schedule";
-import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerModule } from "@nestjs/throttler";
 import { AdminModule } from "./admin/admin.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { AuthModule } from "./auth/auth.module";
@@ -17,6 +17,7 @@ import { StoreReviewInterceptor } from "./auth/store-review/store-review.interce
 import { CareerModule } from "./career/career.module";
 import { CircuitBreakerModule } from "./common/circuit-breaker/circuit-breaker.module";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
+import { GlobalThrottlerGuard } from "./common/guards/global-throttler.guard";
 import { LoggingInterceptor } from "./common/interceptors/logging.interceptor";
 import { LoggerModule } from "./common/logger/logger.module";
 import { MetricsInterceptor } from "./common/metrics/metrics.interceptor";
@@ -100,8 +101,9 @@ import { WdsfModule } from "./wdsf/wdsf.module";
   providers: [
     AppService,
     {
+      // Per client IP; skips routes counted per user by ThrottlerUserGuard (#182).
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: GlobalThrottlerGuard,
     },
     {
       provide: APP_FILTER,

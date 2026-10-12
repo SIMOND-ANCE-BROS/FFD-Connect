@@ -1,8 +1,21 @@
+import { PrismaClient } from "@prisma/client";
+import { mockDeep, MockProxy } from "jest-mock-extended";
+import { licenseRenewalDocumentFileSelect } from "../src/utils/prisma-selects";
+import {
+  DELETED_USER_ID,
+  buildAccountDeletionOperations,
+} from "../src/users/account-deletion.core";
 import {
   LEGACY_STORE_REVIEW_EMAIL,
+  PurgeUserPrisma,
   STORE_REVIEW_CLUB_NAME,
   STORE_REVIEW_EMAIL,
+  MAX_RENEWAL_DOCUMENTS_PER_USER,
+  buildPurgeUserOperations,
+  formatPurgeSummary,
+  formatUserPurged,
   isTestLicenseNumber,
+  purgeTestUser,
   isTestUser,
   selectTestClubs,
   selectTestUsers,
@@ -115,4 +128,217 @@ describe("isTestLicenseNumber", () => {
     "SCAN-TEST-",
     "X-SCAN-TEST-1",
   ])("keeps license %s", (n) => expect(isTestLicenseNumber(n)).toBe(false));
+});
+
+describe("buildPurgeUserOperations (#412)", () => {
+  /**
+   * Prisma stand-in recording each operation as "<delegate>.<method>" + args,
+   * so the purge transaction can be compared with the account deletion core.
+   */
+  const recordingPrisma = () =>
+    new Proxy(
+      {},
+      {
+        get: (_target, delegate: string) =>
+          new Proxy(
+            {},
+            {
+              get: (_t, method: string) => (args: unknown) => ({
+                op: `${delegate}.${method}`,
+                args,
+              }),
+            },
+          ),
+      },
+    ) as unknown as PurgeUserPrisma;
+
+  const plan = {
+    results: [
+      {
+        id: "r1",
+        details: { participant: "X", status: "OK" },
+        event: { competitionId: "c1" },
+      },
+    ],
+    // #395 scrub ops are built before the transaction; the purge must run them.
+    partnerNameScrub: {
+      ops: [{ op: "partnerNameScrub" } as never],
+      competitionIds: [],
+    },
+    // #423 notification scrub ops, built before the transaction too.
+    notificationNameScrub: [{ op: "notificationNameScrub" } as never],
+  };
+
+  it("deletes the seeded licenses, then runs the exact account deletion core", () => {
+    const ops = buildPurgeUserOperations(recordingPrisma(), "u1", ["l1"], plan);
+
+    expect(ops[0]).toEqual({
+      op: "license.deleteMany",
+      args: { where: { id: { in: ["l1"] } } },
+    });
+    // Single list of relations: whatever the core does, the purge does too.
+    expect(ops.slice(1)).toEqual(
+      buildAccountDeletionOperations(recordingPrisma(), "u1", plan),
+    );
+  });
+
+  it("anonymises the results with the tombstone and the admin audit rows", () => {
+    const ops = buildPurgeUserOperations(
+      recordingPrisma(),
+      "u1",
+      [],
+      plan,
+    ) as unknown as { op: string; args: unknown }[];
+
+    expect(ops).toContainEqual({
+      op: "result.updateMany",
+      args: {
+        where: { id: "r1", userId: "u1" },
+        data: { userId: DELETED_USER_ID, details: { status: "OK" } },
+      },
+    });
+    expect(ops).toContainEqual({
+      op: "result.updateMany",
+      args: {
+        where: { userId: "u1" },
+        data: { userId: DELETED_USER_ID, details: {} },
+      },
+    });
+    expect(ops.map((o) => o.op)).toContain("adminAuditLog.updateMany");
+    expect(ops.map((o) => o.op)).toContain("partnerNameScrub");
+    expect(ops.map((o) => o.op)).toContain("notificationNameScrub");
+    expect(ops[ops.length - 1]).toEqual({
+      op: "user.delete",
+      args: { where: { id: "u1" } },
+    });
+  });
+});
+
+describe("purgeTestUser (#430)", () => {
+  let prisma: MockProxy<PrismaClient>;
+  let files: { deleteFiles: jest.Mock };
+  let warn: jest.Mock;
+
+  beforeEach(() => {
+    prisma = mockDeep<PrismaClient>();
+    prisma.license.findMany.mockResolvedValue([
+      { id: "l1", number: "SCAN-TEST-1" },
+      { id: "l2", number: "123456" },
+    ] as never);
+    prisma.licenseRenewalDocument.findMany.mockResolvedValue([
+      { filePath: "document-1.pdf" },
+      { filePath: "document-2.jpg" },
+    ] as never);
+    // Unknown user for the partner-name scrub; no result of their own.
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.result.findMany.mockResolvedValue([]);
+    // Organisers' notification scrub (#423): nothing links here.
+    prisma.registration.findMany.mockResolvedValue([]);
+    prisma.partnership.findMany.mockResolvedValue([]);
+    prisma.notification.findMany.mockResolvedValue([]);
+    prisma.$transaction.mockResolvedValue([{ count: 1 }] as never);
+    files = {
+      deleteFiles: jest.fn().mockResolvedValue(new Set(["document-1.pdf"])),
+    };
+    warn = jest.fn();
+  });
+
+  const run = () => purgeTestUser({ prisma, files, warn }, "u1");
+
+  it("reads the renewal file references (bounded) before the transaction", async () => {
+    await run();
+    expect(prisma.licenseRenewalDocument.findMany).toHaveBeenCalledWith({
+      where: { request: { userId: "u1" } },
+      select: licenseRenewalDocumentFileSelect,
+      take: MAX_RENEWAL_DOCUMENTS_PER_USER,
+    });
+    expect(
+      prisma.licenseRenewalDocument.findMany.mock.invocationCallOrder[0],
+    ).toBeLessThan(prisma.$transaction.mock.invocationCallOrder[0]);
+  });
+
+  it("deletes the stored renewal files only after the commit", async () => {
+    const report = await run();
+
+    expect(files.deleteFiles).toHaveBeenCalledWith(
+      ["document-1.pdf", "document-2.jpg"],
+      "account-deletion",
+    );
+    expect(prisma.$transaction.mock.invocationCallOrder[0]).toBeLessThan(
+      files.deleteFiles.mock.invocationCallOrder[0],
+    );
+    expect(report).toEqual({
+      resultsAnonymised: 0,
+      partnerNameCopiesScrubbed: 0,
+      seededLicensesDeleted: 1,
+      licensesUnlinked: 1,
+      renewalFilesDeleted: 1,
+      renewalFilesFailed: 1,
+    });
+  });
+
+  it("touches no file when the transaction fails", async () => {
+    prisma.$transaction.mockRejectedValue(new Error("db down"));
+    await expect(run()).rejects.toThrow("db down");
+    expect(files.deleteFiles).not.toHaveBeenCalled();
+  });
+
+  it("warns when the renewal document read hits its cap", async () => {
+    prisma.licenseRenewalDocument.findMany.mockResolvedValue(
+      Array.from({ length: MAX_RENEWAL_DOCUMENTS_PER_USER }, (_, i) => ({
+        filePath: `d-${i}`,
+      })),
+    );
+    files.deleteFiles.mockResolvedValue(new Set());
+    await run();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("renewal document read hit"),
+    );
+  });
+});
+
+describe("purge log lines (#430)", () => {
+  const report = {
+    resultsAnonymised: 2,
+    partnerNameCopiesScrubbed: 1,
+    seededLicensesDeleted: 1,
+    licensesUnlinked: 0,
+    renewalFilesDeleted: 2,
+    renewalFilesFailed: 0,
+  };
+
+  it("names accounts by id only, never by e-mail", () => {
+    const lines = [
+      ...formatPurgeSummary({
+        dryRun: true,
+        userIds: ["u1", "seed-scan-user-1"],
+        clubs: [{ id: "c1", name: "Club Démo Bêta" }],
+        keptUserIds: ["store-review-id"],
+      }),
+      ...formatPurgeSummary({
+        dryRun: false,
+        userIds: [],
+        clubs: [],
+        keptUserIds: [],
+      }),
+      formatUserPurged("u1", report),
+      formatUserPurged("u1", { ...report, renewalFilesFailed: 1 }),
+    ];
+    for (const line of lines) expect(line).not.toContain("@");
+    expect(lines).toContain("  - user u1");
+    expect(lines[0]).toContain(
+      "keeping 1 candidate account(s) (store-review-id)",
+    );
+    expect(lines.join("\n")).toContain("keeping 0 candidate account(s).");
+  });
+
+  it("reports the renewal file outcome", () => {
+    expect(formatUserPurged("u1", report)).toContain(
+      "2 renewal file(s) deleted",
+    );
+    expect(formatUserPurged("u1", report)).not.toContain("FAILED");
+    expect(
+      formatUserPurged("u1", { ...report, renewalFilesFailed: 1 }),
+    ).toContain("1 renewal file deletion(s) FAILED");
+  });
 });

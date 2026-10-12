@@ -47,6 +47,20 @@ environnement, jamais commitée.
 > `NODE_ENV=production`, l'application quitte sur une erreur fatale (voir
 > `src/main.ts`). Ne jamais utiliser `*`.
 
+## Proxy et limitation de débit
+
+| Variable           | Défaut                                  | Rôle                                                                                        |
+| ------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `TRUST_PROXY_HOPS` | `1` si `NODE_ENV=production`, sinon `0` | Nombre de proxys de confiance devant le backend (réglage Express `trust proxy`), de 0 à 10. |
+
+> Derrière Azure Container Apps, seul l'ingress (Envoy) est devant le backend :
+> `1` est la bonne valeur, inutile de la poser. Express prend alors l'adresse
+> ajoutée par l'ingress à `X-Forwarded-For` comme IP du client (`req.ip`), ce
+> qui sert de clé à la limitation de débit des routes publiques. Ne jamais
+> « faire confiance à tous les sauts » : le client écrit lui-même l'en-tête et
+> pourrait choisir son IP. À augmenter seulement si un autre proxy (CDN, Front
+> Door) est ajouté devant l'ingress (#182).
+
 ## Redis
 
 | Variable         | Défaut      | Rôle                                      |
@@ -138,9 +152,22 @@ modes d'authentification (token API v2 ou Basic Auth v1).
 
 ## Paiement (HelloAsso)
 
-| Variable                   | Défaut | Rôle                                         |
-| -------------------------- | ------ | -------------------------------------------- |
-| `HELLOASSO_WEBHOOK_SECRET` | —      | Secret de validation des webhooks HelloAsso. |
+Voir ADR-0022 : les notifications ne sont jamais crues, le paiement est relu sur l'API HelloAsso avec les identifiants du club.
+
+| Variable                   | Défaut                      | Rôle                                                                                                                                                                                                                               |
+| -------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HELLOASSO_API_URL`        | `https://api.helloasso.com` | Hôte de l'API HelloAsso (jeton `/oauth2/token`, API `/v5`). Seules valeurs acceptées : `https://api.helloasso.com` ou `https://api.helloasso-sandbox.com` (staging de test).                                                       |
+| `HELLOASSO_SIGNATURE_KEY`  | —                           | `signatureKey` d'une URL de notification **partenaire** HelloAsso. Présente ⇒ toute notification sans en-tête `x-ha-signature` valide est rejetée (401). À laisser vide avec des comptes association : HelloAsso ne les signe pas. |
+| `HELLOASSO_WEBHOOK_SECRET` | —                           | **Obsolète (#404), ignorée** : HelloAsso n'a jamais envoyé l'en-tête qu'elle vérifiait. Avertissement au démarrage si elle est définie ; à retirer des environnements.                                                             |
+
+## Chiffrement des secrets tiers au repos (#389)
+
+| Variable                          | Défaut | Rôle                                                                                                                                                                                                                                                               |
+| --------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SECRETS_ENCRYPTION_KEY`          | —      | Clé AES-256-GCM (32 octets en base64, `openssl rand -base64 32`) qui chiffre en base le secret HelloAsso des clubs. **Absente → chiffrement désactivé** : secrets écrits et lus en clair, avertissement au démarrage. Présente mais mal formée → démarrage refusé. |
+| `SECRETS_ENCRYPTION_KEY_PREVIOUS` | —      | Clé précédente pendant une rotation : sert uniquement à déchiffrer, les valeurs qu'elle ouvre sont rechiffrées avec la clé courante.                                                                                                                               |
+
+Création, câblage Key Vault et rotation : [runbook](../exploitation/chiffrement-secrets-clubs.md). **Ne jamais retirer une clé tant que des valeurs chiffrées avec elle existent en base** : les clubs concernés apparaîtraient comme « HelloAsso non connecté ».
 
 ## QR de licence signé (#168)
 
@@ -216,12 +243,12 @@ Stockage sans état des pistes audio et des certificats de licence.
 
 ## Flags
 
-| Variable               | Défaut | Rôle                                                                                                                                                                                                                                     |
-| ---------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ENABLE_IP_BLACKLIST`  | —      | Active le middleware de blacklist d'IP.                                                                                                                                                                                                  |
-| `SEED_TEST_TRACKS`     | —      | `"true"` → seed de pistes métronome de test au démarrage. Staging/beta **uniquement**, jamais en production.                                                                                                                             |
-| `BETA_AUTO_LICENSE`    | —      | `"true"` → un numéro de licence inconnu est auto-créé à l'inscription (voir ci-dessous). Staging **uniquement**, jamais en production.                                                                                                   |
-| `BETA_TESTER_LICENSES` | —      | Numéros de licence des bêta-testeurs à pré-seeder, séparés par des virgules (`scripts/seed-beta-testers.ts`, si `SEED_TEST_TRACKS=true`). Hors du code car ils encodent la date de naissance. Vide → seed sauté. Staging **uniquement**. |
+| Variable               | Défaut | Rôle                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ENABLE_IP_BLACKLIST`  | —      | `"true"` → active la liste noire **manuelle** d'IP : 403 si la clé Redis `blacklist:ip:<ip>` vaut `"true"` (posée à la main, avec un TTL). IP = `req.ip` via `TRUST_PROXY_HOPS`, **normalisée** avant lecture : IPv4 telle quelle (`blacklist:ip:203.0.113.7`), IPv6 ramenée à son préfixe /64 (`2001:db8:1:2::1` → `blacklist:ip:2001:db8:1:2::/64`), IPv4 mappée en IPv6 (`::ffff:203.0.113.7`) → IPv4 nue (`blacklist:ip:203.0.113.7`). Une clé posée avec l'IPv6 complète ne bloque rien, en silence. Exemple : `SET blacklist:ip:2001:db8:1:2::/64 true EX 86400`. Aucun blocage automatique. Désactivé par défaut. |
+| `SEED_TEST_TRACKS`     | —      | `"true"` → seed de pistes métronome de test au démarrage. Staging/beta **uniquement**, jamais en production.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `BETA_AUTO_LICENSE`    | —      | `"true"` → un numéro de licence inconnu est auto-créé à l'inscription (voir ci-dessous). Staging **uniquement**, jamais en production.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `BETA_TESTER_LICENSES` | —      | Numéros de licence des bêta-testeurs à pré-seeder, séparés par des virgules (`scripts/seed-beta-testers.ts`, si `SEED_TEST_TRACKS=true`). Hors du code car ils encodent la date de naissance. Vide → seed sauté. Staging **uniquement**.                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ### `BETA_AUTO_LICENSE` (staging uniquement)
 

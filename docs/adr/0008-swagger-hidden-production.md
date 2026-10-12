@@ -15,16 +15,19 @@ Swagger UI is only served in non-production environments (development, staging).
 ## Alternatives Considered
 
 ### Alternative 1: Protect Swagger with an API key
+
 - **Pros**: Swagger remains accessible for debugging production issues
 - **Cons**: Adds another secret to manage, risk of key leakage
 - **Why not**: Increases attack surface and operational complexity for minimal benefit
 
 ### Alternative 2: Keep Swagger public
+
 - **Pros**: Zero configuration, useful for third-party integrators
 - **Cons**: Full information disclosure of API surface, aids automated vulnerability scanning
 - **Why not**: No external consumers need interactive docs; information disclosure risk outweighs convenience
 
 ### Alternative 3: Host Swagger on a separate docs domain
+
 - **Pros**: Isolates docs from API, can apply separate access controls
 - **Cons**: Additional infrastructure, DNS, and TLS certificate management
 - **Why not**: Disproportionate infrastructure overhead for an internal-only tool
@@ -32,10 +35,12 @@ Swagger UI is only served in non-production environments (development, staging).
 ## Consequences
 
 ### Positive
+
 - Production API surface is not publicly documented, raising the bar for attackers
 - Fatal exit on missing CORS config prevents accidental misconfiguration in production
 - Development and staging environments retain full Swagger access for productivity
 
 ### Negative
+
 - Production debugging loses interactive API exploration (must use generated TypeScript client or curl)
 - Developers must ensure environment detection logic is correct to avoid accidentally hiding Swagger in staging

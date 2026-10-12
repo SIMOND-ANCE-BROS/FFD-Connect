@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { sleep } from '../test/render';
 import { ModerationPage } from './ModerationPage';
 
 const item = (overrides: Record<string, unknown> = {}) => ({
@@ -185,7 +186,7 @@ describe('ModerationPage', () => {
     await screen.findByText('España Cañí');
     const input = screen.getByPlaceholderText('Titre ou artiste');
     await userEvent.type(input, 'p');
-    await new Promise((resolve) => setTimeout(resolve, 450));
+    await sleep(450);
     expect(spy).not.toHaveBeenCalledWith({
       query: expect.objectContaining({ q: 'p' }),
     });
@@ -227,11 +228,11 @@ describe('ModerationPage', () => {
     expect(input).toHaveValue('paso');
     await userEvent.click(screen.getByText('go /moderation?q=zzz'));
     await waitFor(() => expect(input).toHaveValue('zzz'));
-    await new Promise((resolve) => setTimeout(resolve, 450));
+    await sleep(450);
     expect(location()).toBe('/moderation?q=zzz');
     await userEvent.click(screen.getByText('go /moderation?status=APPROVED'));
     await waitFor(() => expect(input).toHaveValue(''));
-    await new Promise((resolve) => setTimeout(resolve, 450));
+    await sleep(450);
     expect(location()).toBe('/moderation?status=APPROVED');
     expect(spy).not.toHaveBeenCalledWith({
       query: expect.objectContaining({ q: 'paso', status: 'APPROVED' }),

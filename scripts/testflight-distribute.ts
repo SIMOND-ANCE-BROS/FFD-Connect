@@ -113,9 +113,20 @@ export function findGroupId(response: unknown, name: string): string | null {
   return match?.id ?? null;
 }
 
+/** Retire ce qu'App Store Connect refuse (emoji hors BMP, controles) ; garde accents, « », ’, …, •. */
+export function sanitizeStoreText(raw: string): string {
+  return (
+    raw
+      .replace(/[\u{10000}-\u{10FFFF}]/gu, '')
+      .replace(/[\uD800-\uDFFF\uFE0F\u200D]/g, '')
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+  );
+}
+
 /** « What to Test » est limite a 4000 caracteres par App Store Connect. */
 export function normalizeNotes(raw: string): string {
-  return raw.trim().slice(0, 4000);
+  return sanitizeStoreText(raw).trim().slice(0, 4000);
 }
 
 export function addToGroupBody(buildId: string) {

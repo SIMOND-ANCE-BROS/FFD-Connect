@@ -1,12 +1,15 @@
 import { plainToInstance } from "class-transformer";
+import { HELLOASSO_API_URLS } from "../payment/helloasso-api-urls";
 import {
   IsEnum,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
   validateSync,
   Min,
+  Matches,
   Max,
   MinLength,
 } from "class-validator";
@@ -19,6 +22,14 @@ enum Environment {
   Production = "production",
   Test = "test",
 }
+
+/**
+ * 32 octets en base64 : 43 caractères + un `=` de remplissage. Une valeur vide
+ * vaut absence (chiffrement désactivé), pas une erreur.
+ */
+const SECRET_KEY_BASE64 = /^\s*(?:[A-Za-z0-9+/]{43}=)?\s*$/;
+const SECRET_KEY_MESSAGE =
+  "must be a base64-encoded 32-byte key (openssl rand -base64 32)";
 
 /**
  * Classe de validation pour les variables d'environnement
@@ -165,10 +176,41 @@ class EnvironmentVariables {
   @IsOptional()
   GITHUB_REPO?: string;
 
-  // HelloAsso (paiement — webhook secret requis si les webhooks sont configurés)
+  // HelloAsso (#404). Hôte de l'API : production par défaut, sandbox possible
+  // en staging. Liste fermée : les identifiants des clubs ne partent que vers
+  // HelloAsso.
+  @IsIn(HELLOASSO_API_URLS)
+  @IsOptional()
+  HELLOASSO_API_URL?: string;
+
+  // Clé de signature `signatureKey` des notifications HelloAsso — compte
+  // PARTENAIRE uniquement (les associations ne reçoivent pas de signature).
+  // Présente ⇒ toute notification sans `x-ha-signature` valide est rejetée.
+  @IsString()
+  @IsOptional()
+  HELLOASSO_SIGNATURE_KEY?: string;
+
+  // Obsolète depuis #404 (HelloAsso n'a jamais envoyé l'en-tête attendu) :
+  // ignoré, gardé pour ne pas refuser le démarrage d'un environnement qui le
+  // définit encore.
   @IsString()
   @IsOptional()
   HELLOASSO_WEBHOOK_SECRET?: string;
+
+  // Chiffrement au repos des secrets tiers en base (secret HelloAsso des clubs,
+  // #389). Clé AES-256 de 32 octets encodée en base64 (`openssl rand -base64
+  // 32`), alimentée par Key Vault. Absente ⇒ chiffrement désactivé (secrets
+  // écrits et lus en clair, avertissement au démarrage) : le backend démarre.
+  // Présente mais mal formée ⇒ démarrage refusé.
+  @Matches(SECRET_KEY_BASE64, { message: SECRET_KEY_MESSAGE })
+  @IsOptional()
+  SECRETS_ENCRYPTION_KEY?: string;
+
+  // Clé précédente pendant une rotation : sert uniquement à déchiffrer, les
+  // valeurs qu'elle ouvre sont rechiffrées avec la clé courante.
+  @Matches(SECRET_KEY_BASE64, { message: SECRET_KEY_MESSAGE })
+  @IsOptional()
+  SECRETS_ENCRYPTION_KEY_PREVIOUS?: string;
 
   // URL de l'application (utilisée dans les emails et callbacks HelloAsso)
   @IsString()
@@ -264,6 +306,14 @@ class EnvironmentVariables {
   @IsString()
   @IsOptional()
   WALLET_APPLE_TEAM_ID?: string;
+
+  // Reverse-proxy hops trusted to compute the client IP (`trust proxy`, #182).
+  // Unset: 1 in production (Container Apps ingress), 0 elsewhere.
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  @IsOptional()
+  TRUST_PROXY_HOPS?: number;
 
   // Fonctionnalités optionnelles
   @IsString()

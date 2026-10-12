@@ -1,43 +1,3 @@
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # Regles transverses backend-client
 
 ## 1) Couplage architecturel
@@ -89,4 +49,3 @@
 3. Les erreurs retour API sont-elles compatibles UX actuelle ?
 4. Le retry/timeout est-il adapte au nouveau workflow ?
 5. Les tests feature + integration ont-ils ete actualises ?
-

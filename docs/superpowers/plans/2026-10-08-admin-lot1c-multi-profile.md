@@ -1226,7 +1226,7 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 - [ ] **Step 1: Export and regenerate**
 
 ```bash
-cd apps/backend && pnpm run build && node scripts/export-swagger.js && cd ../..
+cd apps/backend && pnpm run build && pnpm exec tsx scripts/export-swagger.ts && cd ../..
 pnpm api:sync
 pnpm --filter admin exec openapi-ts
 ```

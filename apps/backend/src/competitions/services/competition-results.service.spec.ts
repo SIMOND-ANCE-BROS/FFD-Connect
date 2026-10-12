@@ -7,12 +7,15 @@ import { LicenseQrService } from "../../licenses/qr/license-qr.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import {
+  competitionPublicResultsSelect,
   idOnlySelect,
+  publicResultSelect,
   volunteerTokenAuthSelect,
   volunteerTokenIssuedSelect,
 } from "../../utils/prisma-selects";
 import { createMockPrismaService } from "../__mocks__/types";
 import { CompetitionCacheService } from "./competition-cache.service";
+import { publicResultDetails } from "../public-result";
 import { CompetitionResultsService } from "./competition-results.service";
 
 const mockPrismaService = createMockPrismaService();
@@ -61,7 +64,7 @@ describe("CompetitionResultsService", () => {
   });
 
   describe("getResults", () => {
-    it("should return results", async () => {
+    it("returns only the public fields of each row, never the account id (#413)", async () => {
       mockPrismaService.competition.findUnique.mockResolvedValue({
         id: "c1",
         events: [
@@ -69,13 +72,100 @@ describe("CompetitionResultsService", () => {
             id: "e1",
             category: "Latin",
             ageGroup: "Adult",
-            results: [{ id: "res1", ranking: 1 }],
+            // Even if the select ever returned more, nothing else leaks.
+            results: [
+              {
+                id: "res1",
+                eventId: "e1",
+                round: "Finale",
+                ranking: 1,
+                details: { participant: "A / B" },
+                userId: "u-secret",
+                createdAt: new Date(),
+              },
+            ],
           },
         ],
       });
+
       const result = await service.getResults("c1");
-      expect(result).toHaveLength(1);
-      expect(result[0].id).toBe("res1");
+
+      expect(mockPrismaService.competition.findUnique).toHaveBeenCalledWith({
+        where: { id: "c1" },
+        select: competitionPublicResultsSelect,
+      });
+      expect(result).toEqual([
+        {
+          id: "res1",
+          eventId: "e1",
+          round: "Finale",
+          ranking: 1,
+          details: { participant: "A / B" },
+          event: { id: "e1", category: "Latin", ageGroup: "Adult" },
+        },
+      ]);
+      expect(result[0]).not.toHaveProperty("userId");
+      // The cached payload carries the same minimised shape, under the v2 key.
+      const [key, payload] = mockRedisService.set.mock.calls[0] as [
+        string,
+        string,
+      ];
+      expect(key).toBe("competitions:results:v2:c1");
+      expect(payload).not.toContain("u-secret");
+      expect(payload).not.toContain("userId");
+    });
+
+    it("publishes only the allow-listed detail keys, always as an object", () => {
+      expect(
+        publicResultDetails({
+          participant: "A / B",
+          club: "Club",
+          bib: "12",
+          status: "QUALIFIED",
+          marks: 4,
+          totalParticipants: 8,
+          licenseNumber: "123456",
+          birthDate: "2000-01-01",
+          name: null,
+        }),
+      ).toEqual({
+        participant: "A / B",
+        club: "Club",
+        bib: "12",
+        status: "QUALIFIED",
+        marks: 4,
+        totalParticipants: 8,
+      });
+      expect(publicResultDetails(null)).toEqual({});
+      expect(publicResultDetails(["x"])).toEqual({});
+      expect(publicResultDetails("x")).toEqual({});
+    });
+
+    it("selects the results without userId nor createdAt", () => {
+      const rowSelect =
+        competitionPublicResultsSelect.events.select.results.select;
+      expect(rowSelect).toBe(publicResultSelect);
+      expect(Object.keys(rowSelect).sort()).toEqual([
+        "details",
+        "eventId",
+        "id",
+        "ranking",
+        "round",
+      ]);
+    });
+
+    it("never reads the pre-#413 cache key", async () => {
+      mockPrismaService.competition.findUnique.mockResolvedValue({
+        id: "c1",
+        events: [],
+      });
+      await service.getResults("c1");
+      expect(mockRedisService.get).toHaveBeenCalledWith(
+        "competitions:results:v2:c1",
+      );
+      expect(mockRedisService.get).not.toHaveBeenCalledWith(
+        "competitions:results:c1",
+      );
     });
 
     it("should throw NotFoundException if competition not found", async () => {

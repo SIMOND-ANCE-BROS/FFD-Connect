@@ -188,6 +188,33 @@ describe("validate (env.validation)", () => {
       expect(result.HELLOASSO_WEBHOOK_SECRET).toBe("whsec_123");
     });
 
+    it("accepte HELLOASSO_API_URL sur l'hôte sandbox (#404)", () => {
+      const result = validate({
+        ...VALID_BASE,
+        HELLOASSO_API_URL: "https://api.helloasso-sandbox.com",
+      });
+      expect(result.HELLOASSO_API_URL).toBe(
+        "https://api.helloasso-sandbox.com",
+      );
+    });
+
+    it("refuse un HELLOASSO_API_URL hors HelloAsso (#404)", () => {
+      expect(() =>
+        validate({
+          ...VALID_BASE,
+          HELLOASSO_API_URL: "https://attacker.example.com",
+        }),
+      ).toThrow();
+    });
+
+    it("accepte HELLOASSO_SIGNATURE_KEY optionnel", () => {
+      const result = validate({
+        ...VALID_BASE,
+        HELLOASSO_SIGNATURE_KEY: "partner-key",
+      });
+      expect(result.HELLOASSO_SIGNATURE_KEY).toBe("partner-key");
+    });
+
     it("accepte APP_URL optionnel", () => {
       const result = validate({
         ...VALID_BASE,
@@ -228,6 +255,20 @@ describe("validate (env.validation)", () => {
       expect(result.FIREBASE_SERVICE_ACCOUNT_JSON).toBe(serviceAccount);
     });
 
+    it("accepte TRUST_PROXY_HOPS entier (converti depuis la chaîne d'env)", () => {
+      const result = validate({ ...VALID_BASE, TRUST_PROXY_HOPS: "1" });
+      expect(result.TRUST_PROXY_HOPS).toBe(1);
+    });
+
+    it.each(["-1", "11", "1.5", "true"])(
+      "rejette TRUST_PROXY_HOPS=%s",
+      (value) => {
+        expect(() =>
+          validate({ ...VALID_BASE, TRUST_PROXY_HOPS: value }),
+        ).toThrow("Erreur de validation des variables d'environnement");
+      },
+    );
+
     it("accepte ENABLE_IP_BLACKLIST optionnel", () => {
       const result = validate({
         ...VALID_BASE,
@@ -262,6 +303,44 @@ describe("validate (env.validation)", () => {
         CORS_ORIGINS: "https://app.example.com",
         GITHUB_TOKEN: "ghp_xxx",
       });
+    });
+  });
+
+  describe("clé de chiffrement des secrets (#389)", () => {
+    // 32 octets à zéro : valeur de test, jamais une vraie clé.
+    const KEY = Buffer.alloc(32).toString("base64");
+
+    it("démarre sans clé (chiffrement désactivé)", () => {
+      const result = validate(VALID_BASE);
+      expect(result.SECRETS_ENCRYPTION_KEY).toBeUndefined();
+    });
+
+    it("démarre avec une clé vide (équivaut à l'absence)", () => {
+      expect(() =>
+        validate({ ...VALID_BASE, SECRETS_ENCRYPTION_KEY: "" }),
+      ).not.toThrow();
+    });
+
+    it("accepte une clé base64 de 32 octets et une clé précédente", () => {
+      expect(() =>
+        validate({
+          ...VALID_BASE,
+          SECRETS_ENCRYPTION_KEY: KEY,
+          SECRETS_ENCRYPTION_KEY_PREVIOUS: `${KEY}\n`,
+        }),
+      ).not.toThrow();
+    });
+
+    it.each([
+      ["trop courte", Buffer.alloc(16).toString("base64")],
+      ["pas du base64", "x".repeat(43) + "!"],
+    ])("refuse une clé %s", (_label, value) => {
+      expect(() =>
+        validate({ ...VALID_BASE, SECRETS_ENCRYPTION_KEY: value }),
+      ).toThrow("must be a base64-encoded 32-byte key");
+      expect(() =>
+        validate({ ...VALID_BASE, SECRETS_ENCRYPTION_KEY_PREVIOUS: value }),
+      ).toThrow("must be a base64-encoded 32-byte key");
     });
   });
 });

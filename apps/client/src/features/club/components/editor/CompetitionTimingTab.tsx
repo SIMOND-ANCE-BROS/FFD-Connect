@@ -243,7 +243,7 @@ export function CompetitionTimingTab({
                   ]}
                 >
                   <TextInput
-                    accessibilityLabel="Text input field"
+                    accessibilityLabel="Durée du créneau en minutes"
                     accessibilityHint="Saisissez la durée"
                     style={[
                       styles.input,
@@ -282,7 +282,7 @@ export function CompetitionTimingTab({
                 Titre
               </AppText>
               <TextInput
-                accessibilityLabel="Text input field"
+                accessibilityLabel="Titre du créneau"
                 accessibilityHint="Saisissez le titre du créneau"
                 testID="timing-title-input"
                 style={[

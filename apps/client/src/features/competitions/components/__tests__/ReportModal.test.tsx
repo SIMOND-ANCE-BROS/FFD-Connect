@@ -212,6 +212,21 @@ describe("ReportModal", () => {
     });
   });
 
+  it("a11y (#386): form inputs are announced with French labels", async () => {
+    await render(<ReportModal visible onClose={jest.fn()} />);
+
+    expect(screen.getByLabelText("Titre du rapport").props.testID).toBe(
+      "report-title-input",
+    );
+    expect(screen.getByLabelText("Description du rapport").props.testID).toBe(
+      "report-desc-input",
+    );
+    expect(screen.getByLabelText("Étapes pour reproduire").props.testID).toBe(
+      "report-steps-input",
+    );
+    expect(screen.queryByLabelText("Text input field")).toBeNull();
+  });
+
   it("handles steps to reproduce input", async () => {
     await render(<ReportModal visible onClose={jest.fn()} />);
 

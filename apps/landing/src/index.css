@@ -1555,44 +1555,49 @@ section:focus {
 .feed-loading p {
   font-size: 0.9375rem;
 }
-.project-issues {
-  list-style: none;
+.roadmap-groups {
   padding: 0 24px;
-  margin: 0;
 }
-.project-issues li + li {
-  border-top: 1px solid #d8e4ee;
-}
-.project-issues a {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 18px;
-  align-items: start;
-  gap: 14px;
+.roadmap-group {
   padding-block: 22px;
 }
-.issue-index {
-  font-size: 0.75rem;
-  color: #647d91;
-  margin-top: 3px;
+.roadmap-group + .roadmap-group {
+  border-top: 1px solid #d8e4ee;
 }
-.project-issues h3 {
+.roadmap-group-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
   font-size: 1rem;
-  line-height: 1.5;
+  line-height: 1.4;
   letter-spacing: -0.015em;
 }
-.project-issues a:hover h3 {
-  color: var(--electric);
-}
-.project-issues a > svg {
-  margin-top: 3px;
-  color: var(--electric);
-}
-.issue-milestone {
-  display: block;
-  margin-top: 5px;
+.roadmap-group-due {
   color: #627c90;
   font-size: 0.75rem;
-  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+.roadmap-items {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 10px;
+}
+.roadmap-items li {
+  display: grid;
+  grid-template-columns: 17px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+.roadmap-items li > svg {
+  margin-top: 4px;
+  color: var(--electric);
 }
 .tracker-footer {
   display: block;
@@ -2558,12 +2563,8 @@ html[data-motion='ready'] [data-reveal]:not([data-revealed='true']) {
   .project-source > span:last-child {
     display: none;
   }
-  .project-issues {
+  .roadmap-groups {
     padding-inline: 18px;
-  }
-  .project-issues a {
-    gap: 10px;
-    grid-template-columns: 36px minmax(0, 1fr) 18px;
   }
   .contribute-banner {
     padding-inline: 20px;

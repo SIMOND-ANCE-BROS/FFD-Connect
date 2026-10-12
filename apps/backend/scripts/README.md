@@ -103,6 +103,29 @@ main après revue. À lancer après une alerte Sentry `rgpd: file-deletion-faile
 **Usage :** `pnpm exec tsx scripts/list-orphan-renewal-blobs.ts` (env : `DATABASE_URL`,
 `AZURE_STORAGE_CONNECTION_STRING` ou `AZURE_STORAGE_ACCOUNT_NAME`, `AZURE_STORAGE_UPLOADS_CONTAINER`)
 
+### `backfill-registration-partner-user.ts`
+
+**Reprise ponctuelle de `Registration.partnerUserId` (#395, droit à l'effacement)**
+
+L'import `sync:compete` créait l'inscription de chaque partenaire avec `partnerName` seul : à la
+suppression d'un compte, ces inscriptions gardaient son nom. Le script relie une inscription au
+titulaire de l'**autre inscription de la même épreuve avec le même dossard**, à condition que
+`partnerName` le nomme (et réciproquement si l'autre inscription a un `partnerName`). Jamais sur
+le nom seul : zéro ou plusieurs candidats → la ligne reste telle quelle (comptée « unmatched »).
+Limite : l'inscription ne stocke pas de numéro de licence ; un partenaire sans compte, sans
+inscription propre ou sans dossard (0) ne peut pas être relié — la suppression de compte traite
+quand même ce cas par épreuve + dossard.
+
+Idempotent (seules les lignes à `partnerUserId` NULL sont lues et écrites), n'affiche que des
+compteurs. **À lancer une fois après le déploiement** : sans option, il simule (dry run) ;
+`--apply` écrit.
+
+```bash
+node dist/scripts/backfill-registration-partner-user.js           # dans le conteneur, simulation
+node dist/scripts/backfill-registration-partner-user.js --apply   # écriture
+pnpm exec tsx scripts/backfill-registration-partner-user.ts       # en local, simulation
+```
+
 ---
 
 ## Scripts à la racine du projet
@@ -145,6 +168,10 @@ Les sauvegardes sont stockées dans `../../backups/` (à la racine du projet).
 ---
 
 **Dernière mise à jour:** 12 Février 2026
+
+### `encrypt-club-secrets.ts` (#389)
+
+Chiffre avec `SECRETS_ENCRYPTION_KEY` les secrets HelloAsso des clubs encore en clair (ou chiffrés avec `SECRETS_ENCRYPTION_KEY_PREVIOUS` pendant une rotation). Idempotent, n'affiche que des compteurs et des ids de clubs. Non lancé au boot : le backend migre aussi paresseusement à la lecture. Dans le conteneur : `node dist/scripts/encrypt-club-secrets.js` ; en local : `pnpm exec tsx scripts/encrypt-club-secrets.ts`. Runbook : `docs/exploitation/chiffrement-secrets-clubs.md`.
 
 ### Seeds staging (`docker-entrypoint.sh`, `SEED_TEST_TRACKS=true`)
 

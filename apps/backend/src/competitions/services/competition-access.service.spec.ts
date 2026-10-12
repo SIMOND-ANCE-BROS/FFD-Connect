@@ -179,4 +179,134 @@ describe("CompetitionAccessService", () => {
       ).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe("assertCanManageCompetition (#381)", () => {
+    const club = {
+      userId: "club-user",
+      role: UserRole.CLUB,
+      roles: [UserRole.CLUB],
+    };
+
+    it.each([UserRole.STAFF, UserRole.ADMIN])(
+      "lets %s edit any competition",
+      async (role) => {
+        await expect(
+          service.assertCanManageCompetition("comp-1", {
+            userId: "u1",
+            role,
+            roles: [role],
+          }),
+        ).resolves.toBeUndefined();
+        expect(prisma.competition.findUnique).not.toHaveBeenCalled();
+      },
+    );
+
+    it("lets the organizing club edit its competition", async () => {
+      prisma.user.findUnique.mockResolvedValue(clubUser());
+
+      await expect(
+        service.assertCanManageCompetition("comp-1", club),
+      ).resolves.toBeUndefined();
+    });
+
+    it("refuses a club editing another club's competition", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        clubUser({
+          clubName: "Other Club",
+          club: { disabledAt: null, name: "Other Club" },
+        }),
+      );
+
+      await expect(
+        service.assertCanManageCompetition("comp-1", club),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("refuses a competition without organizer", async () => {
+      prisma.competition.findUnique.mockResolvedValue({ organizer: null });
+      prisma.user.findUnique.mockResolvedValue(clubUser());
+
+      await expect(
+        service.assertCanManageCompetition("comp-1", club),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("returns 404 for an unknown competition", async () => {
+      prisma.competition.findUnique.mockResolvedValue(null);
+      prisma.user.findUnique.mockResolvedValue(clubUser());
+
+      await expect(
+        service.assertCanManageCompetition("missing", club),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe("organizerForNewCompetition (#381)", () => {
+    const club = {
+      userId: "club-user",
+      role: UserRole.CLUB,
+      roles: [UserRole.CLUB],
+    };
+
+    it.each([UserRole.STAFF, UserRole.ADMIN])(
+      "leaves the organizer unset for %s",
+      async (role) => {
+        await expect(
+          service.organizerForNewCompetition({
+            userId: "u1",
+            role,
+            roles: [role],
+          }),
+        ).resolves.toBeUndefined();
+        expect(prisma.user.findUnique).not.toHaveBeenCalled();
+      },
+    );
+
+    it("returns the club relation name of a CLUB account", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        clubUser({ club: { disabledAt: null, name: " Dance Club Paris " } }),
+      );
+
+      await expect(service.organizerForNewCompetition(club)).resolves.toBe(
+        "Dance Club Paris",
+      );
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: "club-user" },
+        select: userRolesClubNameSelect,
+      });
+    });
+
+    it("falls back to the stored club name", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        clubUser({ club: { disabledAt: null, name: null } }),
+      );
+
+      await expect(service.organizerForNewCompetition(club)).resolves.toBe(
+        "Dance Club Paris",
+      );
+    });
+
+    it.each([
+      ["a missing account", null],
+      [
+        "a CLUB account without a club",
+        { role: UserRole.CLUB, extraRoles: [], clubName: "  ", club: null },
+      ],
+      [
+        "an account that is not a club",
+        {
+          role: UserRole.LICENSEE,
+          extraRoles: [],
+          clubName: "Dance Club Paris",
+          club: null,
+        },
+      ],
+    ])("refuses %s", async (_label, user) => {
+      prisma.user.findUnique.mockResolvedValue(user);
+
+      await expect(service.organizerForNewCompetition(club)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+  });
 });

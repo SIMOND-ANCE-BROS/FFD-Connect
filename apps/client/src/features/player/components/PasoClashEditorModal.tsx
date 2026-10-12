@@ -167,17 +167,20 @@ export const PasoClashEditorModal = ({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <Pressable
-        style={styles.backdrop}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Fermer l'éditeur"
-        accessibilityHint="Ferme l'éditeur des appels sans enregistrer"
-      >
+      {/* Fond et carte sont frères (cf. SpaceSheet) : un Pressable englobant
+          la carte serait lu par VoiceOver comme un seul élément. */}
+      <View style={styles.root}>
         <Pressable
+          style={[StyleSheet.absoluteFill, styles.backdrop]}
+          onPress={onClose}
+          testID="paso-editor-backdrop"
+          accessibilityRole="button"
+          accessibilityLabel="Fermer l'éditeur"
+          accessibilityHint="Ferme l'éditeur des appels sans enregistrer"
+        />
+        <View
+          testID="paso-editor-card"
           style={[styles.card, { backgroundColor: theme.surface }]}
-          onPress={() => {}}
-          accessibilityRole="none"
         >
           <AppText variant="h3" color={theme.text} style={styles.title}>
             {isPropose ? "Proposer les appels" : "Appels du paso doble"}
@@ -359,17 +362,19 @@ export const PasoClashEditorModal = ({
               />
             )}
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  backdrop: {
+  root: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
     justifyContent: "flex-end",
+  },
+  backdrop: {
+    backgroundColor: "rgba(0,0,0,0.55)",
   },
   card: {
     borderTopLeftRadius: 20,

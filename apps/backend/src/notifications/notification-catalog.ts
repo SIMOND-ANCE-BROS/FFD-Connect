@@ -133,6 +133,22 @@ export const NOTIFICATION_CATALOG: Readonly<
     description:
       "Quand un couple inter-club impliquant votre club est proposé, validé, refusé ou clôturé.",
   },
+
+  // ── HelloAsso payment received (#39): DORMANT ───────────────────────────────
+  //
+  // Declared together with its migration, but no producer yet: it stays
+  // `configurable: false` until the revision that emits it ships. Made
+  // configurable now, it would show as a switch with no effect, and every
+  // toggle would write to the database an enum value that the previous image
+  // (the one a rollback falls back to) cannot read.
+  [NotificationType.CLUB_PAYMENT_RECEIVED]: {
+    defaultEnabled: true,
+    configurable: false,
+    roles: [UserRole.CLUB],
+    label: "Paiements HelloAsso reçus",
+    description:
+      "Quand un paiement HelloAsso est reçu pour une compétition organisée par votre club.",
+  },
   [NotificationType.TRACK_REPORT]: {
     defaultEnabled: true,
     configurable: true,

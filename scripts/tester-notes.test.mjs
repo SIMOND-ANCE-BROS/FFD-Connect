@@ -5,7 +5,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { extractTesterSection, prNumber, renderTesterNotes, toBullets } from './tester-notes.mjs';
+import {
+  extractTesterSection,
+  prNumber,
+  renderTesterNotes,
+  sanitizeStoreText,
+  toBullets,
+} from './tester-notes.mjs';
 
 const TEMPLATE_ONLY = `## Summary
 
@@ -56,4 +62,60 @@ test('toBullets : une puce par élément de liste, sinon un paragraphe', () => {
 test('renderTesterNotes : titre + puces, repli si rien pour les testeurs', () => {
   assert.equal(renderTesterNotes(['A', '- B\n- C']), 'Nouveautés et corrections\n• A\n• B\n• C');
   assert.equal(renderTesterNotes([]), 'Corrections et améliorations diverses.');
+});
+
+const FOOTER_BODY = `## Summary
+
+- Fix the thing
+
+## Pour les testeurs
+
+- Toucher une notification ouvre l’écran concerné.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_01ABC`;
+
+test('extractTesterSection : s’arrête au pied de page de la PR (dernière section)', () => {
+  assert.equal(
+    extractTesterSection(FOOTER_BODY),
+    '- Toucher une notification ouvre l’écran concerné.',
+  );
+  assert.equal(extractTesterSection('## Pour les testeurs\nA\n\n---\nB'), 'A');
+  assert.equal(
+    extractTesterSection('## Pour les testeurs\nA\nGenerated with [Claude Code](x)\nB'),
+    'A',
+  );
+  assert.equal(extractTesterSection('## Pour les testeurs\nA\nhttps://claude.ai/code/s_1'), 'A');
+});
+
+test('extractTesterSection : « Rien » seul avant un pied de page → null', () => {
+  assert.equal(
+    extractTesterSection(
+      '## Pour les testeurs\n\nRien\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)',
+    ),
+    null,
+  );
+  assert.equal(extractTesterSection('## Pour les testeurs\n\n- Rien.\n'), null);
+  assert.equal(extractTesterSection('## Pour les testeurs\n- A\n- rien\n'), '- A');
+});
+
+test('extractTesterSection : commentaires HTML du modèle retirés', () => {
+  assert.equal(extractTesterSection('## Pour les testeurs\n<!-- guide\nmulti -->\nA'), 'A');
+});
+
+test('sanitizeStoreText : retire les emoji hors BMP, garde accents et ponctuation', () => {
+  assert.equal(sanitizeStoreText('A 🤖 B'), 'A  B');
+  assert.equal(sanitizeStoreText('« Écran » d’accueil… • élève'), '« Écran » d’accueil… • élève');
+});
+
+test('toBullets / renderTesterNotes : emoji dans un item et items « Rien » écartés', () => {
+  assert.deepEqual(toBullets('- Nouveau 🎵 lecteur\n- Rien'), ['• Nouveau  lecteur']);
+  const out = renderTesterNotes([extractTesterSection(FOOTER_BODY), '- Rien', '- Ok 🤖']);
+  assert.equal(
+    out,
+    'Nouveautés et corrections\n• Toucher une notification ouvre l’écran concerné.\n• Ok',
+  );
+  assert.ok(!/🤖|claude|Generated/i.test(out));
+  assert.equal(renderTesterNotes(['- Rien']), 'Corrections et améliorations diverses.');
 });

@@ -1,13 +1,14 @@
-import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { Route, Routes, useLocation } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { API_ORIGIN } from '../config';
+import { fill, renderWithProviders, setupUser } from '../test/render';
 import { ModerationDetailPage } from './ModerationDetailPage';
+
+let user: UserEvent;
 
 const pendingMpm = {
   id: 'c1',
@@ -64,28 +65,23 @@ function renderPage(item: object, path = '/moderation/c1') {
   vi.spyOn(sdk, 'trackCorrectionsControllerPendingCount').mockResolvedValue(
     ok({ count: 1 }) as never,
   );
-  const view = render(
-    <MantineProvider>
+  const view = renderWithProviders(
+    <>
       <Notifications />
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route
-              path="/moderation/:id"
-              element={
-                <>
-                  <ModerationDetailPage />
-                  <Probe />
-                </>
-              }
-            />
-            <Route path="/moderation" element={<Probe />} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+      <Routes>
+        <Route
+          path="/moderation/:id"
+          element={
+            <>
+              <ModerationDetailPage />
+              <Probe />
+            </>
+          }
+        />
+        <Route path="/moderation" element={<Probe />} />
+      </Routes>
+    </>,
+    { route: path },
   );
   return { ...view, findOne };
 }
@@ -100,15 +96,16 @@ const setTime = (audio: HTMLAudioElement, seconds: number) =>
   });
 
 async function submitDecision(decision: 'Approuver' | 'Refuser') {
-  await userEvent.click(screen.getByRole('button', { name: decision }));
+  await user.click(screen.getByRole('button', { name: decision }));
   const dialog = await screen.findByRole('dialog');
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+  await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
   return dialog;
 }
 
 describe('ModerationDetailPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    user = setupUser();
   });
 
   it('plays the track file cross-origin from the API origin and shows current vs proposed', async () => {
@@ -132,14 +129,13 @@ describe('ModerationDetailPage', () => {
       .mockResolvedValue(ok(decided('APPROVED')) as never);
     renderPage(pendingMpm);
     const mpm = await screen.findByLabelText('MPM');
-    await userEvent.clear(mpm);
-    await userEvent.type(mpm, '61');
-    await userEvent.click(screen.getByRole('button', { name: 'Approuver' }));
+    await fill(user, mpm, '61');
+    await user.click(screen.getByRole('button', { name: 'Approuver' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('MPM');
     expect(dialog).toHaveTextContent('60');
     expect(dialog).toHaveTextContent('61');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     expect(approve).toHaveBeenCalledWith({ path: { id: 'c1' }, body: { bpm: 61 } });
     expect(await screen.findByText(/Traitée par Gabin S/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Proposition suivante' })).toBeInTheDocument();
@@ -161,14 +157,14 @@ describe('ModerationDetailPage', () => {
       .spyOn(sdk, 'trackCorrectionsControllerReject')
       .mockResolvedValue(ok(decided('REJECTED')) as never);
     renderPage(pendingMpm);
-    await userEvent.click(await screen.findByRole('button', { name: 'Valeur incorrecte' }));
+    await user.click(await screen.findByRole('button', { name: 'Valeur incorrecte' }));
     const comment = screen.getByLabelText(/^Commentaire/);
     expect(comment).toHaveValue('Valeur incorrecte');
-    await userEvent.type(comment, ' : 60 est juste');
-    await userEvent.click(screen.getByRole('button', { name: 'Refuser' }));
+    await user.type(comment, ' : 60 est juste');
+    await user.click(screen.getByRole('button', { name: 'Refuser' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('La musique ne sera pas modifiée.');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     expect(reject).toHaveBeenCalledWith({
       path: { id: 'c1' },
       body: { comment: 'Valeur incorrecte : 60 est juste' },
@@ -182,12 +178,12 @@ describe('ModerationDetailPage', () => {
     const { container } = renderPage(pendingClash);
     await screen.findByLabelText('Clash 1');
     setTime(audioOf(container), 83.46);
-    await userEvent.click(screen.getByRole('button', { name: 'Marquer ici' }));
+    await user.click(screen.getByRole('button', { name: 'Marquer ici' }));
     expect(screen.getByLabelText('Clash 2')).toHaveValue('1:23.5');
-    await userEvent.click(screen.getByRole('button', { name: 'Approuver' }));
+    await user.click(screen.getByRole('button', { name: 'Approuver' }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('0:40, 1:23.5');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     expect(approve).toHaveBeenCalledWith({
       path: { id: 'c1' },
       body: { clashTimecodes: [40, 83.5] },
@@ -199,7 +195,7 @@ describe('ModerationDetailPage', () => {
       .spyOn(sdk, 'trackCorrectionsControllerApprove')
       .mockResolvedValue(ok(decided('APPROVED', pendingClash)) as never);
     renderPage(pendingClash);
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer le clash 1' }));
+    await user.click(await screen.findByRole('button', { name: 'Supprimer le clash 1' }));
     expect(screen.getByText('Aucun clash')).toBeInTheDocument();
     await submitDecision('Approuver');
     expect(approve).toHaveBeenCalledWith({ path: { id: 'c1' }, body: { clashTimecodes: [] } });
@@ -209,7 +205,7 @@ describe('ModerationDetailPage', () => {
     const { container } = renderPage(pendingMpm);
     await screen.findByLabelText('Clash 2');
     setTime(audioOf(container), 100);
-    await userEvent.click(screen.getByRole('button', { name: 'Marquer ici' }));
+    await user.click(screen.getByRole('button', { name: 'Marquer ici' }));
     expect(screen.getByRole('button', { name: 'Marquer ici' })).toBeDisabled();
     expect(screen.getByText('3 clashes au maximum')).toBeInTheDocument();
   });
@@ -225,10 +221,10 @@ describe('ModerationDetailPage', () => {
     const dialog = await submitDecision('Refuser');
     await waitFor(() => expect(reject).toHaveBeenCalledTimes(1));
     // Neither Escape nor « Annuler » closes the modal while the request runs.
-    await userEvent.keyboard('{Escape}');
+    await user.keyboard('{Escape}');
     expect(within(dialog).getByRole('button', { name: 'Annuler' })).toBeDisabled();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     expect(screen.getByRole('button', { name: 'Refuser', hidden: true })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Approuver', hidden: true })).toBeDisabled();
     expect(reject).toHaveBeenCalledTimes(1);
@@ -278,7 +274,7 @@ describe('ModerationDetailPage', () => {
       Promise.resolve(ok(path.id === 'c1' ? pendingMpm : next))) as never);
     await screen.findByLabelText('MPM');
     await submitDecision('Refuser');
-    await userEvent.click(await screen.findByRole('button', { name: 'Proposition suivante' }));
+    await user.click(await screen.findByRole('button', { name: 'Proposition suivante' }));
     expect(list).toHaveBeenCalledWith({
       query: { status: 'PENDING', reason: ['MPM'], q: 'paso', skip: 0, take: 1 },
     });
@@ -300,7 +296,7 @@ describe('ModerationDetailPage', () => {
     renderPage(pendingMpm, '/moderation/c1?reason=MPM');
     await screen.findByLabelText('MPM');
     await submitDecision('Refuser');
-    await userEvent.click(await screen.findByRole('button', { name: 'Proposition suivante' }));
+    await user.click(await screen.findByRole('button', { name: 'Proposition suivante' }));
     await waitFor(() =>
       expect(screen.getByTestId('location').textContent).toBe('/moderation?reason=MPM'),
     );
@@ -317,18 +313,11 @@ describe('ModerationDetailPage', () => {
       data: undefined,
       error: new TypeError('Failed to fetch'),
     } as never);
-    render(
-      <MantineProvider>
-        <QueryClientProvider
-          client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-        >
-          <MemoryRouter initialEntries={['/moderation/c1']}>
-            <Routes>
-              <Route path="/moderation/:id" element={<ModerationDetailPage />} />
-            </Routes>
-          </MemoryRouter>
-        </QueryClientProvider>
-      </MantineProvider>,
+    renderWithProviders(
+      <Routes>
+        <Route path="/moderation/:id" element={<ModerationDetailPage />} />
+      </Routes>,
+      { route: '/moderation/c1' },
     );
     expect(
       await screen.findByText('Serveur injoignable, réessayez dans un instant.'),

@@ -1,12 +1,10 @@
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { UNAVAILABLE_MESSAGE } from '../lib/apiError';
 import { JPEG_BYTES, mp3Bytes, mp3File, textFrame } from '../test/id3Fixture';
+import { renderWithProviders, setupUser } from '../test/render';
 import { TrackImportPage } from './TrackImportPage';
 
 const ok = (data: unknown) => ({ data, error: undefined });
@@ -14,18 +12,9 @@ const failure = (error: unknown) => ({ data: undefined, error });
 
 type CreateOptions = { body: { title: string } & Record<string, unknown> };
 
-function renderPage() {
-  return render(
-    // env="test": no transitions, so the Select dropdown opens synchronously in jsdom.
-    <MantineProvider env="test">
-      <QueryClientProvider client={new QueryClient()}>
-        <MemoryRouter>
-          <TrackImportPage />
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
-  );
-}
+let user: UserEvent;
+
+const renderPage = () => renderWithProviders(<TrackImportPage />);
 
 const pick = (files: File[]) =>
   fireEvent.change(screen.getByTestId('files-input'), { target: { files } });
@@ -58,6 +47,7 @@ const createImpl = (impl: (options: CreateOptions) => unknown) =>
 describe('TrackImportPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    user = setupUser();
   });
 
   it('pre-fills from a track-prep manifest, checks duplicates and imports the ready rows', async () => {
@@ -135,7 +125,7 @@ describe('TrackImportPage', () => {
       expect.objectContaining({ sourceKey: 'apple:3' }),
     ]);
 
-    await userEvent.click(importButton());
+    await user.click(importButton());
 
     expect(await screen.findByText('2 importées, 1 doublons, 0 échecs')).toBeInTheDocument();
     expect(create).toHaveBeenCalledTimes(2);
@@ -166,8 +156,8 @@ describe('TrackImportPage', () => {
     await waitFor(() => expect(screen.getByText('0 musique prête à importer')).toBeInTheDocument());
     expect(importButton()).toBeDisabled();
 
-    await userEvent.click(screen.getByLabelText('Danse — Ma chanson.mp3', { selector: 'input' }));
-    await userEvent.click(await screen.findByRole('option', { name: 'Rumba' }));
+    await user.click(screen.getByLabelText('Danse — Ma chanson.mp3', { selector: 'input' }));
+    await user.click(await screen.findByRole('option', { name: 'Rumba' }));
 
     expect(await screen.findByText('✅ Prête')).toBeInTheDocument();
     expect(importButton()).toBeEnabled();
@@ -202,13 +192,13 @@ describe('TrackImportPage', () => {
     pick([tagged('a.mp3', 'A', 'X', 'Rumba'), tagged('b.mp3', 'B', 'X', 'Rumba')]);
     await waitFor(() => expect(importButton()).toBeEnabled());
 
-    await userEvent.click(importButton());
+    await user.click(importButton());
 
     expect(await screen.findByText('1 importées, 0 doublons, 1 échecs')).toBeInTheDocument();
     expect(screen.getByText('a.mp3 : Erreur interne')).toBeInTheDocument();
     expect(screen.getByText('⛔ Échec : Erreur interne')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Réessayer les échecs' }));
+    await user.click(screen.getByRole('button', { name: 'Réessayer les échecs' }));
 
     expect(await screen.findByText('2 importées, 0 doublons, 0 échecs')).toBeInTheDocument();
     expect(create).toHaveBeenCalledTimes(3);
@@ -232,10 +222,10 @@ describe('TrackImportPage', () => {
     pick([tagged('a.mp3', 'A', 'X', 'Rumba')]);
     await waitFor(() => expect(importButton()).toBeEnabled());
 
-    await userEvent.click(importButton());
+    await user.click(importButton());
 
     expect(await screen.findByText('0 importées, 0 doublons, 1 échecs')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Réessayer les échecs' }));
+    await user.click(screen.getByRole('button', { name: 'Réessayer les échecs' }));
 
     expect(await screen.findByText('1 importées, 0 doublons, 0 échecs')).toBeInTheDocument();
     expect(create).toHaveBeenCalledTimes(2);
@@ -254,7 +244,7 @@ describe('TrackImportPage', () => {
     pick([tagged('a.mp3', 'A', 'X', 'Rumba')]);
     await waitFor(() => expect(importButton()).toBeEnabled());
 
-    await userEvent.click(importButton());
+    await user.click(importButton());
 
     expect(await screen.findByText('0 importées, 1 doublons, 0 échecs')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Voir' })).toHaveAttribute('href', '/tracks/t9');
@@ -267,8 +257,8 @@ describe('TrackImportPage', () => {
     pick([tagged('a.mp3', 'A', 'X', 'Rumba'), tagged('b.mp3', 'B', 'X', 'Rumba')]);
     await waitFor(() => expect(importButton()).toBeEnabled());
 
-    await userEvent.click(screen.getByLabelText('Ignorer b.mp3'));
-    await userEvent.click(importButton());
+    await user.click(screen.getByLabelText('Ignorer b.mp3'));
+    await user.click(importButton());
 
     expect(await screen.findByText('1 importées, 0 doublons, 0 échecs')).toBeInTheDocument();
     expect(create).toHaveBeenCalledTimes(1);
@@ -286,7 +276,7 @@ describe('TrackImportPage', () => {
     expect(await screen.findByText(UNAVAILABLE_MESSAGE)).toBeInTheDocument();
     expect(importButton()).toBeDisabled();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Vérifier à nouveau' }));
+    await user.click(screen.getByRole('button', { name: 'Vérifier à nouveau' }));
 
     await waitFor(() => expect(importButton()).toBeEnabled());
     expect(check).toHaveBeenCalledTimes(2);

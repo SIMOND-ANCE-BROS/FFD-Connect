@@ -1,35 +1,35 @@
-import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { fireEvent, screen } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { Route, Routes } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { fill, renderWithProviders, setupUser } from '../test/render';
 import { NewClubPage } from './NewClubPage';
 
+let user: UserEvent;
+
 function renderPage() {
-  return render(
-    <MantineProvider>
+  return renderWithProviders(
+    <>
       <Notifications />
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={['/clubs/new']}>
-          <Routes>
-            <Route path="/clubs/new" element={<NewClubPage />} />
-            <Route path="/clubs/:id" element={<p>club page</p>} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+      <Routes>
+        <Route path="/clubs/new" element={<NewClubPage />} />
+        <Route path="/clubs/:id" element={<p>club page</p>} />
+      </Routes>
+    </>,
+    { route: '/clubs/new' },
   );
 }
 
-const submit = () => userEvent.click(screen.getByRole('button', { name: /créer le club/i }));
+const submit = () => user.click(screen.getByRole('button', { name: /créer le club/i }));
+const fillName = (name: string) => fill(user, screen.getByLabelText(/^Nom du club/), name);
 
 describe('NewClubPage', () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    user = setupUser();
+  });
 
   it('creates the club with the default mode, then opens its page', async () => {
     const create = vi.spyOn(sdk, 'adminControllerCreateClub').mockResolvedValue({
@@ -40,7 +40,7 @@ describe('NewClubPage', () => {
     expect(screen.getByLabelText(/^Mode d'inscription/, { selector: 'input' })).toHaveValue(
       'Licenciés, validation automatique',
     );
-    await userEvent.type(screen.getByLabelText(/^Nom du club/), '  Club Neuf ');
+    await fillName('  Club Neuf ');
     await submit();
     expect(create).toHaveBeenCalledWith({
       body: { name: 'Club Neuf', registrationMode: 'MEMBERS_AUTO_CONFIRM' },
@@ -55,9 +55,9 @@ describe('NewClubPage', () => {
       error: undefined,
     } as never);
     renderPage();
-    await userEvent.type(screen.getByLabelText(/^Nom du club/), 'Club Neuf');
-    await userEvent.click(screen.getByLabelText(/^Mode d'inscription/, { selector: 'input' }));
-    await userEvent.click(await screen.findByText('Le club seul inscrit ses licenciés'));
+    await fillName('Club Neuf');
+    await user.click(screen.getByLabelText(/^Mode d'inscription/, { selector: 'input' }));
+    await user.click(await screen.findByText('Le club seul inscrit ses licenciés'));
     await submit();
     expect(create).toHaveBeenCalledWith({
       body: { name: 'Club Neuf', registrationMode: 'CLUB_ONLY' },
@@ -69,7 +69,7 @@ describe('NewClubPage', () => {
     renderPage();
     await submit();
     expect(await screen.findByText('Nom trop court')).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText(/^Nom du club/), 'A');
+    await fillName('A');
     await submit();
     expect(await screen.findByText('Nom trop court')).toBeInTheDocument();
     expect(create).not.toHaveBeenCalled();
@@ -93,7 +93,7 @@ describe('NewClubPage', () => {
       response: new Response(null, { status: 409 }),
     } as never);
     renderPage();
-    await userEvent.type(screen.getByLabelText(/^Nom du club/), 'club a');
+    await fillName('club a');
     await submit();
     expect(await screen.findByText(/un club porte déjà ce nom/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /voir le club existant/i })).toHaveAttribute(
@@ -109,7 +109,7 @@ describe('NewClubPage', () => {
       response: undefined,
     } as never);
     renderPage();
-    await userEvent.type(screen.getByLabelText(/^Nom du club/), 'Club Neuf');
+    await fillName('Club Neuf');
     await submit();
     expect(
       await screen.findByText('Serveur injoignable, réessayez dans un instant.'),
@@ -119,7 +119,7 @@ describe('NewClubPage', () => {
   it('shows the unavailable message when the call throws', async () => {
     vi.spyOn(sdk, 'adminControllerCreateClub').mockRejectedValue(new Error('boom'));
     renderPage();
-    await userEvent.type(screen.getByLabelText(/^Nom du club/), 'Club Neuf');
+    await fillName('Club Neuf');
     await submit();
     expect(
       await screen.findByText('Serveur injoignable, réessayez dans un instant.'),
