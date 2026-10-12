@@ -73,14 +73,16 @@ describe('UserIdentifiersModal', { timeout: 15_000 }, () => {
     await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it('changes the licence number without the session warning', async () => {
+  it('changes the licence number, warning that issued QR codes and Wallet passes stay valid', async () => {
     const patch = vi.spyOn(sdk, 'adminControllerUpdateUserIdentifiers').mockResolvedValue({
       data: { user: { ...user0, licenseNumber: 'FFD-2' }, previousEmailNotified: null },
       error: undefined,
     } as never);
     await renderModal();
+    expect(screen.queryByText(/ne sont pas\s+invalidés/)).toBeNull();
     await fill(user, screen.getByLabelText(/Numéro de licence/), 'FFD-2');
     expect(screen.queryByText(/déconnectée/)).toBeNull();
+    expect(screen.getByText(/QR codes et le pass Wallet déjà émis/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
     await vi.waitFor(() =>
       expect(patch).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { licenseNumber: 'FFD-2' } }),
@@ -143,9 +145,17 @@ describe('UserIdentifiersModal', { timeout: 15_000 }, () => {
     );
   });
 
-  it('locks the fields that cannot change', async () => {
-    await renderModal({ ...user0, licenseNumber: null, isStoreReview: true });
+  it('locks both fields of the store-review account and explains why', async () => {
+    await renderModal({ ...user0, isStoreReview: true });
     expect(screen.getByLabelText(/Email de connexion/)).toBeDisabled();
+    expect(screen.getByLabelText(/Numéro de licence/)).toBeDisabled();
+    expect(screen.getByText(/ne\s+sont pas modifiables/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeDisabled();
+  });
+
+  it('locks the licence number of an account without licence', async () => {
+    await renderModal({ ...user0, licenseNumber: null });
+    expect(screen.getByLabelText(/Email de connexion/)).toBeEnabled();
     expect(screen.getByLabelText(/Numéro de licence/)).toBeDisabled();
     expect(screen.getByText('Aucune licence rattachée à ce compte.')).toBeInTheDocument();
   });

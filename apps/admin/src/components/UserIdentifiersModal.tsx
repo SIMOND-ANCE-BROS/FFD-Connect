@@ -108,23 +108,31 @@ export function UserIdentifiersModal({ user, opened, onClose }: Props) {
             label="Email de connexion"
             withAsterisk
             disabled={user.isStoreReview}
-            description={
-              user.isStoreReview
-                ? 'Compte de validation App Store / Google Play : email non modifiable.'
-                : undefined
-            }
             {...form.getInputProps('email')}
           />
           <TextInput
             label="Numéro de licence"
-            disabled={!hasLicense}
+            disabled={!hasLicense || user.isStoreReview}
             description={
               hasLicense
-                ? 'Modifié sur la licence rattachée. Un pass Wallet déjà installé garde l’ancien numéro.'
+                ? 'Modifié sur la licence rattachée.'
                 : 'Aucune licence rattachée à ce compte.'
             }
             {...form.getInputProps('licenseNumber')}
           />
+          {user.isStoreReview && (
+            <Alert color="gray">
+              Compte de validation App Store / Google Play : son email et son numéro de licence ne
+              sont pas modifiables.
+            </Alert>
+          )}
+          {changes.licenseNumber !== undefined && (
+            <Alert color="orange" title="Changement de numéro de licence">
+              Les QR codes et le pass Wallet déjà émis portent l'ancien numéro et ne sont pas
+              invalidés : la personne doit rouvrir son e-licence dans l'app et réajouter son pass
+              Wallet pour obtenir le nouveau numéro.
+            </Alert>
+          )}
           {emailChanges && (
             <Alert color="orange" title="Changement d'email">
               La personne sera déconnectée de toutes ses sessions et devra se reconnecter avec la

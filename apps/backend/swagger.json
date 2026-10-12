@@ -4778,7 +4778,7 @@
             }
           },
           "403": {
-            "description": "Son propre compte, ou email du compte de validation App Store / Google Play"
+            "description": "Son propre compte, ou compte de validation App Store / Google Play"
           },
           "404": {
             "description": "Ressource non trouvée",

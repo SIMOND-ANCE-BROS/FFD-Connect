@@ -25,8 +25,17 @@ export const LICENSE_NUMBER_TAKEN =
   "Ce numéro de licence est déjà attribué à une autre licence";
 export const NO_LICENSE =
   "Ce compte n'a pas de licence rattachée : son numéro ne peut pas être modifié";
-export const STORE_REVIEW_EMAIL =
-  "Ce compte est utilisé pour les validations App Store / Google Play : son email ne peut pas être modifié.";
+export const STORE_REVIEW_IDENTIFIERS =
+  "Ce compte est utilisé pour les validations App Store / Google Play : son email et son numéro de licence ne peuvent pas être modifiés.";
+
+/** Error name, plus its code when it has one: never its message. */
+function errorKind(error: unknown): string {
+  if (!(error instanceof Error)) return typeof error;
+  const { code } = error as Error & { code?: unknown };
+  return typeof code === "string" || typeof code === "number"
+    ? `${error.name} (${code})`
+    : error.name;
+}
 
 /** Changed identifiers only: the audit diff (before / after). */
 interface Identifiers {
@@ -54,6 +63,8 @@ interface IdentifiersChange {
  *   its validity, renewals and the user link stay; QR codes and Wallet passes
  *   are generated from the current number. Uniqueness is exact, like every
  *   lookup by number (registration, check-in): 409 on a taken number.
+ *   QR codes and Wallet passes already issued carry the old number and are
+ *   NOT invalidated: they must be regenerated from the app.
  *
  * The audit row holds the previous and new values; application logs only
  * ever carry the user id.
@@ -114,15 +125,17 @@ export class AdminUserIdentifiersService {
       select: adminUserIdentifiersSelect,
     });
     if (!current) throw new NotFoundException("Utilisateur introuvable");
+    // The whole route is locked for the store-review account: Apple / Google
+    // log in with its email, and its licence backs the demo e-licence.
+    if (current.isStoreReview) {
+      throw new ForbiddenException(STORE_REVIEW_IDENTIFIERS);
+    }
 
     const before: Identifiers = {};
     const after: Identifiers = {};
 
     // The DTO lower-cases; a stored legacy casing of the same address is no change.
     if (dto.email !== undefined && dto.email !== current.email.toLowerCase()) {
-      if (current.isStoreReview) {
-        throw new ForbiddenException(STORE_REVIEW_EMAIL);
-      }
       const taken = await tx.user.findFirst({
         where: {
           email: { equals: dto.email, mode: "insensitive" },
@@ -215,9 +228,9 @@ export class AdminUserIdentifiersService {
       await this.email.sendEmailChangedNotice(previousEmail, change.firstName);
       return true;
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+      // Never the provider's message: it may echo the recipient address.
       this.logger.warn(
-        `Email-changed notice not sent for user ${change.userId}: ${reason}`,
+        `Email-changed notice not sent for user ${change.userId}: ${errorKind(error)}`,
       );
       return false;
     }

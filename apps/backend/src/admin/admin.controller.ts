@@ -248,7 +248,7 @@ export class AdminController {
   @ApiResponse({
     status: 403,
     description:
-      "Son propre compte, ou email du compte de validation App Store / Google Play",
+      "Son propre compte, ou compte de validation App Store / Google Play",
   })
   @ApiResponse({
     status: 409,

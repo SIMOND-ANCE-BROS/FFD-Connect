@@ -19,7 +19,7 @@ import {
   EMAIL_TAKEN,
   LICENSE_NUMBER_TAKEN,
   NO_LICENSE,
-  STORE_REVIEW_EMAIL,
+  STORE_REVIEW_IDENTIFIERS,
 } from "./admin-user-identifiers.service";
 import { AdminUsersQueryService } from "./admin-users.query-service";
 
@@ -133,19 +133,10 @@ describe("AdminUserIdentifiersService", () => {
       expect(email.sendEmailChangedNotice).not.toHaveBeenCalled();
     });
 
-    it("never changes the store-review account's email", async () => {
-      prisma.user.findUnique.mockResolvedValue({
-        ...current,
-        isStoreReview: true,
-      } as never);
-      await expect(
-        service.update("admin-1", "u1", { email: "new@x.fr" }),
-      ).rejects.toEqual(new ForbiddenException(STORE_REVIEW_EMAIL));
-      expect(prisma.user.update).not.toHaveBeenCalled();
-    });
-
     it("keeps the committed change when the notice fails, and logs only the user id", async () => {
-      email.sendEmailChangedNotice.mockRejectedValue(new Error("smtp down"));
+      email.sendEmailChangedNotice.mockRejectedValue(
+        new Error("Failed to send email: invalid recipient jeanne@x.fr"),
+      );
       const warn = jest
         .spyOn(Logger.prototype, "warn")
         .mockImplementation(() => undefined);
@@ -154,7 +145,7 @@ describe("AdminUserIdentifiersService", () => {
       ).resolves.toEqual({ user: { id: "u1" }, previousEmailNotified: false });
       expect(prisma.user.update).toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith(
-        "Email-changed notice not sent for user u1: smtp down",
+        "Email-changed notice not sent for user u1: Error",
       );
       const logged = JSON.stringify(warn.mock.calls);
       expect(logged).not.toContain("jeanne@x.fr");
@@ -171,7 +162,22 @@ describe("AdminUserIdentifiersService", () => {
         service.update("admin-1", "u1", { email: "new@x.fr" }),
       ).resolves.toMatchObject({ previousEmailNotified: false });
       expect(warn).toHaveBeenCalledWith(
-        "Email-changed notice not sent for user u1: nope",
+        "Email-changed notice not sent for user u1: string",
+      );
+      warn.mockRestore();
+    });
+
+    it("logs the error name and code, never the message", async () => {
+      const err = Object.assign(new Error("quota for jeanne@x.fr"), {
+        code: "rate_limit_exceeded",
+      });
+      email.sendEmailChangedNotice.mockRejectedValue(err);
+      const warn = jest
+        .spyOn(Logger.prototype, "warn")
+        .mockImplementation(() => undefined);
+      await service.update("admin-1", "u1", { email: "new@x.fr" });
+      expect(warn).toHaveBeenCalledWith(
+        "Email-changed notice not sent for user u1: Error (rate_limit_exceeded)",
       );
       warn.mockRestore();
     });
@@ -259,6 +265,25 @@ describe("AdminUserIdentifiersService", () => {
         after: { email: "new@x.fr", licenseNumber: "FFD-2" },
       }),
     );
+  });
+
+  it.each([
+    [{ email: "new@x.fr" }],
+    [{ licenseNumber: "FFD-2" }],
+    [{ email: "jeanne@x.fr", licenseNumber: "FFD-1" }],
+  ])("locks every identifier of the store-review account (%p)", async (dto) => {
+    prisma.user.findUnique.mockResolvedValue({
+      ...current,
+      isStoreReview: true,
+    } as never);
+    await expect(service.update("admin-1", "u1", dto)).rejects.toEqual(
+      new ForbiddenException(STORE_REVIEW_IDENTIFIERS),
+    );
+    expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    expect(prisma.license.findUnique).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+    expect(prisma.license.update).not.toHaveBeenCalled();
+    expect(audit.record).not.toHaveBeenCalled();
   });
 
   it("requires at least one identifier", async () => {
