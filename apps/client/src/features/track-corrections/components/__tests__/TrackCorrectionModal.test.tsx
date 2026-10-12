@@ -66,17 +66,14 @@ describe("TrackCorrectionModal", () => {
     jest.spyOn(Alert, "alert").mockImplementation(jest.fn());
   });
 
-  it("affiche la piste et tous les motifs", async () => {
-    const { getByText, getByTestId } = await renderModal();
+  it("affiche la piste et les motifs, sans les clashs paso doble", async () => {
+    const { getByText, getByTestId, queryByTestId, queryByText } =
+      await renderModal();
     expect(getByText("My Song")).toBeTruthy();
-    for (const reason of [
-      "TITLE",
-      "ARTIST",
-      "DANCE",
-      "MPM",
-      "PASO_CLASH",
-      "OTHER",
-    ]) {
+    // Les clashs ont leur parcours dédié dans le lecteur (#445).
+    expect(queryByTestId("correction-reason-PASO_CLASH")).toBeNull();
+    expect(queryByText("Clashs paso doble")).toBeNull();
+    for (const reason of ["TITLE", "ARTIST", "DANCE", "MPM", "OTHER"]) {
       expect(getByTestId(`correction-reason-${reason}`)).toBeTruthy();
     }
   });
@@ -247,29 +244,6 @@ describe("TrackCorrectionModal", () => {
         message: "Le son coupe à 1:30",
       }),
     );
-  });
-
-  it("clashs : explique où les placer, et ouvre l'éditeur depuis le lecteur", async () => {
-    const onProposeClashes = jest.fn();
-    const { getByTestId, queryByTestId, rerender } = await renderModal();
-    await fireEvent.press(getByTestId("correction-reason-PASO_CLASH"));
-    expect(getByTestId("correction-clash-info")).toBeTruthy();
-    expect(queryByTestId("correction-open-clash-editor")).toBeNull();
-
-    const client = new QueryClient();
-    await rerender(
-      <QueryClientProvider client={client}>
-        <TrackCorrectionModal
-          visible
-          onClose={jest.fn()}
-          track={track}
-          initialReason="PASO_CLASH"
-          onProposeClashes={onProposeClashes}
-        />
-      </QueryClientProvider>,
-    );
-    await fireEvent.press(getByTestId("correction-open-clash-editor"));
-    expect(onProposeClashes).toHaveBeenCalled();
   });
 
   it.each([

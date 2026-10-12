@@ -111,6 +111,41 @@ describe('TrackDetailPage', () => {
     expect(update).toHaveBeenCalledWith({ path: { id: 't1' }, body: { style: 'Rumba' } });
   });
 
+  it('hides the clash editor on a track that is not a paso doble (#445)', async () => {
+    renderPage();
+    await screen.findByLabelText('MPM');
+    expect(screen.queryByText('Clashes paso')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Marquer ici' })).not.toBeInTheDocument();
+  });
+
+  it('shows the clash editor on a paso doble', async () => {
+    renderPage({ ...base, style: 'Paso Doble', clashTimecodes: [40] });
+    expect(await screen.findByText('Clashes paso')).toBeInTheDocument();
+    expect(screen.getByLabelText('Clash 1')).toHaveValue('0:40');
+  });
+
+  it('shows the editor once the dance is changed to paso doble, and hides it back', async () => {
+    renderPage();
+    await user.click(await screen.findByLabelText('Danse', { selector: 'input' }));
+    await user.click(await screen.findByRole('option', { name: 'Paso Doble' }));
+    expect(screen.getByText('Clashes paso')).toBeInTheDocument();
+    await user.click(screen.getByLabelText('Danse', { selector: 'input' }));
+    await user.click(await screen.findByRole('option', { name: 'Rumba' }));
+    expect(screen.queryByText('Clashes paso')).not.toBeInTheDocument();
+  });
+
+  it('never sends the clashes of a track that is no longer a paso doble', async () => {
+    const update = vi.spyOn(sdk, 'tracksControllerUpdate').mockResolvedValue(ok({}) as never);
+    renderPage({ ...base, style: 'Paso Doble', clashTimecodes: [40] });
+    await user.click(await screen.findByRole('button', { name: 'Supprimer le clash 1' }));
+    await user.click(screen.getByLabelText('Danse', { selector: 'input' }));
+    await user.click(await screen.findByRole('option', { name: 'Rumba' }));
+    const dialog = await confirmSave();
+    expect(dialog).not.toHaveTextContent('Clashes paso');
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    expect(update).toHaveBeenCalledWith({ path: { id: 't1' }, body: { style: 'Rumba' } });
+  });
+
   it('sends a typed MPM', async () => {
     const update = vi.spyOn(sdk, 'tracksControllerUpdate').mockResolvedValue(ok({}) as never);
     renderPage();

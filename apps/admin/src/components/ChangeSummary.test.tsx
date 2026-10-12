@@ -62,6 +62,21 @@ describe('ChangeSummary', () => {
     expect(screen.getByText('Aucun clash')).toBeInTheDocument();
   });
 
+  it('hides the clash row of a track that is not a paso doble', () => {
+    render(
+      <MantineProvider>
+        <ChangeSummary
+          before={{ bpm: 60, clashTimecodes: [40] }}
+          after={{ bpm: 62, clashTimecodes: [] }}
+          showClashes={false}
+        />
+      </MantineProvider>,
+    );
+    expect(screen.getByText('MPM')).toBeInTheDocument();
+    expect(screen.queryByText('Clashes paso')).not.toBeInTheDocument();
+    expect(screen.queryByText('0:40')).not.toBeInTheDocument();
+  });
+
   it('labels the track moderation flags, the status and the source, booleans in French', () => {
     render(
       <MantineProvider>

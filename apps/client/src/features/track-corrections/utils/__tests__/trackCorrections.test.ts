@@ -3,6 +3,7 @@ import { trackCorrectionTargetOf } from "../notificationTarget";
 import {
   buildCorrectionDiff,
   canonicalDance,
+  CORRECTION_REASONS,
   formatClashList,
   formatClashListForEdit,
   formatClashTime,
@@ -168,6 +169,20 @@ describe("buildCorrectionDiff", () => {
 describe("libellés", () => {
   it("traduit les motifs", () => {
     expect(reasonLabel("PASO_CLASH")).toBe("Clashs paso doble");
+    expect(reasonLabel("MPM")).toBe("MPM");
+  });
+
+  it("le formulaire ne propose pas les clashs, qui gardent leur libellé (#445)", () => {
+    expect(CORRECTION_REASONS.map((r) => r.value)).toEqual([
+      "TITLE",
+      "ARTIST",
+      "DANCE",
+      "MPM",
+      "OTHER",
+    ]);
+    expect(CORRECTION_REASONS.find((r) => r.value === "DANCE")?.label).toBe(
+      "Danse (catégorie)",
+    );
   });
 
   it("formate une date, vide si invalide", () => {

@@ -171,6 +171,38 @@ describe('ModerationDetailPage', () => {
     });
   });
 
+  it('hides the clashes of a track that is not a paso doble (#445)', async () => {
+    renderPage({ ...pendingMpm, track: { ...pendingMpm.track, style: 'Rumba' } });
+    await screen.findByLabelText('MPM');
+    expect(screen.queryByText('Clashes paso')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Marquer ici' })).not.toBeInTheDocument();
+  });
+
+  it('shows the clashes of a paso doble, in the table and the editor', async () => {
+    renderPage(pendingMpm);
+    await screen.findByLabelText('MPM');
+    // Table row + editor title.
+    expect(screen.getAllByText('Clashes paso')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Marquer ici' })).toBeInTheDocument();
+  });
+
+  it('keeps a clash proposal decidable on a track filed under another dance', async () => {
+    renderPage({ ...pendingClash, track: { ...pendingClash.track, style: 'Rumba' } });
+    expect(await screen.findByLabelText('Clash 1')).toHaveValue('0:40');
+    expect(screen.getAllByText('Clashes paso')).toHaveLength(2);
+  });
+
+  it('shows the clashes when the proposal turns the track into a paso doble', async () => {
+    renderPage({
+      ...pendingMpm,
+      reason: 'DANCE',
+      proposed: { ...pendingMpm.proposed, bpm: null, style: 'Paso Doble' },
+      track: { ...pendingMpm.track, style: 'Rumba', clashTimecodes: [] },
+    });
+    await screen.findByLabelText('MPM');
+    expect(screen.getByRole('button', { name: 'Marquer ici' })).toBeInTheDocument();
+  });
+
   it('places a clash from the player time and sends the list', async () => {
     const approve = vi
       .spyOn(sdk, 'trackCorrectionsControllerApprove')

@@ -31,7 +31,7 @@ import { ClashEditor } from '../components/ClashEditor';
 import { apiErrorMessage, isConflict } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { withLegacy } from '../lib/diff';
-import { formatTimecode, trackAudioUrl } from '../lib/moderation';
+import { formatTimecode, isPasoDoble, trackAudioUrl } from '../lib/moderation';
 import {
   initialEditValues,
   resultingBpm,
@@ -158,7 +158,10 @@ function TrackEditor({ id }: { id: string }) {
   }
   if (!track.data || !values) return <ListSkeleton rows={5} />;
   const t = track.data;
-  const patch = trackPatch(t, values, bpmTouched);
+  // Clashes only exist for a paso doble (the dance being edited): otherwise
+  // the editor is hidden and the current clashes are left as they are.
+  const paso = isPasoDoble(values.style);
+  const patch = trackPatch(t, paso ? values : { ...values, clashes: t.clashTimecodes }, bpmTouched);
   const preview = resultingBpm(t, patch);
   const change = pending ? trackChangePreview(t, pending) : null;
   const badge = TRACK_STATUS_BADGES[t.status];
@@ -302,11 +305,13 @@ function TrackEditor({ id }: { id: string }) {
               }}
             />
           </SimpleGrid>
-          <ClashEditor
-            value={values.clashes}
-            onChange={(clashes) => setValues({ ...values, clashes })}
-            audioRef={audioRef}
-          />
+          {paso && (
+            <ClashEditor
+              value={values.clashes}
+              onChange={(clashes) => setValues({ ...values, clashes })}
+              audioRef={audioRef}
+            />
+          )}
           <Group>
             <Button type="submit" disabled={busy || Object.keys(patch).length === 0}>
               Enregistrer
@@ -388,7 +393,13 @@ function TrackEditor({ id }: { id: string }) {
               {dayjs(h.createdAt).format('DD/MM/YYYY HH:mm')} —{' '}
               {ACTION_LABELS[h.action] ?? h.action} par {h.actorName ?? 'admin supprimé'}
             </Text>
-            {h.after && <ChangeSummary before={h.before ?? {}} after={h.after} />}
+            {h.after && (
+              <ChangeSummary
+                before={h.before ?? {}}
+                after={h.after}
+                showClashes={isPasoDoble(t.style)}
+              />
+            )}
           </Card>
         ))
       ) : (
@@ -407,7 +418,7 @@ function TrackEditor({ id }: { id: string }) {
       >
         {pending && change && (
           <Stack>
-            <ChangeSummary before={change.before} after={change.after} />
+            <ChangeSummary before={change.before} after={change.after} showClashes={paso} />
             {save.isError && (
               <Alert color="red">{apiErrorMessage(save.error, "Échec de l'enregistrement")}</Alert>
             )}
