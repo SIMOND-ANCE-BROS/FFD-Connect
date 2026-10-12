@@ -5,6 +5,7 @@
  *   pnpm testflight:distribute --build-number 17
  *   pnpm testflight:distribute --build-number 17 --notes-file beta-notes.txt
  *   pnpm testflight:distribute --build-number 17 --group "Beta FFD" --timeout 60
+ *   pnpm testflight:distribute --build-number 17 --version 1.0.0
  *   pnpm testflight:distribute --build-number 17 --dry-run
  *
  * Etapes, via l'API App Store Connect :
@@ -32,6 +33,8 @@ const POLL_INTERVAL_MS = 60_000;
 
 export interface Options {
   buildNumber: string;
+  /** Version marketing (CFBundleShortVersionString) : le numero seul peut exister sous plusieurs versions. */
+  version?: string;
   group: string;
   notesFile?: string;
   locale: string;
@@ -61,6 +64,7 @@ export function parseFlags(argv: string[]): Options {
       return next;
     };
     if (flag === '--build-number') options.buildNumber = value();
+    else if (flag === '--version') options.version = value();
     else if (flag === '--group') options.group = value();
     else if (flag === '--notes-file') options.notesFile = value();
     else if (flag === '--locale') options.locale = value();
@@ -71,10 +75,32 @@ export function parseFlags(argv: string[]): Options {
   if (!/^\d+$/.test(options.buildNumber)) {
     throw new Error('--build-number est obligatoire (numero de build iOS, ex. 17)');
   }
+  if (options.version !== undefined && !/^\d+(\.\d+){0,3}$/.test(options.version)) {
+    throw new Error('--version : version marketing attendue (ex. 1.0.0)');
+  }
   if (!Number.isFinite(options.timeoutMin) || options.timeoutMin <= 0) {
     throw new Error('--timeout doit etre un nombre de minutes positif');
   }
   return options;
+}
+
+/**
+ * Requete GET /builds du build attendu. Avec --version, filtre AUSSI sur la
+ * version marketing : sans elle, un numero de build reutilise sous une autre
+ * version designerait le mauvais binaire.
+ */
+export function buildsQuery(
+  appId: string,
+  options: Pick<Options, 'buildNumber' | 'version'>,
+): string {
+  const params = [
+    `filter[app]=${encodeURIComponent(appId)}`,
+    `filter[version]=${encodeURIComponent(options.buildNumber)}`,
+  ];
+  if (options.version) {
+    params.push(`filter[preReleaseVersion.version]=${encodeURIComponent(options.version)}`);
+  }
+  return `/builds?${params.join('&')}&limit=5`;
 }
 
 /** Le build portant ce numero dans une reponse GET /builds, ou null. */
@@ -211,9 +237,7 @@ async function waitForBuild(
 ): Promise<AscBuild> {
   const deadline = Date.now() + options.timeoutMin * 60_000;
   for (;;) {
-    const response = await api(
-      `/builds?filter[app]=${appId}&filter[version]=${options.buildNumber}&limit=5`,
-    );
+    const response = await api(buildsQuery(appId, options));
     const build = findBuild(response, options.buildNumber);
     const verdict = processingVerdict(build);
     if (verdict === 'ready' && build) return build;

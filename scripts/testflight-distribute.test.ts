@@ -13,6 +13,7 @@ import assert from 'assert';
 
 import {
   addToGroupBody,
+  buildsQuery,
   describeAscError,
   findBuild,
   findGroupId,
@@ -86,6 +87,24 @@ test('parseFlags : option sans valeur ou inconnue', () => {
 test('parseFlags : timeout invalide', () => {
   assert.throws(() => parseFlags(['--build-number', '17', '--timeout', '0']), /timeout/);
   assert.throws(() => parseFlags(['--build-number', '17', '--timeout', 'abc']), /timeout/);
+});
+
+test('parseFlags : --version marketing validee', () => {
+  assert.strictEqual(parseFlags(['--build-number', '26', '--version', '1.0.0']).version, '1.0.0');
+  assert.strictEqual(parseFlags(['--build-number', '26']).version, undefined);
+  assert.throws(() => parseFlags(['--build-number', '26', '--version', '1.0.0&x=1']), /version/);
+  assert.throws(() => parseFlags(['--build-number', '26', '--version', '']), /version/);
+});
+
+test('buildsQuery : filtre sur le numero, et sur la version marketing si donnee', () => {
+  assert.strictEqual(
+    buildsQuery('123', { buildNumber: '26' }),
+    '/builds?filter[app]=123&filter[version]=26&limit=5',
+  );
+  assert.strictEqual(
+    buildsQuery('123', { buildNumber: '26', version: '1.0.0' }),
+    '/builds?filter[app]=123&filter[version]=26&filter[preReleaseVersion.version]=1.0.0&limit=5',
+  );
 });
 
 test('findBuild : retrouve le bon numero parmi plusieurs', () => {

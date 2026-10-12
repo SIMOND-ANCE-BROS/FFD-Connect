@@ -4,10 +4,14 @@ name: EAS Build & Update
 # type") reads it back to find the last commit whose OTA was published, because
 # a workflow_run run's head_sha is the default branch's, not the built one.
 # Keep the " <branch> @ <40-hex sha>" suffix (same contract as deploy-backend).
-# A manual run gets a title that never matches it.
+# A manual run gets a title that never matches it, and names what will be
+# shipped (action, platform, build number) so the approver sees it on the
+# approval screen before releasing a build to testers.
 run-name: >-
   EAS Build & Update · ${{ github.event_name == 'workflow_dispatch'
-  && format('bêta {0} ({1})', inputs.action, github.ref_name)
+  && format('bêta {0} {1}{2} ({3})', inputs.action, inputs.platform,
+  inputs.build_number != '' && format(' n°{0}', inputs.build_number) || '',
+  github.ref_name)
   || format('{0} @ {1}', github.event.workflow_run.head_branch, github.event.workflow_run.head_sha) }}
 
 on:
@@ -1064,7 +1068,7 @@ jobs:
           !cancelled()
           && (steps.build.outputs.number != ''
           || steps.resolve.outputs.number != ''
-          || steps.local.outputs.number != ''
+          || (steps.local.outputs.number != '' && steps.notes.outcome == 'success')
           || steps.ota.outcome == 'success')
         env:
           GH_TOKEN: ${{ github.token }}
@@ -1091,6 +1095,10 @@ jobs:
             TAG="beta-$VERSION-$PLATFORM-$BUILD_NUMBER"
             TITLE="Beta $PLATFORM_NAME $VERSION ($BUILD_NUMBER)"
             HEADER="$PLATFORM_NAME build $VERSION ($BUILD_NUMBER) — $STORE_NAME, commit ${SHA:0:7}."
+            if [ "$ACTION" = "distribute" ]; then
+              # Rien ne relie le binaire envoyé à la main à ce commit : le dire.
+              HEADER="$HEADER Local build (eas build --local), uploaded by hand: provenance NOT verified by CI (build local, provenance non vérifiée par la CI)."
+            fi
           fi
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "::notice::Release $TAG déjà présente (relance) — rien à faire."
@@ -1217,18 +1225,28 @@ jobs:
             || steps.local.outputs.number }}
           BUILD_STATE: ${{ steps.build.outputs.state }}
           TAG_OUTCOME: ${{ steps.tag.outcome }}
-          # distribute : envoi fait hors CI (étape « Resolve local beta build »).
-          SUBMIT_STATE: ${{ steps.submit.outputs.state || steps.local.outputs.submit_state }}
+          # distribute : envoi fait hors CI (étape « Resolve local beta build »),
+          # transmis seulement si les notes ont été générées — sinon pas de
+          # distribution sans « What to Test ».
+          SUBMIT_STATE: >-
+            ${{ steps.submit.outputs.state
+            || steps.notes.outcome == 'success' && steps.local.outputs.submit_state
+            || '' }}
         run: |
           set -euo pipefail
           D="$RUNNER_TEMP/beta-state"
           mkdir -p "$D"
+          # Version marketing du commit décrit (HEAD : staging, build repris ou
+          # tag du build local) : distribute-beta la passe à
+          # testflight-distribute (--version) pour ne pas viser un homonyme.
+          VERSION=$(sed -nE 's/.*version: "([^"]+)", \/\/ x-release-please-version.*/\1/p' apps/client/app.config.js 2> /dev/null || true)
           jq -n \
             --arg platform "$PLATFORM" --arg skip "${SKIP:-false}" \
             --arg build_id "$BUILD_ID" --arg build_number "$BUILD_NUMBER" \
+            --arg version "$VERSION" \
             --arg build_state "$BUILD_STATE" --arg tag "$TAG_OUTCOME" --arg submit "$SUBMIT_STATE" \
             '{platform: $platform, skip: ($skip == "true"), build_id: $build_id,
-              build_number: $build_number, build_state: $build_state,
+              build_number: $build_number, version: $version, build_state: $build_state,
               tag_outcome: $tag, submit_state: $submit}' > "$D/state.json"
           if [ -f beta-notes.txt ]; then cp beta-notes.txt "$D/beta-notes.txt"; fi
 
@@ -1289,9 +1307,13 @@ jobs:
       contents: read
       id-token: write
     steps:
+      # Scripts pris dans le commit du WORKFLOW (github.sha, réf du dispatch),
+      # comme le générateur de notes : le workflow leur passe des options
+      # (--version) qu'une version plus ancienne, sur staging, refuserait.
+      # Même confiance que le workflow lui-même, qui vient de cette réf.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
-          ref: staging
+          ref: ${{ github.sha }}
           persist-credentials: false
           # Le strict nécessaire : les deux scripts et la version de Node.
           sparse-checkout: |
@@ -1366,9 +1388,16 @@ jobs:
             not_ready "numéro de build illisible"
             exit 1
           fi
+          # Version marketing : facultative (état d'un ancien run), mais
+          # jamais transmise si elle n'a pas la forme x.y.z.
+          VERSION=$(field version)
+          if ! [[ "$VERSION" =~ ^[0-9]{1,4}(\.[0-9]{1,4}){0,3}$ ]]; then
+            VERSION=""
+          fi
           {
             echo "ready=true"
             echo "build_number=$BUILD_NUMBER"
+            echo "version=$VERSION"
           } >> "$GITHUB_OUTPUT"
 
       # Connexion juste avant la lecture des clés. Transition : sans la
@@ -1415,6 +1444,7 @@ jobs:
           KV_NAME: ffd-connect-release-kv
           LOGIN_OUTCOME: ${{ steps.azlogin.outcome }}
           BUILD_NUMBER: ${{ steps.state.outputs.build_number }}
+          APP_VERSION: ${{ steps.state.outputs.version }}
           ASC_APP_ID: '6787383066'
           # Repli de transition (à supprimer une fois le coffre éprouvé) :
           # visibles de cette seule étape, effacés de son environnement avant
@@ -1501,11 +1531,13 @@ jobs:
           # $(< f) retire les fins de ligne finales : un Key ID suivi d'un
           # « \n » casserait le JWT App Store Connect.
           if [ "$PLATFORM" = "ios" ]; then
+            VERSION_ARGS=()
+            if [ -n "$APP_VERSION" ]; then VERSION_ARGS=(--version "$APP_VERSION"); fi
             ASC_KEY_ID="$(< "$DIR/ASC_KEY_ID")" \
               ASC_ISSUER_ID="$(< "$DIR/ASC_ISSUER_ID")" \
               ASC_KEY_P8="$(< "$DIR/ASC_KEY_P8")" \
               node scripts/testflight-distribute.ts \
-              --build-number "$BUILD_NUMBER" --notes-file "$NOTES_FILE" --timeout 45
+              --build-number "$BUILD_NUMBER" "${VERSION_ARGS[@]}" --notes-file "$NOTES_FILE" --timeout 45
             echo "✅ Build iOS $BUILD_NUMBER : « What to Test », groupe « Beta FFD », Beta App Review" \
               >> "$GITHUB_STEP_SUMMARY"
           elif [ ! -s "$DIR/PLAY_SERVICE_ACCOUNT_JSON" ]; then
@@ -1593,6 +1625,17 @@ jobs:
             BUILD_STATE=$(sf build_state)
             TAG_OUTCOME=$(sf tag_outcome)
             SUBMIT_STATE=$(sf submit_state)
+            # État venu d'un job non fiable : chaque champ affiché ou recopié
+            # dans une commande passe un motif strict (comme distribute-beta) ;
+            # un saut de ligne injecterait sinon une commande de workflow.
+            if ! [[ "$BUILD_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+              BUILD_ID=""
+            fi
+            for v in BUILD_STATE TAG_OUTCOME SUBMIT_STATE; do
+              if [ -n "${!v}" ] && ! [[ "${!v}" =~ ^[a-z_]{1,20}$ ]]; then
+                printf -v "$v" '%s' invalide
+              fi
+            done
             if [ -n "$BUILD_ID" ]; then
               CMD="gh workflow run eas-build.yml --ref $REF -f action=resume -f platform=$PLATFORM -f build_id=$BUILD_ID"
               BUILD_LABEL="${BUILD_STATE:-repris}"
