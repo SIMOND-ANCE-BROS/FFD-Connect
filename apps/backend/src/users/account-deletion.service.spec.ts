@@ -95,6 +95,7 @@ describe("AccountDeletionService", () => {
             : [
                 {
                   id: "r1",
+                  userId: "partner",
                   details: { participant: "Sam PETIT / Alex MARTIN" },
                   event: { competitionId: "c9" },
                 },
@@ -102,8 +103,13 @@ describe("AccountDeletionService", () => {
         ),
     );
     prisma.registration.updateMany.mockReturnValue(marker("partnerReg"));
-    prisma.result.update.mockReturnValue(marker("coupleResult"));
-    prisma.result.updateMany.mockReturnValue(marker("resultSweep"));
+    // Couple-result scrub (details only) vs the user's own results sweep
+    // (userId -> tombstone): both are guarded updateMany calls.
+    prisma.result.updateMany.mockImplementation((args) =>
+      marker(
+        args && "userId" in (args.data ?? {}) ? "resultSweep" : "coupleResult",
+      ),
+    );
     prisma.user.delete.mockReturnValue(marker("user"));
 
     await service.deleteAccount("u1");

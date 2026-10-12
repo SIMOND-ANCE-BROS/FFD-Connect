@@ -302,6 +302,18 @@ export const resultAnonymizationSelect = {
 } as const;
 
 /**
+ * Suppression de compte (#395) : résultat de couple rattaché au PARTENAIRE
+ * dont le libellé nomme la personne supprimée. `userId` (celui du
+ * partenaire) garde la réécriture : une ligne réattribuée ou supprimée entre
+ * la lecture et la transaction n'est pas touchée et ne fait pas échouer la
+ * suppression.
+ */
+export const partnerCoupleResultSelect = {
+  ...resultAnonymizationSelect,
+  userId: true,
+} as const;
+
+/**
  * Ligne de résultat publiée par `GET /competitions/:id/results` (endpoint
  * public, sans authentification). Minimisation (RGPD art. 5.1.c, #413) :
  * jamais `userId` (identifiant interne du compte du couple), ni `createdAt`.
