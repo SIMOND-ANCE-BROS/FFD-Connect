@@ -1362,6 +1362,8 @@ describe("UsersService", () => {
       });
       prisma.$transaction.mockResolvedValue([] as never);
       prisma.licenseRenewalDocument.findMany.mockResolvedValue([]);
+      // Partner-name scrub (#395): no couple to look up.
+      prisma.registration.findMany.mockResolvedValue([]);
     });
 
     afterEach(() => {

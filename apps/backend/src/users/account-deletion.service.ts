@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { licenseRenewalDocumentFileSelect } from "../utils/prisma-selects";
+import { buildPartnerNameScrubOps } from "./partner-name-scrub";
 
 /**
  * Borne de la lecture des documents de renouvellement à purger : un brouillon
@@ -28,6 +29,9 @@ export const MAX_RENEWAL_DOCUMENTS_TO_PURGE = 200;
  * Inscriptions d'autrui en tant que partenaire : anonymisées explicitement
  * (partnerUserId ET partnerName, copie du nom complet → null ; null est
  * déjà géré partout à l'affichage).
+ * Copies du nom sans identifiant (#395) : inscription du partenaire créée
+ * par l'import sans partnerUserId, libellé d'un résultat de couple rattaché
+ * au partenaire — cf. buildPartnerNameScrubOps (partner-name-scrub.ts).
  * Suppressions explicites (FK sans onDelete → RESTRICT) : registrations,
  * seatBookings, notifications ; bugReports (userId sans FK).
  * Journal admin : les lignes qui visent l'utilisateur sont CONSERVÉES mais
@@ -74,6 +78,13 @@ export class AccountDeletionService {
         `Account deletion: renewal document read hit the ${MAX_RENEWAL_DOCUMENTS_TO_PURGE} cap — remaining files may be orphaned, run scripts/list-orphan-renewal-blobs.ts`,
       );
     }
+    // Read before the transaction: it deletes the user's own registrations,
+    // which locate the couple (event + bib).
+    const partnerNameScrubOps = await buildPartnerNameScrubOps(
+      this.prisma,
+      userId,
+      this.logger,
+    );
     await this.prisma.$transaction([
       this.prisma.notification.deleteMany({ where: { userId } }),
       this.prisma.seatBooking.deleteMany({ where: { userId } }),
@@ -84,6 +95,7 @@ export class AccountDeletionService {
         where: { partnerUserId: userId },
         data: { partnerUserId: null, partnerName: null },
       }),
+      ...partnerNameScrubOps,
       // Le SetNull de proposedById laisserait le commentaire libre, qui peut
       // identifier son auteur : il est effacé avant la suppression du compte.
       this.prisma.trackCorrection.updateMany({
