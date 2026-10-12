@@ -16,28 +16,35 @@
  * anonymised (DELETED_USER_ID tombstone), rows without cascade deleted,
  * partner registrations, partners' copies of the name (#395) and admin
  * audit rows anonymised, user row deleted.
+ * After the commit, the account's renewal document files (medical
+ * certificates) are deleted from storage, best-effort, with the same
+ * RenewalDocumentFileCleaner as AccountDeletionService (#430).
  * Clubs go last, once none of their members survives. Then results already
  * orphaned by earlier purges are anonymised (idempotent sweep).
- * Not done here (no Redis / storage client in the script): results cache
- * invalidation (1 h TTL) and renewal document files.
+ * Not done here (no Redis client in the script): results cache invalidation
+ * (1 h TTL).
+ *
+ * Logs name accounts by id only, never by e-mail (#430).
  *
  * Idempotent: nothing to purge = no-op. `--dry-run` lists without deleting.
  * Run at container boot (docker-entrypoint.sh) ONLY when SEED_TEST_TRACKS=true
  * — never in prod — BEFORE seed-profile-test-accounts (which flags the
  * store-review account). A failure never blocks the boot.
  */
+import { ConfigService } from "@nestjs/config";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import "dotenv/config";
 import { Pool } from "pg";
-import {
-  anonymizeOrphanedResults,
-  prepareAccountDeletion,
-} from "../src/users/account-deletion.core";
+import { CircuitBreakerService } from "../src/common/circuit-breaker/circuit-breaker.service";
+import { BlobStorageService } from "../src/storage/blob-storage.service";
+import { RenewalDocumentFileCleaner } from "../src/storage/renewal-document-file-cleaner.service";
+import { anonymizeOrphanedResults } from "../src/users/account-deletion.core";
 import {
   TEST_CLUB_NAMES,
-  buildPurgeUserOperations,
-  isTestLicenseNumber,
+  formatPurgeSummary,
+  formatUserPurged,
+  purgeTestUser,
   selectTestClubs,
   selectTestUsers,
 } from "./purge-test-accounts.utils";
@@ -52,27 +59,24 @@ const TAG = "🧹 [purge-test-accounts]";
 /** Staging holds a few dozen accounts; the cap only bounds the read. */
 const MAX_CANDIDATES = 500;
 
-async function purgeUser(user: { id: string; email: string }): Promise<void> {
-  const licenses = await prisma.license.findMany({
-    where: { userId: user.id },
-    select: { id: true, number: true },
-    take: 10,
-  });
-  const seededLicenseIds = licenses
-    .filter((l) => isTestLicenseNumber(l.number))
-    .map((l) => l.id);
+// Same storage cleaner as AccountDeletionService (circuit breaker + timeout,
+// best-effort). Outside Nest DI: ConfigService without a module reads the
+// process environment, like the app's ConfigModule does.
+const renewalFiles = new RenewalDocumentFileCleaner(
+  new BlobStorageService(new ConfigService()),
+  new CircuitBreakerService(),
+);
 
-  const plan = await prepareAccountDeletion(prisma, user.id, {
-    warn: (message) => console.warn(`${TAG}   ⚠ ${message}`),
-  });
-
-  const [licensesDeleted] = (await prisma.$transaction(
-    buildPurgeUserOperations(prisma, user.id, seededLicenseIds, plan),
-  )) as [Prisma.BatchPayload, ...unknown[]];
-  const unlinked = licenses.length - licensesDeleted.count;
-  console.log(
-    `${TAG}   ✓ user ${user.email} (${user.id}): ${plan.results.length} result(s) anonymised, ${plan.partnerNameScrub.ops.length} partner name copy(ies) scrubbed, ${licensesDeleted.count} seeded license(s) deleted, ${unlinked} license(s) unlinked`,
+async function purgeUser(userId: string): Promise<void> {
+  const report = await purgeTestUser(
+    {
+      prisma,
+      files: renewalFiles,
+      warn: (message) => console.warn(`${TAG}   ⚠ ${message}`),
+    },
+    userId,
   );
+  console.log(`${TAG} ${formatUserPurged(userId, report)}`);
 }
 
 /**
@@ -140,21 +144,24 @@ async function purgeAccounts(): Promise<void> {
   }
 
   const kept = candidates.filter((c) => !purgedIds.has(c.id));
-  console.log(
-    `${TAG} ${DRY_RUN ? "[dry-run] would delete" : "Deleting"} ${users.length} user(s) and ${clubs.length} club(s); keeping ${kept.map((k) => k.email).join(", ") || "none"}.`,
-  );
-  for (const u of users) console.log(`${TAG}   - user ${u.email} (${u.id})`);
-  for (const c of clubs) console.log(`${TAG}   - club ${c.name} (${c.id})`);
+  for (const line of formatPurgeSummary({
+    dryRun: DRY_RUN,
+    userIds: users.map((u) => u.id),
+    clubs,
+    keptUserIds: kept.map((k) => k.id),
+  })) {
+    console.log(`${TAG} ${line}`);
+  }
   if (DRY_RUN) return;
 
   let failures = 0;
   for (const u of users) {
     try {
-      await purgeUser(u);
+      await purgeUser(u.id);
     } catch (error) {
       failures++;
       console.warn(
-        `${TAG}   ⚠ user ${u.email}: ${error instanceof Error ? error.message : String(error)}`,
+        `${TAG}   ⚠ user ${u.id}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
