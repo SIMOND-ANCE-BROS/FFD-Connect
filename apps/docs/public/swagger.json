@@ -25968,7 +25968,9 @@
           "organizationSlug": {
             "type": "string",
             "description": "Slug de l'organisation HelloAsso (visible dans l'URL du compte)",
-            "example": "mon-club-danse"
+            "example": "mon-club-danse",
+            "maxLength": 255,
+            "pattern": "^[a-z0-9-]+$"
           }
         },
         "required": ["clientId", "clientSecret", "organizationSlug"]

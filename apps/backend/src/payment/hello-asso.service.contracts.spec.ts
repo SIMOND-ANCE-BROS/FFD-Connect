@@ -209,6 +209,37 @@ describe("HelloAssoService — contrats HTTP", () => {
     });
   });
 
+  it("ne réutilise pas le jeton d'un club pour un autre secret sur le même clientId", async () => {
+    nock(HELLOASSO_API)
+      .post("/oauth2/token")
+      .reply(200, { access_token: "tok-victim", expires_in: 3600 });
+    nock(HELLOASSO_API)
+      .post("/v5/organizations/org-slug/checkout-intents")
+      .reply(200, { id: 1, redirectUrl: "https://x" });
+    await service.createCheckoutIntent(
+      credentials,
+      "https://app.example.com",
+      checkoutParams,
+    );
+
+    // Same clientId, wrong secret: HelloAsso must be asked (and refuses).
+    nock(HELLOASSO_API)
+      .post("/oauth2/token")
+      .reply(401, { error: "invalid_client" });
+    const errorSpy = jest
+      .spyOn(Logger.prototype, "error")
+      .mockImplementation(() => undefined);
+    await expect(
+      service.createCheckoutIntent(
+        { ...credentials, clientSecret: "guess" },
+        "https://app.example.com",
+        checkoutParams,
+      ),
+    ).rejects.toThrow();
+    errorSpy.mockRestore();
+    expect(nock.isDone()).toBe(true);
+  });
+
   describe("getCheckoutIntent (#404)", () => {
     const tokenOk = () =>
       nock(HELLOASSO_API)

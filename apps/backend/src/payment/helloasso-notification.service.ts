@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import * as Sentry from "@sentry/nestjs";
 import { plainToInstance } from "class-transformer";
-import { validateSync } from "class-validator";
+import { isUUID, validateSync } from "class-validator";
 import { ClubsHelloAssoService } from "../clubs/clubs-helloasso.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { seatBookingPaymentCheckSelect } from "../utils/prisma-selects";
@@ -15,6 +15,23 @@ import {
   type HelloAssoCheckoutIntentDetail,
 } from "./hello-asso.service";
 import { getWebhookMetadata } from "./helloasso-order-check";
+
+/**
+ * Reasons any caller can provoke without a secret (the webhook is public):
+ * logged as warnings only, never sent to Sentry, so that forged traffic
+ * cannot burn the Sentry quota or drown real payment anomalies.
+ */
+const UNAUTHENTICATED_REASONS: ReadonlySet<NotificationIgnoredReason> = new Set(
+  ["booking_not_found", "no_checkout_intent", "club_not_connected"],
+);
+
+/**
+ * Only a booking still awaiting payment (or whose hold lapsed, #401: a late
+ * payment must still be detected) is worth re-reading on HelloAsso. Any other
+ * status is final: no outbound call (forged replays cannot amplify into
+ * HelloAsso calls nor trip the shared circuit breaker).
+ */
+const REREAD_STATUSES: ReadonlySet<string> = new Set(["PENDING", "EXPIRED"]);
 
 export type NotificationIgnoredReason =
   | "booking_not_found"
@@ -39,8 +56,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * booking's own checkout intent, with the organising club's credentials. A
  * forged notification can at most make us re-read a real payment.
  *
- * Read-only: no database write here. Rejections are traced (log + Sentry,
- * identifiers only); a HelloAsso outage throws 503 so that HelloAsso
+ * Read-only: no database write here. Rejections are logged (and sent to
+ * Sentry once the HelloAsso re-read disagrees, identifiers only); a HelloAsso outage throws 503 so that HelloAsso
  * redelivers the notification later (its retry policy spans ~27 h).
  */
 @Injectable()
@@ -62,13 +79,21 @@ export class HelloAssoNotificationService {
     payload: WebhookPayloadDto,
   ): Promise<WebhookPayloadDto | null> {
     const bookingId = getWebhookMetadata(payload)?.bookingId;
-    if (!bookingId) return null; // Not a seat-booking checkout.
+    // Not a seat-booking checkout (our booking ids are UUIDs): ignored
+    // silently — this also keeps arbitrary strings out of logs.
+    if (!bookingId || !isUUID(bookingId)) return null;
 
     const booking = await this.prisma.seatBooking.findUnique({
       where: { id: bookingId },
       select: seatBookingPaymentCheckSelect,
     });
     if (!booking) return this.ignore(bookingId, "booking_not_found");
+    if (!REREAD_STATUSES.has(booking.status)) {
+      this.logger.log(
+        `HelloAsso notification for booking ${bookingId} in status ${booking.status}: nothing to do`,
+      );
+      return null;
+    }
     if (!booking.paymentId) return this.ignore(bookingId, "no_checkout_intent");
 
     const credentials =
@@ -146,9 +171,12 @@ export class HelloAssoNotificationService {
   }
 
   private ignore(bookingId: string, reason: NotificationIgnoredReason): null {
-    this.logger.error(
-      `HelloAsso notification ignored for booking ${bookingId}: ${reason}`,
-    );
+    const message = `HelloAsso notification ignored for booking ${bookingId}: ${reason}`;
+    if (UNAUTHENTICATED_REASONS.has(reason)) {
+      this.logger.warn(message);
+      return null;
+    }
+    this.logger.error(message);
     Sentry.captureMessage("HelloAsso notification ignored", {
       level: "error",
       tags: { payment: "helloasso-notification-ignored", reason },

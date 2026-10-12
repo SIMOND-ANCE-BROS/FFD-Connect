@@ -8,6 +8,8 @@ import { HelloAssoNotificationService } from "./helloasso-notification.service";
 
 jest.mock("@sentry/nestjs", () => ({ captureMessage: jest.fn() }));
 
+const BOOKING_ID = "3f1c2b6e-8a4d-4c1e-9b7a-2d5e6f708192";
+
 describe("HelloAssoNotificationService (#404)", () => {
   const credentials = {
     clientId: "client",
@@ -15,7 +17,7 @@ describe("HelloAssoNotificationService (#404)", () => {
     organizationSlug: "club",
   };
   const booking = {
-    id: "booking-1",
+    id: BOOKING_ID,
     competitionId: "comp-1",
     status: "PENDING",
     paymentId: "4242",
@@ -25,7 +27,7 @@ describe("HelloAssoNotificationService (#404)", () => {
   const paidIntent = {
     id: 4242,
     redirectUrl: "https://checkout",
-    metadata: { bookingId: "booking-1", competitionId: "comp-1" },
+    metadata: { bookingId: BOOKING_ID, competitionId: "comp-1" },
     order: {
       id: 98765,
       checkoutIntentId: 4242,
@@ -47,7 +49,7 @@ describe("HelloAssoNotificationService (#404)", () => {
   /** The (untrusted) notification: claims whatever an attacker wants. */
   const notification: WebhookPayloadDto = {
     eventType: "Order",
-    metadata: { bookingId: "booking-1", competitionId: "comp-1" },
+    metadata: { bookingId: BOOKING_ID, competitionId: "comp-1" },
     data: {
       id: 1,
       checkoutIntentId: 1,
@@ -76,6 +78,9 @@ describe("HelloAssoNotificationService (#404)", () => {
     );
   });
 
+  const expectIgnoredQuietly = () =>
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+
   const expectIgnored = (reason: string) =>
     expect(Sentry.captureMessage).toHaveBeenCalledWith(
       "HelloAsso notification ignored",
@@ -92,7 +97,7 @@ describe("HelloAssoNotificationService (#404)", () => {
     expect(getCheckoutIntent).toHaveBeenCalledWith(credentials, "4242");
     expect(verified).toMatchObject({
       eventType: "Order",
-      metadata: { bookingId: "booking-1", competitionId: "comp-1" },
+      metadata: { bookingId: BOOKING_ID, competitionId: "comp-1" },
       data: {
         id: 98765,
         checkoutIntentId: 4242,
@@ -132,7 +137,7 @@ describe("HelloAssoNotificationService (#404)", () => {
     await expect(
       service.resolveOrderNotification(notification),
     ).resolves.toBeNull();
-    expectIgnored("booking_not_found");
+    expectIgnoredQuietly(); // booking_not_found: forgeable, no Sentry
     expect(getCheckoutIntent).not.toHaveBeenCalled();
   });
 
@@ -142,7 +147,7 @@ describe("HelloAssoNotificationService (#404)", () => {
     await expect(
       service.resolveOrderNotification(notification),
     ).resolves.toBeNull();
-    expectIgnored("no_checkout_intent");
+    expectIgnoredQuietly(); // no_checkout_intent: forgeable, no Sentry
   });
 
   it("ignores when the organising club has no HelloAsso credentials", async () => {
@@ -151,7 +156,7 @@ describe("HelloAssoNotificationService (#404)", () => {
     await expect(
       service.resolveOrderNotification(notification),
     ).resolves.toBeNull();
-    expectIgnored("club_not_connected");
+    expectIgnoredQuietly(); // club_not_connected: forgeable, no Sentry
   });
 
   it("ignores an intent HelloAsso does not know (404)", async () => {
@@ -227,11 +232,43 @@ describe("HelloAssoNotificationService (#404)", () => {
   it("reads the legacy data.metadata location of the booking reference", async () => {
     await service.resolveOrderNotification({
       eventType: "Order",
-      data: { metadata: { bookingId: "booking-1" } },
+      data: { metadata: { bookingId: BOOKING_ID } },
     });
 
     expect(findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "booking-1" } }),
+      expect.objectContaining({ where: { id: BOOKING_ID } }),
     );
+  });
+  it("ignores silently a bookingId that is not one of our UUIDs", async () => {
+    const verified = await service.resolveOrderNotification({
+      eventType: "Order",
+      metadata: { bookingId: "line\ninjection" },
+      data: {},
+    });
+
+    expect(verified).toBeNull();
+    expect(findUnique).not.toHaveBeenCalled();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it.each(["CONFIRMED", "CANCELLED"])(
+    "never calls HelloAsso for a %s booking (replays cannot amplify)",
+    async (status) => {
+      findUnique.mockResolvedValue({ ...booking, status });
+
+      await expect(
+        service.resolveOrderNotification(notification),
+      ).resolves.toBeNull();
+      expect(getCheckoutIntent).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still re-reads an EXPIRED hold: a late payment must be detected (#401)", async () => {
+    findUnique.mockResolvedValue({ ...booking, status: "EXPIRED" });
+
+    await service.resolveOrderNotification(notification);
+
+    expect(getCheckoutIntent).toHaveBeenCalled();
   });
 });

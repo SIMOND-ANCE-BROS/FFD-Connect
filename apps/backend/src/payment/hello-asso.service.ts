@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import axios from "axios";
+import { createHash } from "crypto";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
 import { withTimeout } from "../utils/timeout.utils";
 import { DEFAULT_HELLOASSO_API_URL } from "./helloasso-api-urls";
@@ -78,7 +79,10 @@ export class HelloAssoService {
     clientId: string;
     clientSecret: string;
   }): Promise<string> {
-    const cached = this.tokenCache.get(credentials.clientId);
+    // Keyed on the secret too: a club registering another club's clientId
+    // with a wrong secret never gets that club's cached token.
+    const cacheKey = `${credentials.clientId}:${createHash("sha256").update(credentials.clientSecret).digest("hex")}`;
+    const cached = this.tokenCache.get(cacheKey);
     if (cached && Date.now() < cached.expiresAt) {
       return cached.token;
     }
@@ -106,7 +110,7 @@ export class HelloAssoService {
 
       const token = response.data.access_token;
       const expiresAt = Date.now() + response.data.expires_in * 1000 - 60000; // Buffer 1 min
-      this.tokenCache.set(credentials.clientId, { token, expiresAt });
+      this.tokenCache.set(cacheKey, { token, expiresAt });
       return token;
     } catch (error) {
       // Never log the axios error itself: its config carries the client secret.
