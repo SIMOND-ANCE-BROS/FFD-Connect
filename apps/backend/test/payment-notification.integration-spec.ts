@@ -77,6 +77,8 @@ describe("HelloAsso payment notification (integration, real DB)", () => {
         status: BookingStatus.PENDING,
         paymentId: String(checkoutIntentId),
         expectedAmountCents: AMOUNT_CENTS,
+        // A live hold: a lapsed one is never confirmed (#401).
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
       },
       select: { id: true, competitionId: true },
     });
