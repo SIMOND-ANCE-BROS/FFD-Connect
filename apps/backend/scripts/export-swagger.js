@@ -7,6 +7,22 @@
  */
 const path = require("path");
 
+/**
+ * Placeholders for the env vars the config validation requires (#256). The
+ * export builds the module graph but never connects to the database nor signs
+ * a token, so any well-formed value works; real values, when set, win. Same
+ * values as the CI `backend-build` job, so the spec is identical either way.
+ */
+const EXPORT_ENV_DEFAULTS = {
+  DATABASE_URL: "postgresql://localhost/dummy",
+  JWT_SECRET: "test-secret-key-for-swagger-export-only",
+};
+for (const [name, value] of Object.entries(EXPORT_ENV_DEFAULTS)) {
+  if (!process.env[name]) {
+    process.env[name] = value;
+  }
+}
+
 async function generate() {
   console.log("🚀 Starting Swagger export...");
 
@@ -19,7 +35,13 @@ async function generate() {
     path.resolve(__dirname, "../dist/src/app.module"),
   );
 
-  const app = await NestFactory.create(AppModule, { logger: false });
+  // abortOnError: false — otherwise Nest calls process.exit(1) itself on a
+  // bootstrap error (e.g. invalid env), and with the logger off the command
+  // died without a word (#256). The error now reaches the catch below.
+  const app = await NestFactory.create(AppModule, {
+    logger: false,
+    abortOnError: false,
+  });
   console.log("✅ Nest application created");
 
   const config = new DocumentBuilder()
@@ -88,6 +110,6 @@ async function generate() {
 }
 
 generate().catch((err) => {
-  console.error("Error generating swagger spec:", err);
+  console.error("❌ Error generating swagger spec:", err);
   process.exit(1);
 });
