@@ -1,10 +1,10 @@
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent, { type UserEvent } from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { QueryClient } from '@tanstack/react-query';
+import { screen, waitFor, within } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { Route, Routes } from 'react-router';
 import { describe, vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { fill, pickOption, renderWithProviders, setupUser } from '../test/render';
 import { useSession } from '../session/sessionStore';
 import { UserDetailPage } from './UserDetailPage';
 
@@ -45,35 +45,13 @@ const detail = {
 // per-character input, so text is pasted in one event and actions get no delay.
 let user: UserEvent;
 
-/** Replaces a text field's value in one input event (paste) instead of one per character. */
-async function fill(input: HTMLElement, text: string) {
-  await user.clear(input);
-  await user.paste(text);
-}
-
-/** Picks an option in a Mantine Select (every listbox stays mounted in jsdom). */
-async function pickOption(input: HTMLElement, name: string) {
-  await user.click(input);
-  const listbox = document.getElementById(input.getAttribute('aria-controls') ?? '');
-  if (!listbox) throw new Error('listbox not found');
-  await user.click(within(listbox).getByRole('option', { name, hidden: true }));
-}
-
 function renderPage() {
-  return render(
-    // env="test": no transitions or portals, so dialogs and dropdowns render at once.
-    <MantineProvider env="test">
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={['/users/u1']}>
-          <Routes>
-            <Route path="/users/:id" element={<UserDetailPage />} />
-            <Route path="/users" element={<p>users list</p>} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+  return renderWithProviders(
+    <Routes>
+      <Route path="/users/:id" element={<UserDetailPage />} />
+      <Route path="/users" element={<p>users list</p>} />
+    </Routes>,
+    { route: '/users/u1' },
   );
 }
 
@@ -85,7 +63,7 @@ function renderPage() {
 describe('UserDetailPage', { timeout: 15_000 }, () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    user = userEvent.setup({ delay: null });
+    user = setupUser();
     useSession.getState().setSession({
       accessToken: 'a',
       refreshToken: 'r',
@@ -130,7 +108,7 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
     } as never);
     renderPage();
     const lastName = await screen.findByLabelText(/^Nom/);
-    await fill(lastName, 'Durand');
+    await fill(user, lastName, 'Durand');
     await user.click(screen.getByRole('button', { name: /enregistrer/i }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Martin');
@@ -154,7 +132,7 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
     renderPage();
     const standard = await screen.findByLabelText('Niveau Standards', { selector: 'input' });
     expect(screen.getByLabelText('Niveau Latines', { selector: 'input' })).toHaveValue('Débutant');
-    await pickOption(standard, 'Débutant');
+    await pickOption(user, standard, 'Débutant');
     await user.click(screen.getByRole('button', { name: /enregistrer/i }));
     const dialog = await screen.findByRole('dialog');
     expect(dialog).toHaveTextContent('Niveau Standards');
@@ -307,9 +285,9 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
     const dialog = await screen.findByRole('dialog');
     const confirm = within(dialog).getByRole('button', { name: 'Supprimer définitivement' });
     expect(confirm).toBeDisabled();
-    await fill(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.f');
+    await fill(user, within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.f');
     expect(confirm).toBeDisabled();
-    await fill(within(dialog).getByLabelText(/recopiez l'email/i), ' JEANNE@x.fr ');
+    await fill(user, within(dialog).getByLabelText(/recopiez l'email/i), ' JEANNE@x.fr ');
     expect(confirm).toBeEnabled();
     await user.click(confirm);
     expect(remove).toHaveBeenCalledWith({
@@ -328,7 +306,7 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
     const dialog = await screen.findByRole('dialog');
-    await fill(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
+    await fill(user, within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
     await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     expect(
       await within(dialog).findByText("L'email saisi ne correspond pas au compte"),
@@ -355,7 +333,7 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
     renderPage();
     await user.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
     const dialog = await screen.findByRole('dialog');
-    await fill(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
+    await fill(user, within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
     await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     expect(
       await within(dialog).findByText('Serveur injoignable, réessayez dans un instant.'),
@@ -384,7 +362,7 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
     invalidate.mockClear();
     await user.click(screen.getByRole('button', { name: 'Supprimer le compte' }));
     const dialog = await screen.findByRole('dialog');
-    await fill(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
+    await fill(user, within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
     await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     await screen.findByText('users list');
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin', 'users'] });
@@ -463,7 +441,7 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
       renderPage();
       await user.click(await screen.findByRole('button', { name: 'Supprimer le compte' }));
       const dialog = await screen.findByRole('dialog');
-      await fill(within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
+      await fill(user, within(dialog).getByLabelText(/recopiez l'email/i), 'jeanne@x.fr');
       await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
       expect(await within(dialog).findByText(/il ne peut pas être supprimé/)).toBeInTheDocument();
     });
