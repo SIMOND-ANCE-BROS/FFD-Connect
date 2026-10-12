@@ -37,7 +37,6 @@ import {
   USERS_SORT_FIELDS,
   type UsersSortField,
   usersFilter,
-  type UsersUrlState,
   writeUsersParams,
 } from '../lib/userList';
 import { useUrlSearch } from '../lib/useUrlSearch';
@@ -72,9 +71,7 @@ function ExtraRoles({ user }: { user: AdminUserListItemDto }) {
 
 export function UsersPage() {
   const navigate = useNavigate();
-  const [state, update] = useListParams(readUsersParams, (current, patch: Partial<UsersUrlState>) =>
-    writeUsersParams(current, patch),
-  );
+  const [state, update] = useListParams(readUsersParams, writeUsersParams);
   const [search, setSearch] = useUrlSearch(state.q, (q) => update({ q }, { replace: true }));
 
   const users = useQuery({

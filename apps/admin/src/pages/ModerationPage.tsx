@@ -32,7 +32,6 @@ import {
   MODERATION_SORT_FIELDS,
   moderationFilter,
   type ModerationSortField,
-  type ModerationUrlState,
   proposalSummary,
   readModerationParams,
   REASON_LABELS,
@@ -53,10 +52,7 @@ const createdAt = (c: TrackCorrectionAdminDto) => dayjs(c.createdAt).format('DD/
 export function ModerationPage() {
   const navigate = useNavigate();
   const { search: locationSearch } = useLocation();
-  const [state, update] = useListParams(
-    readModerationParams,
-    (current, patch: Partial<ModerationUrlState>) => writeModerationParams(current, patch),
-  );
+  const [state, update] = useListParams(readModerationParams, writeModerationParams);
   const [search, setSearch] = useUrlSearch(
     state.q,
     (q) => update({ q }, { replace: true }),

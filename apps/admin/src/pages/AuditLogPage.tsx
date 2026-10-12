@@ -12,7 +12,6 @@ import {
   type AuditAction,
   auditFilter,
   type AuditTargetType,
-  type AuditUrlState,
   readAuditParams,
   TARGET_TYPE_LABELS,
   writeAuditParams,
@@ -96,9 +95,7 @@ function Detail({ entry }: { entry: AuditLogEntryDto }) {
 }
 
 export function AuditLogPage() {
-  const [state, update] = useListParams(readAuditParams, (current, patch: Partial<AuditUrlState>) =>
-    writeAuditParams(current, patch),
-  );
+  const [state, update] = useListParams(readAuditParams, writeAuditParams);
   const log = useQuery({
     ...auditQuery(auditFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,

@@ -78,10 +78,7 @@ function StatusBadge({ status }: { status: TrackStatus }) {
 }
 
 export function TracksPage() {
-  const [state, update] = useListParams(
-    readTracksParams,
-    (current, patch: Partial<TracksUrlState>) => writeTracksParams(current, patch),
-  );
+  const [state, update] = useListParams(readTracksParams, writeTracksParams);
   // Same debounce as the moderation queue.
   const [search, setSearch] = useUrlSearch(
     state.q,

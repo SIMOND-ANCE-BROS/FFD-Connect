@@ -23,7 +23,6 @@ import {
   CLUBS_SORT_FIELDS,
   clubsFilter,
   type ClubsSortField,
-  type ClubsUrlState,
   readClubsParams,
   writeClubsParams,
 } from '../lib/clubList';
@@ -46,9 +45,7 @@ function HelloAssoBadge() {
 }
 
 export function ClubsPage() {
-  const [state, update] = useListParams(readClubsParams, (current, patch: Partial<ClubsUrlState>) =>
-    writeClubsParams(current, patch),
-  );
+  const [state, update] = useListParams(readClubsParams, writeClubsParams);
   const [search, setSearch] = useUrlSearch(state.q, (q) => update({ q }, { replace: true }));
 
   const clubs = useQuery({

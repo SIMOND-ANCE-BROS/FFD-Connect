@@ -16,7 +16,6 @@ import {
   readRenewalParams,
   RENEWALS_SORT_FIELDS,
   type RenewalsSortField,
-  type RenewalsUrlState,
   type RenewalTab,
   TAB_OPTIONS,
   writeRenewalParams,
@@ -43,10 +42,7 @@ const reviewer = (r: Renewal) =>
 /** Queue of licence renewals (#267): nothing here reads a document. */
 export function LicenseRenewalsPage() {
   const { search } = useLocation();
-  const [state, update] = useListParams(
-    readRenewalParams,
-    (current, patch: Partial<RenewalsUrlState>) => writeRenewalParams(current, patch),
-  );
+  const [state, update] = useListParams(readRenewalParams, writeRenewalParams);
   const list = useQuery({
     ...licenseRenewalsQuery(listFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
