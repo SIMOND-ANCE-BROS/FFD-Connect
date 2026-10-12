@@ -3,7 +3,10 @@ import { TestingModule } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
 import { backfillRegistrationPartnerUsers } from "../scripts/backfill-registration-partner-user.utils";
 import { PrismaService } from "../src/prisma/prisma.service";
-import { AccountDeletionService } from "../src/users/account-deletion.service";
+import {
+  AccountDeletionService,
+  DELETED_USER_ID,
+} from "../src/users/account-deletion.service";
 import { buildServiceModule } from "./integration-app.builder";
 
 /**
@@ -182,6 +185,25 @@ describe("Account deletion — partner name copies (integration, real DB)", () =
         })
       ).details,
     ).toEqual({ participant: "Lou BLANC / Noa ROUX", bib: "13" });
+  });
+
+  it("deleting the result holder anonymises the couple result (#382) and scrubs the partner's legacy registration", async () => {
+    const c = await legacyCouple();
+
+    await deletion.deleteAccount(c.sam.id);
+
+    const alexReg = await prisma.registration.findUniqueOrThrow({
+      where: { id: c.alexReg.id },
+    });
+    expect(alexReg.partnerName).toBeNull();
+
+    const result = await prisma.result.findUniqueOrThrow({
+      where: { id: c.coupleResult.id },
+    });
+    expect(result.userId).toBe(DELETED_USER_ID);
+    expect(result.ranking).toBe(2);
+    // #382 strips the whole label; #395 does not write it back.
+    expect(result.details).toEqual({});
   });
 
   it("backfill links the couple (idempotent), then deletion scrubs through partnerUserId", async () => {

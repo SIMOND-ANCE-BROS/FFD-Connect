@@ -1,163 +1,206 @@
+import {
+  Controller,
+  Get,
+  INestApplication,
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+} from "@nestjs/common";
+import { NestExpressApplication } from "@nestjs/platform-express";
+import { Test } from "@nestjs/testing";
 import { Request, Response } from "express";
-import { Test, TestingModule } from "@nestjs/testing";
+import request from "supertest";
 import { RedisService } from "../../redis/redis.service";
-import { IpBlacklistMiddleware } from "./ip-blacklist.middleware";
+import {
+  IpBlacklistMiddleware,
+  ipBlacklistKey,
+} from "./ip-blacklist.middleware";
 
 describe("IpBlacklistMiddleware", () => {
-  let middleware: IpBlacklistMiddleware;
-  const mockRedis = {
-    get: jest.fn(),
-    set: jest.fn(),
-    delete: jest.fn(),
-  };
+  const mockRedis = { get: jest.fn() };
 
-  const createRequest = (overrides: Partial<Request> = {}): Request =>
-    ({
-      ip: "192.168.1.1",
-      socket: { remoteAddress: "192.168.1.1" },
-      headers: {},
-      ...overrides,
-    }) as Request;
-
-  const createNext = () => jest.fn();
-
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        IpBlacklistMiddleware,
-        { provide: RedisService, useValue: mockRedis },
-      ],
-    }).compile();
-
-    middleware = module.get(IpBlacklistMiddleware);
+  beforeEach(() => {
     jest.clearAllMocks();
     mockRedis.get.mockResolvedValue(null);
   });
 
-  it("should call next() when IP is not blacklisted and has no failed attempts", async () => {
-    const req = createRequest();
-    const next = createNext();
-
-    await middleware.use(req, {} as Response, next);
-
-    expect(next).toHaveBeenCalled();
-  });
-
-  it("should throw when IP is blacklisted", async () => {
-    mockRedis.get.mockImplementation((key: string) =>
-      key.includes("blacklist")
-        ? Promise.resolve("true")
-        : Promise.resolve(null),
+  describe("use (unit)", () => {
+    const middleware = new IpBlacklistMiddleware(
+      mockRedis as unknown as RedisService,
     );
-    const req = createRequest();
+    const createRequest = (ip: string | undefined): Request =>
+      ({ ip, headers: {} }) as Request;
 
-    await expect(
-      middleware.use(req, {} as Response, createNext()),
-    ).rejects.toThrow("Your IP address has been blocked");
-  });
+    it("calls next() when the IP is not blocked", async () => {
+      const next = jest.fn();
 
-  it("should throw when failed attempts exceed threshold", async () => {
-    mockRedis.get
-      .mockResolvedValueOnce(null) // blacklist check
-      .mockResolvedValueOnce("10"); // failed_attempts
-    mockRedis.set.mockResolvedValue(undefined);
-    const req = createRequest();
+      await middleware.use(createRequest("192.0.2.1"), {} as Response, next);
 
-    await expect(
-      middleware.use(req, {} as Response, createNext()),
-    ).rejects.toThrow("Too many failed attempts");
-    expect(mockRedis.set).toHaveBeenCalledWith(
-      "blacklist:ip:192.168.1.1",
-      "true",
-      3600,
-    );
-  });
-
-  it("recordFailedAttempt increments count", async () => {
-    mockRedis.get.mockResolvedValue("2");
-    mockRedis.set.mockResolvedValue(undefined);
-
-    await middleware.recordFailedAttempt("10.0.0.1");
-
-    expect(mockRedis.set).toHaveBeenCalledWith(
-      "failed_attempts:10.0.0.1",
-      "3",
-      3600,
-    );
-  });
-
-  it("resetFailedAttempts and unblacklistIp call delete", async () => {
-    mockRedis.delete.mockResolvedValue(undefined);
-
-    await middleware.resetFailedAttempts("10.0.0.1");
-    expect(mockRedis.delete).toHaveBeenCalledWith("failed_attempts:10.0.0.1");
-
-    mockRedis.delete.mockClear();
-    await middleware.unblacklistIp("10.0.0.1");
-    expect(mockRedis.delete).toHaveBeenCalledWith("blacklist:ip:10.0.0.1");
-  });
-
-  describe("getClientIp proxy validation", () => {
-    it("trusts X-Forwarded-For from trusted proxy (127.0.0.1)", async () => {
-      const req = createRequest({
-        socket: { remoteAddress: "127.0.0.1" } as Request["socket"],
-        headers: { "x-forwarded-for": "203.0.113.50, 10.0.0.1" },
-      });
-      const next = createNext();
-
-      await middleware.use(req, {} as Response, next);
-
-      // Should check blacklist for the forwarded client IP, not the proxy IP
-      expect(mockRedis.get).toHaveBeenCalledWith("blacklist:ip:203.0.113.50");
+      expect(mockRedis.get).toHaveBeenCalledWith("blacklist:ip:192.0.2.1");
+      expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it("ignores X-Forwarded-For from untrusted source (spoofing attempt)", async () => {
-      const req = createRequest({
-        socket: { remoteAddress: "198.51.100.1" } as Request["socket"],
-        headers: { "x-forwarded-for": "10.0.0.1" },
-      });
-      const next = createNext();
+    it("rejects with 403 when the IP is blocked", async () => {
+      mockRedis.get.mockResolvedValue("true");
+      const next = jest.fn();
 
-      await middleware.use(req, {} as Response, next);
-
-      // Should check blacklist for the direct socket IP, ignoring the forged header
-      expect(mockRedis.get).toHaveBeenCalledWith("blacklist:ip:198.51.100.1");
+      await expect(
+        middleware.use(createRequest("192.0.2.1"), {} as Response, next),
+      ).rejects.toThrow("Your IP address has been blocked");
+      expect(next).not.toHaveBeenCalled();
     });
 
-    it("uses socket remoteAddress for direct connections without proxy", async () => {
-      const req = createRequest({
-        socket: { remoteAddress: "203.0.113.99" } as Request["socket"],
-        headers: {},
-      });
-      const next = createNext();
+    it("only treats the exact value 'true' as blocked", async () => {
+      mockRedis.get.mockResolvedValue("1");
+      const next = jest.fn();
 
-      await middleware.use(req, {} as Response, next);
+      await middleware.use(createRequest("192.0.2.1"), {} as Response, next);
 
-      expect(mockRedis.get).toHaveBeenCalledWith("blacklist:ip:203.0.113.99");
+      expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it("trusts X-Forwarded-For from Docker bridge gateway (172.17.0.1)", async () => {
-      const req = createRequest({
-        socket: { remoteAddress: "172.17.0.1" } as Request["socket"],
-        headers: { "x-forwarded-for": "192.0.2.42" },
-      });
-      const next = createNext();
+    it("lets the request through without a Redis lookup when req.ip is unknown", async () => {
+      const next = jest.fn();
 
-      await middleware.use(req, {} as Response, next);
+      await middleware.use(createRequest(undefined), {} as Response, next);
 
-      expect(mockRedis.get).toHaveBeenCalledWith("blacklist:ip:192.0.2.42");
+      expect(mockRedis.get).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
     });
   });
 
-  it("blacklistIp sets key with TTL", async () => {
-    mockRedis.set.mockResolvedValue(undefined);
+  describe("ipBlacklistKey", () => {
+    const keyOf = (ip: string | undefined) => ipBlacklistKey({ ip } as Request);
 
-    await middleware.blacklistIp("10.0.0.1", 7200);
+    it("keeps an IPv4 address as is", () => {
+      expect(keyOf("203.0.113.7")).toBe("blacklist:ip:203.0.113.7");
+    });
 
-    expect(mockRedis.set).toHaveBeenCalledWith(
-      "blacklist:ip:10.0.0.1",
-      "true",
-      7200,
-    );
+    it("unwraps an IPv4-mapped IPv6 address", () => {
+      expect(keyOf("::ffff:203.0.113.7")).toBe("blacklist:ip:203.0.113.7");
+    });
+
+    it("groups IPv6 addresses by /64 like the rate limiter", () => {
+      expect(keyOf("2001:db8:1:2:aaaa:bbbb:cccc:dddd")).toBe(
+        "blacklist:ip:2001:db8:1:2::/64",
+      );
+      expect(keyOf("2001:db8:1:2::1")).toBe("blacklist:ip:2001:db8:1:2::/64");
+    });
+
+    it("returns null when req.ip is missing", () => {
+      expect(keyOf(undefined)).toBeNull();
+      expect(keyOf("")).toBeNull();
+    });
+  });
+
+  /**
+   * Real Express stack: `req.ip` comes from `trust proxy`, exactly as in
+   * `main.ts`. supertest connects from 127.0.0.1, which plays the ingress.
+   */
+  describe("behind trust proxy (#383)", () => {
+    @Controller()
+    class PingController {
+      @Get("ping")
+      ping(): string {
+        return "pong";
+      }
+    }
+
+    @Module({
+      controllers: [PingController],
+      providers: [{ provide: RedisService, useValue: mockRedis }],
+    })
+    class PingModule implements NestModule {
+      // Same wiring as AppModule when ENABLE_IP_BLACKLIST=true.
+      configure(consumer: MiddlewareConsumer): void {
+        consumer.apply(IpBlacklistMiddleware).forRoutes("*");
+      }
+    }
+
+    let app: INestApplication;
+
+    const boot = async (trustProxyHops: number) => {
+      const moduleRef = await Test.createTestingModule({
+        imports: [PingModule],
+      }).compile();
+      const nestApp = moduleRef.createNestApplication<NestExpressApplication>({
+        logger: false,
+      });
+      nestApp.set("trust proxy", trustProxyHops);
+      await nestApp.init();
+      app = nestApp;
+    };
+
+    const blockOnly = (blockedIp: string) =>
+      mockRedis.get.mockImplementation((key: string) =>
+        Promise.resolve(key === `blacklist:ip:${blockedIp}` ? "true" : null),
+      );
+
+    afterEach(async () => {
+      await app.close();
+    });
+
+    it("blocks the client address appended by the trusted proxy", async () => {
+      await boot(1);
+      blockOnly("198.51.100.9");
+
+      await request(app.getHttpServer())
+        .get("/ping")
+        .set("X-Forwarded-For", "198.51.100.9")
+        .expect(403);
+    });
+
+    it("does not block another client behind the same proxy", async () => {
+      await boot(1);
+      blockOnly("198.51.100.9");
+
+      await request(app.getHttpServer())
+        .get("/ping")
+        .set("X-Forwarded-For", "203.0.113.20")
+        .expect(200);
+      // The proxy (socket) address is never the key: blocking a client must
+      // not block everyone behind the ingress.
+      expect(mockRedis.get).toHaveBeenCalledWith("blacklist:ip:203.0.113.20");
+      expect(mockRedis.get).not.toHaveBeenCalledWith("blacklist:ip:127.0.0.1");
+    });
+
+    it("cannot be evaded by a forged X-Forwarded-For entry", async () => {
+      await boot(1);
+      blockOnly("198.51.100.9");
+
+      // The blocked client prepends a clean address; the proxy appends the
+      // real one on the right, which is the only entry trusted.
+      await request(app.getHttpServer())
+        .get("/ping")
+        .set("X-Forwarded-For", "203.0.113.20, 198.51.100.9")
+        .expect(403);
+    });
+
+    it("cannot be used to look up (or frame) another IP", async () => {
+      await boot(1);
+      blockOnly("203.0.113.20");
+
+      // A client forging the victim's address on the left is still keyed on
+      // its own (right-most) address.
+      await request(app.getHttpServer())
+        .get("/ping")
+        .set("X-Forwarded-For", "203.0.113.20, 198.51.100.9")
+        .expect(200);
+      expect(mockRedis.get).toHaveBeenCalledWith("blacklist:ip:198.51.100.9");
+      expect(mockRedis.get).not.toHaveBeenCalledWith(
+        "blacklist:ip:203.0.113.20",
+      );
+    });
+
+    it("ignores X-Forwarded-For entirely without trust proxy (local dev)", async () => {
+      await boot(0);
+      blockOnly("198.51.100.9");
+
+      await request(app.getHttpServer())
+        .get("/ping")
+        .set("X-Forwarded-For", "198.51.100.9")
+        .expect(200);
+      expect(mockRedis.get).toHaveBeenCalledWith("blacklist:ip:127.0.0.1");
+    });
   });
 });

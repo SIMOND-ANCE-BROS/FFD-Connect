@@ -185,6 +185,30 @@ describe("AdminClubsQueryService", () => {
       expect(adminClubMemberSelect).toHaveProperty("extraRoles", true);
     });
 
+    it("never reads nor returns the HelloAsso secret (#389)", async () => {
+      const SECRET = "club-helloasso-secret";
+      // Even if a full row leaked through a mock, it must not reach the DTO.
+      prisma.club.findUnique.mockResolvedValue(club as never);
+      prisma.user.count.mockResolvedValue(0);
+      prisma.competition.count.mockResolvedValue(0);
+      prisma.partnership.count.mockResolvedValue(0);
+      prisma.soloTeam.count.mockResolvedValue(0);
+      prisma.club.findMany.mockResolvedValue([{ id: "c1" }] as never);
+      prisma.user.findMany.mockResolvedValue([]);
+
+      const detail = await service.detail("c1");
+
+      expect(JSON.stringify(detail)).not.toContain(SECRET);
+      expect(detail).not.toHaveProperty("helloAssoClientSecret");
+      expect(adminClubListSelect).not.toHaveProperty("helloAssoClientSecret");
+      for (const [args] of [
+        ...prisma.club.findUnique.mock.calls,
+        ...prisma.club.findMany.mock.calls,
+      ]) {
+        expect(args?.select).not.toHaveProperty("helloAssoClientSecret");
+      }
+    });
+
     it("404s on an unknown club", async () => {
       prisma.club.findUnique.mockResolvedValue(null);
       await expect(service.detail("nope")).rejects.toThrow(

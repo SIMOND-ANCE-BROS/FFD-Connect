@@ -291,6 +291,17 @@ export const licenseRenewalDocumentFileSelect = {
 } as const;
 
 /**
+ * Suppression de compte (RGPD art. 17, #382) : résultats de compétition à
+ * anonymiser. `details` est lu pour n'en garder que les clés non
+ * identifiantes ; la compétition sert à invalider le cache des résultats.
+ */
+export const resultAnonymizationSelect = {
+  id: true,
+  details: true,
+  event: { select: { competitionId: true } },
+} as const;
+
+/**
  * Document de renouvellement tel que l'API le renvoie (#224). `ocrData` est lu
  * pour le résumé affiché dans l'app, mais ne sort JAMAIS tel quel : il passe
  * par `toRenewalDocumentResponse`, qui ne garde que les champs utiles (jamais
@@ -370,6 +381,27 @@ export const seatBookingExportSelect = {
   status: true,
   createdAt: true,
   competition: { select: { title: true, date: true } },
+} as const;
+
+/**
+ * Checkout HelloAsso (#381) : le plan de salle porte le tarif de chaque
+ * élément (`priceCents`). Le montant est lu ici, jamais dans la requête.
+ */
+export const competitionSeatPricingSelect = {
+  id: true,
+  layout: true,
+} as const;
+
+/**
+ * Webhook HelloAsso (#381) : champs d'une réservation nécessaires pour
+ * vérifier qu'une commande payée lui correspond bien.
+ */
+export const seatBookingPaymentCheckSelect = {
+  id: true,
+  competitionId: true,
+  status: true,
+  paymentId: true,
+  expectedAmountCents: true,
 } as const;
 
 /**
@@ -904,6 +936,33 @@ export const adminClubListSelect = {
   createdAt: true,
 } as const;
 
+/**
+ * Club HelloAsso credentials, read ONLY by the payment flow
+ * (`getHelloAssoCredentialsForCompetition`). The secret is encrypted at rest
+ * (#389) and must never be returned by an API nor logged.
+ */
+export const clubHelloAssoCredentialsSelect = {
+  id: true,
+  helloAssoClientId: true,
+  helloAssoClientSecret: true,
+  helloAssoOrgSlug: true,
+} as const;
+
+/**
+ * Club HelloAsso status: what the organizer sees (connected + slug, mode).
+ * The secret is read only to know whether it is set — never returned.
+ */
+export const clubHelloAssoStatusSelect = {
+  name: true,
+  registrationMode: true,
+  helloAssoClientId: true,
+  helloAssoClientSecret: true,
+  helloAssoOrgSlug: true,
+} as const;
+
+/** Club identity only (id + name). */
+export const clubIdNameSelect = { id: true, name: true } as const;
+
 /** Back-office club page: one member row. */
 export const adminClubMemberSelect = {
   id: true,
@@ -1032,12 +1091,6 @@ export const registrationEventHolderSelect = {
 export const registrationPartnerNameSelect = {
   id: true,
   partnerName: true,
-} as const;
-
-/** Account deletion (#395): couple results whose label may name the user. */
-export const resultParticipantSelect = {
-  id: true,
-  details: true,
 } as const;
 
 /**

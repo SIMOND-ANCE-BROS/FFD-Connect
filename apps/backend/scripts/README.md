@@ -168,6 +168,10 @@ Les sauvegardes sont stockées dans `../../backups/` (à la racine du projet).
 
 **Dernière mise à jour:** 12 Février 2026
 
+### `encrypt-club-secrets.ts` (#389)
+
+Chiffre avec `SECRETS_ENCRYPTION_KEY` les secrets HelloAsso des clubs encore en clair (ou chiffrés avec `SECRETS_ENCRYPTION_KEY_PREVIOUS` pendant une rotation). Idempotent, n'affiche que des compteurs et des ids de clubs. Non lancé au boot : le backend migre aussi paresseusement à la lecture. Dans le conteneur : `node dist/scripts/encrypt-club-secrets.js` ; en local : `pnpm exec tsx scripts/encrypt-club-secrets.ts`. Runbook : `docs/exploitation/chiffrement-secrets-clubs.md`.
+
 ### Seeds staging (`docker-entrypoint.sh`, `SEED_TEST_TRACKS=true`)
 
 Ordre au boot, tous non bloquants :

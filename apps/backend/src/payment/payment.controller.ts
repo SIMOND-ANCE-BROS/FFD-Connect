@@ -6,6 +6,7 @@ import {
   Post,
   Req,
   UseGuards,
+  ValidationPipe,
 } from "@nestjs/common";
 import {
   ApiBody,
@@ -34,13 +35,14 @@ export class PaymentController {
   @ApiOperation({
     summary: "Crée un checkout HelloAsso",
     description:
-      "Initie un paiement via HelloAsso pour une réservation de place en compétition.",
+      "Initie un paiement via HelloAsso pour une réservation de place en compétition. " +
+      "Le montant est celui du tarif de la place (`priceCents` de l'élément du plan), jamais celui envoyé par le client.",
   })
   @ApiBody({ type: CreateCheckoutDto })
   @ApiResponse({ status: 201, description: "Checkout intent créé" })
   @ApiResponse({
     status: 400,
-    description: "Club sans HelloAsso ou données invalides",
+    description: "Club sans HelloAsso, place sans tarif ou données invalides",
   })
   @ApiResponse({ status: 401, description: "Non authentifié" })
   async createCheckout(
@@ -56,14 +58,31 @@ export class PaymentController {
   @ApiOperation({
     summary: "Webhook HelloAsso",
     description:
-      "Reçoit les notifications de paiement HelloAsso. Vérifié par signature HMAC-SHA256.",
+      "Reçoit les notifications de paiement HelloAsso. Vérifié par signature HMAC-SHA256. " +
+      "Une réservation n'est confirmée que si l'ordre est payé, du montant attendu, pour la bonne compétition ; " +
+      "sinon elle reste en attente et la réponse reste 200 (pas de rejeu).",
   })
   @ApiBody({ type: WebhookPayloadDto })
   @ApiResponse({ status: 200, description: "Webhook traité" })
   @ApiResponse({ status: 401, description: "Signature invalide" })
-  async handleWebhook(@Body() payload: WebhookPayloadDto) {
-    if (payload.eventType === "Order" && payload.data.metadata?.bookingId) {
-      await this.paymentService.confirmBooking(payload.data.metadata.bookingId);
+  async handleWebhook(
+    // HelloAsso sends many fields we don't declare: the global pipe's
+    // `forbidNonWhitelisted` would answer 400 (and trigger retries). The
+    // parameter type is deliberately not the DTO class (`Readonly<…>` is
+    // emitted as `Object`, which the global pipe skips); this local pipe
+    // validates against the DTO and strips unknown fields instead.
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: false,
+        transform: true,
+        expectedType: WebhookPayloadDto,
+      }),
+    )
+    payload: Readonly<WebhookPayloadDto>,
+  ) {
+    if (payload.eventType === "Order") {
+      await this.paymentService.handleOrderWebhook(payload);
     }
     return { received: true };
   }

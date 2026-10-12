@@ -812,23 +812,51 @@ export class CompetitionsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Crée une nouvelle compétition" })
+  @ApiOperation({
+    summary: "Crée une nouvelle compétition",
+    description:
+      "Créée par un compte club, la compétition a pour organisateur le club du compte.",
+  })
   @ApiResponse({ status: 201, description: "Compétition créée avec succès" })
-  create(@Body() body: CreateCompetitionDto) {
-    return this.managementService.create(body);
+  @ApiResponse({
+    status: 403,
+    description: "Compte club sans club rattaché",
+  })
+  async create(
+    @Body() body: CreateCompetitionDto,
+    @Request() req: RequestWithUser,
+  ) {
+    const organizer = await this.accessService.organizerForNewCompetition(
+      req.user,
+    );
+    return this.managementService.create(body, organizer);
   }
 
   @Patch(":id")
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @ApiBearerAuth("JWT-auth")
-  @ApiOperation({ summary: "Met à jour une compétition" })
+  @ApiOperation({
+    summary: "Met à jour une compétition",
+    description:
+      "STAFF et ADMIN : toute compétition. Compte club : seulement une compétition organisée par son club.",
+  })
   @ApiParam({ name: "id", description: "ID de la compétition" })
   @ApiResponse({
     status: 200,
     description: "Compétition mise à jour avec succès",
   })
-  update(@Param("id") id: string, @Body() body: UpdateCompetitionDto) {
+  @ApiResponse({
+    status: 403,
+    description: "Compétition organisée par un autre club",
+  })
+  @ApiResponse({ status: 404, description: "Compétition non trouvée" })
+  async update(
+    @Param("id") id: string,
+    @Body() body: UpdateCompetitionDto,
+    @Request() req: RequestWithUser,
+  ) {
+    await this.accessService.assertCanManageCompetition(id, req.user);
     return this.managementService.update(id, body);
   }
 }

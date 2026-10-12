@@ -6,7 +6,7 @@ import {
   registrationEventBibSelect,
   registrationEventHolderSelect,
   registrationPartnerNameSelect,
-  resultParticipantSelect,
+  resultAnonymizationSelect,
   userNameSelect,
 } from "../utils/prisma-selects";
 import {
@@ -20,12 +20,13 @@ describe("buildPartnerNameScrubOps", () => {
   const marker = (op: string) => ({ op }) as never;
 
   // Typed unknown[]: the ops are PrismaPromises, never awaited by the tests.
-  const run = (): Promise<unknown[]> =>
+  const scrub = () =>
     buildPartnerNameScrubOps(
       prisma as unknown as PrismaService,
       "deleted",
       logger as unknown as Logger,
     );
+  const run = async (): Promise<unknown[]> => (await scrub()).ops;
 
   beforeEach(() => {
     prisma = mockDeep<PrismaClient>();
@@ -138,7 +139,7 @@ describe("buildPartnerNameScrubOps", () => {
           { eventId: "e2", userId: "partner" },
         ],
       },
-      select: resultParticipantSelect,
+      select: resultAnonymizationSelect,
       take: MAX_PARTNER_SCRUB_ROWS,
     });
   });
@@ -151,12 +152,17 @@ describe("buildPartnerNameScrubOps", () => {
       {
         id: "r1",
         details: { participant: "Sam PETIT / Alex MARTIN", bib: "7" },
+        event: { competitionId: "c1" },
       },
-      { id: "r2", details: { participant: "Sam PETIT / Lou BLANC" } },
-      { id: "r3", details: null },
+      {
+        id: "r2",
+        details: { participant: "Sam PETIT / Lou BLANC" },
+        event: { competitionId: "c2" },
+      },
+      { id: "r3", details: null, event: { competitionId: "c3" } },
     ] as never);
 
-    const ops = await run();
+    const { ops, competitionIds } = await scrub();
 
     expect(prisma.result.update).toHaveBeenCalledTimes(1);
     expect(prisma.result.update).toHaveBeenCalledWith({
@@ -166,6 +172,12 @@ describe("buildPartnerNameScrubOps", () => {
       },
     });
     expect(ops).toEqual([marker("result")]);
+    // Only the competition whose result was rewritten needs a cache flush.
+    expect(competitionIds).toEqual(["c1"]);
+  });
+
+  it("returns no competition when nothing is rewritten", async () => {
+    await expect(scrub()).resolves.toEqual({ ops: [], competitionIds: [] });
   });
 
   it("warns (without identifiers) when a read hits the cap", async () => {

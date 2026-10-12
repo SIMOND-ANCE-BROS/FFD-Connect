@@ -1,6 +1,6 @@
 # Politique de confidentialité
 
-_Dernière mise à jour : 11 octobre 2026_
+_Dernière mise à jour : 12 octobre 2026_
 
 > **Projet indépendant.** FFD Connect n'est pas une application officielle de la
 > Fédération Française de Danse. La fédération n'en est ni l'éditrice, ni
@@ -66,6 +66,8 @@ Nous faisons appel aux prestataires suivants, qui agissent comme sous-traitants 
 
 Les administrateurs de la plateforme peuvent consulter et corriger les informations de profil (club, catégorie, classe d'âge, niveaux) ; chaque modification est tracée (auteur, date, valeurs avant/après) et, à la suppression du compte, ces traces sont conservées mais dépouillées de toute donnée personnelle (seuls l'action, la date et un identifiant technique subsistent). Les administrateurs peuvent également désactiver un compte (mesure réversible : le compte ne peut plus se connecter, ses données sont conservées) ou le supprimer définitivement (mêmes effets que la suppression demandée depuis l'application) ; ces actions sont elles aussi tracées, et les traces conservées après la suppression ne contiennent aucune donnée personnelle.
 
+**Accès support.** Pour répondre à une demande d'assistance, un administrateur ou un membre du staff de la plateforme peut ouvrir l'application telle que la voit un utilisateur donné (« se connecter en tant que »). Cet accès est encadré : il n'est jamais possible de cibler un administrateur, un membre du staff ne peut cibler qu'un licencié ou un club, et il doit indiquer un motif (obligatoire pour le staff, facultatif pour l'administrateur). La session dure 15 minutes, sans possibilité de renouvellement, et certaines actions sensibles (export des données, suppression du compte, changement de mot de passe) sont bloquées pendant sa durée. **Chaque accès est journalisé** : date, motif, rôle de l'intervenant et date de fin. Ces informations figurent dans votre export (§9), sans l'identité de l'intervenant ni son adresse IP. Ces traces sont conservées comme piste d'audit ; elles ne sont pas purgées automatiquement et subsistent après la suppression du compte. Leur durée de conservation n'est pas encore fixée dans la section 5.
+
 Aucune donnée n'est vendue à des tiers.
 
 ## 4 bis. Pass Apple Wallet et Google Wallet
@@ -108,6 +110,7 @@ Danse.
 
 - **Compte & licence** : pendant la durée d'activité du compte, puis **3 ans** après la dernière connexion, à l'issue desquels le compte est supprimé.
 - **Données de santé (certificat médical)** : conservées le temps nécessaire à la vérification de l'aptitude, puis supprimées **au plus tard 12 mois après la fin de validité** du certificat. Un certificat **refusé** est supprimé **au plus tard 30 jours après la décision**, avec les informations lues sur le document et le commentaire de l'administrateur ; un motif de refus d'ordre médical (contre-indication) est alors remplacé par un motif neutre.
+- **Résultats de compétition** : après la suppression du compte, ils sont conservés **sans aucun lien** avec votre compte ni avec votre nom, afin de ne pas fausser le classement des autres couples (seuls l'épreuve, le tour et le classement subsistent). Les classements de la FFD étant publics à la source, il s'agit d'une **pseudonymisation** et non d'une anonymisation complète. Si le résultat de votre couple est rattaché au compte de votre partenaire, il reste le sien : seule la partie du libellé qui vous nomme est remplacée par « Partenaire supprimé ».
 - **Données de paiement** : conservées par HelloAsso selon ses propres obligations comptables.
 - **Jetons de notification push (identifiants d'appareil)** : **90 jours** sans réutilisation de l'appareil. L'application réenregistre le jeton à chaque ouverture de session : passé ce délai sans signe de vie, l'appareil est considéré comme abandonné (application désinstallée, appareil remplacé) et la ligne est supprimée automatiquement. Le jeton est également supprimé immédiatement à la déconnexion, à la suppression du compte, et dès que Firebase le déclare invalide.
 - **Jetons de session** : 30 jours maximum.
@@ -157,7 +160,23 @@ Conformément au RGPD, vous disposez des droits d'**accès**, de **rectification
 
 Pour exercer ces droits : privacy@gabin-simond.fr. Une réponse vous sera apportée sous un mois.
 
-L'application permet d'exercer directement l'accès/portabilité (export de vos données) et l'effacement (suppression du compte). L'export liste vos appareils enregistrés pour les notifications sous forme de métadonnées (plateforme, dates) : la valeur du jeton lui-même n'y figure pas, car sa divulgation permettrait de détourner la livraison de vos notifications vers un autre compte. Il comprend aussi vos demandes de renouvellement de licence : leur statut, leurs dates (création, soumission, décision), le motif d'un refus et le commentaire de l'administrateur — jamais son identité —, et, pour chaque document déposé, son type, sa date de dépôt et les seules informations lues sur le document (aptitude, date et médecin pour le certificat médical ; numéro et échéance pour l'attestation de licence). Le fichier lui-même n'y est pas joint.
+L'application permet d'exercer directement l'accès et la portabilité (export de vos données, dans Réglages → Confidentialité et données → Exporter mes données) ainsi que l'effacement (suppression du compte). L'export, au format JSON, contient :
+
+- **votre profil** : identité, date de naissance, club, rôle, catégorie, classe d'âge, niveaux, classement national, licence WDSF le cas échéant, date de dernière connexion et, le cas échéant, la date de désactivation de votre compte par un administrateur ;
+- **votre licence** : numéro, catégorie, club, date de validité ;
+- **vos demandes de renouvellement de licence** : statut, dates (création, soumission, décision), motif d'un refus et commentaire de l'administrateur — jamais son identité — et, pour chaque document déposé, son type, sa date de dépôt et les seules informations lues sur le document (aptitude, date et médecin pour le certificat médical ; numéro et échéance pour l'attestation de licence). Le fichier lui-même n'y est pas joint ;
+- **vos inscriptions aux compétitions**, y compris lorsque vous êtes le partenaire d'un couple inscrit par un autre licencié : pour ce second cas, seul le contexte de l'épreuve figure (spécialité, classe d'âge, niveau, compétition), sans les données du licencié qui a inscrit le couple ;
+- **vos partenariats** (dates de début et de fin, statut), sans les données de votre partenaire ;
+- **vos résultats** de compétition (classement, tour, contexte de l'épreuve, nombre de participants), sans le nom du couple ni les noms des autres participants ;
+- **vos réservations de places** sur les plans de compétition (emplacement, statut, date, compétition) et vos **équipes** (nom, niveau, date d'adhésion) ;
+- **vos musiques proposées** et vos **propositions de correction** de musiques : le contenu soumis et la décision, sans l'identité de l'administrateur qui a relu la proposition ; le nom d'une musique modérée reste masqué ;
+- **vos notifications** reçues (titre, contenu, lu ou non, date) et vos **préférences** de notification ;
+- **vos signalements de bug** envoyés depuis l'application (message, appareil, date), sans la trace technique de l'erreur ;
+- **vos appareils** enregistrés pour les notifications : plateforme et dates. La valeur du jeton lui-même n'y figure pas, car sa divulgation permettrait de détourner la livraison de vos notifications vers un autre compte ;
+- **vos sessions de connexion** : dates de création, d'expiration et de révocation, sans le jeton ;
+- **les accès support à votre compte** (voir §4) : date, motif, rôle de l'intervenant et date de fin, sans son identité.
+
+**Ce qui n'est pas inclus.** L'export ne contient ni votre mot de passe, ni la valeur d'aucun jeton, ni les fichiers déposés. Le **journal d'audit des administrateurs**, qui recense les actions effectuées par les administrateurs sur la plateforme, est exclu de l'export : c'est un journal de traçabilité, dont les lignes contiennent des données de tiers. Il peut toutefois être communiqué sur demande écrite à privacy@gabin-simond.fr, après occultation des données de tiers.
 
 Vous pouvez également introduire une réclamation auprès de la **CNIL** (www.cnil.fr).
 

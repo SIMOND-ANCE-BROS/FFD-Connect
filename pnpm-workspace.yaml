@@ -12,6 +12,19 @@ overrides:
   hermes-parser: '0.36.0'
   hermes-estree: '0.36.0'
   babel-plugin-syntax-hermes-parser: '0.36.0'
+  # metro : une seule 0.84.x dans l'arbre du client (#378). @expo/metro
+  # (le bundler qu'Expo utilise vraiment) epingle la 0.84.5 en version exacte,
+  # tandis que react-native, @react-native/metro-config et le plugin CLI
+  # declarent `^0.84.3` et restaient resolus en 0.84.4 -> deux bundlers cote a
+  # cote. Forme « plage -> version » bornee a la ligne 0.84 : les metro 0.83.x
+  # tires par d'autres paquets ne bougent pas. A REALIGNER a chaque montee
+  # d'Expo SDK (version exacte de metro dans @expo/metro), ou a retirer si
+  # `pnpm why metro --filter client` ne montre plus qu'une 0.84 sans lui.
+  'metro@>=0.84.0 <0.84.5': '0.84.5'
+  'metro-config@>=0.84.0 <0.84.5': '0.84.5'
+  'metro-core@>=0.84.0 <0.84.5': '0.84.5'
+  'metro-runtime@>=0.84.0 <0.84.5': '0.84.5'
+  'metro-source-map@>=0.84.0 <0.84.5': '0.84.5'
   multer: '^2.4.0'
   serialize-javascript: '>=7.0.3'
   rollup: '>=4.59.0'

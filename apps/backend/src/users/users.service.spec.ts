@@ -13,6 +13,7 @@ import {
 } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { mockDeep, MockProxy } from "jest-mock-extended";
+import { CompetitionCacheService } from "../competitions/services/competition-cache.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { withActiveRole } from "../auth/roles";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
@@ -107,6 +108,12 @@ describe("UsersService", () => {
           useValue: renewalDocumentFiles,
         },
         { provide: WdsfService, useValue: wdsfService },
+        {
+          provide: CompetitionCacheService,
+          useValue: {
+            invalidateResults: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
@@ -1364,6 +1371,7 @@ describe("UsersService", () => {
       prisma.licenseRenewalDocument.findMany.mockResolvedValue([]);
       // Partner-name scrub (#395): no couple to look up.
       prisma.registration.findMany.mockResolvedValue([]);
+      prisma.result.findMany.mockResolvedValue([]);
     });
 
     afterEach(() => {
@@ -1444,6 +1452,7 @@ describe("UsersService", () => {
     it("toutes les écritures sont dans la même transaction, suppression du user en dernier", async () => {
       compare.mockResolvedValue(true);
       const marker = (name: string) => ({ op: name }) as never;
+      prisma.result.updateMany.mockReturnValue(marker("resultAnon"));
       prisma.notification.deleteMany.mockReturnValue(marker("notifications"));
       prisma.seatBooking.deleteMany.mockReturnValue(marker("seatBookings"));
       prisma.registration.deleteMany.mockReturnValue(marker("registrations"));
@@ -1463,6 +1472,7 @@ describe("UsersService", () => {
         }>
       ).map((o) => o.op);
       expect(ops).toEqual([
+        "resultAnon",
         "notifications",
         "seatBookings",
         "registrations",

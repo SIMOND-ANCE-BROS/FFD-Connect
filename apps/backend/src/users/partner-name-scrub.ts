@@ -5,7 +5,7 @@ import {
   registrationEventBibSelect,
   registrationEventHolderSelect,
   registrationPartnerNameSelect,
-  resultParticipantSelect,
+  resultAnonymizationSelect,
   userNameSelect,
 } from "../utils/prisma-selects";
 import {
@@ -39,19 +39,25 @@ export const MAX_PARTNER_SCRUB_ROWS = 1000;
  *    nomme n'est pas touché (pas de devinette).
  *
  * Lectures AVANT la transaction (ses propres inscriptions y sont supprimées) ;
- * renvoie les écritures à ajouter à la transaction de suppression. Le cache
- * Redis des résultats expire avec son TTL.
+ * renvoie les écritures à ajouter à la transaction de suppression, et les
+ * compétitions dont un résultat est réécrit (cache Redis des résultats à
+ * invalider après la transaction).
  */
+export interface PartnerNameScrub {
+  ops: Prisma.PrismaPromise<unknown>[];
+  competitionIds: string[];
+}
+
 export async function buildPartnerNameScrubOps(
   prisma: PrismaService,
   userId: string,
   logger: Logger,
-): Promise<Prisma.PrismaPromise<unknown>[]> {
+): Promise<PartnerNameScrub> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: userNameSelect,
   });
-  if (!user) return [];
+  if (!user) return { ops: [], competitionIds: [] };
 
   const [own, asPartner] = await Promise.all([
     prisma.registration.findMany({
@@ -101,7 +107,7 @@ export async function buildPartnerNameScrubOps(
       ? []
       : await prisma.result.findMany({
           where: { userId: { not: userId }, OR: resultFilters },
-          select: resultParticipantSelect,
+          select: resultAnonymizationSelect,
           take: MAX_PARTNER_SCRUB_ROWS,
         });
 
@@ -117,6 +123,7 @@ export async function buildPartnerNameScrubOps(
   }
 
   const ops: Prisma.PrismaPromise<unknown>[] = [];
+  const competitionIds = new Set<string>();
   if (legacyIds.length > 0) {
     ops.push(
       prisma.registration.updateMany({
@@ -130,6 +137,7 @@ export async function buildPartnerNameScrubOps(
     const scrubbed =
       label && scrubParticipantLabel(label, user.firstName, user.lastName);
     if (!scrubbed) continue;
+    competitionIds.add(result.event.competitionId);
     ops.push(
       prisma.result.update({
         where: { id: result.id },
@@ -142,5 +150,5 @@ export async function buildPartnerNameScrubOps(
       }),
     );
   }
-  return ops;
+  return { ops, competitionIds: [...competitionIds] };
 }
