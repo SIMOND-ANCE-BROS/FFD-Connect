@@ -3,10 +3,8 @@ import { TestingModule } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
 import { backfillRegistrationPartnerUsers } from "../scripts/backfill-registration-partner-user.utils";
 import { PrismaService } from "../src/prisma/prisma.service";
-import {
-  AccountDeletionService,
-  DELETED_USER_ID,
-} from "../src/users/account-deletion.service";
+import { DELETED_USER_ID } from "../src/users/account-deletion.core";
+import { AccountDeletionService } from "../src/users/account-deletion.service";
 import { buildServiceModule } from "./integration-app.builder";
 
 /**

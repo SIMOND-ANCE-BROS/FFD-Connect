@@ -13,11 +13,12 @@ export class CompetitionResultEventDto {
 }
 
 /**
- * Ligne de `GET /competitions/:id/results` (endpoint public). Ne porte
- * jamais l'identifiant du compte du couple (#413) : le classement officiel se
- * lit avec `details.participant`, publié par l'organisateur.
+ * Ligne de résultat publiée (forme publique commune à l'endpoint REST et au
+ * canal temps réel `result_published`). Ne porte jamais l'identifiant du
+ * compte du couple (#413, #429) : le classement officiel se lit avec
+ * `details.participant`, publié par l'organisateur.
  */
-export class CompetitionResultDto {
+export class PublicResultDto {
   @ApiProperty({ example: "550e8400-e29b-41d4-a716-446655440000" })
   id!: string;
 
@@ -38,7 +39,10 @@ export class CompetitionResultDto {
     example: { participant: "Martin / Durand", status: "QUALIFIED", marks: 5 },
   })
   details!: Record<string, unknown>;
+}
 
+/** Ligne de `GET /competitions/:id/results` (endpoint public). */
+export class CompetitionResultDto extends PublicResultDto {
   @ApiProperty({ type: CompetitionResultEventDto })
   event!: CompetitionResultEventDto;
 }

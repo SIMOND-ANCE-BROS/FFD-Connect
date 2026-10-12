@@ -15,10 +15,8 @@ import {
 } from "../../utils/prisma-selects";
 import { createMockPrismaService } from "../__mocks__/types";
 import { CompetitionCacheService } from "./competition-cache.service";
-import {
-  CompetitionResultsService,
-  publicResultDetails,
-} from "./competition-results.service";
+import { publicResultDetails } from "../public-result";
+import { CompetitionResultsService } from "./competition-results.service";
 
 const mockPrismaService = createMockPrismaService();
 const mockRedisService = {

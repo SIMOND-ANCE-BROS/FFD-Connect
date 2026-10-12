@@ -1,7 +1,5 @@
-import { Logger } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
 import { mockDeep, MockProxy } from "jest-mock-extended";
-import { PrismaService } from "../prisma/prisma.service";
 import {
   registrationEventBibSelect,
   registrationEventHolderSelect,
@@ -20,12 +18,7 @@ describe("buildPartnerNameScrubOps", () => {
   const marker = (op: string) => ({ op }) as never;
 
   // Typed unknown[]: the ops are PrismaPromises, never awaited by the tests.
-  const scrub = () =>
-    buildPartnerNameScrubOps(
-      prisma as unknown as PrismaService,
-      "deleted",
-      logger as unknown as Logger,
-    );
+  const scrub = () => buildPartnerNameScrubOps(prisma, "deleted", logger);
   const run = async (): Promise<unknown[]> => (await scrub()).ops;
 
   beforeEach(() => {

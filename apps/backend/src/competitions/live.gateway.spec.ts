@@ -136,20 +136,86 @@ describe("LiveGateway", () => {
       });
     });
 
-    it("should broadcast result publication to room", () => {
+    it("should broadcast result publication to room in the public shape", () => {
       const emit = jest.fn();
       const to = jest.fn().mockReturnValue({ emit });
       gateway.server = { to } as unknown as Server;
 
-      const resultData = {
+      gateway.broadcastResultPublished("comp-1", {
         competitionId: "comp-1",
         eventId: "event-1",
-        results: [{ userId: "user-1", ranking: 1 }],
-      };
-      gateway.broadcastResultPublished("comp-1", resultData);
+        results: [
+          {
+            id: "res-1",
+            eventId: "event-1",
+            round: "Finale",
+            ranking: 1,
+            details: { participant: "Martin / Durand", marks: 5 },
+          },
+        ],
+      });
 
       expect(to).toHaveBeenCalledWith("competition_comp-1");
-      expect(emit).toHaveBeenCalledWith("result_published", resultData);
+      expect(emit).toHaveBeenCalledWith("result_published", {
+        competitionId: "comp-1",
+        eventId: "event-1",
+        results: [
+          {
+            id: "res-1",
+            eventId: "event-1",
+            round: "Finale",
+            ranking: 1,
+            details: { participant: "Martin / Durand", marks: 5 },
+          },
+        ],
+      });
+    });
+
+    it("never emits an account id nor unlisted details (#429)", () => {
+      const emit = jest.fn();
+      const to = jest.fn().mockReturnValue({ emit });
+      gateway.server = { to } as unknown as Server;
+
+      // A caller handing over a raw Result row (as read with a wider select)
+      // must not leak its account id through the websocket.
+      const rawRow = {
+        id: "res-1",
+        eventId: "event-1",
+        userId: "user-1",
+        round: "Finale",
+        ranking: 1,
+        createdAt: new Date(),
+        details: {
+          participant: "Martin / Durand",
+          userId: "user-1",
+          licenseNumber: "123456",
+        },
+      };
+      gateway.broadcastResultPublished("comp-1", {
+        competitionId: "comp-1",
+        eventId: "event-1",
+        results: [rawRow],
+      });
+
+      const payload = emit.mock.calls[0][1] as unknown;
+      const serialized = JSON.stringify(payload);
+      expect(serialized).not.toContain("userId");
+      expect(serialized).not.toContain("user-1");
+      expect(serialized).not.toContain("licenseNumber");
+      expect(serialized).not.toContain("createdAt");
+      expect(payload).toEqual({
+        competitionId: "comp-1",
+        eventId: "event-1",
+        results: [
+          {
+            id: "res-1",
+            eventId: "event-1",
+            round: "Finale",
+            ranking: 1,
+            details: { participant: "Martin / Durand" },
+          },
+        ],
+      });
     });
   });
 });
