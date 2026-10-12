@@ -1179,6 +1179,7 @@ jobs:
             unzip -p "$OUT" 'Payload/*.app/Info.plist' > "$RUNNER_TEMP/Info.plist"
             BUNDLE=$(plutil -extract CFBundleIdentifier raw -o - "$RUNNER_TEMP/Info.plist" 2> /dev/null || true)
             BUILD_NUMBER=$(plutil -extract CFBundleVersion raw -o - "$RUNNER_TEMP/Info.plist" 2> /dev/null || true)
+            rm -f "$RUNNER_TEMP/Info.plist"
             if [ "$BUNDLE" != "$EXPECTED_ID" ]; then
               echo "state=failed" >> "$GITHUB_OUTPUT"
               echo "::error::binaire construit pour ${BUNDLE:-?}, attendu $EXPECTED_ID"
@@ -1195,7 +1196,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           if ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]{0,8}$ ]]; then
             echo "state=pending" >> "$GITHUB_OUTPUT"
-            echo "::warning::build fini mais numéro de build illisible : binaire dans l'artefact beta-binary-$PLATFORM, à envoyer à la main (eas submit --path) puis action=distribute"
+            echo "::warning::build fini mais numéro de build illisible : binaire non envoyé (il n'est pas conservé), relancer action=build"
             exit 0
           fi
           {
@@ -1204,19 +1205,11 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "Build $PLATFORM_NAME beta **$BUILD_NUMBER** terminé — SHA-256 \`$SHA256\`." >> "$GITHUB_STEP_SUMMARY"
 
-      # Le binaire, le temps de la promotion (7 jours, comme l'état transmis) :
-      # de quoi l'envoyer à la main si `eas submit` échoue. Rien de secret
-      # au-delà de ce que contient toute app publiée.
-      - name: Upload beta binary
-        if: "!cancelled() && steps.ghbuild.outputs.path != ''"
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: beta-binary-${{ matrix.platform }}
-          path: ${{ steps.ghbuild.outputs.path }}
-          if-no-files-found: error
-          # .ipa / .aab sont déjà des zip.
-          compression-level: 0
-          retention-days: 7
+      # PAS d'artefact du binaire : dépôt PUBLIC, les artefacts y sont
+      # téléchargeables par tout compte GitHub, et le binaire embarque les
+      # variables EAS « sensitive » (clés Maps, WAKE_KEY…). Seule son empreinte
+      # SHA-256 sort du runner (résumé + release). Un envoi raté se refait par
+      # un nouveau build.
 
       - name: Publish OTA update (beta)
         id: ota
@@ -1279,7 +1272,8 @@ jobs:
           BUILD_NUMBER: >-
             ${{ steps.build.outputs.number || steps.ghbuild.outputs.number
             || steps.resolve.outputs.number || steps.local.outputs.number }}
-          # Build sur runner GitHub : empreinte du binaire envoyé au store.
+          # Build sur runner GitHub : empreinte du binaire envoyé au store
+          # (le binaire lui-même ne quitte pas le runner).
           BINARY_SHA256: ${{ steps.ghbuild.outputs.sha256 }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -1305,8 +1299,7 @@ jobs:
               HEADER="$HEADER Local build (eas build --local), uploaded by hand: provenance NOT verified by CI (build local, provenance non vérifiée par la CI)."
             fi
             if [[ "$BINARY_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
-              # Relie le binaire du store à ce commit : même empreinte que
-              # l'artefact beta-binary-<plateforme> du run.
+              # Relie le binaire du store à ce commit et à ce run.
               HEADER="$HEADER Built on a GitHub Actions runner (eas build --local, $RUN_URL); SHA-256 of the submitted binary: \`$BINARY_SHA256\`."
             fi
           fi
@@ -1335,8 +1328,8 @@ jobs:
       # (cf. scripts/submit-beta.ts).
       # Build sur runner GitHub : pas d'ID EAS, `eas submit --path` téléverse
       # le binaire et EAS l'envoie avec SES clés (comme pour un build cloud :
-      # aucune clé de distribution ici). Une seule tentative ; une reprise
-      # passe par action=distribute (voir le suivi).
+      # aucune clé de distribution ici). Une seule tentative ; soumission
+      # restée en file : action=distribute une fois FINISHED (voir le suivi).
       - name: Submit to store
         id: submit
         if: >-
@@ -1375,7 +1368,7 @@ jobs:
             if ! eas submit --platform "$PLATFORM" --profile beta --path "$BINARY_PATH" \
               --non-interactive --no-wait < /dev/null 2>&1 | tee "$RUNNER_TEMP/eas-submit.log"; then
               echo "state=failed" >> "$GITHUB_OUTPUT"
-              echo "::error::eas submit --path a échoué : binaire dans l'artefact beta-binary-$PLATFORM, à envoyer à la main puis action=distribute build_number=$BUILD_NUMBER"
+              echo "::error::eas submit --path a échoué : le binaire n'est pas conservé (dépôt public), relancer action=build (le build $BUILD_NUMBER est perdu)"
               exit 1
             fi
             SUB_ID=$(grep -oE 'submissions/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' \
@@ -1436,7 +1429,7 @@ jobs:
             if [ "$SUB_STATUS" = "ERRORED" ] || [ "$SUB_STATUS" = "CANCELED" ]; then
               echo "state=failed" >> "$GITHUB_OUTPUT"
               if [ -n "$BINARY_PATH" ]; then
-                echo "::error::soumission $SUB_ID terminée en $SUB_STATUS (logs : eas submit:view $SUB_ID). Binaire dans l'artefact beta-binary-$PLATFORM : l'envoyer à la main (eas submit --path) puis action=distribute build_number=$BUILD_NUMBER."
+                echo "::error::soumission $SUB_ID terminée en $SUB_STATUS (logs : eas submit:view $SUB_ID). Si eas submit:retry $SUB_ID n'y fait rien : relancer action=build (le binaire n'est pas conservé)."
               else
                 echo "::error::soumission $SUB_ID terminée en $SUB_STATUS (logs : eas submit:view $SUB_ID). La reprise la relancera."
               fi
@@ -1457,6 +1450,16 @@ jobs:
           done
           echo "state=finished" >> "$GITHUB_OUTPUT"
           echo "📤 Envoyé sur $STORE_NAME (soumission \`$SUB_ID\`)" >> "$GITHUB_STEP_SUMMARY"
+
+      # Filet de l'étape de build (dont le trap efface déjà la config Firebase) :
+      # même après un timeout ou une annulation, rien de décodé ni le binaire
+      # ne reste sur le runner. Aucun listage : seulement des suppressions.
+      - name: Clean up build secrets and binary (GitHub build)
+        if: always() && inputs.action == 'build' && inputs.builder != 'eas'
+        run: |
+          rm -rf "$RUNNER_TEMP/eas-environment-secrets"
+          rm -f "$RUNNER_TEMP/ffd-connect-beta.ipa" "$RUNNER_TEMP/ffd-connect-beta.aab" \
+            "$RUNNER_TEMP/Info.plist" "$RUNNER_TEMP/eas-submit.log"
 
       # Passage de relais à distribute-beta et au suivi : les sorties d'un job
       # matriciel s'écrasent d'une jambe à l'autre, d'où un artefact PAR JAMBE
@@ -1899,7 +1902,7 @@ jobs:
               CMD="gh workflow run eas-build.yml --ref $REF -f action=distribute -f platform=$PLATFORM -f build_number=$BUILD_NUMBER"
               BUILD_LABEL="local (hors EAS)"
               if [ "$BUILDER" = "github" ]; then
-                BUILD_LABEL="runner GitHub (artefact beta-binary-$PLATFORM, 7 jours)"
+                BUILD_LABEL="runner GitHub"
               fi
             else
               continue # rien n'a été construit ni repris : l'erreur est dans l'étape fautive
@@ -1909,10 +1912,12 @@ jobs:
               continue
             fi
             # Build sur runner dont l'envoi n'a pas abouti : action=distribute
-            # suppose le binaire déjà sur le store. Soumission en file
-            # (pending) : il suffit d'attendre ; sinon, l'envoyer à la main.
+            # suppose le binaire déjà sur le store, et le binaire n'est pas
+            # conservé (dépôt public). Soumission en file (pending) : attendre
+            # puis $CMD ; sinon (échec), seul un nouveau build reste possible.
             if [ "$BUILDER" = "github" ] && [ "$SUBMIT_STATE" != "finished" ] && [ "$SUBMIT_STATE" != "pending" ]; then
-              echo "::warning::build $PLATFORM $BUILD_NUMBER construit sur le runner mais pas envoyé au store (${SUBMIT_STATE:-non tenté}) : télécharger l'artefact beta-binary-$PLATFORM (7 jours), env EXPO_PUBLIC_APP_ENV=beta eas submit -p $PLATFORM --profile beta --path <fichier>, puis : $CMD"
+              echo "::error::build $PLATFORM $BUILD_NUMBER construit sur le runner mais pas envoyé au store (${SUBMIT_STATE:-non tenté}) : binaire non conservé, relancer action=build"
+              continue
             fi
             if [ -f "$D" ]; then
               DIST=$(jq -r 'if .ready then .outcome else "différée : \(.reason)" end' "$D")
