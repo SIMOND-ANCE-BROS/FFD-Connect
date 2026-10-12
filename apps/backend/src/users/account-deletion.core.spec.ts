@@ -54,12 +54,16 @@ describe("account-deletion.core", () => {
           ops: [marker("partnerNameScrub")],
           competitionIds: ["c9"],
         },
+        notificationNameScrub: [marker("notificationNameScrub")],
       }) as unknown as { op: string }[];
 
       expect(ops.map((o) => o.op)).toEqual([
         "result",
         "result",
         "notification",
+        // #423 scrub of other users' notifications, before the
+        // registrations that link them go.
+        "notificationNameScrub",
         "seat",
         "registration",
         "partner",
@@ -85,6 +89,9 @@ describe("account-deletion.core", () => {
   describe("prepareAccountDeletion", () => {
     it("reads the partner-name scrub before the user's results, and lists the stale result caches", async () => {
       prisma.user.findUnique.mockResolvedValue(null);
+      prisma.registration.findMany.mockResolvedValue([]);
+      prisma.partnership.findMany.mockResolvedValue([]);
+      prisma.notification.findMany.mockResolvedValue([]);
       prisma.result.findMany.mockResolvedValue([
         { id: "r1", details: {}, event: { competitionId: "c1" } },
         { id: "r2", details: {}, event: { competitionId: "c1" } },
@@ -95,6 +102,11 @@ describe("account-deletion.core", () => {
 
       // Unknown user: the scrub has nothing to do.
       expect(plan.partnerNameScrub).toEqual({ ops: [], competitionIds: [] });
+      // #423: the notification links are read before the transaction too.
+      expect(plan.notificationNameScrub).toEqual([]);
+      expect(
+        prisma.notification.findMany.mock.invocationCallOrder[0],
+      ).toBeLessThan(prisma.result.findMany.mock.invocationCallOrder[0]);
       expect(plan.results).toHaveLength(2);
       expect(prisma.user.findUnique.mock.invocationCallOrder[0]).toBeLessThan(
         prisma.result.findMany.mock.invocationCallOrder[0],

@@ -1373,6 +1373,9 @@ describe("UsersService", () => {
       // Partner-name scrub (#395): no couple to look up.
       prisma.registration.findMany.mockResolvedValue([]);
       prisma.result.findMany.mockResolvedValue([]);
+      // Notification name scrub (#423): nothing links here.
+      prisma.partnership.findMany.mockResolvedValue([]);
+      prisma.notification.findMany.mockResolvedValue([]);
     });
 
     afterEach(() => {

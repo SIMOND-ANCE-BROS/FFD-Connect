@@ -165,6 +165,8 @@ describe("buildPurgeUserOperations (#412)", () => {
       ops: [{ op: "partnerNameScrub" } as never],
       competitionIds: [],
     },
+    // #423 notification scrub ops, built before the transaction too.
+    notificationNameScrub: [{ op: "notificationNameScrub" } as never],
   };
 
   it("deletes the seeded licenses, then runs the exact account deletion core", () => {
@@ -204,6 +206,7 @@ describe("buildPurgeUserOperations (#412)", () => {
     });
     expect(ops.map((o) => o.op)).toContain("adminAuditLog.updateMany");
     expect(ops.map((o) => o.op)).toContain("partnerNameScrub");
+    expect(ops.map((o) => o.op)).toContain("notificationNameScrub");
     expect(ops[ops.length - 1]).toEqual({
       op: "user.delete",
       args: { where: { id: "u1" } },
@@ -229,6 +232,10 @@ describe("purgeTestUser (#430)", () => {
     // Unknown user for the partner-name scrub; no result of their own.
     prisma.user.findUnique.mockResolvedValue(null);
     prisma.result.findMany.mockResolvedValue([]);
+    // Organisers' notification scrub (#423): nothing links here.
+    prisma.registration.findMany.mockResolvedValue([]);
+    prisma.partnership.findMany.mockResolvedValue([]);
+    prisma.notification.findMany.mockResolvedValue([]);
     prisma.$transaction.mockResolvedValue([{ count: 1 }] as never);
     files = {
       deleteFiles: jest.fn().mockResolvedValue(new Set(["document-1.pdf"])),

@@ -41,6 +41,11 @@ export const MAX_RENEWAL_DOCUMENTS_TO_PURGE = 200;
  * Copies du nom sans identifiant (#395) : inscription du partenaire créée
  * par l'import sans partnerUserId, libellé d'un résultat de couple rattaché
  * au partenaire — cf. buildPartnerNameScrubOps (partner-name-scrub.ts).
+ * Notifications reçues par d'autres (gestionnaires de club, #423) qui
+ * nomment l'utilisateur : conservées dans le fil de leur destinataire, nom
+ * remplacé par « Membre supprimé » / « Partenaire supprimé », retrouvées par
+ * l'inscription ou le partenariat lié — cf. buildNotificationNameScrubOps
+ * (notification-name-scrub.ts).
  * Suppressions explicites (FK sans onDelete → RESTRICT) : registrations,
  * seatBookings, notifications ; bugReports (userId sans FK).
  * Résultats de compétition (Result.userId sans FK, #382) : ANONYMISÉS, pas

@@ -18,6 +18,10 @@ import {
   PartnerNameScrubLogger,
   PartnerNameScrubPrisma,
 } from "./partner-name-scrub";
+import {
+  buildNotificationNameScrubOps,
+  NotificationNameScrubPrisma,
+} from "./notification-name-scrub";
 
 /**
  * Borne de la lecture des résultats à anonymiser (un résultat par épreuve
@@ -107,16 +111,22 @@ export interface AccountDeletionPlan {
   results: readonly Pick<ResultToAnonymize, "id" | "details" | "event">[];
   /** Copies of the user's name held by partners' rows (#395). */
   partnerNameScrub: PartnerNameScrub;
+  /** Other users' notifications naming the user, rewritten (#423). */
+  notificationNameScrub: Prisma.PrismaPromise<unknown>[];
 }
+
+/** Prisma delegates read before the transaction. */
+export type AccountDeletionReadPrisma = PartnerNameScrubPrisma &
+  NotificationNameScrubPrisma;
 
 /**
  * Reads needed by the transaction, done before it: the partner-name scrub
  * locates the couple through the user's own registrations, which the
- * transaction deletes; the results' details are needed to keep their
+ * transaction deletes (so does the organisers' notification scrub, #423); the results' details are needed to keep their
  * non-identifying keys.
  */
 export async function prepareAccountDeletion(
-  prisma: PartnerNameScrubPrisma,
+  prisma: AccountDeletionReadPrisma,
   userId: string,
   logger: PartnerNameScrubLogger,
 ): Promise<AccountDeletionPlan> {
@@ -125,8 +135,15 @@ export async function prepareAccountDeletion(
     userId,
     logger,
   );
+  // Organisers' notifications are linked through the user's registrations
+  // and partnerships, which the transaction deletes (#423).
+  const notificationNameScrub = await buildNotificationNameScrubOps(
+    prisma,
+    userId,
+    logger,
+  );
   const results = await findResultsToAnonymize(prisma, userId);
-  return { results, partnerNameScrub };
+  return { results, partnerNameScrub, notificationNameScrub };
 }
 
 /** Competitions whose results cache is stale once the transaction ran. */
@@ -175,6 +192,9 @@ export function buildAccountDeletionOperations(
       data: { userId: DELETED_USER_ID, details: {} },
     }),
     prisma.notification.deleteMany({ where: { userId } }),
+    // Other users' notifications naming the user: name replaced by
+    // « Membre supprimé » / « Partenaire supprimé » (#423).
+    ...plan.notificationNameScrub,
     prisma.seatBooking.deleteMany({ where: { userId } }),
     prisma.registration.deleteMany({ where: { userId } }),
     // Inscriptions d'autrui où l'utilisateur est partenaire : la FK passerait

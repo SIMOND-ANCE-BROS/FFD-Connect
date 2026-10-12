@@ -1149,3 +1149,20 @@ export const registrationPartnerBackfillSelect = {
   partnerName: true,
   user: { select: userNameSelect },
 } as const;
+
+/**
+ * Account deletion (#423): the user's partnerships, to locate their half of
+ * the couple label in the inter-club notifications sent to organisers.
+ */
+export const partnershipMembersSelect = {
+  id: true,
+  user1Id: true,
+  user2Id: true,
+} as const;
+
+/** Account deletion (#423): notifications whose body may name the user. */
+export const notificationNameScrubSelect = {
+  id: true,
+  body: true,
+  data: true,
+} as const;

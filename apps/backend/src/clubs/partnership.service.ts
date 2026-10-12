@@ -11,6 +11,10 @@ import {
   UserRole,
 } from "@prisma/client";
 import { withActiveRole } from "../auth/roles";
+import {
+  coupleNotificationLabel,
+  PARTNERSHIP_MEMBER_DATA_KEYS,
+} from "../notifications/member-name-copy";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { partnershipCandidateSelect } from "../utils/prisma-selects";
@@ -146,14 +150,10 @@ export class PartnershipService {
 
     // Notification au club partenaire lorsqu'un couple inter-club est créé
     if (secondaryClub && status === PartnershipStatus.PENDING_SECOND_CLUB) {
-      const pLabelUser1 =
-        `${partnership.user1.firstName} ${partnership.user1.lastName}`.trim();
-      const pLabelUser2 =
-        `${partnership.user2.firstName} ${partnership.user2.lastName}`.trim();
-      const pLabel =
-        pLabelUser1 && pLabelUser2
-          ? `${pLabelUser1} & ${pLabelUser2}`
-          : "Un couple";
+      const pLabel = coupleNotificationLabel(
+        partnership.user1,
+        partnership.user2,
+      );
 
       let modeLabel: string;
       let inviteOperations = "";
@@ -183,6 +183,7 @@ export class PartnershipService {
         title: "Nouveau couple inter-club à valider",
         body,
         partnershipId: partnership.id,
+        memberUserIds: [partnership.user1.id, partnership.user2.id],
         // Appelle une action du club partenaire.
         push: true,
       });
@@ -256,14 +257,7 @@ export class PartnershipService {
             ? updated.club
             : null;
       if (otherClub) {
-        const pLabelUser1 =
-          `${updated.user1.firstName} ${updated.user1.lastName}`.trim();
-        const pLabelUser2 =
-          `${updated.user2.firstName} ${updated.user2.lastName}`.trim();
-        const pLabel =
-          pLabelUser1 && pLabelUser2
-            ? `${pLabelUser1} & ${pLabelUser2}`
-            : "Un couple";
+        const pLabel = coupleNotificationLabel(updated.user1, updated.user2);
         await this.notifyClubOrganizersForClub(otherClub, {
           type: "partnership_interclub_ended",
           // Information, pas action : elle peut attendre l'ouverture de l'app.
@@ -271,6 +265,7 @@ export class PartnershipService {
           title: "Couple inter-club clôturé",
           body: `${pLabel} : le couple inter-club a été clôturé par l'autre club.`,
           partnershipId: updated.id,
+          memberUserIds: [updated.user1.id, updated.user2.id],
         });
       }
     }
@@ -318,12 +313,7 @@ export class PartnershipService {
     });
 
     {
-      const pLabelUser1 = `${p.user1.firstName} ${p.user1.lastName}`.trim();
-      const pLabelUser2 = `${p.user2.firstName} ${p.user2.lastName}`.trim();
-      const pLabel =
-        pLabelUser1 && pLabelUser2
-          ? `${pLabelUser1} & ${pLabelUser2}`
-          : "Un couple";
+      const pLabel = coupleNotificationLabel(p.user1, p.user2);
       const decisionText = accepted ? "validé" : "refusé";
       const type = accepted
         ? "partnership_interclub_accepted"
@@ -337,6 +327,7 @@ export class PartnershipService {
             p.secondaryClub?.name ?? "partenaire"
           } a ${decisionText} le couple inter-club.`,
           partnershipId: p.id,
+          memberUserIds: [p.user1.id, p.user2.id],
           // Décision prise par le club partenaire sur un couple du club : subie,
           // et elle conditionne la suite (inscriptions possibles ou non).
           push: true,
@@ -354,6 +345,12 @@ export class PartnershipService {
       title: string;
       body: string;
       partnershipId: string;
+      /**
+       * user1 and user2 ids, in the order of the couple label: they keep the
+       * link to each member once the Partnership row is gone, so the account
+       * deletion can scrub the name (#423).
+       */
+      memberUserIds: readonly [string, string];
       /**
        * `true` quand la notification appelle une action ou annonce une décision
        * subie, `false` quand elle ne fait qu'informer. Décidé au point d'appel :
@@ -386,6 +383,8 @@ export class PartnershipService {
     const data: Record<string, string> = {
       type: notification.type,
       partnershipId: notification.partnershipId,
+      [PARTNERSHIP_MEMBER_DATA_KEYS[0]]: notification.memberUserIds[0],
+      [PARTNERSHIP_MEMBER_DATA_KEYS[1]]: notification.memberUserIds[1],
     };
     const recipients = organizers.map((organizer) => organizer.id);
     if (notification.push) {
