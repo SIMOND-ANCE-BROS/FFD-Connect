@@ -78,6 +78,12 @@ function isDefinitiveMiss(error: unknown): boolean {
   return status === 404 || status === 403;
 }
 
+function isRejectedCredentials(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  const status = error.response?.status;
+  return status === 400 || status === 401;
+}
+
 @Injectable()
 export class HelloAssoService {
   private readonly logger = new Logger(HelloAssoService.name);
@@ -97,10 +103,9 @@ export class HelloAssoService {
   /**
    * Get OAuth token for HelloAsso API using club credentials
    */
-  private async getAccessToken(credentials: {
-    clientId: string;
-    clientSecret: string;
-  }): Promise<string> {
+  private async getAccessToken(
+    credentials: HelloAssoCredentials,
+  ): Promise<string> {
     // Keyed on the secret too: a club registering another club's clientId
     // with a wrong secret never gets that club's cached token.
     const cacheKey = `${credentials.clientId}:${createHash("sha256").update(credentials.clientSecret).digest("hex")}`;
@@ -110,28 +115,44 @@ export class HelloAssoService {
     }
 
     try {
-      const response = await this.circuitBreakerService.fire("helloasso", () =>
-        withTimeout(
-          axios.post<HelloAssoTokenResponse>(
-            `${this.apiUrl}/oauth2/token`,
-            new URLSearchParams({
-              grant_type: "client_credentials",
-              client_id: credentials.clientId,
-              client_secret: credentials.clientSecret,
-            }),
-            {
-              headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-              },
-            },
-          ),
-          REQUEST_TIMEOUT_MS,
-          "HelloAsso.getAccessToken",
-        ),
+      const outcome = await this.circuitBreakerService.fire(
+        "helloasso",
+        async (): Promise<
+          | { ok: true; data: HelloAssoTokenResponse }
+          | { ok: false; error: unknown }
+        > => {
+          try {
+            const response = await withTimeout(
+              axios.post<HelloAssoTokenResponse>(
+                `${this.apiUrl}/oauth2/token`,
+                new URLSearchParams({
+                  grant_type: "client_credentials",
+                  client_id: credentials.clientId,
+                  client_secret: credentials.clientSecret,
+                }),
+                {
+                  headers: {
+                    "Content-Type": "application/x-www-form-urlencoded",
+                  },
+                },
+              ),
+              REQUEST_TIMEOUT_MS,
+              "HelloAsso.getAccessToken",
+            );
+            return { ok: true, data: response.data };
+          } catch (error) {
+            // Rejected credentials (400/401) are this club's answer, not a
+            // HelloAsso outage: never counted by the breaker.
+            if (isRejectedCredentials(error)) return { ok: false, error };
+            throw error;
+          }
+        },
+        this.breakerScope(credentials),
       );
+      if (!outcome.ok) throw outcome.error;
 
-      const token = response.data.access_token;
-      const expiresAt = Date.now() + response.data.expires_in * 1000 - 60000; // Buffer 1 min
+      const token = outcome.data.access_token;
+      const expiresAt = Date.now() + outcome.data.expires_in * 1000 - 60000; // Buffer 1 min
       this.tokenCache.set(cacheKey, { token, expiresAt });
       return token;
     } catch (error) {
@@ -141,6 +162,15 @@ export class HelloAssoService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Breaker scope (#404): one per HelloAsso organisation, so that one
+   * club's outage, bad credentials or forged-notification traffic never opens
+   * the breaker of the other clubs.
+   */
+  private breakerScope(credentials: HelloAssoCredentials): string {
+    return credentials.organizationSlug;
   }
 
   private organizationUrl(credentials: HelloAssoCredentials): string {
@@ -162,40 +192,40 @@ export class HelloAssoService {
       metadata: Record<string, unknown>;
     },
   ) {
-    const token = await this.getAccessToken({
-      clientId: credentials.clientId,
-      clientSecret: credentials.clientSecret,
-    });
+    const token = await this.getAccessToken(credentials);
 
     try {
-      const response = await this.circuitBreakerService.fire("helloasso", () =>
-        withTimeout(
-          axios.post<HelloAssoCheckoutIntent>(
-            `${this.organizationUrl(credentials)}/checkout-intents`,
-            {
-              totalAmount: params.amount,
-              initialAmount: params.amount,
-              itemName: params.label,
-              backUrl: appBaseUrl + "/payment/back",
-              errorUrl: appBaseUrl + "/payment/error",
-              returnUrl: appBaseUrl + "/payment/success",
-              containsDonation: false,
-              payer: {
-                firstName: params.consumerFirstName,
-                lastName: params.consumerLastName,
-                email: params.consumerEmail,
+      const response = await this.circuitBreakerService.fire(
+        "helloasso",
+        () =>
+          withTimeout(
+            axios.post<HelloAssoCheckoutIntent>(
+              `${this.organizationUrl(credentials)}/checkout-intents`,
+              {
+                totalAmount: params.amount,
+                initialAmount: params.amount,
+                itemName: params.label,
+                backUrl: appBaseUrl + "/payment/back",
+                errorUrl: appBaseUrl + "/payment/error",
+                returnUrl: appBaseUrl + "/payment/success",
+                containsDonation: false,
+                payer: {
+                  firstName: params.consumerFirstName,
+                  lastName: params.consumerLastName,
+                  email: params.consumerEmail,
+                },
+                metadata: params.metadata,
               },
-              metadata: params.metadata,
-            },
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
               },
-            },
+            ),
+            REQUEST_TIMEOUT_MS,
+            "HelloAsso.createCheckoutIntent",
           ),
-          REQUEST_TIMEOUT_MS,
-          "HelloAsso.createCheckoutIntent",
-        ),
+        this.breakerScope(credentials),
       );
 
       return response.data;
@@ -217,10 +247,7 @@ export class HelloAssoService {
     url: string,
     label: string,
   ): Promise<HelloAssoReadResult<T>> {
-    const token = await this.getAccessToken({
-      clientId: credentials.clientId,
-      clientSecret: credentials.clientSecret,
-    });
+    const token = await this.getAccessToken(credentials);
     try {
       return await this.circuitBreakerService.fire(
         "helloasso",
@@ -239,6 +266,7 @@ export class HelloAssoService {
             throw error;
           }
         },
+        this.breakerScope(credentials),
       );
     } catch (error) {
       this.logger.error(
