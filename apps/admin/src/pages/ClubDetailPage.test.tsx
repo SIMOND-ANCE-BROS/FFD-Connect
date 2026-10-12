@@ -264,7 +264,9 @@ describe('ClubDetailPage', () => {
     expect(within(button.parentElement as HTMLElement).getByText('Club désactivé')).toBeVisible();
   });
 
-  describe('Lier un membre', () => {
+  // Multi-step flows (search, tick, review, confirm, result): same budget as
+  // the other multi-step page suites.
+  describe('Lier un membre', { timeout: 15_000 }, () => {
     // Mantine keeps notifications in a module-level store.
     afterEach(() => act(() => notifications.clean()));
 
