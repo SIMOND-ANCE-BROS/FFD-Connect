@@ -23,6 +23,7 @@ import {
   type HelloAssoCheckoutIntent,
   type HelloAssoCredentials,
 } from "./hello-asso.service";
+import { PaymentNotificationService } from "./payment-notification.service";
 import {
   checkOrderAgainstBooking,
   getWebhookMetadata,
@@ -80,6 +81,7 @@ export class PaymentService {
     private readonly configService: ConfigService,
     private readonly seatHoldService: SeatHoldService,
     private readonly refundOwedAlertService: RefundOwedAlertService,
+    private readonly paymentNotificationService: PaymentNotificationService,
   ) {}
 
   /**
@@ -325,7 +327,9 @@ export class PaymentService {
    * The transition is a conditional update (PENDING + same expected amount +
    * same current intent + deadline not reached) so a booking cancelled,
    * re-priced, resumed or expired between the read and the write is never
-   * confirmed.
+   * confirmed. Exactly one delivery wins that transition, even when HelloAsso
+   * replays the webhook concurrently: only that one tells the organizer club
+   * (#39), and the notification never rejects.
    */
   async handleOrderWebhook(payload: WebhookPayloadDto): Promise<void> {
     const bookingId = getWebhookMetadata(payload)?.bookingId;
@@ -436,7 +440,11 @@ export class PaymentService {
         );
       }
       this.rejectOrder(bookingId, orderId, "not_pending");
+      return;
     }
+
+    // Never rejects: a notification failure must not fail the webhook.
+    await this.paymentNotificationService.notifyPaymentReceived(booking.id);
   }
 
   /**

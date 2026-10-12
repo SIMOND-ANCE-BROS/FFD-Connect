@@ -11,6 +11,7 @@ import * as Sentry from "@sentry/nestjs";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
 import { ClubsHelloAssoService } from "../clubs/clubs-helloasso.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { PaymentNotificationService } from "./payment-notification.service";
 import { seatBookingPaymentCheckSelect } from "../utils/prisma-selects";
 import type { CreateCheckoutDto } from "./dto/create-checkout.dto";
 import type { WebhookPayloadDto } from "./dto/webhook-payload.dto";
@@ -35,6 +36,9 @@ describe("PaymentService", () => {
     Pick<ClubsHelloAssoService, "getHelloAssoCredentialsForCompetition">
   >;
   let configService: jest.Mocked<Pick<ConfigService, "get">>;
+  let paymentNotificationService: jest.Mocked<
+    Pick<PaymentNotificationService, "notifyPaymentReceived">
+  >;
   let seatHold: jest.Mocked<
     Pick<SeatHoldService, "hold" | "recordIntent" | "replaceIntent" | "release">
   >;
@@ -113,6 +117,10 @@ describe("PaymentService", () => {
     };
     refundOwedAlert = { alertClub: jest.fn().mockResolvedValue(undefined) };
 
+    paymentNotificationService = {
+      notifyPaymentReceived: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentService,
@@ -120,6 +128,10 @@ describe("PaymentService", () => {
         { provide: HelloAssoService, useValue: helloAssoService },
         { provide: ClubsHelloAssoService, useValue: clubsService },
         { provide: ConfigService, useValue: configService },
+        {
+          provide: PaymentNotificationService,
+          useValue: paymentNotificationService,
+        },
         { provide: SeatHoldService, useValue: seatHold },
         { provide: RefundOwedAlertService, useValue: refundOwedAlert },
       ],
@@ -658,6 +670,83 @@ describe("PaymentService", () => {
           tags: expect.objectContaining({ reason: "not_pending" }),
         }),
       );
+    });
+
+    describe("organizer club notification (#39)", () => {
+      it("notifies the organizer club once the booking is confirmed", async () => {
+        await service.handleOrderWebhook(paidOrder());
+
+        expect(
+          paymentNotificationService.notifyPaymentReceived,
+        ).toHaveBeenCalledTimes(1);
+        expect(
+          paymentNotificationService.notifyPaymentReceived,
+        ).toHaveBeenCalledWith("booking-1");
+        expect(
+          prisma.seatBooking.updateMany.mock.invocationCallOrder[0],
+        ).toBeLessThan(
+          paymentNotificationService.notifyPaymentReceived.mock
+            .invocationCallOrder[0],
+        );
+      });
+
+      it("does not notify again on a redelivery of a confirmed booking", async () => {
+        prisma.seatBooking.findUnique.mockResolvedValue({
+          ...bookingForCheck,
+          status: "CONFIRMED",
+        } as any);
+
+        await service.handleOrderWebhook(paidOrder());
+
+        expect(
+          paymentNotificationService.notifyPaymentReceived,
+        ).not.toHaveBeenCalled();
+      });
+
+      it("notifies only the delivery that wins the PENDING -> CONFIRMED transition", async () => {
+        // Two concurrent deliveries both read the PENDING booking; the loser's
+        // re-read then sees the seat the winner confirmed.
+        prisma.seatBooking.findUnique
+          .mockResolvedValueOnce(bookingForCheck as any)
+          .mockResolvedValueOnce(bookingForCheck as any)
+          .mockResolvedValueOnce({
+            ...bookingForCheck,
+            status: "CONFIRMED",
+          } as any);
+        prisma.seatBooking.updateMany
+          .mockResolvedValueOnce({ count: 1 })
+          .mockResolvedValueOnce({ count: 0 });
+
+        await service.handleOrderWebhook(paidOrder());
+        await service.handleOrderWebhook(paidOrder());
+
+        expect(
+          paymentNotificationService.notifyPaymentReceived,
+        ).toHaveBeenCalledTimes(1);
+      });
+
+      it("never notifies for a rejected order", async () => {
+        await service.handleOrderWebhook(
+          paidOrder({ payments: [{ amount: 1, state: "Authorized" }] }),
+        );
+        prisma.seatBooking.findUnique.mockResolvedValue(null);
+        await service.handleOrderWebhook(paidOrder());
+
+        expect(
+          paymentNotificationService.notifyPaymentReceived,
+        ).not.toHaveBeenCalled();
+      });
+
+      it("does not notify when the database write fails", async () => {
+        prisma.seatBooking.updateMany.mockRejectedValue(new Error("DB down"));
+
+        await expect(service.handleOrderWebhook(paidOrder())).rejects.toThrow(
+          "DB down",
+        );
+        expect(
+          paymentNotificationService.notifyPaymentReceived,
+        ).not.toHaveBeenCalled();
+      });
     });
 
     it("rejects an unpaid order (refused payment)", async () => {
