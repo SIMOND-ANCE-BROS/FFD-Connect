@@ -283,6 +283,45 @@ describe("HelloAssoService — contrats HTTP", () => {
       });
     });
 
+    it("renvoie found=false sur 403 (objet d'une autre organisation)", async () => {
+      tokenOk();
+      nock(HELLOASSO_API)
+        .get("/v5/organizations/org-slug/checkout-intents/4242")
+        .reply(403, {});
+
+      await expect(
+        service.getCheckoutIntent(credentials, "4242"),
+      ).resolves.toEqual({ found: false });
+    });
+
+    it("ne compte pas un 404 comme une panne du coupe-circuit", async () => {
+      const outcomes: string[] = [];
+      const observingBreaker = {
+        fire: jest.fn(async (_key: string, fn: () => Promise<unknown>) => {
+          try {
+            const value = await fn();
+            outcomes.push("success");
+            return value;
+          } catch (error) {
+            outcomes.push("failure");
+            throw error;
+          }
+        }),
+      } as unknown as CircuitBreakerService;
+      const observed = new HelloAssoService(observingBreaker, {
+        get: jest.fn(),
+      } as unknown as ConfigService);
+      tokenOk();
+      nock(HELLOASSO_API)
+        .get("/v5/organizations/org-slug/checkout-intents/4242")
+        .reply(404, {});
+
+      await observed.getCheckoutIntent(credentials, "4242");
+
+      // token request + read: both successes from the breaker's viewpoint
+      expect(outcomes).toEqual(["success", "success"]);
+    });
+
     it("propage les autres erreurs (5xx) pour que la notification soit rejouée", async () => {
       tokenOk();
       nock(HELLOASSO_API)

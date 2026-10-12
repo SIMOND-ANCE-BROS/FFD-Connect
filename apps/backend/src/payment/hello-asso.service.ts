@@ -39,7 +39,7 @@ export interface HelloAssoCheckoutIntentDetail {
   order?: unknown;
 }
 
-/** HelloAsso ids are positive integers: anything else never reaches a URL. */
+/** HelloAsso ids are positive integers; other values never reach a URL. */
 const NUMERIC_ID = /^[1-9]\d{0,17}$/;
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -52,8 +52,16 @@ export type HelloAssoReadResult<T> =
   | { found: true; value: T }
   | { found: false };
 
-function isNotFound(error: unknown): boolean {
-  return axios.isAxiosError(error) && error.response?.status === 404;
+/**
+ * 404 (unknown id) and 403 (object of another organization) are ANSWERS, not
+ * outages: they must never count as failures in the shared `helloasso`
+ * circuit breaker, otherwise a caller naming non-existent ids could open it
+ * and block every club's checkout.
+ */
+function isDefinitiveMiss(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  const status = error.response?.status;
+  return status === 404 || status === 403;
 }
 
 @Injectable()
@@ -185,7 +193,11 @@ export class HelloAssoService {
     }
   }
 
-  /** Authenticated GET on the HelloAsso API; 404 → `{ found: false }`. */
+  /**
+   * Authenticated GET on the HelloAsso API. 404/403 → `{ found: false }`,
+   * resolved INSIDE the circuit breaker (not counted as a failure); network
+   * errors, timeouts and 5xx throw and count.
+   */
   private async get<T>(
     credentials: HelloAssoCredentials,
     url: string,
@@ -196,18 +208,25 @@ export class HelloAssoService {
       clientSecret: credentials.clientSecret,
     });
     try {
-      const response = await this.circuitBreakerService.fire("helloasso", () =>
-        withTimeout(
-          axios.get<T>(url, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          REQUEST_TIMEOUT_MS,
-          label,
-        ),
+      return await this.circuitBreakerService.fire(
+        "helloasso",
+        async (): Promise<HelloAssoReadResult<T>> => {
+          try {
+            const response = await withTimeout(
+              axios.get<T>(url, {
+                headers: { Authorization: `Bearer ${token}` },
+              }),
+              REQUEST_TIMEOUT_MS,
+              label,
+            );
+            return { found: true, value: response.data };
+          } catch (error) {
+            if (isDefinitiveMiss(error)) return { found: false };
+            throw error;
+          }
+        },
       );
-      return { found: true, value: response.data };
     } catch (error) {
-      if (isNotFound(error)) return { found: false };
       this.logger.error(
         `${label} failed (${axios.isAxiosError(error) ? (error.response?.status ?? error.code) : "unknown"})`,
       );
