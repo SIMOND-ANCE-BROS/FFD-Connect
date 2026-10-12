@@ -12,6 +12,7 @@ import { Prisma, UserRole } from "@prisma/client";
 import { User } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { extractBirthDateFromLicenseNumber } from "../common/birth-date/license-birth-date.util";
+import { isLicenseExpired } from "../licenses/license-expiry";
 import { PrismaService } from "../prisma/prisma.service";
 import { accountStatusSelect, licenseIdSelect } from "../utils/prisma-selects";
 import {
@@ -253,8 +254,8 @@ export class AuthService {
       );
     }
 
-    // 6. Check license validity
-    if (license.validUntil < new Date()) {
+    // 6. Check license validity (valid through its whole Paris day, #384)
+    if (isLicenseExpired(license.validUntil)) {
       throw new BadRequestException(
         "Cette licence a expiré. Contactez votre club pour le renouvellement.",
       );

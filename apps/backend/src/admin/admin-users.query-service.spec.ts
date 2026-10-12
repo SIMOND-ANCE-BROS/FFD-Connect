@@ -217,4 +217,17 @@ describe("licenseStatus", () => {
     ).toBe("EXPIRED"));
   it("is ACTIVE on or after now", () =>
     expect(licenseStatus({ validUntil: now }, now)).toBe("ACTIVE"));
+
+  describe("Paris calendar day rule (#384)", () => {
+    // 10:00 Paris (CEST) on 2026-10-12.
+    const validUntil = new Date("2026-10-12T08:00:00Z");
+    it("is ACTIVE at 23:00 Paris on the day of validUntil", () =>
+      expect(
+        licenseStatus({ validUntil }, new Date("2026-10-12T21:00:00Z")),
+      ).toBe("ACTIVE"));
+    it("is EXPIRED at 00:01 Paris the next day", () =>
+      expect(
+        licenseStatus({ validUntil }, new Date("2026-10-12T22:01:00Z")),
+      ).toBe("EXPIRED"));
+  });
 });
