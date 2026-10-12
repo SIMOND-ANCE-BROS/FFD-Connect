@@ -1,5 +1,8 @@
 import { ServiceUnavailableException } from "@nestjs/common";
-import { CircuitBreakerService } from "./circuit-breaker.service";
+import {
+  CircuitBreakerService,
+  MAX_SCOPED_BREAKERS,
+} from "./circuit-breaker.service";
 
 describe("CircuitBreakerService", () => {
   let service: CircuitBreakerService;
@@ -43,5 +46,36 @@ describe("CircuitBreakerService", () => {
     await expect(
       service.fire("azure-vision", () => Promise.resolve("x")),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+  describe("scoped breakers (#404)", () => {
+    const fail = () => Promise.reject(new Error("down"));
+
+    it("counts failures per scope: one tenant cannot open another's breaker", async () => {
+      for (let i = 0; i < 5; i++) {
+        await service.fire("helloasso", fail, "club-a").catch(() => undefined);
+      }
+
+      await expect(
+        service.fire("helloasso", fail, "club-a"),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+      await expect(
+        service.fire("helloasso", () => Promise.resolve("ok"), "club-b"),
+      ).resolves.toBe("ok");
+      await expect(
+        service.fire("helloasso", () => Promise.resolve("ok")),
+      ).resolves.toBe("ok");
+    });
+
+    it("bounds the number of scoped breakers kept in memory", async () => {
+      for (let i = 0; i <= MAX_SCOPED_BREAKERS; i++) {
+        await service.fire("helloasso", () => Promise.resolve(i), `org-${i}`);
+      }
+
+      const breakers = (
+        service as unknown as { breakers: Map<string, unknown> }
+      ).breakers;
+      expect(breakers.size).toBeLessThanOrEqual(MAX_SCOPED_BREAKERS);
+      expect(breakers.has("helloasso:org-0")).toBe(false);
+    });
   });
 });

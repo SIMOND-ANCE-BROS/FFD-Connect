@@ -13,6 +13,7 @@ import * as Sentry from "@sentry/nestjs";
 import { ClubsHelloAssoService } from "../src/clubs/clubs-helloasso.service";
 import { WebhookPayloadDto } from "../src/payment/dto/webhook-payload.dto";
 import { HelloAssoService } from "../src/payment/hello-asso.service";
+import { HelloAssoNotificationService } from "../src/payment/helloasso-notification.service";
 import { PaymentService } from "../src/payment/payment.service";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { createFactories } from "./factories";
@@ -35,13 +36,14 @@ describe("Payment checkout + HelloAsso webhook (integration, real DB)", () => {
   let competitionId: string;
 
   const createCheckoutIntent = jest.fn();
+  const getCheckoutIntent = jest.fn();
 
   beforeAll(async () => {
     const built = await buildServiceModule({
       extra: (builder) =>
         builder
           .overrideProvider(HelloAssoService)
-          .useValue({ createCheckoutIntent })
+          .useValue({ createCheckoutIntent, getCheckoutIntent })
           .overrideProvider(ClubsHelloAssoService)
           .useValue({
             getHelloAssoCredentialsForCompetition: jest.fn().mockResolvedValue({
@@ -83,6 +85,7 @@ describe("Payment checkout + HelloAsso webhook (integration, real DB)", () => {
   beforeEach(() => {
     (Sentry.captureMessage as jest.Mock).mockClear();
     createCheckoutIntent.mockReset();
+    getCheckoutIntent.mockReset();
     createCheckoutIntent.mockImplementation(() =>
       Promise.resolve({ id: ++intentCounter, redirectUrl: "https://ha" }),
     );
@@ -345,6 +348,95 @@ describe("Payment checkout + HelloAsso webhook (integration, real DB)", () => {
           where: { competitionId, itemId: "table-1", status: "CONFIRMED" },
         }),
       ).toBe(0);
+    });
+  });
+
+  describe("notification verified by re-reading HelloAsso (#404)", () => {
+    const process = async (payload: WebhookPayloadDto) => {
+      const verifier = moduleRef.get(HelloAssoNotificationService);
+      const verified = await verifier.resolveOrderNotification(payload);
+      if (verified) await service.handleOrderWebhook(verified);
+    };
+
+    it("never confirms on a forged notification while HelloAsso has no paid order", async () => {
+      const booking = await checkout();
+      getCheckoutIntent.mockResolvedValue({
+        found: true,
+        value: {
+          id: intentCounter,
+          metadata: { bookingId: booking.id, competitionId },
+        },
+      });
+
+      await expect(
+        process(
+          order(booking.id, { amount: SEAT_PRICE_CENTS, state: "Authorized" }),
+        ),
+      ).rejects.toThrow(); // 503: HelloAsso will redeliver
+
+      const after = await prisma.seatBooking.findUniqueOrThrow({
+        where: { id: booking.id },
+      });
+      expect(after.status).toBe("PENDING");
+      expect(getCheckoutIntent).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationSlug: "club" }),
+        String(intentCounter),
+      );
+    });
+
+    it("keeps PENDING when HelloAsso reports a smaller amount than the notification", async () => {
+      const booking = await checkout();
+      getCheckoutIntent.mockResolvedValue({
+        found: true,
+        value: {
+          id: intentCounter,
+          metadata: { bookingId: booking.id, competitionId },
+          order: {
+            id: 98765,
+            checkoutIntentId: intentCounter,
+            payments: [{ id: 1, amount: 1, state: "Authorized" }],
+          },
+        },
+      });
+
+      await process(
+        order(booking.id, { amount: SEAT_PRICE_CENTS, state: "Authorized" }),
+      );
+
+      const after = await prisma.seatBooking.findUniqueOrThrow({
+        where: { id: booking.id },
+      });
+      expect(after.status).toBe("PENDING");
+    });
+
+    it("confirms when HelloAsso's own order is paid in full", async () => {
+      const booking = await checkout();
+      getCheckoutIntent.mockResolvedValue({
+        found: true,
+        value: {
+          id: intentCounter,
+          metadata: { bookingId: booking.id, competitionId },
+          order: {
+            id: 98765,
+            checkoutIntentId: intentCounter,
+            payments: [
+              { id: 1, amount: SEAT_PRICE_CENTS, state: "Authorized" },
+            ],
+          },
+        },
+      });
+
+      // The notification body itself is empty: only the API re-read counts.
+      await process({
+        eventType: "Order",
+        metadata: { bookingId: booking.id },
+        data: {},
+      });
+
+      const after = await prisma.seatBooking.findUniqueOrThrow({
+        where: { id: booking.id },
+      });
+      expect(after.status).toBe("CONFIRMED");
     });
   });
 });
