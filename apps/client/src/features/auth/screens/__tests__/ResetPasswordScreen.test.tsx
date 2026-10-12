@@ -63,6 +63,20 @@ describe("ResetPasswordScreen", () => {
     expect(getByText("Réinitialiser")).toBeTruthy();
   });
 
+  it("a11y (#386): password inputs are announced with French labels", async () => {
+    const { getByLabelText, queryByLabelText } = await render(
+      <ResetPasswordScreen {...createTestProps()} />,
+    );
+
+    expect(getByLabelText("Nouveau mot de passe").props.testID).toBe(
+      "reset-password-new-input",
+    );
+    expect(
+      getByLabelText("Confirmer le nouveau mot de passe").props.testID,
+    ).toBe("reset-password-confirm-input");
+    expect(queryByLabelText("Text input field")).toBeNull();
+  });
+
   it("shows alert and navigates to Login when token is missing", async () => {
     const props = createTestProps({});
     const { getByTestId } = await render(<ResetPasswordScreen {...props} />);

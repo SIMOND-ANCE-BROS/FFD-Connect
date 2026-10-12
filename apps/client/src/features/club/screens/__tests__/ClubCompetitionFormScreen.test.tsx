@@ -200,6 +200,34 @@ describe("ClubCompetitionFormScreen", () => {
     expect(getByText("Ajouter un créneau")).toBeTruthy();
   });
 
+  it("a11y (#386): text inputs are announced with French labels", async () => {
+    const { getByLabelText, queryByLabelText, getByTestId, getByText } =
+      await render(
+        <ClubCompetitionFormScreen
+          navigation={
+            navigation as unknown as NativeStackNavigationProp<
+              RootStackParamList,
+              "ClubCompetitionEditor"
+            >
+          }
+          route={{ params: {} } as MockRouteProp<"ClubCompetitionEditor">}
+        />,
+      );
+
+    expect(getByLabelText("Nom de l'événement").props.testID).toBe(
+      "competition-editor-title-input",
+    );
+
+    await fireEvent.press(getByTestId("tab-TIMING"));
+    await fireEvent.press(getByText("Ajouter un créneau"));
+
+    expect(getByLabelText("Titre du créneau").props.testID).toBe(
+      "timing-title-input",
+    );
+    expect(getByLabelText("Durée du créneau en minutes")).toBeTruthy();
+    expect(queryByLabelText("Text input field")).toBeNull();
+  });
+
   it("adds an event via modal", async () => {
     const { getByText, getByTestId, getAllByText } = await render(
       <ClubCompetitionFormScreen
