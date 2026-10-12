@@ -152,9 +152,13 @@ modes d'authentification (token API v2 ou Basic Auth v1).
 
 ## Paiement (HelloAsso)
 
-| Variable                   | Défaut | Rôle                                         |
-| -------------------------- | ------ | -------------------------------------------- |
-| `HELLOASSO_WEBHOOK_SECRET` | —      | Secret de validation des webhooks HelloAsso. |
+Voir ADR-0022 : les notifications ne sont jamais crues, le paiement est relu sur l'API HelloAsso avec les identifiants du club.
+
+| Variable                   | Défaut                      | Rôle                                                                                                                                                                                                                               |
+| -------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HELLOASSO_API_URL`        | `https://api.helloasso.com` | Hôte de l'API HelloAsso (jeton `/oauth2/token`, API `/v5`). Seules valeurs acceptées : `https://api.helloasso.com` ou `https://api.helloasso-sandbox.com` (staging de test).                                                       |
+| `HELLOASSO_SIGNATURE_KEY`  | —                           | `signatureKey` d'une URL de notification **partenaire** HelloAsso. Présente ⇒ toute notification sans en-tête `x-ha-signature` valide est rejetée (401). À laisser vide avec des comptes association : HelloAsso ne les signe pas. |
+| `HELLOASSO_WEBHOOK_SECRET` | —                           | **Obsolète (#404), ignorée** : HelloAsso n'a jamais envoyé l'en-tête qu'elle vérifiait. Avertissement au démarrage si elle est définie ; à retirer des environnements.                                                             |
 
 ## Chiffrement des secrets tiers au repos (#389)
 

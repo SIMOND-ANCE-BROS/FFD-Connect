@@ -21,13 +21,17 @@ import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { CreateCheckoutDto } from "./dto/create-checkout.dto";
 import { WebhookPayloadDto } from "./dto/webhook-payload.dto";
 import { WebhookSignatureGuard } from "./guards/webhook-signature.guard";
+import { HelloAssoNotificationService } from "./helloasso-notification.service";
 import { PaymentService } from "./payment.service";
 
 @ApiTags("payment")
 @ApiCommonErrorResponses()
 @Controller("payment")
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(
+    private readonly paymentService: PaymentService,
+    private readonly helloAssoNotificationService: HelloAssoNotificationService,
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Post("checkout")
@@ -58,13 +62,20 @@ export class PaymentController {
   @ApiOperation({
     summary: "Webhook HelloAsso",
     description:
-      "Reçoit les notifications de paiement HelloAsso. Vérifié par signature HMAC-SHA256. " +
+      "Reçoit les notifications HelloAsso. Le contenu de la notification n'est jamais cru : " +
+      "le paiement est relu sur l'API HelloAsso (intention de paiement de la réservation, identifiants du club). " +
+      "Signature `x-ha-signature` vérifiée si une clé partenaire est configurée. " +
       "Une réservation n'est confirmée que si l'ordre est payé, du montant attendu, pour la bonne compétition ; " +
-      "sinon elle reste en attente et la réponse reste 200 (pas de rejeu).",
+      "sinon elle reste en attente et la réponse reste 200 (pas de rejeu). 503 si HelloAsso est injoignable (rejeu).",
   })
   @ApiBody({ type: WebhookPayloadDto })
   @ApiResponse({ status: 200, description: "Webhook traité" })
   @ApiResponse({ status: 401, description: "Signature invalide" })
+  @ApiResponse({
+    status: 503,
+    description:
+      "HelloAsso injoignable ou paiement pas encore autorisé : HelloAsso rejouera la notification",
+  })
   async handleWebhook(
     // HelloAsso sends many fields we don't declare: the global pipe's
     // `forbidNonWhitelisted` would answer 400 (and trigger retries). The
@@ -82,7 +93,12 @@ export class PaymentController {
     payload: Readonly<WebhookPayloadDto>,
   ) {
     if (payload.eventType === "Order") {
-      await this.paymentService.handleOrderWebhook(payload);
+      // Never the received body: the order as HelloAsso's API reports it.
+      const verified =
+        await this.helloAssoNotificationService.resolveOrderNotification(
+          payload,
+        );
+      if (verified) await this.paymentService.handleOrderWebhook(verified);
     }
     return { received: true };
   }

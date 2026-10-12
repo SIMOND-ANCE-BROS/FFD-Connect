@@ -23609,7 +23609,7 @@
     },
     "/payment/webhook": {
       "post": {
-        "description": "Reçoit les notifications de paiement HelloAsso. Vérifié par signature HMAC-SHA256. Une réservation n'est confirmée que si l'ordre est payé, du montant attendu, pour la bonne compétition ; sinon elle reste en attente et la réponse reste 200 (pas de rejeu).",
+        "description": "Reçoit les notifications HelloAsso. Le contenu de la notification n'est jamais cru : le paiement est relu sur l'API HelloAsso (intention de paiement de la réservation, identifiants du club). Signature `x-ha-signature` vérifiée si une clé partenaire est configurée. Une réservation n'est confirmée que si l'ordre est payé, du montant attendu, pour la bonne compétition ; sinon elle reste en attente et la réponse reste 200 (pas de rejeu). 503 si HelloAsso est injoignable (rejeu).",
         "operationId": "PaymentController_handleWebhook",
         "parameters": [],
         "requestBody": {
@@ -23778,6 +23778,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "HelloAsso injoignable ou paiement pas encore autorisé : HelloAsso rejouera la notification"
           }
         },
         "summary": "Webhook HelloAsso",

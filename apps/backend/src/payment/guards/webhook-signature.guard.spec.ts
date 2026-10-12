@@ -1,91 +1,148 @@
 import { ExecutionContext, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createHmac } from "crypto";
-import { WebhookSignatureGuard } from "./webhook-signature.guard";
+import {
+  HELLOASSO_SIGNATURE_HEADER,
+  WebhookSignatureGuard,
+} from "./webhook-signature.guard";
 
 describe("WebhookSignatureGuard", () => {
-  const secret = "test-webhook-secret-32chars-long!";
+  const key = "partner-signature-key-for-tests";
   let guard: WebhookSignatureGuard;
   let configService: ConfigService;
 
   function makeContext(
     rawBody: Buffer | undefined,
-    signature: string | undefined,
+    headers: Record<string, string | undefined>,
   ): ExecutionContext {
     return {
       switchToHttp: () => ({
-        getRequest: () => ({
-          rawBody,
-          headers: {
-            "x-helloasso-signature": signature,
-          },
-        }),
+        getRequest: () => ({ rawBody, headers }),
       }),
     } as unknown as ExecutionContext;
   }
 
-  function sign(body: string, key: string): string {
-    return createHmac("sha256", key).update(Buffer.from(body)).digest("hex");
+  function sign(body: string, signingKey: string): string {
+    return createHmac("sha256", signingKey)
+      .update(Buffer.from(body))
+      .digest("hex");
   }
+
+  const configure = (value: string | undefined) =>
+    (configService.get as jest.Mock).mockImplementation((name: string) =>
+      name === "HELLOASSO_SIGNATURE_KEY" ? value : undefined,
+    );
 
   beforeEach(() => {
     configService = { get: jest.fn() } as unknown as ConfigService;
     guard = new WebhookSignatureGuard(configService);
   });
 
-  it("allows request with valid signature", () => {
-    (configService.get as jest.Mock).mockReturnValue(secret);
-    const body = '{"eventType":"Order"}';
-    const rawBody = Buffer.from(body);
-    const signature = sign(body, secret);
-
-    expect(guard.canActivate(makeContext(rawBody, signature))).toBe(true);
+  it("reads the documented HelloAsso header name", () => {
+    expect(HELLOASSO_SIGNATURE_HEADER).toBe("x-ha-signature");
   });
 
-  it("rejects when HELLOASSO_WEBHOOK_SECRET is not configured", () => {
-    (configService.get as jest.Mock).mockReturnValue(undefined);
+  describe("association mode (no partner signature key)", () => {
+    it("accepts an unsigned notification: trust comes from the API re-read", () => {
+      configure(undefined);
 
-    expect(() =>
-      guard.canActivate(makeContext(Buffer.from("{}"), "abc")),
-    ).toThrow(UnauthorizedException);
+      expect(guard.canActivate(makeContext(Buffer.from("{}"), {}))).toBe(true);
+    });
+
+    it("ignores the obsolete HELLOASSO_WEBHOOK_SECRET", () => {
+      (configService.get as jest.Mock).mockImplementation((name: string) =>
+        name === "HELLOASSO_WEBHOOK_SECRET" ? "old-secret" : undefined,
+      );
+
+      expect(guard.canActivate(makeContext(Buffer.from("{}"), {}))).toBe(true);
+    });
   });
 
-  it("rejects when signature header is missing", () => {
-    (configService.get as jest.Mock).mockReturnValue(secret);
+  describe("partner mode (HELLOASSO_SIGNATURE_KEY set)", () => {
+    beforeEach(() => configure(key));
 
-    expect(() =>
-      guard.canActivate(makeContext(Buffer.from("{}"), undefined)),
-    ).toThrow(UnauthorizedException);
-  });
+    it("allows a request with a valid x-ha-signature", () => {
+      const body = '{"eventType":"Order"}';
 
-  it("rejects when raw body is not available", () => {
-    (configService.get as jest.Mock).mockReturnValue(secret);
+      expect(
+        guard.canActivate(
+          makeContext(Buffer.from(body), {
+            "x-ha-signature": sign(body, key),
+          }),
+        ),
+      ).toBe(true);
+    });
 
-    expect(() => guard.canActivate(makeContext(undefined, "abc"))).toThrow(
-      UnauthorizedException,
-    );
-  });
+    it("accepts an upper-case hex signature", () => {
+      const body = '{"eventType":"Order"}';
 
-  it("rejects when signature does not match", () => {
-    (configService.get as jest.Mock).mockReturnValue(secret);
-    const body = '{"eventType":"Order"}';
-    const rawBody = Buffer.from(body);
-    const wrongSignature = sign(body, "wrong-secret-that-is-32chars!!");
+      expect(
+        guard.canActivate(
+          makeContext(Buffer.from(body), {
+            "x-ha-signature": sign(body, key).toUpperCase(),
+          }),
+        ),
+      ).toBe(true);
+    });
 
-    expect(() =>
-      guard.canActivate(makeContext(rawBody, wrongSignature)),
-    ).toThrow(UnauthorizedException);
-  });
+    it("rejects when the signature header is missing", () => {
+      expect(() =>
+        guard.canActivate(makeContext(Buffer.from("{}"), {})),
+      ).toThrow(UnauthorizedException);
+    });
 
-  it("rejects tampered body with valid-format signature", () => {
-    (configService.get as jest.Mock).mockReturnValue(secret);
-    const originalBody = '{"eventType":"Order","data":{}}';
-    const tamperedBody =
-      '{"eventType":"Order","data":{"metadata":{"bookingId":"hacked"}}}';
-    const signature = sign(originalBody, secret);
+    it("rejects a signature sent under the old, undocumented header", () => {
+      const body = "{}";
 
-    expect(() =>
-      guard.canActivate(makeContext(Buffer.from(tamperedBody), signature)),
-    ).toThrow(UnauthorizedException);
+      expect(() =>
+        guard.canActivate(
+          makeContext(Buffer.from(body), {
+            "x-helloasso-signature": sign(body, key),
+          }),
+        ),
+      ).toThrow(UnauthorizedException);
+    });
+
+    it("rejects a malformed (non hex / wrong length) signature", () => {
+      expect(() =>
+        guard.canActivate(
+          makeContext(Buffer.from("{}"), { "x-ha-signature": "abc" }),
+        ),
+      ).toThrow(UnauthorizedException);
+    });
+
+    it("rejects when the raw body is not available", () => {
+      expect(() =>
+        guard.canActivate(
+          makeContext(undefined, { "x-ha-signature": sign("{}", key) }),
+        ),
+      ).toThrow(UnauthorizedException);
+    });
+
+    it("rejects a signature made with another key", () => {
+      const body = '{"eventType":"Order"}';
+
+      expect(() =>
+        guard.canActivate(
+          makeContext(Buffer.from(body), {
+            "x-ha-signature": sign(body, "another-key"),
+          }),
+        ),
+      ).toThrow(UnauthorizedException);
+    });
+
+    it("rejects a tampered body", () => {
+      const original = '{"eventType":"Order","data":{}}';
+      const tampered =
+        '{"eventType":"Order","data":{"metadata":{"bookingId":"hacked"}}}';
+
+      expect(() =>
+        guard.canActivate(
+          makeContext(Buffer.from(tampered), {
+            "x-ha-signature": sign(original, key),
+          }),
+        ),
+      ).toThrow(UnauthorizedException);
+    });
   });
 });

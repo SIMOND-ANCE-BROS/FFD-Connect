@@ -1,7 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import axios from "axios";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
 import { withTimeout } from "../utils/timeout.utils";
+import { DEFAULT_HELLOASSO_API_URL } from "./helloasso-api-urls";
 
 export interface HelloAssoCredentials {
   clientId: string;
@@ -20,9 +22,37 @@ interface HelloAssoTokenResponse {
 }
 
 export interface HelloAssoCheckoutIntent {
-  id: string;
+  id: number;
   redirectUrl: string;
   [key: string]: unknown;
+}
+
+/**
+ * `GET /v5/organizations/{slug}/checkout-intents/{id}` (#404). `order` is
+ * only present once the payment is authorized. Typed as `unknown` on purpose:
+ * the caller validates every field it relies on (fail-closed).
+ */
+export interface HelloAssoCheckoutIntentDetail {
+  id?: unknown;
+  metadata?: unknown;
+  order?: unknown;
+}
+
+/** HelloAsso ids are positive integers: anything else never reaches a URL. */
+const NUMERIC_ID = /^[1-9]\d{0,17}$/;
+
+const REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * Outcome of a read: `not_found` is a definitive answer (unknown id for this
+ * organization); any other failure (network, 5xx, open circuit) throws.
+ */
+export type HelloAssoReadResult<T> =
+  | { found: true; value: T }
+  | { found: false };
+
+function isNotFound(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 404;
 }
 
 @Injectable()
@@ -30,8 +60,16 @@ export class HelloAssoService {
   private readonly logger = new Logger(HelloAssoService.name);
   /** Cache des tokens par clientId pour éviter de redemander un token à chaque requête */
   private readonly tokenCache = new Map<string, TokenCacheEntry>();
+  private readonly apiUrl: string;
 
-  constructor(private readonly circuitBreakerService: CircuitBreakerService) {}
+  constructor(
+    private readonly circuitBreakerService: CircuitBreakerService,
+    configService: ConfigService,
+  ) {
+    this.apiUrl =
+      configService.get<string>("HELLOASSO_API_URL") ??
+      DEFAULT_HELLOASSO_API_URL;
+  }
 
   /**
    * Get OAuth token for HelloAsso API using club credentials
@@ -49,7 +87,7 @@ export class HelloAssoService {
       const response = await this.circuitBreakerService.fire("helloasso", () =>
         withTimeout(
           axios.post<HelloAssoTokenResponse>(
-            "https://api.helloasso.com/oauth2/token",
+            `${this.apiUrl}/oauth2/token`,
             new URLSearchParams({
               grant_type: "client_credentials",
               client_id: credentials.clientId,
@@ -61,7 +99,7 @@ export class HelloAssoService {
               },
             },
           ),
-          10_000,
+          REQUEST_TIMEOUT_MS,
           "HelloAsso.getAccessToken",
         ),
       );
@@ -71,9 +109,16 @@ export class HelloAssoService {
       this.tokenCache.set(credentials.clientId, { token, expiresAt });
       return token;
     } catch (error) {
-      this.logger.error("Failed to get HelloAsso access token", error);
+      // Never log the axios error itself: its config carries the client secret.
+      this.logger.error(
+        `Failed to get HelloAsso access token (${axios.isAxiosError(error) ? (error.response?.status ?? error.code) : "unknown"})`,
+      );
       throw error;
     }
+  }
+
+  private organizationUrl(credentials: HelloAssoCredentials): string {
+    return `${this.apiUrl}/v5/organizations/${encodeURIComponent(credentials.organizationSlug)}`;
   }
 
   /**
@@ -100,7 +145,7 @@ export class HelloAssoService {
       const response = await this.circuitBreakerService.fire("helloasso", () =>
         withTimeout(
           axios.post<HelloAssoCheckoutIntent>(
-            `https://api.helloasso.com/v1/organizations/${credentials.organizationSlug}/checkout-intents`,
+            `${this.organizationUrl(credentials)}/checkout-intents`,
             {
               totalAmount: params.amount,
               initialAmount: params.amount,
@@ -122,15 +167,64 @@ export class HelloAssoService {
               },
             },
           ),
-          10_000,
+          REQUEST_TIMEOUT_MS,
           "HelloAsso.createCheckoutIntent",
         ),
       );
 
       return response.data;
     } catch (error) {
-      this.logger.error("Failed to create HelloAsso checkout intent", error);
+      this.logger.error(
+        `Failed to create HelloAsso checkout intent (${axios.isAxiosError(error) ? (error.response?.status ?? error.code) : "unknown"})`,
+      );
       throw error;
     }
+  }
+
+  /** Authenticated GET on the HelloAsso API; 404 → `{ found: false }`. */
+  private async get<T>(
+    credentials: HelloAssoCredentials,
+    url: string,
+    label: string,
+  ): Promise<HelloAssoReadResult<T>> {
+    const token = await this.getAccessToken({
+      clientId: credentials.clientId,
+      clientSecret: credentials.clientSecret,
+    });
+    try {
+      const response = await this.circuitBreakerService.fire("helloasso", () =>
+        withTimeout(
+          axios.get<T>(url, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          REQUEST_TIMEOUT_MS,
+          label,
+        ),
+      );
+      return { found: true, value: response.data };
+    } catch (error) {
+      if (isNotFound(error)) return { found: false };
+      this.logger.error(
+        `${label} failed (${axios.isAxiosError(error) ? (error.response?.status ?? error.code) : "unknown"})`,
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Re-reads a checkout intent from HelloAsso (#404): the authoritative state
+   * of a payment, whatever a notification claims. `order` is present only
+   * once the payment is authorized.
+   */
+  async getCheckoutIntent(
+    credentials: HelloAssoCredentials,
+    checkoutIntentId: string,
+  ): Promise<HelloAssoReadResult<HelloAssoCheckoutIntentDetail>> {
+    if (!NUMERIC_ID.test(checkoutIntentId)) return { found: false };
+    return this.get<HelloAssoCheckoutIntentDetail>(
+      credentials,
+      `${this.organizationUrl(credentials)}/checkout-intents/${checkoutIntentId}`,
+      "HelloAsso.getCheckoutIntent",
+    );
   }
 }

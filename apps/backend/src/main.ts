@@ -70,12 +70,15 @@ async function bootstrap() {
     );
   }
 
-  requireProductionEnv(
-    "HELLOASSO_WEBHOOK_SECRET",
-    configService.get<string>("HELLOASSO_WEBHOOK_SECRET"),
-    nodeEnv,
-    prodEnvCallbacks,
-  );
+  // HelloAsso notifications are verified by re-reading the payment from the
+  // HelloAsso API (#404): no webhook secret is required. The old variable was
+  // never matched by HelloAsso and is now ignored.
+  if (configService.get<string>("HELLOASSO_WEBHOOK_SECRET")) {
+    logger.warn(
+      "HELLOASSO_WEBHOOK_SECRET is obsolete and ignored (#404); use HELLOASSO_SIGNATURE_KEY for a HelloAsso partner signature key",
+      "Bootstrap",
+    );
+  }
   requireProductionEnv(
     "APP_URL",
     configService.get<string>("APP_URL"),
