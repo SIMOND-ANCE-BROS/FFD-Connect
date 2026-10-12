@@ -20,6 +20,11 @@ interface EvaluatedConfig {
       infoPlist: Record<string, unknown>;
     };
     android: { googleServicesFile?: string };
+    updates: {
+      url: string;
+      codeSigningCertificate?: string;
+      codeSigningMetadata?: { keyid: string; alg: string };
+    };
   };
 }
 
@@ -283,6 +288,50 @@ describe("app.config.js — missing Firebase file warning", () => {
     const android = loadConfig(betaBuilderWithIosSecretOnly("android"));
 
     expect(android).toEqual(ios);
+  });
+});
+
+describe("app.config.js — EAS Update code signing", () => {
+  beforeAll(() => {
+    jest.spyOn(console, "warn").mockImplementation(() => undefined);
+  });
+
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
+
+  it.each(["preview", "beta", "production"])(
+    "embeds the OTA signing certificate for the %s variant",
+    (variant) => {
+      const { updates } = loadConfig({ EXPO_PUBLIC_APP_ENV: variant });
+
+      expect(updates.codeSigningCertificate).toBe("./certs/certificate.pem");
+      expect(updates.codeSigningMetadata).toEqual({
+        keyid: "main",
+        alg: "rsa-v1_5-sha256",
+      });
+    },
+  );
+
+  it("leaves the development dev client without code signing", () => {
+    const { updates } = loadConfig({ EXPO_PUBLIC_APP_ENV: "development" });
+
+    expect(updates.codeSigningCertificate).toBeUndefined();
+    expect(updates.codeSigningMetadata).toBeUndefined();
+  });
+
+  it("points at a committed X.509 certificate and never at a private key", () => {
+    const { updates } = loadConfig({ EXPO_PUBLIC_APP_ENV: "beta" });
+    const certPath = path.resolve(
+      __dirname,
+      "..",
+      updates.codeSigningCertificate ?? "",
+    );
+    const pem = fs.readFileSync(certPath, "utf8");
+
+    expect(pem).toMatch(/^-----BEGIN CERTIFICATE-----/);
+    expect(pem).not.toMatch(/PRIVATE KEY/);
+    expect(fs.readdirSync(path.dirname(certPath))).toEqual(["certificate.pem"]);
   });
 });
 
