@@ -1,10 +1,9 @@
-import { MantineProvider } from '@mantine/core';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { screen, waitFor, within } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { Route, Routes, useLocation } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
+import { renderWithProviders, setupUser, sleep } from '../test/render';
 import { UNAVAILABLE_MESSAGE } from '../lib/apiError';
 import { mockPhoneViewport } from '../test/viewport';
 import { TracksPage } from './TracksPage';
@@ -39,34 +38,30 @@ function Probe() {
 }
 
 function renderPage(path = '/tracks') {
-  return render(
-    <MantineProvider>
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route
-              path="/tracks"
-              element={
-                <>
-                  <TracksPage />
-                  <Probe />
-                </>
-              }
-            />
-            <Route path="/tracks/import" element={<Probe />} />
-            <Route path="/tracks/:id" element={<Probe />} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+  return renderWithProviders(
+    <Routes>
+      <Route
+        path="/tracks"
+        element={
+          <>
+            <TracksPage />
+            <Probe />
+          </>
+        }
+      />
+      <Route path="/tracks/import" element={<Probe />} />
+      <Route path="/tracks/:id" element={<Probe />} />
+    </Routes>,
+    { route: path },
   );
 }
+
+let user: UserEvent;
 
 describe('TracksPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    user = setupUser();
   });
 
   it('shows every track with its badges, a link per title and the import button', async () => {
@@ -103,7 +98,7 @@ describe('TracksPage', () => {
     const list = vi.spyOn(sdk, 'adminTracksControllerList').mockResolvedValue(page([]) as never);
     renderPage('/tracks?page=3');
     await screen.findByText('Aucune musique');
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Ambiance' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Ambiance' }));
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent('/tracks?ambiance=true'),
     );
@@ -114,7 +109,7 @@ describe('TracksPage', () => {
     const list = vi.spyOn(sdk, 'adminTracksControllerList').mockResolvedValue(page([]) as never);
     renderPage();
     await screen.findByText('Aucune musique');
-    await userEvent.click(screen.getByRole('radio', { name: 'En attente' }));
+    await user.click(screen.getByRole('radio', { name: 'En attente' }));
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith({ query: { status: 'PENDING', skip: 0, take: 50 } }),
     );
@@ -125,12 +120,12 @@ describe('TracksPage', () => {
     renderPage();
     await screen.findByText('Aucune musique');
     const search = screen.getByRole('textbox', { name: 'Rechercher' });
-    await userEvent.type(search, 'p');
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await user.type(search, 'p');
+    await sleep(400);
     expect(list).not.toHaveBeenCalledWith(
       expect.objectContaining({ query: expect.objectContaining({ q: 'p' }) }),
     );
-    await userEvent.type(search, 'a');
+    await user.type(search, 'a');
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith({ query: { q: 'pa', skip: 0, take: 50 } }),
     );
@@ -160,8 +155,8 @@ describe('TracksPage', () => {
     await screen.findByText('Aucune musique');
     expect(screen.getByRole('textbox', { name: 'Rechercher' })).toBeVisible();
     // Status, one flag and the dance; the search is not a folded filter.
-    await userEvent.click(screen.getByRole('button', { name: 'Filtres (3)' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Réinitialiser' }));
+    await user.click(screen.getByRole('button', { name: 'Filtres (3)' }));
+    await user.click(screen.getByRole('button', { name: 'Réinitialiser' }));
     expect(await screen.findByRole('button', { name: 'Filtres' })).toBeInTheDocument();
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith({ query: { q: 'paso', skip: 0, take: 50 } }),

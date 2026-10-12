@@ -1,14 +1,15 @@
-import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import { screen, waitFor, within } from '@testing-library/react';
+import { type UserEvent } from '@testing-library/user-event';
+import { Route, Routes, useLocation } from 'react-router';
 import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { API_ORIGIN } from '../config';
 import { UNAVAILABLE_MESSAGE } from '../lib/apiError';
+import { fill, renderWithProviders, setupUser } from '../test/render';
 import { TrackDetailPage } from './TrackDetailPage';
+
+let user: UserEvent;
 
 const base = {
   id: 't1',
@@ -44,34 +45,28 @@ function renderPage(track: object = base) {
   vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue(
     ok({ data: [], meta: { total: 0, skip: 0, take: 20, hasMore: false } }) as never,
   );
-  return render(
-    // env="test": no transitions, so the Select dropdown opens synchronously in jsdom.
-    <MantineProvider env="test">
+  return renderWithProviders(
+    <>
       <Notifications />
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
-        <MemoryRouter initialEntries={['/tracks/t1']}>
-          <Routes>
-            <Route
-              path="/tracks/:id"
-              element={
-                <>
-                  <TrackDetailPage />
-                  <Probe />
-                </>
-              }
-            />
-            <Route path="/tracks" element={<Probe />} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
-    </MantineProvider>,
+      <Routes>
+        <Route
+          path="/tracks/:id"
+          element={
+            <>
+              <TrackDetailPage />
+              <Probe />
+            </>
+          }
+        />
+        <Route path="/tracks" element={<Probe />} />
+      </Routes>
+    </>,
+    { route: '/tracks/t1' },
   );
 }
 
 async function confirmSave() {
-  await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }));
+  await user.click(screen.getByRole('button', { name: 'Enregistrer' }));
   const dialog = await screen.findByRole('dialog', { name: 'Confirmer les modifications' });
   return dialog;
 }
@@ -79,6 +74,7 @@ async function confirmSave() {
 describe('TrackDetailPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    user = setupUser();
   });
 
   it('plays the track and shows its artwork from the API origin, in CORS mode', async () => {
@@ -101,8 +97,8 @@ describe('TrackDetailPage', () => {
   it('previews the MPM recomputed from the raw tempo and leaves it to the server', async () => {
     const update = vi.spyOn(sdk, 'tracksControllerUpdate').mockResolvedValue(ok({}) as never);
     renderPage();
-    await userEvent.click(await screen.findByLabelText('Danse', { selector: 'input' }));
-    await userEvent.click(await screen.findByRole('option', { name: 'Rumba' }));
+    await user.click(await screen.findByLabelText('Danse', { selector: 'input' }));
+    await user.click(await screen.findByRole('option', { name: 'Rumba' }));
     expect(screen.getByLabelText('MPM')).toHaveValue('25');
     expect(screen.getByText('Recalculé selon la danse')).toBeInTheDocument();
 
@@ -111,7 +107,7 @@ describe('TrackDetailPage', () => {
     expect(dialog).toHaveTextContent('Rumba');
     expect(dialog).toHaveTextContent('50');
     expect(dialog).toHaveTextContent('25');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     expect(update).toHaveBeenCalledWith({ path: { id: 't1' }, body: { style: 'Rumba' } });
   });
 
@@ -119,10 +115,9 @@ describe('TrackDetailPage', () => {
     const update = vi.spyOn(sdk, 'tracksControllerUpdate').mockResolvedValue(ok({}) as never);
     renderPage();
     const mpm = await screen.findByLabelText('MPM');
-    await userEvent.clear(mpm);
-    await userEvent.type(mpm, '27');
+    await fill(user, mpm, '27');
     const dialog = await confirmSave();
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     expect(update).toHaveBeenCalledWith({ path: { id: 't1' }, body: { bpm: 27 } });
   });
 
@@ -132,15 +127,14 @@ describe('TrackDetailPage', () => {
       .mockReturnValue(new Promise(() => undefined) as never);
     renderPage();
     const mpm = await screen.findByLabelText('MPM');
-    await userEvent.clear(mpm);
-    await userEvent.type(mpm, '27');
+    await fill(user, mpm, '27');
     const dialog = await confirmSave();
     const confirm = within(dialog).getByRole('button', { name: 'Confirmer' });
-    await userEvent.click(confirm);
-    await userEvent.click(confirm);
+    await user.click(confirm);
+    await user.click(confirm);
     expect(update).toHaveBeenCalledTimes(1);
     expect(within(dialog).getByRole('button', { name: 'Annuler' })).toBeDisabled();
-    await userEvent.keyboard('{Escape}');
+    await user.keyboard('{Escape}');
     expect(screen.getByRole('dialog', { name: 'Confirmer les modifications' })).toBeInTheDocument();
   });
 
@@ -149,38 +143,39 @@ describe('TrackDetailPage', () => {
       .spyOn(sdk, 'tracksControllerRemove')
       .mockReturnValue(new Promise(() => undefined) as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer la musique' }));
+    await user.click(await screen.findByRole('button', { name: 'Supprimer la musique' }));
     const dialog = await screen.findByRole('dialog', { name: 'Supprimer cette musique' });
-    await userEvent.type(
+    await fill(
+      user,
       within(dialog).getByLabelText('Recopiez le titre pour confirmer'),
       'España Cañí',
     );
     const confirm = within(dialog).getByRole('button', { name: 'Supprimer définitivement' });
-    await userEvent.click(confirm);
-    await userEvent.click(confirm);
+    await user.click(confirm);
+    await user.click(confirm);
     expect(remove).toHaveBeenCalledTimes(1);
     expect(within(dialog).getByRole('button', { name: 'Annuler' })).toBeDisabled();
-    await userEvent.keyboard('{Escape}');
+    await user.keyboard('{Escape}');
     expect(screen.getByRole('dialog', { name: 'Supprimer cette musique' })).toBeInTheDocument();
   });
 
   it('asks before blacklisting, and sends the flag only', async () => {
     const update = vi.spyOn(sdk, 'tracksControllerUpdate').mockResolvedValue(ok({}) as never);
     renderPage();
-    await userEvent.click(await screen.findByLabelText('Blacklister'));
+    await user.click(await screen.findByLabelText('Blacklister'));
     const dialog = await screen.findByRole('dialog', { name: 'Blacklister la musique' });
     expect(dialog).toHaveTextContent("retirée de la bibliothèque de l'app");
     expect(update).not.toHaveBeenCalled();
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Blacklister' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Blacklister' }));
     expect(update).toHaveBeenCalledWith({ path: { id: 't1' }, body: { blacklisted: true } });
   });
 
   it('asks before masking the title', async () => {
     const update = vi.spyOn(sdk, 'tracksControllerUpdate').mockResolvedValue(ok({}) as never);
     renderPage();
-    await userEvent.click(await screen.findByLabelText('Masquer le titre'));
+    await user.click(await screen.findByLabelText('Masquer le titre'));
     const dialog = await screen.findByRole('dialog', { name: 'Masquer le titre' });
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Masquer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Masquer' }));
     expect(update).toHaveBeenCalledWith({ path: { id: 't1' }, body: { titleMasked: true } });
   });
 
@@ -191,16 +186,17 @@ describe('TrackDetailPage', () => {
       response: new Response(null, { status: 204 }),
     } as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer la musique' }));
+    await user.click(await screen.findByRole('button', { name: 'Supprimer la musique' }));
     const dialog = await screen.findByRole('dialog', { name: 'Supprimer cette musique' });
     const confirm = within(dialog).getByRole('button', { name: 'Supprimer définitivement' });
     expect(confirm).toBeDisabled();
-    await userEvent.type(
+    await fill(
+      user,
       within(dialog).getByLabelText('Recopiez le titre pour confirmer'),
       '  españa cañí ',
     );
     expect(confirm).toBeEnabled();
-    await userEvent.click(confirm);
+    await user.click(confirm);
     expect(remove).toHaveBeenCalledWith({ path: { id: 't1' } });
     await waitFor(() => expect(screen.getByTestId('location').textContent).toBe('/tracks'));
   });
@@ -217,17 +213,18 @@ describe('TrackDetailPage', () => {
       response: new Response(null, { status: 409 }),
     } as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer la musique' }));
+    await user.click(await screen.findByRole('button', { name: 'Supprimer la musique' }));
     const dialog = await screen.findByRole('dialog', { name: 'Supprimer cette musique' });
-    await userEvent.type(
+    await fill(
+      user,
       within(dialog).getByLabelText('Recopiez le titre pour confirmer'),
       'España Cañí',
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     expect(
       await within(dialog).findByText(/propositions de correction sont en attente/),
     ).toBeInTheDocument();
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Blacklister à la place' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Blacklister à la place' }));
     expect(
       await screen.findByRole('dialog', { name: 'Blacklister la musique' }),
     ).toBeInTheDocument();
@@ -246,8 +243,7 @@ describe('TrackDetailPage', () => {
     renderPage({ ...base, status: 'ERROR', bpm: 0, rawBpm: 0 });
     expect(await screen.findByText('Tempo non détecté')).toBeInTheDocument();
     const mpm = screen.getByLabelText('MPM');
-    await userEvent.clear(mpm);
-    await userEvent.type(mpm, '52');
+    await fill(user, mpm, '52');
     const dialog = await confirmSave();
     expect(dialog).toHaveTextContent('En erreur');
     expect(dialog).toHaveTextContent('Prête');
@@ -261,11 +257,10 @@ describe('TrackDetailPage', () => {
       ok({ ...base, titleMasked: true }) as never,
     );
     const title = await screen.findByLabelText('Titre');
-    await userEvent.clear(title);
-    await userEvent.type(title, 'Nouveau titre');
-    await userEvent.click(screen.getByLabelText('Masquer le titre'));
+    await fill(user, title, 'Nouveau titre');
+    await user.click(screen.getByLabelText('Masquer le titre'));
     const dialog = await screen.findByRole('dialog', { name: 'Masquer le titre' });
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Masquer' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Masquer' }));
     await waitFor(() => expect(screen.getByLabelText('Masquer le titre')).toBeChecked());
     expect(screen.getByLabelText('Titre')).toHaveValue('Nouveau titre');
     expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeEnabled();
@@ -282,15 +277,15 @@ describe('TrackDetailPage', () => {
       ok({ ...base, pendingCorrections: 1 }) as never,
     );
     const title = await screen.findByLabelText('Titre');
-    await userEvent.clear(title);
-    await userEvent.type(title, 'Nouveau titre');
-    await userEvent.click(screen.getByRole('button', { name: 'Supprimer la musique' }));
+    await fill(user, title, 'Nouveau titre');
+    await user.click(screen.getByRole('button', { name: 'Supprimer la musique' }));
     const dialog = await screen.findByRole('dialog', { name: 'Supprimer cette musique' });
-    await userEvent.type(
+    await fill(
+      user,
       within(dialog).getByLabelText('Recopiez le titre pour confirmer'),
       'España Cañí',
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Supprimer la musique' })).toBeDisabled(),
     );
@@ -305,13 +300,14 @@ describe('TrackDetailPage', () => {
       response: new Response(null, { status: 409 }),
     } as never);
     renderPage();
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer la musique' }));
+    await user.click(await screen.findByRole('button', { name: 'Supprimer la musique' }));
     const dialog = await screen.findByRole('dialog', { name: 'Supprimer cette musique' });
-    await userEvent.type(
+    await fill(
+      user,
       within(dialog).getByLabelText('Recopiez le titre pour confirmer'),
       'España Cañí',
     );
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Supprimer définitivement' }));
     expect(
       await within(dialog).findByRole('link', { name: 'Voir les propositions dans Modération' }),
     ).toHaveAttribute('href', '/moderation?track=t1');
@@ -324,14 +320,15 @@ describe('TrackDetailPage', () => {
       response: new Response(null, { status: 409 }),
     } as never);
     renderPage({ ...base, blacklisted: true });
-    await userEvent.click(await screen.findByRole('button', { name: 'Supprimer la musique' }));
+    await user.click(await screen.findByRole('button', { name: 'Supprimer la musique' }));
     const dialog = await screen.findByRole('dialog', { name: 'Supprimer cette musique' });
-    await userEvent.type(
+    await fill(
+      user,
       within(dialog).getByLabelText('Recopiez le titre pour confirmer'),
       'España Cañí',
     );
     const confirm = within(dialog).getByRole('button', { name: 'Supprimer définitivement' });
-    await userEvent.click(confirm);
+    await user.click(confirm);
     expect(
       await within(dialog).findByRole('link', { name: 'Voir les propositions dans Modération' }),
     ).toHaveAttribute('href', '/moderation?track=t1');
@@ -348,16 +345,11 @@ describe('TrackDetailPage', () => {
     vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue(
       ok({ data: [], meta: { total: 0, skip: 0, take: 20, hasMore: false } }) as never,
     );
-    render(
-      <MantineProvider>
-        <QueryClientProvider client={new QueryClient()}>
-          <MemoryRouter initialEntries={['/tracks/t1']}>
-            <Routes>
-              <Route path="/tracks/:id" element={<TrackDetailPage />} />
-            </Routes>
-          </MemoryRouter>
-        </QueryClientProvider>
-      </MantineProvider>,
+    renderWithProviders(
+      <Routes>
+        <Route path="/tracks/:id" element={<TrackDetailPage />} />
+      </Routes>,
+      { route: '/tracks/t1' },
     );
     expect(await screen.findByText(UNAVAILABLE_MESSAGE)).toBeInTheDocument();
   });
