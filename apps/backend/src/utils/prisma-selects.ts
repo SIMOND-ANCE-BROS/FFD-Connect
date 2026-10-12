@@ -291,6 +291,17 @@ export const licenseRenewalDocumentFileSelect = {
 } as const;
 
 /**
+ * Suppression de compte (RGPD art. 17, #382) : résultats de compétition à
+ * anonymiser. `details` est lu pour n'en garder que les clés non
+ * identifiantes ; la compétition sert à invalider le cache des résultats.
+ */
+export const resultAnonymizationSelect = {
+  id: true,
+  details: true,
+  event: { select: { competitionId: true } },
+} as const;
+
+/**
  * Document de renouvellement tel que l'API le renvoie (#224). `ocrData` est lu
  * pour le résumé affiché dans l'app, mais ne sort JAMAIS tel quel : il passe
  * par `toRenewalDocumentResponse`, qui ne garde que les champs utiles (jamais

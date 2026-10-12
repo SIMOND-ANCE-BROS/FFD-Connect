@@ -283,6 +283,79 @@ describe("Admin (integration, real DB)", () => {
     });
   });
 
+  it("account deletion keeps the competition ranking rows but leaves none tied to the former user (#382)", async () => {
+    const admin = await create({ role: UserRole.ADMIN });
+    const target = await create({ lastName: "Martin" });
+    const other = await create({ lastName: "Durand" });
+    const competition = await prisma.competition.create({
+      data: {
+        title: "Gala",
+        date: new Date("2027-01-01"),
+        location: "Paris",
+        organizer: "Club",
+      },
+    });
+    createdCompetitionIds.push(competition.id);
+    const event = await prisma.event.create({
+      data: {
+        competitionId: competition.id,
+        category: "Latin",
+        ageGroup: "Adulte",
+        eventType: "COUPLE",
+        level: "Intermédiaire",
+      },
+    });
+    try {
+      const mine = await prisma.result.create({
+        data: {
+          eventId: event.id,
+          userId: target.id,
+          round: "Final",
+          ranking: 1,
+          details: {
+            participant: "Couple A",
+            bib: "12",
+            club: "Club",
+            totalParticipants: 2,
+          },
+        },
+      });
+      const theirs = await prisma.result.create({
+        data: {
+          eventId: event.id,
+          userId: other.id,
+          round: "Final",
+          ranking: 2,
+          details: { participant: "Couple B", totalParticipants: 2 },
+        },
+      });
+
+      await service.delete(admin.id, target.id, target.email);
+
+      expect(await prisma.result.count({ where: { userId: target.id } })).toBe(
+        0,
+      );
+      const anonymised = await prisma.result.findUniqueOrThrow({
+        where: { id: mine.id },
+      });
+      expect(anonymised).toMatchObject({
+        userId: null,
+        ranking: 1,
+        details: { totalParticipants: 2 },
+      });
+      // The other couple's row is untouched.
+      expect(
+        await prisma.result.findUniqueOrThrow({ where: { id: theirs.id } }),
+      ).toMatchObject({
+        userId: other.id,
+        details: { participant: "Couple B", totalParticipants: 2 },
+      });
+    } finally {
+      await prisma.result.deleteMany({ where: { eventId: event.id } });
+      await prisma.event.delete({ where: { id: event.id } });
+    }
+  });
+
   const newClub = async () => {
     const club = await prisma.club.create({
       data: { name: `Club ${randomUUID()}` },
