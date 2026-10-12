@@ -3495,6 +3495,7 @@
                 "USER_DISABLE",
                 "USER_ENABLE",
                 "USER_DELETE",
+                "USER_IDENTIFIERS_UPDATE",
                 "CLUB_CREATE",
                 "CLUB_UPDATE",
                 "CLUB_DISABLE",
