@@ -18,11 +18,17 @@ import {
 } from "./notification-name-scrub.utils";
 
 /**
- * Bound of each read below: a member's registrations and partnerships over a
- * few seasons, times a handful of organisers per club. Hitting it is logged
- * (rows beyond keep the name).
+ * Bound of each read below (registrations, partnerships, one page of
+ * notifications). Hitting it is logged (rows beyond keep the name).
  */
 export const MAX_NOTIFICATION_SCRUB_ROWS = 1000;
+
+/**
+ * Notifications are read page by page (up to 50 organisers per club are
+ * notified for each registration): at most this many pages, i.e. 10 000
+ * rows — far above any real member.
+ */
+export const MAX_NOTIFICATION_SCRUB_PAGES = 10;
 
 /**
  * Droit à l'effacement (#423) : notifications reçues par D'AUTRES
@@ -40,7 +46,7 @@ export const MAX_NOTIFICATION_SCRUB_ROWS = 1000;
  *
  * Limite : une notification de couple antérieure à #423 (sans member ids)
  * dont le partenariat a déjà disparu — supprimé en cascade avec le compte de
- * l'autre membre — n'a plus de lien et garde le nom. Une notification push
+ * l'autre membre ou avec le club principal — n'a plus de lien et garde le nom. Une notification push
  * déjà affichée sur un téléphone ne peut pas être reprise.
  *
  * Lectures AVANT la transaction (ses inscriptions y sont supprimées, ses
@@ -68,27 +74,40 @@ export async function buildNotificationNameScrubOps(
     partnerships.map((p) => [p.id, p.user1Id === userId ? 0 : 1]),
   );
 
-  const notifications = await prisma.notification.findMany({
-    where: {
-      userId: { not: userId },
-      OR: [
-        ...[...registrationIds].map((id) => ({
-          data: { path: ["registrationId"], equals: id },
-        })),
-        ...[...positionByPartnership.keys()].map((id) => ({
-          data: { path: ["partnershipId"], equals: id },
-        })),
-        ...PARTNERSHIP_MEMBER_DATA_KEYS.map((key) => ({
-          data: { path: [key], equals: userId },
-        })),
-      ],
-    },
-    select: notificationNameScrubSelect,
-    take: MAX_NOTIFICATION_SCRUB_ROWS,
-  });
+  const where: Prisma.NotificationWhereInput = {
+    userId: { not: userId },
+    OR: [
+      ...[...registrationIds].map((id) => ({
+        data: { path: ["registrationId"], equals: id },
+      })),
+      ...[...positionByPartnership.keys()].map((id) => ({
+        data: { path: ["partnershipId"], equals: id },
+      })),
+      ...PARTNERSHIP_MEMBER_DATA_KEYS.map((key) => ({
+        data: { path: [key], equals: userId },
+      })),
+    ],
+  };
+  const notifications: Prisma.NotificationGetPayload<{
+    select: typeof notificationNameScrubSelect;
+  }>[] = [];
+  let pageFull = true;
+  for (let page = 0; page < MAX_NOTIFICATION_SCRUB_PAGES && pageFull; page++) {
+    const last = notifications.at(-1);
+    const rows = await prisma.notification.findMany({
+      where,
+      select: notificationNameScrubSelect,
+      orderBy: { id: "asc" },
+      take: MAX_NOTIFICATION_SCRUB_ROWS,
+      ...(last && { cursor: { id: last.id }, skip: 1 }),
+    });
+    notifications.push(...rows);
+    pageFull = rows.length === MAX_NOTIFICATION_SCRUB_ROWS;
+  }
 
   if (
-    [registrations, partnerships, notifications].some(
+    pageFull ||
+    [registrations, partnerships].some(
       (rows) => rows.length === MAX_NOTIFICATION_SCRUB_ROWS,
     )
   ) {
@@ -118,9 +137,11 @@ export async function buildNotificationNameScrubOps(
     }
     const strippedData = withoutDeletedMemberIds(notification.data, userId);
     if (body === null && strippedData === null) continue;
+    // updateMany: a row the recipient deleted in the meantime is skipped
+    // instead of failing the whole account deletion (P2025).
     ops.push(
-      prisma.notification.update({
-        where: { id: notification.id },
+      prisma.notification.updateMany({
+        where: { id: notification.id, userId: { not: userId } },
         data: {
           ...(body !== null && { body }),
           ...(strippedData !== null && { data: strippedData }),

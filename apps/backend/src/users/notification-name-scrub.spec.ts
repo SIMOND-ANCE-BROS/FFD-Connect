@@ -9,6 +9,7 @@ import {
 } from "../utils/prisma-selects";
 import {
   buildNotificationNameScrubOps,
+  MAX_NOTIFICATION_SCRUB_PAGES,
   MAX_NOTIFICATION_SCRUB_ROWS,
 } from "./notification-name-scrub";
 
@@ -26,7 +27,7 @@ describe("buildNotificationNameScrubOps (#423)", () => {
 
   /** Each op is the update call's argument, so tests read what is written. */
   const updates = () =>
-    prisma.notification.update.mock.calls.map(([args]) => args);
+    prisma.notification.updateMany.mock.calls.map(([args]) => args);
 
   beforeEach(() => {
     prisma = mockDeep<PrismaClient>();
@@ -34,7 +35,7 @@ describe("buildNotificationNameScrubOps (#423)", () => {
     prisma.registration.findMany.mockResolvedValue([]);
     prisma.partnership.findMany.mockResolvedValue([]);
     prisma.notification.findMany.mockResolvedValue([]);
-    prisma.notification.update.mockImplementation(
+    prisma.notification.updateMany.mockImplementation(
       (args) => ({ op: "notification", args }) as never,
     );
   });
@@ -68,8 +69,31 @@ describe("buildNotificationNameScrubOps (#423)", () => {
         ],
       },
       select: notificationNameScrubSelect,
+      orderBy: { id: "asc" },
       take: MAX_NOTIFICATION_SCRUB_ROWS,
     });
+  });
+
+  it("reads the next page after a full one, from the last id", async () => {
+    const full = Array.from(
+      { length: MAX_NOTIFICATION_SCRUB_ROWS },
+      (_, i) => ({
+        id: `n${String(i).padStart(4, "0")}`,
+        body: "x",
+        data: null,
+      }),
+    );
+    prisma.notification.findMany
+      .mockResolvedValueOnce(full)
+      .mockResolvedValueOnce([]);
+
+    await expect(run()).resolves.toHaveLength(0);
+
+    expect(prisma.notification.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.notification.findMany.mock.calls[1][0]).toEqual(
+      expect.objectContaining({ cursor: { id: "n0999" }, skip: 1 }),
+    );
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
   it("rewrites an organiser's registration notification found by registrationId", async () => {
@@ -87,7 +111,7 @@ describe("buildNotificationNameScrubOps (#423)", () => {
     expect(ops).toHaveLength(1);
     expect(updates()).toEqual([
       {
-        where: { id: "n1" },
+        where: { id: "n1", userId: { not: "deleted" } },
         data: {
           body: 'Membre supprimé s\'est inscrit à "Open" - Latines Adulte.',
         },
@@ -124,7 +148,7 @@ describe("buildNotificationNameScrubOps (#423)", () => {
 
     expect(updates()).toEqual([
       {
-        where: { id: "n2" },
+        where: { id: "n2", userId: { not: "deleted" } },
         data: {
           body: "Sam PETIT & Partenaire supprimé : le couple inter-club a été clôturé par l'autre club.",
         },
@@ -150,7 +174,7 @@ describe("buildNotificationNameScrubOps (#423)", () => {
 
     expect(updates()).toEqual([
       {
-        where: { id: "n3" },
+        where: { id: "n3", userId: { not: "deleted" } },
         data: {
           body: "Partenaire supprimé & Partenaire supprimé : le club X a validé le couple inter-club.",
           data: {
@@ -194,7 +218,7 @@ describe("buildNotificationNameScrubOps (#423)", () => {
     await expect(run()).resolves.toEqual([]);
   });
 
-  it("warns, without any user identifier, when a read hits the cap", async () => {
+  it("warns, without any user identifier, when every page is full", async () => {
     prisma.notification.findMany.mockResolvedValue(
       Array.from({ length: MAX_NOTIFICATION_SCRUB_ROWS }, (_, i) => ({
         id: `n${i}`,
@@ -205,6 +229,9 @@ describe("buildNotificationNameScrubOps (#423)", () => {
 
     await expect(run()).resolves.toHaveLength(0);
 
+    expect(prisma.notification.findMany).toHaveBeenCalledTimes(
+      MAX_NOTIFICATION_SCRUB_PAGES,
+    );
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn.mock.calls[0][0]).not.toContain("deleted");
   });

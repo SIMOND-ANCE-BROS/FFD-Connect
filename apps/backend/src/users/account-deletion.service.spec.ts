@@ -87,15 +87,15 @@ describe("AccountDeletionService", () => {
         data: { type: "club_member_auto_registered", registrationId: "reg1" },
       },
     ] as never);
-    prisma.notification.update.mockReturnValue(marker("organiserNotif"));
+    prisma.notification.updateMany.mockReturnValue(marker("organiserNotif"));
     prisma.notification.deleteMany.mockReturnValue(marker("ownNotifs"));
     prisma.user.delete.mockReturnValue(marker("user"));
 
     await service.deleteAccount("u1");
 
     expect(opsOf()).toEqual(["ownNotifs", "organiserNotif", "user"]);
-    expect(prisma.notification.update).toHaveBeenCalledWith({
-      where: { id: "n1" },
+    expect(prisma.notification.updateMany).toHaveBeenCalledWith({
+      where: { id: "n1", userId: { not: "u1" } },
       data: {
         body: 'Membre supprimé s\'est inscrit à "Open" - Latines Adulte.',
       },
