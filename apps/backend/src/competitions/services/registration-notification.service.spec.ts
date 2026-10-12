@@ -217,12 +217,17 @@ describe("RegistrationNotificationService", () => {
         { byOrganizer: false },
       );
 
+      // Exact body: the account deletion locates the name by this format,
+      // and the registrationId links the row to the member (#423).
       expect(mockNotificationsService.sendToUsers).toHaveBeenCalledWith(
         expect.arrayContaining(["org-1"]),
         NotificationType.CLUB_MEMBER_REGISTRATION,
         expect.any(String),
-        expect.any(String),
-        expect.objectContaining({ type: "club_member_unregistered" }),
+        'Jean Dupont s\'est désinscrit de "Comp" - Latines Adulte.',
+        expect.objectContaining({
+          type: "club_member_unregistered",
+          registrationId: "r1",
+        }),
       );
     });
   });

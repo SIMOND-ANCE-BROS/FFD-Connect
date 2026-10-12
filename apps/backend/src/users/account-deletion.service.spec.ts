@@ -24,6 +24,9 @@ describe("AccountDeletionService", () => {
     prisma.$transaction.mockResolvedValue([] as never);
     prisma.licenseRenewalDocument.findMany.mockResolvedValue([]);
     prisma.result.findMany.mockResolvedValue([]);
+    prisma.registration.findMany.mockResolvedValue([]);
+    prisma.partnership.findMany.mockResolvedValue([]);
+    prisma.notification.findMany.mockResolvedValue([]);
     files = { deleteFiles: jest.fn().mockResolvedValue(new Set()) };
     cache = { invalidateResults: jest.fn().mockResolvedValue(undefined) };
     const moduleRef = await Test.createTestingModule({
@@ -70,6 +73,36 @@ describe("AccountDeletionService", () => {
       }),
     );
     expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+  });
+
+  it("rewrites the organisers' notifications that name the user, in the same transaction, before the user row goes (#423)", async () => {
+    const marker = (op: string) => ({ op }) as never;
+    // Partner-name scrub: no name, so it reads nothing (#395).
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.registration.findMany.mockResolvedValue([{ id: "reg1" }] as never);
+    prisma.notification.findMany.mockResolvedValue([
+      {
+        id: "n1",
+        body: 'Alex MARTIN s\'est inscrit à "Open" - Latines Adulte.',
+        data: { type: "club_member_auto_registered", registrationId: "reg1" },
+      },
+    ] as never);
+    prisma.notification.update.mockReturnValue(marker("organiserNotif"));
+    prisma.notification.deleteMany.mockReturnValue(marker("ownNotifs"));
+    prisma.user.delete.mockReturnValue(marker("user"));
+
+    await service.deleteAccount("u1");
+
+    expect(opsOf()).toEqual(["ownNotifs", "organiserNotif", "user"]);
+    expect(prisma.notification.update).toHaveBeenCalledWith({
+      where: { id: "n1" },
+      data: {
+        body: 'Membre supprimé s\'est inscrit à "Open" - Latines Adulte.',
+      },
+    });
+    expect(
+      prisma.notification.findMany.mock.invocationCallOrder[0],
+    ).toBeLessThan(prisma.$transaction.mock.invocationCallOrder[0]);
   });
 
   it("scrubs the partner-name copies in the same transaction, before the user row goes (#395)", async () => {

@@ -7,6 +7,7 @@ import {
   licenseRenewalDocumentFileSelect,
   resultAnonymizationSelect,
 } from "../utils/prisma-selects";
+import { buildNotificationNameScrubOps } from "./notification-name-scrub";
 import { buildPartnerNameScrubOps } from "./partner-name-scrub";
 
 /**
@@ -84,6 +85,11 @@ export function anonymizeResultDetails(
  * Copies du nom sans identifiant (#395) : inscription du partenaire créée
  * par l'import sans partnerUserId, libellé d'un résultat de couple rattaché
  * au partenaire — cf. buildPartnerNameScrubOps (partner-name-scrub.ts).
+ * Notifications reçues par d'autres (gestionnaires de club, #423) qui
+ * nomment l'utilisateur : conservées dans le fil de leur destinataire, nom
+ * remplacé par « Membre supprimé » / « Partenaire supprimé », retrouvées par
+ * l'inscription ou le partenariat lié — cf. buildNotificationNameScrubOps
+ * (notification-name-scrub.ts).
  * Suppressions explicites (FK sans onDelete → RESTRICT) : registrations,
  * seatBookings, notifications ; bugReports (userId sans FK).
  * Résultats de compétition (Result.userId sans FK, #382) : ANONYMISÉS, pas
@@ -145,6 +151,13 @@ export class AccountDeletionService {
       userId,
       this.logger,
     );
+    // Same constraint: the user's registrations and partnerships, which link
+    // the organisers' notifications, go with the transaction (#423).
+    const notificationNameScrub = await buildNotificationNameScrubOps(
+      this.prisma,
+      userId,
+      this.logger,
+    );
     const results = await this.prisma.result.findMany({
       where: { userId },
       select: resultAnonymizationSelect,
@@ -168,6 +181,8 @@ export class AccountDeletionService {
         data: { userId: DELETED_USER_ID, details: {} },
       }),
       this.prisma.notification.deleteMany({ where: { userId } }),
+      // Other users' notifications naming the user: name replaced (#423).
+      ...notificationNameScrub,
       this.prisma.seatBooking.deleteMany({ where: { userId } }),
       this.prisma.registration.deleteMany({ where: { userId } }),
       // Inscriptions d'autrui où l'utilisateur est partenaire : la FK passerait

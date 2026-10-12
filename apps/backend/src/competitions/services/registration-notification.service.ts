@@ -2,6 +2,10 @@ import { Injectable } from "@nestjs/common";
 import { NotificationType, RegistrationStatus, UserRole } from "@prisma/client";
 import { withActiveRole } from "../../auth/roles";
 import { disciplineLabel } from "../../common/competition-level";
+import {
+  clubMemberNotificationBody,
+  UNKNOWN_MEMBER_LABEL,
+} from "../../notifications/member-name-copy";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
 
@@ -37,6 +41,16 @@ type MemberRef =
     }
   | null
   | undefined;
+
+/**
+ * Name shown to the club's organisers. The body format is shared with the
+ * account deletion, which rewrites it to « Membre supprimé » (#423).
+ */
+function memberDisplayName(member: MemberRef): string {
+  return member?.firstName && member.lastName
+    ? `${member.firstName} ${member.lastName}`.trim()
+    : UNKNOWN_MEMBER_LABEL;
+}
 
 interface RegisterNotifyOptions {
   byOrganizer: boolean;
@@ -82,10 +96,7 @@ export class RegistrationNotificationService {
       return;
     }
 
-    const memberName =
-      member?.firstName && member.lastName
-        ? `${member.firstName} ${member.lastName}`.trim()
-        : "Un licencié";
+    const memberName = memberDisplayName(member);
 
     if (initialStatus === RegistrationStatus.CONFIRMED) {
       // Push : décision prise par le club sur son inscription.
@@ -109,7 +120,12 @@ export class RegistrationNotificationService {
         {
           type: "club_member_auto_registered",
           title: "Inscription d'un licencié",
-          body: `${memberName} s'est inscrit à "${compTitle}" - ${eventLabel}.`,
+          body: clubMemberNotificationBody(
+            "club_member_auto_registered",
+            memberName,
+            compTitle,
+            eventLabel,
+          ),
         },
       );
     } else {
@@ -133,7 +149,12 @@ export class RegistrationNotificationService {
         {
           type: "club_member_pending_registration",
           title: "Inscription en attente de validation",
-          body: `${memberName} a une inscription en attente pour "${compTitle}" - ${eventLabel}.`,
+          body: clubMemberNotificationBody(
+            "club_member_pending_registration",
+            memberName,
+            compTitle,
+            eventLabel,
+          ),
         },
       );
     }
@@ -175,10 +196,7 @@ export class RegistrationNotificationService {
         },
       );
     } else {
-      const memberName =
-        member?.firstName && member.lastName
-          ? `${member.firstName} ${member.lastName}`.trim()
-          : "Un licencié";
+      const memberName = memberDisplayName(member);
       await this.notifyClubOrganizers(
         member,
         event.competitionId,
@@ -187,7 +205,12 @@ export class RegistrationNotificationService {
         {
           type: "club_member_unregistered",
           title: "Désinscription d'un licencié",
-          body: `${memberName} s'est désinscrit de "${compTitle}" - ${eventLabel}.`,
+          body: clubMemberNotificationBody(
+            "club_member_unregistered",
+            memberName,
+            compTitle,
+            eventLabel,
+          ),
         },
       );
     }

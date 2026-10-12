@@ -1,0 +1,149 @@
+import { Logger } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import {
+  isClubMemberNotificationType,
+  isPartnershipNotificationType,
+  PARTNERSHIP_MEMBER_DATA_KEYS,
+} from "../notifications/member-name-copy";
+import { PrismaService } from "../prisma/prisma.service";
+import {
+  idOnlySelect,
+  notificationNameScrubSelect,
+  partnershipMembersSelect,
+} from "../utils/prisma-selects";
+import {
+  scrubClubMemberNotificationBody,
+  scrubCoupleNotificationBody,
+  withoutDeletedMemberIds,
+} from "./notification-name-scrub.utils";
+
+/**
+ * Bound of each read below: a member's registrations and partnerships over a
+ * few seasons, times a handful of organisers per club. Hitting it is logged
+ * (rows beyond keep the name).
+ */
+export const MAX_NOTIFICATION_SCRUB_ROWS = 1000;
+
+/**
+ * Droit à l'effacement (#423) : notifications reçues par D'AUTRES
+ * utilisateurs (gestionnaires de club) dont le texte nomme la personne
+ * supprimée. Elles ne lui appartiennent pas : elles restent dans le fil de
+ * leur destinataire, mais son nom y est remplacé.
+ *
+ * Lien structurel d'abord, jamais le nom seul :
+ * - inscription d'un membre (`data.registrationId` ∈ ses inscriptions) :
+ *   « X s'est inscrit… » → « Membre supprimé s'est inscrit… » ;
+ * - couple inter-club (`data.partnershipId` ∈ ses partenariats, ou
+ *   `data.member1UserId` / `member2UserId` = son id, posés depuis #423) :
+ *   sa moitié de « X & Y : … » → « Partenaire supprimé », et son id est
+ *   retiré de `data`.
+ *
+ * Limite : une notification de couple antérieure à #423 (sans member ids)
+ * dont le partenariat a déjà disparu — supprimé en cascade avec le compte de
+ * l'autre membre — n'a plus de lien et garde le nom. Une notification push
+ * déjà affichée sur un téléphone ne peut pas être reprise.
+ *
+ * Lectures AVANT la transaction (ses inscriptions y sont supprimées, ses
+ * partenariats partent en cascade) ; renvoie les écritures à y ajouter.
+ */
+export async function buildNotificationNameScrubOps(
+  prisma: PrismaService,
+  userId: string,
+  logger: Logger,
+): Promise<Prisma.PrismaPromise<unknown>[]> {
+  const [registrations, partnerships] = await Promise.all([
+    prisma.registration.findMany({
+      where: { userId },
+      select: idOnlySelect,
+      take: MAX_NOTIFICATION_SCRUB_ROWS,
+    }),
+    prisma.partnership.findMany({
+      where: { OR: [{ user1Id: userId }, { user2Id: userId }] },
+      select: partnershipMembersSelect,
+      take: MAX_NOTIFICATION_SCRUB_ROWS,
+    }),
+  ]);
+  const registrationIds = new Set(registrations.map((r) => r.id));
+  const positionByPartnership = new Map<string, 0 | 1>(
+    partnerships.map((p) => [p.id, p.user1Id === userId ? 0 : 1]),
+  );
+
+  const notifications = await prisma.notification.findMany({
+    where: {
+      userId: { not: userId },
+      OR: [
+        ...[...registrationIds].map((id) => ({
+          data: { path: ["registrationId"], equals: id },
+        })),
+        ...[...positionByPartnership.keys()].map((id) => ({
+          data: { path: ["partnershipId"], equals: id },
+        })),
+        ...PARTNERSHIP_MEMBER_DATA_KEYS.map((key) => ({
+          data: { path: [key], equals: userId },
+        })),
+      ],
+    },
+    select: notificationNameScrubSelect,
+    take: MAX_NOTIFICATION_SCRUB_ROWS,
+  });
+
+  if (
+    [registrations, partnerships, notifications].some(
+      (rows) => rows.length === MAX_NOTIFICATION_SCRUB_ROWS,
+    )
+  ) {
+    // No user identifier in the log.
+    logger.warn(
+      `Account deletion: a notification read hit the ${MAX_NOTIFICATION_SCRUB_ROWS} cap — some notifications may keep the name`,
+    );
+  }
+
+  const ops: Prisma.PrismaPromise<unknown>[] = [];
+  for (const notification of notifications) {
+    const data = readDataObject(notification.data);
+    if (!data) continue;
+    let body: string | null = null;
+    if (
+      isClubMemberNotificationType(data.type) &&
+      typeof data.registrationId === "string" &&
+      registrationIds.has(data.registrationId)
+    ) {
+      body = scrubClubMemberNotificationBody(notification.body, data.type);
+    } else if (isPartnershipNotificationType(data.type)) {
+      const position = couplePosition(data, userId, positionByPartnership);
+      if (position === null) continue;
+      body = scrubCoupleNotificationBody(notification.body, position);
+    } else {
+      continue;
+    }
+    const strippedData = withoutDeletedMemberIds(notification.data, userId);
+    if (body === null && strippedData === null) continue;
+    ops.push(
+      prisma.notification.update({
+        where: { id: notification.id },
+        data: {
+          ...(body !== null && { body }),
+          ...(strippedData !== null && { data: strippedData }),
+        },
+      }),
+    );
+  }
+  return ops;
+}
+
+function readDataObject(data: Prisma.JsonValue): Prisma.JsonObject | null {
+  return data && typeof data === "object" && !Array.isArray(data) ? data : null;
+}
+
+/** The deleted user's half of the couple label, by structural link only. */
+function couplePosition(
+  data: Prisma.JsonObject,
+  userId: string,
+  positionByPartnership: ReadonlyMap<string, 0 | 1>,
+): 0 | 1 | null {
+  if (data.member1UserId === userId) return 0;
+  if (data.member2UserId === userId) return 1;
+  return typeof data.partnershipId === "string"
+    ? (positionByPartnership.get(data.partnershipId) ?? null)
+    : null;
+}

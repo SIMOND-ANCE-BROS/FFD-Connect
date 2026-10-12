@@ -315,6 +315,111 @@ describe("PartnershipService", () => {
   });
 
   // ----------------------------------------------------------------
+  // Inter-club notifications: structural link to each member (#423)
+  // ----------------------------------------------------------------
+  describe("inter-club notifications (#423)", () => {
+    const memberIds = { member1UserId: "user-a", member2UserId: "user-b" };
+
+    it("creation: the request carries the members' ids, in label order", async () => {
+      prisma.club.findUnique
+        .mockResolvedValueOnce(makeClub() as never)
+        .mockResolvedValueOnce({ id: "club-2", name: "Other Club" } as never);
+      prisma.user.findUnique
+        .mockResolvedValueOnce(
+          makeUser({ id: "user-a", clubId: "club-1" }) as never,
+        )
+        .mockResolvedValueOnce(
+          makeUser({ id: "user-b", clubId: "club-2" }) as never,
+        );
+      prisma.partnership.findFirst.mockResolvedValue(null);
+      prisma.partnership.create.mockResolvedValue(
+        makePartnership({
+          secondaryClubId: "club-2",
+          secondaryClub: { id: "club-2", name: "Other Club" },
+          status: PartnershipStatus.PENDING_SECOND_CLUB,
+        }) as never,
+      );
+      prisma.user.findMany.mockResolvedValue([{ id: "org-2" }] as never);
+
+      await service.createPartnership("organizer-1", {
+        user1Id: "user-a",
+        user2Id: "user-b",
+        secondaryClubId: "club-2",
+      });
+
+      expect(mockNotifications.sendToUsers).toHaveBeenCalledWith(
+        ["org-2"],
+        expect.anything(),
+        "Nouveau couple inter-club à valider",
+        expect.stringMatching(/^Alice Martin & Bob Dupont : /),
+        {
+          type: "partnership_interclub_request",
+          partnershipId: "partnership-1",
+          ...memberIds,
+        },
+      );
+    });
+
+    it("end: the information carries the members' ids", async () => {
+      prisma.partnership.findFirst.mockResolvedValue(
+        makePartnership({
+          managementMode: PartnershipManagementMode.BOTH,
+          secondaryClub: { id: "club-2", name: "Other Club" },
+        }) as never,
+      );
+      prisma.partnership.update.mockResolvedValue(
+        makePartnership({
+          endDate: new Date("2024-06-01"),
+          secondaryClub: { id: "club-2", name: "Other Club" },
+        }) as never,
+      );
+      prisma.user.findMany.mockResolvedValue([{ id: "org-2" }] as never);
+
+      await service.endPartnership("organizer-1", "partnership-1", {
+        endDate: "2024-06-01",
+      });
+
+      expect(mockNotifications.createManyForUsers).toHaveBeenCalledWith(
+        ["org-2"],
+        expect.anything(),
+        "Couple inter-club clôturé",
+        "Alice Martin & Bob Dupont : le couple inter-club a été clôturé par l'autre club.",
+        {
+          type: "partnership_interclub_ended",
+          partnershipId: "partnership-1",
+          ...memberIds,
+        },
+      );
+    });
+
+    it("decision: the push carries the members' ids", async () => {
+      prisma.partnership.findFirst.mockResolvedValue(
+        makePartnership({
+          status: PartnershipStatus.PENDING_SECOND_CLUB,
+          secondaryClubId: "club-1",
+          secondaryClub: { id: "club-1", name: "Test Club" },
+        }) as never,
+      );
+      prisma.partnership.update.mockResolvedValue(makePartnership() as never);
+      prisma.user.findMany.mockResolvedValue([{ id: "org-1" }] as never);
+
+      await service.validatePartnership("organizer-1", "partnership-1", true);
+
+      expect(mockNotifications.sendToUsers).toHaveBeenCalledWith(
+        ["org-1"],
+        expect.anything(),
+        "Couple inter-club validé par le club partenaire",
+        "Alice Martin & Bob Dupont : le club Test Club a validé le couple inter-club.",
+        {
+          type: "partnership_interclub_accepted",
+          partnershipId: "partnership-1",
+          ...memberIds,
+        },
+      );
+    });
+  });
+
+  // ----------------------------------------------------------------
   // validatePartnership
   // ----------------------------------------------------------------
   describe("validatePartnership", () => {
