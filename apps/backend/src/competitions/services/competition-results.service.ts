@@ -5,23 +5,61 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import * as crypto from "crypto";
 import { LicenseQrService } from "../../licenses/qr/license-qr.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import {
+  competitionPublicResultsSelect,
   idOnlySelect,
   userNameSelect,
   volunteerTokenAuthSelect,
   volunteerTokenIssuedSelect,
 } from "../../utils/prisma-selects";
 import { hashToken } from "../../utils/token-hash.util";
-import { CompetitionCacheService } from "./competition-cache.service";
+import { CompetitionResultDto } from "../dto/competition-result.dto";
+import {
+  CompetitionCacheService,
+  resultsCacheKey,
+} from "./competition-cache.service";
+
+/**
+ * Keys of the free-form `Result.details` (import JSON) published by the
+ * public results endpoint: the official ranking as the organiser publishes
+ * it, nothing else. Allow-list, so a key a future import adds (licence
+ * number, birth date...) is never published by accident (#413).
+ */
+export const PUBLIC_RESULT_DETAIL_KEYS = [
+  "participant",
+  "name",
+  "club",
+  "bib",
+  "status",
+  "marks",
+  "totalParticipants",
+] as const;
+
+/**
+ * Reduces `details` to the public keys. Always an object: the live results
+ * screen reads `details.participant` without a null guard.
+ */
+export function publicResultDetails(
+  details: Prisma.JsonValue,
+): Record<string, Prisma.JsonValue> {
+  const kept: Record<string, Prisma.JsonValue> = {};
+  if (details && typeof details === "object" && !Array.isArray(details)) {
+    for (const key of PUBLIC_RESULT_DETAIL_KEYS) {
+      const value = details[key];
+      if (value !== undefined && value !== null) kept[key] = value;
+    }
+  }
+  return kept;
+}
 
 @Injectable()
 export class CompetitionResultsService {
   private readonly logger = new Logger(CompetitionResultsService.name);
-  private readonly CACHE_PREFIX = "competitions:";
   private readonly CACHE_TTL = 3600; // 1 heure
 
   constructor(
@@ -31,13 +69,18 @@ export class CompetitionResultsService {
     private readonly licenseQrService: LicenseQrService,
   ) {}
 
-  async getResults(competitionId: string): Promise<unknown> {
-    const cacheKey = `${this.CACHE_PREFIX}results:${competitionId}`;
+  /**
+   * Public results of a competition (no auth). Each row is built field by
+   * field from `publicResultSelect`: never `userId` (#413), even if the
+   * select grows. Cached under a versioned key (`resultsCacheKey`).
+   */
+  async getResults(competitionId: string): Promise<CompetitionResultDto[]> {
+    const cacheKey = resultsCacheKey(competitionId);
 
     const cached = await this.redisService.get(cacheKey);
     if (cached) {
       try {
-        return JSON.parse(cached) as unknown;
+        return JSON.parse(cached) as CompetitionResultDto[];
       } catch {
         this.logger.warn(
           `Corrupted cache entry for key "${cacheKey}", evicting`,
@@ -48,30 +91,27 @@ export class CompetitionResultsService {
 
     const competition = await this.prisma.competition.findUnique({
       where: { id: competitionId },
-      include: {
-        events: {
-          include: {
-            results: {
-              orderBy: { ranking: "asc" },
-            },
-          },
-        },
-      },
+      select: competitionPublicResultsSelect,
     });
 
     if (!competition) {
       throw new NotFoundException("Compétition non trouvée");
     }
 
-    const results = competition.events.flatMap((event) =>
-      event.results.map((res) => ({
-        ...res,
-        event: {
-          id: event.id,
-          category: event.category,
-          ageGroup: event.ageGroup,
-        },
-      })),
+    const results: CompetitionResultDto[] = competition.events.flatMap(
+      (event) =>
+        event.results.map((res) => ({
+          id: res.id,
+          eventId: res.eventId,
+          round: res.round,
+          ranking: res.ranking,
+          details: publicResultDetails(res.details),
+          event: {
+            id: event.id,
+            category: event.category,
+            ageGroup: event.ageGroup,
+          },
+        })),
     );
 
     await this.redisService.set(

@@ -195,4 +195,8 @@ model SeatBooking {
   @@index([competitionId])
   @@index([userId])
   @@index([competitionId, itemId, seatLabel])
+  // One active booking per seat (#402): a PENDING hold or a CONFIRMED seat.
+  // EXPIRED/CANCELLED rows are history and never block the seat. An expired
+  // PENDING hold is switched to EXPIRED before a new checkout (#401).
+  @@unique([competitionId, itemId], map: "SeatBooking_active_seat_key", where: raw("(status = ANY (ARRAY['PENDING'::\"BookingStatus\", 'CONFIRMED'::\"BookingStatus\"]))"))
 }

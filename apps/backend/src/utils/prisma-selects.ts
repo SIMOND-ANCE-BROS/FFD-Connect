@@ -302,6 +302,36 @@ export const resultAnonymizationSelect = {
 } as const;
 
 /**
+ * Ligne de résultat publiée par `GET /competitions/:id/results` (endpoint
+ * public, sans authentification). Minimisation (RGPD art. 5.1.c, #413) :
+ * jamais `userId` (identifiant interne du compte du couple), ni `createdAt`.
+ * Seuls les champs que l'écran des résultats affiche.
+ */
+export const publicResultSelect = {
+  id: true,
+  eventId: true,
+  round: true,
+  ranking: true,
+  details: true,
+} as const;
+
+/** Épreuves d'une compétition avec leurs résultats publics, classés. */
+export const competitionPublicResultsSelect = {
+  id: true,
+  events: {
+    select: {
+      id: true,
+      category: true,
+      ageGroup: true,
+      results: {
+        select: publicResultSelect,
+        orderBy: { ranking: "asc" },
+      },
+    },
+  },
+} as const;
+
+/**
  * Document de renouvellement tel que l'API le renvoie (#224). `ocrData` est lu
  * pour le résumé affiché dans l'app, mais ne sort JAMAIS tel quel : il passe
  * par `toRenewalDocumentResponse`, qui ne garde que les champs utiles (jamais
@@ -403,6 +433,7 @@ export const seatBookingPaymentCheckSelect = {
   status: true,
   paymentId: true,
   expectedAmountCents: true,
+  expiresAt: true,
 } as const;
 
 /**
@@ -1067,4 +1098,42 @@ export const competitionEventsDeductionSelect = {
     },
     take: 500,
   },
+} as const;
+
+/**
+ * Account deletion (#395): the deleted user's own registrations, read before
+ * the transaction deletes them. Event + bib identify the couple, to find the
+ * partner's legacy registration and the couple's result row.
+ */
+export const registrationEventBibSelect = {
+  eventId: true,
+  bibNumber: true,
+} as const;
+
+/**
+ * Account deletion (#395): registrations naming the deleted user as partner.
+ * Event + holder locate the couple's result row, attached to the holder.
+ */
+export const registrationEventHolderSelect = {
+  eventId: true,
+  userId: true,
+} as const;
+
+/** Account deletion (#395): partner registrations to confirm by name. */
+export const registrationPartnerNameSelect = {
+  id: true,
+  partnerName: true,
+} as const;
+
+/**
+ * Backfill of Registration.partnerUserId (#395): the registration, its
+ * holder's name (to confirm the reciprocal partnerName) and its couple key.
+ */
+export const registrationPartnerBackfillSelect = {
+  id: true,
+  eventId: true,
+  userId: true,
+  bibNumber: true,
+  partnerName: true,
+  user: { select: userNameSelect },
 } as const;
