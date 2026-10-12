@@ -432,6 +432,7 @@ export const seatBookingPaymentCheckSelect = {
   status: true,
   paymentId: true,
   expectedAmountCents: true,
+  expiresAt: true,
 } as const;
 
 /**

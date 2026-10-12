@@ -16,7 +16,16 @@ export type OrderRejectionReason =
   | "no_expected_amount"
   | "invalid_payment"
   | "not_paid"
-  | "amount_mismatch";
+  | "amount_mismatch"
+  | "booking_expired";
+
+/**
+ * Rejections where a genuine, fully paid order could not be honoured: the
+ * money is collected but no seat is granted, so the payer must be refunded
+ * (#401; automatic refund is #403).
+ */
+export const REFUND_REQUIRED_REASONS: ReadonlySet<OrderRejectionReason> =
+  new Set(["booking_expired"]);
 
 export interface BookingPaymentCheck {
   id: string;
@@ -24,6 +33,19 @@ export interface BookingPaymentCheck {
   status: string;
   paymentId: string | null;
   expectedAmountCents: number | null;
+  expiresAt: Date | null;
+}
+
+/**
+ * Whether a booking's temporary hold is over (#401). A PENDING booking
+ * without a deadline is treated as expired (fail-closed): checkout always
+ * sets one.
+ */
+export function isHoldExpired(
+  booking: Pick<BookingPaymentCheck, "expiresAt">,
+  now: Date,
+): boolean {
+  return booking.expiresAt === null || booking.expiresAt <= now;
 }
 
 /**
@@ -64,14 +86,23 @@ export function paidAmountCents(payload: WebhookPayloadDto): number | null {
  *
  * Amounts on both sides are integer cents: the checkout intent is created
  * with `expectedAmountCents` and HelloAsso reports amounts in cents.
+ *
+ * Only a PENDING hold still within its deadline can be confirmed (#401). The
+ * expiry is checked LAST, once the order is proven to be the genuine, fully
+ * paid order of this booking: `booking_expired` therefore always means "money
+ * collected for a seat we no longer hold" (refund required), never a forged
+ * or partial order.
  */
 export function checkOrderAgainstBooking(
   payload: WebhookPayloadDto,
   booking: BookingPaymentCheck,
+  now: Date,
 ): OrderRejectionReason | null {
-  // Only a booking still awaiting payment can be confirmed (no revival of a
-  // cancelled/expired booking, no double processing).
-  if (booking.status !== "PENDING") return "not_pending";
+  // Only a hold awaiting payment (still running or lapsed) is examined: no
+  // revival of a cancelled booking, no double processing.
+  if (booking.status !== "PENDING" && booking.status !== "EXPIRED") {
+    return "not_pending";
+  }
 
   const metadata = getWebhookMetadata(payload);
   if (metadata?.competitionId !== booking.competitionId) {
@@ -95,6 +126,10 @@ export function checkOrderAgainstBooking(
   if (paid === null) return "invalid_payment";
   if (paid === 0) return "not_paid";
   if (paid !== booking.expectedAmountCents) return "amount_mismatch";
+
+  if (booking.status === "EXPIRED" || isHoldExpired(booking, now)) {
+    return "booking_expired";
+  }
 
   return null;
 }
