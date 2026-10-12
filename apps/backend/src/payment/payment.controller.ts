@@ -20,7 +20,10 @@ import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
-import { CreateCheckoutDto } from "./dto/create-checkout.dto";
+import {
+  CheckoutResponseDto,
+  CreateCheckoutDto,
+} from "./dto/create-checkout.dto";
 import { WebhookPayloadDto } from "./dto/webhook-payload.dto";
 import { WebhookSignatureGuard } from "./guards/webhook-signature.guard";
 import { HelloAssoNotificationService } from "./helloasso-notification.service";
@@ -37,8 +40,9 @@ export class PaymentController {
     private readonly seatReleaseService: SeatReleaseService,
   ) {}
 
-  // Per user (#402): a checkout holds the seat for 15 minutes, so a burst of
-  // checkouts must not let one account lock a whole venue.
+  // Per user (#402): a checkout holds a seat for 50 minutes; with the cap of
+  // 4 pending bookings per competition (#428, in the database), a burst of
+  // checkouts cannot lock a venue.
   @UseGuards(JwtAuthGuard, ThrottlerUserGuard)
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @Post("checkout")
@@ -46,21 +50,39 @@ export class PaymentController {
   @ApiOperation({
     summary: "Crée un checkout HelloAsso",
     description:
-      "Initie un paiement via HelloAsso pour une réservation de place en compétition. " +
-      "Le montant est celui du tarif de la place (`priceCents` de l'élément du plan), jamais celui envoyé par le client. " +
-      "La place est retenue 15 minutes ; une place ne peut avoir qu'une réservation active (409 si elle est déjà prise).",
+      "Initie un paiement via HelloAsso pour UNE place d'un élément du plan (vente à la place). " +
+      "Élément numéroté (table, gradin) : `seatIndex` désigne la place (absent : première place libre). " +
+      "Placement libre (autre élément) : pas de `seatIndex`, une place parmi la capacité. " +
+      "Le montant est celui du tarif d'une place (`priceCents` de l'élément), jamais celui envoyé par le client. " +
+      "La place est retenue 50 minutes. 409 si elle est déjà prise, si l'élément est complet " +
+      "ou si l'utilisateur a déjà 4 réservations en attente pour la compétition. " +
+      "Un nouveau checkout sur sa propre place en attente reprend le paiement (`resumed: true`).",
   })
   @ApiBody({ type: CreateCheckoutDto })
-  @ApiResponse({ status: 201, description: "Checkout intent créé" })
+  @ApiResponse({
+    status: 201,
+    description: "Checkout intent créé ou repris",
+    type: CheckoutResponseDto,
+  })
   @ApiResponse({
     status: 400,
-    description: "Club sans HelloAsso, place sans tarif ou données invalides",
+    description:
+      "Club sans HelloAsso, place sans tarif, place inexistante ou verrouillée, données invalides",
   })
   @ApiResponse({ status: 401, description: "Non authentifié" })
+  @ApiResponse({
+    status: 409,
+    description:
+      "Place déjà réservée, élément complet, 4 réservations en attente, ou paiement déjà en cours",
+  })
+  @ApiResponse({
+    status: 503,
+    description: "HelloAsso injoignable lors de la reprise d'un paiement",
+  })
   async createCheckout(
     @Req() req: RequestWithUser,
     @Body() body: CreateCheckoutDto,
-  ) {
+  ): Promise<CheckoutResponseDto> {
     return this.paymentService.createCheckout(req.user.userId, body);
   }
 

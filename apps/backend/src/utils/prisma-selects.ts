@@ -446,6 +446,43 @@ export const seatBookingPaymentCheckSelect = {
   paymentId: true,
   expectedAmountCents: true,
   expiresAt: true,
+  // Earlier checkout intents of a resumed payment, still payable (#428)
+  supersededPaymentIds: true,
+  refundOwedPaymentIds: true,
+} as const;
+
+/**
+ * Checkout (#428) : réservation en attente d'un utilisateur, reprise par un
+ * nouveau checkout sur la même place. `checkoutRedirectUrl` n'est rendu qu'à
+ * son propriétaire.
+ */
+export const seatBookingHoldSelect = {
+  id: true,
+  seatIndex: true,
+  expiresAt: true,
+  createdAt: true,
+  expectedAmountCents: true,
+  paymentId: true,
+  checkoutRedirectUrl: true,
+  checkoutCreatedAt: true,
+  supersededPaymentIds: true,
+} as const;
+
+/** Checkout (#428) : place occupée par une réservation active. */
+export const seatBookingSeatIndexSelect = { seatIndex: true } as const;
+
+/** Checkout (#428) : créneau de réservation en attente (plafond de 4). */
+export const seatBookingPendingSlotSelect = { pendingSlot: true } as const;
+
+/**
+ * Alerte « remboursement à faire » (#428) : de quoi retrouver le paiement
+ * dans HelloAsso, sans donnée personnelle du payeur.
+ */
+export const seatBookingRefundAlertSelect = {
+  id: true,
+  seatIndex: true, // never the free-text seatLabel, typed by the buyer
+  expectedAmountCents: true,
+  competition: { select: { id: true, title: true, organizer: true } },
 } as const;
 
 /**

@@ -23638,7 +23638,7 @@
     },
     "/payment/checkout": {
       "post": {
-        "description": "Initie un paiement via HelloAsso pour une réservation de place en compétition. Le montant est celui du tarif de la place (`priceCents` de l'élément du plan), jamais celui envoyé par le client. La place est retenue 15 minutes ; une place ne peut avoir qu'une réservation active (409 si elle est déjà prise).",
+        "description": "Initie un paiement via HelloAsso pour UNE place d'un élément du plan (vente à la place). Élément numéroté (table, gradin) : `seatIndex` désigne la place (absent : première place libre). Placement libre (autre élément) : pas de `seatIndex`, une place parmi la capacité. Le montant est celui du tarif d'une place (`priceCents` de l'élément), jamais celui envoyé par le client. La place est retenue 50 minutes. 409 si elle est déjà prise, si l'élément est complet ou si l'utilisateur a déjà 4 réservations en attente pour la compétition. Un nouveau checkout sur sa propre place en attente reprend le paiement (`resumed: true`).",
         "operationId": "PaymentController_createCheckout",
         "parameters": [],
         "requestBody": {
@@ -23653,10 +23653,17 @@
         },
         "responses": {
           "201": {
-            "description": "Checkout intent créé"
+            "description": "Checkout intent créé ou repris",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutResponseDto"
+                }
+              }
+            }
           },
           "400": {
-            "description": "Club sans HelloAsso, place sans tarif ou données invalides"
+            "description": "Club sans HelloAsso, place sans tarif, place inexistante ou verrouillée, données invalides"
           },
           "401": {
             "description": "Non authentifié"
@@ -23710,28 +23717,7 @@
             }
           },
           "409": {
-            "description": "Conflit - La ressource existe déjà",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 409
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Resource already exists"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Conflict"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Place déjà réservée, élément complet, 4 réservations en attente, ou paiement déjà en cours"
           },
           "429": {
             "description": "Trop de requêtes - Rate limit dépassé",
@@ -23780,6 +23766,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "HelloAsso injoignable lors de la reprise d'un paiement"
           }
         },
         "security": [
@@ -27573,9 +27562,17 @@
             "type": "string",
             "example": "item-uuid"
           },
+          "seatIndex": {
+            "type": "number",
+            "example": 4,
+            "minimum": 0,
+            "maximum": 999,
+            "description": "Indice de la place sur l'élément numéroté (table : 0 à capacité-1 ; gradin : rang × colonnes + colonne). Absent : le serveur attribue la première place libre. Interdit sur un élément en placement libre."
+          },
           "seatLabel": {
             "type": "string",
-            "example": "Rang A, Place 5"
+            "example": "Rang A, Place 5",
+            "description": "Libellé d'affichage, jamais utilisé pour identifier la place."
           },
           "amount": {
             "type": "number",
@@ -27585,6 +27582,48 @@
           }
         },
         "required": ["competitionId", "itemId"]
+      },
+      "CheckoutResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 12345,
+            "description": "Id HelloAsso du checkout"
+          },
+          "redirectUrl": {
+            "type": "string",
+            "example": "https://www.helloasso.com/...",
+            "description": "Page de paiement HelloAsso (valable 15 minutes après sa création)."
+          },
+          "bookingId": {
+            "type": "string",
+            "example": "booking-uuid"
+          },
+          "seatIndex": {
+            "type": "number",
+            "example": 4,
+            "nullable": true,
+            "description": "Place attribuée (élément numéroté) ; null en placement libre."
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Fin de la retenue de la place si le paiement n'aboutit pas."
+          },
+          "resumed": {
+            "type": "boolean",
+            "description": "true : reprise d'une réservation en attente de l'utilisateur sur cette place."
+          }
+        },
+        "required": [
+          "id",
+          "redirectUrl",
+          "bookingId",
+          "seatIndex",
+          "expiresAt",
+          "resumed"
+        ]
       },
       "WebhookPaymentDto": {
         "type": "object",
