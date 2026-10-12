@@ -15,16 +15,19 @@ Adopt a four-level testing strategy: unit tests (Jest), integration tests (super
 ## Alternatives Considered
 
 ### Alternative 1: Coverage-only metrics
+
 - **Pros**: Simple to measure and enforce
 - **Cons**: Gives false security — high coverage with weak assertions
 - **Why not**: Does not validate that tests catch regressions
 
 ### Alternative 2: Manual QA
+
 - **Pros**: Catches UX issues automated tests miss
 - **Cons**: Does not scale, slow feedback loop
 - **Why not**: Complementary but not a substitute for automated quality checks
 
 ### Alternative 3: Property-based testing
+
 - **Pros**: Finds edge cases automatically
 - **Cons**: Different goal — tests input space, not assertion quality
 - **Why not**: Complementary technique, does not replace mutation testing
@@ -32,11 +35,13 @@ Adopt a four-level testing strategy: unit tests (Jest), integration tests (super
 ## Consequences
 
 ### Positive
+
 - Mutation testing validates that tests actually detect bugs
 - Per-module thresholds prevent critical code from having weak tests
 - Stryker runs only on PRs, keeping CI fast for regular pushes
 
 ### Negative
+
 - Mutation testing is slow on first run (~10-15 min on targeted modules); incremental mode (see ADR-0016) reduces subsequent runs to ~3-5 min
 - Stryker configuration requires maintenance as modules evolve
 - Developers must understand mutation score to act on failures

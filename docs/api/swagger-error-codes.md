@@ -5,9 +5,11 @@ Ce document liste tous les codes d'erreur HTTP standardisés utilisés dans l'AP
 ## Codes d'erreur HTTP standard
 
 ### 400 - Bad Request
+
 **Description**: La requête est malformée ou contient des données invalides.
 
 **Exemples de cas**:
+
 - Champs requis manquants
 - Format de données invalide (email, date, etc.)
 - Validation échouée
@@ -15,6 +17,7 @@ Ce document liste tous les codes d'erreur HTTP standardisés utilisés dans l'AP
 - Données QR code invalides
 
 **Format de réponse**:
+
 ```json
 {
   "statusCode": 400,
@@ -26,9 +29,11 @@ Ce document liste tous les codes d'erreur HTTP standardisés utilisés dans l'AP
 ```
 
 ### 401 - Unauthorized
+
 **Description**: L'utilisateur n'est pas authentifié ou le token est invalide/expiré.
 
 **Exemples de cas**:
+
 - Token JWT manquant
 - Token JWT expiré
 - Token JWT invalide
@@ -36,6 +41,7 @@ Ce document liste tous les codes d'erreur HTTP standardisés utilisés dans l'AP
 - Refresh token invalide ou révoqué
 
 **Format de réponse**:
+
 ```json
 {
   "statusCode": 401,
@@ -47,14 +53,17 @@ Ce document liste tous les codes d'erreur HTTP standardisés utilisés dans l'AP
 ```
 
 ### 403 - Forbidden
+
 **Description**: L'utilisateur est authentifié mais n'a pas les permissions nécessaires.
 
 **Exemples de cas**:
+
 - Tentative d'accès à une ressource protégée
 - Rôle insuffisant pour l'opération
 - Accès refusé à une compétition privée
 
 **Format de réponse**:
+
 ```json
 {
   "statusCode": 403,
@@ -66,9 +75,11 @@ Ce document liste tous les codes d'erreur HTTP standardisés utilisés dans l'AP
 ```
 
 ### 404 - Not Found
+
 **Description**: La ressource demandée n'existe pas.
 
 **Exemples de cas**:
+
 - Compétition non trouvée
 - Événement non trouvé
 - Utilisateur non trouvé
@@ -77,6 +88,7 @@ Ce document liste tous les codes d'erreur HTTP standardisés utilisés dans l'AP
 - Athlète WDSF non trouvé
 
 **Format de réponse**:
+
 ```json
 {
   "statusCode": 404,
@@ -88,13 +100,16 @@ Ce document liste tous les codes d'erreur HTTP standardisés utilisés dans l'AP
 ```
 
 ### 409 - Conflict
+
 **Description**: La ressource existe déjà ou entre en conflit avec l'état actuel.
 
 **Exemples de cas**:
+
 - Tentative de création d'une ressource qui existe déjà
 - Conflit de données
 
 **Format de réponse**:
+
 ```json
 {
   "statusCode": 409,
@@ -106,14 +121,17 @@ Ce document liste tous les codes d'erreur HTTP standardisés utilisés dans l'AP
 ```
 
 ### 429 - Too Many Requests
+
 **Description**: Trop de requêtes ont été effectuées dans un laps de temps donné (rate limiting).
 
 **Exemples de cas**:
+
 - Trop de tentatives de connexion
 - Trop de requêtes à un endpoint spécifique
 - Rate limit dépassé
 
 **Format de réponse**:
+
 ```json
 {
   "statusCode": 429,
@@ -125,14 +143,17 @@ Ce document liste tous les codes d'erreur HTTP standardisés utilisés dans l'AP
 ```
 
 ### 500 - Internal Server Error
+
 **Description**: Erreur serveur interne non prévue.
 
 **Exemples de cas**:
+
 - Erreur de base de données
 - Erreur lors du traitement d'un fichier audio
 - Erreur inattendue dans le code serveur
 
 **Format de réponse**:
+
 ```json
 {
   "statusCode": 500,
@@ -146,16 +167,20 @@ Ce document liste tous les codes d'erreur HTTP standardisés utilisés dans l'AP
 ## Codes de succès
 
 ### 200 - OK
+
 **Description**: Requête réussie.
 
 ### 201 - Created
+
 **Description**: Ressource créée avec succès.
 
 **Exemples**:
+
 - Inscription à un événement créée
 - Nouvelle musique ajoutée
 
 ### 204 - No Content
+
 **Description**: Requête réussie mais aucune donnée à retourner.
 
 ## Utilisation dans Swagger
