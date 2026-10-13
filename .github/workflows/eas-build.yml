@@ -1937,12 +1937,26 @@ jobs:
     outputs:
       platforms: ${{ steps.plan.outputs.platforms }}
     steps:
-      - name: Download hand-off states
+      # Une étape PAR jambe, par nom, chacune dans son dossier : avec
+      # `pattern:`, download-artifact v8 extrait un artefact UNIQUE directement
+      # dans `path` (pas dans path/<nom>/), sans option pour l'en empêcher
+      # (src/download-artifact.ts : `artifacts.length === 1 ? resolvedPath`).
+      # Run 38399104556 (Android seul) : état introuvable, plan `[]`,
+      # distribution sautée alors que le build 9 était envoyé. Artefact absent
+      # (jambe non lancée) : l'étape échoue, sans effet (continue-on-error).
+      - name: Download hand-off state (iOS)
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: beta-state-*
-          path: ${{ runner.temp }}/state
+          name: beta-state-ios
+          path: ${{ runner.temp }}/state/beta-state-ios
+
+      - name: Download hand-off state (Android)
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: beta-state-android
+          path: ${{ runner.temp }}/state/beta-state-android
 
       - name: Legs ready for distribution
         id: plan
@@ -1952,7 +1966,10 @@ jobs:
           for PLATFORM in ios android; do
             S="$RUNNER_TEMP/state/beta-state-$PLATFORM/state.json"
             if [ ! -f "$S" ] || [ -L "$S" ]; then
-              continue # jambe non lancée, ou échouée avant d'écrire son état
+              # Jambe non lancée (platform=ios|android), ou échouée avant
+              # d'écrire son état : le dire, jamais de saut silencieux.
+              echo "Jambe $PLATFORM : aucun état transmis (jambe non lancée ou échouée avant la fin) — pas de distribution."
+              continue
             fi
             SKIP=$(jq -r '.skip // false | tostring' "$S" 2> /dev/null || true)
             SUBMIT=$(jq -r '.submit_state // empty | tostring' "$S" 2> /dev/null || true)
@@ -2310,26 +2327,51 @@ jobs:
     permissions:
       actions: read
     steps:
-      - name: Download hand-off states
+      # Un téléchargement PAR artefact et par jambe, chacun dans son dossier
+      # (même raison que distribute-plan, #521) : avec `pattern:`, un artefact
+      # unique (run platform=ios ou android) est extrait à plat dans `path` et
+      # le suivi ne trouvait rien. Artefact absent : sans effet.
+      - name: Download hand-off state (iOS)
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: beta-state-*
-          path: ${{ runner.temp }}/state
+          name: beta-state-ios
+          path: ${{ runner.temp }}/state/beta-state-ios
 
-      - name: Download release results
+      - name: Download hand-off state (Android)
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: beta-release-*
-          path: ${{ runner.temp }}/release
+          name: beta-state-android
+          path: ${{ runner.temp }}/state/beta-state-android
 
-      - name: Download distribution results
+      - name: Download release result (iOS)
         continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: beta-dist-*
-          path: ${{ runner.temp }}/dist
+          name: beta-release-ios
+          path: ${{ runner.temp }}/release/beta-release-ios
+
+      - name: Download release result (Android)
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: beta-release-android
+          path: ${{ runner.temp }}/release/beta-release-android
+
+      - name: Download distribution result (iOS)
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: beta-dist-ios
+          path: ${{ runner.temp }}/dist/beta-dist-ios
+
+      - name: Download distribution result (Android)
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: beta-dist-android
+          path: ${{ runner.temp }}/dist/beta-dist-android
 
       - name: Follow-up (resume command if incomplete)
         env:
@@ -2341,7 +2383,10 @@ jobs:
             S="$RUNNER_TEMP/state/beta-state-$PLATFORM/state.json"
             D="$RUNNER_TEMP/dist/beta-dist-$PLATFORM/dist.json"
             T="$RUNNER_TEMP/release/beta-release-$PLATFORM/release.json"
-            [ -f "$S" ] || continue # jambe non lancée, ou échouée avant tout build
+            if [ ! -f "$S" ]; then
+              echo "Jambe $PLATFORM : aucun état transmis (jambe non lancée, ou échouée avant tout build)."
+              continue
+            fi
             sf() { jq -r --arg k "$1" '.[$k] // empty | tostring' "$S"; }
             [ "$(sf skip)" != "true" ] || continue # resume : jambe de l'autre plateforme
             BUILD_ID=$(sf build_id)
