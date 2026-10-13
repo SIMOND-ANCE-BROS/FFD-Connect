@@ -116,8 +116,3 @@ src/api/generated/
 # local donnerait une empreinte différente de celle d'EAS.
 /ios
 /android
-
-# EAS Update code signing (#476): only certs/certificate.pem is committed.
-# The private key lives outside the repo (GitHub env secret + offline backup).
-keys/
-*private-key*.pem

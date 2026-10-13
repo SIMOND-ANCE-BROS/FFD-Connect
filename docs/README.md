@@ -31,7 +31,6 @@ voir le [README racine](../README.md).
 - [Changelog beta automatique](exploitation/changelog-beta.md)
 - [Isolation des secrets DB](exploitation/isolation-secrets-db.md) — users par env, Key Vault
 - [Chiffrement des secrets HelloAsso des clubs](exploitation/chiffrement-secrets-clubs.md) — clé AES-256-GCM, Key Vault, migration, rotation
-- [Signature des OTA](exploitation/signature-ota.md) — certificat EAS Update, clé privée, publication signée, rotation
 - [Clés de distribution](exploitation/rotation-cles-distribution.md) — inventaire, Key Vault, rotation (ASC, APNs, Play, EXPO_TOKEN)
 
 ## 🧪 Tests
