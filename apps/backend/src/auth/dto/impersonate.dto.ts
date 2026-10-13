@@ -1,4 +1,5 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
+import { Transform } from "class-transformer";
 import {
   IsEmail,
   IsOptional,
@@ -6,6 +7,7 @@ import {
   IsUUID,
   MaxLength,
 } from "class-validator";
+import { trimEmailTransform } from "../email-identity";
 
 /**
  * Démarrage d'une impersonation « se connecter en tant que » (#545).
@@ -22,6 +24,7 @@ export class ImpersonateDto {
     description: "Email de l'utilisateur cible (alternative à targetUserId)",
   })
   @IsOptional()
+  @Transform(trimEmailTransform)
   @IsEmail()
   targetEmail?: string;
 

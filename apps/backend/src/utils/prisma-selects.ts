@@ -639,6 +639,16 @@ export const idOnlySelect = {
 } as const;
 
 /**
+ * Compte visé par « mot de passe oublié » (#465) : l'adresse enregistrée (seule
+ * destinataire du lien) et le drapeau du compte de review, jamais réinitialisé.
+ */
+export const passwordResetTargetSelect = {
+  id: true,
+  email: true,
+  isStoreReview: true,
+} as const;
+
+/**
  * Sélecteur pour l'affichage du nom d'un utilisateur (auteur, relecteur…) :
  * identifiant et nom, jamais l'e-mail.
  */

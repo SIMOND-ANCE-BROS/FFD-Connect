@@ -7,7 +7,9 @@ import {
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
+import { passwordResetTargetSelect } from "../utils/prisma-selects";
 import { hashToken } from "../utils/token-hash.util";
+import { findUserIdByEmail } from "./email-identity";
 import { EmailService } from "./email.service";
 import { AuthTokenService } from "./auth-token.service";
 import { PasswordValidator } from "./password-validator";
@@ -47,9 +49,14 @@ export class AuthPasswordService {
   }
 
   async forgotPassword(email: string): Promise<{ success: boolean }> {
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-    });
+    // Case / spaces of the typed address do not matter (#465).
+    const userId = await findUserIdByEmail(this.prisma, email);
+    const user = userId
+      ? await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: passwordResetTargetSelect,
+        })
+      : null;
 
     // The store-review account's password is shared with Apple / Google: no
     // reset link is ever issued for it (same generic answer as an unknown email).
@@ -62,8 +69,9 @@ export class AuthPasswordService {
       this.PASSWORD_RESET_TOKEN_EXPIRY_HOURS,
     );
 
-    // Send plain token via email (DB only stores hash)
-    await this.emailService.sendPasswordResetEmail(email, plainToken);
+    // Send plain token via email (DB only stores hash), to the stored address:
+    // never to the variant typed in the form.
+    await this.emailService.sendPasswordResetEmail(user.email, plainToken);
 
     return { success: true };
   }

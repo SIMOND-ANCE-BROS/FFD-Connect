@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
 import {
+  IsAscii,
   IsEmail,
   IsString,
   Matches,
@@ -12,13 +13,16 @@ import {
   LICENSE_NUMBER_MAX_LENGTH,
   LICENSE_NUMBER_PATTERN,
 } from "../../licenses/license-number.util";
+import {
+  normalizeEmailTransform,
+  STORED_EMAIL_ASCII_MESSAGE,
+  STORED_EMAIL_OPTIONS,
+} from "../../auth/email-identity";
 import { AdminUserDetailDto } from "./admin-users.dto";
 
 /** RFC 5321 upper bound of a mailbox. */
 export const EMAIL_MAX_LENGTH = 254;
 
-const trimLower = ({ value }: { value: unknown }) =>
-  typeof value === "string" ? value.trim().toLowerCase() : value;
 const trim = ({ value }: { value: unknown }) =>
   typeof value === "string" ? value.trim() : value;
 /** Absent = unchanged; `null` is validated (and refused): neither can be cleared. */
@@ -35,10 +39,11 @@ export class UpdateAdminUserIdentifiersDto {
     maxLength: EMAIL_MAX_LENGTH,
   })
   @ValidateIf(present)
-  @Transform(trimLower)
+  @Transform(normalizeEmailTransform)
   @IsString()
   @MaxLength(EMAIL_MAX_LENGTH)
-  @IsEmail({}, { message: "Adresse email invalide" })
+  @IsEmail(STORED_EMAIL_OPTIONS, { message: "Adresse email invalide" })
+  @IsAscii({ message: STORED_EMAIL_ASCII_MESSAGE })
   email?: string;
 
   @ApiPropertyOptional({
