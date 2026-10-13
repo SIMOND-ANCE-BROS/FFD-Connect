@@ -148,6 +148,10 @@ jobs:
       # the current fingerprint. Set only when the fingerprint step decided
       # native=true per platform; empty = build every platform (fallbacks).
       native_platforms: ${{ steps.fingerprint.outputs.native_platforms }}
+      # The same list as a JSON array, for the build jobs' matrix (the `env`
+      # context is not available in `strategy`): native_platforms, else every
+      # AUTO_BUILD_PLATFORMS entry.
+      build_platforms: ${{ steps.platforms.outputs.json }}
       client_changed: ${{ steps.check.outputs.client_changed }}
       branch: ${{ github.event.workflow_run.head_branch }}
     steps:
@@ -441,11 +445,26 @@ jobs:
                 break
               fi
             done
+            # A binary built on a GitHub runner (`eas build --local`, #508) has
+            # no EAS build record: `eas upload` registers it without channel,
+            # profile or runtime version, but with its fingerprint. The
+            # fingerprint depends on the variant (bundle id, APP_ENV), so a hash
+            # match is a build of this profile. Finished only: a failed cloud
+            # build carries the hash too. Errors here only mean "build".
+            if [ -z "$found" ]; then
+              count=$(eas build:list --platform "$platform" --fingerprint-hash "$HASH" --status finished \
+                --limit 1 --json --non-interactive \
+                < /dev/null 2> /dev/null | sed -n '/^[[{]/,$p' \
+                | jq 'if type == "array" then length else error("not an array") end' 2> /dev/null)
+              if [ "${count:-0}" -gt 0 ]; then
+                found="uploaded (GitHub runner)"
+              fi
+            fi
             if [ -n "$found" ]; then
               echo "$platform: a $found \`$PROFILE\` build already has runtime ${HASH:0:7}, OTA is enough." | tee -a "$summary"
             else
               missing="$missing $platform"
-              echo "$platform: no \`$PROFILE\` build has runtime ${HASH:0:7}, native build needed (~2 USD)." | tee -a "$summary"
+              echo "$platform: no \`$PROFILE\` build has runtime ${HASH:0:7}, native build needed." | tee -a "$summary"
             fi
           done
 
@@ -460,6 +479,21 @@ jobs:
           else
             echo "native=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Native build platforms (matrix)
+        id: platforms
+        env:
+          NATIVE_PLATFORMS: ${{ steps.fingerprint.outputs.native_platforms }}
+        run: |
+          set -euo pipefail
+          # Unquoted on purpose (word splitting, globbing off). Unknown entries
+          # are dropped; an empty list fails the build job visibly (empty matrix).
+          set -f
+          json=$(for p in ${NATIVE_PLATFORMS:-$AUTO_BUILD_PLATFORMS}; do
+            case "$p" in ios | android) echo "$p" ;; esac
+          done | sort -u | jq -R . | jq -cs .)
+          echo "json=$json" >> "$GITHUB_OUTPUT"
+          echo "Native build platforms (if a build is needed): $json"
 
   # ============================================================
   # DEVELOP — OTA only (devs rebuild dev client manually for
@@ -501,19 +535,41 @@ jobs:
   # STAGING — Full build only if native changes, OTA always
   # ============================================================
   build-staging:
-    name: EAS Build (preview)
+    name: >-
+      EAS Build (preview${{ matrix.platform != 'eas' && format(' · {0}', matrix.platform) || '' }})
     needs: [gate]
     if: |
       needs.gate.outputs.branch == 'staging'
       && needs.gate.outputs.client_changed == 'true'
       && needs.gate.outputs.native == 'true'
-    runs-on: ubuntu-24.04
-    # Submits without --wait: ~8-10 min in practice (install + archive upload).
-    timeout-minutes: 30
+    # Builder (#508): GitHub runner by default (`eas build --local`, iOS on
+    # macos-26 with Xcode pinned, Android on Ubuntu), outside the EAS build
+    # quota and free on a public repository. One matrix leg per platform the
+    # gate found without a build of the current fingerprint. Fallback: the
+    # repository variable NATIVE_BUILDER=eas replaces the legs by a single
+    # `eas build` in the EAS cloud (quota of the free plan), as before #508.
+    runs-on: ${{ matrix.platform == 'ios' && 'macos-26' || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: >-
+          ${{ fromJSON(vars.NATIVE_BUILDER == 'eas' && '["eas"]'
+          || needs.gate.outputs.build_platforms) }}
+    # Runner build: ~35-45 min on macOS, ~25-35 min on Ubuntu (beta measures).
+    # EAS cloud: submits without --wait, ~8-10 min.
+    timeout-minutes: 120
+    # Record only, no reviewer (same environment as ota-staging). Holds the
+    # preview Firebase configs read by the runner build.
+    environment:
+      name: preview
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          # No token in .git/config: `eas build` archives the project.
+          persist-credentials: false
 
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm
@@ -524,9 +580,11 @@ jobs:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
-      # Only the platforms the gate found without a build of the current
-      # fingerprint; every AUTO_BUILD_PLATFORMS entry when it fell back.
-      - name: Build preview
+      # NATIVE_BUILDER=eas fallback. Only the platforms the gate found without
+      # a build of the current fingerprint; every AUTO_BUILD_PLATFORMS entry
+      # when it fell back.
+      - name: Build preview (EAS cloud)
+        if: matrix.platform == 'eas'
         working-directory: apps/client
         env:
           NATIVE_PLATFORMS: ${{ needs.gate.outputs.native_platforms }}
@@ -551,8 +609,53 @@ jobs:
           elif [ "$android" = true ]; then PLATFORM=android
           else echo "::error::no platform to build"; exit 1
           fi
-          echo "Building preview for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Building preview in the EAS cloud for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
           eas build --profile preview --platform "$PLATFORM" --non-interactive
+
+      # Same path as the beta promotion (promote-beta, builder=github): Firebase
+      # config from this job's GitHub environment secrets, credentials frozen,
+      # no Sentry source map upload. The binary never leaves the runner except
+      # to EAS (next step): no GitHub artifact, the repository is public.
+      - name: Build preview (GitHub runner)
+        id: build
+        if: matrix.platform != 'eas'
+        timeout-minutes: 100
+        uses: ./.github/actions/eas-local-build
+        with:
+          platform: ${{ matrix.platform }}
+          profile: preview
+          firebase-b64: >-
+            ${{ matrix.platform == 'ios' && secrets.FIREBASE_IOS_PLIST_PREVIEW_B64
+            || secrets.FIREBASE_ANDROID_JSON_PREVIEW_B64 }}
+          firebase-secret-name: >-
+            ${{ matrix.platform == 'ios' && 'FIREBASE_IOS_PLIST_PREVIEW_B64'
+            || 'FIREBASE_ANDROID_JSON_PREVIEW_B64' }}
+
+      # `eas upload` registers the local binary on expo.dev: install link /
+      # download from the project's build page (Expo account members only), and
+      # an EAS record carrying its fingerprint, which the gate and
+      # check-ota-reach.sh look up (eas build:list --fingerprint-hash). It
+      # stores a file, it runs no build: not counted in the EAS build quota.
+      - name: Upload to EAS (eas upload)
+        if: matrix.platform != 'eas'
+        working-directory: apps/client
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          BUILD_PATH: ${{ steps.build.outputs.path }}
+          FINGERPRINT: ${{ steps.build.outputs.fingerprint }}
+        run: |
+          set -euo pipefail
+          trap 'rm -f "$BUILD_PATH"' EXIT
+          args=(--platform "$PLATFORM" --build-path "$BUILD_PATH" --non-interactive --json)
+          if [ -n "$FINGERPRINT" ]; then
+            args+=(--fingerprint "$FINGERPRINT")
+          fi
+          if ! out=$(eas upload "${args[@]}" < /dev/null); then
+            echo "::error::eas upload a échoué : binaire perdu (non conservé), le prochain push le reconstruira"
+            exit 1
+          fi
+          url=$(sed -n '/^{/,$p' <<< "$out" | jq -r '.url // empty' 2> /dev/null || true)
+          echo "📦 Binaire preview $PLATFORM envoyé sur EAS : ${url:-voir expo.dev}" | tee -a "$GITHUB_STEP_SUMMARY"
 
   ota-staging:
     name: OTA Update (preview)
@@ -2191,23 +2294,42 @@ jobs:
   # Full build only if native changes, OTA always.
   # ============================================================
   build-production:
-    name: EAS Build (production)
+    name: >-
+      EAS Build (production${{ matrix.platform != 'eas' && format(' · {0}', matrix.platform) || '' }})
     needs: [gate]
     if: |
       needs.gate.outputs.branch == 'master'
       && needs.gate.outputs.client_changed == 'true'
       && needs.gate.outputs.native == 'true'
-    runs-on: ubuntu-24.04
-    # Submits without --wait: ~8-10 min in practice (install + archive upload).
+    # Builder (#508): GitHub runner by default (`eas build --local`, iOS on
+    # macos-26 with Xcode pinned, Android on Ubuntu), outside the EAS build
+    # quota and free on a public repository. One matrix leg per platform the
+    # gate found without a build of the current fingerprint. Fallback: the
+    # repository variable NATIVE_BUILDER=eas replaces the legs by a single
+    # `eas build` in the EAS cloud (quota of the free plan), as before #508.
+    runs-on: ${{ matrix.platform == 'ios' && 'macos-26' || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: >-
+          ${{ fromJSON(vars.NATIVE_BUILDER == 'eas' && '["eas"]'
+          || needs.gate.outputs.build_platforms) }}
+    # Runner build: ~35-45 min on macOS, ~25-35 min on Ubuntu (beta measures).
+    # EAS cloud: submits without --wait, ~8-10 min.
     # The cap does not count the time spent waiting for the reviewer.
-    timeout-minutes: 30
-    # Same gate as ota-production, and a native build also costs ~2 USD each.
+    timeout-minutes: 120
+    # Same gate as ota-production: required reviewer (owner). Never removed.
+    # Holds the production Firebase configs read by the runner build.
     environment:
       name: app-production
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          # No token in .git/config: `eas build` archives the project.
+          persist-credentials: false
 
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm
@@ -2218,9 +2340,11 @@ jobs:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
-      # Only the platforms the gate found without a build of the current
-      # fingerprint; every AUTO_BUILD_PLATFORMS entry when it fell back.
-      - name: Build production
+      # NATIVE_BUILDER=eas fallback. Only the platforms the gate found without
+      # a build of the current fingerprint; every AUTO_BUILD_PLATFORMS entry
+      # when it fell back.
+      - name: Build production (EAS cloud)
+        if: matrix.platform == 'eas'
         working-directory: apps/client
         env:
           NATIVE_PLATFORMS: ${{ needs.gate.outputs.native_platforms }}
@@ -2245,8 +2369,53 @@ jobs:
           elif [ "$android" = true ]; then PLATFORM=android
           else echo "::error::no platform to build"; exit 1
           fi
-          echo "Building production for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Building production in the EAS cloud for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
           eas build --profile production --platform "$PLATFORM" --non-interactive
+
+      # Same path as the beta promotion (promote-beta, builder=github): Firebase
+      # config from this job's GitHub environment secrets, credentials frozen,
+      # no Sentry source map upload. The binary never leaves the runner except
+      # to EAS (next step): no GitHub artifact, the repository is public.
+      - name: Build production (GitHub runner)
+        id: build
+        if: matrix.platform != 'eas'
+        timeout-minutes: 100
+        uses: ./.github/actions/eas-local-build
+        with:
+          platform: ${{ matrix.platform }}
+          profile: production
+          firebase-b64: >-
+            ${{ matrix.platform == 'ios' && secrets.FIREBASE_IOS_PLIST_PRODUCTION_B64
+            || secrets.FIREBASE_ANDROID_JSON_PRODUCTION_B64 }}
+          firebase-secret-name: >-
+            ${{ matrix.platform == 'ios' && 'FIREBASE_IOS_PLIST_PRODUCTION_B64'
+            || 'FIREBASE_ANDROID_JSON_PRODUCTION_B64' }}
+
+      # `eas upload` registers the local binary on expo.dev: install link /
+      # download from the project's build page (Expo account members only), and
+      # an EAS record carrying its fingerprint, which the gate and
+      # check-ota-reach.sh look up (eas build:list --fingerprint-hash). It
+      # stores a file, it runs no build: not counted in the EAS build quota.
+      - name: Upload to EAS (eas upload)
+        if: matrix.platform != 'eas'
+        working-directory: apps/client
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          BUILD_PATH: ${{ steps.build.outputs.path }}
+          FINGERPRINT: ${{ steps.build.outputs.fingerprint }}
+        run: |
+          set -euo pipefail
+          trap 'rm -f "$BUILD_PATH"' EXIT
+          args=(--platform "$PLATFORM" --build-path "$BUILD_PATH" --non-interactive --json)
+          if [ -n "$FINGERPRINT" ]; then
+            args+=(--fingerprint "$FINGERPRINT")
+          fi
+          if ! out=$(eas upload "${args[@]}" < /dev/null); then
+            echo "::error::eas upload a échoué : binaire perdu (non conservé), le prochain push le reconstruira"
+            exit 1
+          fi
+          url=$(sed -n '/^{/,$p' <<< "$out" | jq -r '.url // empty' 2> /dev/null || true)
+          echo "📦 Binaire production $PLATFORM envoyé sur EAS : ${url:-voir expo.dev}" | tee -a "$GITHUB_STEP_SUMMARY"
 
   ota-production:
     name: OTA Update (production)

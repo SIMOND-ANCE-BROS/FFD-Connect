@@ -1,0 +1,229 @@
+name: EAS local build (GitHub runner)
+description: >-
+  Build one native binary of a distributed variant (preview, production) on
+  this runner with `eas build --local`, outside the EAS build quota. Same path
+  as the beta promotion (promote-beta, builder=github): Xcode pinned on
+  macos-26, Firebase config decoded from a GitHub environment secret into
+  eas-environment-secrets/, credentials frozen, no Sentry source map upload.
+  The binary stays in $RUNNER_TEMP: NEVER upload it as a GitHub artifact (public
+  repository; it embeds the EAS "sensitive" variables).
+  Expects checkout, ./.github/actions/setup-pnpm and expo/expo-github-action
+  (EXPO_TOKEN) to have run. Steps stay bash 3.2 compatible (/bin/bash on macOS).
+
+inputs:
+  platform:
+    description: ios or android (ios needs a macos-26 runner)
+    required: true
+  profile:
+    description: eas.json build profile, preview or production
+    required: true
+  firebase-b64:
+    description: >-
+      Base64 Firebase config of the variant (GoogleService-Info.plist for iOS,
+      google-services.json for Android). Pass the GitHub secret; never printed.
+    required: true
+  firebase-secret-name:
+    description: Name of the GitHub secret passed above (error messages only).
+    required: true
+
+outputs:
+  path:
+    description: Absolute path of the binary ($RUNNER_TEMP).
+    value: ${{ steps.build.outputs.path }}
+  number:
+    description: Build number read from the binary (CFBundleVersion / versionCode).
+    value: ${{ steps.build.outputs.number }}
+  sha256:
+    description: SHA-256 of the binary.
+    value: ${{ steps.build.outputs.sha256 }}
+  fingerprint:
+    description: >-
+      Runtime fingerprint of the binary: the one embedded by expo-updates when
+      present, else the one eas-cli computes for this profile and platform.
+    value: ${{ steps.build.outputs.fingerprint }}
+
+runs:
+  using: composite
+  steps:
+    # Xcode PINNED so that a change of the image's default Xcode never changes
+    # the binary silently. 26.6 compiles expo-modules-jsi 57.1.1 (26.3 does
+    # not: #468). fastlane and CocoaPods, required by `eas build --local`, are
+    # preinstalled on macos-26 (actions/runner-images).
+    - name: Select Xcode (iOS)
+      if: inputs.platform == 'ios'
+      shell: bash
+      env:
+        XCODE_APP: /Applications/Xcode_26.6.app
+      run: |
+        set -euo pipefail
+        if [ ! -d "$XCODE_APP" ]; then
+          echo "::error::$XCODE_APP absent de l'image macos-26 : choisir un Xcode présent (actions/runner-images)"
+          exit 1
+        fi
+        sudo xcode-select -s "$XCODE_APP"
+        xcodebuild -version
+        for tool in fastlane pod; do
+          command -v "$tool" > /dev/null || { echo "::error::$tool absent du runner"; exit 1; }
+        done
+
+    # ~14 GB free on ubuntu-24.04, barely enough for the workspace + Gradle.
+    - name: Free disk space (Android)
+      if: inputs.platform == 'android'
+      shell: bash
+      run: |
+        sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost \
+          "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}/CodeQL"
+        df -h /
+
+    - name: eas build --local
+      id: build
+      shell: bash
+      working-directory: apps/client
+      env:
+        PLATFORM: ${{ inputs.platform }}
+        PROFILE: ${{ inputs.profile }}
+        FIREBASE_B64: ${{ inputs.firebase-b64 }}
+        SECRET: ${{ inputs.firebase-secret-name }}
+        SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+        EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: '1'
+        # Android .aab: bundletool reads the versionCode IN the bundle (#480).
+        # Official google/bundletool jar, checked against the SHA-256 published
+        # on its GitHub release. Bumped by hand (same values as promote-beta).
+        BUNDLETOOL_VERSION: '1.18.3'
+        BUNDLETOOL_SHA256: a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
+        # CocoaPods requires a UTF-8 locale.
+        LANG: en_US.UTF-8
+        LC_ALL: en_US.UTF-8
+      run: |
+        set -euo pipefail
+        umask 077
+        # Variant values: bundle id (app.config.js), Firebase env var name
+        # (GOOGLE_*_<EXPO_PUBLIC_APP_ENV>), binary type (eas.json: internal
+        # distribution = .apk, store = .aab).
+        case "$PROFILE" in
+          preview) APP_ENV=preview EXPECTED_ID=fr.ffdanse.connect.staging ANDROID_EXT=apk ;;
+          production) APP_ENV=production EXPECTED_ID=fr.ffdanse.connect ANDROID_EXT=aab ;;
+          *) echo "::error::profil non géré par cette action : $PROFILE"; exit 1 ;;
+        esac
+        export EXPO_PUBLIC_APP_ENV="$APP_ENV"
+        SUFFIX=$(printf '%s' "$APP_ENV" | tr '[:lower:]' '[:upper:]')
+
+        # Folder name imposed: fingerprint.config.js ignores it, otherwise the
+        # fingerprint computed before the build differs from the build's.
+        SECRETS_DIR="$RUNNER_TEMP/eas-environment-secrets"
+        rm -rf "$SECRETS_DIR"
+        mkdir -p "$SECRETS_DIR"
+        trap 'rm -rf "$SECRETS_DIR"' EXIT
+        case "$PLATFORM" in
+          ios)
+            VAR="GOOGLE_SERVICE_INFO_PLIST_$SUFFIX"
+            FILE="$SECRETS_DIR/GoogleService-Info.$APP_ENV.plist"
+            OUT="$RUNNER_TEMP/ffd-connect-$APP_ENV.ipa"
+            ;;
+          android)
+            VAR="GOOGLE_SERVICES_JSON_$SUFFIX"
+            FILE="$SECRETS_DIR/google-services.$APP_ENV.json"
+            OUT="$RUNNER_TEMP/ffd-connect-$APP_ENV.$ANDROID_EXT"
+            # JDK 17 (React Native 0.86), whatever the image's default JDK.
+            export JAVA_HOME="${JAVA_HOME_17_X64:-$JAVA_HOME}"
+            ;;
+          *)
+            echo "::error::plateforme inattendue : $PLATFORM"
+            exit 1
+            ;;
+        esac
+
+        # Firebase config: never printed. Checked BEFORE the build (a failed
+        # build burns a remote build number): readable, and the right app — the
+        # file of another variant would give silently dead push notifications.
+        if [ -z "$FIREBASE_B64" ]; then
+          echo "::error::secret $SECRET absent de l'environnement GitHub de ce job (docs/exploitation/ci-cd.md, « Builds natifs sur runner GitHub »)"
+          exit 1
+        fi
+        if ! printf '%s' "$FIREBASE_B64" | base64 --decode > "$FILE" 2> /dev/null; then
+          echo "::error::secret $SECRET : base64 illisible"
+          exit 1
+        fi
+        unset FIREBASE_B64
+        if [ "$PLATFORM" = "ios" ]; then
+          FOUND_ID=$(plutil -extract BUNDLE_ID raw -o - "$FILE" 2> /dev/null || true)
+          if [ "$FOUND_ID" != "$EXPECTED_ID" ]; then
+            echo "::error::secret $SECRET : BUNDLE_ID ${FOUND_ID:-illisible}, attendu $EXPECTED_ID"
+            exit 1
+          fi
+        elif ! jq -e --arg p "$EXPECTED_ID" \
+          'any(.client[]?; .client_info.android_client_info.package_name == $p)' "$FILE" > /dev/null 2>&1; then
+          echo "::error::secret $SECRET : aucun client Android $EXPECTED_ID dans ce google-services.json"
+          exit 1
+        fi
+        export "$VAR=$FILE"
+
+        # bundletool fetched and verified BEFORE the build (.aab only).
+        if [ "$PLATFORM" = "android" ] && [ "$ANDROID_EXT" = "aab" ]; then
+          BUNDLETOOL="$RUNNER_TEMP/bundletool.jar"
+          curl -fsSL --retry 3 -o "$BUNDLETOOL" \
+            "https://github.com/google/bundletool/releases/download/$BUNDLETOOL_VERSION/bundletool-all-$BUNDLETOOL_VERSION.jar"
+          if [ "$(shasum -a 256 "$BUNDLETOOL" | cut -d ' ' -f 1)" != "$BUNDLETOOL_SHA256" ]; then
+            echo "::error::bundletool $BUNDLETOOL_VERSION : empreinte SHA-256 inattendue, build non lancé"
+            exit 1
+          fi
+        fi
+
+        if ! eas build --local --platform "$PLATFORM" --profile "$PROFILE" --non-interactive \
+          --freeze-credentials --output "$OUT" < /dev/null; then
+          echo "::error::eas build --local a échoué (numéro de build distant consommé : le prochain build prendra le suivant)"
+          exit 1
+        fi
+
+        # Identity and build number read IN the binary, never from the EAS
+        # remote counter (a parallel build could have moved it, #480).
+        if [ "$PLATFORM" = "ios" ]; then
+          unzip -p "$OUT" 'Payload/*.app/Info.plist' > "$RUNNER_TEMP/Info.plist"
+          BUNDLE=$(plutil -extract CFBundleIdentifier raw -o - "$RUNNER_TEMP/Info.plist" 2> /dev/null || true)
+          BUILD_NUMBER=$(plutil -extract CFBundleVersion raw -o - "$RUNNER_TEMP/Info.plist" 2> /dev/null || true)
+          rm -f "$RUNNER_TEMP/Info.plist"
+          EMBEDDED_FP=$(unzip -p "$OUT" 'Payload/*.app/EXUpdates.bundle/fingerprint' 2> /dev/null || true)
+        elif [ "$ANDROID_EXT" = "aab" ]; then
+          dump_manifest() {
+            "$JAVA_HOME/bin/java" -jar "$BUNDLETOOL" dump manifest --bundle="$OUT" --xpath="$1" 2> /dev/null \
+              | tr -d '[:space:]' || true
+          }
+          BUNDLE=$(dump_manifest /manifest/@package)
+          BUILD_NUMBER=$(dump_manifest /manifest/@android:versionCode)
+          EMBEDDED_FP=$(unzip -p "$OUT" base/assets/fingerprint 2> /dev/null || true)
+        else
+          # .apk: aapt2 from the newest build-tools of the image's Android SDK.
+          AAPT2=$(ls -d "${ANDROID_HOME:-/usr/local/lib/android/sdk}"/build-tools/*/aapt2 2> /dev/null | sort -V | tail -n 1 || true)
+          BADGING=$("${AAPT2:-aapt2}" dump badging "$OUT" 2> /dev/null | head -n 1 || true)
+          BUNDLE=$(sed -nE "s/.*package: name='([^']+)'.*/\1/p" <<< "$BADGING")
+          BUILD_NUMBER=$(sed -nE "s/.*versionCode='([0-9]+)'.*/\1/p" <<< "$BADGING")
+          EMBEDDED_FP=$(unzip -p "$OUT" assets/fingerprint 2> /dev/null || true)
+        fi
+        if [ "$BUNDLE" != "$EXPECTED_ID" ]; then
+          echo "::error::binaire construit pour ${BUNDLE:-? (illisible)}, attendu $EXPECTED_ID"
+          exit 1
+        fi
+        if ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]{0,8}$ ]]; then
+          echo "::warning::numéro de build illisible dans le binaire"
+          BUILD_NUMBER=""
+        fi
+
+        # The fingerprint registered with `eas upload` is what the gate and
+        # check-ota-reach.sh look up (eas build:list --fingerprint-hash): the
+        # runtime the binary really carries, else the one eas-cli computes for
+        # the profile (same command as the gate).
+        FINGERPRINT=$(tr -d '[:space:]' <<< "$EMBEDDED_FP")
+        if ! [[ "$FINGERPRINT" =~ ^[0-9a-f]{40}$ ]]; then
+          FINGERPRINT=$(eas fingerprint:generate --build-profile "$PROFILE" --platform "$PLATFORM" --json --non-interactive \
+            < /dev/null 2> /dev/null | sed -n '/^{/,$p' | jq -r '.hash // empty' 2> /dev/null || true)
+          echo "::notice::empreinte non embarquée dans le binaire : empreinte calculée par eas-cli (${FINGERPRINT:-indisponible})"
+        fi
+
+        SHA256=$(shasum -a 256 "$OUT" | cut -d ' ' -f 1)
+        {
+          echo "path=$OUT"
+          echo "number=$BUILD_NUMBER"
+          echo "sha256=$SHA256"
+          echo "fingerprint=$FINGERPRINT"
+        } >> "$GITHUB_OUTPUT"
+        echo "Build $PLATFORM $PROFILE **${BUILD_NUMBER:-?}** (runtime \`${FINGERPRINT:0:7}\`) — SHA-256 \`$SHA256\`." >> "$GITHUB_STEP_SUMMARY"
