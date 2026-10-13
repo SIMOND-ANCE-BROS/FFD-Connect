@@ -1505,8 +1505,10 @@ jobs:
         env:
           EXPO_PUBLIC_APP_ENV: beta
           # Lecture des releases beta-* (empreintes des builds sur runner,
-          # #510) par check-ota-reach.sh. Jeton du job : contents: read.
-          GH_TOKEN: ${{ github.token }}
+          # #510) par check-ota-reach.sh. Jeton du job (contents: read), sous
+          # un nom qu'aucun outil ne lit : il n'est passé en GH_TOKEN qu'au
+          # script de contrôle, jamais à eas-cli ni au code de staging.
+          RELEASES_READ_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # Script de contrôle tiré du commit du WORKFLOW (github.sha, develop),
@@ -1526,11 +1528,11 @@ jobs:
               | sed -n '/^{/,$p' | jq -r .hash)
             echo "{\"platform\":\"$p\",\"runtimeVersion\":\"$RUNTIME\"}"
           done | jq -s . > "$RUNNER_TEMP/beta-runtime.json"
-          "$CHECK" beta "$RUNNER_TEMP/beta-runtime.json" --strict
+          GH_TOKEN="$RELEASES_READ_TOKEN" "$CHECK" beta "$RUNNER_TEMP/beta-runtime.json" --strict
           eas update --branch beta --message "promote staging @ $(git rev-parse --short HEAD)" \
             --json --non-interactive > "$RUNNER_TEMP/eas-update.json"
           # Contrôle après coup : l'empreinte publiée est-elle bien celle vérifiée ?
-          "$CHECK" beta "$RUNNER_TEMP/eas-update.json" --strict
+          GH_TOKEN="$RELEASES_READ_TOKEN" "$CHECK" beta "$RUNNER_TEMP/eas-update.json" --strict
 
       # Tag & GitHub Release : job release-beta (#477), après ce job, à partir
       # de l'état transmis (numéro de build, commit, empreinte, notes). Ce job
@@ -1678,8 +1680,9 @@ jobs:
       # pour l'OTA beta (#510), comme preview/production depuis #509. Étape en
       # ligne (pas l'action locale eas-local-build) : ce job tourne sur l'arbre
       # de staging, une nouvelle action n'y existerait pas encore.
-      # Après l'envoi au store, et seulement s'il n'a pas échoué : un binaire
-      # absent du store ne doit pas faire passer le contrôle. Jamais bloquante
+      # Après l'envoi au store, et seulement s'il est terminé (FINISHED ; une
+      # soumission encore en file peut échouer) : un binaire absent du store
+      # ne doit pas faire passer le contrôle. Jamais bloquante
       # (le store compte plus) : un échec laisse un avertissement, et la
       # release porte de toute façon l'empreinte (secours du contrôle).
       # Téléverse un fichier, ne lance aucun build : hors quota EAS.
@@ -1687,7 +1690,7 @@ jobs:
         if: >-
           !cancelled() && inputs.action == 'build' && inputs.builder != 'eas'
           && steps.ghbuild.outputs.number != '' && steps.submit.outcome == 'success'
-          && steps.submit.outputs.state != 'failed'
+          && steps.submit.outputs.state == 'finished'
         working-directory: apps/client
         timeout-minutes: 20
         env:
@@ -1786,6 +1789,13 @@ jobs:
           # Version marketing de ce commit : distribute-beta la passe à
           # testflight-distribute (--version) pour ne pas viser un homonyme.
           VERSION=$(sed -nE 's/.*version: "([^"]+)", \/\/ x-release-please-version.*/\1/p' apps/client/app.config.js 2> /dev/null || true)
+          # Empreinte transmise (donc écrite dans la release, que relit le
+          # contrôle de l'OTA beta) seulement si le binaire est arrivé au
+          # store : un binaire jamais envoyé ne doit pas faire passer le
+          # contrôle.
+          if [ "$SUBMIT_STATE" != "finished" ]; then
+            BINARY_FINGERPRINT=""
+          fi
           jq -n \
             --arg platform "$PLATFORM" --arg skip "${SKIP:-false}" \
             --arg build_id "$BUILD_ID" --arg build_number "$BUILD_NUMBER" \

@@ -78,8 +78,12 @@ released() {
   # Toutes les pages : les releases OTA preview quotidiennes repoussent vite
   # les beta-* hors de la première. grep sans -q : avec pipefail, une sortie
   # anticipée de grep ferait échouer gh (SIGPIPE) et donc le test.
+  # Seulement les releases créées par la CI (github-actions[bot]) et la
+  # PREMIÈRE ligne du corps (l'en-tête écrit par release-beta) : les notes qui
+  # suivent viennent des PR et ne doivent pas pouvoir faire passer le contrôle.
   gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-    --jq ".[] | select(.tag_name | test(\"^beta-[0-9.]+-$1-[0-9]+\$\")) | .body" \
+    --jq ".[] | select(.tag_name | test(\"^beta-[0-9.]+-$1-[0-9]+\$\"))
+      | select(.author.login == \"github-actions[bot]\") | ((.body // \"\") | split(\"\n\")[0] // \"\")" \
     < /dev/null 2> /dev/null | grep -F "Runtime fingerprint: \`$2\`" > /dev/null
 }
 
