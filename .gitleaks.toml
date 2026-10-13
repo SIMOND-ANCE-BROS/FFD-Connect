@@ -1,0 +1,53 @@
+# gitleaks configuration (#483) — used by the pre-commit hook and the CI
+# `secret-scan` job, both through scripts/gitleaks.sh.
+#
+# Keep the exceptions MINIMAL and TARGETED: every allowlist below matches a
+# known fake value or a pattern that cannot be a credential. Never allowlist a
+# whole directory or a whole file type (e.g. every *.spec.ts): a real key pasted
+# into a test would then slip through. For a one-off false positive, prefer an
+# inline `gitleaks:allow` comment on the offending line, with a reason.
+#
+# Runbook (what to do when it blocks): docs/exploitation/ci-cd-minimal.md,
+# section « Scan des secrets (gitleaks) ».
+
+title = "FFD-Connect gitleaks config"
+
+[extend]
+# Start from the upstream default rule set (shipped inside the pinned binary).
+useDefault = true
+
+# Fixed fake token shared by the logging / redaction unit tests: they assert it
+# is masked in logs and Sentry events. Only exempt inside test files.
+[[allowlists]]
+description = "Redaction test fixture token (spec files only)"
+condition = "AND"
+paths = ['''\.spec\.ts$''']
+regexes = ['''q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW''']
+
+# Documentation / example placeholders: `your-access-token`, `your-private-key`,
+# and the JWT_SECRET placeholder used by the env validation tests.
+[[allowlists]]
+description = "Obvious placeholders in docs, .env.example and tests"
+regexTarget = "secret"
+regexes = [
+  '''^your-[a-z0-9-]+$''',
+  '''^a-very-long-secret-that-is-at-least-32-chars-long$''',
+]
+
+# Truncated PEM placeholders such as "-----BEGIN PRIVATE KEY-----\n..." (format
+# hints in .env.example and env.validation.spec.ts) — no key material at all.
+[[allowlists]]
+description = "Truncated PEM placeholder (no key material)"
+targetRules = ["private-key"]
+regexTarget = "match"
+regexes = ['''-----BEGIN[ A-Z]*PRIVATE KEY-----(\\n)?\.\.\.''']
+
+# generic-api-key fires on `key === "WDSF_API_KEY"`: the "secret" is the name of
+# an environment variable (SCREAMING_SNAKE_CASE with at least one underscore),
+# never a credential. Scoped to that rule so provider rules (e.g. AWS key IDs,
+# which are upper-case alphanumerics without underscore) are unaffected.
+[[allowlists]]
+description = "Environment variable names are not secrets"
+targetRules = ["generic-api-key"]
+regexTarget = "secret"
+regexes = ['''^[A-Z][A-Z0-9]*(_[A-Z0-9]+)+$''']

@@ -57,6 +57,7 @@ A PR cannot merge unless these pass (see `docs/exploitation/ci-cd-minimal.md`):
 | `client`             | Lint + unit tests                     |
 | `docs-build`         | `astro build` on apps/docs            |
 | `audit-dependencies` | osv-scanner (OSV DB) — high/critical  |
+| `secret-scan`        | gitleaks on the commits the PR adds   |
 
 Informational (non-blocking): `playwright-e2e`, `mutation` (Stryker). Weekly `mutation-nightly.yml` (Sundays) provides full mutation coverage.
 
