@@ -1,4 +1,5 @@
 import { ApiProperty } from "@nestjs/swagger";
+import { Transform } from "class-transformer";
 import {
   IsNotEmpty,
   IsString,
@@ -6,6 +7,7 @@ import {
   MaxLength,
   MinLength,
 } from "class-validator";
+import { normalizeEmailTransform } from "../email-identity";
 
 /**
  * DTO pour l'authentification d'un utilisateur
@@ -16,6 +18,7 @@ export class LoginDto {
     example: "user@example.com",
     type: "string",
   })
+  @Transform(normalizeEmailTransform)
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)

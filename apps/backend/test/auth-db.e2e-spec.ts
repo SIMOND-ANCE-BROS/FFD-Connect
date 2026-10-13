@@ -20,6 +20,8 @@ describe("AuthController (e2e with real DB)", () => {
   let prisma: PrismaService;
   const testEmail = `e2e-db-auth-${Date.now()}@test.com`;
   const plainPassword = "E2ePassword123!";
+  // Account stored before addresses were normalised at write time (#465).
+  const legacyEmail = `E2E-Legacy-${Date.now()}@Test.com`;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await applyE2EOverrides(
@@ -57,11 +59,20 @@ describe("AuthController (e2e with real DB)", () => {
         role: UserRole.LICENSEE,
       },
     });
+    await prisma.user.create({
+      data: {
+        email: legacyEmail,
+        password: hashedPassword,
+        firstName: "E2E",
+        lastName: "Legacy",
+        role: UserRole.LICENSEE,
+      },
+    });
   }, 30000);
 
   afterAll(async () => {
     await prisma?.user
-      ?.deleteMany({ where: { email: testEmail } })
+      ?.deleteMany({ where: { email: { in: [testEmail, legacyEmail] } } })
       .catch(() => {});
     await app?.close();
   }, 10000);
@@ -75,5 +86,44 @@ describe("AuthController (e2e with real DB)", () => {
         expect(res.body).toHaveProperty("access_token");
         expect(res.body.user).toHaveProperty("email", testEmail);
       });
+  });
+
+  it("POST /auth/login accepts another casing, padded, of a normalised address (#465)", () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .post("/api/v1/auth/login")
+      .send({
+        username: `  ${testEmail.toUpperCase()} `,
+        password: plainPassword,
+      })
+      .expect(201)
+      .expect((res) => {
+        expect(res.body.user).toHaveProperty("email", testEmail);
+      });
+  });
+
+  it("POST /auth/login finds a legacy account stored with capitals (#465)", () => {
+    return request(app.getHttpServer() as Parameters<typeof request>[0])
+      .post("/api/v1/auth/login")
+      .send({ username: legacyEmail.toLowerCase(), password: plainPassword })
+      .expect(201)
+      .expect((res) => {
+        expect(res.body.user).toHaveProperty("email", legacyEmail);
+      });
+  });
+
+  it("POST /auth/forgot-password issues a reset token for a legacy mixed-case account (#465)", async () => {
+    const legacy = await prisma.user.findUniqueOrThrow({
+      where: { email: legacyEmail },
+      select: { id: true },
+    });
+    await request(app.getHttpServer() as Parameters<typeof request>[0])
+      .post("/api/v1/auth/forgot-password")
+      .send({ email: legacyEmail.toLowerCase() })
+      .expect((res) => {
+        expect(res.status).toBeLessThan(300);
+      });
+    await expect(
+      prisma.passwordResetToken.count({ where: { userId: legacy.id } }),
+    ).resolves.toBeGreaterThan(0);
   });
 });

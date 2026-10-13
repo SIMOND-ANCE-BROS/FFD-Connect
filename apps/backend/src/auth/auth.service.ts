@@ -21,6 +21,11 @@ import {
   accountBlockReason,
 } from "./account-status";
 import { AuthTokenService } from "./auth-token.service";
+import {
+  findUserIdByEmail,
+  isEmailTaken,
+  normalizeEmail,
+} from "./email-identity";
 import { LICENSE_NUMBER_MAX_LENGTH } from "./dto/register.dto";
 import { PasswordValidator } from "./password-validator";
 import { hasRole, rolesOf } from "./roles";
@@ -110,12 +115,16 @@ export class AuthService {
       },
     } as const;
 
+    // Case / spaces of the typed address do not matter (#465).
+    const userId = await findUserIdByEmail(this.prisma, email);
+    if (!userId) return null;
+
     let user:
       | (AccountStatusFields & { password: string; [k: string]: unknown })
       | null = null;
     try {
       user = await this.prisma.user.findUnique({
-        where: { email },
+        where: { id: userId },
         select: fullSelect,
       });
     } catch (err) {
@@ -125,7 +134,7 @@ export class AuthService {
       ) {
         // Base ou schéma pas à jour : requête minimale (colonnes historiques)
         user = await this.prisma.user.findUnique({
-          where: { email },
+          where: { id: userId },
           select: {
             id: true,
             email: true,
@@ -196,14 +205,10 @@ export class AuthService {
     }
 
     // 2. Normalize email
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
 
-    // 3. Check email not already taken
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: normalizedEmail },
-      select: { id: true },
-    });
-    if (existingUser) {
+    // 3. Check email not already taken, whatever its casing (#465)
+    if (await isEmailTaken(this.prisma, normalizedEmail)) {
       throw new ConflictException("Un compte existe déjà avec cet email");
     }
 
@@ -434,20 +439,22 @@ export class AuthService {
       throw new BadRequestException("Cible manquante (userId ou email).");
     }
 
-    const targetUser = await this.prisma.user.findUnique({
-      where: target.userId
-        ? { id: target.userId }
-        : { email: target.email!.trim().toLowerCase() },
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        clubId: true,
-        clubName: true,
-        ...accountStatusSelect, // includes role
-      },
-    });
+    const targetUserId =
+      target.userId || (await findUserIdByEmail(this.prisma, target.email!));
+    const targetUser = targetUserId
+      ? await this.prisma.user.findUnique({
+          where: { id: targetUserId },
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            clubId: true,
+            clubName: true,
+            ...accountStatusSelect, // includes role
+          },
+        })
+      : null;
     if (!targetUser) {
       throw new NotFoundException("Utilisateur cible introuvable.");
     }

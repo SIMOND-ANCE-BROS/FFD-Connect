@@ -11,6 +11,7 @@ import {
   IsUUID,
   Length,
 } from "class-validator";
+import { normalizeEmailTransform } from "../../auth/email-identity";
 import type { InvitationRole } from "../../auth/email.service";
 import { UpdateAdminUserDto } from "./update-admin-user.dto";
 
@@ -36,7 +37,7 @@ export class CreateAdminUserDto extends PickType(UpdateAdminUserDto, [
   "nationalRanking",
 ] as const) {
   @ApiProperty()
-  @Transform(trim)
+  @Transform(normalizeEmailTransform)
   @IsEmail()
   email!: string;
 

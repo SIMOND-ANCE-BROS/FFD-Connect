@@ -31,6 +31,7 @@ describe("AdminUserAccountsService", () => {
     prisma.$transaction.mockImplementation(((fn: (tx: unknown) => unknown) =>
       fn(prisma)) as never);
     prisma.user.findUnique.mockResolvedValue(null);
+    prisma.user.findMany.mockResolvedValue([]);
     prisma.club.findUnique.mockResolvedValue(null);
     prisma.club.findFirst.mockResolvedValue(null);
     prisma.club.create.mockResolvedValue({
@@ -334,6 +335,19 @@ describe("AdminUserAccountsService", () => {
       where: { email: "jeanne@example.fr" },
       select: { id: true },
     });
+  });
+
+  it("409s on a legacy account whose stored email differs only by case (#465)", async () => {
+    prisma.user.findMany.mockResolvedValue([{ id: "legacy" }] as never);
+    await expect(service.create("admin-1", dto({}))).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { email: { equals: "jeanne@example.fr", mode: "insensitive" } },
+      select: { id: true },
+      take: 2,
+    });
+    expect(prisma.user.create).not.toHaveBeenCalled();
   });
 
   it("409s with the existing club id when the new club name exists", async () => {

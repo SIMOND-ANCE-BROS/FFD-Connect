@@ -15,7 +15,12 @@ import { AuthTokenService } from "./auth-token.service";
 describe("AuthService.register", () => {
   let authService: AuthService;
   let prisma: {
-    user: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+    user: {
+      findUnique: jest.Mock;
+      findMany: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
     license: { findUnique: jest.Mock; update: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -26,6 +31,7 @@ describe("AuthService.register", () => {
     prisma = {
       user: {
         findUnique: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
         update: jest.fn().mockResolvedValue({}),
       },
@@ -118,6 +124,27 @@ describe("AuthService.register", () => {
         "Dupont",
       ),
     ).rejects.toThrow(ConflictException);
+  });
+
+  it("rejects an address already used with another casing (#465)", async () => {
+    // No exact match on the normalised form, but a legacy mixed-case row.
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.user.findMany.mockResolvedValue([{ id: "legacy" }]);
+
+    await expect(
+      authService.register(
+        " Taken@Example.com ",
+        "MonPass1!abc",
+        "FFD-2025-001",
+        "Dupont",
+      ),
+    ).rejects.toThrow(ConflictException);
+    expect(prisma.user.findMany).toHaveBeenCalledWith({
+      where: { email: { equals: "taken@example.com", mode: "insensitive" } },
+      select: { id: true },
+      take: 2,
+    });
+    expect(prisma.license.findUnique).not.toHaveBeenCalled();
   });
 
   it("rejects if license number not found", async () => {

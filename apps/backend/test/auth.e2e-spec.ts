@@ -24,6 +24,8 @@ describe("AuthController (e2e)", () => {
     const mockPrisma = {
       user: {
         findUnique: jest.fn(),
+        // Case-insensitive email fallback (#465): no legacy mixed-case row.
+        findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockResolvedValue({ id: "user-1" }),
       },
       refreshToken: {
@@ -140,6 +142,30 @@ describe("AuthController (e2e)", () => {
         expect(res.body.user).toHaveProperty("email", "test@example.com");
         expect(res.body.user).toHaveProperty("licenseNumber", "12345");
       });
+  });
+
+  it("/api/v1/auth/login (POST) - accepts the address typed with capitals and spaces (#465)", async () => {
+    const password = "password123";
+    const mockUser = {
+      id: "test-uuid",
+      email: "test@example.com",
+      password: await bcrypt.hash(password, 10),
+      disabledAt: null,
+      club: null,
+      role: "LICENSEE",
+    };
+    const findUnique = prismaService.user.findUnique as jest.Mock;
+    findUnique.mockClear();
+    findUnique.mockResolvedValue(mockUser);
+
+    await request(app.getHttpServer() as Parameters<typeof request>[0])
+      .post("/api/v1/auth/login")
+      .send({ username: "  Test@Example.COM ", password })
+      .expect(201);
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { email: "test@example.com" },
+      select: { id: true },
+    });
   });
 
   it("/api/v1/auth/login (POST) - fails with wrong password", async () => {
