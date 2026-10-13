@@ -13,8 +13,12 @@
  *
  * RENOMMAGE, jamais recréation : seul un compte portant le drapeau
  * `isStoreReview` est mis à jour (un compte non marqué qui détient l'email
- * cible ou l'ancien `licensee@test.com` est un CONFLIT : erreur, rien écrit —
- * jamais d'élévation d'un compte tiers). Email et noms ne sont réécrits qu'à la
+ * cible est un CONFLIT : erreur, rien écrit — jamais d'élévation d'un compte
+ * tiers). Le compte retenu est celui que garde la purge du boot
+ * (pickStoreReviewAccount) ; s'il existe plusieurs comptes marqués, le seed le
+ * signale (log par id + `process.exitCode = 1`, #473) sans toucher aux
+ * doublons. L'ancien `licensee@test.com` n'est plus recherché par email : non
+ * marqué, c'est un compte de test ordinaire que la purge supprime. Email et noms ne sont réécrits qu'à la
  * migration depuis l'ancien email (une modification faite ensuite depuis le
  * back-office n'est pas écrasée à chaque boot) ; l'id, les données de carrière
  * et les sessions survivent. Idem pour le club (renommé s'il porte encore
@@ -37,7 +41,6 @@ import * as bcrypt from "bcrypt";
 import "dotenv/config";
 import { Pool } from "pg";
 import {
-  LEGACY_STORE_REVIEW_EMAIL,
   STORE_REVIEW_CLUB_NAME,
   STORE_REVIEW_EMAIL,
 } from "./purge-test-accounts.utils";
@@ -45,6 +48,7 @@ import {
   STORE_REVIEW_CLUB_LOOKUP_NAMES,
   STORE_REVIEW_FIRST_NAME,
   STORE_REVIEW_LAST_NAME,
+  formatDuplicateStoreReviewAccounts,
   pickStoreReviewClub,
   planClubRename,
   planPasswordUpdate,
@@ -148,7 +152,6 @@ async function main() {
       OR: [
         { isStoreReview: true },
         { email: { equals: STORE_REVIEW_EMAIL, mode: "insensitive" } },
-        { email: { equals: LEGACY_STORE_REVIEW_EMAIL, mode: "insensitive" } },
       ],
     },
     select: {
@@ -193,7 +196,12 @@ async function main() {
   let user: { id: string } | null;
   if (decision.kind === "update") {
     const existing = decision.user;
-    const rename = planUserRename(existing, null);
+    if (decision.duplicateIds.length > 0) {
+      fail(
+        formatDuplicateStoreReviewAccounts(existing.id, decision.duplicateIds),
+      );
+    }
+    const rename = planUserRename(existing, decision.emailHolder);
     if (!rename.ok) {
       fail(rename.error);
       return;
@@ -256,7 +264,7 @@ async function main() {
   });
 
   console.log(
-    `Store-review account seeded: ${STORE_REVIEW_EMAIL} (ADMIN + ${EXTRA_ROLES.join(", ")}, club "${club.name}", license valid until ${LICENSE_VALID_UNTIL.toISOString().slice(0, 10)})`,
+    `Store-review account seeded: ${user.id} (ADMIN + ${EXTRA_ROLES.join(", ")}, club "${club.name}", license valid until ${LICENSE_VALID_UNTIL.toISOString().slice(0, 10)})`,
   );
 }
 

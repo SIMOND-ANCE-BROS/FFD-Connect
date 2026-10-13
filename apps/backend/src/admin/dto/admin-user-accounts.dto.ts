@@ -4,6 +4,7 @@ import { Transform } from "class-transformer";
 import {
   ArrayUnique,
   IsArray,
+  IsAscii,
   IsEmail,
   IsIn,
   IsOptional,
@@ -11,6 +12,11 @@ import {
   IsUUID,
   Length,
 } from "class-validator";
+import {
+  normalizeEmailTransform,
+  STORED_EMAIL_ASCII_MESSAGE,
+  STORED_EMAIL_OPTIONS,
+} from "../../auth/email-identity";
 import type { InvitationRole } from "../../auth/email.service";
 import { UpdateAdminUserDto } from "./update-admin-user.dto";
 
@@ -36,8 +42,9 @@ export class CreateAdminUserDto extends PickType(UpdateAdminUserDto, [
   "nationalRanking",
 ] as const) {
   @ApiProperty()
-  @Transform(trim)
-  @IsEmail()
+  @Transform(normalizeEmailTransform)
+  @IsEmail(STORED_EMAIL_OPTIONS)
+  @IsAscii({ message: STORED_EMAIL_ASCII_MESSAGE })
   email!: string;
 
   @ApiProperty()

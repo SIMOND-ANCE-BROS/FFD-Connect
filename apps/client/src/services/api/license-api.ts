@@ -1,8 +1,4 @@
-import * as FileSystem from "expo-file-system";
-import {
-  type FileSystemUploadType,
-  readAsStringAsync as fsReadAsStringAsync,
-} from "expo-file-system/legacy";
+import { readAsStringAsync as fsReadAsStringAsync } from "expo-file-system/legacy";
 import { Platform } from "react-native";
 import {
   appleWalletControllerCreateDownloadLink,
@@ -17,14 +13,12 @@ import {
   httpGet,
   httpPost,
 } from "../../utils/httpInterceptor";
-import { createLogger } from "../../utils/logger";
-
-const logger = createLogger("LicenseApi");
 
 /**
- * Error of a refused renewal-document upload. The server's refusal can be
- * medical (#225): its text lands in `userMessage` for display, never in the
- * error's `message`, which is what logs and Sentry read.
+ * Error of a refused renewal-document upload (file type, size, request no
+ * longer a draft…). Should a refusal ever describe the document's content,
+ * which may be health data (#225), its text lands in `userMessage` for
+ * display, never in the error's `message`, which is what logs and Sentry read.
  */
 async function uploadError(response: Response): Promise<HttpError> {
   const body = (await response.json().catch(() => null)) as HttpErrorData;
@@ -283,64 +277,5 @@ export const LicenseApi = {
         logErrors: true,
       },
     );
-  },
-
-  async renewLicense(token: string, certificateUri: string) {
-    const uploadUrl = `${BACKEND_URL}/licenses/renew`;
-
-    try {
-      const fileUri = certificateUri.replace("file://", "");
-      const base64 = await fsReadAsStringAsync(fileUri, {
-        encoding: "base64",
-      });
-
-      if (Platform.OS === "web") {
-        const byteCharacters = atob(base64);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const blob = new Blob([byteArray as unknown as string], {
-          type: "image/jpeg",
-          lastModified: Date.now(),
-        });
-
-        const webFormData = new FormData();
-        (
-          webFormData as FormData & {
-            append(n: string, v: Blob, f: string): void;
-          }
-        ).append("certificate", blob, "certificate.jpg");
-
-        const response = await fetch(uploadUrl, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: webFormData,
-        });
-
-        if (response.status !== 200 && response.status !== 201) {
-          throw new Error(`Upload failed with status ${response.status}`);
-        }
-
-        return (await response.json()) as unknown;
-      } else {
-        const uploadResult = await FileSystem.uploadAsync(uploadUrl, fileUri, {
-          httpMethod: "POST",
-          uploadType: 1 as FileSystemUploadType,
-          fieldName: "certificate",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        if (uploadResult.status !== 200 && uploadResult.status !== 201) {
-          throw new Error(`Upload failed with status ${uploadResult.status}`);
-        }
-
-        return JSON.parse(uploadResult.body) as Record<string, unknown>;
-      }
-    } catch (error) {
-      logger.error("[LicenseApi] Renewal failed", error);
-      throw error;
-    }
   },
 };

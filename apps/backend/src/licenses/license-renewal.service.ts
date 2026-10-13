@@ -2,7 +2,6 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
-  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import {
@@ -13,25 +12,16 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
-import { CodedBadRequestException } from "../common/errors/coded-bad-request.exception";
 import { OcrService } from "../utils/ocr.service";
 import {
   idOnlySelect,
   licenseRenewalRequestResponseSelect,
   licenseRenewalSubmitTargetSelect,
   licenseRenewalUploadTargetSelect,
+  userLicenseValidUntilSelect,
 } from "../utils/prisma-selects";
-import {
-  MEDICAL_CERTIFICATE_VALIDITY_MONTHS,
-  medicalCertificatePurgeDueAt,
-} from "./medical-certificate-retention.util";
+import { medicalCertificatePurgeDueAt } from "./medical-certificate-retention.util";
 import { isLicenseCoveredForRenewal } from "./license-season";
-import { normalizeLicenseNumber } from "./license-number.util";
-import {
-  approvePendingRenewal,
-  LicenseNumberTakenException,
-  LicenseNumberUnknownException,
-} from "./license-renewal-approval";
 import { LicenseRenewalNotificationService } from "./license-renewal-notification.service";
 import { toLicenseQrExpiry } from "./qr/license-qr";
 import {
@@ -40,38 +30,8 @@ import {
   toRenewalRequestResponse,
 } from "./renewal-ocr-data.util";
 
-/**
- * Âge maximum du certificat médical en mois (règle fédération : certificat
- * récent). Importé plutôt que redéclaré : refuser un certificat parce qu'il est
- * trop vieux et calculer la date de sa purge (#62) reposent sur la MÊME notion
- * de validité, et deux constantes finiraient par diverger.
- */
-const MEDICAL_CERTIFICATE_MAX_AGE_MONTHS = MEDICAL_CERTIFICATE_VALIDITY_MONTHS;
-
-/**
- * Stable codes of the refusals whose message is health data (#225). The user
- * still reads the French message; the logs only ever see the code.
- */
-export const RenewalErrorCode = {
-  /** The certificate states a contraindication. */
-  MEDICAL_UNFIT: "MEDICAL_UNFIT",
-  /** Fitness could not be read on the certificate. */
-  MEDICAL_FITNESS_UNCONFIRMED: "MEDICAL_FITNESS_UNCONFIRMED",
-  /** The certificate is older than the federation allows (message has its date). */
-  MEDICAL_CERTIFICATE_TOO_OLD: "MEDICAL_CERTIFICATE_TOO_OLD",
-} as const;
-
-/**
- * The only code the logs see for any of the refusals above: the fine codes
- * go to the client, but logged next to a request they would still reveal the
- * user's fitness.
- */
-export const RENEWAL_DOCUMENT_REJECTED = "RENEWAL_DOCUMENT_REJECTED";
-
 @Injectable()
 export class LicenseRenewalService {
-  private readonly logger = new Logger(LicenseRenewalService.name);
-
   constructor(
     private prisma: PrismaService,
     private ocrService: OcrService,
@@ -137,6 +97,11 @@ export class LicenseRenewalService {
    * Ajoute un document à une demande de renouvellement et lance l'OCR selon le type.
    * Remplace tout document existant du même type pour cette demande.
    *
+   * L'OCR ne refuse jamais le document (#271) : aptitude, date et numéro lus
+   * sont conservés dans `ocrData` comme indices pour l'administrateur qui
+   * décide. Un certificat illisible, ancien ou défavorable est donc archivé tel
+   * quel, avec son échéance de purge.
+   *
    * Le fichier est reçu en mémoire (buffer) : l'OCR lit directement les octets,
    * puis le document est archivé dans Azure Blob Storage (backend sans état). La
    * référence blob (`blobName`) est persistée dans le champ `filePath`.
@@ -163,27 +128,11 @@ export class LicenseRenewalService {
     // persist raw certificate text, whatever it returns.
     let ocrData: RenewalOcrData | null = null;
     if (type === LicenseRenewalDocumentType.MEDICAL_CERTIFICATE) {
-      const medical =
+      ocrData =
         pickRenewalOcrData(
           type,
           await this.ocrService.extractMedicalCertificateInfo(fileBuffer),
         ) ?? {};
-      ocrData = medical;
-      if (medical.isApte === false) {
-        throw new CodedBadRequestException(
-          RenewalErrorCode.MEDICAL_UNFIT,
-          "Le certificat médical indique que vous n'êtes pas apte à la pratique. Le document ne peut pas être accepté.",
-          RENEWAL_DOCUMENT_REJECTED,
-        );
-      }
-      if (medical.isApte !== true) {
-        throw new CodedBadRequestException(
-          RenewalErrorCode.MEDICAL_FITNESS_UNCONFIRMED,
-          "Impossible de confirmer l'aptitude sur le certificat médical. Assurez-vous que le document mentionne clairement « apte à la pratique » ou « ne présente pas de contre-indication » et que l'image est lisible.",
-          RENEWAL_DOCUMENT_REJECTED,
-        );
-      }
-      this.assertMedicalCertificateDateValid(medical);
     }
     if (type === LicenseRenewalDocumentType.LICENSE_CERTIFICATE) {
       ocrData = pickRenewalOcrData(
@@ -192,26 +141,38 @@ export class LicenseRenewalService {
       );
     }
 
-    // L'OCR (et ses validations) ayant réussi, on archive le document dans Blob.
+    // Les indices OCR lus, on archive le document dans Blob.
     // Si le stockage blob n'est pas configuré (tests, dev local), on conserve
     // simplement le nom de blob comme référence — aucune écriture disque.
     const storedReference = await this.persistDocument(blobName, fileBuffer);
 
-    // Fichiers du document remplacé (même type) : lus avant le remplacement,
-    // supprimés une fois la nouvelle ligne enregistrée — sinon le certificat
-    // médical précédent (RGPD art. 9) resterait orphelin dans Blob.
-    const replacedReferences = request.documents
-      .filter((d) => d.type === type && d.filePath !== storedReference)
-      .map((d) => d.filePath);
-
+    let replacedReferences: string[];
     try {
       // Remplacement atomique : si la création échoue, l'ancien document reste
       // en base (et son fichier est conservé).
-      await this.prisma.$transaction([
-        this.prisma.licenseRenewalDocument.deleteMany({
+      replacedReferences = await this.prisma.$transaction(async (tx) => {
+        // Sous le verrou utilisateur, comme la soumission (#271) : l'OCR et
+        // l'archivage ont pu durer, la demande a pu être soumise entre-temps.
+        // Un document ne remplace jamais celui qu'un administrateur examine.
+        await lockUserRenewals(tx, userId);
+        const current = await tx.licenseRenewalRequest.findFirst({
+          where: { id: requestId, userId },
+          select: licenseRenewalUploadTargetSelect,
+        });
+        if (current?.status !== LicenseRenewalStatus.DRAFT)
+          throw new BadRequestException(
+            "Seules les demandes en brouillon peuvent recevoir des documents",
+          );
+        // Fichiers du document remplacé (même type) : lus sous le verrou,
+        // supprimés une fois la nouvelle ligne enregistrée — sinon le
+        // certificat médical précédent (RGPD art. 9) resterait orphelin.
+        const replaced = current.documents
+          .filter((d) => d.type === type && d.filePath !== storedReference)
+          .map((d) => d.filePath);
+        await tx.licenseRenewalDocument.deleteMany({
           where: { requestId, type },
-        }),
-        this.prisma.licenseRenewalDocument.create({
+        });
+        await tx.licenseRenewalDocument.create({
           data: {
             requestId,
             type,
@@ -231,8 +192,10 @@ export class LicenseRenewalService {
                   })
                 : null,
           },
-        }),
-      ]);
+          select: idOnlySelect,
+        });
+        return replaced;
+      });
     } catch (error) {
       // Le blob tout juste archivé n'est référencé par aucune ligne : on le
       // supprime (best-effort) avant de propager l'erreur.
@@ -256,11 +219,15 @@ export class LicenseRenewalService {
   }
 
   /**
-   * Soumet la demande de renouvellement (DRAFT → PENDING, `submittedAt` posé,
-   * puis APPROVED).
+   * Soumet la demande de renouvellement (DRAFT → PENDING, `submittedAt` posé).
+   * La demande attend ensuite la décision d'un administrateur (#271) : aucune
+   * licence n'est créée ni prolongée ici, les administrateurs sont prévenus
+   * (#269).
+   *
    * Exige certificat médical et certificat de licence, et qu'aucune autre
-   * demande de l'utilisateur ne soit déjà en attente (409, #271).
-   * Si les deux validations OCR passent, la demande est auto-approuvée et la licence est renouvelée.
+   * demande de l'utilisateur ne soit déjà en attente (409). Les lectures OCR
+   * ne bloquent pas l'envoi : ce sont des indices pour l'administrateur.
+   * Refusée si la licence actuelle couvre déjà la saison (#250).
    */
   async submitRenewalRequest(userId: string, requestId: string) {
     const request = await this.prisma.licenseRenewalRequest.findFirst({
@@ -272,52 +239,24 @@ export class LicenseRenewalService {
     if (request.status !== LicenseRenewalStatus.DRAFT)
       throw new BadRequestException("La demande a déjà été soumise");
 
-    const medicalDoc = request.documents.find(
-      (d) => d.type === LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
-    );
-    const licenseDoc = request.documents.find(
-      (d) => d.type === LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
-    );
-
-    if (!medicalDoc)
+    const hasDocument = (type: LicenseRenewalDocumentType) =>
+      request.documents.some((d) => d.type === type);
+    if (!hasDocument(LicenseRenewalDocumentType.MEDICAL_CERTIFICATE))
       throw new BadRequestException(
         "Le certificat médical est obligatoire pour soumettre la demande.",
       );
-    if (!licenseDoc)
+    if (!hasDocument(LicenseRenewalDocumentType.LICENSE_CERTIFICATE))
       throw new BadRequestException(
         "Le certificat de licence est obligatoire pour soumettre la demande.",
       );
 
-    const medicalOcr = pickRenewalOcrData(medicalDoc.type, medicalDoc.ocrData);
-    if (medicalOcr?.isApte !== true) {
-      throw new CodedBadRequestException(
-        RenewalErrorCode.MEDICAL_FITNESS_UNCONFIRMED,
-        "Le certificat médical n'a pas été reconnu comme attestant votre aptitude. Veuillez déposer un document où « apte à la pratique » est clairement lisible.",
-        RENEWAL_DOCUMENT_REJECTED,
-      );
-    }
-    this.assertMedicalCertificateDateValid(medicalOcr);
-
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { license: { select: { number: true, validUntil: true } } },
-    });
-    const licenseOcr = pickRenewalOcrData(licenseDoc.type, licenseDoc.ocrData);
-    // Same reading as the approval core (trimmed, shaped like a licence
-    // number): a blank or garbled OCR number must not pass submission and
-    // then fail the approval.
-    const hasLicenseNumber =
-      normalizeLicenseNumber(licenseOcr?.licenseNumber) !== null ||
-      (user?.license?.number.trim() ?? "") !== "";
-    if (!hasLicenseNumber) {
-      throw new BadRequestException(
-        "Le certificat de licence n'a pas permis d'identifier un numéro de licence. Assurez-vous que le document est lisible et mentionne le numéro de licence.",
-      );
-    }
-
     // Renewing is pointless when the current license already runs at least
     // as long as a renewal granted now would (#250): e.g. a license ending
     // this August 31 is renewable from July 1, not in April.
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: userLicenseValidUntilSelect,
+    });
     if (
       user?.license?.validUntil &&
       isLicenseCoveredForRenewal(new Date(user.license.validUntil))
@@ -330,8 +269,10 @@ export class LicenseRenewalService {
       );
     }
 
-    await this.markSubmitted(userId, requestId);
-    return this.autoApprove(requestId);
+    const submitted = await this.markSubmitted(userId, requestId);
+    // Fire-and-forget: a notification never fails the submission (#269).
+    void this.renewalNotifications.notifyToReview(requestId);
+    return toRenewalRequestResponse(submitted);
   }
 
   /**
@@ -342,7 +283,7 @@ export class LicenseRenewalService {
    * request was already submitted.
    */
   private async markSubmitted(userId: string, requestId: string) {
-    await this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
       await lockUserRenewals(tx, userId);
       const otherPending = await tx.licenseRenewalRequest.count({
         where: {
@@ -358,14 +299,14 @@ export class LicenseRenewalService {
       }
       const submittedAt = new Date();
       try {
-        await tx.licenseRenewalRequest.update({
+        return await tx.licenseRenewalRequest.update({
           where: { id: requestId, status: LicenseRenewalStatus.DRAFT },
           data: {
             status: LicenseRenewalStatus.PENDING,
             submittedAt,
             updatedAt: submittedAt,
           },
-          select: idOnlySelect,
+          select: licenseRenewalRequestResponseSelect,
         });
       } catch (error) {
         if (
@@ -377,55 +318,6 @@ export class LicenseRenewalService {
         throw error;
       }
     });
-  }
-
-  /**
-   * Auto-approbation à la soumission (en place jusqu'à #271, qui la retirera au
-   * profit de la seule modération humaine). Même cœur que la décision admin
-   * (`approvePendingRenewal`) : passage conditionnel PENDING → APPROVED puis
-   * upsert de la licence, dans UNE transaction (#261).
-   */
-  private async autoApprove(requestId: string) {
-    try {
-      await this.prisma.$transaction((tx) =>
-        approvePendingRenewal(tx, requestId, {
-          reviewerId: null,
-          now: new Date(),
-        }),
-      );
-    } catch (error) {
-      // Licence number unknown, or already another account's: not the
-      // licensee's to fix, and the 409 wording would reveal that a number is
-      // registered. The transaction rolled back: the request stays PENDING
-      // for the administrator, and the licensee sees it as submitted.
-      if (
-        !(error instanceof LicenseNumberUnknownException) &&
-        !(error instanceof LicenseNumberTakenException)
-      ) {
-        // Any other failure rolled the approval back as well: the request is
-        // still PENDING and awaits a human (#269) — unless a concurrent
-        // decision already settled it (409).
-        if (!(error instanceof ConflictException)) {
-          void this.renewalNotifications.notifyToReview(requestId);
-        }
-        throw error;
-      }
-      this.logger.warn(
-        `Licence renewal ${requestId} left PENDING for human review (${error.constructor.name})`,
-      );
-    }
-    const approved = await this.prisma.licenseRenewalRequest.findUniqueOrThrow({
-      where: { id: requestId },
-      select: licenseRenewalRequestResponseSelect,
-    });
-    // Left PENDING: a human must review it, the administrators are told
-    // (#269), fire-and-forget so a notification never fails the submission.
-    // An automatic approval notifies no one: the licensee reads the outcome
-    // in this very response, and there is nothing left to review.
-    if (approved.status === LicenseRenewalStatus.PENDING) {
-      void this.renewalNotifications.notifyToReview(requestId);
-    }
-    return toRenewalRequestResponse(approved);
   }
 
   /**
@@ -446,22 +338,6 @@ export class LicenseRenewalService {
       );
     }
     return blobName;
-  }
-
-  private assertMedicalCertificateDateValid(ocrData: RenewalOcrData): void {
-    const dateStr = ocrData.date;
-    if (!dateStr) return;
-    const certDate = new Date(dateStr);
-    if (Number.isNaN(certDate.getTime())) return;
-    const limit = new Date();
-    limit.setMonth(limit.getMonth() - MEDICAL_CERTIFICATE_MAX_AGE_MONTHS);
-    if (certDate < limit) {
-      throw new CodedBadRequestException(
-        RenewalErrorCode.MEDICAL_CERTIFICATE_TOO_OLD,
-        `Le certificat médical doit dater de moins de ${MEDICAL_CERTIFICATE_MAX_AGE_MONTHS} mois. La date détectée (${dateStr}) est trop ancienne.`,
-        RENEWAL_DOCUMENT_REJECTED,
-      );
-    }
   }
 }
 

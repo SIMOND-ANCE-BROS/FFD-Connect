@@ -5,7 +5,7 @@ Merci de votre intérêt ! Consultez le README principal pour l'installation et 
 ## Avant de commencer
 
 - **pnpm** est le gestionnaire de paquets (pas npm/yarn)
-- Les **pre-commit** hooks (Husky) exécutent lint et format sur les fichiers stagés
+- Les **pre-commit** hooks (Husky) scannent les secrets avec gitleaks (binaire épinglé, téléchargé au premier commit), puis exécutent lint et format sur les fichiers stagés
 - Les **pre-push** hooks lancent `pnpm typecheck` puis les tests unitaires backend et client (`pnpm --filter backend test` / `pnpm --filter client test`) — pas toute la CI (e2e, couverture complète = GitHub Actions)
 
 ## Workflow
@@ -34,6 +34,7 @@ Une PR ne peut pas être mergée sans que ces jobs passent :
 - **backend-build** — compilation + swagger.json à jour
 - **client** — lint + tests unitaires
 - **audit-dependencies** — osv-scanner (base OSV) — bloque high/critical
+- **secret-scan** — gitleaks sur les commits ajoutés par la PR — en cas de blocage, voir « Scan des secrets » dans [ci-cd-minimal.md](docs/exploitation/ci-cd-minimal.md)
 
 Jobs **informationnels** (non-bloquants) : `playwright-e2e`, `mutation` (Stryker).
 

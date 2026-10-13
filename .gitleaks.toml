@@ -1,0 +1,19 @@
+# gitleaks configuration (#483) — used by the pre-commit hook and the CI
+# `secret-scan` job, both through scripts/gitleaks.sh.
+#
+# Upstream default rules, with NO allowlist on purpose. A path, file-type,
+# stopword or regex exemption also lets a real key through wherever it matches
+# (every *.spec.ts, docs/, .env*, firebase configs…), and a path regex can match
+# differently between the staged scan and the commit-range scan. Known false
+# positives are therefore baselined one by one, by exact fingerprint, in
+# .gitleaksignore; a one-off goes in an inline `gitleaks:allow` comment with
+# its reason.
+#
+# Runbook (what to do when it blocks): docs/exploitation/ci-cd-minimal.md,
+# section « Scan des secrets (gitleaks) ».
+
+title = "FFD-Connect gitleaks config"
+
+[extend]
+# Start from the upstream default rule set (shipped inside the pinned binary).
+useDefault = true

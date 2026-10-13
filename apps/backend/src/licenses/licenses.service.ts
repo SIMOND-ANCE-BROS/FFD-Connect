@@ -1,13 +1,7 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { OcrService } from "../utils/ocr.service";
 import { licenseBaseSelect } from "../utils/prisma-selects";
 import { licenseValidityFloor } from "./license-expiry";
-import { renewedLicenseValidUntil } from "./license-season";
 import { LicenseQrService } from "./qr/license-qr.service";
 import { AppleWalletPassGenerator } from "./wallet/apple-wallet-pass.generator";
 
@@ -15,7 +9,6 @@ import { AppleWalletPassGenerator } from "./wallet/apple-wallet-pass.generator";
 export class LicensesService {
   constructor(
     private prisma: PrismaService,
-    private ocrService: OcrService,
     private licenseQrService: LicenseQrService,
     private appleWalletPassGenerator: AppleWalletPassGenerator,
   ) {}
@@ -36,70 +29,6 @@ export class LicensesService {
       qrCode: this.licenseQrService.buildQrCode(license),
       appleWalletAvailable: this.appleWalletPassGenerator.isAvailable(),
     };
-  }
-
-  /**
-   * Renouvelle la licence d'un utilisateur à partir d'un certificat (OCR direct).
-   * Le certificat est fourni sous forme de buffer (upload mémoire) : il sert
-   * uniquement à l'OCR et n'est jamais persisté.
-   */
-  async renewLicense(userId: string, certificate: Buffer) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        category: true,
-        clubName: true,
-        license: {
-          select: {
-            id: true,
-            number: true,
-            validUntil: true,
-            category: true,
-            clubName: true,
-          },
-        },
-      },
-    });
-
-    if (!user) throw new NotFoundException("Utilisateur non trouvé");
-
-    const ocrData = await this.ocrService.extractLicenseInfo(certificate);
-
-    if (!ocrData.licenseNumber && !user.license) {
-      throw new BadRequestException(
-        "Impossible de valider le certificat : numéro de licence non détecté",
-      );
-    }
-
-    // Never shortens an existing license (#250).
-    const seasonEnd = renewedLicenseValidUntil(user.license?.validUntil);
-
-    const licenseNumber =
-      ocrData.licenseNumber ??
-      user.license?.number ??
-      `FFD-${Math.floor(Math.random() * 1000000)}`;
-
-    if (!user.clubName) {
-      throw new BadRequestException(
-        "Impossible de créer la licence : le club de l'utilisateur n'est pas renseigné",
-      );
-    }
-
-    return this.prisma.license.upsert({
-      where: { userId },
-      update: {
-        validUntil: seasonEnd,
-        updatedAt: new Date(),
-      },
-      create: {
-        userId,
-        number: licenseNumber,
-        validUntil: seasonEnd,
-        category: user.category ?? "Standard",
-        clubName: user.clubName,
-      },
-    });
   }
 
   /**

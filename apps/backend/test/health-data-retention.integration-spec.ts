@@ -13,7 +13,11 @@
  */
 import { promises as fsp } from "fs";
 import * as path from "path";
-import { LicenseRenewalDocumentType, Prisma } from "@prisma/client";
+import {
+  LicenseRenewalDocumentType,
+  LicenseRenewalStatus,
+  Prisma,
+} from "@prisma/client";
 import { TestingModule } from "@nestjs/testing";
 import { HealthDataRetentionService } from "../src/licenses/health-data-retention.service";
 import { LicenseRenewalService } from "../src/licenses/license-renewal.service";
@@ -142,6 +146,56 @@ describe("Health data retention purge (integration, real DB)", () => {
       ocrData: { isApte: true, date: "2099-01-01" },
       purgeDueAt: FUTURE,
     });
+  });
+
+  it("keeps the past-due certificate of a request awaiting a decision, purges it once decided (#271)", async () => {
+    const pending = await prisma.licenseRenewalRequest.create({
+      data: { userId, status: LicenseRenewalStatus.PENDING },
+      select: { id: true },
+    });
+    try {
+      const awaiting = await prisma.licenseRenewalDocument.create({
+        data: {
+          requestId: pending.id,
+          type: MEDICAL_CERTIFICATE,
+          filePath: "pending.pdf",
+          purgeDueAt: PAST,
+          ocrData: { isApte: false, date: "1998-01-01" },
+        },
+        select: { id: true },
+      });
+      // The draft's past-due certificate is still purged: an abandoned
+      // draft must not keep health data forever.
+      const draft = await doc({ filePath: "draft.pdf", purgeDueAt: PAST });
+
+      const first = await retention.purgeExpiredHealthData();
+
+      expect(first).toMatchObject({ due: 1, purged: 1 });
+      expect(await find(draft.id)).toBeNull();
+      expect(await find(awaiting.id)).toEqual({
+        ocrData: { isApte: false, date: "1998-01-01" },
+        purgeDueAt: PAST,
+      });
+      expect(deleteFile).not.toHaveBeenCalledWith(
+        "pending.pdf",
+        expect.anything(),
+      );
+
+      await prisma.licenseRenewalRequest.update({
+        where: { id: pending.id },
+        data: { status: LicenseRenewalStatus.REJECTED },
+        select: { id: true },
+      });
+      const second = await retention.purgeExpiredHealthData();
+
+      expect(second).toMatchObject({ due: 1, purged: 1 });
+      expect(await find(awaiting.id)).toBeNull();
+    } finally {
+      await prisma.licenseRenewalRequest.delete({
+        where: { id: pending.id },
+        select: { id: true },
+      });
+    }
   });
 
   it("treats purgeDueAt == now as due (lte bound)", async () => {

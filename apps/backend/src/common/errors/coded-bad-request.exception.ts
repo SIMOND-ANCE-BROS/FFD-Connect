@@ -3,15 +3,15 @@ import { BadRequestException } from "@nestjs/common";
 /**
  * A 400 whose user-facing text must never reach the logs (#225).
  *
- * Some refusals carry personal data in their message: "your medical
- * certificate says you are unfit" is health data (GDPR art. 9) and, once
- * logged next to the request URL, it is tied to a renewal request. The text
+ * Some refusals may carry personal data in their message: a sentence about
+ * a medical certificate is health data (GDPR art. 9) and, once logged next
+ * to the request URL, it is tied to a renewal request. The text
  * still goes to the user, but every log path only ever sees a code:
  *
  * - the response body keeps `message` (shown by the app) and adds `code`,
  *   the fine-grained reason the client may branch on;
  * - the logs see `logCode` instead. It defaults to `code`, but a caller whose
- *   fine code is itself sensitive (`MEDICAL_UNFIT` reveals fitness) passes a
+ *   fine code is itself sensitive (a code revealing fitness) passes a
  *   neutral one shared by several reasons;
  * - `Error.message` (read by `LoggingInterceptor`, Sentry and the stack
  *   trace header) is `logCode`, never the text nor the fine code;

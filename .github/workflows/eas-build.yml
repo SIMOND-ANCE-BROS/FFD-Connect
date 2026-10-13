@@ -148,6 +148,10 @@ jobs:
       # the current fingerprint. Set only when the fingerprint step decided
       # native=true per platform; empty = build every platform (fallbacks).
       native_platforms: ${{ steps.fingerprint.outputs.native_platforms }}
+      # The same list as a JSON array, for the build jobs' matrix (the `env`
+      # context is not available in `strategy`): native_platforms, else every
+      # AUTO_BUILD_PLATFORMS entry.
+      build_platforms: ${{ steps.platforms.outputs.json }}
       client_changed: ${{ steps.check.outputs.client_changed }}
       branch: ${{ github.event.workflow_run.head_branch }}
     steps:
@@ -441,11 +445,26 @@ jobs:
                 break
               fi
             done
+            # A binary built on a GitHub runner (`eas build --local`, #508) has
+            # no EAS build record: `eas upload` registers it without channel,
+            # profile or runtime version, but with its fingerprint. The
+            # fingerprint depends on the variant (bundle id, APP_ENV), so a hash
+            # match is a build of this profile. Finished only: a failed cloud
+            # build carries the hash too. Errors here only mean "build".
+            if [ -z "$found" ]; then
+              count=$(eas build:list --platform "$platform" --fingerprint-hash "$HASH" --status finished \
+                --limit 1 --json --non-interactive \
+                < /dev/null 2> /dev/null | sed -n '/^[[{]/,$p' \
+                | jq 'if type == "array" then length else error("not an array") end' 2> /dev/null)
+              if [ "${count:-0}" -gt 0 ]; then
+                found="uploaded (GitHub runner)"
+              fi
+            fi
             if [ -n "$found" ]; then
               echo "$platform: a $found \`$PROFILE\` build already has runtime ${HASH:0:7}, OTA is enough." | tee -a "$summary"
             else
               missing="$missing $platform"
-              echo "$platform: no \`$PROFILE\` build has runtime ${HASH:0:7}, native build needed (~2 USD)." | tee -a "$summary"
+              echo "$platform: no \`$PROFILE\` build has runtime ${HASH:0:7}, native build needed." | tee -a "$summary"
             fi
           done
 
@@ -460,6 +479,21 @@ jobs:
           else
             echo "native=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Native build platforms (matrix)
+        id: platforms
+        env:
+          NATIVE_PLATFORMS: ${{ steps.fingerprint.outputs.native_platforms }}
+        run: |
+          set -euo pipefail
+          # Unquoted on purpose (word splitting, globbing off). Unknown entries
+          # are dropped; an empty list fails the build job visibly (empty matrix).
+          set -f
+          json=$(for p in ${NATIVE_PLATFORMS:-$AUTO_BUILD_PLATFORMS}; do
+            case "$p" in ios | android) echo "$p" ;; esac
+          done | sort -u | jq -R . | jq -cs .)
+          echo "json=$json" >> "$GITHUB_OUTPUT"
+          echo "Native build platforms (if a build is needed): $json"
 
   # ============================================================
   # DEVELOP — OTA only (devs rebuild dev client manually for
@@ -501,19 +535,41 @@ jobs:
   # STAGING — Full build only if native changes, OTA always
   # ============================================================
   build-staging:
-    name: EAS Build (preview)
+    name: >-
+      EAS Build (preview${{ matrix.platform != 'eas' && format(' · {0}', matrix.platform) || '' }})
     needs: [gate]
     if: |
       needs.gate.outputs.branch == 'staging'
       && needs.gate.outputs.client_changed == 'true'
       && needs.gate.outputs.native == 'true'
-    runs-on: ubuntu-24.04
-    # Submits without --wait: ~8-10 min in practice (install + archive upload).
-    timeout-minutes: 30
+    # Builder (#508): GitHub runner by default (`eas build --local`, iOS on
+    # macos-26 with Xcode pinned, Android on Ubuntu), outside the EAS build
+    # quota and free on a public repository. One matrix leg per platform the
+    # gate found without a build of the current fingerprint. Fallback: the
+    # repository variable NATIVE_BUILDER=eas replaces the legs by a single
+    # `eas build` in the EAS cloud (quota of the free plan), as before #508.
+    runs-on: ${{ matrix.platform == 'ios' && 'macos-26' || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: >-
+          ${{ fromJSON(vars.NATIVE_BUILDER == 'eas' && '["eas"]'
+          || needs.gate.outputs.build_platforms) }}
+    # Runner build: ~35-45 min on macOS, ~25-35 min on Ubuntu (beta measures).
+    # EAS cloud: submits without --wait, ~8-10 min.
+    timeout-minutes: 120
+    # Record only, no reviewer (same environment as ota-staging). Holds the
+    # preview Firebase configs read by the runner build.
+    environment:
+      name: preview
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          # No token in .git/config: `eas build` archives the project.
+          persist-credentials: false
 
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm
@@ -524,9 +580,11 @@ jobs:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
-      # Only the platforms the gate found without a build of the current
-      # fingerprint; every AUTO_BUILD_PLATFORMS entry when it fell back.
-      - name: Build preview
+      # NATIVE_BUILDER=eas fallback. Only the platforms the gate found without
+      # a build of the current fingerprint; every AUTO_BUILD_PLATFORMS entry
+      # when it fell back.
+      - name: Build preview (EAS cloud)
+        if: matrix.platform == 'eas'
         working-directory: apps/client
         env:
           NATIVE_PLATFORMS: ${{ needs.gate.outputs.native_platforms }}
@@ -551,8 +609,55 @@ jobs:
           elif [ "$android" = true ]; then PLATFORM=android
           else echo "::error::no platform to build"; exit 1
           fi
-          echo "Building preview for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Building preview in the EAS cloud for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
           eas build --profile preview --platform "$PLATFORM" --non-interactive
+
+      # Same path as the beta promotion (promote-beta, builder=github): Firebase
+      # config from this job's GitHub environment secrets, credentials frozen,
+      # no Sentry source map upload. The binary never leaves the runner except
+      # to EAS (next step): no GitHub artifact, the repository is public.
+      - name: Build preview (GitHub runner)
+        id: build
+        if: matrix.platform != 'eas'
+        timeout-minutes: 100
+        uses: ./.github/actions/eas-local-build
+        with:
+          platform: ${{ matrix.platform }}
+          profile: preview
+          # ccache + CocoaPods caches (#512). Never on production (#513).
+          native-cache: 'true'
+          firebase-b64: >-
+            ${{ matrix.platform == 'ios' && secrets.FIREBASE_IOS_PLIST_PREVIEW_B64
+            || secrets.FIREBASE_ANDROID_JSON_PREVIEW_B64 }}
+          firebase-secret-name: >-
+            ${{ matrix.platform == 'ios' && 'FIREBASE_IOS_PLIST_PREVIEW_B64'
+            || 'FIREBASE_ANDROID_JSON_PREVIEW_B64' }}
+
+      # `eas upload` registers the local binary on expo.dev: install link /
+      # download from the project's build page (Expo account members only), and
+      # an EAS record carrying its fingerprint, which the gate and
+      # check-ota-reach.sh look up (eas build:list --fingerprint-hash). It
+      # stores a file, it runs no build: not counted in the EAS build quota.
+      - name: Upload to EAS (eas upload)
+        if: matrix.platform != 'eas'
+        working-directory: apps/client
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          BUILD_PATH: ${{ steps.build.outputs.path }}
+          FINGERPRINT: ${{ steps.build.outputs.fingerprint }}
+        run: |
+          set -euo pipefail
+          trap 'rm -f "$BUILD_PATH"' EXIT
+          args=(--platform "$PLATFORM" --build-path "$BUILD_PATH" --non-interactive --json)
+          if [ -n "$FINGERPRINT" ]; then
+            args+=(--fingerprint "$FINGERPRINT")
+          fi
+          if ! out=$(eas upload "${args[@]}" < /dev/null); then
+            echo "::error::eas upload a échoué : binaire perdu (non conservé), le prochain push le reconstruira"
+            exit 1
+          fi
+          url=$(sed -n '/^{/,$p' <<< "$out" | jq -r '.url // empty' 2> /dev/null || true)
+          echo "📦 Binaire preview $PLATFORM envoyé sur EAS : ${url:-voir expo.dev}" | tee -a "$GITHUB_STEP_SUMMARY"
 
   ota-staging:
     name: OTA Update (preview)
@@ -806,6 +911,17 @@ jobs:
             "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}/CodeQL"
           df -h /
 
+      # Build Android sur runner : tas Gradle dimensionné pour le runner
+      # (16 Go), démon à usage unique, lint de release (lintVital*) sauté
+      # (#521 : avec le tas de 2 Go du modèle Expo, le lint a échoué puis
+      # Gradle s'est figé jusqu'au délai de 100 min). Réglages au niveau
+      # utilisateur (~/.gradle) : ni app.config.js ni empreinte modifiés.
+      - name: Gradle settings (GitHub build, Android)
+        if: >-
+          inputs.action == 'build' && inputs.builder != 'eas'
+          && matrix.platform == 'android'
+        uses: ./.github/actions/android-gradle-runner
+
       - name: Setup pnpm & Node
         if: inputs.action != 'distribute'
         uses: ./.github/actions/setup-pnpm
@@ -825,6 +941,24 @@ jobs:
         with:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
+
+      # Build sur runner : caches ccache + CocoaPods (iOS, #512 ; sans effet
+      # sur Android), après la sélection de Xcode (clé = version de Xcode).
+      - name: Restore native build caches (GitHub build)
+        if: inputs.action == 'build' && inputs.builder != 'eas'
+        uses: ./.github/actions/native-build-cache
+        with:
+          step: restore
+          platform: ${{ matrix.platform }}
+
+      # Diagnostic seulement (#512) : l'étape doctor du build est désactivée
+      # (EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP) ; résultat dans le résumé du run.
+      - name: Expo doctor (GitHub build, non bloquant)
+        if: inputs.action == 'build' && inputs.builder != 'eas'
+        continue-on-error: true
+        uses: ./.github/actions/expo-doctor
+        with:
+          app-env: beta
 
       # action=resume : retrouve le build EXISTANT et se place sur son commit,
       # pour que changelog, version et tag décrivent ce qui a été construit, et
@@ -1138,6 +1272,9 @@ jobs:
           # main : Dependabot ne suit pas ce téléchargement.
           BUNDLETOOL_VERSION: '1.18.3'
           BUNDLETOOL_SHA256: a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
+          # Android : un Gradle figé est arrêté au bout de ce délai, bien avant
+          # la limite de l'étape (#521). iOS : pas de limite interne.
+          ANDROID_BUILD_TIMEOUT_MIN: '60'
           # CocoaPods exige une locale UTF-8.
           LANG: en_US.UTF-8
           LC_ALL: en_US.UTF-8
@@ -1204,10 +1341,33 @@ jobs:
           fi
 
           echo "## $PLATFORM_ICON Build $PLATFORM_NAME beta sur runner GitHub (\`eas build --local\`)" >> "$GITHUB_STEP_SUMMARY"
-          if ! eas build --local --platform "$PLATFORM" --profile beta --non-interactive \
+          # Android : `timeout` (GNU) signale tout son groupe de processus
+          # (eas-cli, plugin de build local, gradlew, démon Gradle à usage
+          # unique) ; le pkill rattrape une JVM sortie du groupe. 124/137 =
+          # délai atteint. Pas de `timeout` sur macOS : iOS sans limite interne.
+          run_build() {
+            if [ "$PLATFORM" = "android" ]; then
+              timeout --kill-after=2m "${ANDROID_BUILD_TIMEOUT_MIN}m" "$@"
+            else
+              "$@"
+            fi
+          }
+          if run_build eas build --local --platform "$PLATFORM" --profile beta --non-interactive \
             --freeze-credentials --output "$OUT" < /dev/null; then
+            BUILD_RC=0
+          else
+            BUILD_RC=$?
+          fi
+          if [ "$BUILD_RC" -ne 0 ]; then
             echo "state=failed" >> "$GITHUB_OUTPUT"
-            echo "::error::eas build --local a échoué (numéro de build distant consommé : le prochain build prendra le suivant)"
+            if [ "$PLATFORM" = "android" ]; then
+              pkill -f 'GradleDaemon|KotlinCompileDaemon' || true
+            fi
+            if [ "$PLATFORM" = "android" ] && { [ "$BUILD_RC" -eq 124 ] || [ "$BUILD_RC" -eq 137 ]; }; then
+              echo "::error::build Android arrêté après $ANDROID_BUILD_TIMEOUT_MIN min (Gradle bloqué ?, #521) — numéro de build distant consommé : le prochain build prendra le suivant"
+            else
+              echo "::error::eas build --local a échoué (numéro de build distant consommé : le prochain build prendra le suivant)"
+            fi
             exit 1
           fi
 
@@ -1254,6 +1414,17 @@ jobs:
             echo "number=$BUILD_NUMBER"
           } >> "$GITHUB_OUTPUT"
           echo "Build $PLATFORM_NAME beta **$BUILD_NUMBER** terminé — SHA-256 \`$SHA256\`." >> "$GITHUB_STEP_SUMMARY"
+
+      # Après un build réussi seulement (#512) : sauvegarde ce qui a manqué sa
+      # clé exacte, derrière le garde-fou « fichier sensible » de l'action.
+      - name: Save native build caches (GitHub build)
+        if: >-
+          inputs.action == 'build' && inputs.builder != 'eas'
+          && steps.ghbuild.outcome == 'success'
+        uses: ./.github/actions/native-build-cache
+        with:
+          step: save
+          platform: ${{ matrix.platform }}
 
       # PAS d'artefact du binaire : dépôt PUBLIC, les artefacts y sont
       # téléchargeables par tout compte GitHub, et le binaire embarque les
@@ -1741,6 +1912,66 @@ jobs:
           retention-days: 7
 
   # ============================================================
+  # BÊTA — QUOI DISTRIBUER ? (#521)
+  # Liste les jambes dont l'envoi au store a abouti (submit_state=finished),
+  # pour que distribute-beta ne tourne — et ne demande l'approbation
+  # `testflight-beta` — que pour elles. Avant : `!cancelled()` lançait la
+  # distribution même après un build raté (run 38369879150 : approbation
+  # demandée, 89 min d'attente, rien à distribuer). Un job à part car les
+  # sorties d'un job matriciel s'écrasent d'une jambe à l'autre et qu'un `if:`
+  # de job ne voit pas `matrix`. Ni environnement, ni secret, ni checkout :
+  # l'état est une donnée non fiable, seul le littéral « finished » est
+  # comparé et la sortie n'est faite que de noms de plateforme écrits ici.
+  # distribute-beta revalide chaque champ comme avant.
+  # ============================================================
+  distribute-plan:
+    name: Bêta — jambes à distribuer
+    needs: [promote-beta]
+    if: >-
+      !cancelled() && github.event_name == 'workflow_dispatch'
+      && inputs.action != 'ota' && needs.promote-beta.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # Téléchargement d'artefacts du même run : jeton du runner, pas GITHUB_TOKEN.
+    permissions: {}
+    outputs:
+      platforms: ${{ steps.plan.outputs.platforms }}
+    steps:
+      - name: Download hand-off states
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: beta-state-*
+          path: ${{ runner.temp }}/state
+
+      - name: Legs ready for distribution
+        id: plan
+        run: |
+          set -euo pipefail
+          READY=()
+          for PLATFORM in ios android; do
+            S="$RUNNER_TEMP/state/beta-state-$PLATFORM/state.json"
+            if [ ! -f "$S" ] || [ -L "$S" ]; then
+              continue # jambe non lancée, ou échouée avant d'écrire son état
+            fi
+            SKIP=$(jq -r '.skip // false | tostring' "$S" 2> /dev/null || true)
+            SUBMIT=$(jq -r '.submit_state // empty | tostring' "$S" 2> /dev/null || true)
+            if [ "$SKIP" != "true" ] && [ "$SUBMIT" = "finished" ]; then
+              READY+=("\"$PLATFORM\"")
+            else
+              echo "Jambe $PLATFORM : envoi au store non abouti ou jambe sans objet — pas de distribution, pas d'approbation."
+            fi
+          done
+          if [ "${#READY[@]}" -eq 0 ]; then
+            PLATFORMS='[]'
+            echo "::notice::aucune jambe à distribuer : distribute-beta sauté, approbation testflight-beta non demandée (voir « Bêta — suivi »)"
+          else
+            PLATFORMS="[$(IFS=,; echo "${READY[*]}")]"
+          fi
+          echo "platforms=$PLATFORMS" >> "$GITHUB_OUTPUT"
+          echo "Jambes à distribuer : $PLATFORMS"
+
+  # ============================================================
   # DISTRIBUTION BÊTA — 2ᵉ approbation (ADR-0020)
   # Seul job qui touche aux clés de distribution. Séparé de promote-beta pour
   # que le jeton OIDC (id-token: write) ne soit mintable QUE ici : pas de
@@ -1763,23 +1994,26 @@ jobs:
       || 'Android · Google Play' }} (${{ inputs.action }})
     # release-beta d'abord (le tag existe avant la distribution, comme avant
     # #477) ; son échec ne bloque pas la distribution (!cancelled()).
-    needs: [promote-beta, release-beta]
+    needs: [promote-beta, release-beta, distribute-plan]
     # !cancelled() : une jambe de promote-beta en échec ne bloque pas l'autre.
     # Le test d'événement est indispensable : avec !cancelled(), un job dont
     # le `needs` est sauté tourne quand même (sinon : chaque run CI).
+    # distribute-plan (#521) : seules les jambes envoyées au store ; aucune →
+    # job sauté, l'approbation testflight-beta n'est pas demandée. Plan en
+    # échec → sauté aussi (le suivi donne la commande de reprise).
     if: >-
       !cancelled() && github.event_name == 'workflow_dispatch'
       && inputs.action != 'ota' && needs.promote-beta.result != 'skipped'
+      && needs.distribute-plan.result == 'success'
+      && needs.distribute-plan.outputs.platforms != ''
+      && needs.distribute-plan.outputs.platforms != '[]'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        # Même expression que promote-beta, sans l'OTA (pas d'`include` : il
-        # créerait des jambes en plus).
-        platform: >-
-          ${{ fromJSON(inputs.platform == 'ios' && '["ios"]'
-          || inputs.platform == 'android' && '["android"]'
-          || '["ios","android"]') }}
+        # Jambes envoyées au store (sous-ensemble de celles de promote-beta,
+        # sans l'OTA) ; pas d'`include` : il créerait des jambes en plus.
+        platform: ${{ fromJSON(needs.distribute-plan.outputs.platforms) }}
     timeout-minutes: 60
     environment:
       name: testflight-beta
@@ -2158,6 +2392,10 @@ jobs:
             fi
             if [ -f "$D" ]; then
               DIST=$(jq -r 'if .ready then .outcome else "différée : \(.reason)" end' "$D")
+            elif [ "$SUBMIT_STATE" != "finished" ]; then
+              # distribute-plan (#521) : jambe non envoyée → pas de distribution
+              # ni d'approbation demandée.
+              DIST="non lancée : envoi au store ${SUBMIT_STATE:-non tenté}"
             else
               DIST="non approuvée ou non lancée (distribute-beta : ${DISTRIBUTE_RESULT:-?})"
             fi
@@ -2191,23 +2429,42 @@ jobs:
   # Full build only if native changes, OTA always.
   # ============================================================
   build-production:
-    name: EAS Build (production)
+    name: >-
+      EAS Build (production${{ matrix.platform != 'eas' && format(' · {0}', matrix.platform) || '' }})
     needs: [gate]
     if: |
       needs.gate.outputs.branch == 'master'
       && needs.gate.outputs.client_changed == 'true'
       && needs.gate.outputs.native == 'true'
-    runs-on: ubuntu-24.04
-    # Submits without --wait: ~8-10 min in practice (install + archive upload).
+    # Builder (#508): GitHub runner by default (`eas build --local`, iOS on
+    # macos-26 with Xcode pinned, Android on Ubuntu), outside the EAS build
+    # quota and free on a public repository. One matrix leg per platform the
+    # gate found without a build of the current fingerprint. Fallback: the
+    # repository variable NATIVE_BUILDER=eas replaces the legs by a single
+    # `eas build` in the EAS cloud (quota of the free plan), as before #508.
+    runs-on: ${{ matrix.platform == 'ios' && 'macos-26' || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: >-
+          ${{ fromJSON(vars.NATIVE_BUILDER == 'eas' && '["eas"]'
+          || needs.gate.outputs.build_platforms) }}
+    # Runner build: ~35-45 min on macOS, ~25-35 min on Ubuntu (beta measures).
+    # EAS cloud: submits without --wait, ~8-10 min.
     # The cap does not count the time spent waiting for the reviewer.
-    timeout-minutes: 30
-    # Same gate as ota-production, and a native build also costs ~2 USD each.
+    timeout-minutes: 120
+    # Same gate as ota-production: required reviewer (owner). Never removed.
+    # Holds the production Firebase configs read by the runner build.
     environment:
       name: app-production
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          # No token in .git/config: `eas build` archives the project.
+          persist-credentials: false
 
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm
@@ -2218,9 +2475,11 @@ jobs:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
-      # Only the platforms the gate found without a build of the current
-      # fingerprint; every AUTO_BUILD_PLATFORMS entry when it fell back.
-      - name: Build production
+      # NATIVE_BUILDER=eas fallback. Only the platforms the gate found without
+      # a build of the current fingerprint; every AUTO_BUILD_PLATFORMS entry
+      # when it fell back.
+      - name: Build production (EAS cloud)
+        if: matrix.platform == 'eas'
         working-directory: apps/client
         env:
           NATIVE_PLATFORMS: ${{ needs.gate.outputs.native_platforms }}
@@ -2245,8 +2504,53 @@ jobs:
           elif [ "$android" = true ]; then PLATFORM=android
           else echo "::error::no platform to build"; exit 1
           fi
-          echo "Building production for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Building production in the EAS cloud for: $* (--platform $PLATFORM)" | tee -a "$GITHUB_STEP_SUMMARY"
           eas build --profile production --platform "$PLATFORM" --non-interactive
+
+      # Same path as the beta promotion (promote-beta, builder=github): Firebase
+      # config from this job's GitHub environment secrets, credentials frozen,
+      # no Sentry source map upload. The binary never leaves the runner except
+      # to EAS (next step): no GitHub artifact, the repository is public.
+      - name: Build production (GitHub runner)
+        id: build
+        if: matrix.platform != 'eas'
+        timeout-minutes: 100
+        uses: ./.github/actions/eas-local-build
+        with:
+          platform: ${{ matrix.platform }}
+          profile: production
+          firebase-b64: >-
+            ${{ matrix.platform == 'ios' && secrets.FIREBASE_IOS_PLIST_PRODUCTION_B64
+            || secrets.FIREBASE_ANDROID_JSON_PRODUCTION_B64 }}
+          firebase-secret-name: >-
+            ${{ matrix.platform == 'ios' && 'FIREBASE_IOS_PLIST_PRODUCTION_B64'
+            || 'FIREBASE_ANDROID_JSON_PRODUCTION_B64' }}
+
+      # `eas upload` registers the local binary on expo.dev: install link /
+      # download from the project's build page (Expo account members only), and
+      # an EAS record carrying its fingerprint, which the gate and
+      # check-ota-reach.sh look up (eas build:list --fingerprint-hash). It
+      # stores a file, it runs no build: not counted in the EAS build quota.
+      - name: Upload to EAS (eas upload)
+        if: matrix.platform != 'eas'
+        working-directory: apps/client
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          BUILD_PATH: ${{ steps.build.outputs.path }}
+          FINGERPRINT: ${{ steps.build.outputs.fingerprint }}
+        run: |
+          set -euo pipefail
+          trap 'rm -f "$BUILD_PATH"' EXIT
+          args=(--platform "$PLATFORM" --build-path "$BUILD_PATH" --non-interactive --json)
+          if [ -n "$FINGERPRINT" ]; then
+            args+=(--fingerprint "$FINGERPRINT")
+          fi
+          if ! out=$(eas upload "${args[@]}" < /dev/null); then
+            echo "::error::eas upload a échoué : binaire perdu (non conservé), le prochain push le reconstruira"
+            exit 1
+          fi
+          url=$(sed -n '/^{/,$p' <<< "$out" | jq -r '.url // empty' 2> /dev/null || true)
+          echo "📦 Binaire production $PLATFORM envoyé sur EAS : ${url:-voir expo.dev}" | tee -a "$GITHUB_STEP_SUMMARY"
 
   ota-production:
     name: OTA Update (production)

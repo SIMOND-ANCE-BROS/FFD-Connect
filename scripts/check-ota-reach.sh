@@ -51,11 +51,27 @@ builds() {
     | jq 'if type == "array" then length else error("not an array") end' 2> /dev/null
 }
 
+# uploaded <platform> <runtime> → nombre de builds terminés portant cette
+# empreinte, quel que soit le canal. Un binaire construit sur un runner GitHub
+# (`eas build --local`, #508) n'est connu d'EAS que par `eas upload`, qui
+# l'enregistre sans canal ni runtimeVersion mais avec son empreinte. Avec
+# `policy: "fingerprint"`, empreinte = runtimeVersion, et elle dépend de la
+# variante : une correspondance est donc un build de ce canal.
+uploaded() {
+  eas build:list --platform "$1" --fingerprint-hash "$2" --status finished --limit 1 --json --non-interactive \
+    < /dev/null 2> /dev/null | sed -n '/^[[{]/,$p' \
+    | jq 'if type == "array" then length else error("not an array") end' 2> /dev/null
+}
+
 missed=0
 while read -r platform runtime; do
   count=$(builds "$platform" "$runtime")
   if [ -z "$count" ]; then
     fail_or_warn "OTA $platform : liste des builds EAS indisponible, contrôle non fait."
+    continue
+  fi
+  if [ "$count" -eq 0 ] && [ "$(uploaded "$platform" "$runtime")" -gt 0 ] 2> /dev/null; then
+    echo "✅ OTA $platform (runtime ${runtime:0:7}) : au moins un build compatible (runner GitHub, envoyé par eas upload)" | tee -a "$summary"
     continue
   fi
   if [ "$count" -gt 0 ]; then

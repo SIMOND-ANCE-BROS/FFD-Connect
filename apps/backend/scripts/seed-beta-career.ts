@@ -28,7 +28,7 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   const reviewUser = await prisma.user.findFirst({
     where: { isStoreReview: true },
-    select: { id: true, email: true, firstName: true, lastName: true },
+    select: { id: true, firstName: true, lastName: true },
     orderBy: { createdAt: "asc" },
   });
   if (!reviewUser) {
@@ -184,7 +184,7 @@ async function main() {
   }
 
   console.warn(
-    `✅ Career seed: ${competitions.length} compétitions, ${registrations.length} inscriptions, ${results.length} résultats pour ${reviewUser.email}.`,
+    `✅ Career seed: ${competitions.length} compétitions, ${registrations.length} inscriptions, ${results.length} résultats pour le compte ${reviewUser.id}.`,
   );
 }
 

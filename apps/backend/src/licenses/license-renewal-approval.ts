@@ -12,14 +12,18 @@ import {
   idOnlySelect,
   licenseRenewalApprovalTargetSelect,
 } from "../utils/prisma-selects";
+import { CodedBadRequestException } from "../common/errors/coded-bad-request.exception";
 import { normalizeLicenseNumber } from "./license-number.util";
 import { renewedLicenseValidUntil } from "./license-season";
 import { retireLicenseNumber } from "./retired-license-number";
 import { pickRenewalOcrData } from "./renewal-ocr-data.util";
 
 export interface RenewalApprovalOptions {
-  /** Administrator deciding, or null for the automatic approval at submission. */
-  reviewerId: string | null;
+  /**
+   * Administrator deciding. Required: since #271 no renewal is approved
+   * without one (the automatic approval at submission is gone).
+   */
+  reviewerId: string;
   /**
    * Licence number confirmed by the administrator (#262). Takes precedence
    * over the OCR reading and replaces the number of an existing licence.
@@ -58,6 +62,24 @@ export class LicenseNumberUnknownException extends BadRequestException {
   }
 }
 
+/** Stable code of {@link MedicalCertificateMissingException}. */
+export const RENEWAL_MEDICAL_CERTIFICATE_MISSING =
+  "RENEWAL_MEDICAL_CERTIFICATE_MISSING";
+
+/**
+ * The request no longer holds a medical certificate (purged, or never
+ * uploaded by a request predating the required documents): an administrator
+ * cannot vouch for a fitness nobody can see anymore (#271).
+ */
+export class MedicalCertificateMissingException extends CodedBadRequestException {
+  constructor() {
+    super(
+      RENEWAL_MEDICAL_CERTIFICATE_MISSING,
+      "Le certificat médical de cette demande n'est plus conservé : elle ne peut pas être validée. Refusez-la pour que le licencié en dépose une nouvelle.",
+    );
+  }
+}
+
 /** The licence number to create is already another account's licence. */
 export class LicenseNumberTakenException extends ConflictException {
   constructor() {
@@ -75,6 +97,9 @@ export class LicenseNumberTakenException extends ConflictException {
  *    409, and its transaction rolls back before touching the licence.
  * 2. Licence upsert, validity from the decision time (#259) and never shorter
  *    than the current one (#250).
+ *
+ * No approval without a medical certificate still on file (#271):
+ * MedicalCertificateMissingException (400).
  *
  * The licence number is never invented (#262): administrator's number, else
  * the OCR reading (only when shaped like a licence number), else the existing
@@ -95,6 +120,13 @@ export async function approvePendingRenewal(
     throw new NotFoundException("Demande de renouvellement non trouvée");
   if (request.status !== LicenseRenewalStatus.PENDING)
     throw renewalAlreadyDecided();
+
+  if (
+    !request.documents.some(
+      (d) => d.type === LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+    )
+  )
+    throw new MedicalCertificateMissingException();
 
   const licenseCertificate = request.documents.find(
     (d) => d.type === LicenseRenewalDocumentType.LICENSE_CERTIFICATE,

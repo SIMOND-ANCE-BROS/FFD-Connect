@@ -23,7 +23,6 @@ Routes:
 
 - `GET /licenses/my`
 - `POST /licenses/upload`
-- `POST /licenses/renew`
 - `POST /licenses/renewal/start`
 - `GET /licenses/renewal/my`
 - `POST /licenses/renewal/:id/documents`
@@ -56,9 +55,9 @@ Specificites:
 ## 6) Flux principal (renouvellement)
 
 1. Start draft via `POST /licenses/renewal/start`.
-2. Upload documents via `POST /licenses/renewal/:id/documents`.
-3. Soumission via `POST /licenses/renewal/:id/submit`.
-4. Auto-approbation à la soumission (jusqu'à #271), ou décision de l'administrateur via `POST /admin/license-renewals/:id/approve` / `reject` (décision atomique, 409 si déjà traitée, tracée dans le journal d'audit).
+2. Upload documents via `POST /licenses/renewal/:id/documents` (l'OCR ne refuse jamais un document : ses lectures sont des indices pour l'administrateur).
+3. Soumission via `POST /licenses/renewal/:id/submit` : la demande passe `PENDING`, aucune licence n'est créée ni prolongée, les administrateurs sont notifiés (#271).
+4. Décision de l'administrateur via `POST /admin/license-renewals/:id/approve` / `reject` (décision atomique, 409 si déjà traitée, tracée dans le journal d'audit).
 
 ## 7) Risques et points d'attention
 

@@ -9,6 +9,7 @@ import { Prisma, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import { AuthPasswordService } from "../auth/auth-password.service";
+import { isEmailTaken, normalizeEmail } from "../auth/email-identity";
 import { EmailService, InvitationRole } from "../auth/email.service";
 import { hasRole, normalizeExtraRoles } from "../auth/roles";
 import { mirrorLegacyCompetitionLevel } from "../common/competition-level";
@@ -68,7 +69,7 @@ export class AdminUserAccountsService {
     dto: CreateAdminUserDto,
   ): Promise<AdminUserCreatedDto> {
     const extraRoles = this.checkChoices(dto);
-    const email = dto.email.trim().toLowerCase();
+    const email = normalizeEmail(dto.email);
     const firstName = dto.firstName.trim();
     const lastName = dto.lastName.trim();
     const profile = profileOf(dto);
@@ -84,11 +85,9 @@ export class AdminUserAccountsService {
     };
     try {
       created = await this.prisma.$transaction(async (tx) => {
-        const taken = await tx.user.findUnique({
-          where: { email },
-          select: { id: true },
-        });
-        if (taken) throw new ConflictException("Cet email est déjà utilisé");
+        // Whatever its casing (#465): no second account for the same person.
+        if (await isEmailTaken(tx, email))
+          throw new ConflictException("Cet email est déjà utilisé");
 
         const club = await this.resolveClub(tx, dto);
         const user = await tx.user.create({

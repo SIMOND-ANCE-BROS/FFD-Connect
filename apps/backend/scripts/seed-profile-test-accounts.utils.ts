@@ -10,6 +10,8 @@ import {
   LEGACY_STORE_REVIEW_EMAIL,
   STORE_REVIEW_CLUB_NAME,
   STORE_REVIEW_EMAIL,
+  isStoreReviewEmail,
+  pickStoreReviewAccount,
 } from "./purge-test-accounts.utils";
 
 export const STORE_REVIEW_FIRST_NAME = "Compte";
@@ -26,29 +28,61 @@ export interface StoreReviewUserRow {
 const norm = (e: string) => e.trim().toLowerCase();
 
 export type StoreReviewAccountDecision<T extends StoreReviewUserRow> =
-  | { kind: "update"; user: T }
+  | {
+      kind: "update";
+      user: T;
+      /** Holder of the new address when it is not `user` (rename conflict). */
+      emailHolder: T | null;
+      /** Other flagged accounts: there must be only one (#473). */
+      duplicateIds: string[];
+    }
   | { kind: "create" }
   | { kind: "conflict"; ids: string[] };
 
 /**
- * Only a FLAGGED (`isStoreReview`) account may be updated or elevated: the
- * seed grants ADMIN + every role, so adopting an unflagged account that merely
- * holds the target or legacy email would be account squatting. Unflagged
- * holder(s) of either email = conflict (nothing written); create only when the
- * flag and both emails are free.
+ * `rows` = the flagged accounts and the holder(s) of STORE_REVIEW_EMAIL,
+ * oldest first. The account is the one pickStoreReviewAccount chooses (the
+ * same one the boot purge keeps). Only a FLAGGED account may be updated or
+ * elevated: the seed grants ADMIN + every role, so adopting an unflagged
+ * account that merely holds the address would be account squatting —
+ * conflict, nothing written. The legacy `licensee@test.com` is never looked
+ * up by address: unflagged it is an ordinary test account (the purge deletes
+ * it), so it never blocks the creation of the new account. Create only when
+ * no account is flagged and the new address is free.
  */
 export function resolveStoreReviewAccount<T extends StoreReviewUserRow>(
   rows: readonly T[],
 ): StoreReviewAccountDecision<T> {
-  const flagged = rows.find((r) => r.isStoreReview);
-  if (flagged) return { kind: "update", user: flagged };
-  const holders = rows.filter((r) =>
-    [STORE_REVIEW_EMAIL, LEGACY_STORE_REVIEW_EMAIL].includes(norm(r.email)),
-  );
-  if (holders.length > 0) {
-    return { kind: "conflict", ids: holders.map((h) => h.id) };
+  const picked = pickStoreReviewAccount(rows);
+  if (!picked) return { kind: "create" };
+  if (!picked.isStoreReview) {
+    return {
+      kind: "conflict",
+      ids: rows.filter((r) => isStoreReviewEmail(r.email)).map((r) => r.id),
+    };
   }
-  return { kind: "create" };
+  return {
+    kind: "update",
+    user: picked,
+    emailHolder:
+      rows.find((r) => r.id !== picked.id && isStoreReviewEmail(r.email)) ??
+      null,
+    duplicateIds: rows
+      .filter((r) => r.isStoreReview && r.id !== picked.id)
+      .map((r) => r.id),
+  };
+}
+
+/**
+ * Log line of the duplicate check (ids only, never an e-mail: #430). The seed
+ * fails with it (exit code 1): an `@test.com` duplicate is deleted by the next
+ * boot purge, any other one needs a manual check.
+ */
+export function formatDuplicateStoreReviewAccounts(
+  keptId: string,
+  duplicateIds: readonly string[],
+): string {
+  return `${duplicateIds.length + 1} accounts are flagged isStoreReview, expected one: kept ${keptId}, duplicate(s) left untouched: ${duplicateIds.join(", ")}.`;
 }
 
 export type RenamePlan<D> =

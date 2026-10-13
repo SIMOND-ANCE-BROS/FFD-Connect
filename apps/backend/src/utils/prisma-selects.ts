@@ -594,10 +594,18 @@ export const licenseRenewalUploadTargetSelect = {
   documents: { select: { type: true, filePath: true } },
 } as const;
 
-/** Soumission : statut + données OCR des documents, pour les règles métier. */
+/**
+ * Soumission : statut + types des documents déposés. Les données OCR n'y sont
+ * pas lues : elles ne sont que des indices pour l'administrateur (#271).
+ */
 export const licenseRenewalSubmitTargetSelect = {
   status: true,
-  documents: { select: { type: true, ocrData: true } },
+  documents: { select: { type: true } },
+} as const;
+
+/** Fin de validité de la licence d'un utilisateur (renouvellement inutile, #250). */
+export const userLicenseValidUntilSelect = {
+  license: { select: { validUntil: true } },
 } as const;
 
 /** Approbation : de quoi renouveler la licence, sans le reste du profil. */
@@ -628,6 +636,16 @@ export const healthDataPurgeDueSelect = {
 /** Sélecteur minimal : identifiant seul (destinataires d'une notification…). */
 export const idOnlySelect = {
   id: true,
+} as const;
+
+/**
+ * Compte visé par « mot de passe oublié » (#465) : l'adresse enregistrée (seule
+ * destinataire du lien) et le drapeau du compte de review, jamais réinitialisé.
+ */
+export const passwordResetTargetSelect = {
+  id: true,
+  email: true,
+  isStoreReview: true,
 } as const;
 
 /**

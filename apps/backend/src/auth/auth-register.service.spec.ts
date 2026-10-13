@@ -1,3 +1,4 @@
+import { emailLookupFor } from "../../test/mocks/email-lookup.mock";
 import {
   BadRequestException,
   ConflictException,
@@ -15,9 +16,14 @@ import { AuthTokenService } from "./auth-token.service";
 describe("AuthService.register", () => {
   let authService: AuthService;
   let prisma: {
-    user: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+    user: {
+      findUnique: jest.Mock;
+      create: jest.Mock;
+      update: jest.Mock;
+    };
     license: { findUnique: jest.Mock; update: jest.Mock };
     $transaction: jest.Mock;
+    $queryRaw: jest.Mock;
   };
   let authTokenService: { createRefreshToken: jest.Mock };
   let configService: { get: jest.Mock };
@@ -31,6 +37,8 @@ describe("AuthService.register", () => {
       },
       license: { findUnique: jest.fn(), update: jest.fn() },
       $transaction: jest.fn(),
+      // E-mail lookup (#465): the address is free by default.
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
     configService = { get: jest.fn().mockReturnValue(undefined) };
     authTokenService = {
@@ -108,7 +116,9 @@ describe("AuthService.register", () => {
   });
 
   it("rejects if email already exists", async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: "existing" });
+    prisma.$queryRaw.mockResolvedValue([
+      { id: "existing", email: "taken@example.com" },
+    ]);
 
     await expect(
       authService.register(
@@ -118,6 +128,88 @@ describe("AuthService.register", () => {
         "Dupont",
       ),
     ).rejects.toThrow(ConflictException);
+  });
+
+  it("rejects an address already used with another casing (#465)", async () => {
+    // A legacy mixed-case row: the normalised address would collide with it.
+    prisma.$queryRaw.mockResolvedValue([
+      { id: "legacy", email: "Taken@Example.com" },
+    ]);
+
+    await expect(
+      authService.register(
+        " Taken@Example.com ",
+        "MonPass1!abc",
+        "FFD-2025-001",
+        "Dupont",
+      ),
+    ).rejects.toThrow(ConflictException);
+    expect(prisma.$queryRaw).toHaveBeenCalledWith(
+      emailLookupFor("taken@example.com"),
+    );
+    expect(prisma.license.findUnique).not.toHaveBeenCalled();
+  });
+
+  const failCreation = (err: Error) =>
+    prisma.$transaction.mockImplementation(
+      (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          user: { create: jest.fn().mockRejectedValue(err) },
+          license: { update: jest.fn(), create: jest.fn() },
+        }),
+    );
+
+  it("answers 409, not 500, when a concurrent registration wins the address (#465)", async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.license.findUnique.mockResolvedValue({
+      id: "lic-1",
+      number: "FFD-2025-001",
+      userId: null,
+      lastName: "Dupont",
+      clubName: null,
+      category: null,
+      validUntil: new Date("2099-01-01"),
+    });
+    failCreation(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint", {
+        code: "P2002",
+        clientVersion: "7.0.0",
+      }),
+    );
+
+    await expect(
+      authService.register(
+        "Race@Example.com",
+        "MonPass1!abc",
+        "FFD-2025-001",
+        "Dupont",
+      ),
+    ).rejects.toThrow(
+      new ConflictException("Un compte existe déjà avec cet email"),
+    );
+  });
+
+  it("rethrows any other error of the account creation", async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.license.findUnique.mockResolvedValue({
+      id: "lic-1",
+      number: "FFD-2025-001",
+      userId: null,
+      lastName: "Dupont",
+      clubName: null,
+      category: null,
+      validUntil: new Date("2099-01-01"),
+    });
+    failCreation(new Error("db down"));
+
+    await expect(
+      authService.register(
+        "new@example.com",
+        "MonPass1!abc",
+        "FFD-2025-001",
+        "Dupont",
+      ),
+    ).rejects.toThrow("db down");
   });
 
   it("rejects if license number not found", async () => {
@@ -285,9 +377,9 @@ describe("AuthService.register", () => {
       "Dupont",
     );
 
-    // Verify findUnique was called with normalized email
-    expect(prisma.user.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { email: "upper@example.com" } }),
+    // The uniqueness check looks the normalised address up (#465)
+    expect(prisma.$queryRaw).toHaveBeenCalledWith(
+      emailLookupFor("upper@example.com"),
     );
   });
   describe("birthDate derived from the licence number (#60)", () => {

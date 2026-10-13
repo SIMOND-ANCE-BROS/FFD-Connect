@@ -4,8 +4,11 @@
  * without a database).
  *
  * Conservative on purpose: a real beta tester must never match. Only accounts
- * the staging seeds created are targeted, and the store-review account
- * (`isStoreReview`) is always kept.
+ * the staging seeds created are targeted, and ONE store-review account is
+ * always kept (pickStoreReviewAccount): the holder of STORE_REVIEW_EMAIL, or,
+ * before the in-place rename, the flagged account the seed will rename. Any
+ * other flagged `@test.com` account — a `licensee@test.com` recreated by an
+ * image older than #348 — is a duplicate and is purged (#473).
  */
 import { Prisma, PrismaClient } from "@prisma/client";
 import type { RenewalDocumentFileCleaner } from "../src/storage/renewal-document-file-cleaner.service";
@@ -25,20 +28,19 @@ import { licenseRenewalDocumentFileSelect } from "../src/utils/prisma-selects";
 const TEST_EMAIL_DOMAIN = "@test.com";
 
 /**
- * The store-review account given to Apple / Google. Kept by email too, not
- * only by flag: on the first boot after the flag's migration it is not
- * flagged yet (the purge runs before the seed that flags it), and deleting it
- * would change its id and end the reviewers' sessions.
+ * The store-review account given to Apple / Google. The purge never deletes
+ * the holder of this address, flagged or not: deleting it would change its id
+ * and end the reviewers' sessions.
  */
 export const STORE_REVIEW_EMAIL = "demo@ffd.gabin-simond.fr";
 
 /**
- * Former email of the account (an `@test.com` address, so the purge would
- * target it). Kept excluded during the transition: until the seed has renamed
- * the account in place, deleting it would change its id and end the
- * reviewers' sessions.
+ * Former email of the account (#347). NOT protected by the purge any more
+ * (#473): images older than #348 recreate it when they boot, so once the
+ * account carries the new address a `licensee@test.com` is a duplicate and
+ * goes like any other `@test.com` account. Still used by the seed to rename a
+ * flagged account that was never migrated.
  */
-// TODO(2026-10): remove the LEGACY_* constants once staging is migrated (#347).
 export const LEGACY_STORE_REVIEW_EMAIL = "licensee@test.com";
 
 /** Fixed ids of seeded rows (`seed-scan-user-1`…). */
@@ -51,8 +53,9 @@ export const TEST_CLUB_NAMES: readonly string[] = ["Club Démo Bêta"];
 export const STORE_REVIEW_CLUB_NAME = "Club Démo FFD Connect";
 
 /**
- * Former club name, looked up by the seed to rename the club in place.
- * TODO(2026-10): remove once staging is migrated (#347).
+ * Former club name, looked up by the seed to rename the club in place. Once a
+ * club carries the new name, a club still named like this is a leftover of an
+ * image older than #348 and is purged (selectTestClubs, #473).
  */
 export const LEGACY_STORE_REVIEW_CLUB_NAME = "Club Test FFD";
 
@@ -73,42 +76,87 @@ export interface PurgeClubCandidate {
   memberIds: readonly string[];
 }
 
-export function isTestUser(user: PurgeUserCandidate): boolean {
-  const email = user.email.trim().toLowerCase();
-  if (
-    user.isStoreReview ||
-    email === STORE_REVIEW_EMAIL ||
-    email === LEGACY_STORE_REVIEW_EMAIL
-  ) {
+const norm = (email: string) => email.trim().toLowerCase();
+
+export function isStoreReviewEmail(email: string): boolean {
+  return norm(email) === STORE_REVIEW_EMAIL;
+}
+
+/**
+ * THE store-review account, among the flagged accounts and the holder(s) of
+ * STORE_REVIEW_EMAIL, given in creation order (oldest first). Shared by the
+ * purge (the one account it keeps) and the seed (the one account it updates):
+ * 1. the flagged holder of the new address (normal state);
+ * 2. otherwise the oldest flagged account (not migrated yet, or its address
+ *    edited from the back-office): the seed renames / updates it in place;
+ * 3. otherwise the unflagged holder of the new address (the seed reports it
+ *    as a conflict — never elevated — and the purge keeps it).
+ */
+export function pickStoreReviewAccount<T extends PurgeUserCandidate>(
+  rows: readonly T[],
+): T | null {
+  return (
+    rows.find((r) => r.isStoreReview && isStoreReviewEmail(r.email)) ??
+    rows.find((r) => r.isStoreReview) ??
+    rows.find((r) => isStoreReviewEmail(r.email)) ??
+    null
+  );
+}
+
+/**
+ * `keptStoreReviewId` is the id pickStoreReviewAccount chose (null: none). A
+ * flagged account is NOT protected by its flag alone: only the chosen one and
+ * the holder of STORE_REVIEW_EMAIL are, so a duplicate flagged `@test.com`
+ * account (e.g. a recreated `licensee@test.com`) is purged (#473).
+ */
+export function isTestUser(
+  user: PurgeUserCandidate,
+  keptStoreReviewId: string | null,
+): boolean {
+  if (user.id === keptStoreReviewId || isStoreReviewEmail(user.email)) {
     return false;
   }
   return (
-    email.endsWith(TEST_EMAIL_DOMAIN) || user.id.startsWith(SEED_ID_PREFIX)
+    norm(user.email).endsWith(TEST_EMAIL_DOMAIN) ||
+    user.id.startsWith(SEED_ID_PREFIX)
   );
 }
 
 export function selectTestUsers<T extends PurgeUserCandidate>(
   users: readonly T[],
+  keptStoreReviewId: string | null,
 ): T[] {
-  return users.filter(isTestUser);
+  return users.filter((u) => isTestUser(u, keptStoreReviewId));
 }
 
 const TEST_CLUB_NAME_SET = new Set(
   TEST_CLUB_NAMES.map((n) => n.toLocaleLowerCase("fr")),
 );
 
+const normClub = (name: string) => name.trim().toLocaleLowerCase("fr");
+
 /**
  * A seeded club goes only when none of its members survives the purge: a club
  * a real account was attached to (by hand, or a tester who picked it) stays.
+ * The store-review club (flagged) is kept, except a club still carrying the
+ * LEGACY name while another club already holds the new one: that is a
+ * leftover recreated by an image older than #348 (#473). Without a club named
+ * STORE_REVIEW_CLUB_NAME the legacy club is the one the seed renames: kept.
  */
 export function selectTestClubs<T extends PurgeClubCandidate>(
   clubs: readonly T[],
   purgedUserIds: ReadonlySet<string>,
 ): T[] {
+  const storeReviewClubExists = clubs.some(
+    (c) => normClub(c.name) === normClub(STORE_REVIEW_CLUB_NAME),
+  );
+  const isLegacyLeftover = (club: T) =>
+    storeReviewClubExists &&
+    normClub(club.name) === normClub(LEGACY_STORE_REVIEW_CLUB_NAME);
   return clubs.filter(
     (club) =>
-      !club.isStoreReview &&
-      TEST_CLUB_NAME_SET.has(club.name.trim().toLocaleLowerCase("fr")) &&
+      (isLegacyLeftover(club) ||
+        (!club.isStoreReview && TEST_CLUB_NAME_SET.has(normClub(club.name)))) &&
       club.memberIds.every((id) => purgedUserIds.has(id)),
   );
 }

@@ -6,6 +6,7 @@ import {
   buildAccountDeletionOperations,
 } from "../src/users/account-deletion.core";
 import {
+  LEGACY_STORE_REVIEW_CLUB_NAME,
   LEGACY_STORE_REVIEW_EMAIL,
   PurgeUserPrisma,
   STORE_REVIEW_CLUB_NAME,
@@ -17,6 +18,7 @@ import {
   isTestLicenseNumber,
   purgeTestUser,
   isTestUser,
+  pickStoreReviewAccount,
   selectTestClubs,
   selectTestUsers,
 } from "./purge-test-accounts.utils";
@@ -27,6 +29,39 @@ const user = (id: string, email: string, isStoreReview = false) => ({
   isStoreReview,
 });
 
+describe("pickStoreReviewAccount (#473)", () => {
+  it("prefers the flagged holder of the new address, even if younger", () => {
+    const rows = [
+      user("legacy", LEGACY_STORE_REVIEW_EMAIL, true),
+      user("demo", ` ${STORE_REVIEW_EMAIL.toUpperCase()}`, true),
+    ];
+    expect(pickStoreReviewAccount(rows)?.id).toBe("demo");
+  });
+
+  it("falls back to the oldest flagged account before the rename", () => {
+    const rows = [
+      user("legacy", LEGACY_STORE_REVIEW_EMAIL, true),
+      user("other", "x@test.com", true),
+    ];
+    expect(pickStoreReviewAccount(rows)?.id).toBe("legacy");
+  });
+
+  it("prefers any flagged account over an unflagged holder of the address", () => {
+    const rows = [
+      user("demo", STORE_REVIEW_EMAIL),
+      user("edited", "renamed@x.fr", true),
+    ];
+    expect(pickStoreReviewAccount(rows)?.id).toBe("edited");
+  });
+
+  it("returns the unflagged holder of the address, else null", () => {
+    expect(pickStoreReviewAccount([user("demo", STORE_REVIEW_EMAIL)])?.id).toBe(
+      "demo",
+    );
+    expect(pickStoreReviewAccount([])).toBeNull();
+  });
+});
+
 describe("isTestUser", () => {
   it.each([
     ["u1", "beta@test.com"],
@@ -35,7 +70,7 @@ describe("isTestUser", () => {
     ["u4", " staff@test.com "],
     ["seed-scan-user-1", "scan1@whatever.fr"],
   ])("matches seeded account %s <%s>", (id, email) => {
-    expect(isTestUser(user(id, email))).toBe(true);
+    expect(isTestUser(user(id, email), null)).toBe(true);
   });
 
   it.each([
@@ -45,21 +80,45 @@ describe("isTestUser", () => {
     ["u4", "test.e2e@ffd.com"],
     ["seedling", "x@example.org"],
   ])("never matches a regular account %s <%s>", (id, email) => {
-    expect(isTestUser(user(id, email))).toBe(false);
+    expect(isTestUser(user(id, email), null)).toBe(false);
   });
 
-  it("always keeps the store-review account", () => {
-    expect(isTestUser(user("u1", STORE_REVIEW_EMAIL, true))).toBe(false);
-    // Not flagged yet (first boot after the migration): kept by email.
-    expect(isTestUser(user("u1", ` ${STORE_REVIEW_EMAIL.toUpperCase()}`))).toBe(
+  it("always keeps the holder of the new address, flagged or not", () => {
+    expect(isTestUser(user("u1", STORE_REVIEW_EMAIL, true), "other")).toBe(
       false,
     );
-    // Transition: legacy @test.com email is kept until the in-place rename.
     expect(
-      isTestUser(user("u1", ` ${LEGACY_STORE_REVIEW_EMAIL.toUpperCase()}`)),
+      isTestUser(user("seed-x", ` ${STORE_REVIEW_EMAIL.toUpperCase()}`), null),
     ).toBe(false);
-    expect(isTestUser(user("u1", "licensee@test.com"))).toBe(false);
-    expect(isTestUser(user("seed-x", "x@test.com", true))).toBe(false);
+  });
+
+  it("keeps the chosen store-review account, whatever its address", () => {
+    // Not renamed yet: the seed renames it in place, its id must survive.
+    expect(isTestUser(user("u1", LEGACY_STORE_REVIEW_EMAIL, true), "u1")).toBe(
+      false,
+    );
+  });
+
+  it("purges a legacy licensee@test.com once the new account exists (#473)", () => {
+    // Recreated (flagged) by an image older than #348, demo@ is kept instead.
+    expect(
+      isTestUser(
+        user("u2", ` ${LEGACY_STORE_REVIEW_EMAIL.toUpperCase()}`, true),
+        "demo",
+      ),
+    ).toBe(true);
+    // Unflagged: an ordinary test account, never the store-review one.
+    expect(isTestUser(user("u3", LEGACY_STORE_REVIEW_EMAIL), null)).toBe(true);
+  });
+
+  it("no longer protects a flagged @test.com duplicate by its flag", () => {
+    expect(isTestUser(user("seed-x", "x@test.com", true), "demo")).toBe(true);
+  });
+
+  it("never purges a flagged account outside the test domain", () => {
+    expect(isTestUser(user("u9", "real@example.org", true), "demo")).toBe(
+      false,
+    );
   });
 });
 
@@ -71,10 +130,25 @@ describe("selectTestUsers", () => {
       user("c", STORE_REVIEW_EMAIL, true),
       user("seed-scan-user-2", "scan2@test.com"),
     ];
-    expect(selectTestUsers(rows).map((u) => u.id)).toEqual([
+    expect(selectTestUsers(rows, "c").map((u) => u.id)).toEqual([
       "a",
       "seed-scan-user-2",
     ]);
+  });
+
+  it("purges the recreated legacy account, keeps the renamed one (#473)", () => {
+    const demo = user("demo", STORE_REVIEW_EMAIL, true);
+    const legacy = user("legacy", LEGACY_STORE_REVIEW_EMAIL, true);
+    const kept = pickStoreReviewAccount([demo, legacy])?.id ?? null;
+    expect(selectTestUsers([legacy], kept).map((u) => u.id)).toEqual([
+      "legacy",
+    ]);
+  });
+
+  it("keeps the legacy account the seed will rename when demo@ is absent", () => {
+    const legacy = user("legacy", LEGACY_STORE_REVIEW_EMAIL, true);
+    const kept = pickStoreReviewAccount([legacy])?.id ?? null;
+    expect(selectTestUsers([legacy], kept)).toEqual([]);
   });
 });
 
@@ -107,6 +181,28 @@ describe("selectTestClubs", () => {
       club("c2", STORE_REVIEW_CLUB_NAME, []),
       club("c3", "Club Démo Bêta", [], true),
     ];
+    expect(selectTestClubs(clubs, new Set())).toEqual([]);
+  });
+
+  it("purges a legacy club once the new club exists (#473)", () => {
+    const clubs = [
+      club("n", STORE_REVIEW_CLUB_NAME, ["demo"], true),
+      club(
+        "l",
+        ` ${LEGACY_STORE_REVIEW_CLUB_NAME.toUpperCase()}`,
+        ["legacy"],
+        true,
+      ),
+    ];
+    expect(
+      selectTestClubs(clubs, new Set(["legacy"])).map((c) => c.id),
+    ).toEqual(["l"]);
+    // A surviving member keeps it.
+    expect(selectTestClubs(clubs, new Set())).toEqual([]);
+  });
+
+  it("keeps the legacy club the seed will rename when the new one is absent", () => {
+    const clubs = [club("l", LEGACY_STORE_REVIEW_CLUB_NAME, [], true)];
     expect(selectTestClubs(clubs, new Set())).toEqual([]);
   });
 

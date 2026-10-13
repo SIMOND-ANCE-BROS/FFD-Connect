@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { isEmailTaken, normalizeEmail } from "../auth/email-identity";
 import { EmailService } from "../auth/email.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -139,15 +140,13 @@ export class AdminUserIdentifiersService {
     const after: Identifiers = {};
 
     // The DTO lower-cases; a stored legacy casing of the same address is no change.
-    if (dto.email !== undefined && dto.email !== current.email.toLowerCase()) {
-      const taken = await tx.user.findFirst({
-        where: {
-          email: { equals: dto.email, mode: "insensitive" },
-          id: { not: userId },
-        },
-        select: idOnlySelect,
-      });
-      if (taken) throw new ConflictException(EMAIL_TAKEN);
+    if (
+      dto.email !== undefined &&
+      dto.email !== normalizeEmail(current.email)
+    ) {
+      // Any casing of another account's address is taken (#465).
+      if (await isEmailTaken(tx, dto.email, userId))
+        throw new ConflictException(EMAIL_TAKEN);
       before.email = current.email;
       after.email = dto.email;
     }

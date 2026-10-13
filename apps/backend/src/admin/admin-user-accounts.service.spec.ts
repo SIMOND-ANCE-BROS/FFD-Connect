@@ -1,3 +1,4 @@
+import { emailLookupFor } from "../../test/mocks/email-lookup.mock";
 import {
   BadRequestException,
   ConflictException,
@@ -31,6 +32,8 @@ describe("AdminUserAccountsService", () => {
     prisma.$transaction.mockImplementation(((fn: (tx: unknown) => unknown) =>
       fn(prisma)) as never);
     prisma.user.findUnique.mockResolvedValue(null);
+    // E-mail lookup (#465): the address is free by default.
+    prisma.$queryRaw.mockResolvedValue([] as never);
     prisma.club.findUnique.mockResolvedValue(null);
     prisma.club.findFirst.mockResolvedValue(null);
     prisma.club.create.mockResolvedValue({
@@ -326,14 +329,28 @@ describe("AdminUserAccountsService", () => {
   });
 
   it("409s on an email already used, looked up in normalised form", async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: "x" } as never);
+    prisma.$queryRaw.mockResolvedValue([
+      { id: "x", email: "jeanne@example.fr" },
+    ] as never);
     await expect(service.create("admin-1", dto({}))).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(prisma.user.findUnique).toHaveBeenCalledWith({
-      where: { email: "jeanne@example.fr" },
-      select: { id: true },
-    });
+    expect(prisma.$queryRaw).toHaveBeenCalledWith(
+      emailLookupFor("jeanne@example.fr"),
+    );
+  });
+
+  it("409s on a legacy account whose stored email differs only by case (#465)", async () => {
+    prisma.$queryRaw.mockResolvedValue([
+      { id: "legacy", email: "Jeanne@Example.fr" },
+    ] as never);
+    await expect(service.create("admin-1", dto({}))).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(prisma.$queryRaw).toHaveBeenCalledWith(
+      emailLookupFor("jeanne@example.fr"),
+    );
+    expect(prisma.user.create).not.toHaveBeenCalled();
   });
 
   it("409s with the existing club id when the new club name exists", async () => {

@@ -87,27 +87,6 @@ describe("Licence renewal: one PENDING request per user (integration, real DB)",
     ({ app, prisma, jwt } = await buildHttpApp());
   });
 
-  /**
-   * A licence number already held by another account: the automatic approval
-   * fails on it and leaves the submitted request PENDING (#280), which is
-   * the situation #271 guards against.
-   */
-  const takenLicenseNumber = async () => {
-    const holder = await createLicensee();
-    const number = `T-${randomUUID().slice(0, 8)}`;
-    await prisma.license.create({
-      data: {
-        userId: holder.id,
-        number,
-        validUntil: new Date("2020-08-31T00:00:00Z"),
-        category: "Standard",
-        clubName: "Club",
-      },
-      select: { id: true },
-    });
-    return number;
-  };
-
   const submit = (u: { id: string; email: string; role: string }, id: string) =>
     request(server())
       .post(`/api/v1/licenses/renewal/${id}/submit`)
@@ -255,18 +234,60 @@ describe("Licence renewal: one PENDING request per user (integration, real DB)",
     expect(res.body).toMatchObject({ id: pending.id, status: "PENDING" });
   });
 
+  it("submitting waits for an administrator: PENDING, no licence granted, even with a free number and an unfit certificate", async () => {
+    const licensee = await createLicensee();
+    const draft = await prisma.licenseRenewalRequest.create({
+      data: {
+        userId: licensee.id,
+        status: LicenseRenewalStatus.DRAFT,
+        documents: {
+          create: [
+            {
+              type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+              filePath: `medical-${randomUUID()}.pdf`,
+              ocrData: { isApte: false, date: "2001-02-03" },
+              purgeDueAt: new Date("2099-01-01T00:00:00Z"),
+            },
+            {
+              type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
+              filePath: `licence-${randomUUID()}.png`,
+              ocrData: { licenseNumber: `F-${randomUUID().slice(0, 8)}` },
+            },
+          ],
+        },
+      },
+      select: { id: true },
+    });
+
+    const res = await submit(licensee, draft.id).expect(201);
+
+    expect(res.body).toMatchObject({
+      id: draft.id,
+      status: LicenseRenewalStatus.PENDING,
+    });
+    const stored = await prisma.licenseRenewalRequest.findUniqueOrThrow({
+      where: { id: draft.id },
+      select: { status: true, reviewedById: true, reviewedAt: true },
+    });
+    expect(stored).toEqual({
+      status: LicenseRenewalStatus.PENDING,
+      reviewedById: null,
+      reviewedAt: null,
+    });
+    expect(
+      await prisma.license.findUnique({
+        where: { userId: licensee.id },
+        select: { id: true },
+      }),
+    ).toBeNull();
+  });
+
   it("two drafts submitted concurrently: one PENDING, the other refused (409)", async () => {
-    const number = await takenLicenseNumber();
     const licensee = await createLicensee();
     const drafts = await Promise.all(
       [new Date("2026-09-01T08:00:00Z"), new Date("2026-09-02T08:00:00Z")].map(
         (createdAt) =>
-          createRequest(
-            licensee.id,
-            LicenseRenewalStatus.DRAFT,
-            createdAt,
-            number,
-          ),
+          createRequest(licensee.id, LicenseRenewalStatus.DRAFT, createdAt),
       ),
     );
 
@@ -283,14 +304,8 @@ describe("Licence renewal: one PENDING request per user (integration, real DB)",
   });
 
   it("the same draft submitted twice concurrently: one success, one 400", async () => {
-    const number = await takenLicenseNumber();
     const licensee = await createLicensee();
-    const draft = await createRequest(
-      licensee.id,
-      LicenseRenewalStatus.DRAFT,
-      new Date(),
-      number,
-    );
+    const draft = await createRequest(licensee.id, LicenseRenewalStatus.DRAFT);
 
     const responses = await Promise.all([
       submit(licensee, draft.id),
