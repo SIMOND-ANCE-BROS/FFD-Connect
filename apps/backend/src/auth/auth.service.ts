@@ -277,31 +277,44 @@ export class AuthService {
 
     // 8. Create user + link license in a transaction
     const user = await this.prisma.$transaction(async (tx) => {
-      const newUser = await tx.user.create({
-        data: {
-          email: normalizedEmail,
-          password: hashedPassword,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          role: "LICENSEE",
-          clubName: license.clubName,
-          category: license.category,
-          birthDate,
-        },
-        select: {
-          id: true,
-          email: true,
-          firstName: true,
-          lastName: true,
-          role: true,
-          clubId: true,
-          clubName: true,
-          category: true,
-          ageGroup: true,
-          passportLevelLatin: true,
-          passportLevelStandard: true,
-        },
-      });
+      const newUser = await tx.user
+        .create({
+          data: {
+            email: normalizedEmail,
+            password: hashedPassword,
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            role: "LICENSEE",
+            clubName: license.clubName,
+            category: license.category,
+            birthDate,
+          },
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+            role: true,
+            clubId: true,
+            clubName: true,
+            category: true,
+            ageGroup: true,
+            passportLevelLatin: true,
+            passportLevelStandard: true,
+          },
+        })
+        .catch((err: unknown) => {
+          // Lost the race to a concurrent registration of the same address:
+          // every write stores the normalised form, so the unique index on
+          // `email` catches any casing (#465). Same answer as the pre-check.
+          if (
+            err instanceof Prisma.PrismaClientKnownRequestError &&
+            err.code === "P2002"
+          ) {
+            throw new ConflictException("Un compte existe déjà avec cet email");
+          }
+          throw err;
+        });
 
       if (license.id === null) {
         try {

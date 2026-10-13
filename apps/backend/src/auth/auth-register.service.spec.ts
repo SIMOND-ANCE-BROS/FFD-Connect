@@ -151,6 +151,68 @@ describe("AuthService.register", () => {
     expect(prisma.license.findUnique).not.toHaveBeenCalled();
   });
 
+  const failCreation = (err: Error) =>
+    prisma.$transaction.mockImplementation(
+      (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          user: { create: jest.fn().mockRejectedValue(err) },
+          license: { update: jest.fn(), create: jest.fn() },
+        }),
+    );
+
+  it("answers 409, not 500, when a concurrent registration wins the address (#465)", async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.license.findUnique.mockResolvedValue({
+      id: "lic-1",
+      number: "FFD-2025-001",
+      userId: null,
+      lastName: "Dupont",
+      clubName: null,
+      category: null,
+      validUntil: new Date("2099-01-01"),
+    });
+    failCreation(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint", {
+        code: "P2002",
+        clientVersion: "7.0.0",
+      }),
+    );
+
+    await expect(
+      authService.register(
+        "Race@Example.com",
+        "MonPass1!abc",
+        "FFD-2025-001",
+        "Dupont",
+      ),
+    ).rejects.toThrow(
+      new ConflictException("Un compte existe déjà avec cet email"),
+    );
+  });
+
+  it("rethrows any other error of the account creation", async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.license.findUnique.mockResolvedValue({
+      id: "lic-1",
+      number: "FFD-2025-001",
+      userId: null,
+      lastName: "Dupont",
+      clubName: null,
+      category: null,
+      validUntil: new Date("2099-01-01"),
+    });
+    failCreation(new Error("db down"));
+
+    await expect(
+      authService.register(
+        "new@example.com",
+        "MonPass1!abc",
+        "FFD-2025-001",
+        "Dupont",
+      ),
+    ).rejects.toThrow("db down");
+  });
+
   it("rejects if license number not found", async () => {
     prisma.user.findUnique.mockResolvedValue(null);
     prisma.license.findUnique.mockResolvedValue(null);
