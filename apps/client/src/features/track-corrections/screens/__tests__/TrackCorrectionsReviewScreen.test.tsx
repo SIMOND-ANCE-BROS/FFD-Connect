@@ -9,6 +9,7 @@ import {
 } from "../../../../services/api/track-correction-api";
 import { useAuthStore } from "../../../../stores/auth.store";
 import { useLibrarySyncStore } from "../../../../stores/librarySync.store";
+import { trackCorrectionKeys } from "../../hooks/useTrackCorrections";
 import { TrackCorrectionsReviewScreen } from "../TrackCorrectionsReviewScreen";
 
 jest.mock("../../../../services/api/track-correction-api", () => {
@@ -98,10 +99,12 @@ const confirmWith = (text: string) =>
       },
     );
 
-const renderScreen = (correctionId?: string) => {
-  const client = new QueryClient({
+const newClient = () =>
+  new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+
+const renderScreen = (correctionId?: string, client = newClient()) => {
   const navigation = { goBack: jest.fn(), navigate: jest.fn() };
   return render(
     <QueryClientProvider client={client}>
@@ -121,7 +124,38 @@ const renderScreen = (correctionId?: string) => {
   );
 };
 
+/** Budget of the one-off cold-start warm-up below (not of any test). */
+const WARM_UP_TIMEOUT_MS = 120_000;
+
 describe("TrackCorrectionsReviewScreen", () => {
+  // Cold start (#514). `react-native` exposes most components through lazy
+  // getters (`get TextInput() { return require(...) }`), so the first render
+  // of this screen is where TextInput, FlatList, TouchableOpacity, Switch…
+  // get required — and transformed by babel when the Jest cache is cold
+  // (fresh worktree). Measured under load: up to ~10 s for a single getter,
+  // 49 s for the first render, which ran out the FIRST test's budget while
+  // the same test takes ~40 ms once the modules are loaded. Pay that one-off
+  // cost here, under its own budget, so every test only measures behaviour.
+  // Two passes: the loading state, then a seeded queue so the list and its
+  // card mount synchronously (no polling, nothing left to chance).
+  beforeAll(async () => {
+    useAuthStore.setState({ role: "ADMIN", roles: ["ADMIN"], isGuest: false });
+    api.list.mockReturnValue(new Promise(() => undefined));
+    const loading = await renderScreen();
+    await loading.unmount();
+
+    const client = newClient();
+    client.setQueryData(trackCorrectionKeys.admin("PENDING"), {
+      pages: [page([correction()])],
+      pageParams: [0],
+    });
+    const { getByTestId, unmount } = await renderScreen(undefined, client);
+    // Mounts the adjustment form too (TextInput fields).
+    await fireEvent.press(getByTestId("correction-adjust-c1"));
+    await unmount();
+    client.clear();
+  }, WARM_UP_TIMEOUT_MS);
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.restoreAllMocks();
