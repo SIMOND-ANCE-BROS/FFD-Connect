@@ -87,4 +87,5 @@ if [ ! -x "$bin" ] && ! install_pinned; then
 fi
 
 repo_root=$(git rev-parse --show-toplevel)
-exec "$bin" "$@" --config "$repo_root/.gitleaks.toml"
+exec "$bin" "$@" --config "$repo_root/.gitleaks.toml" \
+  --gitleaks-ignore-path "$repo_root/.gitleaksignore"
