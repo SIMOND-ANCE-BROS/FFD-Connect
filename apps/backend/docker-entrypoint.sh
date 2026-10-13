@@ -35,7 +35,8 @@ if [ "$SEED_TEST_TRACKS" = "true" ]; then
 
     # Purge des comptes et clubs de TEST (club@/staff@/admin@test.com,
     # beta@test.com, partenaires de démo, cibles de scan…). Seul le compte de
-    # validation des stores (drapeau isStoreReview) et son club restent. Doit
+    # validation des stores et son club restent ; un doublon (licensee@test.com
+    # recréé par une image antérieure à #348) est supprimé (#473). Doit
     # tourner AVANT le seed du compte de validation (qui pose son drapeau).
     echo "[seed] Purging test accounts..."
     if node dist/scripts/purge-test-accounts.js; then

@@ -5,6 +5,7 @@ import {
   STORE_REVIEW_EMAIL,
 } from "./purge-test-accounts.utils";
 import {
+  formatDuplicateStoreReviewAccounts,
   pickStoreReviewClub,
   planClubRename,
   planPasswordUpdate,
@@ -23,24 +24,73 @@ const row = (id: string, email: string, isStoreReview = false) => ({
 describe("resolveStoreReviewAccount", () => {
   it("updates the flagged account, whatever its email", () => {
     const flagged = row("b", "renamed@x.fr", true);
-    const rows = [row("a", STORE_REVIEW_EMAIL), flagged];
-    expect(resolveStoreReviewAccount(rows)).toEqual({
+    const holder = row("a", STORE_REVIEW_EMAIL);
+    expect(resolveStoreReviewAccount([holder, flagged])).toEqual({
       kind: "update",
       user: flagged,
+      emailHolder: holder,
+      duplicateIds: [],
     });
   });
 
-  it("never adopts an unflagged holder of the new or legacy email", () => {
+  it("never adopts an unflagged holder of the new email", () => {
     expect(
       resolveStoreReviewAccount([
         row("a", ` ${STORE_REVIEW_EMAIL.toUpperCase()}`),
-        row("c", LEGACY_STORE_REVIEW_EMAIL),
       ]),
-    ).toEqual({ kind: "conflict", ids: ["a", "c"] });
+    ).toEqual({ kind: "conflict", ids: ["a"] });
   });
 
-  it("creates only when no flagged user and both emails are free", () => {
+  it("creates only when no flagged user and the new email is free", () => {
     expect(resolveStoreReviewAccount([])).toEqual({ kind: "create" });
+  });
+
+  it("never adopts nor recreates an unflagged legacy account (#473)", () => {
+    // An unflagged licensee@test.com no longer blocks the new account.
+    expect(
+      resolveStoreReviewAccount([row("c", LEGACY_STORE_REVIEW_EMAIL)]),
+    ).toEqual({ kind: "create" });
+  });
+
+  it("keeps the new account and reports a flagged duplicate (#473)", () => {
+    const legacy = row("legacy", LEGACY_STORE_REVIEW_EMAIL, true);
+    const demo = row("demo", STORE_REVIEW_EMAIL, true);
+    // Oldest first: the duplicate may well be the older row.
+    expect(resolveStoreReviewAccount([legacy, demo])).toEqual({
+      kind: "update",
+      user: demo,
+      emailHolder: null,
+      duplicateIds: ["legacy"],
+    });
+  });
+
+  it("renames the flagged legacy account when the new email is free", () => {
+    const legacy = row("legacy", LEGACY_STORE_REVIEW_EMAIL, true);
+    const decision = resolveStoreReviewAccount([legacy]);
+    expect(decision).toEqual({
+      kind: "update",
+      user: legacy,
+      emailHolder: null,
+      duplicateIds: [],
+    });
+    if (decision.kind === "update") {
+      expect(planUserRename(decision.user, decision.emailHolder)).toMatchObject(
+        {
+          ok: true,
+          data: { email: STORE_REVIEW_EMAIL },
+        },
+      );
+    }
+  });
+});
+
+describe("formatDuplicateStoreReviewAccounts", () => {
+  it("names accounts by id only, never by e-mail (#430)", () => {
+    const line = formatDuplicateStoreReviewAccounts("demo", ["l1", "l2"]);
+    expect(line).toContain("3 accounts");
+    expect(line).toContain("kept demo");
+    expect(line).toContain("l1, l2");
+    expect(line).not.toContain("@");
   });
 });
 

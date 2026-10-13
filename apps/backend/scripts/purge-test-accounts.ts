@@ -2,8 +2,10 @@
  * Purge of the TEST accounts and TEST clubs created by the staging seeds.
  *
  * Staging now keeps a single test account: the store-review account
- * (`isStoreReview`, STORE_REVIEW_EMAIL) given to Apple / Google, and its club
- * (STORE_REVIEW_CLUB_NAME). Everything else the seeds created goes: club@/staff@/
+ * (STORE_REVIEW_EMAIL, `isStoreReview`) given to Apple / Google, and its club
+ * (STORE_REVIEW_CLUB_NAME). A duplicate of it — a `licensee@test.com` or a
+ * "Club Test FFD" recreated by an image older than #348 — goes too (#473).
+ * Everything else the seeds created goes: club@/staff@/
  * admin@test.com, the beta@test.com demo, the beta-career partners
  * (partner-*@test.com) and their "Club Démo Bêta", the check-in scan targets
  * (seed-scan-user-*). Selection rules: purge-test-accounts.utils.ts — never a
@@ -41,9 +43,13 @@ import { BlobStorageService } from "../src/storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../src/storage/renewal-document-file-cleaner.service";
 import { anonymizeOrphanedResults } from "../src/users/account-deletion.core";
 import {
+  LEGACY_STORE_REVIEW_CLUB_NAME,
+  STORE_REVIEW_CLUB_NAME,
+  STORE_REVIEW_EMAIL,
   TEST_CLUB_NAMES,
   formatPurgeSummary,
   formatUserPurged,
+  pickStoreReviewAccount,
   purgeTestUser,
   selectTestClubs,
   selectTestUsers,
@@ -58,6 +64,8 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const TAG = "🧹 [purge-test-accounts]";
 /** Staging holds a few dozen accounts; the cap only bounds the read. */
 const MAX_CANDIDATES = 500;
+/** Flagged accounts + holder of the new address: one, a few if duplicated. */
+const MAX_STORE_REVIEW_CANDIDATES = 20;
 
 // Same storage cleaner as AccountDeletionService (circuit breaker + timeout,
 // best-effort). Outside Nest DI: ConfigService without a module reads the
@@ -104,7 +112,24 @@ async function main(): Promise<void> {
   await sweepOrphanedResults();
 }
 
+/** Id of the one store-review account the purge keeps (null: none yet). */
+async function findKeptStoreReviewId(): Promise<string | null> {
+  const rows = await prisma.user.findMany({
+    where: {
+      OR: [
+        { isStoreReview: true },
+        { email: { equals: STORE_REVIEW_EMAIL, mode: "insensitive" } },
+      ],
+    },
+    select: { id: true, email: true, isStoreReview: true },
+    orderBy: { createdAt: "asc" },
+    take: MAX_STORE_REVIEW_CANDIDATES,
+  });
+  return pickStoreReviewAccount(rows)?.id ?? null;
+}
+
 async function purgeAccounts(): Promise<void> {
+  const keptStoreReviewId = await findKeptStoreReviewId();
   const candidates = await prisma.user.findMany({
     where: {
       OR: [
@@ -116,12 +141,18 @@ async function purgeAccounts(): Promise<void> {
     orderBy: { email: "asc" },
     take: MAX_CANDIDATES,
   });
-  const users = selectTestUsers(candidates);
+  const users = selectTestUsers(candidates, keptStoreReviewId);
   const purgedIds = new Set(users.map((u) => u.id));
 
   const clubRows = await prisma.club.findMany({
     where: {
-      OR: TEST_CLUB_NAMES.map((name) => ({
+      // The store-review club names are read so selectTestClubs can tell a
+      // legacy leftover from the club the seed is about to rename.
+      OR: [
+        ...TEST_CLUB_NAMES,
+        STORE_REVIEW_CLUB_NAME,
+        LEGACY_STORE_REVIEW_CLUB_NAME,
+      ].map((name) => ({
         name: { equals: name, mode: "insensitive" as const },
       })),
     },
