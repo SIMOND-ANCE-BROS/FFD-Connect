@@ -21691,216 +21691,6 @@
         "tags": ["licenses"]
       }
     },
-    "/licenses/renew": {
-      "post": {
-        "description": "Traite un certificat de licence (image) via OCR pour extraire les informations et renouvelle ou crée la licence. La licence est valide jusqu'au 31 août (Europe/Paris) qui termine la saison en cours, ou celle de la saison suivante si le renouvellement a lieu entre le 1er juillet et le 31 août ; une date de fin déjà plus lointaine est conservée.",
-        "operationId": "LicensesController_renewLicense",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "certificate": {
-                    "type": "string",
-                    "format": "binary",
-                    "description": "Fichier image du certificat de licence (JPG, PNG, max 5MB)"
-                  }
-                },
-                "required": ["certificate"]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Licence renouvelée avec succès",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "example": "license-123"
-                    },
-                    "userId": {
-                      "type": "string",
-                      "example": "user-456"
-                    },
-                    "number": {
-                      "type": "string",
-                      "example": "FFD-123456"
-                    },
-                    "validUntil": {
-                      "type": "string",
-                      "format": "date-time",
-                      "example": "2026-08-31T23:59:59.000Z"
-                    },
-                    "category": {
-                      "type": "string",
-                      "example": "Standard"
-                    },
-                    "clubName": {
-                      "type": "string",
-                      "example": "Vienne Handi Danse"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Erreur de validation - Certificat manquant, format invalide ou OCR échoué",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 400
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Impossible de valider le certificat : numéro de licence non détecté"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Non autorisé - Token JWT manquant ou invalide"
-          },
-          "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Utilisateur non trouvé",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 404
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Utilisateur non trouvé"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflit - La ressource existe déjà",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 409
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Resource already exists"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Conflict"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Trop de requêtes - Rate limit dépassé",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 429
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Too many requests"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Too Many Requests"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Erreur serveur interne",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 500
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Internal server error"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Internal Server Error"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "JWT-auth": []
-          }
-        ],
-        "summary": "Renouvelle la licence de l'utilisateur",
-        "tags": ["licenses"]
-      }
-    },
     "/licenses/renewal/start": {
       "post": {
         "description": "Crée ou récupère une demande de renouvellement en brouillon pour déposer le certificat médical et le certificat de licence. Si une demande est déjà en attente de validation (PENDING), c'est elle qui est renvoyée : une seule demande en attente par utilisateur.",
@@ -22241,7 +22031,7 @@
     },
     "/licenses/renewal/{id}/documents": {
       "post": {
-        "description": "Upload d’un certificat médical ou d’un certificat de licence. L’OCR extrait les infos (apte, date, numéro de licence, etc.).",
+        "description": "Upload d’un certificat médical ou d’un certificat de licence. L’OCR extrait les infos (apte, date, numéro de licence, etc.) à titre d’indices pour l’administrateur : elles ne refusent jamais le document.",
         "operationId": "LicensesController_uploadRenewalDocument",
         "parameters": [
           {
@@ -22397,7 +22187,7 @@
     },
     "/licenses/renewal/{id}/submit": {
       "post": {
-        "description": "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence. Refusée (409) si une autre demande de l'utilisateur est déjà en attente de validation.",
+        "description": "Passe la demande en attente de validation (PENDING) : elle attend la décision d'un administrateur, aucune licence n'est créée ni prolongée à la soumission. Requiert certificat médical et certificat de licence ; les lectures OCR ne bloquent pas l'envoi. Refusée (409) si une autre demande de l'utilisateur est déjà en attente de validation.",
         "operationId": "LicensesController_submitRenewal",
         "parameters": [
           {
@@ -22448,7 +22238,7 @@
             "description": "Demande non trouvée"
           },
           "409": {
-            "description": "Conflit - Une autre demande de l'utilisateur est déjà en attente de validation, ou la demande vient d'être traitée par un administrateur",
+            "description": "Conflit - Une autre demande de l'utilisateur est déjà en attente de validation",
             "content": {
               "application/json": {
                 "schema": {
@@ -27217,7 +27007,7 @@
           },
           "reviewedBy": {
             "nullable": true,
-            "description": "Administrateur qui a tranché ; null pour l'auto-approbation",
+            "description": "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, ou pour une demande auto-approuvée avant #271",
             "type": "object",
             "allOf": [
               {
@@ -27370,7 +27160,7 @@
           },
           "reviewedBy": {
             "nullable": true,
-            "description": "Administrateur qui a tranché ; null pour l'auto-approbation",
+            "description": "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, ou pour une demande auto-approuvée avant #271",
             "type": "object",
             "allOf": [
               {

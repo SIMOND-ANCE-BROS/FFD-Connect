@@ -157,7 +157,7 @@ describe("approvePendingRenewal", () => {
     );
 
     const result = await approvePendingRenewal(client, "req-1", {
-      reviewerId: null,
+      reviewerId: "admin-1",
       now: new Date("2027-03-15T10:00:00.000Z"),
     });
 
@@ -331,7 +331,7 @@ describe("approvePendingRenewal", () => {
     );
     await expect(
       approvePendingRenewal(client, "req-1", {
-        reviewerId: null,
+        reviewerId: "admin-1",
         now: new Date(),
       }),
     ).rejects.toBeInstanceOf(LicenseNumberUnknownException);

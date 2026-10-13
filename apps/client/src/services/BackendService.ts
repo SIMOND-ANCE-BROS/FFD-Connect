@@ -58,8 +58,6 @@ export const BackendService = {
   submitRenewalRequest: (
     ...args: Parameters<typeof LicenseApi.submitRenewalRequest>
   ) => LicenseApi.submitRenewalRequest(...args),
-  renewLicense: (...args: Parameters<typeof LicenseApi.renewLicense>) =>
-    LicenseApi.renewLicense(...args),
 
   // Career
   getMyCareer: (...args: Parameters<typeof CareerApi.getMyCareer>) =>

@@ -18,8 +18,11 @@ import { retireLicenseNumber } from "./retired-license-number";
 import { pickRenewalOcrData } from "./renewal-ocr-data.util";
 
 export interface RenewalApprovalOptions {
-  /** Administrator deciding, or null for the automatic approval at submission. */
-  reviewerId: string | null;
+  /**
+   * Administrator deciding. Required: since #271 no renewal is approved
+   * without one (the automatic approval at submission is gone).
+   */
+  reviewerId: string;
   /**
    * Licence number confirmed by the administrator (#262). Takes precedence
    * over the OCR reading and replaces the number of an existing licence.

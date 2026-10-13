@@ -21,7 +21,6 @@ describe("LicensesController (e2e)", () => {
   beforeEach(async () => {
     const mockLicensesService = {
       getLicense: jest.fn(),
-      renewLicense: jest.fn(),
     };
 
     const moduleFixture: TestingModule = await applyE2EOverrides(
@@ -58,18 +57,10 @@ describe("LicensesController (e2e)", () => {
       });
   });
 
-  it("/api/v1/licenses/renew (POST) should renew license with file", () => {
-    (licensesService.renewLicense as jest.Mock).mockResolvedValue({
-      id: "license-1",
-      status: "PENDING",
-    });
-
+  it("/api/v1/licenses/renew (POST) is gone (#271): no licence without an admin", () => {
     return request(app.getHttpServer() as Parameters<typeof request>[0])
       .post("/api/v1/licenses/renew")
       .attach("certificate", Buffer.from("test"), "certificate.png")
-      .expect(201)
-      .expect((res) => {
-        expect(res.body.status).toBe("PENDING");
-      });
+      .expect(404);
   });
 });
