@@ -1,0 +1,190 @@
+name: Native build cache (eas build --local)
+description: >-
+  Compiler (ccache) and CocoaPods download caches for an iOS `eas build
+  --local` on a GitHub runner (#512). Call it twice in the same job: `step:
+  restore` right before the build, `step: save` right after it (default
+  `success()` condition: a failed build never saves). Android: no-op.
+  What is cached is built only from public sources (pods downloaded from the
+  CocoaPods CDN, objects compiled from node_modules); the save refuses any path
+  that holds a Firebase config or signing material. Steps stay bash 3.2
+  compatible (/bin/bash on macOS).
+
+inputs:
+  step:
+    description: restore (before the build) or save (after a successful build)
+    required: true
+  platform:
+    description: ios or android (Android is a no-op)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # ccache: official release (universal static binary), checked against the
+    # SHA-256 published on its GitHub release, bumped by hand (Dependabot does
+    # not see it). Not preinstalled on macos-26. Any failure here only warns:
+    # the build then runs without a compiler cache (USE_CCACHE stays unset).
+    - name: Install ccache (iOS)
+      id: setup
+      if: inputs.step == 'restore' && inputs.platform == 'ios'
+      shell: bash
+      env:
+        CCACHE_VERSION: '4.14.1'
+        CCACHE_SHA256: c279fa81e2e806b4d9e64d4a06cb569a84ef54151feef796e5d4f4e95a464563
+      run: |
+        set -euo pipefail
+        # Stable working directory for `eas build --local` (empty or absent:
+        # the plugin refuses anything else, and removes it after the build).
+        # A random temp dir, the default, changes every absolute path seen by
+        # the compiler — and with debug info the cwd is part of ccache's hash.
+        WORKDIR="$RUNNER_TEMP/eas-local-build"
+        rm -rf "$WORKDIR"
+        echo "EAS_LOCAL_BUILD_WORKINGDIR=$WORKDIR" >> "$GITHUB_ENV"
+
+        # Cache keys: Xcode build version (another compiler = another cache)
+        # + every input of the native code (lockfile, pnpm patches, config
+        # plugins, local native modules). ccache is content-addressed: a cache
+        # restored from an older key (restore-keys) only serves what still
+        # matches, never a stale object.
+        XCODE=$(xcodebuild -version | tr -s '[:space:]' '-' | tr -cd 'A-Za-z0-9.-')
+        echo "xcode=${XCODE%-}" >> "$GITHUB_OUTPUT"
+
+        BIN="$RUNNER_TEMP/ccache-bin"
+        ARCHIVE="$RUNNER_TEMP/ccache.tar.gz"
+        rm -rf "$BIN"
+        mkdir -p "$BIN"
+        if ! curl -fsSL --retry 3 -o "$ARCHIVE" \
+          "https://github.com/ccache/ccache/releases/download/v$CCACHE_VERSION/ccache-$CCACHE_VERSION-darwin.tar.gz"; then
+          echo "::warning::ccache $CCACHE_VERSION non téléchargé : build sans cache de compilation"
+          exit 0
+        fi
+        if [ "$(shasum -a 256 "$ARCHIVE" | cut -d ' ' -f 1)" != "$CCACHE_SHA256" ]; then
+          echo "::warning::ccache $CCACHE_VERSION : empreinte SHA-256 inattendue, build sans cache de compilation"
+          rm -f "$ARCHIVE"
+          exit 0
+        fi
+        tar -xzf "$ARCHIVE" -C "$BIN" --strip-components 1 "ccache-$CCACHE_VERSION-darwin/ccache"
+        rm -f "$ARCHIVE"
+        "$BIN/ccache" --version | head -n 1
+        echo "$BIN" >> "$GITHUB_PATH"
+        # USE_CCACHE=1: read by the Expo Podfile (takes precedence over
+        # Podfile.properties.json), which makes react_native_post_install
+        # route CC/CXX/LD of every pod through ccache. An environment variable,
+        # not expo-build-properties: the app config — and so the runtime
+        # fingerprint — does not change. Settings not given here come from the
+        # ccache.conf React Native ships (sloppiness for clang modules, depend
+        # mode). Same limit as the cache below: 1 GB.
+        {
+          echo "USE_CCACHE=1"
+          echo "CCACHE_DIR=$HOME/Library/Caches/ccache"
+          echo "CCACHE_BASEDIR=$WORKDIR"
+          echo "CCACHE_MAXSIZE=1G"
+        } >> "$GITHUB_ENV"
+        echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+    - name: Restore ccache (iOS)
+      id: ccache
+      if: steps.setup.outputs.enabled == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/Library/Caches/ccache
+        key: >-
+          ccache-ios-${{ steps.setup.outputs.xcode }}-${{ hashFiles('pnpm-lock.yaml', 'patches/**',
+          'apps/client/app.config.js', 'apps/client/plugins/**', 'apps/client/modules/**') }}
+        restore-keys: ccache-ios-${{ steps.setup.outputs.xcode }}-
+
+    # Pods downloaded from the CDN (Firebase, Sentry, GoogleUtilities…) and the
+    # trunk spec index. Pods from node_modules (`:path`) are never copied here.
+    # The React Native prebuilt tarballs (~/Library/Caches/ReactNative) are left
+    # out on purpose: Maven serves them in ~10 s, a cache would be slower.
+    - name: Restore CocoaPods cache (iOS)
+      id: pods
+      if: inputs.step == 'restore' && inputs.platform == 'ios'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/Library/Caches/CocoaPods
+          ~/.cocoapods/repos/trunk
+        key: cocoapods-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'patches/**') }}
+        restore-keys: cocoapods-${{ runner.os }}-${{ runner.arch }}-
+
+    # Hand the keys to the `save` call (another invocation of this action):
+    # only what missed its exact key is saved — an exact hit already holds
+    # everything this build could add.
+    - name: Remember cache keys (iOS)
+      if: inputs.step == 'restore' && inputs.platform == 'ios'
+      shell: bash
+      env:
+        CCACHE_KEY: ${{ steps.ccache.outputs.cache-primary-key }}
+        CCACHE_HIT: ${{ steps.ccache.outputs.cache-hit }}
+        CCACHE_MATCHED: ${{ steps.ccache.outputs.cache-matched-key }}
+        PODS_KEY: ${{ steps.pods.outputs.cache-primary-key }}
+        PODS_HIT: ${{ steps.pods.outputs.cache-hit }}
+        PODS_MATCHED: ${{ steps.pods.outputs.cache-matched-key }}
+      run: |
+        set -euo pipefail
+        {
+          echo "NATIVE_CACHE_CCACHE_KEY=$CCACHE_KEY"
+          echo "NATIVE_CACHE_CCACHE_HIT=${CCACHE_HIT:-false}"
+          echo "NATIVE_CACHE_PODS_KEY=$PODS_KEY"
+          echo "NATIVE_CACHE_PODS_HIT=${PODS_HIT:-false}"
+        } >> "$GITHUB_ENV"
+        if [ -n "$CCACHE_KEY" ]; then
+          ccache --zero-stats > /dev/null
+        fi
+        echo "Cache ccache : ${CCACHE_MATCHED:-aucun} — cache CocoaPods : ${PODS_MATCHED:-aucun}" >> "$GITHUB_STEP_SUMMARY"
+
+    # Measured gain, in the run summary: hit rate of this build.
+    # Secret guard: a Firebase config or signing file found in a cached path
+    # blocks the save of THAT cache (warning, the build stays green).
+    - name: Check caches before saving (iOS)
+      id: check
+      if: inputs.step == 'save' && inputs.platform == 'ios'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -n "${NATIVE_CACHE_CCACHE_KEY:-}" ] && command -v ccache > /dev/null; then
+          {
+            echo "<details><summary>ccache (cache de compilation)</summary>"
+            echo
+            echo '```'
+            ccache --show-stats || true
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+        clean() {
+          local hit
+          hit=$(find "$@" \( -iname 'GoogleService-Info*.plist' -o -iname 'google-services*.json' \
+            -o -iname '*.p12' -o -iname '*.p8' -o -iname '*.mobileprovision' -o -iname '*.keystore' \
+            -o -iname '*.jks' -o -iname '*.keychain*' -o -path '*eas-environment-secrets*' \) \
+            -print 2> /dev/null | head -n 1 || true)
+          if [ -n "$hit" ]; then
+            echo "::warning::fichier sensible dans un chemin mis en cache ($(basename "$hit")) : cache non sauvegardé"
+            return 1
+          fi
+        }
+        if clean "$HOME/Library/Caches/ccache"; then echo "ccache=true" >> "$GITHUB_OUTPUT"; fi
+        if clean "$HOME/Library/Caches/CocoaPods" "$HOME/.cocoapods/repos/trunk"; then
+          echo "pods=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Save ccache (iOS)
+      if: >-
+        steps.check.outputs.ccache == 'true'
+        && env.NATIVE_CACHE_CCACHE_KEY != '' && env.NATIVE_CACHE_CCACHE_HIT != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/Library/Caches/ccache
+        key: ${{ env.NATIVE_CACHE_CCACHE_KEY }}
+
+    - name: Save CocoaPods cache (iOS)
+      if: >-
+        steps.check.outputs.pods == 'true'
+        && env.NATIVE_CACHE_PODS_KEY != '' && env.NATIVE_CACHE_PODS_HIT != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/Library/Caches/CocoaPods
+          ~/.cocoapods/repos/trunk
+        key: ${{ env.NATIVE_CACHE_PODS_KEY }}

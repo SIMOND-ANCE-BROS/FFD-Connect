@@ -75,6 +75,20 @@ runs:
           "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}/CodeQL"
         df -h /
 
+    # iOS: ccache + CocoaPods caches (#512), after the Xcode selection (the
+    # cache key carries the Xcode build version). No-op on Android.
+    - name: Restore native build caches
+      uses: ./.github/actions/native-build-cache
+      with:
+        step: restore
+        platform: ${{ inputs.platform }}
+
+    # Informational only, never fails (the build disables its own doctor step).
+    - name: Expo doctor
+      uses: ./.github/actions/expo-doctor
+      with:
+        app-env: ${{ inputs.profile }}
+
     - name: eas build --local
       id: build
       shell: bash
@@ -85,6 +99,7 @@ runs:
         FIREBASE_B64: ${{ inputs.firebase-b64 }}
         SECRET: ${{ inputs.firebase-secret-name }}
         SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+        # Timed out at 30 s inside the build: run by the « Expo doctor » step.
         EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP: '1'
         # Android .aab: bundletool reads the versionCode IN the bundle (#480).
         # Official google/bundletool jar, checked against the SHA-256 published
@@ -227,3 +242,11 @@ runs:
           echo "fingerprint=$FINGERPRINT"
         } >> "$GITHUB_OUTPUT"
         echo "Build $PLATFORM $PROFILE **${BUILD_NUMBER:-?}** (runtime \`${FINGERPRINT:0:7}\`) — SHA-256 \`$SHA256\`." >> "$GITHUB_STEP_SUMMARY"
+
+    # Only after a successful build (default `success()`): saves what missed
+    # its exact key, behind the secret-file guard of the action.
+    - name: Save native build caches
+      uses: ./.github/actions/native-build-cache
+      with:
+        step: save
+        platform: ${{ inputs.platform }}
