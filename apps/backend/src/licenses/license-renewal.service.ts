@@ -14,6 +14,7 @@ import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { OcrService } from "../utils/ocr.service";
 import {
+  idOnlySelect,
   licenseRenewalRequestResponseSelect,
   licenseRenewalSubmitTargetSelect,
   licenseRenewalUploadTargetSelect,
@@ -145,21 +146,33 @@ export class LicenseRenewalService {
     // simplement le nom de blob comme référence — aucune écriture disque.
     const storedReference = await this.persistDocument(blobName, fileBuffer);
 
-    // Fichiers du document remplacé (même type) : lus avant le remplacement,
-    // supprimés une fois la nouvelle ligne enregistrée — sinon le certificat
-    // médical précédent (RGPD art. 9) resterait orphelin dans Blob.
-    const replacedReferences = request.documents
-      .filter((d) => d.type === type && d.filePath !== storedReference)
-      .map((d) => d.filePath);
-
+    let replacedReferences: string[];
     try {
       // Remplacement atomique : si la création échoue, l'ancien document reste
       // en base (et son fichier est conservé).
-      await this.prisma.$transaction([
-        this.prisma.licenseRenewalDocument.deleteMany({
+      replacedReferences = await this.prisma.$transaction(async (tx) => {
+        // Sous le verrou utilisateur, comme la soumission (#271) : l'OCR et
+        // l'archivage ont pu durer, la demande a pu être soumise entre-temps.
+        // Un document ne remplace jamais celui qu'un administrateur examine.
+        await lockUserRenewals(tx, userId);
+        const current = await tx.licenseRenewalRequest.findFirst({
+          where: { id: requestId, userId },
+          select: licenseRenewalUploadTargetSelect,
+        });
+        if (current?.status !== LicenseRenewalStatus.DRAFT)
+          throw new BadRequestException(
+            "Seules les demandes en brouillon peuvent recevoir des documents",
+          );
+        // Fichiers du document remplacé (même type) : lus sous le verrou,
+        // supprimés une fois la nouvelle ligne enregistrée — sinon le
+        // certificat médical précédent (RGPD art. 9) resterait orphelin.
+        const replaced = current.documents
+          .filter((d) => d.type === type && d.filePath !== storedReference)
+          .map((d) => d.filePath);
+        await tx.licenseRenewalDocument.deleteMany({
           where: { requestId, type },
-        }),
-        this.prisma.licenseRenewalDocument.create({
+        });
+        await tx.licenseRenewalDocument.create({
           data: {
             requestId,
             type,
@@ -179,8 +192,10 @@ export class LicenseRenewalService {
                   })
                 : null,
           },
-        }),
-      ]);
+          select: idOnlySelect,
+        });
+        return replaced;
+      });
     } catch (error) {
       // Le blob tout juste archivé n'est référencé par aucune ligne : on le
       // supprime (best-effort) avant de propager l'erreur.

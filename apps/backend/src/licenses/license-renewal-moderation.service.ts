@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -59,7 +60,7 @@ export class LicenseRenewalModerationService {
     requestId: string,
     dto: ApproveLicenseRenewalDto,
   ): Promise<AdminLicenseRenewalDetailDto> {
-    const { userId } = await this.assertPending(requestId);
+    const { userId } = await this.assertPending(requestId, adminId);
     const now = new Date();
     const result = await this.prisma.$transaction(async (tx) => {
       const approval = await approvePendingRenewal(tx, requestId, {
@@ -102,7 +103,7 @@ export class LicenseRenewalModerationService {
     requestId: string,
     dto: RejectLicenseRenewalDto,
   ): Promise<AdminLicenseRenewalDetailDto> {
-    const { userId } = await this.assertPending(requestId);
+    const { userId } = await this.assertPending(requestId, adminId);
     const now = new Date();
     const purgeDeadline = new Date(
       now.getTime() + REJECTED_CERTIFICATE_RETENTION_DAYS * DAY_MS,
@@ -167,10 +168,14 @@ export class LicenseRenewalModerationService {
   }
 
   /**
-   * 404 for an unknown request, 409 for one no longer PENDING. Returns the
-   * licensee, to be notified of the decision.
+   * 404 for an unknown request, 409 for one no longer PENDING, 403 for the
+   * administrator's own request (#271: no one decides their own renewal).
+   * Returns the licensee, to be notified of the decision.
    */
-  private async assertPending(requestId: string): Promise<{ userId: string }> {
+  private async assertPending(
+    requestId: string,
+    adminId: string,
+  ): Promise<{ userId: string }> {
     const request = await this.prisma.licenseRenewalRequest.findUnique({
       where: { id: requestId },
       select: licenseRenewalStatusOwnerSelect,
@@ -179,6 +184,10 @@ export class LicenseRenewalModerationService {
       throw new NotFoundException("Demande de renouvellement non trouvée");
     if (request.status !== LicenseRenewalStatus.PENDING)
       throw renewalAlreadyDecided();
+    if (request.userId === adminId)
+      throw new ForbiddenException(
+        "Vous ne pouvez pas trancher votre propre demande de renouvellement : un autre administrateur doit la traiter.",
+      );
     return { userId: request.userId };
   }
 }

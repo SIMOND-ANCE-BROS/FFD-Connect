@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from "@nestjs/common";
 import {
@@ -93,6 +94,39 @@ describe("LicenseRenewalModerationService", () => {
   });
 
   afterEach(() => jest.useRealTimers());
+
+  describe("an administrator never decides their own request (#271)", () => {
+    beforeEach(() => {
+      prisma.licenseRenewalRequest.findUnique.mockResolvedValue({
+        status: LicenseRenewalStatus.PENDING,
+        userId: "admin-1",
+      });
+    });
+
+    it("403 on approve, nothing written nor notified", async () => {
+      await expect(service.approve("admin-1", "req-1", {})).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(notifications.sendToUser).not.toHaveBeenCalled();
+    });
+
+    it("403 on reject, nothing written nor notified", async () => {
+      await expect(
+        service.reject("admin-1", "req-1", { reason: "OTHER" }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
+      expect(notifications.sendToUser).not.toHaveBeenCalled();
+    });
+
+    it("another administrator may decide it", async () => {
+      await expect(
+        service.reject("admin-2", "req-1", { reason: "OTHER" }),
+      ).resolves.toBe(DETAIL);
+    });
+  });
 
   describe("approve", () => {
     it("404 for an unknown request", async () => {

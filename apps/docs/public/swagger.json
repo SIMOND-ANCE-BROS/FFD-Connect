@@ -22983,7 +22983,7 @@
             }
           },
           "400": {
-            "description": "Aucun numéro de licence connu"
+            "description": "Aucun numéro de licence connu, ou certificat médical plus conservé (code RENEWAL_MEDICAL_CERTIFICATE_MISSING)"
           },
           "401": {
             "description": "Non authentifié - Token manquant ou invalide",
@@ -23010,28 +23010,7 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Demande de l'administrateur lui-même"
           },
           "404": {
             "description": "Demande non trouvée"
@@ -23185,28 +23164,7 @@
             }
           },
           "403": {
-            "description": "Accès interdit - Permissions insuffisantes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "statusCode": {
-                      "type": "number",
-                      "example": 403
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Forbidden resource"
-                    },
-                    "error": {
-                      "type": "string",
-                      "example": "Forbidden"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "Demande de l'administrateur lui-même"
           },
           "404": {
             "description": "Demande non trouvée"

@@ -15,9 +15,10 @@ import {
 } from "../../utils/httpInterceptor";
 
 /**
- * Error of a refused renewal-document upload. The server's refusal can be
- * medical (#225): its text lands in `userMessage` for display, never in the
- * error's `message`, which is what logs and Sentry read.
+ * Error of a refused renewal-document upload (file type, size, request no
+ * longer a draft…). Should a refusal ever describe the document's content,
+ * which may be health data (#225), its text lands in `userMessage` for
+ * display, never in the error's `message`, which is what logs and Sentry read.
  */
 async function uploadError(response: Response): Promise<HttpError> {
   const body = (await response.json().catch(() => null)) as HttpErrorData;

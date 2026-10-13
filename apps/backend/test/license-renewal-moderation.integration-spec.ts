@@ -415,6 +415,59 @@ describe("Licence renewal moderation (integration, real DB)", () => {
     await reject({ reason: "INCOMPLETE" }).expect(200);
   });
 
+  it("refuses to approve once no medical certificate row remains (#271)", async () => {
+    const admin = await createUser(UserRole.ADMIN);
+    const licensee = await createUser(UserRole.LICENSEE);
+    const pending = await pendingRequest(licensee.id, "FFD-6");
+    await prisma.licenseRenewalDocument.deleteMany({
+      where: {
+        requestId: pending.id,
+        type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+      },
+    });
+
+    const res = await request(server())
+      .post(`/api/v1/admin/license-renewals/${pending.id}/approve`)
+      .set("Authorization", bearer(admin))
+      .send({})
+      .expect(400);
+
+    expect(res.body.code).toBe("RENEWAL_MEDICAL_CERTIFICATE_MISSING");
+    expect(
+      await prisma.licenseRenewalRequest.findUnique({
+        where: { id: pending.id },
+        select: { status: true },
+      }),
+    ).toEqual({ status: LicenseRenewalStatus.PENDING });
+    expect(
+      await prisma.license.findUnique({
+        where: { userId: licensee.id },
+        select: { id: true },
+      }),
+    ).toBeNull();
+  });
+
+  it("an administrator cannot decide their own request (#271)", async () => {
+    const admin = await createUser(UserRole.ADMIN);
+    const other = await createUser(UserRole.ADMIN);
+    const own = await pendingRequest(admin.id, "FFD-7");
+    const decide = (as: typeof admin, action: string) =>
+      request(server())
+        .post(`/api/v1/admin/license-renewals/${own.id}/${action}`)
+        .set("Authorization", bearer(as));
+
+    await decide(admin, "approve").send({}).expect(403);
+    await decide(admin, "reject").send({ reason: "OTHER" }).expect(403);
+    expect(
+      await prisma.licenseRenewalRequest.findUnique({
+        where: { id: own.id },
+        select: { status: true },
+      }),
+    ).toEqual({ status: LicenseRenewalStatus.PENDING });
+
+    await decide(other, "approve").send({}).expect(200);
+  });
+
   it("store-review account: empty reads, simulated decisions, no certificate", async () => {
     const reviewer = await createUser(UserRole.ADMIN, true);
     const licensee = await createUser(UserRole.LICENSEE);

@@ -571,6 +571,57 @@ describe("LicenseRenewalService", () => {
       );
     });
 
+    it("écrit sous le verrou utilisateur, après relecture de la demande", async () => {
+      draftWithDocuments();
+      mockPrisma.licenseRenewalDocument.create.mockResolvedValue({});
+
+      await upload();
+
+      expect(mockPrisma.$queryRaw).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.licenseRenewalRequest.findFirst).toHaveBeenCalledTimes(
+        2,
+      );
+      expect(mockPrisma.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        mockPrisma.licenseRenewalDocument.deleteMany.mock
+          .invocationCallOrder[0],
+      );
+    });
+
+    it("demande soumise pendant l'OCR (#271) : 400, rien remplacé, le nouveau blob supprimé", async () => {
+      draftWithDocuments();
+      mockPrisma.licenseRenewalRequest.findFirst
+        .mockResolvedValueOnce({
+          id: "req-1",
+          userId: "user-1",
+          status: LicenseRenewalStatus.DRAFT,
+          documents: [],
+        })
+        .mockResolvedValueOnce({
+          id: "req-1",
+          userId: "user-1",
+          status: LicenseRenewalStatus.PENDING,
+          documents: [
+            {
+              id: "doc-old",
+              type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+              filePath: OLD_MEDICAL,
+            },
+          ],
+        });
+
+      await expect(upload()).rejects.toThrow(BadRequestException);
+
+      expect(
+        mockPrisma.licenseRenewalDocument.deleteMany,
+      ).not.toHaveBeenCalled();
+      expect(mockPrisma.licenseRenewalDocument.create).not.toHaveBeenCalled();
+      expect(mockCleaner.deleteFiles).toHaveBeenCalledTimes(1);
+      expect(mockCleaner.deleteFiles).toHaveBeenCalledWith(
+        [BLOB_NAME],
+        "upload-rollback",
+      );
+    });
+
     it("aucun document précédent : aucun fichier à supprimer", async () => {
       mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
         id: "req-1",

@@ -54,7 +54,7 @@ vérifie lui-même le certificat : il ouvre le fichier tant que la demande est e
 attente, chaque ouverture est tracée, et la lecture OCR ne donne que des indices.
 Un certificat refusé est purgé au plus tard 30 jours après la décision, avec le
 commentaire de l'administrateur. Ce passage aux CGU v2 doit être publié au plus tard
-avec la fin de l'auto-approbation (#271).
+avec la fin de l'auto-approbation : publiée dans la même promotion que #271 (PR #522).
 
 - **Publication** : le site ne publie `docs/legal` qu'au push sur `staging`, et
   `CGU_VERSION` n'atteint l'app qu'avec le build ou la mise à jour suivante. Une

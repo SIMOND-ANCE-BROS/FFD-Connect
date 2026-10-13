@@ -12,6 +12,8 @@ import {
   approvePendingRenewal,
   LicenseNumberTakenException,
   LicenseNumberUnknownException,
+  MedicalCertificateMissingException,
+  RENEWAL_MEDICAL_CERTIFICATE_MISSING,
   renewalAlreadyDecided,
 } from "./license-renewal-approval";
 
@@ -35,24 +37,30 @@ describe("approvePendingRenewal", () => {
       status?: LicenseRenewalStatus;
       ocrNumber?: string | null;
       license?: { id?: string; number: string; validUntil: Date } | null;
+      /** false: the medical certificate is gone (purged). */
+      medical?: boolean;
     } = {},
   ) => ({
     status: o.status ?? LicenseRenewalStatus.PENDING,
     userId: "user-1",
-    documents:
-      o.ocrNumber === null
-        ? [
+    documents: [
+      ...(o.medical === false
+        ? []
+        : [
             {
               type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
               ocrData: { isApte: true },
             },
-          ]
+          ]),
+      ...(o.ocrNumber === null
+        ? []
         : [
             {
               type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
               ocrData: { licenseNumber: o.ocrNumber ?? "FFD-OCR" },
             },
-          ],
+          ]),
+    ],
     user: {
       category: "Elite",
       clubName: "CVDS",
@@ -64,6 +72,24 @@ describe("approvePendingRenewal", () => {
     jest.resetAllMocks();
     tx.licenseRenewalRequest.updateMany.mockResolvedValue({ count: 1 });
     tx.license.upsert.mockResolvedValue({ id: "L1" });
+  });
+
+  it("400 without a medical certificate on file: nothing claimed, no licence (#271)", async () => {
+    tx.licenseRenewalRequest.findUnique.mockResolvedValue(
+      target({ medical: false }),
+    );
+    const error: unknown = await approvePendingRenewal(client, "req-1", {
+      reviewerId: "admin-1",
+      licenseNumber: "FFD-1",
+      now: new Date(),
+    }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(MedicalCertificateMissingException);
+    expect(error).toBeInstanceOf(BadRequestException);
+    expect((error as MedicalCertificateMissingException).code).toBe(
+      RENEWAL_MEDICAL_CERTIFICATE_MISSING,
+    );
+    expect(tx.licenseRenewalRequest.updateMany).not.toHaveBeenCalled();
+    expect(tx.license.upsert).not.toHaveBeenCalled();
   });
 
   it("404 for an unknown request", async () => {

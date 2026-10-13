@@ -55,8 +55,9 @@ model LicenseRenewalRequest {
   /// Passage DRAFT → PENDING. Ordre de la file de modération (plus anciennes
   /// d'abord). Rattrapé à `updatedAt` pour les demandes antérieures.
   submittedAt     DateTime?
-  /// Administrateur qui a tranché (null pour l'auto-approbation, ou si son
-  /// compte a été supprimé depuis).
+  /// Administrateur qui a tranché : null tant que la demande n'est pas
+  /// tranchée, pour une demande auto-approuvée avant #271, ou si son compte a
+  /// été supprimé depuis.
   reviewedById    String?
   reviewedBy      User?     @relation("LicenseRenewalsReviewed", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt      DateTime?
