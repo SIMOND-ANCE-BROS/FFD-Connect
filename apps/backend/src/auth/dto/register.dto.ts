@@ -1,13 +1,18 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
 import {
+  IsAscii,
   IsEmail,
   IsNotEmpty,
   IsString,
   MaxLength,
   MinLength,
 } from "class-validator";
-import { normalizeEmailTransform } from "../email-identity";
+import {
+  normalizeEmailTransform,
+  STORED_EMAIL_ASCII_MESSAGE,
+  STORED_EMAIL_OPTIONS,
+} from "../email-identity";
 
 /** Longueur max d'un numéro de licence FFD (partagée avec AuthService). */
 export const LICENSE_NUMBER_MAX_LENGTH = 50;
@@ -18,7 +23,8 @@ export class RegisterDto {
     example: "danseur@example.com",
   })
   @Transform(normalizeEmailTransform)
-  @IsEmail()
+  @IsEmail(STORED_EMAIL_OPTIONS)
+  @IsAscii({ message: STORED_EMAIL_ASCII_MESSAGE })
   @IsNotEmpty()
   @MaxLength(255)
   email!: string;

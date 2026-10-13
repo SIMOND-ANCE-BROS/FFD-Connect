@@ -1,3 +1,4 @@
+import { emailLookupFor } from "../../test/mocks/email-lookup.mock";
 import {
   BadRequestException,
   ConflictException,
@@ -31,7 +32,8 @@ describe("AdminUserAccountsService", () => {
     prisma.$transaction.mockImplementation(((fn: (tx: unknown) => unknown) =>
       fn(prisma)) as never);
     prisma.user.findUnique.mockResolvedValue(null);
-    prisma.user.findMany.mockResolvedValue([]);
+    // E-mail lookup (#465): the address is free by default.
+    prisma.$queryRaw.mockResolvedValue([] as never);
     prisma.club.findUnique.mockResolvedValue(null);
     prisma.club.findFirst.mockResolvedValue(null);
     prisma.club.create.mockResolvedValue({
@@ -327,32 +329,27 @@ describe("AdminUserAccountsService", () => {
   });
 
   it("409s on an email already used, looked up in normalised form", async () => {
-    prisma.user.findMany.mockResolvedValue([
+    prisma.$queryRaw.mockResolvedValue([
       { id: "x", email: "jeanne@example.fr" },
     ] as never);
     await expect(service.create("admin-1", dto({}))).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(prisma.user.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { email: { equals: "jeanne@example.fr", mode: "insensitive" } },
-      }),
+    expect(prisma.$queryRaw).toHaveBeenCalledWith(
+      emailLookupFor("jeanne@example.fr"),
     );
   });
 
   it("409s on a legacy account whose stored email differs only by case (#465)", async () => {
-    prisma.user.findMany.mockResolvedValue([
+    prisma.$queryRaw.mockResolvedValue([
       { id: "legacy", email: "Jeanne@Example.fr" },
     ] as never);
     await expect(service.create("admin-1", dto({}))).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(prisma.user.findMany).toHaveBeenCalledWith({
-      where: { email: { equals: "jeanne@example.fr", mode: "insensitive" } },
-      select: { id: true, email: true },
-      orderBy: { id: "asc" },
-      take: 5,
-    });
+    expect(prisma.$queryRaw).toHaveBeenCalledWith(
+      emailLookupFor("jeanne@example.fr"),
+    );
     expect(prisma.user.create).not.toHaveBeenCalled();
   });
 

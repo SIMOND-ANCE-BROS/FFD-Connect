@@ -6,7 +6,6 @@ import { ImpersonateDto } from "./dto/impersonate.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 import {
-  escapeLikePattern,
   findUserIdByEmail,
   isEmailTaken,
   normalizeEmail,
@@ -95,84 +94,88 @@ describe("email identity (#465)", () => {
     });
   });
 
-  describe("escapeLikePattern", () => {
-    it("escapes %, _ and backslash", () => {
-      expect(escapeLikePattern("a%b_c\\d@x.fr")).toBe("a\\%b\\_c\\\\d@x.fr");
+  describe("stored-address DTOs accept ASCII only", () => {
+    it.each([
+      "\u212Aate@x.fr", // Kelvin sign
+      "\u0130nes@x.fr", // dotted capital I
+      "jos\u00e9@x.fr",
+      "jose@exempl\u00e9.fr", // IDN domain not in punycode
+    ])("refuses %p", async (email) => {
+      for (const dto of [
+        plainToInstance(RegisterDto, {
+          email,
+          password: "Pass1!word",
+          licenseNumber: "FFD-1",
+          lastName: "Doe",
+          firstName: "Jo",
+        }),
+        plainToInstance(UpdateAdminUserIdentifiersDto, { email }),
+      ]) {
+        const errors = await validate(dto);
+        expect(errors.map((e) => e.property)).toContain("email");
+      }
     });
 
-    it("leaves an ordinary address unchanged", () => {
-      expect(escapeLikePattern("prenom.nom+tag@x.fr")).toBe(
-        "prenom.nom+tag@x.fr",
-      );
+    it("accepts an ASCII address with underscores and a punycode domain", async () => {
+      const dto = plainToInstance(UpdateAdminUserIdentifiersDto, {
+        email: "Jean_Dupont@xn--exempl-gva.fr",
+      });
+      expect(await validate(dto)).toHaveLength(0);
+      expect(dto.email).toBe("jean_dupont@xn--exempl-gva.fr");
     });
   });
 
   describe("lookups", () => {
-    const db = {
-      user: {
-        findUnique: jest.fn(),
-        findMany: jest.fn(),
-      },
-    };
+    const db = { $queryRaw: jest.fn() };
     const client = db as unknown as Parameters<typeof findUserIdByEmail>[0];
+    const lastQuery = () =>
+      db.$queryRaw.mock.calls.at(-1)?.[0] as {
+        text: string;
+        values: unknown[];
+      };
 
     beforeEach(() => {
-      db.user.findUnique.mockReset();
-      db.user.findMany.mockReset();
+      db.$queryRaw.mockReset();
     });
 
-    it("runs one bounded, deterministic, escaped case-insensitive query", async () => {
-      db.user.findMany.mockResolvedValue([{ id: "u1", email: "a@b.fr" }]);
+    it("compares ASCII-folded in SQL, exact-typed row first, bounded", async () => {
+      db.$queryRaw.mockResolvedValue([{ id: "u1", email: "a@b.fr" }]);
 
       await expect(findUserIdByEmail(client, " A@B.fr ")).resolves.toBe("u1");
-      expect(db.user.findMany).toHaveBeenCalledWith({
-        where: { email: { equals: "a@b.fr", mode: "insensitive" } },
-        select: { id: true, email: true },
-        orderBy: { id: "asc" },
-        take: 5,
-      });
-      expect(db.user.findUnique).not.toHaveBeenCalled();
+      const { text, values } = lastQuery();
+      expect(text).toContain('lower(email COLLATE "C") = $1');
+      expect(text).toContain("ORDER BY (email = $2) DESC, id ASC");
+      expect(text).toContain("LIMIT $3");
+      expect(text).not.toMatch(/LIKE/i);
+      expect(text).not.toContain("id <>");
+      expect(values).toEqual(["a@b.fr", "A@B.fr", 5]);
     });
 
     it("finds a legacy account stored with capitals", async () => {
-      db.user.findMany.mockResolvedValue([{ id: "legacy", email: "A@B.fr" }]);
+      db.$queryRaw.mockResolvedValue([{ id: "legacy", email: "A@B.fr" }]);
 
       await expect(findUserIdByEmail(client, "a@b.fr")).resolves.toBe("legacy");
     });
 
-    it.each(["%@b.fr", "_@b.fr", "a%b@b.fr", "a_b@b.fr"])(
-      "never lets the wildcard-bearing %p designate another account",
-      async (typed) => {
-        db.user.findMany.mockResolvedValue([
-          { id: "victim", email: "victim@b.fr" },
-          { id: "other", email: "AXB@b.fr" },
-        ]);
+    it("passes wildcard characters as plain values, never as a pattern", async () => {
+      db.$queryRaw.mockResolvedValue([]);
 
-        await expect(findUserIdByEmail(client, typed)).resolves.toBeNull();
-        await expect(isEmailTaken(client, typed)).resolves.toBe(false);
-        expect(db.user.findMany).toHaveBeenCalledWith(
-          expect.objectContaining({
-            where: {
-              email: {
-                equals: escapeLikePattern(typed),
-                mode: "insensitive",
-              },
-            },
-          }),
-        );
-      },
-    );
-
-    it("rejects a candidate the database folded but the application does not (Unicode)", async () => {
-      db.user.findMany.mockResolvedValue([{ id: "kate", email: "Kate@x.fr" }]);
-
-      await expect(
-        findUserIdByEmail(client, "\u212Aate@x.fr"),
-      ).resolves.toBeNull();
+      await expect(findUserIdByEmail(client, "%@b.fr")).resolves.toBeNull();
+      expect(lastQuery().values[0]).toBe("%@b.fr");
     });
 
-    it("keeps the genuine match next to a rejected candidate", async () => {
-      db.user.findMany.mockResolvedValue([
+    it("never keeps a row that does not normalise to the typed address", async () => {
+      db.$queryRaw.mockResolvedValue([
+        { id: "victim", email: "victim@b.fr" },
+        { id: "kate", email: "\u212Aate@x.fr" },
+      ]);
+
+      await expect(findUserIdByEmail(client, "kate@x.fr")).resolves.toBeNull();
+      await expect(isEmailTaken(client, "kate@x.fr")).resolves.toBe(false);
+    });
+
+    it("keeps the genuine match next to a rejected row", async () => {
+      db.$queryRaw.mockResolvedValue([
         { id: "noise", email: "\u212Aate@x.fr" },
         { id: "kate", email: "KATE@x.fr" },
       ]);
@@ -183,7 +186,7 @@ describe("email identity (#465)", () => {
     });
 
     it("returns null when no account matches", async () => {
-      db.user.findMany.mockResolvedValue([]);
+      db.$queryRaw.mockResolvedValue([]);
 
       await expect(findUserIdByEmail(client, "x@y.fr")).resolves.toBeNull();
     });
@@ -201,48 +204,39 @@ describe("email identity (#465)", () => {
       ])(
         "%p designates only the account stored exactly so",
         async (typed, id) => {
-          db.user.findMany.mockResolvedValue(twins);
+          db.$queryRaw.mockResolvedValue(twins);
           await expect(findUserIdByEmail(client, typed)).resolves.toBe(id);
         },
       );
 
       it("refuses any other casing (no arbitrary pick)", async () => {
-        db.user.findMany.mockResolvedValue(twins);
+        db.$queryRaw.mockResolvedValue(twins);
         await expect(
           findUserIdByEmail(client, "ALICE@x.fr"),
         ).resolves.toBeNull();
       });
 
-      it("refuses when no twin is stored in the normalised form", async () => {
-        db.user.findMany.mockResolvedValue([
-          { id: "a", email: "Alice@x.fr" },
-          { id: "b", email: "ALICE@x.fr" },
-        ]);
-        await expect(
-          findUserIdByEmail(client, "alice@x.fr"),
-        ).resolves.toBeNull();
-      });
-
       it("isEmailTaken: a new address colliding with either twin is taken", async () => {
-        db.user.findMany.mockResolvedValue(twins);
+        db.$queryRaw.mockResolvedValue(twins);
         await expect(isEmailTaken(client, "ALICE@X.FR")).resolves.toBe(true);
       });
     });
 
-    it("isEmailTaken: true on an exact or a legacy match", async () => {
-      db.user.findMany.mockResolvedValueOnce([{ id: "u1", email: "a@b.fr" }]);
+    it("isEmailTaken: true on a match, false otherwise", async () => {
+      db.$queryRaw.mockResolvedValueOnce([{ id: "legacy", email: "A@b.fr" }]);
       await expect(isEmailTaken(client, "a@b.fr")).resolves.toBe(true);
 
-      db.user.findMany.mockResolvedValueOnce([
-        { id: "legacy", email: "A@b.fr" },
-      ]);
-      await expect(isEmailTaken(client, "a@b.fr")).resolves.toBe(true);
+      db.$queryRaw.mockResolvedValueOnce([]);
+      await expect(isEmailTaken(client, "a@b.fr")).resolves.toBe(false);
     });
 
-    it("isEmailTaken: false when nothing matches", async () => {
-      db.user.findMany.mockResolvedValue([]);
+    it("isEmailTaken: excludes the account being edited", async () => {
+      db.$queryRaw.mockResolvedValue([]);
 
-      await expect(isEmailTaken(client, "a@b.fr")).resolves.toBe(false);
+      await isEmailTaken(client, "a@b.fr", "self");
+      const { text, values } = lastQuery();
+      expect(text).toContain("AND id <> $2");
+      expect(values).toEqual(["a@b.fr", "self", "a@b.fr", 5]);
     });
   });
 });

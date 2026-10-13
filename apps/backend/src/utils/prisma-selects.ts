@@ -631,15 +631,6 @@ export const idOnlySelect = {
 } as const;
 
 /**
- * Candidat d'une recherche d'adresse insensible à la casse (#465) : l'adresse
- * enregistrée est revérifiée côté application avant d'être retenue.
- */
-export const userIdEmailSelect = {
-  id: true,
-  email: true,
-} as const;
-
-/**
  * Compte visé par « mot de passe oublié » (#465) : l'adresse enregistrée (seule
  * destinataire du lien) et le drapeau du compte de review, jamais réinitialisé.
  */

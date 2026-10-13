@@ -1,5 +1,8 @@
 import { INestApplication } from "@nestjs/common";
-import { oneAccountPerAddress } from "./mocks/email-lookup.mock";
+import {
+  emailLookupFor,
+  oneAccountPerAddress,
+} from "./mocks/email-lookup.mock";
 import {
   ThrottlerGuard,
   ThrottlerStorage,
@@ -23,10 +26,10 @@ describe("AuthController (e2e)", () => {
 
   beforeAll(async () => {
     const mockPrisma = {
+      // E-mail lookup (#465): each address designates one account.
+      $queryRaw: jest.fn(oneAccountPerAddress("test-uuid")),
       user: {
         findUnique: jest.fn(),
-        // E-mail lookup (#465): each address designates one account.
-        findMany: jest.fn(oneAccountPerAddress("test-uuid")),
         update: jest.fn().mockResolvedValue({ id: "user-1" }),
       },
       refreshToken: {
@@ -163,10 +166,8 @@ describe("AuthController (e2e)", () => {
       .post("/api/v1/auth/login")
       .send({ username: "  Test@Example.COM ", password })
       .expect(201);
-    expect(prismaService.user.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { email: { equals: "test@example.com", mode: "insensitive" } },
-      }),
+    expect(prismaService.$queryRaw).toHaveBeenCalledWith(
+      emailLookupFor("test@example.com"),
     );
     expect(findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "test-uuid" } }),

@@ -17,10 +17,10 @@ describe("AuthController - Additional Scenarios (e2e)", () => {
 
   beforeAll(async () => {
     const mockPrisma = {
+      // E-mail lookup (#465): no account matches.
+      $queryRaw: jest.fn().mockResolvedValue([]),
       user: {
         findUnique: jest.fn().mockResolvedValue(null),
-        // E-mail lookup (#465): no account matches.
-        findMany: jest.fn().mockResolvedValue([]),
       },
       refreshToken: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
       passwordResetToken: {

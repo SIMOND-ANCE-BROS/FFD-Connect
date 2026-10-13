@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { escapeLikePattern, normalizeEmail } from "../auth/email-identity";
+import { isEmailTaken, normalizeEmail } from "../auth/email-identity";
 import { EmailService } from "../auth/email.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -144,18 +144,9 @@ export class AdminUserIdentifiersService {
       dto.email !== undefined &&
       dto.email !== normalizeEmail(current.email)
     ) {
-      // ILIKE under the hood: escaped, or `_` / `%` would match other addresses.
-      const taken = await tx.user.findFirst({
-        where: {
-          email: {
-            equals: escapeLikePattern(dto.email),
-            mode: "insensitive",
-          },
-          id: { not: userId },
-        },
-        select: idOnlySelect,
-      });
-      if (taken) throw new ConflictException(EMAIL_TAKEN);
+      // Any casing of another account's address is taken (#465).
+      if (await isEmailTaken(tx, dto.email, userId))
+        throw new ConflictException(EMAIL_TAKEN);
       before.email = current.email;
       after.email = dto.email;
     }

@@ -26,6 +26,22 @@ describe("AuthController (e2e with real DB)", () => {
   const twinUpper = `E2E-Twin-${Date.now()}@Test.com`;
   const twinLower = twinUpper.toLowerCase();
   const twinPasswords = { upper: "TwinUpper123!", lower: "TwinLower123!" };
+  // Victim of Unicode look-alikes that PostgreSQL's default folding would
+  // match (Kelvin sign, dotted I): inserted as legacy rows since the API now
+  // refuses non-ASCII addresses (#465).
+  const victimEmail = `kim-${Date.now()}@test.com`;
+  const victimPassword = "VictimPass123!";
+  const lookAlikes = [
+    victimEmail.replace("k", "\u212A"),
+    victimEmail.replace("i", "\u0130"),
+    victimEmail.replace("k", "\u212A").replace("i", "\u0130"),
+    victimEmail.replace("k", "\u212A").toUpperCase(),
+    victimEmail.replace("i", "\u0130").toUpperCase(),
+    victimEmail.replace("k", "\u212A").replace("m", "M"),
+    victimEmail.replace("i", "\u0130").replace("m", "M"),
+  ];
+  // Legit address with underscores: never read as a wildcard.
+  const underscoreEmail = `jean_dupont_${Date.now()}@test.com`;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await applyE2EOverrides(
@@ -75,6 +91,7 @@ describe("AuthController (e2e with real DB)", () => {
     for (const [email, password] of [
       [twinUpper, twinPasswords.upper],
       [twinLower, twinPasswords.lower],
+      [underscoreEmail, plainPassword],
     ] as const) {
       await prisma.user.create({
         data: {
@@ -86,13 +103,49 @@ describe("AuthController (e2e with real DB)", () => {
         },
       });
     }
+    // Ids chosen so every look-alike sorts before the owner: a lookup that
+    // let them match would fill its bounded result ahead of the owner's row.
+    const run = Date.now().toString(16).padStart(12, "0").slice(-12);
+    await prisma.user.create({
+      data: {
+        id: `ffffffff-ffff-4fff-bfff-${run}`,
+        email: victimEmail,
+        password: await bcrypt.hash(victimPassword, 10),
+        firstName: "E2E",
+        lastName: "Victim",
+        role: UserRole.LICENSEE,
+      },
+    });
+    const lookAlikeHash = await bcrypt.hash("LookAlike123!", 10);
+    for (const [n, email] of lookAlikes.entries()) {
+      await prisma.user.create({
+        data: {
+          id: `00000000-0000-4000-800${n}-${run}`,
+          email,
+          password: lookAlikeHash,
+          firstName: "E2E",
+          lastName: "LookAlike",
+          role: UserRole.LICENSEE,
+        },
+      });
+    }
   }, 30000);
 
   afterAll(async () => {
     await prisma?.user
       ?.deleteMany({
         where: {
-          email: { in: [testEmail, legacyEmail, twinUpper, twinLower] },
+          email: {
+            in: [
+              testEmail,
+              legacyEmail,
+              twinUpper,
+              twinLower,
+              victimEmail,
+              underscoreEmail,
+              ...lookAlikes,
+            ],
+          },
         },
       })
       .catch(() => {});
@@ -242,6 +295,95 @@ describe("AuthController (e2e with real DB)", () => {
           firstName: "E2E",
         });
       expect(res.status).toBe(409);
+    });
+  });
+
+  describe("Unicode look-alike legacy rows never lock the owner out (#465)", () => {
+    const server = () => app.getHttpServer() as Parameters<typeof request>[0];
+
+    it("the owner still logs in, with any ASCII casing", async () => {
+      for (const username of [victimEmail, victimEmail.toUpperCase()]) {
+        const res = await request(server())
+          .post("/api/v1/auth/login")
+          .send({ username, password: victimPassword })
+          .expect(201);
+        expect(res.body.user).toHaveProperty("email", victimEmail);
+      }
+    });
+
+    it("the owner still gets a reset token", async () => {
+      const victim = await prisma.user.findUniqueOrThrow({
+        where: { email: victimEmail },
+        select: { id: true },
+      });
+      await request(server())
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: victimEmail.toUpperCase() })
+        .expect((res) => expect(res.status).toBeLessThan(300));
+      await expect(
+        prisma.passwordResetToken.count({ where: { userId: victim.id } }),
+      ).resolves.toBe(1);
+    });
+
+    it("registration of the owner's address in another casing is still a 409", async () => {
+      const res = await request(server()).post("/api/v1/auth/register").send({
+        email: victimEmail.toUpperCase(),
+        password: "Brand-New-Pass1!",
+        licenseNumber: "E2E-NOPE-465",
+        lastName: "Kim",
+        firstName: "E2E",
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it("registration of a new look-alike is refused by validation", async () => {
+      const res = await request(server())
+        .post("/api/v1/auth/register")
+        .send({
+          email: victimEmail.replace("k", "\u212A").replace("@", "2@"),
+          password: "Brand-New-Pass1!",
+          licenseNumber: "E2E-NOPE-465",
+          lastName: "Kim",
+          firstName: "E2E",
+        });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("an address with underscores is matched literally (#465)", () => {
+    const server = () => app.getHttpServer() as Parameters<typeof request>[0];
+
+    it("logs in and gets a reset token", async () => {
+      const res = await request(server())
+        .post("/api/v1/auth/login")
+        .send({
+          username: underscoreEmail.toUpperCase(),
+          password: plainPassword,
+        })
+        .expect(201);
+      expect(res.body.user).toHaveProperty("email", underscoreEmail);
+
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { email: underscoreEmail },
+        select: { id: true },
+      });
+      await request(server())
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: underscoreEmail })
+        .expect((r) => expect(r.status).toBeLessThan(300));
+      await expect(
+        prisma.passwordResetToken.count({ where: { userId: user.id } }),
+      ).resolves.toBe(1);
+    });
+
+    it("an underscore never stands for another character", async () => {
+      await request(server())
+        .post("/api/v1/auth/login")
+        .send({
+          username: underscoreEmail.replace("_", "x"),
+          password: plainPassword,
+        })
+        .expect(401);
     });
   });
 });

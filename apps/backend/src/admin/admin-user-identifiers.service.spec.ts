@@ -50,7 +50,8 @@ describe("AdminUserIdentifiersService", () => {
     prisma.$transaction.mockImplementation(((fn: (tx: unknown) => unknown) =>
       fn(prisma)) as never);
     prisma.user.findUnique.mockResolvedValue(current as never);
-    prisma.user.findFirst.mockResolvedValue(null);
+    // E-mail lookup (#465): the address is free by default.
+    prisma.$queryRaw.mockResolvedValue([] as never);
     prisma.license.findUnique.mockResolvedValue(null);
     audit = { record: jest.fn() };
     query = { detail: jest.fn().mockResolvedValue({ id: "u1" }) };
@@ -73,13 +74,13 @@ describe("AdminUserIdentifiersService", () => {
         service.update("admin-1", "u1", { email: "new@x.fr" }),
       ).resolves.toEqual({ user: { id: "u1" }, previousEmailNotified: true });
 
-      expect(prisma.user.findFirst).toHaveBeenCalledWith({
-        where: {
-          email: { equals: "new@x.fr", mode: "insensitive" },
-          id: { not: "u1" },
-        },
-        select: { id: true },
-      });
+      // Any casing of another account's address, the edited one excluded.
+      expect(prisma.$queryRaw).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining("AND id <> $2"),
+          values: expect.arrayContaining(["new@x.fr", "u1"]),
+        }),
+      );
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: "u1" },
         data: { email: "new@x.fr" },
@@ -109,7 +110,9 @@ describe("AdminUserIdentifiersService", () => {
     });
 
     it("refuses an email held by another account (case-insensitive lookup) with a 409", async () => {
-      prisma.user.findFirst.mockResolvedValue({ id: "u2" } as never);
+      prisma.$queryRaw.mockResolvedValue([
+        { id: "u2", email: "Taken@x.fr" },
+      ] as never);
       await expect(
         service.update("admin-1", "u1", { email: "taken@x.fr" }),
       ).rejects.toEqual(new ConflictException(EMAIL_TAKEN));
@@ -119,15 +122,14 @@ describe("AdminUserIdentifiersService", () => {
       expect(email.sendEmailChangedNotice).not.toHaveBeenCalled();
     });
 
-    it("escapes LIKE wildcards in the conflict lookup (#465)", async () => {
-      await service.update("admin-1", "u1", { email: "a_b%c@x.fr" });
-      expect(prisma.user.findFirst).toHaveBeenCalledWith({
-        where: {
-          email: { equals: "a\\_b\\%c@x.fr", mode: "insensitive" },
-          id: { not: "u1" },
-        },
-        select: { id: true },
-      });
+    it("ignores a row the database returned that is not the same address (#465)", async () => {
+      // Application-side recheck: never a false 409.
+      prisma.$queryRaw.mockResolvedValue([
+        { id: "u2", email: "other@x.fr" },
+      ] as never);
+      await expect(
+        service.update("admin-1", "u1", { email: "a_b@x.fr" }),
+      ).resolves.toEqual({ user: { id: "u1" }, previousEmailNotified: true });
     });
 
     it("treats the same address in another stored casing as no change", async () => {
@@ -311,7 +313,7 @@ describe("AdminUserIdentifiersService", () => {
     await expect(service.update("admin-1", "u1", dto)).rejects.toEqual(
       new ForbiddenException(STORE_REVIEW_IDENTIFIERS),
     );
-    expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
     expect(prisma.license.findUnique).not.toHaveBeenCalled();
     expect(prisma.user.update).not.toHaveBeenCalled();
     expect(prisma.license.update).not.toHaveBeenCalled();

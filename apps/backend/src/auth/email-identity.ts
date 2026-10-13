@@ -1,6 +1,5 @@
 import { Logger } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { userIdEmailSelect } from "../utils/prisma-selects";
 
 /**
  * Login addresses are case-insensitive (#465): every account email is stored
@@ -14,6 +13,16 @@ import { userIdEmailSelect } from "../utils/prisma-selects";
 export function normalizeEmail(email: string): string {
   return email.trim().replace(/[A-Z]+/g, (letters) => letters.toLowerCase());
 }
+
+/**
+ * `@IsEmail` options for STORED addresses: no UTF-8 local part. With
+ * `@IsAscii` (internationalised domains must come in punycode), a stored
+ * address only ever contains ASCII, the only characters folded by
+ * `normalizeEmail`: no Unicode look-alike of an existing address (#465).
+ */
+export const STORED_EMAIL_OPTIONS = { allow_utf8_local_part: false } as const;
+export const STORED_EMAIL_ASCII_MESSAGE =
+  "L'adresse email ne doit contenir que des caractères ASCII (domaine internationalisé : forme punycode)";
 
 /**
  * `@Transform` for e-mails that are STORED (registration, admin creation or
@@ -33,49 +42,43 @@ export const normalizeEmailTransform = ({
 export const trimEmailTransform = ({ value }: { value: unknown }): unknown =>
   typeof value === "string" ? value.trim() : value;
 
-/**
- * Escapes the LIKE metacharacters (`\`, `%`, `_`): Prisma compiles
- * `{ equals, mode: "insensitive" }` to `ILIKE` on PostgreSQL, where they would
- * otherwise act as wildcards (`%@exemple.fr` matching anyone's address).
- */
-export function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
-}
-
-type UserLookupClient = Pick<Prisma.TransactionClient, "user">;
+type UserLookupClient = Pick<Prisma.TransactionClient, "$queryRaw">;
 
 /**
- * Upper bound of the rows read for one address. Above 1 is already a case
- * collision; a little headroom keeps a row rejected by the application-side
- * recheck from hiding a genuine match.
+ * Upper bound of the rows read for one address. Only addresses equal up to
+ * ASCII case can match, and the write paths refuse any such collision, so
+ * more than one row only happens with legacy duplicates.
  */
 const CANDIDATES_MAX = 5;
 
 const logger = new Logger("EmailIdentity");
 
 /**
- * Every account whose stored address is `email` up to ASCII case and
+ * Every account whose stored address equals `email` up to ASCII case and
  * surrounding spaces — including legacy rows stored before addresses were
  * normalised at write time, and distinct accounts differing only by case.
  *
- * The case-insensitive query is a pre-filter only (escaped pattern,
- * PostgreSQL folding): a row is kept only if its stored address normalises to
- * exactly the same string, so the database's matching rules can never widen
- * who is designated.
+ * Compared in the database exactly like `normalizeEmail`: `lower()` under the
+ * "C" collation folds ASCII letters only, so Unicode look-alikes (Kelvin sign,
+ * dotted I…) never match and can never crowd the bounded result. Plain
+ * equality, no LIKE: nothing in the address acts as a wildcard. The row typed
+ * exactly comes first, so its owner is always in the result. Each row is
+ * re-checked in the application as a last guard.
  */
 async function emailCandidates(
   db: UserLookupClient,
   email: string,
+  excludeUserId?: string,
 ): Promise<{ id: string; email: string }[]> {
+  const typed = email.trim();
   const normalized = normalizeEmail(email);
-  const rows = await db.user.findMany({
-    where: {
-      email: { equals: escapeLikePattern(normalized), mode: "insensitive" },
-    },
-    select: userIdEmailSelect,
-    orderBy: { id: "asc" },
-    take: CANDIDATES_MAX,
-  });
+  const rows = await db.$queryRaw<{ id: string; email: string }[]>(
+    Prisma.sql`SELECT id, email FROM "User"
+      WHERE lower(email COLLATE "C") = ${normalized}
+      ${excludeUserId ? Prisma.sql`AND id <> ${excludeUserId}` : Prisma.empty}
+      ORDER BY (email = ${typed}) DESC, id ASC
+      LIMIT ${CANDIDATES_MAX}`,
+  );
   return rows.filter((u) => normalizeEmail(u.email) === normalized);
 }
 
@@ -106,10 +109,12 @@ export async function findUserIdByEmail(
 /**
  * Whether an address is already used by an account, whatever its casing: a
  * new or edited address never collides with an existing one once normalised.
+ * `excludeUserId`: the account being edited, which may keep its own address.
  */
 export async function isEmailTaken(
   db: UserLookupClient,
   email: string,
+  excludeUserId?: string,
 ): Promise<boolean> {
-  return (await emailCandidates(db, email)).length > 0;
+  return (await emailCandidates(db, email, excludeUserId)).length > 0;
 }

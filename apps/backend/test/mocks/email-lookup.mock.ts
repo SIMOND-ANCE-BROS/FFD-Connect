@@ -1,14 +1,19 @@
+import { Prisma } from "@prisma/client";
+
 /**
- * `user.findMany` stand-in for the e-mail lookup of `auth/email-identity`
- * (#465): every address designates exactly one account, `id`, stored as typed
- * (LIKE escapes removed). Suites that mock the account itself through
+ * `$queryRaw` stand-in for the e-mail lookup of `auth/email-identity` (#465):
+ * every address designates exactly one account, `id`, stored in the
+ * normalised form. Suites that mock the account itself through
  * `user.findUnique` keep working unchanged.
  */
 export const oneAccountPerAddress =
   (id = "user-1") =>
-  (args: { where?: { email?: { equals?: string } } }) =>
-    Promise.resolve(
-      args.where?.email?.equals === undefined
-        ? []
-        : [{ id, email: args.where.email.equals.replace(/\\(.)/g, "$1") }],
-    );
+  (query: Prisma.Sql) =>
+    Promise.resolve([{ id, email: String(query.values[0]) }]);
+
+/** Matches the e-mail lookup query for the normalised address `normalized`. */
+export const emailLookupFor = (normalized: string): unknown =>
+  expect.objectContaining({
+    text: expect.stringContaining('lower(email COLLATE "C") = $1'),
+    values: expect.arrayContaining([normalized]),
+  });

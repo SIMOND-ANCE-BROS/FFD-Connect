@@ -1,3 +1,4 @@
+import { emailLookupFor } from "../../test/mocks/email-lookup.mock";
 import {
   BadRequestException,
   ConflictException,
@@ -17,12 +18,12 @@ describe("AuthService.register", () => {
   let prisma: {
     user: {
       findUnique: jest.Mock;
-      findMany: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
     };
     license: { findUnique: jest.Mock; update: jest.Mock };
     $transaction: jest.Mock;
+    $queryRaw: jest.Mock;
   };
   let authTokenService: { createRefreshToken: jest.Mock };
   let configService: { get: jest.Mock };
@@ -31,12 +32,13 @@ describe("AuthService.register", () => {
     prisma = {
       user: {
         findUnique: jest.fn(),
-        findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
         update: jest.fn().mockResolvedValue({}),
       },
       license: { findUnique: jest.fn(), update: jest.fn() },
       $transaction: jest.fn(),
+      // E-mail lookup (#465): the address is free by default.
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
     configService = { get: jest.fn().mockReturnValue(undefined) };
     authTokenService = {
@@ -114,7 +116,7 @@ describe("AuthService.register", () => {
   });
 
   it("rejects if email already exists", async () => {
-    prisma.user.findMany.mockResolvedValue([
+    prisma.$queryRaw.mockResolvedValue([
       { id: "existing", email: "taken@example.com" },
     ]);
 
@@ -130,7 +132,7 @@ describe("AuthService.register", () => {
 
   it("rejects an address already used with another casing (#465)", async () => {
     // A legacy mixed-case row: the normalised address would collide with it.
-    prisma.user.findMany.mockResolvedValue([
+    prisma.$queryRaw.mockResolvedValue([
       { id: "legacy", email: "Taken@Example.com" },
     ]);
 
@@ -142,12 +144,9 @@ describe("AuthService.register", () => {
         "Dupont",
       ),
     ).rejects.toThrow(ConflictException);
-    expect(prisma.user.findMany).toHaveBeenCalledWith({
-      where: { email: { equals: "taken@example.com", mode: "insensitive" } },
-      select: { id: true, email: true },
-      orderBy: { id: "asc" },
-      take: 5,
-    });
+    expect(prisma.$queryRaw).toHaveBeenCalledWith(
+      emailLookupFor("taken@example.com"),
+    );
     expect(prisma.license.findUnique).not.toHaveBeenCalled();
   });
 
@@ -379,10 +378,8 @@ describe("AuthService.register", () => {
     );
 
     // The uniqueness check looks the normalised address up (#465)
-    expect(prisma.user.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { email: { equals: "upper@example.com", mode: "insensitive" } },
-      }),
+    expect(prisma.$queryRaw).toHaveBeenCalledWith(
+      emailLookupFor("upper@example.com"),
     );
   });
   describe("birthDate derived from the licence number (#60)", () => {
