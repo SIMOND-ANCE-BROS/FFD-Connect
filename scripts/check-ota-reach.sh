@@ -63,6 +63,26 @@ uploaded() {
     | jq 'if type == "array" then length else error("not an array") end' 2> /dev/null
 }
 
+# released <platform> <runtime> → succès si une release GitHub
+# `beta-<version>-<platform>-<n°>` déclare cette empreinte (canal beta
+# seulement, #510). Secours pour un binaire beta construit sur runner GitHub
+# dont `eas upload` a échoué ou n'existait pas encore (build iOS 27) :
+# release-beta écrit « Runtime fingerprint: `<hash>` » dans l'en-tête. Exige
+# gh, GH_TOKEN et GITHUB_REPOSITORY (en CI) ; sinon, simple échec.
+released() {
+  [ "$CHANNEL" = "beta" ] || return 1
+  [ -n "${GH_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] || return 1
+  command -v gh > /dev/null 2>&1 || return 1
+  case "$1" in ios | android) ;; *) return 1 ;; esac
+  [[ "$2" =~ ^[0-9a-f]{40}$ ]] || return 1
+  # Toutes les pages : les releases OTA preview quotidiennes repoussent vite
+  # les beta-* hors de la première. grep sans -q : avec pipefail, une sortie
+  # anticipée de grep ferait échouer gh (SIGPIPE) et donc le test.
+  gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+    --jq ".[] | select(.tag_name | test(\"^beta-[0-9.]+-$1-[0-9]+\$\")) | .body" \
+    < /dev/null 2> /dev/null | grep -F "Runtime fingerprint: \`$2\`" > /dev/null
+}
+
 missed=0
 while read -r platform runtime; do
   count=$(builds "$platform" "$runtime")
@@ -72,6 +92,10 @@ while read -r platform runtime; do
   fi
   if [ "$count" -eq 0 ] && [ "$(uploaded "$platform" "$runtime")" -gt 0 ] 2> /dev/null; then
     echo "✅ OTA $platform (runtime ${runtime:0:7}) : au moins un build compatible (runner GitHub, envoyé par eas upload)" | tee -a "$summary"
+    continue
+  fi
+  if [ "$count" -eq 0 ] && released "$platform" "$runtime"; then
+    echo "✅ OTA $platform (runtime ${runtime:0:7}) : build \`$CHANNEL\` compatible déclaré par une release GitHub beta-* (runner GitHub, sans eas upload)" | tee -a "$summary"
     continue
   fi
   if [ "$count" -gt 0 ]; then

@@ -1399,10 +1399,29 @@ jobs:
               exit 1
             fi
           fi
+          # Empreinte runtime DU BINAIRE (#510) : celle qu'expo-updates y a
+          # embarquée, sinon celle qu'eas-cli calcule pour le profil (même
+          # logique que .github/actions/eas-local-build, non utilisée ici :
+          # promote-beta tourne sur l'arbre de staging). Enregistrée par
+          # `eas upload` et dans la release, elle permet au contrôle de
+          # portée de l'OTA beta de trouver ce binaire. Jamais bloquante.
+          if [ "$PLATFORM" = "ios" ]; then
+            EMBEDDED_FP=$(unzip -p "$OUT" 'Payload/*.app/EXUpdates.bundle/fingerprint' 2> /dev/null || true)
+          else
+            EMBEDDED_FP=$(unzip -p "$OUT" base/assets/fingerprint 2> /dev/null || true)
+          fi
+          FINGERPRINT=$(tr -d '[:space:]' <<< "$EMBEDDED_FP")
+          if ! [[ "$FINGERPRINT" =~ ^[0-9a-f]{40}$ ]]; then
+            FINGERPRINT=$(eas fingerprint:generate --build-profile beta --platform "$PLATFORM" --json --non-interactive \
+              < /dev/null 2> /dev/null | sed -n '/^{/,$p' | jq -r '.hash // empty' 2> /dev/null || true)
+            [[ "$FINGERPRINT" =~ ^[0-9a-f]{40}$ ]] || FINGERPRINT=""
+            echo "::notice::empreinte non embarquée dans le binaire : empreinte calculée par eas-cli (${FINGERPRINT:-indisponible})"
+          fi
           SHA256=$(shasum -a 256 "$OUT" | cut -d ' ' -f 1)
           {
             echo "path=$OUT"
             echo "sha256=$SHA256"
+            echo "fingerprint=$FINGERPRINT"
           } >> "$GITHUB_OUTPUT"
           if ! [[ "$BUILD_NUMBER" =~ ^[1-9][0-9]{0,8}$ ]]; then
             echo "state=pending" >> "$GITHUB_OUTPUT"
@@ -1413,7 +1432,7 @@ jobs:
             echo "state=finished"
             echo "number=$BUILD_NUMBER"
           } >> "$GITHUB_OUTPUT"
-          echo "Build $PLATFORM_NAME beta **$BUILD_NUMBER** terminé — SHA-256 \`$SHA256\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "Build $PLATFORM_NAME beta **$BUILD_NUMBER** terminé (runtime \`${FINGERPRINT:0:7}\`) — SHA-256 \`$SHA256\`." >> "$GITHUB_STEP_SUMMARY"
 
       # Après un build réussi seulement (#512) : sauvegarde ce qui a manqué sa
       # clé exacte, derrière le garde-fou « fichier sensible » de l'action.
@@ -1447,8 +1466,19 @@ jobs:
         # déjà posée), sans EXPO_PUBLIC_APP_ENV, et on pose beta nous-mêmes.
         env:
           EXPO_PUBLIC_APP_ENV: beta
+          # Lecture des releases beta-* (empreintes des builds sur runner,
+          # #510) par check-ota-reach.sh. Jeton du job : contents: read.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Script de contrôle tiré du commit du WORKFLOW (github.sha, develop),
+          # pas de l'arbre de staging : comme le générateur de notes, il évolue
+          # avec le workflow (#510 : secours par les releases beta-*).
+          CHECK="$RUNNER_TEMP/check-ota-reach.sh"
+          git cat-file -e "$GITHUB_SHA^{commit}" 2> /dev/null \
+            || git fetch --quiet --no-tags --depth=1 origin "$GITHUB_SHA"
+          git show "$GITHUB_SHA:scripts/check-ota-reach.sh" > "$CHECK"
+          chmod +x "$CHECK"
           eas env:pull --environment preview --non-interactive --path .env.local
           sed -i '/^EXPO_PUBLIC_APP_ENV=/d' .env.local
           # Bloquant, et AVANT de publier : rien ne build en parallèle ici, une
@@ -1458,11 +1488,11 @@ jobs:
               | sed -n '/^{/,$p' | jq -r .hash)
             echo "{\"platform\":\"$p\",\"runtimeVersion\":\"$RUNTIME\"}"
           done | jq -s . > "$RUNNER_TEMP/beta-runtime.json"
-          ../../scripts/check-ota-reach.sh beta "$RUNNER_TEMP/beta-runtime.json" --strict
+          "$CHECK" beta "$RUNNER_TEMP/beta-runtime.json" --strict
           eas update --branch beta --message "promote staging @ $(git rev-parse --short HEAD)" \
             --json --non-interactive > "$RUNNER_TEMP/eas-update.json"
           # Contrôle après coup : l'empreinte publiée est-elle bien celle vérifiée ?
-          ../../scripts/check-ota-reach.sh beta "$RUNNER_TEMP/eas-update.json" --strict
+          "$CHECK" beta "$RUNNER_TEMP/eas-update.json" --strict
 
       # Tag & GitHub Release : job release-beta (#477), après ce job, à partir
       # de l'état transmis (numéro de build, commit, empreinte, notes). Ce job
@@ -1604,6 +1634,55 @@ jobs:
           echo "state=finished" >> "$GITHUB_OUTPUT"
           echo "📤 Envoyé sur $STORE_NAME (soumission \`$SUB_ID\`)" >> "$GITHUB_STEP_SUMMARY"
 
+      # Build sur runner GitHub : `eas build --local` ne crée AUCUN build EAS.
+      # `eas upload` enregistre le binaire sur expo.dev avec son empreinte, que
+      # scripts/check-ota-reach.sh retrouve (eas build:list --fingerprint-hash)
+      # pour l'OTA beta (#510), comme preview/production depuis #509. Étape en
+      # ligne (pas l'action locale eas-local-build) : ce job tourne sur l'arbre
+      # de staging, une nouvelle action n'y existerait pas encore.
+      # Après l'envoi au store, et seulement s'il n'a pas échoué : un binaire
+      # absent du store ne doit pas faire passer le contrôle. Jamais bloquante
+      # (le store compte plus) : un échec laisse un avertissement, et la
+      # release porte de toute façon l'empreinte (secours du contrôle).
+      # Téléverse un fichier, ne lance aucun build : hors quota EAS.
+      - name: Register beta binary on EAS (eas upload)
+        if: >-
+          !cancelled() && inputs.action == 'build' && inputs.builder != 'eas'
+          && steps.ghbuild.outputs.number != '' && steps.submit.outcome == 'success'
+          && steps.submit.outputs.state != 'failed'
+        working-directory: apps/client
+        timeout-minutes: 20
+        env:
+          EXPO_PUBLIC_APP_ENV: beta
+          PLATFORM: ${{ matrix.platform }}
+          BUILD_PATH: ${{ steps.ghbuild.outputs.path }}
+          FINGERPRINT: ${{ steps.ghbuild.outputs.fingerprint }}
+          BUILD_NUMBER: ${{ steps.ghbuild.outputs.number }}
+        run: |
+          set -uo pipefail
+          if [ ! -f "$BUILD_PATH" ]; then
+            echo "::warning::binaire beta $BUILD_NUMBER introuvable sur le runner : pas d'eas upload (#510)"
+            exit 0
+          fi
+          if [ -z "$FINGERPRINT" ]; then
+            echo "::warning::empreinte du build beta $BUILD_NUMBER inconnue : eas upload ne servirait pas au contrôle de l'OTA beta, ignoré"
+            exit 0
+          fi
+          # Sortie JSON gardée hors du journal (seule l'URL en est extraite) ;
+          # stderr (progression) reste visible. Aucun jeton n'y figure, mais
+          # rien de ce que renvoie EAS n'est affiché tel quel.
+          OUT_JSON="$RUNNER_TEMP/eas-upload.json"
+          if eas upload --platform "$PLATFORM" --build-path "$BUILD_PATH" --fingerprint "$FINGERPRINT" \
+            --non-interactive --json < /dev/null > "$OUT_JSON"; then
+            url=$(sed -n '/^{/,$p' "$OUT_JSON" | jq -r '.url // empty' 2> /dev/null || true)
+            echo "📦 Binaire beta $PLATFORM $BUILD_NUMBER enregistré sur EAS (runtime \`${FINGERPRINT:0:7}\`) : ${url:-voir expo.dev}" \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::eas upload du build beta $BUILD_NUMBER a échoué : le contrôle de l'OTA beta s'appuiera sur l'empreinte notée dans la release (docs/exploitation/ci-cd.md, #510)"
+          fi
+          rm -f "$OUT_JSON"
+          exit 0
+
       # Filet de l'étape de build (dont le trap efface déjà la config Firebase) :
       # même après un timeout ou une annulation, rien de décodé ni le binaire
       # ne reste sur le runner. Aucun listage : seulement des suppressions.
@@ -1612,7 +1691,8 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/eas-environment-secrets"
           rm -f "$RUNNER_TEMP/ffd-connect-beta.ipa" "$RUNNER_TEMP/ffd-connect-beta.aab" \
-            "$RUNNER_TEMP/Info.plist" "$RUNNER_TEMP/eas-submit.log" "$RUNNER_TEMP/bundletool.jar"
+            "$RUNNER_TEMP/Info.plist" "$RUNNER_TEMP/eas-submit.log" "$RUNNER_TEMP/bundletool.jar" \
+            "$RUNNER_TEMP/eas-upload.json"
 
       # Passage de relais à release-beta, distribute-beta et au suivi : les
       # sorties d'un job matriciel s'écrasent d'une jambe à l'autre, d'où un
@@ -1637,6 +1717,9 @@ jobs:
           # Build sur runner GitHub : empreinte du binaire envoyé au store
           # (le binaire lui-même ne quitte pas le runner).
           BINARY_SHA256: ${{ steps.ghbuild.outputs.sha256 }}
+          # Et son empreinte runtime (#510), notée dans la release : secours du
+          # contrôle de portée de l'OTA beta si `eas upload` a échoué.
+          BINARY_FINGERPRINT: ${{ steps.ghbuild.outputs.fingerprint }}
           # Ce qui mérite un tag (ex-condition de l'étape Tag) : dès que le
           # build existe (ou que l'OTA est en ligne), AVANT et indépendamment
           # de l'envoi et de la distribution — le binaire est déjà payé, une
@@ -1671,10 +1754,12 @@ jobs:
             --arg version "$VERSION" --arg commit "$COMMIT" \
             --arg build_state "$BUILD_STATE" --arg submit "$SUBMIT_STATE" \
             --arg builder "$BUILDER" --arg sha256 "$BINARY_SHA256" --arg release "$RELEASE" \
+            --arg fingerprint "$BINARY_FINGERPRINT" \
             '{platform: $platform, skip: ($skip == "true"), build_id: $build_id,
               build_number: $build_number, version: $version, commit: $commit,
               build_state: $build_state, submit_state: $submit, builder: $builder,
-              binary_sha256: $sha256, release: ($release == "true")}' > "$D/state.json"
+              binary_sha256: $sha256, binary_fingerprint: $fingerprint,
+              release: ($release == "true")}' > "$D/state.json"
           if [ -f beta-notes.txt ]; then cp beta-notes.txt "$D/beta-notes.txt"; fi
           if [ -f beta-notes.md ]; then cp beta-notes.md "$D/beta-notes.md"; fi
 
@@ -1792,6 +1877,10 @@ jobs:
           # Facultative (build cloud, reprise, build local) : omise si invalide.
           SHA256=$(field binary_sha256)
           [[ "$SHA256" =~ ^[0-9a-f]{64}$ ]] || SHA256=""
+          # Empreinte runtime du binaire (build sur runner, #510) : omise si
+          # invalide. Relue par scripts/check-ota-reach.sh (OTA beta).
+          FINGERPRINT=$(field binary_fingerprint)
+          [[ "$FINGERPRINT" =~ ^[0-9a-f]{40}$ ]] || FINGERPRINT=""
           # Version lue dans le DÉPÔT, au commit validé — pas dans l'état.
           VERSION=$(git show "$COMMIT:apps/client/app.config.js" \
             | sed -nE 's/.*version: "([^"]+)", \/\/ x-release-please-version.*/\1/p')
@@ -1804,6 +1893,7 @@ jobs:
             echo "commit=$COMMIT"
             echo "build_number=$BUILD_NUMBER"
             echo "sha256=$SHA256"
+            echo "fingerprint=$FINGERPRINT"
             echo "version=$VERSION"
           } >> "$GITHUB_OUTPUT"
 
@@ -1831,6 +1921,7 @@ jobs:
           BUILD_NUMBER: ${{ steps.state.outputs.build_number }}
           VERSION: ${{ steps.state.outputs.version }}
           BINARY_SHA256: ${{ steps.state.outputs.sha256 }}
+          BINARY_FINGERPRINT: ${{ steps.state.outputs.fingerprint }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -1854,6 +1945,11 @@ jobs:
             if [ -n "$BINARY_SHA256" ]; then
               # Relie le binaire du store à ce commit et à ce run.
               HEADER="$HEADER Built on a GitHub Actions runner (eas build --local, $RUN_URL); SHA-256 of the submitted binary: \`$BINARY_SHA256\`."
+            fi
+            if [ -n "$BINARY_FINGERPRINT" ]; then
+              # Phrase exacte relue par scripts/check-ota-reach.sh (#510) : ne
+              # pas la reformuler sans adapter le script.
+              HEADER="$HEADER Runtime fingerprint: \`$BINARY_FINGERPRINT\`."
             fi
           fi
           # Tag déjà présent (relance, reprise, tag posé à la main) : il doit
