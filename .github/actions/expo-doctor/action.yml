@@ -20,10 +20,10 @@ runs:
       working-directory: apps/client
       env:
         EXPO_PUBLIC_APP_ENV: ${{ inputs.app-env }}
-        # Pinned: `npx` would otherwise run whatever `latest` is at build time
-        # in a job that holds secrets. 1.20.4 = `latest` dist-tag of
-        # expo-doctor while `expo` latest is SDK 57. Bump by hand with the SDK.
-        EXPO_DOCTOR_VERSION: '1.20.4'
+        # expo-doctor is an exact devDependency of apps/client (1.20.4 =
+        # `latest` dist-tag while `expo` latest is SDK 57): the lockfile pins
+        # its integrity, `pnpm exec` never downloads at build time. Bump it
+        # with the SDK.
       run: |
         set -uo pipefail
         LOG="$RUNNER_TEMP/expo-doctor.log"
@@ -38,7 +38,7 @@ runs:
           $SIG{ALRM} = sub { kill "TERM", -$p; sleep 2; kill "KILL", -$p; exit 142 };
           alarm $t; waitpid($p, 0);
           exit(($? & 127) ? 128 + ($? & 127) : $? >> 8);
-        ' 300 npx --yes "expo-doctor@$EXPO_DOCTOR_VERSION" < /dev/null > "$LOG" 2>&1
+        ' 300 pnpm exec expo-doctor < /dev/null > "$LOG" 2>&1
         STATUS=$?
         cat "$LOG"
         case "$STATUS" in

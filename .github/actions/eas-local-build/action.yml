@@ -25,6 +25,13 @@ inputs:
   firebase-secret-name:
     description: Name of the GitHub secret passed above (error messages only).
     required: true
+  native-cache:
+    description: >-
+      true to restore/save the ccache + CocoaPods caches (iOS). Preview only:
+      production never builds from a restored cache (#513 security review),
+      so its signed store binary depends on nothing a cache writer controls.
+    required: false
+    default: 'false'
 
 outputs:
   path:
@@ -78,6 +85,7 @@ runs:
     # iOS: ccache + CocoaPods caches (#512), after the Xcode selection (the
     # cache key carries the Xcode build version). No-op on Android.
     - name: Restore native build caches
+      if: inputs.native-cache == 'true'
       uses: ./.github/actions/native-build-cache
       with:
         step: restore
@@ -85,6 +93,7 @@ runs:
 
     # Informational only, never fails (the build disables its own doctor step).
     - name: Expo doctor
+      continue-on-error: true
       uses: ./.github/actions/expo-doctor
       with:
         app-env: ${{ inputs.profile }}
@@ -243,9 +252,10 @@ runs:
         } >> "$GITHUB_OUTPUT"
         echo "Build $PLATFORM $PROFILE **${BUILD_NUMBER:-?}** (runtime \`${FINGERPRINT:0:7}\`) — SHA-256 \`$SHA256\`." >> "$GITHUB_STEP_SUMMARY"
 
-    # Only after a successful build (default `success()`): saves what missed
+    # Only after a successful build (implicit `success()`): saves what missed
     # its exact key, behind the secret-file guard of the action.
     - name: Save native build caches
+      if: inputs.native-cache == 'true'
       uses: ./.github/actions/native-build-cache
       with:
         step: save

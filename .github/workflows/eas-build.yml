@@ -624,6 +624,8 @@ jobs:
         with:
           platform: ${{ matrix.platform }}
           profile: preview
+          # ccache + CocoaPods caches (#512). Never on production (#513).
+          native-cache: 'true'
           firebase-b64: >-
             ${{ matrix.platform == 'ios' && secrets.FIREBASE_IOS_PLIST_PREVIEW_B64
             || secrets.FIREBASE_ANDROID_JSON_PREVIEW_B64 }}

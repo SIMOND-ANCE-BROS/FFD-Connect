@@ -6,8 +6,13 @@ description: >-
   `success()` condition: a failed build never saves). Android: no-op.
   What is cached is built only from public sources (pods downloaded from the
   CocoaPods CDN, objects compiled from node_modules); the save refuses any path
-  that holds a Firebase config or signing material. Steps stay bash 3.2
-  compatible (/bin/bash on macOS).
+  that holds a Firebase config or signing material. That guard checks FILE
+  NAMES only: it cannot see a value compiled into a ccache object. Rule: never
+  compile a secret into native code (Objective-C/C++ source, preprocessor
+  define, generated header) — secrets go through Info.plist / runtime config.
+  Caches written from develop are readable by any PR run, forks included.
+  Preview and beta only: production never restores these caches (#513).
+  Steps stay bash 3.2 compatible (/bin/bash on macOS).
 
 inputs:
   step:
@@ -130,6 +135,10 @@ runs:
           echo "NATIVE_CACHE_PODS_HIT=${PODS_HIT:-false}"
         } >> "$GITHUB_ENV"
         if [ -n "$CCACHE_KEY" ]; then
+          # A restored cache must not configure ccache (compiler, prefix
+          # command, remote storage…): only the env above and React Native's
+          # ccache.conf do. Defence in depth (#513 review).
+          rm -f "$CCACHE_DIR/ccache.conf"
           ccache --zero-stats > /dev/null
         fi
         echo "Cache ccache : ${CCACHE_MATCHED:-aucun} — cache CocoaPods : ${PODS_MATCHED:-aucun}" >> "$GITHUB_STEP_SUMMARY"
