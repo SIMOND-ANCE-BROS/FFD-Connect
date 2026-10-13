@@ -13,7 +13,12 @@ runs:
       uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
       with:
         node-version-file: '.nvmrc'
-        cache: 'pnpm'
+        # No pnpm store cache on macOS (#512): only the rare native iOS builds
+        # run there, setup-node keys on the exact lockfile hash (no fallback),
+        # so the restore always missed and the post step then spent ~3 min
+        # saving a 1.4 GB store nobody would hit — the largest entry of the
+        # repository cache. pnpm downloads into the store instead (~2 min).
+        cache: ${{ runner.os != 'macOS' && 'pnpm' || '' }}
 
     - name: Install dependencies
       shell: bash

@@ -117,6 +117,7 @@
     "babel-preset-expo": "~57.0.14",
     "eslint-plugin-react-native-a11y": "^3.5.1",
     "expo-build-properties": "~57.0.22",
+    "expo-doctor": "1.20.4",
     "jest-expo": "~57.0.5",
     "msw": "^3.0.2",
     "react-native-dotenv": "^3.4.11",

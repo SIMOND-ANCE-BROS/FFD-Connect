@@ -624,6 +624,8 @@ jobs:
         with:
           platform: ${{ matrix.platform }}
           profile: preview
+          # ccache + CocoaPods caches (#512). Never on production (#513).
+          native-cache: 'true'
           firebase-b64: >-
             ${{ matrix.platform == 'ios' && secrets.FIREBASE_IOS_PLIST_PREVIEW_B64
             || secrets.FIREBASE_ANDROID_JSON_PREVIEW_B64 }}
@@ -928,6 +930,24 @@ jobs:
         with:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
+
+      # Build sur runner : caches ccache + CocoaPods (iOS, #512 ; sans effet
+      # sur Android), après la sélection de Xcode (clé = version de Xcode).
+      - name: Restore native build caches (GitHub build)
+        if: inputs.action == 'build' && inputs.builder != 'eas'
+        uses: ./.github/actions/native-build-cache
+        with:
+          step: restore
+          platform: ${{ matrix.platform }}
+
+      # Diagnostic seulement (#512) : l'étape doctor du build est désactivée
+      # (EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP) ; résultat dans le résumé du run.
+      - name: Expo doctor (GitHub build, non bloquant)
+        if: inputs.action == 'build' && inputs.builder != 'eas'
+        continue-on-error: true
+        uses: ./.github/actions/expo-doctor
+        with:
+          app-env: beta
 
       # action=resume : retrouve le build EXISTANT et se place sur son commit,
       # pour que changelog, version et tag décrivent ce qui a été construit, et
@@ -1357,6 +1377,17 @@ jobs:
             echo "number=$BUILD_NUMBER"
           } >> "$GITHUB_OUTPUT"
           echo "Build $PLATFORM_NAME beta **$BUILD_NUMBER** terminé — SHA-256 \`$SHA256\`." >> "$GITHUB_STEP_SUMMARY"
+
+      # Après un build réussi seulement (#512) : sauvegarde ce qui a manqué sa
+      # clé exacte, derrière le garde-fou « fichier sensible » de l'action.
+      - name: Save native build caches (GitHub build)
+        if: >-
+          inputs.action == 'build' && inputs.builder != 'eas'
+          && steps.ghbuild.outcome == 'success'
+        uses: ./.github/actions/native-build-cache
+        with:
+          step: save
+          platform: ${{ matrix.platform }}
 
       # PAS d'artefact du binaire : dépôt PUBLIC, les artefacts y sont
       # téléchargeables par tout compte GitHub, et le binaire embarque les

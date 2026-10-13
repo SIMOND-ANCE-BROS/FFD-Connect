@@ -1,0 +1,62 @@
+name: Expo doctor (informational)
+description: >-
+  Run `expo-doctor` on apps/client before a native build on a GitHub runner
+  (#512). Builds set EAS_BUILD_DISABLE_EXPO_DOCTOR_STEP=1 (the step inside
+  `eas build --local` timed out at 30 s), so this is where its findings show
+  up: in the log and the run summary. NEVER blocking: whatever doctor reports,
+  or if it cannot run, the step succeeds. Expects ./.github/actions/setup-pnpm
+  to have run. Bash 3.2 compatible (/bin/bash on macOS).
+
+inputs:
+  app-env:
+    description: EXPO_PUBLIC_APP_ENV of the variant (preview, beta, production), read by app.config.js
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Expo doctor (non-blocking)
+      shell: bash
+      working-directory: apps/client
+      env:
+        EXPO_PUBLIC_APP_ENV: ${{ inputs.app-env }}
+        # expo-doctor is an exact devDependency of apps/client (1.20.4 =
+        # `latest` dist-tag while `expo` latest is SDK 57): the lockfile pins
+        # its integrity, `pnpm exec` never downloads at build time. Bump it
+        # with the SDK.
+      run: |
+        set -uo pipefail
+        LOG="$RUNNER_TEMP/expo-doctor.log"
+        # No Expo token for third-party code that does not need it. 5 min cap
+        # (no `timeout` binary on macOS): perl runs it in its own process
+        # group and kills the whole group, so no orphan keeps running during
+        # the build. Output to a file, not a pipe: nothing can hold it open.
+        # shellcheck disable=SC2016
+        env -u EXPO_TOKEN perl -e '
+          my $t = shift; my $p = fork;
+          if (!$p) { setpgrp(0, 0); exec @ARGV; exit 127 }
+          $SIG{ALRM} = sub { kill "TERM", -$p; sleep 2; kill "KILL", -$p; exit 142 };
+          alarm $t; waitpid($p, 0);
+          exit(($? & 127) ? 128 + ($? & 127) : $? >> 8);
+        ' 300 pnpm exec expo-doctor < /dev/null > "$LOG" 2>&1
+        STATUS=$?
+        cat "$LOG"
+        case "$STATUS" in
+          0) VERDICT="✅ aucun problème" ;;
+          142) VERDICT="⏱️ interrompu après 5 min" ;;
+          *) VERDICT="⚠️ problèmes signalés (code $STATUS), sans effet sur le build" ;;
+        esac
+        if [ "$STATUS" != 0 ]; then
+          echo "::warning::expo-doctor : $VERDICT"
+        fi
+        {
+          echo "<details><summary>Expo doctor ($EXPO_PUBLIC_APP_ENV) : $VERDICT</summary>"
+          echo
+          echo '```'
+          # Summary capped well below the 1 MiB per-step limit.
+          tail -c 60000 "$LOG"
+          echo '```'
+          echo "</details>"
+        } >> "$GITHUB_STEP_SUMMARY"
+        rm -f "$LOG"
+        exit 0
