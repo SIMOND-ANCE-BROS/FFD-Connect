@@ -1,0 +1,63 @@
+name: Gradle settings for Android runner builds
+description: >-
+  User-level Gradle settings for an Android `eas build --local` on a GitHub
+  ubuntu-24.04 runner (4 vCPU, 16 GB), written to $GRADLE_USER_HOME (default
+  ~/.gradle) before the build (#521). Gradle reads the user-level
+  gradle.properties AFTER the project one and its values win, so the
+  prebuild-generated android/gradle.properties (Expo template:
+  -Xmx2048m) stays untouched — as do app.config.js and the runtime
+  fingerprint. EAS cloud workers do the same (~/.gradle/gradle.properties with
+  a large heap and no daemon), which is why the same build passes there.
+  Android only; must run before `eas build --local`.
+
+runs:
+  using: composite
+  steps:
+    - name: Write Gradle user settings
+      shell: bash
+      run: |
+        set -euo pipefail
+        GRADLE_DIR="${GRADLE_USER_HOME:-$HOME/.gradle}"
+        mkdir -p "$GRADLE_DIR/init.d"
+
+        # Memory budget on a 16 GB runner (run 38369879150: with the template's
+        # 2 GB heap, a release lint task failed and the daemon then hung,
+        # silent, until the 100 min step timeout):
+        #   Gradle daemon 6 GB heap + 1 GB metaspace (R8 and lint run in it)
+        #   Kotlin daemon 3 GB (otherwise it inherits the Gradle -Xmx)
+        #   ~4 GB left for clang/ninja (CMake, 4 jobs), Node and the OS.
+        # ExitOnOutOfMemoryError: an out-of-memory JVM exits (Gradle reports
+        # « daemon disappeared ») instead of limping on. No heap dump: several
+        # GB on a nearly full disk, and it would hold the build's secrets
+        # (public repository: it could never be published as an artifact).
+        # daemon=false: one single-use daemon that exits with the build, as on
+        # EAS workers — nothing left running after a failure.
+        cat > "$GRADLE_DIR/gradle.properties" <<'EOF'
+        org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8
+        kotlin.daemon.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=512m -XX:+ExitOnOutOfMemoryError
+        org.gradle.daemon=false
+        org.gradle.parallel=true
+        org.gradle.workers.max=4
+        EOF
+
+        # Release lint (lintVital*) skipped on runner builds: in run
+        # 38369879150 it was the task that failed before the hang. It is not a
+        # release gate here (code quality is checked by the CI on every PR,
+        # and the store binary does not depend on it); disabling the task
+        # changes no build output. Disabled tasks still run their inputs
+        # (lint model generation, cheap).
+        cat > "$GRADLE_DIR/init.d/ffd-skip-lint-vital.gradle" <<'EOF'
+        // FFD-Connect, GitHub runner builds only (.github/actions/android-gradle-runner, #521).
+        gradle.lifecycle.beforeProject { project ->
+            project.tasks.configureEach { task ->
+                if (task.name.startsWith('lintVital')) {
+                    task.enabled = false
+                }
+            }
+        }
+        EOF
+
+        echo "Gradle user settings ($GRADLE_DIR):"
+        cat "$GRADLE_DIR/gradle.properties"
+        free -h
+        df -h /

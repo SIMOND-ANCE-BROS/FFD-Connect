@@ -911,6 +911,17 @@ jobs:
             "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}/CodeQL"
           df -h /
 
+      # Build Android sur runner : tas Gradle dimensionné pour le runner
+      # (16 Go), démon à usage unique, lint de release (lintVital*) sauté
+      # (#521 : avec le tas de 2 Go du modèle Expo, le lint a échoué puis
+      # Gradle s'est figé jusqu'au délai de 100 min). Réglages au niveau
+      # utilisateur (~/.gradle) : ni app.config.js ni empreinte modifiés.
+      - name: Gradle settings (GitHub build, Android)
+        if: >-
+          inputs.action == 'build' && inputs.builder != 'eas'
+          && matrix.platform == 'android'
+        uses: ./.github/actions/android-gradle-runner
+
       - name: Setup pnpm & Node
         if: inputs.action != 'distribute'
         uses: ./.github/actions/setup-pnpm
@@ -1261,6 +1272,9 @@ jobs:
           # main : Dependabot ne suit pas ce téléchargement.
           BUNDLETOOL_VERSION: '1.18.3'
           BUNDLETOOL_SHA256: a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29
+          # Android : un Gradle figé est arrêté au bout de ce délai, bien avant
+          # la limite de l'étape (#521). iOS : pas de limite interne.
+          ANDROID_BUILD_TIMEOUT_MIN: '60'
           # CocoaPods exige une locale UTF-8.
           LANG: en_US.UTF-8
           LC_ALL: en_US.UTF-8
@@ -1327,10 +1341,33 @@ jobs:
           fi
 
           echo "## $PLATFORM_ICON Build $PLATFORM_NAME beta sur runner GitHub (\`eas build --local\`)" >> "$GITHUB_STEP_SUMMARY"
-          if ! eas build --local --platform "$PLATFORM" --profile beta --non-interactive \
+          # Android : `timeout` (GNU) signale tout son groupe de processus
+          # (eas-cli, plugin de build local, gradlew, démon Gradle à usage
+          # unique) ; le pkill rattrape une JVM sortie du groupe. 124/137 =
+          # délai atteint. Pas de `timeout` sur macOS : iOS sans limite interne.
+          run_build() {
+            if [ "$PLATFORM" = "android" ]; then
+              timeout --kill-after=2m "${ANDROID_BUILD_TIMEOUT_MIN}m" "$@"
+            else
+              "$@"
+            fi
+          }
+          if run_build eas build --local --platform "$PLATFORM" --profile beta --non-interactive \
             --freeze-credentials --output "$OUT" < /dev/null; then
+            BUILD_RC=0
+          else
+            BUILD_RC=$?
+          fi
+          if [ "$BUILD_RC" -ne 0 ]; then
             echo "state=failed" >> "$GITHUB_OUTPUT"
-            echo "::error::eas build --local a échoué (numéro de build distant consommé : le prochain build prendra le suivant)"
+            if [ "$PLATFORM" = "android" ]; then
+              pkill -f 'GradleDaemon|KotlinCompileDaemon' || true
+            fi
+            if [ "$PLATFORM" = "android" ] && { [ "$BUILD_RC" -eq 124 ] || [ "$BUILD_RC" -eq 137 ]; }; then
+              echo "::error::build Android arrêté après $ANDROID_BUILD_TIMEOUT_MIN min (Gradle bloqué ?, #521) — numéro de build distant consommé : le prochain build prendra le suivant"
+            else
+              echo "::error::eas build --local a échoué (numéro de build distant consommé : le prochain build prendra le suivant)"
+            fi
             exit 1
           fi
 
