@@ -152,7 +152,7 @@ describe("AuthPasswordService", () => {
             isStoreReview: false,
           });
         mockPrismaService.user.findMany.mockResolvedValueOnce([
-          { id: "legacy" },
+          { id: "legacy", email: "Testeur@Exemple.fr" },
         ]);
 
         await service.forgotPassword("testeur@exemple.fr");
@@ -161,8 +161,8 @@ describe("AuthPasswordService", () => {
           where: {
             email: { equals: "testeur@exemple.fr", mode: "insensitive" },
           },
-          select: { id: true },
-          take: 2,
+          select: { id: true, email: true },
+          take: 5,
         });
         expect(mockEmailService.sendPasswordResetEmail).toHaveBeenCalledWith(
           "Testeur@Exemple.fr",
@@ -170,11 +170,43 @@ describe("AuthPasswordService", () => {
         );
       });
 
+      it.each(["%@exemple.fr", "_@exemple.fr", "a%b@exemple.fr"])(
+        "never resolves the wildcard-bearing address %p to another account",
+        async (typed) => {
+          mockPrismaService.user.findUnique.mockResolvedValueOnce(null);
+          // Even if the database pre-filter returned someone else's row…
+          mockPrismaService.user.findMany.mockResolvedValueOnce([
+            { id: "victim", email: "victim@exemple.fr" },
+          ]);
+
+          const result = await service.forgotPassword(typed);
+
+          // …the same generic answer, and nothing issued nor sent.
+          expect(result).toEqual({ success: true });
+          expect(mockPrismaService.user.findMany).toHaveBeenCalledWith(
+            expect.objectContaining({
+              where: {
+                email: {
+                  equals: typed.replace(/[%_]/g, (c) => `\\${c}`),
+                  mode: "insensitive",
+                },
+              },
+            }),
+          );
+          expect(
+            mockPrismaService.passwordResetToken.create,
+          ).not.toHaveBeenCalled();
+          expect(
+            mockEmailService.sendPasswordResetEmail,
+          ).not.toHaveBeenCalled();
+        },
+      );
+
       it("sends nothing, with the same answer, when legacy accounts differ only by case", async () => {
         mockPrismaService.user.findUnique.mockResolvedValueOnce(null);
         mockPrismaService.user.findMany.mockResolvedValueOnce([
-          { id: "a" },
-          { id: "b" },
+          { id: "a", email: "Dup@exemple.fr" },
+          { id: "b", email: "DUP@exemple.fr" },
         ]);
 
         const result = await service.forgotPassword("dup@exemple.fr");

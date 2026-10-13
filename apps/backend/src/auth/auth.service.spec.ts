@@ -305,7 +305,9 @@ describe("AuthService", () => {
       mockPrismaService.user.findUnique
         .mockResolvedValueOnce(null)
         .mockResolvedValueOnce({ ...storedUser, email: "Testeur@Exemple.fr" });
-      mockPrismaService.user.findMany.mockResolvedValueOnce([{ id: "u1" }]);
+      mockPrismaService.user.findMany.mockResolvedValueOnce([
+        { id: "u1", email: "Testeur@Exemple.fr" },
+      ]);
 
       const result = await service.validateUser(
         "testeur@exemple.fr",
@@ -318,8 +320,8 @@ describe("AuthService", () => {
     it("refuses (null, never a 403) when legacy accounts differ only by case", async () => {
       mockPrismaService.user.findUnique.mockResolvedValueOnce(null);
       mockPrismaService.user.findMany.mockResolvedValueOnce([
-        { id: "a" },
-        { id: "b" },
+        { id: "a", email: "Dup@exemple.fr" },
+        { id: "b", email: "DUP@exemple.fr" },
       ]);
 
       await expect(

@@ -119,6 +119,17 @@ describe("AdminUserIdentifiersService", () => {
       expect(email.sendEmailChangedNotice).not.toHaveBeenCalled();
     });
 
+    it("escapes LIKE wildcards in the conflict lookup (#465)", async () => {
+      await service.update("admin-1", "u1", { email: "a_b%c@x.fr" });
+      expect(prisma.user.findFirst).toHaveBeenCalledWith({
+        where: {
+          email: { equals: "a\\_b\\%c@x.fr", mode: "insensitive" },
+          id: { not: "u1" },
+        },
+        select: { id: true },
+      });
+    });
+
     it("treats the same address in another stored casing as no change", async () => {
       prisma.user.findUnique.mockResolvedValue({
         ...current,

@@ -129,7 +129,9 @@ describe("AuthService.register", () => {
   it("rejects an address already used with another casing (#465)", async () => {
     // No exact match on the normalised form, but a legacy mixed-case row.
     prisma.user.findUnique.mockResolvedValue(null);
-    prisma.user.findMany.mockResolvedValue([{ id: "legacy" }]);
+    prisma.user.findMany.mockResolvedValue([
+      { id: "legacy", email: "Taken@Example.com" },
+    ]);
 
     await expect(
       authService.register(
@@ -141,8 +143,8 @@ describe("AuthService.register", () => {
     ).rejects.toThrow(ConflictException);
     expect(prisma.user.findMany).toHaveBeenCalledWith({
       where: { email: { equals: "taken@example.com", mode: "insensitive" } },
-      select: { id: true },
-      take: 2,
+      select: { id: true, email: true },
+      take: 5,
     });
     expect(prisma.license.findUnique).not.toHaveBeenCalled();
   });

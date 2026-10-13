@@ -126,4 +126,31 @@ describe("AuthController (e2e with real DB)", () => {
       prisma.passwordResetToken.count({ where: { userId: legacy.id } }),
     ).resolves.toBeGreaterThan(0);
   });
+
+  it.each(["%@test.com", "_2e-db-auth-%@test.com", "e2e-db-auth-_%"])(
+    "a wildcard-bearing address %p never reaches another account, same answers (#465)",
+    async (typed) => {
+      const server = app.getHttpServer() as Parameters<typeof request>[0];
+      const before = await prisma.passwordResetToken.count();
+
+      const login = await request(server)
+        .post("/api/v1/auth/login")
+        .send({ username: typed, password: plainPassword });
+      expect([400, 401]).toContain(login.status);
+      expect(login.body).not.toHaveProperty("access_token");
+
+      const forgot = await request(server)
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: typed });
+      const unknown = await request(server)
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: `nobody-${Date.now()}@test.com` });
+      if (forgot.status < 300) {
+        // Accepted by the DTO: exactly the unknown-address answer.
+        expect(forgot.status).toBe(unknown.status);
+        expect(forgot.body).toEqual(unknown.body);
+      }
+      await expect(prisma.passwordResetToken.count()).resolves.toBe(before);
+    },
+  );
 });

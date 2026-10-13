@@ -6,6 +6,7 @@ import { ImpersonateDto } from "./dto/impersonate.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 import {
+  escapeLikePattern,
   findUserIdByEmail,
   isEmailTaken,
   normalizeEmail,
@@ -76,6 +77,26 @@ describe("email identity (#465)", () => {
     });
   });
 
+  describe("normalizeEmail — ASCII only", () => {
+    it("does not fold Unicode look-alikes onto ASCII letters", () => {
+      // Kelvin sign (U+212A) would become "k" with String#toLowerCase.
+      expect(normalizeEmail("\u212Aate@x.fr")).toBe("\u212Aate@x.fr");
+      expect(normalizeEmail("\u0130nes@x.fr")).toBe("\u0130nes@x.fr");
+    });
+  });
+
+  describe("escapeLikePattern", () => {
+    it("escapes %, _ and backslash", () => {
+      expect(escapeLikePattern("a%b_c\\d@x.fr")).toBe("a\\%b\\_c\\\\d@x.fr");
+    });
+
+    it("leaves an ordinary address unchanged", () => {
+      expect(escapeLikePattern("prenom.nom+tag@x.fr")).toBe(
+        "prenom.nom+tag@x.fr",
+      );
+    });
+  });
+
   describe("lookups", () => {
     const db = {
       user: {
@@ -101,16 +122,61 @@ describe("email identity (#465)", () => {
       expect(db.user.findMany).not.toHaveBeenCalled();
     });
 
-    it("falls back to a bounded case-insensitive match for legacy rows", async () => {
+    it("falls back to a bounded, escaped case-insensitive match for legacy rows", async () => {
       db.user.findUnique.mockResolvedValue(null);
-      db.user.findMany.mockResolvedValue([{ id: "legacy" }]);
+      db.user.findMany.mockResolvedValue([{ id: "legacy", email: "A@B.fr" }]);
 
       await expect(findUserIdByEmail(client, "a@b.fr")).resolves.toBe("legacy");
       expect(db.user.findMany).toHaveBeenCalledWith({
         where: { email: { equals: "a@b.fr", mode: "insensitive" } },
-        select: { id: true },
-        take: 2,
+        select: { id: true, email: true },
+        take: 5,
       });
+    });
+
+    it.each(["%@b.fr", "_@b.fr", "a%b@b.fr", "a_b@b.fr"])(
+      "never lets the wildcard-bearing %p designate another account",
+      async (typed) => {
+        db.user.findUnique.mockResolvedValue(null);
+        db.user.findMany.mockResolvedValue([
+          { id: "victim", email: "victim@b.fr" },
+          { id: "other", email: "AXB@b.fr" },
+        ]);
+
+        await expect(findUserIdByEmail(client, typed)).resolves.toBeNull();
+        await expect(isEmailTaken(client, typed)).resolves.toBe(false);
+        expect(db.user.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: {
+              email: {
+                equals: escapeLikePattern(typed),
+                mode: "insensitive",
+              },
+            },
+          }),
+        );
+      },
+    );
+
+    it("rejects a candidate the database folded but the application does not (Unicode)", async () => {
+      db.user.findUnique.mockResolvedValue(null);
+      db.user.findMany.mockResolvedValue([{ id: "kate", email: "Kate@x.fr" }]);
+
+      await expect(
+        findUserIdByEmail(client, "\u212Aate@x.fr"),
+      ).resolves.toBeNull();
+    });
+
+    it("keeps the genuine legacy match next to a rejected candidate", async () => {
+      db.user.findUnique.mockResolvedValue(null);
+      db.user.findMany.mockResolvedValue([
+        { id: "noise", email: "\u212Aate@x.fr" },
+        { id: "kate", email: "KATE@x.fr" },
+      ]);
+
+      await expect(findUserIdByEmail(client, "kate@x.fr")).resolves.toBe(
+        "kate",
+      );
     });
 
     it("returns null when no account matches", async () => {
@@ -122,7 +188,10 @@ describe("email identity (#465)", () => {
 
     it("refuses to choose between accounts differing only by case", async () => {
       db.user.findUnique.mockResolvedValue(null);
-      db.user.findMany.mockResolvedValue([{ id: "a" }, { id: "b" }]);
+      db.user.findMany.mockResolvedValue([
+        { id: "a", email: "X@y.fr" },
+        { id: "b", email: "x@Y.FR" },
+      ]);
 
       await expect(findUserIdByEmail(client, "x@y.fr")).resolves.toBeNull();
     });
@@ -132,10 +201,15 @@ describe("email identity (#465)", () => {
       await expect(isEmailTaken(client, "a@b.fr")).resolves.toBe(true);
 
       db.user.findUnique.mockResolvedValue(null);
-      db.user.findMany.mockResolvedValueOnce([{ id: "legacy" }]);
+      db.user.findMany.mockResolvedValueOnce([
+        { id: "legacy", email: "A@b.fr" },
+      ]);
       await expect(isEmailTaken(client, "a@b.fr")).resolves.toBe(true);
 
-      db.user.findMany.mockResolvedValueOnce([{ id: "a" }, { id: "b" }]);
+      db.user.findMany.mockResolvedValueOnce([
+        { id: "a", email: "A@b.fr" },
+        { id: "b", email: "a@B.fr" },
+      ]);
       await expect(isEmailTaken(client, "a@b.fr")).resolves.toBe(true);
     });
 
