@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { UserRole } from "@prisma/client";
 import { Resend } from "resend";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
+import { maskEmail } from "../utils/pii.utils";
 import { withTimeout } from "../utils/timeout.utils";
 
 /** Upper bound of one Resend call made through the circuit breaker. */
@@ -84,10 +85,10 @@ export class EmailService {
         "http://localhost:3000"
       }/reset-password?token=${resetToken}`;
 
-    // Si Resend n'est pas configuré, on log seulement (sans jamais logger le token)
+    // Without Resend, only log: never the token nor the address (RGPD, #527).
     if (!this.resend) {
       this.logger.log(
-        `Password reset email for ${email} (no Resend config, URL not sent)`,
+        `Password reset email for ${maskEmail(email)} (no Resend config, URL not sent)`,
       );
       return;
     }
@@ -108,11 +109,11 @@ export class EmailService {
       }
 
       this.logger.log(
-        `Password reset email sent successfully to ${email} (ID: ${data.id})`,
+        `Password reset email sent successfully to ${maskEmail(email)} (ID: ${data.id})`,
       );
     } catch (error) {
       this.logger.error(
-        `Error sending password reset email to ${email}:`,
+        `Error sending password reset email to ${maskEmail(email)}:`,
         error,
       );
       throw error;
@@ -133,7 +134,7 @@ export class EmailService {
 
     if (!this.resend) {
       this.logger.log(
-        `Invitation email for ${email} (no Resend config, URL not sent)`,
+        `Invitation email for ${maskEmail(email)} (no Resend config, URL not sent)`,
       );
       return;
     }
@@ -148,7 +149,9 @@ export class EmailService {
       this.logger.error(`Failed to send invitation email: ${error.message}`);
       throw new Error(`Failed to send email: ${error.message}`);
     }
-    this.logger.log(`Invitation email sent to ${email} (ID: ${data.id})`);
+    this.logger.log(
+      `Invitation email sent to ${maskEmail(email)} (ID: ${data.id})`,
+    );
   }
 
   /**

@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
@@ -230,6 +231,117 @@ describe("EmailService", () => {
           ),
         ).rejects.toThrow("Failed to send email: boom");
       });
+    });
+  });
+
+  // RGPD (#527): the recipient address never reaches the logs, only a masked form.
+  describe("log lines never contain the recipient address", () => {
+    const ADDRESS = "jeanne.martin@club-exemple.fr";
+    let logged: string[];
+    let spies: jest.SpyInstance[];
+
+    const buildService = async (apiKey: string | null) => {
+      mockConfigService.get.mockImplementation((key: string) =>
+        key === "RESEND_API_KEY" ? apiKey : undefined,
+      );
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          EmailService,
+          { provide: ConfigService, useValue: mockConfigService },
+          CircuitBreakerService,
+        ],
+      }).compile();
+      return module.get<EmailService>(EmailService);
+    };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      logged = [];
+      const capture = (...args: unknown[]) => {
+        logged.push(
+          args
+            .map((a) => (a instanceof Error ? `${a.message} ${a.stack}` : a))
+            .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+            .join(" "),
+        );
+      };
+      spies = (["log", "warn", "error", "debug", "verbose"] as const).map(
+        (level) =>
+          jest.spyOn(Logger.prototype, level).mockImplementation(capture),
+      );
+    });
+
+    afterEach(() => spies.forEach((spy) => spy.mockRestore()));
+
+    const expectNoAddress = () => {
+      expect(logged.length).toBeGreaterThan(0);
+      for (const line of logged) {
+        expect(line).not.toContain(ADDRESS);
+        expect(line).not.toContain("jeanne.martin");
+        expect(line).not.toContain("club-exemple");
+      }
+    };
+
+    it("password reset without Resend logs a masked address", async () => {
+      const svc = await buildService(null);
+      await svc.sendPasswordResetEmail(ADDRESS, "tok");
+      expectNoAddress();
+      expect(logged.join("\n")).toContain("j***@c***.fr");
+    });
+
+    it("password reset sent through Resend", async () => {
+      const svc = await buildService("re_key");
+      mockSend.mockResolvedValue({ data: { id: "msg_1" }, error: null });
+      await svc.sendPasswordResetEmail(ADDRESS, "tok");
+      expectNoAddress();
+      expect(logged.join("\n")).toContain("msg_1");
+    });
+
+    it("password reset refused by Resend", async () => {
+      const svc = await buildService("re_key");
+      mockSend.mockResolvedValue({ data: null, error: { message: "boom" } });
+      await expect(
+        svc.sendPasswordResetEmail(ADDRESS, "tok"),
+      ).rejects.toThrow();
+      expectNoAddress();
+    });
+
+    it("password reset failing with a network error", async () => {
+      const svc = await buildService("re_key");
+      mockSend.mockRejectedValue(new Error("Network error"));
+      await expect(
+        svc.sendPasswordResetEmail(ADDRESS, "tok"),
+      ).rejects.toThrow();
+      expectNoAddress();
+    });
+
+    it("invitation without Resend", async () => {
+      const svc = await buildService(null);
+      await svc.sendInvitationEmail(ADDRESS, "tok", "Jeanne", "CLUB");
+      expectNoAddress();
+    });
+
+    it("invitation sent through Resend", async () => {
+      const svc = await buildService("re_key");
+      mockSend.mockResolvedValue({ data: { id: "msg_2" }, error: null });
+      await svc.sendInvitationEmail(ADDRESS, "tok", "Jeanne", "LICENSEE");
+      expectNoAddress();
+      expect(logged.join("\n")).toContain("msg_2");
+    });
+
+    it("invitation refused by Resend", async () => {
+      const svc = await buildService("re_key");
+      mockSend.mockResolvedValue({ data: null, error: { message: "boom" } });
+      await expect(
+        svc.sendInvitationEmail(ADDRESS, "tok", "Jeanne", "STAFF"),
+      ).rejects.toThrow();
+      expectNoAddress();
+    });
+
+    it("email-changed notice without Resend", async () => {
+      const svc = await buildService(null);
+      await svc.sendEmailChangedNotice(ADDRESS, "Jeanne");
+      expectNoAddress();
     });
   });
 });
