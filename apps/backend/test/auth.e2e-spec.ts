@@ -1,4 +1,5 @@
 import { INestApplication } from "@nestjs/common";
+import { oneAccountPerAddress } from "./mocks/email-lookup.mock";
 import {
   ThrottlerGuard,
   ThrottlerStorage,
@@ -24,8 +25,8 @@ describe("AuthController (e2e)", () => {
     const mockPrisma = {
       user: {
         findUnique: jest.fn(),
-        // Case-insensitive email fallback (#465): no legacy mixed-case row.
-        findMany: jest.fn().mockResolvedValue([]),
+        // E-mail lookup (#465): each address designates one account.
+        findMany: jest.fn(oneAccountPerAddress("test-uuid")),
         update: jest.fn().mockResolvedValue({ id: "user-1" }),
       },
       refreshToken: {
@@ -162,10 +163,14 @@ describe("AuthController (e2e)", () => {
       .post("/api/v1/auth/login")
       .send({ username: "  Test@Example.COM ", password })
       .expect(201);
-    expect(findUnique).toHaveBeenCalledWith({
-      where: { email: "test@example.com" },
-      select: { id: true },
-    });
+    expect(prismaService.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: { equals: "test@example.com", mode: "insensitive" } },
+      }),
+    );
+    expect(findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "test-uuid" } }),
+    );
   });
 
   it("/api/v1/auth/login (POST) - fails with wrong password", async () => {

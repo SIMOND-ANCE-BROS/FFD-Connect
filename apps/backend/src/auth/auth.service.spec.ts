@@ -1,3 +1,4 @@
+import { oneAccountPerAddress } from "../../test/mocks/email-lookup.mock";
 import {
   BadRequestException,
   ForbiddenException,
@@ -25,7 +26,8 @@ describe("AuthService", () => {
   const mockPrismaService = {
     user: {
       findUnique: jest.fn(),
-      findMany: jest.fn().mockResolvedValue([]),
+      // E-mail lookup (#465): each address designates one account by default.
+      findMany: jest.fn(oneAccountPerAddress()),
       update: jest.fn(),
     },
     impersonationLog: {
@@ -130,9 +132,9 @@ describe("AuthService", () => {
         { code: "P2021", clientVersion: "7.0.0" },
       );
 
-      // 1st call: email -> id lookup; 2nd: full select; 3rd: minimal select.
+      // Lookup by email is a findMany (#465); 1st findUnique: full select,
+      // 2nd: minimal select.
       mockPrismaService.user.findUnique
-        .mockResolvedValueOnce({ id: "u1" })
         .mockRejectedValueOnce(prismaError)
         .mockResolvedValueOnce(minimalUser);
 
@@ -142,9 +144,9 @@ describe("AuthService", () => {
       const result = await service.validateUser("test@example.com", "password");
 
       expect(result).not.toBeNull();
-      expect(mockPrismaService.user.findUnique).toHaveBeenCalledTimes(3);
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledTimes(2);
       expect(mockPrismaService.user.findUnique).toHaveBeenLastCalledWith(
-        expect.objectContaining({ where: { id: "u1" } }),
+        expect.objectContaining({ where: { id: "user-1" } }),
       );
     });
 
@@ -155,14 +157,13 @@ describe("AuthService", () => {
       );
 
       mockPrismaService.user.findUnique
-        .mockResolvedValueOnce({ id: "u1" })
         .mockRejectedValueOnce(prismaError)
         .mockResolvedValueOnce(null);
 
       const result = await service.validateUser("test@example.com", "password");
 
       expect(result).toBeNull();
-      expect(mockPrismaService.user.findUnique).toHaveBeenCalledTimes(3);
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledTimes(2);
     });
 
     it("should re-throw non-schema Prisma errors", async () => {
@@ -281,9 +282,10 @@ describe("AuthService", () => {
     });
 
     it("logs in with an address typed with capitals and spaces", async () => {
-      mockPrismaService.user.findUnique
-        .mockResolvedValueOnce({ id: "u1" })
-        .mockResolvedValueOnce(storedUser);
+      mockPrismaService.user.findMany.mockResolvedValueOnce([
+        { id: "u1", email: "testeur@exemple.fr" },
+      ]);
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(storedUser);
 
       const result = await service.validateUser(
         " Testeur@Exemple.FR ",
@@ -291,23 +293,27 @@ describe("AuthService", () => {
       );
 
       expect(result).toHaveProperty("id", "u1");
-      expect(mockPrismaService.user.findUnique).toHaveBeenNthCalledWith(1, {
-        where: { email: "testeur@exemple.fr" },
-        select: { id: true },
+      expect(mockPrismaService.user.findMany).toHaveBeenCalledWith({
+        where: {
+          email: { equals: "testeur@exemple.fr", mode: "insensitive" },
+        },
+        select: { id: true, email: true },
+        orderBy: { id: "asc" },
+        take: 5,
       });
-      expect(mockPrismaService.user.findUnique).toHaveBeenNthCalledWith(
-        2,
+      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: "u1" } }),
       );
     });
 
     it("logs into a legacy account stored with capitals", async () => {
-      mockPrismaService.user.findUnique
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ ...storedUser, email: "Testeur@Exemple.fr" });
       mockPrismaService.user.findMany.mockResolvedValueOnce([
         { id: "u1", email: "Testeur@Exemple.fr" },
       ]);
+      mockPrismaService.user.findUnique.mockResolvedValueOnce({
+        ...storedUser,
+        email: "Testeur@Exemple.fr",
+      });
 
       const result = await service.validateUser(
         "testeur@exemple.fr",
@@ -317,17 +323,42 @@ describe("AuthService", () => {
       expect(result).toHaveProperty("id", "u1");
     });
 
-    it("refuses (null, never a 403) when legacy accounts differ only by case", async () => {
-      mockPrismaService.user.findUnique.mockResolvedValueOnce(null);
-      mockPrismaService.user.findMany.mockResolvedValueOnce([
+    describe("two accounts differing only by case", () => {
+      const twins = [
         { id: "a", email: "Dup@exemple.fr" },
-        { id: "b", email: "DUP@exemple.fr" },
-      ]);
+        { id: "b", email: "dup@exemple.fr" },
+      ];
 
-      await expect(
-        service.validateUser("dup@exemple.fr", "password"),
-      ).resolves.toBeNull();
-      expect(bcrypt.compare).not.toHaveBeenCalled();
+      it.each([
+        ["Dup@exemple.fr", "a"],
+        [" dup@exemple.fr", "b"],
+      ])(
+        "checks the password of the account stored exactly as %p",
+        async (typed, id) => {
+          mockPrismaService.user.findMany.mockResolvedValueOnce(twins);
+          mockPrismaService.user.findUnique.mockResolvedValueOnce({
+            ...storedUser,
+            id,
+          });
+
+          await expect(
+            service.validateUser(typed, "password"),
+          ).resolves.toHaveProperty("id", id);
+          expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith(
+            expect.objectContaining({ where: { id } }),
+          );
+        },
+      );
+
+      it("refuses (null, never a 403) when the typed casing is neither", async () => {
+        mockPrismaService.user.findMany.mockResolvedValueOnce(twins);
+
+        await expect(
+          service.validateUser("DUP@exemple.fr", "password"),
+        ).resolves.toBeNull();
+        expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+        expect(bcrypt.compare).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -708,7 +739,6 @@ describe("AuthService", () => {
     });
 
     it("finds the target by email whatever its casing (#465)", async () => {
-      mockPrismaService.user.findUnique.mockResolvedValueOnce(null);
       mockPrismaService.user.findMany.mockResolvedValueOnce([]);
       await expect(
         service.impersonate(
@@ -719,10 +749,28 @@ describe("AuthService", () => {
           undefined,
         ),
       ).rejects.toThrow(NotFoundException);
-      expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
-        where: { email: "ghost@test.com" },
-        select: { id: true },
-      });
+      expect(mockPrismaService.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { email: { equals: "ghost@test.com", mode: "insensitive" } },
+        }),
+      );
+      expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("refuses an e-mail shared by two accounts differing only by case (#465)", async () => {
+      mockPrismaService.user.findMany.mockResolvedValueOnce([
+        { id: "a", email: "Twin@test.com" },
+        { id: "b", email: "twin@Test.com" },
+      ]);
+      await expect(
+        service.impersonate(
+          "admin-1",
+          [UserRole.ADMIN],
+          { email: "TWIN@test.com" },
+          undefined,
+          undefined,
+        ),
+      ).rejects.toThrow(NotFoundException);
     });
 
     it("cible introuvable → NotFound", async () => {

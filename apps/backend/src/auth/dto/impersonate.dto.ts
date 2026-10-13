@@ -7,7 +7,7 @@ import {
   IsUUID,
   MaxLength,
 } from "class-validator";
-import { normalizeEmailTransform } from "../email-identity";
+import { trimEmailTransform } from "../email-identity";
 
 /**
  * Démarrage d'une impersonation « se connecter en tant que » (#545).
@@ -24,7 +24,7 @@ export class ImpersonateDto {
     description: "Email de l'utilisateur cible (alternative à targetUserId)",
   })
   @IsOptional()
-  @Transform(normalizeEmailTransform)
+  @Transform(trimEmailTransform)
   @IsEmail()
   targetEmail?: string;
 

@@ -19,7 +19,7 @@ describe("AuthController - Additional Scenarios (e2e)", () => {
     const mockPrisma = {
       user: {
         findUnique: jest.fn().mockResolvedValue(null),
-        // Case-insensitive email fallback (#465): no legacy mixed-case row.
+        // E-mail lookup (#465): no account matches.
         findMany: jest.fn().mockResolvedValue([]),
       },
       refreshToken: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },

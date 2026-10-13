@@ -22,6 +22,10 @@ describe("AuthController (e2e with real DB)", () => {
   const plainPassword = "E2ePassword123!";
   // Account stored before addresses were normalised at write time (#465).
   const legacyEmail = `E2E-Legacy-${Date.now()}@Test.com`;
+  // Two distinct legacy accounts differing only by case (#465).
+  const twinUpper = `E2E-Twin-${Date.now()}@Test.com`;
+  const twinLower = twinUpper.toLowerCase();
+  const twinPasswords = { upper: "TwinUpper123!", lower: "TwinLower123!" };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await applyE2EOverrides(
@@ -68,11 +72,29 @@ describe("AuthController (e2e with real DB)", () => {
         role: UserRole.LICENSEE,
       },
     });
+    for (const [email, password] of [
+      [twinUpper, twinPasswords.upper],
+      [twinLower, twinPasswords.lower],
+    ] as const) {
+      await prisma.user.create({
+        data: {
+          email,
+          password: await bcrypt.hash(password, 10),
+          firstName: "E2E",
+          lastName: "Twin",
+          role: UserRole.LICENSEE,
+        },
+      });
+    }
   }, 30000);
 
   afterAll(async () => {
     await prisma?.user
-      ?.deleteMany({ where: { email: { in: [testEmail, legacyEmail] } } })
+      ?.deleteMany({
+        where: {
+          email: { in: [testEmail, legacyEmail, twinUpper, twinLower] },
+        },
+      })
       .catch(() => {});
     await app?.close();
   }, 10000);
@@ -153,4 +175,73 @@ describe("AuthController (e2e with real DB)", () => {
       await expect(prisma.passwordResetToken.count()).resolves.toBe(before);
     },
   );
+
+  describe("two accounts differing only by case (#465)", () => {
+    const login = (username: string, password: string) =>
+      request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post("/api/v1/auth/login")
+        .send({ username, password });
+
+    it("each twin logs into its own account with its exact address", async () => {
+      const upper = await login(twinUpper, twinPasswords.upper).expect(201);
+      expect(upper.body.user).toHaveProperty("email", twinUpper);
+      const lower = await login(twinLower, twinPasswords.lower).expect(201);
+      expect(lower.body.user).toHaveProperty("email", twinLower);
+    });
+
+    it("a twin's password never opens the other account", async () => {
+      await login(twinUpper, twinPasswords.lower).expect(401);
+      await login(twinLower, twinPasswords.upper).expect(401);
+    });
+
+    it("any other casing is refused like an unknown address", async () => {
+      const other = twinUpper.toUpperCase();
+      await login(other, twinPasswords.upper).expect(401);
+      await login(other, twinPasswords.lower).expect(401);
+    });
+
+    it("forgot password targets only the twin typed exactly, else nobody", async () => {
+      const server = app.getHttpServer() as Parameters<typeof request>[0];
+      const ids = await prisma.user.findMany({
+        where: { email: { in: [twinUpper, twinLower] } },
+        select: { id: true, email: true },
+        take: 2,
+      });
+      const idOf = (email: string) => ids.find((u) => u.email === email)!.id;
+      const count = (userId: string) =>
+        prisma.passwordResetToken.count({ where: { userId } });
+
+      const unknown = await request(server)
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: `nobody-${Date.now()}@test.com` });
+      const ambiguous = await request(server)
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: twinUpper.toUpperCase() });
+      expect(ambiguous.status).toBe(unknown.status);
+      expect(ambiguous.body).toEqual(unknown.body);
+      await expect(count(idOf(twinUpper))).resolves.toBe(0);
+      await expect(count(idOf(twinLower))).resolves.toBe(0);
+
+      await request(server)
+        .post("/api/v1/auth/forgot-password")
+        .send({ email: twinUpper });
+      await expect(count(idOf(twinUpper))).resolves.toBe(1);
+      await expect(count(idOf(twinLower))).resolves.toBe(0);
+    });
+
+    it("registration refuses a new account colliding with the twins", async () => {
+      const res = await request(
+        app.getHttpServer() as Parameters<typeof request>[0],
+      )
+        .post("/api/v1/auth/register")
+        .send({
+          email: twinUpper.toUpperCase(),
+          password: "Brand-New-Pass1!",
+          licenseNumber: "E2E-NOPE-465",
+          lastName: "Twin",
+          firstName: "E2E",
+        });
+      expect(res.status).toBe(409);
+    });
+  });
 });

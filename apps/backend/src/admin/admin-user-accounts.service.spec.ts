@@ -327,14 +327,17 @@ describe("AdminUserAccountsService", () => {
   });
 
   it("409s on an email already used, looked up in normalised form", async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: "x" } as never);
+    prisma.user.findMany.mockResolvedValue([
+      { id: "x", email: "jeanne@example.fr" },
+    ] as never);
     await expect(service.create("admin-1", dto({}))).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(prisma.user.findUnique).toHaveBeenCalledWith({
-      where: { email: "jeanne@example.fr" },
-      select: { id: true },
-    });
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: { equals: "jeanne@example.fr", mode: "insensitive" } },
+      }),
+    );
   });
 
   it("409s on a legacy account whose stored email differs only by case (#465)", async () => {
@@ -347,6 +350,7 @@ describe("AdminUserAccountsService", () => {
     expect(prisma.user.findMany).toHaveBeenCalledWith({
       where: { email: { equals: "jeanne@example.fr", mode: "insensitive" } },
       select: { id: true, email: true },
+      orderBy: { id: "asc" },
       take: 5,
     });
     expect(prisma.user.create).not.toHaveBeenCalled();

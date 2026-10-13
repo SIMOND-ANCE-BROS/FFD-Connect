@@ -7,7 +7,7 @@ import {
   MaxLength,
   MinLength,
 } from "class-validator";
-import { normalizeEmailTransform } from "../email-identity";
+import { trimEmailTransform } from "../email-identity";
 
 /**
  * DTO pour l'authentification d'un utilisateur
@@ -18,7 +18,7 @@ export class LoginDto {
     example: "user@example.com",
     type: "string",
   })
-  @Transform(normalizeEmailTransform)
+  @Transform(trimEmailTransform)
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)

@@ -1,4 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
+import { oneAccountPerAddress } from "../../test/mocks/email-lookup.mock";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
@@ -24,7 +25,8 @@ describe("AuthPasswordService", () => {
   const mockPrismaService = {
     user: {
       findUnique: jest.fn(),
-      findMany: jest.fn().mockResolvedValue([]),
+      // E-mail lookup (#465): each address designates one account by default.
+      findMany: jest.fn(oneAccountPerAddress()),
       update: jest.fn(),
     },
     passwordResetToken: {
@@ -112,28 +114,37 @@ describe("AuthPasswordService", () => {
     });
 
     describe("address typed with another casing or spaces (#465)", () => {
+      const target = (id: string, email: string) => ({
+        id,
+        email,
+        isStoreReview: false,
+      });
+
       beforeEach(() => {
         mockPrismaService.passwordResetToken.updateMany.mockResolvedValue({});
         mockPrismaService.passwordResetToken.create.mockResolvedValue({});
       });
 
       it("finds the account by its normalised address and mails the stored one", async () => {
-        mockPrismaService.user.findUnique
-          .mockResolvedValueOnce({ id: "u1" })
-          .mockResolvedValueOnce({
-            id: "u1",
-            email: "testeur@exemple.fr",
-            isStoreReview: false,
-          });
+        mockPrismaService.user.findMany.mockResolvedValueOnce([
+          { id: "u1", email: "testeur@exemple.fr" },
+        ]);
+        mockPrismaService.user.findUnique.mockResolvedValueOnce(
+          target("u1", "testeur@exemple.fr"),
+        );
 
         const result = await service.forgotPassword("  Testeur@Exemple.FR ");
 
         expect(result).toEqual({ success: true });
-        expect(mockPrismaService.user.findUnique).toHaveBeenNthCalledWith(1, {
-          where: { email: "testeur@exemple.fr" },
-          select: { id: true },
+        expect(mockPrismaService.user.findMany).toHaveBeenCalledWith({
+          where: {
+            email: { equals: "testeur@exemple.fr", mode: "insensitive" },
+          },
+          select: { id: true, email: true },
+          orderBy: { id: "asc" },
+          take: 5,
         });
-        expect(mockPrismaService.user.findUnique).toHaveBeenNthCalledWith(2, {
+        expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith({
           where: { id: "u1" },
           select: { id: true, email: true, isStoreReview: true },
         });
@@ -144,26 +155,15 @@ describe("AuthPasswordService", () => {
       });
 
       it("matches a legacy account stored with upper-case letters", async () => {
-        mockPrismaService.user.findUnique
-          .mockResolvedValueOnce(null)
-          .mockResolvedValueOnce({
-            id: "legacy",
-            email: "Testeur@Exemple.fr",
-            isStoreReview: false,
-          });
         mockPrismaService.user.findMany.mockResolvedValueOnce([
           { id: "legacy", email: "Testeur@Exemple.fr" },
         ]);
+        mockPrismaService.user.findUnique.mockResolvedValueOnce(
+          target("legacy", "Testeur@Exemple.fr"),
+        );
 
         await service.forgotPassword("testeur@exemple.fr");
 
-        expect(mockPrismaService.user.findMany).toHaveBeenCalledWith({
-          where: {
-            email: { equals: "testeur@exemple.fr", mode: "insensitive" },
-          },
-          select: { id: true, email: true },
-          take: 5,
-        });
         expect(mockEmailService.sendPasswordResetEmail).toHaveBeenCalledWith(
           "Testeur@Exemple.fr",
           expect.any(String),
@@ -173,7 +173,6 @@ describe("AuthPasswordService", () => {
       it.each(["%@exemple.fr", "_@exemple.fr", "a%b@exemple.fr"])(
         "never resolves the wildcard-bearing address %p to another account",
         async (typed) => {
-          mockPrismaService.user.findUnique.mockResolvedValueOnce(null);
           // Even if the database pre-filter returned someone else's row…
           mockPrismaService.user.findMany.mockResolvedValueOnce([
             { id: "victim", email: "victim@exemple.fr" },
@@ -193,6 +192,7 @@ describe("AuthPasswordService", () => {
               },
             }),
           );
+          expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
           expect(
             mockPrismaService.passwordResetToken.create,
           ).not.toHaveBeenCalled();
@@ -202,20 +202,43 @@ describe("AuthPasswordService", () => {
         },
       );
 
-      it("sends nothing, with the same answer, when legacy accounts differ only by case", async () => {
-        mockPrismaService.user.findUnique.mockResolvedValueOnce(null);
-        mockPrismaService.user.findMany.mockResolvedValueOnce([
+      describe("two accounts differing only by case", () => {
+        const twins = [
           { id: "a", email: "Dup@exemple.fr" },
-          { id: "b", email: "DUP@exemple.fr" },
-        ]);
+          { id: "b", email: "dup@exemple.fr" },
+        ];
 
-        const result = await service.forgotPassword("dup@exemple.fr");
+        it("resets the one stored exactly as typed, mailing its own address", async () => {
+          mockPrismaService.user.findMany.mockResolvedValueOnce(twins);
+          mockPrismaService.user.findUnique.mockResolvedValueOnce(
+            target("a", "Dup@exemple.fr"),
+          );
 
-        expect(result).toEqual({ success: true });
-        expect(
-          mockPrismaService.passwordResetToken.create,
-        ).not.toHaveBeenCalled();
-        expect(mockEmailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+          await service.forgotPassword(" Dup@exemple.fr ");
+
+          expect(mockPrismaService.user.findUnique).toHaveBeenCalledWith(
+            expect.objectContaining({ where: { id: "a" } }),
+          );
+          expect(mockEmailService.sendPasswordResetEmail).toHaveBeenCalledWith(
+            "Dup@exemple.fr",
+            expect.any(String),
+          );
+        });
+
+        it("sends nothing, with the same answer, when the typed casing is neither", async () => {
+          mockPrismaService.user.findMany.mockResolvedValueOnce(twins);
+
+          const result = await service.forgotPassword("DUP@exemple.fr");
+
+          expect(result).toEqual({ success: true });
+          expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+          expect(
+            mockPrismaService.passwordResetToken.create,
+          ).not.toHaveBeenCalled();
+          expect(
+            mockEmailService.sendPasswordResetEmail,
+          ).not.toHaveBeenCalled();
+        });
       });
     });
   });

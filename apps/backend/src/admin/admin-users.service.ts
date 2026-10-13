@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { AuthTokenService } from "../auth/auth-token.service";
+import { normalizeEmail } from "../auth/email-identity";
 import { normalizeExtraRoles, rolesOf } from "../auth/roles";
 import { assertUserNotStoreReview } from "../auth/store-review/store-review-protection";
 import { mirrorLegacyCompetitionLevel } from "../common/competition-level";
@@ -205,7 +206,7 @@ export class AdminUsersService {
     });
     if (!target) throw new NotFoundException("Utilisateur introuvable");
     assertUserNotStoreReview(target, "delete");
-    if (target.email.toLowerCase() !== confirmEmail.trim().toLowerCase()) {
+    if (normalizeEmail(target.email) !== normalizeEmail(confirmEmail)) {
       throw new BadRequestException(
         "L'email saisi ne correspond pas au compte",
       );

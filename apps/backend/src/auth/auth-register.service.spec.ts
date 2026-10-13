@@ -114,7 +114,9 @@ describe("AuthService.register", () => {
   });
 
   it("rejects if email already exists", async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: "existing" });
+    prisma.user.findMany.mockResolvedValue([
+      { id: "existing", email: "taken@example.com" },
+    ]);
 
     await expect(
       authService.register(
@@ -127,8 +129,7 @@ describe("AuthService.register", () => {
   });
 
   it("rejects an address already used with another casing (#465)", async () => {
-    // No exact match on the normalised form, but a legacy mixed-case row.
-    prisma.user.findUnique.mockResolvedValue(null);
+    // A legacy mixed-case row: the normalised address would collide with it.
     prisma.user.findMany.mockResolvedValue([
       { id: "legacy", email: "Taken@Example.com" },
     ]);
@@ -144,6 +145,7 @@ describe("AuthService.register", () => {
     expect(prisma.user.findMany).toHaveBeenCalledWith({
       where: { email: { equals: "taken@example.com", mode: "insensitive" } },
       select: { id: true, email: true },
+      orderBy: { id: "asc" },
       take: 5,
     });
     expect(prisma.license.findUnique).not.toHaveBeenCalled();
@@ -314,9 +316,11 @@ describe("AuthService.register", () => {
       "Dupont",
     );
 
-    // Verify findUnique was called with normalized email
-    expect(prisma.user.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { email: "upper@example.com" } }),
+    // The uniqueness check looks the normalised address up (#465)
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: { equals: "upper@example.com", mode: "insensitive" } },
+      }),
     );
   });
   describe("birthDate derived from the licence number (#60)", () => {
