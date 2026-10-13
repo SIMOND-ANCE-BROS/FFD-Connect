@@ -1,0 +1,40 @@
+# gitleaks baseline (#483): fingerprints of KNOWN, REVIEWED false positives.
+# One exact finding per line, ALWAYS commit-pinned (commit:file:rule:line).
+# Never add a bare file:rule:line entry: it would also apply to the pre-commit
+# staged scan, so a real key written at that same line would be silently
+# ignored. A commit-pinned entry cannot match new content (a new commit has a
+# new SHA). The pre-commit scan only sees staged added lines, and the CI scan
+# only the commits a PR adds, so untouched fixtures are never reported there.
+# Reviewed 2026-10-13: every entry is a fake test value or a documentation
+# placeholder, no real secret.
+#
+# - 2410702 logging/redaction *.spec.ts (generic-api-key): fixed fake token
+#   the tests assert is masked in logs and Sentry events.
+# - 396822b env.validation.spec.ts: JWT_SECRET placeholder (generic-api-key)
+#   and a truncated "-----BEGIN PRIVATE KEY-----\n..." hint (private-key, no
+#   key material).
+# - 396822b wdsf.service.spec.ts (generic-api-key): `key === "WDSF_..."`,
+#   environment variable NAMES in a mocked ConfigService.get.
+# - 396822b docs/api/README.md (curl-auth-header): `Bearer your-access-token`
+#   curl examples.
+# - 396822b apps/backend/.env.example (private-key):
+#   FIREBASE_PRIVATE_KEY="your-private-key" placeholder.
+#
+# Adding an entry: only for a reviewed false positive, with its reason above,
+# copying the commit-pinned Fingerprint gitleaks prints. Prefer an inline
+# `gitleaks:allow` comment for a one-off. A real secret is never baselined:
+# remove it and revoke it (docs/exploitation/ci-cd-minimal.md).
+
+241070201213232285a302eb8675112a6b8dcb99:apps/backend/src/common/filters/http-exception.filter.spec.ts:generic-api-key:75
+241070201213232285a302eb8675112a6b8dcb99:apps/backend/src/common/filters/http-exception.filter.spec.ts:generic-api-key:97
+241070201213232285a302eb8675112a6b8dcb99:apps/backend/src/common/interceptors/logging.interceptor.spec.ts:generic-api-key:127
+241070201213232285a302eb8675112a6b8dcb99:apps/backend/src/common/logger/pino-http.options.spec.ts:generic-api-key:4
+241070201213232285a302eb8675112a6b8dcb99:apps/backend/src/common/logger/redact-url.spec.ts:generic-api-key:7
+241070201213232285a302eb8675112a6b8dcb99:apps/backend/src/common/logger/sentry-redaction.spec.ts:generic-api-key:9
+396822ba0757762293d3cc74651fc828461ba45b:apps/backend/.env.example:private-key:115
+396822ba0757762293d3cc74651fc828461ba45b:apps/backend/src/config/env.validation.spec.ts:generic-api-key:6
+396822ba0757762293d3cc74651fc828461ba45b:apps/backend/src/config/env.validation.spec.ts:private-key:124
+396822ba0757762293d3cc74651fc828461ba45b:apps/backend/src/wdsf/wdsf.service.spec.ts:generic-api-key:379
+396822ba0757762293d3cc74651fc828461ba45b:apps/backend/src/wdsf/wdsf.service.spec.ts:generic-api-key:636
+396822ba0757762293d3cc74651fc828461ba45b:docs/api/README.md:curl-auth-header:70
+396822ba0757762293d3cc74651fc828461ba45b:docs/api/README.md:curl-auth-header:74

@@ -1,2 +1,9 @@
+# Secret scan of the staged changes (#483). Reads the index only (git diff
+# --staged): the work tree and unstaged edits are never touched. Runs first so
+# a leaked key fails fast, before ESLint/Prettier. Pinned binary, see
+# scripts/gitleaks.sh. Blocked? docs/exploitation/ci-cd-minimal.md — remove the
+# secret and revoke it; never bypass the hook.
+sh scripts/gitleaks.sh git --pre-commit --staged --redact --verbose --no-banner --log-level warn
+
 # Run lint-staged to format and lint staged files
 pnpm exec lint-staged

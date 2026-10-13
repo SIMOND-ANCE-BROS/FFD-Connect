@@ -17,7 +17,7 @@ concurrency:
 jobs:
   # ============================================================
   # JOB CLASSIFICATION (see docs/exploitation/ci-cd-minimal.md)
-  #   BLOCKING:       typecheck, lint-format, backend-test, backend-build, client, audit-dependencies, docs-build, build-image
+  #   BLOCKING:       typecheck, lint-format, backend-test, backend-build, client, audit-dependencies, secret-scan, docs-build, build-image
   #   INFORMATIONAL:  playwright-e2e (failure warns but does not block merge)
   #   Mutation testing runs in mutation-nightly.yml (weekly, full coverage) — not per-PR.
   # ============================================================
@@ -513,6 +513,41 @@ jobs:
           retention-days: 30
 
   # ============================================================
+  # SECRET SCAN — gitleaks on the commits a PR / queue group adds  [BLOCKING]
+  # ============================================================
+  # Same pinned, checksum-verified binary and .gitleaks.toml as the pre-commit
+  # hook (scripts/gitleaks.sh) — this job catches commits made without the hook.
+  # Scope = commit range only (PR: base..head, merge queue: base_sha..head_sha),
+  # never the whole history: a rule added upstream later must not turn every PR
+  # red over an old, already-handled commit. No path filter: any file can leak.
+  # Not gitleaks/gitleaks-action: it requires a paid GITLEAKS_LICENSE for
+  # organization-owned repos. Output is --redact'ed: the logs are public.
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    # Pushes to develop/staging/master only land through PRs / the merge queue,
+    # which were scanned already.
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0 # the range scan needs both ends of the range
+
+      - name: Scan the new commits with gitleaks (pinned v8.30.1)
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          set -eu
+          echo "Scanning commits ${BASE_SHA}..${HEAD_SHA}"
+          git log --oneline "${BASE_SHA}..${HEAD_SHA}"
+          sh scripts/gitleaks.sh git --log-opts="${BASE_SHA}..${HEAD_SHA}" \
+            --redact --verbose --no-banner
+
+  # ============================================================
   # LINT & FORMAT — fast checks, no dependencies                [BLOCKING]
   # ============================================================
   lint-format:
@@ -843,6 +878,7 @@ jobs:
       - typecheck
       - lint-format
       - audit-dependencies
+      - secret-scan
       - docs-build
       - playwright-e2e
       - build-image
@@ -858,6 +894,7 @@ jobs:
             typecheck=${{ needs.typecheck.result }}
             lint-format=${{ needs.lint-format.result }}
             audit-dependencies=${{ needs.audit-dependencies.result }}
+            secret-scan=${{ needs.secret-scan.result }}
             docs-build=${{ needs.docs-build.result }}
             playwright-e2e=${{ needs.playwright-e2e.result }}
             build-image=${{ needs.build-image.result }}
