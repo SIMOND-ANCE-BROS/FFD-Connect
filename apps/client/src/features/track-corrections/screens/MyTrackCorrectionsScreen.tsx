@@ -24,6 +24,7 @@ import { useMyTrackCorrections } from "../hooks/useTrackCorrections";
 import {
   formatClashList,
   formatCorrectionDate,
+  isDeletionRequest,
   reasonLabel,
 } from "../utils/trackCorrections";
 
@@ -31,6 +32,13 @@ type Props = NativeStackScreenProps<RootStackParamList, "MyTrackCorrections">;
 
 /** Valeurs proposées, en clair (« MPM : 52 », « Clashs : 0:45, 1:30 »). */
 export function proposedSummary(item: MyTrackCorrectionDto): string[] {
+  if (isDeletionRequest(item)) {
+    return [
+      item.status === "APPROVED"
+        ? "Musique retirée de la bibliothèque"
+        : "Retrait de la bibliothèque demandé",
+    ];
+  }
   const { proposed } = item;
   const lines: string[] = [];
   if (proposed.title !== null) lines.push(`Titre : ${proposed.title}`);

@@ -133,7 +133,7 @@ export function ModerationPage() {
     {
       key: 'summary',
       label: 'Changements proposés',
-      cell: (c) => proposalSummary(c.proposed),
+      cell: (c) => proposalSummary(c.proposed, c.reason),
     },
     {
       key: 'message',
@@ -236,7 +236,7 @@ export function ModerationPage() {
             </Text>
             <RecordLine label="Proposée par">{proposer(c)}</RecordLine>
             <RecordLine label="Date">{createdAt(c)}</RecordLine>
-            <RecordLine label="Changements">{proposalSummary(c.proposed)}</RecordLine>
+            <RecordLine label="Changements">{proposalSummary(c.proposed, c.reason)}</RecordLine>
           </RecordCard>
         )}
       />

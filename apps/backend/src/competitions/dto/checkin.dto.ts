@@ -10,8 +10,9 @@ export const CHECK_IN_QR_DATA_MAX_LENGTH = 512;
 export class CheckInDto {
   @ApiProperty({
     description:
-      "Contenu du QR de licence scanné : QR signé (#168), ancien JSON non signé, ou identifiant brut",
-    example: '{"v":1,"id":"FFD-123456","exp":"2026-08-31","sig":"…"}',
+      "Contenu du QR de licence scanné : QR signé lié à la licence (v2, #466), QR signé v1 (#168, accepté jusqu'à son expiration), ancien JSON non signé, ou identifiant brut",
+    example:
+      '{"v":2,"id":"FFD-123456","lid":"3f0c…","exp":"2026-08-31","sig":"…"}',
     maxLength: CHECK_IN_QR_DATA_MAX_LENGTH,
   })
   @IsString()
@@ -53,14 +54,24 @@ export class CheckInQrVerificationDto {
   mode!: "off" | "warn" | "enforce";
 
   @ApiProperty({
-    enum: ["NOT_CHECKED", "VALID", "UNSIGNED", "INVALID_SIGNATURE", "EXPIRED"],
+    enum: [
+      "NOT_CHECKED",
+      "VALID",
+      "UNSIGNED",
+      "INVALID_SIGNATURE",
+      "EXPIRED",
+      "LICENSE_MISMATCH",
+    ],
+    description:
+      "LICENSE_MISMATCH : QR authentique émis avant un changement de numéro de licence (#466) — accepté en mode warn pour la licence d'origine, refusé en enforce",
   })
   status!:
     | "NOT_CHECKED"
     | "VALID"
     | "UNSIGNED"
     | "INVALID_SIGNATURE"
-    | "EXPIRED";
+    | "EXPIRED"
+    | "LICENSE_MISMATCH";
 
   @ApiProperty({
     type: String,

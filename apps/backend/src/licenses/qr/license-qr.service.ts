@@ -20,7 +20,12 @@ export type LicenseQrVerificationStatus =
   /** Legacy QR without signature. */
   | "UNSIGNED"
   | "INVALID_SIGNATURE"
-  | "EXPIRED";
+  | "EXPIRED"
+  /**
+   * Genuine QR, but issued for another licence than the one now holding its
+   * number (the number was changed by an administrator — #466).
+   */
+  | "LICENSE_MISMATCH";
 
 export interface LicenseQrVerification {
   mode: QrSignatureMode;
@@ -36,6 +41,11 @@ export interface LicenseQrCheck extends LicenseQrVerification {
   accepted: boolean;
   /** True ⇒ the identifier is a signed license number, never a user id. */
   signedLicenseNumber: boolean;
+  /**
+   * Licence the QR was issued for — set only for a verified v2 QR (#466).
+   * Null ⇒ the QR is bound to its number alone (v1, unsigned, not checked).
+   */
+  licenseId: string | null;
 }
 
 const WARNINGS: Record<
@@ -45,7 +55,17 @@ const WARNINGS: Record<
   UNSIGNED: "QR non vérifié : ancien QR non signé",
   INVALID_SIGNATURE: "QR non vérifié : signature invalide",
   EXPIRED: "QR non vérifié : licence expirée",
+  LICENSE_MISMATCH:
+    "QR non vérifié : numéro de licence modifié depuis l'émission du QR",
 };
+
+/**
+ * Refusal of a QR issued before its licence number changed (#466): mode
+ * `enforce` for a v2 QR, every verifying mode for a number-only QR whose
+ * number was retired (it may now belong to someone else).
+ */
+export const STALE_LICENSE_QR_MESSAGE =
+  "QR périmé : le numéro de licence a changé depuis son émission. Rouvrir l'e-licence dans l'application (ou réajouter le pass Wallet) pour obtenir le nouveau QR.";
 
 /**
  * Signs license QR codes and verifies them at check-in (#168).
@@ -129,6 +149,7 @@ export class LicenseQrService {
       return {
         identifier: parsed.identifier,
         signedLicenseNumber: false,
+        licenseId: null,
         accepted: true,
         mode: "off",
         status: "NOT_CHECKED",
@@ -149,6 +170,9 @@ export class LicenseQrService {
       return {
         identifier: parsed.identifier,
         signedLicenseNumber: true,
+        // Only a verified v2 QR carries a (signed) licence id.
+        licenseId:
+          parsed.kind === "signed" ? (parsed.payload.lid ?? null) : null,
         accepted: true,
         mode: this.mode,
         status,
@@ -159,10 +183,26 @@ export class LicenseQrService {
     return {
       identifier: parsed.identifier,
       signedLicenseNumber: false,
+      licenseId: null,
       accepted: this.mode !== "enforce",
       mode: this.mode,
       status,
       warning: WARNINGS[status],
+    };
+  }
+
+  /**
+   * Downgrades a verified v2 QR whose licence no longer holds the number it
+   * carries (#466): refused in `enforce`, accepted with a staff warning in
+   * `warn` — the caller then resolves the licence by `licenseId`, never by
+   * the number.
+   */
+  licenseMismatch(check: LicenseQrCheck): LicenseQrCheck {
+    return {
+      ...check,
+      accepted: this.mode !== "enforce",
+      status: "LICENSE_MISMATCH",
+      warning: WARNINGS.LICENSE_MISMATCH,
     };
   }
 }

@@ -38,6 +38,7 @@ import {
   formatTimecode,
   initialReviewValues,
   insertTemplate,
+  isDeletionRequest,
   isPasoDoble,
   nextPendingFilter,
   REASON_LABELS,
@@ -175,24 +176,32 @@ function CorrectionReview({ id }: { id: string }) {
           </Text>
         </Stack>
       </Card>
-      <Table>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Champ</Table.Th>
-            <Table.Th>Actuel</Table.Th>
-            <Table.Th>Proposé</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {FIELDS.filter(({ key }) => paso || key !== 'clashTimecodes').map(({ key, label }) => (
-            <Table.Tr key={key}>
-              <Table.Td>{label}</Table.Td>
-              <Table.Td>{show(c.track[key])}</Table.Td>
-              <Table.Td>{show(c.proposed[key])}</Table.Td>
+      {isDeletionRequest(c) ? (
+        <Alert color="red" title="Proposition de suppression">
+          L'auteur demande de retirer cette musique de la bibliothèque. Approuver la masque
+          (blacklist) sans la supprimer définitivement, et refuse les autres propositions en attente
+          sur cette musique. Refuser ne change rien.
+        </Alert>
+      ) : (
+        <Table>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Champ</Table.Th>
+              <Table.Th>Actuel</Table.Th>
+              <Table.Th>Proposé</Table.Th>
             </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
+          </Table.Thead>
+          <Table.Tbody>
+            {FIELDS.filter(({ key }) => paso || key !== 'clashTimecodes').map(({ key, label }) => (
+              <Table.Tr key={key}>
+                <Table.Td>{label}</Table.Td>
+                <Table.Td>{show(c.track[key])}</Table.Td>
+                <Table.Td>{show(c.proposed[key])}</Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
       <Card withBorder>
         <Text size="sm" fw={500}>
           Message de l'auteur
@@ -243,10 +252,11 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
   const [confirm, setConfirm] = useState<Decision | null>(null);
   // The admin may turn the dance into a paso doble here: the editor follows.
   const paso = hasClashes(c) || isPasoDoble(values.style);
-  const overrides = approveOverrides(
-    initial,
-    paso ? values : { ...values, clashes: initial.clashes },
-  );
+  // A deletion request carries no value: approving it only hides the track.
+  const deletion = isDeletionRequest(c);
+  const overrides = deletion
+    ? {}
+    : approveOverrides(initial, paso ? values : { ...values, clashes: initial.clashes });
   const preview = approvalPreview(c, overrides);
   const trimmed = comment.trim();
 
@@ -309,33 +319,37 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
     <>
       <Card withBorder>
         <Stack>
-          <Title order={4}>Valeurs à appliquer</Title>
-          <SimpleGrid cols={{ base: 1, sm: 2 }}>
-            <TextInput
-              label="Titre"
-              value={values.title}
-              onChange={(e) => set('title', e.currentTarget.value)}
-            />
-            <TextInput
-              label="Artiste"
-              value={values.artist}
-              onChange={(e) => set('artist', e.currentTarget.value)}
-            />
-            <TextInput
-              label="Danse"
-              value={values.style}
-              onChange={(e) => set('style', e.currentTarget.value)}
-            />
-            <NumberInput
-              label="MPM"
-              min={1}
-              max={400}
-              decimalScale={1}
-              value={values.bpm}
-              onChange={(v) => set('bpm', v)}
-            />
-          </SimpleGrid>
-          {paso && (
+          {!deletion && (
+            <>
+              <Title order={4}>Valeurs à appliquer</Title>
+              <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                <TextInput
+                  label="Titre"
+                  value={values.title}
+                  onChange={(e) => set('title', e.currentTarget.value)}
+                />
+                <TextInput
+                  label="Artiste"
+                  value={values.artist}
+                  onChange={(e) => set('artist', e.currentTarget.value)}
+                />
+                <TextInput
+                  label="Danse"
+                  value={values.style}
+                  onChange={(e) => set('style', e.currentTarget.value)}
+                />
+                <NumberInput
+                  label="MPM"
+                  min={1}
+                  max={400}
+                  decimalScale={1}
+                  value={values.bpm}
+                  onChange={(v) => set('bpm', v)}
+                />
+              </SimpleGrid>
+            </>
+          )}
+          {paso && !deletion && (
             <ClashEditor
               value={values.clashes}
               onChange={(v) => set('clashes', v)}
@@ -364,8 +378,12 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
             <Button color="red" variant="light" disabled={pending} onClick={() => open('reject')}>
               Refuser
             </Button>
-            <Button color="green" disabled={pending} onClick={() => open('approve')}>
-              Approuver
+            <Button
+              color={deletion ? 'red' : 'green'}
+              disabled={pending}
+              onClick={() => open('approve')}
+            >
+              {deletion ? 'Approuver et retirer la musique' : 'Approuver'}
             </Button>
           </Group>
         </Stack>
@@ -379,7 +397,14 @@ function DecisionForm({ c, audioRef, onDecided, onConflict }: DecisionFormProps)
         title={confirm === 'approve' ? 'Confirmer la validation' : 'Confirmer le refus'}
       >
         <Stack>
+          {confirm === 'approve' && deletion && (
+            <Text size="sm">
+              « {c.track.title} » sera retirée de la bibliothèque de l'app (blacklistée, pas
+              supprimée). Les autres propositions en attente sur cette musique seront refusées.
+            </Text>
+          )}
           {confirm === 'approve' &&
+            !deletion &&
             (Object.keys(preview.after).length > 0 ? (
               <ChangeSummary before={preview.before} after={preview.after} showClashes={paso} />
             ) : (

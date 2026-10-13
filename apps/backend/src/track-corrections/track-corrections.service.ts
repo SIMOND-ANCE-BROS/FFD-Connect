@@ -33,6 +33,7 @@ import {
   trackCorrectionAuditTrackSelect,
   trackCorrectionDecisionSelect,
   trackCorrectionMineSelect,
+  trackCorrectionSupersededSelect,
   trackCorrectionTargetSelect,
 } from "../utils/prisma-selects";
 import {
@@ -75,6 +76,21 @@ export const MAX_SERIALIZABLE_ATTEMPTS = 3;
 /** Titre de la notification admin pour une nouvelle proposition. */
 export const NEW_CORRECTION_NOTIFICATION_TITLE = "Proposition de correction";
 
+/**
+ * Commentaire des autres propositions en attente d'une musique retirée de la
+ * bibliothèque par une proposition de suppression acceptée (#446) : elles
+ * sont refusées d'office, leur objet n'existant plus pour les utilisateurs.
+ */
+export const TRACK_REMOVED_REJECTION_COMMENT =
+  "Musique retirée de la bibliothèque";
+
+/**
+ * Borne des propositions refusées d'office à l'acceptation d'une suppression.
+ * Au-delà (improbable : 3 en attente au plus par utilisateur et par musique),
+ * le reliquat reste dans la file, où l'administrateur le tranche à la main.
+ */
+export const MAX_SUPERSEDED_CORRECTIONS = 200;
+
 type CorrectionTarget = Prisma.TrackGetPayload<{
   select: typeof trackCorrectionTargetSelect;
 }>;
@@ -97,8 +113,21 @@ interface ProposedValues {
   proposedClashTimecodes: number[];
 }
 
-/** Plafond atteint par une insertion (cf. createWithinCaps). */
-type PendingCap = "per-track" | "global";
+/**
+ * Plafond atteint par une insertion (cf. createWithinCaps). `duplicate` : une
+ * proposition du même motif unique (suppression) attend déjà sur la piste.
+ */
+type PendingCap = "per-track" | "global" | "duplicate";
+
+/** Destinataire d'une décision (auteur d'une proposition tranchée). */
+type DecisionRecipient = Pick<
+  CorrectionForDecision,
+  "id" | "trackId" | "proposedById"
+> & { reason?: TrackCorrectionReason };
+
+type SupersededCorrection = Prisma.TrackCorrectionGetPayload<{
+  select: typeof trackCorrectionSupersededSelect;
+}>;
 
 type CappedInsert<T> = { created: T } | { capped: PendingCap };
 
@@ -142,27 +171,46 @@ export class TrackCorrectionsService {
     isAdmin = false,
   ): Promise<MyTrackCorrectionDto> {
     const track = await this.findTarget(dto.trackId, isAdmin);
-    const proposed = TrackCorrectionsService.diff(dto, track);
+    const deletion = dto.reason === TrackCorrectionReason.DELETE;
+    // A deletion request carries no value: only its reason, in the message.
+    const proposed = deletion
+      ? TrackCorrectionsService.EMPTY_PROPOSAL
+      : TrackCorrectionsService.diff(dto, track);
     const message = normalizeText(dto.message);
 
+    if (deletion && !message) {
+      throw new BadRequestException(
+        "Indiquez pourquoi retirer cette musique (doublon, mauvais fichier…).",
+      );
+    }
     if (!TrackCorrectionsService.hasProposal(proposed) && !message) {
       throw new BadRequestException(
         "Aucune correction proposée : indiquez une valeur différente de l'actuelle ou un message.",
       );
     }
-    const result = await this.createWithinCaps(userId, dto.trackId, (tx) =>
-      tx.trackCorrection.create({
-        data: {
-          trackId: dto.trackId,
-          proposedById: userId,
-          reason: dto.reason,
-          message: message ?? null,
-          ...proposed,
-        },
-        select: trackCorrectionMineSelect,
-      }),
+    const result = await this.createWithinCaps(
+      userId,
+      dto.trackId,
+      (tx) =>
+        tx.trackCorrection.create({
+          data: {
+            trackId: dto.trackId,
+            proposedById: userId,
+            reason: dto.reason,
+            message: message ?? null,
+            ...proposed,
+          },
+          select: trackCorrectionMineSelect,
+        }),
+      // One pending deletion request per user and per track.
+      deletion ? TrackCorrectionReason.DELETE : undefined,
     );
     if ("capped" in result) {
+      if (result.capped === "duplicate") {
+        throw new ConflictException(
+          "Vous avez déjà proposé la suppression de cette musique. Attendez la décision d'un administrateur.",
+        );
+      }
       throw new HttpException(
         result.capped === "per-track"
           ? `Vous avez déjà ${MAX_PENDING_CORRECTIONS_PER_USER_PER_TRACK} propositions en attente sur cette musique. Attendez la décision d'un administrateur.`
@@ -248,8 +296,11 @@ export class TrackCorrectionsService {
     dto: ApproveTrackCorrectionDto,
   ): Promise<TrackCorrectionAdminDto> {
     const correction = await this.findPendingForDecision(id);
-    const patch = TrackCorrectionsService.buildPatch(correction, dto);
     const comment = normalizeText(dto.comment) ?? null;
+    if (correction.reason === TrackCorrectionReason.DELETE) {
+      return this.approveDeletion(correction, adminId, comment);
+    }
+    const patch = TrackCorrectionsService.buildPatch(correction, dto);
 
     await this.prisma.$transaction(async (tx) => {
       await TrackCorrectionsService.claim(
@@ -296,6 +347,132 @@ export class TrackCorrectionsService {
     );
     this.logger.log(`Track correction ${id} approved by ${adminId}`);
     return this.queryService.findOneForAdmin(id);
+  }
+
+  /**
+   * Validation d'une proposition de suppression (#446) : la musique est
+   * MASQUÉE (`blacklisted = true`, hors bibliothèque), jamais supprimée — la
+   * suppression définitive reste l'action admin DELETE /tracks/:id. Les
+   * valeurs éventuelles du corps sont ignorées.
+   *
+   * Dans la même transaction : passage PENDING → APPROVED (garde 409), masquage
+   * via TracksService.updateTrack, ligne d'audit TRACK_CORRECTION_APPROVE
+   * (blacklisted false → true) et refus d'office des autres propositions en
+   * attente sur la musique (TRACK_REMOVED_REJECTION_COMMENT), une ligne
+   * TRACK_CORRECTION_REJECT chacune. Leurs auteurs sont ensuite prévenus.
+   */
+  private async approveDeletion(
+    correction: CorrectionForDecision,
+    adminId: string,
+    comment: string | null,
+  ): Promise<TrackCorrectionAdminDto> {
+    const { id, trackId } = correction;
+    let superseded: SupersededCorrection[] = [];
+
+    await this.prisma.$transaction(async (tx) => {
+      await TrackCorrectionsService.claim(
+        tx,
+        id,
+        adminId,
+        TrackCorrectionStatus.APPROVED,
+        comment,
+      );
+      const before = await tx.track.findUnique({
+        where: { id: trackId },
+        select: trackCorrectionAuditTrackSelect,
+      });
+      await this.tracksService.updateTrack(
+        trackId,
+        adminId,
+        true,
+        { blacklisted: true },
+        tx,
+        { skipAudit: true },
+      );
+      const after = await tx.track.findUnique({
+        where: { id: trackId },
+        select: trackCorrectionAuditTrackSelect,
+      });
+      await this.audit.record(
+        tx,
+        TrackCorrectionsService.approvalAudit(
+          id,
+          adminId,
+          trackId,
+          before,
+          after,
+        ),
+      );
+      superseded = await this.rejectSuperseded(tx, trackId, id, adminId);
+    });
+
+    // The authors knew the track: name it as it was before it was hidden.
+    await this.notifyProposer(
+      correction,
+      TrackCorrectionStatus.APPROVED,
+      comment,
+      correction.track,
+    );
+    await Promise.all(
+      superseded.map((row) =>
+        this.notifyProposer(
+          { ...row, trackId },
+          TrackCorrectionStatus.REJECTED,
+          TRACK_REMOVED_REJECTION_COMMENT,
+          correction.track,
+        ),
+      ),
+    );
+    this.logger.log(
+      `Track deletion request ${id} approved by ${adminId}: track ${trackId} hidden, ${superseded.length} pending proposal(s) rejected`,
+    );
+    return this.queryService.findOneForAdmin(id);
+  }
+
+  /**
+   * Refuse d'office les autres propositions en attente d'une musique retirée.
+   * Chaque passage est conditionnel (PENDING) : une proposition tranchée en
+   * parallèle par un autre administrateur garde sa décision et n'est ni
+   * journalisée ni notifiée ici.
+   */
+  private async rejectSuperseded(
+    tx: Prisma.TransactionClient,
+    trackId: string,
+    approvedId: string,
+    adminId: string,
+  ): Promise<SupersededCorrection[]> {
+    const pending = await tx.trackCorrection.findMany({
+      where: {
+        trackId,
+        status: TrackCorrectionStatus.PENDING,
+        id: { not: approvedId },
+      },
+      select: trackCorrectionSupersededSelect,
+      orderBy: { createdAt: "asc" },
+      take: MAX_SUPERSEDED_CORRECTIONS,
+    });
+    const rejected: SupersededCorrection[] = [];
+    for (const row of pending) {
+      const { count } = await tx.trackCorrection.updateMany({
+        where: { id: row.id, status: TrackCorrectionStatus.PENDING },
+        data: {
+          status: TrackCorrectionStatus.REJECTED,
+          reviewedById: adminId,
+          reviewComment: TRACK_REMOVED_REJECTION_COMMENT,
+          reviewedAt: new Date(),
+        },
+      });
+      if (count === 0) continue;
+      await this.audit.record(tx, {
+        actorId: adminId,
+        action: "TRACK_CORRECTION_REJECT",
+        targetType: "TRACK_CORRECTION",
+        targetId: row.id,
+        after: { trackId },
+      });
+      rejected.push(row);
+    }
+    return rejected;
   }
 
   /** Refuse une proposition. Même garde contre la double décision (409). */
@@ -380,6 +557,7 @@ export class TrackCorrectionsService {
     userId: string,
     trackId: string,
     insert: (tx: Prisma.TransactionClient) => Promise<T>,
+    uniqueReason?: TrackCorrectionReason,
   ): Promise<CappedInsert<T>> {
     for (let attempt = 1; ; attempt++) {
       try {
@@ -389,6 +567,12 @@ export class TrackCorrectionsService {
               proposedById: userId,
               status: TrackCorrectionStatus.PENDING,
             };
+            if (uniqueReason) {
+              const same = await tx.trackCorrection.count({
+                where: { ...pending, trackId, reason: uniqueReason },
+              });
+              if (same > 0) return { capped: "duplicate" };
+            }
             const onTrack = await tx.trackCorrection.count({
               where: { ...pending, trackId },
             });
@@ -567,6 +751,9 @@ export class TrackCorrectionsService {
     reason: TrackCorrectionReason,
     values: ProposedValues,
   ): string {
+    if (reason === TrackCorrectionReason.DELETE) {
+      return "Suppression de la musique demandée";
+    }
     const parts: string[] = [];
     if (values.proposedTitle !== null) {
       parts.push(`Titre « ${values.proposedTitle} »`);
@@ -640,19 +827,24 @@ export class TrackCorrectionsService {
    * encore. Best-effort, comme notifyAdmins : la décision est déjà actée.
    */
   private async notifyProposer(
-    correction: CorrectionForDecision,
+    correction: DecisionRecipient,
     status: TrackCorrectionStatus,
     comment: string | null,
     track: TrackVisibilityFields,
   ): Promise<void> {
     if (!correction.proposedById) return;
     const approved = status === TrackCorrectionStatus.APPROVED;
+    const deletion = correction.reason === TrackCorrectionReason.DELETE;
     // L'auteur peut ne pas être admin : même filtrage que partout côté
     // non-admin (titre masqué → libellé neutre, piste blacklistée → retirée).
     const { title } = publicTrackName(track);
+    const outcome = deletion
+      ? approved
+        ? "votre proposition de suppression a été validée, la musique est retirée de la bibliothèque"
+        : "votre proposition de suppression a été refusée"
+      : `votre proposition de correction a été ${approved ? "validée" : "refusée"}`;
     const body =
-      `«${title}» : votre proposition de correction a été ${approved ? "validée" : "refusée"}.` +
-      (comment ? ` Commentaire : ${comment}` : "");
+      `«${title}» : ${outcome}.` + (comment ? ` Commentaire : ${comment}` : "");
     try {
       // Push (#38) : décision prise par un tiers sur SA proposition.
       await this.notificationsService.sendToUser(

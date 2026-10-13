@@ -5,7 +5,6 @@ import {
   ArrayMaxSize,
   IsArray,
   IsEnum,
-  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -14,6 +13,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from "class-validator";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
 import {
@@ -44,17 +44,6 @@ export const TRACK_CORRECTION_SORT_FIELDS = [
 ] as const;
 export type TrackCorrectionSortField =
   (typeof TRACK_CORRECTION_SORT_FIELDS)[number];
-
-/**
- * Motifs qu'une proposition peut porter. `DELETE` (#446) est connu de la base
- * et du client Prisma mais refusé tant que la révision qui en porte les règles
- * n'est pas déployée : l'enum part seul, avant son producteur (cf. migration
- * 20261012190000_track_correction_delete_reason).
- */
-export const PROPOSABLE_REASONS: readonly TrackCorrectionReason[] =
-  Object.values(TrackCorrectionReason).filter(
-    (reason) => reason !== TrackCorrectionReason.DELETE,
-  );
 
 /** Bounds of the moderation queue search (track title or artist). */
 export const TRACK_CORRECTION_SEARCH_MIN_LENGTH = 2;
@@ -148,16 +137,19 @@ export class CreateTrackCorrectionDto extends TrackCorrectionValuesDto {
     description: "Métadonnée jugée incorrecte",
   })
   @IsEnum(TrackCorrectionReason)
-  @IsIn(PROPOSABLE_REASONS, {
-    message: "Ce motif n'est pas encore disponible.",
-  })
   reason!: TrackCorrectionReason;
 
   @ApiPropertyOptional({
-    description: "Précisions libres pour l'administrateur",
+    description:
+      "Précisions libres pour l'administrateur. Obligatoire pour une proposition de suppression (`DELETE`) : pourquoi retirer la musique (doublon, mauvais fichier…).",
     maxLength: TRACK_CORRECTION_MESSAGE_MAX_LENGTH,
   })
-  @IsOptional()
+  // Required for a deletion request (a missing message fails IsString, 400);
+  // a blank one is refused by TrackCorrectionsService.create, after trimming.
+  @ValidateIf(
+    (o: CreateTrackCorrectionDto) =>
+      o.reason === TrackCorrectionReason.DELETE || o.message !== undefined,
+  )
   @IsString()
   @MaxLength(TRACK_CORRECTION_MESSAGE_MAX_LENGTH)
   message?: string;

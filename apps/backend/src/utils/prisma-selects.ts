@@ -609,7 +609,8 @@ export const licenseRenewalApprovalTargetSelect = {
     select: {
       category: true,
       clubName: true,
-      license: { select: { number: true, validUntil: true } },
+      // `id`: the number a renewal replaces is retired against it (#466).
+      license: { select: { id: true, number: true, validUntil: true } },
     },
   },
 } as const;
@@ -637,6 +638,20 @@ export const userNameSelect = {
   id: true,
   firstName: true,
   lastName: true,
+} as const;
+
+/**
+ * Licence résolue au check-in par QR : son id (comparé à celui que porte un QR
+ * signé v2, #466) et le nom de son titulaire.
+ */
+export const checkInLicenseSelect = {
+  id: true,
+  user: { select: userNameSelect },
+} as const;
+
+/** Existence d'un numéro de licence retiré (clé primaire seule, #466). */
+export const retiredLicenseNumberSelect = {
+  number: true,
 } as const;
 
 /** Licence telle que la file de modération l'affiche : numéro et validité. */
@@ -804,6 +819,8 @@ export const trackCorrectionMineSelect = {
 export const trackCorrectionDecisionSelect = {
   id: true,
   trackId: true,
+  // DELETE (#446) is approved by hiding the track, not by a patch.
+  reason: true,
   status: true,
   proposedById: true,
   proposedTitle: true,
@@ -821,6 +838,8 @@ export const trackCorrectionDecisionSelect = {
  * Track fields an approved correction may change, read just before and just
  * after the update inside the decision transaction: the audit row then holds
  * what was really applied (MPM recalculated on a dance change, sorted clashes).
+ * `blacklisted` is what an approved deletion request (#446) changes; only the
+ * fields that differ are logged, so it stays out of the other approvals.
  */
 export const trackCorrectionAuditTrackSelect = {
   title: true,
@@ -828,6 +847,17 @@ export const trackCorrectionAuditTrackSelect = {
   style: true,
   bpm: true,
   clashTimecodes: true,
+  blacklisted: true,
+} as const;
+
+/**
+ * The other pending proposals of a track removed from the library by an
+ * approved deletion request (#446): rejected in the same transaction, then
+ * their authors are told.
+ */
+export const trackCorrectionSupersededSelect = {
+  id: true,
+  proposedById: true,
 } as const;
 
 /**

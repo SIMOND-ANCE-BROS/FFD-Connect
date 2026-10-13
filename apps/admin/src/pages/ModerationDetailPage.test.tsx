@@ -95,7 +95,7 @@ const setTime = (audio: HTMLAudioElement, seconds: number) =>
     value: seconds,
   });
 
-async function submitDecision(decision: 'Approuver' | 'Refuser') {
+async function submitDecision(decision: string) {
   await user.click(screen.getByRole('button', { name: decision }));
   const dialog = await screen.findByRole('dialog');
   await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
@@ -201,6 +201,32 @@ describe('ModerationDetailPage', () => {
     });
     await screen.findByLabelText('MPM');
     expect(screen.getByRole('button', { name: 'Marquer ici' })).toBeInTheDocument();
+  });
+
+  it('a deletion request explains the hiding and approves with no value (#446)', async () => {
+    const pendingDelete = {
+      ...pendingMpm,
+      reason: 'DELETE',
+      message: 'Doublon de la version courte',
+      proposed: { title: null, artist: null, style: null, bpm: null, clashTimecodes: null },
+      resultingBpm: 60,
+    };
+    const approve = vi
+      .spyOn(sdk, 'trackCorrectionsControllerApprove')
+      .mockResolvedValue(ok(decided('APPROVED', pendingDelete)) as never);
+    renderPage(pendingDelete);
+
+    expect(await screen.findByText('Proposition de suppression')).toBeInTheDocument();
+    expect(screen.getByText('Doublon de la version courte')).toBeInTheDocument();
+    // Nothing to compare nor to edit: the request carries no value.
+    expect(screen.queryByText('Valeurs à appliquer')).not.toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Proposé' })).not.toBeInTheDocument();
+    // The track can still be heard before deciding.
+    expect(screen.getByLabelText('Lecteur de la musique')).toBeInTheDocument();
+
+    const dialog = await submitDecision('Approuver et retirer la musique');
+    expect(dialog).toHaveTextContent('sera retirée de la bibliothèque');
+    expect(approve).toHaveBeenCalledWith({ path: { id: 'c1' }, body: {} });
   });
 
   it('places a clash from the player time and sends the list', async () => {

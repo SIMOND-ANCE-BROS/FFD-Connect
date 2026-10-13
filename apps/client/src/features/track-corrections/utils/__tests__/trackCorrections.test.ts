@@ -10,6 +10,7 @@ import {
   formatClashTimePrecise,
   formatCorrectionDate,
   isDanceOnlyChange,
+  isDeletionRequest,
   parseClashList,
   parseMpm,
   reasonLabel,
@@ -180,10 +181,17 @@ describe("libellés", () => {
       "DANCE",
       "MPM",
       "OTHER",
+      "DELETE",
     ]);
     expect(CORRECTION_REASONS.find((r) => r.value === "DANCE")?.label).toBe(
       "Danse (catégorie)",
     );
+    // #446 : libellé d'action dans le formulaire, libellé neutre ailleurs.
+    expect(CORRECTION_REASONS.find((r) => r.value === "DELETE")?.label).toBe(
+      "Proposer la suppression",
+    );
+    expect(isDeletionRequest({ reason: "DELETE" })).toBe(true);
+    expect(isDeletionRequest({ reason: "OTHER" })).toBe(false);
   });
 
   it("formate une date, vide si invalide", () => {

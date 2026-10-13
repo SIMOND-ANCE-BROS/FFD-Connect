@@ -159,6 +159,37 @@ describe("AppleWalletPassGenerator", () => {
       ]);
     });
 
+    it("binds the barcode to the licence id, so a renamed licence gets a new QR in the same pass (#466)", () => {
+      const message = JSON.parse(passJson.barcodes[0].message) as {
+        v: number;
+        id: string;
+        lid: string;
+      };
+      expect(message).toMatchObject({
+        v: 2,
+        id: "FFD-000123",
+        lid: "license-uuid-1",
+      });
+
+      const renamed = { ...license, number: "FFD-000999" };
+      const renamedPass = JSON.parse(
+        readPkpassEntries(
+          new AppleWalletPassGenerator(
+            config(testAppleWalletEnv()),
+            qrService(),
+          ).generate(renamed),
+        )["pass.json"].toString("utf8"),
+      ) as ApplePassJson;
+      // Same serial ⇒ Wallet replaces the old pass; its QR is the new one.
+      expect(renamedPass.serialNumber).toBe(passJson.serialNumber);
+      expect(renamedPass.barcodes[0].message).toBe(
+        buildSignedLicenseQr(renamed, QR_SECRET),
+      );
+      expect(renamedPass.barcodes[0].message).not.toBe(
+        passJson.barcodes[0].message,
+      );
+    });
+
     it("expires at the end of the validity day in Paris, with a stable serial", () => {
       // 2027-08-30T22:00Z is 2027-08-31 00:00 in Paris → ends 2027-08-31T22:00Z.
       expect(passJson.expirationDate).toBe("2027-08-31T22:00:00.000Z");

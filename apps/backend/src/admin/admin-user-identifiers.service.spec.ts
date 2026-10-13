@@ -206,6 +206,14 @@ describe("AdminUserIdentifiersService", () => {
         data: { number: "FFD-2" },
         select: { id: true },
       });
+      // #466: the previous number is retired, so a QR bound to the number
+      // alone can never designate whoever gets it next.
+      expect(prisma.retiredLicenseNumber.upsert).toHaveBeenCalledWith({
+        where: { number: "FFD-1" },
+        create: { number: "FFD-1", licenseId: "l1" },
+        update: { licenseId: "l1", retiredAt: expect.any(Date) },
+        select: { number: true },
+      });
       expect(prisma.user.update).not.toHaveBeenCalled();
       expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
       expect(audit.record).toHaveBeenCalledWith(prisma, {
@@ -225,7 +233,19 @@ describe("AdminUserIdentifiersService", () => {
         service.update("admin-1", "u1", { licenseNumber: "FFD-2" }),
       ).rejects.toEqual(new ConflictException(LICENSE_NUMBER_TAKEN));
       expect(prisma.license.update).not.toHaveBeenCalled();
+      expect(prisma.retiredLicenseNumber.upsert).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
+    });
+
+    it("re-retires a number already retired once (rename back and forth)", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...current,
+        license: { id: "l1", number: "FFD-3" },
+      } as never);
+      await service.update("admin-1", "u1", { licenseNumber: "FFD-1" });
+      expect(prisma.retiredLicenseNumber.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { number: "FFD-3" } }),
+      );
     });
 
     it("refuses a number on an account without a licence", async () => {
@@ -248,6 +268,7 @@ describe("AdminUserIdentifiersService", () => {
     it("writes nothing when the number is unchanged", async () => {
       await service.update("admin-1", "u1", { licenseNumber: "FFD-1" });
       expect(prisma.license.findUnique).not.toHaveBeenCalled();
+      expect(prisma.retiredLicenseNumber.upsert).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
     });
   });

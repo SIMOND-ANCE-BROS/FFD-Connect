@@ -64,7 +64,9 @@ Informational (non-blocking): `playwright-e2e`, `mutation` (Stryker). Weekly `mu
 
 Branches cascade: `develop` (default, target of feature PRs) → `staging` → `master`. Promotions are merges up the cascade — never cherry-picks, never force-pushes.
 
-**A merged remote branch must be deleted.** Merge feature PRs with `gh pr merge <n> --squash --delete-branch`; if a remote branch is found merged but still present, delete it (`git push origin --delete <branch>`) along with its local branch and worktree. Exception: never delete `develop`, `staging` or `master` — they are the head of promotion PRs, so never pass `--delete-branch` when merging a promotion.
+**Merge queue on `develop`** (#493, active since 2026-10-13, see `docs/exploitation/ci-cd-minimal.md`): feature PRs land with `gh pr merge <n> --auto` — the queue squashes and re-runs CI on the combined commit before it lands. `gh` refuses `--delete-branch` with a queue and ignores `--squash`/`--body` (the squash message is the PR title + body, so the PR's `Refs`/`Closes` are what count). Merge-back PRs (`staging`/`master` → `develop`) never go through the queue: an admin merges them with `gh pr merge <n> --merge --admin` once `CI Success` is green, so they stay true merge commits.
+
+**A merged remote branch must be deleted** (automatic with the queue: repo setting « Automatically delete head branches »). If a remote branch is found merged but still present, delete it (`git push origin --delete <branch>`) along with its local branch and worktree. Exception: never delete `develop`, `staging` or `master` — they are the head of promotion PRs, so never pass `--delete-branch` when merging a promotion.
 
 | Branch    | Deploys (after CI passes)                                          |
 | --------- | ------------------------------------------------------------------ |

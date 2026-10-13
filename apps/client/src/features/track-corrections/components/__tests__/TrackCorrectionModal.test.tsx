@@ -73,9 +73,47 @@ describe("TrackCorrectionModal", () => {
     // Les clashs ont leur parcours dédié dans le lecteur (#445).
     expect(queryByTestId("correction-reason-PASO_CLASH")).toBeNull();
     expect(queryByText("Clashs paso doble")).toBeNull();
-    for (const reason of ["TITLE", "ARTIST", "DANCE", "MPM", "OTHER"]) {
+    for (const reason of [
+      "TITLE",
+      "ARTIST",
+      "DANCE",
+      "MPM",
+      "OTHER",
+      "DELETE",
+    ]) {
       expect(getByTestId(`correction-reason-${reason}`)).toBeTruthy();
     }
+    expect(getByText("Proposer la suppression")).toBeTruthy();
+  });
+
+  it("suppression : exige un motif, puis envoie la demande sans valeur (#446)", async () => {
+    const { getByTestId, getByText } = await renderModal();
+    await fireEvent.press(getByTestId("correction-reason-DELETE"));
+    expect(getByTestId("correction-delete-info")).toBeTruthy();
+    expect(
+      getByText("Pourquoi retirer cette musique ? (obligatoire)"),
+    ).toBeTruthy();
+
+    await fireEvent.changeText(getByTestId("correction-message-input"), "   ");
+    await fireEvent.press(getByTestId("correction-submit-button"));
+    expect(createMock).not.toHaveBeenCalled();
+    expect(Alert.alert).toHaveBeenCalledWith(
+      "Proposition incomplète",
+      expect.stringContaining("pourquoi retirer cette musique"),
+    );
+
+    await fireEvent.changeText(
+      getByTestId("correction-message-input"),
+      " Doublon de la version courte ",
+    );
+    await fireEvent.press(getByTestId("correction-submit-button"));
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith({
+        trackId: "track-1",
+        reason: "DELETE",
+        message: "Doublon de la version courte",
+      }),
+    );
   });
 
   it("n'envoie rien tant qu'aucun motif n'est choisi", async () => {

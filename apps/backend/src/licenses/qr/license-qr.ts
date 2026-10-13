@@ -1,14 +1,21 @@
 import { createHmac, timingSafeEqual } from "crypto";
 
 /**
- * Signed license QR code (#168).
+ * Signed license QR code (#168, bound to the licence itself since #466).
  *
  * The QR content is a compact JSON object:
  *
- *   {"v":1,"id":"<license number>","exp":"YYYY-MM-DD","sig":"<base64url>"}
+ *   {"v":2,"id":"<license number>","lid":"<license id>","exp":"YYYY-MM-DD","sig":"<base64url>"}
  *
  * - `id` keeps the key the check-in has always read, so a backend that does
  *   not know about signatures still resolves a signed QR.
+ * - `lid` (v2) is the internal licence id, stable when an administrator
+ *   renames the licence number (#448). The check-in only accepts the QR for
+ *   the licence it was issued for: a number renamed then reassigned to
+ *   someone else never resolves to its new holder (#466).
+ * - v1 (`{"v":1,"id","exp","sig"}`, no `lid`) is still verified during the
+ *   transition — it expires with the licence season — but is only bound to
+ *   the number: the check-in applies the retired-number guard to it.
  * - `exp` is the license end-of-validity date, as a calendar day in
  *   Europe/Paris (the federation's time zone). The QR stays valid until the
  *   end of that day in Paris: it is meant to be copied as-is into a static
@@ -26,12 +33,19 @@ import { createHmac, timingSafeEqual } from "crypto";
  * otherwise its signatures will not verify.
  */
 
-export const LICENSE_QR_VERSION = 1;
+/** Version produced today: binds the licence id (#466). */
+export const LICENSE_QR_VERSION = 2;
+
+/** Number-only signed QR (#168), still verified until it expires. */
+export const LEGACY_LICENSE_QR_VERSION = 1;
 
 /** Domain separator: a signature made for another purpose can never match. */
 const LICENSE_QR_DOMAIN = "ffd-license-qr";
 
 const EXPIRY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Licence ids are UUIDs; anything longer is not a QR we issued. */
+const LICENSE_ID_MAX_LENGTH = 64;
 
 /** Unpadded base64url of a 32-byte HMAC-SHA256 digest. */
 const SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -115,6 +129,8 @@ function isCalendarDay(day: string): boolean {
 }
 
 export interface LicenseQrSubject {
+  /** Internal licence id: stable across a number change (#466). */
+  id: string;
   /** License number (the identifier the check-in resolves). */
   number: string;
   /** End of validity of the license. */
@@ -123,7 +139,10 @@ export interface LicenseQrSubject {
 
 export interface SignedLicenseQrPayload {
   v: number;
+  /** License number. */
   id: string;
+  /** Licence id — v2 only, never read from a v1 QR (not signed there). */
+  lid?: string;
   exp: string;
   sig: string;
 }
@@ -140,13 +159,25 @@ export function toLicenseQrExpiry(validUntil: Date): string {
 /**
  * Canonical string covered by the signature. JSON array encoding makes the
  * field boundaries unambiguous whatever characters the license number holds.
+ * v1 covers version + number + expiry; v2 adds the licence id. The version is
+ * part of the content, so a v1 signature can never pass for a v2 one.
  */
 export function canonicalLicenseQrContent(
   version: number,
   licenseNumber: string,
   expiry: string,
+  licenseId?: string,
 ): string {
-  return JSON.stringify([LICENSE_QR_DOMAIN, version, licenseNumber, expiry]);
+  if (version === LEGACY_LICENSE_QR_VERSION) {
+    return JSON.stringify([LICENSE_QR_DOMAIN, version, licenseNumber, expiry]);
+  }
+  return JSON.stringify([
+    LICENSE_QR_DOMAIN,
+    version,
+    licenseNumber,
+    licenseId ?? null,
+    expiry,
+  ]);
 }
 
 function computeSignature(content: string, secret: string): Buffer {
@@ -160,12 +191,18 @@ export function buildSignedLicenseQr(
 ): string {
   const exp = toLicenseQrExpiry(subject.validUntil);
   const sig = computeSignature(
-    canonicalLicenseQrContent(LICENSE_QR_VERSION, subject.number, exp),
+    canonicalLicenseQrContent(
+      LICENSE_QR_VERSION,
+      subject.number,
+      exp,
+      subject.id,
+    ),
     secret,
   ).toString("base64url");
   const payload: SignedLicenseQrPayload = {
     v: LICENSE_QR_VERSION,
     id: subject.number,
+    lid: subject.id,
     exp,
     sig,
   };
@@ -213,7 +250,7 @@ export function parseLicenseQr(qrData: string): ParsedLicenseQr {
     return { kind: "unsigned", identifier: id || qrData };
   }
 
-  const { v, exp, sig } = parsed;
+  const { v, exp, sig, lid } = parsed;
   if (
     typeof v !== "number" ||
     typeof exp !== "string" ||
@@ -222,13 +259,24 @@ export function parseLicenseQr(qrData: string): ParsedLicenseQr {
   ) {
     return { kind: "malformed-signed", identifier: id };
   }
-  return { kind: "signed", identifier: id, payload: { v, id, exp, sig } };
+  if (v === LEGACY_LICENSE_QR_VERSION) {
+    // A `lid` slipped into a v1 QR is not covered by its signature: dropped.
+    return { kind: "signed", identifier: id, payload: { v, id, exp, sig } };
+  }
+  if (
+    typeof lid !== "string" ||
+    lid === "" ||
+    lid.length > LICENSE_ID_MAX_LENGTH
+  ) {
+    return { kind: "malformed-signed", identifier: id };
+  }
+  return { kind: "signed", identifier: id, payload: { v, id, lid, exp, sig } };
 }
 
 export type SignedLicenseQrStatus = "VALID" | "INVALID_SIGNATURE" | "EXPIRED";
 
 /**
- * Verifies a signed payload: version, signature format and value
+ * Verifies a signed payload: version (v1 or v2), signature format and value
  * (constant-time), then expiry — the QR is valid until the end of the `exp`
  * day in Europe/Paris. A wrong signature always wins over expiry: an attacker
  * learns nothing.
@@ -239,14 +287,16 @@ export function verifySignedLicenseQr(
   now: Date = new Date(),
 ): SignedLicenseQrStatus {
   if (
-    payload.v !== LICENSE_QR_VERSION ||
+    (payload.v !== LICENSE_QR_VERSION &&
+      payload.v !== LEGACY_LICENSE_QR_VERSION) ||
+    (payload.v === LICENSE_QR_VERSION && !payload.lid) ||
     !EXPIRY_PATTERN.test(payload.exp) ||
     !SIGNATURE_PATTERN.test(payload.sig)
   ) {
     return "INVALID_SIGNATURE";
   }
   const expected = computeSignature(
-    canonicalLicenseQrContent(payload.v, payload.id, payload.exp),
+    canonicalLicenseQrContent(payload.v, payload.id, payload.exp, payload.lid),
     secret,
   );
   const provided = Buffer.from(payload.sig, "base64url");

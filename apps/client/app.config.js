@@ -213,6 +213,30 @@ if (!FIREBASE_ENABLED) {
   }
 }
 
+// --- Signature des OTA (EAS Update code signing, #476) ------------------------
+// Les variantes qui reçoivent des OTA par channel embarquent le certificat
+// ci-dessous : l'app vérifie chaque mise à jour contre lui et REFUSE toute OTA
+// non signée ou signée par une autre clé. Sans cela, un jeton Expo volé suffit à
+// publier du JavaScript arbitraire sur preview, beta ou production.
+// Conséquences :
+// - le certificat entre dans l'empreinte native : l'ajouter (ou le changer)
+//   exige un nouveau build natif par canal ;
+// - à partir de ces builds, CHAQUE `eas update` vers preview / beta /
+//   production doit passer `--private-key-path` (la CI lit la clé dans le secret
+//   d'environnement GitHub EXPO_UPDATES_PRIVATE_KEY). Une OTA non signée est
+//   publiée sans erreur… puis rejetée par les nouveaux binaires.
+// - development (dev client) n'en a pas : il charge surtout des bundles Metro
+//   non signés, et son channel n'est installé que chez les développeurs.
+// Certificat auto-signé valable jusqu'au 2036-10-12 ; rotation :
+// docs/exploitation/signature-ota.md. La clé privée n'est JAMAIS dans le dépôt.
+const OTA_SIGNED_VARIANTS = new Set(["preview", "beta", "production"]);
+const OTA_CODE_SIGNING = OTA_SIGNED_VARIANTS.has(APP_ENV)
+  ? {
+      codeSigningCertificate: "./certs/certificate.pem",
+      codeSigningMetadata: { keyid: "main", alg: "rsa-v1_5-sha256" },
+    }
+  : {};
+
 module.exports = {
   expo: {
     name: APP_NAME,
@@ -242,6 +266,7 @@ module.exports = {
     runtimeVersion: { policy: "fingerprint" },
     updates: {
       url: "https://u.expo.dev/1138b975-113e-4fac-a7c8-f82fd5eef296",
+      ...OTA_CODE_SIGNING,
     },
     ios: {
       supportsTablet: true,

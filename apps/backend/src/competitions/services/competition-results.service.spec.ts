@@ -1,9 +1,15 @@
 import { BadRequestException, Logger, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
-import { createHash } from "crypto";
-import { buildSignedLicenseQr } from "../../licenses/qr/license-qr";
-import { LicenseQrService } from "../../licenses/qr/license-qr.service";
+import { createHash, createHmac } from "crypto";
+import {
+  buildSignedLicenseQr,
+  toLicenseQrExpiry,
+} from "../../licenses/qr/license-qr";
+import {
+  LicenseQrService,
+  STALE_LICENSE_QR_MESSAGE,
+} from "../../licenses/qr/license-qr.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import {
@@ -465,6 +471,7 @@ describe("CompetitionResultsService", () => {
 
   describe("checkIn — signed license QR (#168)", () => {
     const license = {
+      id: "lic-1",
       number: "FFD-123456",
       validUntil: new Date(Date.now() + 30 * 86_400_000),
     };
@@ -492,7 +499,9 @@ describe("CompetitionResultsService", () => {
 
     function mockLicenseHolder() {
       mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockPrismaService.retiredLicenseNumber.findUnique.mockResolvedValue(null);
       mockPrismaService.license.findUnique.mockResolvedValue({
+        id: "lic-1",
         user: { id: "u1", firstName: "John", lastName: "Doe" },
       });
       mockPrismaService.registration.findMany.mockResolvedValue([
@@ -573,6 +582,250 @@ describe("CompetitionResultsService", () => {
       expect(result.qrVerification.status).toBe("INVALID_SIGNATURE");
       expect(result.qrVerification.warning).toBe(
         "QR non vérifié : signature invalide",
+      );
+    });
+  });
+
+  describe("checkIn — licence number changed after the QR was issued (#466)", () => {
+    const validUntil = new Date(Date.now() + 30 * 86_400_000);
+    /** QR issued for licence lic-1 while it carried FFD-123456. */
+    const issuedQr = buildSignedLicenseQr(
+      { id: "lic-1", number: "FFD-123456", validUntil },
+      QR_SECRET,
+    );
+    /** Same licence after the rename: the app shows this one now. */
+    const renewedQr = buildSignedLicenseQr(
+      { id: "lic-1", number: "FFD-654321", validUntil },
+      QR_SECRET,
+    );
+    const exp = toLicenseQrExpiry(validUntil);
+    /** Number-only v1 QR issued before #466, signed independently. */
+    const v1Qr = JSON.stringify({
+      v: 1,
+      id: "FFD-123456",
+      exp,
+      sig: createHmac("sha256", QR_SECRET)
+        .update(JSON.stringify(["ffd-license-qr", 1, "FFD-123456", exp]))
+        .digest("base64url"),
+    });
+    const unsignedQr = JSON.stringify({
+      id: "FFD-123456",
+      name: "DOE John",
+      valid: true,
+      type: "FFD",
+    });
+    const original = {
+      id: "lic-1",
+      user: { id: "u1", firstName: "John", lastName: "Doe" },
+    };
+    const newHolder = {
+      id: "lic-2",
+      user: { id: "u2", firstName: "Jane", lastName: "Roe" },
+    };
+    let warnSpy: jest.SpyInstance;
+
+    function serviceWithMode(mode: "off" | "warn" | "enforce") {
+      return new CompetitionResultsService(
+        mockPrismaService as unknown as PrismaService,
+        mockRedisService as unknown as RedisService,
+        mockCacheService as unknown as CompetitionCacheService,
+        makeQrService({
+          QR_SIGNING_SECRET: QR_SECRET,
+          QR_SIGNATURE_MODE: mode,
+        }),
+      );
+    }
+
+    /** Licences by number and by id, as the database would answer. */
+    function mockLicences(
+      byNumber: Partial<Record<string, typeof original>>,
+      byId: Partial<Record<string, typeof original>>,
+    ) {
+      mockPrismaService.license.findUnique.mockImplementation(
+        (args: { where: { number?: string; id?: string } }) =>
+          Promise.resolve(
+            (args.where.number !== undefined
+              ? byNumber[args.where.number]
+              : byId[args.where.id ?? ""]) ?? null,
+          ),
+      );
+    }
+
+    function mockRetired(numbers: string[]) {
+      mockPrismaService.retiredLicenseNumber.findUnique.mockImplementation(
+        (args: { where: { number: string } }) =>
+          Promise.resolve(
+            numbers.includes(args.where.number)
+              ? { number: args.where.number }
+              : null,
+          ),
+      );
+    }
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      warnSpy = jest.spyOn(Logger.prototype, "warn").mockImplementation();
+      mockPrismaService.user.findUnique.mockResolvedValue(null);
+      mockPrismaService.registration.findMany.mockResolvedValue([
+        {
+          id: "r1",
+          feePaid: true,
+          checkedIn: false,
+          event: { category: "Latin" },
+        },
+      ]);
+      mockPrismaService.registration.updateMany.mockResolvedValue({
+        count: 1,
+      });
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    describe("rename only (old number now unused)", () => {
+      beforeEach(() => {
+        mockLicences(
+          { "FFD-654321": original },
+          { "lic-1": original, "lic-2": newHolder },
+        );
+        mockRetired(["FFD-123456"]);
+      });
+
+      it("refuses the QR issued before the rename (enforce)", async () => {
+        await expect(
+          serviceWithMode("enforce").checkIn("c1", issuedQr),
+        ).rejects.toThrow(STALE_LICENSE_QR_MESSAGE);
+        expect(
+          mockPrismaService.registration.updateMany,
+        ).not.toHaveBeenCalled();
+      });
+
+      it("checks in the licence holder with a warning (warn)", async () => {
+        const result = await serviceWithMode("warn").checkIn("c1", issuedQr);
+
+        expect(result.user).toEqual({ firstName: "John", lastName: "Doe" });
+        expect(result.registrations[0].status).toBe("SUCCESS");
+        expect(result.qrVerification).toEqual({
+          mode: "warn",
+          status: "LICENSE_MISMATCH",
+          warning:
+            "QR non vérifié : numéro de licence modifié depuis l'émission du QR",
+        });
+        expect(mockPrismaService.license.findUnique).toHaveBeenLastCalledWith({
+          where: { id: "lic-1" },
+          select: expect.anything(),
+        });
+      });
+
+      it("accepts the QR regenerated after the rename", async () => {
+        const result = await serviceWithMode("enforce").checkIn(
+          "c1",
+          renewedQr,
+        );
+        expect(result.qrVerification.status).toBe("VALID");
+        expect(result.registrations[0].status).toBe("SUCCESS");
+      });
+    });
+
+    describe("old number reassigned to another licence", () => {
+      beforeEach(() => {
+        mockLicences(
+          { "FFD-123456": newHolder, "FFD-654321": original },
+          { "lic-1": original, "lic-2": newHolder },
+        );
+        mockRetired(["FFD-123456"]);
+      });
+
+      it("never checks in the new holder with an earlier v2 QR (enforce)", async () => {
+        await expect(
+          serviceWithMode("enforce").checkIn("c1", issuedQr),
+        ).rejects.toThrow(BadRequestException);
+        expect(mockPrismaService.registration.findMany).not.toHaveBeenCalled();
+      });
+
+      it("never checks in the new holder with an earlier v2 QR (warn)", async () => {
+        const result = await serviceWithMode("warn").checkIn("c1", issuedQr);
+
+        // The licence the QR was issued for, not the number's new holder.
+        expect(result.user).toEqual({ firstName: "John", lastName: "Doe" });
+        expect(result.qrVerification.status).toBe("LICENSE_MISMATCH");
+        expect(mockPrismaService.registration.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({ userId: "u1" }),
+          }),
+        );
+      });
+
+      it("finds nobody when the original licence is gone (warn)", async () => {
+        mockLicences({ "FFD-123456": newHolder }, { "lic-2": newHolder });
+        await expect(
+          serviceWithMode("warn").checkIn("c1", issuedQr),
+        ).rejects.toThrow(NotFoundException);
+        expect(mockPrismaService.registration.findMany).not.toHaveBeenCalled();
+      });
+
+      it.each(["warn", "enforce"] as const)(
+        "refuses a number-only v1 QR for the retired number (%s)",
+        async (mode) => {
+          await expect(
+            serviceWithMode(mode).checkIn("c1", v1Qr),
+          ).rejects.toThrow(STALE_LICENSE_QR_MESSAGE);
+          expect(
+            mockPrismaService.registration.findMany,
+          ).not.toHaveBeenCalled();
+        },
+      );
+
+      it("refuses a legacy unsigned QR for the retired number (warn)", async () => {
+        await expect(
+          serviceWithMode("warn").checkIn("c1", unsignedQr),
+        ).rejects.toThrow(STALE_LICENSE_QR_MESSAGE);
+        expect(mockPrismaService.registration.findMany).not.toHaveBeenCalled();
+      });
+
+      it("checks in the new holder with their own v2 QR", async () => {
+        const holderQr = buildSignedLicenseQr(
+          { id: "lic-2", number: "FFD-123456", validUntil },
+          QR_SECRET,
+        );
+        const result = await serviceWithMode("enforce").checkIn("c1", holderQr);
+        expect(result.user).toEqual({ firstName: "Jane", lastName: "Roe" });
+        expect(result.qrVerification.status).toBe("VALID");
+      });
+
+      it("does not consult retired numbers when verification is off", async () => {
+        const result = await serviceWithMode("off").checkIn("c1", unsignedQr);
+        expect(result.qrVerification.status).toBe("NOT_CHECKED");
+        expect(
+          mockPrismaService.retiredLicenseNumber.findUnique,
+        ).not.toHaveBeenCalled();
+      });
+    });
+
+    describe("transition: v1 QR of a number never renamed", () => {
+      beforeEach(() => {
+        mockLicences({ "FFD-123456": original }, { "lic-1": original });
+        mockRetired([]);
+      });
+
+      it.each(["warn", "enforce"] as const)(
+        "is still accepted until it expires (%s)",
+        async (mode) => {
+          const result = await serviceWithMode(mode).checkIn("c1", v1Qr);
+          expect(result.user).toEqual({ firstName: "John", lastName: "Doe" });
+          expect(result.qrVerification).toEqual({
+            mode,
+            status: "VALID",
+            warning: null,
+          });
+          expect(
+            mockPrismaService.retiredLicenseNumber.findUnique,
+          ).toHaveBeenCalledWith({
+            where: { number: "FFD-123456" },
+            select: { number: true },
+          });
+        },
       );
     });
   });

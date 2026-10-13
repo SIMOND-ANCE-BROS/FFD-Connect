@@ -14,6 +14,17 @@ model License {
   @@index([userId])
 }
 
+/// Numéro de licence retiré par un changement de numéro (#448, #466).
+/// Un QR qui ne lie que le numéro (v1 signé, ancien QR non signé) n'est plus
+/// accepté pour un numéro présent ici : il a pu être réattribué à une autre
+/// personne. Pas de clé étrangère : la ligne survit à la licence.
+model RetiredLicenseNumber {
+  number    String   @id
+  /// Licence qui portait ce numéro (null si inconnue lors de la reprise).
+  licenseId String?
+  retiredAt DateTime @default(now())
+}
+
 /// Statut d'une demande de renouvellement de licence.
 enum LicenseRenewalStatus {
   DRAFT    // Brouillon : documents en cours d'ajout
