@@ -181,6 +181,7 @@ Précisions :
 - La clé est lue après suppression des espaces en début et fin (`.trim()`). Tout autre générateur de QR (passe Wallet) doit utiliser la même valeur nettoyée.
 - Le QR est valable jusqu'à la fin du jour d'expiration de la licence, **à l'heure de Paris**.
 - **`enforce` exige un `QR_SIGNING_SECRET` d'au moins 32 caractères** : sans lui, le backend refuse de démarrer (erreur explicite) au lieu de refuser silencieusement tous les check-ins. `off` et `warn` sans secret démarrent normalement (mode `off` de fait).
+- Le QR v2 (#466) lie aussi l'identifiant interne de la licence : un QR émis avant un changement de numéro est signalé (`warn`) ou refusé (`enforce`), et un QR lié au seul numéro (v1, non signé) est refusé pour un numéro retiré. Les QR v1 restent acceptés jusqu'à leur expiration. Formats et transition : [runbook](../exploitation/qr-licence-signe.md).
 - **Avant de passer en `enforce`**, chaque utilisateur doit avoir mis à jour l'app **et rouvert sa licence en ligne** au moins une fois : le QR signé n'est mis en cache (E-Licence hors ligne) qu'à ce moment-là. Sinon il présentera encore l'ancien QR non signé, refusé en `enforce`. Rester en `warn` pendant la transition et surveiller les avertissements « QR non vérifié » au check-in.
 
 ## Pass Apple Wallet de la licence (#162)

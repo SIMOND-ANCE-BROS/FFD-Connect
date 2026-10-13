@@ -609,7 +609,8 @@ export const licenseRenewalApprovalTargetSelect = {
     select: {
       category: true,
       clubName: true,
-      license: { select: { number: true, validUntil: true } },
+      // `id`: the number a renewal replaces is retired against it (#466).
+      license: { select: { id: true, number: true, validUntil: true } },
     },
   },
 } as const;
@@ -637,6 +638,20 @@ export const userNameSelect = {
   id: true,
   firstName: true,
   lastName: true,
+} as const;
+
+/**
+ * Licence résolue au check-in par QR : son id (comparé à celui que porte un QR
+ * signé v2, #466) et le nom de son titulaire.
+ */
+export const checkInLicenseSelect = {
+  id: true,
+  user: { select: userNameSelect },
+} as const;
+
+/** Existence d'un numéro de licence retiré (clé primaire seule, #466). */
+export const retiredLicenseNumberSelect = {
+  number: true,
 } as const;
 
 /** Licence telle que la file de modération l'affiche : numéro et validité. */

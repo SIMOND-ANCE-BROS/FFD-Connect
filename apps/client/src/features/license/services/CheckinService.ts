@@ -18,8 +18,9 @@ export interface CheckinResponse {
   }[];
   /**
    * Vérification du QR signé (#168). `warning` non nul = QR accepté mais non
-   * vérifié (ancien QR, signature invalide, licence expirée) : à montrer au
-   * staff. Absent sur un backend ancien.
+   * vérifié (ancien QR, signature invalide, licence expirée, numéro de
+   * licence modifié depuis l'émission du QR — #466) : à montrer au staff.
+   * Absent sur un backend ancien.
    */
   qrVerification?: {
     mode: "off" | "warn" | "enforce";
@@ -28,7 +29,8 @@ export interface CheckinResponse {
       | "VALID"
       | "UNSIGNED"
       | "INVALID_SIGNATURE"
-      | "EXPIRED";
+      | "EXPIRED"
+      | "LICENSE_MISMATCH";
     warning: string | null;
   };
 }
