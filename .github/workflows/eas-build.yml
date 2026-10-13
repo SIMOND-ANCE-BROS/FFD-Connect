@@ -585,6 +585,41 @@ jobs:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
+      # OTA code signing (#476, docs/exploitation/signature-ota.md): binaries
+      # embedding apps/client/certs/certificate.pem REJECT unsigned OTAs. Driven
+      # by the checked-out commit: certificate present → key mandatory (fail
+      # closed) and checked against it; absent (ref not promoted yet) → nothing
+      # to sign for. Inline, not a script: the checkout is the published ref,
+      # which may predate any helper. The key only exists as a 0600 file under
+      # $RUNNER_TEMP; the secret reaches this step alone and is never printed.
+      - name: Load OTA signing key
+        env:
+          EXPO_UPDATES_PRIVATE_KEY: ${{ secrets.EXPO_UPDATES_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          CERT=apps/client/certs/certificate.pem
+          if [ ! -f "$CERT" ]; then
+            echo "::notice::No $CERT in this commit: OTA published unsigned (its binaries do not verify signatures)."
+            exit 0
+          fi
+          if [ -z "$EXPO_UPDATES_PRIVATE_KEY" ]; then
+            echo "::error::Secret EXPO_UPDATES_PRIVATE_KEY missing from this job's environment: binaries embedding $CERT reject unsigned OTAs. Not publishing."
+            exit 1
+          fi
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ota-signing"
+          KEY="$RUNNER_TEMP/ota-signing/private-key.pem"
+          printf '%s\n' "$EXPO_UPDATES_PRIVATE_KEY" > "$KEY"
+          # Public-key hashes only: nothing secret reaches the log.
+          KEY_PUB=$(openssl pkey -in "$KEY" -pubout 2> /dev/null | openssl sha256) || KEY_PUB=invalid
+          CERT_PUB=$(openssl x509 -in "$CERT" -noout -pubkey | openssl sha256)
+          if [ "$KEY_PUB" != "$CERT_PUB" ]; then
+            rm -f "$KEY"
+            echo "::error::EXPO_UPDATES_PRIVATE_KEY does not match $CERT: an OTA signed with it would be rejected. Not publishing."
+            exit 1
+          fi
+          echo "OTA_PRIVATE_KEY_PATH=$KEY" >> "$GITHUB_ENV"
+
       - name: Publish OTA update
         working-directory: apps/client
         env:
@@ -595,9 +630,14 @@ jobs:
         run: |
           set -euo pipefail
           eas update --branch preview --environment preview --message "$COMMIT_MSG" \
+            ${OTA_PRIVATE_KEY_PATH:+--private-key-path "$OTA_PRIVATE_KEY_PATH"} \
             --json --non-interactive > "$RUNNER_TEMP/eas-update.json"
           # Avertit seulement : build-staging tourne peut-être en parallèle.
           ../../scripts/check-ota-reach.sh preview "$RUNNER_TEMP/eas-update.json"
+
+      - name: Remove OTA signing key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ota-signing"
 
       # One prerelease per preview OTA, so every bundle shipped to the preview
       # app is traceable (commit + changes since the previous preview OTA). The
@@ -1261,6 +1301,42 @@ jobs:
       # SHA-256 sort du runner (résumé + release). Un envoi raté se refait par
       # un nouveau build.
 
+      # OTA code signing (#476, docs/exploitation/signature-ota.md): binaries
+      # embedding apps/client/certs/certificate.pem REJECT unsigned OTAs. Driven
+      # by the checked-out commit: certificate present → key mandatory (fail
+      # closed) and checked against it; absent (ref not promoted yet) → nothing
+      # to sign for. Inline, not a script: the checkout is the published ref,
+      # which may predate any helper. The key only exists as a 0600 file under
+      # $RUNNER_TEMP; the secret reaches this step alone and is never printed.
+      - name: Load OTA signing key
+        if: inputs.action == 'ota'
+        env:
+          EXPO_UPDATES_PRIVATE_KEY: ${{ secrets.EXPO_UPDATES_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          CERT=apps/client/certs/certificate.pem
+          if [ ! -f "$CERT" ]; then
+            echo "::notice::No $CERT in this commit: OTA published unsigned (its binaries do not verify signatures)."
+            exit 0
+          fi
+          if [ -z "$EXPO_UPDATES_PRIVATE_KEY" ]; then
+            echo "::error::Secret EXPO_UPDATES_PRIVATE_KEY missing from this job's environment: binaries embedding $CERT reject unsigned OTAs. Not publishing."
+            exit 1
+          fi
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ota-signing"
+          KEY="$RUNNER_TEMP/ota-signing/private-key.pem"
+          printf '%s\n' "$EXPO_UPDATES_PRIVATE_KEY" > "$KEY"
+          # Public-key hashes only: nothing secret reaches the log.
+          KEY_PUB=$(openssl pkey -in "$KEY" -pubout 2> /dev/null | openssl sha256) || KEY_PUB=invalid
+          CERT_PUB=$(openssl x509 -in "$CERT" -noout -pubkey | openssl sha256)
+          if [ "$KEY_PUB" != "$CERT_PUB" ]; then
+            rm -f "$KEY"
+            echo "::error::EXPO_UPDATES_PRIVATE_KEY does not match $CERT: an OTA signed with it would be rejected. Not publishing."
+            exit 1
+          fi
+          echo "OTA_PRIVATE_KEY_PATH=$KEY" >> "$GITHUB_ENV"
+
       - name: Publish OTA update (beta)
         id: ota
         if: inputs.action == 'ota'
@@ -1289,9 +1365,14 @@ jobs:
           done | jq -s . > "$RUNNER_TEMP/beta-runtime.json"
           ../../scripts/check-ota-reach.sh beta "$RUNNER_TEMP/beta-runtime.json" --strict
           eas update --branch beta --message "promote staging @ $(git rev-parse --short HEAD)" \
+            ${OTA_PRIVATE_KEY_PATH:+--private-key-path "$OTA_PRIVATE_KEY_PATH"} \
             --json --non-interactive > "$RUNNER_TEMP/eas-update.json"
           # Contrôle après coup : l'empreinte publiée est-elle bien celle vérifiée ?
           ../../scripts/check-ota-reach.sh beta "$RUNNER_TEMP/eas-update.json" --strict
+
+      - name: Remove OTA signing key
+        if: always() && inputs.action == 'ota'
+        run: rm -rf "$RUNNER_TEMP/ota-signing"
 
       # Tag & GitHub Release : job release-beta (#477), après ce job, à partir
       # de l'état transmis (numéro de build, commit, empreinte, notes). Ce job
@@ -2275,6 +2356,41 @@ jobs:
           eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
 
+      # OTA code signing (#476, docs/exploitation/signature-ota.md): binaries
+      # embedding apps/client/certs/certificate.pem REJECT unsigned OTAs. Driven
+      # by the checked-out commit: certificate present → key mandatory (fail
+      # closed) and checked against it; absent (ref not promoted yet) → nothing
+      # to sign for. Inline, not a script: the checkout is the published ref,
+      # which may predate any helper. The key only exists as a 0600 file under
+      # $RUNNER_TEMP; the secret reaches this step alone and is never printed.
+      - name: Load OTA signing key
+        env:
+          EXPO_UPDATES_PRIVATE_KEY: ${{ secrets.EXPO_UPDATES_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          CERT=apps/client/certs/certificate.pem
+          if [ ! -f "$CERT" ]; then
+            echo "::notice::No $CERT in this commit: OTA published unsigned (its binaries do not verify signatures)."
+            exit 0
+          fi
+          if [ -z "$EXPO_UPDATES_PRIVATE_KEY" ]; then
+            echo "::error::Secret EXPO_UPDATES_PRIVATE_KEY missing from this job's environment: binaries embedding $CERT reject unsigned OTAs. Not publishing."
+            exit 1
+          fi
+          umask 077
+          mkdir -p "$RUNNER_TEMP/ota-signing"
+          KEY="$RUNNER_TEMP/ota-signing/private-key.pem"
+          printf '%s\n' "$EXPO_UPDATES_PRIVATE_KEY" > "$KEY"
+          # Public-key hashes only: nothing secret reaches the log.
+          KEY_PUB=$(openssl pkey -in "$KEY" -pubout 2> /dev/null | openssl sha256) || KEY_PUB=invalid
+          CERT_PUB=$(openssl x509 -in "$CERT" -noout -pubkey | openssl sha256)
+          if [ "$KEY_PUB" != "$CERT_PUB" ]; then
+            rm -f "$KEY"
+            echo "::error::EXPO_UPDATES_PRIVATE_KEY does not match $CERT: an OTA signed with it would be rejected. Not publishing."
+            exit 1
+          fi
+          echo "OTA_PRIVATE_KEY_PATH=$KEY" >> "$GITHUB_ENV"
+
       - name: Publish OTA update
         working-directory: apps/client
         env:
@@ -2283,6 +2399,11 @@ jobs:
         run: |
           set -euo pipefail
           eas update --branch production --environment production --message "$COMMIT_MSG" \
+            ${OTA_PRIVATE_KEY_PATH:+--private-key-path "$OTA_PRIVATE_KEY_PATH"} \
             --json --non-interactive > "$RUNNER_TEMP/eas-update.json"
           # Avertit seulement : build-production tourne peut-être en parallèle.
           ../../scripts/check-ota-reach.sh production "$RUNNER_TEMP/eas-update.json"
+
+      - name: Remove OTA signing key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/ota-signing"
