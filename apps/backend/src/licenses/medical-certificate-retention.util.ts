@@ -15,10 +15,11 @@
 /**
  * Durée de validité d'un certificat médical, en mois.
  *
- * Même valeur que l'âge maximal accepté à l'upload : le code refuse un
- * certificat plus vieux que ça, ce qui revient à dire qu'il n'est plus valide.
- * Exporté ici pour qu'il n'existe qu'UNE définition de « validité » dans le
- * dépôt — `LicenseRenewalService` l'importe plutôt que de la redéclarer.
+ * Depuis #271, l'upload n'en refuse plus aucun : un certificat plus vieux est
+ * archivé et l'administrateur tranche. Son échéance (émission + validité +
+ * rétention) peut donc être DÉJÀ PASSÉE au dépôt ; la purge épargne alors le
+ * document tant que la demande attend une décision (`PENDING`), puis
+ * l'efface au passage suivant la décision.
  */
 export const MEDICAL_CERTIFICATE_VALIDITY_MONTHS = 12;
 
@@ -90,12 +91,11 @@ function issuedAtOf(ocrData: unknown, uploadedAt: Date): Date | null {
  *   contournable par celui-là même qu'elle protège.
  *
  * - **Date absente ou illisible** (l'OCR échoue, et le code d'upload accepte ce
- *   cas) → `dépôt + rétention`, sans compter la validité. Un certificat est
- *   accepté jusqu'à {@link MEDICAL_CERTIFICATE_VALIDITY_MONTHS} mois après son
- *   émission, donc l'émission se situe quelque part entre `dépôt - validité` et
- *   `dépôt` : l'échéance réelle est donc au plus tôt `dépôt + rétention`.
- *   **On retient cette borne basse**, ce qui peut supprimer jusqu'à un an trop
- *   tôt mais ne peut JAMAIS supprimer trop tard. Entre conserver une donnée de
+ *   cas) → `dépôt + rétention`, sans compter la validité. Pour un certificat
+ *   encore valide au dépôt (émis entre `dépôt - validité` et `dépôt`),
+ *   l'échéance réelle est au plus tôt `dépôt + rétention`. **On retient cette
+ *   borne basse**, ce qui peut supprimer jusqu'à un an trop tôt mais ne garde
+ *   jamais un tel certificat au-delà de l'engagement. Entre conserver une donnée de
  *   santé au-delà de la parole donnée et l'effacer en avance, le RGPD tranche
  *   dans le sens de l'effacement.
  */

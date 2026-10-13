@@ -211,7 +211,8 @@ class AdminLicenseRenewalBaseDto {
   @ApiProperty({
     type: AdminRenewalPersonDto,
     nullable: true,
-    description: "Administrateur qui a tranché ; null pour l'auto-approbation",
+    description:
+      "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, ou pour une demande auto-approuvée avant #271",
   })
   reviewedBy!: AdminRenewalPersonDto | null;
 }

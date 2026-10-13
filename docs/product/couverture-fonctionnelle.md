@@ -38,7 +38,7 @@
 
 - **QR non sécurisé** — Le QR encode un JSON **en clair** (`{ id, valid, type }`) et statique. La colonne `qrCodeSignature` (`apps/backend/prisma/schema/license.prisma`) est **sélectionnée mais jamais générée** (toujours `null`). Pas de signature RSA ni TOTP (#419). Pas de chiffrement AES-256 des données santé (#418).
 - **OCR divergent** — `apps/backend/src/utils/ocr.service.ts` = **Azure AI Vision côté serveur**, avec **mode MOCK** si `AZURE_VISION_ENDPOINT` non défini. Pas le **ML Kit on-device** de la spec.
-- **Renouvellement ≠ spec** — Workflow d'**upload de documents**, pas le formulaire « One-Tap pré-rempli N-1 » spécifié. La soumission **auto-approuve** (pas de modération ; statut `REJECTED` défini mais inutilisé ; endpoint approve sans garde `@Roles`).
+- **Renouvellement ≠ spec** — Workflow d'**upload de documents**, pas le formulaire « One-Tap pré-rempli N-1 » spécifié. La soumission attend la décision d'un administrateur depuis le back-office (#271).
 - **e-Card WDSF** — Le code-barres affiché est **décoratif** (`apps/client/src/features/license/components/BigBarcode.tsx`, 40 barres en dur, non scannable). **RLS** (Reduced License Scheme) absent.
 - **`lastName` non vérifié** — À l'inscription, seul le **numéro** de licence est contrôlé ; le `lastName` (annoté « doit correspondre à la licence ») n'est pas comparé.
 - **Cartes STAFF/CLUB** — Données en dur côté client (ex. `STAFF-001`, `CLUB-001`).
@@ -127,7 +127,7 @@
 
 - **Dashboard analytique / heatmap / stats d'usage** : absents (`analytics` client = stub `console.log`).
 - **Push ciblés par région/discipline** : absents (aucun endpoint d'envoi ; `sendToTopic` jamais appelé).
-- **Modération des certificats** : absente (renouvellement auto-approuvé ; pas de file de revue).
+- **Modération des certificats** : file `PENDING` tranchée par l'administrateur dans le back-office (#266, #271).
 
 ### ✅ Livré (RBAC backend uniquement)
 

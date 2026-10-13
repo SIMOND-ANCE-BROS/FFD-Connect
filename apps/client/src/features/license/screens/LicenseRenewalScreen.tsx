@@ -229,8 +229,8 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
               style={[styles.intro, { color: currentTheme.text }]}
             >
               Déposez votre certificat médical et votre certificat de licence
-              pour renouveler votre licence. Les documents seront analysés
-              automatiquement (OCR).
+              pour renouveler votre licence. Un administrateur vérifiera vos
+              documents avant de valider le renouvellement.
             </AppText>
             <TouchableOpacity
               style={[
@@ -292,8 +292,8 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
               Demande soumise
             </AppText>
             <AppText variant="body" style={statusSubtitleStyle}>
-              Votre demande de renouvellement est en attente de validation. Vous
-              serez notifié dès qu’elle sera traitée.
+              Votre demande de renouvellement est en attente de validation par
+              un administrateur. Vous serez notifié dès qu’elle sera traitée.
             </AppText>
           </View>
         )}

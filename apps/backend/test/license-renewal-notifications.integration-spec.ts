@@ -170,7 +170,7 @@ describe("Licence renewal notifications (integration, real DB)", () => {
     await app.close();
   });
 
-  it("a submission left for human review notifies the enabled administrators", async () => {
+  it("a submission waits for review and notifies the enabled administrators (#271)", async () => {
     const admin = await createUser(UserRole.ADMIN);
     const disabledAdmin = await createUser(UserRole.ADMIN);
     await prisma.user.update({
@@ -179,20 +179,9 @@ describe("Licence renewal notifications (integration, real DB)", () => {
       select: { id: true },
     });
     const licensee = await createUser(UserRole.LICENSEE);
-    // The number read on the certificate is already another account's: the
-    // automatic approval steps aside and the request stays PENDING.
-    const holder = await createUser(UserRole.LICENSEE);
-    const takenNumber = `FFD-${randomUUID().slice(0, 8)}`;
-    await prisma.license.create({
-      data: {
-        userId: holder.id,
-        number: takenNumber,
-        validUntil: new Date("2020-08-31T00:00:00Z"),
-        category: "Standard",
-        clubName: "Club",
-      },
-      select: { id: true },
-    });
+    // A free number and a favourable reading: nothing an automatic approval
+    // would have stopped on. The request still waits for a human.
+    const freeNumber = `FFD-${randomUUID().slice(0, 8)}`;
     const draft = await prisma.licenseRenewalRequest.create({
       data: {
         userId: licensee.id,
@@ -211,7 +200,7 @@ describe("Licence renewal notifications (integration, real DB)", () => {
             {
               type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
               filePath: `licence-${randomUUID()}.png`,
-              ocrData: { licenseNumber: takenNumber },
+              ocrData: { licenseNumber: freeNumber },
             },
           ],
         },
@@ -224,6 +213,12 @@ describe("Licence renewal notifications (integration, real DB)", () => {
       .set("Authorization", bearer(licensee))
       .expect(201);
     expect(res.body.status).toBe(LicenseRenewalStatus.PENDING);
+    expect(
+      await prisma.license.findUnique({
+        where: { userId: licensee.id },
+        select: { id: true },
+      }),
+    ).toBeNull();
 
     const row = await waitForNotification(
       admin.id,

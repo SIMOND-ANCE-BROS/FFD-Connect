@@ -10,10 +10,13 @@ import { LicensesService } from "./licenses.service";
 /**
  * POST /licenses/renewal/:id/approve is gone (#266): renewal decisions are
  * taken from POST /admin/license-renewals/:id/approve only, with an audit row
- * and the administrator's confirmed licence number. The licensee's own flow
- * auto-approves inside LicenseRenewalService.submitRenewalRequest (until #271).
+ * and the administrator's confirmed licence number.
+ *
+ * POST /licenses/renew is gone as well (#271): it granted a licence on the OCR
+ * of an uploaded certificate alone. A licensee now only submits a request,
+ * which waits for an administrator's decision.
  */
-describe("LicensesController — legacy renewal approval route removed", () => {
+describe("LicensesController — legacy routes granting a licence removed", () => {
   let app: INestApplication;
   let currentUser: { userId: string; role: UserRole };
 
@@ -52,6 +55,17 @@ describe("LicensesController — legacy renewal approval route removed", () => {
       currentUser = { userId: "user-1", role };
       await request(app.getHttpServer() as Parameters<typeof request>[0])
         .post(`/licenses/renewal/${REQUEST_ID}/approve`)
+        .expect(404);
+    },
+  );
+
+  it.each([UserRole.ADMIN, UserRole.LICENSEE])(
+    "answers 404 to POST /licenses/renew for a %s account",
+    async (role) => {
+      currentUser = { userId: "user-1", role };
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post("/licenses/renew")
+        .attach("certificate", Buffer.from("%PDF-1.4"), "cert.pdf")
         .expect(404);
     },
   );

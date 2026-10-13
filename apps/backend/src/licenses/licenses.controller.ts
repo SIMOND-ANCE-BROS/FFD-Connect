@@ -162,100 +162,6 @@ export class LicensesController {
   }
   */
 
-  @Post("renew")
-  @ApiOperation({
-    summary: "Renouvelle la licence de l'utilisateur",
-    description:
-      "Traite un certificat de licence (image) via OCR pour extraire les informations et renouvelle ou crée la licence. La licence est valide jusqu'au 31 août (Europe/Paris) qui termine la saison en cours, ou celle de la saison suivante si le renouvellement a lieu entre le 1er juillet et le 31 août ; une date de fin déjà plus lointaine est conservée.",
-  })
-  @ApiConsumes("multipart/form-data")
-  @ApiBody({
-    schema: {
-      type: "object",
-      properties: {
-        certificate: {
-          type: "string",
-          format: "binary",
-          description:
-            "Fichier image du certificat de licence (JPG, PNG, max 5MB)",
-        },
-      },
-      required: ["certificate"],
-    },
-  })
-  @ApiResponse({
-    status: 200,
-    description: "Licence renouvelée avec succès",
-    schema: {
-      type: "object",
-      properties: {
-        id: { type: "string", example: "license-123" },
-        userId: { type: "string", example: "user-456" },
-        number: { type: "string", example: "FFD-123456" },
-        validUntil: {
-          type: "string",
-          format: "date-time",
-          example: "2026-08-31T23:59:59.000Z",
-        },
-        category: { type: "string", example: "Standard" },
-        clubName: { type: "string", example: "Vienne Handi Danse" },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 400,
-    description:
-      "Erreur de validation - Certificat manquant, format invalide ou OCR échoué",
-    schema: {
-      type: "object",
-      properties: {
-        statusCode: { type: "number", example: 400 },
-        message: {
-          type: "string",
-          example:
-            "Impossible de valider le certificat : numéro de licence non détecté",
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 401,
-    description: "Non autorisé - Token JWT manquant ou invalide",
-  })
-  @ApiResponse({
-    status: 404,
-    description: "Utilisateur non trouvé",
-    schema: {
-      type: "object",
-      properties: {
-        statusCode: { type: "number", example: 404 },
-        message: { type: "string", example: "Utilisateur non trouvé" },
-      },
-    },
-  })
-  @UseInterceptors(
-    FileInterceptor("certificate", {
-      storage: createMemoryUploadStorage(),
-      fileFilter: createFileFilter(FILE_TYPES.CERTIFICATES),
-      limits: {
-        fileSize: FILE_TYPES.CERTIFICATES.maxSize,
-      },
-    }),
-  )
-  async renewLicense(
-    @Req() req: RequestWithUser,
-    @UploadedFile() file: Express.Multer.File | undefined,
-  ) {
-    // Validation supplémentaire
-    if (!file?.buffer) {
-      throw new BadRequestException("Certificat requis");
-    }
-    validateFile(file, FILE_TYPES.CERTIFICATES);
-    // Le certificat n'est utilisé que pour l'OCR (jamais persisté), on passe
-    // directement le buffer mémoire au service.
-    return this.licensesService.renewLicense(req.user.userId, file.buffer);
-  }
-
   // --- Demande de renouvellement (workflow documents + OCR) ---
 
   @StoreReviewSimulation(simulatedRenewalStart)
@@ -289,7 +195,7 @@ export class LicensesController {
   @ApiOperation({
     summary: "Déposer un document sur une demande (OCR automatique)",
     description:
-      "Upload d’un certificat médical ou d’un certificat de licence. L’OCR extrait les infos (apte, date, numéro de licence, etc.).",
+      "Upload d’un certificat médical ou d’un certificat de licence. L’OCR extrait les infos (apte, date, numéro de licence, etc.) à titre d’indices pour l’administrateur : elles ne refusent jamais le document.",
   })
   @ApiParam({ name: "id", description: "ID de la demande de renouvellement" })
   @ApiConsumes("multipart/form-data")
@@ -356,7 +262,7 @@ export class LicensesController {
   @ApiOperation({
     summary: "Soumettre la demande de renouvellement",
     description:
-      "Passe la demande en attente de validation. Requiert certificat médical et certificat de licence. Refusée (409) si une autre demande de l'utilisateur est déjà en attente de validation.",
+      "Passe la demande en attente de validation (PENDING) : elle attend la décision d'un administrateur, aucune licence n'est créée ni prolongée à la soumission. Requiert certificat médical et certificat de licence ; les lectures OCR ne bloquent pas l'envoi. Refusée (409) si une autre demande de l'utilisateur est déjà en attente de validation.",
   })
   @ApiParam({ name: "id", description: "ID de la demande" })
   @ApiResponse({ status: 201, description: "Demande soumise" })
@@ -370,7 +276,7 @@ export class LicensesController {
   @ApiResponse({
     status: 409,
     description:
-      "Conflit - Une autre demande de l'utilisateur est déjà en attente de validation, ou la demande vient d'être traitée par un administrateur",
+      "Conflit - Une autre demande de l'utilisateur est déjà en attente de validation",
     schema: CONFLICT_ERROR_SCHEMA,
   })
   async submitRenewal(

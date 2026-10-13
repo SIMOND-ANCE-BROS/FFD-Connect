@@ -29,7 +29,6 @@ describe("LicensesController", () => {
 
   const mockLicensesService = {
     getLicense: jest.fn(),
-    renewLicense: jest.fn(),
     validateStaffLicense: jest.fn(),
   };
 
@@ -78,29 +77,6 @@ describe("LicensesController", () => {
       await expect(controller.getMyLicense(req("user-1"))).rejects.toThrow(
         NotFoundException,
       );
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // POST /licenses/renew
-  // ---------------------------------------------------------------------------
-  describe("renewLicense", () => {
-    it("delegates to licensesService.renewLicense with userId and file buffer", async () => {
-      mockLicensesService.renewLicense.mockResolvedValue({ id: "L2" });
-      const buffer = Buffer.from("cert-bytes");
-      const file = multerFile({ buffer });
-      const result = await controller.renewLicense(req("user-1"), file);
-      expect(mockLicensesService.renewLicense).toHaveBeenCalledWith(
-        "user-1",
-        buffer,
-      );
-      expect(result).toEqual({ id: "L2" });
-    });
-
-    it("throws BadRequestException if no file provided", async () => {
-      await expect(
-        controller.renewLicense(req("user-1"), undefined),
-      ).rejects.toThrow(BadRequestException);
     });
   });
 

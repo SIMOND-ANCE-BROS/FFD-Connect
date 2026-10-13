@@ -1,6 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
-import { LicenseRenewalDocumentType, Prisma } from "@prisma/client";
+import {
+  LicenseRenewalDocumentType,
+  LicenseRenewalStatus,
+  Prisma,
+} from "@prisma/client";
 import * as Sentry from "@sentry/nestjs";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
@@ -156,6 +160,13 @@ export class HealthDataRetentionService implements OnModuleInit {
       where: {
         type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
         purgeDueAt: { lte: new Date() },
+        // A request awaiting a decision keeps its certificate (#271): the
+        // administrator must see it, and an approval requires it. The
+        // published policy keeps health data "le temps nécessaire à la
+        // vérification de l'aptitude"; once decided, the stored due date
+        // applies again (already past: purged at the next pass). Drafts are
+        // NOT exempt: an abandoned draft would otherwise keep it forever.
+        request: { status: { not: LicenseRenewalStatus.PENDING } },
       },
       select: healthDataPurgeDueSelect,
       orderBy: { purgeDueAt: "asc" },

@@ -1,6 +1,10 @@
 import { Logger } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
-import { LicenseRenewalDocumentType, Prisma } from "@prisma/client";
+import {
+  LicenseRenewalDocumentType,
+  LicenseRenewalStatus,
+  Prisma,
+} from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
@@ -93,7 +97,11 @@ describe("HealthDataRetentionService", () => {
 
     const dueQuery = mockPrisma.licenseRenewalDocument.findMany.mock
       .calls[1][0] as {
-      where: { type: unknown; purgeDueAt: { lte: Date } };
+      where: {
+        type: unknown;
+        purgeDueAt: { lte: Date };
+        request: unknown;
+      };
       orderBy: unknown;
       take: number;
     };
@@ -101,6 +109,10 @@ describe("HealthDataRetentionService", () => {
       LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
     );
     expect(dueQuery.where.purgeDueAt).toEqual({ lte: NOW });
+    // #271 : une demande en attente de décision garde son certificat.
+    expect(dueQuery.where.request).toEqual({
+      status: { not: LicenseRenewalStatus.PENDING },
+    });
     expect(dueQuery.orderBy).toEqual({ purgeDueAt: "asc" });
     expect(dueQuery.take).toBeGreaterThan(0);
     // Petit lot : les suppressions de blob partent en parallèle derrière un

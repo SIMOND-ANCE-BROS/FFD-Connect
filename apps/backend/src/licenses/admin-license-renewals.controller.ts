@@ -157,7 +157,15 @@ export class AdminLicenseRenewalsController {
   })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: AdminLicenseRenewalDetailDto })
-  @ApiResponse({ status: 400, description: "Aucun numéro de licence connu" })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Aucun numéro de licence connu, ou certificat médical plus conservé (code RENEWAL_MEDICAL_CERTIFICATE_MISSING)",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "Demande de l'administrateur lui-même",
+  })
   @ApiResponse({ status: 404, description: "Demande non trouvée" })
   @ApiResponse({
     status: 409,
@@ -181,6 +189,10 @@ export class AdminLicenseRenewalsController {
   })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: AdminLicenseRenewalDetailDto })
+  @ApiResponse({
+    status: 403,
+    description: "Demande de l'administrateur lui-même",
+  })
   @ApiResponse({ status: 404, description: "Demande non trouvée" })
   @ApiResponse({ status: 409, description: "Demande déjà traitée" })
   reject(
