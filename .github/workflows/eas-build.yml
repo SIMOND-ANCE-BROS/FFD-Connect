@@ -82,6 +82,14 @@ on:
           la piste alpha de Google Play.
         required: false
         type: string
+      force:
+        description: >-
+          action=build uniquement : reconstruire même si un tag beta de cette
+          plateforme désigne déjà le commit de staging à construire (#534).
+          Sinon la jambe s'arrête avant le build, sans consommer de numéro.
+        required: false
+        default: false
+        type: boolean
       toTest:
         description: >-
           À tester en priorité (facultatif), en tête des notes testeurs des deux
@@ -876,6 +884,36 @@ jobs:
             echo "STORE_NAME=$STORE"
             echo "NOTES_TITLE=$NOTES_TITLE"
           } >> "$GITHUB_ENV"
+
+      # #534 : deux dispatchs `action=build` rapprochés se suivent (groupe de
+      # concurrence `eas-manual-beta`, sans annulation) et le second
+      # reconstruisait le MÊME commit de staging (runs 38398698182 et
+      # 38399104556 : builds Android 8 et 9 identiques, un numéro perdu). Le
+      # premier a tagué son build (release-beta) avant que le second démarre :
+      # un tag `beta-*-<plateforme>-<n°>` sur HEAD = déjà construit. Arrêt
+      # AVANT tout build (aucun numéro consommé), sauf input force. Par
+      # jambe : avec platform=all, l'autre plateforme continue.
+      - name: Refuse a rebuild of an already built commit
+        if: inputs.action == 'build' && !inputs.force
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Tags du dépôt distant (pas seulement ceux du checkout) ; dépôt
+          # public, aucun jeton requis. Erreur réseau = contrôle non fait.
+          if ! REMOTE=$(git ls-remote --tags origin "refs/tags/beta-*-$PLATFORM-*" 2> /dev/null); then
+            echo "::warning::tags distants illisibles : contrôle du doublon de build non fait"
+            exit 0
+          fi
+          HEAD_SHA=$(git rev-parse HEAD)
+          # Tag annoté : la ligne « ^{} » porte le commit pointé.
+          TAG=$(awk -v sha="$HEAD_SHA" '$1 == sha { sub("^refs/tags/", "", $2); sub("\\^\\{\\}$", "", $2); print $2; exit }' <<< "$REMOTE")
+          if [ -n "$TAG" ]; then
+            echo "::error::$PLATFORM_NAME : le commit de staging ${HEAD_SHA:0:7} est déjà construit (tag $TAG). Rien n'est reconstruit, aucun numéro de build consommé. Reprendre ce build : action=resume (build EAS) ou action=distribute build_number=<n°> (build sur runner) ; reconstruire quand même : gh workflow run eas-build.yml --ref $REF -f action=build -f platform=$PLATFORM -f force=true"
+            exit 1
+          fi
+          echo "Aucun tag beta $PLATFORM sur ${HEAD_SHA:0:7} : build autorisé."
 
       # Build iOS sur runner : Xcode ÉPINGLÉ, pour qu'un changement du Xcode par
       # défaut de l'image ne change pas le binaire en silence. 26.6 compile
