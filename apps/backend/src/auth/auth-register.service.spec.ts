@@ -9,6 +9,7 @@ import { JwtService } from "@nestjs/jwt";
 import { Test } from "@nestjs/testing";
 import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcrypt";
+import { BETA_LICENSE_PLACEHOLDER_CATEGORY } from "../licenses/beta-license-placeholder";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuthService } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
@@ -470,6 +471,68 @@ describe("AuthService.register", () => {
     });
   });
 
+  describe("discipline copied from the licence (#555)", () => {
+    /** Registers against a licence of `category`; returns the stored User.category. */
+    const registeredCategory = async (category: string): Promise<unknown> => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.license.findUnique.mockResolvedValue({
+        ...validLicense,
+        category,
+      });
+      const createMock = jest.fn().mockResolvedValue({
+        id: "user-1",
+        email: "new@example.com",
+        firstName: "",
+        lastName: "Dupont",
+        role: "LICENSEE",
+        clubId: null,
+        clubName: "Club Paris Danse",
+        category: null,
+        ageGroup: null,
+        passportLevelLatin: null,
+        passportLevelStandard: null,
+      });
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) =>
+          fn({
+            user: { create: createMock },
+            license: { update: jest.fn().mockResolvedValue({}) },
+          }),
+      );
+
+      await authService.register(
+        "new@example.com",
+        "MonPass1!abc",
+        validLicense.number,
+        "Dupont",
+      );
+      return createMock.mock.calls[0][0].data.category;
+    };
+
+    it.each([
+      ["Latin", "Latin"],
+      ["Standard", "Standard"],
+      ["Ten Dance", "Ten Dance"],
+      [" latines ", "Latin"],
+    ])(
+      "copies the federation discipline %p as %p",
+      async (category, expected) => {
+        expect(await registeredCategory(category)).toBe(expected);
+      },
+    );
+
+    it.each([
+      ["the beta placeholder", BETA_LICENSE_PLACEHOLDER_CATEGORY],
+      ["an unknown value", "Adulte"],
+      ["a blank value", "  "],
+    ])(
+      "leaves User.category null (unknown) for %s",
+      async (_label, category) => {
+        expect(await registeredCategory(category)).toBeNull();
+      },
+    );
+  });
+
   describe("BETA_AUTO_LICENSE (staging only)", () => {
     const createdUser = {
       id: "user-beta",
@@ -479,7 +542,7 @@ describe("AuthService.register", () => {
       role: "LICENSEE",
       clubId: null,
       clubName: "Club bêta-test (licence auto-créée)",
-      category: "Ten Dance",
+      category: null,
       ageGroup: null,
       passportLevelLatin: null,
       passportLevelStandard: null,
@@ -551,8 +614,9 @@ describe("AuthService.register", () => {
       );
       expect(tx.user.create).toHaveBeenCalledWith(
         expect.objectContaining({
+          // Unknown discipline: never declared "Ten Dance" by default (#555).
           data: expect.objectContaining({
-            category: "Ten Dance",
+            category: null,
             clubName: "Club bêta-test (licence auto-créée)",
           }),
         }),
@@ -570,7 +634,7 @@ describe("AuthService.register", () => {
       };
       expect(createArgs.data).toMatchObject({
         number: "20990101-beta-01",
-        category: "Ten Dance",
+        category: BETA_LICENSE_PLACEHOLDER_CATEGORY,
         clubName: "Club bêta-test (licence auto-créée)",
         userId: "user-beta",
       });
