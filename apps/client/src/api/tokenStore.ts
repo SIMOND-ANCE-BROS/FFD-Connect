@@ -16,14 +16,20 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
 import { clearOfflineQueue } from "../services/offlineQueueStorage";
 import * as SecureStore from "expo-secure-store";
+import { AppState } from "react-native";
 
-import { TokenStoreUnavailableError } from "./tokenStoreErrors";
+import {
+  TokenStoreUnavailableError,
+  isTokenStoreUnavailable,
+} from "./tokenStoreErrors";
 
 /**
  * Keychain items readable in the background once the iPhone has been unlocked
  * once since boot (#582). The default (WHEN_UNLOCKED) made every request
  * issued while the device was locked — push, refresh, backend wake — fail
- * with "User interaction is not allowed".
+ * with "User interaction is not allowed". THIS_DEVICE_ONLY: the tokens never
+ * travel in an encrypted backup / Quick Start migration — a restored refresh
+ * token would race the original device on rotation.
  *
  * New key names on purpose: on iOS, `setItemAsync` on an EXISTING item only
  * updates its data (SecItemUpdate) and keeps its original accessibility, so
@@ -40,7 +46,9 @@ const OLD_REFRESH_KEY = "ffd.refreshToken";
 const LEGACY_KEY = "auth_config";
 
 function storeOptions(): SecureStore.SecureStoreOptions {
-  return { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK };
+  return {
+    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+  };
 }
 
 export interface Tokens {
@@ -60,24 +68,89 @@ function withLock<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** Raw read, any failure turned into a typed, non-"logged out" error. */
+/**
+ * Called when the store is PERMANENTLY unreadable while the app is in the
+ * foreground (Android Keystore unable to decrypt, entitlement error…): the
+ * session can never be used again, so it must end visibly rather than leave
+ * a user "logged in" with every screen empty. Registered by sessionRefresh
+ * (which owns the session-end side effects) to avoid an import cycle.
+ */
+let unreadableSessionHandler: (() => Promise<void>) | null = null;
+export function setUnreadableSessionHandler(
+  handler: (() => Promise<void>) | null,
+): void {
+  unreadableSessionHandler = handler;
+}
+
+let unreadableReported = false;
+let unreadableSessionEnding = false;
+
+function breadcrumb(message: string): void {
+  try {
+    Sentry.addBreadcrumb({
+      category: "auth.tokenStore",
+      level: "warning",
+      message,
+    });
+  } catch {
+    /* breadcrumb is best-effort */
+  }
+}
+
+/**
+ * A non-lock read failure that survived a retry. Reported once per app
+ * session; in the foreground, the session is ended once per app session too
+ * (a broken Keystore would otherwise re-run the logout on every request).
+ */
+function onPermanentReadFailure(typed: TokenStoreUnavailableError): void {
+  if (!unreadableReported) {
+    // Once per app session; the message carries no token nor user data.
+    unreadableReported = true;
+    try {
+      Sentry.captureException(typed, { tags: { tokenStore: "unreadable" } });
+    } catch {
+      /* reporting is best-effort */
+    }
+  }
+  if (AppState.currentState !== "active") return;
+  if (unreadableSessionEnding || !unreadableSessionHandler) return;
+  unreadableSessionEnding = true;
+  const handler = unreadableSessionHandler;
+  // Fire-and-forget: the caller may hold the write lock, which the handler's
+  // clearTokens() needs — awaiting here would deadlock.
+  void (async () => {
+    try {
+      await clearTokens();
+      await handler();
+    } catch {
+      // Best-effort: let the next foreground read try again.
+      unreadableSessionEnding = false;
+    }
+  })();
+}
+
+/**
+ * Raw read, any failure turned into a typed error. A refusal because the
+ * device is locked is NEVER "logged out" (#582); any other failure is retried
+ * once, then reported and — in the foreground — ends the session.
+ */
 async function readKey(key: string): Promise<string | null> {
   try {
     return await SecureStore.getItemAsync(key, storeOptions());
   } catch (error) {
     const typed = new TokenStoreUnavailableError(error);
-    try {
-      Sentry.addBreadcrumb({
-        category: "auth.tokenStore",
-        level: "warning",
-        message: typed.locked
-          ? "Token read refused: device locked"
-          : "Token read failed",
-      });
-    } catch {
-      /* breadcrumb is best-effort */
+    if (typed.locked) {
+      breadcrumb("Token read refused: device locked");
+      throw typed;
     }
-    throw typed;
+    breadcrumb("Token read failed, retrying once");
+    try {
+      return await SecureStore.getItemAsync(key, storeOptions());
+    } catch (retryError) {
+      const final = new TokenStoreUnavailableError(retryError);
+      if (!final.locked) onPermanentReadFailure(final);
+      throw final;
+    }
   }
 }
 
@@ -150,10 +223,26 @@ async function migrateLegacyTokens(): Promise<Tokens> {
  * token » que lorsque la lecture a réussi.
  */
 export async function getTokens(): Promise<Tokens> {
-  const [access, refresh] = await Promise.all([
+  const [accessRead, refreshRead] = await Promise.allSettled([
     readToken(ACCESS_KEY, OLD_ACCESS_KEY),
     readToken(REFRESH_KEY, OLD_REFRESH_KEY),
   ]);
+  if (accessRead.status === "rejected") throw accessRead.reason;
+  const access = accessRead.value;
+  let refresh: string | null;
+  if (refreshRead.status === "fulfilled") {
+    refresh = refreshRead.value;
+  } else if (
+    access &&
+    isTokenStoreUnavailable(refreshRead.reason) &&
+    refreshRead.reason.locked
+  ) {
+    // Access token readable (already migrated) but the not-yet-migrated
+    // refresh token is locked: serve the request, skip the refresh (#582).
+    return { authToken: access };
+  } else {
+    throw refreshRead.reason;
+  }
   if (access || refresh) {
     return {
       authToken: access ?? undefined,

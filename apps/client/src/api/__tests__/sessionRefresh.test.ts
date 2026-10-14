@@ -32,7 +32,15 @@ jest.mock("../tokenStore", () => ({
   getTokens: () => mockGetTokens(),
   setTokens: (t: unknown) => mockSetTokens(t),
   clearTokens: () => mockClearTokens(),
+  setUnreadableSessionHandler: jest.fn(),
 }));
+// Captured before any beforeEach clears the mock calls: sessionRefresh
+// registers its handler at import time.
+const unreadableHandler = jest.requireMock<{
+  setUnreadableSessionHandler: jest.Mock;
+}>("../tokenStore").setUnreadableSessionHandler.mock.calls[0]?.[0] as
+  | (() => Promise<void>)
+  | undefined;
 
 jest.mock("../../features/license/utils/licenseSnapshot", () => ({
   clearLicenseSnapshot: () => mockClearLicenseSnapshot() as unknown,
@@ -74,6 +82,18 @@ describe("refreshSession", () => {
     expect(mockClearLicenseSnapshot).not.toHaveBeenCalled();
     expect(mockRefreshAuth).not.toHaveBeenCalled();
     expect(setItem).not.toHaveBeenCalled();
+  });
+
+  it("ends the session visibly when the token store is permanently unreadable", async () => {
+    // Registered at import: tokenStore calls it (after clearTokens) when a
+    // non-lock read failure persists in the foreground.
+    expect(unreadableHandler).toBeInstanceOf(Function);
+    await unreadableHandler?.();
+
+    expect(mockClearLicenseSnapshot).toHaveBeenCalledTimes(1);
+    expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
+    const saved = JSON.parse(setItem.mock.calls[0][1] as string);
+    expect(saved.isLoggedIn).toBe(false);
   });
 
   it("refreshes and persists the new access + rotated refresh token", async () => {

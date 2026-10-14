@@ -13,7 +13,7 @@ import {
 } from "../tokenStoreErrors";
 
 jest.mock("expo-secure-store", () => ({
-  AFTER_FIRST_UNLOCK: 0,
+  AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 1,
   getItemAsync: jest.fn(),
   setItemAsync: jest.fn(),
   deleteItemAsync: jest.fn(),
@@ -30,7 +30,9 @@ const deleteItemAsync = SecureStore.deleteItemAsync as jest.Mock;
 const asyncGet = AsyncStorage.getItem as jest.Mock;
 const asyncSet = AsyncStorage.setItem as jest.Mock;
 
-const OPTS = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK };
+const OPTS = {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+};
 const LOCKED = new Error(
   "Calling the 'getValueWithKeyAsync' function has failed\n→ Caused by: KeyChainException: User interaction is not allowed.",
 );
@@ -212,6 +214,108 @@ describe("tokenStore", () => {
         authToken: "ffd.session.access-v",
         refreshToken: "ffd.session.refresh-v",
       });
+    });
+  });
+
+  it("serves the access token when only the not-yet-migrated refresh token is locked", async () => {
+    getItemAsync.mockImplementation((k: string) => {
+      if (k === "ffd.session.access") return Promise.resolve("a");
+      if (k === "ffd.refreshToken") return Promise.reject(LOCKED);
+      return Promise.resolve(null);
+    });
+    await expect(getTokens()).resolves.toEqual({ authToken: "a" });
+  });
+
+  it("still fails when the access token itself is locked", async () => {
+    getItemAsync.mockImplementation((k: string) =>
+      k === "ffd.session.refresh"
+        ? Promise.resolve("r")
+        : Promise.reject(LOCKED),
+    );
+    await expect(getTokens()).rejects.toBeInstanceOf(
+      TokenStoreUnavailableError,
+    );
+  });
+
+  describe("permanently unreadable store (not a lock)", () => {
+    // Fresh module per test: the "reported once" flag is per app session.
+    function load(appState: string) {
+      jest.resetModules();
+      const RN = require("react-native") as {
+        AppState: { currentState: string };
+      };
+      Object.defineProperty(RN.AppState, "currentState", {
+        configurable: true,
+        get: () => appState,
+      });
+      const store = require("../tokenStore") as typeof import("../tokenStore");
+      const secure = require("expo-secure-store") as Record<string, jest.Mock>;
+      const sentry = require("@sentry/react-native") as Record<
+        string,
+        jest.Mock
+      >;
+      secure.setItemAsync.mockResolvedValue(undefined);
+      secure.deleteItemAsync.mockResolvedValue(undefined);
+      const handler = jest.fn(() => Promise.resolve());
+      store.setUnreadableSessionHandler(handler);
+      return { store, secure, sentry, handler };
+    }
+    const flush = () => new Promise((r) => setTimeout(r, 0));
+
+    it("retries once and recovers silently on a transient failure", async () => {
+      const { store, secure, sentry, handler } = load("active");
+      secure.getItemAsync
+        .mockRejectedValueOnce(new Error("transient"))
+        .mockResolvedValue("a");
+      await expect(store.getAccessToken()).resolves.toBe("a");
+      await flush();
+      expect(sentry.captureException).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("in the foreground: reports once, clears the tokens and ends the session", async () => {
+      const { store, secure, sentry, handler } = load("active");
+      secure.getItemAsync.mockRejectedValue(new Error("Keystore: bad decrypt"));
+
+      await expect(store.getTokens()).rejects.toBeInstanceOf(Error);
+      await expect(store.getTokens()).rejects.toBeInstanceOf(Error);
+      await flush();
+
+      expect(sentry.captureException).toHaveBeenCalledTimes(1);
+      expect(secure.deleteItemAsync).toHaveBeenCalledWith(
+        "ffd.session.access",
+        expect.anything(),
+      );
+      expect(secure.deleteItemAsync).toHaveBeenCalledWith(
+        "ffd.session.refresh",
+        expect.anything(),
+      );
+      expect(handler).toHaveBeenCalled();
+    });
+
+    it("in the background: reports but keeps the session", async () => {
+      const { store, secure, sentry, handler } = load("background");
+      secure.getItemAsync.mockRejectedValue(new Error("Keystore: bad decrypt"));
+
+      await expect(store.getTokens()).rejects.toBeInstanceOf(Error);
+      await flush();
+
+      expect(sentry.captureException).toHaveBeenCalledTimes(1);
+      expect(secure.deleteItemAsync).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("a locked device is never reported nor logged out, even in the foreground", async () => {
+      const { store, secure, sentry, handler } = load("active");
+      secure.getItemAsync.mockRejectedValue(LOCKED);
+
+      await expect(store.getTokens()).rejects.toBeInstanceOf(Error);
+      await flush();
+
+      expect(secure.getItemAsync).toHaveBeenCalledTimes(2); // no retry
+      expect(sentry.captureException).not.toHaveBeenCalled();
+      expect(secure.deleteItemAsync).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
     });
   });
 
