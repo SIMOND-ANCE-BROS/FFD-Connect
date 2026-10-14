@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from "@nestjs/common";
+import { practisedDiscipline } from "../../common/competition-level/competition-level.util";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   licenseWalletPassSelect,
@@ -96,7 +97,10 @@ export class AppleWalletPassService {
     return {
       id: license.id,
       number: license.number,
-      category: license.category,
+      // Discipline(s) actually practised, from the holder's profile: the
+      // stored licence category may be a placeholder never updated (#552).
+      category:
+        practisedDiscipline(license.user, license.category) ?? license.category,
       validUntil: license.validUntil,
       firstName: license.user.firstName,
       lastName: license.user.lastName,

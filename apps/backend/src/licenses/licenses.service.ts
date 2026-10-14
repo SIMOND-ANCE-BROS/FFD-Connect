@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { licenseBaseSelect } from "../utils/prisma-selects";
+import { practisedDiscipline } from "../common/competition-level/competition-level.util";
+import { licenseWithHolderDisciplineSelect } from "../utils/prisma-selects";
 import { licenseValidityFloor } from "./license-expiry";
 import { LicenseQrService } from "./qr/license-qr.service";
 import { AppleWalletPassGenerator } from "./wallet/apple-wallet-pass.generator";
@@ -19,13 +20,17 @@ export class LicensesService {
    * disponibilité du pass Apple Wallet (`appleWalletAvailable` — #162).
    */
   async getLicense(userId: string) {
-    const license = await this.prisma.license.findUnique({
+    const found = await this.prisma.license.findUnique({
       where: { userId },
-      select: licenseBaseSelect,
+      select: licenseWithHolderDisciplineSelect,
     });
-    if (!license) throw new NotFoundException("License non trouvée");
+    if (!found) throw new NotFoundException("License non trouvée");
+    // The holder's profile only feeds `discipline`: not echoed in the payload.
+    const { user, ...license } = found;
     return {
       ...license,
+      // Discipline(s) actually practised (#552) — same value as the Wallet pass.
+      discipline: practisedDiscipline(user, license.category),
       qrCode: this.licenseQrService.buildQrCode(license),
       appleWalletAvailable: this.appleWalletPassGenerator.isAvailable(),
     };

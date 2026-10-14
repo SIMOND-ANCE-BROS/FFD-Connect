@@ -38,7 +38,13 @@ interface LicenseRow {
   number: string;
   category: string;
   validUntil: Date;
-  user: { firstName: string; lastName: string } | null;
+  user: {
+    firstName: string;
+    lastName: string;
+    category?: string | null;
+    competitionLevelLatin?: string | null;
+    competitionLevelStandard?: string | null;
+  } | null;
 }
 
 /** In-memory stand-in for the two tables the service touches. */
@@ -125,6 +131,20 @@ const licenses: Record<string, LicenseRow> = {
     // 2026-10-08 in Paris: still valid all day.
     validUntil: new Date("2026-10-07T22:00:00.000Z"),
     user: { firstName: "Last", lastName: "L" },
+  },
+  // #552: beta placeholder licence « Ten Dance », Latin-only dancer.
+  latinOnly: {
+    id: "lic-latin",
+    number: "FFD-LAT",
+    category: "Ten Dance",
+    validUntil: new Date("2027-08-30T22:00:00.000Z"),
+    user: {
+      firstName: "Lea",
+      lastName: "L",
+      category: "Ten Dance",
+      competitionLevelLatin: "Intermédiaire",
+      competitionLevelStandard: null,
+    },
   },
 };
 
@@ -245,6 +265,22 @@ describe("AppleWalletPassService", () => {
       // Bob's token is untouched.
       expect(fake.tokens().find((t) => t.userId === "bob")?.downloadCount).toBe(
         0,
+      );
+    });
+
+    it("shows the discipline the holder practises, not the stored licence category (#552)", async () => {
+      const { token } = await service.issueDownloadToken("latinOnly", NOW);
+      await service.consumeAndGeneratePass(token, NOW);
+      expect(generator.generate).toHaveBeenCalledWith(
+        expect.objectContaining({ number: "FFD-LAT", category: "Latin" }),
+      );
+    });
+
+    it("keeps a non-discipline licence category when the profile says nothing", async () => {
+      const { token } = await service.issueDownloadToken("bob", NOW);
+      await service.consumeAndGeneratePass(token, NOW);
+      expect(generator.generate).toHaveBeenCalledWith(
+        expect.objectContaining({ category: "Loisir" }),
       );
     });
 

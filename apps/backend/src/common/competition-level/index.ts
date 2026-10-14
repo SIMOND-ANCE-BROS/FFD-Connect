@@ -7,6 +7,7 @@ export {
   getHighestCompetitionLevel,
   mirrorLegacyCompetitionLevel,
   normalizeDiscipline,
+  practisedDiscipline,
   practisesDiscipline,
   toCompetitionLevel,
   type CompetitionLevelProfile,
