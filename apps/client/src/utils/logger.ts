@@ -5,6 +5,7 @@
  * qui peut être désactivé en production.
  */
 import * as Sentry from "@sentry/react-native";
+import { isTokenStoreUnavailable } from "../api/tokenStoreErrors";
 
 export enum LogLevel {
   DEBUG = 0,
@@ -149,7 +150,10 @@ class Logger {
           }
         }
         try {
-          if (error) {
+          if (isTokenStoreUnavailable(error)) {
+            // Expected while the iPhone is locked (#582), the session is
+            // intact: a breadcrumb was left by tokenStore, not an error event.
+          } else if (error) {
             Sentry.captureException(error, {
               extra: { message, context: this.context, data },
             });

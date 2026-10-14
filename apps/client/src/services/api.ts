@@ -11,6 +11,7 @@ import { wakeBackend } from "../utils/backendWake";
 import { usage } from "./analytics/usage";
 import { refreshSession } from "../api/sessionRefresh";
 import { getAccessToken } from "../api/tokenStore";
+import { isTokenStoreUnavailable } from "../api/tokenStoreErrors";
 
 const logger = createLogger("api");
 
@@ -40,6 +41,10 @@ api.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
     } catch (error) {
+      // Token store unreadable (locked iPhone, #582): the session is intact,
+      // so abort the request instead of sending it anonymously (which would
+      // 401 and push towards a refresh/logout). Quiet: no Sentry event.
+      if (isTokenStoreUnavailable(error)) throw error;
       logger.error("Error retrieving auth token", error);
     }
 
@@ -70,6 +75,9 @@ api.interceptors.response.use(
     return response;
   },
   async (error: AxiosError) => {
+    // Aborted by the request interceptor (#582): nothing was sent — no wake,
+    // no refresh, no retry, no log.
+    if (isTokenStoreUnavailable(error)) return Promise.reject(error);
     const status = error.response ? error.response.status : "Network Error";
     const url = error.config ? error.config.url : "Unknown URL";
     const config = error.config as AxiosRequestConfig & {

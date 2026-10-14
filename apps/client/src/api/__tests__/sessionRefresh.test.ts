@@ -2,6 +2,7 @@ import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { refreshSession } from "../sessionRefresh";
+import { TokenStoreUnavailableError } from "../tokenStoreErrors";
 
 const mockRefreshAuth = jest.fn();
 const mockGetTokens = jest.fn();
@@ -57,6 +58,22 @@ describe("refreshSession", () => {
     mockGetTokens.mockResolvedValue({});
     await expect(refreshSession()).resolves.toBeNull();
     expect(post).not.toHaveBeenCalled();
+  });
+
+  it("keeps the session when the token store is unreadable (locked iPhone, #582)", async () => {
+    mockGetTokens.mockRejectedValue(
+      new TokenStoreUnavailableError(
+        new Error("User interaction is not allowed."),
+      ),
+    );
+
+    await expect(refreshSession()).resolves.toBeNull();
+
+    expect(post).not.toHaveBeenCalled();
+    expect(mockClearTokens).not.toHaveBeenCalled();
+    expect(mockClearLicenseSnapshot).not.toHaveBeenCalled();
+    expect(mockRefreshAuth).not.toHaveBeenCalled();
+    expect(setItem).not.toHaveBeenCalled();
   });
 
   it("refreshes and persists the new access + rotated refresh token", async () => {

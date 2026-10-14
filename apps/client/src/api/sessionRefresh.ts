@@ -19,6 +19,7 @@ import { clearLicenseSnapshot } from "../features/license/utils/licenseSnapshot"
 import { useAuthStore } from "../stores/auth.store";
 import { createLogger } from "../utils/logger";
 import { clearTokens, getTokens, setTokens } from "./tokenStore";
+import { isTokenStoreUnavailable } from "./tokenStoreErrors";
 
 const AUTH_KEY = "auth_config";
 const logger = createLogger("sessionRefresh");
@@ -49,7 +50,18 @@ async function setLoggedInFlag(value: boolean): Promise<void> {
 let inFlight: Promise<string | null> | null = null;
 
 async function performRefresh(): Promise<string | null> {
-  const { refreshToken } = await getTokens();
+  let refreshToken: string | undefined;
+  try {
+    ({ refreshToken } = await getTokens());
+  } catch (error) {
+    // Token store unreadable (locked iPhone, #582): the refresh token is still
+    // there — keep the session, just give up this refresh.
+    if (isTokenStoreUnavailable(error)) {
+      logger.info("Token store unavailable — refresh skipped, session kept");
+      return null;
+    }
+    throw error;
+  }
   if (!refreshToken) return null;
 
   try {
