@@ -54,6 +54,7 @@ import {
 } from "../components/library";
 import { libraryStyles as styles } from "../components/library/library.styles";
 import { TrackData } from "../context/PlayerContext";
+import { useBlacklistTrack } from "../hooks/useBlacklistTrack";
 import { useLibraryLogic } from "../hooks/useLibraryLogic";
 import { queueFeedbackMessage, type QueueAddKind } from "../utils/queueOps";
 import { formatDiscipline } from "../../../utils/discipline";
@@ -69,6 +70,10 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
   const { role, isGuest } = useAuthStore();
   // Actions follow every role of the account, whatever the active space.
   const isAdmin = useAuthStore((s) => s.hasRole("ADMIN"));
+  // « Blacklister le titre » (#561) is a moderation action: offered only in the
+  // ADMIN space (active role). The server enforces the role regardless.
+  const canBlacklist = useAuthStore((s) => s.role === "ADMIN");
+  const blacklist = useBlacklistTrack();
   const [editTrack, setEditTrack] = useState<EditableTrack | null>(null);
   // Proposition de correction (non-admins) : piste ciblée + visibilité.
   const [reportTrack, setReportTrack] = useState<CorrectableTrack | null>(null);
@@ -269,6 +274,34 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
         logger.warn("[Library] Queue action failed", error);
         showQueueNotice(queueFeedbackMessage("failed", kind, track.title));
       });
+  };
+
+  const confirmBlacklist = (track: TrackData) => {
+    runAfterSheet(() =>
+      Alert.alert(
+        "Blacklister le titre",
+        `« ${track.title} » sera retiré de la bibliothèque pour tous les utilisateurs. Vous pourrez l'y remettre depuis le back-office.`,
+        [
+          { text: "Annuler", style: "cancel" },
+          {
+            text: "Blacklister",
+            style: "destructive",
+            onPress: () =>
+              blacklist.mutate(track.id, {
+                onSuccess: () =>
+                  showQueueNotice(`« ${track.title} » a été blacklisté`),
+                onError: (error: unknown) =>
+                  Alert.alert(
+                    "Blacklist impossible",
+                    error instanceof Error
+                      ? error.message
+                      : "Une erreur est survenue",
+                  ),
+              }),
+          },
+        ],
+      ),
+    );
   };
 
   const bar1 = useRef(new Animated.Value(8)).current;
@@ -593,6 +626,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
         onExtraAction={(track) =>
           runAfterSheet(() => void openTrackExtraAction(track))
         }
+        onBlacklist={canBlacklist ? confirmBlacklist : undefined}
         onClose={closeSheet}
         onDismiss={handleSheetDismiss}
       />

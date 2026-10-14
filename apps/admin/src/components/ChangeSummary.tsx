@@ -28,12 +28,14 @@ const LABELS: Record<string, string> = {
   bpm: 'MPM',
   clashTimecodes: 'Clashes paso',
   trackId: 'Musique',
-  titleMasked: 'Titre masqué',
   blacklisted: 'Blacklistée',
   status: 'Statut',
   sourceKey: 'Source',
   filename: 'Fichier',
 };
+
+/** Retired fields still present in old audit rows (#560: title masking). */
+const HIDDEN_KEYS = new Set(['titleMasked']);
 
 const VALUE_LABELS: Record<string, Record<string, string>> = {
   role: ROLE_LABELS,
@@ -85,6 +87,7 @@ export function ChangeSummary({
           // Audit rows carry both clubId and clubName: show the name only.
           .filter((k) => !(k === 'clubId' && 'clubName' in after))
           .filter((k) => showClashes || k !== 'clashTimecodes')
+          .filter((k) => !HIDDEN_KEYS.has(k))
           .map((k) => (
             <Table.Tr key={k}>
               <Table.Td>{LABELS[k] ?? k}</Table.Td>

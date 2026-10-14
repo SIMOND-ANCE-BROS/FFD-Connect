@@ -270,7 +270,6 @@ export class AdminStatsQueryService {
     const [
       trackGroups,
       tracksBlacklisted,
-      tracksMasked,
       correctionsPending,
       correctionsApproved,
       correctionsRejected,
@@ -281,7 +280,6 @@ export class AdminStatsQueryService {
     ] = await Promise.all([
       this.prisma.track.groupBy({ by: ["status"], _count: { _all: true } }),
       this.prisma.track.count({ where: { blacklisted: true } }),
-      this.prisma.track.count({ where: { titleMasked: true } }),
       this.prisma.trackCorrection.count({
         where: { status: TrackCorrectionStatus.PENDING },
       }),
@@ -295,7 +293,6 @@ export class AdminStatsQueryService {
     return {
       tracksByStatus: countsByKey(Object.values(TrackStatus), trackGroups),
       tracksBlacklisted,
-      tracksMasked,
       correctionsPending,
       correctionsApproved,
       correctionsRejected,

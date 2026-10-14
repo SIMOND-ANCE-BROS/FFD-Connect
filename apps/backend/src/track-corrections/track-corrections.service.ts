@@ -618,13 +618,8 @@ export class TrackCorrectionsService {
       !sameNumbers(clashes, normalizeClashes(track.clashTimecodes));
 
     return {
-      // Titre masqué : jamais comparé au titre réel. Sinon la réponse (400
-      // « aucune correction » ou valeur ignorée) servirait d'oracle à un
-      // non-admin pour deviner le titre que la modération lui cache.
       proposedTitle:
-        title !== undefined && (track.titleMasked || title !== track.title)
-          ? title
-          : null,
+        title !== undefined && title !== track.title ? title : null,
       proposedArtist:
         artist !== undefined && artist !== track.artist ? artist : null,
       // La danse est un texte libre : « rumba » et « Rumba » sont la même.
@@ -836,7 +831,7 @@ export class TrackCorrectionsService {
     const approved = status === TrackCorrectionStatus.APPROVED;
     const deletion = correction.reason === TrackCorrectionReason.DELETE;
     // L'auteur peut ne pas être admin : même filtrage que partout côté
-    // non-admin (titre masqué → libellé neutre, piste blacklistée → retirée).
+    // non-admin (piste blacklistée → retirée).
     const { title } = publicTrackName(track);
     const outcome = deletion
       ? approved

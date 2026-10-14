@@ -277,7 +277,7 @@ describe("Admin routes (e2e) — role matrix", () => {
     prisma.track.findMany.mockResolvedValue([]);
     await request(server())
       .get(
-        "/api/v1/admin/tracks?blacklisted=false&titleMasked=true&ambiance=false&status=ERROR&q=%20paso%20&style=Rumba&take=50",
+        "/api/v1/admin/tracks?blacklisted=false&ambiance=false&status=ERROR&q=%20paso%20&style=Rumba&take=50",
       )
       .expect(200);
     expect(prisma.track.findMany).toHaveBeenLastCalledWith(
@@ -292,7 +292,6 @@ describe("Admin routes (e2e) — role matrix", () => {
             },
             { status: "ERROR" },
             { blacklisted: false },
-            { titleMasked: true },
             { style: { equals: "Rumba", mode: "insensitive" } },
             NOT_AMBIANCE_TRACK_WHERE,
           ],
@@ -407,6 +406,76 @@ describe("Admin routes (e2e) — role matrix", () => {
   it("rejects an unknown usage period with 400", async () => {
     currentRole = UserRole.ADMIN;
     await request(server()).get("/api/v1/admin/usage?period=1y").expect(400);
+  });
+
+  describe("column filters with operators (#557)", () => {
+    const filters = (list: unknown) =>
+      `filters=${encodeURIComponent(JSON.stringify(list))}`;
+
+    it("translates the filters of the user list into the Prisma where", async () => {
+      currentRole = UserRole.ADMIN;
+      prisma.user.count.mockResolvedValue(0);
+      prisma.user.findMany.mockResolvedValue([]);
+      await request(server())
+        .get(
+          `/api/v1/admin/users?${filters([
+            { field: "name", op: "contains", value: "mar" },
+            { field: "lastLoginAt", op: "isEmpty" },
+          ])}`,
+        )
+        .expect(200);
+      const call = prisma.user.findMany.mock.calls.at(-1)?.[0] as {
+        where: unknown;
+        take: number;
+      };
+      // Always a bounded page.
+      expect(call.take).toBeLessThanOrEqual(100);
+      expect(call.where).toEqual({
+        AND: [
+          {
+            OR: [
+              { lastName: { contains: "mar", mode: "insensitive" } },
+              { firstName: { contains: "mar", mode: "insensitive" } },
+            ],
+          },
+          { lastLoginAt: null },
+        ],
+      });
+    });
+
+    it.each([
+      "/api/v1/admin/users",
+      "/api/v1/admin/clubs",
+      "/api/v1/admin/audit-log",
+      "/api/v1/admin/tracks",
+      "/api/v1/track-corrections",
+      "/api/v1/admin/license-renewals",
+    ])("%s refuses a field outside its whitelist with 400", async (path) => {
+      currentRole = UserRole.ADMIN;
+      const res = await request(server())
+        .get(`${path}?${filters([{ field: "password", op: "isEmpty" }])}`)
+        .expect(400);
+      expect(JSON.stringify(res.body)).toContain("champ non filtrable");
+    });
+
+    it.each([
+      ["a malformed JSON", "filters=%5Boops"],
+      [
+        "an operator of another kind",
+        filters([{ field: "email", op: "lt", value: "a" }]),
+      ],
+      [
+        "an unknown enum value",
+        filters([{ field: "role", op: "in", value: ["ROOT"] }]),
+      ],
+      [
+        "a Prisma operator smuggled as value",
+        filters([{ field: "email", op: "contains", value: { not: "" } }]),
+      ],
+    ])("refuses %s with 400", async (_label, query) => {
+      currentRole = UserRole.ADMIN;
+      await request(server()).get(`/api/v1/admin/users?${query}`).expect(400);
+    });
   });
 
   describe("licence renewal moderation (#266) — validation", () => {

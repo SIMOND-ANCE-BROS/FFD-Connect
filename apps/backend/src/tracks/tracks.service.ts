@@ -23,11 +23,7 @@ import { BpmService } from "./bpm.service";
 import { UpdateTrackDto } from "./dto/update-track.dto";
 import { PASO_MAX_CLASHES, PASO_MAX_CLASHES_MESSAGE } from "./paso-clashes";
 import { TrackFilesService } from "./track-files.service";
-import {
-  LIBRARY_TRACK_WHERE,
-  MASKED_TITLE_LABEL,
-  trackByIdWhere,
-} from "./track-visibility.util";
+import { LIBRARY_TRACK_WHERE, trackByIdWhere } from "./track-visibility.util";
 
 /** 409 of DELETE /tracks/:id while correction proposals wait for a decision. */
 export const TRACK_HAS_PENDING_CORRECTIONS_MESSAGE =
@@ -54,9 +50,7 @@ const TRACK_BASE_SELECT = {
   // live before saving. submittedById drives the edit permission (owner/admin).
   rawBpm: true,
   submittedById: true,
-  // Modération : renvoyés au client. titleMasked pilote l'affichage du libellé
-  // neutre côté non-admin ; blacklisted permet à l'admin d'afficher un indicateur.
-  titleMasked: true,
+  // Modération : blacklisted permet à l'admin d'afficher un indicateur.
   blacklisted: true,
   // Paso doble : timecodes des appels affichés sur le lecteur (#paso-clashes).
   clashTimecodes: true,
@@ -98,26 +92,10 @@ export class TracksService {
   };
 
   /**
-   * Applique le masquage du titre en fonction du rôle du demandeur.
-   * Les admins voient toujours le titre réel (+ le flag titleMasked pour
-   * afficher un indicateur). Les non-admins reçoivent un libellé neutre
-   * lorsque la piste est marquée titleMasked.
-   */
-  private static maskTitle<T extends TrackBase>(track: T, isAdmin: boolean): T {
-    if (track.titleMasked && !isAdmin) {
-      return { ...track, title: MASKED_TITLE_LABEL };
-    }
-    return track;
-  }
-
-  /**
    * Récupère toutes les pistes audio READY avec pagination.
    * Exclut Ambiance et les tracks en cours de traitement.
    */
-  async findAll(
-    pagination: PaginationParamsDto = new PaginationParamsDto(),
-    isAdmin = false,
-  ) {
+  async findAll(pagination: PaginationParamsDto = new PaginationParamsDto()) {
     const { skip, take } = pagination;
     const where = LIBRARY_TRACK_WHERE;
 
@@ -132,23 +110,21 @@ export class TracksService {
       }),
     ]);
 
-    const masked = tracks.map((t) => TracksService.maskTitle(t, isAdmin));
-    return createPaginatedResponse(masked, total, skip ?? 0, take ?? 10);
+    return createPaginatedResponse(tracks, total, skip ?? 0, take ?? 10);
   }
 
   /**
    * Récupère les pistes d'ambiance (musique de pause du mode compétition),
-   * exclues de la bibliothèque par LIBRARY_TRACK_WHERE. Même forme et même masquage
-   * de titre que `findAll`, pour que le client les mappe à l'identique.
+   * exclues de la bibliothèque par LIBRARY_TRACK_WHERE. Même forme que
+   * `findAll`, pour que le client les mappe à l'identique.
    */
-  async findAmbiance(isAdmin = false): Promise<TrackBase[]> {
-    const tracks = await this.prisma.track.findMany({
+  async findAmbiance(): Promise<TrackBase[]> {
+    return this.prisma.track.findMany({
       where: TracksService.AMBIANCE_WHERE,
       orderBy: { createdAt: "desc" },
       take: TracksService.AMBIANCE_TAKE,
       select: TRACK_BASE_SELECT,
     });
-    return tracks.map((t) => TracksService.maskTitle(t, isAdmin));
   }
 
   /**
@@ -162,7 +138,7 @@ export class TracksService {
       select: TRACK_BASE_SELECT,
     });
     if (!track) throw new NotFoundException(`Track ${id} not found`);
-    return TracksService.maskTitle(track, isAdmin);
+    return track;
   }
 
   /**
@@ -223,9 +199,6 @@ export class TracksService {
     // Champs de modération : réservés aux admins. Ignorés silencieusement pour
     // un non-admin (le contrôleur PATCH est déjà ADMIN-only, ceci est une
     // défense en profondeur).
-    if (isAdmin && patch.titleMasked !== undefined) {
-      data.titleMasked = patch.titleMasked;
-    }
     if (isAdmin && patch.blacklisted !== undefined) {
       data.blacklisted = patch.blacklisted;
     }

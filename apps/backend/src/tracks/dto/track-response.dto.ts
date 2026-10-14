@@ -4,17 +4,13 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
  * Piste audio telle que renvoyée par les endpoints de lecture de la
  * bibliothèque (même forme que `TRACK_BASE_SELECT` dans tracks.service.ts).
  *
- * Le titre est déjà masqué (« Titre masqué ») pour un non-admin lorsque
- * `titleMasked` est vrai. Le flux audio se télécharge via
- * `GET /tracks/download/{filename}`.
+ * Le flux audio se télécharge via `GET /tracks/download/{filename}`.
  */
 export class TrackResponseDto {
   @ApiProperty({ description: "UUID de la piste" })
   id!: string;
 
-  @ApiProperty({
-    description: "Titre (masqué pour un non-admin si titleMasked)",
-  })
+  @ApiProperty({ description: "Titre" })
   title!: string;
 
   @ApiProperty({ description: "Artiste", example: "Ambiance" })
@@ -45,9 +41,6 @@ export class TrackResponseDto {
 
   @ApiPropertyOptional({ type: String, nullable: true })
   submittedById!: string | null;
-
-  @ApiProperty({ description: "Titre masqué côté non-admin" })
-  titleMasked!: boolean;
 
   @ApiProperty({ description: "Piste retirée de la bibliothèque (admin)" })
   blacklisted!: boolean;

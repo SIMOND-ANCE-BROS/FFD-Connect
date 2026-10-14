@@ -87,6 +87,35 @@ describe("TracksController (e2e)", () => {
       .expect(403);
   });
 
+  it.each([UserRole.LICENSEE, UserRole.CLUB, UserRole.STAFF])(
+    "/api/v1/tracks/:id (PATCH blacklisted) refuses a %s (403) before the service (#561)",
+    async (role) => {
+      currentUserRole = role;
+
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .patch("/api/v1/tracks/0b6f7c1e-3d6a-4f4e-9a52-2f0c1f5e8a10")
+        .send({ blacklisted: true })
+        .expect(403);
+      expect(tracksService.updateTrack).not.toHaveBeenCalled();
+    },
+  );
+
+  it("/api/v1/tracks/:id (PATCH blacklisted) lets an admin blacklist (#561)", async () => {
+    const id = "0b6f7c1e-3d6a-4f4e-9a52-2f0c1f5e8a10";
+    (tracksService.findOne as jest.Mock).mockResolvedValue({ id });
+
+    await request(app.getHttpServer() as Parameters<typeof request>[0])
+      .patch(`/api/v1/tracks/${id}`)
+      .send({ blacklisted: true })
+      .expect(200);
+    expect(tracksService.updateTrack).toHaveBeenCalledWith(
+      id,
+      "test-user-id",
+      true,
+      { blacklisted: true },
+    );
+  });
+
   it("/api/v1/tracks/:id (PATCH, DELETE) refuses a non-UUID id (400) before the service", async () => {
     const server = app.getHttpServer() as Parameters<typeof request>[0];
     await request(server)

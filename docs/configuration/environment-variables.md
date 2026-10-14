@@ -255,11 +255,18 @@ Stockage sans état des pistes audio et des certificats de licence.
 
 Seule la valeur exacte `"true"` l'active ; absente ou toute autre valeur = comportement normal
 (numéro inconnu → 404). Une fois activé, `POST /auth/register` crée à la volée, dans la même
-transaction que le compte, une licence pour un numéro inconnu (catégorie « Ten Dance », club
+transaction que le compte, une licence pour un numéro inconnu (catégorie « Non renseignée », club
 fictif « Club bêta-test (licence auto-créée) », validité 1 an), afin que les bêta-testeurs puissent
 s'inscrire sans que leur numéro ait été pré-seedé (`scripts/seed-beta-testers.ts`). Les licences
 existantes gardent leurs contrôles (déjà rattachée → 409, expirée → 400) ; deux inscriptions
 concurrentes sur le même numéro → 409.
+
+La discipline d'un bêta-testeur est inconnue : licences pré-seedées et auto-créées portent la
+catégorie « Non renseignée », qui n'est pas une discipline, et l'inscription laisse alors la
+discipline du profil vide (#555). Seule une vraie discipline de licence (Latines, Standards,
+10 danses) est recopiée dans le profil. Les licences bêta créées avant ce correctif portaient
+« Ten Dance » : `scripts/seed-beta-testers.ts` les répare au démarrage du conteneur staging (licence
+→ « Non renseignée », profil encore à « Ten Dance » → vide), en une seule passe.
 
 La variable n'est pas gérée par Terraform (les Container Apps n'y sont qu'en `data`) : elle se pose
 directement sur l'application staging, comme `SEED_TEST_TRACKS` :

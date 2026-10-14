@@ -1,6 +1,13 @@
-import type { AuditLogEntryDto } from '../api/generated/types.gen';
+import type { AuditLogEntryDto, AuditLogFilterDto } from '../api/generated/types.gen';
 import type { AuditFilter } from '../api/queries';
 import { ACTION_LABELS } from './auditLabels';
+import {
+  type ActiveFilter,
+  type FilterSpecs,
+  filtersQuery,
+  readFilters,
+  writeFilters,
+} from './listFilters';
 import { readSort, type SortState, sortQuery, writeSort } from './listSort';
 
 export type AuditAction = AuditLogEntryDto['action'];
@@ -17,27 +24,36 @@ export const TARGET_TYPE_LABELS: Record<AuditTargetType, string> = {
   LICENSE_RENEWAL: 'Renouvellement de licence',
 };
 
+export type AuditFilterField = AuditLogFilterDto['field'];
+
+/** Column filters with operators (#557): exactly the API's whitelist. */
+export const AUDIT_FILTERS: FilterSpecs<AuditFilterField> = {
+  createdAt: { label: 'Date', kind: 'date' },
+  actor: { label: 'Admin', kind: 'text' },
+  action: {
+    label: 'Action',
+    kind: 'enum',
+    options: Object.entries(ACTION_LABELS).map(([value, label]) => ({ value, label })),
+  },
+  targetType: {
+    label: 'Cible',
+    kind: 'enum',
+    options: Object.entries(TARGET_TYPE_LABELS).map(([value, label]) => ({ value, label })),
+  },
+};
+
 export interface AuditUrlState {
-  action: AuditAction | null;
-  targetType: AuditTargetType | null;
+  filters: ActiveFilter<AuditFilterField>[];
   page: number;
   /** Date sort; null: newest first. */
   sort: SortState<AuditSortField> | null;
 }
 
-const isAction = (value: string | null): value is AuditAction =>
-  value !== null && Object.keys(ACTION_LABELS).includes(value);
-const isTargetType = (value: string | null): value is AuditTargetType =>
-  value !== null && Object.keys(TARGET_TYPE_LABELS).includes(value);
-
-/** Filters kept in the URL (#443): `?action=USER_DELETE&target=USER&sort=createdAt&order=asc&page=2`. */
+/** Filters kept in the URL (#443, #557): `?f.action=in:USER_DELETE&f.targetType=in:USER&sort=createdAt&order=asc&page=2`. */
 export function readAuditParams(params: URLSearchParams): AuditUrlState {
-  const action = params.get('action');
-  const target = params.get('target');
   const page = Number(params.get('page'));
   return {
-    action: isAction(action) ? action : null,
-    targetType: isTargetType(target) ? target : null,
+    filters: readFilters(params, AUDIT_FILTERS),
     page: Number.isInteger(page) && page > 1 ? page : 1,
     sort: readSort(params, AUDIT_SORT_FIELDS),
   };
@@ -51,8 +67,7 @@ export function writeAuditParams(
   const next = { ...readAuditParams(current), ...patch };
   if (patch.page === undefined) next.page = 1;
   const params = new URLSearchParams();
-  if (next.action) params.set('action', next.action);
-  if (next.targetType) params.set('target', next.targetType);
+  writeFilters(params, next.filters);
   writeSort(params, next.sort);
   if (next.page > 1) params.set('page', String(next.page));
   return params;
@@ -61,8 +76,7 @@ export function writeAuditParams(
 /** API filter of one journal page of `take` rows. */
 export function auditFilter(state: AuditUrlState, take: number): AuditFilter {
   return {
-    ...(state.action && { action: state.action }),
-    ...(state.targetType && { targetType: state.targetType }),
+    ...filtersQuery(state.filters),
     ...sortQuery(state.sort),
     skip: (state.page - 1) * take,
     take,

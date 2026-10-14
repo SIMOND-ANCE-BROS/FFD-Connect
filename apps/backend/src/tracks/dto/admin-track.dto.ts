@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { TrackStatus } from "@prisma/client";
+import { Prisma, TrackStatus } from "@prisma/client";
 import { Transform } from "class-transformer";
 import {
   IsBoolean,
@@ -12,6 +12,15 @@ import {
 import { AdminPageMetaDto } from "../../admin/dto/admin-audit.dto";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
 import {
+  enumColumn,
+  type FilterColumns,
+  type ListFilter,
+} from "../../common/list-filters/list-filters";
+import {
+  ListFiltersParam,
+  listFilterSchema,
+} from "../../common/list-filters/list-filters.dto";
+import {
   SortByParam,
   SortOrderParam,
   type SortOrder,
@@ -20,6 +29,25 @@ import {
 /** Bounds of the catalogue search (track title or artist). */
 export const ADMIN_TRACK_SEARCH_MIN_LENGTH = 2;
 export const ADMIN_TRACK_SEARCH_MAX_LENGTH = 100;
+
+/** Columns the back-office catalogue can be filtered on, with operators (#557). */
+export const ADMIN_TRACKS_FILTER_COLUMNS: FilterColumns<Prisma.TrackWhereInput> =
+  {
+    title: { kind: "text", where: (c) => ({ title: c }) },
+    artist: { kind: "text", where: (c) => ({ artist: c }) },
+    style: {
+      kind: "text",
+      where: (c) => ({ style: c }),
+      whereNull: { style: null },
+    },
+    bpm: { kind: "number", where: (c) => ({ bpm: c }) },
+    status: enumColumn(Object.values(TrackStatus), (status) => ({ status })),
+    createdAt: { kind: "date", where: (c) => ({ createdAt: c }) },
+  };
+export const AdminTracksFilterDto = listFilterSchema(
+  "AdminTracksFilterDto",
+  Object.keys(ADMIN_TRACKS_FILTER_COLUMNS),
+);
 
 /** Columns the back-office catalogue can be sorted on (#443). */
 export const ADMIN_TRACKS_SORT_FIELDS = [
@@ -77,16 +105,6 @@ export class ListAdminTracksQueryDto extends PaginationParamsDto {
   blacklisted?: boolean;
 
   @ApiPropertyOptional({
-    type: Boolean,
-    description:
-      "true : seulement les titres masqués ; false : seulement les autres",
-  })
-  @IsOptional()
-  @Transform(toFlag)
-  @IsBoolean()
-  titleMasked?: boolean;
-
-  @ApiPropertyOptional({
     description: "Danse (libellé exact, sans tenir compte de la casse)",
     maxLength: 64,
   })
@@ -112,12 +130,15 @@ export class ListAdminTracksQueryDto extends PaginationParamsDto {
 
   @SortOrderParam()
   sortOrder?: SortOrder;
+
+  @ListFiltersParam(ADMIN_TRACKS_FILTER_COLUMNS)
+  filters?: ListFilter[];
 }
 
 /** One track as the back-office sees it (real title, moderation flags, status). */
 export class AdminTrackDto {
   @ApiProperty() id!: string;
-  @ApiProperty({ description: "Titre réel, même masqué" }) title!: string;
+  @ApiProperty() title!: string;
   @ApiProperty() artist!: string;
   @ApiProperty({
     type: String,
@@ -134,7 +155,6 @@ export class AdminTrackDto {
     description: "Paso doble : timecodes (secondes) des clashs",
   })
   clashTimecodes!: number[];
-  @ApiProperty() titleMasked!: boolean;
   @ApiProperty() blacklisted!: boolean;
   @ApiProperty({ enum: TrackStatus, enumName: "TrackStatus" })
   status!: TrackStatus;

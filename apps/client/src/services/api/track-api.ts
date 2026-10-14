@@ -1,4 +1,7 @@
-import { tracksControllerFindAmbiance } from "../../api/generated";
+import {
+  tracksControllerFindAmbiance,
+  tracksControllerUpdate,
+} from "../../api/generated";
 import { getAccessToken } from "../../api/tokenStore";
 import type { Track } from "../../features/player/services/TrackRepository";
 import { BACKEND_URL } from "../../config";
@@ -33,7 +36,6 @@ export const TrackApi = {
       bpm: t.bpm,
       style: t.style ?? undefined,
       artwork: t.artwork ?? undefined,
-      titleMasked: t.titleMasked,
       clashTimecodes: t.clashTimecodes,
     }));
   },
@@ -48,7 +50,6 @@ export const TrackApi = {
     style?: string | null;
     artwork?: string | null;
     submittedById?: string | null;
-    titleMasked?: boolean;
     blacklisted?: boolean;
   }> {
     return httpGet(`${BACKEND_URL}/tracks/${trackId}`, {
@@ -74,6 +75,28 @@ export const TrackApi = {
       errorMessage: ERROR_MESSAGES.OPERATION_FAILED,
       logErrors: true,
     });
+  },
+
+  /**
+   * Blackliste une piste (ADMIN, #561) : elle disparaît de la bibliothèque
+   * pour tout le monde. Même route que le back-office (PATCH /tracks/:id,
+   * réservée ADMIN côté serveur, tracée dans le journal d'audit, réversible
+   * depuis la fiche de la musique). Client OpenAPI généré.
+   */
+  async blacklistTrack(trackId: string): Promise<void> {
+    const { error, response } = await tracksControllerUpdate({
+      path: { id: trackId },
+      body: { blacklisted: true },
+    });
+    if (error !== undefined) {
+      throw new Error(
+        response?.status === 403
+          ? "Seul un administrateur peut blacklister un titre."
+          : response?.status === 404
+            ? "Ce titre n'existe plus."
+            : ERROR_MESSAGES.OPERATION_FAILED,
+      );
+    }
   },
 
   /** Supprime une piste (ADMIN). */

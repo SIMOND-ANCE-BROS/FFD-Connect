@@ -77,7 +77,7 @@ describe('ChangeSummary', () => {
     expect(screen.queryByText('0:40')).not.toBeInTheDocument();
   });
 
-  it('labels the track moderation flags, the status and the source, booleans in French', () => {
+  it('labels the blacklist flag, the status and the source, booleans in French', () => {
     render(
       <MantineProvider>
         <ChangeSummary
@@ -86,12 +86,14 @@ describe('ChangeSummary', () => {
         />
       </MantineProvider>,
     );
-    expect(screen.getByText('Titre masqué')).toBeInTheDocument();
+    // Retired flag (#560) still in old audit rows: not shown at all.
+    expect(screen.queryByText('Titre masqué')).not.toBeInTheDocument();
+    expect(screen.queryByText('titleMasked')).not.toBeInTheDocument();
     expect(screen.getByText('Blacklistée')).toBeInTheDocument();
     expect(screen.getByText('Statut')).toBeInTheDocument();
     expect(screen.getByText('Source')).toBeInTheDocument();
-    expect(screen.getAllByText('Oui')).toHaveLength(2);
-    expect(screen.getAllByText('Non')).toHaveLength(2);
+    expect(screen.getAllByText('Oui')).toHaveLength(1);
+    expect(screen.getAllByText('Non')).toHaveLength(1);
     expect(screen.getByText('En erreur')).toBeInTheDocument();
     expect(screen.getByText('Prête')).toBeInTheDocument();
     expect(screen.getByText('apple:1')).toBeInTheDocument();

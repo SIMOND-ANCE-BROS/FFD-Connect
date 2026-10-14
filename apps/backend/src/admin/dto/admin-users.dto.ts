@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { PassportLevel, UserRole } from "@prisma/client";
+import { PassportLevel, Prisma, UserRole } from "@prisma/client";
 import { Transform } from "class-transformer";
 import {
   IsDateString,
@@ -16,6 +16,16 @@ import {
   SortOrderParam,
   type SortOrder,
 } from "../../common/dto/sort-params";
+import { withRole } from "../../auth/roles";
+import {
+  enumColumn,
+  type FilterColumns,
+  type ListFilter,
+} from "../../common/list-filters/list-filters";
+import {
+  ListFiltersParam,
+  listFilterSchema,
+} from "../../common/list-filters/list-filters.dto";
 import { AdminPageMetaDto } from "./admin-audit.dto";
 
 export const LICENSE_STATUSES = ["ACTIVE", "EXPIRED"] as const;
@@ -36,6 +46,51 @@ export const ADMIN_USERS_SORT_FIELDS = [
   "lastLoginAt",
 ] as const;
 export type AdminUsersSortField = (typeof ADMIN_USERS_SORT_FIELDS)[number];
+
+/** Columns the back-office user list can be filtered on, with operators (#557). */
+export const ADMIN_USERS_FILTER_COLUMNS: FilterColumns<Prisma.UserWhereInput> =
+  {
+    name: {
+      kind: "text",
+      where: (c) => ({ OR: [{ lastName: c }, { firstName: c }] }),
+    },
+    email: { kind: "text", where: (c) => ({ email: c }) },
+    // Main or extra role, like the `role` parameter.
+    role: enumColumn(Object.values(UserRole), (role) => withRole(role)),
+    status: enumColumn(ACCOUNT_STATUSES, (status) => ({
+      disabledAt: status === "active" ? null : { not: null },
+    })),
+    club: {
+      kind: "text",
+      where: (c) => ({ clubName: c }),
+      whereNull: { clubName: null },
+    },
+    category: {
+      kind: "text",
+      where: (c) => ({ category: c }),
+      whereNull: { category: null },
+    },
+    ageGroup: {
+      kind: "text",
+      where: (c) => ({ ageGroup: c }),
+      whereNull: { ageGroup: null },
+    },
+    licenseNumber: {
+      kind: "text",
+      where: (c) => ({ license: { is: { number: c } } }),
+      whereNull: { license: { is: null } },
+    },
+    createdAt: { kind: "date", where: (c) => ({ createdAt: c }) },
+    lastLoginAt: {
+      kind: "date",
+      where: (c) => ({ lastLoginAt: c }),
+      whereNull: { lastLoginAt: null },
+    },
+  };
+export const AdminUsersFilterDto = listFilterSchema(
+  "AdminUsersFilterDto",
+  Object.keys(ADMIN_USERS_FILTER_COLUMNS),
+);
 
 export class ListAdminUsersQueryDto extends PaginationParamsDto {
   @ApiPropertyOptional({ description: "Nom, prénom ou email" })
@@ -83,6 +138,9 @@ export class ListAdminUsersQueryDto extends PaginationParamsDto {
 
   @SortOrderParam()
   sortOrder?: SortOrder;
+
+  @ListFiltersParam(ADMIN_USERS_FILTER_COLUMNS)
+  filters?: ListFilter[];
 }
 
 export class AdminUserListItemDto {

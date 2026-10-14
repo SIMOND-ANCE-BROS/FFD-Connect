@@ -1,11 +1,19 @@
 import type {
   AdminLicenseRenewalDetailDto,
+  AdminLicenseRenewalsFilterDto,
   AdminRenewalDocumentDetailDto,
   AdminRenewalLicenseDto,
   LicenseRenewalDocumentType,
   LicenseRenewalStatus,
 } from '../api/generated/types.gen';
 import type { LicenseRenewalsFilter } from '../api/queries';
+import {
+  type ActiveFilter,
+  type FilterSpecs,
+  filtersQuery,
+  readFilters,
+  writeFilters,
+} from './listFilters';
 import { readSort, type SortState, sortQuery, writeSort } from './listSort';
 
 /** Tabs of the queue: a draft is never shown (the licensee has not submitted it). */
@@ -76,9 +84,23 @@ export const RENEWALS_SORT_FIELDS = [
   'reviewedAt',
 ] as const satisfies readonly RenewalsSortField[];
 
+export type RenewalsFilterField = AdminLicenseRenewalsFilterDto['field'];
+
+/** Column filters with operators (#557): exactly the API's whitelist. */
+export const RENEWALS_FILTERS: FilterSpecs<RenewalsFilterField> = {
+  name: { label: 'Licencié', kind: 'text' },
+  licenseNumber: { label: 'N° de licence', kind: 'text' },
+  validUntil: { label: 'Fin de validité', kind: 'date', nullable: true },
+  submittedAt: { label: 'Soumise le', kind: 'date', nullable: true },
+  reviewedAt: { label: 'Traitée le', kind: 'date', nullable: true },
+  reviewer: { label: 'Traitée par', kind: 'text' },
+};
+
 export interface RenewalsUrlState {
   status: RenewalTab;
   page: number;
+  /** Column filters with operators (#557). */
+  filters: ActiveFilter<RenewalsFilterField>[];
   /** Column sort (#443); null: oldest submission first. */
   sort: SortState<RenewalsSortField> | null;
 }
@@ -92,6 +114,7 @@ export function readRenewalParams(params: URLSearchParams): RenewalsUrlState {
   const page = Number(params.get('page'));
   return {
     status: isTab(status) ? status : 'PENDING',
+    filters: readFilters(params, RENEWALS_FILTERS),
     page: Number.isInteger(page) && page > 1 ? page : 1,
     sort: readSort(params, RENEWALS_SORT_FIELDS),
   };
@@ -106,6 +129,7 @@ export function writeRenewalParams(
   if (patch.page === undefined) next.page = 1;
   const params = new URLSearchParams();
   if (next.status !== 'PENDING') params.set('status', next.status);
+  writeFilters(params, next.filters);
   writeSort(params, next.sort);
   if (next.page > 1) params.set('page', String(next.page));
   return params;
@@ -113,6 +137,7 @@ export function writeRenewalParams(
 
 export const listFilter = (state: RenewalsUrlState, take: number): LicenseRenewalsFilter => ({
   status: state.status,
+  ...filtersQuery(state.filters),
   ...sortQuery(state.sort),
   skip: (state.page - 1) * take,
   take,

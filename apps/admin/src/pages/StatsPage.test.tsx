@@ -46,7 +46,6 @@ const stats = (overrides: Record<string, unknown> = {}) => ({
   content: {
     tracksByStatus: { READY: 100, PENDING: 2, ERROR: 1 },
     tracksBlacklisted: 3,
-    tracksMasked: 5,
     correctionsPending: 6,
     correctionsApproved: 10,
     correctionsRejected: 2,

@@ -27,7 +27,6 @@ const pendingMpm = {
     style: 'Paso Doble',
     bpm: 60,
     clashTimecodes: [40, 80],
-    titleMasked: false,
     blacklisted: false,
     filename: 'España Cañí.mp3',
   },
@@ -360,10 +359,53 @@ describe('ModerationDetailPage', () => {
     );
   });
 
-  it('shows a masked title for real, flagged « Titre masqué »', async () => {
-    renderPage({ ...pendingMpm, track: { ...pendingMpm.track, titleMasked: true } });
-    expect(await screen.findByRole('heading', { name: 'España Cañí' })).toBeInTheDocument();
-    expect(screen.getByText('Titre masqué')).toBeInTheDocument();
+  it('blacklists the related track after a confirmation (#561)', async () => {
+    const update = vi.spyOn(sdk, 'tracksControllerUpdate').mockResolvedValue({
+      data: { id: 't1', blacklisted: true },
+      error: undefined,
+      response: new Response(null, { status: 200 }),
+    } as never);
+    const { findOne } = renderPage(pendingMpm);
+    await user.click(await screen.findByRole('button', { name: 'Blacklister le titre' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Blacklister le titre' });
+    expect(dialog).toHaveTextContent("retirée de la bibliothèque de l'app");
+    expect(update).not.toHaveBeenCalled();
+    findOne.mockResolvedValue(
+      ok({ ...pendingMpm, track: { ...pendingMpm.track, blacklisted: true } }) as never,
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Blacklister' }));
+    expect(update).toHaveBeenCalledWith({ path: { id: 't1' }, body: { blacklisted: true } });
+    // Reversible from the track page, linked once the track is blacklisted.
+    const link = await screen.findByRole(
+      'link',
+      { name: 'Fiche de la musique' },
+      { timeout: 5_000 },
+    );
+    expect(link).toHaveAttribute('href', '/tracks/t1');
+    expect(screen.queryByRole('button', { name: 'Blacklister le titre' })).not.toBeInTheDocument();
+  }, 15_000);
+
+  it('cancels the blacklist without any request', async () => {
+    const update = vi.spyOn(sdk, 'tracksControllerUpdate');
+    renderPage(pendingMpm);
+    await user.click(await screen.findByRole('button', { name: 'Blacklister le titre' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Blacklister le titre' });
+    await user.click(within(dialog).getByRole('button', { name: 'Annuler' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('shows the API error in the blacklist dialog', async () => {
+    vi.spyOn(sdk, 'tracksControllerUpdate').mockResolvedValue({
+      data: undefined,
+      error: { statusCode: 403, message: 'Accès refusé' },
+      response: new Response(null, { status: 403 }),
+    } as never);
+    renderPage(pendingMpm);
+    await user.click(await screen.findByRole('button', { name: 'Blacklister le titre' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Blacklister le titre' });
+    await user.click(within(dialog).getByRole('button', { name: 'Blacklister' }));
+    expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
   });
 
   it('shows the shared message when the server is unreachable', async () => {

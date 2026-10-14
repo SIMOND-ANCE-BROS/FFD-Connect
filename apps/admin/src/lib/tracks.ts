@@ -1,11 +1,19 @@
 import type {
   AdminTrackDto,
+  AdminTracksFilterDto,
   AdminTracksControllerCreateData,
   TrackStatus,
   UpdateTrackDto,
 } from '../api/generated/types.gen';
 import type { TracksFilter } from '../api/queries';
 import { MIN_SEARCH_LENGTH, sortedUnique, trackAudioUrl } from './moderation';
+import {
+  type ActiveFilter,
+  type FilterSpecs,
+  filtersQuery,
+  readFilters,
+  writeFilters,
+} from './listFilters';
 import { readSort, type SortState, sortQuery, writeSort } from './listSort';
 import { bpmForPatch } from './mpm';
 
@@ -61,14 +69,31 @@ export const TRACKS_SORT_FIELDS = [
   'createdAt',
 ] as const satisfies readonly TracksSortField[];
 
+export type TracksFilterField = AdminTracksFilterDto['field'];
+
+/** Column filters with operators (#557): exactly the API's whitelist. */
+export const TRACKS_FILTERS: FilterSpecs<TracksFilterField> = {
+  title: { label: 'Titre', kind: 'text' },
+  artist: { label: 'Artiste', kind: 'text' },
+  style: { label: 'Danse', kind: 'text' },
+  bpm: { label: 'MPM', kind: 'number' },
+  status: {
+    label: 'Statut',
+    kind: 'enum',
+    options: Object.entries(TRACK_STATUS_BADGES).map(([value, { label }]) => ({ value, label })),
+  },
+  createdAt: { label: 'Ajoutée le', kind: 'date' },
+};
+
 export interface TracksUrlState {
   q: string;
   status: TrackStatus | null;
   blacklisted: boolean;
-  titleMasked: boolean;
   ambiance: boolean;
   style: string;
   page: number;
+  /** Column filters with operators (#557); absent: none. */
+  filters?: ActiveFilter<TracksFilterField>[];
   /** Column sort (#443); absent: newest first. */
   sort?: SortState<TracksSortField> | null;
 }
@@ -79,7 +104,7 @@ const isStatus = (value: string | null): value is TrackStatus =>
 
 /**
  * Filters kept in the URL:
- * `?q=paso&status=ERROR&blacklisted=true&titleMasked=true&ambiance=true&style=Rumba&sort=bpm&order=desc&page=2`.
+ * `?q=paso&status=ERROR&blacklisted=true&ambiance=true&style=Rumba&sort=bpm&order=desc&page=2`.
  */
 export function readTracksParams(params: URLSearchParams): TracksUrlState {
   const status = params.get('status');
@@ -87,14 +112,15 @@ export function readTracksParams(params: URLSearchParams): TracksUrlState {
   const style = params.get('style') ?? '';
   const page = Number(params.get('page'));
   const sort = readSort(params, TRACKS_SORT_FIELDS);
+  const filters = readFilters(params, TRACKS_FILTERS);
   return {
     q: q.length >= MIN_SEARCH_LENGTH ? q : '',
     status: isStatus(status) ? status : null,
     blacklisted: params.get('blacklisted') === 'true',
-    titleMasked: params.get('titleMasked') === 'true',
     ambiance: params.get('ambiance') === 'true',
     style: DANCE_LABELS.some((dance) => dance === style) ? style : '',
     page: Number.isInteger(page) && page > 1 ? page : 1,
+    ...(filters.length > 0 && { filters }),
     ...(sort && { sort }),
   };
 }
@@ -110,9 +136,9 @@ export function writeTracksParams(
   if (next.q) params.set('q', next.q);
   if (next.status) params.set('status', next.status);
   if (next.blacklisted) params.set('blacklisted', 'true');
-  if (next.titleMasked) params.set('titleMasked', 'true');
   if (next.ambiance) params.set('ambiance', 'true');
   if (next.style) params.set('style', next.style);
+  writeFilters(params, next.filters ?? []);
   writeSort(params, next.sort ?? null);
   if (next.page > 1) params.set('page', String(next.page));
   return params;
@@ -124,9 +150,9 @@ export function tracksFilter(state: TracksUrlState, take: number): TracksFilter 
     ...(state.q && { q: state.q }),
     ...(state.status && { status: state.status }),
     ...(state.blacklisted && { blacklisted: true }),
-    ...(state.titleMasked && { titleMasked: true }),
     ...(state.ambiance && { ambiance: true }),
     ...(state.style && { style: state.style }),
+    ...filtersQuery(state.filters ?? []),
     ...sortQuery(state.sort ?? null),
     skip: (state.page - 1) * take,
     take,

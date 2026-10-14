@@ -888,7 +888,7 @@ describe("UsersService", () => {
       expect(corrections.take).toBe(500);
     });
 
-    it("masque le nom des pistes modérées visées par ses propositions", async () => {
+    it("masque le nom des pistes blacklistées visées par ses propositions", async () => {
       const correction = (track: Record<string, unknown>) => ({
         reason: "TITLE",
         message: null,
@@ -899,21 +899,13 @@ describe("UsersService", () => {
         makeExportedUser({
           trackCorrectionsProposed: [
             correction({
-              title: "Vrai titre",
-              artist: "Artiste",
-              titleMasked: true,
-              blacklisted: false,
-            }),
-            correction({
               title: "Retirée",
               artist: "Secret",
-              titleMasked: false,
               blacklisted: true,
             }),
             correction({
               title: "Public",
               artist: "Artiste",
-              titleMasked: false,
               blacklisted: false,
             }),
           ],
@@ -926,11 +918,10 @@ describe("UsersService", () => {
         result.data.trackCorrectionsProposed as Array<{ track: unknown }>
       ).map((c) => c.track);
       expect(tracks).toEqual([
-        { title: "Titre masqué", artist: "Artiste" },
         { title: "Musique retirée", artist: "" },
         { title: "Public", artist: "Artiste" },
       ]);
-      expect(JSON.stringify(result)).not.toContain("Vrai titre");
+      expect(JSON.stringify(result)).not.toContain("Retirée");
       expect(JSON.stringify(result)).not.toContain("Secret");
     });
 
@@ -1235,13 +1226,12 @@ describe("UsersService", () => {
       }
     });
 
-    it("exporte les musiques proposées en masquant le nom des pistes modérées", async () => {
+    it("exporte les musiques proposées en masquant le nom des pistes blacklistées", async () => {
       const createdAt = new Date("2026-06-01");
-      const track = (title: string, titleMasked: boolean) => ({
+      const track = (title: string, blacklisted: boolean) => ({
         title,
         artist: "Artiste",
-        titleMasked,
-        blacklisted: false,
+        blacklisted,
         status: "READY",
         createdAt,
       });
@@ -1249,7 +1239,7 @@ describe("UsersService", () => {
         makeExportedUser({
           submittedTracks: [
             track("Ma rumba", false),
-            track("Titre cache", true),
+            track("Titre retire", true),
           ],
         }),
       );
@@ -1267,13 +1257,13 @@ describe("UsersService", () => {
       expect(result.data.submittedTracks).toEqual([
         { title: "Ma rumba", artist: "Artiste", status: "READY", createdAt },
         {
-          title: "Titre masqué",
-          artist: "Artiste",
+          title: "Musique retirée",
+          artist: "",
           status: "READY",
           createdAt,
         },
       ]);
-      expect(JSON.stringify(result)).not.toContain("Titre cache");
+      expect(JSON.stringify(result)).not.toContain("Titre retire");
     });
 
     it("exporte les signalements envoyés, sans la pile d'erreur", async () => {

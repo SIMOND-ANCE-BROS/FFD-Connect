@@ -20,6 +20,7 @@ import type {
   TrackCorrectionStatus,
 } from '../api/generated/types.gen';
 import { moderationListQuery } from '../api/queries';
+import { operatorFilters } from '../components/ColumnFilterEditor';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
@@ -29,6 +30,7 @@ import type { SortState } from '../lib/listSort';
 import { useListParams } from '../lib/useListParams';
 import {
   MIN_SEARCH_LENGTH,
+  MODERATION_FILTERS,
   MODERATION_SORT_FIELDS,
   moderationFilter,
   type ModerationSortField,
@@ -63,6 +65,9 @@ export function ModerationPage() {
     ...moderationListQuery(moderationFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
   });
+  const ops = operatorFilters(MODERATION_FILTERS, state.filters ?? [], (filters) =>
+    update({ filters }),
+  );
   const total = list.data?.meta.total ?? 0;
   const detailPath = (c: TrackCorrectionAdminDto) => `/moderation/${c.id}${locationSearch}`;
 
@@ -74,6 +79,9 @@ export function ModerationPage() {
   const columns: DataTableColumn<TrackCorrectionAdminDto>[] = [
     {
       key: 'track',
+      minWidth: 200,
+      weight: 2,
+      wrap: true,
       label: 'Musique',
       required: true,
       sortField: 'track',
@@ -89,11 +97,6 @@ export function ModerationPage() {
             >
               {c.track.title}
             </Anchor>
-            {c.track.titleMasked && (
-              <Badge size="xs" color="gray" variant="light">
-                Titre masqué
-              </Badge>
-            )}
             {c.track.blacklisted && (
               <Badge size="xs" color="red" variant="light">
                 Retirée
@@ -105,9 +108,12 @@ export function ModerationPage() {
           </Text>
         </>
       ),
+      filter: ops.filter('track'),
     },
     {
       key: 'reason',
+      minWidth: 130,
+      priority: 1,
       label: 'Motif',
       sortField: 'reason',
       cell: (c) => <Badge variant="light">{REASON_LABELS[c.reason]}</Badge>,
@@ -128,31 +134,60 @@ export function ModerationPage() {
         ),
       },
     },
-    { key: 'proposer', label: 'Proposée par', cell: proposer },
-    { key: 'createdAt', label: 'Date', sortField: 'createdAt', nowrap: true, cell: createdAt },
+    {
+      key: 'proposer',
+      minWidth: 140,
+      priority: 3,
+      label: 'Proposée par',
+      cell: proposer,
+      filter: ops.filter('proposer'),
+    },
+    {
+      key: 'createdAt',
+      minWidth: 150,
+      priority: 2,
+      label: 'Date',
+      sortField: 'createdAt',
+      cell: createdAt,
+      filter: ops.filter('createdAt'),
+    },
     {
       key: 'summary',
+      minWidth: 200,
+      weight: 2,
+      priority: 4,
+      wrap: true,
       label: 'Changements proposés',
       cell: (c) => proposalSummary(c.proposed, c.reason),
     },
     {
       key: 'message',
+      minWidth: 200,
+      weight: 2,
+      priority: 5,
+      wrap: true,
       label: 'Message',
       hiddenByDefault: true,
       cell: (c) => c.message ?? '—',
+      filter: ops.filter('message'),
     },
     {
       key: 'reviewedAt',
+      minWidth: 150,
+      priority: 6,
       label: 'Traitée le',
       hiddenByDefault: true,
-      nowrap: true,
       cell: (c) => (c.reviewedAt ? dayjs(c.reviewedAt).format('DD/MM/YYYY HH:mm') : '—'),
+      filter: ops.filter('reviewedAt'),
     },
     {
       key: 'reviewer',
+      minWidth: 140,
+      priority: 7,
       label: 'Traitée par',
       hiddenByDefault: true,
       cell: (c) => c.reviewer?.name ?? '—',
+      filter: ops.filter('reviewer'),
     },
   ];
 
@@ -193,9 +228,9 @@ export function ModerationPage() {
         rowKey={(c) => c.id}
         sort={state.sort ?? null}
         onSortChange={onSortChange}
-        onResetFilters={() => update({ reasons: [] })}
+        onResetFilters={() => update({ reasons: [], filters: [] })}
+        filterChips={ops.chips}
         onRowClick={(c) => navigate(detailPath(c))}
-        minWidth={820}
         toolbar={
           <TextInput
             label="Rechercher une proposition"
@@ -226,7 +261,6 @@ export function ModerationPage() {
             badges={
               <>
                 <Badge variant="light">{REASON_LABELS[c.reason]}</Badge>
-                {c.track.titleMasked && <Badge color="gray">Titre masqué</Badge>}
                 {c.track.blacklisted && <Badge color="red">Retirée</Badge>}
               </>
             }

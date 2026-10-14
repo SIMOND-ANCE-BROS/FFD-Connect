@@ -246,7 +246,6 @@ export const CorrectionReviewCard = ({
           </AppText>
           <AppText variant="caption" color={theme.textSecondary}>
             {item.track.artist}
-            {item.track.titleMasked ? " · titre masqué" : ""}
             {item.track.blacklisted ? " · retirée" : ""}
           </AppText>
         </View>

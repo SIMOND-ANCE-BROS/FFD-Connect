@@ -1,3 +1,4 @@
+import { AdminTracksFilterDto } from "./dto/admin-track.dto";
 import {
   Body,
   Controller,
@@ -22,6 +23,7 @@ import {
   ApiParam,
   ApiResponse,
   ApiTags,
+  ApiExtraModels,
 } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { UserRole } from "@prisma/client";
@@ -67,6 +69,7 @@ interface ImportTrackFiles {
 @ApiBearerAuth("JWT-auth")
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
+@ApiExtraModels(AdminTracksFilterDto)
 @Controller("admin/tracks")
 export class AdminTracksController {
   constructor(
@@ -78,7 +81,7 @@ export class AdminTracksController {
   @ApiOperation({
     summary: "Catalogue des musiques (vue administrateur)",
     description:
-      "Toutes les musiques, y compris blacklistées, en attente, en erreur et d'ambiance (pas de filtre bibliothèque). Plus récentes d'abord. Filtres : q (titre ou artiste, 2 à 100 caractères), status, blacklisted, titleMasked, style, ambiance.",
+      "Toutes les musiques, y compris blacklistées, en attente, en erreur et d'ambiance (pas de filtre bibliothèque). Plus récentes d'abord. Filtres : q (titre ou artiste, 2 à 100 caractères), status, blacklisted, style, ambiance.",
   })
   @ApiResponse({ status: 200, type: AdminTracksPageDto })
   list(@Query() query: ListAdminTracksQueryDto): Promise<AdminTracksPageDto> {

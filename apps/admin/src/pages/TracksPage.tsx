@@ -16,6 +16,7 @@ import dayjs from 'dayjs';
 import { Link } from 'react-router';
 import type { AdminTrackDto, TrackStatus } from '../api/generated/types.gen';
 import { tracksQuery } from '../api/queries';
+import { operatorFilters } from '../components/ColumnFilterEditor';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
@@ -30,6 +31,7 @@ import {
   readTracksParams,
   TRACK_STATUS_BADGES,
   TRACK_STATUS_FILTERS,
+  TRACKS_FILTERS,
   TRACKS_SORT_FIELDS,
   tracksFilter,
   type TracksSortField,
@@ -46,19 +48,14 @@ const isTracksSortField = (value: string): value is TracksSortField =>
 const FILTERS_CLEARED: Partial<TracksUrlState> = {
   status: null,
   blacklisted: false,
-  titleMasked: false,
   ambiance: false,
   style: '',
+  filters: [],
 };
 
 function TitleBadges({ track, size }: { track: AdminTrackDto; size?: 'xs' }) {
   return (
     <>
-      {track.titleMasked && (
-        <Badge size={size} color="gray" variant="light">
-          Titre masqué
-        </Badge>
-      )}
       {track.blacklisted && (
         <Badge size={size} color="red" variant="light">
           Blacklistée
@@ -90,6 +87,9 @@ export function TracksPage() {
     ...tracksQuery(tracksFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
   });
+  const ops = operatorFilters(TRACKS_FILTERS, state.filters ?? [], (filters) =>
+    update({ filters }),
+  );
   const total = list.data?.meta.total ?? 0;
   const rows = list.data?.data ?? [];
 
@@ -101,6 +101,8 @@ export function TracksPage() {
   const columns: DataTableColumn<AdminTrackDto>[] = [
     {
       key: 'title',
+      minWidth: 200,
+      weight: 2.5,
       label: 'Titre',
       required: true,
       sortField: 'title',
@@ -113,7 +115,7 @@ export function TracksPage() {
         </Group>
       ),
       filter: {
-        active: state.blacklisted || state.titleMasked,
+        active: state.blacklisted,
         content: (
           <Stack gap="xs">
             <Checkbox
@@ -121,18 +123,24 @@ export function TracksPage() {
               checked={state.blacklisted}
               onChange={(e) => update({ blacklisted: e.currentTarget.checked })}
             />
-            <Checkbox
-              label="Titre masqué"
-              checked={state.titleMasked}
-              onChange={(e) => update({ titleMasked: e.currentTarget.checked })}
-            />
           </Stack>
         ),
       },
     },
-    { key: 'artist', label: 'Artiste', sortField: 'artist', cell: (t) => t.artist },
+    {
+      key: 'artist',
+      minWidth: 150,
+      weight: 1.5,
+      priority: 1,
+      label: 'Artiste',
+      sortField: 'artist',
+      cell: (t) => t.artist,
+      filter: ops.filter('artist'),
+    },
     {
       key: 'style',
+      minWidth: 125,
+      priority: 2,
       label: 'Danse',
       sortField: 'style',
       cell: (t) => t.style ?? '—',
@@ -158,9 +166,20 @@ export function TracksPage() {
         ),
       },
     },
-    { key: 'bpm', label: 'MPM', sortField: 'bpm', cell: (t) => t.bpm },
+    {
+      key: 'bpm',
+      minWidth: 80,
+      weight: 0.5,
+      priority: 4,
+      label: 'MPM',
+      sortField: 'bpm',
+      cell: (t) => t.bpm,
+      filter: ops.filter('bpm'),
+    },
     {
       key: 'status',
+      minWidth: 135,
+      priority: 3,
       label: 'Statut',
       sortField: 'status',
       cell: (t) => <StatusBadge status={t.status} />,
@@ -180,16 +199,20 @@ export function TracksPage() {
     },
     {
       key: 'pendingCorrections',
+      minWidth: 200,
+      priority: 6,
       label: 'Propositions en attente',
       hiddenByDefault: true,
       cell: (t) => t.pendingCorrections,
     },
     {
       key: 'createdAt',
+      minWidth: 120,
+      priority: 5,
       label: 'Ajoutée le',
       sortField: 'createdAt',
-      nowrap: true,
       cell: (t) => dayjs(t.createdAt).format('DD/MM/YYYY'),
+      filter: ops.filter('createdAt'),
     },
   ];
 
@@ -211,7 +234,7 @@ export function TracksPage() {
         sort={state.sort ?? null}
         onSortChange={onSortChange}
         onResetFilters={() => update(FILTERS_CLEARED)}
-        minWidth={760}
+        filterChips={ops.chips}
         toolbar={
           <TextInput
             aria-label="Rechercher"

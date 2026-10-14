@@ -41,7 +41,6 @@ const adminRow = {
     bpm: 60,
     rawBpm: 120,
     clashTimecodes: [10],
-    titleMasked: false,
     blacklisted: false,
     filename: "espana-cani.mp3",
   },
@@ -150,7 +149,6 @@ describe("TrackCorrectionsQueryService", () => {
           style: "Paso Doble",
           bpm: 60,
           clashTimecodes: [10],
-          titleMasked: false,
           blacklisted: false,
           filename: "espana-cani.mp3",
         },
@@ -344,9 +342,9 @@ describe("TrackCorrectionsQueryService", () => {
         select: trackCorrectionMineSelect,
       });
       expect(page.meta.hasMore).toBe(true);
-      // Piste masquée par la modération : libellé neutre côté auteur.
+      // L'ancien drapeau titleMasked est ignoré (#560) : vrai titre.
       expect(page.data[0]).toMatchObject({
-        trackTitle: "Titre masqué",
+        trackTitle: "Vrai",
         trackArtist: "A",
         status: TrackCorrectionStatus.PENDING,
       });
@@ -361,7 +359,6 @@ describe("TrackCorrectionsQueryService", () => {
             id: "t1",
             title: "Vrai",
             artist: "A",
-            titleMasked: false,
             blacklisted: false,
           },
         },
@@ -383,7 +380,6 @@ describe("TrackCorrectionsQueryService", () => {
           id: "t1",
           title: "Secret",
           artist: "Artiste secret",
-          titleMasked: false,
           blacklisted: true,
         },
       },

@@ -14,8 +14,10 @@ import {
   TrackCorrectionAdminDto,
   TrackCorrectionAdminPageDto,
 } from "./dto/track-correction-response.dto";
+import { listFiltersWhere } from "../common/list-filters/list-filters";
 import {
   ListTrackCorrectionsQueryDto,
+  TRACK_CORRECTION_FILTER_COLUMNS,
   type TrackCorrectionSortField,
 } from "./dto/track-correction.dto";
 import {
@@ -86,6 +88,9 @@ export class TrackCorrectionsQueryService {
         query.reason.length > 0 && { reason: { in: query.reason } }),
       ...(query.q && { track: trackSearchWhere(query.q) }),
       ...(query.trackId && { trackId: query.trackId }),
+      ...(query.filters?.length && {
+        AND: listFiltersWhere(TRACK_CORRECTION_FILTER_COLUMNS, query.filters),
+      }),
     };
     // A column sort from the back-office (#443) replaces the queue order.
     const orderBy: CorrectionOrder | CorrectionOrder[] = query.sortBy

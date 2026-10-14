@@ -1,18 +1,10 @@
-import {
-  Anchor,
-  Badge,
-  Button,
-  Pagination,
-  SegmentedControl,
-  Stack,
-  Text,
-  TextInput,
-} from '@mantine/core';
+import { Anchor, Badge, Button, Pagination, Stack, Text, TextInput } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { Link } from 'react-router';
 import type { AdminClubListItemDto } from '../api/generated/types.gen';
 import { clubsQuery } from '../api/queries';
+import { operatorFilters } from '../components/ColumnFilterEditor';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
@@ -20,13 +12,14 @@ import { RecordCard, RecordLine } from '../components/RecordCard';
 import { StoreReviewBadge } from '../components/StoreReview';
 import { apiErrorMessage } from '../lib/apiError';
 import {
+  CLUBS_FILTERS,
   CLUBS_SORT_FIELDS,
   clubsFilter,
   type ClubsSortField,
   readClubsParams,
   writeClubsParams,
 } from '../lib/clubList';
-import { REGISTRATION_MODE_LABELS, STATUS_FILTER_OPTIONS, type StatusChoice } from '../lib/labels';
+import { REGISTRATION_MODE_LABELS } from '../lib/labels';
 import type { SortState } from '../lib/listSort';
 import { useListParams } from '../lib/useListParams';
 import { useUrlSearch } from '../lib/useUrlSearch';
@@ -52,6 +45,7 @@ export function ClubsPage() {
     ...clubsQuery(clubsFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
   });
+  const ops = operatorFilters(CLUBS_FILTERS, state.filters, (filters) => update({ filters }));
   const total = clubs.data?.meta.total ?? 0;
   const rows = clubs.data?.data ?? [];
 
@@ -61,6 +55,8 @@ export function ClubsPage() {
   const columns: DataTableColumn<AdminClubListItemDto>[] = [
     {
       key: 'name',
+      minWidth: 180,
+      weight: 2,
       label: 'Club',
       required: true,
       sortField: 'name',
@@ -72,9 +68,12 @@ export function ClubsPage() {
           {c.isStoreReview && <StoreReviewBadge />}
         </>
       ),
+      filter: ops.filter('name'),
     },
     {
       key: 'status',
+      minWidth: 100,
+      priority: 1,
       label: 'Statut',
       cell: (c) =>
         c.disabledAt ? (
@@ -84,39 +83,48 @@ export function ClubsPage() {
         ) : (
           'Actif'
         ),
-      filter: {
-        active: state.status !== 'all',
-        content: (
-          <SegmentedControl
-            orientation="vertical"
-            fullWidth
-            aria-label="Statut du club"
-            data={STATUS_FILTER_OPTIONS}
-            value={state.status}
-            onChange={(v) => update({ status: v as StatusChoice })}
-          />
-        ),
-      },
+      filter: ops.filter('status'),
     },
-    { key: 'memberCount', label: 'Membres', cell: (c) => c.memberCount },
-    { key: 'clubAccountCount', label: 'Comptes Club', cell: (c) => c.clubAccountCount },
+    {
+      key: 'memberCount',
+      minWidth: 100,
+      weight: 0.6,
+      priority: 2,
+      label: 'Membres',
+      cell: (c) => c.memberCount,
+    },
+    {
+      key: 'clubAccountCount',
+      minWidth: 140,
+      weight: 0.6,
+      priority: 6,
+      label: 'Comptes Club',
+      cell: (c) => c.clubAccountCount,
+    },
     {
       key: 'payment',
+      minWidth: 110,
+      priority: 5,
       label: 'Paiement',
       cell: (c) => (c.helloAssoConfigured ? <HelloAssoBadge /> : '—'),
     },
     {
       key: 'registrationMode',
+      minWidth: 130,
+      priority: 3,
       label: 'Inscriptions',
       sortField: 'registrationMode',
       cell: (c) => REGISTRATION_MODE_LABELS[c.registrationMode],
+      filter: ops.filter('registrationMode'),
     },
     {
       key: 'createdAt',
+      minWidth: 110,
+      priority: 4,
       label: 'Création',
       sortField: 'createdAt',
-      nowrap: true,
       cell: (c) => dayjs(c.createdAt).format('DD/MM/YYYY'),
+      filter: ops.filter('createdAt'),
     },
   ];
 
@@ -137,7 +145,8 @@ export function ClubsPage() {
         rowKey={(c) => c.id}
         sort={state.sort}
         onSortChange={onSortChange}
-        onResetFilters={() => update({ status: 'all' })}
+        onResetFilters={() => update({ filters: [] })}
+        filterChips={ops.chips}
         toolbar={
           <TextInput
             label="Rechercher un club"

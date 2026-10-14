@@ -174,7 +174,6 @@ export const LibraryTrackItem = React.memo(
             numberOfLines={1}
             style={styles.trackTitle}
           >
-            {item.titleMasked ? "🔒 " : ""}
             {item.title}
           </AppText>
           <AppText

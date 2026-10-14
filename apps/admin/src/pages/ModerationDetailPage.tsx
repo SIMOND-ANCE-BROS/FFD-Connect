@@ -25,9 +25,17 @@ import { ListSkeleton } from '../components/ListStates';
 import {
   trackCorrectionsControllerApprove,
   trackCorrectionsControllerReject,
+  tracksControllerUpdate,
 } from '../api/generated/sdk.gen';
 import type { TrackCorrectionAdminDto } from '../api/generated/types.gen';
-import { correctionQuery, moderationListQuery, pendingCountQuery, unwrap } from '../api/queries';
+import {
+  correctionQuery,
+  ensureOk,
+  moderationListQuery,
+  pendingCountQuery,
+  trackQuery,
+  unwrap,
+} from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
 import { ClashEditor } from '../components/ClashEditor';
 import { apiErrorMessage, isConflict } from '../lib/apiError';
@@ -91,6 +99,7 @@ function CorrectionReview({ id }: { id: string }) {
   const [position, setPosition] = useState(0);
   const [decided, setDecided] = useState(false);
   const [conflict, setConflict] = useState(false);
+  const [blacklistOpen, setBlacklistOpen] = useState(false);
   const item = useQuery(correctionQuery(id));
 
   const refreshAfterDecision = () => {
@@ -113,6 +122,25 @@ function CorrectionReview({ id }: { id: string }) {
       }),
   });
 
+  // « Blacklister le titre » (#561): acts on the related track through the
+  // same admin route as the track page (audited, reversible there).
+  const blacklist = useMutation({
+    mutationFn: (trackId: string) =>
+      ensureOk(tracksControllerUpdate({ path: { id: trackId }, body: { blacklisted: true } })),
+    onSuccess: (_, trackId) => {
+      void qc.invalidateQueries({ queryKey: correctionQuery(id).queryKey });
+      void qc.invalidateQueries({ queryKey: trackQuery(trackId).queryKey });
+      void qc.invalidateQueries({ queryKey: ['admin', 'tracks', 'list'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'moderation', 'list'] });
+      void qc.invalidateQueries({ queryKey: ['admin', 'audit'] });
+      setBlacklistOpen(false);
+      notifications.show({ color: 'green', message: 'Musique blacklistée' });
+    },
+  });
+  const closeBlacklist = () => {
+    if (!blacklist.isPending) setBlacklistOpen(false);
+  };
+
   if (item.isError) {
     return <Alert color="red">{apiErrorMessage(item.error, 'Proposition introuvable.')}</Alert>;
   }
@@ -129,21 +157,66 @@ function CorrectionReview({ id }: { id: string }) {
       <Group justify="space-between">
         <Group>
           <PageHeader title={c.track.title} />
-          {c.track.titleMasked && (
-            <Badge color="gray" variant="light">
-              Titre masqué
-            </Badge>
-          )}
           {c.track.blacklisted && (
             <Badge color="red" variant="light">
               Retirée
             </Badge>
           )}
         </Group>
-        <Badge size="lg" variant="light" color={badge.color}>
-          {badge.label}
-        </Badge>
+        <Group>
+          {c.track.blacklisted ? (
+            <Anchor component={Link} to={`/tracks/${c.trackId}`} size="sm">
+              Fiche de la musique
+            </Anchor>
+          ) : (
+            <Button
+              variant="light"
+              color="red"
+              onClick={() => {
+                blacklist.reset();
+                setBlacklistOpen(true);
+              }}
+            >
+              Blacklister le titre
+            </Button>
+          )}
+          <Badge size="lg" variant="light" color={badge.color}>
+            {badge.label}
+          </Badge>
+        </Group>
       </Group>
+      <Modal
+        opened={blacklistOpen}
+        onClose={closeBlacklist}
+        closeOnEscape={!blacklist.isPending}
+        closeOnClickOutside={!blacklist.isPending}
+        withCloseButton={!blacklist.isPending}
+        title="Blacklister le titre"
+      >
+        <Stack>
+          <Text size="sm">
+            « {c.track.title} » sera retirée de la bibliothèque de l'app pour tous les utilisateurs.
+            La proposition reste à traiter. Vous pourrez annuler depuis la fiche de la musique.
+          </Text>
+          {blacklist.isError && (
+            <Alert color="red">
+              {apiErrorMessage(blacklist.error, "Échec de l'enregistrement")}
+            </Alert>
+          )}
+          <Group justify="flex-end">
+            <Button variant="default" disabled={blacklist.isPending} onClick={closeBlacklist}>
+              Annuler
+            </Button>
+            <Button
+              color="red"
+              loading={blacklist.isPending}
+              onClick={() => !blacklist.isPending && blacklist.mutate(c.trackId)}
+            >
+              Blacklister
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
       <Text c="dimmed">
         {c.track.artist} · {REASON_LABELS[c.reason]} · proposée par{' '}
         {c.proposer?.name ?? 'un compte supprimé'} le{' '}
