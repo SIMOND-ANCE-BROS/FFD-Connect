@@ -37,6 +37,8 @@ export const ProfileScreen = ({ navigation }: Props) => {
     number: string;
     validUntil: string;
     category: string;
+    /** Discipline(s) actually practised (#552); absent on older backends. */
+    discipline?: string | null;
     clubName: string;
   } | null>(null);
   const [results, setResults] = useState<CareerResult[]>([]);
@@ -53,6 +55,7 @@ export const ProfileScreen = ({ navigation }: Props) => {
             number: string;
             validUntil: string;
             category: string;
+            discipline?: string | null;
             clubName: string;
           }>("/licenses/my")
           .catch(() => ({ data: null })),
@@ -150,7 +153,8 @@ export const ProfileScreen = ({ navigation }: Props) => {
               color={currentTheme.textSecondary}
               style={styles.licenseDetail}
             >
-              {formatDiscipline(license.category)} — {license.clubName}
+              {formatDiscipline(license.discipline ?? license.category)} —{" "}
+              {license.clubName}
             </AppText>
             <View style={styles.expiryRow}>
               <AppText variant="caption" color={currentTheme.textSecondary}>

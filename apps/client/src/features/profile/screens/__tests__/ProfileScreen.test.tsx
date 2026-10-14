@@ -150,6 +150,29 @@ describe("ProfileScreen", () => {
     expect(await findByText("20011125-pit-ev38")).toBeTruthy();
   });
 
+  it("shows the discipline actually practised over the stored licence category (#552)", async () => {
+    mockGet.mockImplementation((url: string) =>
+      url === "/licenses/my"
+        ? Promise.resolve({
+            data: {
+              number: "FFD-1",
+              validUntil: "2026-12-31T00:00:00Z",
+              category: "Ten Dance",
+              discipline: "Latin",
+              clubName: "CVDS",
+            },
+          })
+        : Promise.resolve({ data: { results: [] } }),
+    );
+
+    const { findByText, queryByText } = await render(
+      <ProfileScreen navigation={mockNavigation} route={route} />,
+    );
+
+    expect(await findByText(/Latines/)).toBeTruthy();
+    expect(queryByText(/10 danses/)).toBeNull();
+  });
+
   it("shows the competition level of each discipline", async () => {
     mockGet.mockImplementation((url: string) => {
       if (url === "/users/me") {

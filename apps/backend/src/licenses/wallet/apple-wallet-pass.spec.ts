@@ -60,6 +60,7 @@ describe("buildApplePassJson", () => {
       license: { ...license, category },
       qrMessage: "x",
     });
+    expect(translated.generic.secondaryFields[1].label).toBe("Discipline");
     expect(translated.generic.secondaryFields[1].value).toBe(label);
   });
 

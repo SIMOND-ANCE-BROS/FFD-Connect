@@ -6,9 +6,86 @@ import {
   getHighestCompetitionLevel,
   mirrorLegacyCompetitionLevel,
   normalizeDiscipline,
+  practisedDiscipline,
   practisesDiscipline,
   toCompetitionLevel,
 } from "./index";
+
+describe("practisedDiscipline (#552)", () => {
+  it("a declared single discipline wins over everything else", () => {
+    expect(
+      practisedDiscipline(
+        {
+          category: "Latin",
+          competitionLevelLatin: "Avancé",
+          competitionLevelStandard: "Débutant",
+        },
+        "Ten Dance",
+      ),
+    ).toBe("Latin");
+    expect(practisedDiscipline({ category: "standards" }, "Ten Dance")).toBe(
+      "Standard",
+    );
+  });
+
+  it("a Latin-only level beats a Ten Dance placeholder (profile and licence)", () => {
+    expect(
+      practisedDiscipline(
+        { category: "Ten Dance", competitionLevelLatin: "Intermédiaire" },
+        "Ten Dance",
+      ),
+    ).toBe("Latin");
+  });
+
+  it("a Standard-only level gives Standard", () => {
+    expect(
+      practisedDiscipline(
+        { category: null, competitionLevelStandard: "Débutant" },
+        "Ten Dance",
+      ),
+    ).toBe("Standard");
+  });
+
+  it("Ten Dance only when both disciplines carry a level", () => {
+    expect(
+      practisedDiscipline({
+        competitionLevelLatin: "Avancé",
+        competitionLevelStandard: "Avancé",
+      }),
+    ).toBe("Ten Dance");
+  });
+
+  it("ignores unknown level values", () => {
+    expect(
+      practisedDiscipline(
+        {
+          competitionLevelLatin: "Avancé",
+          competitionLevelStandard: "Champion",
+        },
+        "Ten Dance",
+      ),
+    ).toBe("Latin");
+  });
+
+  it("falls back to a declared Ten Dance, then to the licence category", () => {
+    expect(practisedDiscipline({ category: "10 danses" }, "Latin")).toBe(
+      "Ten Dance",
+    );
+    expect(practisedDiscipline({ category: null }, "Latines")).toBe("Latin");
+    expect(practisedDiscipline(null, "Standard")).toBe("Standard");
+  });
+
+  it("ignores the legacy single level (no discipline information)", () => {
+    expect(
+      practisedDiscipline({ competitionLevel: "Avancé" }, "Standard"),
+    ).toBe("Standard");
+  });
+
+  it("returns null when nothing is known", () => {
+    expect(practisedDiscipline(undefined)).toBeNull();
+    expect(practisedDiscipline({ category: "Loisir" }, "Loisir")).toBeNull();
+  });
+});
 
 describe("normalizeDiscipline", () => {
   it.each([

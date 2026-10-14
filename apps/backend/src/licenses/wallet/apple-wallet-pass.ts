@@ -25,6 +25,10 @@ export interface ApplePassLicense {
   /** License id: stable across renewals, used for the serial number. */
   id: string;
   number: string;
+  /**
+   * Discipline(s) the holder practises (`practisedDiscipline`, #552), falling
+   * back to the stored licence category; shown in French on the pass.
+   */
   category: string;
   validUntil: Date;
   firstName: string;
@@ -116,7 +120,7 @@ export function buildApplePassJson(input: BuildApplePassInput): ApplePassJson {
         { key: "number", label: "N° de licence", value: license.number },
         {
           key: "category",
-          label: "Type",
+          label: "Discipline",
           value: disciplineLabel(license.category),
         },
       ],

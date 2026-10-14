@@ -88,7 +88,20 @@ export class LicensesController {
           format: "date-time",
           example: "2026-08-31T23:59:59.000Z",
         },
-        category: { type: "string", example: "Standard" },
+        category: {
+          type: "string",
+          example: "Standard",
+          description:
+            "Catégorie enregistrée sur la licence (valeur brute, peut ne pas refléter le profil). Préférer `discipline` pour l'affichage.",
+        },
+        discipline: {
+          type: "string",
+          nullable: true,
+          enum: ["Latin", "Standard", "Ten Dance"],
+          example: "Latin",
+          description:
+            "Discipline(s) réellement pratiquée(s), déduite(s) du profil du titulaire (discipline déclarée, niveaux par discipline) puis de la licence : « Ten Dance » seulement si Latines ET Standards. Même valeur que le pass Apple Wallet. Null si inconnue.",
+        },
         clubName: { type: "string", example: "Vienne Handi Danse" },
         qrCodeSignature: { type: "string", nullable: true },
         qrCode: {
