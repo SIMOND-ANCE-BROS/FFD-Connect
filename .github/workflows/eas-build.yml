@@ -459,11 +459,28 @@ jobs:
             # fingerprint depends on the variant (bundle id, APP_ENV), so a hash
             # match is a build of this profile. Finished only: a failed cloud
             # build carries the hash too. Errors here only mean "build".
+            # Narrowed (#511): never an iOS simulator build, and on iOS only the
+            # bundle id of this profile (eas upload reads it from Info.plist;
+            # Android uploads carry none). Assumption left (ci-cd.md): whoever
+            # can `eas upload` to the project is trusted — the same access
+            # publishes OTA updates. Bundle id unknown → no match → build.
             if [ -z "$found" ]; then
+              APP_ID=""
+              if [ "$platform" = ios ]; then
+                APP_ID=$(eas config --profile "$PROFILE" --platform ios --json --non-interactive \
+                  < /dev/null 2> /dev/null | sed -n '/^{/,$p' \
+                  | jq -r '.appConfig.ios.bundleIdentifier // empty' 2> /dev/null)
+                [ -n "$APP_ID" ] || echo "::warning::could not read the $PROFILE iOS bundle id - uploaded builds ignored"
+              fi
               count=$(eas build:list --platform "$platform" --fingerprint-hash "$HASH" --status finished \
-                --limit 1 --json --non-interactive \
+                --limit 10 --json --non-interactive \
                 < /dev/null 2> /dev/null | sed -n '/^[[{]/,$p' \
-                | jq 'if type == "array" then length else error("not an array") end' 2> /dev/null)
+                | jq --arg platform "$platform" --arg app "$APP_ID" '
+                    if type == "array" then
+                      [.[] | select(.isForIosSimulator != true)
+                        | select($platform != "ios" or ($app != "" and .appIdentifier == $app))]
+                      | length
+                    else error("not an array") end' 2> /dev/null)
               if [ "${count:-0}" -gt 0 ]; then
                 found="uploaded (GitHub runner)"
               fi
@@ -573,6 +590,19 @@ jobs:
     permissions:
       contents: read
     steps:
+      # #511: egress audit (StepSecurity Harden-Runner, free Community tier on
+      # a public repository, macOS in audit mode only). Records every outbound
+      # connection of the job (pnpm postinstall, CocoaPods, Gradle, the npx'd
+      # eas-cli-local-build-plugin) to draft the allow-list before a later
+      # switch to `block` (Linux only). First step on purpose: it only sees
+      # what runs after it. Never blocking: an agent failure must not cost a
+      # native build. Insights are public on app.stepsecurity.io (public repo).
+      - name: Harden runner (egress audit)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        continue-on-error: true
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
@@ -642,10 +672,15 @@ jobs:
             || 'FIREBASE_ANDROID_JSON_PREVIEW_B64' }}
 
       # `eas upload` registers the local binary on expo.dev: install link /
-      # download from the project's build page (Expo account members only), and
-      # an EAS record carrying its fingerprint, which the gate and
-      # check-ota-reach.sh look up (eas build:list --fingerprint-hash). It
-      # stores a file, it runs no build: not counted in the EAS build quota.
+      # download from the project's build page, and an EAS record carrying its
+      # fingerprint, which the gate and check-ota-reach.sh look up (eas
+      # build:list --fingerprint-hash). It stores a file, it runs no build: not
+      # counted in the EAS build quota.
+      # Nothing that locates the binary is printed (#511): an uploaded build is
+      # internal distribution, and EAS serves its install manifest — hence the
+      # binary — WITHOUT login from project id (public, app.config.js) + build
+      # id. Neither the URL nor the build id goes to the log or the summary
+      # (both public); members find it on expo.dev → Builds by its runtime.
       - name: Upload to EAS (eas upload)
         if: matrix.platform != 'eas'
         working-directory: apps/client
@@ -660,12 +695,12 @@ jobs:
           if [ -n "$FINGERPRINT" ]; then
             args+=(--fingerprint "$FINGERPRINT")
           fi
-          if ! out=$(eas upload "${args[@]}" < /dev/null); then
+          if ! eas upload "${args[@]}" < /dev/null > /dev/null; then
             echo "::error::eas upload a échoué : binaire perdu (non conservé), le prochain push le reconstruira"
             exit 1
           fi
-          url=$(sed -n '/^{/,$p' <<< "$out" | jq -r '.url // empty' 2> /dev/null || true)
-          echo "📦 Binaire preview $PLATFORM envoyé sur EAS : ${url:-voir expo.dev}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "📦 Binaire preview $PLATFORM envoyé sur EAS${FINGERPRINT:+ (runtime \`${FINGERPRINT:0:7}\`)} — expo.dev → Builds, membres du compte Expo" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
   ota-staging:
     name: OTA Update (preview)
@@ -847,6 +882,19 @@ jobs:
     permissions:
       contents: read
     steps:
+      # #511: egress audit (StepSecurity Harden-Runner, free Community tier on
+      # a public repository, macOS in audit mode only). Records every outbound
+      # connection of the job (pnpm postinstall, CocoaPods, Gradle, the npx'd
+      # eas-cli-local-build-plugin) to draft the allow-list before a later
+      # switch to `block` (Linux only). First step on purpose: it only sees
+      # what runs after it. Never blocking: an agent failure must not cost a
+      # native build. Insights are public on app.stepsecurity.io (public repo).
+      - name: Harden runner (egress audit)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        continue-on-error: true
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: staging
@@ -1736,19 +1784,19 @@ jobs:
             echo "::warning::empreinte du build beta $BUILD_NUMBER inconnue : eas upload ne servirait pas au contrôle de l'OTA beta, ignoré"
             exit 0
           fi
-          # Sortie JSON gardée hors du journal (seule l'URL en est extraite) ;
-          # stderr (progression) reste visible. Aucun jeton n'y figure, mais
-          # rien de ce que renvoie EAS n'est affiché tel quel.
-          OUT_JSON="$RUNNER_TEMP/eas-upload.json"
+          # Sortie JSON (lien du build) jetée ; stderr (progression) reste
+          # visible. Ni lien ni id de build dans le journal ou le résumé
+          # (publics, #511) : EAS sert le manifeste d'installation d'un build
+          # envoyé par eas upload sans connexion, à partir de l'id du projet
+          # (public) et de l'id du build. Le build se retrouve sur expo.dev
+          # (membres du compte Expo) par son runtime.
           if eas upload --platform "$PLATFORM" --build-path "$BUILD_PATH" --fingerprint "$FINGERPRINT" \
-            --non-interactive --json < /dev/null > "$OUT_JSON"; then
-            url=$(sed -n '/^{/,$p' "$OUT_JSON" | jq -r '.url // empty' 2> /dev/null || true)
-            echo "📦 Binaire beta $PLATFORM $BUILD_NUMBER enregistré sur EAS (runtime \`${FINGERPRINT:0:7}\`) : ${url:-voir expo.dev}" \
+            --non-interactive --json < /dev/null > /dev/null; then
+            echo "📦 Binaire beta $PLATFORM $BUILD_NUMBER enregistré sur EAS (runtime \`${FINGERPRINT:0:7}\`) — expo.dev → Builds, membres du compte Expo" \
               | tee -a "$GITHUB_STEP_SUMMARY"
           else
             echo "::warning::eas upload du build beta $BUILD_NUMBER a échoué : le contrôle de l'OTA beta s'appuiera sur l'empreinte notée dans la release (docs/exploitation/ci-cd.md, #510)"
           fi
-          rm -f "$OUT_JSON"
           exit 0
 
       # Filet de l'étape de build (dont le trap efface déjà la config Firebase) :
@@ -2676,6 +2724,19 @@ jobs:
     permissions:
       contents: read
     steps:
+      # #511: egress audit (StepSecurity Harden-Runner, free Community tier on
+      # a public repository, macOS in audit mode only). Records every outbound
+      # connection of the job (pnpm postinstall, CocoaPods, Gradle, the npx'd
+      # eas-cli-local-build-plugin) to draft the allow-list before a later
+      # switch to `block` (Linux only). First step on purpose: it only sees
+      # what runs after it. Never blocking: an agent failure must not cost a
+      # native build. Insights are public on app.stepsecurity.io (public repo).
+      - name: Harden runner (egress audit)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        continue-on-error: true
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
@@ -2743,10 +2804,15 @@ jobs:
             || 'FIREBASE_ANDROID_JSON_PRODUCTION_B64' }}
 
       # `eas upload` registers the local binary on expo.dev: install link /
-      # download from the project's build page (Expo account members only), and
-      # an EAS record carrying its fingerprint, which the gate and
-      # check-ota-reach.sh look up (eas build:list --fingerprint-hash). It
-      # stores a file, it runs no build: not counted in the EAS build quota.
+      # download from the project's build page, and an EAS record carrying its
+      # fingerprint, which the gate and check-ota-reach.sh look up (eas
+      # build:list --fingerprint-hash). It stores a file, it runs no build: not
+      # counted in the EAS build quota.
+      # Nothing that locates the binary is printed (#511): an uploaded build is
+      # internal distribution, and EAS serves its install manifest — hence the
+      # binary — WITHOUT login from project id (public, app.config.js) + build
+      # id. Neither the URL nor the build id goes to the log or the summary
+      # (both public); members find it on expo.dev → Builds by its runtime.
       - name: Upload to EAS (eas upload)
         if: matrix.platform != 'eas'
         working-directory: apps/client
@@ -2761,12 +2827,12 @@ jobs:
           if [ -n "$FINGERPRINT" ]; then
             args+=(--fingerprint "$FINGERPRINT")
           fi
-          if ! out=$(eas upload "${args[@]}" < /dev/null); then
+          if ! eas upload "${args[@]}" < /dev/null > /dev/null; then
             echo "::error::eas upload a échoué : binaire perdu (non conservé), le prochain push le reconstruira"
             exit 1
           fi
-          url=$(sed -n '/^{/,$p' <<< "$out" | jq -r '.url // empty' 2> /dev/null || true)
-          echo "📦 Binaire production $PLATFORM envoyé sur EAS : ${url:-voir expo.dev}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "📦 Binaire production $PLATFORM envoyé sur EAS${FINGERPRINT:+ (runtime \`${FINGERPRINT:0:7}\`)} — expo.dev → Builds, membres du compte Expo" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
 
   ota-production:
     name: OTA Update (production)
