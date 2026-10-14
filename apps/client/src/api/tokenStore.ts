@@ -11,6 +11,11 @@
  * les valeurs fournies (jamais de delete sur undefined) pour éviter tout
  * lockout accidentel lors d'une simple mise à jour de préférence. La
  * déconnexion appelle explicitement `clearTokens`.
+ *
+ * Seuls la connexion, le refresh (sessionRefresh) et l'impersonation écrivent
+ * les tokens (#592) : `saveAuthConfig` n'écrit que les préférences, sinon un
+ * « lire / modifier / enregistrer » concurrent d'un refresh réécrirait le
+ * refresh token révoqué par la rotation.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Sentry from "@sentry/react-native";
@@ -388,6 +393,65 @@ export function clearTokens(): Promise<void> {
   return withLock(async () => {
     sessionGeneration += 1;
     await deleteAllTokens();
+  });
+}
+
+/**
+ * The admin's own tokens, set aside while they impersonate someone (#591).
+ * Same keychain item class as the live session — never AsyncStorage, which is
+ * not encrypted. Kept apart from the session keys: clearTokens (the switch to
+ * the target) must not touch them, and a refresh never reads them.
+ */
+const BACKUP_ACCESS_KEY = "ffd.impersonation.access";
+const BACKUP_REFRESH_KEY = "ffd.impersonation.refresh";
+
+/**
+ * Stores the impersonation backup. It is a full snapshot: a missing token
+ * deletes its key, so no token of an older backup can survive next to it.
+ */
+export function setImpersonationBackupTokens(tokens: Tokens): Promise<void> {
+  return withLock(async () => {
+    await writeOrDelete(BACKUP_ACCESS_KEY, tokens.authToken);
+    await writeOrDelete(BACKUP_REFRESH_KEY, tokens.refreshToken);
+  });
+}
+
+async function writeOrDelete(key: string, value?: string): Promise<void> {
+  if (value === undefined) {
+    await SecureStore.deleteItemAsync(key, storeOptions());
+  } else {
+    await SecureStore.setItemAsync(key, value, storeOptions());
+  }
+}
+
+/**
+ * Reads the impersonation backup. No retry nor session-end policy here: it
+ * is not the live session, a failed read only delays the switch back.
+ *
+ * @throws {TokenStoreUnavailableError} when the store refuses the read.
+ */
+export async function getImpersonationBackupTokens(): Promise<Tokens> {
+  try {
+    const [authToken, refreshToken] = await Promise.all([
+      SecureStore.getItemAsync(BACKUP_ACCESS_KEY, storeOptions()),
+      SecureStore.getItemAsync(BACKUP_REFRESH_KEY, storeOptions()),
+    ]);
+    return {
+      authToken: authToken ?? undefined,
+      refreshToken: refreshToken ?? undefined,
+    };
+  } catch (error) {
+    throw new TokenStoreUnavailableError(error);
+  }
+}
+
+/** Drops the impersonation backup (switch back, logout). */
+export function clearImpersonationBackupTokens(): Promise<void> {
+  return withLock(async () => {
+    await Promise.all([
+      SecureStore.deleteItemAsync(BACKUP_ACCESS_KEY, storeOptions()),
+      SecureStore.deleteItemAsync(BACKUP_REFRESH_KEY, storeOptions()),
+    ]);
   });
 }
 

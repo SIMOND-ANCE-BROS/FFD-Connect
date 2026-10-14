@@ -2,9 +2,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
 import {
+  clearImpersonationBackupTokens,
   clearTokens,
   getAccessToken,
+  getImpersonationBackupTokens,
   getTokens,
+  setImpersonationBackupTokens,
   setTokens,
 } from "../tokenStore";
 import {
@@ -444,5 +447,83 @@ describe("tokenStore", () => {
 
   it("returns empty when neither store has tokens", async () => {
     await expect(getTokens()).resolves.toEqual({});
+  });
+});
+
+describe("impersonation backup (#591)", () => {
+  it("stores the admin's tokens under dedicated keys, same keychain class", async () => {
+    const store = keychain({ "ffd.session.access": "live" });
+
+    await setImpersonationBackupTokens({ authToken: "a", refreshToken: "r" });
+
+    expect(setItemAsync).toHaveBeenCalledWith(
+      "ffd.impersonation.access",
+      "a",
+      OPTS,
+    );
+    expect(setItemAsync).toHaveBeenCalledWith(
+      "ffd.impersonation.refresh",
+      "r",
+      OPTS,
+    );
+    // The live session is not touched.
+    expect(store["ffd.session.access"]).toBe("live");
+    await expect(getImpersonationBackupTokens()).resolves.toEqual({
+      authToken: "a",
+      refreshToken: "r",
+    });
+  });
+
+  it("is a full snapshot: a missing token deletes an older one", async () => {
+    const store = keychain({
+      "ffd.impersonation.access": "old-a",
+      "ffd.impersonation.refresh": "old-r",
+    });
+
+    await setImpersonationBackupTokens({ authToken: "a" });
+
+    expect(store["ffd.impersonation.refresh"]).toBeUndefined();
+    await expect(getImpersonationBackupTokens()).resolves.toEqual({
+      authToken: "a",
+      refreshToken: undefined,
+    });
+  });
+
+  it("clearImpersonationBackupTokens drops both keys, never the session", async () => {
+    const store = keychain({
+      "ffd.session.refresh": "live",
+      "ffd.impersonation.access": "a",
+      "ffd.impersonation.refresh": "r",
+    });
+
+    await clearImpersonationBackupTokens();
+
+    expect(store).toEqual({ "ffd.session.refresh": "live" });
+    await expect(getImpersonationBackupTokens()).resolves.toEqual({
+      authToken: undefined,
+      refreshToken: undefined,
+    });
+  });
+
+  it("clearTokens (the switch to the target) keeps the backup", async () => {
+    const store = keychain({
+      "ffd.session.access": "admin",
+      "ffd.impersonation.access": "a",
+    });
+
+    await clearTokens();
+
+    expect(store).toEqual({ "ffd.impersonation.access": "a" });
+  });
+
+  it("a refused read is a typed error, not an empty backup", async () => {
+    getItemAsync.mockRejectedValue(LOCKED);
+
+    const error: unknown = await getImpersonationBackupTokens().catch(
+      (e: unknown) => e,
+    );
+
+    expect(isTokenStoreUnavailable(error)).toBe(true);
+    expect((error as TokenStoreUnavailableError).locked).toBe(true);
   });
 });
