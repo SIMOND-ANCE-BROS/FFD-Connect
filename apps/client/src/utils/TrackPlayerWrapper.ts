@@ -33,6 +33,7 @@ import {
   type AudioStatus,
 } from "expo-audio";
 import LockscreenTransport from "../../modules/lockscreen-transport";
+import { createLogger } from "./logger";
 
 import {
   AppKilledPlaybackBehavior,
@@ -71,6 +72,8 @@ export type {
   Track,
 };
 
+const logger = createLogger("TrackPlayerWrapper");
+
 // --- Internal singleton state ---------------------------------------------
 
 let player: AudioPlayer | null = null;
@@ -98,6 +101,39 @@ const LOCK_SCREEN_OPTIONS: AudioLockScreenOptions = {
 
 // One-time wiring guard for the LockscreenTransport listeners.
 let transportWired = false;
+
+// Whether the iOS audio session has been configured for background playback.
+// Kept apart from `player`: expo-audio only keeps playing once the app is
+// backgrounded / the phone locked when setAudioModeAsync({
+// shouldPlayInBackground: true }) has SUCCEEDED (otherwise its native
+// OnAppEntersBackground pauses every player). The player can exist without it
+// (created, then setAudioModeAsync rejected), and "player exists" used to be
+// taken as "set up" — the mode was then never retried (#539).
+let audioModeApplied = false;
+
+async function applyAudioMode(): Promise<void> {
+  try {
+    // Play through the ringer silent switch + keep audio alive in background.
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      // Must be doNotMix for lock-screen "Now Playing" controls to attach to
+      // this app (iOS requirement — see expo-audio setActiveForLockScreen docs).
+      interruptionMode: "doNotMix",
+      shouldRouteThroughEarpiece: false,
+      allowsRecording: false,
+    });
+    audioModeApplied = true;
+  } catch (error) {
+    // Error level → Sentry: without this mode, locking the phone stops the
+    // music, and nothing else would tell us why.
+    logger.error(
+      "setAudioModeAsync failed — background playback disabled",
+      error instanceof Error ? error : new Error(String(error)),
+    );
+    throw error;
+  }
+}
 
 // Show/hide the lock-screen ⏮ ⏭ buttons. Handled directly here — not via
 // Event.RemoteNext listeners — because the wrapper owns the queue and this
@@ -294,16 +330,7 @@ interface TrackPlayerInterface {
 const TrackPlayer: TrackPlayerInterface = {
   setupPlayer: async () => {
     ensurePlayer();
-    // Play through the ringer silent switch + keep audio alive in background.
-    await setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: true,
-      // Must be doNotMix for lock-screen "Now Playing" controls to attach to
-      // this app (iOS requirement — see expo-audio setActiveForLockScreen docs).
-      interruptionMode: "doNotMix",
-      shouldRouteThroughEarpiece: false,
-      allowsRecording: false,
-    });
+    await applyAudioMode();
   },
 
   updateOptions: async () => {
@@ -387,6 +414,12 @@ const TrackPlayer: TrackPlayerInterface = {
   },
 
   play: async () => {
+    // Last line of defence: never start a track on a session that would be
+    // paused as soon as the phone locks. A failure is already reported; play
+    // anyway (foreground playback still works).
+    if (!audioModeApplied) {
+      await applyAudioMode().catch(() => {});
+    }
     ensurePlayer().play();
   },
 
@@ -418,8 +451,10 @@ const TrackPlayer: TrackPlayerInterface = {
   getTrack: async (index) => queue[index] ?? null,
   getQueue: async () => queue,
   getCurrentTrack: async () => {
-    // Throw before setup so TrackPlayerService's try/catch triggers setup once.
-    if (!player) throw new Error("Player not set up");
+    // Throw until setup has fully succeeded (player AND audio mode) so
+    // TrackPlayerService's try/catch runs setupPlayer again — a failed
+    // setAudioModeAsync must be retried, not silently skipped (#539).
+    if (!player || !audioModeApplied) throw new Error("Player not set up");
     return currentIndex >= 0 ? currentIndex : null;
   },
   getDuration: async () => lastStatus?.duration ?? 0,
