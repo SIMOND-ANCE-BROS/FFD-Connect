@@ -257,6 +257,53 @@ describe("LibraryContext", () => {
 
       expect(result.current.allTracks).toHaveLength(2);
     });
+
+    it("marque la bibliothèque chargée même quand un rechargement plus récent la remplace (#584)", async () => {
+      // Already loaded long ago: markStale() triggers a background reload.
+      useLibrarySyncStore.setState({
+        version: 0,
+        loadedVersion: 0,
+        loadedAt: 1,
+      });
+      const releases: (() => void)[] = [];
+      (mockRepo.getTracksPage as jest.Mock).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            releases.push(() => {
+              resolve({ tracks: mockTracks, hasMore: false, total: 2 });
+            });
+          }),
+      );
+      const { result } = await renderHook(() => useLibrary(), { wrapper });
+
+      // Reload A (version 0), then a correction → reload B (version 1).
+      let reloadA: Promise<void> = Promise.resolve();
+      await act(() => {
+        reloadA = result.current.reloadLibrary();
+      });
+      await act(() => {
+        useLibrarySyncStore.getState().markStale();
+      });
+      await waitFor(() => expect(releases).toHaveLength(2));
+
+      // A lands first but is superseded by B: still marked loaded.
+      await act(async () => {
+        releases[0]();
+        await reloadA;
+      });
+      expect(useLibrarySyncStore.getState().loadedAt).toBeGreaterThan(1);
+      expect(useLibrarySyncStore.getState().loadedVersion).toBe(0);
+
+      // B lands: it is the one shown, and it covers the correction.
+      await act(async () => {
+        releases[1]();
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(useLibrarySyncStore.getState().loadedVersion).toBe(1),
+      );
+      expect(result.current.allTracks).toHaveLength(2);
+    });
   });
 
   describe("rechargement d'une liste déjà paginée", () => {

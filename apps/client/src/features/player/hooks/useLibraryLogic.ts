@@ -52,15 +52,35 @@ export const useLibraryLogic = ({ navigation }: UseLibraryLogicProps) => {
   // Load library when user opens the Library tab (deferred from app mount to avoid /tracks on Login screen).
   // Also reload a stale one (a track was corrected, or it is older than
   // LIBRARY_MAX_AGE_MS) so validated corrections show up without restarting.
+  //
+  // The decision is taken once per focus, on the state AT focus time (#584):
+  // `sections.length` and `isLoadingMore` are read through refs, NOT listed as
+  // dependencies. Otherwise every loadMore that added a section re-ran the
+  // effect, and while a stale library was reloading each one fired another
+  // full reload, which dropped the in-flight pages → ~75 GET /tracks → 429.
+  const sectionsCountRef = useRef(sections.length);
+  const isLoadingMoreRef = useRef(isLoadingMore);
+  useEffect(() => {
+    sectionsCountRef.current = sections.length;
+    isLoadingMoreRef.current = isLoadingMore;
+  }, [sections.length, isLoadingMore]);
+  // A focus reload still in flight: refocusing must not start another one.
+  const focusReloadInFlightRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
+      if (focusReloadInFlightRef.current || isLoadingMoreRef.current) return;
       if (
-        sections.length === 0 ||
+        sectionsCountRef.current === 0 ||
         isLibraryStale(useLibrarySyncStore.getState(), Date.now())
       ) {
-        reloadLibrary().catch(() => {});
+        focusReloadInFlightRef.current = true;
+        reloadLibrary()
+          .catch(() => {})
+          .finally(() => {
+            focusReloadInFlightRef.current = false;
+          });
       }
-    }, [reloadLibrary, sections.length]),
+    }, [reloadLibrary]),
   );
 
   // Apply the configured default filter ONCE, on first entry to the library.
