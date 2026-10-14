@@ -32,22 +32,30 @@ export interface FitResult {
   widths: Record<string, string>;
   /** Width of the expander column, in %; null when nothing is hidden. */
   expanderWidth: string | null;
+  /** Width of the `reserved` px (a selection column…), in % (px while unmeasured). */
+  reservedWidth: string;
 }
 
 const percent = (value: number): string => `${Math.round(value * 10000) / 100}%`;
 
 /**
  * Splits `columns` between the table and the detail row for a container of
- * `available` px. An unmeasured container (0: first render, tests) keeps
- * every column and splits the width by weight only.
+ * `available` px, `reserved` px of which go to fixed columns (row
+ * selection). An unmeasured container (0: first render, tests) keeps every
+ * column and splits the width by weight only.
  */
-export function fitColumns(columns: readonly FitColumn[], available: number): FitResult {
+export function fitColumns(
+  columns: readonly FitColumn[],
+  available: number,
+  reserved = 0,
+): FitResult {
   const minTotal = columns.reduce((sum, c) => sum + c.minWidth, 0);
+  const room = available - reserved;
   let kept: FitColumn[];
-  if (available <= 0 || minTotal <= available) {
+  if (available <= 0 || minTotal <= room) {
     kept = [...columns];
   } else {
-    const budget = available - EXPANDER_WIDTH;
+    const budget = room - EXPANDER_WIDTH;
     const picked = new Set<string>();
     let used = 0;
     for (const c of columns) {
@@ -74,14 +82,20 @@ export function fitColumns(columns: readonly FitColumn[], available: number): Fi
 
   if (available <= 0) {
     for (const c of kept) widths[c.key] = percent(c.weight / totalWeight);
-    return { shown: kept.map((c) => c.key), hidden, widths, expanderWidth: null };
+    return {
+      shown: kept.map((c) => c.key),
+      hidden,
+      widths,
+      expanderWidth: null,
+      reservedWidth: `${reserved}px`,
+    };
   }
 
   const expander = hidden.length > 0 ? EXPANDER_WIDTH : 0;
   const keptMin = kept.reduce((sum, c) => sum + c.minWidth, 0);
-  const spare = Math.max(0, available - expander - keptMin);
+  const spare = Math.max(0, room - expander - keptMin);
   // Pinned columns may overflow a very narrow container: shares then follow the minimums.
-  const base = Math.max(available, keptMin + expander);
+  const base = Math.max(available, keptMin + expander + reserved);
   for (const c of kept) {
     widths[c.key] = percent((c.minWidth + (spare * c.weight) / totalWeight) / base);
   }
@@ -90,5 +104,6 @@ export function fitColumns(columns: readonly FitColumn[], available: number): Fi
     hidden,
     widths,
     expanderWidth: hidden.length > 0 ? percent(expander / base) : null,
+    reservedWidth: percent(reserved / base),
   };
 }

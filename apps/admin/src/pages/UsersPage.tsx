@@ -1,18 +1,17 @@
-import { Anchor, Badge, Button, Group, Pagination, Stack, Text, TextInput } from '@mantine/core';
+import { Badge, Button, Pagination, Stack, Text, TextInput } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { Link, useNavigate } from 'react-router';
-import type { AdminUserListItemDto } from '../api/generated/types.gen';
 import { usersQuery } from '../api/queries';
 import { operatorFilters } from '../components/ColumnFilterEditor';
-import { DataTable, type DataTableColumn } from '../components/DataTable';
+import { DataTable } from '../components/DataTable';
 import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
 import { RecordCard, RecordLine } from '../components/RecordCard';
 import { StoreReviewBadge } from '../components/StoreReview';
+import { ExtraRoles, formatDay, LICENSE_LABEL, userColumns } from '../components/userColumns';
 import { apiErrorMessage } from '../lib/apiError';
 import { formatDiscipline } from '../lib/discipline';
-import { extraRoleLabels, ROLE_LABELS } from '../lib/labels';
+import { ROLE_LABELS } from '../lib/labels';
 import type { SortState } from '../lib/listSort';
 import { useListParams } from '../lib/useListParams';
 import {
@@ -28,27 +27,8 @@ import { useUrlSearch } from '../lib/useUrlSearch';
 
 const PAGE_SIZE = 50;
 
-const LICENSE_LABEL: Record<'ACTIVE' | 'EXPIRED', string> = {
-  ACTIVE: 'Active',
-  EXPIRED: 'Expirée',
-};
-
-const date = (iso: string | null) => (iso ? dayjs(iso).format('DD/MM/YYYY') : '—');
 const isUsersSortField = (value: string): value is UsersSortField =>
   USERS_SORT_FIELDS.some((f) => f === value);
-
-function ExtraRoles({ user }: { user: AdminUserListItemDto }) {
-  if (user.extraRoles.length === 0) return <>—</>;
-  return (
-    <Group gap={4}>
-      {extraRoleLabels(user.extraRoles).map((l) => (
-        <Badge key={l} variant="outline" size="sm">
-          {l}
-        </Badge>
-      ))}
-    </Group>
-  );
-}
 
 export function UsersPage() {
   const navigate = useNavigate();
@@ -66,136 +46,7 @@ export function UsersPage() {
   const onSortChange = (sort: SortState | null) =>
     update({ sort: sort && isUsersSortField(sort.by) ? { by: sort.by, order: sort.order } : null });
 
-  const columns: DataTableColumn<AdminUserListItemDto>[] = [
-    {
-      key: 'name',
-      minWidth: 170,
-      weight: 2,
-      label: 'Nom',
-      required: true,
-      sortField: 'name',
-      cell: (u) => (
-        <>
-          <Anchor
-            component={Link}
-            to={`/users/${u.id}`}
-            onClick={(event) => event.stopPropagation()}
-            fw={600}
-          >
-            {u.lastName} {u.firstName}
-          </Anchor>
-          {u.isStoreReview && <StoreReviewBadge />}
-        </>
-      ),
-      filter: ops.filter('name'),
-    },
-    {
-      key: 'email',
-      minWidth: 170,
-      weight: 2,
-      priority: 1,
-      label: 'Email',
-      sortField: 'email',
-      cell: (u) => u.email,
-      filter: ops.filter('email'),
-    },
-    {
-      key: 'role',
-      minWidth: 165,
-      priority: 2,
-      label: 'Rôle principal',
-      sortField: 'role',
-      cell: (u) => <Badge variant="light">{ROLE_LABELS[u.role]}</Badge>,
-      filter: ops.filter('role'),
-    },
-    {
-      key: 'extraRoles',
-      minWidth: 170,
-      weight: 1.5,
-      priority: 9,
-      wrap: true,
-      label: 'Rôles supplémentaires',
-      cell: (u) => <ExtraRoles user={u} />,
-    },
-    {
-      key: 'status',
-      minWidth: 120,
-      priority: 4,
-      label: 'Compte',
-      cell: (u) =>
-        u.disabledAt ? (
-          <Badge color="red" variant="light">
-            Désactivé
-          </Badge>
-        ) : (
-          'Actif'
-        ),
-      filter: ops.filter('status'),
-    },
-    {
-      key: 'club',
-      minWidth: 140,
-      weight: 1.5,
-      priority: 3,
-      label: 'Club',
-      sortField: 'club',
-      cell: (u) => u.clubName ?? '—',
-      filter: ops.filter('club'),
-    },
-    {
-      key: 'category',
-      minWidth: 145,
-      priority: 5,
-      label: 'Catégorie',
-      sortField: 'category',
-      cell: (u) => (u.category ? formatDiscipline(u.category) : '—'),
-      filter: ops.filter('category'),
-    },
-    {
-      key: 'ageGroup',
-      minWidth: 140,
-      priority: 8,
-      label: "Classe d'âge",
-      sortField: 'ageGroup',
-      cell: (u) => u.ageGroup ?? '—',
-      filter: ops.filter('ageGroup'),
-    },
-    {
-      key: 'license',
-      minWidth: 90,
-      priority: 7,
-      label: 'Licence',
-      cell: (u) => (u.licenseStatus ? LICENSE_LABEL[u.licenseStatus] : '—'),
-    },
-    {
-      key: 'licenseNumber',
-      minWidth: 130,
-      priority: 10,
-      label: 'N° de licence',
-      hiddenByDefault: true,
-      cell: (u) => u.licenseNumber ?? '—',
-      filter: ops.filter('licenseNumber'),
-    },
-    {
-      key: 'createdAt',
-      minWidth: 155,
-      priority: 6,
-      label: 'Inscription',
-      sortField: 'createdAt',
-      cell: (u) => date(u.createdAt),
-      filter: ops.filter('createdAt'),
-    },
-    {
-      key: 'lastLoginAt',
-      minWidth: 160,
-      priority: 11,
-      label: 'Dernière connexion',
-      sortField: 'lastLoginAt',
-      hiddenByDefault: true,
-      cell: (u) => date(u.lastLoginAt),
-      filter: ops.filter('lastLoginAt'),
-    },
-  ];
+  const columns = userColumns({ filter: ops.filter });
 
   return (
     <Stack>
@@ -269,7 +120,7 @@ export function UsersPage() {
             )}
             <RecordLine label="Licence">
               {u.licenseStatus ? LICENSE_LABEL[u.licenseStatus] : '—'} · inscrit le{' '}
-              {date(u.createdAt)}
+              {formatDay(u.createdAt)}
             </RecordLine>
           </RecordCard>
         )}
