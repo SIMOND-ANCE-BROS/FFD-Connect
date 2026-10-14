@@ -193,8 +193,15 @@ export const LibraryProvider = ({
         fresh.forEach((t) => seen.add(t.id));
         tracks.push(...fresh);
       }
-      // A newer reload superseded this one: let it win.
-      if (generation !== generationRef.current) return;
+      // A newer reload superseded this one: let it win (its results are the
+      // ones shown), but the server WAS reached with fresh data, so still mark
+      // the library loaded. Skipping it left the library stale forever while
+      // reloads kept superseding each other (#584). markLoaded keeps the
+      // highest version, so the newer reload's own mark is not undone.
+      if (generation !== generationRef.current) {
+        useLibrarySyncStore.getState().markLoaded(version);
+        return;
+      }
       generationRef.current += 1;
       setRawTracks(tracks);
       setHasMore(more);

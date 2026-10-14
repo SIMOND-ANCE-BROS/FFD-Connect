@@ -6,6 +6,11 @@
  */
 import * as Sentry from "@sentry/react-native";
 import { isTokenStoreUnavailable } from "../api/tokenStoreErrors";
+import {
+  getHttpErrorInfo,
+  httpFingerprint,
+  isExpectedHttpStatus,
+} from "./httpErrorInfo";
 
 export enum LogLevel {
   DEBUG = 0,
@@ -135,7 +140,36 @@ class Logger {
       case LogLevel.WARN:
         console.warn(...logData, error ?? "");
         break;
-      case LogLevel.ERROR:
+      case LogLevel.ERROR: {
+        // Unreadable token store (#582): never an error event. A locked
+        // iPhone is expected; a persistent failure is reported once by
+        // tokenStore itself (which also leaves the breadcrumbs).
+        if (isTokenStoreUnavailable(error)) {
+          console.warn(...logData, error);
+          break;
+        }
+        const http = getHttpErrorInfo(error);
+        // Expected 4xx (401 handled by the refresh, 403, 404, 429...) are
+        // outcomes, not bugs (#585): a warning breadcrumb gives context to a
+        // later real error without creating a Sentry issue of its own.
+        if (http && isExpectedHttpStatus(http.status)) {
+          console.warn(...logData, error ?? "");
+          try {
+            Sentry.addBreadcrumb({
+              category: "http",
+              level: "warning",
+              message: formattedMessage,
+              data: {
+                status: http.status,
+                method: http.method,
+                route: http.route,
+              },
+            });
+          } catch {
+            /* ignore */
+          }
+          break;
+        }
         console.error(...logData, error ?? "");
         if (error?.stack) {
           const isHttpError =
@@ -150,12 +184,23 @@ class Logger {
           }
         }
         try {
-          if (isTokenStoreUnavailable(error)) {
-            // Expected while the iPhone is locked (#582), the session is
-            // intact: a breadcrumb was left by tokenStore, not an error event.
-          } else if (error) {
+          if (error) {
             Sentry.captureException(error, {
               extra: { message, context: this.context, data },
+              // One Sentry issue per status + route instead of a single
+              // bucket for every AxiosError (same minified `settle` stack).
+              ...(http
+                ? {
+                    fingerprint: httpFingerprint(http),
+                    tags: {
+                      http_status:
+                        http.status === undefined
+                          ? "network"
+                          : String(http.status),
+                      http_route: http.route,
+                    },
+                  }
+                : {}),
             });
           } else {
             Sentry.captureMessage(formattedMessage, "error");
@@ -164,6 +209,7 @@ class Logger {
           /* ignore */
         }
         break;
+      }
     }
   }
 
