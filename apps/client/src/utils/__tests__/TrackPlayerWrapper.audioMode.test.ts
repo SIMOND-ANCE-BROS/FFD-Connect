@@ -12,6 +12,21 @@ jest.mock("../../../modules/lockscreen-transport", () => ({
   default: null,
 }));
 
+// logger.error is what reaches Sentry; expose its spy (fresh per registry).
+jest.mock("../logger", () => {
+  const error = jest.fn();
+  return {
+    __esModule: true,
+    __loggerError: error,
+    createLogger: () => ({
+      error,
+      warn: jest.fn(),
+      info: jest.fn(),
+      debug: jest.fn(),
+    }),
+  };
+});
+
 describe("TrackPlayerWrapper — background audio mode (#539)", () => {
   let TrackPlayer: typeof import("../TrackPlayerWrapper").default;
   let setAudioModeAsync: jest.Mock;
@@ -43,25 +58,32 @@ describe("TrackPlayerWrapper — background audio mode (#539)", () => {
     await expect(TrackPlayer.getCurrentTrack()).resolves.toBeNull();
   });
 
-  it("is not reported as set up while the audio mode failed", async () => {
-    setAudioModeAsync.mockRejectedValueOnce(new Error("session busy"));
+  it("never blocks setup on a failing audio mode", async () => {
+    setAudioModeAsync.mockRejectedValue(new Error("session busy"));
 
-    await expect(TrackPlayer.setupPlayer()).rejects.toThrow("session busy");
+    await expect(TrackPlayer.setupPlayer()).resolves.toBeUndefined();
+    // Ready for playback: foreground playback works without the mode.
+    await expect(TrackPlayer.getCurrentTrack()).resolves.toBeNull();
+  });
 
-    // The player exists, but the next readiness check must fail so that
-    // TrackPlayerService runs setupPlayer (and the audio mode) again.
-    await expect(TrackPlayer.getCurrentTrack()).rejects.toThrow(
-      "Player not set up",
-    );
+  it("reports a failure to Sentry once per distinct error", async () => {
+    const logError = (require("../logger") as { __loggerError: jest.Mock })
+      .__loggerError;
+    setAudioModeAsync.mockRejectedValue(new Error("session busy"));
 
     await TrackPlayer.setupPlayer();
-    await expect(TrackPlayer.getCurrentTrack()).resolves.toBeNull();
-    expect(setAudioModeAsync).toHaveBeenCalledTimes(2);
+    await TrackPlayer.play();
+    await TrackPlayer.play();
+    expect(logError).toHaveBeenCalledTimes(1);
+
+    setAudioModeAsync.mockRejectedValue(new Error("media services reset"));
+    await TrackPlayer.play();
+    expect(logError).toHaveBeenCalledTimes(2);
   });
 
   it("re-applies a failed audio mode before starting playback", async () => {
     setAudioModeAsync.mockRejectedValueOnce(new Error("session busy"));
-    await TrackPlayer.setupPlayer().catch(() => {});
+    await TrackPlayer.setupPlayer();
 
     await TrackPlayer.play();
 

@@ -107,12 +107,17 @@ let transportWired = false;
 // Kept apart from `player`: expo-audio only keeps playing once the app is
 // backgrounded / the phone locked when setAudioModeAsync({
 // shouldPlayInBackground: true }) has SUCCEEDED (otherwise its native
-// OnAppEntersBackground pauses every player). The player can exist without it
-// (created, then setAudioModeAsync rejected), and "player exists" used to be
-// taken as "set up" — the mode was then never retried (#539).
+// OnAppEntersBackground pauses every player). A failure must never block
+// playback (foreground playback still works without the mode), so it is not
+// part of "set up": setupPlayer and play() simply retry it until it succeeds
+// (#539).
 let audioModeApplied = false;
+// Last failure message sent to Sentry: report once per distinct error, not on
+// every tap of the play button.
+let lastAudioModeError: string | null = null;
 
-async function applyAudioMode(): Promise<void> {
+/** Applies the background audio mode. Never throws; true once applied. */
+async function applyAudioMode(): Promise<boolean> {
   try {
     // Play through the ringer silent switch + keep audio alive in background.
     await setAudioModeAsync({
@@ -125,14 +130,20 @@ async function applyAudioMode(): Promise<void> {
       allowsRecording: false,
     });
     audioModeApplied = true;
+    lastAudioModeError = null;
+    return true;
   } catch (error) {
-    // Error level → Sentry: without this mode, locking the phone stops the
-    // music, and nothing else would tell us why.
-    logger.error(
-      "setAudioModeAsync failed — background playback disabled",
-      error instanceof Error ? error : new Error(String(error)),
-    );
-    throw error;
+    const err = error instanceof Error ? error : new Error(String(error));
+    if (err.message !== lastAudioModeError) {
+      lastAudioModeError = err.message;
+      // Error level → Sentry: without this mode, locking the phone stops the
+      // music, and nothing else would tell us why.
+      logger.error(
+        "setAudioModeAsync failed — background playback disabled",
+        err,
+      );
+    }
+    return false;
   }
 }
 
@@ -216,6 +227,14 @@ function emit(event: Event, data: unknown): void {
 // twice a second for nothing feeds iOS's background CPU limit, which kills
 // the app (#539). Audio, the lock screen and Event listeners are unaffected;
 // the hooks catch up as soon as the app is active again.
+//
+// Consequence: NOTHING may rely on hook-derived state while the app is
+// backgrounded — in particular the player store's `isPlaying` (fed by
+// usePlaybackState in PlayerStoreSync): a pause from the lock screen leaves it
+// `true` until the app returns to the foreground. Logic that must run in the
+// background goes through emit() (Event.PlaybackState, PlaybackTrackChanged,
+// didJustFinish → advance(), competition mode's waitForPlayback) or the
+// LockscreenTransport ⏮ ⏭ listeners, which are never filtered here.
 const statusSubs = new Set<() => void>();
 let appStateWired = false;
 function notifyHooks(): void {
@@ -428,11 +447,11 @@ const TrackPlayer: TrackPlayerInterface = {
   },
 
   play: async () => {
-    // Last line of defence: never start a track on a session that would be
-    // paused as soon as the phone locks. A failure is already reported; play
-    // anyway (foreground playback still works).
+    // Retry a failed background audio mode before each start, so a transient
+    // failure does not leave the music stopping on lock for the whole
+    // session. Play anyway if it still fails (foreground playback works).
     if (!audioModeApplied) {
-      await applyAudioMode().catch(() => {});
+      await applyAudioMode();
     }
     ensurePlayer().play();
   },
@@ -465,10 +484,10 @@ const TrackPlayer: TrackPlayerInterface = {
   getTrack: async (index) => queue[index] ?? null,
   getQueue: async () => queue,
   getCurrentTrack: async () => {
-    // Throw until setup has fully succeeded (player AND audio mode) so
-    // TrackPlayerService's try/catch runs setupPlayer again — a failed
-    // setAudioModeAsync must be retried, not silently skipped (#539).
-    if (!player || !audioModeApplied) throw new Error("Player not set up");
+    // Throw before setup so TrackPlayerService's try/catch triggers setup once.
+    // Deliberately NOT gated on audioModeApplied: a failing audio mode must
+    // never block playback; play() retries it instead (#539).
+    if (!player) throw new Error("Player not set up");
     return currentIndex >= 0 ? currentIndex : null;
   },
   getDuration: async () => lastStatus?.duration ?? 0,
