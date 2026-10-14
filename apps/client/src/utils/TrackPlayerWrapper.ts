@@ -24,6 +24,7 @@
  * presses are handled here by setTransportEnabled's listeners.
  */
 import { useEffect, useState } from "react";
+import { AppState } from "react-native";
 import {
   createAudioPlayer,
   setAudioModeAsync,
@@ -210,8 +211,21 @@ function emit(event: Event, data: unknown): void {
 }
 
 // Subscribers for the React hooks (usePlaybackState / useProgress).
+// Not while the app is in the background (phone locked): these hooks only
+// drive on-screen UI (progress bar, play/pause icon), and re-rendering it
+// twice a second for nothing feeds iOS's background CPU limit, which kills
+// the app (#539). Audio, the lock screen and Event listeners are unaffected;
+// the hooks catch up as soon as the app is active again.
 const statusSubs = new Set<() => void>();
+let appStateWired = false;
 function notifyHooks(): void {
+  if (!appStateWired) {
+    appStateWired = true;
+    AppState.addEventListener("change", (status) => {
+      if (status === "active") statusSubs.forEach((fn) => fn());
+    });
+  }
+  if (AppState.currentState === "background") return;
   statusSubs.forEach((fn) => fn());
 }
 
