@@ -750,14 +750,19 @@ jobs:
             [registry."docker.io"]
               mirrors = ["mirror.gcr.io"]
 
+      # No GitHub Actions cache here (#515). A PR's cache entries are scoped to
+      # refs/pull/<n>/merge: no other branch can read them, yet with mode=max
+      # each PR stored ~1.5 GB of buildkit layers and pushed the shared caches
+      # (pnpm store on develop, eas-cli, native build caches) out of the 10 GB
+      # repository quota. Nothing writes a develop-scoped Docker cache either
+      # (build-image caches to ACR, which a PR cannot read without Azure
+      # credentials), so the build is always cold: ~5 min, free runner minutes.
       - name: Build backend (no push)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v6
         with:
           context: .
           file: apps/backend/Dockerfile
           push: false
-          cache-from: type=gha,scope=backend
-          cache-to: type=gha,mode=max,scope=backend
 
   build-image:
     # The name must keep "Backend": deploy-backend.yml finds this job by name
