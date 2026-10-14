@@ -36,8 +36,8 @@ export interface RegistrationTarget {
   registrationDeadline?: string;
 }
 
-export type SubmitOutcome =
-  | { status: "sent" }
+export type SubmitOutcome<T = unknown> =
+  | { status: "sent"; result?: T }
   | { status: "queued" }
   | { status: "collapsed" }
   | { status: "duplicate" };
@@ -172,13 +172,13 @@ export function enqueueRegistrationAction(
  * - Deadline already passed → throws RegistrationDeadlinePassedError
  *   instead of queuing (the caller shows a "requires network" message).
  */
-export async function submitRegistrationAction(
+export async function submitRegistrationAction<T = unknown>(
   action: RegistrationAction,
   target: RegistrationTarget,
-  send: () => Promise<unknown>,
+  send: () => Promise<T>,
   pending: PendingMutation[],
-): Promise<SubmitOutcome> {
-  const queue = async (): Promise<SubmitOutcome> => {
+): Promise<SubmitOutcome<T>> {
+  const queue = async (): Promise<SubmitOutcome<T>> => {
     if (action === "register" && isDeadlinePassed(target.registrationDeadline))
       throw new RegistrationDeadlinePassedError();
     const result = await enqueueRegistrationAction(action, target);
@@ -193,8 +193,8 @@ export async function submitRegistrationAction(
   }
 
   try {
-    await send();
-    return { status: "sent" };
+    const result = await send();
+    return { status: "sent", result };
   } catch (err: unknown) {
     if (!isNetworkError(err)) throw err;
     log.warn(`Network error on ${action}, queuing for replay`);

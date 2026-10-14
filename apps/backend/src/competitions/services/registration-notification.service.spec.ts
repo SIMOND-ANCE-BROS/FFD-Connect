@@ -74,7 +74,7 @@ describe("RegistrationNotificationService", () => {
       );
     });
 
-    it("sends auto-confirmed notification and notifies club organizers when MEMBERS_AUTO_CONFIRM", async () => {
+    it("writes the auto-confirmed entry to the feed only (no push to the actor) and notifies club organizers when MEMBERS_AUTO_CONFIRM", async () => {
       mockPrismaService.user.findMany.mockResolvedValue([{ id: "org-1" }]);
 
       await service.notifyOnRegister(
@@ -95,13 +95,16 @@ describe("RegistrationNotificationService", () => {
         { byOrganizer: false, initialStatus: RegistrationStatus.CONFIRMED },
       );
 
-      expect(mockNotificationsService.sendToUser).toHaveBeenCalledWith(
+      // The licensee just registered themselves and already sees the outcome
+      // in the app: a push would show a second, redundant alert.
+      expect(mockNotificationsService.createForUser).toHaveBeenCalledWith(
         "u1",
         NotificationType.REGISTRATION_STATUS,
         "Inscription validée",
-        expect.any(String),
+        'Votre inscription à "Comp" - Latines Adulte est confirmée.',
         expect.objectContaining({ type: "registration_auto_confirmed" }),
       );
+      expect(mockNotificationsService.sendToUser).not.toHaveBeenCalled();
       expect(mockNotificationsService.sendToUsers).toHaveBeenCalledWith(
         expect.arrayContaining(["org-1"]),
         NotificationType.CLUB_MEMBER_REGISTRATION,
@@ -145,6 +148,38 @@ describe("RegistrationNotificationService", () => {
         expect.any(String),
         expect.any(String),
         expect.objectContaining({ type: "club_member_pending_registration" }),
+      );
+    });
+  });
+
+  describe("club organizers fan-out", () => {
+    it("never notifies the member themselves when they also manage the club", async () => {
+      mockPrismaService.user.findMany.mockResolvedValue([{ id: "org-1" }]);
+
+      await service.notifyOnRegister(
+        { id: "r1", userId: "u1" },
+        {
+          competitionId: "c1",
+          id: "e1",
+          competition: { title: "Comp" },
+          category: "Latin",
+          ageGroup: "Adulte",
+        },
+        {
+          firstName: "Jean",
+          lastName: "Dupont",
+          clubId: "club-1",
+          clubName: null,
+        },
+        { byOrganizer: false, initialStatus: RegistrationStatus.CONFIRMED },
+      );
+
+      expect(mockPrismaService.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: { not: "u1" },
+          }),
+        }),
       );
     });
   });

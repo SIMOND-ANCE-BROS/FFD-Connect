@@ -99,8 +99,9 @@ export class RegistrationNotificationService {
     const memberName = memberDisplayName(member);
 
     if (initialStatus === RegistrationStatus.CONFIRMED) {
-      // Push : décision prise par le club sur son inscription.
-      await this.notificationsService.sendToUser(
+      // Feed in-app seul : le licencié vient de s'inscrire lui-même et l'app
+      // lui affiche déjà le résultat — une push ferait doublon à l'écran.
+      await this.notificationsService.createForUser(
         registration.userId,
         NotificationType.REGISTRATION_STATUS,
         "Inscription validée",
@@ -114,6 +115,7 @@ export class RegistrationNotificationService {
       );
       await this.notifyClubOrganizers(
         member,
+        registration.userId,
         event.competitionId,
         event.id,
         registration.id,
@@ -143,6 +145,7 @@ export class RegistrationNotificationService {
       );
       await this.notifyClubOrganizers(
         member,
+        registration.userId,
         event.competitionId,
         event.id,
         registration.id,
@@ -199,6 +202,7 @@ export class RegistrationNotificationService {
       const memberName = memberDisplayName(member);
       await this.notifyClubOrganizers(
         member,
+        registration.userId,
         event.competitionId,
         event.id,
         registration.id,
@@ -250,8 +254,13 @@ export class RegistrationNotificationService {
     );
   }
 
+  /**
+   * `memberUserId` is excluded: a club manager who registers or unregisters
+   * themselves must not be notified of their own action.
+   */
   private async notifyClubOrganizers(
     member: MemberRef,
+    memberUserId: string,
     competitionId: string,
     eventId: string,
     registrationId: string,
@@ -269,7 +278,10 @@ export class RegistrationNotificationService {
         };
 
     const organizers = await this.prisma.user.findMany({
-      where: { AND: [withActiveRole(UserRole.CLUB), sameClubCondition] },
+      where: {
+        id: { not: memberUserId },
+        AND: [withActiveRole(UserRole.CLUB), sameClubCondition],
+      },
       select: { id: true },
       take: 50,
     });
