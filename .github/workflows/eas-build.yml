@@ -168,6 +168,33 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
+      # #579: this YAML comes from github.sha (the default branch for a
+      # workflow_run) but the code from head_sha; local actions must follow
+      # the YAML, nested ones included. See .github/actions/use-workflow-actions.
+      # Gate: same condition and best effort as the fingerprint steps below
+      # (the only local action it calls); a failure falls back to the path-based
+      # decision instead of skipping every OTA and build job.
+      - name: Checkout workflow actions
+        if: >-
+          github.event.workflow_run.head_branch == 'staging'
+          || github.event.workflow_run.head_branch == 'master'
+        continue-on-error: true
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.sha }}
+          path: .workflow-actions
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Use the workflow's local actions
+        if: >-
+          github.event.workflow_run.head_branch == 'staging'
+          || github.event.workflow_run.head_branch == 'master'
+        continue-on-error: true
+        uses: ./.workflow-actions/.github/actions/use-workflow-actions
+
       - name: Detect change type
         id: check
         env:
@@ -537,6 +564,22 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
+      # #579: this YAML comes from github.sha (the default branch for a
+      # workflow_run) but the code from head_sha; local actions must follow
+      # the YAML, nested ones included. See .github/actions/use-workflow-actions.
+      - name: Checkout workflow actions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.sha }}
+          path: .workflow-actions
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Use the workflow's local actions
+        uses: ./.workflow-actions/.github/actions/use-workflow-actions
+
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm
 
@@ -608,6 +651,22 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           # No token in .git/config: `eas build` archives the project.
           persist-credentials: false
+
+      # #579: this YAML comes from github.sha (the default branch for a
+      # workflow_run) but the code from head_sha; local actions must follow
+      # the YAML, nested ones included. See .github/actions/use-workflow-actions.
+      - name: Checkout workflow actions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.sha }}
+          path: .workflow-actions
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Use the workflow's local actions
+        uses: ./.workflow-actions/.github/actions/use-workflow-actions
 
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm
@@ -723,6 +782,22 @@ jobs:
           # Tags + history: the release notes list the commits since the
           # previous preview OTA.
           fetch-depth: 0
+
+      # #579: this YAML comes from github.sha (the default branch for a
+      # workflow_run) but the code from head_sha; local actions must follow
+      # the YAML, nested ones included. See .github/actions/use-workflow-actions.
+      - name: Checkout workflow actions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.sha }}
+          path: .workflow-actions
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Use the workflow's local actions
+        uses: ./.workflow-actions/.github/actions/use-workflow-actions
 
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm
@@ -2743,6 +2818,22 @@ jobs:
           # No token in .git/config: `eas build` archives the project.
           persist-credentials: false
 
+      # #579: this YAML comes from github.sha (the default branch for a
+      # workflow_run) but the code from head_sha; local actions must follow
+      # the YAML, nested ones included. See .github/actions/use-workflow-actions.
+      - name: Checkout workflow actions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.sha }}
+          path: .workflow-actions
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Use the workflow's local actions
+        uses: ./.workflow-actions/.github/actions/use-workflow-actions
+
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm
 
@@ -2851,6 +2942,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+
+      # #579: this YAML comes from github.sha (the default branch for a
+      # workflow_run) but the code from head_sha; local actions must follow
+      # the YAML, nested ones included. See .github/actions/use-workflow-actions.
+      - name: Checkout workflow actions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.sha }}
+          path: .workflow-actions
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      - name: Use the workflow's local actions
+        uses: ./.workflow-actions/.github/actions/use-workflow-actions
 
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm
