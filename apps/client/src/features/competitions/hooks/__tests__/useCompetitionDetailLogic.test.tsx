@@ -342,6 +342,41 @@ describe("useCompetitionDetailLogic", () => {
       );
     });
 
+    it.each([
+      ["CONFIRMED", "Succès", "Inscription confirmée"],
+      [
+        "PENDING",
+        "Demande envoyée",
+        "Votre club doit valider votre inscription.",
+      ],
+    ])(
+      "shows the alert matching a %s registration",
+      async (status, title, message) => {
+        mockRegisterForEvent.mockResolvedValueOnce(status);
+
+        const { result } = await renderHook(
+          () =>
+            useCompetitionDetailLogic(
+              mockCompetitionId,
+              mockNavigation as never,
+            ),
+          { wrapper: createWrapper() },
+        );
+
+        await waitFor(() => expect(result.current.state.loading).toBe(false));
+
+        await act(async () => {
+          // eslint-disable-next-line @typescript-eslint/await-thenable
+          await result.current.actions.handleRegister(
+            createPartialEvent({ id: "evt-1", eventType: "SOLO" } as never),
+          );
+        });
+
+        expect(Alert.alert).toHaveBeenCalledWith(title, message);
+        expect(Alert.alert).toHaveBeenCalledTimes(1);
+      },
+    );
+
     it("should handle registration error", async () => {
       mockRegisterForEvent.mockRejectedValueOnce(new Error("Failed"));
 

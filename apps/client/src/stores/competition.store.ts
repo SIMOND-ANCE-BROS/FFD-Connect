@@ -5,12 +5,20 @@ import type {
   ApiResult,
   ApiScheduleItem,
   PaginatedResponse,
+  RegistrationStatus,
 } from "@ffd-connect/shared";
 import { create } from "zustand";
 import api from "../services/api";
 import { createLogger } from "../utils/logger";
 
 const logger = createLogger("competition.store");
+
+/** Statuses the client understands in a POST /register response. */
+const REGISTRATION_STATUSES: readonly RegistrationStatus[] = [
+  "PENDING",
+  "CONFIRMED",
+  "CANCELLED",
+];
 
 // Aliases locaux pour la rétrocompatibilité avec les composants existants
 export type Competition = ApiCompetition;
@@ -61,11 +69,15 @@ export interface CompetitionRepository {
   getCompetitionDetailsForUser?: (
     id: string,
   ) => Promise<Competition & { events: Event[]; schedule: ScheduleItem[] }>;
+  /**
+   * Resolves with the created registration's status (PENDING when the club
+   * must validate it), or undefined when the backend does not return it.
+   */
   registerForEvent: (
     competitionId: string,
     eventId: string,
     partnerName?: string,
-  ) => Promise<void>;
+  ) => Promise<RegistrationStatus | undefined>;
   getResults: (competitionId: string) => Promise<Result[]>;
   getEventRegistrations: (
     eventId: string,
@@ -139,10 +151,12 @@ export const defaultCompetitionRepository: CompetitionRepository = {
     eventId: string,
     partnerName?: string,
   ) => {
-    await api.post(`/competitions/${competitionId}/register`, {
-      eventId,
-      partnerName,
-    });
+    // Untrusted shape: an older backend may not return the registration.
+    const res: { data?: { status?: unknown } } = await api.post<{
+      status?: unknown;
+    }>(`/competitions/${competitionId}/register`, { eventId, partnerName });
+    const status = res.data?.status;
+    return REGISTRATION_STATUSES.find((known) => known === status);
   },
 
   getResults: async (competitionId: string) => {

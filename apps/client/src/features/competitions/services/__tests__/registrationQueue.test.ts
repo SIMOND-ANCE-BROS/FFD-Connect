@@ -73,6 +73,13 @@ beforeEach(async () => {
 });
 
 describe("submitRegistrationAction", () => {
+  it("returns what the direct call resolved with when sent", async () => {
+    const send = jest.fn().mockResolvedValue("PENDING");
+    await expect(
+      submitRegistrationAction("register", target, send, []),
+    ).resolves.toEqual({ status: "sent", result: "PENDING" });
+  });
+
   it("sends directly when online", async () => {
     const send = jest.fn().mockResolvedValue(undefined);
     await expect(

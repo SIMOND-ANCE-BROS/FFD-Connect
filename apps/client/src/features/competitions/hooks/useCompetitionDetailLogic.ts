@@ -308,6 +308,14 @@ export const useCompetitionDetailLogic = (
       // Inscrit → le rappel de deadline devient du bruit : annule + marque
       // pour empêcher une replanification à la prochaine visite (#300).
       void cancelDeadlineNotificationForCompetition(competitionId);
+      // PENDING = le club doit valider : ne pas annoncer « confirmée » (#549).
+      if (outcome.result === "PENDING") {
+        Alert.alert(
+          SUCCESS_MESSAGES.REGISTRATION_PENDING_TITLE,
+          SUCCESS_MESSAGES.REGISTRATION_PENDING,
+        );
+        return;
+      }
       Alert.alert("Succès", SUCCESS_MESSAGES.REGISTRATION_SUCCESS);
     },
   });
