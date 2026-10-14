@@ -12,6 +12,11 @@ import { Prisma, UserRole } from "@prisma/client";
 import { User } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { extractBirthDateFromLicenseNumber } from "../common/birth-date/license-birth-date.util";
+import { normalizeDiscipline } from "../common/competition-level/competition-level.util";
+import {
+  BETA_AUTO_LICENSE_CLUB_NAME,
+  BETA_LICENSE_PLACEHOLDER_CATEGORY,
+} from "../licenses/beta-license-placeholder";
 import { isLicenseExpired } from "../licenses/license-expiry";
 import { PrismaService } from "../prisma/prisma.service";
 import { accountStatusSelect, licenseIdSelect } from "../utils/prisma-selects";
@@ -33,12 +38,10 @@ import { hasRole, rolesOf } from "./roles";
 const BCRYPT_ROUNDS = 12;
 
 /**
- * Placeholders for licenses auto-created under BETA_AUTO_LICENSE (staging only).
- * Category mirrors the default used by scripts/seed-beta-testers.ts; the club
- * name is deliberately a visible placeholder rather than a real club.
+ * Licenses auto-created under BETA_AUTO_LICENSE (staging only) carry the same
+ * placeholders as scripts/seed-beta-testers.ts (see beta-license-placeholder):
+ * an unknown discipline — never "Ten Dance" (#555) — and a visible fake club.
  */
-const BETA_AUTO_LICENSE_CATEGORY = "Ten Dance";
-const BETA_AUTO_LICENSE_CLUB_NAME = "Club bêta-test (licence auto-créée)";
 const BETA_AUTO_LICENSE_VALIDITY_MS = 365 * 24 * 60 * 60 * 1000;
 
 export interface LoginResponse {
@@ -247,7 +250,7 @@ export class AuthService {
       id: null,
       number: trimmedLicenseNumber,
       validUntil: new Date(Date.now() + BETA_AUTO_LICENSE_VALIDITY_MS),
-      category: BETA_AUTO_LICENSE_CATEGORY,
+      category: BETA_LICENSE_PLACEHOLDER_CATEGORY,
       clubName: BETA_AUTO_LICENSE_CLUB_NAME,
       userId: null,
     };
@@ -286,7 +289,10 @@ export class AuthService {
             lastName: lastName.trim(),
             role: "LICENSEE",
             clubName: license.clubName,
-            category: license.category,
+            // Declared discipline only when the licence carries a real one:
+            // a placeholder (beta licences) or unknown value leaves the profile
+            // empty (= unknown) rather than declaring "Ten Dance" (#555).
+            category: normalizeDiscipline(license.category),
             birthDate,
           },
           select: {

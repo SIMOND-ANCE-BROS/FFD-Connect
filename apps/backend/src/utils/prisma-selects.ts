@@ -241,6 +241,15 @@ export const licenseIdSelect = {
 } as const;
 
 /**
+ * Licence et compte rattaché : réparation des licences bêta « placeholder »
+ * (#555), qui remet aussi à null la discipline recopiée dans le profil.
+ */
+export const licenseIdHolderSelect = {
+  id: true,
+  userId: true,
+} as const;
+
+/**
  * Sélecteur pour l'envoi push : seul le token est nécessaire pour appeler FCM
  * et pour nettoyer les tokens rejetés.
  */

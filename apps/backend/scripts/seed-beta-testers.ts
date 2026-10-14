@@ -11,8 +11,16 @@
  * passe → register la rattache.
  *
  * Idempotent ET sûr : ne touche JAMAIS une licence déjà rattachée à un compte
- * (userId non null). On ne stocke que le strict nécessaire (numéro/catégorie/
- * club) — pas d'email ni de date de naissance (RGPD).
+ * (userId non null), hormis la réparation #555 ci-dessous. On ne stocke que le
+ * strict nécessaire (numéro/catégorie/club) — pas d'email ni de date de
+ * naissance (RGPD).
+ *
+ * Catégorie (#555) : la discipline du testeur est inconnue, la licence porte
+ * donc une catégorie « placeholder » qui n'est pas une discipline — jamais
+ * « Ten Dance », que l'inscription recopiait dans le profil (le testeur était
+ * alors déclaré pratiquant Latines ET Standards). Les licences bêta créées
+ * avant le correctif sont réparées au démarrage, profils compris
+ * (`repairBetaLicenseCategories`).
  *
  * Lancé au démarrage du conteneur (docker-entrypoint.sh) UNIQUEMENT si
  * SEED_TEST_TRACKS=true — jamais en prod. Un échec ne bloque pas le démarrage.
@@ -21,22 +29,15 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import "dotenv/config";
 import { Pool } from "pg";
+import {
+  betaLicensesFromEnv,
+  repairBetaLicenseCategories,
+} from "./seed-beta-testers.utils";
 
 const connectionString = process.env.DATABASE_URL;
 const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
-
-interface BetaLicense {
-  number: string;
-  category: string;
-  clubName: string;
-  validUntil: Date;
-}
-
-const DEFAULT_CATEGORY = "Ten Dance";
-const DEFAULT_CLUB_NAME = "Club Villeurbannais de Danse Sportive";
-const DEFAULT_VALID_UNTIL = new Date("2026-12-31");
 
 /**
  * Les numéros de licence des testeurs NE SONT PAS dans le code : ils encodent
@@ -46,21 +47,20 @@ const DEFAULT_VALID_UNTIL = new Date("2026-12-31");
  * Pour un nouveau testeur, BETA_AUTO_LICENSE=true suffit le plus souvent
  * (licence créée à l'inscription) ; cette liste ne sert qu'à pré-seeder.
  */
-function betaLicensesFromEnv(): BetaLicense[] {
-  return (process.env.BETA_TESTER_LICENSES ?? "")
-    .split(",")
-    .map((n) => n.trim())
-    .filter((n) => n.length > 0)
-    .map((number) => ({
-      number,
-      category: DEFAULT_CATEGORY,
-      clubName: DEFAULT_CLUB_NAME,
-      validUntil: DEFAULT_VALID_UNTIL,
-    }));
-}
-
 async function main() {
-  const BETA_LICENSES = betaLicensesFromEnv();
+  const BETA_LICENSES = betaLicensesFromEnv(process.env.BETA_TESTER_LICENSES);
+
+  // Toujours, même sans liste : couvre aussi les licences auto-créées (#555).
+  const repaired = await repairBetaLicenseCategories(
+    prisma,
+    BETA_LICENSES.map((lic) => lic.number),
+  );
+  if (repaired.licenses > 0) {
+    console.warn(
+      `Beta licenses repair (#555): ${repaired.licenses} licence(s) remise(s) en catégorie inconnue, ${repaired.users} profil(s) « Ten Dance » remis à vide.`,
+    );
+  }
+
   if (BETA_LICENSES.length === 0) {
     console.warn("Beta licenses seed skipped: BETA_TESTER_LICENSES vide.");
     return;
