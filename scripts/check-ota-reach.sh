@@ -57,10 +57,26 @@ builds() {
 # l'enregistre sans canal ni runtimeVersion mais avec son empreinte. Avec
 # `policy: "fingerprint"`, empreinte = runtimeVersion, et elle dépend de la
 # variante : une correspondance est donc un build de ce canal.
+# Resserré (#511) : jamais un build simulateur iOS, et sur iOS seulement le
+# bundle id du profil (= canal) ; eas upload le lit dans l'Info.plist, les
+# uploads Android n'en portent pas. Bundle id illisible → aucune correspondance.
+# Hypothèse restante (docs/exploitation/ci-cd.md) : qui peut faire `eas upload`
+# sur le projet est de confiance — le même accès publie des OTA.
 uploaded() {
-  eas build:list --platform "$1" --fingerprint-hash "$2" --status finished --limit 1 --json --non-interactive \
+  local app=""
+  if [ "$1" = "ios" ]; then
+    app=$(eas config --profile "$CHANNEL" --platform ios --json --non-interactive \
+      < /dev/null 2> /dev/null | sed -n '/^{/,$p' \
+      | jq -r '.appConfig.ios.bundleIdentifier // empty' 2> /dev/null)
+  fi
+  eas build:list --platform "$1" --fingerprint-hash "$2" --status finished --limit 10 --json --non-interactive \
     < /dev/null 2> /dev/null | sed -n '/^[[{]/,$p' \
-    | jq 'if type == "array" then length else error("not an array") end' 2> /dev/null
+    | jq --arg platform "$1" --arg app "$app" '
+        if type == "array" then
+          [.[] | select(.isForIosSimulator != true)
+            | select($platform != "ios" or ($app != "" and .appIdentifier == $app))]
+          | length
+        else error("not an array") end' 2> /dev/null
 }
 
 # released <platform> <runtime> → succès si une release GitHub
