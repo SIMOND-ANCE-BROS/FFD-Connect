@@ -22,7 +22,8 @@ body {
 }
 
 /* Main lists sit on a surface, like the cards around them. */
-.mantine-AppShell-main .mantine-TableScrollContainer-scrollContainer {
+.mantine-AppShell-main .mantine-TableScrollContainer-scrollContainer,
+.app-table-surface {
   background: var(--mantine-color-body);
   border: 1px solid var(--mantine-color-default-border);
   border-radius: var(--mantine-radius-md);
@@ -31,6 +32,43 @@ body {
 /* Clickable rows (lists that open a record). */
 .app-row-link {
   cursor: pointer;
+}
+
+/*
+ * Lists fit the width of the screen (#556): fixed layout, the widths come from
+ * the <colgroup>; a long value is cut with « … » (full value on hover).
+ */
+.app-table-surface {
+  overflow: hidden;
+}
+
+.app-table-fit {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.app-table-fit > thead > tr > th,
+.app-cell-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-cell-wrap {
+  overflow-wrap: anywhere;
+}
+
+.app-truncate {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The unfolded detail of a row reads as part of it, not as the next stripe. */
+.app-row-detail > td {
+  background: var(--mantine-color-default-hover);
 }
 
 /*

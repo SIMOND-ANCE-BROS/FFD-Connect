@@ -61,6 +61,8 @@ export function ClubsPage() {
   const columns: DataTableColumn<AdminClubListItemDto>[] = [
     {
       key: 'name',
+      minWidth: 180,
+      weight: 2,
       label: 'Club',
       required: true,
       sortField: 'name',
@@ -75,6 +77,8 @@ export function ClubsPage() {
     },
     {
       key: 'status',
+      minWidth: 100,
+      priority: 1,
       label: 'Statut',
       cell: (c) =>
         c.disabledAt ? (
@@ -98,24 +102,43 @@ export function ClubsPage() {
         ),
       },
     },
-    { key: 'memberCount', label: 'Membres', cell: (c) => c.memberCount },
-    { key: 'clubAccountCount', label: 'Comptes Club', cell: (c) => c.clubAccountCount },
+    {
+      key: 'memberCount',
+      minWidth: 100,
+      weight: 0.6,
+      priority: 2,
+      label: 'Membres',
+      cell: (c) => c.memberCount,
+    },
+    {
+      key: 'clubAccountCount',
+      minWidth: 140,
+      weight: 0.6,
+      priority: 6,
+      label: 'Comptes Club',
+      cell: (c) => c.clubAccountCount,
+    },
     {
       key: 'payment',
+      minWidth: 110,
+      priority: 5,
       label: 'Paiement',
       cell: (c) => (c.helloAssoConfigured ? <HelloAssoBadge /> : '—'),
     },
     {
       key: 'registrationMode',
+      minWidth: 130,
+      priority: 3,
       label: 'Inscriptions',
       sortField: 'registrationMode',
       cell: (c) => REGISTRATION_MODE_LABELS[c.registrationMode],
     },
     {
       key: 'createdAt',
+      minWidth: 110,
+      priority: 4,
       label: 'Création',
       sortField: 'createdAt',
-      nowrap: true,
       cell: (c) => dayjs(c.createdAt).format('DD/MM/YYYY'),
     },
   ];

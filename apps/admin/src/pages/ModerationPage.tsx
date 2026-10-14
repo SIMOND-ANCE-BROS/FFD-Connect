@@ -74,6 +74,9 @@ export function ModerationPage() {
   const columns: DataTableColumn<TrackCorrectionAdminDto>[] = [
     {
       key: 'track',
+      minWidth: 200,
+      weight: 2,
+      wrap: true,
       label: 'Musique',
       required: true,
       sortField: 'track',
@@ -103,6 +106,8 @@ export function ModerationPage() {
     },
     {
       key: 'reason',
+      minWidth: 130,
+      priority: 1,
       label: 'Motif',
       sortField: 'reason',
       cell: (c) => <Badge variant="light">{REASON_LABELS[c.reason]}</Badge>,
@@ -123,28 +128,46 @@ export function ModerationPage() {
         ),
       },
     },
-    { key: 'proposer', label: 'Proposée par', cell: proposer },
-    { key: 'createdAt', label: 'Date', sortField: 'createdAt', nowrap: true, cell: createdAt },
+    { key: 'proposer', minWidth: 140, priority: 3, label: 'Proposée par', cell: proposer },
+    {
+      key: 'createdAt',
+      minWidth: 150,
+      priority: 2,
+      label: 'Date',
+      sortField: 'createdAt',
+      cell: createdAt,
+    },
     {
       key: 'summary',
+      minWidth: 200,
+      weight: 2,
+      priority: 4,
+      wrap: true,
       label: 'Changements proposés',
       cell: (c) => proposalSummary(c.proposed, c.reason),
     },
     {
       key: 'message',
+      minWidth: 200,
+      weight: 2,
+      priority: 5,
+      wrap: true,
       label: 'Message',
       hiddenByDefault: true,
       cell: (c) => c.message ?? '—',
     },
     {
       key: 'reviewedAt',
+      minWidth: 150,
+      priority: 6,
       label: 'Traitée le',
       hiddenByDefault: true,
-      nowrap: true,
       cell: (c) => (c.reviewedAt ? dayjs(c.reviewedAt).format('DD/MM/YYYY HH:mm') : '—'),
     },
     {
       key: 'reviewer',
+      minWidth: 140,
+      priority: 7,
       label: 'Traitée par',
       hiddenByDefault: true,
       cell: (c) => c.reviewer?.name ?? '—',
@@ -190,7 +213,6 @@ export function ModerationPage() {
         onSortChange={onSortChange}
         onResetFilters={() => update({ reasons: [] })}
         onRowClick={(c) => navigate(detailPath(c))}
-        minWidth={820}
         toolbar={
           <TextInput
             label="Rechercher une proposition"

@@ -7,7 +7,7 @@ import { columnPrefsKey } from '../lib/columnPrefs';
 import type { SortState } from '../lib/listSort';
 import { columnFilterButton, openColumnFilter, sortButton } from '../test/dataTable';
 import { renderWithProviders, setupUser } from '../test/render';
-import { mockPhoneViewport } from '../test/viewport';
+import { mockContainerWidth, mockPhoneViewport } from '../test/viewport';
 import { DataTable, type DataTableColumn } from './DataTable';
 
 interface Row {
@@ -182,6 +182,75 @@ describe('DataTable', () => {
     renderWithProviders(<Harness onRowClick={onRowClick} />);
     await user.click(screen.getByText('d@x.fr'));
     expect(onRowClick).toHaveBeenCalledWith(ROWS[1]);
+  });
+
+  describe('fitting the width of the screen (#556)', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('keeps every chosen column when they fit, with no hidden-columns indicator', () => {
+      mockContainerWidth(1200);
+      renderWithProviders(<Harness />);
+      expect(headers()).toEqual(['Nom', 'Email']);
+      expect(screen.queryByRole('button', { name: /masquée/ })).toBeNull();
+      expect(screen.getByRole('table')).toHaveClass('app-table-fit');
+    });
+
+    it('moves a column that does not fit into a detail row unfolded per line', async () => {
+      mockContainerWidth(200);
+      const onRowClick = vi.fn();
+      renderWithProviders(<Harness onRowClick={onRowClick} />);
+      expect(headers()).toEqual(['Détail', 'Nom']);
+      expect(screen.queryByText('m@x.fr')).toBeNull();
+
+      const [first] = screen.getAllByRole('button', { name: 'Afficher le détail' });
+      expect(first).toHaveAttribute('aria-expanded', 'false');
+      await user.click(first);
+      // Unfolding a line does not open the record.
+      expect(onRowClick).not.toHaveBeenCalled();
+      expect(first).toHaveAttribute('aria-expanded', 'true');
+      expect(first).toHaveAccessibleName('Masquer le détail');
+      expect(screen.getByText('m@x.fr')).toBeInTheDocument();
+      expect(screen.queryByText('d@x.fr')).toBeNull();
+
+      await user.click(first);
+      expect(screen.queryByText('m@x.fr')).toBeNull();
+    });
+
+    it('lists the hidden columns, unfolds every line and keeps their filter in reach', async () => {
+      mockContainerWidth(200);
+      renderWithProviders(<Harness />);
+      await user.click(screen.getByRole('button', { name: '1 colonne masquée' }));
+      await user.click(screen.getByRole('button', { name: 'Déplier toutes les lignes' }));
+      expect(screen.getByText('m@x.fr')).toBeInTheDocument();
+      expect(screen.getByText('d@x.fr')).toBeInTheDocument();
+
+      // Filtering on the hidden column brings it back into the table.
+      await openColumnFilter(user, 'Email');
+      await user.click(screen.getByLabelText('Comptes actifs'));
+      expect(headers()).toEqual(['Nom', 'Email']);
+    });
+
+    it('respects the column choice: a column the admin hid never comes back', async () => {
+      mockContainerWidth(200);
+      renderWithProviders(<Harness />);
+      await user.click(screen.getByRole('button', { name: 'Colonnes' }));
+      await user.click(screen.getByRole('checkbox', { name: 'Email' }));
+      expect(headers()).toEqual(['Nom']);
+      expect(screen.queryByRole('button', { name: /masquée/ })).toBeNull();
+    });
+
+    it('shows the full value of a cut cell on hover', async () => {
+      renderWithProviders(<Harness />);
+      const cell = screen.getByText('m@x.fr');
+      Object.defineProperty(cell, 'scrollWidth', { configurable: true, value: 300 });
+      Object.defineProperty(cell, 'clientWidth', { configurable: true, value: 100 });
+      await user.hover(cell);
+      expect(cell).toHaveAttribute('title', 'm@x.fr');
+      Object.defineProperty(cell, 'scrollWidth', { configurable: true, value: 100 });
+      await user.unhover(cell);
+      await user.hover(cell);
+      expect(cell).not.toHaveAttribute('title');
+    });
   });
 
   describe('on a phone', () => {

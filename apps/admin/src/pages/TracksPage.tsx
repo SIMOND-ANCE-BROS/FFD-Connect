@@ -95,6 +95,8 @@ export function TracksPage() {
   const columns: DataTableColumn<AdminTrackDto>[] = [
     {
       key: 'title',
+      minWidth: 200,
+      weight: 2.5,
       label: 'Titre',
       required: true,
       sortField: 'title',
@@ -119,9 +121,19 @@ export function TracksPage() {
         ),
       },
     },
-    { key: 'artist', label: 'Artiste', sortField: 'artist', cell: (t) => t.artist },
+    {
+      key: 'artist',
+      minWidth: 150,
+      weight: 1.5,
+      priority: 1,
+      label: 'Artiste',
+      sortField: 'artist',
+      cell: (t) => t.artist,
+    },
     {
       key: 'style',
+      minWidth: 125,
+      priority: 2,
       label: 'Danse',
       sortField: 'style',
       cell: (t) => t.style ?? '—',
@@ -147,9 +159,19 @@ export function TracksPage() {
         ),
       },
     },
-    { key: 'bpm', label: 'MPM', sortField: 'bpm', cell: (t) => t.bpm },
+    {
+      key: 'bpm',
+      minWidth: 80,
+      weight: 0.5,
+      priority: 4,
+      label: 'MPM',
+      sortField: 'bpm',
+      cell: (t) => t.bpm,
+    },
     {
       key: 'status',
+      minWidth: 135,
+      priority: 3,
       label: 'Statut',
       sortField: 'status',
       cell: (t) => <StatusBadge status={t.status} />,
@@ -169,15 +191,18 @@ export function TracksPage() {
     },
     {
       key: 'pendingCorrections',
+      minWidth: 200,
+      priority: 6,
       label: 'Propositions en attente',
       hiddenByDefault: true,
       cell: (t) => t.pendingCorrections,
     },
     {
       key: 'createdAt',
+      minWidth: 120,
+      priority: 5,
       label: 'Ajoutée le',
       sortField: 'createdAt',
-      nowrap: true,
       cell: (t) => dayjs(t.createdAt).format('DD/MM/YYYY'),
     },
   ];
@@ -200,7 +225,6 @@ export function TracksPage() {
         sort={state.sort ?? null}
         onSortChange={onSortChange}
         onResetFilters={() => update(FILTERS_CLEARED)}
-        minWidth={760}
         toolbar={
           <TextInput
             aria-label="Rechercher"
