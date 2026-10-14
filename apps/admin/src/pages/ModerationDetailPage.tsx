@@ -1,3 +1,4 @@
+import { BackToList } from '../components/BackToList';
 import { PageHeader } from '../components/PageHeader';
 import {
   Alert,
@@ -151,9 +152,13 @@ function CorrectionReview({ id }: { id: string }) {
 
   return (
     <Stack>
-      <Anchor component={Link} to={`/moderation${search}`}>
-        Retour à la liste
-      </Anchor>
+      <Group gap="lg">
+        <BackToList listPath="/moderation" search={search} />
+        {/* The track the proposal is about (#562). */}
+        <Anchor component={Link} to={`/tracks/${c.trackId}`}>
+          Voir la fiche de la musique
+        </Anchor>
+      </Group>
       <Group justify="space-between">
         <Group>
           <PageHeader title={c.track.title} />

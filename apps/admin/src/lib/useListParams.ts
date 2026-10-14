@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
-import { type NavigateOptions, useSearchParams } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
+import { type NavigateOptions, useLocation, useSearchParams } from 'react-router';
+import { useListReturn } from './listReturn';
 
 /**
  * State of a list kept in the URL (#443): `read` parses the query string,
@@ -14,6 +15,8 @@ export function useListParams<State, Patch>(
   write: (current: URLSearchParams, patch: Patch) => URLSearchParams,
 ): [State, (patch: Patch, options?: NavigateOptions) => void] {
   const [params, setParams] = useSearchParams();
+  const { pathname } = useLocation();
+  const remember = useListReturn((s) => s.remember);
   const seen = useRef(params);
   const latest = useRef(params);
   // A new URL (ours once applied, or Back/Forward, a link) becomes the base.
@@ -21,6 +24,9 @@ export function useListParams<State, Patch>(
     seen.current = params;
     latest.current = params;
   }
+  // « Retour à la liste » of a record page comes back to this very URL (#562).
+  const search = params.toString();
+  useEffect(() => remember(pathname, search), [remember, pathname, search]);
   const update = (patch: Patch, options?: NavigateOptions) => {
     const next = write(latest.current, patch);
     latest.current = next;

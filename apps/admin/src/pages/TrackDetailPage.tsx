@@ -1,3 +1,4 @@
+import { BackToList } from '../components/BackToList';
 import { PageHeader } from '../components/PageHeader';
 import {
   Alert,
@@ -179,9 +180,7 @@ function TrackEditor({ id }: { id: string }) {
 
   return (
     <Stack>
-      <Anchor component={Link} to="/tracks">
-        Retour à la liste
-      </Anchor>
+      <BackToList listPath="/tracks" />
       <Group justify="space-between">
         <Group>
           <PageHeader title={t.title} />
