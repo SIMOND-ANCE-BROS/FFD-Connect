@@ -21484,7 +21484,15 @@
                     },
                     "category": {
                       "type": "string",
-                      "example": "Standard"
+                      "example": "Standard",
+                      "description": "Catégorie enregistrée sur la licence (valeur brute, peut ne pas refléter le profil). Préférer `discipline` pour l'affichage."
+                    },
+                    "discipline": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": ["Latin", "Standard", "Ten Dance"],
+                      "example": "Latin",
+                      "description": "Discipline(s) réellement pratiquée(s), déduite(s) du profil du titulaire (discipline déclarée, niveaux par discipline) puis de la licence : « Ten Dance » seulement si Latines ET Standards. Même valeur que le pass Apple Wallet. Null si inconnue."
                     },
                     "clubName": {
                       "type": "string",
@@ -26965,13 +26973,17 @@
           },
           "reviewedBy": {
             "nullable": true,
-            "description": "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, ou pour une demande auto-approuvée avant #271",
+            "description": "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, pour une demande auto-approuvée avant #271 (voir decidedAutomatically), ou si son compte a été supprimé depuis",
             "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/AdminRenewalPersonDto"
               }
             ]
+          },
+          "decidedAutomatically": {
+            "type": "boolean",
+            "description": "Vrai seulement pour une demande approuvée automatiquement avant #271 (approuvée, sans relecteur ni décision dans le journal d'audit). Une décision sans relecteur mais tracée vient d'un administrateur supprimé depuis ; un refus n'est jamais automatique."
           },
           "documents": {
             "type": "array",
@@ -26988,6 +27000,7 @@
           "reviewedAt",
           "user",
           "reviewedBy",
+          "decidedAutomatically",
           "documents"
         ]
       },
@@ -27118,13 +27131,17 @@
           },
           "reviewedBy": {
             "nullable": true,
-            "description": "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, ou pour une demande auto-approuvée avant #271",
+            "description": "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, pour une demande auto-approuvée avant #271 (voir decidedAutomatically), ou si son compte a été supprimé depuis",
             "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/AdminRenewalPersonDto"
               }
             ]
+          },
+          "decidedAutomatically": {
+            "type": "boolean",
+            "description": "Vrai seulement pour une demande approuvée automatiquement avant #271 (approuvée, sans relecteur ni décision dans le journal d'audit). Une décision sans relecteur mais tracée vient d'un administrateur supprimé depuis ; un refus n'est jamais automatique."
           },
           "rejectionReason": {
             "type": "string",
@@ -27172,6 +27189,7 @@
           "reviewedAt",
           "user",
           "reviewedBy",
+          "decidedAutomatically",
           "rejectionReason",
           "reviewComment",
           "documents",

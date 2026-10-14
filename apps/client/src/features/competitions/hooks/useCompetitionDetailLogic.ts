@@ -250,7 +250,15 @@ export const useCompetitionDetailLogic = (
   };
 
   // Mutations
+  // `networkMode: "always"` on register/unregister (#285): onlineManager is
+  // wired to NetInfo (queryClient.tsx), so the default "online" mode would
+  // PAUSE these mutations offline — submitRegistrationAction never runs, the
+  // action is never written to the persisted offline queue (lost if the app
+  // is killed), and on reconnection the paused mutation resumes as a direct
+  // send ("Succès") instead of the queue replay ("Connexion rétablie").
+  // submitRegistrationAction handles offline itself, so it must always run.
   const registerMutation = useMutation({
+    networkMode: "always",
     mutationFn: ({
       eventId,
       partnerName,
@@ -308,11 +316,20 @@ export const useCompetitionDetailLogic = (
       // Inscrit → le rappel de deadline devient du bruit : annule + marque
       // pour empêcher une replanification à la prochaine visite (#300).
       void cancelDeadlineNotificationForCompetition(competitionId);
+      // PENDING = le club doit valider : ne pas annoncer « confirmée » (#549).
+      if (outcome.result === "PENDING") {
+        Alert.alert(
+          SUCCESS_MESSAGES.REGISTRATION_PENDING_TITLE,
+          SUCCESS_MESSAGES.REGISTRATION_PENDING,
+        );
+        return;
+      }
       Alert.alert("Succès", SUCCESS_MESSAGES.REGISTRATION_SUCCESS);
     },
   });
 
   const unregisterMutation = useMutation({
+    networkMode: "always",
     mutationFn: (eventId: string) =>
       submitRegistrationAction(
         "unregister",

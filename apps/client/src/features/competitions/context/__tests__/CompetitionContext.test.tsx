@@ -344,6 +344,31 @@ describe("CompetitionContext", () => {
     });
   });
 
+  it.each([
+    [{ data: { id: "r1", status: "PENDING" } }, "PENDING"],
+    [{ data: { id: "r1", status: "CONFIRMED" } }, "CONFIRMED"],
+    // Older backend / unexpected shape: no status, caller keeps its default copy.
+    [{ data: {} }, undefined],
+    [{}, undefined],
+    [{ data: { status: "WEIRD" } }, undefined],
+  ])(
+    "registerForEvent returns the created registration status (%j)",
+    async (response, expected) => {
+      (api.post as jest.Mock).mockResolvedValue(response);
+
+      const { result } = await renderHook(() => useCompetitionRepository(), {
+        wrapper,
+      });
+
+      let status: unknown = "unset";
+      await act(async () => {
+        status = await result.current.registerForEvent("comp-1", "event-1");
+      });
+
+      expect(status).toBe(expected);
+    },
+  );
+
   it("registerForEvent works without partnerName", async () => {
     (api.post as jest.Mock).mockResolvedValue({});
 

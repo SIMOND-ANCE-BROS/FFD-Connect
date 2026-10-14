@@ -64,10 +64,36 @@ describe("LicensesService", () => {
       const result = await service.getLicense("1");
       expect(result).toEqual({
         ...mockLicense,
+        discipline: null,
         qrCode: "signed-qr",
         appleWalletAvailable: true,
       });
       expect(mockLicenseQr.buildQrCode).toHaveBeenCalledWith(mockLicense);
+    });
+
+    it("exposes the discipline the holder practises without leaking the profile (#552)", async () => {
+      const license = {
+        userId: "1",
+        number: "123",
+        category: "Ten Dance",
+        validUntil: new Date("2026-08-31T00:00:00.000Z"),
+      };
+      mockPrisma.license.findUnique.mockResolvedValue({
+        ...license,
+        user: {
+          category: "Ten Dance",
+          competitionLevelLatin: "Avancé",
+          competitionLevelStandard: null,
+        },
+      });
+      mockLicenseQr.buildQrCode.mockReturnValue("signed-qr");
+
+      const result = await service.getLicense("1");
+      expect(result.discipline).toBe("Latin");
+      // Raw stored value kept for older clients.
+      expect(result.category).toBe("Ten Dance");
+      expect(result).not.toHaveProperty("user");
+      expect(mockLicenseQr.buildQrCode).toHaveBeenCalledWith(license);
     });
 
     it("exposes qrCode null when QR signing is disabled", async () => {

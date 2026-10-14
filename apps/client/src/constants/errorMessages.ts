@@ -59,6 +59,8 @@ export const ERROR_MESSAGES = {
 export const SUCCESS_MESSAGES = {
   LOGIN_SUCCESS: "Connexion réussie",
   REGISTRATION_SUCCESS: "Inscription confirmée",
+  REGISTRATION_PENDING_TITLE: "Demande envoyée",
+  REGISTRATION_PENDING: "Votre club doit valider votre inscription.",
   UNREGISTRATION_SUCCESS: "Désinscription confirmée",
   PDF_GENERATED: "PDF généré avec succès",
   WDSF_VERIFIED: "Licence WDSF vérifiée avec succès",

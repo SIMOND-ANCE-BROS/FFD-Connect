@@ -206,3 +206,37 @@ export function practisesDiscipline(
       return null;
   }
 }
+
+/**
+ * Discipline(s) the dancer actually practises, for display (licence card,
+ * Apple Wallet pass — #552). "Ten Dance" only when BOTH Latin and Standard
+ * are practised.
+ *
+ * Source of truth is the dancer's profile, not `License.category`: the latter
+ * is written once (federation import, or a placeholder for beta licences) and
+ * never follows the profile edits made in the back-office. Precedence:
+ * 1. a declared single discipline (User.category = Latin / Standard): an
+ *    explicit choice, never a placeholder;
+ * 2. the per-discipline competition levels: one set → that discipline, both
+ *    set → Ten Dance (a "Ten Dance" User.category may be a registration
+ *    placeholder copied from the licence, so it must not hide a Latin-only or
+ *    Standard-only level);
+ * 3. a declared "Ten Dance";
+ * 4. the licence's own category (`fallback`), when it is a known discipline.
+ * Returns null when nothing is known.
+ */
+export function practisedDiscipline(
+  user: CompetitionLevelProfile | null | undefined,
+  fallback?: string | null,
+): Discipline | null {
+  const declared = normalizeDiscipline(user?.category);
+  if (declared === "Latin" || declared === "Standard") return declared;
+
+  const latin = toCompetitionLevel(user?.competitionLevelLatin) !== null;
+  const standard = toCompetitionLevel(user?.competitionLevelStandard) !== null;
+  if (latin && standard) return "Ten Dance";
+  if (latin) return "Latin";
+  if (standard) return "Standard";
+
+  return declared ?? normalizeDiscipline(fallback);
+}

@@ -24,6 +24,7 @@ describe("LicenseRenewalModerationQueryService", () => {
       findUnique: jest.fn(),
     },
     licenseRenewalDocument: { findFirst: jest.fn() },
+    adminAuditLog: { findMany: jest.fn() },
   };
   const audit = { recordOp: jest.fn() };
   const blob = {
@@ -70,6 +71,7 @@ describe("LicenseRenewalModerationQueryService", () => {
     jest.useFakeTimers({ now: NOW });
     prisma.licenseRenewalRequest.count.mockResolvedValue(0);
     prisma.licenseRenewalRequest.findMany.mockResolvedValue([]);
+    prisma.adminAuditLog.findMany.mockResolvedValue([]);
     audit.recordOp.mockResolvedValue({ id: "a1" });
     blob.isEnabled.mockReturnValue(true);
     blob.getUploadsContainer.mockReturnValue("uploads");
@@ -222,6 +224,102 @@ describe("LicenseRenewalModerationQueryService", () => {
       expect(detail.documents[0].ocr).toBeNull();
       expect(detail.renewsUntil).toBeNull();
       expect(audit.recordOp).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("decidedAutomatically (#524)", () => {
+    const admin = { id: "admin-1", firstName: "Gabin", lastName: "S" };
+    const decided = (
+      id: string,
+      status: LicenseRenewalStatus,
+      reviewedBy: typeof admin | null,
+    ) => ({ ...row(status), id, reviewedAt: NOW, reviewedBy });
+
+    it("is true only for an approval without reviewer nor decision audit row", async () => {
+      prisma.licenseRenewalRequest.findMany.mockResolvedValue([
+        decided("legacy-auto", LicenseRenewalStatus.APPROVED, null),
+        decided("deleted-admin", LicenseRenewalStatus.APPROVED, null),
+        decided("by-admin", LicenseRenewalStatus.APPROVED, admin),
+      ]);
+      prisma.adminAuditLog.findMany.mockResolvedValue([
+        { targetId: "deleted-admin" },
+      ]);
+
+      const page = await service.list({
+        status: LicenseRenewalStatus.APPROVED,
+      });
+
+      expect(
+        page.data.map((r) => [r.id, r.decidedAutomatically, r.reviewedBy]),
+      ).toEqual([
+        ["legacy-auto", true, null],
+        ["deleted-admin", false, null],
+        ["by-admin", false, admin],
+      ]);
+      // Only the ambiguous rows are looked up, in one bounded query.
+      expect(prisma.adminAuditLog.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.adminAuditLog.findMany).toHaveBeenCalledWith({
+        where: {
+          targetType: "LICENSE_RENEWAL",
+          targetId: { in: ["legacy-auto", "deleted-admin"] },
+          action: {
+            in: ["LICENSE_RENEWAL_APPROVE", "LICENSE_RENEWAL_REJECT"],
+          },
+        },
+        select: { targetId: true },
+        distinct: ["targetId"],
+        take: 2,
+      });
+    });
+
+    it("a refusal without reviewer is never automatic, without any lookup", async () => {
+      prisma.licenseRenewalRequest.findMany.mockResolvedValue([
+        decided("rejected", LicenseRenewalStatus.REJECTED, null),
+      ]);
+
+      const page = await service.list({
+        status: LicenseRenewalStatus.REJECTED,
+      });
+
+      expect(page.data[0].decidedAutomatically).toBe(false);
+      expect(prisma.adminAuditLog.findMany).not.toHaveBeenCalled();
+    });
+
+    it("a pending request is not decided: false, no lookup", async () => {
+      prisma.licenseRenewalRequest.findMany.mockResolvedValue([
+        row(LicenseRenewalStatus.PENDING),
+      ]);
+
+      const page = await service.list({});
+
+      expect(page.data[0].decidedAutomatically).toBe(false);
+      expect(prisma.adminAuditLog.findMany).not.toHaveBeenCalled();
+    });
+
+    it("is computed in the detail too", async () => {
+      prisma.licenseRenewalRequest.findUnique.mockResolvedValue(
+        decided("req-1", LicenseRenewalStatus.APPROVED, null),
+      );
+
+      const detail = await service.detail("admin-1", "req-1");
+
+      expect(detail.decidedAutomatically).toBe(true);
+      expect(prisma.adminAuditLog.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ targetId: { in: ["req-1"] } }),
+        }),
+      );
+    });
+
+    it("the detail of a deleted admin's approval is not automatic", async () => {
+      prisma.licenseRenewalRequest.findUnique.mockResolvedValue(
+        decided("req-1", LicenseRenewalStatus.APPROVED, null),
+      );
+      prisma.adminAuditLog.findMany.mockResolvedValue([{ targetId: "req-1" }]);
+
+      const detail = await service.detail("admin-1", "req-1");
+
+      expect(detail.decidedAutomatically).toBe(false);
     });
   });
 

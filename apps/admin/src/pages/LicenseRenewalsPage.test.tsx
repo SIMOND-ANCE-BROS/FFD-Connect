@@ -22,6 +22,7 @@ const row = (overrides: Record<string, unknown> = {}) => ({
     license: { number: 'FFD-123', validUntil: '2026-08-31T21:59:59.999Z' },
   },
   reviewedBy: null,
+  decidedAutomatically: false,
   documents: [
     {
       id: 'd1',
@@ -129,6 +130,22 @@ describe('LicenseRenewalsPage', () => {
     expect(list).toHaveBeenLastCalledWith({
       query: { status: 'REJECTED', skip: 0, take: 50 },
     });
+  });
+
+  it('tells an automatic approval from a deleted administrator (#524)', async () => {
+    vi.spyOn(sdk, 'adminLicenseRenewalsControllerList').mockResolvedValue(
+      page([
+        row({ id: 'auto', status: 'APPROVED', decidedAutomatically: true }),
+        row({
+          id: 'gone',
+          status: 'APPROVED',
+          user: { id: 'u2', firstName: 'Léo', lastName: 'Petit', license: null },
+        }),
+      ]) as never,
+    );
+    renderPage('/license-renewals?status=APPROVED');
+    expect(await screen.findByText('Validation automatique')).toBeInTheDocument();
+    expect(screen.getByText('Administrateur supprimé')).toBeInTheDocument();
   });
 
   it('sorts the queue from a header, kept in the URL with the tab', async () => {

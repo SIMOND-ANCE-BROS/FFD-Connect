@@ -180,6 +180,61 @@ describe("Licence renewal moderation (integration, real DB)", () => {
     expect(views).toEqual([{ actorId: admin.id, before: null, after: null }]);
   });
 
+  it("tells an automatic approval from a deleted administrator's decision (#524)", async () => {
+    const admin = await createUser(UserRole.ADMIN);
+    const gone = await createUser(UserRole.ADMIN);
+    const licensee = await createUser(UserRole.LICENSEE);
+    // Approved before #271: no reviewer, no decision audit row.
+    const legacy = await prisma.licenseRenewalRequest.create({
+      data: {
+        userId: licensee.id,
+        status: LicenseRenewalStatus.APPROVED,
+        submittedAt: new Date(),
+        reviewedAt: new Date(),
+      },
+      select: { id: true },
+    });
+    const refused = await prisma.licenseRenewalRequest.create({
+      data: {
+        userId: licensee.id,
+        status: LicenseRenewalStatus.REJECTED,
+        submittedAt: new Date(),
+        reviewedAt: new Date(),
+        rejectionReason: "OTHER",
+      },
+      select: { id: true },
+    });
+    const decided = await pendingRequest(licensee.id, "FFD-524");
+    await request(server())
+      .post(`/api/v1/admin/license-renewals/${decided.id}/approve`)
+      .set("Authorization", bearer(gone))
+      .send({})
+      .expect(200);
+    // The deciding administrator's account is deleted: reviewedById → null.
+    await prisma.user.delete({ where: { id: gone.id } });
+
+    const detail = async (id: string) =>
+      (
+        await request(server())
+          .get(`/api/v1/admin/license-renewals/${id}`)
+          .set("Authorization", bearer(admin))
+          .expect(200)
+      ).body as { reviewedBy: unknown; decidedAutomatically: boolean };
+
+    expect(await detail(legacy.id)).toMatchObject({
+      reviewedBy: null,
+      decidedAutomatically: true,
+    });
+    expect(await detail(decided.id)).toMatchObject({
+      reviewedBy: null,
+      decidedAutomatically: false,
+    });
+    expect(await detail(refused.id)).toMatchObject({
+      reviewedBy: null,
+      decidedAutomatically: false,
+    });
+  });
+
   it("serves a document with protective headers while PENDING, 410 after the decision", async () => {
     const admin = await createUser(UserRole.ADMIN);
     const licensee = await createUser(UserRole.LICENSEE);

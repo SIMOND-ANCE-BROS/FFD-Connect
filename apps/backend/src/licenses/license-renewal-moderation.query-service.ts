@@ -9,6 +9,7 @@ import { LicenseRenewalStatus, Prisma } from "@prisma/client";
 import { extname } from "path";
 import { Readable } from "stream";
 import { AdminAuditService } from "../admin/admin-audit.service";
+import type { AuditAction } from "../admin/dto/admin-audit.dto";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
 import { listOrderBy, type SortOrder } from "../common/dto/sort-params";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
@@ -16,6 +17,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { getErrorMessage } from "../utils/error.utils";
 import {
+  auditTargetIdSelect,
   licenseRenewalAdminDetailSelect,
   licenseRenewalAdminListSelect,
   licenseRenewalDocumentFileTargetSelect,
@@ -80,7 +82,23 @@ export interface RenewalDocumentFile {
   contentType: string;
 }
 
-function toBase(row: ListRow | DetailRow) {
+/** Audit actions written by an administrator's decision (#266). */
+const RENEWAL_DECISION_ACTIONS: readonly AuditAction[] = [
+  "LICENSE_RENEWAL_APPROVE",
+  "LICENSE_RENEWAL_REJECT",
+];
+
+/**
+ * An approval without reviewer is either an automatic approval from before
+ * #271 or the decision of an administrator deleted since (`SetNull`). Only
+ * the second one has a decision audit row (#524); a refusal was never
+ * automatic.
+ */
+function mayBeAutomatic(row: ListRow | DetailRow): boolean {
+  return row.status === LicenseRenewalStatus.APPROVED && !row.reviewedBy;
+}
+
+function toBase(row: ListRow | DetailRow, automaticIds: ReadonlySet<string>) {
   return {
     id: row.id,
     status: row.status,
@@ -94,6 +112,7 @@ function toBase(row: ListRow | DetailRow) {
       license: row.user.license,
     },
     reviewedBy: row.reviewedBy,
+    decidedAutomatically: automaticIds.has(row.id),
   };
 }
 
@@ -143,8 +162,12 @@ export class LicenseRenewalModerationQueryService {
         select: licenseRenewalAdminListSelect,
       }),
     ]);
+    const automaticIds = await this.automaticallyDecided(rows);
     return createPaginatedResponse(
-      rows.map((row) => ({ ...toBase(row), documents: row.documents })),
+      rows.map((row) => ({
+        ...toBase(row, automaticIds),
+        documents: row.documents,
+      })),
       total,
       skip,
       take,
@@ -262,6 +285,30 @@ export class LicenseRenewalModerationQueryService {
     }
   }
 
+  /**
+   * Ids of the rows approved automatically: approved, no reviewer, and no
+   * decision audit row (see {@link mayBeAutomatic}). One bounded query, only
+   * for the ambiguous rows of the page.
+   */
+  private async automaticallyDecided(
+    rows: readonly (ListRow | DetailRow)[],
+  ): Promise<Set<string>> {
+    const candidates = rows.filter(mayBeAutomatic).map((row) => row.id);
+    if (candidates.length === 0) return new Set();
+    const decidedByAdmin = await this.prisma.adminAuditLog.findMany({
+      where: {
+        targetType: "LICENSE_RENEWAL",
+        targetId: { in: candidates },
+        action: { in: [...RENEWAL_DECISION_ACTIONS] },
+      },
+      select: auditTargetIdSelect,
+      distinct: ["targetId"],
+      take: candidates.length,
+    });
+    const byAdmin = new Set(decidedByAdmin.map((entry) => entry.targetId));
+    return new Set(candidates.filter((id) => !byAdmin.has(id)));
+  }
+
   private async findDetailRow(requestId: string): Promise<DetailRow> {
     const row = await this.prisma.licenseRenewalRequest.findUnique({
       where: { id: requestId },
@@ -275,15 +322,18 @@ export class LicenseRenewalModerationQueryService {
   private async toDetail(
     row: DetailRow,
   ): Promise<AdminLicenseRenewalDetailDto> {
-    const history = await this.prisma.licenseRenewalRequest.findMany({
-      where: { userId: row.userId, id: { not: row.id } },
-      orderBy: { createdAt: "desc" },
-      take: HISTORY_TAKE,
-      select: licenseRenewalHistorySelect,
-    });
+    const [history, automaticIds] = await Promise.all([
+      this.prisma.licenseRenewalRequest.findMany({
+        where: { userId: row.userId, id: { not: row.id } },
+        orderBy: { createdAt: "desc" },
+        take: HISTORY_TAKE,
+        select: licenseRenewalHistorySelect,
+      }),
+      this.automaticallyDecided([row]),
+    ]);
     const pending = row.status === LicenseRenewalStatus.PENDING;
     return {
-      ...toBase(row),
+      ...toBase(row, automaticIds),
       rejectionReason: row.rejectionReason as RenewalRejectionReason | null,
       reviewComment: row.reviewComment,
       documents: row.documents.map((document) => ({

@@ -24,6 +24,25 @@ export const STATUS_BADGES: Record<LicenseRenewalStatus, { label: string; color:
   REJECTED: { label: 'Refusée', color: 'red' },
 };
 
+/**
+ * Who decided a request (#524). Without reviewer, the API tells an automatic
+ * approval from before #271 (`decidedAutomatically`) from the decision of an
+ * administrator deleted since: never guessed from the status or the date.
+ */
+type Decider = Pick<AdminLicenseRenewalDetailDto, 'reviewedBy' | 'decidedAutomatically'>;
+
+/** Column / card label of the decider. */
+export function reviewerLabel(r: Decider): string {
+  if (r.reviewedBy) return `${r.reviewedBy.firstName} ${r.reviewedBy.lastName}`;
+  return r.decidedAutomatically ? 'Validation automatique' : 'Administrateur supprimé';
+}
+
+/** The decider after « Approuvée par » / « Refusée par ». */
+export function decidedByPhrase(r: Decider): string {
+  if (r.reviewedBy) return `${r.reviewedBy.firstName} ${r.reviewedBy.lastName}`;
+  return r.decidedAutomatically ? 'la validation automatique' : 'un administrateur supprimé';
+}
+
 export const DOCUMENT_LABELS: Record<LicenseRenewalDocumentType, string> = {
   MEDICAL_CERTIFICATE: 'Certificat médical',
   LICENSE_CERTIFICATE: 'Attestation de licence',

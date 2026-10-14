@@ -191,15 +191,35 @@ export const licenseBaseSelect = {
 } as const;
 
 /**
+ * Champs du profil dont on déduit la ou les disciplines pratiquées par un
+ * licencié (`practisedDiscipline`, #552) : discipline déclarée + niveaux par
+ * discipline.
+ */
+export const userDisciplineSelect = {
+  category: true,
+  competitionLevelLatin: true,
+  competitionLevelStandard: true,
+} as const;
+
+/** Licence + profil de discipline de son titulaire (carte de licence, #552). */
+export const licenseWithHolderDisciplineSelect = {
+  ...licenseBaseSelect,
+  user: { select: userDisciplineSelect },
+} as const;
+
+/**
  * Champs d'une licence nécessaires au pass Apple Wallet (#162) : contenu du
- * pass + nom du titulaire. Rien d'autre (minimisation).
+ * pass + nom et discipline(s) pratiquée(s) du titulaire (#552). Rien d'autre
+ * (minimisation).
  */
 export const licenseWalletPassSelect = {
   id: true,
   number: true,
   validUntil: true,
   category: true,
-  user: { select: { firstName: true, lastName: true } },
+  user: {
+    select: { firstName: true, lastName: true, ...userDisciplineSelect },
+  },
 } as const;
 
 /**
@@ -963,6 +983,9 @@ export const trackCorrectionExportSelect = {
     select: { title: true, artist: true, titleMasked: true, blacklisted: true },
   },
 } as const;
+
+/** Audit rows looked up only to know which targets they concern. */
+export const auditTargetIdSelect = { targetId: true } as const;
 
 /** Back-office: one audit row with its author's name. */
 export const adminAuditLogSelect = {

@@ -212,9 +212,14 @@ class AdminLicenseRenewalBaseDto {
     type: AdminRenewalPersonDto,
     nullable: true,
     description:
-      "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, ou pour une demande auto-approuvée avant #271",
+      "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, pour une demande auto-approuvée avant #271 (voir decidedAutomatically), ou si son compte a été supprimé depuis",
   })
   reviewedBy!: AdminRenewalPersonDto | null;
+  @ApiProperty({
+    description:
+      "Vrai seulement pour une demande approuvée automatiquement avant #271 (approuvée, sans relecteur ni décision dans le journal d'audit). Une décision sans relecteur mais tracée vient d'un administrateur supprimé depuis ; un refus n'est jamais automatique.",
+  })
+  decidedAutomatically!: boolean;
 }
 
 export class AdminLicenseRenewalListItemDto extends AdminLicenseRenewalBaseDto {
