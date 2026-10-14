@@ -8,6 +8,7 @@ import type {
 } from "../../../../stores/competitionPresets.store";
 import { createDefaultConfig } from "../../../../stores/performance.store";
 import { formatPresetDate, PresetsSheet } from "../PresetsSheet";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../context/ThemeContext", () => ({
   useTheme: jest.fn(),
@@ -50,6 +51,10 @@ const pressAlertButton = async (text: string) => {
     buttons.find((b) => b.text === text)?.onPress?.();
   });
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal");
 
 describe("formatPresetDate", () => {
   it("formats a local day", () => {

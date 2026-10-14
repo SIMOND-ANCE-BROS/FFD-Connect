@@ -93,6 +93,7 @@ import type {
   MockViewProps,
 } from "../../../../__tests__/mocks/types";
 import biometricsAdapter from "../../../../utils/biometrics-adapter";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("lucide-react-native", () => {
   const { View } = require("react-native");
@@ -336,6 +337,10 @@ mockAuthStore.current = {
 };
 
 const createTestProps = () => createMockScreenProps("Settings", undefined);
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal", "Alert", "Switch", "ActivityIndicator");
 
 describe("SettingsScreen", () => {
   beforeEach(() => {

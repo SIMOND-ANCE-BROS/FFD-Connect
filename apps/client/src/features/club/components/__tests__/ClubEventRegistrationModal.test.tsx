@@ -3,12 +3,17 @@ import React from "react";
 import { Alert } from "react-native";
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
 import { ClubEventRegistrationModal } from "../ClubEventRegistrationModal";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../components/AppButton");
 
 jest.mock("../../../../context/ThemeContext");
 
 const mockUseTheme = useTheme as jest.MockedFunction<typeof useTheme>;
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal");
 
 describe("ClubEventRegistrationModal", () => {
   beforeEach(() => {

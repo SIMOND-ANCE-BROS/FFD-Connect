@@ -14,6 +14,7 @@ import {
 } from "../../../../services/api/track-correction-api";
 import { useLibrarySyncStore } from "../../../../stores/librarySync.store";
 import { PasoClashEditorModal } from "../PasoClashEditorModal";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../services/api/track-correction-api", () => {
   const actual = jest.requireActual<
@@ -71,6 +72,10 @@ beforeEach(() => {
   jest.spyOn(Alert, "alert").mockImplementation(jest.fn());
   (TrackCorrectionApi.create as jest.Mock).mockResolvedValue({ id: "c1" });
 });
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal");
 
 describe("PasoClashEditorModal", () => {
   it("pré-remplit avec l'estimation par défaut (3 appels calés sur les phrases)", async () => {

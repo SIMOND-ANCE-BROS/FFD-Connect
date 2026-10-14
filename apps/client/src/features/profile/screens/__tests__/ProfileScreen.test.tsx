@@ -4,6 +4,7 @@ import React from "react";
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
 import api from "../../../../services/api";
 import { ProfileScreen } from "../ProfileScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../context/ThemeContext");
 jest.mock("../../../../services/api", () => ({
@@ -59,6 +60,10 @@ const theme = {
 
 const mockNavigation = { navigate: jest.fn(), goBack: jest.fn() } as never;
 const route = { params: {} } as never;
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("ScrollView");
 
 describe("ProfileScreen", () => {
   beforeEach(() => {

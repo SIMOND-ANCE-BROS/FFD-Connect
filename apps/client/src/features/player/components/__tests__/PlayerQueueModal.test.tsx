@@ -3,6 +3,7 @@ import React from "react";
 import { AppTheme } from "../../../../context/ThemeContext";
 import { TrackData } from "../../types";
 import { PlayerQueueModal } from "../PlayerQueueModal";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 // The global mock only renders the list header; this one renders the rows and
 // lets the test trigger a drop.
@@ -70,6 +71,10 @@ const t = (id: string): TrackData => ({
   artist: `Artist ${id}`,
   baseBpm: 120,
 });
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal");
 
 describe("PlayerQueueModal", () => {
   const props = () => ({
