@@ -1,9 +1,13 @@
-import { tracksControllerFindAmbiance } from "../../../api/generated";
+import {
+  tracksControllerFindAmbiance,
+  tracksControllerUpdate,
+} from "../../../api/generated";
 import { httpDelete } from "../../../utils/httpInterceptor";
 import { TrackApi } from "../track-api";
 
 jest.mock("../../../api/generated", () => ({
   tracksControllerFindAmbiance: jest.fn(),
+  tracksControllerUpdate: jest.fn(),
 }));
 jest.mock("../../../utils/httpInterceptor", () => ({
   httpGet: jest.fn(),
@@ -69,5 +73,35 @@ describe("TrackApi.deleteTrack", () => {
       "http://api/v1/tracks/t1",
       expect.objectContaining({ logErrors: true, quietStatuses: [409] }),
     );
+  });
+});
+
+describe("TrackApi.blacklistTrack (#561)", () => {
+  it("sends only the blacklist flag through the generated client", async () => {
+    (tracksControllerUpdate as jest.Mock).mockResolvedValueOnce({
+      data: { id: "t1" },
+      error: undefined,
+      response: { status: 200 },
+    });
+
+    await expect(TrackApi.blacklistTrack("t1")).resolves.toBeUndefined();
+    expect(tracksControllerUpdate).toHaveBeenCalledWith({
+      path: { id: "t1" },
+      body: { blacklisted: true },
+    });
+  });
+
+  it.each([
+    [403, "Seul un administrateur peut blacklister un titre."],
+    [404, "Ce titre n'existe plus."],
+    [500, "L'opération a échoué"],
+  ])("maps a %i to a French message", async (status, message) => {
+    (tracksControllerUpdate as jest.Mock).mockResolvedValueOnce({
+      data: undefined,
+      error: { statusCode: status },
+      response: { status },
+    });
+
+    await expect(TrackApi.blacklistTrack("t1")).rejects.toThrow(message);
   });
 });

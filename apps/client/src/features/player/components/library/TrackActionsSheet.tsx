@@ -1,4 +1,4 @@
-import { Flag, ListEnd, ListStart, Pencil } from "lucide-react-native";
+import { Ban, Flag, ListEnd, ListStart, Pencil } from "lucide-react-native";
 import React from "react";
 import {
   Modal,
@@ -25,6 +25,11 @@ interface TrackActionsSheetProps {
   onPlayNext: (track: TrackData) => void;
   onAddToQueue: (track: TrackData) => void;
   onExtraAction: (track: TrackData) => void;
+  /**
+   * « Blacklister le titre » (#561): given only when the active role is ADMIN.
+   * The server enforces the role too (403 otherwise).
+   */
+  onBlacklist?: (track: TrackData) => void;
   onClose: () => void;
   /** iOS: fired once the sheet is fully hidden (see LibraryScreen). */
   onDismiss?: () => void;
@@ -59,6 +64,7 @@ export const TrackActionsSheet = ({
   onPlayNext,
   onAddToQueue,
   onExtraAction,
+  onBlacklist,
   onClose,
   onDismiss,
 }: TrackActionsSheetProps) => {
@@ -70,6 +76,7 @@ export const TrackActionsSheet = ({
     hint: string;
     Icon: typeof Pencil;
     onPress: (t: TrackData) => void;
+    destructive?: boolean;
   }[] = [
     {
       key: "play-next",
@@ -91,6 +98,18 @@ export const TrackActionsSheet = ({
             key: extraAction,
             ...EXTRA_ACTIONS[extraAction],
             onPress: onExtraAction,
+          },
+        ]
+      : []),
+    ...(onBlacklist
+      ? [
+          {
+            key: "blacklist",
+            label: "Blacklister le titre",
+            hint: "Retire ce titre de la bibliothèque pour tous les utilisateurs, après confirmation",
+            Icon: Ban,
+            onPress: onBlacklist,
+            destructive: true,
           },
         ]
       : []),
@@ -142,7 +161,7 @@ export const TrackActionsSheet = ({
               >
                 {track.artist}
               </AppText>
-              {rows.map(({ key, label, hint, Icon, onPress }) => (
+              {rows.map(({ key, label, hint, Icon, onPress, destructive }) => (
                 <TouchableOpacity
                   key={key}
                   testID={`track-action-${key}`}
@@ -152,8 +171,18 @@ export const TrackActionsSheet = ({
                   style={[styles.row, { borderTopColor: currentTheme.border }]}
                   onPress={() => onPress(track)}
                 >
-                  <Icon size={20} color={currentTheme.text} />
-                  <AppText variant="body" color={currentTheme.text}>
+                  <Icon
+                    size={20}
+                    color={
+                      destructive ? currentTheme.danger : currentTheme.text
+                    }
+                  />
+                  <AppText
+                    variant="body"
+                    color={
+                      destructive ? currentTheme.danger : currentTheme.text
+                    }
+                  >
                     {label}
                   </AppText>
                 </TouchableOpacity>
