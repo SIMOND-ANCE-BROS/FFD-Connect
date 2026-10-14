@@ -4,7 +4,9 @@ import { listOrderBy, type SortOrder } from "../common/dto/sort-params";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { adminAuditLogSelect } from "../utils/prisma-selects";
+import { listFiltersWhere } from "../common/list-filters/list-filters";
 import {
+  AUDIT_FILTER_COLUMNS,
   AuditAction,
   AuditEntry,
   AuditLogEntryDto,
@@ -87,6 +89,9 @@ export class AdminAuditService {
       ...(query.targetType && { targetType: query.targetType }),
       ...(query.targetId && { targetId: query.targetId }),
       ...(query.action && { action: query.action }),
+      ...(query.filters?.length && {
+        AND: listFiltersWhere(AUDIT_FILTER_COLUMNS, query.filters),
+      }),
     };
     const [total, rows] = await Promise.all([
       this.prisma.adminAuditLog.count({ where }),

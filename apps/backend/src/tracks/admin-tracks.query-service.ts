@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { listOrderBy, type SortOrder } from "../common/dto/sort-params";
+import { listFiltersWhere } from "../common/list-filters/list-filters";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { adminTrackSelect } from "../utils/prisma-selects";
@@ -8,6 +9,7 @@ import {
   AdminTrackDto,
   AdminTracksPageDto,
   type AdminTracksSortField,
+  ADMIN_TRACKS_FILTER_COLUMNS,
   ListAdminTracksQueryDto,
 } from "./dto/admin-track.dto";
 import {
@@ -70,6 +72,7 @@ export function adminTracksWhere(
   if (query.ambiance !== undefined) {
     and.push(query.ambiance ? AMBIANCE_TRACK_WHERE : NOT_AMBIANCE_TRACK_WHERE);
   }
+  and.push(...listFiltersWhere(ADMIN_TRACKS_FILTER_COLUMNS, query.filters));
   return and.length > 0 ? { AND: and } : {};
 }
 

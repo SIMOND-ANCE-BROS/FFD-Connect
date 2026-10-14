@@ -16,6 +16,7 @@ import dayjs from 'dayjs';
 import { Link } from 'react-router';
 import type { AdminTrackDto, TrackStatus } from '../api/generated/types.gen';
 import { tracksQuery } from '../api/queries';
+import { operatorFilters } from '../components/ColumnFilterEditor';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
@@ -30,6 +31,7 @@ import {
   readTracksParams,
   TRACK_STATUS_BADGES,
   TRACK_STATUS_FILTERS,
+  TRACKS_FILTERS,
   TRACKS_SORT_FIELDS,
   tracksFilter,
   type TracksSortField,
@@ -48,6 +50,7 @@ const FILTERS_CLEARED: Partial<TracksUrlState> = {
   blacklisted: false,
   ambiance: false,
   style: '',
+  filters: [],
 };
 
 function TitleBadges({ track, size }: { track: AdminTrackDto; size?: 'xs' }) {
@@ -84,6 +87,9 @@ export function TracksPage() {
     ...tracksQuery(tracksFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
   });
+  const ops = operatorFilters(TRACKS_FILTERS, state.filters ?? [], (filters) =>
+    update({ filters }),
+  );
   const total = list.data?.meta.total ?? 0;
   const rows = list.data?.data ?? [];
 
@@ -129,6 +135,7 @@ export function TracksPage() {
       label: 'Artiste',
       sortField: 'artist',
       cell: (t) => t.artist,
+      filter: ops.filter('artist'),
     },
     {
       key: 'style',
@@ -167,6 +174,7 @@ export function TracksPage() {
       label: 'MPM',
       sortField: 'bpm',
       cell: (t) => t.bpm,
+      filter: ops.filter('bpm'),
     },
     {
       key: 'status',
@@ -204,6 +212,7 @@ export function TracksPage() {
       label: 'Ajoutée le',
       sortField: 'createdAt',
       cell: (t) => dayjs(t.createdAt).format('DD/MM/YYYY'),
+      filter: ops.filter('createdAt'),
     },
   ];
 
@@ -225,6 +234,7 @@ export function TracksPage() {
         sort={state.sort ?? null}
         onSortChange={onSortChange}
         onResetFilters={() => update(FILTERS_CLEARED)}
+        filterChips={ops.chips}
         toolbar={
           <TextInput
             aria-label="Rechercher"

@@ -1,3 +1,4 @@
+import { AdminTracksFilterDto } from "./dto/admin-track.dto";
 import {
   Body,
   Controller,
@@ -22,6 +23,7 @@ import {
   ApiParam,
   ApiResponse,
   ApiTags,
+  ApiExtraModels,
 } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { UserRole } from "@prisma/client";
@@ -67,6 +69,7 @@ interface ImportTrackFiles {
 @ApiBearerAuth("JWT-auth")
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
+@ApiExtraModels(AdminTracksFilterDto)
 @Controller("admin/tracks")
 export class AdminTracksController {
   constructor(

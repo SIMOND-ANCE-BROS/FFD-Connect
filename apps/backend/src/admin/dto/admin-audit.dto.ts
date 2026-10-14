@@ -1,6 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsIn, IsOptional, IsUUID } from "class-validator";
+import { Prisma } from "@prisma/client";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
+import {
+  enumColumn,
+  type FilterColumns,
+  type ListFilter,
+} from "../../common/list-filters/list-filters";
+import {
+  ListFiltersParam,
+  listFilterSchema,
+} from "../../common/list-filters/list-filters.dto";
 import {
   SortByParam,
   SortOrderParam,
@@ -52,6 +62,28 @@ export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 export const AUDIT_SORT_FIELDS = ["createdAt"] as const;
 export type AuditSortField = (typeof AUDIT_SORT_FIELDS)[number];
 
+/** Columns the audit journal can be filtered on, with operators (#557). */
+export const AUDIT_FILTER_COLUMNS: FilterColumns<Prisma.AdminAuditLogWhereInput> =
+  {
+    createdAt: { kind: "date", where: (c) => ({ createdAt: c }) },
+    actor: {
+      kind: "text",
+      where: (c) => ({
+        actor: { is: { OR: [{ lastName: c }, { firstName: c }] } },
+      }),
+      // A deleted administrator's rows keep no actor.
+      whereNull: { actorId: null },
+    },
+    action: enumColumn(AUDIT_ACTIONS, (action) => ({ action })),
+    targetType: enumColumn(AUDIT_TARGET_TYPES, (targetType) => ({
+      targetType,
+    })),
+  };
+export const AuditLogFilterDto = listFilterSchema(
+  "AuditLogFilterDto",
+  Object.keys(AUDIT_FILTER_COLUMNS),
+);
+
 export interface AuditEntry {
   actorId: string;
   action: AuditAction;
@@ -87,6 +119,9 @@ export class ListAuditLogQueryDto extends PaginationParamsDto {
 
   @SortOrderParam()
   sortOrder?: SortOrder;
+
+  @ListFiltersParam(AUDIT_FILTER_COLUMNS)
+  filters?: ListFilter[];
 }
 
 export class AuditLogEntryDto {

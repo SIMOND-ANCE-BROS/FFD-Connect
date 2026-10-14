@@ -313,21 +313,40 @@ describe('AuditLogPage', () => {
         <AuditLogPage />
         <Probe />
       </>,
-      { route: '/audit?target=CLUB' },
+      { route: '/audit?f.targetType=in:CLUB' },
     );
     expect(await screen.findByText('Aucune entrée')).toBeInTheDocument();
-    expect(spy).toHaveBeenLastCalledWith({ query: { targetType: 'CLUB', skip: 0, take: 50 } });
+    expect(spy).toHaveBeenLastCalledWith({
+      query: {
+        filters: JSON.stringify([{ field: 'targetType', op: 'in', value: ['CLUB'] }]),
+        skip: 0,
+        take: 50,
+      },
+    });
     await openColumnFilter(user, 'Action');
-    await pickOption(user, screen.getByRole('textbox', { name: 'Action' }), 'Suppression de club');
+    await pickOption(
+      user,
+      screen.getByRole('textbox', { name: 'Opérateur : Action' }),
+      "n'est aucune de",
+    );
+    await user.click(screen.getByRole('checkbox', { name: 'Suppression de club' }));
+    await user.click(screen.getByRole('button', { name: 'Appliquer le filtre : Action' }));
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({
-        query: { action: 'CLUB_DELETE', targetType: 'CLUB', skip: 0, take: 50 },
+        query: {
+          filters: JSON.stringify([
+            { field: 'targetType', op: 'in', value: ['CLUB'] },
+            { field: 'action', op: 'notIn', value: ['CLUB_DELETE'] },
+          ]),
+          skip: 0,
+          take: 50,
+        },
       }),
     );
     await user.click(sortButton('Date'));
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent(
-        '/audit?action=CLUB_DELETE&target=CLUB&sort=createdAt&order=asc',
+        '/audit?f.targetType=in%3ACLUB&f.action=notIn%3ACLUB_DELETE&sort=createdAt&order=asc',
       ),
     );
     await user.click(screen.getByRole('button', { name: 'Réinitialiser les filtres (2)' }));

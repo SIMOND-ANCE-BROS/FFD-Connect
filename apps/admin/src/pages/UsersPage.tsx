@@ -1,38 +1,23 @@
-import {
-  Anchor,
-  Badge,
-  Button,
-  Group,
-  Pagination,
-  SegmentedControl,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-} from '@mantine/core';
-import { DatePickerInput } from '@mantine/dates';
+import { Anchor, Badge, Button, Group, Pagination, Stack, Text, TextInput } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { Link, useNavigate } from 'react-router';
-import type { AdminUserListItemDto, UserRole } from '../api/generated/types.gen';
-import { clubOptionsQuery, referenceQuery, usersQuery } from '../api/queries';
+import type { AdminUserListItemDto } from '../api/generated/types.gen';
+import { usersQuery } from '../api/queries';
+import { operatorFilters } from '../components/ColumnFilterEditor';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
 import { RecordCard, RecordLine } from '../components/RecordCard';
 import { StoreReviewBadge } from '../components/StoreReview';
 import { apiErrorMessage } from '../lib/apiError';
-import { disciplineOptions, formatDiscipline } from '../lib/discipline';
-import {
-  extraRoleLabels,
-  ROLE_LABELS,
-  STATUS_FILTER_OPTIONS,
-  type StatusChoice,
-} from '../lib/labels';
+import { formatDiscipline } from '../lib/discipline';
+import { extraRoleLabels, ROLE_LABELS } from '../lib/labels';
 import type { SortState } from '../lib/listSort';
 import { useListParams } from '../lib/useListParams';
 import {
   readUsersParams,
+  USERS_FILTERS,
   USERS_FILTERS_CLEARED,
   USERS_SORT_FIELDS,
   type UsersSortField,
@@ -51,10 +36,6 @@ const LICENSE_LABEL: Record<'ACTIVE' | 'EXPIRED', string> = {
 const date = (iso: string | null) => (iso ? dayjs(iso).format('DD/MM/YYYY') : '—');
 const isUsersSortField = (value: string): value is UsersSortField =>
   USERS_SORT_FIELDS.some((f) => f === value);
-
-// Selects and date pickers inside a header menu keep their dropdown in the
-// menu: a portal would count as a click outside and close it.
-const IN_MENU = { withinPortal: false } as const;
 
 function ExtraRoles({ user }: { user: AdminUserListItemDto }) {
   if (user.extraRoles.length === 0) return <>—</>;
@@ -78,8 +59,7 @@ export function UsersPage() {
     ...usersQuery(usersFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
   });
-  const clubs = useQuery(clubOptionsQuery(state.clubId));
-  const reference = useQuery(referenceQuery);
+  const ops = operatorFilters(USERS_FILTERS, state.filters, (filters) => update({ filters }));
   const total = users.data?.meta.total ?? 0;
   const rows = users.data?.data ?? [];
 
@@ -107,6 +87,7 @@ export function UsersPage() {
           {u.isStoreReview && <StoreReviewBadge />}
         </>
       ),
+      filter: ops.filter('name'),
     },
     {
       key: 'email',
@@ -116,6 +97,7 @@ export function UsersPage() {
       label: 'Email',
       sortField: 'email',
       cell: (u) => u.email,
+      filter: ops.filter('email'),
     },
     {
       key: 'role',
@@ -124,22 +106,7 @@ export function UsersPage() {
       label: 'Rôle principal',
       sortField: 'role',
       cell: (u) => <Badge variant="light">{ROLE_LABELS[u.role]}</Badge>,
-      filter: {
-        active: state.role !== null,
-        content: (
-          <Select
-            label="Rôle (principal ou supplémentaire)"
-            placeholder="Rôle"
-            clearable
-            comboboxProps={IN_MENU}
-            data={Object.entries(ROLE_LABELS)
-              .filter(([value]) => reference.data?.roles.includes(value))
-              .map(([value, label]) => ({ value, label }))}
-            value={state.role}
-            onChange={(v) => update({ role: v as UserRole | null })}
-          />
-        ),
-      },
+      filter: ops.filter('role'),
     },
     {
       key: 'extraRoles',
@@ -163,19 +130,7 @@ export function UsersPage() {
         ) : (
           'Actif'
         ),
-      filter: {
-        active: state.status !== 'all',
-        content: (
-          <SegmentedControl
-            orientation="vertical"
-            fullWidth
-            aria-label="Statut du compte"
-            data={STATUS_FILTER_OPTIONS}
-            value={state.status}
-            onChange={(v) => update({ status: v as StatusChoice })}
-          />
-        ),
-      },
+      filter: ops.filter('status'),
     },
     {
       key: 'club',
@@ -185,21 +140,7 @@ export function UsersPage() {
       label: 'Club',
       sortField: 'club',
       cell: (u) => u.clubName ?? '—',
-      filter: {
-        active: state.clubId !== null,
-        content: (
-          <Select
-            aria-label="Club"
-            placeholder="Club"
-            clearable
-            searchable
-            comboboxProps={IN_MENU}
-            data={(clubs.data ?? []).map((c) => ({ value: c.id, label: c.name }))}
-            value={state.clubId}
-            onChange={(v) => update({ clubId: v })}
-          />
-        ),
-      },
+      filter: ops.filter('club'),
     },
     {
       key: 'category',
@@ -208,20 +149,7 @@ export function UsersPage() {
       label: 'Catégorie',
       sortField: 'category',
       cell: (u) => (u.category ? formatDiscipline(u.category) : '—'),
-      filter: {
-        active: state.category !== null,
-        content: (
-          <Select
-            aria-label="Catégorie"
-            placeholder="Catégorie"
-            clearable
-            comboboxProps={IN_MENU}
-            data={disciplineOptions(reference.data?.categories ?? [])}
-            value={state.category}
-            onChange={(v) => update({ category: v })}
-          />
-        ),
-      },
+      filter: ops.filter('category'),
     },
     {
       key: 'ageGroup',
@@ -230,6 +158,7 @@ export function UsersPage() {
       label: "Classe d'âge",
       sortField: 'ageGroup',
       cell: (u) => u.ageGroup ?? '—',
+      filter: ops.filter('ageGroup'),
     },
     {
       key: 'license',
@@ -245,33 +174,16 @@ export function UsersPage() {
       label: 'N° de licence',
       hiddenByDefault: true,
       cell: (u) => u.licenseNumber ?? '—',
+      filter: ops.filter('licenseNumber'),
     },
     {
       key: 'createdAt',
-      minWidth: 140,
+      minWidth: 155,
       priority: 6,
       label: 'Inscription',
       sortField: 'createdAt',
       cell: (u) => date(u.createdAt),
-      filter: {
-        active: Boolean(state.createdFrom ?? state.createdTo),
-        content: (
-          <DatePickerInput
-            type="range"
-            label="Date d’inscription"
-            placeholder="Inscription entre…"
-            clearable
-            popoverProps={IN_MENU}
-            value={[state.createdFrom, state.createdTo]}
-            onChange={([from, to]) =>
-              update({
-                createdFrom: from ? dayjs(from).format('YYYY-MM-DD') : null,
-                createdTo: to ? dayjs(to).format('YYYY-MM-DD') : null,
-              })
-            }
-          />
-        ),
-      },
+      filter: ops.filter('createdAt'),
     },
     {
       key: 'lastLoginAt',
@@ -281,6 +193,7 @@ export function UsersPage() {
       sortField: 'lastLoginAt',
       hiddenByDefault: true,
       cell: (u) => date(u.lastLoginAt),
+      filter: ops.filter('lastLoginAt'),
     },
   ];
 
@@ -302,6 +215,7 @@ export function UsersPage() {
         sort={state.sort}
         onSortChange={onSortChange}
         onResetFilters={() => update(USERS_FILTERS_CLEARED)}
+        filterChips={ops.chips}
         onRowClick={(u) => navigate(`/users/${u.id}`)}
         toolbar={
           <TextInput

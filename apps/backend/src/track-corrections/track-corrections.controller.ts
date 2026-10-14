@@ -1,3 +1,4 @@
+import { TrackCorrectionFilterDto } from "./dto/track-correction.dto";
 import {
   Body,
   Controller,
@@ -18,6 +19,7 @@ import {
   ApiParam,
   ApiResponse,
   ApiTags,
+  ApiExtraModels,
 } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { UserRole } from "@prisma/client";
@@ -58,6 +60,7 @@ import { simulatedEmptyPage } from "../auth/store-review/store-review-responses"
 @ApiTags("track-corrections")
 @ApiCommonErrorResponses()
 @ApiBearerAuth("JWT-auth")
+@ApiExtraModels(TrackCorrectionFilterDto)
 @Controller("track-corrections")
 export class TrackCorrectionsController {
   constructor(

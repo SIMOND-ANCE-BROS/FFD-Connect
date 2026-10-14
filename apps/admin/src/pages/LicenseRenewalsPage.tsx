@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import { Link, useLocation } from 'react-router';
 import type { AdminLicenseRenewalListItemDto } from '../api/generated/types.gen';
 import { licenseRenewalsQuery } from '../api/queries';
+import { operatorFilters } from '../components/ColumnFilterEditor';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
@@ -14,6 +15,7 @@ import {
   DOCUMENT_LABELS,
   listFilter,
   readRenewalParams,
+  RENEWALS_FILTERS,
   RENEWALS_SORT_FIELDS,
   type RenewalsSortField,
   reviewerLabel,
@@ -46,6 +48,7 @@ export function LicenseRenewalsPage() {
     ...licenseRenewalsQuery(listFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
   });
+  const ops = operatorFilters(RENEWALS_FILTERS, state.filters, (filters) => update({ filters }));
   const total = list.data?.meta.total ?? 0;
   const isMobile = useIsMobile();
   const decided = state.status !== 'PENDING';
@@ -69,6 +72,7 @@ export function LicenseRenewalsPage() {
           {r.user.firstName} {r.user.lastName}
         </Anchor>
       ),
+      filter: ops.filter('name'),
     },
     {
       key: 'licenseNumber',
@@ -77,6 +81,7 @@ export function LicenseRenewalsPage() {
       label: 'N° de licence',
       sortField: 'licenseNumber',
       cell: (r) => r.user.license?.number ?? '—',
+      filter: ops.filter('licenseNumber'),
     },
     {
       key: 'validUntil',
@@ -85,6 +90,7 @@ export function LicenseRenewalsPage() {
       label: 'Fin de validité',
       sortField: 'validUntil',
       cell: validUntil,
+      filter: ops.filter('validUntil'),
     },
     {
       key: 'documents',
@@ -101,6 +107,7 @@ export function LicenseRenewalsPage() {
       label: 'Soumise le',
       sortField: 'submittedAt',
       cell: (r) => dateTime(r.submittedAt),
+      filter: ops.filter('submittedAt'),
     },
     // A pending request has no decision yet: these columns would be empty.
     ...(decided
@@ -112,8 +119,16 @@ export function LicenseRenewalsPage() {
             label: 'Traitée le',
             sortField: 'reviewedAt',
             cell: (r: Renewal) => dateTime(r.reviewedAt),
+            filter: ops.filter('reviewedAt'),
           },
-          { key: 'reviewedBy', minWidth: 150, priority: 6, label: 'Par', cell: reviewerLabel },
+          {
+            key: 'reviewedBy',
+            minWidth: 150,
+            priority: 6,
+            label: 'Par',
+            cell: reviewerLabel,
+            filter: ops.filter('reviewer'),
+          },
         ]
       : []),
     {
@@ -150,6 +165,8 @@ export function LicenseRenewalsPage() {
         rowKey={(r) => r.id}
         sort={state.sort}
         onSortChange={onSortChange}
+        onResetFilters={() => update({ filters: [] })}
+        filterChips={ops.chips}
         loading={list.isPending}
         error={list.isError && apiErrorMessage(list.error, 'Impossible de charger les demandes.')}
         summary={

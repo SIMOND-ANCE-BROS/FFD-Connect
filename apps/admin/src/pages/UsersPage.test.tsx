@@ -92,7 +92,9 @@ describe('UsersPage', () => {
     const link = await screen.findByRole('link', { name: 'Martin Jeanne' });
     expect(screen.getByRole('textbox', { name: 'Rechercher un utilisateur' })).toBeInTheDocument();
     await openColumnFilter(user, 'Inscription');
-    expect(screen.getByLabelText('Date d’inscription')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Opérateur : Inscription' })).toHaveValue(
+      'avant le',
+    );
     link.focus();
     await user.keyboard('{Enter}');
     expect(screen.getByTestId('location')).toHaveTextContent('/users/u1');
@@ -167,19 +169,64 @@ describe('UsersPage', () => {
     expect(within(other).queryByText('Validation stores')).toBeNull();
   });
 
-  it('filters on the status, from the first page', async () => {
+  it('filters on the status with an operator, server-side, from the first page (#557)', async () => {
     const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(1) as never);
-    renderPage();
+    renderPage('/?page=2');
     await screen.findByText('jeanne@x.fr');
     await openColumnFilter(user, 'Compte');
-    await user.click(screen.getByText('Désactivés'));
+    const apply = screen.getByRole('button', { name: 'Appliquer le filtre : Compte' });
+    // Nothing is sent before a value is chosen.
+    expect(apply).toBeDisabled();
+    await user.click(screen.getByRole('checkbox', { name: 'Désactivé' }));
+    await user.click(apply);
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({
-        query: expect.objectContaining({ status: 'disabled', skip: 0 }),
+        query: expect.objectContaining({
+          filters: JSON.stringify([{ field: 'status', op: 'in', value: ['disabled'] }]),
+          skip: 0,
+        }),
       }),
     );
-    expect(screen.getByTestId('location')).toHaveTextContent('/?status=disabled');
+    expect(screen.getByTestId('location')).toHaveTextContent('/?f.status=in%3Adisabled');
     expect(columnFilterButton('Compte')).toHaveAccessibleName('Filtrer : Compte (filtre actif)');
+
+    // The active filter is a chip, removed in one click.
+    await user.click(
+      screen.getByRole('button', {
+        name: "Retirer le filtre : Compte est l'une de Désactivé",
+      }),
+    );
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/));
+    expect(spy).toHaveBeenLastCalledWith({
+      query: expect.not.objectContaining({ filters: expect.anything() }),
+    });
+  });
+
+  it('combines a text operator with another filter (AND)', async () => {
+    const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(1) as never);
+    renderPage('/?f.club=isEmpty');
+    await screen.findByText('jeanne@x.fr');
+    await openColumnFilter(user, 'Email');
+    await user.click(screen.getByRole('textbox', { name: 'Opérateur : Email' }));
+    await user.click(screen.getByRole('option', { name: 'ne contient pas' }));
+    await fill(user, screen.getByRole('textbox', { name: 'Valeur : Email' }), '@club.fr');
+    await user.keyboard('{Enter}');
+    await waitFor(() =>
+      expect(spy).toHaveBeenLastCalledWith({
+        query: expect.objectContaining({
+          filters: JSON.stringify([
+            { field: 'club', op: 'isEmpty' },
+            { field: 'email', op: 'notContains', value: '@club.fr' },
+          ]),
+        }),
+      }),
+    );
+    expect(screen.getByRole('group', { name: 'Filtres actifs' })).toHaveTextContent(
+      'Club est vide',
+    );
+    expect(screen.getByRole('group', { name: 'Filtres actifs' })).toHaveTextContent(
+      'Email ne contient pas « @club.fr »',
+    );
   });
 
   describe('on a phone', () => {
@@ -194,7 +241,9 @@ describe('UsersPage', () => {
       expect(toggle).toHaveAttribute('aria-expanded', 'false');
       await user.click(toggle);
       expect(toggle).toHaveAttribute('aria-expanded', 'true');
-      expect(screen.getByPlaceholderText('Rôle')).toBeInTheDocument();
+      expect(
+        screen.getByLabelText('Opérateur : Rôle (principal ou supplémentaire)'),
+      ).toBeInTheDocument();
       // Cards, not the desktop table.
       expect(screen.queryByRole('table')).toBeNull();
       expect(screen.getByRole('link', { name: /Martin Jeanne/ })).toHaveAttribute(
@@ -208,11 +257,15 @@ describe('UsersPage', () => {
       renderPage();
       await screen.findByText('jeanne@x.fr');
       await user.click(screen.getByRole('button', { name: 'Filtres' }));
-      await user.click(screen.getByText('Désactivés'));
+      // The folded panel is still opening: label queries, not the accessibility tree.
+      await user.click(screen.getByLabelText('Désactivé'));
+      await user.click(
+        screen.getByRole('button', { name: 'Appliquer le filtre : Compte', hidden: true }),
+      );
       expect(await screen.findByRole('button', { name: 'Filtres (1)' })).toBeInTheDocument();
       await waitFor(() =>
         expect(spy).toHaveBeenLastCalledWith({
-          query: expect.objectContaining({ status: 'disabled' }),
+          query: expect.objectContaining({ filters: expect.stringContaining('"status"') }),
         }),
       );
       // The search is always visible: it never counts as a folded filter.
@@ -222,7 +275,7 @@ describe('UsersPage', () => {
       expect(await screen.findByRole('button', { name: 'Filtres' })).toBeInTheDocument();
       await waitFor(() =>
         expect(spy).toHaveBeenLastCalledWith({
-          query: expect.not.objectContaining({ status: expect.anything() }),
+          query: expect.not.objectContaining({ filters: expect.anything() }),
         }),
       );
     });
@@ -233,28 +286,29 @@ describe('UsersPage', () => {
     renderPage();
     await screen.findByText('jeanne@x.fr');
     expect(screen.queryByRole('button', { name: /^Filtres/ })).toBeNull();
-    expect(screen.queryByPlaceholderText('Rôle')).toBeNull();
+    const roleOperator = { name: 'Opérateur : Rôle (principal ou supplémentaire)' };
+    expect(screen.queryByRole('textbox', roleOperator)).toBeNull();
     await openColumnFilter(user, 'Rôle principal');
-    expect(screen.getByPlaceholderText('Rôle')).toBeVisible();
+    expect(screen.getByRole('textbox', roleOperator)).toBeVisible();
+    expect(screen.getByRole('checkbox', { name: 'Club' })).toBeVisible();
     expect(screen.getByRole('table')).toBeInTheDocument();
   });
 
   it('restores filters, sort and page from the URL and sends them to the API', async () => {
     const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(120) as never);
-    const club = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
     renderPage(
-      `/?q=mar&role=CLUB&club=${club}&category=Latin&status=active&from=2026-09-01&to=2026-09-30&sort=name&order=desc&page=2`,
+      '/?q=mar&f.role=in:CLUB&f.category=contains:lat&f.lastLoginAt=isEmpty&f.createdAt=between:2026-09-01,2026-09-30&sort=name&order=desc&page=2',
     );
     await screen.findByText('jeanne@x.fr');
     expect(spy).toHaveBeenCalledWith({
       query: {
         search: 'mar',
-        role: 'CLUB',
-        clubId: club,
-        category: 'Latin',
-        status: 'active',
-        createdFrom: '2026-09-01',
-        createdTo: '2026-09-30',
+        filters: JSON.stringify([
+          { field: 'role', op: 'in', value: ['CLUB'] },
+          { field: 'category', op: 'contains', value: 'lat' },
+          { field: 'lastLoginAt', op: 'isEmpty' },
+          { field: 'createdAt', op: 'between', value: ['2026-09-01', '2026-09-30'] },
+        ]),
         sortBy: 'name',
         sortOrder: 'desc',
         skip: 50,
@@ -266,7 +320,9 @@ describe('UsersPage', () => {
       'aria-sort',
       'descending',
     );
-    await user.click(screen.getByRole('button', { name: 'Réinitialiser les filtres (5)' }));
+    // A filtered column is shown even when hidden by default (lastLoginAt).
+    expect(screen.getByRole('columnheader', { name: /Dernière connexion/ })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Réinitialiser les filtres (4)' }));
     await waitFor(() =>
       expect(screen.getByTestId('location')).toHaveTextContent('/?q=mar&sort=name&order=desc'),
     );

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { ClubRegistrationMode, UserRole } from "@prisma/client";
+import { ClubRegistrationMode, Prisma, UserRole } from "@prisma/client";
 import { Transform } from "class-transformer";
 import {
   IsEnum,
@@ -17,6 +17,15 @@ import {
   SortOrderParam,
   type SortOrder,
 } from "../../common/dto/sort-params";
+import {
+  enumColumn,
+  type FilterColumns,
+  type ListFilter,
+} from "../../common/list-filters/list-filters";
+import {
+  ListFiltersParam,
+  listFilterSchema,
+} from "../../common/list-filters/list-filters.dto";
 import { AdminPageMetaDto } from "./admin-audit.dto";
 import { ACCOUNT_STATUSES, type AccountStatusFilter } from "./admin-users.dto";
 
@@ -30,6 +39,24 @@ export const ADMIN_CLUBS_SORT_FIELDS = [
   "createdAt",
 ] as const;
 export type AdminClubsSortField = (typeof ADMIN_CLUBS_SORT_FIELDS)[number];
+
+/** Columns the back-office club list can be filtered on, with operators (#557). */
+export const ADMIN_CLUBS_FILTER_COLUMNS: FilterColumns<Prisma.ClubWhereInput> =
+  {
+    name: { kind: "text", where: (c) => ({ name: c }) },
+    status: enumColumn(ACCOUNT_STATUSES, (status) => ({
+      disabledAt: status === "active" ? null : { not: null },
+    })),
+    registrationMode: enumColumn(
+      Object.values(ClubRegistrationMode),
+      (mode) => ({ registrationMode: mode }),
+    ),
+    createdAt: { kind: "date", where: (c) => ({ createdAt: c }) },
+  };
+export const AdminClubsFilterDto = listFilterSchema(
+  "AdminClubsFilterDto",
+  Object.keys(ADMIN_CLUBS_FILTER_COLUMNS),
+);
 
 export class ListAdminClubsQueryDto extends PaginationParamsDto {
   @ApiPropertyOptional({ description: "Nom du club" })
@@ -49,6 +76,9 @@ export class ListAdminClubsQueryDto extends PaginationParamsDto {
 
   @SortOrderParam()
   sortOrder?: SortOrder;
+
+  @ListFiltersParam(ADMIN_CLUBS_FILTER_COLUMNS)
+  filters?: ListFilter[];
 }
 
 export class ClubOptionsQueryDto {

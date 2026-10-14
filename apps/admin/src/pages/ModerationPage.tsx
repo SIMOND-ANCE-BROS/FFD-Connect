@@ -20,6 +20,7 @@ import type {
   TrackCorrectionStatus,
 } from '../api/generated/types.gen';
 import { moderationListQuery } from '../api/queries';
+import { operatorFilters } from '../components/ColumnFilterEditor';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
@@ -29,6 +30,7 @@ import type { SortState } from '../lib/listSort';
 import { useListParams } from '../lib/useListParams';
 import {
   MIN_SEARCH_LENGTH,
+  MODERATION_FILTERS,
   MODERATION_SORT_FIELDS,
   moderationFilter,
   type ModerationSortField,
@@ -63,6 +65,9 @@ export function ModerationPage() {
     ...moderationListQuery(moderationFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
   });
+  const ops = operatorFilters(MODERATION_FILTERS, state.filters ?? [], (filters) =>
+    update({ filters }),
+  );
   const total = list.data?.meta.total ?? 0;
   const detailPath = (c: TrackCorrectionAdminDto) => `/moderation/${c.id}${locationSearch}`;
 
@@ -103,6 +108,7 @@ export function ModerationPage() {
           </Text>
         </>
       ),
+      filter: ops.filter('track'),
     },
     {
       key: 'reason',
@@ -128,7 +134,14 @@ export function ModerationPage() {
         ),
       },
     },
-    { key: 'proposer', minWidth: 140, priority: 3, label: 'Proposée par', cell: proposer },
+    {
+      key: 'proposer',
+      minWidth: 140,
+      priority: 3,
+      label: 'Proposée par',
+      cell: proposer,
+      filter: ops.filter('proposer'),
+    },
     {
       key: 'createdAt',
       minWidth: 150,
@@ -136,6 +149,7 @@ export function ModerationPage() {
       label: 'Date',
       sortField: 'createdAt',
       cell: createdAt,
+      filter: ops.filter('createdAt'),
     },
     {
       key: 'summary',
@@ -155,6 +169,7 @@ export function ModerationPage() {
       label: 'Message',
       hiddenByDefault: true,
       cell: (c) => c.message ?? '—',
+      filter: ops.filter('message'),
     },
     {
       key: 'reviewedAt',
@@ -163,6 +178,7 @@ export function ModerationPage() {
       label: 'Traitée le',
       hiddenByDefault: true,
       cell: (c) => (c.reviewedAt ? dayjs(c.reviewedAt).format('DD/MM/YYYY HH:mm') : '—'),
+      filter: ops.filter('reviewedAt'),
     },
     {
       key: 'reviewer',
@@ -171,6 +187,7 @@ export function ModerationPage() {
       label: 'Traitée par',
       hiddenByDefault: true,
       cell: (c) => c.reviewer?.name ?? '—',
+      filter: ops.filter('reviewer'),
     },
   ];
 
@@ -211,7 +228,8 @@ export function ModerationPage() {
         rowKey={(c) => c.id}
         sort={state.sort ?? null}
         onSortChange={onSortChange}
-        onResetFilters={() => update({ reasons: [] })}
+        onResetFilters={() => update({ reasons: [], filters: [] })}
+        filterChips={ops.chips}
         onRowClick={(c) => navigate(detailPath(c))}
         toolbar={
           <TextInput

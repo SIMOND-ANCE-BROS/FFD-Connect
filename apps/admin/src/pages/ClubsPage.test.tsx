@@ -92,10 +92,15 @@ describe('ClubsPage', () => {
     await screen.findByRole('link', { name: 'Club A' });
     await userEvent.type(screen.getByPlaceholderText(/nom du club/i), 'cl');
     await openColumnFilter(userEvent, 'Statut');
-    await userEvent.click(screen.getByText('Désactivés'));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Désactivé' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Appliquer le filtre : Statut' }));
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({
-        query: expect.objectContaining({ search: 'cl', status: 'disabled', skip: 0 }),
+        query: expect.objectContaining({
+          search: 'cl',
+          filters: JSON.stringify([{ field: 'status', op: 'in', value: ['disabled'] }]),
+          skip: 0,
+        }),
       }),
     );
   });
@@ -124,13 +129,17 @@ describe('ClubsPage', () => {
       expect(spy).toHaveBeenLastCalledWith({ query: expect.objectContaining({ skip: 50 }) }),
     );
     await openColumnFilter(userEvent, 'Statut');
-    await userEvent.click(screen.getByText('Désactivés'));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Désactivé' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Appliquer le filtre : Statut' }));
     await waitFor(() =>
       expect(spy).toHaveBeenLastCalledWith({
-        query: expect.objectContaining({ status: 'disabled', skip: 0 }),
+        query: expect.objectContaining({
+          filters: JSON.stringify([{ field: 'status', op: 'in', value: ['disabled'] }]),
+          skip: 0,
+        }),
       }),
     );
-    expect(screen.getByTestId('location')).toHaveTextContent('/clubs?status=disabled');
+    expect(screen.getByTestId('location')).toHaveTextContent('/clubs?f.status=in%3Adisabled');
   });
 
   it('sorts on the creation date, kept in the URL', async () => {
