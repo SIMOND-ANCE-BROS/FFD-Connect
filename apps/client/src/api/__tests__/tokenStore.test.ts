@@ -238,7 +238,9 @@ describe("tokenStore", () => {
   });
 
   describe("permanently unreadable store (not a lock)", () => {
-    // Fresh module per test: the "reported once" flag is per app session.
+    const BROKEN = new Error("Keystore: bad decrypt");
+
+    // Fresh module per test: the report/latch flags are per app session.
     function load(appState: string) {
       jest.resetModules();
       const RN = require("react-native") as {
@@ -260,26 +262,58 @@ describe("tokenStore", () => {
       store.setUnreadableSessionHandler(handler);
       return { store, secure, sentry, handler };
     }
-    const flush = () => new Promise((r) => setTimeout(r, 0));
 
-    it("retries once and recovers silently on a transient failure", async () => {
+    /** Runs a read through its retry delay; resolves to value or error. */
+    async function settle(p: Promise<unknown>): Promise<unknown> {
+      const caught = p.catch((e: unknown) => e);
+      await jest.advanceTimersByTimeAsync(600);
+      return caught;
+    }
+    const later = (ms: number) => jest.advanceTimersByTimeAsync(ms);
+
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it("waits ~500 ms before the single retry, then recovers silently", async () => {
       const { store, secure, sentry, handler } = load("active");
       secure.getItemAsync
         .mockRejectedValueOnce(new Error("transient"))
         .mockResolvedValue("a");
-      await expect(store.getAccessToken()).resolves.toBe("a");
-      await flush();
+
+      const p = store.getAccessToken();
+      await jest.advanceTimersByTimeAsync(0);
+      const callsBefore = secure.getItemAsync.mock.calls.length;
+      await jest.advanceTimersByTimeAsync(400);
+      // No retry yet at 400 ms.
+      expect(secure.getItemAsync.mock.calls.length).toBe(callsBefore);
+      await expect(settle(p)).resolves.toBe("a");
+
       expect(sentry.captureException).not.toHaveBeenCalled();
       expect(handler).not.toHaveBeenCalled();
     });
 
-    it("in the foreground: reports once, clears the tokens and ends the session", async () => {
+    it("a first permanent failure is reported but never ends the session", async () => {
       const { store, secure, sentry, handler } = load("active");
-      secure.getItemAsync.mockRejectedValue(new Error("Keystore: bad decrypt"));
+      secure.getItemAsync.mockRejectedValue(BROKEN);
 
-      await expect(store.getTokens()).rejects.toBeInstanceOf(Error);
-      await expect(store.getTokens()).rejects.toBeInstanceOf(Error);
-      await flush();
+      // Access + refresh reads of one getTokens = one burst.
+      expect(await settle(store.getTokens())).toBeInstanceOf(Error);
+      await later(1_000);
+      expect(await settle(store.getTokens())).toBeInstanceOf(Error);
+
+      expect(sentry.captureException).toHaveBeenCalledTimes(1);
+      expect(secure.deleteItemAsync).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("ends the session on a second, independent failure >= 5 s later (foreground)", async () => {
+      const { store, secure, sentry, handler } = load("active");
+      secure.getItemAsync.mockRejectedValue(BROKEN);
+
+      await settle(store.getTokens());
+      await later(6_000);
+      await settle(store.getTokens());
+      await later(0);
 
       expect(sentry.captureException).toHaveBeenCalledTimes(1);
       expect(secure.deleteItemAsync).toHaveBeenCalledWith(
@@ -290,29 +324,97 @@ describe("tokenStore", () => {
         "ffd.session.refresh",
         expect.anything(),
       );
-      expect(handler).toHaveBeenCalled();
+      expect(handler).toHaveBeenCalledTimes(1);
+
+      // Latch never reset: a third failure does not log out again.
+      await later(6_000);
+      await settle(store.getTokens());
+      await later(0);
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
+    it("a successful read in between clears the suspicion", async () => {
+      const { store, secure, handler } = load("active");
+      secure.getItemAsync.mockRejectedValue(BROKEN);
+      await settle(store.getTokens());
+
+      secure.getItemAsync.mockResolvedValue("a");
+      await settle(store.getTokens());
+
+      secure.getItemAsync.mockRejectedValue(BROKEN);
+      await later(6_000);
+      await settle(store.getTokens());
+      await later(0);
+
+      expect(secure.deleteItemAsync).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("a login after the first failure: the next failure does not confirm it", async () => {
+      const { store, secure, handler } = load("active");
+      secure.getItemAsync.mockRejectedValue(BROKEN);
+      await settle(store.getTokens());
+
+      await store.setTokens({ authToken: "fresh" });
+      secure.deleteItemAsync.mockClear();
+
+      await later(6_000);
+      await settle(store.getTokens());
+      await later(0);
+
+      expect(secure.deleteItemAsync).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it("a login racing the session end wins: tokens kept, handler skipped", async () => {
+      const { store, secure, handler } = load("active");
+      secure.getItemAsync.mockRejectedValue(BROKEN);
+      await settle(store.getTokens());
+      await later(6_000);
+
+      // The confirming failure queues the session end behind the lock; a
+      // login already holding the lock lands first.
+      let release: () => void = () => undefined;
+      secure.setItemAsync.mockImplementationOnce(
+        () => new Promise<void>((r) => (release = r)),
+      );
+      const login = store.setTokens({ authToken: "fresh" });
+      await settle(store.getTokens());
+      release();
+      await login;
+      await later(0);
+
+      expect(secure.deleteItemAsync).not.toHaveBeenCalledWith(
+        "ffd.session.access",
+        expect.anything(),
+      );
+      expect(handler).not.toHaveBeenCalled();
     });
 
     it("in the background: reports but keeps the session", async () => {
       const { store, secure, sentry, handler } = load("background");
-      secure.getItemAsync.mockRejectedValue(new Error("Keystore: bad decrypt"));
+      secure.getItemAsync.mockRejectedValue(BROKEN);
 
-      await expect(store.getTokens()).rejects.toBeInstanceOf(Error);
-      await flush();
+      await settle(store.getTokens());
+      await later(6_000);
+      await settle(store.getTokens());
+      await later(0);
 
       expect(sentry.captureException).toHaveBeenCalledTimes(1);
       expect(secure.deleteItemAsync).not.toHaveBeenCalled();
       expect(handler).not.toHaveBeenCalled();
     });
 
-    it("a locked device is never reported nor logged out, even in the foreground", async () => {
+    it("a locked device is never retried, reported nor logged out", async () => {
       const { store, secure, sentry, handler } = load("active");
       secure.getItemAsync.mockRejectedValue(LOCKED);
 
-      await expect(store.getTokens()).rejects.toBeInstanceOf(Error);
-      await flush();
+      await settle(store.getTokens());
+      await later(6_000);
+      await settle(store.getTokens());
+      await later(0);
 
-      expect(secure.getItemAsync).toHaveBeenCalledTimes(2); // no retry
+      expect(secure.getItemAsync).toHaveBeenCalledTimes(4); // 2 per read, no retry
       expect(sentry.captureException).not.toHaveBeenCalled();
       expect(secure.deleteItemAsync).not.toHaveBeenCalled();
       expect(handler).not.toHaveBeenCalled();

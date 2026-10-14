@@ -82,8 +82,41 @@ export function setUnreadableSessionHandler(
   unreadableSessionHandler = handler;
 }
 
+/**
+ * Policy for a NON-lock read failure (Keystore unable to decrypt, missing
+ * entitlement, "system error" under load…). Several of these are transient
+ * (iOS -34018 around launch or right after an update, Android Keystore
+ * "not initialized" under load), and ending a valid session on one of them
+ * is worse than the bug being fixed. Classifying errors by message as
+ * "definitely permanent" is fragile across OS versions, so instead:
+ *
+ * 1. retry the read once after RETRY_DELAY_MS;
+ * 2. a failure that survives the retry is reported to Sentry (once per app
+ *    session) — never ends the session by itself;
+ * 3. the session ends only if a SECOND, independent read also fails for good
+ *    at least CONFIRM_AFTER_MS later, with the app in the foreground and no
+ *    successful read in between (any success clears the suspicion).
+ */
+const RETRY_DELAY_MS = 500;
+const CONFIRM_AFTER_MS = 5_000;
+
 let unreadableReported = false;
-let unreadableSessionEnding = false;
+/** Time of the first unconfirmed permanent failure, null when none. */
+let firstPermanentFailureAt: number | null = null;
+/** sessionGeneration at that first failure. */
+let firstFailureGeneration = 0;
+/**
+ * Latch: the session is ended at most once per app session and the latch is
+ * intentionally NEVER reset once the tokens were cleared — with a broken Keystore every later
+ * read fails too, and resetting would loop logout → login → logout.
+ */
+let unreadableSessionEnded = false;
+/**
+ * Bumped by every setTokens/clearTokens. A login or refresh landing after
+ * the failure means the store works again: the pending session end is
+ * dropped.
+ */
+let sessionGeneration = 0;
 
 function breadcrumb(message: string): void {
   try {
@@ -97,11 +130,6 @@ function breadcrumb(message: string): void {
   }
 }
 
-/**
- * A non-lock read failure that survived a retry. Reported once per app
- * session; in the foreground, the session is ended once per app session too
- * (a broken Keystore would otherwise re-run the logout on every request).
- */
 function onPermanentReadFailure(typed: TokenStoreUnavailableError): void {
   if (!unreadableReported) {
     // Once per app session; the message carries no token nor user data.
@@ -112,31 +140,64 @@ function onPermanentReadFailure(typed: TokenStoreUnavailableError): void {
       /* reporting is best-effort */
     }
   }
+
+  const now = Date.now();
+  if (
+    firstPermanentFailureAt === null ||
+    // A login/refresh since the first failure: the store worked meanwhile,
+    // this failure starts a new suspicion instead of confirming the old one.
+    firstFailureGeneration !== sessionGeneration
+  ) {
+    firstPermanentFailureAt = now;
+    firstFailureGeneration = sessionGeneration;
+    return;
+  }
+  // Same burst (e.g. the access and refresh reads of one getTokens): not an
+  // independent confirmation.
+  if (now - firstPermanentFailureAt < CONFIRM_AFTER_MS) return;
   if (AppState.currentState !== "active") return;
-  if (unreadableSessionEnding || !unreadableSessionHandler) return;
-  unreadableSessionEnding = true;
+  if (unreadableSessionEnded || !unreadableSessionHandler) return;
+
+  unreadableSessionEnded = true;
   const handler = unreadableSessionHandler;
-  // Fire-and-forget: the caller may hold the write lock, which the handler's
-  // clearTokens() needs — awaiting here would deadlock.
+  const generation = sessionGeneration;
+  // Fire-and-forget: the caller may hold the write lock, which clearing the
+  // tokens needs — awaiting here would deadlock.
   void (async () => {
     try {
-      await clearTokens();
-      await handler();
+      const cleared = await withLock(async () => {
+        if (generation !== sessionGeneration) return false;
+        await deleteAllTokens();
+        sessionGeneration += 1;
+        return true;
+      });
+      if (!cleared) {
+        // Superseded by a login/refresh: not a session end, so the latch is
+        // released (the only case where it is).
+        unreadableSessionEnded = false;
+        return;
+      }
+      // Re-checked: a login may have landed while the handler was queued.
+      if (generation + 1 === sessionGeneration) await handler();
     } catch {
-      // Best-effort: let the next foreground read try again.
-      unreadableSessionEnding = false;
+      /* best-effort; the latch stays set on purpose (see above) */
     }
   })();
 }
 
+const delay = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 /**
  * Raw read, any failure turned into a typed error. A refusal because the
- * device is locked is NEVER "logged out" (#582); any other failure is retried
- * once, then reported and — in the foreground — ends the session.
+ * device is locked is NEVER "logged out" (#582); any other failure follows
+ * the policy above.
  */
 async function readKey(key: string): Promise<string | null> {
   try {
-    return await SecureStore.getItemAsync(key, storeOptions());
+    const value = await SecureStore.getItemAsync(key, storeOptions());
+    firstPermanentFailureAt = null;
+    return value;
   } catch (error) {
     const typed = new TokenStoreUnavailableError(error);
     if (typed.locked) {
@@ -144,8 +205,11 @@ async function readKey(key: string): Promise<string | null> {
       throw typed;
     }
     breadcrumb("Token read failed, retrying once");
+    await delay(RETRY_DELAY_MS);
     try {
-      return await SecureStore.getItemAsync(key, storeOptions());
+      const value = await SecureStore.getItemAsync(key, storeOptions());
+      firstPermanentFailureAt = null;
+      return value;
     } catch (retryError) {
       const final = new TokenStoreUnavailableError(retryError);
       if (!final.locked) onPermanentReadFailure(final);
@@ -155,8 +219,8 @@ async function readKey(key: string): Promise<string | null> {
 }
 
 /**
- * Reads one token: the new (AFTER_FIRST_UNLOCK) key first, then the old
- * (WHEN_UNLOCKED) key, moving the value over once (#582).
+ * Reads one token: the new (AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY) key first,
+ * then the old (WHEN_UNLOCKED) key, moving the value over once (#582).
  */
 async function readToken(key: string, oldKey: string): Promise<string | null> {
   const current = await readKey(key);
@@ -289,6 +353,11 @@ export function setTokens(tokens: Tokens): Promise<void> {
       );
       await deleteQuietly(OLD_REFRESH_KEY);
     }
+    if (tokens.authToken !== undefined || tokens.refreshToken !== undefined) {
+      // A login/refresh written successfully: the store works, and this
+      // supersedes any pending "unreadable store" session end.
+      sessionGeneration += 1;
+    }
   });
 }
 
@@ -317,14 +386,20 @@ async function deleteQuietly(key: string): Promise<void> {
  */
 export function clearTokens(): Promise<void> {
   return withLock(async () => {
-    await Promise.all([
-      SecureStore.deleteItemAsync(ACCESS_KEY, storeOptions()),
-      SecureStore.deleteItemAsync(REFRESH_KEY, storeOptions()),
-      // Pre-#582 keys too: otherwise a not-yet-migrated token would be
-      // migrated back on the next read — a logout that does not log out.
-      SecureStore.deleteItemAsync(OLD_ACCESS_KEY, storeOptions()),
-      SecureStore.deleteItemAsync(OLD_REFRESH_KEY, storeOptions()),
-      clearOfflineQueue(),
-    ]);
+    sessionGeneration += 1;
+    await deleteAllTokens();
   });
+}
+
+/** clearTokens' body, for callers already holding the lock. */
+async function deleteAllTokens(): Promise<void> {
+  await Promise.all([
+    SecureStore.deleteItemAsync(ACCESS_KEY, storeOptions()),
+    SecureStore.deleteItemAsync(REFRESH_KEY, storeOptions()),
+    // Pre-#582 keys too: otherwise a not-yet-migrated token would be
+    // migrated back on the next read — a logout that does not log out.
+    SecureStore.deleteItemAsync(OLD_ACCESS_KEY, storeOptions()),
+    SecureStore.deleteItemAsync(OLD_REFRESH_KEY, storeOptions()),
+    clearOfflineQueue(),
+  ]);
 }
