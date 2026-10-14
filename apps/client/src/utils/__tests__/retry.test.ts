@@ -1,4 +1,9 @@
-import { retry, retryAxios } from "../retry";
+import {
+  parseRetryAfter,
+  retry,
+  retryAxios,
+  RETRY_AFTER_MAX_MS,
+} from "../retry";
 
 describe("retry util", () => {
   it("returns result when first attempt succeeds", async () => {
@@ -58,14 +63,30 @@ describe("retry util", () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
-  it("retries on axios 408/429", async () => {
+  it("retries on axios 408", async () => {
     const fn = jest
       .fn()
-      .mockRejectedValueOnce({ response: { status: 429 } })
+      .mockRejectedValueOnce({ response: { status: 408 } })
       .mockResolvedValue("ok");
 
     const result = await retry(fn, { initialDelay: 0 });
     expect(result).toBe("ok");
+  });
+
+  it("does not blindly retry an axios 429 (#585)", async () => {
+    const fn = jest.fn().mockRejectedValue({ response: { status: 429 } });
+    await expect(retry(fn, { initialDelay: 0 })).rejects.toEqual({
+      response: { status: 429 },
+    });
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not blindly retry an HttpError 429 (#585)", async () => {
+    const fn = jest.fn().mockRejectedValue({ statusCode: 429 });
+    await expect(retry(fn, { initialDelay: 0 })).rejects.toEqual({
+      statusCode: 429,
+    });
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 
   it("retries on network error (no response)", async () => {
@@ -119,7 +140,7 @@ describe("retryAxios", () => {
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
-  it("does not retry on 4xx (except 408, 429)", async () => {
+  it("does not retry on 4xx (except 408)", async () => {
     const fn = jest.fn().mockRejectedValue({ response: { status: 404 } });
 
     await expect(retryAxios(fn, { initialDelay: 0 })).rejects.toEqual({
@@ -128,7 +149,7 @@ describe("retryAxios", () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it("retries on 408 and 429", async () => {
+  it("retries on 408", async () => {
     const fn = jest
       .fn()
       .mockRejectedValueOnce({ response: { status: 408 } })
@@ -136,5 +157,50 @@ describe("retryAxios", () => {
 
     const result = await retryAxios(fn, { initialDelay: 0 });
     expect(result).toBe("ok");
+  });
+
+  it("does not retry on 429 — handled once with Retry-After by api.ts", async () => {
+    const fn = jest.fn().mockRejectedValue({ response: { status: 429 } });
+
+    await expect(retryAxios(fn, { initialDelay: 0 })).rejects.toEqual({
+      response: { status: 429 },
+    });
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("parseRetryAfter (#585)", () => {
+  const now = Date.parse("2026-10-14T10:00:00Z");
+
+  it("parses delta-seconds", () => {
+    expect(parseRetryAfter("3", now)).toBe(3000);
+    expect(parseRetryAfter(" 0 ", now)).toBe(0);
+    expect(parseRetryAfter("1.5", now)).toBe(1500);
+  });
+
+  it("accepts a numeric value and an array of values", () => {
+    expect(parseRetryAfter(2, now)).toBe(2000);
+    expect(parseRetryAfter(["4"], now)).toBe(4000);
+  });
+
+  it("parses an HTTP-date relative to now", () => {
+    expect(parseRetryAfter("Wed, 14 Oct 2026 10:00:05 GMT", now)).toBe(5000);
+  });
+
+  it("clamps a past HTTP-date to 0", () => {
+    expect(parseRetryAfter("Wed, 14 Oct 2026 09:59:00 GMT", now)).toBe(0);
+  });
+
+  it("returns null when absent or invalid", () => {
+    expect(parseRetryAfter(undefined, now)).toBeNull();
+    expect(parseRetryAfter("", now)).toBeNull();
+    expect(parseRetryAfter("soon", now)).toBeNull();
+    expect(parseRetryAfter(-1, now)).toBeNull();
+    expect(parseRetryAfter(Number.NaN, now)).toBeNull();
+    expect(parseRetryAfter({}, now)).toBeNull();
+  });
+
+  it("caps the accepted wait at 10 s", () => {
+    expect(RETRY_AFTER_MAX_MS).toBe(10_000);
   });
 });

@@ -6,7 +6,11 @@ import {
   API_URL,
 } from "../config";
 import { createLogger } from "../utils/logger";
-import { retryAxios } from "../utils/retry";
+import {
+  parseRetryAfter,
+  retryAxios,
+  RETRY_AFTER_MAX_MS,
+} from "../utils/retry";
 import { wakeBackend } from "../utils/backendWake";
 import { usage } from "./analytics/usage";
 import { refreshSession } from "../api/sessionRefresh";
@@ -75,6 +79,7 @@ api.interceptors.response.use(
     const config = error.config as AxiosRequestConfig & {
       _retry?: boolean;
       _wakeRetry?: boolean;
+      _rateLimitRetry?: boolean;
     };
 
     // Backend endormi (scale-to-zero) : erreur réseau ou 502/503/504. Axios
@@ -127,14 +132,42 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Ne pas retry si déjà tenté ou si c'est une erreur 4xx (sauf 408, 429)
+    // 429 (rate limited, #585): at most ONE retry, and only after waiting
+    // the `Retry-After` the backend sent (seconds or HTTP-date), capped at
+    // RETRY_AFTER_MAX_MS. No header, or a longer wait → fail at once: a blind
+    // backoff would only feed the throttle. Not a sleeping backend either, so
+    // the wake path above never sees it.
+    if (error.response?.status === 429) {
+      const headers = error.response.headers as
+        | Record<string, unknown>
+        | undefined;
+      const delayMs = parseRetryAfter(headers?.["retry-after"]);
+      if (
+        !config._rateLimitRetry &&
+        delayMs !== null &&
+        delayMs <= RETRY_AFTER_MAX_MS
+      ) {
+        config._rateLimitRetry = true;
+        logger.info(`API 429 on ${url} — retrying once in ${delayMs} ms`);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        return api.request(config);
+      }
+      // Expected outcome, not a bug: the logger records it as a breadcrumb.
+      logger.error(
+        `API Error: 429 on ${url}`,
+        error instanceof Error ? error : undefined,
+        { status, url },
+      );
+      return Promise.reject(error);
+    }
+
+    // Ne pas retry si déjà tenté ou si c'est une erreur 4xx (sauf 408)
     if (
       config._retry ||
       (error.response?.status &&
         error.response.status >= 400 &&
         error.response.status < 500 &&
-        error.response.status !== 408 &&
-        error.response.status !== 429)
+        error.response.status !== 408)
     ) {
       logger.error(
         `API Error: ${status} on ${url}`,
@@ -148,8 +181,7 @@ api.interceptors.response.use(
     if (
       !error.response ||
       (error.response.status >= 500 && error.response.status < 600) ||
-      error.response.status === 408 ||
-      error.response.status === 429
+      error.response.status === 408
     ) {
       // Gérer les erreurs réseau (pas de response)
       if (!error.response) {
@@ -175,7 +207,7 @@ api.interceptors.response.use(
           return Promise.reject(retryError);
         }
       }
-      // Erreurs serveur 5xx, 408, 429
+      // Erreurs serveur 5xx, 408
       logger.error(
         "API Error (retry)",
         error instanceof Error ? error : undefined,

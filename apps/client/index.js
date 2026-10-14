@@ -14,6 +14,7 @@ import * as Updates from "expo-updates";
 import App from "./App";
 import { registerBackgroundMessageHandler } from "./src/features/settings/services/backgroundMessaging";
 import {
+  sentryBeforeSend,
   sentryIntegrations,
   sentryPrivacyOptions,
 } from "./src/utils/sentryOptions";
@@ -126,6 +127,9 @@ if (sentryDsn && !sentryDisabled && Platform.OS !== "web") {
     // listener layer is removed, which is enough on most cases. Also adds the
     // JS screenshot integration that attachScreenshot: false leaves out.
     integrations: sentryIntegrations,
+    // HTTP errors: fingerprint by status + route, expected 4xx as warnings
+    // (#585). See src/utils/sentryOptions.
+    beforeSend: sentryBeforeSend,
   });
   // Le SHA git relie un crash au code exact (tags/releases GitHub).
   Sentry.setTag("git_sha", process.env.EXPO_PUBLIC_GIT_SHA || "unknown");
