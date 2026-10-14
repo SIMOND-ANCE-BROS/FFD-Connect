@@ -89,6 +89,8 @@ export function UsersPage() {
   const columns: DataTableColumn<AdminUserListItemDto>[] = [
     {
       key: 'name',
+      minWidth: 170,
+      weight: 2,
       label: 'Nom',
       required: true,
       sortField: 'name',
@@ -106,9 +108,19 @@ export function UsersPage() {
         </>
       ),
     },
-    { key: 'email', label: 'Email', sortField: 'email', cell: (u) => u.email },
+    {
+      key: 'email',
+      minWidth: 170,
+      weight: 2,
+      priority: 1,
+      label: 'Email',
+      sortField: 'email',
+      cell: (u) => u.email,
+    },
     {
       key: 'role',
+      minWidth: 165,
+      priority: 2,
       label: 'Rôle principal',
       sortField: 'role',
       cell: (u) => <Badge variant="light">{ROLE_LABELS[u.role]}</Badge>,
@@ -131,11 +143,17 @@ export function UsersPage() {
     },
     {
       key: 'extraRoles',
+      minWidth: 170,
+      weight: 1.5,
+      priority: 9,
+      wrap: true,
       label: 'Rôles supplémentaires',
       cell: (u) => <ExtraRoles user={u} />,
     },
     {
       key: 'status',
+      minWidth: 120,
+      priority: 4,
       label: 'Compte',
       cell: (u) =>
         u.disabledAt ? (
@@ -161,6 +179,9 @@ export function UsersPage() {
     },
     {
       key: 'club',
+      minWidth: 140,
+      weight: 1.5,
+      priority: 3,
       label: 'Club',
       sortField: 'club',
       cell: (u) => u.clubName ?? '—',
@@ -182,6 +203,8 @@ export function UsersPage() {
     },
     {
       key: 'category',
+      minWidth: 145,
+      priority: 5,
       label: 'Catégorie',
       sortField: 'category',
       cell: (u) => (u.category ? formatDiscipline(u.category) : '—'),
@@ -202,26 +225,33 @@ export function UsersPage() {
     },
     {
       key: 'ageGroup',
+      minWidth: 140,
+      priority: 8,
       label: "Classe d'âge",
       sortField: 'ageGroup',
       cell: (u) => u.ageGroup ?? '—',
     },
     {
       key: 'license',
+      minWidth: 90,
+      priority: 7,
       label: 'Licence',
       cell: (u) => (u.licenseStatus ? LICENSE_LABEL[u.licenseStatus] : '—'),
     },
     {
       key: 'licenseNumber',
+      minWidth: 130,
+      priority: 10,
       label: 'N° de licence',
       hiddenByDefault: true,
       cell: (u) => u.licenseNumber ?? '—',
     },
     {
       key: 'createdAt',
+      minWidth: 140,
+      priority: 6,
       label: 'Inscription',
       sortField: 'createdAt',
-      nowrap: true,
       cell: (u) => date(u.createdAt),
       filter: {
         active: Boolean(state.createdFrom ?? state.createdTo),
@@ -245,10 +275,11 @@ export function UsersPage() {
     },
     {
       key: 'lastLoginAt',
+      minWidth: 160,
+      priority: 11,
       label: 'Dernière connexion',
       sortField: 'lastLoginAt',
       hiddenByDefault: true,
-      nowrap: true,
       cell: (u) => date(u.lastLoginAt),
     },
   ];
@@ -272,7 +303,6 @@ export function UsersPage() {
         onSortChange={onSortChange}
         onResetFilters={() => update(USERS_FILTERS_CLEARED)}
         onRowClick={(u) => navigate(`/users/${u.id}`)}
-        minWidth={960}
         toolbar={
           <TextInput
             label="Rechercher un utilisateur"

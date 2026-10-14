@@ -59,6 +59,8 @@ export function LicenseRenewalsPage() {
   const columns: DataTableColumn<Renewal>[] = [
     {
       key: 'name',
+      minWidth: 170,
+      weight: 1.5,
       label: 'Licencié',
       required: true,
       sortField: 'name',
@@ -70,17 +72,34 @@ export function LicenseRenewalsPage() {
     },
     {
       key: 'licenseNumber',
+      minWidth: 130,
+      priority: 1,
       label: 'N° de licence',
       sortField: 'licenseNumber',
       cell: (r) => r.user.license?.number ?? '—',
     },
-    { key: 'validUntil', label: 'Fin de validité', sortField: 'validUntil', cell: validUntil },
-    { key: 'documents', label: 'Documents', cell: documents },
+    {
+      key: 'validUntil',
+      minWidth: 140,
+      priority: 3,
+      label: 'Fin de validité',
+      sortField: 'validUntil',
+      cell: validUntil,
+    },
+    {
+      key: 'documents',
+      minWidth: 160,
+      weight: 1.5,
+      priority: 4,
+      label: 'Documents',
+      cell: documents,
+    },
     {
       key: 'submittedAt',
+      minWidth: 150,
+      priority: 2,
       label: 'Soumise le',
       sortField: 'submittedAt',
-      nowrap: true,
       cell: (r) => dateTime(r.submittedAt),
     },
     // A pending request has no decision yet: these columns would be empty.
@@ -88,16 +107,19 @@ export function LicenseRenewalsPage() {
       ? [
           {
             key: 'reviewedAt',
+            minWidth: 150,
+            priority: 5,
             label: 'Traitée le',
             sortField: 'reviewedAt',
-            nowrap: true,
             cell: (r: Renewal) => dateTime(r.reviewedAt),
           },
-          { key: 'reviewedBy', label: 'Par', cell: reviewerLabel },
+          { key: 'reviewedBy', minWidth: 150, priority: 6, label: 'Par', cell: reviewerLabel },
         ]
       : []),
     {
       key: 'open',
+      minWidth: 80,
+      weight: 0.4,
       label: '',
       required: true,
       cell: (r) => (
@@ -128,7 +150,6 @@ export function LicenseRenewalsPage() {
         rowKey={(r) => r.id}
         sort={state.sort}
         onSortChange={onSortChange}
-        minWidth={820}
         loading={list.isPending}
         error={list.isError && apiErrorMessage(list.error, 'Impossible de charger les demandes.')}
         summary={

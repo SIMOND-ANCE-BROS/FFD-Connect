@@ -107,10 +107,19 @@ export function AuditLogPage() {
     update({ sort: sort?.by === 'createdAt' ? { by: 'createdAt', order: sort.order } : null });
 
   const columns: DataTableColumn<AuditLogEntryDto>[] = [
-    { key: 'createdAt', label: 'Date', sortField: 'createdAt', nowrap: true, cell: createdAt },
-    { key: 'actor', label: 'Admin', cell: actor },
+    {
+      key: 'createdAt',
+      minWidth: 150,
+      priority: 0,
+      label: 'Date',
+      sortField: 'createdAt',
+      cell: createdAt,
+    },
+    { key: 'actor', minWidth: 130, weight: 0.8, priority: 2, label: 'Admin', cell: actor },
     {
       key: 'action',
+      minWidth: 180,
+      weight: 1.5,
       label: 'Action',
       required: true,
       cell: actionLabel,
@@ -132,6 +141,8 @@ export function AuditLogPage() {
     },
     {
       key: 'target',
+      minWidth: 150,
+      priority: 1,
       label: 'Cible',
       cell: (e) => <Target entry={e} />,
       filter: {
@@ -149,7 +160,15 @@ export function AuditLogPage() {
         ),
       },
     },
-    { key: 'detail', label: 'Détail', cell: (e) => <Detail entry={e} /> },
+    {
+      key: 'detail',
+      minWidth: 360,
+      weight: 5,
+      priority: 3,
+      wrap: true,
+      label: 'Détail',
+      cell: (e) => <Detail entry={e} />,
+    },
   ];
 
   return (
@@ -166,7 +185,6 @@ export function AuditLogPage() {
         sort={state.sort}
         onSortChange={onSortChange}
         onResetFilters={() => update({ action: null, targetType: null })}
-        minWidth={820}
         loading={!log.data && !log.isError}
         error={log.isError && 'Impossible de charger le journal.'}
         empty={
