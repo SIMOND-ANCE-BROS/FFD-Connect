@@ -964,6 +964,9 @@ export const trackCorrectionExportSelect = {
   },
 } as const;
 
+/** Audit rows looked up only to know which targets they concern. */
+export const auditTargetIdSelect = { targetId: true } as const;
+
 /** Back-office: one audit row with its author's name. */
 export const adminAuditLogSelect = {
   id: true,
