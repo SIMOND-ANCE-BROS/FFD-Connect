@@ -8,7 +8,19 @@ import { useIsOnline } from "../../../../hooks/useIsOnline";
 import { logger } from "../../../../utils/logger";
 import { TrackData } from "../../context/PlayerContext";
 import { storedPasoClashCount } from "../../utils/pasoClashes";
-import { libraryStyles as styles } from "./library.styles";
+import { EQ_BAR_MAX_HEIGHT, libraryStyles as styles } from "./library.styles";
+
+/** Equalizer bar height (px) → scaleY, so the native driver can animate it. */
+const barScale = (height: Animated.Value) => ({
+  transform: [
+    {
+      scaleY: height.interpolate({
+        inputRange: [0, EQ_BAR_MAX_HEIGHT],
+        outputRange: [0, 1],
+      }),
+    },
+  ],
+});
 
 /**
  * Badge paso doble : nombre de clashs renseignés (« 2 clashs »), ou
@@ -126,21 +138,27 @@ export const LibraryTrackItem = React.memo(
             <View style={styles.playingOverlay}>
               <View style={styles.playingIndicator}>
                 <Animated.View
+                  testID="library-eq-bar"
                   style={[
                     styles.playingBar,
-                    { backgroundColor: currentTheme.secondary, height: bar1 },
+                    { backgroundColor: currentTheme.secondary },
+                    barScale(bar1),
                   ]}
                 />
                 <Animated.View
+                  testID="library-eq-bar"
                   style={[
                     styles.playingBar,
-                    { backgroundColor: currentTheme.secondary, height: bar2 },
+                    { backgroundColor: currentTheme.secondary },
+                    barScale(bar2),
                   ]}
                 />
                 <Animated.View
+                  testID="library-eq-bar"
                   style={[
                     styles.playingBar,
-                    { backgroundColor: currentTheme.secondary, height: bar3 },
+                    { backgroundColor: currentTheme.secondary },
+                    barScale(bar3),
                   ]}
                 />
               </View>
