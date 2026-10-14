@@ -1,0 +1,64 @@
+name: Cache Cleanup
+
+# Deletes the GitHub Actions caches of a PR once it is closed (#515).
+#
+# Caches saved by a PR run are scoped to refs/pull/<n>/merge (and, for the
+# merge queue, refs/heads/gh-readonly-queue/<base>/pr-<n>-<sha>): no other
+# branch can ever read them. Left alone they sit in the 10 GB repository quota
+# for 7 days after their last access and push the shared develop caches (pnpm
+# store, eas-cli, native build caches) out by LRU eviction. A PR that changes
+# the lockfile stores its own ~550 MB pnpm store, for instance.
+#
+# Only caches of the closed PR are touched; develop/staging/master caches are
+# never listed for deletion. Fork PRs get a read-only token: skipped.
+# Cost: one ~10 s job per closed PR; public repo → free minutes.
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cache-cleanup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Delete closed PR caches
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      # DELETE /repos/{owner}/{repo}/actions/caches/{id} requires actions:write.
+      actions: write
+    steps:
+      - name: Delete caches scoped to this PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -eu
+          case "$PR_NUMBER" in
+            '' | *[!0-9]*) echo "Invalid PR number: $PR_NUMBER" >&2; exit 1 ;;
+          esac
+          filter=".actions_caches[]
+            | select(.ref == \"refs/pull/${PR_NUMBER}/merge\"
+                or ((.ref | startswith(\"refs/heads/gh-readonly-queue/\"))
+                    and (.ref | contains(\"/pr-${PR_NUMBER}-\"))))
+            | \"\(.id) \(.size_in_bytes) \(.ref) \(.key)\""
+          gh api --paginate "repos/${REPO}/actions/caches?per_page=100" \
+            --jq "$filter" > caches.txt
+          count=0
+          bytes=0
+          while read -r id size ref key; do
+            echo "Deleting ${key} (${size} bytes, ${ref})"
+            # A cache already evicted between listing and deletion is not an error.
+            if gh api -X DELETE "repos/${REPO}/actions/caches/${id}" > /dev/null; then
+              count=$((count + 1))
+              bytes=$((bytes + size))
+            fi
+          done < caches.txt
+          echo "Deleted ${count} cache(s), $((bytes / 1048576)) MB." | tee -a "$GITHUB_STEP_SUMMARY"
