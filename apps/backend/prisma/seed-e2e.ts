@@ -271,7 +271,6 @@ async function main() {
         rawBpm: t.bpm,
         status: "READY",
         blacklisted: false,
-        titleMasked: false,
       },
       create: {
         sourceKey: t.sourceKey,
@@ -283,7 +282,6 @@ async function main() {
         rawBpm: t.bpm,
         status: "READY",
         blacklisted: false,
-        titleMasked: false,
       },
     });
   }

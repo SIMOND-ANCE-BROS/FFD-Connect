@@ -89,11 +89,6 @@ export function ModerationPage() {
             >
               {c.track.title}
             </Anchor>
-            {c.track.titleMasked && (
-              <Badge size="xs" color="gray" variant="light">
-                Titre masqué
-              </Badge>
-            )}
             {c.track.blacklisted && (
               <Badge size="xs" color="red" variant="light">
                 Retirée
@@ -226,7 +221,6 @@ export function ModerationPage() {
             badges={
               <>
                 <Badge variant="light">{REASON_LABELS[c.reason]}</Badge>
-                {c.track.titleMasked && <Badge color="gray">Titre masqué</Badge>}
                 {c.track.blacklisted && <Badge color="red">Retirée</Badge>}
               </>
             }

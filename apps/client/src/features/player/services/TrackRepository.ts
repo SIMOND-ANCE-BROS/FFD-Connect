@@ -6,9 +6,6 @@ export interface Track {
   bpm: number;
   artwork?: string;
   style?: string;
-  /** Modération admin — le titre est masqué. Le backend renvoie le vrai titre
-   *  aux admins avec ce flag à true, un libellé neutre aux non-admins. */
-  titleMasked?: boolean;
   /** Paso doble : timecodes (secondes) des appels/coups, édités par un admin (#paso-clashes). */
   clashTimecodes?: number[];
 }

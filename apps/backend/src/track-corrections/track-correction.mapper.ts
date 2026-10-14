@@ -88,7 +88,6 @@ export const toAdminDto = (
     style: row.track.style,
     bpm: row.track.bpm,
     clashTimecodes: row.track.clashTimecodes,
-    titleMasked: row.track.titleMasked,
     blacklisted: row.track.blacklisted,
     filename: row.track.filename,
   },

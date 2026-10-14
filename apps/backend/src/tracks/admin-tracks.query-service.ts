@@ -65,8 +65,6 @@ export function adminTracksWhere(
   if (query.status) and.push({ status: query.status });
   if (query.blacklisted !== undefined)
     and.push({ blacklisted: query.blacklisted });
-  if (query.titleMasked !== undefined)
-    and.push({ titleMasked: query.titleMasked });
   if (query.style)
     and.push({ style: { equals: query.style, mode: "insensitive" } });
   if (query.ambiance !== undefined) {

@@ -562,14 +562,13 @@ export const partnerRegistrationExportSelect = {
 } as const;
 
 /**
- * Export RGPD (#251) : musiques proposées par l'utilisateur. Les drapeaux de
- * modération sont lus pour masquer le nom d'une piste modérée
+ * Export RGPD (#251) : musiques proposées par l'utilisateur. Le drapeau
+ * `blacklisted` est lu pour masquer le nom d'une piste retirée
  * (publicTrackName), comme pour les propositions de correction.
  */
 export const submittedTrackExportSelect = {
   title: true,
   artist: true,
-  titleMasked: true,
   blacklisted: true,
   status: true,
   createdAt: true,
@@ -782,7 +781,6 @@ export const trackCorrectionTrackSnapshotSelect = {
   // validation (changement de danse seul → MPM recalculé). Non renvoyé tel quel.
   rawBpm: true,
   clashTimecodes: true,
-  titleMasked: true,
   blacklisted: true,
   // Audio file, for the back-office player (`/uploads/<filename>`).
   filename: true,
@@ -794,7 +792,6 @@ export const trackCorrectionTrackSnapshotSelect = {
  */
 export const trackCorrectionTargetSelect = {
   title: true,
-  titleMasked: true,
   artist: true,
   style: true,
   bpm: true,
@@ -832,9 +829,9 @@ export const trackCorrectionAdminSelect = {
 } as const;
 
 /**
- * « Mes propositions » : la proposition et de quoi nommer la piste. Les
- * drapeaux de modération servent à masquer le nom côté non-admin
- * (publicTrackName) — ne jamais renvoyer `title`/`artist` bruts.
+ * « Mes propositions » : la proposition et de quoi nommer la piste. Le
+ * drapeau `blacklisted` sert à masquer le nom d'une piste retirée côté
+ * non-admin (publicTrackName) — ne jamais renvoyer `title`/`artist` bruts.
  */
 export const trackCorrectionMineSelect = {
   ...trackCorrectionBaseSelect,
@@ -843,7 +840,6 @@ export const trackCorrectionMineSelect = {
       id: true,
       title: true,
       artist: true,
-      titleMasked: true,
       blacklisted: true,
     },
   },
@@ -868,7 +864,7 @@ export const trackCorrectionDecisionSelect = {
   proposesClashes: true,
   proposedClashTimecodes: true,
   track: {
-    select: { title: true, artist: true, titleMasked: true, blacklisted: true },
+    select: { title: true, artist: true, blacklisted: true },
   },
 } as const;
 
@@ -907,7 +903,6 @@ export const trackAuditSelect = {
   artist: true,
   style: true,
   bpm: true,
-  titleMasked: true,
   blacklisted: true,
   clashTimecodes: true,
   status: true,
@@ -938,7 +933,6 @@ export const adminTrackSelect = {
   bpm: true,
   rawBpm: true,
   clashTimecodes: true,
-  titleMasked: true,
   blacklisted: true,
   status: true,
   sourceKey: true,
@@ -962,9 +956,9 @@ export const trackDuplicateSelect = {
 /**
  * Export RGPD (art. 15/20) des propositions de correction : le contenu soumis
  * par l'utilisateur et la décision, sans l'identité de l'administrateur
- * (donnée d'un tiers). Les drapeaux de modération sont lus pour que l'export
- * masque le nom d'une piste modérée (publicTrackName) : sans eux, proposer une
- * correction puis exporter ses données démasquerait la piste.
+ * (donnée d'un tiers). Le drapeau `blacklisted` est lu pour que l'export
+ * masque le nom d'une piste retirée (publicTrackName) : sans lui, proposer une
+ * correction puis exporter ses données révélerait la piste.
  */
 export const trackCorrectionExportSelect = {
   reason: true,
@@ -980,7 +974,7 @@ export const trackCorrectionExportSelect = {
   reviewedAt: true,
   createdAt: true,
   track: {
-    select: { title: true, artist: true, titleMasked: true, blacklisted: true },
+    select: { title: true, artist: true, blacklisted: true },
   },
 } as const;
 

@@ -277,7 +277,7 @@ describe("Admin routes (e2e) — role matrix", () => {
     prisma.track.findMany.mockResolvedValue([]);
     await request(server())
       .get(
-        "/api/v1/admin/tracks?blacklisted=false&titleMasked=true&ambiance=false&status=ERROR&q=%20paso%20&style=Rumba&take=50",
+        "/api/v1/admin/tracks?blacklisted=false&ambiance=false&status=ERROR&q=%20paso%20&style=Rumba&take=50",
       )
       .expect(200);
     expect(prisma.track.findMany).toHaveBeenLastCalledWith(
@@ -292,7 +292,6 @@ describe("Admin routes (e2e) — role matrix", () => {
             },
             { status: "ERROR" },
             { blacklisted: false },
-            { titleMasked: true },
             { style: { equals: "Rumba", mode: "insensitive" } },
             NOT_AMBIANCE_TRACK_WHERE,
           ],

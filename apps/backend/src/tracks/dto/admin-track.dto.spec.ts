@@ -9,19 +9,9 @@ describe("ListAdminTracksQueryDto", () => {
     validateSync(parse(plain)).map((e) => e.property);
 
   it('reads only the strings true and false as booleans, "false" included', () => {
-    const dto = parse({
-      blacklisted: "false",
-      titleMasked: "true",
-      ambiance: "false",
-    });
-    expect(dto).toMatchObject({
-      blacklisted: false,
-      titleMasked: true,
-      ambiance: false,
-    });
-    expect(
-      errors({ blacklisted: "false", titleMasked: "true", ambiance: "false" }),
-    ).toEqual([]);
+    const dto = parse({ blacklisted: "false", ambiance: "true" });
+    expect(dto).toMatchObject({ blacklisted: false, ambiance: true });
+    expect(errors({ blacklisted: "false", ambiance: "true" })).toEqual([]);
   });
 
   it.each(["yes", "1", "", "TRUE"])("refuses the flag value %p", (value) => {

@@ -25,10 +25,10 @@ describe("TracksController", () => {
 
   const adminReq = {
     user: { userId: "admin-1", role: "ADMIN" },
-  } as Parameters<TracksController["findAll"]>[1];
+  } as Parameters<TracksController["findOne"]>[1];
   const licenseeReq = {
     user: { userId: "user-1", role: "LICENSEE" },
-  } as Parameters<TracksController["findAll"]>[1];
+  } as Parameters<TracksController["findOne"]>[1];
 
   const mockResponse = {
     set: jest.fn(),
@@ -62,18 +62,10 @@ describe("TracksController", () => {
       const tracks = [{ id: "a1", title: "Lounge", artist: "Ambiance" }];
       mockTracksService.findAmbiance.mockResolvedValue(tracks);
 
-      const result = await controller.findAmbiance(licenseeReq);
+      const result = await controller.findAmbiance();
 
       expect(result).toEqual(tracks);
-      expect(mockTracksService.findAmbiance).toHaveBeenCalledWith(false);
-    });
-
-    it("forwards the admin flag to the service", async () => {
-      mockTracksService.findAmbiance.mockResolvedValue([]);
-
-      await controller.findAmbiance(adminReq);
-
-      expect(mockTracksService.findAmbiance).toHaveBeenCalledWith(true);
+      expect(mockTracksService.findAmbiance).toHaveBeenCalledWith();
     });
 
     it("is routed before GET /tracks/:id so 'ambiance' is not taken as an id", () => {
@@ -102,56 +94,28 @@ describe("TracksController", () => {
       mockTracksService.findAll.mockResolvedValue(response);
 
       const pagination: PaginationParamsDto = { skip: 0, take: 10 };
-      const result = await controller.findAll(pagination, licenseeReq);
+      const result = await controller.findAll(pagination);
 
       expect(result).toEqual(response);
     });
 
-    it("forwards the pagination params and admin flag to the service", async () => {
+    it("forwards the pagination params to the service", async () => {
       const pagination: PaginationParamsDto = { skip: 20, take: 5 };
       mockTracksService.findAll.mockResolvedValue(
         makePaginatedResponse([], 50),
       );
 
-      await controller.findAll(pagination, adminReq);
+      await controller.findAll(pagination);
 
       expect(mockTracksService.findAll).toHaveBeenCalledTimes(1);
-      expect(mockTracksService.findAll).toHaveBeenCalledWith(pagination, true);
-    });
-
-    it("shows hidden tracks to an account whose ADMIN role is an extra role", async () => {
-      const pagination: PaginationParamsDto = { skip: 0, take: 10 };
-      mockTracksService.findAll.mockResolvedValue(makePaginatedResponse([]));
-
-      await controller.findAll(pagination, {
-        user: {
-          userId: "u1",
-          email: "a@x.fr",
-          role: "LICENSEE",
-          roles: [UserRole.LICENSEE, UserRole.ADMIN],
-        },
-      } as Parameters<TracksController["findAll"]>[1]);
-
-      expect(mockTracksService.findAll).toHaveBeenCalledWith(pagination, true);
-    });
-
-    it("passes isAdmin=false for a non-admin requester", async () => {
-      const pagination: PaginationParamsDto = { skip: 0, take: 10 };
-      mockTracksService.findAll.mockResolvedValue(makePaginatedResponse([]));
-
-      await controller.findAll(pagination, licenseeReq);
-
-      expect(mockTracksService.findAll).toHaveBeenCalledWith(pagination, false);
+      expect(mockTracksService.findAll).toHaveBeenCalledWith(pagination);
     });
 
     it("returns an empty data array with correct meta when no tracks exist", async () => {
       const empty = makePaginatedResponse([]);
       mockTracksService.findAll.mockResolvedValue(empty);
 
-      const result = await controller.findAll(
-        { skip: 0, take: 10 },
-        licenseeReq,
-      );
+      const result = await controller.findAll({ skip: 0, take: 10 });
 
       expect(result).toEqual(empty);
       expect((result as typeof empty).data).toHaveLength(0);
@@ -160,9 +124,9 @@ describe("TracksController", () => {
     it("propagates service errors to the caller", async () => {
       mockTracksService.findAll.mockRejectedValue(new Error("DB unavailable"));
 
-      await expect(
-        controller.findAll({ skip: 0, take: 10 }, licenseeReq),
-      ).rejects.toThrow("DB unavailable");
+      await expect(controller.findAll({ skip: 0, take: 10 })).rejects.toThrow(
+        "DB unavailable",
+      );
     });
   });
 
@@ -192,6 +156,21 @@ describe("TracksController", () => {
       await controller.findOne("track-1", licenseeReq);
 
       expect(mockTracksService.findOne).toHaveBeenCalledWith("track-1", false);
+    });
+
+    it("treats an extra ADMIN role as admin", async () => {
+      mockTracksService.findOne.mockResolvedValue({ id: "track-1" });
+
+      await controller.findOne("track-1", {
+        user: {
+          userId: "u1",
+          email: "a@x.fr",
+          role: "LICENSEE",
+          roles: [UserRole.LICENSEE, UserRole.ADMIN],
+        },
+      } as Parameters<TracksController["findOne"]>[1]);
+
+      expect(mockTracksService.findOne).toHaveBeenCalledWith("track-1", true);
     });
 
     it("propagates NotFoundException from the service", async () => {

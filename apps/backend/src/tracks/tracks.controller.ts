@@ -65,14 +65,8 @@ export class TracksController {
       "Retourne la liste de toutes les musiques disponibles dans la bibliothèque (status READY uniquement, Ambiance exclue).",
   })
   @ApiResponse({ status: 200, description: "Liste des musiques" })
-  async findAll(
-    @Query() pagination: PaginationParamsDto,
-    @Req() req: RequestWithUser,
-  ) {
-    return this.tracksService.findAll(
-      pagination,
-      hasRole(req.user, UserRole.ADMIN),
-    );
+  async findAll(@Query() pagination: PaginationParamsDto) {
+    return this.tracksService.findAll(pagination);
   }
 
   // Déclaré AVANT @Get(":id") : sinon "ambiance" serait capturé comme un id.
@@ -89,8 +83,8 @@ export class TracksController {
     description: "Liste des musiques d'ambiance",
     type: [TrackResponseDto],
   })
-  async findAmbiance(@Req() req: RequestWithUser): Promise<TrackResponseDto[]> {
-    return this.tracksService.findAmbiance(hasRole(req.user, UserRole.ADMIN));
+  async findAmbiance(): Promise<TrackResponseDto[]> {
+    return this.tracksService.findAmbiance();
   }
 
   @Get("download/:token")

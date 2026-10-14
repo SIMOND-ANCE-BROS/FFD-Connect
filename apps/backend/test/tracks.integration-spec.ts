@@ -218,6 +218,7 @@ describe("Tracks (integration, real DB)", () => {
       blacklisted: true,
       status: TrackStatus.ERROR,
     });
+    // Legacy row still flagged in the deprecated column (#560): ignored.
     const d = await track(`Jour ${token}`, {
       style: "ambiance",
       titleMasked: true,
@@ -236,7 +237,6 @@ describe("Tracks (integration, real DB)", () => {
     expect(await ids({ status: TrackStatus.ERROR })).toEqual([c]);
     expect(await ids({ blacklisted: true })).toEqual([c]);
     expect(await ids({ blacklisted: false })).toEqual([a, b, d].sort());
-    expect(await ids({ titleMasked: true })).toEqual([d]);
     expect(await ids({ style: "RUMBA" })).toEqual([a]);
     expect(await ids({ ambiance: true })).toEqual([b, d].sort());
     // c has no style: a NOT (… OR …) filter would have dropped it.
@@ -245,10 +245,9 @@ describe("Tracks (integration, real DB)", () => {
     const page = await queries.list({ q: token, skip: 0, take: 100 });
     expect(page.meta.total).toBe(4);
     expect(page.data.find((t) => t.id === a)?.pendingCorrections).toBe(1);
-    expect(page.data.find((t) => t.id === d)).toMatchObject({
-      titleMasked: true,
-      title: `Jour ${token}`,
-    });
+    const legacy = page.data.find((t) => t.id === d);
+    expect(legacy).toMatchObject({ title: `Jour ${token}` });
+    expect(legacy).not.toHaveProperty("titleMasked");
   });
 
   it("imports a track, then refuses the same file and the same source (409)", async () => {

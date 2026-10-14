@@ -17,7 +17,6 @@ const track = (overrides: Record<string, unknown> = {}) => ({
   bpm: 60,
   rawBpm: 120,
   clashTimecodes: [40],
-  titleMasked: true,
   blacklisted: true,
   status: 'ERROR',
   sourceKey: null,
@@ -71,7 +70,7 @@ describe('TracksPage', () => {
     const link = await screen.findByRole('link', { name: 'España Cañí' });
     expect(link).toHaveAttribute('href', '/tracks/t1');
     const table = screen.getByRole('table');
-    expect(within(table).getByText('Titre masqué')).toBeInTheDocument();
+    expect(within(table).queryByText('Titre masqué')).not.toBeInTheDocument();
     expect(within(table).getByText('Blacklistée')).toBeInTheDocument();
     expect(within(table).getByText('En erreur')).toBeInTheDocument();
     expect(within(table).getByText('Paso Doble')).toBeInTheDocument();

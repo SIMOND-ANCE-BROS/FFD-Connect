@@ -21,8 +21,9 @@ model Track {
   /// affichés sur le lecteur. Édités par un admin ; par défaut estimés côté
   /// client depuis le tempo + la structure standard España Cañí.
   clashTimecodes Float[]    @default([])
-  /// Modération admin — masque le titre réel côté clients non-admin
-  /// (remplacé par un libellé neutre). Les admins voient toujours le vrai titre.
+  /// DEPRECATED (#560) — ancien masquage du titre côté non-admin, retiré.
+  /// Ni lu ni écrit ; colonne conservée (migrations additives), à supprimer
+  /// par une migration ultérieure.
   titleMasked   Boolean     @default(false)
   /// Modération admin — retire la piste de la bibliothèque partagée
   /// (exclue de LIBRARY_WHERE, invisible pour tous).

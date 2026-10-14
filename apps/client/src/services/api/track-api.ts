@@ -33,7 +33,6 @@ export const TrackApi = {
       bpm: t.bpm,
       style: t.style ?? undefined,
       artwork: t.artwork ?? undefined,
-      titleMasked: t.titleMasked,
       clashTimecodes: t.clashTimecodes,
     }));
   },
@@ -48,7 +47,6 @@ export const TrackApi = {
     style?: string | null;
     artwork?: string | null;
     submittedById?: string | null;
-    titleMasked?: boolean;
     blacklisted?: boolean;
   }> {
     return httpGet(`${BACKEND_URL}/tracks/${trackId}`, {

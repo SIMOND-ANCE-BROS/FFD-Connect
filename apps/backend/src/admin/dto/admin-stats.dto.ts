@@ -99,7 +99,6 @@ export class ContentStatsDto {
   @ApiProperty({ type: TrackStatusCountsDto })
   tracksByStatus!: TrackStatusCountsDto;
   @ApiProperty() tracksBlacklisted!: number;
-  @ApiProperty() tracksMasked!: number;
   @ApiProperty() correctionsPending!: number;
   @ApiProperty({ description: "Decided during the period" })
   correctionsApproved!: number;

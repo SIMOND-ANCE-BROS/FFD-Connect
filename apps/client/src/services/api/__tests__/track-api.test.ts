@@ -25,7 +25,6 @@ const dto = {
   style: "Ambiance",
   bpm: 0,
   rawBpm: 0,
-  titleMasked: false,
   blacklisted: false,
   clashTimecodes: [],
   createdAt: "2026-10-06T00:00:00Z",
@@ -45,7 +44,6 @@ describe("TrackApi.getAmbianceTracks", () => {
         bpm: 0,
         style: "Ambiance",
         artwork: undefined,
-        titleMasked: false,
         clashTimecodes: [],
       },
     ]);

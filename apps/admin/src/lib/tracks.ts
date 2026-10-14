@@ -65,7 +65,6 @@ export interface TracksUrlState {
   q: string;
   status: TrackStatus | null;
   blacklisted: boolean;
-  titleMasked: boolean;
   ambiance: boolean;
   style: string;
   page: number;
@@ -79,7 +78,7 @@ const isStatus = (value: string | null): value is TrackStatus =>
 
 /**
  * Filters kept in the URL:
- * `?q=paso&status=ERROR&blacklisted=true&titleMasked=true&ambiance=true&style=Rumba&sort=bpm&order=desc&page=2`.
+ * `?q=paso&status=ERROR&blacklisted=true&ambiance=true&style=Rumba&sort=bpm&order=desc&page=2`.
  */
 export function readTracksParams(params: URLSearchParams): TracksUrlState {
   const status = params.get('status');
@@ -91,7 +90,6 @@ export function readTracksParams(params: URLSearchParams): TracksUrlState {
     q: q.length >= MIN_SEARCH_LENGTH ? q : '',
     status: isStatus(status) ? status : null,
     blacklisted: params.get('blacklisted') === 'true',
-    titleMasked: params.get('titleMasked') === 'true',
     ambiance: params.get('ambiance') === 'true',
     style: DANCE_LABELS.some((dance) => dance === style) ? style : '',
     page: Number.isInteger(page) && page > 1 ? page : 1,
@@ -110,7 +108,6 @@ export function writeTracksParams(
   if (next.q) params.set('q', next.q);
   if (next.status) params.set('status', next.status);
   if (next.blacklisted) params.set('blacklisted', 'true');
-  if (next.titleMasked) params.set('titleMasked', 'true');
   if (next.ambiance) params.set('ambiance', 'true');
   if (next.style) params.set('style', next.style);
   writeSort(params, next.sort ?? null);
@@ -124,7 +121,6 @@ export function tracksFilter(state: TracksUrlState, take: number): TracksFilter 
     ...(state.q && { q: state.q }),
     ...(state.status && { status: state.status }),
     ...(state.blacklisted && { blacklisted: true }),
-    ...(state.titleMasked && { titleMasked: true }),
     ...(state.ambiance && { ambiance: true }),
     ...(state.style && { style: state.style }),
     ...sortQuery(state.sort ?? null),

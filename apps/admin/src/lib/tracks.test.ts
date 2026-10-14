@@ -22,7 +22,6 @@ const track: AdminTrackDto = {
   bpm: 50,
   rawBpm: 100,
   clashTimecodes: [],
-  titleMasked: false,
   blacklisted: false,
   status: 'READY',
   sourceKey: null,
@@ -58,7 +57,6 @@ describe('catalogue URL state', () => {
       q: '',
       status: null,
       blacklisted: false,
-      titleMasked: false,
       ambiance: false,
       style: '',
       page: 1,
@@ -66,6 +64,7 @@ describe('catalogue URL state', () => {
   });
 
   it('reads every filter and drops unknown, too short or false values', () => {
+    // titleMasked (#560) is a retired filter: an old bookmarked URL ignores it.
     expect(
       readTracksParams(
         new URLSearchParams(
@@ -76,7 +75,6 @@ describe('catalogue URL state', () => {
       q: 'paso',
       status: 'ERROR',
       blacklisted: true,
-      titleMasked: true,
       ambiance: true,
       style: 'Rumba',
       page: 2,
@@ -127,7 +125,6 @@ describe('catalogue URL state', () => {
     ).toEqual({
       q: 'paso',
       status: 'PENDING',
-      titleMasked: true,
       style: 'Jive',
       skip: 100,
       take: 50,

@@ -47,14 +47,6 @@ export class UpdateTrackDto {
 
   @ApiPropertyOptional({
     description:
-      "Modération (ADMIN) — masque le titre réel pour les clients non-admin.",
-  })
-  @IsOptional()
-  @IsBoolean()
-  titleMasked?: boolean;
-
-  @ApiPropertyOptional({
-    description:
       "Modération (ADMIN) — blackliste la piste : elle disparaît de la bibliothèque partagée.",
   })
   @IsOptional()

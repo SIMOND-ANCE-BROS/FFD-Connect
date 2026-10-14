@@ -27,7 +27,6 @@ const pendingMpm = {
     style: 'Paso Doble',
     bpm: 60,
     clashTimecodes: [40, 80],
-    titleMasked: false,
     blacklisted: false,
     filename: 'España Cañí.mp3',
   },
@@ -358,12 +357,6 @@ describe('ModerationDetailPage', () => {
     await waitFor(() =>
       expect(screen.getByTestId('location').textContent).toBe('/moderation?reason=MPM'),
     );
-  });
-
-  it('shows a masked title for real, flagged « Titre masqué »', async () => {
-    renderPage({ ...pendingMpm, track: { ...pendingMpm.track, titleMasked: true } });
-    expect(await screen.findByRole('heading', { name: 'España Cañí' })).toBeInTheDocument();
-    expect(screen.getByText('Titre masqué')).toBeInTheDocument();
   });
 
   it('shows the shared message when the server is unreachable', async () => {

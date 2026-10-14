@@ -78,7 +78,7 @@ export class AdminTracksController {
   @ApiOperation({
     summary: "Catalogue des musiques (vue administrateur)",
     description:
-      "Toutes les musiques, y compris blacklistées, en attente, en erreur et d'ambiance (pas de filtre bibliothèque). Plus récentes d'abord. Filtres : q (titre ou artiste, 2 à 100 caractères), status, blacklisted, titleMasked, style, ambiance.",
+      "Toutes les musiques, y compris blacklistées, en attente, en erreur et d'ambiance (pas de filtre bibliothèque). Plus récentes d'abord. Filtres : q (titre ou artiste, 2 à 100 caractères), status, blacklisted, style, ambiance.",
   })
   @ApiResponse({ status: 200, type: AdminTracksPageDto })
   list(@Query() query: ListAdminTracksQueryDto): Promise<AdminTracksPageDto> {
