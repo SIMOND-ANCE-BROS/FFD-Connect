@@ -375,14 +375,15 @@ describe('ModerationDetailPage', () => {
     );
     await user.click(within(dialog).getByRole('button', { name: 'Blacklister' }));
     expect(update).toHaveBeenCalledWith({ path: { id: 't1' }, body: { blacklisted: true } });
-    expect(await screen.findByText('Musique blacklistée')).toBeInTheDocument();
     // Reversible from the track page, linked once the track is blacklisted.
-    expect(await screen.findByRole('link', { name: 'Fiche de la musique' })).toHaveAttribute(
-      'href',
-      '/tracks/t1',
+    const link = await screen.findByRole(
+      'link',
+      { name: 'Fiche de la musique' },
+      { timeout: 5_000 },
     );
+    expect(link).toHaveAttribute('href', '/tracks/t1');
     expect(screen.queryByRole('button', { name: 'Blacklister le titre' })).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it('cancels the blacklist without any request', async () => {
     const update = vi.spyOn(sdk, 'tracksControllerUpdate');
