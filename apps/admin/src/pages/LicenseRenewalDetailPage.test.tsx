@@ -22,6 +22,7 @@ const pending = {
     license: { number: 'FFD-123', validUntil: '2026-08-31T21:59:59.999Z' },
   },
   reviewedBy: null,
+  decidedAutomatically: false,
   rejectionReason: null,
   reviewComment: null,
   documents: [
@@ -209,5 +210,26 @@ describe('LicenseRenewalDetailPage', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Refuser' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Afficher le document' })).toBeNull();
+  });
+
+  it('a refusal whose administrator was deleted is never automatic (#524)', async () => {
+    renderPage({ ...rejected, reviewedBy: null });
+    expect(
+      await screen.findByText(/Refusée par un administrateur supprimé le 09\/10\/2026/),
+    ).toBeInTheDocument();
+  });
+
+  it('an automatic approval from before #271 says so (#524)', async () => {
+    renderPage({
+      ...rejected,
+      status: 'APPROVED',
+      reviewedBy: null,
+      decidedAutomatically: true,
+      rejectionReason: null,
+      reviewComment: null,
+    });
+    expect(
+      await screen.findByText(/Approuvée par la validation automatique le 09\/10\/2026/),
+    ).toBeInTheDocument();
   });
 });

@@ -35,6 +35,7 @@ import { apiErrorMessage, isConflict } from '../lib/apiError';
 import { formatLicenseValidUntil } from '../lib/licenseDate';
 import {
   COMMENT_MAX_LENGTH,
+  decidedByPhrase,
   DOCUMENT_LABELS,
   initialLicenseNumber,
   isLicenseNumberTaken,
@@ -165,11 +166,7 @@ export function LicenseRenewalDetailPage() {
         <Card withBorder>
           <Stack gap={4}>
             <Text size="sm">
-              {`${badge.label} par ${
-                r.reviewedBy
-                  ? `${r.reviewedBy.firstName} ${r.reviewedBy.lastName}`
-                  : 'la validation automatique'
-              } le ${dateTime(r.reviewedAt)}`}
+              {`${badge.label} par ${decidedByPhrase(r)} le ${dateTime(r.reviewedAt)}`}
             </Text>
             {r.rejectionReason && (
               <Text size="sm">{`Motif : ${REJECTION_REASON_LABELS[r.rejectionReason]}`}</Text>
