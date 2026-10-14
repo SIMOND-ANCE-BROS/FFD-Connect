@@ -636,6 +636,9 @@ export const userLicenseValidUntilSelect = {
   license: { select: { validUntil: true } },
 } as const;
 
+/** Club identity only (id + name). */
+export const clubIdNameSelect = { id: true, name: true } as const;
+
 /** Approbation : de quoi renouveler la licence, sans le reste du profil. */
 export const licenseRenewalApprovalTargetSelect = {
   status: true,
@@ -643,8 +646,11 @@ export const licenseRenewalApprovalTargetSelect = {
   documents: { select: { type: true, ocrData: true } },
   user: {
     select: {
-      category: true,
+      // Category and club of a licence created by the approval come from the
+      // holder's real profile, never invented (#282).
+      ...userDisciplineSelect,
       clubName: true,
+      club: { select: clubIdNameSelect },
       // `id`: the number a renewal replaces is retired against it (#466).
       license: { select: { id: true, number: true, validUntil: true } },
     },
@@ -1146,9 +1152,6 @@ export const clubHelloAssoStatusSelect = {
   helloAssoClientSecret: true,
   helloAssoOrgSlug: true,
 } as const;
-
-/** Club identity only (id + name). */
-export const clubIdNameSelect = { id: true, name: true } as const;
 
 /** Back-office club page: one member row. */
 export const adminClubMemberSelect = {
