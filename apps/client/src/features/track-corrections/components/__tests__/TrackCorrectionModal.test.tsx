@@ -7,6 +7,7 @@ import {
   TrackCorrectionApiError,
 } from "../../../../services/api/track-correction-api";
 import { TrackCorrectionModal } from "../TrackCorrectionModal";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../services/api/track-correction-api", () => {
   const actual = jest.requireActual<
@@ -58,6 +59,10 @@ const renderModal = (
     </QueryClientProvider>,
   );
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal", "Animated", "Alert");
 
 describe("TrackCorrectionModal", () => {
   beforeEach(() => {

@@ -9,6 +9,7 @@ import {
   MyTrackCorrectionsScreen,
   proposedSummary,
 } from "../MyTrackCorrectionsScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../services/api/track-correction-api", () => ({
   TrackCorrectionApi: { listMine: jest.fn() },
@@ -78,6 +79,10 @@ const renderScreen = () => {
     </QueryClientProvider>,
   );
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("TouchableOpacity", "FlatList", "ScrollView", "Text");
 
 describe("MyTrackCorrectionsScreen", () => {
   beforeEach(() => jest.clearAllMocks());

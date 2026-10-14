@@ -13,6 +13,7 @@ import { useTheme } from "../../../../context/ThemeContext";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useCompetitionDetailLogic } from "../../hooks/useCompetitionDetailLogic";
 import { CompetitionDetailScreen } from "../CompetitionDetailScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 // Mock dependencies
 jest.mock("../../../../context/ThemeContext", () => ({
@@ -134,6 +135,16 @@ const baseActions = {
   handleConfirmRegistration: jest.fn(),
   handleUnregisterMember: jest.fn(),
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative(
+  "ScrollView",
+  "Image",
+  "Alert",
+  "ActivityIndicator",
+  "Switch",
+);
 
 describe("CompetitionDetailScreen", () => {
   beforeEach(() => {

@@ -33,7 +33,12 @@ const mockUseTheme = useTheme as jest.MockedFunction<typeof useTheme>;
 describe("ReportModal", () => {
   // Modal and ScrollView have heavy one-time mocks: load them outside the first
   // test's timeout (flaky under full-suite load otherwise).
-  preloadReactNative("Modal", "ScrollView");
+  preloadReactNative(
+    "Modal",
+    "ScrollView",
+    "KeyboardAvoidingView",
+    "TextInput",
+  );
 
   beforeEach(() => {
     jest.clearAllMocks();

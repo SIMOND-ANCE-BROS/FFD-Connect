@@ -1,3 +1,4 @@
+import { BackToList } from '../components/BackToList';
 import { PageHeader } from '../components/PageHeader';
 import {
   Fieldset,
@@ -240,6 +241,7 @@ export function UserDetailPage() {
 
   return (
     <Stack>
+      <BackToList listPath="/users" />
       <PageHeader
         title={`${u.firstName} ${u.lastName}`}
         description="Identité, parcours sportif et accès au compte."

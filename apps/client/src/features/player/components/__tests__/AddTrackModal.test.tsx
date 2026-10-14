@@ -4,6 +4,7 @@ import { Alert } from "react-native";
 import { BackendService } from "../../../../services/BackendService";
 import { AddTrackModal } from "../AddTrackModal";
 import { mpmFromBpm } from "../../utils/danceTempo";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../services/BackendService", () => ({
   BackendService: {
@@ -40,6 +41,10 @@ const editTrack = {
   style: "Tango",
   filename: "song.mp3",
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal", "Animated");
 
 describe("AddTrackModal (edit-only)", () => {
   beforeEach(() => {

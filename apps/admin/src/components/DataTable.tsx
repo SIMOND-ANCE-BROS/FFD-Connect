@@ -18,6 +18,7 @@ import {
   VisuallyHidden,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { type NavigateFunction, useNavigate } from 'react-router';
 import { Fragment, useId, useState, type MouseEvent, type ReactNode } from 'react';
 import {
   type ColumnPrefs,
@@ -71,7 +72,12 @@ interface DataTableProps<Row> {
   onResetFilters?: () => void;
   /** Active filters shown above the rows, each removable in one click (#557). */
   filterChips?: { key: string; label: string; onRemove: () => void }[];
-  onRowClick?: (row: Row) => void;
+  /**
+   * Record page a row opens (#562): a click anywhere on the row goes there,
+   * Ctrl/Cmd/Shift-click and the middle button open it in a new tab, like a
+   * link. The row must also render a real link to it (keyboard, screen reader).
+   */
+  rowHref?: (row: Row) => string | null;
   /** Phone layout of a row: a card, as tables do not fit. */
   renderCard: (row: Row) => ReactNode;
   /** Above the table, next to the column picker (search input…). */
@@ -82,6 +88,64 @@ interface DataTableProps<Row> {
   /** Message of a failed load: replaces the rows. */
   error?: ReactNode;
   empty: ReactNode;
+  /** Checkbox per row, kept by the caller across pages and searches (#558). */
+  selection?: RowSelection<Row>;
+}
+
+/**
+ * Row selection of a DataTable (#558). The table only shows the checkboxes:
+ * the caller owns the selected set, so it survives pages, sorts and filters.
+ */
+export interface RowSelection<Row> {
+  isSelected: (row: Row) => boolean;
+  /** False: the checkbox is shown disabled (an account already linked…). */
+  isSelectable: (row: Row) => boolean;
+  /** Tick or untick `rows` (one row, or the selectable rows of the page). */
+  onChange: (rows: Row[], selected: boolean) => void;
+  /** Accessible name of a row's checkbox, e.g. « Sélectionner Anna Petit ». */
+  label: (row: Row) => string;
+  /** Accessible name of a disabled checkbox, e.g. « Anna Petit : déjà membre ». */
+  disabledLabel?: (row: Row) => string;
+  /** The selection is full: unticked rows can no longer be ticked. */
+  full?: boolean;
+}
+
+/** Width of the checkbox column, in px. */
+const SELECT_WIDTH = 44;
+
+function RowCheckbox<Row>({ row, selection }: { row: Row; selection: RowSelection<Row> }) {
+  const selected = selection.isSelected(row);
+  const selectable = selection.isSelectable(row);
+  return (
+    <Checkbox
+      checked={selected}
+      disabled={!selectable || (Boolean(selection.full) && !selected)}
+      aria-label={
+        selectable ? selection.label(row) : (selection.disabledLabel ?? selection.label)(row)
+      }
+      // A ticked row is not opened.
+      onClick={(event) => event.stopPropagation()}
+      onChange={(event) => selection.onChange([row], event.currentTarget.checked)}
+    />
+  );
+}
+
+/** « Tout sélectionner » of the rows shown, ticked when every selectable one is. */
+function PageCheckbox<Row>({ rows, selection }: { rows: Row[]; selection: RowSelection<Row> }) {
+  const selectable = rows.filter(selection.isSelectable);
+  const ticked = selectable.filter(selection.isSelected);
+  const all = selectable.length > 0 && ticked.length === selectable.length;
+  return (
+    <Checkbox
+      aria-label="Tout sélectionner sur la page"
+      checked={all}
+      indeterminate={ticked.length > 0 && !all}
+      disabled={selectable.length === 0 || (Boolean(selection.full) && !all)}
+      onChange={() =>
+        selection.onChange(all ? ticked : selectable.filter((r) => !selection.isSelected(r)), !all)
+      }
+    />
+  );
 }
 
 const SORT_LABELS: Record<SortOrder, string> = { asc: 'croissant', desc: 'décroissant' };
@@ -212,6 +276,27 @@ function HeaderCell<Row>({
  * Full value of a cut cell on hover (#556): the native tooltip is set only
  * when the text overflows, from what the cell renders.
  */
+/** Controls of a row that handle their own clicks: a link, a checkbox, a button… */
+const INTERACTIVE = 'a, button, input, label, select, textarea, [role="button"], [role="checkbox"]';
+
+/**
+ * Click on a row with a record page (#562), with the behaviour of a link:
+ * plain click → same tab; Ctrl/Cmd/Shift-click or middle button → new tab. A
+ * click on a link, checkbox or button inside the row is left to it (a link
+ * already does all of this natively).
+ */
+export function openRow(event: MouseEvent<HTMLElement>, href: string, navigate: NavigateFunction) {
+  if (event.target instanceof Element && event.target.closest(INTERACTIVE)) return;
+  // Only the main and the middle buttons open a row.
+  if (event.button !== 0 && event.button !== 1) return;
+  if (event.button === 1 || event.ctrlKey || event.metaKey || event.shiftKey) {
+    event.preventDefault();
+    window.open(href, '_blank', 'noopener');
+    return;
+  }
+  navigate(href);
+}
+
 function showFullValue(event: MouseEvent<HTMLElement>) {
   const cell = event.currentTarget;
   if (cell.scrollWidth > cell.clientWidth) {
@@ -412,15 +497,17 @@ export function DataTable<Row>({
   onSortChange,
   onResetFilters,
   filterChips = [],
-  onRowClick,
+  rowHref,
   renderCard,
   toolbar,
   summary,
   loading,
   error,
   empty,
+  selection,
 }: DataTableProps<Row>) {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const [prefs, setPrefs] = useState<ColumnPrefs>(() => loadColumnPrefs(tableId));
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [containerRef, containerWidth] = useContainerWidth<HTMLDivElement>();
@@ -455,6 +542,7 @@ export function DataTable<Row>({
         (c.sortField !== undefined && sort?.by === c.sortField),
     })),
     containerWidth,
+    selection ? SELECT_WIDTH : 0,
   );
   const shown = visible.filter((c) => fit.shown.includes(c.key));
   const hidden = visible.filter((c) => fit.hidden.includes(c.key));
@@ -489,15 +577,22 @@ export function DataTable<Row>({
           empty
         ) : (
           <RecordList>
-            {rows.map((row) => (
-              <Fragment key={rowKey(row)}>{renderCard(row)}</Fragment>
-            ))}
+            {rows.map((row) =>
+              selection ? (
+                <Group key={rowKey(row)} gap="sm" wrap="nowrap" align="center">
+                  <RowCheckbox row={row} selection={selection} />
+                  <Box style={{ flex: 1, minWidth: 0 }}>{renderCard(row)}</Box>
+                </Group>
+              ) : (
+                <Fragment key={rowKey(row)}>{renderCard(row)}</Fragment>
+              ),
+            )}
           </RecordList>
         )}
       </>
     );
   } else {
-    const colSpan = shown.length + (withDetail ? 1 : 0);
+    const colSpan = shown.length + (withDetail ? 1 : 0) + (selection ? 1 : 0);
     body = (
       <>
         {(summary || withDetail) && (
@@ -517,6 +612,7 @@ export function DataTable<Row>({
         <Box className="app-table-surface">
           <Table striped highlightOnHover className="app-table-fit">
             <colgroup>
+              {selection && <col style={{ width: fit.reservedWidth }} />}
               {withDetail && <col style={{ width: fit.expanderWidth ?? undefined }} />}
               {shown.map((c) => (
                 <col key={c.key} style={{ width: fit.widths[c.key] }} />
@@ -524,6 +620,11 @@ export function DataTable<Row>({
             </colgroup>
             <Table.Thead>
               <Table.Tr>
+                {selection && (
+                  <Table.Th>
+                    <PageCheckbox rows={rows} selection={selection} />
+                  </Table.Th>
+                )}
                 {withDetail && (
                   <Table.Th>
                     <VisuallyHidden>Détail</VisuallyHidden>
@@ -546,12 +647,19 @@ export function DataTable<Row>({
                   const key = rowKey(row);
                   const open = withDetail && expanded.has(key);
                   const detailId = `${tableId}-detail-${key}`;
+                  const href = rowHref?.(row) ?? null;
                   return (
                     <Fragment key={key}>
                       <Table.Tr
-                        className={onRowClick ? 'app-row-link' : undefined}
-                        onClick={onRowClick ? () => onRowClick(row) : undefined}
+                        className={href ? 'app-row-link' : undefined}
+                        onClick={href ? (event) => openRow(event, href, navigate) : undefined}
+                        onAuxClick={href ? (event) => openRow(event, href, navigate) : undefined}
                       >
+                        {selection && (
+                          <Table.Td>
+                            <RowCheckbox row={row} selection={selection} />
+                          </Table.Td>
+                        )}
                         {withDetail && (
                           <Table.Td>
                             <ActionIcon

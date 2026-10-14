@@ -231,6 +231,7 @@ export function TracksPage() {
         columns={columns}
         rows={rows}
         rowKey={(t) => t.id}
+        rowHref={(t) => `/tracks/${t.id}`}
         sort={state.sort ?? null}
         onSortChange={onSortChange}
         onResetFilters={() => update(FILTERS_CLEARED)}

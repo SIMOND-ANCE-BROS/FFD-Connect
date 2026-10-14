@@ -69,6 +69,19 @@ describe('fitColumns', () => {
     expect(fit.hidden).toEqual(['b']);
   });
 
+  it('keeps room for a fixed selection column (#558)', () => {
+    // 300 px fit three columns, but not once 40 px go to the checkboxes.
+    expect(fitColumns([col('a'), col('b'), col('c')], 300).hidden).toEqual([]);
+    const fit = fitColumns([col('a'), col('b'), col('c')], 300, 40);
+    expect(fit.hidden).toEqual(['c']);
+    expect(fit.reservedWidth).not.toBe('0%');
+    expect(sum({ ...fit.widths, reserved: fit.reservedWidth }, fit.expanderWidth)).toBeCloseTo(
+      100,
+      1,
+    );
+    expect(fitColumns([col('a')], 0, 40).reservedWidth).toBe('40px');
+  });
+
   it('breaks priority ties by position', () => {
     const fit = fitColumns([col('a'), col('b'), col('c')], 200 + EXPANDER_WIDTH);
     expect(fit.shown).toEqual(['a', 'b']);

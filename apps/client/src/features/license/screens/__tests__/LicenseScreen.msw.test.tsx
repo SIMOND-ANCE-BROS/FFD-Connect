@@ -11,6 +11,7 @@ import { server } from "../../../../mocks/msw/server";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useLicenseLogic } from "../../hooks/useLicenseLogic";
 import { LicenseScreen } from "../LicenseScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../components/NotificationBell", () => ({
   NotificationBell: () => null,
@@ -135,6 +136,15 @@ const baseState = {
   pullY: { value: 0 },
   pullGesture: {},
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative(
+  "TouchableOpacity",
+  "Modal",
+  "Animated",
+  "KeyboardAvoidingView",
+);
 
 describe("LicenseScreen MSW Integration", () => {
   beforeEach(() => {

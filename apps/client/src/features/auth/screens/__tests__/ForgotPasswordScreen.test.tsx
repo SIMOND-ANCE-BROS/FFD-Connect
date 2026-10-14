@@ -3,6 +3,7 @@ import React from "react";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { AuthService } from "../../services/AuthService";
 import { ForgotPasswordScreen } from "../ForgotPasswordScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../services/AuthService", () => ({
   AuthService: {
@@ -32,6 +33,10 @@ const mockAlert = jest.fn();
 jest
   .spyOn(require("react-native").Alert, "alert")
   .mockImplementation(mockAlert);
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("KeyboardAvoidingView", "ScrollView", "TextInput");
 
 describe("ForgotPasswordScreen", () => {
   beforeEach(() => {

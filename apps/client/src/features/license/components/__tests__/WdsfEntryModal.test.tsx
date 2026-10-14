@@ -3,6 +3,7 @@ import React from "react";
 import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { ThemeContext } from "../../../../context/ThemeContext";
 import { WdsfEntryModal } from "../WdsfEntryModal";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 const themeMock = {
   theme: {
@@ -16,6 +17,10 @@ const themeMock = {
   toggleTheme: jest.fn(),
   isDark: false,
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal");
 
 describe("WdsfEntryModal", () => {
   const mockOnClose = jest.fn();

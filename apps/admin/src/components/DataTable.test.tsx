@@ -2,6 +2,7 @@ import { Checkbox } from '@mantine/core';
 import { screen, within } from '@testing-library/react';
 import { type UserEvent } from '@testing-library/user-event';
 import { useState } from 'react';
+import { useLocation } from 'react-router';
 import { vi } from 'vitest';
 import { columnPrefsKey } from '../lib/columnPrefs';
 import type { SortState } from '../lib/listSort';
@@ -22,16 +23,22 @@ const ROWS: Row[] = [
   { id: '2', name: 'Durand', email: 'd@x.fr', login: '02/10/2026' },
 ];
 
+function LocationProbe() {
+  const { pathname, search } = useLocation();
+  return <p data-testid="location">{pathname + search}</p>;
+}
+
 const headers = () => screen.getAllByRole('columnheader').map((h) => h.textContent);
 
 function Harness({
   rows = ROWS,
   onSort = () => {},
-  onRowClick,
+  linked = false,
 }: {
   rows?: Row[];
   onSort?: (sort: SortState | null) => void;
-  onRowClick?: (row: Row) => void;
+  /** Rows open `/rows/<id>` (#562). */
+  linked?: boolean;
 }) {
   const [sort, setSort] = useState<SortState | null>(null);
   const [onlyActive, setOnlyActive] = useState(false);
@@ -55,22 +62,25 @@ function Harness({
     { key: 'login', label: 'Connexion', hiddenByDefault: true, cell: (r) => r.login },
   ];
   return (
-    <DataTable
-      tableId="test"
-      columns={columns}
-      rows={rows}
-      rowKey={(r) => r.id}
-      sort={sort}
-      onSortChange={(next) => {
-        setSort(next);
-        onSort(next);
-      }}
-      onResetFilters={() => setOnlyActive(false)}
-      onRowClick={onRowClick}
-      loading={false}
-      empty={<p>Rien</p>}
-      renderCard={(r) => <p>Carte {r.name}</p>}
-    />
+    <>
+      <LocationProbe />
+      <DataTable
+        tableId="test"
+        columns={columns}
+        rows={rows}
+        rowKey={(r) => r.id}
+        sort={sort}
+        onSortChange={(next) => {
+          setSort(next);
+          onSort(next);
+        }}
+        onResetFilters={() => setOnlyActive(false)}
+        rowHref={linked ? (r) => `/rows/${r.id}` : undefined}
+        loading={false}
+        empty={<p>Rien</p>}
+        renderCard={(r) => <p>Carte {r.name}</p>}
+      />
+    </>
   );
 }
 
@@ -177,11 +187,38 @@ describe('DataTable', () => {
     expect(headers()).toContain('Email');
   });
 
-  it('opens a row on click', async () => {
-    const onRowClick = vi.fn();
-    renderWithProviders(<Harness onRowClick={onRowClick} />);
-    await user.click(screen.getByText('d@x.fr'));
-    expect(onRowClick).toHaveBeenCalledWith(ROWS[1]);
+  describe('rows open their record like a link (#562)', () => {
+    it('opens the record on a plain click', async () => {
+      renderWithProviders(<Harness linked />);
+      await user.click(screen.getByText('d@x.fr'));
+      expect(screen.getByTestId('location')).toHaveTextContent('/rows/2');
+    });
+
+    it('opens a new tab on Ctrl/Cmd-click and on the middle button', async () => {
+      const open = vi.spyOn(window, 'open').mockReturnValue(null);
+      renderWithProviders(<Harness linked />);
+      await user.keyboard('{Control>}');
+      await user.click(screen.getByText('d@x.fr'));
+      await user.keyboard('{/Control}');
+      expect(open).toHaveBeenLastCalledWith('/rows/2', '_blank', 'noopener');
+      await user.keyboard('{Meta>}');
+      await user.click(screen.getByText('m@x.fr'));
+      await user.keyboard('{/Meta}');
+      expect(open).toHaveBeenLastCalledWith('/rows/1', '_blank', 'noopener');
+      await user.pointer({ keys: '[MouseMiddle]', target: screen.getByText('d@x.fr') });
+      expect(open).toHaveBeenCalledTimes(3);
+      // The list stays where it was.
+      expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+    });
+
+    it('leaves a click on a control of the row to that control', async () => {
+      const open = vi.spyOn(window, 'open').mockReturnValue(null);
+      renderWithProviders(<Harness linked />);
+      await user.click(sortButton('Nom'));
+      await openColumnFilter(user, 'Email');
+      expect(open).not.toHaveBeenCalled();
+      expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+    });
   });
 
   describe('fitting the width of the screen (#556)', () => {
@@ -197,8 +234,7 @@ describe('DataTable', () => {
 
     it('moves a column that does not fit into a detail row unfolded per line', async () => {
       mockContainerWidth(200);
-      const onRowClick = vi.fn();
-      renderWithProviders(<Harness onRowClick={onRowClick} />);
+      renderWithProviders(<Harness linked />);
       expect(headers()).toEqual(['Détail', 'Nom']);
       expect(screen.queryByText('m@x.fr')).toBeNull();
 
@@ -206,7 +242,7 @@ describe('DataTable', () => {
       expect(first).toHaveAttribute('aria-expanded', 'false');
       await user.click(first);
       // Unfolding a line does not open the record.
-      expect(onRowClick).not.toHaveBeenCalled();
+      expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
       expect(first).toHaveAttribute('aria-expanded', 'true');
       expect(first).toHaveAccessibleName('Masquer le détail');
       expect(screen.getByText('m@x.fr')).toBeInTheDocument();
@@ -250,6 +286,83 @@ describe('DataTable', () => {
       await user.unhover(cell);
       await user.hover(cell);
       expect(cell).not.toHaveAttribute('title');
+    });
+  });
+
+  describe('row selection (#558)', () => {
+    function Selectable({ full = false, linked = false }: { full?: boolean; linked?: boolean }) {
+      const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+      return (
+        <DataTable
+          tableId="select"
+          columns={[{ key: 'name', label: 'Nom', required: true, cell: (r: Row) => r.name }]}
+          rows={[...ROWS, { id: '3', name: 'Petit', email: 'p@x.fr', login: '' }]}
+          rowKey={(r) => r.id}
+          sort={null}
+          onSortChange={() => {}}
+          rowHref={linked ? (r) => `/rows/${r.id}` : undefined}
+          loading={false}
+          empty={<p>Rien</p>}
+          renderCard={(r) => <p>Carte {r.name}</p>}
+          selection={{
+            isSelected: (r) => picked.has(r.id),
+            // Petit is already linked.
+            isSelectable: (r) => r.id !== '3',
+            onChange: (rows, selected) =>
+              setPicked((prev) => {
+                const next = new Set(prev);
+                for (const r of rows) {
+                  if (selected) next.add(r.id);
+                  else next.delete(r.id);
+                }
+                return next;
+              }),
+            label: (r) => `Sélectionner ${r.name}`,
+            disabledLabel: (r) => `${r.name} : déjà membre`,
+            full,
+          }}
+        />
+      );
+    }
+
+    it('ticks rows one by one without opening them, and the whole page at once', async () => {
+      renderWithProviders(
+        <>
+          <Selectable linked />
+          <LocationProbe />
+        </>,
+      );
+      const page = screen.getByRole('checkbox', { name: 'Tout sélectionner sur la page' });
+      await user.click(screen.getByRole('checkbox', { name: 'Sélectionner Martin' }));
+      expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+      expect(page).not.toBeChecked();
+      expect(page).toHaveAttribute('data-indeterminate', 'true');
+
+      await user.click(page);
+      expect(page).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: 'Sélectionner Durand' })).toBeChecked();
+      // A row that cannot be selected stays out, flagged by its name.
+      expect(screen.getByRole('checkbox', { name: 'Petit : déjà membre' })).toBeDisabled();
+      expect(screen.getByRole('checkbox', { name: 'Petit : déjà membre' })).not.toBeChecked();
+
+      await user.click(page);
+      expect(screen.getByRole('checkbox', { name: 'Sélectionner Martin' })).not.toBeChecked();
+    });
+
+    it('stops new ticks once the selection is full', () => {
+      renderWithProviders(<Selectable full />);
+      expect(screen.getByRole('checkbox', { name: 'Sélectionner Martin' })).toBeDisabled();
+      expect(
+        screen.getByRole('checkbox', { name: 'Tout sélectionner sur la page' }),
+      ).toBeDisabled();
+    });
+
+    it('puts a checkbox next to each card on a phone', async () => {
+      mockPhoneViewport();
+      renderWithProviders(<Selectable />);
+      expect(screen.getByText('Carte Martin')).toBeInTheDocument();
+      await user.click(screen.getByRole('checkbox', { name: 'Sélectionner Martin' }));
+      expect(screen.getByRole('checkbox', { name: 'Sélectionner Martin' })).toBeChecked();
     });
   });
 

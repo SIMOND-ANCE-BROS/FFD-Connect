@@ -3,11 +3,16 @@ import React, { PropsWithChildren } from "react";
 import { Alert } from "react-native";
 import { useTheme } from "../../../../context/ThemeContext";
 import { ClubMemberEditorScreen } from "../ClubMemberEditorScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../context/ThemeContext", () => ({
   ThemeProvider: ({ children }: PropsWithChildren) => <>{children}</>,
   useTheme: jest.fn(),
 }));
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("TextInput", "TouchableOpacity", "ScrollView");
 
 describe("ClubMemberEditorScreen", () => {
   const mockTheme = {

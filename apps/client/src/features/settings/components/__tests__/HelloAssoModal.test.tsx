@@ -5,6 +5,7 @@ import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
 import { ClubService } from "../../../club/services/ClubService";
 import { HelloAssoModal } from "../HelloAssoModal";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../context/ThemeContext");
 jest.mock("../../../club/services/ClubService", () => ({
@@ -26,6 +27,10 @@ const theme = {
   border: "#e0e0e0",
   primary: "#004481",
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal");
 
 describe("HelloAssoModal", () => {
   const onClose = jest.fn();

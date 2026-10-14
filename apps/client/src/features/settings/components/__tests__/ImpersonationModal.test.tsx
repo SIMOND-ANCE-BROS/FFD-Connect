@@ -7,6 +7,7 @@ import {
   IMPERSONATION_SEARCH_DEBOUNCE_MS,
   ImpersonationModal,
 } from "../ImpersonationModal";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../context/ThemeContext", () => ({
   useTheme: () => ({
@@ -53,6 +54,10 @@ afterEach(() => {
   dismissSpy.mockRestore();
   jest.useRealTimers();
 });
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal", "Keyboard");
 
 describe("ImpersonationModal", () => {
   it("recherche puis impersonne le résultat sélectionné", async () => {

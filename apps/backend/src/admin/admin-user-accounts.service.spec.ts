@@ -1,3 +1,4 @@
+import { PRODUCTION_BCRYPT_ROUNDS } from "../../test/mocks/bcrypt.mock";
 import { emailLookupFor } from "../../test/mocks/email-lookup.mock";
 import {
   BadRequestException,
@@ -6,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { Prisma, UserRole } from "@prisma/client";
+import * as bcrypt from "bcrypt";
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -19,6 +21,16 @@ import {
   INVITATION_EXPIRY_HOURS,
 } from "./admin-user-accounts.service";
 import type { CreateAdminUserDto } from "./dto/admin-user-accounts.dto";
+
+// Real hashes at the minimum cost: cost 12 ran these tests past their budget
+// under load (#546). The requested cost is asserted below.
+jest.mock("bcrypt", () =>
+  jest
+    .requireActual<
+      typeof import("../../test/mocks/bcrypt.mock")
+    >("../../test/mocks/bcrypt.mock")
+    .cheapBcrypt(),
+);
 
 describe("AdminUserAccountsService", () => {
   let service: AdminUserAccountsService;
@@ -88,6 +100,10 @@ describe("AdminUserAccountsService", () => {
       clubName: "Club Neuf",
     });
     expect(userData.password).toMatch(/^\$2[aby]\$/);
+    expect(bcrypt.hash).toHaveBeenCalledWith(
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+      PRODUCTION_BCRYPT_ROUNDS,
+    );
     expect(audit.record).toHaveBeenCalledWith(prisma, {
       actorId: "admin-1",
       action: "USER_CREATE",

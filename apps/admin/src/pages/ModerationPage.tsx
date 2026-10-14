@@ -13,7 +13,7 @@ import {
 } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import type {
   TrackCorrectionAdminDto,
   TrackCorrectionReason,
@@ -52,7 +52,6 @@ const proposer = (c: TrackCorrectionAdminDto) => c.proposer?.name ?? 'Compte sup
 const createdAt = (c: TrackCorrectionAdminDto) => dayjs(c.createdAt).format('DD/MM/YYYY HH:mm');
 
 export function ModerationPage() {
-  const navigate = useNavigate();
   const { search: locationSearch } = useLocation();
   const [state, update] = useListParams(readModerationParams, writeModerationParams);
   const [search, setSearch] = useUrlSearch(
@@ -230,7 +229,7 @@ export function ModerationPage() {
         onSortChange={onSortChange}
         onResetFilters={() => update({ reasons: [], filters: [] })}
         filterChips={ops.chips}
-        onRowClick={(c) => navigate(detailPath(c))}
+        rowHref={detailPath}
         toolbar={
           <TextInput
             label="Rechercher une proposition"

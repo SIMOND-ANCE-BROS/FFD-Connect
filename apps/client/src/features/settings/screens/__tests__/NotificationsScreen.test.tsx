@@ -7,6 +7,7 @@ import { useAuthRepository } from "../../../../features/auth/context/AuthContext
 import { NotificationApi } from "../../../../services/api/notification-api";
 import { BackendService } from "../../../../services/BackendService";
 import { NotificationsScreen } from "../NotificationsScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../features/auth/context/AuthContext", () => ({
   useAuthRepository: jest.fn(),
@@ -28,6 +29,10 @@ jest.mock("../../../../services/api/notification-api", () => ({
     deleteAllNotifications: jest.fn(),
   },
 }));
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("TouchableOpacity", "FlatList", "ScrollView");
 
 describe("NotificationsScreen", () => {
   const mockTheme = {
