@@ -5,6 +5,7 @@ import { useTheme } from "../../../../context/ThemeContext";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useLibraryLogic } from "../../hooks/useLibraryLogic";
 import { LibraryScreen } from "../LibraryScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 // Mock the Logic Hook
 jest.mock("../../hooks/useLibraryLogic");
@@ -126,6 +127,17 @@ jest.mock("react-native-safe-area-context", () => {
     useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
   };
 });
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative(
+  "Modal",
+  "ScrollView",
+  "FlatList",
+  "Alert",
+  "ActivityIndicator",
+  "TextInput",
+);
 
 describe("LibraryScreen", () => {
   const defaultState = {

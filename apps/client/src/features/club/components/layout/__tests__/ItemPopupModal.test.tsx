@@ -4,6 +4,7 @@ import { expectSiblingBackdrop } from "../../../../../__tests__/mocks/modalA11y"
 import type { AppTheme } from "../../../../../context/ThemeContext";
 import type { LayoutItem } from "../../../hooks/useClubCompetitionEditorLogic";
 import { ItemPopupModal } from "../ItemPopupModal";
+import { preloadReactNative } from "../../../../../__tests__/mocks/preloadReactNative";
 
 // AppText / AppButton read the theme from the context.
 jest.mock("../../../../../context/ThemeContext", () => ({
@@ -38,6 +39,10 @@ const item: LayoutItem = {
   width: 10,
   height: 10,
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal");
 
 describe("ItemPopupModal", () => {
   const onClose = jest.fn();

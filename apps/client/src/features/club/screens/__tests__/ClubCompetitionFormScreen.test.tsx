@@ -15,6 +15,7 @@ import type {
 import { RootStackParamList } from "../../../../navigation/types";
 import { CheckinService } from "../../../license/services/CheckinService";
 import { ClubCompetitionFormScreen } from "../ClubCompetitionFormScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 // Mock @env
 jest.mock("@env", () => ({ GOOGLE_API_KEY: "test" }));
@@ -130,6 +131,10 @@ jest.mock("react-native-draggable-flatlist", () => {
     ScaleDecorator: ({ children }: MockScaleDecoratorProps) => <>{children}</>,
   };
 });
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal", "ScrollView", "Alert");
 
 describe("ClubCompetitionFormScreen", () => {
   const navigation = { goBack: jest.fn(), navigate: jest.fn() };

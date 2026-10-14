@@ -4,6 +4,7 @@ import React from "react";
 import { AuthService } from "../../../auth/services/AuthService";
 import { useAuthStore } from "../../../../stores/auth.store";
 import { SpaceSelector } from "../SpaceSelector";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 // Real AuthService + real store + real selector: only the network edges go.
 jest.mock("../../../../services/api", () => ({
@@ -46,6 +47,10 @@ const renderSelector = () => {
     <SpaceSelector roles={roles} space={role} onChange={jest.fn()} />,
   );
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("TouchableOpacity", "Modal");
 
 describe("role sync from /users/me → space pill", () => {
   beforeEach(async () => {

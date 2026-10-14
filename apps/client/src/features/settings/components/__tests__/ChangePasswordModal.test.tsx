@@ -5,6 +5,7 @@ import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { useTheme, ThemeContextType } from "../../../../context/ThemeContext";
 import { AuthService } from "../../../auth/services/AuthService";
 import { ChangePasswordModal } from "../ChangePasswordModal";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../context/ThemeContext");
 jest.mock("../../../auth/services/AuthService", () => ({
@@ -31,6 +32,10 @@ const theme = {
   border: "#e0e0e0",
   primary: "#004481",
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal");
 
 describe("ChangePasswordModal", () => {
   const onClose = jest.fn();

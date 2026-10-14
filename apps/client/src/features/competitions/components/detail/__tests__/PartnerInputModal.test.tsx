@@ -2,6 +2,7 @@ import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 import { expectSiblingBackdrop } from "../../../../../__tests__/mocks/modalA11y";
 import { PartnerInputModal } from "../PartnerInputModal";
+import { preloadReactNative } from "../../../../../__tests__/mocks/preloadReactNative";
 
 // AppText / AppButton read the theme from the context.
 jest.mock("../../../../../context/ThemeContext", () => ({
@@ -25,6 +26,10 @@ const theme = {
   border: "#ddd",
   primary: "#004481",
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal", "TextInput");
 
 describe("PartnerInputModal", () => {
   const onClose = jest.fn();

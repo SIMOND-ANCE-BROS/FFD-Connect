@@ -3,6 +3,7 @@ import React from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuthRepository } from "../../features/auth/context/AuthContext";
 import { AppNavigator } from "../AppNavigator";
+import { preloadReactNative } from "../../__tests__/mocks/preloadReactNative";
 
 // Mock dependencies
 jest.mock("../../utils/logger", () => ({
@@ -359,6 +360,10 @@ jest.mock("@react-navigation/bottom-tabs", () => {
     }),
   };
 });
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("ScrollView", "Modal", "Text");
 
 describe("AppNavigator", () => {
   const mockTheme = {

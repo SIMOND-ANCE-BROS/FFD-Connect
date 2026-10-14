@@ -8,6 +8,7 @@ import {
   FFD_FEDERATION_LOGO,
   getLicenseConfig,
 } from "../license-card/license-card.config";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 const themeMock = {
   theme: {
@@ -29,6 +30,10 @@ const themeMock = {
   toggleTheme: jest.fn(),
   isDark: false,
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("TouchableOpacity", "Text");
 
 describe("LicenseCard", () => {
   const mockUser: LicenseUser = {

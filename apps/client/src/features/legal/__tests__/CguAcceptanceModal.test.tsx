@@ -4,6 +4,7 @@ import React from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { CguAcceptanceModal } from "../CguAcceptanceModal";
 import { CGU_VERSION, hasAcceptedCgu } from "../cguConsent";
+import { preloadReactNative } from "../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../context/ThemeContext", () => ({
   useTheme: () => ({
@@ -19,6 +20,10 @@ jest.mock("../../../context/ThemeContext", () => ({
 beforeEach(async () => {
   await AsyncStorage.clear();
 });
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal");
 
 describe("CguAcceptanceModal", () => {
   it("s'affiche au premier lancement (CGU non acceptées)", async () => {

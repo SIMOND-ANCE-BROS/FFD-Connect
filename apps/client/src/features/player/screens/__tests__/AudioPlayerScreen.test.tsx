@@ -10,6 +10,7 @@ import {
 import { ContextRepeatMode } from "../../context";
 import { useAudioPlayerLogic } from "../../hooks/useAudioPlayerLogic";
 import { AudioPlayerScreen } from "../AudioPlayerScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 // Mock Logic Hook
 jest.mock("../../hooks/useAudioPlayerLogic");
@@ -24,6 +25,10 @@ jest.mock("../../../../context/ThemeContext", () => ({
 jest.mock("@react-navigation/native", () => ({
   ...jest.requireActual("@react-navigation/native"),
 }));
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal", "SafeAreaView");
 
 describe("AudioPlayerScreen", () => {
   const mockActions = {

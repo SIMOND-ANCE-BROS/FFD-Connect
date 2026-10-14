@@ -4,6 +4,7 @@ import React from "react";
 import type { AppTheme } from "../../../../context/ThemeContext";
 import { TrackCorrectionApi } from "../../../../services/api/track-correction-api";
 import { TrackCorrectionsSettingsSection } from "../TrackCorrectionsSettingsSection";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../services/api/track-correction-api", () => ({
   TrackCorrectionApi: { pendingCount: jest.fn() },
@@ -39,6 +40,10 @@ const renderSection = (isAdmin: boolean) => {
   );
   return { utils, onOpenMine, onOpenReview };
 };
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Text", "TouchableOpacity");
 
 describe("TrackCorrectionsSettingsSection", () => {
   beforeEach(() => jest.clearAllMocks());

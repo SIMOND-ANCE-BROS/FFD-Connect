@@ -21,6 +21,7 @@ import {
   isSameProgram,
 } from "../../utils/competitionProgram";
 import { PerformanceSetupScreen } from "../PerformanceSetupScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../hooks/usePerformanceEngine", () => ({
   usePerformanceEngine: jest.fn(),
@@ -63,6 +64,10 @@ jest.mock("@react-navigation/native", () => ({
 }));
 
 type Updater = (prev: PerformanceConfig) => PerformanceConfig;
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal", "TextInput", "Switch", "Alert");
 
 describe("PerformanceSetupScreen", () => {
   const mockTheme = {

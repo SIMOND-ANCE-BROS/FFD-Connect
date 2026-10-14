@@ -5,6 +5,7 @@ import { BETA_NOTICES } from "../../../../constants/betaNotices";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useLoginLogic } from "../../hooks/useLoginLogic";
 import { LoginScreen } from "../LoginScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 // Mock Hooks
 jest.mock("../../hooks/useLoginLogic");
@@ -50,6 +51,10 @@ jest.mock("../../../../components/AnimatedComponents", () => ({
 }));
 
 const createTestProps = () => createMockScreenProps("Login", undefined);
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("ScrollView", "TextInput", "KeyboardAvoidingView");
 
 describe("LoginScreen", () => {
   const mockActions = {

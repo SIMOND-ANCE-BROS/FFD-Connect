@@ -5,12 +5,17 @@ import { useTheme } from "../../../../context/ThemeContext";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useScannerLogic } from "../../hooks/useScannerLogic";
 import { ScannerScreen } from "../ScannerScreen";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../hooks/useScannerLogic");
 jest.mock("../../../../context/ThemeContext", () => ({
   ThemeProvider: ({ children }: PropsWithChildren) => <>{children}</>,
   useTheme: jest.fn(),
 }));
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("TouchableOpacity");
 
 describe("ScannerScreen", () => {
   const mockTheme = {

@@ -2,6 +2,7 @@ import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { DeleteAccountModal } from "../DeleteAccountModal";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../context/ThemeContext", () => ({
   useTheme: () => ({
@@ -18,6 +19,10 @@ jest.mock("../../../../context/ThemeContext", () => ({
 jest.mock("../../services/PrivacyService", () => ({
   deleteMyAccount: jest.fn(),
 }));
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal", "TextInput");
 
 describe("DeleteAccountModal", () => {
   const onClose = jest.fn();

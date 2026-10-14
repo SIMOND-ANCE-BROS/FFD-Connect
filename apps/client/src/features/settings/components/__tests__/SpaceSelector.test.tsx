@@ -3,6 +3,7 @@ import React from "react";
 import { StyleSheet } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { SpaceSelector } from "../SpaceSelector";
+import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 jest.mock("../../../../context/ThemeContext", () => ({
   useTheme: () => ({
@@ -18,6 +19,10 @@ jest.mock("../../../../context/ThemeContext", () => ({
 }));
 
 const SHEET_TITLE = "Changer d'espace";
+
+// One-off react-native module loading, out of the first test's budget
+// (flaky under load otherwise, #546).
+preloadReactNative("Modal", "TouchableOpacity");
 
 describe("SpaceSelector pill", () => {
   it("renders nothing for a single-role account", async () => {
