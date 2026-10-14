@@ -35,6 +35,9 @@ jest.mock("../../utils/logger", () => ({
 
 const mockRetryAxios = jest.fn();
 jest.mock("../../utils/retry", () => ({
+  ...jest.requireActual<typeof import("../../utils/retry")>(
+    "../../utils/retry",
+  ),
   retryAxios: (fn: () => Promise<unknown>): Promise<unknown> =>
     mockRetryAxios(fn) as Promise<unknown>,
 }));
@@ -413,6 +416,99 @@ describe("api", () => {
     expect(res.data).toEqual({ status: "ok" });
 
     api.defaults.adapter = originalAdapter;
+  });
+
+  describe("429 rate limiting (#585)", () => {
+    const make429 = (headers: Record<string, string> = {}): AxiosError =>
+      Object.assign(new Error("Too Many Requests"), {
+        isAxiosError: true,
+        response: { status: 429, headers },
+        config: { url: "/tracks", method: "get" },
+      }) as unknown as AxiosError;
+
+    const ok = {
+      data: { ok: true },
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      config: { url: "/tracks" },
+    };
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("without Retry-After: no retry, rejects at once", async () => {
+      const mockAdapter = jest.fn().mockRejectedValue(make429());
+      const originalAdapter = api.defaults.adapter;
+      api.defaults.adapter = mockAdapter;
+
+      await expect(api.get("/tracks")).rejects.toMatchObject({
+        response: { status: 429 },
+      });
+      expect(mockAdapter).toHaveBeenCalledTimes(1);
+      expect(mockRetryAxios).not.toHaveBeenCalled();
+      expect(mockWakeBackend).not.toHaveBeenCalled();
+
+      api.defaults.adapter = originalAdapter;
+    });
+
+    it("with Retry-After: waits for it, then retries exactly once", async () => {
+      jest.useFakeTimers();
+      const mockAdapter = jest
+        .fn()
+        .mockRejectedValueOnce(make429({ "retry-after": "2" }))
+        .mockResolvedValueOnce(ok);
+      const originalAdapter = api.defaults.adapter;
+      api.defaults.adapter = mockAdapter;
+
+      const pending = api.get("/tracks");
+      // Let the interceptor reach its wait.
+      await jest.advanceTimersByTimeAsync(1999);
+      expect(mockAdapter).toHaveBeenCalledTimes(1);
+      await jest.advanceTimersByTimeAsync(1);
+
+      const res = await pending;
+      expect(res.data).toEqual({ ok: true });
+      expect(mockAdapter).toHaveBeenCalledTimes(2);
+      expect(mockRetryAxios).not.toHaveBeenCalled();
+
+      api.defaults.adapter = originalAdapter;
+    });
+
+    it("a second 429 after the retry is not retried again", async () => {
+      jest.useFakeTimers();
+      const mockAdapter = jest
+        .fn()
+        .mockRejectedValue(make429({ "retry-after": "0" }));
+      const originalAdapter = api.defaults.adapter;
+      api.defaults.adapter = mockAdapter;
+
+      const pending = api.get("/tracks");
+      const assertion = expect(pending).rejects.toMatchObject({
+        response: { status: 429 },
+      });
+      await jest.runAllTimersAsync();
+      await assertion;
+      expect(mockAdapter).toHaveBeenCalledTimes(2); // original + one retry
+
+      api.defaults.adapter = originalAdapter;
+    });
+
+    it("a Retry-After beyond the cap is not honoured: no retry", async () => {
+      const mockAdapter = jest
+        .fn()
+        .mockRejectedValue(make429({ "retry-after": "60" }));
+      const originalAdapter = api.defaults.adapter;
+      api.defaults.adapter = mockAdapter;
+
+      await expect(api.get("/tracks")).rejects.toMatchObject({
+        response: { status: 429 },
+      });
+      expect(mockAdapter).toHaveBeenCalledTimes(1);
+
+      api.defaults.adapter = originalAdapter;
+    });
   });
 
   it("proceeds without auth header and logs when token retrieval throws", async () => {
