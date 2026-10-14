@@ -1,9 +1,10 @@
 import { render } from "@testing-library/react-native";
 import React from "react";
-import { Animated } from "react-native";
+import { Animated, StyleSheet } from "react-native";
 import type { AppTheme } from "../../../../../context/ThemeContext";
 import type { TrackData } from "../../../context/PlayerContext";
 import { LibraryTrackItem, pasoClashLabel } from "../LibraryTrackItem";
+import { EQ_BAR_MAX_HEIGHT } from "../library.styles";
 
 jest.mock("../../../../../context/ThemeContext", () => ({
   useTheme: () => ({
@@ -81,5 +82,35 @@ describe("LibraryTrackItem", () => {
       track({ style: "Rumba", clashTimecodes: [] }),
     );
     expect(queryByTestId("library-track-t1-clashes")).toBeNull();
+  });
+});
+
+describe("LibraryTrackItem — equalizer (#539)", () => {
+  it("animates the bars with a transform, never a height", async () => {
+    const { getAllByTestId } = await render(
+      <LibraryTrackItem
+        item={track()}
+        currentTheme={theme}
+        isDark={false}
+        isCurrent
+        isPlaying
+        bar1={new Animated.Value(8)}
+        bar2={new Animated.Value(12)}
+        bar3={new Animated.Value(6)}
+        onPress={jest.fn()}
+      />,
+    );
+    const bars = getAllByTestId("library-eq-bar");
+    expect(bars).toHaveLength(3);
+    for (const bar of bars) {
+      const style = StyleSheet.flatten(bar.props.style) as {
+        height?: unknown;
+        transform?: unknown[];
+      };
+      // A fixed height + scaleY runs on the native driver; an animated height
+      // is re-laid out from JS every frame, even with the phone locked.
+      expect(style.height).toBe(EQ_BAR_MAX_HEIGHT);
+      expect(style.transform).toHaveLength(1);
+    }
   });
 });

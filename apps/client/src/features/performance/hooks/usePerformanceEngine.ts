@@ -4,6 +4,7 @@ import { usePlayer } from "../../player/context/PlayerContext";
 import { useTrackRepository } from "../../player/context/TrackContext";
 import { usePerformanceStore } from "../../../stores/performance.store";
 import * as engine from "../engine/competitionController";
+import { useForegroundTimeRemaining } from "./useForegroundTimeRemaining";
 
 /**
  * IMPORTANT: This hook should only be mounted in ONE component at a time.
@@ -48,7 +49,8 @@ export const usePerformanceEngine = () => {
   const currentDanceIndex = usePerformanceStore((s) => s.currentDanceIndex);
   const status = usePerformanceStore((s) => s.status);
   const activePhase = usePerformanceStore((s) => s.activePhase);
-  const timeRemaining = usePerformanceStore((s) => s.timeRemaining);
+  // Display value: frozen while the app is backgrounded (#539).
+  const timeRemaining = useForegroundTimeRemaining();
   const loadingProgress = usePerformanceStore((s) => s.loadingProgress);
   const isAnnouncing = usePerformanceStore((s) => s.isAnnouncing);
   const setConfig = usePerformanceStore((s) => s.setConfig);

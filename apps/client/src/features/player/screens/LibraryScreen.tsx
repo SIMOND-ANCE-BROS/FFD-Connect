@@ -28,6 +28,7 @@ import { BackButton } from "../../../components/BackButton";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import { PinnedHeader } from "../../../components/PinnedHeader";
 import { ScreenLoader } from "../../../components/ScreenLoader";
+import { useAppIsActive } from "../../../hooks/useAppIsActive";
 import { useIsOnline } from "../../../hooks/useIsOnline";
 import { NotificationBell } from "../../../components/NotificationBell";
 import { useTheme } from "../../../context/ThemeContext";
@@ -275,22 +276,27 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
   const bar3 = useRef(new Animated.Value(6)).current;
   const equalizerAnimation = useRef<Animated.CompositeAnimation | null>(null);
 
-  // Equalizer Animation (Purely UI)
+  // Equalizer Animation (Purely UI). Native driver (scaleY, see
+  // LibraryTrackItem): a JS-driven loop re-laid out the bars every frame and,
+  // with the phone locked during playback, kept the CPU above iOS's 80 %
+  // background limit until the system killed the app (#539). Stopped outside
+  // the foreground as well — nobody can see it there.
+  const appActive = useAppIsActive();
   useEffect(() => {
     equalizerAnimation.current?.stop();
 
-    if (currentTrack && isPlaying) {
+    if (currentTrack && isPlaying && appActive) {
       const bar1Loop = Animated.loop(
         Animated.sequence([
           Animated.timing(bar1, {
             toValue: 14,
             duration: 220,
-            useNativeDriver: false,
+            useNativeDriver: true,
           }),
           Animated.timing(bar1, {
             toValue: 8,
             duration: 220,
-            useNativeDriver: false,
+            useNativeDriver: true,
           }),
         ]),
       );
@@ -300,12 +306,12 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
           Animated.timing(bar2, {
             toValue: 18,
             duration: 220,
-            useNativeDriver: false,
+            useNativeDriver: true,
           }),
           Animated.timing(bar2, {
             toValue: 12,
             duration: 220,
-            useNativeDriver: false,
+            useNativeDriver: true,
           }),
         ]),
       );
@@ -315,12 +321,12 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
           Animated.timing(bar3, {
             toValue: 12,
             duration: 220,
-            useNativeDriver: false,
+            useNativeDriver: true,
           }),
           Animated.timing(bar3, {
             toValue: 6,
             duration: 220,
-            useNativeDriver: false,
+            useNativeDriver: true,
           }),
         ]),
       );
@@ -339,7 +345,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
     return () => {
       equalizerAnimation.current?.stop();
     };
-  }, [currentTrack, isPlaying, bar1, bar2, bar3]);
+  }, [currentTrack, isPlaying, appActive, bar1, bar2, bar3]);
 
   const renderTrackItem = useCallback(
     ({ item }: { item: TrackData }) => (

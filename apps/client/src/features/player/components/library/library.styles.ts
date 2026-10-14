@@ -1,5 +1,8 @@
 import { StyleSheet } from "react-native";
 
+/** Tallest equalizer bar (px); the animated values are heights up to this. */
+export const EQ_BAR_MAX_HEIGHT = 18;
+
 export const libraryStyles = StyleSheet.create({
   // Screen layout
   container: {
@@ -186,9 +189,13 @@ export const libraryStyles = StyleSheet.create({
     alignItems: "flex-end",
     gap: 3,
   },
+  // Fixed height, animated through scaleY from the bottom: a transform can run
+  // on the native driver, a height cannot (#539).
   playingBar: {
     width: 4,
+    height: EQ_BAR_MAX_HEIGHT,
     borderRadius: 2,
+    transformOrigin: "bottom",
   },
   currentTrackHighlight: {
     borderLeftWidth: 3,
