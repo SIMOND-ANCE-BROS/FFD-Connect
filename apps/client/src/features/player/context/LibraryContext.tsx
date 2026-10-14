@@ -224,7 +224,8 @@ export const LibraryProvider = ({
         level: "error",
         data: { error: e instanceof Error ? e.message : String(e) },
       });
-      Sentry.captureException(e);
+      // No direct Sentry.captureException here (#589): logger.error above
+      // already captures it (expected 4xx as a breadcrumb only).
       if (generation !== generationRef.current) return;
       setHasLoadedOnce(true);
       // Rafraîchissement d'une bibliothèque déjà affichée : on garde la liste

@@ -258,6 +258,30 @@ describe("LibraryContext", () => {
       expect(result.current.allTracks).toHaveLength(2);
     });
 
+    it("reports a failed load to Sentry once, through the logger (#589)", async () => {
+      const Sentry = jest.requireMock<{ captureException: jest.Mock }>(
+        "@sentry/react-native",
+      );
+      const { result } = await renderHook(() => useLibrary(), { wrapper });
+      const failure = new Error("boom");
+      (mockRepo.getTracksPage as jest.Mock).mockRejectedValueOnce(failure);
+      Sentry.captureException.mockClear();
+
+      await act(async () => {
+        await result.current.reloadLibrary();
+      });
+
+      expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureException).toHaveBeenCalledWith(
+        failure,
+        expect.objectContaining({
+          extra: expect.objectContaining({
+            message: "Failed to load library from backend",
+          }),
+        }),
+      );
+    });
+
     it("marque la bibliothèque chargée même quand un rechargement plus récent la remplace (#584)", async () => {
       // Already loaded long ago: markStale() triggers a background reload.
       useLibrarySyncStore.setState({

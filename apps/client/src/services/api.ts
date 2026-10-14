@@ -79,6 +79,10 @@ api.interceptors.response.use(
     return response;
   },
   async (error: AxiosError) => {
+    // Every log below is a warn (#589): a Sentry breadcrumb, not an event.
+    // The caller that awaited the request owns the failure and reports it
+    // with `logger.error` and its own context; an error here would double
+    // every event (and fire on each retry of a sleeping backend).
     // Aborted by the request interceptor (#582): nothing was sent — no wake,
     // no refresh, no retry, no log.
     if (isTokenStoreUnavailable(error)) return Promise.reject(error);
@@ -160,8 +164,8 @@ api.interceptors.response.use(
         await new Promise((resolve) => setTimeout(resolve, delayMs));
         return api.request(config);
       }
-      // Expected outcome, not a bug: the logger records it as a breadcrumb.
-      logger.error(
+      // Expected outcome, not a bug: a breadcrumb only.
+      logger.warn(
         `API Error: 429 on ${url}`,
         error instanceof Error ? error : undefined,
         { status, url },
@@ -177,7 +181,7 @@ api.interceptors.response.use(
         error.response.status < 500 &&
         error.response.status !== 408)
     ) {
-      logger.error(
+      logger.warn(
         `API Error: ${status} on ${url}`,
         error instanceof Error ? error : undefined,
         { status, url },
@@ -193,7 +197,7 @@ api.interceptors.response.use(
     ) {
       // Gérer les erreurs réseau (pas de response)
       if (!error.response) {
-        logger.error(
+        logger.warn(
           `API Error (retry): Network Error on ${url}`,
           error instanceof Error ? error : undefined,
           { url },
@@ -206,7 +210,7 @@ api.interceptors.response.use(
             initialDelay: API_RETRY_INITIAL_DELAY_MS,
           });
         } catch (retryError) {
-          logger.error(
+          logger.warn(
             `API Error (after retry): Network Error on ${url}`,
             retryError instanceof Error ? retryError : undefined,
             { url },
@@ -216,7 +220,7 @@ api.interceptors.response.use(
         }
       }
       // Erreurs serveur 5xx, 408
-      logger.error(
+      logger.warn(
         "API Error (retry)",
         error instanceof Error ? error : undefined,
         {
@@ -232,7 +236,7 @@ api.interceptors.response.use(
           initialDelay: API_RETRY_INITIAL_DELAY_MS,
         });
       } catch (retryError) {
-        logger.error(
+        logger.warn(
           `API Error (after retry): ${status} on ${url}`,
           retryError instanceof Error ? retryError : undefined,
           { url },
@@ -242,7 +246,7 @@ api.interceptors.response.use(
       }
     }
 
-    logger.error(
+    logger.warn(
       `API Error: ${status} on ${url}`,
       error instanceof Error ? error : undefined,
       { status, url },
