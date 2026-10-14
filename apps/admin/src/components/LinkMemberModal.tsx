@@ -1,28 +1,25 @@
 import {
-  Alert,
   Badge,
   Button,
-  Checkbox,
   CloseButton,
   Group,
   List,
-  Loader,
   Modal,
+  Pagination,
   Paper,
   Stack,
   Table,
   Text,
   TextInput,
 } from '@mantine/core';
-import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { adminControllerUpdateUser } from '../api/generated/sdk.gen';
 import type { AdminUserListItemDto } from '../api/generated/types.gen';
 import { clubQuery, unwrap, usersQuery } from '../api/queries';
 import { apiErrorMessage } from '../lib/apiError';
-import { extraRoleLabels, ROLE_LABELS } from '../lib/labels';
+import { ROLE_LABELS } from '../lib/labels';
 import {
   holdsClubRole,
   leavesAnotherClub,
@@ -31,9 +28,24 @@ import {
   linkSummary,
   MAX_LINK_SELECTION,
 } from '../lib/linkMembers';
+import type { SortState } from '../lib/listSort';
+import { useMemoryListParams } from '../lib/useListParams';
+import {
+  readUsersParams,
+  USERS_FILTERS,
+  USERS_FILTERS_CLEARED,
+  USERS_SORT_FIELDS,
+  type UsersSortField,
+  usersFilter,
+  writeUsersParams,
+} from '../lib/userList';
+import { useUrlSearch } from '../lib/useUrlSearch';
+import { operatorFilters } from './ColumnFilterEditor';
+import { DataTable, type RowSelection } from './DataTable';
+import { EmptyState } from './ListStates';
+import { ExtraRoles, userColumns } from './userColumns';
 
-const MIN_SEARCH_LENGTH = 2;
-const RESULTS = 10;
+const PAGE_SIZE = 20;
 
 type Club = { id: string; name: string };
 
@@ -45,15 +57,18 @@ interface Props {
 
 const fullName = (u: AdminUserListItemDto) => `${u.firstName} ${u.lastName}`;
 const accounts = (n: number) => `${n} compte${n > 1 ? 's' : ''}`;
+const isUsersSortField = (value: string): value is UsersSortField =>
+  USERS_SORT_FIELDS.some((f) => f === value);
 
 /**
- * Attaches existing accounts to this club (#447): the admin ticks accounts across
- * several searches, reviews them once, and each one is linked by its own audited
- * PATCH clubId. A refused account never cancels the others.
+ * Attaches existing accounts to this club (#447, #558): the admin browses the
+ * user list (same table, filters and sort as the Users page), ticks accounts
+ * across pages and searches, reviews them once, and each one is linked by its
+ * own audited PATCH clubId. A refused account never cancels the others.
  */
 export function LinkMemberModal({ club, opened, onClose }: Props) {
   return (
-    <Modal opened={opened} onClose={onClose} title="Lier des membres" size="lg">
+    <Modal opened={opened} onClose={onClose} title="Lier des membres" size="72rem">
       <LinkMemberBody club={club} onClose={onClose} />
     </Modal>
   );
@@ -61,16 +76,9 @@ export function LinkMemberModal({ club, opened, onClose }: Props) {
 
 function LinkMemberBody({ club, onClose }: Omit<Props, 'opened'>) {
   const qc = useQueryClient();
-  const [search, setSearch] = useState('');
-  const [debounced] = useDebouncedValue(search.trim(), 300);
-  // Insertion-ordered, keyed by id: survives every new search.
+  // Insertion-ordered, keyed by id: survives every page, sort, search and filter.
   const [selected, setSelected] = useState<ReadonlyMap<string, AdminUserListItemDto>>(new Map());
   const [step, setStep] = useState<'select' | 'confirm' | 'done'>('select');
-  const searching = debounced.length >= MIN_SEARCH_LENGTH;
-  const results = useQuery({
-    ...usersQuery({ search: debounced, skip: 0, take: RESULTS }),
-    enabled: searching,
-  });
 
   const link = useMutation({
     mutationFn: (users: AdminUserListItemDto[]) =>
@@ -92,13 +100,15 @@ function LinkMemberBody({ club, onClose }: Omit<Props, 'opened'>) {
   });
 
   const selection = [...selected.values()];
-  const full = selected.size >= MAX_LINK_SELECTION;
 
-  const toggle = (user: AdminUserListItemDto) =>
+  /** Ticks or unticks `users`, never past {@link MAX_LINK_SELECTION}. */
+  const choose = (users: AdminUserListItemDto[], tick: boolean) =>
     setSelected((prev) => {
       const next = new Map(prev);
-      if (next.has(user.id)) next.delete(user.id);
-      else next.set(user.id, user);
+      for (const user of users) {
+        if (!tick) next.delete(user.id);
+        else if (next.size < MAX_LINK_SELECTION) next.set(user.id, user);
+      }
       return next;
     });
 
@@ -168,90 +178,31 @@ function LinkMemberBody({ club, onClose }: Omit<Props, 'opened'>) {
 
   return (
     <Stack>
-      <TextInput
-        label="Rechercher un utilisateur"
-        placeholder="Nom, prénom ou email"
-        value={search}
-        onChange={(e) => setSearch(e.currentTarget.value)}
-        data-autofocus
+      <MemberTable
+        club={club}
+        selection={{
+          isSelected: (u) => selected.has(u.id),
+          isSelectable: (u) => u.clubId !== club.id,
+          onChange: choose,
+          label: (u) => `Sélectionner ${fullName(u)}`,
+          disabledLabel: (u) => `${fullName(u)} : déjà membre`,
+          full: selected.size >= MAX_LINK_SELECTION,
+        }}
       />
-      {!searching ? (
-        <Text size="sm" c="dimmed">
-          Saisissez au moins {MIN_SEARCH_LENGTH} caractères.
-        </Text>
-      ) : results.isError ? (
-        <Alert color="red">
-          {apiErrorMessage(results.error, 'Impossible de charger les utilisateurs.')}
-        </Alert>
-      ) : results.isPending ? (
-        <Loader size="sm" />
-      ) : results.data.data.length === 0 ? (
-        <Text size="sm" c="dimmed">
-          Aucun utilisateur trouvé.
-        </Text>
-      ) : (
-        <>
-          <Table>
-            <Table.Tbody>
-              {results.data.data.map((u) => (
-                <Table.Tr key={u.id}>
-                  <Table.Td w={40}>
-                    {u.clubId !== club.id && (
-                      <Checkbox
-                        checked={selected.has(u.id)}
-                        disabled={full && !selected.has(u.id)}
-                        onChange={() => toggle(u)}
-                        aria-label={`Sélectionner ${fullName(u)}`}
-                      />
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm" fw={500}>
-                      {u.lastName} {u.firstName}
-                    </Text>
-                    <Text size="xs" c="dimmed">
-                      {u.email}
-                    </Text>
-                    <Group gap={4} mt={4}>
-                      <Badge variant="light" size="sm">
-                        {ROLE_LABELS[u.role]}
-                      </Badge>
-                      {extraRoleLabels(u.extraRoles).map((l) => (
-                        <Badge key={l} variant="outline" size="sm">
-                          {l}
-                        </Badge>
-                      ))}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    {u.clubId === club.id ? (
-                      <Text size="sm" c="dimmed">
-                        Déjà membre
-                      </Text>
-                    ) : (
-                      (u.clubName ?? 'Sans club')
-                    )}
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-          {results.data.meta.total > results.data.data.length && (
-            <Text size="sm" c="dimmed">
-              Affinez la recherche
-            </Text>
-          )}
-        </>
-      )}
 
       {selection.length > 0 && (
         <Paper withBorder p="sm">
-          <Text size="sm" fw={500} mb="xs">
-            {selection.length > 1
-              ? `${accounts(selection.length)} sélectionnés`
-              : '1 compte sélectionné'}
-          </Text>
-          {full && (
+          <Group justify="space-between" mb="xs">
+            <Text size="sm" fw={500}>
+              {selection.length > 1
+                ? `${accounts(selection.length)} sélectionnés`
+                : '1 compte sélectionné'}
+            </Text>
+            <Button variant="subtle" size="compact-sm" onClick={() => setSelected(new Map())}>
+              Tout désélectionner
+            </Button>
+          </Group>
+          {selected.size >= MAX_LINK_SELECTION && (
             <Text size="xs" c="dimmed" mb="xs">
               {MAX_LINK_SELECTION} comptes au plus par ajout.
             </Text>
@@ -266,7 +217,7 @@ function LinkMemberBody({ club, onClose }: Omit<Props, 'opened'>) {
                 rightSection={
                   <CloseButton
                     size="xs"
-                    onClick={() => toggle(u)}
+                    onClick={() => choose([u], false)}
                     aria-label={`Retirer ${fullName(u)}`}
                   />
                 }
@@ -287,6 +238,102 @@ function LinkMemberBody({ club, onClose }: Omit<Props, 'opened'>) {
         </Button>
       </Group>
     </Stack>
+  );
+}
+
+/**
+ * The user list of the back-office, in the dialog: search, operator filters,
+ * sort and pages, kept in memory (the page URL stays the club's).
+ */
+function MemberTable({
+  club,
+  selection,
+}: {
+  club: Club;
+  selection: RowSelection<AdminUserListItemDto>;
+}) {
+  const [state, update] = useMemoryListParams(readUsersParams, writeUsersParams);
+  const [search, setSearch] = useUrlSearch(state.q, (q) => update({ q }));
+  const users = useQuery({
+    ...usersQuery(usersFilter(state, PAGE_SIZE)),
+    placeholderData: keepPreviousData,
+  });
+  const ops = operatorFilters(USERS_FILTERS, state.filters, (filters) => update({ filters }));
+  const total = users.data?.meta.total ?? 0;
+
+  return (
+    <>
+      <DataTable
+        tableId="link-members"
+        columns={userColumns({ filter: ops.filter, recordLinks: false, memberOf: club.id })}
+        rows={users.data?.data ?? []}
+        rowKey={(u) => u.id}
+        sort={state.sort}
+        onSortChange={(sort: SortState | null) =>
+          update({
+            sort: sort && isUsersSortField(sort.by) ? { by: sort.by, order: sort.order } : null,
+          })
+        }
+        onResetFilters={() => update(USERS_FILTERS_CLEARED)}
+        filterChips={ops.chips}
+        selection={selection}
+        toolbar={
+          <TextInput
+            label="Rechercher un utilisateur"
+            placeholder="Nom, prénom ou email"
+            maw={{ sm: 360 }}
+            value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)}
+            data-autofocus
+          />
+        }
+        loading={users.isPending}
+        error={
+          users.isError && apiErrorMessage(users.error, 'Impossible de charger les utilisateurs.')
+        }
+        summary={
+          <Text size="sm" c="dimmed">
+            {total} utilisateur{total > 1 ? 's' : ''}
+          </Text>
+        }
+        empty={
+          <EmptyState title="Aucun utilisateur">
+            Aucun compte ne correspond à ces filtres.
+          </EmptyState>
+        }
+        renderCard={(u) => (
+          <Paper withBorder p="sm">
+            <Text size="sm" fw={600}>
+              {u.lastName} {u.firstName}
+            </Text>
+            <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+              {u.email}
+            </Text>
+            <Group gap={4} mt={4}>
+              <Badge variant="light" size="sm">
+                {ROLE_LABELS[u.role]}
+              </Badge>
+              <ExtraRoles user={u} />
+              {u.clubId === club.id ? (
+                <Badge variant="light" color="gray" size="sm">
+                  Déjà membre
+                </Badge>
+              ) : (
+                <Text size="xs">{u.clubName ?? 'Sans club'}</Text>
+              )}
+            </Group>
+          </Paper>
+        )}
+      />
+      {!users.isError && total > PAGE_SIZE && (
+        <Pagination
+          size="sm"
+          total={Math.ceil(total / PAGE_SIZE)}
+          value={state.page}
+          onChange={(page) => update({ page })}
+        />
+      )}
+    </>
   );
 }
 

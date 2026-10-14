@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { type NavigateOptions, useSearchParams } from 'react-router';
 
 /**
@@ -26,5 +26,18 @@ export function useListParams<State, Patch>(
     latest.current = next;
     setParams(next, options);
   };
+  return [read(params), update];
+}
+
+/**
+ * Same list state as {@link useListParams}, kept in memory instead of the URL:
+ * for a list inside a dialog (#558), whose filters must not change the page URL.
+ */
+export function useMemoryListParams<State, Patch>(
+  read: (params: URLSearchParams) => State,
+  write: (current: URLSearchParams, patch: Patch) => URLSearchParams,
+): [State, (patch: Patch) => void] {
+  const [params, setParams] = useState(() => new URLSearchParams());
+  const update = (patch: Patch) => setParams((current) => write(current, patch));
   return [read(params), update];
 }

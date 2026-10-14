@@ -253,6 +253,79 @@ describe('DataTable', () => {
     });
   });
 
+  describe('row selection (#558)', () => {
+    function Selectable({ full = false, onRowClick }: { full?: boolean; onRowClick?: () => void }) {
+      const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+      return (
+        <DataTable
+          tableId="select"
+          columns={[{ key: 'name', label: 'Nom', required: true, cell: (r: Row) => r.name }]}
+          rows={[...ROWS, { id: '3', name: 'Petit', email: 'p@x.fr', login: '' }]}
+          rowKey={(r) => r.id}
+          sort={null}
+          onSortChange={() => {}}
+          onRowClick={onRowClick}
+          loading={false}
+          empty={<p>Rien</p>}
+          renderCard={(r) => <p>Carte {r.name}</p>}
+          selection={{
+            isSelected: (r) => picked.has(r.id),
+            // Petit is already linked.
+            isSelectable: (r) => r.id !== '3',
+            onChange: (rows, selected) =>
+              setPicked((prev) => {
+                const next = new Set(prev);
+                for (const r of rows) {
+                  if (selected) next.add(r.id);
+                  else next.delete(r.id);
+                }
+                return next;
+              }),
+            label: (r) => `Sélectionner ${r.name}`,
+            disabledLabel: (r) => `${r.name} : déjà membre`,
+            full,
+          }}
+        />
+      );
+    }
+
+    it('ticks rows one by one without opening them, and the whole page at once', async () => {
+      const onRowClick = vi.fn();
+      renderWithProviders(<Selectable onRowClick={onRowClick} />);
+      const page = screen.getByRole('checkbox', { name: 'Tout sélectionner sur la page' });
+      await user.click(screen.getByRole('checkbox', { name: 'Sélectionner Martin' }));
+      expect(onRowClick).not.toHaveBeenCalled();
+      expect(page).not.toBeChecked();
+      expect(page).toHaveAttribute('data-indeterminate', 'true');
+
+      await user.click(page);
+      expect(page).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: 'Sélectionner Durand' })).toBeChecked();
+      // A row that cannot be selected stays out, flagged by its name.
+      expect(screen.getByRole('checkbox', { name: 'Petit : déjà membre' })).toBeDisabled();
+      expect(screen.getByRole('checkbox', { name: 'Petit : déjà membre' })).not.toBeChecked();
+
+      await user.click(page);
+      expect(screen.getByRole('checkbox', { name: 'Sélectionner Martin' })).not.toBeChecked();
+    });
+
+    it('stops new ticks once the selection is full', () => {
+      renderWithProviders(<Selectable full />);
+      expect(screen.getByRole('checkbox', { name: 'Sélectionner Martin' })).toBeDisabled();
+      expect(
+        screen.getByRole('checkbox', { name: 'Tout sélectionner sur la page' }),
+      ).toBeDisabled();
+    });
+
+    it('puts a checkbox next to each card on a phone', async () => {
+      mockPhoneViewport();
+      renderWithProviders(<Selectable />);
+      expect(screen.getByText('Carte Martin')).toBeInTheDocument();
+      await user.click(screen.getByRole('checkbox', { name: 'Sélectionner Martin' }));
+      expect(screen.getByRole('checkbox', { name: 'Sélectionner Martin' })).toBeChecked();
+    });
+  });
+
   describe('on a phone', () => {
     beforeEach(() => mockPhoneViewport());
 

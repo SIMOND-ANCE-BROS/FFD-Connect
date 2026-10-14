@@ -289,7 +289,7 @@ describe('ClubDetailPage', () => {
     });
     const search = (...users: object[]) =>
       vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue({
-        data: { data: users, meta: { total: users.length, skip: 0, take: 10, hasMore: false } },
+        data: { data: users, meta: { total: users.length, skip: 0, take: 20, hasMore: false } },
         error: undefined,
       } as never);
     const openSearch = async (term = 'anna') => {
@@ -312,7 +312,11 @@ describe('ClubDetailPage', () => {
       await openSearch();
       expect(await screen.findByText('anna@x.fr')).toBeInTheDocument();
       expect(screen.getByText('Sans club')).toBeInTheDocument();
-      expect(list).toHaveBeenCalledWith({ query: { search: 'anna', skip: 0, take: 10 } });
+      // The table is the users list: shown at once, then searched.
+      expect(list).toHaveBeenCalledWith({ query: { skip: 0, take: 20 } });
+      await vi.waitFor(() =>
+        expect(list).toHaveBeenLastCalledWith({ query: { search: 'anna', skip: 0, take: 20 } }),
+      );
       expect(screen.getByRole('button', { name: 'Ajouter' })).toBeDisabled();
 
       await tick('Anna Petit');
@@ -337,7 +341,7 @@ describe('ClubDetailPage', () => {
       list.mockResolvedValue({
         data: {
           data: [candidate({ id: 'u8', firstName: 'Léo', lastName: 'Roux', email: 'leo@x.fr' })],
-          meta: { total: 1, skip: 0, take: 10, hasMore: false },
+          meta: { total: 1, skip: 0, take: 20, hasMore: false },
         },
         error: undefined,
       } as never);
@@ -456,14 +460,84 @@ describe('ClubDetailPage', () => {
       expect(screen.queryByText(/quitte/)).toBeNull();
     });
 
-    it('asks to refine the search when there are more results than shown', async () => {
-      vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue({
-        data: { data: [candidate({})], meta: { total: 25, skip: 0, take: 10, hasMore: true } },
+    it('keeps the selection across pages and ticks a whole page at once', async () => {
+      const list = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue({
+        data: {
+          data: [
+            candidate({}),
+            candidate({ id: 'u8', firstName: 'Léo', lastName: 'Roux', email: 'leo@x.fr' }),
+            candidate({
+              id: 'u1',
+              firstName: 'Max',
+              lastName: 'Dupont',
+              email: 'max@x.fr',
+              clubId: 'c1',
+            }),
+          ],
+          meta: { total: 25, skip: 0, take: 20, hasMore: true },
+        },
         error: undefined,
       } as never);
       renderPage(empty);
-      await openSearch();
-      expect(await screen.findByText('Affinez la recherche')).toBeInTheDocument();
+      await user.click(await screen.findByRole('button', { name: 'Lier un membre' }));
+      await tick('Anna Petit');
+
+      list.mockResolvedValue({
+        data: {
+          data: [candidate({ id: 'u7', firstName: 'Zoé', lastName: 'Blanc', email: 'zoe@x.fr' })],
+          meta: { total: 25, skip: 20, take: 20, hasMore: false },
+        },
+        error: undefined,
+      } as never);
+      await user.click(screen.getByRole('button', { name: '2' }));
+      expect(await screen.findByText('zoe@x.fr')).toBeInTheDocument();
+      expect(list).toHaveBeenLastCalledWith({ query: { skip: 20, take: 20 } });
+      await user.click(screen.getByRole('checkbox', { name: 'Tout sélectionner sur la page' }));
+      expect(screen.getByText('2 comptes sélectionnés')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Retirer Anna Petit' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Retirer Zoé Blanc' })).toBeInTheDocument();
+    });
+
+    it('ticks only the selectable rows of the page, never a member', async () => {
+      search(
+        candidate({}),
+        candidate({
+          id: 'u1',
+          firstName: 'Max',
+          lastName: 'Dupont',
+          email: 'max@x.fr',
+          clubId: 'c1',
+        }),
+      );
+      renderPage(empty);
+      await user.click(await screen.findByRole('button', { name: 'Lier un membre' }));
+      await screen.findByText('anna@x.fr');
+      const all = screen.getByRole('checkbox', { name: 'Tout sélectionner sur la page' });
+      await user.click(all);
+      expect(all).toBeChecked();
+      expect(screen.getByText('1 compte sélectionné')).toBeInTheDocument();
+      expect(screen.getByRole('checkbox', { name: 'Max Dupont : déjà membre' })).toBeDisabled();
+      await user.click(all);
+      expect(screen.queryByText('1 compte sélectionné')).toBeNull();
+    });
+
+    it('filters the list with the operators of the users list, without leaving the club', async () => {
+      const list = search(candidate({}));
+      renderPage(empty);
+      await user.click(await screen.findByRole('button', { name: 'Lier un membre' }));
+      await screen.findByText('anna@x.fr');
+      await user.click(screen.getByRole('button', { name: /^Filtrer : Club/ }));
+      await user.click(screen.getByRole('textbox', { name: 'Opérateur : Club' }));
+      await user.click(screen.getByRole('option', { name: 'est vide' }));
+      await user.click(screen.getByRole('button', { name: 'Appliquer le filtre : Club' }));
+      await vi.waitFor(() =>
+        expect(list).toHaveBeenLastCalledWith({
+          query: { filters: JSON.stringify([{ field: 'club', op: 'isEmpty' }]), skip: 0, take: 20 },
+        }),
+      );
+      expect(screen.getByRole('group', { name: 'Filtres actifs' })).toHaveTextContent(
+        'Club est vide',
+      );
     });
 
     it('goes back to the selection when the review is cancelled', async () => {
@@ -485,20 +559,16 @@ describe('ClubDetailPage', () => {
       await openSearch();
       expect(await screen.findByText('Déjà membre')).toBeInTheDocument();
       expect(screen.queryByRole('checkbox', { name: 'Sélectionner Anna Petit' })).toBeNull();
+      expect(screen.getByRole('checkbox', { name: 'Anna Petit : déjà membre' })).toBeDisabled();
     });
 
-    it('waits for two characters and reports an empty or failed search', async () => {
+    it('reports an empty or failed list', async () => {
       const list = search();
       renderPage(empty);
       await user.click(await screen.findByRole('button', { name: 'Lier un membre' }));
-      await user.type(await screen.findByLabelText('Rechercher un utilisateur'), 'a');
-      expect(screen.getByText('Saisissez au moins 2 caractères.')).toBeInTheDocument();
-      expect(list).not.toHaveBeenCalled();
-      await user.type(screen.getByLabelText('Rechercher un utilisateur'), 'b');
-      expect(await screen.findByText('Aucun utilisateur trouvé.')).toBeInTheDocument();
-
+      expect(await screen.findByText('Aucun utilisateur')).toBeInTheDocument();
       list.mockResolvedValue({ data: undefined, error: { message: 'Panne' } } as never);
-      await user.type(screen.getByLabelText('Rechercher un utilisateur'), 'c');
+      await fill(user, screen.getByLabelText('Rechercher un utilisateur'), 'zz');
       expect(await screen.findByText('Panne')).toBeInTheDocument();
     });
   });
