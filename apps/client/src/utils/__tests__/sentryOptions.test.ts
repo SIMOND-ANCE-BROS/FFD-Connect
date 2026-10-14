@@ -1,9 +1,5 @@
 import { screenshotIntegration } from "@sentry/react-native";
-import {
-  sentryDiagnosticsOptions,
-  sentryIntegrations,
-  sentryPrivacyOptions,
-} from "../sentryOptions";
+import { sentryIntegrations, sentryPrivacyOptions } from "../sentryOptions";
 import { beforeScreenshot } from "../sentryPrivacy";
 
 jest.mock("@sentry/react-native", () => ({
@@ -44,11 +40,5 @@ describe("sentryIntegrations", () => {
     );
 
     expect(names).toEqual(["Screenshot"]);
-  });
-});
-
-describe("sentryDiagnosticsOptions (#539)", () => {
-  it("enables MetricKit so background terminations reach Sentry", () => {
-    expect(sentryDiagnosticsOptions.enableMetricKit).toBe(true);
   });
 });

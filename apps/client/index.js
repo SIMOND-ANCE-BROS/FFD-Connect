@@ -14,7 +14,6 @@ import * as Updates from "expo-updates";
 import App from "./App";
 import { registerBackgroundMessageHandler } from "./src/features/settings/services/backgroundMessaging";
 import {
-  sentryDiagnosticsOptions,
   sentryIntegrations,
   sentryPrivacyOptions,
 } from "./src/utils/sentryOptions";
@@ -118,8 +117,6 @@ if (sentryDsn && !sentryDisabled && Platform.OS !== "web") {
     // health data is mounted (#242). Native crashes get no screenshot (the
     // native SDKs would not ask beforeScreenshot). See src/utils/sentryOptions.
     ...sentryPrivacyOptions,
-    // MetricKit: reports iOS terminations that happen in the background (#539).
-    ...sentryDiagnosticsOptions,
     // Session Replay disabled on iOS 26+ — RNSentryReplayUnmask shadow node
     // hooks the network stack and triggers nw_protocol_ipv6 crashes.
     replaysSessionSampleRate: 0,
