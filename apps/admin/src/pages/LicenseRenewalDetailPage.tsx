@@ -1,3 +1,4 @@
+import { BackToList } from '../components/BackToList';
 import { PageHeader } from '../components/PageHeader';
 import {
   Alert,
@@ -99,9 +100,7 @@ export function LicenseRenewalDetailPage() {
 
   return (
     <Stack>
-      <Anchor component={Link} to={`/license-renewals${search}`}>
-        Retour à la liste
-      </Anchor>
+      <BackToList listPath="/license-renewals" search={search} />
       <Group justify="space-between">
         <PageHeader
           title={

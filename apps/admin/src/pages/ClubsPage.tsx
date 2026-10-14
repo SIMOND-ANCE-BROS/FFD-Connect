@@ -143,6 +143,7 @@ export function ClubsPage() {
         columns={columns}
         rows={rows}
         rowKey={(c) => c.id}
+        rowHref={(c) => `/clubs/${c.id}`}
         sort={state.sort}
         onSortChange={onSortChange}
         onResetFilters={() => update({ filters: [] })}

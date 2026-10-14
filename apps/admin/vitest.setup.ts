@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, configure } from '@testing-library/react';
 import { afterEach } from 'vitest';
+import { useListReturn } from './src/lib/listReturn';
 
 // findBy*/waitFor give up after 1 s by default. A page that debounces its search
 // (300 ms) then renders the results of a mocked query can need longer than that
@@ -14,6 +15,8 @@ afterEach(() => {
   sessionStorage.clear();
   // Column choices of the lists (#444) must not leak from one test to the next.
   localStorage.clear();
+  // Nor the list URLs remembered for « Retour à la liste » (#562).
+  useListReturn.setState({ searches: {} });
 });
 
 // Mantine needs matchMedia and ResizeObserver in jsdom.

@@ -57,18 +57,24 @@ function visibleChange(entry: AuditLogEntryDto) {
   return Object.keys(after).length > 0 ? { before, after } : null;
 }
 
+/** Record page of the row's target; none once it was deleted. */
+const targetPath = (entry: AuditLogEntryDto): string | null =>
+  DELETIONS.includes(entry.action)
+    ? null
+    : `/${TARGET_LINKS[entry.targetType].path}/${entry.targetId}`;
+
 function Target({ entry }: { entry: AuditLogEntryDto }) {
-  if (DELETIONS.includes(entry.action)) {
+  const path = targetPath(entry);
+  if (!path) {
     return (
       <Text size="sm" c="dimmed">
         Supprimé
       </Text>
     );
   }
-  const link = TARGET_LINKS[entry.targetType];
   return (
-    <Anchor component={Link} to={`/${link.path}/${entry.targetId}`}>
-      {link.label}
+    <Anchor component={Link} to={path}>
+      {TARGET_LINKS[entry.targetType].label}
     </Anchor>
   );
 }
@@ -153,6 +159,7 @@ export function AuditLogPage() {
         columns={columns}
         rows={log.data?.data ?? []}
         rowKey={(e) => e.id}
+        rowHref={targetPath}
         sort={state.sort}
         onSortChange={onSortChange}
         onResetFilters={() => update({ filters: [] })}

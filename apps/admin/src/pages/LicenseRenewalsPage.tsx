@@ -163,6 +163,7 @@ export function LicenseRenewalsPage() {
         columns={columns}
         rows={list.data?.data ?? []}
         rowKey={(r) => r.id}
+        rowHref={detailPath}
         sort={state.sort}
         onSortChange={onSortChange}
         onResetFilters={() => update({ filters: [] })}

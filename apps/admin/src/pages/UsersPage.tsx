@@ -1,6 +1,6 @@
 import { Badge, Button, Pagination, Stack, Text, TextInput } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import { usersQuery } from '../api/queries';
 import { operatorFilters } from '../components/ColumnFilterEditor';
 import { DataTable } from '../components/DataTable';
@@ -31,7 +31,6 @@ const isUsersSortField = (value: string): value is UsersSortField =>
   USERS_SORT_FIELDS.some((f) => f === value);
 
 export function UsersPage() {
-  const navigate = useNavigate();
   const [state, update] = useListParams(readUsersParams, writeUsersParams);
   const [search, setSearch] = useUrlSearch(state.q, (q) => update({ q }, { replace: true }));
 
@@ -67,7 +66,7 @@ export function UsersPage() {
         onSortChange={onSortChange}
         onResetFilters={() => update(USERS_FILTERS_CLEARED)}
         filterChips={ops.chips}
-        onRowClick={(u) => navigate(`/users/${u.id}`)}
+        rowHref={(u) => `/users/${u.id}`}
         toolbar={
           <TextInput
             label="Rechercher un utilisateur"

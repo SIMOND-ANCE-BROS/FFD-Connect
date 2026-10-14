@@ -18,6 +18,7 @@ import {
   VisuallyHidden,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { type NavigateFunction, useNavigate } from 'react-router';
 import { Fragment, useId, useState, type MouseEvent, type ReactNode } from 'react';
 import {
   type ColumnPrefs,
@@ -71,7 +72,12 @@ interface DataTableProps<Row> {
   onResetFilters?: () => void;
   /** Active filters shown above the rows, each removable in one click (#557). */
   filterChips?: { key: string; label: string; onRemove: () => void }[];
-  onRowClick?: (row: Row) => void;
+  /**
+   * Record page a row opens (#562): a click anywhere on the row goes there,
+   * Ctrl/Cmd/Shift-click and the middle button open it in a new tab, like a
+   * link. The row must also render a real link to it (keyboard, screen reader).
+   */
+  rowHref?: (row: Row) => string | null;
   /** Phone layout of a row: a card, as tables do not fit. */
   renderCard: (row: Row) => ReactNode;
   /** Above the table, next to the column picker (search input…). */
@@ -270,6 +276,27 @@ function HeaderCell<Row>({
  * Full value of a cut cell on hover (#556): the native tooltip is set only
  * when the text overflows, from what the cell renders.
  */
+/** Controls of a row that handle their own clicks: a link, a checkbox, a button… */
+const INTERACTIVE = 'a, button, input, label, select, textarea, [role="button"], [role="checkbox"]';
+
+/**
+ * Click on a row with a record page (#562), with the behaviour of a link:
+ * plain click → same tab; Ctrl/Cmd/Shift-click or middle button → new tab. A
+ * click on a link, checkbox or button inside the row is left to it (a link
+ * already does all of this natively).
+ */
+export function openRow(event: MouseEvent<HTMLElement>, href: string, navigate: NavigateFunction) {
+  if (event.target instanceof Element && event.target.closest(INTERACTIVE)) return;
+  // Only the main and the middle buttons open a row.
+  if (event.button !== 0 && event.button !== 1) return;
+  if (event.button === 1 || event.ctrlKey || event.metaKey || event.shiftKey) {
+    event.preventDefault();
+    window.open(href, '_blank', 'noopener');
+    return;
+  }
+  navigate(href);
+}
+
 function showFullValue(event: MouseEvent<HTMLElement>) {
   const cell = event.currentTarget;
   if (cell.scrollWidth > cell.clientWidth) {
@@ -470,7 +497,7 @@ export function DataTable<Row>({
   onSortChange,
   onResetFilters,
   filterChips = [],
-  onRowClick,
+  rowHref,
   renderCard,
   toolbar,
   summary,
@@ -480,6 +507,7 @@ export function DataTable<Row>({
   selection,
 }: DataTableProps<Row>) {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const [prefs, setPrefs] = useState<ColumnPrefs>(() => loadColumnPrefs(tableId));
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [containerRef, containerWidth] = useContainerWidth<HTMLDivElement>();
@@ -619,11 +647,13 @@ export function DataTable<Row>({
                   const key = rowKey(row);
                   const open = withDetail && expanded.has(key);
                   const detailId = `${tableId}-detail-${key}`;
+                  const href = rowHref?.(row) ?? null;
                   return (
                     <Fragment key={key}>
                       <Table.Tr
-                        className={onRowClick ? 'app-row-link' : undefined}
-                        onClick={onRowClick ? () => onRowClick(row) : undefined}
+                        className={href ? 'app-row-link' : undefined}
+                        onClick={href ? (event) => openRow(event, href, navigate) : undefined}
+                        onAuxClick={href ? (event) => openRow(event, href, navigate) : undefined}
                       >
                         {selection && (
                           <Table.Td>

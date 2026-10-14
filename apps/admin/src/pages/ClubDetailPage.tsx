@@ -1,3 +1,4 @@
+import { BackToList } from '../components/BackToList';
 import { PageHeader } from '../components/PageHeader';
 import {
   Alert,
@@ -184,6 +185,7 @@ export function ClubDetailPage() {
 
   return (
     <Stack>
+      <BackToList listPath="/clubs" />
       <Group justify="space-between">
         <Group>
           <PageHeader title={c.name} />
