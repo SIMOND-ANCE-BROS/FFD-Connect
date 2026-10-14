@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AdminAuditModule } from "../admin/admin-audit.module";
+import { HealthDataAccessModule } from "../health-data-access/health-data-access.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { LicenseQrModule } from "./qr/license-qr.module";
 import { AppleWalletModule } from "./wallet/apple-wallet.module";
@@ -14,7 +15,13 @@ import { LicensesController } from "./licenses.controller";
 import { LicensesService } from "./licenses.service";
 
 @Module({
-  imports: [PrismaModule, LicenseQrModule, AppleWalletModule, AdminAuditModule],
+  imports: [
+    PrismaModule,
+    LicenseQrModule,
+    AppleWalletModule,
+    AdminAuditModule,
+    HealthDataAccessModule,
+  ],
   controllers: [LicensesController, AdminLicenseRenewalsController],
   providers: [
     LicensesService,

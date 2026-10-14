@@ -4,7 +4,12 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { Prisma, RegistrationStatus, UserRole } from "@prisma/client";
+import {
+  LicenseRenewalDocumentType,
+  Prisma,
+  RegistrationStatus,
+  UserRole,
+} from "@prisma/client";
 import { hasRole, rolesOf, withActiveRole } from "../auth/roles";
 import { userRolesClubSelect } from "../utils/prisma-selects";
 import * as bcrypt from "bcrypt";
@@ -36,6 +41,8 @@ import { pickRenewalOcrData } from "../licenses/renewal-ocr-data.util";
 import { WdsfService } from "../wdsf/wdsf.service";
 import { resolveWdsfFederation, wdsfNameMatches } from "../wdsf/wdsf.utils";
 import { AccountDeletionService } from "./account-deletion.service";
+import { HEALTH_DATA_ACCESS_ROUTES } from "../health-data-access/dto/health-data-access-log.dto";
+import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 
 /** Champs de base récupérés pour tout utilisateur. */
 const USER_BASE_SELECT = {
@@ -132,6 +139,7 @@ export class UsersService {
     private licenseQrService: LicenseQrService,
     private appleWalletPassGenerator: AppleWalletPassGenerator,
     private wdsfService: WdsfService,
+    private healthAccess: HealthDataAccessLogService,
   ) {}
 
   /**
@@ -586,6 +594,25 @@ export class UsersService {
       submittedTracks,
       ...rest
     } = user;
+    // Each exported medical certificate reading is traced (#63) before the
+    // export leaves; no trace, no export.
+    await this.healthAccess.record(
+      licenseRenewalRequests
+        .flatMap((request) => request.documents)
+        .filter(
+          (document) =>
+            document.type === LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+        )
+        .map((document) => ({
+          subjectUserId: userId,
+          actorUserId: userId,
+          actorRole: "OWNER" as const,
+          action: "EXPORT" as const,
+          resourceType: "MEDICAL_CERTIFICATE" as const,
+          resourceId: document.id,
+          route: HEALTH_DATA_ACCESS_ROUTES.selfExport,
+        })),
+    );
     return {
       format: "ffd-connect-export-v1",
       exportedAt: new Date().toISOString(),

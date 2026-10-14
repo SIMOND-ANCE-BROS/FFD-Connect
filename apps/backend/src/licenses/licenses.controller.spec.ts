@@ -3,6 +3,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { LicenseRenewalDocumentType } from "@prisma/client";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { LicenseRenewalService } from "./license-renewal.service";
+import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 import { LicensesController } from "./licenses.controller";
 import { LicensesService } from "./licenses.service";
 
@@ -44,6 +45,10 @@ describe("LicensesController", () => {
       controllers: [LicensesController],
       providers: [
         { provide: LicensesService, useValue: mockLicensesService },
+        {
+          provide: HealthDataAccessLogService,
+          useValue: { record: jest.fn() },
+        },
         { provide: LicenseRenewalService, useValue: mockLicenseRenewalService },
       ],
     })

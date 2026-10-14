@@ -37,6 +37,7 @@ import {
   createMemoryUploadStorage,
   generateBlobName,
 } from "../utils/upload-storage.util";
+import { ImpersonatedRenewalAccessInterceptor } from "./impersonated-renewal-access.interceptor";
 import { LicenseRenewalService } from "./license-renewal.service";
 import { LicensesService } from "./licenses.service";
 import {
@@ -176,8 +177,11 @@ export class LicensesController {
   */
 
   // --- Demande de renouvellement (workflow documents + OCR) ---
+  // Each response carries the medical certificate's OCR hints: read during an
+  // impersonation, it is traced as a health-data access (#63).
 
   @StoreReviewSimulation(simulatedRenewalStart)
+  @UseInterceptors(ImpersonatedRenewalAccessInterceptor)
   @Post("renewal/start")
   @ApiOperation({
     summary: "Démarrer une demande de renouvellement",
@@ -191,6 +195,7 @@ export class LicensesController {
   }
 
   @StoreReviewOwnData()
+  @UseInterceptors(ImpersonatedRenewalAccessInterceptor)
   @Get("renewal/my")
   @ApiOperation({
     summary: "Ma demande de renouvellement en cours",
@@ -204,6 +209,7 @@ export class LicensesController {
   }
 
   @StoreReviewSimulation(simulatedRenewalDocument)
+  @UseInterceptors(ImpersonatedRenewalAccessInterceptor)
   @Post("renewal/:id/documents")
   @ApiOperation({
     summary: "Déposer un document sur une demande (OCR automatique)",
@@ -271,6 +277,7 @@ export class LicensesController {
   }
 
   @StoreReviewSimulation(simulatedRenewalSubmit)
+  @UseInterceptors(ImpersonatedRenewalAccessInterceptor)
   @Post("renewal/:id/submit")
   @ApiOperation({
     summary: "Soumettre la demande de renouvellement",
