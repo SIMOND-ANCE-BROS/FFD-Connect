@@ -250,7 +250,15 @@ export const useCompetitionDetailLogic = (
   };
 
   // Mutations
+  // `networkMode: "always"` on register/unregister (#285): onlineManager is
+  // wired to NetInfo (queryClient.tsx), so the default "online" mode would
+  // PAUSE these mutations offline — submitRegistrationAction never runs, the
+  // action is never written to the persisted offline queue (lost if the app
+  // is killed), and on reconnection the paused mutation resumes as a direct
+  // send ("Succès") instead of the queue replay ("Connexion rétablie").
+  // submitRegistrationAction handles offline itself, so it must always run.
   const registerMutation = useMutation({
+    networkMode: "always",
     mutationFn: ({
       eventId,
       partnerName,
@@ -313,6 +321,7 @@ export const useCompetitionDetailLogic = (
   });
 
   const unregisterMutation = useMutation({
+    networkMode: "always",
     mutationFn: (eventId: string) =>
       submitRegistrationAction(
         "unregister",

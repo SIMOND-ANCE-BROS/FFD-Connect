@@ -1,6 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  onlineManager,
+} from "@tanstack/react-query";
 import { AxiosError } from "axios";
 import { useOfflineQueueStore } from "../../../../stores/offlineQueue.store";
 import { QUEUE_MESSAGES } from "../../services/registrationQueue";
@@ -434,6 +438,86 @@ describe("useCompetitionDetailLogic", () => {
         }),
       );
       expect(result.current.state.myRegistrations).toContain("evt-1");
+    });
+
+    describe("when React Query's onlineManager is offline (#285)", () => {
+      // queryClient.tsx wires onlineManager to NetInfo: in airplane mode a
+      // default (networkMode "online") mutation is paused and its mutationFn —
+      // the one that enqueues to the persisted offline queue — never runs.
+      beforeEach(() => {
+        onlineManager.setOnline(false);
+        (NetInfo.fetch as jest.Mock).mockResolvedValue({ isConnected: false });
+      });
+      afterEach(() => {
+        onlineManager.setOnline(true);
+      });
+
+      it("still queues a register instead of pausing the mutation", async () => {
+        const { result } = await setup();
+
+        await act(async () => {
+          // eslint-disable-next-line @typescript-eslint/await-thenable
+          await result.current.actions.handleRegister(soloEvent());
+        });
+
+        await waitFor(() =>
+          expect(Alert.alert).toHaveBeenCalledWith(
+            QUEUE_MESSAGES.QUEUED_TITLE,
+            QUEUE_MESSAGES.QUEUED_REGISTER,
+          ),
+        );
+        expect(useOfflineQueueStore.getState().items).toHaveLength(1);
+        expect(mockRegisterForEvent).not.toHaveBeenCalled();
+      });
+
+      it("does not fire a direct-send « Succès » when the network comes back", async () => {
+        const { result } = await setup();
+
+        await act(async () => {
+          // eslint-disable-next-line @typescript-eslint/await-thenable
+          await result.current.actions.handleRegister(soloEvent());
+        });
+        await waitFor(() =>
+          expect(Alert.alert).toHaveBeenCalledWith(
+            QUEUE_MESSAGES.QUEUED_TITLE,
+            QUEUE_MESSAGES.QUEUED_REGISTER,
+          ),
+        );
+
+        // Reconnection: a paused mutation would resume here and send directly.
+        (NetInfo.fetch as jest.Mock).mockResolvedValue({ isConnected: true });
+        await act(async () => {
+          onlineManager.setOnline(true);
+          await Promise.resolve();
+        });
+
+        // Only the queue replay (OfflineQueueRunner) may announce the result.
+        expect(mockRegisterForEvent).not.toHaveBeenCalled();
+        expect(Alert.alert).not.toHaveBeenCalledWith(
+          "Succès",
+          expect.anything(),
+        );
+        expect(Alert.alert).toHaveBeenCalledTimes(1);
+      });
+
+      it("still queues an unregister instead of pausing the mutation", async () => {
+        mockGetUserRegistrations.mockResolvedValue([{ eventId: "evt-1" }]);
+        const { result } = await setup();
+
+        await act(async () => {
+          // eslint-disable-next-line @typescript-eslint/await-thenable
+          await result.current.actions.handleUnregister(soloEvent());
+        });
+
+        await waitFor(() =>
+          expect(Alert.alert).toHaveBeenCalledWith(
+            QUEUE_MESSAGES.QUEUED_TITLE,
+            QUEUE_MESSAGES.QUEUED_UNREGISTER,
+          ),
+        );
+        expect(useOfflineQueueStore.getState().items).toHaveLength(1);
+        expect(mockUnregisterFromEvent).not.toHaveBeenCalled();
+      });
     });
 
     it("queues on a network error instead of failing", async () => {
