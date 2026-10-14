@@ -9,6 +9,12 @@ import { LibraryScreen } from "../LibraryScreen";
 // Mock the Logic Hook
 jest.mock("../../hooks/useLibraryLogic");
 
+// « Blacklister le titre » (#561): the mutation is unit-tested on its own.
+const mockBlacklistMutate = jest.fn();
+jest.mock("../../hooks/useBlacklistTrack", () => ({
+  useBlacklistTrack: () => ({ mutate: mockBlacklistMutate }),
+}));
+
 let mockIsOnline = true;
 jest.mock("../../../../hooks/useIsOnline", () => ({
   useIsOnline: () => mockIsOnline,
@@ -496,6 +502,125 @@ describe("LibraryScreen", () => {
       await pressExtraAction("report");
 
       expect(getByTestId("report-modal")).toBeTruthy();
+    });
+
+    describe("« Blacklister le titre » (#561)", () => {
+      const pressBlacklist = async () => {
+        await fireEvent.press(screen.getByTestId("track-action-blacklist"));
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 700));
+        });
+      };
+
+      it.each([
+        ["LICENSEE", ["LICENSEE"]],
+        ["CLUB", ["CLUB"]],
+        ["STAFF", ["STAFF"]],
+        ["GUEST", ["GUEST"]],
+        // Account holding ADMIN but browsing another space: not offered.
+        ["LICENSEE", ["ADMIN", "LICENSEE"]],
+      ])("is not offered in the %s space (roles %j)", async (role, roles) => {
+        mockAuthState.role = role;
+        mockAuthState.roles = roles;
+        withTrack();
+        const { getByTestId, queryByTestId } = await render(
+          <LibraryScreen {...createTestProps()} />,
+        );
+
+        await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+
+        expect(getByTestId("track-action-play-next")).toBeTruthy();
+        expect(queryByTestId("track-action-blacklist")).toBeNull();
+      });
+
+      it("is offered in the ADMIN space, with an accessible label and hint", async () => {
+        mockAuthState.role = "ADMIN";
+        mockAuthState.roles = ["ADMIN", "LICENSEE"];
+        withTrack();
+        const { getByTestId, getByLabelText } = await render(
+          <LibraryScreen {...createTestProps()} />,
+        );
+
+        await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+
+        const row = getByLabelText("Blacklister le titre");
+        expect(row.props.accessibilityRole).toBe("button");
+        expect(row.props.accessibilityHint).toContain(
+          "Retire ce titre de la bibliothèque",
+        );
+      });
+
+      it("asks for a confirmation, then blacklists and confirms it", async () => {
+        mockAuthState.role = "ADMIN";
+        mockAuthState.roles = ["ADMIN"];
+        const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+        withTrack();
+        const { getByTestId, findByText } = await render(
+          <LibraryScreen {...createTestProps()} />,
+        );
+
+        await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+        await pressBlacklist();
+
+        expect(mockBlacklistMutate).not.toHaveBeenCalled();
+        const [title, message, buttons] = alert.mock.calls[0] as [
+          string,
+          string,
+          { text: string; onPress?: () => void }[],
+        ];
+        expect(title).toBe("Blacklister le titre");
+        expect(message).toContain("« Track 1 »");
+        expect(buttons.map((b) => b.text)).toEqual(["Annuler", "Blacklister"]);
+
+        await act(async () => {
+          buttons[1].onPress?.();
+        });
+        expect(mockBlacklistMutate).toHaveBeenCalledWith(
+          "t1",
+          expect.any(Object),
+        );
+        const { onSuccess } = mockBlacklistMutate.mock.calls[0][1] as {
+          onSuccess: () => void;
+        };
+        await act(async () => {
+          onSuccess();
+        });
+        expect(await findByText("« Track 1 » a été blacklisté")).toBeTruthy();
+        alert.mockRestore();
+      });
+
+      it("shows the server refusal", async () => {
+        mockAuthState.role = "ADMIN";
+        mockAuthState.roles = ["ADMIN"];
+        const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+        withTrack();
+        const { getByTestId } = await render(
+          <LibraryScreen {...createTestProps()} />,
+        );
+
+        await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+        await pressBlacklist();
+        const buttons = alert.mock.calls[0][2] as {
+          onPress?: () => void;
+        }[];
+        await act(async () => {
+          buttons[1].onPress?.();
+        });
+        const { onError } = mockBlacklistMutate.mock.calls[0][1] as {
+          onError: (e: unknown) => void;
+        };
+        await act(async () => {
+          onError(
+            new Error("Seul un administrateur peut blacklister un titre."),
+          );
+        });
+
+        expect(alert).toHaveBeenLastCalledWith(
+          "Blacklist impossible",
+          "Seul un administrateur peut blacklister un titre.",
+        );
+        alert.mockRestore();
+      });
     });
 
     it("closes the sheet from the backdrop", async () => {
