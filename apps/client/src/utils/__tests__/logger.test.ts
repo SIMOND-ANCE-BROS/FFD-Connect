@@ -1,4 +1,6 @@
 import * as Sentry from "@sentry/react-native";
+
+import { TokenStoreUnavailableError } from "../../api/tokenStoreErrors";
 import { logger, LogLevel } from "../logger";
 
 describe("logger", () => {
@@ -6,6 +8,7 @@ describe("logger", () => {
   let errorSpy: jest.SpyInstance;
 
   beforeEach(() => {
+    jest.clearAllMocks();
     warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     // Force logger to be enabled for testing
@@ -37,6 +40,18 @@ describe("logger", () => {
   it("logs error messages", () => {
     logger.error("Test error", new Error("Fail"));
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it("never reports an unreadable token store to Sentry (#582)", () => {
+    logger.error(
+      "Failed",
+      new TokenStoreUnavailableError(
+        new Error("User interaction is not allowed."),
+      ),
+    );
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 
   describe("HTTP error routing to Sentry (#585)", () => {

@@ -1,4 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getTokens } from "../../../../api/tokenStore";
+import { TokenStoreUnavailableError } from "../../../../api/tokenStoreErrors";
 import api from "../../../../services/api";
 import { usage } from "../../../../services/analytics/usage";
 import { createLogger } from "../../../../utils/logger";
@@ -462,6 +464,26 @@ describe("AuthService", () => {
       "Failed to load auth config",
       expect.any(Error),
     );
+  });
+
+  it("keeps the stored session when the token store is unreadable (locked iPhone, #582)", async () => {
+    (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+      JSON.stringify({ isLoggedIn: true, role: "ADMIN", username: "u@t.fr" }),
+    );
+    (getTokens as jest.Mock).mockRejectedValueOnce(
+      new TokenStoreUnavailableError(
+        new Error("User interaction is not allowed."),
+      ),
+    );
+
+    const result = await AuthService.getAuthConfig();
+
+    // Not DEFAULT_CONFIG: a later saveAuthConfig must not persist a logout.
+    expect(result.isLoggedIn).toBe(true);
+    expect(result.role).toBe("ADMIN");
+    expect(result.authToken).toBeUndefined();
+    expect(mockLogger.error).not.toHaveBeenCalled();
+    expect(mockClearTokens).not.toHaveBeenCalled();
   });
 
   it("handles storage errors in saveAuthConfig", async () => {

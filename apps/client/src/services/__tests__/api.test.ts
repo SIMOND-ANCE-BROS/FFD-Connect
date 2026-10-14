@@ -5,6 +5,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AxiosError } from "axios";
 import api from "../api";
+import { TokenStoreUnavailableError } from "../../api/tokenStoreErrors";
 
 const mockWarn = jest.fn();
 const mockInfo = jest.fn();
@@ -414,6 +415,29 @@ describe("api", () => {
     expect(mockWakeBackend).toHaveBeenCalledTimes(1);
     expect(mockRetryAxios).toHaveBeenCalled(); // le retry classique a pris le relais
     expect(res.data).toEqual({ status: "ok" });
+
+    api.defaults.adapter = originalAdapter;
+  });
+
+  it("aborts quietly when the token store is unreadable (locked iPhone, #582)", async () => {
+    mockGetAccessToken.mockRejectedValue(
+      new TokenStoreUnavailableError(
+        new Error("User interaction is not allowed."),
+      ),
+    );
+    const mockAdapter = jest.fn();
+    const originalAdapter = api.defaults.adapter;
+    api.defaults.adapter = mockAdapter;
+
+    await expect(api.get("/test")).rejects.toBeInstanceOf(
+      TokenStoreUnavailableError,
+    );
+
+    // Never sent anonymously (→ 401 → refresh/logout), no wake, no Sentry.
+    expect(mockAdapter).not.toHaveBeenCalled();
+    expect(mockWakeBackend).not.toHaveBeenCalled();
+    expect(mockRefreshSession).not.toHaveBeenCalled();
+    expect(mockError).not.toHaveBeenCalled();
 
     api.defaults.adapter = originalAdapter;
   });

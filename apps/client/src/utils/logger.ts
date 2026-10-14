@@ -5,6 +5,7 @@
  * qui peut être désactivé en production.
  */
 import * as Sentry from "@sentry/react-native";
+import { isTokenStoreUnavailable } from "../api/tokenStoreErrors";
 import {
   getHttpErrorInfo,
   httpFingerprint,
@@ -140,6 +141,13 @@ class Logger {
         console.warn(...logData, error ?? "");
         break;
       case LogLevel.ERROR: {
+        // Unreadable token store (#582): never an error event. A locked
+        // iPhone is expected; a persistent failure is reported once by
+        // tokenStore itself (which also leaves the breadcrumbs).
+        if (isTokenStoreUnavailable(error)) {
+          console.warn(...logData, error);
+          break;
+        }
         const http = getHttpErrorInfo(error);
         // Expected 4xx (401 handled by the refresh, 403, 404, 429...) are
         // outcomes, not bugs (#585): a warning breadcrumb gives context to a

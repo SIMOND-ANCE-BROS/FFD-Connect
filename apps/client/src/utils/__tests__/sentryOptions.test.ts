@@ -5,6 +5,7 @@ import {
   sentryPrivacyOptions,
 } from "../sentryOptions";
 import { beforeScreenshot } from "../sentryPrivacy";
+import { TokenStoreUnavailableError } from "../../api/tokenStoreErrors";
 
 jest.mock("@sentry/react-native", () => ({
   screenshotIntegration: jest.fn(() => ({ name: "Screenshot" })),
@@ -115,6 +116,18 @@ describe("sentryBeforeSend (#585)", () => {
     const event = sentryBeforeSend(
       { type: undefined, level: "error" },
       { originalException: new Error("boom") },
+    );
+    expect(event).toEqual({ type: undefined, level: "error" });
+  });
+
+  it("does not treat an unreadable token store as an HTTP error (#582)", () => {
+    const event = sentryBeforeSend(
+      { type: undefined, level: "error" },
+      {
+        originalException: new TokenStoreUnavailableError(
+          new Error("Keystore: bad decrypt"),
+        ),
+      },
     );
     expect(event).toEqual({ type: undefined, level: "error" });
   });
