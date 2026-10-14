@@ -18,7 +18,13 @@ import { API_TIMEOUT_MS, API_URL } from "../config";
 import { clearLicenseSnapshot } from "../features/license/utils/licenseSnapshot";
 import { useAuthStore } from "../stores/auth.store";
 import { createLogger } from "../utils/logger";
-import { clearTokens, getTokens, setTokens } from "./tokenStore";
+import {
+  clearTokens,
+  getTokens,
+  setTokens,
+  setUnreadableSessionHandler,
+} from "./tokenStore";
+import { isTokenStoreUnavailable } from "./tokenStoreErrors";
 
 const AUTH_KEY = "auth_config";
 const logger = createLogger("sessionRefresh");
@@ -49,7 +55,18 @@ async function setLoggedInFlag(value: boolean): Promise<void> {
 let inFlight: Promise<string | null> | null = null;
 
 async function performRefresh(): Promise<string | null> {
-  const { refreshToken } = await getTokens();
+  let refreshToken: string | undefined;
+  try {
+    ({ refreshToken } = await getTokens());
+  } catch (error) {
+    // Token store unreadable (locked iPhone, #582): the refresh token is still
+    // there — keep the session, just give up this refresh.
+    if (isTokenStoreUnavailable(error)) {
+      logger.info("Token store unavailable — refresh skipped, session kept");
+      return null;
+    }
+    throw error;
+  }
   if (!refreshToken) return null;
 
   try {
@@ -94,6 +111,24 @@ async function performRefresh(): Promise<string | null> {
     return null;
   }
 }
+
+/**
+ * Token store permanently unreadable in the foreground (not a locked iPhone:
+ * Keystore unable to decrypt, entitlement error…). tokenStore has already
+ * cleared the tokens; end the session visibly — same effects as a rejected
+ * refresh token — instead of a user "logged in" with every screen empty.
+ */
+async function endUnreadableSession(): Promise<void> {
+  logger.warn("Token store unreadable — session ended");
+  await clearLicenseSnapshot();
+  await setLoggedInFlag(false);
+  try {
+    await useAuthStore.getState().refreshAuth();
+  } catch {
+    // best-effort
+  }
+}
+setUnreadableSessionHandler(endUnreadableSession);
 
 /**
  * Rafraîchit l'access token de façon silencieuse. Les appels concurrents

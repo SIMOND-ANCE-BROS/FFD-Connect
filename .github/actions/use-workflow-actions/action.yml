@@ -1,0 +1,78 @@
+name: Use the workflow's local actions
+description: >-
+  Replace the workspace's .github/actions (from the checked-out ref being
+  built) with the copy taken from the workflow's own commit, without touching
+  the git state seen by `eas build` (#532, #579).
+
+# Why: `uses: ./.github/actions/<x>` always resolves against the WORKSPACE,
+# i.e. the ref the job checked out (staging / master / workflow_run.head_sha),
+# while the workflow YAML comes from another commit (github.sha: the default
+# branch for workflow_run, the dispatching branch for workflow_dispatch). The
+# two drift: master lacked eas-local-build and its sub-actions, so the next
+# native production build would have failed with "Can't find 'action.yml'".
+# Overlaying the directory (rather than calling actions from a side folder,
+# #544) also covers composite actions that call sibling local actions
+# themselves (eas-local-build -> android-gradle-runner, native-build-cache,
+# expo-doctor): those nested `./…` references resolve against the workspace
+# too, and `uses:` accepts no expression to point them elsewhere.
+#
+# Usage (the workflow ref's actions must be checked out first, sparse):
+#   - uses: actions/checkout@<sha>
+#     with: { ref: ${{ github.sha }}, path: .workflow-actions, fetch-depth: 1,
+#             persist-credentials: false, sparse-checkout: .github/actions,
+#             sparse-checkout-cone-mode: false }
+#   - uses: ./.workflow-actions/.github/actions/use-workflow-actions
+#
+# Git state: the built commit is untouched. Tracked files under
+# .github/actions are marked skip-worktree (their content or absence no longer
+# shows as a change), files new in the workflow ref are excluded locally
+# (.git/info/exclude), and the side checkout is deleted. `eas build`
+# (requireCommit) therefore sees a clean tree, and its archive is a clone of
+# the commit (the overlay never reaches it). Cache keys (hashFiles), lockfile
+# and .nvmrc stay those of the built ref.
+#
+# Constraint: the job must not switch to another commit afterwards (`git
+# checkout <sha>`): when that commit's .github/actions differs, git refuses to
+# overwrite the overlaid (skip-worktree) files. promote-beta does switch
+# (resume / distribute), so it keeps calling its actions from
+# ./.workflow-actions/ directly (#544) and never uses eas-local-build.
+
+inputs:
+  source:
+    description: Directory holding the workflow ref's .github/actions.
+    required: false
+    default: .workflow-actions/.github/actions
+
+runs:
+  using: composite
+  steps:
+    - name: Overlay .github/actions from the workflow commit
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+      run: |
+        set -euo pipefail
+        TARGET=.github/actions
+        if [ ! -d "$SOURCE" ] || [ -z "$(ls -A "$SOURCE")" ]; then
+          echo "::error::$SOURCE is missing or empty: check out .github/actions from github.sha first"
+          exit 1
+        fi
+        SIDE_ROOT="${SOURCE%%/*}"
+        # Tracked copies: hide every later change (content, deletion) from
+        # `git status`. `--stdin -z` copes with an empty list.
+        git ls-files -z -- "$TARGET" | git update-index -z --skip-worktree --stdin
+        rm -rf "$TARGET"
+        mkdir -p "$(dirname "$TARGET")"
+        cp -R "$SOURCE" "$TARGET"
+        # Files the built ref does not track: ignored locally, never committed.
+        echo "/$TARGET/" >> .git/info/exclude
+        rm -rf "$SIDE_ROOT"
+        # Fail here rather than in `eas build` (requireCommit) or a later diff.
+        DIRTY=$(git status --porcelain --untracked-files=all)
+        if [ -n "$DIRTY" ]; then
+          echo "::error::the working tree is not clean after the overlay:"
+          echo "$DIRTY"
+          exit 1
+        fi
+        echo "Local actions taken from ${GITHUB_SHA:0:7} (workflow commit):"
+        ls -1 "$TARGET"

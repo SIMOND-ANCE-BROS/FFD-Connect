@@ -4,6 +4,7 @@ import { ConfigService } from "@nestjs/config";
 import { firstValueFrom } from "rxjs";
 import { PrismaService } from "../../prisma/prisma.service";
 import { getErrorMessage, getErrorStack } from "../../utils/error.utils";
+import { normalizeExternalWebUrl } from "../../utils/url.utils";
 import {
   FFDCompetitionItem,
   FFDResponse,
@@ -426,7 +427,8 @@ export class CompetitionSyncService {
       programUrl: details.fileEvents?.path ?? null,
       type: details.type?.title,
       organizer: details.company?.name,
-      registrationUrl: details.communicationLink,
+      // Free text typed by the organiser: often lacks the scheme (#583).
+      registrationUrl: normalizeExternalWebUrl(details.communicationLink),
       imageUrl:
         typeof details.communicationPhoto === "string"
           ? details.communicationPhoto

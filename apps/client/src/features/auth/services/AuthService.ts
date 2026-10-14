@@ -1,7 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import api from "../../../services/api";
-import { clearTokens, getTokens, setTokens } from "../../../api/tokenStore";
+import {
+  clearTokens,
+  getTokens,
+  setTokens,
+  type Tokens,
+} from "../../../api/tokenStore";
+import { isTokenStoreUnavailable } from "../../../api/tokenStoreErrors";
 import { clearLicenseSnapshot } from "../../license/utils/licenseSnapshot";
 import { runSessionEndCleanups } from "../../../services/sessionCleanup";
 import {
@@ -231,7 +237,17 @@ export const AuthService = {
     try {
       const [json, tokens] = await Promise.all([
         AsyncStorage.getItem(AUTH_KEY),
-        getTokens(),
+        getTokens().catch((error: unknown): Tokens => {
+          // Token store unreadable (locked iPhone, #582) is NOT "logged out":
+          // keep the stored preferences (isLoggedIn, role…) and just omit the
+          // tokens. Falling back to DEFAULT_CONFIG here would let the next
+          // saveAuthConfig persist a logged-out state.
+          if (isTokenStoreUnavailable(error)) {
+            logger.info("Token store unavailable — config without tokens");
+            return {};
+          }
+          throw error;
+        }),
       ]);
       const prefs = json
         ? (JSON.parse(json) as Partial<AuthConfig>)

@@ -22,11 +22,13 @@ const DEFAULT_OPTIONS: Required<RetryOptions> = {
   backoffFactor: 2,
   maxDelay: 10000,
   shouldRetry: (error: unknown) => {
-    // Retry sur les erreurs réseau et les erreurs 5xx
+    // Retry sur les erreurs réseau et les erreurs 5xx. Pas de 429 : une
+    // limite de débit ne se lève pas avec un backoff aveugle de ~1-2 s, il
+    // faut respecter `Retry-After` (voir `parseRetryAfter`, #585).
     if (error && typeof error === "object" && "response" in error) {
       const axiosError = error as { response?: { status?: number } };
       const status = axiosError.response?.status;
-      return !status || status >= 500 || status === 408 || status === 429;
+      return !status || status >= 500 || status === 408;
     }
     // Retry sur les erreurs réseau (pas de response)
     // Retry sur les erreurs TypeError (fetch failures)
@@ -37,12 +39,7 @@ const DEFAULT_OPTIONS: Required<RetryOptions> = {
     if (error && typeof error === "object" && "statusCode" in error) {
       const httpError = error as { statusCode: number };
       const status = httpError.statusCode;
-      return (
-        status === 0 ||
-        status === 408 ||
-        status === 429 ||
-        (status >= 500 && status < 600)
-      );
+      return status === 0 || status === 408 || (status >= 500 && status < 600);
     }
     return true;
   },
@@ -127,17 +124,12 @@ export function retryAxios<T>(
 ): Promise<T> {
   return retry(axiosRequest, {
     shouldRetry: (error) => {
-      // Ne pas retry sur les erreurs 4xx (sauf 408, 429)
+      // Ne pas retry sur les erreurs 4xx (sauf 408). 429 est traité à part,
+      // une seule fois et après `Retry-After` (services/api.ts, #585).
       if (error && typeof error === "object" && "response" in error) {
         const axiosError = error as { response?: { status?: number } };
         const status = axiosError.response?.status;
-        if (
-          status &&
-          status >= 400 &&
-          status < 500 &&
-          status !== 408 &&
-          status !== 429
-        ) {
+        if (status && status >= 400 && status < 500 && status !== 408) {
           return false;
         }
       }
@@ -145,4 +137,35 @@ export function retryAxios<T>(
     },
     ...options,
   });
+}
+
+/**
+ * Longest `Retry-After` the client agrees to wait before its single 429 retry.
+ * Beyond it, waiting would freeze the screen longer than failing would cost:
+ * the request fails at once and the caller (React Query...) handles it.
+ */
+export const RETRY_AFTER_MAX_MS = 10_000;
+
+/**
+ * Parses an HTTP `Retry-After` header (delta-seconds or HTTP-date) into a
+ * delay in milliseconds. Returns `null` when the header is absent or invalid.
+ * A date in the past gives 0.
+ */
+export function parseRetryAfter(
+  value: unknown,
+  nowMs: number = Date.now(),
+): number | null {
+  const raw = Array.isArray(value) ? (value as unknown[])[0] : value;
+  if (typeof raw === "number") {
+    return Number.isFinite(raw) && raw >= 0 ? raw * 1000 : null;
+  }
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+    return Math.round(parseFloat(trimmed) * 1000);
+  }
+  const dateMs = Date.parse(trimmed);
+  if (Number.isNaN(dateMs)) return null;
+  return Math.max(0, dateMs - nowMs);
 }

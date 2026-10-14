@@ -1,8 +1,12 @@
 import { FileText, LinkIcon } from "lucide-react-native";
 import React from "react";
-import { Linking, StyleSheet, TouchableOpacity, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { AppText } from "../../../../components/AppText";
 import { useTheme } from "../../../../context/ThemeContext";
+import {
+  normalizeExternalUrl,
+  openExternalUrl,
+} from "../../../../utils/externalUrl";
 
 interface ProgramInfo {
   type?: string;
@@ -42,9 +46,14 @@ export const CompetitionProgramSection = ({
 }: ProgramInfo): React.JSX.Element => {
   const { theme } = useTheme();
   const programme = htmlToText(eventsDescription);
+  // Links come raw from the FFD data: an unusable one hides its button, and
+  // opening never rejects unhandled (FFD-CLIENT-7, #583).
+  const program = normalizeExternalUrl(programUrl);
+  const registration = normalizeExternalUrl(registrationUrl);
+  const circular = normalizeExternalUrl(circularUrl);
 
-  const open = (url?: string) => {
-    if (url) void Linking.openURL(url);
+  const open = (url: string) => {
+    void openExternalUrl(url);
   };
 
   return (
@@ -81,10 +90,10 @@ export const CompetitionProgramSection = ({
         </AppText>
       ) : null}
 
-      {programUrl ? (
+      {program ? (
         <TouchableOpacity
           style={[styles.link, { borderColor: theme.primary }]}
-          onPress={() => open(programUrl)}
+          onPress={() => open(program)}
           accessibilityRole="button"
           accessibilityLabel="Ouvrir le programme (PDF)"
           accessibilityHint="Ouvre le PDF du programme des épreuves"
@@ -96,10 +105,10 @@ export const CompetitionProgramSection = ({
         </TouchableOpacity>
       ) : null}
 
-      {registrationUrl ? (
+      {registration ? (
         <TouchableOpacity
           style={[styles.link, { borderColor: theme.primary }]}
-          onPress={() => open(registrationUrl)}
+          onPress={() => open(registration)}
           accessibilityRole="button"
           accessibilityLabel="Ouvrir la page d'inscription"
           accessibilityHint="Ouvre la page d'inscription ou d'informations"
@@ -111,10 +120,10 @@ export const CompetitionProgramSection = ({
         </TouchableOpacity>
       ) : null}
 
-      {circularUrl ? (
+      {circular ? (
         <TouchableOpacity
           style={[styles.link, { borderColor: theme.primary }]}
-          onPress={() => open(circularUrl)}
+          onPress={() => open(circular)}
           accessibilityRole="button"
           accessibilityLabel="Ouvrir la circulaire"
           accessibilityHint="Ouvre la circulaire de la compétition"

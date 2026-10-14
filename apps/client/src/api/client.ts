@@ -17,7 +17,10 @@ client.setConfig({
 });
 
 // Inject auth token on every request — from SecureStore via tokenStore, the
-// same source as the manual Axios client in services/api.ts.
+// same source as the manual Axios client in services/api.ts. If the token
+// store is unreadable (locked iPhone, #582) getAccessToken throws a
+// TokenStoreUnavailableError: the request is aborted (returned as `error`)
+// rather than sent anonymously — never treated as "logged out".
 client.interceptors.request.use(async (request) => {
   const token = await getAccessToken();
   if (token) {

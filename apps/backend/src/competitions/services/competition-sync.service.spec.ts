@@ -354,6 +354,7 @@ describe("CompetitionSyncService", () => {
           endAt: "2026-06-02T00:00:00Z",
           danceEventDescription: "Standard & Latine, Classificatrices + Opens",
           fileEvents: { path: "/uploads/programme-1.pdf" },
+          communicationLink: " www.cergy-danse.com ",
         }),
       ];
 
@@ -371,6 +372,8 @@ describe("CompetitionSyncService", () => {
       expect(prisma.competition.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
           create: expect.objectContaining({
+            // scheme-less organiser link made openable (#583)
+            registrationUrl: "https://www.cergy-danse.com",
             eventsDescription: "Standard & Latine, Classificatrices + Opens",
             programUrl: "/uploads/programme-1.pdf",
           }),

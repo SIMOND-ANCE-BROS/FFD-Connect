@@ -3,6 +3,7 @@ import {
   tracksControllerUpdate,
 } from "../../api/generated";
 import { getAccessToken } from "../../api/tokenStore";
+import { isTokenStoreUnavailable } from "../../api/tokenStoreErrors";
 import type { Track } from "../../features/player/services/TrackRepository";
 import { BACKEND_URL } from "../../config";
 import { ERROR_MESSAGES } from "../../constants/errorMessages";
@@ -12,7 +13,10 @@ async function authHeaders(): Promise<Record<string, string>> {
   try {
     const token = await getAccessToken();
     return token ? { Authorization: `Bearer ${token}` } : {};
-  } catch {
+  } catch (error) {
+    // Unreadable token store (locked iPhone, #582) is not "logged out": abort
+    // instead of sending an anonymous request.
+    if (isTokenStoreUnavailable(error)) throw error;
     return {};
   }
 }
