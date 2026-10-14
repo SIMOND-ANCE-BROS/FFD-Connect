@@ -26965,13 +26965,17 @@
           },
           "reviewedBy": {
             "nullable": true,
-            "description": "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, ou pour une demande auto-approuvée avant #271",
+            "description": "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, pour une demande auto-approuvée avant #271 (voir decidedAutomatically), ou si son compte a été supprimé depuis",
             "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/AdminRenewalPersonDto"
               }
             ]
+          },
+          "decidedAutomatically": {
+            "type": "boolean",
+            "description": "Vrai seulement pour une demande approuvée automatiquement avant #271 (approuvée, sans relecteur ni décision dans le journal d'audit). Une décision sans relecteur mais tracée vient d'un administrateur supprimé depuis ; un refus n'est jamais automatique."
           },
           "documents": {
             "type": "array",
@@ -26988,6 +26992,7 @@
           "reviewedAt",
           "user",
           "reviewedBy",
+          "decidedAutomatically",
           "documents"
         ]
       },
@@ -27118,13 +27123,17 @@
           },
           "reviewedBy": {
             "nullable": true,
-            "description": "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, ou pour une demande auto-approuvée avant #271",
+            "description": "Administrateur qui a tranché ; null tant que la demande n'est pas tranchée, pour une demande auto-approuvée avant #271 (voir decidedAutomatically), ou si son compte a été supprimé depuis",
             "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/AdminRenewalPersonDto"
               }
             ]
+          },
+          "decidedAutomatically": {
+            "type": "boolean",
+            "description": "Vrai seulement pour une demande approuvée automatiquement avant #271 (approuvée, sans relecteur ni décision dans le journal d'audit). Une décision sans relecteur mais tracée vient d'un administrateur supprimé depuis ; un refus n'est jamais automatique."
           },
           "rejectionReason": {
             "type": "string",
@@ -27172,6 +27181,7 @@
           "reviewedAt",
           "user",
           "reviewedBy",
+          "decidedAutomatically",
           "rejectionReason",
           "reviewComment",
           "documents",

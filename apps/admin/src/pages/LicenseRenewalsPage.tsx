@@ -16,6 +16,7 @@ import {
   readRenewalParams,
   RENEWALS_SORT_FIELDS,
   type RenewalsSortField,
+  reviewerLabel,
   type RenewalTab,
   TAB_OPTIONS,
   writeRenewalParams,
@@ -36,8 +37,6 @@ const validUntil = (r: Renewal) =>
   r.user.license ? formatLicenseValidUntil(r.user.license.validUntil) : '—';
 const documents = (r: Renewal) =>
   r.documents.length > 0 ? r.documents.map((d) => DOCUMENT_LABELS[d.type]).join(', ') : 'Aucun';
-const reviewer = (r: Renewal) =>
-  r.reviewedBy ? `${r.reviewedBy.firstName} ${r.reviewedBy.lastName}` : 'Validation automatique';
 
 /** Queue of licence renewals (#267): nothing here reads a document. */
 export function LicenseRenewalsPage() {
@@ -94,7 +93,7 @@ export function LicenseRenewalsPage() {
             nowrap: true,
             cell: (r: Renewal) => dateTime(r.reviewedAt),
           },
-          { key: 'reviewedBy', label: 'Par', cell: reviewer },
+          { key: 'reviewedBy', label: 'Par', cell: reviewerLabel },
         ]
       : []),
     {
@@ -153,7 +152,7 @@ export function LicenseRenewalsPage() {
             {decided && (
               <>
                 <RecordLine label="Traitée le">{dateTime(r.reviewedAt)}</RecordLine>
-                <RecordLine label="Par">{reviewer(r)}</RecordLine>
+                <RecordLine label="Par">{reviewerLabel(r)}</RecordLine>
               </>
             )}
           </RecordCard>

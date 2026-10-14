@@ -1,9 +1,11 @@
 import {
+  decidedByPhrase,
   initialLicenseNumber,
   listFilter,
   readRenewalParams,
   REJECTION_REASON_LABELS,
   REJECTION_REASONS,
+  reviewerLabel,
   writeRenewalParams,
 } from './licenseRenewals';
 
@@ -87,5 +89,27 @@ describe('initialLicenseNumber', () => {
     expect(initialLicenseNumber([doc('FFD-777')], null)).toBe('FFD-777');
     expect(initialLicenseNumber([doc()], null)).toBe('');
     expect(initialLicenseNumber([], null)).toBe('');
+  });
+});
+
+describe('who decided (#524)', () => {
+  const admin = { id: 'a1', firstName: 'Gabin', lastName: 'S' };
+
+  it('names the administrator who decided', () => {
+    const r = { reviewedBy: admin, decidedAutomatically: false };
+    expect(reviewerLabel(r)).toBe('Gabin S');
+    expect(decidedByPhrase(r)).toBe('Gabin S');
+  });
+
+  it('an automatic approval from before #271', () => {
+    const r = { reviewedBy: null, decidedAutomatically: true };
+    expect(reviewerLabel(r)).toBe('Validation automatique');
+    expect(decidedByPhrase(r)).toBe('la validation automatique');
+  });
+
+  it('a decision whose administrator was deleted since is never automatic', () => {
+    const r = { reviewedBy: null, decidedAutomatically: false };
+    expect(reviewerLabel(r)).toBe('Administrateur supprimé');
+    expect(decidedByPhrase(r)).toBe('un administrateur supprimé');
   });
 });
