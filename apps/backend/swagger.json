@@ -8669,7 +8669,7 @@
     },
     "/admin/tracks": {
       "get": {
-        "description": "Toutes les musiques, y compris blacklistées, en attente, en erreur et d'ambiance (pas de filtre bibliothèque). Plus récentes d'abord. Filtres : q (titre ou artiste, 2 à 100 caractères), status, blacklisted, titleMasked, style, ambiance.",
+        "description": "Toutes les musiques, y compris blacklistées, en attente, en erreur et d'ambiance (pas de filtre bibliothèque). Plus récentes d'abord. Filtres : q (titre ou artiste, 2 à 100 caractères), status, blacklisted, style, ambiance.",
         "operationId": "AdminTracksController_list",
         "parameters": [
           {
@@ -8719,15 +8719,6 @@
             "required": false,
             "in": "query",
             "description": "true : seulement les musiques blacklistées ; false : seulement les autres",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "titleMasked",
-            "required": false,
-            "in": "query",
-            "description": "true : seulement les titres masqués ; false : seulement les autres",
             "schema": {
               "type": "boolean"
             }
@@ -25515,9 +25506,6 @@
           "tracksBlacklisted": {
             "type": "number"
           },
-          "tracksMasked": {
-            "type": "number"
-          },
           "correctionsPending": {
             "type": "number"
           },
@@ -25555,7 +25543,6 @@
         "required": [
           "tracksByStatus",
           "tracksBlacklisted",
-          "tracksMasked",
           "correctionsPending",
           "correctionsApproved",
           "correctionsRejected",
@@ -25955,7 +25942,7 @@
           },
           "title": {
             "type": "string",
-            "description": "Titre (masqué pour un non-admin si titleMasked)"
+            "description": "Titre"
           },
           "artist": {
             "type": "string",
@@ -25988,10 +25975,6 @@
             "type": "string",
             "nullable": true
           },
-          "titleMasked": {
-            "type": "boolean",
-            "description": "Titre masqué côté non-admin"
-          },
           "blacklisted": {
             "type": "boolean",
             "description": "Piste retirée de la bibliothèque (admin)"
@@ -26015,7 +25998,6 @@
           "filename",
           "bpm",
           "rawBpm",
-          "titleMasked",
           "blacklisted",
           "clashTimecodes",
           "createdAt"
@@ -26039,10 +26021,6 @@
           "bpm": {
             "type": "number",
             "description": "BPM/MPM corrigé par l'utilisateur"
-          },
-          "titleMasked": {
-            "type": "boolean",
-            "description": "Modération (ADMIN) — masque le titre réel pour les clients non-admin."
           },
           "blacklisted": {
             "type": "boolean",
@@ -26070,8 +26048,7 @@
             "type": "string"
           },
           "title": {
-            "type": "string",
-            "description": "Titre réel, même masqué"
+            "type": "string"
           },
           "artist": {
             "type": "string"
@@ -26095,9 +26072,6 @@
             "items": {
               "type": "number"
             }
-          },
-          "titleMasked": {
-            "type": "boolean"
           },
           "blacklisted": {
             "type": "boolean"
@@ -26140,7 +26114,6 @@
           "bpm",
           "rawBpm",
           "clashTimecodes",
-          "titleMasked",
           "blacklisted",
           "status",
           "sourceKey",
@@ -26417,9 +26390,6 @@
               "type": "number"
             }
           },
-          "titleMasked": {
-            "type": "boolean"
-          },
           "blacklisted": {
             "type": "boolean"
           },
@@ -26435,7 +26405,6 @@
           "style",
           "bpm",
           "clashTimecodes",
-          "titleMasked",
           "blacklisted",
           "filename"
         ]

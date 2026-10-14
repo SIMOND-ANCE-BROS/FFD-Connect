@@ -94,30 +94,21 @@ describe("TracksService", () => {
       );
     });
 
-    it("masks the title for non-admins when titleMasked is set", async () => {
-      const masked = { id: "1", title: "Real Title", titleMasked: true };
+    it("always returns the real title and never selects titleMasked (#560)", async () => {
+      const track = { id: "1", title: "Real Title" };
       // @ts-expect-error - testing partial return
-      prisma.track.findMany.mockResolvedValue([masked]);
+      prisma.track.findMany.mockResolvedValue([track]);
       prisma.track.count.mockResolvedValue(1);
 
-      const result = await service.findAll(undefined, false);
+      const result = await service.findAll();
 
       expect(result.data[0]).toEqual(
-        expect.objectContaining({ title: "Titre masqué", titleMasked: true }),
+        expect.objectContaining({ title: "Real Title" }),
       );
-    });
-
-    it("keeps the real title for admins even when titleMasked is set", async () => {
-      const masked = { id: "1", title: "Real Title", titleMasked: true };
-      // @ts-expect-error - testing partial return
-      prisma.track.findMany.mockResolvedValue([masked]);
-      prisma.track.count.mockResolvedValue(1);
-
-      const result = await service.findAll(undefined, true);
-
-      expect(result.data[0]).toEqual(
-        expect.objectContaining({ title: "Real Title", titleMasked: true }),
-      );
+      const { select } = prisma.track.findMany.mock.calls[0][0] as {
+        select: Record<string, boolean>;
+      };
+      expect(select.titleMasked).toBeUndefined();
     });
   });
 
@@ -151,7 +142,7 @@ describe("TracksService", () => {
             filename: true,
             style: true,
             bpm: true,
-            titleMasked: true,
+            blacklisted: true,
           }),
         }),
       );
@@ -171,32 +162,20 @@ describe("TracksService", () => {
       expect(select.jobId).toBeUndefined();
     });
 
-    it("returns the tracks and masks titles for non-admins", async () => {
+    it("returns the tracks with their real titles", async () => {
       const tracks = [
-        { id: "a1", title: "Lounge", artist: "Ambiance", titleMasked: false },
-        { id: "a2", title: "Secret", style: "ambiance", titleMasked: true },
+        { id: "a1", title: "Lounge", artist: "Ambiance" },
+        { id: "a2", title: "Secret", style: "ambiance" },
       ];
       // @ts-expect-error - testing partial return
       prisma.track.findMany.mockResolvedValue(tracks);
 
-      const result = await service.findAmbiance(false);
+      const result = await service.findAmbiance();
 
       expect(result).toEqual([
         expect.objectContaining({ id: "a1", title: "Lounge" }),
-        expect.objectContaining({ id: "a2", title: "Titre masqué" }),
+        expect.objectContaining({ id: "a2", title: "Secret" }),
       ]);
-    });
-
-    it("keeps real titles for admins", async () => {
-      const tracks = [{ id: "a2", title: "Secret", titleMasked: true }];
-      // @ts-expect-error - testing partial return
-      prisma.track.findMany.mockResolvedValue(tracks);
-
-      const result = await service.findAmbiance(true);
-
-      expect(result[0]).toEqual(
-        expect.objectContaining({ title: "Secret", titleMasked: true }),
-      );
     });
   });
 
@@ -208,7 +187,6 @@ describe("TracksService", () => {
       style: "Rumba",
       status: TrackStatus.READY,
       blacklisted: false,
-      titleMasked: false,
     };
 
     it("returns a library track to a non-admin", async () => {
@@ -270,22 +248,6 @@ describe("TracksService", () => {
 
       expect(prisma.track.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: "track-1" } }),
-      );
-    });
-
-    it("masks the title of a visible masked track for a non-admin", async () => {
-      useTrackTable(prisma, [{ ...visibleTrack, titleMasked: true }]);
-
-      await expect(service.findOne("track-1", false)).resolves.toEqual(
-        expect.objectContaining({ title: "Titre masqué", titleMasked: true }),
-      );
-    });
-
-    it("keeps the real title of a masked track for an admin", async () => {
-      useTrackTable(prisma, [{ ...visibleTrack, titleMasked: true }]);
-
-      await expect(service.findOne("track-1", true)).resolves.toEqual(
-        expect.objectContaining({ title: "Test", titleMasked: true }),
       );
     });
   });
@@ -401,7 +363,7 @@ describe("TracksService", () => {
       expect(prisma.track.update).not.toHaveBeenCalled();
     });
 
-    it("lets an admin set the moderation flags (titleMasked, blacklisted)", async () => {
+    it("lets an admin set the blacklisted moderation flag", async () => {
       prisma.track.findUnique.mockResolvedValue(
         // @ts-expect-error - testing partial return
         { submittedById: "owner", rawBpm: 0 },
@@ -410,13 +372,12 @@ describe("TracksService", () => {
       prisma.track.update.mockResolvedValue({});
 
       await service.updateTrack("t1", "admin", true, {
-        titleMasked: true,
         blacklisted: true,
       });
 
       expect(prisma.track.update).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: { titleMasked: true, blacklisted: true },
+          data: { blacklisted: true },
         }),
       );
     });
@@ -428,7 +389,6 @@ describe("TracksService", () => {
       );
 
       await service.updateTrack("t1", "user-1", false, {
-        titleMasked: true,
         blacklisted: true,
       });
 
@@ -490,7 +450,6 @@ describe("TracksService", () => {
         artist: "A",
         style: "Tango",
         bpm: 33,
-        titleMasked: false,
         blacklisted: false,
         clashTimecodes: [],
         status: TrackStatus.READY,
@@ -500,7 +459,6 @@ describe("TracksService", () => {
         artist: "A",
         style: "Rumba",
         bpm: 26,
-        titleMasked: false,
         blacklisted: true,
         clashTimecodes: [],
         status: TrackStatus.READY,
@@ -535,7 +493,6 @@ describe("TracksService", () => {
         artist: "A",
         style: null,
         bpm: 0,
-        titleMasked: false,
         blacklisted: false,
         clashTimecodes: [],
         status: TrackStatus.READY,

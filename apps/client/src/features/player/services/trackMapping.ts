@@ -26,7 +26,6 @@ export function toTrackData(
     style: track.style ?? "Importé",
     artwork: repo.getArtworkUrl(track.artwork),
     playlist: "Tout",
-    titleMasked: track.titleMasked ?? false,
     isDownloaded,
     clashTimecodes: track.clashTimecodes,
   };

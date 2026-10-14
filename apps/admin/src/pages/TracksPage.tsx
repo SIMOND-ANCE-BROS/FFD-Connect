@@ -46,7 +46,6 @@ const isTracksSortField = (value: string): value is TracksSortField =>
 const FILTERS_CLEARED: Partial<TracksUrlState> = {
   status: null,
   blacklisted: false,
-  titleMasked: false,
   ambiance: false,
   style: '',
 };
@@ -54,11 +53,6 @@ const FILTERS_CLEARED: Partial<TracksUrlState> = {
 function TitleBadges({ track, size }: { track: AdminTrackDto; size?: 'xs' }) {
   return (
     <>
-      {track.titleMasked && (
-        <Badge size={size} color="gray" variant="light">
-          Titre masqué
-        </Badge>
-      )}
       {track.blacklisted && (
         <Badge size={size} color="red" variant="light">
           Blacklistée
@@ -113,18 +107,13 @@ export function TracksPage() {
         </Group>
       ),
       filter: {
-        active: state.blacklisted || state.titleMasked,
+        active: state.blacklisted,
         content: (
           <Stack gap="xs">
             <Checkbox
               label="Blacklistées"
               checked={state.blacklisted}
               onChange={(e) => update({ blacklisted: e.currentTarget.checked })}
-            />
-            <Checkbox
-              label="Titre masqué"
-              checked={state.titleMasked}
-              onChange={(e) => update({ titleMasked: e.currentTarget.checked })}
             />
           </Stack>
         ),

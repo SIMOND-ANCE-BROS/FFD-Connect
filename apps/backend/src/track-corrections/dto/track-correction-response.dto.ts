@@ -47,9 +47,6 @@ export class TrackCorrectionTrackSnapshotDto {
   clashTimecodes!: number[];
 
   @ApiProperty()
-  titleMasked!: boolean;
-
-  @ApiProperty()
   blacklisted!: boolean;
 
   @ApiProperty({

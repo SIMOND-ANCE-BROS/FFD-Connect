@@ -31,7 +31,6 @@ const item = (overrides: Record<string, unknown> = {}) => ({
     style: 'Paso Doble',
     bpm: 60,
     clashTimecodes: [40, 80],
-    titleMasked: false,
     blacklisted: false,
     filename: 'espana.mp3',
   },
@@ -111,15 +110,6 @@ describe('ModerationPage', () => {
     expect(spy).toHaveBeenCalledWith({
       query: { status: 'PENDING', skip: 0, take: 50 },
     });
-  });
-
-  it('flags a masked title next to the real one', async () => {
-    vi.spyOn(sdk, 'trackCorrectionsControllerList').mockResolvedValue(
-      page([item({ track: { ...item().track, titleMasked: true } })]) as never,
-    );
-    renderPage();
-    const row = (await screen.findByText('España Cañí')).closest('tr') as HTMLElement;
-    expect(within(row).getByText('Titre masqué')).toBeInTheDocument();
   });
 
   it('restores status, reasons, search and page from the URL', async () => {

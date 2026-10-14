@@ -45,7 +45,6 @@ const stats = {
   content: {
     tracksByStatus: { READY: 0, PENDING: 0, ERROR: 0 },
     tracksBlacklisted: 0,
-    tracksMasked: 0,
     correctionsPending: 0,
     correctionsApproved: 0,
     correctionsRejected: 0,

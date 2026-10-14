@@ -1,6 +1,5 @@
 import {
   AMBIANCE_TRACK_WHERE,
-  MASKED_TITLE_LABEL,
   NOT_AMBIANCE_TRACK_WHERE,
   publicTrackName,
   REMOVED_TRACK_LABEL,
@@ -10,7 +9,6 @@ describe("publicTrackName", () => {
   const track = {
     title: "Vrai titre",
     artist: "Artiste",
-    titleMasked: false,
     blacklisted: false,
   };
 
@@ -21,17 +19,19 @@ describe("publicTrackName", () => {
     });
   });
 
-  it("remplace le titre masqué par le libellé neutre, garde l'artiste", () => {
-    expect(publicTrackName({ ...track, titleMasked: true })).toEqual({
-      title: MASKED_TITLE_LABEL,
+  it("ignore l'ancien drapeau titleMasked encore présent en base (#560)", () => {
+    const legacy = { ...track, titleMasked: true };
+    expect(publicTrackName(legacy)).toEqual({
+      title: "Vrai titre",
       artist: "Artiste",
     });
   });
 
-  it("ne révèle ni titre ni artiste d'une piste blacklistée (même masquée)", () => {
-    expect(
-      publicTrackName({ ...track, blacklisted: true, titleMasked: true }),
-    ).toEqual({ title: REMOVED_TRACK_LABEL, artist: "" });
+  it("ne révèle ni titre ni artiste d'une piste blacklistée", () => {
+    expect(publicTrackName({ ...track, blacklisted: true })).toEqual({
+      title: REMOVED_TRACK_LABEL,
+      artist: "",
+    });
   });
 });
 

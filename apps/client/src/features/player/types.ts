@@ -9,9 +9,6 @@ export interface TrackData {
   baseBpm: number;
   playlist?: string;
   style?: string;
-  /** Modération admin — indique que le titre est masqué (affiche un indicateur
-   *  côté admin ; les non-admins reçoivent déjà un libellé neutre du backend). */
-  titleMasked?: boolean;
   /** Copie locale présente (favori téléchargé ou import) → jouable hors-ligne (#416). */
   isDownloaded?: boolean;
   /** Paso doble : timecodes (secondes) des appels/coups affichés sur le lecteur (#paso-clashes). */

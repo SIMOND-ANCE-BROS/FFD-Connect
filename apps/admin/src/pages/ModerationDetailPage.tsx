@@ -129,11 +129,6 @@ function CorrectionReview({ id }: { id: string }) {
       <Group justify="space-between">
         <Group>
           <PageHeader title={c.track.title} />
-          {c.track.titleMasked && (
-            <Badge color="gray" variant="light">
-              Titre masqué
-            </Badge>
-          )}
           {c.track.blacklisted && (
             <Badge color="red" variant="light">
               Retirée

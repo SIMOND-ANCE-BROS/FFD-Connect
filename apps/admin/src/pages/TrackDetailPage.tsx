@@ -45,43 +45,24 @@ import {
   TRACK_STATUS_BADGES,
 } from '../lib/tracks';
 
-type Toggle = 'titleMasked' | 'blacklisted';
-
 interface ToggleCopy {
   title: string;
   text: string;
   confirm: string;
 }
 
-const TOGGLE_COPY: Record<Toggle, { on: ToggleCopy; off: ToggleCopy }> = {
-  titleMasked: {
-    on: {
-      title: 'Masquer le titre',
-      text: "Les utilisateurs de l'app verront « Titre masqué » à la place du titre. Les admins voient toujours le vrai titre.",
-      confirm: 'Masquer',
-    },
-    off: {
-      title: 'Afficher le titre',
-      text: "Le vrai titre sera de nouveau visible dans l'app.",
-      confirm: 'Afficher',
-    },
+const BLACKLIST_COPY: { on: ToggleCopy; off: ToggleCopy } = {
+  on: {
+    title: 'Blacklister la musique',
+    text: "La musique sera retirée de la bibliothèque de l'app pour tous les utilisateurs.",
+    confirm: 'Blacklister',
   },
-  blacklisted: {
-    on: {
-      title: 'Blacklister la musique',
-      text: "La musique sera retirée de la bibliothèque de l'app pour tous les utilisateurs.",
-      confirm: 'Blacklister',
-    },
-    off: {
-      title: 'Retirer de la blacklist',
-      text: "La musique reviendra dans la bibliothèque de l'app si elle est prête.",
-      confirm: 'Retirer de la blacklist',
-    },
+  off: {
+    title: 'Retirer de la blacklist',
+    text: "La musique reviendra dans la bibliothèque de l'app si elle est prête.",
+    confirm: 'Retirer de la blacklist',
   },
 };
-
-const toggleBody = (key: Toggle, value: boolean): UpdateTrackDto =>
-  key === 'titleMasked' ? { titleMasked: value } : { blacklisted: value };
 
 export function TrackDetailPage() {
   const { id = '' } = useParams();
@@ -104,7 +85,8 @@ function TrackEditor({ id }: { id: string }) {
   const [values, setValues] = useState<TrackEditValues | null>(null);
   const [bpmTouched, setBpmTouched] = useState(false);
   const [pending, setPending] = useState<TrackPatch | null>(null);
-  const [toggle, setToggle] = useState<{ key: Toggle; value: boolean } | null>(null);
+  // Target value of the blacklist switch awaiting confirmation.
+  const [toggle, setToggle] = useState<boolean | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [typedTitle, setTypedTitle] = useState('');
 
@@ -130,7 +112,7 @@ function TrackEditor({ id }: { id: string }) {
   const save = useMutation({
     mutationFn: (body: UpdateTrackDto) => ensureOk(tracksControllerUpdate({ path: { id }, body })),
     onSuccess: (_, body) => {
-      if (!('titleMasked' in body) && !('blacklisted' in body)) resync.current = true;
+      if (!('blacklisted' in body)) resync.current = true;
       refresh();
       setPending(null);
       setToggle(null);
@@ -165,7 +147,7 @@ function TrackEditor({ id }: { id: string }) {
   const preview = resultingBpm(t, patch);
   const change = pending ? trackChangePreview(t, pending) : null;
   const badge = TRACK_STATUS_BADGES[t.status];
-  const toggleCopy = toggle ? TOGGLE_COPY[toggle.key][toggle.value ? 'on' : 'off'] : null;
+  const toggleCopy = toggle === null ? null : BLACKLIST_COPY[toggle ? 'on' : 'off'];
   const blocked = t.pendingCorrections > 0;
   const deleteConflict = remove.isError && isConflict(remove.error);
   const pendingLabel = blocked
@@ -177,10 +159,10 @@ function TrackEditor({ id }: { id: string }) {
   const saving = save.isPending;
   const removing = remove.isPending;
   const busy = saving || removing;
-  const askToggle = (key: Toggle, value: boolean) => {
+  const askBlacklist = (value: boolean) => {
     if (busy) return;
     save.reset();
-    setToggle({ key, value });
+    setToggle(value);
   };
   const closeSave = () => {
     if (!saving) setPending(null);
@@ -203,11 +185,6 @@ function TrackEditor({ id }: { id: string }) {
       <Group justify="space-between">
         <Group>
           <PageHeader title={t.title} />
-          {t.titleMasked && (
-            <Badge color="gray" variant="light">
-              Titre masqué
-            </Badge>
-          )}
           {t.blacklisted && (
             <Badge color="red" variant="light">
               Blacklistée
@@ -323,16 +300,10 @@ function TrackEditor({ id }: { id: string }) {
       <Card withBorder>
         <Stack gap="xs">
           <Switch
-            label="Masquer le titre"
-            checked={t.titleMasked}
-            disabled={busy}
-            onChange={(e) => askToggle('titleMasked', e.currentTarget.checked)}
-          />
-          <Switch
             label="Blacklister"
             checked={t.blacklisted}
             disabled={busy}
-            onChange={(e) => askToggle('blacklisted', e.currentTarget.checked)}
+            onChange={(e) => askBlacklist(e.currentTarget.checked)}
           />
           {/* Outside the Switch: a description inside its <label> would rename it. */}
           <Text size="xs" c="dimmed">
@@ -372,7 +343,7 @@ function TrackEditor({ id }: { id: string }) {
                 variant="light"
                 color="red"
                 disabled={busy}
-                onClick={() => askToggle('blacklisted', true)}
+                onClick={() => askBlacklist(true)}
               >
                 Blacklister à la place
               </Button>
@@ -442,7 +413,7 @@ function TrackEditor({ id }: { id: string }) {
         withCloseButton={!saving}
         title={toggleCopy?.title}
       >
-        {toggle && toggleCopy && (
+        {toggle !== null && toggleCopy && (
           <Stack>
             <Text size="sm">{toggleCopy.text}</Text>
             {save.isError && (
@@ -453,9 +424,9 @@ function TrackEditor({ id }: { id: string }) {
                 Annuler
               </Button>
               <Button
-                color={toggle.key === 'blacklisted' && toggle.value ? 'red' : undefined}
+                color={toggle ? 'red' : undefined}
                 loading={saving}
-                onClick={() => !saving && save.mutate(toggleBody(toggle.key, toggle.value))}
+                onClick={() => !saving && save.mutate({ blacklisted: toggle })}
               >
                 {toggleCopy.confirm}
               </Button>
@@ -501,7 +472,7 @@ function TrackEditor({ id }: { id: string }) {
                 variant="light"
                 onClick={() => {
                   closeDelete();
-                  askToggle('blacklisted', true);
+                  askBlacklist(true);
                 }}
               >
                 Blacklister à la place

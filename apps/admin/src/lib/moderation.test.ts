@@ -176,7 +176,6 @@ const correction: TrackCorrectionAdminDto = {
     style: 'Paso Doble',
     bpm: 60,
     clashTimecodes: [40, 80],
-    titleMasked: false,
     blacklisted: false,
     filename: 'España Cañí.mp3',
   },

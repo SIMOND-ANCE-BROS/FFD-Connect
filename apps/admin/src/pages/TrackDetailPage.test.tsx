@@ -19,7 +19,6 @@ const base = {
   bpm: 50,
   rawBpm: 100,
   clashTimecodes: [],
-  titleMasked: false,
   blacklisted: false,
   status: 'READY',
   sourceKey: 'apple:1',
@@ -205,13 +204,11 @@ describe('TrackDetailPage', () => {
     expect(update).toHaveBeenCalledWith({ path: { id: 't1' }, body: { blacklisted: true } });
   });
 
-  it('asks before masking the title', async () => {
-    const update = vi.spyOn(sdk, 'tracksControllerUpdate').mockResolvedValue(ok({}) as never);
+  it('no longer offers to mask the title (#560)', async () => {
     renderPage();
-    await user.click(await screen.findByLabelText('Masquer le titre'));
-    const dialog = await screen.findByRole('dialog', { name: 'Masquer le titre' });
-    await user.click(within(dialog).getByRole('button', { name: 'Masquer' }));
-    expect(update).toHaveBeenCalledWith({ path: { id: 't1' }, body: { titleMasked: true } });
+    await screen.findByLabelText('Blacklister');
+    expect(screen.queryByLabelText('Masquer le titre')).not.toBeInTheDocument();
+    expect(screen.queryByText('Titre masqué')).not.toBeInTheDocument();
   });
 
   it('deletes only once the title is typed, then goes back to the list', async () => {
@@ -289,14 +286,14 @@ describe('TrackDetailPage', () => {
     renderPage();
     // Every refetch after the first load answers the toggled track.
     vi.mocked(sdk.adminTracksControllerFindOne).mockResolvedValue(
-      ok({ ...base, titleMasked: true }) as never,
+      ok({ ...base, blacklisted: true }) as never,
     );
     const title = await screen.findByLabelText('Titre');
     await fill(user, title, 'Nouveau titre');
-    await user.click(screen.getByLabelText('Masquer le titre'));
-    const dialog = await screen.findByRole('dialog', { name: 'Masquer le titre' });
-    await user.click(within(dialog).getByRole('button', { name: 'Masquer' }));
-    await waitFor(() => expect(screen.getByLabelText('Masquer le titre')).toBeChecked());
+    await user.click(screen.getByLabelText('Blacklister'));
+    const dialog = await screen.findByRole('dialog', { name: 'Blacklister la musique' });
+    await user.click(within(dialog).getByRole('button', { name: 'Blacklister' }));
+    await waitFor(() => expect(screen.getByLabelText('Blacklister')).toBeChecked());
     expect(screen.getByLabelText('Titre')).toHaveValue('Nouveau titre');
     expect(screen.getByRole('button', { name: 'Enregistrer' })).toBeEnabled();
   });

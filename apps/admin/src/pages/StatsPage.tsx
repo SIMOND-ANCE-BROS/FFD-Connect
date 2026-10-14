@@ -211,7 +211,6 @@ function StatsContent({ s }: { s: AdminStatsDto }) {
           <Figure label="En attente" value={t.tracksByStatus.PENDING} />
           <Figure label="En erreur" value={t.tracksByStatus.ERROR} />
           <Figure label="Blacklistées" value={t.tracksBlacklisted} />
-          <Figure label="Titre masqué" value={t.tracksMasked} />
           <Figure label="Propositions à traiter" value={t.correctionsPending} />
           <Figure
             label="Approuvées sur la période"

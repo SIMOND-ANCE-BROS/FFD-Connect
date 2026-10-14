@@ -74,7 +74,6 @@ const correction = (
     style: "Paso Doble",
     bpm: 60,
     clashTimecodes: [40, 80],
-    titleMasked: false,
     blacklisted: false,
     filename: "espana-cani.mp3",
   },
