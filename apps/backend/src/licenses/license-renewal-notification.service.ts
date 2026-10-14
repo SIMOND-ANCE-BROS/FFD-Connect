@@ -1,11 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { LicenseRenewalStatus, NotificationType } from "@prisma/client";
 import {
-  LicenseRenewalStatus,
-  NotificationType,
-  UserRole,
-} from "@prisma/client";
-import { withActiveRole } from "../auth/roles";
-import { MAX_ADMINS_NOTIFIED } from "../notifications/admin-recipients";
+  adminRecipientsOrderBy,
+  adminRecipientsWhere,
+  MAX_ADMINS_NOTIFIED,
+} from "../notifications/admin-recipients";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { getErrorMessage } from "../utils/error.utils";
@@ -75,9 +74,9 @@ export class LicenseRenewalNotificationService {
   async notifyToReview(requestId: string): Promise<void> {
     try {
       const admins = await this.prisma.user.findMany({
-        where: { ...withActiveRole(UserRole.ADMIN), disabledAt: null },
+        where: adminRecipientsWhere(),
         select: idOnlySelect,
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        orderBy: adminRecipientsOrderBy,
         take: MAX_ADMINS_NOTIFIED,
       });
       await this.notifications.sendToUsers(

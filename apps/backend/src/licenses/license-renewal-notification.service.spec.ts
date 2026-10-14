@@ -1,14 +1,12 @@
 import { Logger } from "@nestjs/common";
-import {
-  LicenseRenewalStatus,
-  NotificationType,
-  UserRole,
-} from "@prisma/client";
-import { withActiveRole } from "../auth/roles";
+import { LicenseRenewalStatus, NotificationType } from "@prisma/client";
 import { NOTIFICATION_CATALOG } from "../notifications/notification-catalog";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { MAX_ADMINS_NOTIFIED } from "../notifications/admin-recipients";
+import {
+  adminRecipientsWhere,
+  MAX_ADMINS_NOTIFIED,
+} from "../notifications/admin-recipients";
 import {
   LICENSE_RENEWAL_PUSH_COPY,
   LicenseRenewalNotificationService,
@@ -44,7 +42,7 @@ describe("LicenseRenewalNotificationService", () => {
 
       expect(prisma.user.findMany).toHaveBeenCalledWith({
         // A disabled administrator cannot act on it: skipped.
-        where: { ...withActiveRole(UserRole.ADMIN), disabledAt: null },
+        where: adminRecipientsWhere(),
         select: { id: true },
         // Deterministic subset when the bound is reached.
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],

@@ -12,7 +12,6 @@ import {
   TrackCorrectionReason,
   TrackCorrectionStatus,
   TrackStatus,
-  UserRole,
 } from "@prisma/client";
 import {
   createMockPrismaService,
@@ -23,9 +22,12 @@ import {
   TrackRow,
   useTrackTable,
 } from "../../test/mocks/track-where.mock";
-import { withActiveRole } from "../auth/roles";
 import { AdminAuditService } from "../admin/admin-audit.service";
-import { MAX_ADMINS_NOTIFIED } from "../notifications/admin-recipients";
+import {
+  adminRecipientsOrderBy,
+  adminRecipientsWhere,
+  MAX_ADMINS_NOTIFIED,
+} from "../notifications/admin-recipients";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { TracksService } from "../tracks/tracks.service";
@@ -431,8 +433,10 @@ describe("TrackCorrectionsService", () => {
       });
 
       expect(prisma.user.findMany).toHaveBeenCalledWith({
-        where: withActiveRole(UserRole.ADMIN),
+        // #301: a disabled administrator is not notified.
+        where: adminRecipientsWhere(),
         select: { id: true },
+        orderBy: adminRecipientsOrderBy,
         take: MAX_ADMINS_NOTIFIED,
       });
       // Un seul appel pour tous les administrateurs (#38) au lieu d'un par

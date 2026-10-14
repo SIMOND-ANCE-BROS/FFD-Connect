@@ -303,6 +303,10 @@ describe("AdminClubsService", () => {
         where: { revoked: false, user: { clubId: "c1", role: UserRole.CLUB } },
         data: { revoked: true, revokedAt: expect.any(Date) as unknown },
       });
+      // #301: same scope for the push devices, licensees keep theirs.
+      expect(prisma.deviceToken.deleteMany).toHaveBeenCalledWith({
+        where: { user: { clubId: "c1", role: UserRole.CLUB } },
+      });
       expect(audit.record).toHaveBeenCalledWith(prisma, {
         actorId: "admin-1",
         action: "CLUB_DISABLE",
@@ -321,6 +325,7 @@ describe("AdminClubsService", () => {
         disabledAt: null,
       });
       expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(prisma.deviceToken.deleteMany).not.toHaveBeenCalled();
       expect(audit.record).toHaveBeenCalledWith(
         prisma,
         expect.objectContaining({ action: "CLUB_ENABLE" }),
