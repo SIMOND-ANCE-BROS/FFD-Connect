@@ -1,3 +1,4 @@
+import { PRODUCTION_BCRYPT_ROUNDS } from "../../test/mocks/bcrypt.mock";
 import { emailLookupFor } from "../../test/mocks/email-lookup.mock";
 import {
   BadRequestException,
@@ -12,6 +13,16 @@ import * as bcrypt from "bcrypt";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuthService } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
+
+// Real hashes at the minimum cost: cost 12 ran these tests past their budget
+// under load (#546). The requested cost is asserted below.
+jest.mock("bcrypt", () =>
+  jest
+    .requireActual<
+      typeof import("../../test/mocks/bcrypt.mock")
+    >("../../test/mocks/bcrypt.mock")
+    .cheapBcrypt(),
+);
 
 describe("AuthService.register", () => {
   let authService: AuthService;
@@ -78,11 +89,12 @@ describe("AuthService.register", () => {
   it("registers a new user with a valid unclaimed license", async () => {
     prisma.user.findUnique.mockResolvedValue(null);
     prisma.license.findUnique.mockResolvedValue(validLicense);
+    const userCreate = jest.fn();
     prisma.$transaction.mockImplementation(
       async (fn: (tx: unknown) => Promise<unknown>) => {
         const tx = {
           user: {
-            create: jest.fn().mockResolvedValue({
+            create: userCreate.mockResolvedValue({
               id: "user-1",
               email: "test@example.com",
               firstName: "",
@@ -113,6 +125,14 @@ describe("AuthService.register", () => {
     expect(result.refresh_token).toBe("refresh-tok");
     expect(result.user.email).toBe("test@example.com");
     expect(result.user.clubName).toBe("Club Paris Danse");
+    // Stored as a bcrypt hash of the chosen password, at the production cost.
+    expect(bcrypt.hash).toHaveBeenCalledWith(
+      "MonPass1!abc",
+      PRODUCTION_BCRYPT_ROUNDS,
+    );
+    const { password } = userCreate.mock.calls[0][0].data;
+    expect(password).toMatch(/^\$2[aby]\$/);
+    await expect(bcrypt.compare("MonPass1!abc", password)).resolves.toBe(true);
   });
 
   it("rejects if email already exists", async () => {
