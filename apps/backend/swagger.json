@@ -2060,6 +2060,15 @@
               "type": "string",
               "enum": ["asc", "desc"]
             }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : name (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; status (enum [active, disabled] : in|notIn) ; registrationMode (enum [CLUB_AND_MEMBERS_PENDING, CLUB_ONLY, MEMBERS_AUTO_CONFIRM] : in|notIn) ; createdAt (date : lt|gt|eq|between)",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3532,6 +3541,15 @@
               "type": "string",
               "enum": ["asc", "desc"]
             }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : createdAt (date : lt|gt|eq|between) ; actor (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; action (enum [USER_UPDATE, CLUB_ACCOUNT_CREATE, INVITATION_RESEND, USER_CREATE, USER_DISABLE, USER_ENABLE, USER_DELETE, USER_IDENTIFIERS_UPDATE, CLUB_CREATE, CLUB_UPDATE, CLUB_DISABLE, CLUB_ENABLE, CLUB_DELETE, TRACK_CORRECTION_APPROVE, TRACK_CORRECTION_REJECT, TRACK_CREATE, TRACK_UPDATE, TRACK_DELETE, LICENSE_RENEWAL_VIEW, LICENSE_RENEWAL_DOCUMENT_VIEW, LICENSE_RENEWAL_APPROVE, LICENSE_RENEWAL_REJECT] : in|notIn) ; targetType (enum [USER, CLUB, TRACK_CORRECTION, TRACK, LICENSE_RENEWAL] : in|notIn)",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3843,6 +3861,15 @@
             "schema": {
               "type": "string",
               "enum": ["asc", "desc"]
+            }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : name (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; email (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; role (enum [LICENSEE, CLUB, STAFF, ADMIN] : in|notIn) ; status (enum [active, disabled] : in|notIn) ; club (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; category (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; ageGroup (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; licenseNumber (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; createdAt (date : lt|gt|eq|between) ; lastLoginAt (date : lt|gt|eq|between|isEmpty|isNotEmpty)",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -8761,6 +8788,15 @@
               "type": "string",
               "enum": ["asc", "desc"]
             }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : title (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; artist (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; style (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; bpm (number : lt|gt|eq|between) ; status (enum [PENDING, READY, ERROR] : in|notIn) ; createdAt (date : lt|gt|eq|between)",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -9838,6 +9874,15 @@
             "schema": {
               "type": "string",
               "enum": ["asc", "desc"]
+            }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : track (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; reason (enum [TITLE, ARTIST, DANCE, MPM, PASO_CLASH, OTHER, DELETE] : in|notIn) ; proposer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; createdAt (date : lt|gt|eq|between) ; message (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; reviewedAt (date : lt|gt|eq|between|isEmpty|isNotEmpty) ; reviewer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty)",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -22695,6 +22740,15 @@
               "type": "string",
               "enum": ["asc", "desc"]
             }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : name (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; licenseNumber (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; validUntil (date : lt|gt|eq|between|isEmpty|isNotEmpty) ; submittedAt (date : lt|gt|eq|between|isEmpty|isNotEmpty) ; reviewedAt (date : lt|gt|eq|between|isEmpty|isNotEmpty) ; reviewer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty)",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -24173,6 +24227,154 @@
             "description": "Raison de l'impersonation (obligatoire pour le staff, journalisée). Elle est restituée à l'utilisateur ciblé dans son export RGPD (GET /users/me/export) : n'y écrire aucune donnée personnelle d'un tiers."
           }
         }
+      },
+      "ListFilterOp": {
+        "type": "string",
+        "enum": [
+          "contains",
+          "notContains",
+          "equals",
+          "startsWith",
+          "isEmpty",
+          "isNotEmpty",
+          "lt",
+          "gt",
+          "eq",
+          "between",
+          "in",
+          "notIn"
+        ]
+      },
+      "AdminUsersFilterDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "name",
+              "email",
+              "role",
+              "status",
+              "club",
+              "category",
+              "ageGroup",
+              "licenseNumber",
+              "createdAt",
+              "lastLoginAt"
+            ]
+          },
+          "op": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterOp"
+              }
+            ]
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            ],
+            "description": "Absente pour isEmpty / isNotEmpty"
+          }
+        },
+        "required": ["field", "op"]
+      },
+      "AdminClubsFilterDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": ["name", "status", "registrationMode", "createdAt"]
+          },
+          "op": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterOp"
+              }
+            ]
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            ],
+            "description": "Absente pour isEmpty / isNotEmpty"
+          }
+        },
+        "required": ["field", "op"]
+      },
+      "AuditLogFilterDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": ["createdAt", "actor", "action", "targetType"]
+          },
+          "op": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterOp"
+              }
+            ]
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            ],
+            "description": "Absente pour isEmpty / isNotEmpty"
+          }
+        },
+        "required": ["field", "op"]
       },
       "AdminReferenceDataDto": {
         "type": "object",
@@ -26037,6 +26239,46 @@
           }
         }
       },
+      "AdminTracksFilterDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": ["title", "artist", "style", "bpm", "status", "createdAt"]
+          },
+          "op": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterOp"
+              }
+            ]
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            ],
+            "description": "Absente pour isEmpty / isNotEmpty"
+          }
+        },
+        "required": ["field", "op"]
+      },
       "TrackStatus": {
         "type": "string",
         "enum": ["PENDING", "READY", "ERROR"]
@@ -26194,6 +26436,54 @@
           }
         },
         "required": ["items"]
+      },
+      "TrackCorrectionFilterDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "track",
+              "reason",
+              "proposer",
+              "createdAt",
+              "message",
+              "reviewedAt",
+              "reviewer"
+            ]
+          },
+          "op": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterOp"
+              }
+            ]
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            ],
+            "description": "Absente pour isEmpty / isNotEmpty"
+          }
+        },
+        "required": ["field", "op"]
       },
       "TrackCorrectionReason": {
         "type": "string",
@@ -27284,6 +27574,53 @@
           }
         },
         "required": ["count"]
+      },
+      "AdminLicenseRenewalsFilterDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "name",
+              "licenseNumber",
+              "validUntil",
+              "submittedAt",
+              "reviewedAt",
+              "reviewer"
+            ]
+          },
+          "op": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterOp"
+              }
+            ]
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            ],
+            "description": "Absente pour isEmpty / isNotEmpty"
+          }
+        },
+        "required": ["field", "op"]
       },
       "LicenseRenewalStatus": {
         "type": "string",

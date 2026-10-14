@@ -1,11 +1,19 @@
 import type {
   ApproveTrackCorrectionDto,
   TrackCorrectionAdminDto,
+  TrackCorrectionFilterDto,
   TrackCorrectionReason,
   TrackCorrectionStatus,
 } from '../api/generated/types.gen';
 import type { ModerationFilter } from '../api/queries';
 import { API_ORIGIN } from '../config';
+import {
+  type ActiveFilter,
+  type FilterSpecs,
+  filtersQuery,
+  readFilters,
+  writeFilters,
+} from './listFilters';
 import { readSort, type SortState, sortQuery, writeSort } from './listSort';
 
 export const REASON_LABELS: Record<TrackCorrectionReason, string> = {
@@ -45,6 +53,23 @@ export const MODERATION_SORT_FIELDS = [
   'createdAt',
 ] as const satisfies readonly ModerationSortField[];
 
+export type ModerationFilterField = TrackCorrectionFilterDto['field'];
+
+/** Column filters with operators (#557): exactly the API's whitelist. */
+export const MODERATION_FILTERS: FilterSpecs<ModerationFilterField> = {
+  track: { label: 'Musique', kind: 'text' },
+  reason: {
+    label: 'Motif',
+    kind: 'enum',
+    options: REASONS.map((value) => ({ value, label: REASON_LABELS[value] })),
+  },
+  proposer: { label: 'Proposée par', kind: 'text' },
+  createdAt: { label: 'Date', kind: 'date' },
+  message: { label: 'Message', kind: 'text' },
+  reviewedAt: { label: 'Traitée le', kind: 'date', nullable: true },
+  reviewer: { label: 'Traitée par', kind: 'text' },
+};
+
 export interface ModerationUrlState {
   status: TrackCorrectionStatus;
   reasons: TrackCorrectionReason[];
@@ -52,6 +77,8 @@ export interface ModerationUrlState {
   page: number;
   /** One track's proposals (link from the track page); absent: every track. */
   trackId?: string;
+  /** Column filters with operators (#557); absent: none. */
+  filters?: ActiveFilter<ModerationFilterField>[];
   /** Column sort (#443); absent: the queue order (oldest pending first). */
   sort?: SortState<ModerationSortField> | null;
 }
@@ -74,12 +101,14 @@ export function readModerationParams(params: URLSearchParams): ModerationUrlStat
   const page = Number(params.get('page'));
   const track = params.get('track') ?? '';
   const sort = readSort(params, MODERATION_SORT_FIELDS);
+  const filters = readFilters(params, MODERATION_FILTERS);
   return {
     status: isStatus(status) ? status : 'PENDING',
     reasons: (params.get('reason') ?? '').split(',').filter(isReason),
     q: q.length >= MIN_SEARCH_LENGTH ? q : '',
     page: Number.isInteger(page) && page > 1 ? page : 1,
     ...(UUID.test(track) && { trackId: track }),
+    ...(filters.length > 0 && { filters }),
     ...(sort && { sort }),
   };
 }
@@ -95,6 +124,7 @@ export function writeModerationParams(
   if (next.status !== 'PENDING') params.set('status', next.status);
   if (next.reasons.length > 0) params.set('reason', next.reasons.join(','));
   if (next.q) params.set('q', next.q);
+  writeFilters(params, next.filters ?? []);
   writeSort(params, next.sort ?? null);
   if (next.page > 1) params.set('page', String(next.page));
   if (next.trackId) params.set('track', next.trackId);
@@ -108,6 +138,7 @@ export function moderationFilter(state: ModerationUrlState, take: number): Moder
     ...(state.reasons.length > 0 && { reason: state.reasons }),
     ...(state.q && { q: state.q }),
     ...(state.trackId && { trackId: state.trackId }),
+    ...filtersQuery(state.filters ?? []),
     ...sortQuery(state.sort ?? null),
     skip: (state.page - 1) * take,
     take,

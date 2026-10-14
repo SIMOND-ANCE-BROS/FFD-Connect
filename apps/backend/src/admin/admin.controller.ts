@@ -1,3 +1,6 @@
+import { AdminUsersFilterDto } from "./dto/admin-users.dto";
+import { AdminClubsFilterDto } from "./dto/admin-clubs.dto";
+import { AuditLogFilterDto } from "./dto/admin-audit.dto";
 import {
   Body,
   Controller,
@@ -20,6 +23,7 @@ import {
   ApiParam,
   ApiResponse,
   ApiTags,
+  ApiExtraModels,
 } from "@nestjs/swagger";
 import { UserRole } from "@prisma/client";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
@@ -80,6 +84,7 @@ import { simulatedEmptyPage } from "../auth/store-review/store-review-responses"
 @ApiBearerAuth("JWT-auth")
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
+@ApiExtraModels(AdminUsersFilterDto, AdminClubsFilterDto, AuditLogFilterDto)
 @Controller("admin")
 export class AdminController {
   constructor(

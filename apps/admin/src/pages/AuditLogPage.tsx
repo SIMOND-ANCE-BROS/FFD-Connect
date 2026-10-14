@@ -1,21 +1,15 @@
-import { Anchor, Group, Pagination, Paper, Select, Stack, Text } from '@mantine/core';
+import { Anchor, Group, Pagination, Paper, Stack, Text } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { Link } from 'react-router';
 import type { AuditLogEntryDto } from '../api/generated/types.gen';
 import { auditQuery } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
+import { operatorFilters } from '../components/ColumnFilterEditor';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { EmptyState } from '../components/ListStates';
 import { PageHeader } from '../components/PageHeader';
-import {
-  type AuditAction,
-  auditFilter,
-  type AuditTargetType,
-  readAuditParams,
-  TARGET_TYPE_LABELS,
-  writeAuditParams,
-} from '../lib/auditList';
+import { AUDIT_FILTERS, auditFilter, readAuditParams, writeAuditParams } from '../lib/auditList';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { formatLicenseValidUntil } from '../lib/licenseDate';
 import type { SortState } from '../lib/listSort';
@@ -79,12 +73,6 @@ function Target({ entry }: { entry: AuditLogEntryDto }) {
   );
 }
 
-const ACTION_OPTIONS = Object.entries(ACTION_LABELS).map(([value, label]) => ({ value, label }));
-const TARGET_OPTIONS = Object.entries(TARGET_TYPE_LABELS).map(([value, label]) => ({
-  value,
-  label,
-}));
-
 const createdAt = (e: AuditLogEntryDto) => dayjs(e.createdAt).format('DD/MM/YYYY HH:mm');
 const actor = (e: AuditLogEntryDto) => e.actorName ?? 'admin supprimé';
 const actionLabel = (e: AuditLogEntryDto) => ACTION_LABELS[e.action] ?? e.action;
@@ -100,6 +88,7 @@ export function AuditLogPage() {
     ...auditQuery(auditFilter(state, PAGE_SIZE)),
     placeholderData: keepPreviousData,
   });
+  const ops = operatorFilters(AUDIT_FILTERS, state.filters, (filters) => update({ filters }));
   const total = log.data?.meta.total ?? 0;
 
   // The journal sorts on its date only.
@@ -114,8 +103,17 @@ export function AuditLogPage() {
       label: 'Date',
       sortField: 'createdAt',
       cell: createdAt,
+      filter: ops.filter('createdAt'),
     },
-    { key: 'actor', minWidth: 130, weight: 0.8, priority: 2, label: 'Admin', cell: actor },
+    {
+      key: 'actor',
+      minWidth: 130,
+      weight: 0.8,
+      priority: 2,
+      label: 'Admin',
+      cell: actor,
+      filter: ops.filter('actor'),
+    },
     {
       key: 'action',
       minWidth: 180,
@@ -123,21 +121,7 @@ export function AuditLogPage() {
       label: 'Action',
       required: true,
       cell: actionLabel,
-      filter: {
-        active: state.action !== null,
-        content: (
-          <Select
-            aria-label="Action"
-            placeholder="Action"
-            clearable
-            searchable
-            comboboxProps={{ withinPortal: false }}
-            data={ACTION_OPTIONS}
-            value={state.action}
-            onChange={(v) => update({ action: v as AuditAction | null })}
-          />
-        ),
-      },
+      filter: ops.filter('action'),
     },
     {
       key: 'target',
@@ -145,20 +129,7 @@ export function AuditLogPage() {
       priority: 1,
       label: 'Cible',
       cell: (e) => <Target entry={e} />,
-      filter: {
-        active: state.targetType !== null,
-        content: (
-          <Select
-            aria-label="Type de cible"
-            placeholder="Type de cible"
-            clearable
-            comboboxProps={{ withinPortal: false }}
-            data={TARGET_OPTIONS}
-            value={state.targetType}
-            onChange={(v) => update({ targetType: v as AuditTargetType | null })}
-          />
-        ),
-      },
+      filter: ops.filter('targetType'),
     },
     {
       key: 'detail',
@@ -184,11 +155,12 @@ export function AuditLogPage() {
         rowKey={(e) => e.id}
         sort={state.sort}
         onSortChange={onSortChange}
-        onResetFilters={() => update({ action: null, targetType: null })}
+        onResetFilters={() => update({ filters: [] })}
+        filterChips={ops.chips}
         loading={!log.data && !log.isError}
         error={log.isError && 'Impossible de charger le journal.'}
         empty={
-          state.action || state.targetType ? (
+          state.filters.length > 0 ? (
             <EmptyState title="Aucune entrée">
               Aucune modification ne correspond à ces filtres.
             </EmptyState>

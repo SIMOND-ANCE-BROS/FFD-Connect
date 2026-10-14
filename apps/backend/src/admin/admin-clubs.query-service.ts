@@ -10,7 +10,9 @@ import {
   adminClubOptionSelect,
 } from "../utils/prisma-selects";
 import { clubUsage } from "./admin-club-usage";
+import { listFiltersWhere } from "../common/list-filters/list-filters";
 import {
+  ADMIN_CLUBS_FILTER_COLUMNS,
   AdminClubDetailDto,
   AdminClubsPageDto,
   type AdminClubsSortField,
@@ -55,6 +57,9 @@ export class AdminClubsQueryService {
       ...(search && { name: { contains: search, mode: "insensitive" } }),
       ...(q.status && {
         disabledAt: q.status === "active" ? null : { not: null },
+      }),
+      ...(q.filters?.length && {
+        AND: listFiltersWhere(ADMIN_CLUBS_FILTER_COLUMNS, q.filters),
       }),
     };
     const [total, rows] = await Promise.all([

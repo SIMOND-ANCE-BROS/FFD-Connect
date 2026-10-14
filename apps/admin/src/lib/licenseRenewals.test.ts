@@ -13,11 +13,13 @@ describe('renewal URL params', () => {
   it('defaults to the « À traiter » tab, first page', () => {
     expect(readRenewalParams(new URLSearchParams())).toEqual({
       status: 'PENDING',
+      filters: [],
       page: 1,
       sort: null,
     });
     expect(readRenewalParams(new URLSearchParams('status=DRAFT&page=-1&sort=email'))).toEqual({
       status: 'PENDING',
+      filters: [],
       page: 1,
       sort: null,
     });
@@ -25,7 +27,12 @@ describe('renewal URL params', () => {
 
   it('reads and writes the decided tabs and the page', () => {
     const params = new URLSearchParams('status=REJECTED&page=3');
-    expect(readRenewalParams(params)).toEqual({ status: 'REJECTED', page: 3, sort: null });
+    expect(readRenewalParams(params)).toEqual({
+      status: 'REJECTED',
+      filters: [],
+      page: 3,
+      sort: null,
+    });
     expect(writeRenewalParams(params, { page: 4 }).toString()).toBe('status=REJECTED&page=4');
   });
 
@@ -42,13 +49,16 @@ describe('renewal URL params', () => {
   });
 
   it('builds the API filter of one page', () => {
-    expect(listFilter({ status: 'APPROVED', page: 2, sort: null }, 50)).toEqual({
+    expect(listFilter({ status: 'APPROVED', filters: [], page: 2, sort: null }, 50)).toEqual({
       status: 'APPROVED',
       skip: 50,
       take: 50,
     });
     expect(
-      listFilter({ status: 'PENDING', page: 1, sort: { by: 'name', order: 'asc' } }, 50),
+      listFilter(
+        { status: 'PENDING', filters: [], page: 1, sort: { by: 'name', order: 'asc' } },
+        50,
+      ),
     ).toEqual({ status: 'PENDING', sortBy: 'name', sortOrder: 'asc', skip: 0, take: 50 });
   });
 });

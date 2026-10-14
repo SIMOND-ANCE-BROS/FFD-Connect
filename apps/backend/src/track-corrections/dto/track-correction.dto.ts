@@ -1,5 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { TrackCorrectionReason, TrackCorrectionStatus } from "@prisma/client";
+import {
+  Prisma,
+  TrackCorrectionReason,
+  TrackCorrectionStatus,
+} from "@prisma/client";
 import { Transform } from "class-transformer";
 import {
   ArrayMaxSize,
@@ -21,6 +25,16 @@ import {
   SortOrderParam,
   type SortOrder,
 } from "../../common/dto/sort-params";
+import {
+  enumColumn,
+  type FilterColumns,
+  type ListFilter,
+  type TextCondition,
+} from "../../common/list-filters/list-filters";
+import {
+  ListFiltersParam,
+  listFilterSchema,
+} from "../../common/list-filters/list-filters.dto";
 import { PASO_MAX_CLASHES } from "../../tracks/paso-clashes";
 
 /** Longueur maximale du commentaire libre (auteur ou administrateur). */
@@ -182,6 +196,49 @@ export class RejectTrackCorrectionDto {
   comment?: string;
 }
 
+const peopleNamed = (c: TextCondition): Prisma.UserWhereInput => ({
+  OR: [{ lastName: c }, { firstName: c }],
+});
+
+/** Columns the moderation queue can be filtered on, with operators (#557). */
+export const TRACK_CORRECTION_FILTER_COLUMNS: FilterColumns<Prisma.TrackCorrectionWhereInput> =
+  {
+    track: {
+      kind: "text",
+      where: (c) => ({
+        track: { is: { OR: [{ title: c }, { artist: c }] } },
+      }),
+    },
+    reason: enumColumn(Object.values(TrackCorrectionReason), (reason) => ({
+      reason,
+    })),
+    proposer: {
+      kind: "text",
+      where: (c) => ({ proposedBy: { is: peopleNamed(c) } }),
+      whereNull: { proposedById: null },
+    },
+    createdAt: { kind: "date", where: (c) => ({ createdAt: c }) },
+    message: {
+      kind: "text",
+      where: (c) => ({ message: c }),
+      whereNull: { message: null },
+    },
+    reviewedAt: {
+      kind: "date",
+      where: (c) => ({ reviewedAt: c }),
+      whereNull: { reviewedAt: null },
+    },
+    reviewer: {
+      kind: "text",
+      where: (c) => ({ reviewedBy: { is: peopleNamed(c) } }),
+      whereNull: { reviewedById: null },
+    },
+  };
+export const TrackCorrectionFilterDto = listFilterSchema(
+  "TrackCorrectionFilterDto",
+  Object.keys(TRACK_CORRECTION_FILTER_COLUMNS),
+);
+
 /**
  * Filtre + pagination de la file de modération. Sans statut : toutes les
  * propositions ; sans `reason` ni `q` : tous les motifs, toutes les pistes.
@@ -241,4 +298,7 @@ export class ListTrackCorrectionsQueryDto extends PaginationParamsDto {
 
   @SortOrderParam()
   sortOrder?: SortOrder;
+
+  @ListFiltersParam(TRACK_CORRECTION_FILTER_COLUMNS)
+  filters?: ListFilter[];
 }

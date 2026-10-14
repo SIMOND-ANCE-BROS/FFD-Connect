@@ -12,6 +12,7 @@ import { AdminAuditService } from "../admin/admin-audit.service";
 import type { AuditAction } from "../admin/dto/admin-audit.dto";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
 import { listOrderBy, type SortOrder } from "../common/dto/sort-params";
+import { listFiltersWhere } from "../common/list-filters/list-filters";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
@@ -29,6 +30,7 @@ import {
   AdminLicenseRenewalDetailDto,
   AdminLicenseRenewalsPageDto,
   type AdminRenewalsSortField,
+  ADMIN_RENEWALS_FILTER_COLUMNS,
   ListAdminLicenseRenewalsQueryDto,
   RenewalRejectionReason,
 } from "./dto/admin-license-renewal.dto";
@@ -146,6 +148,9 @@ export class LicenseRenewalModerationQueryService {
     const take = query.take ?? ADMIN_RENEWAL_PAGE_DEFAULT;
     const where: Prisma.LicenseRenewalRequestWhereInput = {
       status: query.status ?? LicenseRenewalStatus.PENDING,
+      ...(query.filters?.length && {
+        AND: listFiltersWhere(ADMIN_RENEWALS_FILTER_COLUMNS, query.filters),
+      }),
     };
     const [total, rows] = await Promise.all([
       this.prisma.licenseRenewalRequest.count({ where }),

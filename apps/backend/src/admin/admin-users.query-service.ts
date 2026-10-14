@@ -10,7 +10,9 @@ import {
   adminUserDetailSelect,
   adminUserListSelect,
 } from "../utils/prisma-selects";
+import { listFiltersWhere } from "../common/list-filters/list-filters";
 import {
+  ADMIN_USERS_FILTER_COLUMNS,
   AdminUserDetailDto,
   AdminUserListItemDto,
   AdminUsersPageDto,
@@ -71,6 +73,10 @@ export class AdminUsersQueryService {
     const skip = q.skip ?? 0;
     const take = q.take ?? DEFAULT_TAKE;
     const search = q.search?.trim();
+    const and: Prisma.UserWhereInput[] = [
+      ...(q.role ? [withRole(q.role)] : []),
+      ...listFiltersWhere(ADMIN_USERS_FILTER_COLUMNS, q.filters),
+    ];
     const where: Prisma.UserWhereInput = {
       ...(search && {
         OR: [
@@ -80,7 +86,7 @@ export class AdminUsersQueryService {
         ],
       }),
       // AND, never next to the search OR: withRole is itself an OR.
-      ...(q.role && { AND: [withRole(q.role)] }),
+      ...(and.length > 0 && { AND: and }),
       ...(q.clubId && { clubId: q.clubId }),
       ...(q.category && { category: q.category }),
       ...(q.status && {

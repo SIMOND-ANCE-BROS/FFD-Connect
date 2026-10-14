@@ -1,9 +1,11 @@
 import {
   ActionIcon,
   Alert,
+  Badge,
   Box,
   Button,
   Checkbox,
+  CloseButton,
   Collapse,
   Group,
   Paper,
@@ -67,6 +69,8 @@ interface DataTableProps<Row> {
   onSortChange: (sort: SortState | null) => void;
   /** Clears every column filter (the search, always visible, is not one). */
   onResetFilters?: () => void;
+  /** Active filters shown above the rows, each removable in one click (#557). */
+  filterChips?: { key: string; label: string; onRemove: () => void }[];
   onRowClick?: (row: Row) => void;
   /** Phone layout of a row: a card, as tables do not fit. */
   renderCard: (row: Row) => ReactNode;
@@ -407,6 +411,7 @@ export function DataTable<Row>({
   sort,
   onSortChange,
   onResetFilters,
+  filterChips = [],
   onRowClick,
   renderCard,
   toolbar,
@@ -627,6 +632,31 @@ export function DataTable<Row>({
           onSortChange={onSortChange}
           activeFilters={activeFilters}
         />
+      )}
+      {filterChips.length > 0 && (
+        <Group gap="xs" aria-label="Filtres actifs" role="group">
+          {filterChips.map((chip) => (
+            // Mantine's Pill hides its remove button from assistive tech: a real button here.
+            <Badge
+              key={chip.key}
+              size="lg"
+              variant="light"
+              tt="none"
+              fw={500}
+              maw="100%"
+              rightSection={
+                <CloseButton
+                  size="xs"
+                  variant="transparent"
+                  aria-label={`Retirer le filtre : ${chip.label}`}
+                  onClick={chip.onRemove}
+                />
+              }
+            >
+              {chip.label}
+            </Badge>
+          ))}
+        </Group>
       )}
       {body}
     </Stack>

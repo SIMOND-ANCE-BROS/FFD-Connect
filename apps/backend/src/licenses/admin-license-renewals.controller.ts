@@ -1,3 +1,4 @@
+import { AdminLicenseRenewalsFilterDto } from "./dto/admin-license-renewal.dto";
 import {
   Body,
   Controller,
@@ -20,6 +21,7 @@ import {
   ApiProduces,
   ApiResponse,
   ApiTags,
+  ApiExtraModels,
 } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { UserRole } from "@prisma/client";
@@ -67,6 +69,7 @@ export const RENEWAL_DOCUMENT_HEADERS: Readonly<Record<string, string>> = {
 @ApiBearerAuth("JWT-auth")
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(UserRole.ADMIN)
+@ApiExtraModels(AdminLicenseRenewalsFilterDto)
 @Controller("admin/license-renewals")
 export class AdminLicenseRenewalsController {
   constructor(

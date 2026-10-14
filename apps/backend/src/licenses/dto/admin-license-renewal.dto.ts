@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   LicenseRenewalDocumentType,
   LicenseRenewalStatus,
+  Prisma,
 } from "@prisma/client";
 import { Transform, Type } from "class-transformer";
 import {
@@ -22,6 +23,14 @@ import {
   SortOrderParam,
   type SortOrder,
 } from "../../common/dto/sort-params";
+import {
+  type FilterColumns,
+  type ListFilter,
+} from "../../common/list-filters/list-filters";
+import {
+  ListFiltersParam,
+  listFilterSchema,
+} from "../../common/list-filters/list-filters.dto";
 import {
   LICENSE_NUMBER_MAX_LENGTH,
   LICENSE_NUMBER_PATTERN,
@@ -69,6 +78,49 @@ const trimToUndefined = ({ value }: { value: unknown }): unknown => {
   return trimmed === "" ? undefined : trimmed;
 };
 
+/** Columns the renewal queue can be filtered on, with operators (#557). */
+export const ADMIN_RENEWALS_FILTER_COLUMNS: FilterColumns<Prisma.LicenseRenewalRequestWhereInput> =
+  {
+    name: {
+      kind: "text",
+      where: (c) => ({
+        user: { is: { OR: [{ lastName: c }, { firstName: c }] } },
+      }),
+    },
+    licenseNumber: {
+      kind: "text",
+      where: (c) => ({ user: { is: { license: { is: { number: c } } } } }),
+      whereNull: { user: { is: { license: { is: null } } } },
+    },
+    validUntil: {
+      kind: "date",
+      where: (c) => ({ user: { is: { license: { is: { validUntil: c } } } } }),
+      whereNull: { user: { is: { license: { is: null } } } },
+    },
+    submittedAt: {
+      kind: "date",
+      where: (c) => ({ submittedAt: c }),
+      whereNull: { submittedAt: null },
+    },
+    reviewedAt: {
+      kind: "date",
+      where: (c) => ({ reviewedAt: c }),
+      whereNull: { reviewedAt: null },
+    },
+    // No reviewer: an automatic approval, or a since-deleted administrator.
+    reviewer: {
+      kind: "text",
+      where: (c) => ({
+        reviewedBy: { is: { OR: [{ lastName: c }, { firstName: c }] } },
+      }),
+      whereNull: { reviewedById: null },
+    },
+  };
+export const AdminLicenseRenewalsFilterDto = listFilterSchema(
+  "AdminLicenseRenewalsFilterDto",
+  Object.keys(ADMIN_RENEWALS_FILTER_COLUMNS),
+);
+
 /** Columns the renewal queue can be sorted on (#443); `name` = the licensee. */
 export const ADMIN_RENEWALS_SORT_FIELDS = [
   "name",
@@ -115,6 +167,9 @@ export class ListAdminLicenseRenewalsQueryDto {
 
   @SortOrderParam()
   sortOrder?: SortOrder;
+
+  @ListFiltersParam(ADMIN_RENEWALS_FILTER_COLUMNS)
+  filters?: ListFilter[];
 }
 
 export class ApproveLicenseRenewalDto {
