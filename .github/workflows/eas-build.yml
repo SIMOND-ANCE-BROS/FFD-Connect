@@ -856,6 +856,33 @@ jobs:
           # les notes lisent les PR avec un GH_TOKEN passé explicitement.
           persist-credentials: false
 
+      # #532 : le code construit est celui de staging, mais les actions locales
+      # doivent venir de la ref du WORKFLOW. `uses: ./.github/actions/x` se
+      # résout dans le workspace, donc sur staging : une action ajoutée ou
+      # modifiée sur develop cassait le build bêta tant qu'elle n'était pas
+      # promue (run 38397117868, android-gradle-runner introuvable). On
+      # extrait donc `.github/actions` de github.sha (= commit du workflow pour
+      # un workflow_dispatch) dans un dossier à part, et toutes les actions
+      # locales de ce job sont appelées depuis ce dossier. Extraction après
+      # celle de staging (le nettoyage de la première l'effacerait sinon).
+      # Contrainte : ces actions ne doivent pas appeler elles-mêmes une autre
+      # action locale (`./…` se résoudrait encore dans le workspace) ; seule
+      # eas-local-build le fait, et ce job ne l'utilise pas.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          ref: ${{ github.sha }}
+          path: .workflow-actions
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: .github/actions
+          sparse-checkout-cone-mode: false
+
+      # Dossier hors du dépôt de staging : ignoré localement (.git/info/exclude,
+      # aucun fichier suivi modifié) pour qu'`eas build` (requireCommit) voie
+      # un arbre propre et que rien de ce dossier n'entre dans l'archive.
+      - name: Ignore workflow actions checkout
+        run: echo '/.workflow-actions/' >> .git/info/exclude
+
       # Seul endroit où iOS et Android diffèrent par des valeurs : tout le reste
       # du job lit ces variables.
       - name: Platform settings
@@ -958,11 +985,11 @@ jobs:
         if: >-
           inputs.action == 'build' && inputs.builder != 'eas'
           && matrix.platform == 'android'
-        uses: ./.github/actions/android-gradle-runner
+        uses: ./.workflow-actions/.github/actions/android-gradle-runner
 
       - name: Setup pnpm & Node
         if: inputs.action != 'distribute'
-        uses: ./.github/actions/setup-pnpm
+        uses: ./.workflow-actions/.github/actions/setup-pnpm
 
       # distribute : ni eas-cli ni dépendances (le générateur de notes n'importe
       # que des modules intégrés) — Node seul, et pas de jeton Expo exposé.
@@ -984,7 +1011,7 @@ jobs:
       # sur Android), après la sélection de Xcode (clé = version de Xcode).
       - name: Restore native build caches (GitHub build)
         if: inputs.action == 'build' && inputs.builder != 'eas'
-        uses: ./.github/actions/native-build-cache
+        uses: ./.workflow-actions/.github/actions/native-build-cache
         with:
           step: restore
           platform: ${{ matrix.platform }}
@@ -994,7 +1021,7 @@ jobs:
       - name: Expo doctor (GitHub build, non bloquant)
         if: inputs.action == 'build' && inputs.builder != 'eas'
         continue-on-error: true
-        uses: ./.github/actions/expo-doctor
+        uses: ./.workflow-actions/.github/actions/expo-doctor
         with:
           app-env: beta
 
@@ -1478,7 +1505,7 @@ jobs:
         if: >-
           inputs.action == 'build' && inputs.builder != 'eas'
           && steps.ghbuild.outcome == 'success'
-        uses: ./.github/actions/native-build-cache
+        uses: ./.workflow-actions/.github/actions/native-build-cache
         with:
           step: save
           platform: ${{ matrix.platform }}
