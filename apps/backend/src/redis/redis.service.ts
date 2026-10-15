@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import Redis from "ioredis";
+import { REDIS_PROTOCOL } from "./bullmq-connection";
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
@@ -17,12 +18,9 @@ export class RedisService implements OnModuleDestroy {
       host: redisHost,
       port: redisPort,
       password: redisPassword,
-      // Pin RESP2. ioredis 6 defaults to protocol 3, and while its default
-      // `replyMapping: "legacy"` keeps reply SHAPES identical to RESP2, the
-      // handshake and server-side behaviour still change. Nothing here needs
-      // RESP3, and no test exercises a real Redis (see issue #771), so we hold
-      // the v5 wire format until the queue is genuinely covered.
-      protocol: 2,
+      // RESP2 pinned while the production Redis version is unverified —
+      // see REDIS_PROTOCOL.
+      protocol: REDIS_PROTOCOL,
       lazyConnect: true,
       retryStrategy: (times) => {
         // Stop retrying after 3 attempts
