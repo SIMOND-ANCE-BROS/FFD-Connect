@@ -14,6 +14,7 @@ import * as bcrypt from "bcrypt";
 import request from "supertest";
 import { AppModule } from "./../src/app.module";
 import { ThrottlerUserGuard } from "./../src/common/guards/throttler-user.guard";
+import { IdentifierThrottlerGuard } from "./../src/common/guards/identifier-throttler.guard";
 import { HelloAssoService } from "./../src/payment/hello-asso.service";
 import { PrismaService } from "./../src/prisma/prisma.service";
 import { RedisService } from "./../src/redis/redis.service";
@@ -87,6 +88,8 @@ describe("AuthController (e2e)", () => {
         .overrideGuard(ThrottlerGuard)
         .useValue({ canActivate: () => true })
         .overrideGuard(ThrottlerUserGuard)
+        .useValue({ canActivate: () => true })
+        .overrideGuard(IdentifierThrottlerGuard)
         .useValue({ canActivate: () => true })
         .overrideProvider(ThrottlerStorageService)
         .useValue({

@@ -12,6 +12,18 @@ Auth endpoints (login, forgot-password, reset-password) are prime targets for br
 
 Apply endpoint-specific rate limits: login at 5/min, forgot-password at 3/min, and reset-password at 5/min. Implementation uses `@nestjs/throttler` with a custom `ThrottlerUserGuard` that tracks per-user when authenticated and per-IP otherwise.
 
+### Amendment 2026-10-15 (#636): two limits per anti-abuse route
+
+A per-IP limit sized for one person blocked dancers sharing one address (a gym Wi-Fi or mobile CGNAT on competition day): the 6th login in a minute from the venue got a 429. Login, register and forgot-password now carry two limits:
+
+| Route                        | Per IP (`@ThrottleByIp`) | Per identifier (`@ThrottleByIdentifier`) |
+| ---------------------------- | ------------------------ | ---------------------------------------- |
+| `POST /auth/login`           | 30/min                   | 5/min on `username`                      |
+| `POST /auth/register`        | 20/min                   | 5/min on `email`                         |
+| `POST /auth/forgot-password` | 10/min                   | 3/min on `email`                         |
+
+The per-identifier key is the SHA-256 of the identifier normalised like stored e-mails (no address in the throttler storage). Brute force on one account stays at 5/min whatever the number of addresses used; a venue gets a budget sized for a crowd. `reset-password` keeps 5/min per IP: its token is unguessable.
+
 ## Alternatives Considered
 
 ### Alternative 1: CAPTCHA on auth endpoints
