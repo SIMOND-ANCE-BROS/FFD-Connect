@@ -26,3 +26,4 @@ Ce dossier contient les ADRs (Architecture Decision Records) du projet FFD-Conne
 | [0020](0020-key-vault-cles-distribution.md)                      | Key Vault, source de verite des cles de distribution       | proposed   | 2026-10-07 |
 | [0021](0021-moderation-humaine-renouvellements-donnees-sante.md) | Moderation humaine des renouvellements et donnees de sante | proposed   | 2026-10-10 |
 | [0022](0022-notifications-helloasso-relues-sur-api.md)           | Notifications HelloAsso relues sur l'API                   | proposed   | 2026-10-12 |
+| [0023](0023-connecteurs-de-paiement-par-club.md)                 | Connecteurs de paiement choisis par chaque club            | proposed   | 2026-10-15 |

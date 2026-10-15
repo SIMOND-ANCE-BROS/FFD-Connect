@@ -24,7 +24,13 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
+import { ClubPaymentProviderQueryService } from "./club-payment-provider.query-service";
+import { ClubPaymentProviderService } from "./club-payment-provider.service";
 import { ClubsHelloAssoService } from "./clubs-helloasso.service";
+import {
+  ClubPaymentProviderStatusDto,
+  SetClubPaymentProviderDto,
+} from "./dto/club-payment-provider.dto";
 import { PartnershipQueryService } from "./partnership-query.service";
 import { PartnershipService } from "./partnership.service";
 import { SoloTeamService } from "./solo-team.service";
@@ -53,6 +59,8 @@ import {
 export class ClubsController {
   constructor(
     private readonly clubsHelloAssoService: ClubsHelloAssoService,
+    private readonly clubPaymentProviderQueryService: ClubPaymentProviderQueryService,
+    private readonly clubPaymentProviderService: ClubPaymentProviderService,
     private readonly partnershipService: PartnershipService,
     private readonly partnershipQueryService: PartnershipQueryService,
     private readonly soloTeamService: SoloTeamService,
@@ -128,6 +136,56 @@ export class ClubsController {
     @Body() body: ConnectHelloAssoDto,
   ) {
     return this.clubsHelloAssoService.connectHelloAsso(req.user.userId, body);
+  }
+
+  @StoreReviewReadable()
+  @Get("me/payment-provider")
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
+  @ApiOperation({
+    summary: "Connecteur de paiement du club de l'organisateur",
+    description:
+      "Connecteur de paiement en ligne choisi par le club (HELLOASSO par défaut), s'il est configuré " +
+      "(sans jamais exposer les identifiants) et les connecteurs que le club peut choisir (#388).",
+  })
+  @ApiResponse({ status: 200, type: ClubPaymentProviderStatusDto })
+  @ApiResponse({
+    status: 400,
+    description: "Utilisateur non organisateur ou club non assigné",
+  })
+  getPaymentProvider(
+    @Request() req: RequestWithUser,
+  ): Promise<ClubPaymentProviderStatusDto> {
+    return this.clubPaymentProviderQueryService.getMyClubPaymentProvider(
+      req.user.userId,
+    );
+  }
+
+  @Put("me/payment-provider")
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
+  @ApiOperation({
+    summary: "Choisir le connecteur de paiement du club de l'organisateur",
+    description:
+      "Choisit le connecteur de paiement en ligne utilisé pour les places des compétitions organisées par le club (#388). " +
+      "Seuls les connecteurs disponibles sont acceptés (aujourd'hui : HELLOASSO). " +
+      "Les identifiants se saisissent sur la route propre au connecteur (HelloAsso : `PUT /clubs/me/helloasso`) ; " +
+      "changer de connecteur n'efface pas ceux du précédent.",
+  })
+  @ApiResponse({ status: 200, type: ClubPaymentProviderStatusDto })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Connecteur inconnu ou pas encore disponible, utilisateur non organisateur ou club non assigné",
+  })
+  setPaymentProvider(
+    @Request() req: RequestWithUser,
+    @Body() body: SetClubPaymentProviderDto,
+  ): Promise<ClubPaymentProviderStatusDto> {
+    return this.clubPaymentProviderService.setMyClubPaymentProvider(
+      req.user.userId,
+      body,
+    );
   }
 
   @Patch("me/registration-mode")

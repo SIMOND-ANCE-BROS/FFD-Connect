@@ -5,7 +5,12 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
-import { ClubRegistrationMode, Prisma, UserRole } from "@prisma/client";
+import {
+  ClubRegistrationMode,
+  PaymentProvider,
+  Prisma,
+  UserRole,
+} from "@prisma/client";
 import {
   createMockPrismaService,
   MockPrismaService,
@@ -270,6 +275,31 @@ describe("AdminClubsService", () => {
       expect(prisma.license.updateMany).not.toHaveBeenCalled();
       expect(prisma.competition.updateMany).not.toHaveBeenCalled();
       expect(prisma.competition.findFirst).not.toHaveBeenCalled();
+    });
+
+    it("sets the payment connector of a club that never chose one (#388), audited", async () => {
+      // `current` has no paymentProvider: a NULL column (read as HelloAsso).
+      await service.update("admin-1", "c1", {
+        paymentProvider: PaymentProvider.HELLOASSO,
+      });
+      expect(prisma.club.update.mock.calls[0][0].data).toEqual({
+        paymentProvider: PaymentProvider.HELLOASSO,
+      });
+      expect(audit.record).toHaveBeenCalled();
+      expect(prisma.user.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("writes nothing when the payment connector is unchanged (#388)", async () => {
+      prisma.club.findUnique.mockReset();
+      prisma.club.findUnique.mockResolvedValueOnce({
+        ...current,
+        paymentProvider: PaymentProvider.HELLOASSO,
+      } as never);
+      await service.update("admin-1", "c1", {
+        paymentProvider: PaymentProvider.HELLOASSO,
+      });
+      expect(prisma.club.update).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
     });
 
     it("changes the mode even when the club organises FFD-synced competitions", async () => {

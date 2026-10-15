@@ -203,7 +203,8 @@ model SeatBooking {
   itemId        String          // ID within the layout JSON
   seatLabel     String?         // e.g. "Rang A, Place 5"
   status        BookingStatus   @default(PENDING)
-  paymentId     String?         // External ID (HelloAsso)
+  paymentId     String?         // External ID, issued by `paymentProvider`
+  paymentProvider PaymentProvider? @default(HELLOASSO) // Connector that issued paymentId / supersededPaymentIds (#388); NULL read as HELLOASSO
   expectedAmountCents Int?      // Server-side price in cents, fixed at checkout (#381)
   expiresAt     DateTime?       // For temporary holds
   cancelReason  String?         // Why a seat was released, e.g. HELLOASSO_REFUNDED / HELLOASSO_CONTESTED (#403)
