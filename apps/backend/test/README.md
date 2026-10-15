@@ -28,3 +28,20 @@ pnpm --filter backend test:e2e
 # Depuis apps/backend
 pnpm test:e2e
 ```
+
+## Base de test : migrations réelles (#272)
+
+Le `globalSetup` des suites intégration et e2e (`test/setup/global-setup.ts`) construit la base avec **`prisma migrate deploy`**, comme le conteneur au démarrage, puis vérifie avec `prisma migrate diff --exit-code` que le schéma Prisma n'a aucun changement sans migration. Toute migration (schéma et données écrites à la main) est donc rejouée à chaque PR ; une migration cassée ou oubliée fait échouer la CI.
+
+- Idempotent : sur une base à jour, `migrate deploy` ne fait rien (verrou consultatif Postgres en cas d'exécutions concurrentes).
+- Une base créée par l'ancien `prisma db push` n'a pas d'historique de migrations : `migrate deploy` la refuse (P3005). Utiliser une base neuve.
+
+Reproduire en local, sur une base **jetable** uniquement (jamais la base de dev partagée) :
+
+```bash
+docker run -d --rm --name ffd-test-pg -e POSTGRES_USER=test -e POSTGRES_PASSWORD=test -e POSTGRES_DB=test -p 5440:5432 postgres:15
+export DATABASE_URL=postgresql://test:test@localhost:5440/test
+pnpm --filter backend test:db:prepare      # migrations + contrôle de dérive seuls
+pnpm --filter backend test:integration     # le globalSetup refait la même préparation
+docker stop ffd-test-pg
+```
