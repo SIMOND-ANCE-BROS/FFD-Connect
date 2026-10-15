@@ -91,6 +91,12 @@ export interface ApiCompetition {
   imageUrl?: string;
   delayMinutes?: number;
   registrationDeadline?: string;
+  /**
+   * Seat plan drawn by the organising club (free-form JSON elements: `id`,
+   * `type`, `label`, `capacity`, `rows`/`cols`, `lockedSeats`, `priceCents`…).
+   * Untrusted shape: parse before use.
+   */
+  layout?: unknown;
   events?: ApiEvent[];
   schedule?: ApiScheduleItem[];
   /** Calculé côté serveur pour l'utilisateur authentifié */

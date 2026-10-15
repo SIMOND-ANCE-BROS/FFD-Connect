@@ -120,6 +120,12 @@ jest.mock("../../features/competitions/screens/EventRegistrantsScreen", () => ({
     return <Text testID="screen-EventRegistrants">EventRegistrants</Text>;
   },
 }));
+jest.mock("../../features/competitions/screens/SeatPickerScreen", () => ({
+  SeatPickerScreen: () => {
+    const { Text } = require("react-native");
+    return <Text testID="screen-SeatPicker">SeatPicker</Text>;
+  },
+}));
 jest.mock("../../features/settings/screens/NotificationsScreen", () => ({
   NotificationsScreen: () => {
     const { Text } = require("react-native");
