@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { Alert } from "react-native";
 import {
-  AGES_COUPLE,
   AGES_SOLO,
   ALLOWED_EVENT_KINDS_BY_COMPETITION_TYPE,
   COMPETITION_LEVELS,
   LEVELS_FOR_PROXIMITE_CLASSIFICATRICE,
   SOLO_TEAM_AGE_GROUPS,
   SOLO_TEAM_LEVELS,
+  categoryOptionsForKind,
+  coupleAgesForCategory,
   levelsForAgeGroup,
   type CompetitionType,
   type EventItem,
@@ -57,19 +58,16 @@ export const useEventEditor = ({
       ? [...LEVELS_FOR_PROXIMITE_CLASSIFICATRICE]
       : [...COMPETITION_LEVELS];
 
+  /** Disciplines offered for the selected kind (« 10 danses » only in majeure, #639). */
+  const categoryOptionsForNewEvent = categoryOptionsForKind(newEventKind);
+
   /** Pour Solo Team : catégories d'âge équipe. Pour Open/Couple/Solo : selon type et catégorie. */
   const ageOptionsForNewEvent =
     newEventKind === "SOLO_TEAM"
       ? [...SOLO_TEAM_AGE_GROUPS]
-      : newEventKind === "SHOW_DANSE"
-        ? newEventCategory === "Standard"
-          ? AGES_COUPLE
-          : AGES_COUPLE.filter((age) => age !== "Senior V")
-        : newEventType === "Solo"
-          ? AGES_SOLO
-          : newEventCategory === "Standard"
-            ? AGES_COUPLE
-            : AGES_COUPLE.filter((age) => age !== "Senior V");
+      : newEventKind !== "SHOW_DANSE" && newEventType === "Solo"
+        ? AGES_SOLO
+        : coupleAgesForCategory(newEventCategory);
 
   /**
    * Pour Solo Team : uniquement Débutant / Intermédiaire. Pour
@@ -119,6 +117,14 @@ export const useEventEditor = ({
         setNewEventAge("Adulte");
       }
     }
+    // « 10 danses » is a majeure-only discipline: fall back to Latines when
+    // the club switches to another kind.
+    if (
+      newEventKind !== "SOLO_TEAM" &&
+      !categoryOptionsForKind(newEventKind).includes(newEventCategory)
+    ) {
+      setNewEventCategory("Latine");
+    }
     if (newEventKind === "OPEN") {
       if (newEventAgeGroups.length === 0) setNewEventAgeGroups([newEventAge]);
     } else {
@@ -130,11 +136,22 @@ export const useEventEditor = ({
     newEventKind,
     newEventLevel,
     newEventAge,
+    newEventCategory,
     newEventAgeGroups.length,
   ]);
 
   // --- ACTIONS ---
   const addEvent = () => {
+    if (
+      newEventKind !== "SOLO_TEAM" &&
+      !categoryOptionsForNewEvent.includes(newEventCategory)
+    ) {
+      Alert.alert(
+        "Erreur",
+        "Les 10 danses ne se dansent qu'en épreuve majeure.",
+      );
+      return;
+    }
     const openAges =
       newEventKind === "OPEN"
         ? newEventAgeGroups.filter((a) => ageOptionsForNewEvent.includes(a))
@@ -233,6 +250,7 @@ export const useEventEditor = ({
     newEventLevel,
     setNewEventLevel,
     allowedEventKindsForCurrentCompetition,
+    categoryOptionsForNewEvent,
     levelOptionsForClassificatrice,
     levelOptionsForNewEvent,
     ageOptionsForNewEvent,
