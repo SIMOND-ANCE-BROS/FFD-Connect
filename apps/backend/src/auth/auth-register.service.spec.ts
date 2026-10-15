@@ -136,6 +136,48 @@ describe("AuthService.register", () => {
     await expect(bcrypt.compare("MonPass1!abc", password)).resolves.toBe(true);
   });
 
+  it("logs the new account by id, never by licence number (RGPD, #529)", async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.license.findUnique.mockResolvedValue(validLicense);
+    prisma.$transaction.mockImplementation(
+      async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          user: {
+            create: jest.fn().mockResolvedValue({
+              id: "user-1",
+              email: "test@example.com",
+              firstName: "Jeanne",
+              lastName: "Dupont",
+              role: "LICENSEE",
+            }),
+          },
+          license: { update: jest.fn().mockResolvedValue({}) },
+        }),
+    );
+    const logSpy = jest
+      .spyOn(
+        (authService as unknown as { logger: { log: jest.Mock } }).logger,
+        "log",
+      )
+      .mockImplementation(() => undefined);
+
+    await authService.register(
+      "test@example.com",
+      "MonPass1!abc",
+      "FFD-2025-001",
+      "Dupont",
+    );
+
+    expect(logSpy).toHaveBeenCalledWith(
+      { userId: "user-1", birthDateResolved: false },
+      "New user registered via license verification",
+    );
+    const logged = JSON.stringify(logSpy.mock.calls);
+    expect(logged).not.toContain("FFD-2025-001");
+    expect(logged).not.toContain("Dupont");
+    expect(logged).not.toContain("test@example.com");
+  });
+
   it("rejects if email already exists", async () => {
     prisma.$queryRaw.mockResolvedValue([
       { id: "existing", email: "taken@example.com" },
@@ -666,9 +708,11 @@ describe("AuthService.register", () => {
       expect(result.access_token).toBe("jwt-tok");
       expect(result.user.licenseNumber).toBe("20990101-beta-01");
       expect(logSpy).toHaveBeenCalledWith(
-        { licenseNumber: "20990101-beta-01" },
+        { userId: "user-beta" },
         expect.stringContaining("auto-created"),
       );
+      // The licence number identifies a person: never logged (RGPD, #529).
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain("20990101");
     });
 
     it("rejects a blank number instead of auto-creating it", async () => {
