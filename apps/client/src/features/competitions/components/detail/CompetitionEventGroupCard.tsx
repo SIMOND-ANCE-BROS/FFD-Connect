@@ -35,7 +35,11 @@ export function CompetitionEventGroupCard({
       style={[styles.eventCard, { backgroundColor: currentTheme.surface }]}
     >
       <View style={styles.eventGroupHeader}>
-        <AppText variant="h3" color={currentTheme.text}>
+        <AppText
+          variant="h3"
+          color={currentTheme.text}
+          accessibilityRole="header"
+        >
           {formatDiscipline(group.category)}
         </AppText>
         <AppText

@@ -55,12 +55,17 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                 source={require("../../../assets/logo.png") as number}
                 style={styles.logo}
                 contentFit="contain"
+                // Decorative: the "FFD Connect" title below names the app.
+                accessible={false}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
               />
               <AppText
                 variant="h1"
                 align="center"
                 style={styles.title}
                 color={currentTheme.text}
+                accessibilityRole="header"
               >
                 FFD Connect
               </AppText>
@@ -80,6 +85,9 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                   variant="caption"
                   style={styles.label}
                   color={currentTheme.textSecondary}
+                  // The input below carries this name: avoid a double reading.
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
                 >
                   E-MAIL
                 </AppText>
@@ -91,7 +99,7 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                   <TextInput
                     ref={usernameRef}
                     testID="login-email-input"
-                    accessibilityLabel="login-email-input"
+                    accessibilityLabel="E-mail"
                     accessibilityHint="Saisissez l'e-mail de votre compte FFD-Connect"
                     style={[
                       styles.input,
@@ -130,6 +138,8 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                   variant="caption"
                   style={styles.label}
                   color={currentTheme.textSecondary}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
                 >
                   MOT DE PASSE
                 </AppText>
@@ -154,7 +164,7 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                     <TextInput
                       ref={passwordRef}
                       testID="login-password-input"
-                      accessibilityLabel="login-password-input"
+                      accessibilityLabel="Mot de passe"
                       accessibilityHint="Saisissez votre mot de passe"
                       style={[
                         styles.passwordInput,
@@ -181,6 +191,12 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                   </Pressable>
                   <TouchableOpacity
                     accessibilityRole="button"
+                    accessibilityLabel={
+                      state.isPasswordVisible
+                        ? "Masquer le mot de passe"
+                        : "Afficher le mot de passe"
+                    }
+                    accessibilityHint="Bascule l'affichage du mot de passe en clair"
                     onPress={actions.togglePasswordVisibility}
                     style={styles.eyeIcon}
                     testID="login-password-toggle"
@@ -196,8 +212,9 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
 
               <View style={styles.buttonRow}>
                 <AppButton
-                  accessibilityLabel="Login Button"
-                  accessibilityHint="Valider la connexion"
+                  // Busy state is announced by AppButton (accessibilityState).
+                  accessibilityLabel="Se connecter"
+                  accessibilityHint="Valide l'e-mail et le mot de passe saisis"
                   testID="login-submit-button"
                   title={state.loading ? "Connexion..." : "SE CONNECTER"}
                   onPress={() => {
@@ -210,6 +227,8 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                 {state.isBiometricAvailable && (
                   <TouchableOpacity
                     accessibilityRole="button"
+                    accessibilityLabel="Connexion biométrique"
+                    accessibilityHint="Se connecter avec Face ID, Touch ID ou l'empreinte"
                     onPress={() => {
                       actions.onBiometricLogin().catch(() => {});
                     }}
@@ -226,6 +245,8 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
 
               <TouchableOpacity
                 accessibilityRole="button"
+                accessibilityLabel="Mot de passe oublié ?"
+                accessibilityHint="Ouvre la réinitialisation du mot de passe"
                 style={styles.linkButton}
                 onPress={actions.onForgotPassword}
                 testID="login-forgot-password-button"
@@ -260,6 +281,9 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                 />
                 <AppText
                   variant="caption"
+                  // Purely visual separator.
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
                   style={[
                     styles.dividerText,
                     { color: currentTheme.textSecondary },
@@ -281,8 +305,9 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                 }}
                 style={styles.guestButton}
                 testID="login-guest-button"
-                accessibilityLabel="Login as Guest"
-                accessibilityHint="Naviguer sans être connecté"
+                accessibilityRole="button"
+                accessibilityLabel="Continuer en tant qu'invité"
+                accessibilityHint="Consulter l'application sans être connecté"
               >
                 <AppText
                   variant="button"
@@ -385,8 +410,10 @@ const styles = StyleSheet.create({
   },
   linkButton: {
     alignItems: "center",
+    justifyContent: "center",
     marginTop: theme.spacing.l,
     padding: 10,
+    minHeight: 44,
   },
   passwordContainer: {
     flexDirection: "row",
@@ -398,6 +425,9 @@ const styles = StyleSheet.create({
     height: 56, // Fixed height for consistency
   },
   eyeIcon: {
+    // >= 44pt touch target (RGAA 13.x / WCAG 2.5.8).
+    minWidth: 44,
+    minHeight: 44,
     padding: 8,
     justifyContent: "center",
     alignItems: "center",
@@ -434,6 +464,8 @@ const styles = StyleSheet.create({
   },
   guestButton: {
     padding: 10,
+    minHeight: 44,
+    justifyContent: "center",
     alignSelf: "center",
   },
   guestButtonText: {

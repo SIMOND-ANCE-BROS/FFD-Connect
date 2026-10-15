@@ -25,7 +25,14 @@ export const BigBarcode: React.FC<BigBarcodeProps> = ({ value }) => {
     );
   }
   return (
-    <View style={styles.barcodeContainer}>
+    <View
+      style={styles.barcodeContainer}
+      // The bars are a drawing, not a scannable code: speak the number.
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`Code-barres de la licence, numéro ${value}`}
+      accessibilityHint="À présenter au contrôle"
+    >
       <View style={styles.barcodeBars}>{bars}</View>
       <AppText variant="h2" style={styles.barcodeText}>
         {value}

@@ -198,6 +198,12 @@ export const LicenseScreen: React.FC = () => {
                 dédié dans l'en-tête (redondant). */}
             <TouchableOpacity
               accessibilityRole="button"
+              accessibilityLabel="Partager la licence en PDF"
+              accessibilityHint="Génère un PDF de votre licence à partager"
+              accessibilityState={{
+                disabled: state.loadingPdf,
+                busy: state.loadingPdf,
+              }}
               testID="license-screen-share-button"
               onPress={() => {
                 actions.generateAndSharePdf().catch(() => {});
@@ -251,6 +257,8 @@ export const LicenseScreen: React.FC = () => {
               { backgroundColor: `${currentTheme.textSecondary}18` },
             ]}
             testID="license-offline-banner"
+            // Dot colour is decorative: the text carries the information.
+            accessible
           >
             <View
               testID="license-offline-dot"
@@ -275,6 +283,7 @@ export const LicenseScreen: React.FC = () => {
               },
             ]}
             testID="license-unavailable"
+            accessible
             accessibilityRole="alert"
           >
             {state.licenseUnavailableReason === "offline" ? (
@@ -471,6 +480,8 @@ export const LicenseScreen: React.FC = () => {
           />
           <View
             testID="qr-modal-card"
+            // Keep VoiceOver inside the card while the code is displayed.
+            accessibilityViewIsModal
             style={[
               styles.qrModalContent,
               { backgroundColor: currentTheme.surface },
@@ -483,11 +494,14 @@ export const LicenseScreen: React.FC = () => {
                 <QRCodeView
                   value={JSON.stringify(state.activeQrData)}
                   size={220}
+                  spokenLabel="QR code de votre licence"
                 />
               </View>
             )}
             <TouchableOpacity
               accessibilityRole="button"
+              accessibilityLabel="Fermer"
+              accessibilityHint="Ferme le code de la licence"
               onPress={() => actions.setShowQr(false)}
               style={styles.modalCloseButton}
               testID="qr-modal-close-button"
@@ -549,6 +563,8 @@ const styles = StyleSheet.create({
   },
   modalCloseButton: {
     padding: 10,
+    minHeight: 44,
+    justifyContent: "center",
   },
   guestCard: {
     padding: 24,

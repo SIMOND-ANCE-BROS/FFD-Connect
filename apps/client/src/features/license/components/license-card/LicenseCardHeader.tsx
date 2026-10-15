@@ -52,6 +52,10 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
             style={styles.appLogoImage}
             contentFit="contain"
             testID="license-card-app-logo"
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel="FFD Connect"
+            accessibilityHint="Carte de compte de l'application"
           />
         ) : isFFD ? (
           // White badge: the federation logo keeps its own colours (navy
@@ -83,7 +87,8 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
       </View>
 
       {/* Title Centered */}
-      <View style={styles.titleContainer}>
+      {/* Licence type + season/status read together. */}
+      <View style={styles.titleContainer} accessible>
         <AppText
           variant="h1"
           numberOfLines={1}
@@ -122,6 +127,8 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
       {onOptions && (
         <TouchableOpacity
           accessibilityRole="button"
+          accessibilityLabel="Options de la licence"
+          accessibilityHint="Affiche les actions possibles sur cette licence"
           onPress={onOptions}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           style={styles.optionsButton}

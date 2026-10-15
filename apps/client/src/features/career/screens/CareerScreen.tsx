@@ -1,4 +1,3 @@
-/* eslint-disable react-native-a11y/has-valid-accessibility-descriptors */
 import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { CompositeScreenProps } from "@react-navigation/native";
 import {
@@ -42,6 +41,7 @@ import { BackendService } from "../../../services/BackendService";
 import { getPodiumStyle } from "../../../utils/podium";
 import { useCareerLogic } from "../hooks/useCareerLogic";
 import { formatDiscipline } from "../../../utils/discipline";
+import { joinA11yLabel } from "../../../utils/a11y";
 
 type Props = CompositeScreenProps<
   BottomTabScreenProps<TabParamList, "Career">,
@@ -167,6 +167,7 @@ export const CareerScreen = ({ navigation }: Props) => {
                   <Users size={22} color={currentTheme.primary} />
                   <AppText
                     variant="h2"
+                    accessibilityRole="header"
                     style={[styles.sectionTitle, { color: currentTheme.text }]}
                   >
                     Partenariats
@@ -208,6 +209,7 @@ export const CareerScreen = ({ navigation }: Props) => {
                   <Calendar size={22} color={currentTheme.primary} />
                   <AppText
                     variant="h2"
+                    accessibilityRole="header"
                     style={[styles.sectionTitle, { color: currentTheme.text }]}
                   >
                     Compétitions
@@ -224,6 +226,18 @@ export const CareerScreen = ({ navigation }: Props) => {
                   registrations.slice(0, 30).map((r) => (
                     <TouchableOpacity
                       key={r.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={joinA11yLabel([
+                        r.competition.title,
+                        `inscription ${statusLabel(r.status).toLowerCase()}`,
+                        r.competition.location,
+                        formatDate(r.competition.date),
+                        formatDiscipline(r.event.category),
+                        r.event.ageGroup,
+                        r.bibNumber != null ? `dossard ${r.bibNumber}` : null,
+                        r.partnerName ? `avec ${r.partnerName}` : null,
+                      ])}
+                      accessibilityHint="Ouvre le détail de la compétition"
                       style={[
                         styles.card,
                         {
@@ -297,6 +311,7 @@ export const CareerScreen = ({ navigation }: Props) => {
                   <Award size={22} color={currentTheme.primary} />
                   <AppText
                     variant="h2"
+                    accessibilityRole="header"
                     style={[styles.sectionTitle, { color: currentTheme.text }]}
                   >
                     Résultats & classement
@@ -318,6 +333,19 @@ export const CareerScreen = ({ navigation }: Props) => {
                     return (
                       <TouchableOpacity
                         key={r.id}
+                        accessibilityRole="button"
+                        accessibilityLabel={joinA11yLabel([
+                          r.competition.title,
+                          r.totalParticipants
+                            ? `classé ${r.ranking}e sur ${r.totalParticipants}`
+                            : `classé ${r.ranking}e`,
+                          podium.isPodium ? "podium" : null,
+                          formatDiscipline(r.event.category),
+                          r.event.ageGroup,
+                          r.round,
+                          formatDate(r.competition.date),
+                        ])}
+                        accessibilityHint="Ouvre les résultats de la compétition"
                         style={[
                           styles.card,
                           styles.resultCard,
@@ -437,6 +465,12 @@ export const CareerScreen = ({ navigation }: Props) => {
             {searchResults.map((member) => (
               <TouchableOpacity
                 key={member.id}
+                accessibilityRole="button"
+                accessibilityLabel={joinA11yLabel([
+                  `${member.firstName} ${member.lastName}`.trim(),
+                  member.clubName,
+                ])}
+                accessibilityHint="Ouvre la carrière de ce membre"
                 style={[
                   styles.searchResultItem,
                   { borderColor: currentTheme.border },
@@ -498,7 +532,10 @@ function PartnershipCard({
 }) {
   const name = `${item.partner.firstName} ${item.partner.lastName}`.trim();
   return (
+    // One screen-reader stop per partnership (name, "Actuel", club…) instead
+    // of one per line. Not interactive, so no child is hidden from Maestro.
     <View
+      accessible
       style={[
         styles.card,
         { backgroundColor: theme.surface, borderColor: theme.border },

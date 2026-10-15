@@ -511,12 +511,16 @@ describe("LicenseScreen Integration", () => {
     const { getByTestId } = await render(<LicenseScreen />);
 
     // a11y (#356): the overlay is a sibling of the QR card, not its wrapper.
+    // The card is accessibilityViewIsModal (#22): screen readers — and RNTL
+    // queries — skip the overlay, the visible "Fermer" button closes it.
     expectSiblingBackdrop(
-      getByTestId("qr-modal-overlay"),
+      getByTestId("qr-modal-overlay", { includeHiddenElements: true }),
       getByTestId("qr-modal-card"),
     );
 
-    await fireEvent.press(getByTestId("qr-modal-overlay"));
+    await fireEvent.press(
+      getByTestId("qr-modal-overlay", { includeHiddenElements: true }),
+    );
     expect(mockActions.setShowQr).toHaveBeenCalledWith(false);
 
     await fireEvent.press(getByTestId("qr-modal-close-button"));

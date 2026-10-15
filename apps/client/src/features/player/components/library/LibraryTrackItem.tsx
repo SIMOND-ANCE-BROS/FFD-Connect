@@ -5,6 +5,7 @@ import { AppText } from "../../../../components/AppText";
 import { AppTheme } from "../../../../context/ThemeContext";
 import { DEBUG_PLAYER } from "../../../../config";
 import { useIsOnline } from "../../../../hooks/useIsOnline";
+import { joinA11yLabel } from "../../../../utils/a11y";
 import { logger } from "../../../../utils/logger";
 import { TrackData } from "../../context/PlayerContext";
 import { storedPasoClashCount } from "../../utils/pasoClashes";
@@ -67,6 +68,17 @@ export const LibraryTrackItem = React.memo(
     // sont jouables — les autres sont grisées (#416).
     const unavailableOffline = !isOnline && !item.isDownloaded;
     const clashLabel = pasoClashLabel(item.style, item.clashTimecodes);
+    // One sentence instead of every badge read separately ("A", "MPM"…).
+    const a11yLabel = joinA11yLabel([
+      item.title,
+      item.artist,
+      item.style,
+      clashLabel,
+      item.baseBpm ? `${Math.round(item.baseBpm)} MPM` : null,
+      item.isDownloaded ? "disponible hors ligne" : null,
+      isCurrent ? (isPlaying ? "en cours de lecture" : "en pause") : null,
+      unavailableOffline ? "indisponible hors ligne" : null,
+    ]);
 
     const handlePress = () => {
       if (unavailableOffline) {
@@ -82,6 +94,29 @@ export const LibraryTrackItem = React.memo(
     return (
       <TouchableOpacity
         accessibilityRole="button"
+        accessibilityLabel={a11yLabel}
+        accessibilityHint={
+          onLongPress
+            ? "Lance la lecture. Autres actions disponibles via le rotor ou un appui long"
+            : "Lance la lecture"
+        }
+        // Long press (queue, favourites…) is also reachable from the
+        // VoiceOver rotor / TalkBack actions menu.
+        accessibilityActions={
+          onLongPress
+            ? [
+                { name: "activate" },
+                { name: "longpress", label: "Plus d'actions" },
+              ]
+            : undefined
+        }
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === "longpress") {
+            onLongPress?.(item);
+          } else {
+            handlePress();
+          }
+        }}
         testID={`library-track-${item.id}`}
         style={[
           styles.trackItem,

@@ -56,6 +56,7 @@ import {
 } from "../utils/competitionCard";
 import { styles } from "./CompetitionsScreen.styles";
 import { formatDiscipline } from "../../../utils/discipline";
+import { joinA11yLabel, toSpokenCase } from "../../../utils/a11y";
 
 /**
  * Calcule la distance en km entre deux coordonnées GPS (formule de Haversine).
@@ -239,11 +240,55 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
       item.status,
       item.date,
     );
+    const deadlineDays =
+      effectiveStatus === "UPCOMING"
+        ? getDeadlineDays(item.registrationDeadline)
+        : null;
+    const distanceLabel =
+      userLocation && item.latitude != null && item.longitude != null
+        ? formatDistance(
+            getDistanceKm(
+              userLocation.latitude,
+              userLocation.longitude,
+              item.latitude,
+              item.longitude,
+            ),
+          )
+        : null;
+    const showRegistrationBadge =
+      effectiveStatus === "UPCOMING" &&
+      !state.isGuest &&
+      role !== "CLUB" &&
+      (!!item.isRegistered || !item.isEligible);
+    // One sentence for the whole card (the touchable merges its children):
+    // title first so the reader — and Maestro text queries — find it.
+    const cardA11yLabel = joinA11yLabel([
+      item.title,
+      toSpokenCase(statusBadgeLabel(effectiveStatus)),
+      role === "CLUB" && item.isOrganizedByMyClub
+        ? "organisée par mon club"
+        : null,
+      showRegistrationBadge
+        ? item.isRegistered
+          ? "inscrit"
+          : "inéligible"
+        : null,
+      effectiveStatus === "LIVE"
+        ? `${item.address ?? item.location}, ${formatParisTime(item.date)}`
+        : formatParisDate(item.date),
+      deadlineDays !== null ? deadlineLabel(deadlineDays) : null,
+      effectiveStatus === "LIVE" ? null : item.location,
+      effectiveStatus === "PAST" ? null : distanceLabel,
+      role === "CLUB" && (item.clubMembersRegisteredCount ?? 0) > 0
+        ? `${item.clubMembersRegisteredCount} membre(s) du club inscrit(s)`
+        : null,
+    ]);
     return (
       <TouchableOpacity
         testID={`competition-card-${item.id}`}
-        accessibilityLabel={`Détails de la compétition ${item.title}`}
-        accessibilityHint={`Ouvrir les détails de la compétition ${item.title}`}
+        accessibilityRole="button"
+        accessibilityLabel={cardA11yLabel}
+        accessibilityHint="Ouvre le détail et les inscriptions"
         accessible
         style={[
           styles.card,
@@ -646,7 +691,11 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
             <View style={styles.headerActions}>
               <TouchableOpacity
                 accessibilityRole="button"
-                accessibilityLabel="Filtres"
+                accessibilityLabel={
+                  activeFilterCount > 0
+                    ? `Filtres, ${activeFilterCount} actif${activeFilterCount > 1 ? "s" : ""}`
+                    : "Filtres"
+                }
                 accessibilityHint="Filtrer par distance et période"
                 testID="competitions-filter-button"
                 onPress={() => setFilterVisible(true)}
@@ -970,20 +1019,23 @@ const ListFooter = ({
   );
 };
 
+/** Visible text of the status badge (also spoken in the card label). */
+function statusBadgeLabel(status: string): string {
+  if (status === "LIVE") return "EN DIRECT";
+  if (status === "UPCOMING") return "À VENIR";
+  if (status === "PAST") return "TERMINÉ";
+  return status;
+}
+
 const StatusBadge = ({ status }: { status: string }) => {
   const { theme } = useTheme(); // Hook usage inside component
   let color = theme.textSecondary;
-  let label = status;
+  const label = statusBadgeLabel(status);
 
   if (status === "LIVE") {
     color = theme.danger;
-    label = "EN DIRECT";
   } else if (status === "UPCOMING") {
     color = theme.secondary;
-    label = "À VENIR";
-  } else if (status === "PAST") {
-    color = theme.textSecondary;
-    label = "TERMINÉ";
   }
 
   return (

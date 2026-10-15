@@ -29,6 +29,8 @@ export const PlayerTrackInfo = ({
     {/* Like Button */}
     <TouchableOpacity
       testID="audio-player-like-button"
+      accessibilityRole="button"
+      accessibilityState={{ selected: isLiked }}
       accessibilityLabel={
         isLiked ? "Retirer des favoris" : "Ajouter aux favoris"
       }
@@ -48,7 +50,8 @@ export const PlayerTrackInfo = ({
     </TouchableOpacity>
 
     {/* Center Info */}
-    <View style={styles.trackTextContainer}>
+    {/* Title + style/artist read as one item. */}
+    <View style={styles.trackTextContainer} accessible>
       <AppText
         variant="h2"
         weight="bold"
@@ -72,7 +75,13 @@ export const PlayerTrackInfo = ({
     {/* BPM Toggle */}
     <TouchableOpacity
       testID="audio-player-bpm-toggle-button"
-      accessibilityLabel="Afficher les contrôles de tempo (MPM)"
+      accessibilityRole="button"
+      accessibilityLabel={
+        isBpmVisible
+          ? "Masquer les contrôles de tempo (MPM)"
+          : "Afficher les contrôles de tempo (MPM)"
+      }
+      accessibilityState={{ expanded: isBpmVisible }}
       accessibilityHint="Affiche les réglages pour modifier la vitesse de lecture"
       onPress={() => setIsBpmVisible(!isBpmVisible)}
       style={[

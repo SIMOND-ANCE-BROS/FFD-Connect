@@ -19,6 +19,7 @@ import {
   View,
 } from "react-native";
 import { useTheme } from "../context/ThemeContext";
+import { useMotionEnabled } from "../hooks/useReducedMotion";
 import { RootStackParamList, TabParamList } from "./types";
 
 // The Reanimated-based CurvedTabBar is replaced by a lightweight floating
@@ -43,6 +44,8 @@ export const useTabTransition = () => useContext(TabTransitionContext);
 const TabScreenTransition = ({ children }: { children: React.ReactNode }) => {
   const { direction, tick } = useTabTransition();
   const isFocused = useIsFocused();
+  // Honour the OS "Reduce motion" setting and the in-app toggle (RGAA 13.8).
+  const motionEnabled = useMotionEnabled();
   const translateX = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   // Tick of the last slide we actually animated. Regaining focus (e.g. swiping
@@ -64,6 +67,12 @@ const TabScreenTransition = ({ children }: { children: React.ReactNode }) => {
     }
     lastAnimatedTick.current = tick;
 
+    if (!motionEnabled) {
+      translateX.setValue(0);
+      opacity.setValue(1);
+      return;
+    }
+
     const offset = direction === 0 ? 0 : direction > 0 ? 8 : -8;
     translateX.setValue(offset);
     opacity.setValue(1);
@@ -73,7 +82,7 @@ const TabScreenTransition = ({ children }: { children: React.ReactNode }) => {
       duration: 160,
       useNativeDriver: true,
     }).start();
-  }, [direction, isFocused, opacity, tick, translateX]);
+  }, [direction, isFocused, motionEnabled, opacity, tick, translateX]);
 
   return (
     <Animated.View
@@ -116,6 +125,9 @@ const FloatingGlassTabBar = ({
   navigation,
 }: BottomTabBarProps) => {
   const { theme, isDark } = useTheme();
+  const motionEnabled = useMotionEnabled();
+  const motionEnabledRef = useRef(motionEnabled);
+  motionEnabledRef.current = motionEnabled;
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // Android draws edge-to-edge: a fixed offset left the pill on top of the
@@ -139,13 +151,17 @@ const FloatingGlassTabBar = ({
   useEffect(() => {
     // Skip while a drag is in progress so the finger stays in control.
     if (isDraggingRef.current) return;
+    if (!motionEnabled) {
+      translateX.setValue(indicatorTarget);
+      return;
+    }
     Animated.spring(translateX, {
       toValue: indicatorTarget,
       useNativeDriver: true,
       speed: 18,
       bounciness: 6,
     }).start();
-  }, [indicatorTarget, translateX]);
+  }, [indicatorTarget, motionEnabled, translateX]);
 
   // Drag-to-switch: hold the pill and slide, snap to the nearest tab on release.
   // Uses a JS-thread pan (runOnJS) driving the RN Animated.Value — no reanimated
@@ -181,6 +197,10 @@ const FloatingGlassTabBar = ({
       if (!focused && !event.defaultPrevented) {
         nav.navigate(route.name);
       }
+    }
+    if (!motionEnabledRef.current) {
+      translateX.setValue(targetForIndex(i));
+      return;
     }
     Animated.spring(translateX, {
       toValue: targetForIndex(i),
@@ -244,7 +264,13 @@ const FloatingGlassTabBar = ({
       pointerEvents="box-none"
     >
       <GestureDetector gesture={panGesture}>
-        <View style={[styles.pill, { width: pillWidth }]}>
+        {/* tablist: VoiceOver/TalkBack announce "onglet, 2 sur 5". Not
+            `accessible` itself, so each tab stays its own focusable element
+            (and keeps its testID reachable for Maestro). */}
+        <View
+          accessibilityRole="tablist"
+          style={[styles.pill, { width: pillWidth }]}
+        >
           {isLiquidGlassAvailable() ? (
             <GlassView
               glassEffectStyle="regular"
@@ -308,6 +334,11 @@ const FloatingGlassTabBar = ({
 
             const labelValue =
               options.tabBarLabel ?? options.title ?? route.name;
+            // Icon-only tabs must still be named for screen readers: fall back
+            // to the visible label (the icon itself is decorative).
+            const a11yLabel =
+              options.tabBarAccessibilityLabel ??
+              (typeof labelValue === "string" ? labelValue : route.name);
 
             const onPress = () => {
               const event = navigation.emit({
@@ -327,10 +358,12 @@ const FloatingGlassTabBar = ({
             return (
               <Pressable
                 key={route.key}
-                accessibilityRole="button"
-                accessibilityState={focused ? { selected: true } : {}}
-                accessibilityLabel={options.tabBarAccessibilityLabel}
-                accessibilityHint="Naviguer vers cet onglet"
+                accessibilityRole="tab"
+                accessibilityState={{ selected: focused }}
+                accessibilityLabel={a11yLabel}
+                accessibilityHint={
+                  focused ? "Onglet affiché" : `Affiche l'onglet ${a11yLabel}`
+                }
                 testID={
                   (options as unknown as { tabBarTestID?: string }).tabBarTestID
                 }
