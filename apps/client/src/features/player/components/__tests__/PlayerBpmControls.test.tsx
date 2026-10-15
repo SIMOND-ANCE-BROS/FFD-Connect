@@ -41,7 +41,20 @@ const renderControls = async (
   return { ...utils, changeBpm };
 };
 
+/** Budget of the one-off cold-start warm-up below (not of any test). */
+const WARM_UP_TIMEOUT_MS = 120_000;
+
 describe("PlayerBpmControls slider", () => {
+  // Cold start (#612, same mechanism as #514). The first render requires the
+  // slider and the lazy `react-native` getters (Text, TouchableOpacity…), and
+  // babel-transforms them when the Jest cache is cold. Under load that cost
+  // ran out the FIRST test's 15 s budget while the test itself takes ~60 ms
+  // once the modules are loaded. Pay it once here, under its own budget.
+  beforeAll(async () => {
+    const { unmount } = await renderControls();
+    await unmount();
+  }, WARM_UP_TIMEOUT_MS);
+
   beforeEach(() => {
     jest.useFakeTimers();
   });

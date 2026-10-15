@@ -55,6 +55,44 @@ describe("ClubDashboardScreen", () => {
     isDark: false,
   };
 
+  // Cold start (#615, same mechanism as #514). The first render requires the
+  // lazy `react-native` getters, the draggable list and its gesture/animation
+  // stack, and babel-transforms them when the Jest cache is cold. Under load
+  // that cost ran out the FIRST test's 15 s budget while the test itself takes
+  // well under a second once the modules are loaded. Pay it once here, under
+  // its own budget, so every test only measures behaviour.
+  const WARM_UP_TIMEOUT_MS = 120_000;
+  beforeAll(async () => {
+    (useTheme as jest.Mock).mockReturnValue(mockTheme);
+    (useAuthRepository as jest.Mock).mockReturnValue({
+      getAuthConfig: jest.fn().mockResolvedValue({ clubName: "Mon Club" }),
+      getClubDashboardConfig: jest.fn().mockResolvedValue(null),
+      setClubDashboardConfig: jest.fn().mockResolvedValue(undefined),
+    });
+    (ClubService.getMembers as jest.Mock).mockResolvedValue([]);
+    const { findByText, unmount } = await render(
+      <ClubDashboardScreen
+        navigation={
+          mockNavigation as unknown as NonNullable<
+            Parameters<typeof ClubDashboardScreen>[0]
+          >["navigation"]
+        }
+        route={
+          {
+            key: "ClubDashboard",
+            name: "ClubDashboard",
+            params: undefined,
+          } as unknown as NonNullable<
+            Parameters<typeof ClubDashboardScreen>[0]
+          >["route"]
+        }
+      />,
+    );
+    // Let the focus loads settle before unmounting.
+    await findByText("Mon Club");
+    await unmount();
+  }, WARM_UP_TIMEOUT_MS);
+
   beforeEach(() => {
     jest.clearAllMocks();
     (useTheme as jest.Mock).mockImplementation(() => ({
