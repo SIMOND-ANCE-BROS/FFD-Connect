@@ -230,9 +230,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           persist-credentials: false
+          # HEAD^1 = the target branch the PR / merge-queue commit merges
+          # into, compared by the migrations check below.
+          fetch-depth: 2
 
       - name: Setup pnpm & Node
         uses: ./.github/actions/setup-pnpm
+
+      # #494: immutable existing migrations, new ones dated after the target
+      # branch's latest (unique timestamp), no destructive SQL without a
+      # `-- destructive-approved: #<issue>` marker. Git objects only, a few
+      # seconds. Runs in the merge queue too: two queued PRs adding migrations
+      # are checked against each other. Runbook: deploiement-azure.md.
+      - name: Check Prisma migrations (backward compatibility, ordering)
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        working-directory: apps/backend
+        run: pnpm exec tsx scripts/check-migrations.ts --base HEAD^1 --head HEAD
 
       - name: Setup Prisma
         uses: ./.github/actions/setup-prisma
