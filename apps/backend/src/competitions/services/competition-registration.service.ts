@@ -28,7 +28,7 @@ import {
   normalizeDiscipline,
   practisesDiscipline,
 } from "../../common/competition-level";
-import { checkParticipationEligibility } from "../../common/participation-rules";
+import { checkEventParticipation } from "./competition-query.utils";
 import { handlePrismaError } from "../../utils/prisma-errors.util";
 import { hasRole } from "../../auth/roles";
 import {
@@ -263,20 +263,27 @@ export class CompetitionRegistrationService {
     const eventKind = event.eventKind ?? null;
     const eventLevel = event.level ?? null;
     if (finalAgeGroup) {
-      const eligibility = checkParticipationEligibility({
-        eventType: event.eventType,
-        eventAgeGroup: event.ageGroup,
-        eventCategory: event.category,
-        eventLevel: eventLevel ?? undefined,
-        eventKind: eventKind ?? undefined,
-        competitionType: competitionType ?? undefined,
-        registrantAgeGroup: finalAgeGroup,
-        // Niveau explicite, sinon celui du profil DANS LA DISCIPLINE de l'épreuve.
-        registrantLevel: options.registrantLevel?.trim()
-          ? options.registrantLevel.trim()
-          : (getCompetitionLevelForCategory(registrant, event.category) ??
-            undefined),
-      });
+      // Every age class of a club-entered Open, and its admitted levels (#638).
+      const eligibility = checkEventParticipation(
+        {
+          eventType: event.eventType,
+          ageGroup: event.ageGroup,
+          ageGroups: event.ageGroups,
+          openLevels: event.openLevels,
+          category: event.category,
+          level: eventLevel,
+          eventKind,
+        },
+        { competitionType },
+        {
+          registrantAgeGroup: finalAgeGroup,
+          // Niveau explicite, sinon celui du profil DANS LA DISCIPLINE de l'épreuve.
+          registrantLevel: options.registrantLevel?.trim()
+            ? options.registrantLevel.trim()
+            : (getCompetitionLevelForCategory(registrant, event.category) ??
+              undefined),
+        },
+      );
       if (!eligibility.allowed) {
         throw new BadRequestException(
           eligibility.reason ??
