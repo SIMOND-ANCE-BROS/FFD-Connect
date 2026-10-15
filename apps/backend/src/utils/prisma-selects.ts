@@ -523,6 +523,12 @@ export const seatBookingHoldSelect = {
 /** Checkout (#428) : place occupée par une réservation active. */
 export const seatBookingSeatIndexSelect = { seatIndex: true } as const;
 
+/** Checkout (#455) : place et échéance d'une réservation laissée expirer (délai avant de la reprendre). */
+export const seatBookingLapseSelect = {
+  seatIndex: true,
+  expiresAt: true,
+} as const;
+
 /** Checkout (#428) : créneau de réservation en attente (plafond de 4). */
 export const seatBookingPendingSlotSelect = { pendingSlot: true } as const;
 

@@ -18,19 +18,23 @@ export type OrderRejectionReason =
   | "not_paid"
   | "amount_mismatch"
   | "booking_expired"
-  | "duplicate_payment";
+  | "duplicate_payment"
+  | "booking_cancelled";
 
 /**
  * Rejections where a genuine, fully paid order could not be honoured: the
- * money is collected but no seat is granted (late payment, #401) or the seat
+ * money is collected but no seat is granted (late payment, #401), the seat
  * was already paid through another checkout intent of the same booking
- * (resumed payment paid twice, #428). The intent is recorded in
- * `refundOwedPaymentIds` (and `refundOwedAt` set)
- * and the organising club refunds the payer from its HelloAsso back-office
- * (manual refund, decided in #438).
+ * (resumed payment paid twice, #428), or the booking was released after a
+ * refund or dispute and an earlier intent of it is paid (#456). The intent is
+ * recorded in `refundOwedPaymentIds` (and `refundOwedAt` set), the organising
+ * club is alerted (`RefundOwedAlertService`) and refunds the payer by hand
+ * from its HelloAsso back-office (#438; club-side list of refunds due: #516).
+ * Nothing is refunded automatically: #403 only releases a seat once
+ * HelloAsso reports its payment refunded or disputed.
  */
 export const REFUND_REQUIRED_REASONS: ReadonlySet<OrderRejectionReason> =
-  new Set(["booking_expired", "duplicate_payment"]);
+  new Set(["booking_expired", "duplicate_payment", "booking_cancelled"]);
 
 export interface BookingPaymentCheck {
   id: string;
@@ -122,13 +126,23 @@ export function checkOrderAgainstBooking(
   booking: BookingPaymentCheck,
   now: Date,
 ): OrderRejectionReason | null {
-  // A hold awaiting payment (still running or lapsed), or a confirmed seat
-  // paid again through another of its intents (#428). Never a cancelled
-  // booking: no revival.
+  // A hold awaiting payment (still running or lapsed), a confirmed seat paid
+  // again through another of its intents (#428), or a released booking paid
+  // through one of its EARLIER intents (#456: refund owed, never a revival).
+  // The current intent of a released booking is the refunded or disputed
+  // seat payment itself: nothing new to act on.
   if (
     booking.status !== "PENDING" &&
     booking.status !== "EXPIRED" &&
-    booking.status !== "CONFIRMED"
+    booking.status !== "CONFIRMED" &&
+    booking.status !== "CANCELLED"
+  ) {
+    return "not_pending";
+  }
+  if (
+    booking.status === "CANCELLED" &&
+    (payload.data.checkoutIntentId === undefined ||
+      String(payload.data.checkoutIntentId) === booking.paymentId)
   ) {
     return "not_pending";
   }
@@ -161,6 +175,11 @@ export function checkOrderAgainstBooking(
     // the booking's current intent: the caller only gets here for another
     // intent of the booking (resumed payment paid twice).
     return "duplicate_payment";
+  }
+  if (booking.status === "CANCELLED") {
+    // Proven genuine and fully paid on an earlier intent of a booking whose
+    // seat was released (refund or dispute, #403): money owed back (#456).
+    return "booking_cancelled";
   }
   if (booking.status === "EXPIRED" || isHoldExpired(booking, now)) {
     return "booking_expired";
