@@ -545,7 +545,11 @@ describe("AdminUsersService.delete", () => {
       targetId: "u1",
       after: { role: UserRole.LICENSEE },
     });
-    expect(deletion.deleteAccount).toHaveBeenCalledWith("u1", ["audit-op"]);
+    expect(deletion.deleteAccount).toHaveBeenCalledWith("u1", ["audit-op"], {
+      actorUserId: "admin-1",
+      actorRole: "ADMIN",
+      route: "DELETE /admin/users/:id",
+    });
   });
 
   it("accepts the email whatever its case and surrounding spaces", async () => {

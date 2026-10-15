@@ -5,6 +5,7 @@ import {
   LicenseRenewalStatus,
   Prisma,
 } from "@prisma/client";
+import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
@@ -27,8 +28,14 @@ describe("HealthDataRetentionService", () => {
   };
   const mockCleaner = { deleteFiles: jest.fn() };
   const mockBlobStorage = { isEnabled: jest.fn() };
+  const mockHealthAccess = { recordOp: jest.fn(), purgeExpired: jest.fn() };
 
-  const due = { id: "doc-1", filePath: "blob-1", requestId: "req-1" };
+  const due = {
+    id: "doc-1",
+    filePath: "blob-1",
+    requestId: "req-1",
+    request: { userId: "user-1" },
+  };
 
   /** `findMany` sert d'abord le backfill, puis les documents échus. */
   const whenFindMany = (undated: unknown[], dueDocs: unknown[]) => {
@@ -51,6 +58,8 @@ describe("HealthDataRetentionService", () => {
       count: 0,
     });
     mockPrisma.$transaction.mockResolvedValue([]);
+    mockHealthAccess.recordOp.mockReturnValue("health-access-op");
+    mockHealthAccess.purgeExpired.mockResolvedValue(0);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -58,6 +67,7 @@ describe("HealthDataRetentionService", () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: RenewalDocumentFileCleaner, useValue: mockCleaner },
         { provide: BlobStorageService, useValue: mockBlobStorage },
+        { provide: HealthDataAccessLogService, useValue: mockHealthAccess },
       ],
     }).compile();
 
@@ -173,6 +183,32 @@ describe("HealthDataRetentionService", () => {
     expect(report.purged).toBe(1);
   });
 
+  // #63 : chaque certificat purgé laisse une trace (traitement automatique,
+  // sans auteur), validée avec la suppression de la ligne.
+  it("trace la suppression de chaque certificat purgé, dans la même transaction", async () => {
+    whenFindMany([], [due]);
+    mockCleaner.deleteFiles.mockResolvedValue(new Set(["blob-1"]));
+    mockPrisma.licenseRenewalDocument.deleteMany.mockReturnValue("delete-op");
+
+    await service.purgeExpiredHealthData();
+
+    expect(mockHealthAccess.recordOp).toHaveBeenCalledWith([
+      {
+        subjectUserId: "user-1",
+        actorUserId: null,
+        actorRole: "SYSTEM",
+        action: "DELETE",
+        resourceType: "MEDICAL_CERTIFICATE",
+        resourceId: "doc-1",
+        route: "job:health-data-retention",
+      },
+    ]);
+    expect(mockPrisma.$transaction).toHaveBeenCalledWith([
+      "delete-op",
+      "health-access-op",
+    ]);
+  });
+
   /**
    * `ocrData` contient `rawText` : 500 caractères bruts du certificat. Il doit
    * disparaître à l'heure dite même si le fichier résiste, sinon une panne de
@@ -186,11 +222,24 @@ describe("HealthDataRetentionService", () => {
 
     expect(mockPrisma.licenseRenewalDocument.updateMany).toHaveBeenCalled();
     expect(mockPrisma.licenseRenewalDocument.deleteMany).not.toHaveBeenCalled();
+    // Rien de supprimé, rien de tracé : le passage suivant le fera.
+    expect(mockHealthAccess.recordOp).not.toHaveBeenCalled();
     expect(report).toMatchObject({ stripped: 1, purged: 0, retryLater: 1 });
   });
 
   it("ne supprime que les lignes dont le fichier est réellement parti", async () => {
-    whenFindMany([], [due, { id: "doc-2", filePath: "blob-2" }]);
+    whenFindMany(
+      [],
+      [
+        due,
+        {
+          id: "doc-2",
+          filePath: "blob-2",
+          requestId: "req-2",
+          request: { userId: "user-2" },
+        },
+      ],
+    );
     mockCleaner.deleteFiles.mockResolvedValue(new Set(["blob-2"]));
 
     const report = await service.purgeExpiredHealthData();
@@ -199,6 +248,9 @@ describe("HealthDataRetentionService", () => {
       where: { id: { in: ["doc-2"] } },
     });
     expect(report).toMatchObject({ due: 2, purged: 1, retryLater: 1 });
+    expect(mockHealthAccess.recordOp).toHaveBeenCalledWith([
+      expect.objectContaining({ resourceId: "doc-2", subjectUserId: "user-2" }),
+    ]);
   });
 
   it("ne touche à rien quand aucun document n'est échu", async () => {
@@ -290,6 +342,47 @@ describe("HealthDataRetentionService", () => {
 
     // « zéro suppression » et « la purge ne tourne plus » doivent être
     // distinguables depuis les journaux.
+    describe("rétention du journal des accès (#63)", () => {
+      it("purge le journal à chaque passage, même sans stockage blob", async () => {
+        mockBlobStorage.isEnabled.mockReturnValue(false);
+        mockHealthAccess.purgeExpired.mockResolvedValue(3);
+        const logged = jest
+          .spyOn(Logger.prototype, "log")
+          .mockImplementation(() => {});
+        const warned = jest
+          .spyOn(Logger.prototype, "warn")
+          .mockImplementation(() => {});
+
+        await service.handleCron();
+
+        expect(mockHealthAccess.purgeExpired).toHaveBeenCalledTimes(1);
+        expect(logged).toHaveBeenCalledWith(
+          expect.stringContaining("3 row(s) purged"),
+        );
+        logged.mockRestore();
+        warned.mockRestore();
+      });
+
+      it("un échec de la purge du journal est journalisé, pas propagé", async () => {
+        whenFindMany([], []);
+        mockHealthAccess.purgeExpired.mockRejectedValue(new Error("DB down"));
+        const errored = jest
+          .spyOn(Logger.prototype, "error")
+          .mockImplementation(() => {});
+        const logged = jest
+          .spyOn(Logger.prototype, "log")
+          .mockImplementation(() => {});
+
+        await expect(service.handleCron()).resolves.toBeUndefined();
+
+        expect(errored).toHaveBeenCalledWith(
+          expect.stringContaining("Health data access log purge failed"),
+        );
+        errored.mockRestore();
+        logged.mockRestore();
+      });
+    });
+
     it("journalise même un passage sans rien à faire", async () => {
       const logged = jest
         .spyOn(Logger.prototype, "log")

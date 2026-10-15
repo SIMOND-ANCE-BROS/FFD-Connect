@@ -312,10 +312,13 @@ export const notificationPreferenceExportSelect = {
 
 /**
  * Sélecteur pour la purge des documents de renouvellement de licence à la
- * suppression de compte (RGPD art. 17) : seule la référence du fichier
- * (nom de blob, ou chemin disque historique) est lue.
+ * suppression de compte (RGPD art. 17) : la référence du fichier (nom de
+ * blob, ou chemin disque historique), plus l'id et le type pour tracer la
+ * suppression des certificats médicaux (#63). Jamais `ocrData`.
  */
 export const licenseRenewalDocumentFileSelect = {
+  id: true,
+  type: true,
   filePath: true,
 } as const;
 
@@ -412,6 +415,8 @@ export const licenseRenewalRequestResponseSelect = {
  * référence de stockage (`filePath`) et l'échéance de purge restent internes.
  */
 export const licenseRenewalDocumentExportSelect = {
+  // Not exported: names the document in the health-data access journal (#63).
+  id: true,
   type: true,
   ocrData: true,
   createdAt: true,
@@ -616,10 +621,13 @@ export const refreshTokenExportSelect = {
   revokedAt: true,
 } as const;
 
-/** Dépôt d'un document : statut de la demande + fichiers déjà déposés. */
+/**
+ * Dépôt d'un document : statut de la demande + fichiers déjà déposés (l'id
+ * trace la suppression d'un certificat médical remplacé, #63).
+ */
 export const licenseRenewalUploadTargetSelect = {
   status: true,
-  documents: { select: { type: true, filePath: true } },
+  documents: { select: { id: true, type: true, filePath: true } },
 } as const;
 
 /**
@@ -665,6 +673,8 @@ export const healthDataPurgeDueSelect = {
   id: true,
   filePath: true,
   requestId: true,
+  // Whose certificate is purged, for the health-data access journal (#63).
+  request: { select: { userId: true } },
 } as const;
 
 /** Sélecteur minimal : identifiant seul (destinataires d'une notification…). */
@@ -766,11 +776,14 @@ export const licenseRenewalHistorySelect = {
   reviewedAt: true,
 } as const;
 
-/** Fichier d'un document à servir à l'administrateur, et l'état de sa demande. */
+/**
+ * Fichier d'un document à servir à l'administrateur, l'état de sa demande et
+ * son titulaire (journal des accès aux données de santé, #63).
+ */
 export const licenseRenewalDocumentFileTargetSelect = {
   type: true,
   filePath: true,
-  request: { select: { status: true } },
+  request: { select: { status: true, userId: true } },
 } as const;
 
 /**
@@ -1006,6 +1019,22 @@ export const adminAuditLogSelect = {
   after: true,
   createdAt: true,
   actor: { select: userNameSelect },
+} as const;
+
+/**
+ * Journal des accès aux données de santé (#63) : identifiants seulement, aucun
+ * nom joint.
+ */
+export const healthDataAccessLogSelect = {
+  id: true,
+  subjectUserId: true,
+  actorUserId: true,
+  actorRole: true,
+  action: true,
+  resourceType: true,
+  resourceId: true,
+  route: true,
+  createdAt: true,
 } as const;
 
 /** Back-office: club options for selects (id + name only). */

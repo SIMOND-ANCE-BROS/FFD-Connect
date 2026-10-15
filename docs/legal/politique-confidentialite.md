@@ -115,6 +115,7 @@ Danse.
 - **Jetons de notification push (identifiants d'appareil)** : **90 jours** sans réutilisation de l'appareil. L'application réenregistre le jeton à chaque ouverture de session : passé ce délai sans signe de vie, l'appareil est considéré comme abandonné (application désinstallée, appareil remplacé) et la ligne est supprimée automatiquement. Le jeton est également supprimé immédiatement à la déconnexion, à la suppression du compte, et dès que Firebase le déclare invalide.
 - **Jetons de session** : 30 jours maximum.
 - **Logs techniques** : **12 mois**.
+- **Journal des accès aux données de santé** : **1 an**, puis suppression automatique. Il ne contient que des identifiants techniques (personne concernée, auteur de l'accès), la nature de l'accès, sa date et son point d'entrée — jamais le certificat ni les informations qui y figurent. Il subsiste après la suppression du compte jusqu'au terme de ce délai, afin qu'un accès ne puisse pas être effacé en supprimant un compte.
 - **Données d'usage anonymes** : **90 jours** avec l'identifiant d'installation, puis statistiques agrégées sans identifiant conservées **25 mois**.
 - **Sauvegardes de la base de données** : **7 jours** glissants. Une donnée supprimée peut y subsister jusqu'à 7 jours ; les sauvegardes ne servent qu'à la restauration du service après incident. Les fichiers envoyés (certificats) ne sont pas sauvegardés.
 
@@ -143,6 +144,7 @@ UE–États-Unis (Data Privacy Framework).
 - **Chiffrement applicatif renforcé des données de santé** (objectif AES-256) — voir la feuille de route sécurité (issue #418).
 - Accès restreint selon le rôle ; tokens d'authentification hachés (SHA-256) en base.
 - Vérification du certificat : réservée aux administrateurs de la plateforme — à ce jour, l'éditeur seul —, uniquement tant que la demande est en attente ; chaque ouverture est tracée.
+- **Journal des accès aux données de santé** : chaque consultation ou téléchargement d'un certificat par un administrateur, chaque consultation d'une demande de renouvellement lors d'un accès support (« se connecter en tant que »), chaque export de vos données et chaque suppression d'un certificat (par vous, par un administrateur ou par la purge automatique) est enregistré : qui, en quelle qualité, quoi, quand et par quel point d'entrée. Le journal ne recopie jamais le contenu du certificat ; il est conservé 1 an (§5).
 - Consentement explicite recueilli avant tout traitement d'un certificat médical.
 
 ## 8. Mineurs
