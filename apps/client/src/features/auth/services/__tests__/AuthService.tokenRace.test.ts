@@ -2,12 +2,18 @@
  * #592 — a preference update racing a silent refresh must never write back
  * the refresh token the rotation has just revoked. Runs the REAL tokenStore
  * and sessionRefresh against a fake keychain: only the network is mocked.
+ * Same for the impersonation switches racing a refresh (#598 review).
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
 
 import { refreshSession } from "../../../../api/sessionRefresh";
+import {
+  ImpersonationBackupError,
+  switchToImpersonation,
+} from "../../../../api/tokenStore";
+import api from "../../../../services/api";
 import { AuthService, type AuthConfig } from "../AuthService";
 
 jest.mock("axios", () => ({
@@ -126,5 +132,89 @@ describe("saveAuthConfig vs. a concurrent refresh rotation (#592)", () => {
 
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
     expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("impersonation vs. a concurrent refresh (#598 review, M1)", () => {
+  const impersonateResponse = {
+    data: {
+      access_token: "imp",
+      user: { role: "CLUB", email: "club@x.fr" },
+    },
+  };
+  const sessionKeys = () => ({
+    access: keychain["ffd.session.access"],
+    refresh: keychain["ffd.session.refresh"],
+  });
+
+  beforeEach(() => {
+    (api.post as jest.Mock).mockResolvedValue(impersonateResponse);
+  });
+
+  it("a refresh in flight when the impersonation starts is awaited: the backup holds the rotated tokens", async () => {
+    const release = pendingRotation();
+    const refreshing = refreshSession();
+
+    const impersonating = AuthService.impersonate("t1", "Club");
+    release();
+    await Promise.all([refreshing, impersonating]);
+
+    // The target's JWT, alone: no admin refresh token next to it.
+    expect(sessionKeys()).toEqual({ access: "imp", refresh: undefined });
+    expect(keychain["ffd.impersonation.access"]).toBe("a2");
+    expect(keychain["ffd.impersonation.refresh"]).toBe("r2");
+
+    await AuthService.stopImpersonation();
+    expect(sessionKeys()).toEqual({ access: "a2", refresh: "r2" });
+  });
+
+  it("a refresh landing AFTER the switch never writes the admin's tokens over the target's", async () => {
+    // The refresh read r1 before the switch; its response lands after it.
+    const release = pendingRotation();
+    const refreshing = refreshSession();
+    await new Promise((r) => setTimeout(r, 0));
+    await switchToImpersonation("imp");
+    release();
+
+    await expect(refreshing).resolves.toBeNull();
+    expect(sessionKeys()).toEqual({ access: "imp", refresh: undefined });
+    // The backup keeps what the switch read; the dropped refresh touched
+    // nothing.
+    expect(keychain["ffd.impersonation.refresh"]).toBe("r1");
+  });
+
+  it("an incomplete admin session aborts the impersonation, prefs and tokens untouched", async () => {
+    delete keychain["ffd.session.refresh"];
+
+    await expect(AuthService.impersonate("t1", "Club")).rejects.toThrow(
+      ImpersonationBackupError,
+    );
+
+    expect(sessionKeys()).toEqual({ access: "a1", refresh: undefined });
+    expect(keychain["ffd.impersonation.access"]).toBeUndefined();
+    const prefs = JSON.parse(
+      (await AsyncStorage.getItem("auth_config")) ?? "{}",
+    ) as Record<string, unknown>;
+    expect(prefs.impersonating).toBeUndefined();
+    expect(prefs.role).toBe("LICENSEE");
+    expect(await AsyncStorage.getItem("impersonation_backup")).toBeNull();
+  });
+
+  it("a login after an unfinished impersonation drops the admin's backup", async () => {
+    await AuthService.impersonate("t1", "Club");
+    (api.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        access_token: "b-a",
+        refresh_token: "b-r",
+        user: { role: "LICENSEE", email: "b@x.fr" },
+      },
+    });
+
+    await AuthService.login("b@x.fr", "pw");
+
+    expect(sessionKeys()).toEqual({ access: "b-a", refresh: "b-r" });
+    expect(keychain["ffd.impersonation.access"]).toBeUndefined();
+    expect(keychain["ffd.impersonation.refresh"]).toBeUndefined();
+    expect(await AsyncStorage.getItem("impersonation_backup")).toBeNull();
   });
 });

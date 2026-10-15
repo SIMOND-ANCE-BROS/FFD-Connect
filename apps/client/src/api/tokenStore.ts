@@ -339,30 +339,130 @@ export async function getAccessToken(): Promise<string | undefined> {
 
 /** Écrit les tokens fournis. N'efface JAMAIS sur undefined (voir clearTokens). */
 export function setTokens(tokens: Tokens): Promise<void> {
+  return withLock(() => writeSessionTokens(tokens));
+}
+
+/** setTokens' body, for callers already holding the lock. */
+async function writeSessionTokens(tokens: Tokens): Promise<void> {
+  if (tokens.authToken !== undefined) {
+    await SecureStore.setItemAsync(
+      ACCESS_KEY,
+      tokens.authToken,
+      storeOptions(),
+    );
+    // The fresh value now lives under the new key: drop the old one so a
+    // stale token can never be migrated back over it.
+    await deleteQuietly(OLD_ACCESS_KEY);
+  }
+  if (tokens.refreshToken !== undefined) {
+    await SecureStore.setItemAsync(
+      REFRESH_KEY,
+      tokens.refreshToken,
+      storeOptions(),
+    );
+    await deleteQuietly(OLD_REFRESH_KEY);
+  }
+  if (tokens.authToken !== undefined || tokens.refreshToken !== undefined) {
+    // A login/refresh written successfully: the store works, and this
+    // supersedes any pending "unreadable store" session end.
+    sessionGeneration += 1;
+  }
+}
+
+/** Session token under the new key, else under its pre-#582 key (lock held). */
+async function readSessionKey(
+  key: string,
+  oldKey: string,
+): Promise<string | null> {
+  return (await readKey(key)) ?? (await readKey(oldKey));
+}
+
+/**
+ * Persists the tokens of a silent refresh ONLY if the session is still the
+ * one the refresh started from — i.e. the stored refresh token is still
+ * `expected` (#598 review). Otherwise the session changed while the request
+ * was in flight (impersonation switch, logout, new login): the rotated
+ * tokens belong to the previous session and are discarded, never written
+ * over the current one. Returns whether they were stored.
+ *
+ * A failed read of the current value (rare: the refresh has just read the
+ * store) persists anyway — the backend has already revoked `expected`, so
+ * dropping its successor would end the session for certain.
+ */
+export function setTokensIfRefreshIs(
+  expected: string,
+  tokens: Tokens,
+): Promise<boolean> {
   return withLock(async () => {
-    if (tokens.authToken !== undefined) {
-      await SecureStore.setItemAsync(
-        ACCESS_KEY,
-        tokens.authToken,
-        storeOptions(),
+    let current: string | null;
+    try {
+      current = await readSessionKey(REFRESH_KEY, OLD_REFRESH_KEY);
+    } catch {
+      current = expected;
+    }
+    if (current !== expected) return false;
+    await writeSessionTokens(tokens);
+    return true;
+  });
+}
+
+/** Thrown when the admin's session is incomplete: no switch is attempted. */
+export class ImpersonationBackupError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ImpersonationBackupError";
+  }
+}
+
+/**
+ * Atomic switch to an impersonation (#591, #598 review), under ONE lock so
+ * no token write (a refresh landing late…) can interleave: reads the admin's
+ * session, backs it up, wipes the session (and the offline queue) and writes
+ * the target's access token. Requires both admin tokens — without them the
+ * admin could not come back — and changes nothing otherwise.
+ *
+ * @throws {ImpersonationBackupError} when an admin token is missing.
+ * @throws {TokenStoreUnavailableError} when the session cannot be read.
+ */
+export function switchToImpersonation(targetAccess: string): Promise<void> {
+  return withLock(async () => {
+    const [access, refresh] = await Promise.all([
+      readSessionKey(ACCESS_KEY, OLD_ACCESS_KEY),
+      readSessionKey(REFRESH_KEY, OLD_REFRESH_KEY),
+    ]);
+    if (access === null || refresh === null) {
+      throw new ImpersonationBackupError(
+        "Admin session incomplete: impersonation aborted",
       );
-      // The fresh value now lives under the new key: drop the old one so a
-      // stale token can never be migrated back over it.
-      await deleteQuietly(OLD_ACCESS_KEY);
     }
-    if (tokens.refreshToken !== undefined) {
-      await SecureStore.setItemAsync(
-        REFRESH_KEY,
-        tokens.refreshToken,
-        storeOptions(),
-      );
-      await deleteQuietly(OLD_REFRESH_KEY);
+    await SecureStore.setItemAsync(BACKUP_ACCESS_KEY, access, storeOptions());
+    await SecureStore.setItemAsync(BACKUP_REFRESH_KEY, refresh, storeOptions());
+    sessionGeneration += 1;
+    await deleteAllTokens();
+    await writeSessionTokens({ authToken: targetAccess });
+  });
+}
+
+/**
+ * Atomic counterpart of switchToImpersonation: reads the backup first
+ * (throws before changing anything if unreadable), wipes the target's session
+ * and, when the backup holds both admin tokens, writes them back. The backup
+ * itself is NOT dropped here: the caller clears it once the preferences are
+ * written, so a failure in between can be retried. Returns whether the
+ * admin's session was restored.
+ *
+ * @throws {TokenStoreUnavailableError} when the backup cannot be read.
+ */
+export function restoreFromImpersonation(): Promise<boolean> {
+  return withLock(async () => {
+    const backup = await readImpersonationBackup();
+    sessionGeneration += 1;
+    await deleteAllTokens();
+    if (backup.authToken === undefined || backup.refreshToken === undefined) {
+      return false;
     }
-    if (tokens.authToken !== undefined || tokens.refreshToken !== undefined) {
-      // A login/refresh written successfully: the store works, and this
-      // supersedes any pending "unreadable store" session end.
-      sessionGeneration += 1;
-    }
+    await writeSessionTokens(backup);
+    return true;
   });
 }
 
@@ -425,12 +525,13 @@ async function writeOrDelete(key: string, value?: string): Promise<void> {
 }
 
 /**
- * Reads the impersonation backup. No retry nor session-end policy here: it
- * is not the live session, a failed read only delays the switch back.
+ * Reads the impersonation backup (lock-free: see restoreFromImpersonation).
+ * No retry nor session-end policy here: it is not the live session, a failed
+ * read only delays the switch back.
  *
  * @throws {TokenStoreUnavailableError} when the store refuses the read.
  */
-export async function getImpersonationBackupTokens(): Promise<Tokens> {
+async function readImpersonationBackup(): Promise<Tokens> {
   try {
     const [authToken, refreshToken] = await Promise.all([
       SecureStore.getItemAsync(BACKUP_ACCESS_KEY, storeOptions()),

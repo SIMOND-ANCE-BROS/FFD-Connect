@@ -2,13 +2,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
 import {
+  ImpersonationBackupError,
   clearImpersonationBackupTokens,
   clearTokens,
   getAccessToken,
-  getImpersonationBackupTokens,
   getTokens,
+  restoreFromImpersonation,
   setImpersonationBackupTokens,
   setTokens,
+  setTokensIfRefreshIs,
+  switchToImpersonation,
 } from "../tokenStore";
 import {
   TokenStoreUnavailableError,
@@ -468,10 +471,6 @@ describe("impersonation backup (#591)", () => {
     );
     // The live session is not touched.
     expect(store["ffd.session.access"]).toBe("live");
-    await expect(getImpersonationBackupTokens()).resolves.toEqual({
-      authToken: "a",
-      refreshToken: "r",
-    });
   });
 
   it("is a full snapshot: a missing token deletes an older one", async () => {
@@ -482,11 +481,7 @@ describe("impersonation backup (#591)", () => {
 
     await setImpersonationBackupTokens({ authToken: "a" });
 
-    expect(store["ffd.impersonation.refresh"]).toBeUndefined();
-    await expect(getImpersonationBackupTokens()).resolves.toEqual({
-      authToken: "a",
-      refreshToken: undefined,
-    });
+    expect(store).toEqual({ "ffd.impersonation.access": "a" });
   });
 
   it("clearImpersonationBackupTokens drops both keys, never the session", async () => {
@@ -499,13 +494,9 @@ describe("impersonation backup (#591)", () => {
     await clearImpersonationBackupTokens();
 
     expect(store).toEqual({ "ffd.session.refresh": "live" });
-    await expect(getImpersonationBackupTokens()).resolves.toEqual({
-      authToken: undefined,
-      refreshToken: undefined,
-    });
   });
 
-  it("clearTokens (the switch to the target) keeps the backup", async () => {
+  it("clearTokens keeps the backup", async () => {
     const store = keychain({
       "ffd.session.access": "admin",
       "ffd.impersonation.access": "a",
@@ -515,15 +506,186 @@ describe("impersonation backup (#591)", () => {
 
     expect(store).toEqual({ "ffd.impersonation.access": "a" });
   });
+});
 
-  it("a refused read is a typed error, not an empty backup", async () => {
+describe("switchToImpersonation (atomic, #598 review)", () => {
+  it("backs the admin's session up, wipes it with the offline queue, writes the target token", async () => {
+    const store = keychain({
+      "ffd.session.access": "admin-a",
+      "ffd.session.refresh": "admin-r",
+    });
+
+    await switchToImpersonation("imp");
+
+    expect(store).toEqual({
+      "ffd.impersonation.access": "admin-a",
+      "ffd.impersonation.refresh": "admin-r",
+      "ffd.session.access": "imp",
+    });
+    expect(asyncRemove).toHaveBeenCalledWith("@ffd/offline-queue");
+  });
+
+  it("backs up a not-yet-migrated (pre-#582) admin session too", async () => {
+    const store = keychain({
+      "ffd.authToken": "admin-a",
+      "ffd.refreshToken": "admin-r",
+    });
+
+    await switchToImpersonation("imp");
+
+    expect(store).toEqual({
+      "ffd.impersonation.access": "admin-a",
+      "ffd.impersonation.refresh": "admin-r",
+      "ffd.session.access": "imp",
+    });
+  });
+
+  it.each([
+    [{ "ffd.session.access": "admin-a" }],
+    [{ "ffd.session.refresh": "admin-r" }],
+    [{}],
+  ])(
+    "requires both admin tokens, changing nothing otherwise (%j)",
+    async (initial: Record<string, string>) => {
+      const store = keychain(initial);
+
+      const error: unknown = await switchToImpersonation("imp").catch(
+        (e: unknown) => e,
+      );
+
+      expect(error).toBeInstanceOf(ImpersonationBackupError);
+      expect(store).toEqual(initial);
+    },
+  );
+
+  it("an unreadable session aborts before any write", async () => {
+    keychain({ "ffd.session.access": "admin-a" });
     getItemAsync.mockRejectedValue(LOCKED);
 
-    const error: unknown = await getImpersonationBackupTokens().catch(
+    await expect(switchToImpersonation("imp")).rejects.toThrow(
+      TokenStoreUnavailableError,
+    );
+    expect(setItemAsync).not.toHaveBeenCalled();
+    expect(deleteItemAsync).not.toHaveBeenCalled();
+  });
+
+  it("a token write queued during the switch lands after it, never in between", async () => {
+    const store = keychain({
+      "ffd.session.access": "admin-a",
+      "ffd.session.refresh": "admin-r",
+    });
+
+    const switching = switchToImpersonation("imp");
+    const late = setTokensIfRefreshIs("admin-r", {
+      authToken: "admin-a2",
+      refreshToken: "admin-r2",
+    });
+    await switching;
+
+    // The refresh started from the admin's session: dropped.
+    await expect(late).resolves.toBe(false);
+    expect(store["ffd.session.access"]).toBe("imp");
+    expect(store["ffd.session.refresh"]).toBeUndefined();
+  });
+});
+
+describe("restoreFromImpersonation (atomic)", () => {
+  it("wipes the target's session and writes the admin's back, keeping the backup", async () => {
+    const store = keychain({
+      "ffd.session.access": "imp",
+      "ffd.impersonation.access": "admin-a",
+      "ffd.impersonation.refresh": "admin-r",
+    });
+
+    await expect(restoreFromImpersonation()).resolves.toBe(true);
+
+    expect(store).toEqual({
+      "ffd.session.access": "admin-a",
+      "ffd.session.refresh": "admin-r",
+      // Cleared by the caller once the preferences are written.
+      "ffd.impersonation.access": "admin-a",
+      "ffd.impersonation.refresh": "admin-r",
+    });
+    expect(asyncRemove).toHaveBeenCalledWith("@ffd/offline-queue");
+  });
+
+  it("an incomplete backup only wipes the target's session", async () => {
+    const store = keychain({
+      "ffd.session.access": "imp",
+      "ffd.impersonation.access": "admin-a",
+    });
+
+    await expect(restoreFromImpersonation()).resolves.toBe(false);
+
+    expect(store).toEqual({ "ffd.impersonation.access": "admin-a" });
+  });
+
+  it("an unreadable backup changes nothing", async () => {
+    keychain({ "ffd.session.access": "imp" });
+    getItemAsync.mockRejectedValue(LOCKED);
+
+    const error: unknown = await restoreFromImpersonation().catch(
       (e: unknown) => e,
     );
 
     expect(isTokenStoreUnavailable(error)).toBe(true);
     expect((error as TokenStoreUnavailableError).locked).toBe(true);
+    expect(deleteItemAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("setTokensIfRefreshIs (#598 review)", () => {
+  it("writes when the stored refresh token is still the one sent", async () => {
+    const store = keychain({
+      "ffd.session.access": "a1",
+      "ffd.session.refresh": "r1",
+    });
+
+    await expect(
+      setTokensIfRefreshIs("r1", { authToken: "a2", refreshToken: "r2" }),
+    ).resolves.toBe(true);
+
+    expect(store).toEqual({
+      "ffd.session.access": "a2",
+      "ffd.session.refresh": "r2",
+    });
+  });
+
+  it("compares with a not-yet-migrated refresh token too", async () => {
+    keychain({ "ffd.refreshToken": "r1" });
+
+    await expect(
+      setTokensIfRefreshIs("r1", { authToken: "a2", refreshToken: "r2" }),
+    ).resolves.toBe(true);
+  });
+
+  it.each([
+    ["another session", { "ffd.session.refresh": "other" }],
+    ["a logout", {}],
+  ])(
+    "drops the rotated tokens after %s",
+    async (_case, initial: Record<string, string>) => {
+      const store = keychain(initial);
+
+      await expect(
+        setTokensIfRefreshIs("r1", { authToken: "a2", refreshToken: "r2" }),
+      ).resolves.toBe(false);
+
+      expect(store).toEqual(initial);
+    },
+  );
+
+  it("persists anyway when the current value cannot be read (r1 is already revoked)", async () => {
+    keychain({});
+    getItemAsync.mockRejectedValue(LOCKED);
+
+    await expect(
+      setTokensIfRefreshIs("r1", { authToken: "a2", refreshToken: "r2" }),
+    ).resolves.toBe(true);
+    expect(setItemAsync).toHaveBeenCalledWith(
+      "ffd.session.refresh",
+      "r2",
+      OPTS,
+    );
   });
 });
