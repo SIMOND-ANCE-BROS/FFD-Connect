@@ -106,6 +106,52 @@ describe('several conditions on one column (#673)', () => {
     expect(screen.getByRole('textbox', { name: 'Valeur : Email' })).toHaveValue('test');
   });
 
+  it('stops at the 10 conditions of the list instead of losing the 11th', async () => {
+    const user = setupUser();
+    const specs: FilterSpecs<'email' | 'bpm' | 'login'> = { email: EMAIL, bpm: BPM, login: LOGIN };
+    const full: ActiveFilter<'email' | 'bpm' | 'login'>[] = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        field: 'email' as const,
+        op: 'contains' as const,
+        value: `v${i}`,
+      })),
+      ...Array.from({ length: 5 }, (_, i) => ({
+        field: 'bpm' as const,
+        op: 'gt' as const,
+        value: i,
+      })),
+    ];
+    const setFilters = vi.fn();
+    function Menus() {
+      const { filter } = operatorFilters(specs, full, setFilters);
+      return (
+        <>
+          <section aria-label="login">{filter('login').content}</section>
+          <section aria-label="bpm">{filter('bpm').content}</section>
+        </>
+      );
+    }
+    renderWithProviders(<Menus />);
+    // A new column: no room left, said so, nothing to apply.
+    // (MPM is at its own cap of 5 per column, not at the list's.)
+    expect(screen.getAllByText(/10 conditions au plus sur la liste/)).toHaveLength(1);
+    await pickOption(
+      user,
+      screen.getByRole('textbox', { name: 'Opérateur : Connexion' }),
+      'est vide',
+    );
+    expect(screen.getByRole('button', { name: 'Appliquer le filtre : Connexion' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Ajouter une condition : Connexion' }),
+    ).toBeDisabled();
+    // A column already filtered can still change its conditions, not add one.
+    expect(screen.getByRole('button', { name: 'Ajouter une condition : MPM' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Supprimer la condition 5 : MPM' }));
+    await user.click(screen.getByRole('button', { name: 'Appliquer le filtre : MPM' }));
+    expect(setFilters).toHaveBeenCalledTimes(1);
+    expect(setFilters.mock.calls[0][0]).toHaveLength(9);
+  });
+
   it('offers one removable chip per condition, saying how it joins', async () => {
     const user = setupUser();
     const specs: FilterSpecs<'email' | 'bpm'> = { email: EMAIL, bpm: BPM };

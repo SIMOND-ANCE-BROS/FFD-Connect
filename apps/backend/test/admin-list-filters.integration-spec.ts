@@ -218,6 +218,29 @@ describe("Admin list filters (integration, real DB)", () => {
     ).toEqual(["Durand", "Petit"]);
   });
 
+  it("a negative operator on a nullable column keeps the empty rows inside an OR (#673)", async () => {
+    // MARTIN: « Paris Danse » ; Durand: NULL ; Petit: "".
+    expect(
+      await names([
+        { field: "club", op: "notContains", value: "danse", join: "or" },
+        { field: "club", op: "startsWith", value: "zzz", join: "or" },
+      ]),
+    ).toEqual(["Durand", "Petit"]);
+    expect(
+      await names([
+        { field: "club", op: "notContains", value: "paris", join: "or" },
+        { field: "club", op: "startsWith", value: "paris", join: "or" },
+      ]),
+    ).toEqual(["Durand", "MARTIN", "Petit"]);
+    // Same negation ANDed with « n'est pas vide »: NULL and "" both drop out.
+    expect(
+      await names([
+        { field: "club", op: "notContains", value: "paris" },
+        { field: "club", op: "isNotEmpty" },
+      ]),
+    ).toEqual([]);
+  });
+
   it("refuses too many conditions on one column (#673)", async () => {
     await request(server())
       .get("/api/v1/admin/users")

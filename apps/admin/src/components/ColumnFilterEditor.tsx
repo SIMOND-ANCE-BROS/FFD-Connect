@@ -292,7 +292,10 @@ export function ColumnFilterEditor<Field extends string>({
     ...(needsValue(op) && { value }),
     ...(conditions.length > 1 && join === 'or' && { join }),
   }));
-  const valid = draft.every((condition) => isValidFilter(condition, spec));
+  // Beyond the room left on the list (MAX_FILTERS in all), the API would refuse it.
+  const tooMany = conditions.length > maxConditions;
+  const atListCap = maxConditions < MAX_FIELD_CONDITIONS && conditions.length >= maxConditions;
+  const valid = !tooMany && draft.every((condition) => isValidFilter(condition, spec));
   const apply = () => {
     if (valid) onChange(draft);
   };
@@ -344,6 +347,12 @@ export function ColumnFilterEditor<Field extends string>({
           />
         </Stack>
       ))}
+      {atListCap && (
+        <Text size="xs" c={tooMany ? 'red' : 'dimmed'}>
+          {MAX_FILTERS} conditions au plus sur la liste : retirez-en une ailleurs pour en ajouter
+          ici.
+        </Text>
+      )}
       <Group gap="xs" justify="space-between">
         <Button
           variant="subtle"
@@ -412,7 +421,7 @@ export function operatorFilters<Field extends string>(
             field={field}
             spec={specs[field]}
             current={current}
-            maxConditions={Math.max(1, Math.min(MAX_FIELD_CONDITIONS, room))}
+            maxConditions={Math.max(0, Math.min(MAX_FIELD_CONDITIONS, room))}
             onChange={(next) => setFilters(withFieldFilters(filters, field, next))}
           />
         ),
