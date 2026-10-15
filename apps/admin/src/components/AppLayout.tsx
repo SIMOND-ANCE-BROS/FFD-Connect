@@ -47,6 +47,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     ],
   },
   { to: '/license-renewals', label: 'Renouvellements', queue: 'renewals' },
+  { to: '/refunds-due', label: 'Remboursements dus' },
   { to: '/audit-log', label: "Journal d'audit" },
   { to: '/stats', label: 'Statistiques' },
   { to: '/usage', label: "Usage de l'app" },

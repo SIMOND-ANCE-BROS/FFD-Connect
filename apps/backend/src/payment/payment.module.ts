@@ -2,6 +2,8 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ClubsModule } from "../clubs/clubs.module";
 import { PrismaModule } from "../prisma/prisma.module";
+import { AdminRefundsDueController } from "./admin-refunds-due.controller";
+import { AdminRefundsDueQueryService } from "./admin-refunds-due-query.service";
 import { ClubRefundsDueController } from "./club-refunds-due.controller";
 import { ClubRefundsDueQueryService } from "./club-refunds-due-query.service";
 import { HelloAssoService } from "./hello-asso.service";
@@ -20,10 +22,12 @@ import { SeatReleaseService } from "./seat-release.service";
   imports: [PrismaModule, ConfigModule, ClubsModule],
   controllers: [
     PaymentController,
+    AdminRefundsDueController,
     ClubRefundsDueController,
     SeatOccupancyController,
   ],
   providers: [
+    AdminRefundsDueQueryService,
     ClubRefundsDueQueryService,
     HelloAssoService,
     HelloAssoNotificationService,

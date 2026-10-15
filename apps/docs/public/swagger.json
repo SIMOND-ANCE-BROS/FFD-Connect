@@ -25296,6 +25296,254 @@
         "tags": ["payment"]
       }
     },
+    "/admin/refunds-due": {
+      "get": {
+        "description": "Réservations de place pour lesquelles un club organisateur doit rembourser un ou plusieurs paiements HelloAsso (payé après expiration, sur une intention remplacée, ou en double), avec le club organisateur. Paginée (take ≤ 50), plus anciens d'abord par défaut. Lecture seule : la ligne disparaît quand HelloAsso notifie le paiement remboursé.",
+        "operationId": "AdminRefundsDueController_list",
+        "parameters": [
+          {
+            "name": "skip",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "take",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Champ de tri (liste blanche) ; absent : ordre par défaut",
+            "schema": {
+              "type": "string",
+              "enum": ["club", "competition", "competitionDate", "amount", "refundOwedAt"]
+            }
+          },
+          {
+            "name": "sortOrder",
+            "required": false,
+            "in": "query",
+            "description": "Sens du tri (défaut : asc) ; ignoré sans sortBy",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : club (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; competition (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; competitionDate (date : lt|gt|eq|between) ; dancer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; refundOwedAt (date : lt|gt|eq|between)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminRefundsDuePageDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Remboursements dus, tous clubs confondus",
+        "tags": ["admin"]
+      }
+    },
     "/clubs/me/refunds-due": {
       "get": {
         "description": "Réservations de place des compétitions organisées par le club du compte pour lesquelles un paiement HelloAsso doit être remboursé (payé après expiration, sur une intention remplacée, ou en double). Paginée (take ≤ 50), plus anciens d'abord. Lecture seule : le remboursement se fait depuis l'espace HelloAsso du club, et la ligne disparaît quand HelloAsso notifie le paiement remboursé.",
@@ -30023,6 +30271,46 @@
         },
         "required": ["eventType", "data"]
       },
+      "AdminRefundsDueFilterDto": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": ["club", "competition", "competitionDate", "dancer", "refundOwedAt"]
+          },
+          "op": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterOp"
+              }
+            ]
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            ],
+            "description": "Absente pour isEmpty / isNotEmpty"
+          }
+        },
+        "required": ["field", "op"]
+      },
       "ClubRefundDueCompetitionDto": {
         "type": "object",
         "properties": {
@@ -30050,6 +30338,87 @@
           }
         },
         "required": ["firstName", "lastName"]
+      },
+      "AdminRefundDueClubDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Club relié ; null : compétition pas encore reliée à un club"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Nom du club relié, sinon libellé de l'organisateur"
+          }
+        },
+        "required": ["id", "name"]
+      },
+      "AdminRefundDueDto": {
+        "type": "object",
+        "properties": {
+          "bookingId": {
+            "type": "string",
+            "description": "Identifiant de la réservation de place"
+          },
+          "competition": {
+            "$ref": "#/components/schemas/ClubRefundDueCompetitionDto"
+          },
+          "dancer": {
+            "$ref": "#/components/schemas/ClubRefundDueDancerDto"
+          },
+          "seatNumber": {
+            "type": "number",
+            "nullable": true,
+            "description": "Numéro de la place dans son élément du plan (à partir de 1) ; null pour une réservation antérieure à la vente à la place"
+          },
+          "amountCents": {
+            "type": "number",
+            "nullable": true,
+            "description": "Montant attendu d'UN paiement, en centimes (tarif fixé au checkout)"
+          },
+          "helloAssoCheckoutIntentIds": {
+            "description": "Références HelloAsso des paiements à rembourser (identifiants d'intention de paiement), un par paiement",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "refundOwedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date à laquelle le remboursement est devenu dû"
+          },
+          "club": {
+            "$ref": "#/components/schemas/AdminRefundDueClubDto"
+          }
+        },
+        "required": [
+          "bookingId",
+          "competition",
+          "dancer",
+          "seatNumber",
+          "amountCents",
+          "helloAssoCheckoutIntentIds",
+          "refundOwedAt",
+          "club"
+        ]
+      },
+      "AdminRefundsDuePageDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminRefundDueDto"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/AdminPageMetaDto"
+          }
+        },
+        "required": ["data", "meta"]
       },
       "ClubRefundDueDto": {
         "type": "object",

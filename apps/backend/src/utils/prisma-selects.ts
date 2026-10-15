@@ -741,6 +741,24 @@ export const seatBookingRefundDueSelect = {
 } as const;
 
 /**
+ * Remboursements dus vus par l'administrateur (#627), tous clubs confondus :
+ * les mêmes champs que pour le club, plus le club organisateur (relié, ou son
+ * libellé de repli) de la compétition.
+ */
+export const adminSeatBookingRefundDueSelect = {
+  ...seatBookingRefundDueSelect,
+  competition: {
+    select: {
+      id: true,
+      title: true,
+      date: true,
+      organizer: true,
+      organizerClub: { select: { id: true, name: true } },
+    },
+  },
+} as const;
+
+/**
  * Compétitions candidates d'un club organisateur (#516) : id, club relié et
  * libellé de repli (#408, cf. organizerMatcher).
  */

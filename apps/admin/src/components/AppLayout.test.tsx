@@ -160,6 +160,7 @@ describe('AppLayout', () => {
       '/tracks',
       '/moderation',
       '/license-renewals',
+      '/refunds-due',
       '/audit-log',
       '/stats',
       '/usage',
