@@ -19,10 +19,12 @@ pnpm --filter admin dev           # Admin back-office only (Vite; API = VITE_API
 # Before pushing — run exactly what blocks CI
 pnpm preflight              # typecheck + lint + format + tests + audit (single command)
 
-# What pre-push hook runs (subset of preflight)
-pnpm typecheck              # TypeScript check (backend + client)
-pnpm --filter backend test  # Backend unit tests
-pnpm --filter client test   # Client unit tests
+# What pre-push hook runs (scripts/pre-push.sh, subset of preflight)
+pnpm typecheck              # Always full (backend + client + admin)
+jest --findRelatedTests     # Backend/client unit suites impacted vs origin/develop;
+                            # full app suite on config/lockfile/mock changes; an
+                            # app with no change is skipped; delete-only push = no-op
+PRE_PUSH_FULL=1 git push    # Force the full backend + client suites
 
 # Full CI locally
 pnpm lint                   # ESLint across all apps
