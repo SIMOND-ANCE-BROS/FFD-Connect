@@ -544,6 +544,17 @@ export const seatBookingRefundAlertSelect = {
 } as const;
 
 /**
+ * Occupation du plan de salle (#454) : état d'une place réservée. `userId`
+ * sert seulement à signaler les places de l'appelant ; il n'est jamais rendu.
+ */
+export const seatBookingOccupancySelect = {
+  itemId: true,
+  seatIndex: true,
+  status: true,
+  userId: true,
+} as const;
+
+/**
  * Export RGPD (#251) : contexte d'une épreuve (spécialité, classe d'âge,
  * niveau, type, compétition). Aucune donnée de personne.
  */

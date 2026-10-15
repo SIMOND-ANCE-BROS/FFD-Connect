@@ -23990,6 +23990,192 @@
         "summary": "Webhook HelloAsso",
         "tags": ["payment"]
       }
+    },
+    "/competitions/{id}/seat-occupancy": {
+      "get": {
+        "description": "Pour chaque élément réservable du plan de la compétition : places payées (`takenSeats`), places en attente de paiement non expirées (`heldSeats`) et places encore réservables (`available`). Les réservations expirées ne comptent pas. Aucune donnée personnelle : seulement des indices et des compteurs. Public comme le détail de la compétition ; authentifié, `mySeats` / `mine` signalent les places de l'utilisateur. Non mis en cache : l'état reflète la base au moment de l'appel.",
+        "operationId": "SeatOccupancyController_getSeatOccupancy",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID de la compétition",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Occupation du plan de salle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatOccupancyResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["email must be an email", "password is required"]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Compétition non trouvée"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Places prises et en attente du plan de salle",
+        "tags": ["competitions"]
+      }
     }
   },
   "info": {
@@ -27987,6 +28173,100 @@
           }
         },
         "required": ["eventType", "data"]
+      },
+      "SeatElementOccupancyDto": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "example": "table-8",
+            "description": "Identifiant de l'élément dans le plan (`layout[].id`)."
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["numbered", "free"],
+            "example": "numbered",
+            "description": "`numbered` : places numérotées (table, gradin), choisies par `seatIndex`. `free` : placement libre, seuls les compteurs ont un sens (les tableaux d'indices restent vides)."
+          },
+          "available": {
+            "type": "number",
+            "example": 5,
+            "description": "Places encore réservables (hors places verrouillées, payées ou en attente de paiement)."
+          },
+          "taken": {
+            "type": "number",
+            "example": 2,
+            "description": "Nombre de places payées (réservations confirmées)."
+          },
+          "held": {
+            "type": "number",
+            "example": 1,
+            "description": "Nombre de places en attente de paiement (réservation non expirée)."
+          },
+          "mine": {
+            "type": "number",
+            "example": 1,
+            "description": "Nombre de places payées ou en attente de l'utilisateur connecté (0 sans authentification)."
+          },
+          "takenSeats": {
+            "example": [0, 3],
+            "description": "Élément numéroté : indices des places payées.",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "heldSeats": {
+            "example": [4],
+            "description": "Élément numéroté : indices des places en attente de paiement (non expirées).",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "mySeats": {
+            "example": [4],
+            "description": "Élément numéroté : indices des places de l'utilisateur connecté, parmi `takenSeats` et `heldSeats`.",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "wholeElementBooked": {
+            "type": "boolean",
+            "example": false,
+            "description": "Une réservation antérieure à la vente à la place occupe tout l'élément : plus aucune place réservable."
+          }
+        },
+        "required": [
+          "itemId",
+          "mode",
+          "available",
+          "taken",
+          "held",
+          "mine",
+          "takenSeats",
+          "heldSeats",
+          "mySeats",
+          "wholeElementBooked"
+        ]
+      },
+      "SeatOccupancyResponseDto": {
+        "type": "object",
+        "properties": {
+          "competitionId": {
+            "type": "string",
+            "example": "comp-uuid"
+          },
+          "elements": {
+            "description": "Un élément par élément réservable du plan, dans l'ordre du plan. Les places verrouillées restent celles du plan (`lockedSeats`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeatElementOccupancyDto"
+            }
+          }
+        },
+        "required": ["competitionId", "elements"]
       }
     }
   }
