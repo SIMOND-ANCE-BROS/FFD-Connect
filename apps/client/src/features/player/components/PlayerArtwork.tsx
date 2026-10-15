@@ -30,6 +30,10 @@ export const PlayerArtwork = ({
         source={{ uri: artwork }}
         style={styles.artworkImage}
         resizeMode="cover"
+        // Decorative: the title is spoken by the track info just below.
+        accessible={false}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
       />
     ) : (
       <View style={styles.artworkPlaceholder}>

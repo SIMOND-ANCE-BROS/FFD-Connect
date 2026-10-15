@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { LayoutChangeEvent, StyleSheet, View } from "react-native";
 import { AppText } from "../../../components/AppText";
 import { AppTheme } from "../../../context/ThemeContext";
+import { formatSpokenDuration } from "../../../utils/a11y";
 import { getEffectiveClashes, nextClash } from "../utils/pasoClashes";
 import { audioPlayerStyles as styles, formatTime } from "./audio-player.styles";
 
@@ -52,6 +53,11 @@ export const PlayerProgress = ({
       <View onLayout={onLayout}>
         <Slider
           style={styles.progressBar}
+          accessibilityLabel="Position de lecture"
+          accessibilityHint="Balayez vers le haut ou le bas pour avancer ou reculer dans le morceau"
+          accessibilityValue={{
+            text: `${formatSpokenDuration(progress.position)} sur ${formatSpokenDuration(progress.duration)}`,
+          }}
           value={progress.position}
           minimumValue={0}
           maximumValue={progress.duration || 1}
@@ -89,7 +95,12 @@ export const PlayerProgress = ({
           })}
       </View>
 
-      <View style={styles.timeInfo}>
+      {/* Visual times: the slider already speaks them (accessibilityValue). */}
+      <View
+        style={styles.timeInfo}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      >
         <AppText
           variant="caption"
           color={currentTheme.textSecondary}

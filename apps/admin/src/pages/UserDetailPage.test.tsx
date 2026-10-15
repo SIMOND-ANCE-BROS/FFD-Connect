@@ -94,6 +94,70 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
       data: { data: [], meta: { total: 0, skip: 0, take: 20, hasMore: false } },
       error: undefined,
     } as never);
+    vi.spyOn(sdk, 'healthDataAccessLogControllerList').mockResolvedValue({
+      data: { data: [], meta: { total: 0, skip: 0, take: 10, hasMore: false } },
+      error: undefined,
+    } as never);
+  });
+
+  it('lists who accessed the health data, names resolved from the user records', async () => {
+    const list = vi.spyOn(sdk, 'healthDataAccessLogControllerList').mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 'h1',
+            subjectUserId: 'u1',
+            actorUserId: 'admin-1',
+            actorRole: 'ADMIN',
+            action: 'DOWNLOAD',
+            resourceType: 'MEDICAL_CERTIFICATE',
+            resourceId: 'd1',
+            route: 'GET /admin/license-renewals/:id/documents/:docId/file',
+            createdAt: '2026-10-07T10:00:00.000Z',
+          },
+          {
+            id: 'h2',
+            subjectUserId: 'u1',
+            actorUserId: 'u1',
+            actorRole: 'OWNER',
+            action: 'EXPORT',
+            resourceType: 'LICENSE_RENEWAL_REQUEST',
+            resourceId: 'r1',
+            route: 'GET /users/me/export',
+            createdAt: '2026-10-06T10:00:00.000Z',
+          },
+        ],
+        meta: { total: 12, skip: 0, take: 10, hasMore: true },
+      },
+      error: undefined,
+    } as never);
+    vi.spyOn(sdk, 'adminControllerGetUser').mockImplementation((({
+      path,
+    }: {
+      path: { id: string };
+    }) =>
+      Promise.resolve({
+        data:
+          path.id === 'u1'
+            ? detail
+            : { ...detail, id: path.id, firstName: 'Gabin', lastName: 'Simond' },
+        error: undefined,
+      })) as never);
+    renderPage();
+    expect(
+      await screen.findByRole('heading', { name: 'Qui a consulté ses données de santé' }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Téléchargement \(certificat médical\) par Gabin Simond/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Export \(demande de renouvellement\) par la personne elle-même/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Voir tout le journal (12)' })).toHaveAttribute(
+      'href',
+      '/health-data-access-log?subject=u1',
+    );
+    expect(list).toHaveBeenCalledWith({ query: { subjectUserId: 'u1', skip: 0, take: 10 } });
   });
 
   it('shows a legacy category instead of a blank select', async () => {

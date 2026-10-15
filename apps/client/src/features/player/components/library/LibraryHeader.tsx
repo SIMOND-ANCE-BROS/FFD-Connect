@@ -39,6 +39,8 @@ export const LibraryHeader = ({
       <View style={styles.headerActions}>
         <TouchableOpacity
           accessibilityRole="button"
+          accessibilityLabel="Mode compétition"
+          accessibilityHint="Prépare l'enchaînement des danses d'une compétition"
           testID="library-performance-button"
           onPress={onPerformancePress}
           style={[

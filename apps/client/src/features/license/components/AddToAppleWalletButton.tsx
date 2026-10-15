@@ -1,9 +1,10 @@
 import { Wallet } from "lucide-react-native";
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import { AppButton } from "../../../components/AppButton";
 import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
+import { announce } from "../../../utils/announce";
 import { useAppleWalletPass } from "../hooks/useAppleWalletPass";
 import type { LicenseUser } from "./LicenseCard";
 
@@ -33,6 +34,11 @@ export const AddToAppleWalletButton: React.FC<AddToAppleWalletButtonProps> = ({
   const { state, addToWallet } = useAppleWalletPass(license, {
     servedFromSnapshot,
   });
+
+  // iOS ignores accessibilityLiveRegion: announce the failure explicitly.
+  useEffect(() => {
+    if (!state.offline && state.error) announce(state.error);
+  }, [state.error, state.offline]);
 
   if (!state.visible) return null;
 
