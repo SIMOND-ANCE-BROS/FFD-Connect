@@ -61,6 +61,20 @@ describe("ImpersonationBanner", () => {
     });
   });
 
+  it("resynchronise l'UI même quand le retour au compte admin échoue", async () => {
+    // The stored session may have changed half-way (#598 review): the UI
+    // must never stay on "impersonating" over other tokens.
+    (AuthService.stopImpersonation as jest.Mock).mockRejectedValueOnce(
+      new Error("Disk full"),
+    );
+    setStore({ impersonatedName: "Test Club" });
+    const { getByTestId } = await render(<ImpersonationBanner visible />);
+
+    await fireEvent.press(getByTestId("impersonation-stop"));
+
+    await waitFor(() => expect(mockRefresh).toHaveBeenCalledTimes(1));
+  });
+
   it("absorbe la marge haute fournie par la mise en page", async () => {
     setStore({ impersonatedName: "Test Club" });
     const { getByTestId } = await render(

@@ -34,7 +34,8 @@ jest.mock("../tokenStore", () => ({
   setTokensIfRefreshIs: (expected: unknown, t: unknown) =>
     mockSetTokens(expected, t),
   clearImpersonationBackupTokens: () => mockClearBackupTokens(),
-  clearTokens: () => mockClearTokens(),
+  clearTokensIfRefreshIs: (expected: unknown) => mockClearTokens(expected),
+  IMPERSONATION_BACKUP_KEY: "impersonation_backup",
   setUnreadableSessionHandler: jest.fn(),
 }));
 // Captured before any beforeEach clears the mock calls: sessionRefresh
@@ -62,7 +63,7 @@ beforeEach(() => {
   );
   mockSetTokens.mockResolvedValue(true);
   mockClearBackupTokens.mockResolvedValue(undefined);
-  mockClearTokens.mockResolvedValue(undefined);
+  mockClearTokens.mockResolvedValue(true);
 });
 
 describe("refreshSession", () => {
@@ -147,6 +148,21 @@ describe("refreshSession", () => {
 
     expect(setItem).not.toHaveBeenCalled();
     expect(mockClearTokens).not.toHaveBeenCalled();
+  });
+
+  it("a 401 for a previous session never ends the current one (#598 review)", async () => {
+    // A stale refresh answered 401 after a new login (cold start).
+    mockGetTokens.mockResolvedValue({ refreshToken: "r1" });
+    post.mockRejectedValue({ response: { status: 401 } });
+    mockClearTokens.mockResolvedValue(false);
+
+    await expect(refreshSession()).resolves.toBeNull();
+
+    expect(mockClearTokens).toHaveBeenCalledWith("r1");
+    expect(mockClearLicenseSnapshot).not.toHaveBeenCalled();
+    expect(setItem).not.toHaveBeenCalled();
+    expect(mockClearBackupTokens).not.toHaveBeenCalled();
+    expect(mockRefreshAuth).not.toHaveBeenCalled();
   });
 
   it("waitForPendingRefresh resolves once the refresh in flight settles", async () => {

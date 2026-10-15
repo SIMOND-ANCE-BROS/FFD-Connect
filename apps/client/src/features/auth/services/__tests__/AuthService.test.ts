@@ -55,6 +55,7 @@ jest.mock("../../../../api/tokenStore", () => ({
   clearImpersonationBackupTokens: jest.fn(async () => {}),
   switchToImpersonation: (t: string) => mockSwitch(t),
   restoreFromImpersonation: () => mockRestore(),
+  IMPERSONATION_BACKUP_KEY: "impersonation_backup",
 }));
 
 jest.mock("../../../../api/sessionRefresh", () => ({
@@ -900,6 +901,21 @@ describe("AuthService", () => {
         role: "ADMIN",
         isLoggedIn: true,
       });
+    });
+
+    it("stop: a failed backup cleanup does not report the switch back as failed", async () => {
+      backupPrefs(JSON.stringify({ role: "ADMIN", isLoggedIn: true }));
+      (clearImpersonationBackupTokens as jest.Mock).mockRejectedValueOnce(
+        new Error("Keystore failure"),
+      );
+
+      await expect(AuthService.stopImpersonation()).resolves.toBeUndefined();
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "Failed to clear the impersonation backup",
+        expect.any(Error),
+      );
+      expect(mockClearTokens).not.toHaveBeenCalled();
     });
 
     it("stop: without the admin's tokens, ends on the login screen", async () => {

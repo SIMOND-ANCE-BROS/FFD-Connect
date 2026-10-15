@@ -19,8 +19,9 @@ import { clearLicenseSnapshot } from "../features/license/utils/licenseSnapshot"
 import { useAuthStore } from "../stores/auth.store";
 import { createLogger } from "../utils/logger";
 import {
+  IMPERSONATION_BACKUP_KEY,
   clearImpersonationBackupTokens,
-  clearTokens,
+  clearTokensIfRefreshIs,
   getTokens,
   setTokensIfRefreshIs,
   setUnreadableSessionHandler,
@@ -28,8 +29,6 @@ import {
 import { isTokenStoreUnavailable } from "./tokenStoreErrors";
 
 const AUTH_KEY = "auth_config";
-/** AuthService's impersonation backup (preferences half, #591). */
-const IMPERSONATION_BACKUP_KEY = "impersonation_backup";
 const logger = createLogger("sessionRefresh");
 
 interface RefreshResponse {
@@ -124,8 +123,14 @@ async function performRefresh(): Promise<string | null> {
 
     // Seul un refresh token invalide/expiré/révoqué met fin à la session.
     if (status === 401 || status === 403) {
+      // Compare-and-set too: a stale refresh answered 401 after a NEW login
+      // (a cold start stretches the request) must not end the newer session.
+      const cleared = await clearTokensIfRefreshIs(refreshToken);
+      if (!cleared) {
+        logger.info("Rejected refresh of a previous session — current kept");
+        return null;
+      }
       logger.warn("Refresh token invalide/expiré — déconnexion");
-      await clearTokens();
       // Session over: the offline license snapshot (PII + signed QR) goes with
       // it, like on an explicit logout. Not via runSessionEndCleanups — that
       // registry also runs on the biometric lock, which keeps the snapshot.

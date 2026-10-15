@@ -10,6 +10,8 @@ import {
   setImpersonationBackupTokens,
   setTokens,
   switchToImpersonation,
+  // Sauvegarde de la session admin pendant une impersonation (#545).
+  IMPERSONATION_BACKUP_KEY,
   type Tokens,
 } from "../../../api/tokenStore";
 import { isTokenStoreUnavailable } from "../../../api/tokenStoreErrors";
@@ -26,8 +28,6 @@ import type { UsersControllerGetProfileResponse } from "../../../api/generated/t
 const logger = createLogger("AuthService");
 
 const AUTH_KEY = "auth_config";
-/** Sauvegarde de la session admin pendant une impersonation (#545). */
-const IMPERSONATION_BACKUP_KEY = "impersonation_backup";
 
 /**
  * Rôles utilisateur côté client.
@@ -639,8 +639,9 @@ export const AuthService = {
     // Session switch: no offline license snapshot crosses it (it is rebuilt at
     // the admin's next online load).
     await clearLicenseSnapshot();
-    // Only once the preferences are written (#598 review).
-    await clearImpersonationBackup();
+    // Only once the preferences are written (#598 review). Best-effort: the
+    // switch back is done, a cleanup failure must not report it as failed.
+    await dropImpersonationBackup();
     logger.info("Impersonation stopped");
   },
 

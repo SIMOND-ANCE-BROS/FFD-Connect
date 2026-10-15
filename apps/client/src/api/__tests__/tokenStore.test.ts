@@ -11,6 +11,8 @@ import {
   setImpersonationBackupTokens,
   setTokens,
   setTokensIfRefreshIs,
+  clearTokensIfRefreshIs,
+  IMPERSONATION_BACKUP_KEY,
   switchToImpersonation,
 } from "../tokenStore";
 import {
@@ -631,6 +633,48 @@ describe("restoreFromImpersonation (atomic)", () => {
     expect(isTokenStoreUnavailable(error)).toBe(true);
     expect((error as TokenStoreUnavailableError).locked).toBe(true);
     expect(deleteItemAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("clearTokensIfRefreshIs (#598 review)", () => {
+  it("ends the session the rejected refresh token belongs to, offline queue included", async () => {
+    const store = keychain({
+      "ffd.session.access": "a1",
+      "ffd.session.refresh": "r1",
+      "ffd.impersonation.access": "kept",
+    });
+
+    await expect(clearTokensIfRefreshIs("r1")).resolves.toBe(true);
+
+    expect(store).toEqual({ "ffd.impersonation.access": "kept" });
+    expect(asyncRemove).toHaveBeenCalledWith("@ffd/offline-queue");
+  });
+
+  it("never wipes a newer session (stale 401 after a new login)", async () => {
+    const store = keychain({
+      "ffd.session.access": "b-a",
+      "ffd.session.refresh": "b-r",
+    });
+
+    await expect(clearTokensIfRefreshIs("r1")).resolves.toBe(false);
+
+    expect(store).toEqual({
+      "ffd.session.access": "b-a",
+      "ffd.session.refresh": "b-r",
+    });
+    expect(asyncRemove).not.toHaveBeenCalled();
+  });
+
+  it("clears when the current value cannot be read (most likely that session)", async () => {
+    keychain({});
+    getItemAsync.mockRejectedValue(LOCKED);
+
+    await expect(clearTokensIfRefreshIs("r1")).resolves.toBe(true);
+    expect(deleteItemAsync).toHaveBeenCalledWith("ffd.session.refresh", OPTS);
+  });
+
+  it("exports the shared impersonation backup key", () => {
+    expect(IMPERSONATION_BACKUP_KEY).toBe("impersonation_backup");
   });
 });
 

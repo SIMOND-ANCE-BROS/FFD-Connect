@@ -406,6 +406,29 @@ export function setTokensIfRefreshIs(
   });
 }
 
+/**
+ * Ends the session (clearTokens) ONLY if it is still the one a refresh
+ * started from — the stored refresh token is still `expected`. A stale
+ * refresh answered 401/403 after a new login (a cold start stretches the
+ * request) must never wipe the newer session. Returns whether it cleared.
+ * A failed read clears anyway: the refresh token sent was rejected, and the
+ * session the read could not confirm is most likely that same one.
+ */
+export function clearTokensIfRefreshIs(expected: string): Promise<boolean> {
+  return withLock(async () => {
+    let current: string | null;
+    try {
+      current = await readSessionKey(REFRESH_KEY, OLD_REFRESH_KEY);
+    } catch {
+      current = expected;
+    }
+    if (current !== expected) return false;
+    sessionGeneration += 1;
+    await deleteAllTokens();
+    return true;
+  });
+}
+
 /** Thrown when the admin's session is incomplete: no switch is attempted. */
 export class ImpersonationBackupError extends Error {
   constructor(message: string) {
@@ -502,6 +525,12 @@ export function clearTokens(): Promise<void> {
  * not encrypted. Kept apart from the session keys: clearTokens (the switch to
  * the target) must not touch them, and a refresh never reads them.
  */
+/**
+ * AsyncStorage key of the impersonation backup's PREFERENCES half (no token).
+ * Shared by AuthService and sessionRefresh.
+ */
+export const IMPERSONATION_BACKUP_KEY = "impersonation_backup";
+
 const BACKUP_ACCESS_KEY = "ffd.impersonation.access";
 const BACKUP_REFRESH_KEY = "ffd.impersonation.refresh";
 

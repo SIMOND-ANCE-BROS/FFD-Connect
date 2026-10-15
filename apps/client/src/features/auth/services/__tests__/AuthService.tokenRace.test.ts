@@ -200,6 +200,34 @@ describe("impersonation vs. a concurrent refresh (#598 review, M1)", () => {
     expect(await AsyncStorage.getItem("impersonation_backup")).toBeNull();
   });
 
+  it("a stale refresh rejected (401) after a new login never ends the new session", async () => {
+    // The refresh of session A is stuck on a cold start…
+    let reject: (e: unknown) => void = () => undefined;
+    post.mockReturnValueOnce(new Promise((_res, rej) => (reject = rej)));
+    (axios.isAxiosError as unknown as jest.Mock).mockReturnValue(true);
+    const refreshing = refreshSession();
+    await new Promise((r) => setTimeout(r, 0));
+    // …the user logs in as B meanwhile…
+    (api.post as jest.Mock).mockResolvedValueOnce({
+      data: {
+        access_token: "b-a",
+        refresh_token: "b-r",
+        user: { role: "LICENSEE", email: "b@x.fr" },
+      },
+    });
+    await AuthService.login("b@x.fr", "pw");
+    // …then A's refresh comes back 401.
+    reject({ response: { status: 401 } });
+
+    await expect(refreshing).resolves.toBeNull();
+    expect(sessionKeys()).toEqual({ access: "b-a", refresh: "b-r" });
+    const prefs = JSON.parse(
+      (await AsyncStorage.getItem("auth_config")) ?? "{}",
+    ) as Record<string, unknown>;
+    expect(prefs.isLoggedIn).toBe(true);
+    (axios.isAxiosError as unknown as jest.Mock).mockReturnValue(false);
+  });
+
   it("a login after an unfinished impersonation drops the admin's backup", async () => {
     await AuthService.impersonate("t1", "Club");
     (api.post as jest.Mock).mockResolvedValueOnce({
