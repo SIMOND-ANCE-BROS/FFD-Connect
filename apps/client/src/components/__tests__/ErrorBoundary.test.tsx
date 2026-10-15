@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react-native";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import React from "react";
 import { Alert } from "react-native";
@@ -32,6 +33,32 @@ describe("ErrorBoundary", () => {
 
     expect(getByText("Oups !")).toBeTruthy();
     expect(getByText("Une erreur est survenue.")).toBeTruthy();
+  });
+
+  it("captures the crash to Sentry exactly once, with the component stack (#589)", async () => {
+    (Sentry.captureException as jest.Mock).mockClear();
+    const crash = new Error("Once");
+    const Thrower = () => {
+      throw crash;
+    };
+
+    await render(
+      <ErrorBoundary>
+        <Thrower />
+      </ErrorBoundary>,
+    );
+
+    const calls = (Sentry.captureException as jest.Mock).mock.calls.filter(
+      ([e]) => e === crash,
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1]).toEqual(
+      expect.objectContaining({
+        extra: expect.objectContaining({
+          data: { componentStack: expect.any(String) },
+        }),
+      }),
+    );
   });
 
   it("sends report when user taps report button", async () => {

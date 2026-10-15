@@ -1,11 +1,19 @@
 /**
  * Logger structuré pour React Native
  *
- * Fournit un système de logging avec niveaux (debug, info, warn, error)
- * qui peut être désactivé en production.
+ * Fournit un système de logging avec niveaux (debug, info, warn, error).
+ *
+ * Release builds (#589): the logger stays on with a WARN floor (debug/info
+ * off). `warn` leaves a Sentry breadcrumb (context for a later event, never an
+ * event itself); `error` captures to Sentry, except expected HTTP 4xx (a
+ * breadcrumb, #585) and an unreadable token store (nothing, #582). What goes
+ * to Sentry is scrubbed of personal data first (`logScrub`). The console is
+ * only written in development: in release the Sentry console integration
+ * would turn it into unscrubbed breadcrumbs.
  */
 import * as Sentry from "@sentry/react-native";
 import { isTokenStoreUnavailable } from "../api/tokenStoreErrors";
+import { scrubLogData, scrubText } from "./logScrub";
 import {
   getHttpErrorInfo,
   httpFingerprint,
@@ -29,6 +37,20 @@ interface LogEntry {
   data?: unknown;
 }
 
+/**
+ * Callers often pass a non-Error as the `error` argument (a thrown string, a
+ * native event, a `{ url, status }` bag): keep it as `data` rather than
+ * dropping it, unless explicit `data` was given too.
+ */
+function splitError(
+  error: unknown,
+  data: unknown,
+): [data: unknown, error: Error | undefined] {
+  if (error instanceof Error) return [data, error];
+  if (error === undefined || data !== undefined) return [data, undefined];
+  return [error, undefined];
+}
+
 class Logger {
   private minLevel: LogLevel;
   private enabled: boolean;
@@ -37,8 +59,9 @@ class Logger {
 
   constructor(context?: string) {
     this.context = context ?? "App";
-    // En production, désactiver les logs de debug/info
-    this.enabled = __DEV__ || process.env.NODE_ENV !== "production";
+    // On in every build (#589): release keeps warn/error only, so
+    // `logger.error` reaches Sentry from beta and production.
+    this.enabled = true;
     this.minLevel = __DEV__ ? LogLevel.DEBUG : LogLevel.WARN;
   }
 
@@ -76,24 +99,14 @@ class Logger {
    * Log d'avertissement
    */
   warn(message: string, error?: unknown, data?: unknown): void {
-    this.log(
-      LogLevel.WARN,
-      message,
-      data,
-      error instanceof Error ? error : undefined,
-    );
+    this.log(LogLevel.WARN, message, ...splitError(error, data));
   }
 
   /**
    * Log d'erreur
    */
   error(message: string, error?: unknown, data?: unknown): void {
-    this.log(
-      LogLevel.ERROR,
-      message,
-      data,
-      error instanceof Error ? error : undefined,
-    );
+    this.log(LogLevel.ERROR, message, ...splitError(error, data));
   }
 
   /**
@@ -124,92 +137,120 @@ class Logger {
     }
     this.logs.push(entry);
 
-    // Afficher dans la console selon le niveau
     const formattedMessage = entry.message;
+    // Console in development only (see header): in release, console calls
+    // become Sentry breadcrumbs carrying the raw, unscrubbed data.
+    const consoleOn = __DEV__;
     const logData = data ? [formattedMessage, data] : [formattedMessage];
 
     switch (level) {
       case LogLevel.DEBUG:
-        if (__DEV__) {
-          console.warn(...logData);
-        }
-        break;
       case LogLevel.INFO:
-        console.warn(...logData);
+        if (consoleOn) console.warn(...logData);
         break;
       case LogLevel.WARN:
-        console.warn(...logData, error ?? "");
+        if (consoleOn) console.warn(...logData, error ?? "");
+        this.breadcrumb("logger", formattedMessage, error, data);
         break;
-      case LogLevel.ERROR: {
-        // Unreadable token store (#582): never an error event. A locked
-        // iPhone is expected; a persistent failure is reported once by
-        // tokenStore itself (which also leaves the breadcrumbs).
-        if (isTokenStoreUnavailable(error)) {
-          console.warn(...logData, error);
-          break;
-        }
-        const http = getHttpErrorInfo(error);
-        // Expected 4xx (401 handled by the refresh, 403, 404, 429...) are
-        // outcomes, not bugs (#585): a warning breadcrumb gives context to a
-        // later real error without creating a Sentry issue of its own.
-        if (http && isExpectedHttpStatus(http.status)) {
-          console.warn(...logData, error ?? "");
-          try {
-            Sentry.addBreadcrumb({
-              category: "http",
-              level: "warning",
-              message: formattedMessage,
-              data: {
-                status: http.status,
-                method: http.method,
-                route: http.route,
-              },
-            });
-          } catch {
-            /* ignore */
-          }
-          break;
-        }
-        console.error(...logData, error ?? "");
-        if (error?.stack) {
-          const isHttpError =
-            error instanceof Error &&
-            (error.message.includes("status code") ||
-              error.message.includes("HTTP") ||
-              error.name === "HttpError" ||
-              error.name === "AxiosError");
+      case LogLevel.ERROR:
+        this.reportError(formattedMessage, message, logData, error, data);
+        break;
+    }
+  }
 
-          if (!isHttpError || __DEV__) {
-            console.error("Stack:", error.stack);
-          }
-        }
-        try {
-          if (error) {
-            Sentry.captureException(error, {
-              extra: { message, context: this.context, data },
-              // One Sentry issue per status + route instead of a single
-              // bucket for every AxiosError (same minified `settle` stack).
-              ...(http
-                ? {
-                    fingerprint: httpFingerprint(http),
-                    tags: {
-                      http_status:
-                        http.status === undefined
-                          ? "network"
-                          : String(http.status),
-                      http_route: http.route,
-                    },
-                  }
-                : {}),
-            });
-          } else {
-            Sentry.captureMessage(formattedMessage, "error");
-          }
-        } catch {
-          /* ignore */
-        }
-        break;
+  /** Warning breadcrumb: context for a later event, never an event itself. */
+  private breadcrumb(
+    category: string,
+    formattedMessage: string,
+    error: Error | undefined,
+    data: unknown,
+  ): void {
+    try {
+      Sentry.addBreadcrumb({
+        category,
+        level: "warning",
+        message: scrubText(formattedMessage),
+        data: {
+          context: this.context,
+          ...(error ? { error: scrubLogData(error) } : {}),
+          ...(data === undefined ? {} : { data: scrubLogData(data) }),
+        },
+      });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private reportError(
+    formattedMessage: string,
+    message: string,
+    logData: unknown[],
+    error: Error | undefined,
+    data: unknown,
+  ): void {
+    const consoleOn = __DEV__;
+    // Unreadable token store (#582): never an error event. A locked
+    // iPhone is expected; a persistent failure is reported once by
+    // tokenStore itself (which also leaves the breadcrumbs).
+    if (isTokenStoreUnavailable(error)) {
+      if (consoleOn) console.warn(...logData, error);
+      return;
+    }
+    const http = getHttpErrorInfo(error);
+    // Expected 4xx (401 handled by the refresh, 403, 404, 429...) are
+    // outcomes, not bugs (#585): a warning breadcrumb gives context to a
+    // later real error without creating a Sentry issue of its own.
+    if (http && isExpectedHttpStatus(http.status)) {
+      if (consoleOn) console.warn(...logData, error ?? "");
+      try {
+        Sentry.addBreadcrumb({
+          category: "http",
+          level: "warning",
+          message: scrubText(formattedMessage),
+          data: {
+            status: http.status,
+            method: http.method,
+            route: http.route,
+          },
+        });
+      } catch {
+        /* ignore */
       }
+      return;
+    }
+    if (consoleOn) {
+      console.error(...logData, error ?? "");
+      if (error?.stack) console.error("Stack:", error.stack);
+    }
+    try {
+      if (error) {
+        Sentry.captureException(error, {
+          extra: {
+            message: scrubText(message),
+            context: this.context,
+            data: scrubLogData(data),
+          },
+          // One Sentry issue per status + route instead of a single
+          // bucket for every AxiosError (same minified `settle` stack).
+          ...(http
+            ? {
+                fingerprint: httpFingerprint(http),
+                tags: {
+                  http_status:
+                    http.status === undefined ? "network" : String(http.status),
+                  http_route: http.route,
+                },
+              }
+            : {}),
+        });
+      } else {
+        Sentry.captureMessage(scrubText(formattedMessage), {
+          level: "error",
+          extra: { context: this.context, data: scrubLogData(data) },
+        });
+      }
+    } catch {
+      /* ignore */
     }
   }
 
