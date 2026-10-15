@@ -1,0 +1,225 @@
+import { vi } from 'vitest';
+import { waitFor } from '@testing-library/react';
+import { type SessionSnapshot, useSession } from './sessionStore';
+import {
+  PEER_WAIT_MS,
+  requestPeerSession,
+  signOut,
+  startSessionSync,
+  stopSessionSync,
+} from './sessionSync';
+
+const admin: SessionSnapshot = {
+  accessToken: 'at',
+  refreshToken: 'rt',
+  user: { id: 'a1', email: 'a@x.fr', firstName: 'G', lastName: 'S', role: 'ADMIN' },
+};
+
+/** Another back-office tab of the same origin, seen from this one. */
+function openPeerTab(answerWith?: SessionSnapshot) {
+  const channel = new BroadcastChannel('ffd-admin-session');
+  const received: unknown[] = [];
+  channel.onmessage = (event: MessageEvent<unknown>) => {
+    received.push(event.data);
+    const data = event.data as { type?: string; id?: string };
+    if (answerWith && data.type === 'request') {
+      channel.postMessage({ type: 'reply', id: data.id, session: answerWith });
+    }
+  };
+  return { channel, received };
+}
+
+describe('sessionSync (#669)', () => {
+  const peers: BroadcastChannel[] = [];
+  const peerTab = (answerWith?: SessionSnapshot) => {
+    const peer = openPeerTab(answerWith);
+    peers.push(peer.channel);
+    return peer;
+  };
+
+  beforeEach(() => {
+    useSession.getState().clear();
+  });
+
+  afterEach(() => {
+    stopSessionSync();
+    peers.splice(0).forEach((p) => p.close());
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('a new tab copies the session of an open back-office tab into its sessionStorage', async () => {
+    peerTab(admin);
+
+    const started = startSessionSync();
+    // Waiting for the answer: neither protected content nor the login page.
+    expect(useSession.getState().restoring).toBe(true);
+    await started;
+
+    const state = useSession.getState();
+    expect(state.restoring).toBe(false);
+    expect(state.accessToken).toBe('at');
+    expect(state.user?.id).toBe('a1');
+    expect(sessionStorage.getItem('ffd-admin-session')).toContain('"rt"');
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('with no back-office tab open, gives up after the wait and stays logged out', async () => {
+    const started = Date.now();
+    await startSessionSync(50);
+
+    expect(Date.now() - started).toBeGreaterThanOrEqual(45);
+    expect(useSession.getState()).toMatchObject({ user: null, restoring: false });
+    expect(localStorage.length).toBe(0);
+  });
+
+  it('waits at most PEER_WAIT_MS by default', () => {
+    expect(PEER_WAIT_MS).toBeLessThanOrEqual(300);
+  });
+
+  it('ignores an answer carrying a non-admin session', async () => {
+    peerTab({ ...admin, user: { ...admin.user, role: 'LICENSEE' } });
+    await startSessionSync(80);
+    expect(useSession.getState().user).toBeNull();
+  });
+
+  it('does not ask the other tabs when it already has a session', async () => {
+    useSession.getState().setSession(admin);
+    const peer = peerTab();
+
+    await startSessionSync();
+
+    expect(useSession.getState().restoring).toBe(false);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(peer.received).toEqual([]);
+  });
+
+  it('answers the requests of other tabs only while logged in', async () => {
+    await startSessionSync(10);
+    const peer = peerTab();
+
+    peer.channel.postMessage({ type: 'request', id: 'r1' });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(peer.received).toEqual([]);
+
+    useSession.getState().setSession(admin);
+    peer.received.length = 0;
+    peer.channel.postMessage({ type: 'request', id: 'r2' });
+    await waitFor(() =>
+      expect(peer.received).toContainEqual({ type: 'reply', id: 'r2', session: admin }),
+    );
+  });
+
+  it('signOut logs out the other tabs', async () => {
+    useSession.getState().setSession(admin);
+    await startSessionSync();
+    const peer = peerTab();
+
+    signOut();
+
+    expect(useSession.getState().user).toBeNull();
+    await waitFor(() => expect(peer.received).toContainEqual({ type: 'logout' }));
+  });
+
+  it('a logout from another tab clears this one', async () => {
+    useSession.getState().setSession(admin);
+    await startSessionSync();
+    const peer = peerTab();
+
+    peer.channel.postMessage({ type: 'logout' });
+
+    await waitFor(() => expect(useSession.getState().user).toBeNull());
+    expect(sessionStorage.getItem('ffd-admin-session')).not.toContain('"rt"');
+    // Not echoed back.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(peer.received).toEqual([]);
+  });
+
+  it('pushes a token rotation to the other tabs', async () => {
+    useSession.getState().setSession(admin);
+    await startSessionSync();
+    const peer = peerTab();
+
+    useSession.getState().setSession({ ...admin, accessToken: 'at2', refreshToken: 'rt2' });
+
+    await waitFor(() =>
+      expect(peer.received).toContainEqual({
+        type: 'update',
+        session: { ...admin, accessToken: 'at2', refreshToken: 'rt2' },
+      }),
+    );
+  });
+
+  it('takes a rotation from another tab for the same account, without echoing it', async () => {
+    useSession.getState().setSession(admin);
+    await startSessionSync();
+    const peer = peerTab();
+
+    peer.channel.postMessage({
+      type: 'update',
+      session: { ...admin, accessToken: 'at2', refreshToken: 'rt2' },
+    });
+
+    await waitFor(() => expect(useSession.getState().refreshToken).toBe('rt2'));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(peer.received).toEqual([]);
+  });
+
+  it('ignores a rotation for another account or while logged out', async () => {
+    await startSessionSync(10);
+    const peer = peerTab();
+
+    peer.channel.postMessage({ type: 'update', session: admin });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(useSession.getState().user).toBeNull();
+
+    useSession.getState().setSession(admin);
+    peer.channel.postMessage({
+      type: 'update',
+      session: { ...admin, refreshToken: 'other', user: { ...admin.user, id: 'b2' } },
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(useSession.getState().refreshToken).toBe('rt');
+  });
+
+  it.each([
+    ['not an object', 'logout'],
+    ['an unknown type', { type: 'steal' }],
+    ['a reply without session', { type: 'reply', id: 'x' }],
+    ['an update with a bad user', { type: 'update', session: { ...admin, user: { id: 1 } } }],
+    ['a request without id', { type: 'request' }],
+  ])('ignores a malformed message (%s)', async (_label, message) => {
+    useSession.getState().setSession(admin);
+    await startSessionSync();
+    const peer = peerTab();
+
+    peer.channel.postMessage(message);
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(useSession.getState().refreshToken).toBe('rt');
+    expect(peer.received).toEqual([]);
+  });
+
+  it('keeps the session in memory when the storage is blocked (#577)', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError');
+    });
+    peerTab(admin);
+
+    await expect(startSessionSync()).resolves.toBeUndefined();
+    expect(useSession.getState().accessToken).toBe('at');
+  });
+
+  it('does nothing without BroadcastChannel (old browser)', async () => {
+    vi.stubGlobal('BroadcastChannel', undefined);
+
+    await startSessionSync();
+
+    expect(useSession.getState()).toMatchObject({ user: null, restoring: false });
+    await expect(requestPeerSession()).resolves.toBeNull();
+    // signOut still logs this tab out.
+    useSession.getState().setSession(admin);
+    signOut();
+    expect(useSession.getState().user).toBeNull();
+  });
+});
