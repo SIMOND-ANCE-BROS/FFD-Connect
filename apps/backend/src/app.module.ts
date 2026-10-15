@@ -90,7 +90,8 @@ import { WdsfModule } from "./wdsf/wdsf.module";
   providers: [
     AppService,
     {
-      // Per client IP; skips routes counted per user by ThrottlerUserGuard (#182).
+      // Per user for a verified access token, else per client IP; always per
+      // IP on @ThrottleByIp() routes (login, register…) (#182, #633).
       provide: APP_GUARD,
       useClass: GlobalThrottlerGuard,
     },

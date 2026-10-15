@@ -18150,6 +18150,302 @@
         "tags": ["competitions"]
       }
     },
+    "/competitions/{id}/program": {
+      "get": {
+        "description": "Épreuves et planning tels que saisis dans l'éditeur (ordre de saisie, heures `HH:MM`, Open multi-classes). STAFF et ADMIN : toute compétition. Compte club : seulement une compétition organisée par son club.",
+        "operationId": "CompetitionsController_getProgram",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID de la compétition",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompetitionProgramDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Compétition organisée par un autre club"
+          },
+          "404": {
+            "description": "Compétition non trouvée"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Programme de la compétition pour l'éditeur club",
+        "tags": ["competitions"]
+      },
+      "put": {
+        "description": "Remplace tout le programme saisi dans l'éditeur club, en une transaction. Une épreuve envoyée avec son `id` est conservée ou mise à jour, sans `id` elle est créée, absente elle est supprimée. Une épreuve qui a des inscriptions ou des résultats n'est jamais supprimée ni modifiée : 409, rien n'est enregistré. Pour une compétition importée de la FFD, la synchronisation ne remplace plus ensuite ses épreuves.",
+        "operationId": "CompetitionsController_replaceProgram",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID de la compétition",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceCompetitionProgramDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Programme enregistré, relu tel qu'il est stocké",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompetitionProgramDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Épreuve contraire au règlement (nature, classe d'âge, niveau) ou identifiant inconnu"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Compétition organisée par un autre club"
+          },
+          "404": {
+            "description": "Compétition non trouvée"
+          },
+          "409": {
+            "description": "Une épreuve retirée ou modifiée a des inscriptions ou des résultats"
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Enregistre le programme (épreuves + planning) d'une compétition",
+        "tags": ["competitions"]
+      }
+    },
     "/competitions/{id}": {
       "get": {
         "description": "Retourne les informations détaillées d'une compétition spécifique, incluant tous ses événements et inscriptions.",
@@ -22718,7 +23014,7 @@
             "description": "Demande non trouvée"
           },
           "409": {
-            "description": "Conflit - La ressource existe déjà",
+            "description": "Conflit - La demande a été soumise pendant l'envoi : le document n'est pas enregistré",
             "content": {
               "application/json": {
                 "schema": {
@@ -24330,6 +24626,195 @@
         },
         "summary": "Webhook HelloAsso",
         "tags": ["payment"]
+      }
+    },
+    "/competitions/{id}/seat-occupancy": {
+      "get": {
+        "description": "Pour chaque élément réservable du plan de la compétition : places payées (`takenSeats`), places en attente de paiement non expirées (`heldSeats`) et places encore réservables (`available`). Les réservations expirées ne comptent pas. Aucune donnée personnelle : seulement des indices et des compteurs. Public comme le détail de la compétition ; authentifié, `mySeats` / `mine` signalent les places de l'utilisateur. Non mis en cache : l'état reflète la base au moment de l'appel.",
+        "operationId": "SeatOccupancyController_getSeatOccupancy",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID de la compétition",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Occupation du plan de salle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatOccupancyResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Compétition non trouvée"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Places prises et en attente du plan de salle",
+        "tags": ["competitions"]
       }
     }
   },
@@ -27426,6 +27911,255 @@
         },
         "required": ["eventId", "userId"]
       },
+      "ProgramEventDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "eventKind": {
+            "type": "string",
+            "enum": [
+              "CLASSIFICATRICE",
+              "OPEN",
+              "MAJEURE",
+              "SOLO_TEAM",
+              "SHOW_DANSE",
+              null
+            ],
+            "nullable": true
+          },
+          "eventType": {
+            "type": "string",
+            "enum": ["SOLO", "COUPLE"]
+          },
+          "category": {
+            "type": "string",
+            "example": "Latin"
+          },
+          "ageGroup": {
+            "type": "string",
+            "example": "Adulte"
+          },
+          "ageGroups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "level": {
+            "type": "string",
+            "nullable": true
+          },
+          "openLevels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "locked": {
+            "type": "boolean",
+            "description": "L'épreuve a des inscriptions ou des résultats : elle ne peut être ni modifiée ni supprimée."
+          }
+        },
+        "required": [
+          "id",
+          "eventKind",
+          "eventType",
+          "category",
+          "ageGroup",
+          "ageGroups",
+          "level",
+          "openLevels",
+          "locked"
+        ]
+      },
+      "ProgramScheduleItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "startTime": {
+            "type": "string",
+            "description": "Heure de début `HH:MM` (heure française)"
+          },
+          "durationMinutes": {
+            "type": "number",
+            "nullable": true,
+            "description": "Durée en minutes (inconnue pour un créneau antérieur à #442)"
+          },
+          "type": {
+            "type": "string",
+            "example": "ROUND"
+          },
+          "title": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "startTime",
+          "durationMinutes",
+          "type",
+          "title",
+          "eventId"
+        ]
+      },
+      "CompetitionProgramDto": {
+        "type": "object",
+        "properties": {
+          "competitionId": {
+            "type": "string"
+          },
+          "syncedFromFfd": {
+            "type": "boolean",
+            "description": "Compétition importée de la FFD. Une fois le programme enregistré par le club, la synchronisation ne remplace plus ses épreuves."
+          },
+          "eventsSource": {
+            "type": "string",
+            "enum": ["GENERIC", "DESCRIPTION", "CIRCULAR", null],
+            "nullable": true,
+            "description": "Origine des épreuves déduites par la synchronisation FFD (null : saisies par le club ou antérieures)."
+          },
+          "programEditedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Dernier enregistrement du programme par le club."
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgramEventDto"
+            }
+          },
+          "schedule": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgramScheduleItemDto"
+            }
+          }
+        },
+        "required": [
+          "competitionId",
+          "syncedFromFfd",
+          "eventsSource",
+          "programEditedAt",
+          "events",
+          "schedule"
+        ]
+      },
+      "ProgramEventInputDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identifiant d'une épreuve déjà enregistrée de cette compétition (mise à jour). Absent : nouvelle épreuve."
+          },
+          "eventKind": {
+            "type": "string",
+            "enum": [
+              "CLASSIFICATRICE",
+              "OPEN",
+              "MAJEURE",
+              "SOLO_TEAM",
+              "SHOW_DANSE",
+              null
+            ],
+            "nullable": true,
+            "description": "Nature de l'épreuve (Article 9). Requise pour une épreuve nouvelle ou modifiée ; null seulement pour renvoyer telle quelle une épreuve importée de la FFD sans nature."
+          },
+          "eventType": {
+            "type": "string",
+            "enum": ["SOLO", "COUPLE"]
+          },
+          "category": {
+            "type": "string",
+            "description": "Spécialité : Latin, Standard ou Ten Dance (les libellés « Latines », « Standards », « 10 danses » sont acceptés). Ignorée pour une épreuve Solo Team.",
+            "example": "Latin"
+          },
+          "ageGroup": {
+            "type": "string",
+            "description": "Classe d'âge (Article 5, « Espoir » en couple, « Solo … » en solo). Pour un Open, la première des `ageGroups`.",
+            "example": "Adulte"
+          },
+          "ageGroups": {
+            "description": "Open uniquement : classes d'âge réunies (au moins une).",
+            "example": ["Youth", "Adulte"],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "level": {
+            "type": "string",
+            "description": "Classificatrice : niveau de l'épreuve. Solo Team : Débutant ou Intermédiaire. Absent pour les autres natures.",
+            "nullable": true,
+            "example": "Intermédiaire"
+          },
+          "openLevels": {
+            "description": "Open uniquement : niveaux admis (vide = tous niveaux).",
+            "example": ["Débutant", "Intermédiaire"],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["eventType", "category"]
+      },
+      "ProgramScheduleItemInputDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Identifiant d'un créneau déjà enregistré de cette compétition. Absent : nouveau créneau."
+          },
+          "startTime": {
+            "type": "string",
+            "description": "Heure de début `HH:MM`, heure française, le jour de la compétition.",
+            "example": "10:00"
+          },
+          "durationMinutes": {
+            "type": "number",
+            "description": "Durée en minutes",
+            "example": 15
+          },
+          "type": {
+            "type": "string",
+            "enum": ["ROUND", "BREAK", "CEREMONY", "OTHER"],
+            "example": "ROUND"
+          },
+          "title": {
+            "type": "string",
+            "example": "Latines Adulte — 1/4 de finale"
+          }
+        },
+        "required": ["startTime", "durationMinutes", "type", "title"]
+      },
+      "ReplaceCompetitionProgramDto": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgramEventInputDto"
+            }
+          },
+          "schedule": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgramScheduleItemInputDto"
+            }
+          }
+        },
+        "required": ["events", "schedule"]
+      },
       "RegisterEventDto": {
         "type": "object",
         "properties": {
@@ -28459,6 +29193,100 @@
           }
         },
         "required": ["eventType", "data"]
+      },
+      "SeatElementOccupancyDto": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "example": "table-8",
+            "description": "Identifiant de l'élément dans le plan (`layout[].id`)."
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["numbered", "free"],
+            "example": "numbered",
+            "description": "`numbered` : places numérotées (table, gradin), choisies par `seatIndex`. `free` : placement libre, seuls les compteurs ont un sens (les tableaux d'indices restent vides)."
+          },
+          "available": {
+            "type": "number",
+            "example": 5,
+            "description": "Places encore réservables (hors places verrouillées, payées ou en attente de paiement)."
+          },
+          "taken": {
+            "type": "number",
+            "example": 2,
+            "description": "Nombre de places payées (réservations confirmées)."
+          },
+          "held": {
+            "type": "number",
+            "example": 1,
+            "description": "Nombre de places en attente de paiement (réservation non expirée)."
+          },
+          "mine": {
+            "type": "number",
+            "example": 1,
+            "description": "Nombre de places payées ou en attente de l'utilisateur connecté (0 sans authentification)."
+          },
+          "takenSeats": {
+            "example": [0, 3],
+            "description": "Élément numéroté : indices des places payées.",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "heldSeats": {
+            "example": [4],
+            "description": "Élément numéroté : indices des places en attente de paiement (non expirées).",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "mySeats": {
+            "example": [4],
+            "description": "Élément numéroté : indices des places de l'utilisateur connecté, parmi `takenSeats` et `heldSeats`.",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "wholeElementBooked": {
+            "type": "boolean",
+            "example": false,
+            "description": "Une réservation antérieure à la vente à la place occupe tout l'élément : plus aucune place réservable."
+          }
+        },
+        "required": [
+          "itemId",
+          "mode",
+          "available",
+          "taken",
+          "held",
+          "mine",
+          "takenSeats",
+          "heldSeats",
+          "mySeats",
+          "wholeElementBooked"
+        ]
+      },
+      "SeatOccupancyResponseDto": {
+        "type": "object",
+        "properties": {
+          "competitionId": {
+            "type": "string",
+            "example": "comp-uuid"
+          },
+          "elements": {
+            "description": "Un élément par élément réservable du plan, dans l'ordre du plan. Les places verrouillées restent celles du plan (`lockedSeats`).",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeatElementOccupancyDto"
+            }
+          }
+        },
+        "required": ["competitionId", "elements"]
       }
     }
   }

@@ -1,6 +1,7 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
+import { ThrottleByIp } from "../common/decorators/throttle-by-ip.decorator";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { UsageBatchDto } from "./dto/usage-event.dto";
 import { UsageIntakeService } from "./usage-intake.service";
@@ -18,6 +19,7 @@ export class AnalyticsController {
   @Post("events")
   @HttpCode(HttpStatus.NO_CONTENT)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ThrottleByIp()
   @ApiOperation({ summary: "Anonymous app usage events (batch, no auth)" })
   @ApiResponse({ status: 204, description: "Stored" })
   async ingest(@Body() body: UsageBatchDto): Promise<void> {

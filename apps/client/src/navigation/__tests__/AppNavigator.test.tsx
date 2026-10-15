@@ -2,6 +2,7 @@ import { render } from "@testing-library/react-native";
 import React from "react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuthRepository } from "../../features/auth/context/AuthContext";
+import { useAuthReturnStore } from "../../stores/authReturn.store";
 import { AppNavigator } from "../AppNavigator";
 import { preloadReactNative } from "../../__tests__/mocks/preloadReactNative";
 
@@ -31,30 +32,47 @@ jest.mock("../../features/auth/context/AuthContext", () => ({
   UserRole: {},
 }));
 
-// Mock the Zustand auth store — default to logged in so app screens render
-jest.mock("../../stores/auth.store", () => {
-  // NB : pas de `role` ici — le rôle des onglets est piloté par le mock
-  // useAuthRepository (params), MainTabs préfère storeRole ?? params.role.
-  const state = {
-    isLoggedIn: true,
-    isGuest: false,
-    impersonating: false,
-    impersonatedName: null,
-    refreshAuth: jest.fn(),
-    pendingDeepLink: null,
-    setPendingDeepLink: jest.fn(),
-  };
-  return {
-    useAuthStore: (selector?: (s: typeof state) => unknown) =>
-      selector ? selector(state) : state,
-  };
-});
+// Mock the Zustand auth store — default to logged in so app screens render.
+// Mutable (reset in beforeEach) so a test can play a guest or a signed-out
+// session.
+// NB : pas de `role` ici — le rôle des onglets est piloté par le mock
+// useAuthRepository (params), MainTabs préfère storeRole ?? params.role.
+const mockAuthState: {
+  isLoggedIn: boolean | null;
+  isGuest: boolean;
+  impersonating: boolean;
+  impersonatedName: string | null;
+  refreshAuth: jest.Mock;
+  pendingDeepLink: null;
+  setPendingDeepLink: jest.Mock;
+} = {
+  isLoggedIn: true,
+  isGuest: false,
+  impersonating: false,
+  impersonatedName: null,
+  refreshAuth: jest.fn(),
+  pendingDeepLink: null,
+  setPendingDeepLink: jest.fn(),
+};
+jest.mock("../../stores/auth.store", () => ({
+  useAuthStore: (selector?: (s: typeof mockAuthState) => unknown) =>
+    selector ? selector(mockAuthState) : mockAuthState,
+}));
+
+// Navigation actions sent through the container ref.
+const mockDispatch = jest.fn();
 
 // Mock Screens individually with inline factories
 jest.mock("../../features/auth/screens/LoginScreen", () => ({
   LoginScreen: () => {
     const { Text } = require("react-native");
     return <Text testID="screen-Login">Login</Text>;
+  },
+}));
+jest.mock("../../features/auth/screens/RegisterScreen", () => ({
+  RegisterScreen: () => {
+    const { Text } = require("react-native");
+    return <Text testID="screen-Register">Register</Text>;
   },
 }));
 jest.mock("../../features/license/screens/LicenseScreen", () => ({
@@ -100,6 +118,12 @@ jest.mock("../../features/competitions/screens/EventRegistrantsScreen", () => ({
   EventRegistrantsScreen: () => {
     const { Text } = require("react-native");
     return <Text testID="screen-EventRegistrants">EventRegistrants</Text>;
+  },
+}));
+jest.mock("../../features/competitions/screens/SeatPickerScreen", () => ({
+  SeatPickerScreen: () => {
+    const { Text } = require("react-native");
+    return <Text testID="screen-SeatPicker">SeatPicker</Text>;
   },
 }));
 jest.mock("../../features/settings/screens/NotificationsScreen", () => ({
@@ -263,15 +287,25 @@ jest.mock("../../components/CurvedTabBar", () => ({
 jest.mock("@react-navigation/native", () => {
   const ReactMock = require("react");
   return {
+    CommonActions: {
+      navigate: (payload: unknown) => ({ type: "NAVIGATE", payload }),
+    },
     NavigationContainer: ({
       children,
       onReady,
       onStateChange,
+      ref,
     }: {
       children: React.ReactNode;
       onReady?: () => void;
       onStateChange?: () => void;
+      ref?: React.Ref<unknown>;
     }) => {
+      ReactMock.useImperativeHandle(ref, () => ({
+        getState: () => ({ routes: [] }),
+        getCurrentRoute: () => undefined,
+        dispatch: mockDispatch,
+      }));
       ReactMock.useEffect(() => {
         if (onReady) onReady();
       }, [onReady]);
@@ -379,6 +413,9 @@ describe("AppNavigator", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockAuthState.isLoggedIn = true;
+    mockAuthState.isGuest = false;
+    useAuthReturnStore.setState({ target: null });
     (useTheme as jest.Mock).mockImplementation(() => ({
       theme: mockTheme.theme,
       isDark: false,
@@ -474,5 +511,63 @@ describe("AppNavigator", () => {
     expect(getByTestId("tab-screen-Settings")).toBeTruthy();
     expect(queryByTestId("tab-screen-License")).toBeNull();
     expect(queryByTestId("tab-screen-Library")).toBeNull();
+  });
+
+  describe("return after a guest signs in (#20)", () => {
+    const target = {
+      screen: "CompetitionDetail" as const,
+      params: { competitionId: "comp-1" },
+    };
+
+    beforeEach(() => {
+      (useAuthRepository as jest.Mock).mockReturnValue({
+        user: { id: "1", role: "LICENSEE" },
+        isLoading: false,
+      });
+    });
+
+    it("keeps the target while Login is shown", async () => {
+      mockAuthState.isLoggedIn = false;
+      useAuthReturnStore.getState().setTarget(target);
+
+      const { getByTestId } = await render(<AppNavigator />);
+
+      expect(getByTestId("screen-Login")).toBeTruthy();
+      expect(mockDispatch).not.toHaveBeenCalled();
+      expect(useAuthReturnStore.getState().target).toEqual(target);
+    });
+
+    it("reopens the competition once signed in, then forgets it", async () => {
+      mockAuthState.isLoggedIn = false;
+      useAuthReturnStore.getState().setTarget(target);
+      const view = await render(<AppNavigator />);
+
+      // Login or registration succeeded: refreshAuth flips the session.
+      mockAuthState.isLoggedIn = true;
+      await view.rerender(<AppNavigator />);
+
+      expect(mockDispatch).toHaveBeenCalledTimes(1);
+      expect(mockDispatch).toHaveBeenCalledWith({
+        type: "NAVIGATE",
+        payload: { name: "CompetitionDetail", params: target.params },
+      });
+      expect(useAuthReturnStore.getState().target).toBeNull();
+    });
+
+    it("drops the target when the user goes back to guest mode", async () => {
+      mockAuthState.isLoggedIn = true;
+      mockAuthState.isGuest = true;
+      useAuthReturnStore.getState().setTarget(target);
+
+      await render(<AppNavigator />);
+
+      expect(mockDispatch).not.toHaveBeenCalled();
+      expect(useAuthReturnStore.getState().target).toBeNull();
+    });
+
+    it("does nothing without a pending target", async () => {
+      await render(<AppNavigator />);
+      expect(mockDispatch).not.toHaveBeenCalled();
+    });
   });
 });

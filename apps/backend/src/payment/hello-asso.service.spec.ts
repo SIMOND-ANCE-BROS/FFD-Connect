@@ -346,4 +346,131 @@ describe("HelloAssoService", () => {
       ).rejects.toThrow("ECONNREFUSED");
     });
   });
+
+  describe("token revoked before its expiry (#610)", () => {
+    const httpError = (status: number) =>
+      Object.assign(new Error(`Request failed with status code ${status}`), {
+        response: { status },
+      });
+    const tokenCalls = () =>
+      mockedAxios.post.mock.calls.filter((c) => c[0].includes("oauth2/token"));
+
+    beforeEach(() => {
+      // axios is auto-mocked: recognise the fake HTTP errors as axios errors.
+      mockedAxios.isAxiosError.mockImplementation(
+        (e: unknown): e is never =>
+          typeof e === "object" && e !== null && "response" in e,
+      );
+    });
+
+    afterEach(() => {
+      mockedAxios.isAxiosError.mockReset();
+    });
+
+    it("re-authenticates after a 401 on createCheckoutIntent", async () => {
+      mockedAxios.post
+        .mockResolvedValueOnce({
+          data: { access_token: "old", expires_in: 3600 },
+        })
+        .mockRejectedValueOnce(httpError(401))
+        .mockResolvedValueOnce({
+          data: { access_token: "new", expires_in: 3600 },
+        })
+        .mockResolvedValueOnce({ data: { id: 1, redirectUrl: "https://ha" } });
+
+      await expect(
+        service.createCheckoutIntent(
+          credentials,
+          "https://app",
+          checkoutParams,
+        ),
+      ).rejects.toThrow("401");
+      await service.createCheckoutIntent(
+        credentials,
+        "https://app",
+        checkoutParams,
+      );
+
+      expect(tokenCalls()).toHaveLength(2);
+      expect(mockedAxios.post).toHaveBeenLastCalledWith(
+        expect.stringContaining("checkout-intents"),
+        expect.any(Object),
+        { headers: { Authorization: "Bearer new" } },
+      );
+    });
+
+    it("re-authenticates after a 401 on a read", async () => {
+      mockedAxios.post
+        .mockResolvedValueOnce({
+          data: { access_token: "old", expires_in: 3600 },
+        })
+        .mockResolvedValueOnce({
+          data: { access_token: "new", expires_in: 3600 },
+        });
+      mockedAxios.get
+        .mockRejectedValueOnce(httpError(401))
+        .mockResolvedValueOnce({ data: { id: 7 } });
+
+      await expect(service.getPayment(credentials, "7")).rejects.toThrow("401");
+      await expect(service.getPayment(credentials, "7")).resolves.toEqual({
+        found: true,
+        value: { id: 7 },
+      });
+
+      expect(tokenCalls()).toHaveLength(2);
+      expect(mockedAxios.get).toHaveBeenLastCalledWith(expect.any(String), {
+        headers: { Authorization: "Bearer new" },
+      });
+    });
+
+    it.each([404, 500])(
+      "keeps the cached token on a %i (not a token problem)",
+      async (status) => {
+        mockedAxios.post.mockResolvedValueOnce({
+          data: { access_token: "tok", expires_in: 3600 },
+        });
+        mockedAxios.get
+          .mockRejectedValueOnce(httpError(status))
+          .mockResolvedValueOnce({ data: { id: 7 } });
+
+        await service.getPayment(credentials, "7").catch(() => undefined);
+        await service.getPayment(credentials, "7");
+
+        expect(tokenCalls()).toHaveLength(1);
+      },
+    );
+
+    it("only forgets the token of the club that got the 401", async () => {
+      const other = {
+        ...credentials,
+        clientId: "other",
+        organizationSlug: "o",
+      };
+      mockedAxios.post
+        .mockResolvedValueOnce({
+          data: { access_token: "a", expires_in: 3600 },
+        })
+        .mockResolvedValueOnce({
+          data: { access_token: "b", expires_in: 3600 },
+        })
+        .mockResolvedValueOnce({
+          data: { access_token: "a2", expires_in: 3600 },
+        });
+      mockedAxios.get
+        .mockResolvedValueOnce({ data: {} })
+        .mockRejectedValueOnce(httpError(401))
+        .mockResolvedValueOnce({ data: {} })
+        .mockResolvedValueOnce({ data: {} });
+
+      await service.getPayment(credentials, "1");
+      await expect(service.getPayment(other, "1")).rejects.toThrow("401");
+      await service.getPayment(credentials, "1");
+      await service.getPayment(other, "1");
+
+      const ids = tokenCalls().map((c) =>
+        (c[1] as URLSearchParams).get("client_id"),
+      );
+      expect(ids).toEqual(["client-id", "other", "other"]);
+    });
+  });
 });

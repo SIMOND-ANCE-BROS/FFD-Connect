@@ -28,6 +28,8 @@ import {
   CONFLICT_ERROR_SCHEMA,
 } from "../common/decorators/api-error-responses.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
+import { Throttle } from "@nestjs/throttler";
 import {
   createFileFilter,
   FILE_TYPES,
@@ -214,6 +216,10 @@ export class LicensesController {
   @StoreReviewSimulation(simulatedRenewalDocument)
   @UseInterceptors(ImpersonatedRenewalAccessInterceptor)
   @Post("renewal/:id/documents")
+  // Each upload runs a paid Azure OCR call: 10 uploads/min per user (#633).
+  // The app sends one document per pick (2 document types per request).
+  @UseGuards(ThrottlerUserGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @ApiOperation({
     summary: "Déposer un document sur une demande (OCR automatique)",
     description:
@@ -245,6 +251,13 @@ export class LicensesController {
   })
   @ApiResponse({ status: 401, description: "Non autorisé" })
   @ApiResponse({ status: 404, description: "Demande non trouvée" })
+  // Replaces the common 409 description: same body schema.
+  @ApiResponse({
+    status: 409,
+    description:
+      "Conflit - La demande a été soumise pendant l'envoi : le document n'est pas enregistré",
+    schema: CONFLICT_ERROR_SCHEMA,
+  })
   @UseInterceptors(
     FileInterceptor("document", {
       storage: createMemoryUploadStorage(),

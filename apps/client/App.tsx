@@ -82,6 +82,9 @@ function App(): React.JSX.Element {
   useEffect(() => {
     useClubStore.getState().setRepository(defaultClubRepository);
     void initClubLogo();
+    // Moves a plaintext impersonation backup left by an older version into
+    // SecureStore (#591). Never throws.
+    void AuthService.migrateImpersonationBackup();
   }, []);
 
   // Lot 5: on background, close the screen view and send usage if the

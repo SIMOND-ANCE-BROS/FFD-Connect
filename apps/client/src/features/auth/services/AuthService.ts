@@ -1,10 +1,17 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import axios from "axios";
 import api from "../../../services/api";
+import { waitForPendingRefresh } from "../../../api/sessionRefresh";
 import {
+  clearImpersonationBackupTokens,
   clearTokens,
   getTokens,
+  restoreFromImpersonation,
+  setImpersonationBackupTokens,
   setTokens,
+  switchToImpersonation,
+  // Sauvegarde de la session admin pendant une impersonation (#545).
+  IMPERSONATION_BACKUP_KEY,
   type Tokens,
 } from "../../../api/tokenStore";
 import { isTokenStoreUnavailable } from "../../../api/tokenStoreErrors";
@@ -21,8 +28,6 @@ import type { UsersControllerGetProfileResponse } from "../../../api/generated/t
 const logger = createLogger("AuthService");
 
 const AUTH_KEY = "auth_config";
-/** Sauvegarde de la session admin pendant une impersonation (#545). */
-const IMPERSONATION_BACKUP_KEY = "impersonation_backup";
 
 /**
  * Rôles utilisateur côté client.
@@ -224,6 +229,66 @@ export function previousSession(c: AuthConfig): {
 const sameRoles = (a: readonly UserRole[] | undefined, b: UserRole[]) =>
   !!a && a.length === b.length && a.every((r, i) => r === b[i]);
 
+/** The preferences part of a config: what may live in AsyncStorage. */
+function withoutTokens<T extends Partial<AuthConfig>>(config: T): T {
+  const prefs = { ...config };
+  delete prefs.authToken;
+  delete prefs.refreshToken;
+  return prefs;
+}
+
+/**
+ * Moves a pre-#591 impersonation backup out of plaintext: its tokens go to
+ * SecureStore, the AsyncStorage blob keeps the preferences only. The blob is
+ * rewritten only once the tokens are safely stored (a locked keychain at a
+ * background launch leaves it for the next attempt). An unparsable blob is
+ * dropped: it may hold tokens and can never be restored anyway.
+ */
+async function migrateImpersonationBackup(): Promise<void> {
+  const json = await AsyncStorage.getItem(IMPERSONATION_BACKUP_KEY);
+  if (!json) return;
+  let backup: Partial<AuthConfig>;
+  try {
+    backup = JSON.parse(json) as Partial<AuthConfig>;
+  } catch {
+    await AsyncStorage.removeItem(IMPERSONATION_BACKUP_KEY);
+    return;
+  }
+  if (!("authToken" in backup) && !("refreshToken" in backup)) return;
+  const asToken = (v: unknown) => (typeof v === "string" ? v : undefined);
+  await setImpersonationBackupTokens({
+    authToken: asToken(backup.authToken),
+    refreshToken: asToken(backup.refreshToken),
+  });
+  await AsyncStorage.setItem(
+    IMPERSONATION_BACKUP_KEY,
+    JSON.stringify(withoutTokens(backup)),
+  );
+}
+
+/** Drops both halves of the impersonation backup. */
+async function clearImpersonationBackup(): Promise<void> {
+  await Promise.all([
+    AsyncStorage.removeItem(IMPERSONATION_BACKUP_KEY),
+    clearImpersonationBackupTokens(),
+  ]);
+}
+
+/** Same, best-effort: a session start/end never fails on it. */
+async function dropImpersonationBackup(): Promise<void> {
+  try {
+    await clearImpersonationBackup();
+  } catch (error) {
+    logger.error("Failed to clear the impersonation backup", error);
+  }
+}
+
+/** saveAuthConfig's body, throwing: for the impersonation switches. */
+async function writeAuthConfig(config: AuthConfig): Promise<void> {
+  await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(withoutTokens(config)));
+  usage.setContext(usage.contextFromConfig(config));
+}
+
 export const DEFAULT_CONFIG: AuthConfig = {
   isLoggedIn: false,
   role: "LICENSEE",
@@ -270,17 +335,16 @@ export const AuthService = {
     return DEFAULT_CONFIG;
   },
 
+  /**
+   * Writes the PREFERENCES only (#592). The tokens in `config` are ignored:
+   * they are written by login/register, the silent refresh (sessionRefresh)
+   * and the impersonation switches, each through an explicit setTokens. A
+   * get → modify → save racing a refresh would otherwise write back the
+   * refresh token the rotation has just revoked — and log the user out.
+   */
   saveAuthConfig: async (config: AuthConfig): Promise<void> => {
     try {
-      // Split secrets (SecureStore) from preferences (AsyncStorage). setTokens
-      // never deletes on undefined → a plain preference update can't wipe the
-      // session. Explicit logout/refresh-failure call clearTokens().
-      const { authToken, refreshToken, ...prefs } = config;
-      await Promise.all([
-        AsyncStorage.setItem(AUTH_KEY, JSON.stringify(prefs)),
-        setTokens({ authToken, refreshToken }),
-      ]);
-      usage.setContext(usage.contextFromConfig(config));
+      await writeAuthConfig(config);
     } catch (error) {
       logger.error("Failed to save auth config", error);
     }
@@ -297,16 +361,20 @@ export const AuthService = {
       });
 
       const { access_token, refresh_token, user } = response.data;
-      // ... (rest of logic)
 
       const currentConfig = await AuthService.getAuthConfig();
       const roles = rolesFrom(user);
 
+      // Tokens first, explicitly (saveAuthConfig writes preferences only):
+      // isLoggedIn must never be persisted without the session behind it.
+      await setTokens({ authToken: access_token, refreshToken: refresh_token });
+      // A fresh session is never an impersonation (#598 review).
+      await dropImpersonationBackup();
       const newConfig: AuthConfig = {
         ...currentConfig,
         isLoggedIn: true,
-        authToken: access_token,
-        refreshToken: refresh_token,
+        impersonating: undefined,
+        impersonatedName: undefined,
         role: resolveSpace({
           ...previousSession(currentConfig),
           user: user.email,
@@ -381,11 +449,14 @@ export const AuthService = {
       const currentConfig = await AuthService.getAuthConfig();
       const roles = rolesFrom(user);
 
+      await setTokens({ authToken: access_token, refreshToken: refresh_token });
+      // A fresh session is never an impersonation (#598 review).
+      await dropImpersonationBackup();
       const newConfig: AuthConfig = {
         ...currentConfig,
         isLoggedIn: true,
-        authToken: access_token,
-        refreshToken: refresh_token,
+        impersonating: undefined,
+        impersonatedName: undefined,
         role: resolveSpace({
           ...previousSession(currentConfig),
           user: user.email,
@@ -455,6 +526,9 @@ export const AuthService = {
    * Impersonation « se connecter en tant que » (#545, admin). Sauvegarde la
    * session admin, échange le token contre celui de la cible (court, sans
    * refresh) et bascule la config. L'appelant refreshAuth() ensuite.
+   *
+   * The admin's tokens are set aside in SecureStore, never in the AsyncStorage
+   * backup, which holds the preferences only (#591).
    */
   impersonate: async (
     targetUserId: string,
@@ -462,11 +536,6 @@ export const AuthService = {
     reason?: string,
   ): Promise<void> => {
     const currentConfig = await AuthService.getAuthConfig();
-    // Sauvegarde la session admin (tokens inclus) pour pouvoir revenir.
-    await AsyncStorage.setItem(
-      IMPERSONATION_BACKUP_KEY,
-      JSON.stringify(currentConfig),
-    );
 
     const response = await api.post<{
       access_token: string;
@@ -481,17 +550,12 @@ export const AuthService = {
     }>("/auth/impersonate", { targetUserId, reason });
     const { access_token, user } = response.data;
 
-    // Bascule : on efface les tokens admin (dont le refresh, pour éviter un
-    // refresh silencieux qui reviendrait admin) puis on pose le token court.
-    await clearTokens();
-    // The offline license snapshot belongs to the admin's session: it must
-    // neither be shown in the target's session nor survive the switch.
-    await clearLicenseSnapshot();
+    // A refresh in flight would rotate the admin's refresh token after the
+    // backup: let it settle so the backup holds the current one.
+    await waitForPendingRefresh();
     const impConfig: AuthConfig = {
       ...currentConfig,
       isLoggedIn: true,
-      authToken: access_token,
-      refreshToken: undefined,
       // An impersonation always opens on the target's main role.
       role: user.role,
       roles: rolesFrom(user),
@@ -502,32 +566,100 @@ export const AuthService = {
       impersonating: true,
       impersonatedName: targetName,
     };
-    await AuthService.saveAuthConfig(impConfig);
+    // Preferences BEFORE the target's token (#598 review): at no point may
+    // the app hold the target's JWT while believing it is the admin.
+    await AsyncStorage.setItem(
+      IMPERSONATION_BACKUP_KEY,
+      JSON.stringify(withoutTokens(currentConfig)),
+    );
+    await writeAuthConfig(impConfig);
+    try {
+      // One atomic step under the token-store lock: back the admin's tokens
+      // up in SecureStore (#591), wipe the session (and the offline queue),
+      // write the target's short token. Aborts, changing nothing, when the
+      // admin's session is unreadable or incomplete.
+      await switchToImpersonation(access_token);
+    } catch (error) {
+      await AsyncStorage.removeItem(IMPERSONATION_BACKUP_KEY).catch(
+        () => undefined,
+      );
+      await AuthService.saveAuthConfig(currentConfig);
+      throw error;
+    }
+    // The offline license snapshot belongs to the admin's session: it must
+    // neither be shown in the target's session nor survive the switch.
+    await clearLicenseSnapshot();
     logger.info(`Impersonation started → ${targetName}`);
   },
 
-  /** Arrête l'impersonation et restaure la session admin d'origine. */
+  /**
+   * Arrête l'impersonation et restaure la session admin d'origine. Without a
+   * usable backup (both admin tokens and the preferences) the admin is sent
+   * back to the login screen instead of staying "impersonating" with no
+   * session.
+   */
   stopImpersonation: async (): Promise<void> => {
     try {
       await api.post("/auth/impersonate/stop", {});
     } catch {
       // best-effort : on restaure la session quoi qu'il arrive
     }
-    const backup = await AsyncStorage.getItem(IMPERSONATION_BACKUP_KEY);
-    await clearTokens();
+    // A pre-#591 backup not migrated yet (launch migration failed): same move.
+    await AuthService.migrateImpersonationBackup();
+    const json = await AsyncStorage.getItem(IMPERSONATION_BACKUP_KEY);
+    let prefs: AuthConfig | undefined;
+    try {
+      prefs = json ? (JSON.parse(json) as AuthConfig) : undefined;
+    } catch {
+      prefs = undefined; // backup illisible — l'admin devra se reconnecter
+    }
+
+    // Atomic under the token-store lock. Throws when the backup is
+    // unreadable — before anything is switched: the admin stays in the
+    // impersonation and can retry.
+    let restored = false;
+    if (prefs) {
+      restored = await restoreFromImpersonation();
+    } else {
+      await clearTokens();
+    }
+    const next: AuthConfig =
+      prefs && restored
+        ? prefs
+        : {
+            ...(prefs ?? (await AuthService.getAuthConfig())),
+            isLoggedIn: false,
+            impersonating: undefined,
+            impersonatedName: undefined,
+          };
+    try {
+      await writeAuthConfig(next);
+    } catch (error) {
+      // Never leave the admin's JWT behind preferences that still say
+      // "impersonating": end the session; the backup is kept for a retry.
+      await clearTokens();
+      throw error;
+    }
     // Session switch: no offline license snapshot crosses it (it is rebuilt at
     // the admin's next online load).
     await clearLicenseSnapshot();
-    if (backup) {
-      try {
-        const cfg = JSON.parse(backup) as AuthConfig;
-        await AuthService.saveAuthConfig(cfg);
-      } catch {
-        /* backup illisible — l'utilisateur devra se reconnecter */
-      }
-      await AsyncStorage.removeItem(IMPERSONATION_BACKUP_KEY);
-    }
+    // Only once the preferences are written (#598 review). Best-effort: the
+    // switch back is done, a cleanup failure must not report it as failed.
+    await dropImpersonationBackup();
     logger.info("Impersonation stopped");
+  },
+
+  /**
+   * One-time launch migration of a plaintext impersonation backup (#591).
+   * Idempotent and never throws: a failure is retried at the next launch, and
+   * stopImpersonation runs it again before reading the backup.
+   */
+  migrateImpersonationBackup: async (): Promise<void> => {
+    try {
+      await migrateImpersonationBackup();
+    } catch (error) {
+      logger.error("Failed to migrate the impersonation backup", error);
+    }
   },
 
   /**
@@ -540,22 +672,22 @@ export const AuthService = {
       // getProfile). So when Face ID / Touch ID is enabled, logout LOCKS the app
       // (isLoggedIn=false) but keeps the tokens in the Keychain so the user can
       // unlock with biometrics. Without biometrics, logout fully wipes the tokens.
-      const keepTokensForBiometrics = currentConfig.biometricsEnabled === true;
+      // An impersonation is never kept for a biometric unlock: its backup is
+      // dropped below, so it could never switch back to the admin.
+      const keepTokensForBiometrics =
+        currentConfig.biometricsEnabled === true &&
+        currentConfig.impersonating !== true;
       const newConfig: AuthConfig = {
         ...currentConfig,
         isLoggedIn: false,
-        authToken: keepTokensForBiometrics
-          ? currentConfig.authToken
-          : undefined,
-        refreshToken: keepTokensForBiometrics
-          ? currentConfig.refreshToken
-          : undefined,
         role: "LICENSEE",
         roles: undefined,
         mainRole: undefined,
         isGuest: false,
         username: undefined,
         userId: undefined,
+        impersonating: undefined,
+        impersonatedName: undefined,
         // Space memory: the next login of this account (password or
         // biometrics) reopens this space. A guest logout keeps the previous.
         lastUser: currentConfig.username ?? currentConfig.lastUser,
@@ -582,6 +714,9 @@ export const AuthService = {
         // `clearTokens`, conserve donc la file : même utilisateur au
         // déverrouillage.
       }
+      // The admin's tokens set aside by an impersonation never outlive the
+      // session (#591). Never blocks the logout itself.
+      await dropImpersonationBackup();
       await AuthService.saveAuthConfig(newConfig);
       // Cache serveur (mémoire + AsyncStorage) : vidé à chaque déconnexion,
       // biométrie comprise — il se recharge au déverrouillage.

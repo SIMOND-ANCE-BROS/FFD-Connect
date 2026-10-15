@@ -14,11 +14,28 @@ import type {
 } from "../../../../__tests__/mocks/types";
 import { RootStackParamList } from "../../../../navigation/types";
 import { CheckinService } from "../../../license/services/CheckinService";
+import { fetchCompetitionProgram } from "../../services/competitionProgramApi";
 import { ClubCompetitionFormScreen } from "../ClubCompetitionFormScreen";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
 // Mock @env
 jest.mock("@env", () => ({ GOOGLE_API_KEY: "test" }));
+
+// Programme API (#442): an existing competition loads its events/schedule.
+jest.mock("../../services/competitionProgramApi", () => ({
+  CompetitionProgramError: class CompetitionProgramError extends Error {},
+  fetchCompetitionProgram: jest.fn(),
+  saveCompetitionProgram: jest.fn(),
+}));
+
+const emptyProgram = {
+  competitionId: "comp-123",
+  syncedFromFfd: false,
+  eventsSource: null,
+  programEditedAt: null,
+  events: [],
+  schedule: [],
+};
 
 // Mock ThemeContext
 // Mock ThemeContext
@@ -96,6 +113,7 @@ jest.mock("lucide-react-native", () => {
     Edit2: MockIcon,
     GripVertical: MockIcon,
     Info: MockIcon,
+    Lock: MockIcon,
     Plus: MockIcon,
     Trash2: MockIcon,
     Users: MockIcon,
@@ -153,6 +171,7 @@ describe("ClubCompetitionFormScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Alert, "alert").mockImplementation(jest.fn());
+    (fetchCompetitionProgram as jest.Mock).mockResolvedValue(emptyProgram);
   });
 
   it("validates required fields on save", async () => {
@@ -176,7 +195,7 @@ describe("ClubCompetitionFormScreen", () => {
   });
 
   it("switches tabs and displays different content", async () => {
-    const { getByText, queryByText, getByTestId } = await render(
+    const { getByText, queryByText, getByTestId, queryByTestId } = await render(
       <ClubCompetitionFormScreen
         navigation={
           navigation as unknown as NativeStackNavigationProp<
@@ -202,13 +221,100 @@ describe("ClubCompetitionFormScreen", () => {
     await fireEvent.press(getByTestId("tab-EVENTS"));
     expect(getByText("Ajouter une épreuve")).toBeTruthy();
     expect(queryByText("Informations Générales")).toBeNull();
-    // Not persisted by the API yet: the tab says so (#417)
-    expect(getByTestId("competition-events-not-saved")).toBeTruthy();
+    // Saved with the competition since #442: no « preview » banner.
+    expect(queryByTestId("competition-events-notice")).toBeNull();
 
     // Switch to Planning (Tab value TIMING)
     await fireEvent.press(getByTestId("tab-TIMING"));
     expect(getByText("Ajouter un créneau")).toBeTruthy();
-    expect(getByTestId("competition-timing-not-saved")).toBeTruthy();
+    expect(queryByTestId("competition-timing-notice")).toBeNull();
+  });
+
+  it("loads an existing competition's programme into the tabs (#442)", async () => {
+    (fetchCompetitionProgram as jest.Mock).mockResolvedValue({
+      ...emptyProgram,
+      syncedFromFfd: true,
+      events: [
+        {
+          id: "ev-1",
+          eventKind: "CLASSIFICATRICE",
+          eventType: "COUPLE",
+          category: "Latin",
+          ageGroup: "Youth",
+          ageGroups: [],
+          level: "Avancé",
+          openLevels: [],
+          locked: true,
+        },
+      ],
+      schedule: [
+        {
+          id: "slot-1",
+          startTime: "09:30",
+          durationMinutes: 20,
+          type: "ROUND",
+          title: "Latines Youth — finale",
+          eventId: null,
+        },
+      ],
+    });
+
+    const { getByTestId, findByText, getByText } = await render(
+      <ClubCompetitionFormScreen
+        navigation={
+          navigation as unknown as NativeStackNavigationProp<
+            RootStackParamList,
+            "ClubCompetitionEditor"
+          >
+        }
+        route={
+          {
+            params: { competition: { id: "comp-123", title: "Open" } },
+          } as unknown as RouteProp<RootStackParamList, "ClubCompetitionEditor">
+        }
+      />,
+    );
+
+    expect(fetchCompetitionProgram).toHaveBeenCalledWith("comp-123");
+    await fireEvent.press(getByTestId("tab-EVENTS"));
+    expect(await findByText("Youth · Avancé")).toBeTruthy();
+    // Imported from the FFD: the club is told the sync won't replace them.
+    expect(getByTestId("competition-events-notice")).toBeTruthy();
+    expect(getByText(/importée de la FFD/)).toBeTruthy();
+
+    // An event with registrations can't be removed.
+    await fireEvent.press(getByTestId("event-delete-ev-1"));
+    expect(Alert.alert).toHaveBeenCalledWith(
+      "Épreuve verrouillée",
+      expect.stringContaining("ne peut pas être retirée"),
+    );
+    expect(getByText("Youth · Avancé")).toBeTruthy();
+
+    await fireEvent.press(getByTestId("tab-TIMING"));
+    expect(getByText("Latines Youth — finale")).toBeTruthy();
+  });
+
+  it("tells the club when the programme could not be loaded (#442)", async () => {
+    (fetchCompetitionProgram as jest.Mock).mockRejectedValue(new Error("500"));
+
+    const { getByTestId, findByText } = await render(
+      <ClubCompetitionFormScreen
+        navigation={
+          navigation as unknown as NativeStackNavigationProp<
+            RootStackParamList,
+            "ClubCompetitionEditor"
+          >
+        }
+        route={
+          {
+            params: { competition: { id: "comp-123" } },
+          } as unknown as RouteProp<RootStackParamList, "ClubCompetitionEditor">
+        }
+      />,
+    );
+
+    await fireEvent.press(getByTestId("tab-TIMING"));
+    expect(await findByText(/n'ont pas pu être chargés/)).toBeTruthy();
   });
 
   it("a11y (#386): text inputs are announced with French labels", async () => {

@@ -70,9 +70,13 @@ describe("AuthController (e2e with real DB)", () => {
     prisma = moduleFixture.get<PrismaService>(PrismaService);
 
     const hashedPassword = await bcrypt.hash(plainPassword, 10);
+    // Written like the current release: with its lookup key (#526). The
+    // legacy rows below have none, as written before #526 (or by an older
+    // release after a rollback): both kinds must be found.
     await prisma.user.create({
       data: {
         email: testEmail,
+        emailNormalized: testEmail,
         password: hashedPassword,
         firstName: "E2E",
         lastName: "User",

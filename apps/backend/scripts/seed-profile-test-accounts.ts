@@ -40,6 +40,7 @@ import { Prisma, PrismaClient, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import "dotenv/config";
 import { Pool } from "pg";
+import { storedEmailData } from "../src/auth/email-identity";
 import {
   STORE_REVIEW_CLUB_NAME,
   STORE_REVIEW_EMAIL,
@@ -92,7 +93,7 @@ async function createAccount(
   }
   return prisma.user.create({
     data: {
-      email: STORE_REVIEW_EMAIL,
+      ...storedEmailData(STORE_REVIEW_EMAIL),
       password: await bcrypt.hash(TEST_PASSWORD, BCRYPT_ROUNDS),
       firstName: STORE_REVIEW_FIRST_NAME,
       lastName: STORE_REVIEW_LAST_NAME,

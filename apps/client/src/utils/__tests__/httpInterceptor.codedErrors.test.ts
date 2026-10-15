@@ -1,10 +1,12 @@
 import { httpErrorFromBody, httpPost, HttpError } from "../httpInterceptor";
 
-const mockError = jest.fn();
+// HTTP failures are logged at warn since #589 (the caller reports them);
+// error and warn share one spy so a regression to either level is caught.
+const mockLog = jest.fn();
 jest.mock("../logger", () => ({
   createLogger: () => ({
-    error: (...args: unknown[]) => mockError(...args),
-    warn: jest.fn(),
+    error: (...args: unknown[]) => mockLog(...args),
+    warn: (...args: unknown[]) => mockLog(...args),
     info: jest.fn(),
     debug: jest.fn(),
   }),
@@ -66,7 +68,7 @@ describe("httpErrorFromBody (#225)", () => {
 });
 
 describe("httpRequest — error logging (#225)", () => {
-  beforeEach(() => mockError.mockClear());
+  beforeEach(() => mockLog.mockClear());
 
   it("never sends the error body, its text or its code to the logger", async () => {
     respondWith(400, CODED_BODY);
@@ -80,8 +82,8 @@ describe("httpRequest — error logging (#225)", () => {
     expect(err).toBeInstanceOf(HttpError);
     expect((err as HttpError).message).toBe("L'opération a échoué");
     expect((err as HttpError).userMessage).toBe(MEDICAL_TEXT);
-    expect(mockError).toHaveBeenCalledTimes(1);
-    const logged = JSON.stringify(mockError.mock.calls);
+    expect(mockLog).toHaveBeenCalledTimes(1);
+    const logged = JSON.stringify(mockLog.mock.calls);
     expect(logged).toContain("400");
     expect(logged).not.toContain("SENTINEL-225");
     expect(logged).not.toContain("MEDICAL_UNFIT");
@@ -92,6 +94,6 @@ describe("httpRequest — error logging (#225)", () => {
 
     await httpPost("/api/x", {}).catch(() => undefined);
 
-    expect(JSON.stringify(mockError.mock.calls)).not.toContain("SENTINEL-BODY");
+    expect(JSON.stringify(mockLog.mock.calls)).not.toContain("SENTINEL-BODY");
   });
 });
