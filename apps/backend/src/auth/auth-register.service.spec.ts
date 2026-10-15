@@ -426,7 +426,10 @@ describe("AuthService.register", () => {
         // Verify the email was normalized
         expect(createMock).toHaveBeenCalledWith(
           expect.objectContaining({
-            data: expect.objectContaining({ email: "upper@example.com" }),
+            data: expect.objectContaining({
+              email: "upper@example.com",
+              emailNormalized: "upper@example.com", // lookup key (#526)
+            }),
           }),
         );
         return result;

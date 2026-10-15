@@ -14,6 +14,6 @@ export const oneAccountPerAddress =
 /** Matches the e-mail lookup query for the normalised address `normalized`. */
 export const emailLookupFor = (normalized: string): unknown =>
   expect.objectContaining({
-    text: expect.stringContaining('lower(email COLLATE "C") = $1'),
+    text: expect.stringContaining('"emailNormalized" = $1'),
     values: expect.arrayContaining([normalized]),
   });

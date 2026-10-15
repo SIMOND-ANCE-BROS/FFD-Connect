@@ -88,6 +88,13 @@ describe("Admin identifiers change (integration, real DB)", () => {
 
     expect(result.user.email).toBe(newEmail);
     expect(result.previousEmailNotified).toBe(true);
+    // The lookup key follows the address (#526).
+    await expect(
+      prisma.user.findUniqueOrThrow({
+        where: { id: target.id },
+        select: { emailNormalized: true },
+      }),
+    ).resolves.toEqual({ emailNormalized: newEmail });
     await expect(
       tokens.refreshAccessToken(refresh.token),
     ).rejects.toBeInstanceOf(UnauthorizedException);

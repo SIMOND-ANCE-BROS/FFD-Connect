@@ -6,10 +6,12 @@ import { ImpersonateDto } from "./dto/impersonate.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RegisterDto } from "./dto/register.dto";
 import {
+  fillNormalizedEmails,
   findUserIdByEmail,
   isEmailTaken,
   normalizeEmail,
   normalizeEmailTransform,
+  storedEmailData,
   trimEmailTransform,
 } from "./email-identity";
 
@@ -138,17 +140,22 @@ describe("email identity (#465)", () => {
       db.$queryRaw.mockReset();
     });
 
-    it("compares ASCII-folded in SQL, exact-typed row first, bounded", async () => {
+    it("reads the unique key, then keyless rows ASCII-folded; exact-typed row first, bounded (#526)", async () => {
       db.$queryRaw.mockResolvedValue([{ id: "u1", email: "a@b.fr" }]);
 
       await expect(findUserIdByEmail(client, " A@B.fr ")).resolves.toBe("u1");
       const { text, values } = lastQuery();
-      expect(text).toContain('lower(email COLLATE "C") = $1');
-      expect(text).toContain("ORDER BY (email = $2) DESC, id ASC");
-      expect(text).toContain("LIMIT $3");
+      // Branch 1: the unique index on the normalised key.
+      expect(text).toContain('WHERE "emailNormalized" = $1');
+      // Branch 2: only rows without a key (partial index), folded like normalizeEmail.
+      expect(text).toContain('WHERE "emailNormalized" IS NULL');
+      expect(text).toContain('AND lower(btrim(email) COLLATE "C") = $2');
+      expect(text).toContain("UNION ALL");
+      expect(text).toContain("ORDER BY (email = $3) DESC, id ASC");
+      expect(text).toContain("LIMIT $4");
       expect(text).not.toMatch(/LIKE/i);
       expect(text).not.toContain("id <>");
-      expect(values).toEqual(["a@b.fr", "A@B.fr", 5]);
+      expect(values).toEqual(["a@b.fr", "a@b.fr", "A@B.fr", 5]);
     });
 
     it("finds a legacy account stored with capitals", async () => {
@@ -235,8 +242,69 @@ describe("email identity (#465)", () => {
 
       await isEmailTaken(client, "a@b.fr", "self");
       const { text, values } = lastQuery();
-      expect(text).toContain("AND id <> $2");
-      expect(values).toEqual(["a@b.fr", "self", "a@b.fr", 5]);
+      // Applied to both branches: after the union, before the bound.
+      expect(text).toMatch(/\) AS candidates\s+WHERE id <> \$3/);
+      expect(values).toEqual(["a@b.fr", "a@b.fr", "self", "a@b.fr", 5]);
+    });
+  });
+
+  describe("storedEmailData (#526)", () => {
+    it("writes the normalised address and the same lookup key", () => {
+      expect(storedEmailData("  Prenom.Nom@Exemple.FR ")).toEqual({
+        email: "prenom.nom@exemple.fr",
+        emailNormalized: "prenom.nom@exemple.fr",
+      });
+    });
+
+    it("folds ASCII only, like the lookup", () => {
+      expect(storedEmailData("Kate@X.fr").emailNormalized).toBe("Kate@x.fr");
+    });
+  });
+
+  describe("fillNormalizedEmails (#526)", () => {
+    const db = { $executeRaw: jest.fn(), user: { count: jest.fn() } };
+    const client = db as unknown as Parameters<typeof fillNormalizedEmails>[0];
+
+    beforeEach(() => {
+      db.$executeRaw.mockReset();
+      db.user.count.mockReset();
+    });
+
+    it("fills keyless rows whose address is unique once normalised, bounded", async () => {
+      db.$executeRaw.mockResolvedValue(3);
+      db.user.count.mockResolvedValue(0);
+
+      await expect(fillNormalizedEmails(client)).resolves.toEqual({
+        filled: 3,
+        unresolved: 0,
+      });
+      const { text, values } = db.$executeRaw.mock.calls[0][0] as {
+        text: string;
+        values: unknown[];
+      };
+      // Same folding as the lookup and the migration backfill.
+      expect(text).toContain('lower(btrim(email) COLLATE "C") AS key');
+      expect(text).toContain('WHERE "emailNormalized" IS NULL');
+      // Never merges: a key shared by another keyless row or held by a keyed row is skipped.
+      expect(text).toContain("q.key = p.key AND q.id <> p.id");
+      expect(text).toContain('o."emailNormalized" = p.key');
+      // Only rows still without a key are written (no overwrite of a concurrent write).
+      expect(text).toContain('u."emailNormalized" IS NULL');
+      expect(text).toContain("LIMIT $1");
+      expect(values).toEqual([1000]);
+      expect(db.user.count).toHaveBeenCalledWith({
+        where: { emailNormalized: null },
+      });
+    });
+
+    it("reports the keyless rows left (case duplicates)", async () => {
+      db.$executeRaw.mockResolvedValue(0);
+      db.user.count.mockResolvedValue(2);
+
+      await expect(fillNormalizedEmails(client)).resolves.toEqual({
+        filled: 0,
+        unresolved: 2,
+      });
     });
   });
 });

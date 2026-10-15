@@ -30,6 +30,7 @@ import {
   findUserIdByEmail,
   isEmailTaken,
   normalizeEmail,
+  storedEmailData,
 } from "./email-identity";
 import { LICENSE_NUMBER_MAX_LENGTH } from "./dto/register.dto";
 import { PasswordValidator } from "./password-validator";
@@ -283,7 +284,7 @@ export class AuthService {
       const newUser = await tx.user
         .create({
           data: {
-            email: normalizedEmail,
+            ...storedEmailData(normalizedEmail),
             password: hashedPassword,
             firstName: firstName.trim(),
             lastName: lastName.trim(),
