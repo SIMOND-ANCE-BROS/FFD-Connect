@@ -497,7 +497,10 @@ describe("CompetitionSyncService", () => {
 
       await expect(
         service.downloadFfdDocument("https://api.ffd.fr/uploads/missing.pdf"),
-      ).rejects.toThrow("HTTP 404");
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("HTTP 404"),
+        status: 404,
+      });
     });
 
     it("is the downloader given to the events deduction", async () => {

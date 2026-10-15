@@ -4,6 +4,7 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import CircuitBreaker from "opossum";
+import { isCallerError } from "./caller-error";
 
 type BreakerKey =
   | "azure-vision"
@@ -121,6 +122,9 @@ export class CircuitBreakerService {
           timeout: config.timeout,
           resetTimeout: config.resetTimeout,
           volumeThreshold: config.volumeThreshold,
+          // A 4xx answer (bad id, missing file, refused payload) is the
+          // caller's fault, not an outage: rethrown, never counted (#437).
+          errorFilter: isCallerError,
         },
       );
 
@@ -160,6 +164,10 @@ export class CircuitBreakerService {
    * Runs `fn` through the breaker of `key`. With a `scope` (e.g. a HelloAsso
    * organisation), failures are counted per scope: one tenant's outage or
    * bad credentials never opens the breaker for the others.
+   *
+   * A caller error raised by `fn` (remote 4xx other than 408/429, see
+   * `isCallerError`) is rethrown as is and never counted as a failure:
+   * only 5xx, 408/429, timeouts and network errors can open the breaker.
    */
   async fire<T>(
     key: BreakerKey,
