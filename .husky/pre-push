@@ -1,4 +1,10 @@
 # Typecheck + unit tests impacted by the push (#254, #495). Logic and fallbacks
 # to the full suites: scripts/pre-push.sh. CI is the authority and is unchanged.
 # Never bypass with --no-verify; PRE_PUSH_FULL=1 forces the full suites.
-sh scripts/pre-push.sh "$@"
+#
+# core.hooksPath is shared by every worktree and points at ONE checkout's
+# .husky/_, so this file may run against a worktree whose branch predates
+# scripts/pre-push.sh: use the pushed tree's copy, else the one next to this hook.
+script=scripts/pre-push.sh
+[ -f "$script" ] || script="$(dirname "$0")/../scripts/pre-push.sh"
+sh "$script" "$@"
