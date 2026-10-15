@@ -23,7 +23,13 @@ describe("buildBullConnection", () => {
   });
 
   it("falls back to localhost:6379 without a password", () => {
-    const config = new ConfigService({});
+    // Mocked rather than `new ConfigService({})`: the real one also reads
+    // process.env, and CI sets REDIS_HOST/REDIS_PORT for the backend-test job.
+    const config = {
+      get: jest.fn(
+        <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
+      ),
+    } as unknown as ConfigService;
 
     expect(buildBullConnection(config)).toEqual({
       connection: {
