@@ -126,6 +126,26 @@ node dist/scripts/backfill-registration-partner-user.js --apply   # écriture
 pnpm exec tsx scripts/backfill-registration-partner-user.ts       # en local, simulation
 ```
 
+### `recompute-track-mpm.ts`
+
+**Recalcul ponctuel des MPM stockés comme BPM brut (#338)**
+
+Avant #338, une musique dont la danse n'était pas reconnue par le backend (« Valse anglaise »,
+« Slow-fox », pas de danse…) gardait son BPM brut arrondi comme MPM, et un BPM saisi par un admin à
+la place d'un MPM était appliqué tel quel. Le script convertit ces valeurs (danse reconnue) ou
+vide le MPM (danse inconnue : 0 = MPM inconnu, l'app affiche « - »). Une valeur qui n'est pas un
+BPM brut (MPM saisi par un admin, conversion correcte) n'est jamais touchée.
+
+Idempotent, compare-and-set par piste, affiche chaque correction (id, ancien → nouveau MPM) et les
+compteurs. **À lancer une fois après le déploiement** : sans option, il simule (dry run) ;
+`--apply` écrit.
+
+```bash
+node dist/scripts/recompute-track-mpm.js           # dans le conteneur, simulation
+node dist/scripts/recompute-track-mpm.js --apply   # écriture
+pnpm exec tsx scripts/recompute-track-mpm.ts       # en local, simulation
+```
+
 ---
 
 ## Scripts à la racine du projet

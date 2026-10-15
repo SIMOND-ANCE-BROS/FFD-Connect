@@ -260,20 +260,25 @@ export class TrackImportService {
   /**
    * Tempo of the new track. The raw BPM comes from the import (track-prep
    * manifest) or from BpmService; the MPM is the admin's, else the raw tempo
-   * converted for the dance (same rule as PATCH /tracks/:id), else the rounded
-   * raw tempo. No tempo at all (analysis failed, no MPM given): the track is
-   * created in ERROR, out of the library, until an admin sets its MPM.
+   * converted for the dance (same rule as PATCH /tracks/:id), else 0 (unknown
+   * MPM: no dance to convert for — never the raw BPM shown as an MPM, #338).
+   * No tempo at all (analysis failed, no MPM given): the track is created in
+   * ERROR, out of the library, until an admin sets its MPM.
    */
   private async tempo(audio: Buffer, dto: ImportTrackDto): Promise<Tempo> {
     const rawBpm = dto.rawBpm ?? (await this.analyze(audio));
     if (rawBpm > 0) {
       const bpm =
         this.tracks.bpmForPatch(rawBpm, { bpm: dto.mpm, style: dto.style }) ??
-        Math.round(rawBpm);
+        0;
       return { rawBpm, bpm, status: TrackStatus.READY };
     }
     if (dto.mpm !== undefined) {
-      return { rawBpm: 0, bpm: dto.mpm, status: TrackStatus.READY };
+      const bpm = this.tracks.bpmForPatch(0, {
+        bpm: dto.mpm,
+        style: dto.style,
+      });
+      return { rawBpm: 0, bpm: bpm ?? dto.mpm, status: TrackStatus.READY };
     }
     return { rawBpm: 0, bpm: 0, status: TrackStatus.ERROR };
   }
