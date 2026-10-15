@@ -236,6 +236,7 @@ describe("Store-review read allowlist (integration, real DB)", () => {
     "/licenses/renewal/my",
     "/notifications",
     "/notifications/preferences",
+    "/parental-consent/me",
     "/track-corrections/mine",
     "/track-corrections/pending-count",
     "/tracks",
