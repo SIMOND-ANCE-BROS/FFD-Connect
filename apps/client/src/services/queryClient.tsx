@@ -108,6 +108,8 @@ const NON_PERSISTED_QUERY_ROOTS: readonly string[] = [
   "track-corrections",
   // Renewal state (#268): tied to a medical certificate, kept in memory only.
   "license-renewal",
+  // Parental consent (#61): carries a parent's (masked) address.
+  "parental-consent",
 ];
 
 /** Filtre de persistance : le défaut de React Query, moins les exclusions. */

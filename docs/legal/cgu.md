@@ -1,6 +1,6 @@
 # Conditions Générales d'Utilisation (CGU)
 
-_Dernière mise à jour : 11 octobre 2026_
+_Dernière mise à jour : 15 octobre 2026_
 
 > **Projet indépendant.** FFD Connect n'est pas une application officielle de la
 > Fédération Française de Danse, qui n'en est ni l'éditrice ni la responsable de
@@ -26,11 +26,22 @@ Le service est fourni « en l'état ». L'éditeur peut faire évoluer, suspendr
 
 ## 3. Âge requis
 
-L'Application est réservée aux personnes **majeures**. La création d'un compte par
-un mineur n'est pas autorisée en l'état : le dispositif de recueil du consentement
-d'un titulaire de l'autorité parentale, requis pour traiter les données d'un mineur
-et en particulier ses données de santé, n'est pas encore disponible. Cette
-restriction sera levée lorsque ce dispositif sera mis en œuvre.
+Un **mineur** peut créer un compte, avec l'accord d'un titulaire de l'autorité
+parentale (ci-après « le représentant légal ») :
+
+- à l'inscription, ou plus tard depuis son profil, le mineur indique l'adresse
+  e-mail de son représentant légal, qui reçoit un lien de confirmation ;
+- tant que le représentant légal n'a pas donné son accord par ce lien, le compte
+  est **limité** : en particulier, aucun certificat médical ne peut être déposé ;
+- en donnant son accord, le représentant légal accepte les présentes CGU pour le
+  compte du mineur et consent explicitement au traitement de son certificat
+  médical (voir article 5) ;
+- le représentant légal peut **retirer** son accord à tout moment avec le même
+  lien : le compte redevient limité et les certificats médicaux du mineur sont
+  supprimés.
+
+La qualité de mineur est déduite de la date de naissance encodée dans le numéro
+de licence fédérale. Un majeur n'est jamais soumis à ce dispositif.
 
 ## 4. Compte utilisateur
 
@@ -42,7 +53,7 @@ restriction sera levée lorsque ce dispositif sera mis en œuvre.
 
 - L'utilisateur garantit l'authenticité des documents déposés (certificat médical notamment).
 - Le certificat médical déposé pour renouveler une licence est vérifié par une personne : l'éditeur, en tant qu'administrateur de la plateforme. La lecture automatique du document (OCR) ne fournit que des indices et ne décide pas du renouvellement.
-- Le dépôt d'un certificat médical vaut consentement explicite à son traitement pour la vérification de l'aptitude, y compris à sa consultation par l'éditeur (voir [politique de confidentialité](./politique-confidentialite.md)).
+- Le dépôt d'un certificat médical vaut consentement explicite à son traitement pour la vérification de l'aptitude, y compris à sa consultation par l'éditeur (voir [politique de confidentialité](./politique-confidentialite.md)). Pour un mineur, ce consentement est donné par son représentant légal (article 3), et le dépôt n'est possible qu'après son accord.
 - En cas de refus, le motif et, le cas échéant, un commentaire de l'administrateur sont communiqués dans l'Application ; l'utilisateur peut alors déposer une nouvelle demande.
 
 ## 6. Paiements

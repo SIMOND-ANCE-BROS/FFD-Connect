@@ -38,6 +38,7 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
   const licenseRef = useRef<TextInput>(null);
   const lastNameRef = useRef<TextInput>(null);
   const firstNameRef = useRef<TextInput>(null);
+  const parentEmailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const confirmPasswordRef = useRef<TextInput>(null);
 
@@ -129,6 +130,55 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                   />
                 </Pressable>
               </View>
+
+              {/* Parent's e-mail — minors only (#61) */}
+              {state.isMinor ? (
+                <View style={styles.inputGroup} testID="register-parent-group">
+                  <AppText
+                    variant="caption"
+                    style={styles.label}
+                    color={currentTheme.textSecondary}
+                  >
+                    E-MAIL D'UN PARENT OU REPRÉSENTANT LÉGAL
+                  </AppText>
+                  <AppText
+                    variant="caption"
+                    color={currentTheme.textSecondary}
+                    style={styles.parentHint}
+                  >
+                    Votre licence indique que vous êtes mineur(e). Votre
+                    représentant légal recevra un lien pour donner son accord ;
+                    d'ici là, vous ne pourrez pas déposer de certificat médical.
+                  </AppText>
+                  <Pressable
+                    accessible={false}
+                    onPress={() => parentEmailRef.current?.focus()}
+                    style={styles.inputPressable}
+                  >
+                    <TextInput
+                      ref={parentEmailRef}
+                      testID="register-parent-email-input"
+                      accessibilityLabel="E-mail du représentant légal"
+                      accessibilityHint="Saisissez l'adresse e-mail d'un parent ou représentant légal"
+                      style={inputStyle("parentEmail")}
+                      placeholder="parent@exemple.fr"
+                      placeholderTextColor={
+                        isDark ? theme.colors.slate500 : theme.colors.slate400
+                      }
+                      value={state.parentEmail}
+                      onChangeText={actions.setParentEmail}
+                      onFocus={() => actions.setFocusedField("parentEmail")}
+                      onBlur={() => actions.setFocusedField(null)}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      returnKeyType="next"
+                      onSubmitEditing={() => lastNameRef.current?.focus()}
+                      blurOnSubmit={false}
+                    />
+                  </Pressable>
+                </View>
+              ) : null}
 
               {/* Last Name */}
               <View style={styles.inputGroup}>
@@ -467,6 +517,10 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textTransform: "uppercase",
     letterSpacing: 1,
+  },
+  parentHint: {
+    marginBottom: 8,
+    lineHeight: 18,
   },
   inputPressable: {
     width: "100%",

@@ -41,6 +41,7 @@ import { VolunteerCheckinScreen } from "../features/competitions/screens/Volunte
 
 // --- License screens ---
 import { LicenseRenewalScreen } from "../features/license/screens/LicenseRenewalScreen";
+import { ParentalConsentScreen } from "../features/parental-consent/ParentalConsentScreen";
 import { ScannerScreen } from "../features/license/screens/ScannerScreen";
 
 // --- Player & Performance screens ---
@@ -311,6 +312,10 @@ export const AppNavigator = () => {
               <Stack.Screen
                 name="LicenseRenewal"
                 component={LicenseRenewalScreen}
+              />
+              <Stack.Screen
+                name="ParentalConsent"
+                component={ParentalConsentScreen}
               />
               <Stack.Screen name="ViewCareer" component={ViewCareerScreen} />
               <Stack.Screen name="Profile" component={ProfileScreen} />

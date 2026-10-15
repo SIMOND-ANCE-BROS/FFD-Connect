@@ -224,6 +224,12 @@ jest.mock("../../features/license/screens/LicenseRenewalScreen", () => ({
     return <Text testID="screen-LicenseRenewal">LicenseRenewal</Text>;
   },
 }));
+jest.mock("../../features/parental-consent/ParentalConsentScreen", () => ({
+  ParentalConsentScreen: () => {
+    const { Text } = require("react-native");
+    return <Text testID="screen-ParentalConsent">ParentalConsent</Text>;
+  },
+}));
 jest.mock("../../features/auth/screens/ForgotPasswordScreen", () => ({
   ForgotPasswordScreen: () => {
     const { Text } = require("react-native");

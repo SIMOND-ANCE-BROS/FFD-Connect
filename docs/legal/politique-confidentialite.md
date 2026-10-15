@@ -1,6 +1,6 @@
 # Politique de confidentialité
 
-_Dernière mise à jour : 12 octobre 2026_
+_Dernière mise à jour : 15 octobre 2026_
 
 > **Projet indépendant.** FFD Connect n'est pas une application officielle de la
 > Fédération Française de Danse. La fédération n'en est ni l'éditrice, ni
@@ -19,34 +19,36 @@ L'éditeur n'est pas tenu de désigner un délégué à la protection des donné
 
 ## 2. Données que nous collectons
 
-| Catégorie               | Exemples                                                                                                                                                                                                                                                                                                           | Origine                                        |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
-| **Identité & compte**   | nom, prénom, adresse e-mail, mot de passe (haché), rôle (danseur, club, admin)                                                                                                                                                                                                                                     | fournies par l'utilisateur                     |
-| **Données de licence**  | numéro de licence, club, discipline, catégorie                                                                                                                                                                                                                                                                     | saisies / extraites du certificat              |
-| **Données de santé** ⚠️ | certificat médical de non contre-indication, date d'aptitude, informations extraites par OCR, décision de la vérification (motif d'un refus, commentaire de l'administrateur)                                                                                                                                      | fournies par l'utilisateur                     |
-| **Compétitions**        | inscriptions, résultats, palmarès                                                                                                                                                                                                                                                                                  | usage de l'app                                 |
-| **Paiement**            | transactions d'inscription (traitées par HelloAsso — nous ne stockons **pas** les données bancaires)                                                                                                                                                                                                               | via HelloAsso                                  |
-| **Contenu**             | musiques ajoutées à la bibliothèque, partenaires recherchés                                                                                                                                                                                                                                                        | usage de l'app                                 |
-| **Techniques**          | logs d'erreur, adresse IP (seul son réseau est conservé dans les logs)                                                                                                                                                                                                                                             | automatique                                    |
-| **Appareils**           | jeton de notification push (identifiant d'appareil FCM), plateforme (iOS / Android), dates d'usage                                                                                                                                                                                                                 | automatique (à la connexion)                   |
-| **Pass Wallet**         | nom, prénom, numéro et type de licence, date de fin de validité, QR code signé (voir §4 bis)                                                                                                                                                                                                                       | à la demande de l'utilisateur                  |
-| **Usage anonyme**       | écrans consultés et durée, événements (connexion, inscription, scan de licence, ajout au Wallet, consultation d'une compétition), date et heure à la minute, plateforme, version de l'application, espace actif — rattachés à un identifiant d'installation aléatoire renouvelé chaque mois, jamais à votre compte | automatique (application mobile, désactivable) |
+| Catégorie                     | Exemples                                                                                                                                                                                                                                                                                                           | Origine                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| **Identité & compte**         | nom, prénom, adresse e-mail, mot de passe (haché), rôle (danseur, club, admin)                                                                                                                                                                                                                                     | fournies par l'utilisateur                                 |
+| **Données de licence**        | numéro de licence, club, discipline, catégorie                                                                                                                                                                                                                                                                     | saisies / extraites du certificat                          |
+| **Données de santé** ⚠️       | certificat médical de non contre-indication, date d'aptitude, informations extraites par OCR, décision de la vérification (motif d'un refus, commentaire de l'administrateur)                                                                                                                                      | fournies par l'utilisateur                                 |
+| **Accord parental** (mineurs) | statut de la demande, dates (envoi, accord, retrait), version des CGU acceptée, adresse e-mail du représentant légal **masquée** (« p\*\*\*@g\*\*\*.fr ») et son **empreinte** (hachage SHA-256) — l'adresse elle-même n'est pas conservée                                                                         | fournie par le mineur, confirmée par le représentant légal |
+| **Compétitions**              | inscriptions, résultats, palmarès                                                                                                                                                                                                                                                                                  | usage de l'app                                             |
+| **Paiement**                  | transactions d'inscription (traitées par HelloAsso — nous ne stockons **pas** les données bancaires)                                                                                                                                                                                                               | via HelloAsso                                              |
+| **Contenu**                   | musiques ajoutées à la bibliothèque, partenaires recherchés                                                                                                                                                                                                                                                        | usage de l'app                                             |
+| **Techniques**                | logs d'erreur, adresse IP (seul son réseau est conservé dans les logs)                                                                                                                                                                                                                                             | automatique                                                |
+| **Appareils**                 | jeton de notification push (identifiant d'appareil FCM), plateforme (iOS / Android), dates d'usage                                                                                                                                                                                                                 | automatique (à la connexion)                               |
+| **Pass Wallet**               | nom, prénom, numéro et type de licence, date de fin de validité, QR code signé (voir §4 bis)                                                                                                                                                                                                                       | à la demande de l'utilisateur                              |
+| **Usage anonyme**             | écrans consultés et durée, événements (connexion, inscription, scan de licence, ajout au Wallet, consultation d'une compétition), date et heure à la minute, plateforme, version de l'application, espace actif — rattachés à un identifiant d'installation aléatoire renouvelé chaque mois, jamais à votre compte | automatique (application mobile, désactivable)             |
 
 Les **données de santé** sont des données sensibles au sens de l'article 9 du RGPD et font l'objet de mesures de protection renforcées (voir §7).
 
 ## 3. Finalités et bases légales
 
-| Finalité                                                                           | Base légale                                                                         |
-| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Créer et gérer le compte utilisateur                                               | Exécution du contrat (CGU)                                                          |
-| Gérer les licences et vérifier l'aptitude médicale                                 | Obligation légale / intérêt légitime de la fédération                               |
-| Inscrire aux compétitions et encaisser les paiements                               | Exécution du contrat                                                                |
-| Vérifier le certificat médical (lecture automatique et vérification par l'éditeur) | **Consentement explicite** de la personne (art. 9-2-a)                              |
-| Envoyer des notifications (rappels d'échéance, résultats)                          | Consentement / intérêt légitime                                                     |
-| Ajouter sa licence à Apple Wallet ou Google Wallet                                 | Exécution du contrat, à la demande de l'utilisateur                                 |
-| Produire des statistiques agrégées pour l'administration de la plateforme          | Intérêt légitime de la fédération                                                   |
-| Assurer la sécurité et corriger les bugs                                           | Intérêt légitime                                                                    |
-| Mesurer l'audience de l'application de façon anonyme                               | Intérêt légitime (mesure d'audience exemptée de consentement, recommandations CNIL) |
+| Finalité                                                                           | Base légale                                                                                                  |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Créer et gérer le compte utilisateur                                               | Exécution du contrat (CGU)                                                                                   |
+| Gérer les licences et vérifier l'aptitude médicale                                 | Obligation légale / intérêt légitime de la fédération                                                        |
+| Inscrire aux compétitions et encaisser les paiements                               | Exécution du contrat                                                                                         |
+| Vérifier le certificat médical (lecture automatique et vérification par l'éditeur) | **Consentement explicite** de la personne (art. 9-2-a)                                                       |
+| Recueillir l'accord du représentant légal d'un mineur et en garder la preuve       | Obligation légale (preuve du consentement : art. 7 et 8 du RGPD, art. 45 de la loi Informatique et Libertés) |
+| Envoyer des notifications (rappels d'échéance, résultats)                          | Consentement / intérêt légitime                                                                              |
+| Ajouter sa licence à Apple Wallet ou Google Wallet                                 | Exécution du contrat, à la demande de l'utilisateur                                                          |
+| Produire des statistiques agrégées pour l'administration de la plateforme          | Intérêt légitime de la fédération                                                                            |
+| Assurer la sécurité et corriger les bugs                                           | Intérêt légitime                                                                                             |
+| Mesurer l'audience de l'application de façon anonyme                               | Intérêt légitime (mesure d'audience exemptée de consentement, recommandations CNIL)                          |
 
 ## 4. Sous-traitants et destinataires
 
@@ -113,6 +115,7 @@ Danse.
 - **Résultats de compétition** : après la suppression du compte, ils sont conservés **sans aucun lien** avec votre compte ni avec votre nom, afin de ne pas fausser le classement des autres couples (seuls l'épreuve, le tour et le classement subsistent). Les classements de la FFD étant publics à la source, il s'agit d'une **pseudonymisation** et non d'une anonymisation complète. Si le résultat de votre couple est rattaché au compte de votre partenaire, il reste le sien : la partie du libellé qui vous nomme est remplacée par « Partenaire supprimé », lorsque l'épreuve permet de faire le lien avec votre compte.
 - **Données de paiement** : conservées par HelloAsso selon ses propres obligations comptables.
 - **Jetons de notification push (identifiants d'appareil)** : **90 jours** sans réutilisation de l'appareil. L'application réenregistre le jeton à chaque ouverture de session : passé ce délai sans signe de vie, l'appareil est considéré comme abandonné (application désinstallée, appareil remplacé) et la ligne est supprimée automatiquement. Le jeton est également supprimé immédiatement à la déconnexion, à la suppression du compte, et dès que Firebase le déclare invalide.
+- **Accord parental (mineurs)** : la preuve de l'accord (statut, dates, version des CGU, adresse masquée et empreinte) est conservée tant que le compte existe, et supprimée avec lui. Une demande non confirmée cesse d'être valable **7 jours** après son envoi ; elle reste dans l'historique du compte (sans l'adresse en clair). Le lien envoyé au représentant légal n'est jamais stocké en clair (seule son empreinte l'est).
 - **Jetons de session** : 30 jours maximum.
 - **Logs techniques** : **12 mois**.
 - **Journal des accès aux données de santé** : **1 an**, puis suppression automatique. Il ne contient que des identifiants techniques (personne concernée, auteur de l'accès), la nature de l'accès, sa date et son point d'entrée — jamais le certificat ni les informations qui y figurent. Il subsiste après la suppression du compte jusqu'au terme de ce délai, afin qu'un accès ne puisse pas être effacé en supprimant un compte.
@@ -149,12 +152,38 @@ UE–États-Unis (Data Privacy Framework).
 
 ## 8. Mineurs
 
-L'application est **réservée aux personnes majeures** (article 3 des [CGU](./cgu.md)).
-
 Le traitement des données d'un mineur, et en particulier de ses données de santé,
-requiert le consentement d'un titulaire de l'autorité parentale. Tant que le
-dispositif de recueil de ce consentement n'est pas en place, aucun compte de mineur
-n'est accepté. Cette restriction sera levée lorsque ce dispositif sera mis en œuvre.
+requiert le consentement d'un titulaire de l'autorité parentale (article 3 des
+[CGU](./cgu.md)). Il est recueilli par **double confirmation par e-mail** :
+
+1. **Qui est concerné** — tout utilisateur de **moins de 18 ans**, d'après la date
+   de naissance encodée dans son numéro de licence fédérale. Un majeur n'est jamais
+   concerné.
+2. **Demande** — le mineur indique l'adresse e-mail d'un représentant légal, à
+   l'inscription ou depuis son profil. Un lien personnel, valable **7 jours** pour
+   confirmer, est envoyé à cette adresse (par Resend, voir §4 et §6). Le mineur peut
+   renvoyer une demande : le lien précédent cesse alors de fonctionner.
+3. **Accord** — sur la page du lien, le représentant légal donne deux accords
+   distincts : le traitement des données du mineur conformément aux CGU, et le
+   traitement **explicite** de son certificat médical (article 9 du RGPD). L'accord
+   est horodaté et rattaché à la version des CGU en vigueur.
+4. **Compte limité** — tant que l'accord n'est pas donné (ou après son retrait),
+   aucun certificat médical ne peut être déposé ni soumis.
+5. **Retrait** — le même lien permet de retirer l'accord **à tout moment**. Le
+   retrait a un effet immédiat : le compte redevient limité, une demande de
+   renouvellement en attente revient en brouillon, et les informations lues sur
+   les certificats médicaux du mineur sont effacées sur-le-champ ; les fichiers
+   sont supprimés par la purge de rétention, au plus tard dans l'heure qui suit.
+
+**Minimisation.** L'adresse e-mail du représentant légal sert à envoyer le lien et
+n'est pas conservée en clair : seules une forme masquée (montrée au mineur) et une
+empreinte (permettant de vérifier, si elle est présentée plus tard, qu'il s'agit
+bien de cette adresse) sont gardées. La page du lien ne montre au représentant
+légal que le prénom du mineur.
+
+**Âge inconnu.** Lorsque le numéro de licence ne permet pas de déduire la date de
+naissance, le compte n'est pas soumis à ce dispositif à ce jour ; ce point est en
+cours d'arbitrage.
 
 ## 9. Vos droits
 
@@ -176,7 +205,8 @@ L'application permet d'exercer directement l'accès et la portabilité (export d
 - **vos signalements de bug** envoyés depuis l'application (message, appareil, date), sans la trace technique de l'erreur ;
 - **vos appareils** enregistrés pour les notifications : plateforme et dates. La valeur du jeton lui-même n'y figure pas, car sa divulgation permettrait de détourner la livraison de vos notifications vers un autre compte ;
 - **vos sessions de connexion** : dates de création, d'expiration et de révocation, sans le jeton ;
-- **les accès support à votre compte** (voir §4) : date, motif, rôle de l'intervenant et date de fin, sans son identité.
+- **les accès support à votre compte** (voir §4) : date, motif, rôle de l'intervenant et date de fin, sans son identité ;
+- **l'historique de l'accord parental** (comptes de mineurs, voir §8) : statut de chaque demande, dates, version des CGU et adresse du représentant légal sous forme masquée — ni le lien, ni l'empreinte de l'adresse.
 
 **Ce qui n'est pas inclus.** L'export ne contient ni votre mot de passe, ni la valeur d'aucun jeton, ni les fichiers déposés. Le **journal d'audit des administrateurs**, qui recense les actions effectuées par les administrateurs sur la plateforme, est exclu de l'export : c'est un journal de traçabilité, dont les lignes contiennent des données de tiers. Il peut toutefois être communiqué sur demande écrite à privacy@gabin-simond.fr, après occultation des données de tiers.
 

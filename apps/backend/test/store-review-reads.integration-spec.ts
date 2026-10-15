@@ -38,6 +38,8 @@ const EXPECTED_ALLOWLIST = [
   "GET licenses/renewal/my",
   "GET notifications",
   "GET notifications/preferences",
+  // Parental consent state of the reviewer's own account (#61).
+  "GET parental-consent/me",
   "GET track-corrections/mine",
   "GET track-corrections/pending-count",
   "GET tracks",
@@ -234,6 +236,7 @@ describe("Store-review read allowlist (integration, real DB)", () => {
     "/licenses/renewal/my",
     "/notifications",
     "/notifications/preferences",
+    "/parental-consent/me",
     "/track-corrections/mine",
     "/track-corrections/pending-count",
     "/tracks",

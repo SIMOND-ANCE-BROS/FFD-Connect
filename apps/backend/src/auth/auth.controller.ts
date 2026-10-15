@@ -20,6 +20,7 @@ import {
 } from "@nestjs/swagger";
 import { UserRole } from "@prisma/client";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
+import { ParentalConsentService } from "../parental-consent/parental-consent.service";
 import { AuthPasswordService } from "./auth-password.service";
 import { AuthService } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
@@ -46,6 +47,7 @@ export class AuthController {
     private authService: AuthService,
     private authTokenService: AuthTokenService,
     private authPasswordService: AuthPasswordService,
+    private parentalConsentService: ParentalConsentService,
   ) {}
 
   @Post("register")
@@ -81,13 +83,22 @@ export class AuthController {
   async register(
     @Body() body: RegisterDto,
   ): Promise<import("./auth.service").LoginResponse> {
-    return this.authService.register(
+    const response = await this.authService.register(
       body.email,
       body.password,
       body.licenseNumber,
       body.lastName,
       body.firstName,
     );
+    // Minor (#61): the parent's address of the sign-up form gets the consent
+    // link. Best effort, and ignored for an adult account.
+    if (body.parentEmail) {
+      await this.parentalConsentService.requestAfterRegistration(
+        response.user.id,
+        body.parentEmail,
+      );
+    }
+    return response;
   }
 
   @Post("login")

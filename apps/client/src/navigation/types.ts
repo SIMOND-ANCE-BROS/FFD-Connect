@@ -12,6 +12,8 @@ export type RootStackParamList = {
   Main: { role?: string; isGuest?: boolean };
   License: undefined;
   LicenseRenewal: undefined;
+  // Accord parental d'un compte de mineur (#61).
+  ParentalConsent: undefined;
   Library: undefined;
   Settings: undefined;
   Competitions: undefined; // Tab

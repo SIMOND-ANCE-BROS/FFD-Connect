@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AdminAuditModule } from "../admin/admin-audit.module";
+import { ParentalConsentModule } from "../parental-consent/parental-consent.module";
 import { HealthDataAccessModule } from "../health-data-access/health-data-access.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { LicenseQrModule } from "./qr/license-qr.module";
@@ -20,6 +21,7 @@ import { LicensesService } from "./licenses.service";
     LicenseQrModule,
     AppleWalletModule,
     AdminAuditModule,
+    ParentalConsentModule,
     HealthDataAccessModule,
   ],
   controllers: [LicensesController, AdminLicenseRenewalsController],

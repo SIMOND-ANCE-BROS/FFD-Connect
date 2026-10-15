@@ -80,6 +80,14 @@ module.exports = {
       functions: 100,
       lines: 100,
     },
+    // Parental consent of minors (#61): who may deposit health data, and the
+    // real effect of a withdrawal. Same bar as auth.
+    [srcDir("parental-consent")]: {
+      statements: 94,
+      branches: 85,
+      functions: 94,
+      lines: 94,
+    },
     [srcDir("common", "filters")]: {
       statements: 96,
       branches: 78,

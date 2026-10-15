@@ -468,6 +468,7 @@ export const AuthService = {
     licenseNumber: string,
     lastName: string,
     firstName: string,
+    parentEmail?: string,
   ): Promise<void> => {
     try {
       const response = await api.post<LoginResponse>("/auth/register", {
@@ -476,6 +477,9 @@ export const AuthService = {
         licenseNumber,
         lastName,
         firstName,
+        // Minor (#61): the parent receives the consent link. Sent only when
+        // given — an older backend rejects unknown fields.
+        ...(parentEmail ? { parentEmail } : {}),
       });
 
       const { access_token, refresh_token, user } = response.data;

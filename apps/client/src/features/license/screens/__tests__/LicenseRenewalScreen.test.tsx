@@ -6,6 +6,10 @@ import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useLicenseRenewalLogic } from "../../hooks/useLicenseRenewalLogic";
 import { LicenseRenewalScreen } from "../LicenseRenewalScreen";
 
+// Parental consent banner (#61): own suite; reads the server state.
+jest.mock("../../../parental-consent/ParentalConsentBanner", () => ({
+  ParentalConsentBanner: () => null,
+}));
 jest.mock("../../hooks/useLicenseRenewalLogic");
 jest.mock("../../../../context/ThemeContext", () => ({
   ThemeProvider: ({ children }: PropsWithChildren) => <>{children}</>,
