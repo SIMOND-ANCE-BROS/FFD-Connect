@@ -118,6 +118,9 @@ export class AdminClubsService {
       ...(dto.registrationMode !== undefined && {
         registrationMode: dto.registrationMode,
       }),
+      ...(dto.paymentProvider !== undefined && {
+        paymentProvider: dto.paymentProvider,
+      }),
     };
     try {
       await this.prisma.$transaction(async (tx) => {

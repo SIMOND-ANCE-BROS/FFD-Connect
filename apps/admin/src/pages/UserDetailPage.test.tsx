@@ -291,20 +291,34 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
     expect(screen.queryByRole('button', { name: /renvoyer l'invitation/i })).toBeNull();
   });
 
-  it('edits the email from its own modal and shows the updated card', async () => {
+  it('edits the email in place and shows the updated card (#672)', async () => {
     const patch = vi.spyOn(sdk, 'adminControllerUpdateUserIdentifiers').mockResolvedValue({
       data: { user: { ...detail, email: 'new@x.fr' }, previousEmailNotified: true },
       error: undefined,
     } as never);
     renderPage();
-    await user.click(
-      await screen.findByRole('button', { name: /modifier l'email ou la licence/i }),
-    );
+    await user.click(await screen.findByRole('button', { name: /modifier l'email/i }));
+    await fill(user, screen.getByLabelText('Email'), 'new@x.fr');
+    await user.keyboard('{Enter}');
     const dialog = await screen.findByRole('dialog');
-    await fill(user, within(dialog).getByLabelText(/Email de connexion/), 'new@x.fr');
-    await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
+    await user.click(within(dialog).getByRole('button', { name: "Changer l'email" }));
     expect(patch).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { email: 'new@x.fr' } });
-    expect(await screen.findByText('Email : new@x.fr')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /modifier l'email \(new@x\.fr\)/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('edits the licence number in place (#672)', async () => {
+    const patch = vi.spyOn(sdk, 'adminControllerUpdateUserIdentifiers').mockResolvedValue({
+      data: { user: { ...detail, licenseNumber: 'L2' }, previousEmailNotified: null },
+      error: undefined,
+    } as never);
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: /modifier le numéro de licence/i }));
+    await fill(user, screen.getByLabelText('Licence'), 'L2');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer (Licence)' }));
+    expect(patch).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { licenseNumber: 'L2' } });
+    expect(await screen.findByText(/L2 \(jusqu'au/)).toBeInTheDocument();
   });
 
   it("does not offer to edit the admin's own identifiers", async () => {
@@ -314,7 +328,9 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
     } as never);
     renderPage();
     expect(await screen.findByText(/Dernière connexion/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /modifier l'email ou la licence/i })).toBeNull();
+    expect(screen.getByText(/Email : jeanne@x\.fr/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /modifier l'email/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /modifier le numéro de licence/i })).toBeNull();
   });
 
   it('shows an unrecorded last login as "inconnue", not "jamais"', async () => {

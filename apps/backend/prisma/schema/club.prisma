@@ -19,6 +19,11 @@ enum PartnershipStatus {
   REJECTED            // refusé par le second club
 }
 
+/// Connecteur de paiement en ligne d'un club organisateur (#388, ADR-0023). Seul HELLOASSO existe : une valeur est ajoutée par connecteur livré.
+enum PaymentProvider {
+  HELLOASSO
+}
+
 /// Club = entité par nom de club. Permet à chaque club de connecter son compte HelloAsso et de gérer les inscriptions.
 model Club {
   id                    String   @id @default(uuid())
@@ -26,6 +31,7 @@ model Club {
   helloAssoClientId     String?
   helloAssoClientSecret String?
   helloAssoOrgSlug      String?
+  paymentProvider       PaymentProvider?     @default(HELLOASSO) // Connecteur de paiement choisi (#388) ; NULL lu comme HELLOASSO
   registrationMode      ClubRegistrationMode @default(MEMBERS_AUTO_CONFIRM)
   disabledAt            DateTime?            // Désactivé par un admin (null = actif) : ses comptes CLUB sont bloqués
   isStoreReview         Boolean  @default(false) // Club du compte de validation App Store / Google Play : ni supprimable ni désactivable

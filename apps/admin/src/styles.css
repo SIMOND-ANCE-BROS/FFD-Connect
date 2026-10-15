@@ -150,3 +150,40 @@ body {
     animation-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Values edited in place on a record page (#672): the value is the button,
+ * a pencil shows on hover and keyboard focus to say it can be changed.
+ */
+.app-inline-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border-radius: var(--mantine-radius-xs);
+  cursor: text;
+}
+
+.app-inline-edit:hover {
+  text-decoration: underline dotted;
+}
+
+.app-inline-edit-pencil {
+  flex: none;
+  color: var(--mantine-color-dimmed);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.app-inline-edit:hover .app-inline-edit-pencil,
+.app-inline-edit:focus-visible .app-inline-edit-pencil {
+  opacity: 1;
+}
+
+/* Touch screens have no hover: keep the pencil visible. */
+@media (hover: none) {
+  .app-inline-edit-pencil {
+    opacity: 1;
+  }
+}

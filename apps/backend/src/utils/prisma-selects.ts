@@ -1219,6 +1219,7 @@ export const adminClubListSelect = {
   id: true,
   name: true,
   registrationMode: true,
+  paymentProvider: true,
   disabledAt: true,
   isStoreReview: true,
   createdAt: true,
@@ -1231,6 +1232,25 @@ export const adminClubListSelect = {
  */
 export const clubHelloAssoCredentialsSelect = {
   id: true,
+  helloAssoClientId: true,
+  helloAssoClientSecret: true,
+  helloAssoOrgSlug: true,
+} as const;
+
+/** Payment connector chosen by a club (#388); NULL = HelloAsso. */
+export const clubPaymentProviderSelect = {
+  paymentProvider: true,
+} as const;
+
+/**
+ * Club payment connector status (#388): the chosen connector and whether
+ * its credentials are set. The HelloAsso secret is read only to know whether
+ * it is set — never returned.
+ */
+export const clubPaymentProviderStatusSelect = {
+  id: true,
+  name: true,
+  paymentProvider: true,
   helloAssoClientId: true,
   helloAssoClientSecret: true,
   helloAssoOrgSlug: true,
@@ -1264,6 +1284,7 @@ export const adminClubEditableSelect = {
   id: true,
   name: true,
   registrationMode: true,
+  paymentProvider: true,
 } as const;
 
 /** Back-office club status toggle: current state + store-review protection. */

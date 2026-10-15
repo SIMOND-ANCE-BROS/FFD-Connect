@@ -14140,6 +14140,360 @@
         "tags": ["clubs"]
       }
     },
+    "/clubs/me/payment-provider": {
+      "get": {
+        "description": "Connecteur de paiement en ligne choisi par le club (HELLOASSO par défaut), s'il est configuré (sans jamais exposer les identifiants) et les connecteurs que le club peut choisir (#388).",
+        "operationId": "ClubsController_getPaymentProvider",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubPaymentProviderStatusDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Utilisateur non organisateur ou club non assigné"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Connecteur de paiement du club de l'organisateur",
+        "tags": ["clubs"]
+      },
+      "put": {
+        "description": "Choisit le connecteur de paiement en ligne utilisé pour les places des compétitions organisées par le club (#388). Seuls les connecteurs disponibles sont acceptés (aujourd'hui : HELLOASSO). Les identifiants se saisissent sur la route propre au connecteur (HelloAsso : `PUT /clubs/me/helloasso`) ; changer de connecteur n'efface pas ceux du précédent.",
+        "operationId": "ClubsController_setPaymentProvider",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetClubPaymentProviderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubPaymentProviderStatusDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Connecteur inconnu ou pas encore disponible, utilisateur non organisateur ou club non assigné"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Choisir le connecteur de paiement du club de l'organisateur",
+        "tags": ["clubs"]
+      }
+    },
     "/clubs/me/partnerships": {
       "get": {
         "operationId": "ClubsController_getPartnerships",
@@ -25477,7 +25831,7 @@
     },
     "/payment/webhook": {
       "post": {
-        "description": "Reçoit les notifications HelloAsso. Le contenu de la notification n'est jamais cru : le paiement est relu sur l'API HelloAsso (intention de paiement de la réservation, identifiants du club). Signature `x-ha-signature` vérifiée si une clé partenaire est configurée. Une réservation n'est confirmée que si l'ordre est payé, du montant attendu, pour la bonne compétition ; sinon elle reste en attente et la réponse reste 200 (pas de rejeu). Un paiement remboursé (`Refunded`) ou contesté (`Contested`), confirmé par l'API HelloAsso, libère la place (`CANCELLED`). Un paiement reçu sur une ancienne intention d'une réservation libérée (`CANCELLED`) ne rend pas la place : il est noté remboursement dû et le club organisateur est alerté. 503 si HelloAsso est injoignable (rejeu).",
+        "description": "Route historique du connecteur HelloAsso (identique à `POST /payment/webhook/helloasso`, #388). Reçoit les notifications HelloAsso. Le contenu de la notification n'est jamais cru : le paiement est relu sur l'API HelloAsso (intention de paiement de la réservation, identifiants du club). Signature `x-ha-signature` vérifiée si une clé partenaire est configurée. Une réservation n'est confirmée que si l'ordre est payé, du montant attendu, pour la bonne compétition ; sinon elle reste en attente et la réponse reste 200 (pas de rejeu). Un paiement remboursé (`Refunded`) ou contesté (`Contested`), confirmé par l'API HelloAsso, libère la place (`CANCELLED`). Un paiement reçu sur une ancienne intention d'une réservation libérée (`CANCELLED`) ne rend pas la place : il est noté remboursement dû et le club organisateur est alerté. 503 si HelloAsso est injoignable (rejeu).",
         "operationId": "PaymentController_handleWebhook",
         "parameters": [],
         "requestBody": {
@@ -25652,6 +26006,186 @@
           }
         },
         "summary": "Webhook HelloAsso",
+        "tags": ["payment"]
+      }
+    },
+    "/payment/webhook/helloasso": {
+      "post": {
+        "description": "Route dédiée au connecteur HelloAsso (une route par connecteur de paiement, #388). Même vérification et même traitement que `POST /payment/webhook` : la notification n'est jamais crue, le paiement est relu sur l'API HelloAsso avec les identifiants du club organisateur. Signature `x-ha-signature` vérifiée si une clé partenaire est configurée.",
+        "operationId": "PaymentController_handleHelloAssoWebhook",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookPayloadDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook traité"
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Signature invalide"
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "HelloAsso injoignable ou paiement pas encore autorisé : HelloAsso rejouera la notification"
+          }
+        },
+        "summary": "Webhook du connecteur HelloAsso",
         "tags": ["payment"]
       }
     },
@@ -26767,6 +27301,11 @@
           "MEMBERS_AUTO_CONFIRM"
         ]
       },
+      "PaymentProvider": {
+        "type": "string",
+        "enum": ["HELLOASSO"],
+        "description": "Connecteur de paiement en ligne choisi par le club (#388)"
+      },
       "AdminClubListItemDto": {
         "type": "object",
         "properties": {
@@ -26803,6 +27342,14 @@
             "type": "boolean",
             "description": "Identifiants HelloAsso renseignés (jamais exposés)"
           },
+          "paymentProvider": {
+            "description": "Connecteur de paiement en ligne choisi par le club (#388)",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentProvider"
+              }
+            ]
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -26817,6 +27364,7 @@
           "memberCount",
           "clubAccountCount",
           "helloAssoConfigured",
+          "paymentProvider",
           "createdAt"
         ]
       },
@@ -26956,6 +27504,14 @@
             "type": "boolean",
             "description": "Identifiants HelloAsso renseignés (jamais exposés)"
           },
+          "paymentProvider": {
+            "description": "Connecteur de paiement en ligne choisi par le club (#388)",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentProvider"
+              }
+            ]
+          },
           "createdAt": {
             "format": "date-time",
             "type": "string"
@@ -26987,6 +27543,7 @@
           "memberCount",
           "clubAccountCount",
           "helloAssoConfigured",
+          "paymentProvider",
           "createdAt",
           "competitionCount",
           "partnershipCount",
@@ -27016,6 +27573,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/ClubRegistrationMode"
+              }
+            ]
+          },
+          "paymentProvider": {
+            "description": "Connecteur de paiement en ligne du club (#388). Seuls les connecteurs disponibles sont acceptés (aujourd'hui : HELLOASSO).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentProvider"
               }
             ]
           }
@@ -29369,6 +29934,53 @@
           }
         },
         "required": ["clientId", "clientSecret", "organizationSlug"]
+      },
+      "ClubPaymentProviderStatusDto": {
+        "type": "object",
+        "properties": {
+          "clubName": {
+            "type": "string"
+          },
+          "paymentProvider": {
+            "description": "Connecteur choisi (HELLOASSO par défaut)",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentProvider"
+              }
+            ]
+          },
+          "configured": {
+            "type": "boolean",
+            "description": "Identifiants du connecteur choisi renseignés (jamais exposés) : le club peut encaisser"
+          },
+          "selectableProviders": {
+            "type": "array",
+            "description": "Connecteurs que le club peut choisir",
+            "items": {
+              "$ref": "#/components/schemas/PaymentProvider"
+            }
+          }
+        },
+        "required": [
+          "clubName",
+          "paymentProvider",
+          "configured",
+          "selectableProviders"
+        ]
+      },
+      "SetClubPaymentProviderDto": {
+        "type": "object",
+        "properties": {
+          "paymentProvider": {
+            "description": "Connecteur de paiement en ligne du club. Seuls les connecteurs disponibles sont acceptés (aujourd'hui : HELLOASSO).",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PaymentProvider"
+              }
+            ]
+          }
+        },
+        "required": ["paymentProvider"]
       },
       "SetRegistrationModeDto": {
         "type": "object",

@@ -95,6 +95,7 @@ export class PaymentController {
   @ApiOperation({
     summary: "Webhook HelloAsso",
     description:
+      "Route historique du connecteur HelloAsso (identique à `POST /payment/webhook/helloasso`, #388). " +
       "Reçoit les notifications HelloAsso. Le contenu de la notification n'est jamais cru : " +
       "le paiement est relu sur l'API HelloAsso (intention de paiement de la réservation, identifiants du club). " +
       "Signature `x-ha-signature` vérifiée si une clé partenaire est configurée. " +
@@ -140,5 +141,46 @@ export class PaymentController {
       await this.seatReleaseService.handlePaymentNotification(payload);
     }
     return { received: true };
+  }
+
+  /**
+   * Webhook route of the HelloAsso connector (#388, ADR-0023: one route per
+   * connector). Same guard, validation and processing as the historical
+   * `POST /payment/webhook`, which stays the HelloAsso route while clubs'
+   * notification URLs still point to it.
+   */
+  @Post("webhook/helloasso")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(WebhookSignatureGuard)
+  @ApiOperation({
+    summary: "Webhook du connecteur HelloAsso",
+    description:
+      "Route dédiée au connecteur HelloAsso (une route par connecteur de paiement, #388). " +
+      "Même vérification et même traitement que `POST /payment/webhook` : la notification n'est jamais crue, " +
+      "le paiement est relu sur l'API HelloAsso avec les identifiants du club organisateur. " +
+      "Signature `x-ha-signature` vérifiée si une clé partenaire est configurée.",
+  })
+  @ApiBody({ type: WebhookPayloadDto })
+  @ApiResponse({ status: 200, description: "Webhook traité" })
+  @ApiResponse({ status: 401, description: "Signature invalide" })
+  @ApiResponse({
+    status: 503,
+    description:
+      "HelloAsso injoignable ou paiement pas encore autorisé : HelloAsso rejouera la notification",
+  })
+  async handleHelloAssoWebhook(
+    // Same local pipe as `handleWebhook` (undeclared HelloAsso fields
+    // stripped, never a 400).
+    @Body(
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: false,
+        transform: true,
+        expectedType: WebhookPayloadDto,
+      }),
+    )
+    payload: Readonly<WebhookPayloadDto>,
+  ) {
+    return this.handleWebhook(payload);
   }
 }
