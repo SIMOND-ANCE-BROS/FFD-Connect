@@ -230,11 +230,12 @@ jobs:
       - name: Setup Prisma
         uses: ./.github/actions/setup-prisma
 
-      - name: Push schema to test database
-        # --accept-data-loss is safe here: this is an ephemeral CI database (postgres:15 service container).
-        # Do NOT use this flag against staging/production. For real deployments, use `prisma migrate deploy`.
+      - name: Apply migrations to test database
+        # Real migration chain (`prisma migrate deploy`, as at container boot), then a
+        # drift check (schema change without a migration fails here). #272.
+        # The integration/e2e globalSetup re-runs it as a no-op.
         working-directory: apps/backend
-        run: pnpm exec prisma db push --accept-data-loss
+        run: pnpm test:db:prepare
 
       - name: Run backend unit tests with coverage
         working-directory: apps/backend
