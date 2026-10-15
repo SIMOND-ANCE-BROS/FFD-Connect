@@ -31,6 +31,8 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
 
   const {
     isEditing,
+    programStatus,
+    syncedFromFfd,
     kind,
     setKind,
     activeTab,
@@ -146,6 +148,19 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
   });
 
   const isEvent = kind === "EVENT";
+
+  // Banner of the « Épreuves » / « Planning » tabs (#442).
+  const programNotice =
+    programStatus === "loading"
+      ? "Chargement des épreuves et du planning…"
+      : programStatus === "error"
+        ? "Les épreuves et le planning enregistrés n'ont pas pu être chargés : ils ne seront pas modifiés par cet enregistrement."
+        : undefined;
+  const eventsNotice =
+    programNotice ??
+    (syncedFromFfd
+      ? "Compétition importée de la FFD : une fois enregistrées ici, vos épreuves ne seront plus remplacées par la synchronisation."
+      : undefined);
 
   const handleKindChange = (val: string) => {
     const nextKind = val === "EVENT" ? "EVENT" : "COMPETITION";
@@ -268,6 +283,7 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
               levelOptionsForNewEvent={levelOptionsForNewEvent}
               ageOptionsForNewEvent={ageOptionsForNewEvent}
               addEvent={addEvent}
+              notice={eventsNotice}
             />
           )}
           {!isEvent && activeTab === "TIMING" && (
@@ -292,6 +308,7 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
               openTimingModal={openTimingModal}
               saveTiming={saveTiming}
               removeTiming={removeTiming}
+              notice={programNotice}
             />
           )}
           {activeTab === "ORGANISATION" && (

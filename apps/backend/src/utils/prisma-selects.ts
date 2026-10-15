@@ -1291,6 +1291,8 @@ export const competitionEventsDeductionSelect = {
   circularUrl: true,
   eventsSource: true,
   eventsFingerprint: true,
+  // Programme saved by the club (#442): its events are never replaced.
+  programEditedAt: true,
   events: {
     select: {
       category: true,
@@ -1359,4 +1361,42 @@ export const notificationNameScrubSelect = {
   id: true,
   body: true,
   data: true,
+} as const;
+
+/**
+ * Club competition editor (#442): competition fields the programme read and
+ * write need (calendar day of the schedule, Article 8 type, FFD origin).
+ */
+export const competitionProgramHeaderSelect = {
+  id: true,
+  date: true,
+  competitionType: true,
+  ffdId: true,
+  eventsSource: true,
+  programEditedAt: true,
+} as const;
+
+/** An event of the club editor, with what locks it (registrations, results). */
+export const competitionProgramEventSelect = {
+  id: true,
+  eventKind: true,
+  eventType: true,
+  category: true,
+  ageGroup: true,
+  ageGroups: true,
+  level: true,
+  openLevels: true,
+  position: true,
+  _count: { select: { registrations: true, results: true } },
+} as const;
+
+/** A schedule slot of the club editor. */
+export const competitionProgramScheduleSelect = {
+  id: true,
+  startTime: true,
+  startClock: true,
+  durationMinutes: true,
+  type: true,
+  title: true,
+  eventId: true,
 } as const;

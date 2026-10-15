@@ -243,6 +243,11 @@ export function createFactories(
       }),
     );
     await silentDelete(
+      prisma.scheduleItem.deleteMany({
+        where: { competition: { title: { contains: suffix } } },
+      }),
+    );
+    await silentDelete(
       prisma.event.deleteMany({
         where: { competition: { title: { contains: suffix } } },
       }),

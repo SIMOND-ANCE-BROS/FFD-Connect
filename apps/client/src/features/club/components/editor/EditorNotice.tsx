@@ -11,11 +11,10 @@ interface Props {
 }
 
 /**
- * Tells the club that a tab of the competition editor is a preview whose
- * content isn't saved with the competition (#417: the API has no write path
- * for a competition's events or schedule yet).
+ * Information banner of a competition editor tab: programme loading or not
+ * loadable, competition imported from the FFD (#442).
  */
-export const NotSavedNotice: React.FC<Props> = ({ theme, message, testID }) => (
+export const EditorNotice: React.FC<Props> = ({ theme, message, testID }) => (
   <View
     testID={testID}
     accessibilityRole="text"

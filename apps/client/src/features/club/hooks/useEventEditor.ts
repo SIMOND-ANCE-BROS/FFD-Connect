@@ -8,6 +8,7 @@ import {
   LEVELS_FOR_PROXIMITE_CLASSIFICATRICE,
   SOLO_TEAM_AGE_GROUPS,
   SOLO_TEAM_LEVELS,
+  levelsForAgeGroup,
   type CompetitionType,
   type EventItem,
   type EventKind,
@@ -28,24 +29,9 @@ export const useEventEditor = ({
   setMajorSubType,
 }: UseEventEditorParams) => {
   // --- EVENTS STATE ---
-  const [events, setEvents] = useState<EventItem[]>(
-    initialEvents ?? [
-      {
-        id: "1",
-        type: "Couple",
-        category: "Latine",
-        ageGroup: "Adulte",
-        kind: "CLASSIFICATRICE",
-      },
-      {
-        id: "2",
-        type: "Solo",
-        category: "Standard",
-        ageGroup: "Junior I",
-        kind: "OPEN",
-      },
-    ],
-  );
+  // Saved with the competition since #442: no sample events, a new
+  // competition starts empty; an existing one is loaded from the API.
+  const [events, setEvents] = useState<EventItem[]>(initialEvents ?? []);
   const [showEventModal, setShowEventModal] = useState(false);
 
   // Event Form
@@ -85,12 +71,17 @@ export const useEventEditor = ({
             ? AGES_COUPLE
             : AGES_COUPLE.filter((age) => age !== "Senior V");
 
-  /** Pour Solo Team : uniquement Débutant / Intermédiaire. Pour Classificatrice : selon compétition. */
+  /**
+   * Pour Solo Team : uniquement Débutant / Intermédiaire. Pour
+   * Classificatrice : selon la compétition et la classe d'âge (table Niveaux).
+   */
   const levelOptionsForNewEvent =
     newEventKind === "SOLO_TEAM"
       ? [...SOLO_TEAM_LEVELS]
       : newEventKind === "CLASSIFICATRICE"
-        ? levelOptionsForClassificatrice
+        ? levelOptionsForClassificatrice.filter((level) =>
+            levelsForAgeGroup(newEventAge).includes(level),
+          )
         : [];
 
   // --- EFFECTS ---
@@ -161,6 +152,16 @@ export const useEventEditor = ({
           ? newEventLevel
           : levelOptionsForNewEvent[0]
         : undefined;
+    if (
+      (newEventKind === "CLASSIFICATRICE" || newEventKind === "SOLO_TEAM") &&
+      !level
+    ) {
+      Alert.alert(
+        "Erreur",
+        "Aucun niveau n'est possible pour cette classe d'âge dans cette compétition.",
+      );
+      return;
+    }
 
     const type =
       newEventKind === "SHOW_DANSE"
@@ -205,11 +206,20 @@ export const useEventEditor = ({
     );
   };
 
-  const removeEvent = (id: string) =>
+  const removeEvent = (id: string) => {
+    if (events.some((e) => e.id === id && e.locked)) {
+      Alert.alert(
+        "Épreuve verrouillée",
+        "Des danseurs y sont inscrits ou des résultats y sont rattachés : elle ne peut pas être retirée.",
+      );
+      return;
+    }
     setEvents(events.filter((e) => e.id !== id));
+  };
 
   return {
     events,
+    replaceEvents: setEvents,
     showEventModal,
     setShowEventModal,
     newEventCategory,

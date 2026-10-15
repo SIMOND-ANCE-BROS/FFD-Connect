@@ -38,6 +38,7 @@ type Candidate = {
   circularUrl: string | null;
   eventsSource: EventsSource | null;
   eventsFingerprint: string | null;
+  programEditedAt: Date | null;
   events: {
     category: string;
     ageGroup: string;
@@ -68,6 +69,7 @@ const makeCandidate = (overrides: Partial<Candidate> = {}): Candidate => ({
   circularUrl: null,
   eventsSource: null,
   eventsFingerprint: null,
+  programEditedAt: null,
   events: genericEvents(),
   ...overrides,
 });
@@ -223,6 +225,21 @@ describe("CompetitionEventsDeductionService", () => {
         expect(prisma.$transaction).not.toHaveBeenCalled();
       },
     );
+
+    it("never replaces a programme the club saved in its editor (#442), even sync-shaped", async () => {
+      const candidate = makeCandidate({
+        circularUrl: CIRCULAR_URL,
+        eventsSource: EventsSource.GENERIC,
+        programEditedAt: new Date("2026-10-15T10:00:00Z"),
+      });
+      givenCandidates(candidate);
+
+      expect(service.isReplaceable(candidate as never)).toBe(false);
+      await service.deduceForCompetitions(["comp-1"], download);
+
+      expect(download).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
 
     it("never replaces events entered by hand (unknown source, custom shape)", async () => {
       const candidate = makeCandidate({

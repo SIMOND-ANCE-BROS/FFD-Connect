@@ -100,7 +100,8 @@ interface CircularReading {
  * request (scale-to-zero: no wake, no cost).
  *
  * Events are only replaced while nobody depends on them (no registration,
- * result or schedule item) and when they were written by the sync. Every
+ * result or schedule item), when they were written by the sync and never
+ * saved by the organising club in its editor (#442). Every
  * failure degrades silently: logged, generic events kept.
  */
 @Injectable()
@@ -177,6 +178,8 @@ export class CompetitionEventsDeductionService {
   }
 
   isReplaceable(competition: DeductionCandidate): boolean {
+    // Programme saved by the club in its editor (#442): its input wins.
+    if (competition.programEditedAt !== null) return false;
     const hasDependants = competition.events.some(
       (event) =>
         event._count.registrations > 0 ||
