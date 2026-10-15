@@ -70,6 +70,10 @@ export const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  wdsfLogoImage: {
+    width: 44,
+    height: 44,
+  },
   titleContainer: {
     alignItems: "center",
     paddingHorizontal: 48,
