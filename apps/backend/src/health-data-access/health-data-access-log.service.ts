@@ -48,6 +48,17 @@ export class HealthDataAccessLogService {
     });
   }
 
+  /** The rows, inside an interactive transaction (`$transaction(async tx)`). */
+  async recordInTransaction(
+    tx: Prisma.TransactionClient,
+    entries: readonly HealthDataAccessEntry[],
+  ): Promise<void> {
+    if (entries.length === 0) return;
+    await tx.healthDataAccessLog.createMany({
+      data: entries.map(toCreateData),
+    });
+  }
+
   /** Writes the rows now; nothing to do without entries. */
   async record(entries: readonly HealthDataAccessEntry[]): Promise<void> {
     if (entries.length === 0) return;

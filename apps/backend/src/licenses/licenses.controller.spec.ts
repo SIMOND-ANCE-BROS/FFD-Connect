@@ -138,8 +138,49 @@ describe("LicensesController", () => {
         LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
         buffer,
         expect.stringMatching(/^certificate-\d+-\d+\.png$/),
+        {
+          actorUserId: "user-1",
+          actorRole: "OWNER",
+          route: "POST /licenses/renewal/:id/documents",
+        },
       );
       expect(result).toEqual({ id: "req-1" });
+    });
+
+    it("names the impersonator as the actor of a replacement (#63)", async () => {
+      mockLicenseRenewalService.uploadRenewalDocument.mockResolvedValue({
+        id: "req-1",
+      });
+      const file = multerFile({
+        buffer: Buffer.from("medical-bytes"),
+        originalname: "medical.png",
+      });
+      await controller.uploadRenewalDocument(
+        {
+          user: {
+            userId: "user-1",
+            email: "u@x.fr",
+            impersonatedBy: "staff-1",
+          },
+        } as never,
+        "req-uuid-1",
+        "MEDICAL_CERTIFICATE",
+        file,
+      );
+      expect(
+        mockLicenseRenewalService.uploadRenewalDocument,
+      ).toHaveBeenCalledWith(
+        "user-1",
+        "req-uuid-1",
+        LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+        expect.any(Buffer),
+        expect.any(String),
+        {
+          actorUserId: "staff-1",
+          actorRole: "IMPERSONATOR",
+          route: "POST /licenses/renewal/:id/documents",
+        },
+      );
     });
 
     it("delegates to licenseRenewalService.uploadRenewalDocument with LICENSE_CERTIFICATE", async () => {
@@ -162,6 +203,11 @@ describe("LicensesController", () => {
         LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
         buffer,
         expect.stringMatching(/^certificate-\d+-\d+\.png$/),
+        {
+          actorUserId: "user-1",
+          actorRole: "OWNER",
+          route: "POST /licenses/renewal/:id/documents",
+        },
       );
     });
 

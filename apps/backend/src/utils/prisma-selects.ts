@@ -621,10 +621,13 @@ export const refreshTokenExportSelect = {
   revokedAt: true,
 } as const;
 
-/** Dépôt d'un document : statut de la demande + fichiers déjà déposés. */
+/**
+ * Dépôt d'un document : statut de la demande + fichiers déjà déposés (l'id
+ * trace la suppression d'un certificat médical remplacé, #63).
+ */
 export const licenseRenewalUploadTargetSelect = {
   status: true,
-  documents: { select: { type: true, filePath: true } },
+  documents: { select: { id: true, type: true, filePath: true } },
 } as const;
 
 /**

@@ -43,6 +43,21 @@ describe("HealthDataAccessLogService", () => {
     });
   });
 
+  it("recordInTransaction() writes through the given transaction client", async () => {
+    const tx = { healthDataAccessLog: { createMany: jest.fn() } };
+    await service.recordInTransaction(tx as never, [entry]);
+    expect(tx.healthDataAccessLog.createMany).toHaveBeenCalledWith({
+      data: [entry],
+    });
+    expect(prisma.healthDataAccessLog.createMany).not.toHaveBeenCalled();
+  });
+
+  it("recordInTransaction() does nothing without entries", async () => {
+    const tx = { healthDataAccessLog: { createMany: jest.fn() } };
+    await service.recordInTransaction(tx as never, []);
+    expect(tx.healthDataAccessLog.createMany).not.toHaveBeenCalled();
+  });
+
   it("record() writes the rows", async () => {
     await service.record([entry, { ...entry, resourceId: "req-2" }]);
     expect(prisma.healthDataAccessLog.createMany).toHaveBeenCalledWith({

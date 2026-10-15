@@ -51,6 +51,7 @@ export const HEALTH_DATA_ACCESS_ROUTES = {
   adminRenewalDocumentFile:
     "GET /admin/license-renewals/:id/documents/:docId/file",
   selfExport: "GET /users/me/export",
+  renewalDocumentUpload: "POST /licenses/renewal/:id/documents",
   selfAccountDeletion: "DELETE /users/me",
   adminAccountDeletion: "DELETE /admin/users/:id",
   retentionPurge: "job:health-data-retention",

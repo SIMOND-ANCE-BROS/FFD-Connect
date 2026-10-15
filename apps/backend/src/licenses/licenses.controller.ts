@@ -37,6 +37,7 @@ import {
   createMemoryUploadStorage,
   generateBlobName,
 } from "../utils/upload-storage.util";
+import { HEALTH_DATA_ACCESS_ROUTES } from "../health-data-access/dto/health-data-access-log.dto";
 import { ImpersonatedRenewalAccessInterceptor } from "./impersonated-renewal-access.interceptor";
 import { LicenseRenewalService } from "./license-renewal.service";
 import { LicensesService } from "./licenses.service";
@@ -54,6 +55,8 @@ interface RequestWithUser extends ExpressRequest {
   user: {
     userId: string;
     email: string;
+    /** Set during a "log in as" session (#545). */
+    impersonatedBy?: string;
   };
 }
 
@@ -267,12 +270,20 @@ export class LicensesController {
       throw new BadRequestException(
         "type doit être MEDICAL_CERTIFICATE ou LICENSE_CERTIFICATE",
       );
+    const impersonator = req.user.impersonatedBy;
     return this.licenseRenewalService.uploadRenewalDocument(
       req.user.userId,
       id,
       docType,
       file.buffer,
       generateBlobName(file),
+      // A replaced medical certificate is deleted: journaled under whoever
+      // actually acts (#63).
+      {
+        actorUserId: impersonator ?? req.user.userId,
+        actorRole: impersonator ? "IMPERSONATOR" : "OWNER",
+        route: HEALTH_DATA_ACCESS_ROUTES.renewalDocumentUpload,
+      },
     );
   }
 
