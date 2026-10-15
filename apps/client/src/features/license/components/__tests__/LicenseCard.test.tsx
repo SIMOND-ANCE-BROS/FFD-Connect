@@ -6,6 +6,7 @@ import { LicenseCard, LicenseUser } from "../LicenseCard";
 import {
   FFD_CONNECT_LOGO,
   FFD_FEDERATION_LOGO,
+  WDSF_LOGO,
   getLicenseConfig,
 } from "../license-card/license-card.config";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
@@ -347,7 +348,12 @@ describe("LicenseCard", () => {
         expect(
           queryByLabelText("Logo de la Fédération Française de Danse"),
         ).toBeNull();
-        expect(getByTestId("license-card-wdsf-logo")).toBeTruthy();
+        // Bundled asset (#602): no request to a third-party host.
+        const wdsfLogo = getByTestId("license-card-wdsf-logo");
+        expect(wdsfLogo.props.source).toBe(WDSF_LOGO);
+        expect(
+          queryByLabelText("Logo de la World DanceSport Federation"),
+        ).toBeTruthy();
       },
     );
 
@@ -390,6 +396,18 @@ describe("LicenseCard", () => {
           FFD_FEDERATION_LOGO,
         );
       }
+    });
+
+    it("never points a card logo at a remote URL (#602)", () => {
+      for (const type of ["FFD", "WDSF"] as const) {
+        for (const isDark of [false, true]) {
+          const { logo } = getLicenseConfig(type, isDark);
+          expect(typeof logo).not.toBe("string");
+          expect(JSON.stringify(logo ?? null)).not.toMatch(/https?:/);
+        }
+      }
+      expect(getLicenseConfig("WDSF", false).logo).toBe(WDSF_LOGO);
+      expect(getLicenseConfig("WDSF", true).logo).toBe(WDSF_LOGO);
     });
   });
 
