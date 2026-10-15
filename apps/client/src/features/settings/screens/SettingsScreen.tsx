@@ -86,6 +86,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
     registrationPolicy,
     helloAssoStatus,
     helloAssoModalVisible,
+    paymentProviderStatus,
     reportModalVisible,
     changePasswordModalVisible,
     BiometryTypes,
@@ -109,6 +110,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
     handleSetCompetitionScope,
     handleSetCompetitionStatus,
     handleSetRegistrationPolicy,
+    handleSetPaymentProvider,
   } = actions;
 
   const handleSelectClubLogo = useCallback(async () => {
@@ -371,6 +373,8 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
             registrationPolicy={registrationPolicy}
             handleSetRegistrationPolicy={handleSetRegistrationPolicy}
             helloAssoStatus={helloAssoStatus}
+            paymentProviderStatus={paymentProviderStatus}
+            onSelectPaymentProvider={handleSetPaymentProvider}
             onOpenHelloAsso={() => setHelloAssoModalVisible(true)}
           />
         )}

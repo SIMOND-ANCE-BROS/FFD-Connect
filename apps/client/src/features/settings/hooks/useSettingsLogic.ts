@@ -18,6 +18,12 @@ import { computeLicenseExpiry } from "../../license/utils/licenseExpiry";
 import type { HelloAssoStatus } from "../../club/services/ClubService";
 import { ClubService } from "../../club/services/ClubService";
 import { usage } from "../../../services/analytics/usage";
+import {
+  PaymentProviderApi,
+  PaymentProviderApiError,
+  type ClubPaymentProviderStatusDto,
+  type PaymentProvider,
+} from "../../../services/api/payment-provider-api";
 
 const logger = createLogger("useSettingsLogic");
 
@@ -61,6 +67,9 @@ export const useSettingsLogic = ({
   const [helloAssoStatus, setHelloAssoStatus] =
     useState<HelloAssoStatus | null>(null);
   const [helloAssoModalVisible, setHelloAssoModalVisible] = useState(false);
+  /** Club payment connector (#665); null = unknown, HelloAsso status only. */
+  const [paymentProviderStatus, setPaymentProviderStatus] =
+    useState<ClubPaymentProviderStatusDto | null>(null);
 
   // License expiry warning (days until license expires, null if not applicable)
   const [licenseExpiryDays, setLicenseExpiryDays] = useState<number | null>(
@@ -116,8 +125,10 @@ export const useSettingsLogic = ({
         } catch {
           setHelloAssoStatus(null);
         }
+        setPaymentProviderStatus(await PaymentProviderApi.getStatus());
       } else {
         setHelloAssoStatus(null);
+        setPaymentProviderStatus(null);
       }
 
       // Check license expiry
@@ -348,6 +359,21 @@ export const useSettingsLogic = ({
     await auth.setRegistrationPolicy(policy);
   };
 
+  const handleSetPaymentProvider = async (provider: PaymentProvider) => {
+    if (paymentProviderStatus?.paymentProvider === provider) return;
+    try {
+      setPaymentProviderStatus(await PaymentProviderApi.setProvider(provider));
+    } catch (e) {
+      logger.error("[Settings] setPaymentProvider failed", e);
+      Alert.alert(
+        "Erreur",
+        e instanceof PaymentProviderApiError
+          ? e.message
+          : "Impossible de changer le connecteur de paiement.",
+      );
+    }
+  };
+
   const handleToggleUsage = useCallback(async (on: boolean) => {
     setUsageEnabled(on);
     await usage.recorder.setEnabled(on);
@@ -369,6 +395,7 @@ export const useSettingsLogic = ({
       registrationPolicy,
       helloAssoStatus,
       helloAssoModalVisible,
+      paymentProviderStatus,
       reportModalVisible,
       changePasswordModalVisible,
       BiometryTypes,
@@ -393,6 +420,7 @@ export const useSettingsLogic = ({
       handleSetCompetitionScope,
       handleSetCompetitionStatus,
       handleSetRegistrationPolicy,
+      handleSetPaymentProvider,
       handleToggleUsage,
     },
   };
