@@ -366,3 +366,63 @@ describe("mapEventsWithEligibility", () => {
     });
   });
 });
+
+describe("evaluateEventEligibility — club-entered Open (#638)", () => {
+  const open = (overrides: Partial<EligibilityEventInput> = {}) =>
+    event({ eventKind: "OPEN", ageGroup: "Senior II", ...overrides });
+  const juvenile = profile({ ageGroup: "Juvénile I" });
+
+  it("keeps the single age class when the Open lists none", () => {
+    expect(evaluateEventEligibility(open(), nationale, juvenile).eligible).toBe(
+      false,
+    );
+    expect(
+      evaluateEventEligibility(open({ ageGroups: [] }), nationale, juvenile)
+        .eligible,
+    ).toBe(false);
+  });
+
+  it("admits a dancer through any of the Open's age classes", () => {
+    expect(
+      evaluateEventEligibility(
+        open({ ageGroups: ["Senior II", "Juvénile I"] }),
+        nationale,
+        juvenile,
+      ),
+    ).toEqual({ eligible: true });
+  });
+
+  it("refuses a level the Open does not admit", () => {
+    const dancer = profile({ competitionLevelLatin: "Avancé" });
+    expect(
+      evaluateEventEligibility(
+        open({ ageGroup: "Adulte", openLevels: ["Débutant", "Intermédiaire"] }),
+        nationale,
+        dancer,
+      ),
+    ).toEqual({
+      eligible: false,
+      reason: "Cet open est réservé aux niveaux Débutant, Intermédiaire.",
+    });
+    expect(
+      evaluateEventEligibility(
+        open({ ageGroup: "Adulte", openLevels: ["débutant", " Avancé "] }),
+        nationale,
+        dancer,
+      ),
+    ).toEqual({ eligible: true });
+  });
+
+  it("refuses a dancer without a level when levels are restricted", () => {
+    expect(
+      evaluateEventEligibility(
+        open({ ageGroup: "Adulte", openLevels: ["Débutant"] }),
+        nationale,
+        profile(),
+      ),
+    ).toEqual({
+      eligible: false,
+      reason: "Cet open est réservé aux niveaux Débutant.",
+    });
+  });
+});

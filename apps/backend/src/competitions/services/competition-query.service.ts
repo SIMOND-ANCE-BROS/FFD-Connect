@@ -66,6 +66,9 @@ const EVENT_BASE_SELECT = {
   eventType: true,
   level: true,
   eventKind: true,
+  // Club-entered Open (#442/#638): several age classes, restricted levels.
+  ageGroups: true,
+  openLevels: true,
 } as const;
 
 const CACHE_TTL = 300; // 5 minutes

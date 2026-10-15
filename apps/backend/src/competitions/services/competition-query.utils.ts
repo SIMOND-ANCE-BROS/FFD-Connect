@@ -28,6 +28,13 @@ export interface EligibilityEventInput {
   category: string;
   level: string | null;
   eventKind: string | null;
+  /**
+   * Club editor (#442): an Open may cover several age classes. Empty or
+   * absent → the single `ageGroup` applies (FFD-imported events).
+   */
+  ageGroups?: string[] | null;
+  /** Club editor (#442): levels admitted in an Open. Empty → no restriction. */
+  openLevels?: string[] | null;
 }
 
 export interface EventEligibility {
@@ -62,16 +69,13 @@ export function evaluateEventEligibility(
     return { eligible: false, reason: "WRONG_CATEGORY" };
   }
 
-  const result = checkParticipationEligibility({
-    eventType: event.eventType as "COUPLE" | "SOLO",
-    eventAgeGroup: event.ageGroup,
-    eventCategory: event.category,
-    eventLevel: event.level ?? undefined,
-    eventKind: (event.eventKind as EventKindValue | null) ?? undefined,
-    competitionType:
-      (competition.competitionType as CompetitionTypeValue | null) ?? undefined,
+  const registrantLevel = getCompetitionLevelForCategory(
+    registrant,
+    event.category,
+  );
+  const result = checkEventParticipation(event, competition, {
     registrantAgeGroup,
-    registrantLevel: getCompetitionLevelForCategory(registrant, event.category),
+    registrantLevel,
   });
   if (!result.allowed) {
     return { eligible: false, reason: result.reason ?? "NOT_ALLOWED" };
@@ -89,6 +93,55 @@ export function evaluateEventEligibility(
     }
   }
   return { eligible: true };
+}
+
+/**
+ * Article 9 check of one event, extended to the club editor's Open (#638):
+ * the registrant may enter through ANY of the event's age classes
+ * (`ageGroups`, else the single `ageGroup`), and when the Open restricts
+ * levels (`openLevels`) the registrant's level in the discipline must be one
+ * of them. Shared by the eligibility badge and the registration check.
+ */
+export function checkEventParticipation(
+  event: EligibilityEventInput,
+  competition: { competitionType?: string | null },
+  registrant: { registrantAgeGroup: string; registrantLevel?: string | null },
+): { allowed: boolean; reason?: string } {
+  const ageGroups =
+    event.ageGroups && event.ageGroups.length > 0
+      ? event.ageGroups
+      : [event.ageGroup];
+  let last: { allowed: boolean; reason?: string } = { allowed: false };
+  for (const eventAgeGroup of ageGroups) {
+    last = checkParticipationEligibility({
+      eventType: event.eventType as "COUPLE" | "SOLO",
+      eventAgeGroup,
+      eventCategory: event.category,
+      eventLevel: event.level ?? undefined,
+      eventKind: (event.eventKind as EventKindValue | null) ?? undefined,
+      competitionType:
+        (competition.competitionType as CompetitionTypeValue | null) ??
+        undefined,
+      registrantAgeGroup: registrant.registrantAgeGroup,
+      registrantLevel: registrant.registrantLevel ?? undefined,
+    });
+    if (last.allowed) break;
+  }
+  if (!last.allowed) return last;
+
+  if (event.openLevels && event.openLevels.length > 0) {
+    const level = registrant.registrantLevel?.trim().toLowerCase();
+    const admitted = event.openLevels.some(
+      (open) => open.trim().toLowerCase() === level,
+    );
+    if (!admitted) {
+      return {
+        allowed: false,
+        reason: `Cet open est réservé aux niveaux ${event.openLevels.join(", ")}.`,
+      };
+    }
+  }
+  return { allowed: true };
 }
 
 /**
