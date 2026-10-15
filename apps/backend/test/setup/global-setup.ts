@@ -1,6 +1,6 @@
 import * as dotenv from "dotenv";
 import * as path from "path";
-import { execSync } from "child_process";
+import { prepareTestDatabaseWithPrisma } from "../../scripts/prepare-test-db";
 
 export default function globalSetup() {
   // Load test environment variables only if not already set (CI injects them directly)
@@ -8,16 +8,7 @@ export default function globalSetup() {
     dotenv.config({ path: path.resolve(__dirname, "../../.env.test") });
   }
 
-  console.log("\n🔧 Pushing Prisma schema to test database...");
-  try {
-    execSync("npx prisma db push --accept-data-loss", {
-      cwd: path.resolve(__dirname, "../.."),
-      env: { ...process.env },
-      stdio: "inherit",
-    });
-    console.log("✅ Schema pushed\n");
-  } catch (error) {
-    console.error("❌ Migration failed:", error);
-    throw error;
-  }
+  // Real migration chain (`prisma migrate deploy`), not `db push` (#272).
+  // Runs once per jest invocation; a no-op when the database is up to date.
+  prepareTestDatabaseWithPrisma();
 }

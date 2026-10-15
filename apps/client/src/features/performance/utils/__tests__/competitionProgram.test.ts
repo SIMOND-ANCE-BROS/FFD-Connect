@@ -863,14 +863,16 @@ describe("selectTempoCompliant", () => {
     expect(kept.map((t) => t.id)).toEqual(["r-ok"]);
   });
 
-  it("keeps a track only when compliant for every dance its style matches", () => {
-    // "Tango Jive" matches both Tango (31-33) and Jive (42-44).
+  it("checks an ambiguous style against the one dance it normalises to, as the backend does", () => {
+    // "Tango Jive" is a Jive for the backend (its MPM is a Jive MPM): only
+    // the Jive range (42-44) applies, not Tango's (31-33).
+    const jive = track("jive-ok", "Tango Jive", 43);
     const kept = selectTempoCompliant([
-      track("both-ok-tango", "Tango Jive", 32),
-      track("both-ok-jive", "Tango Jive", 43),
+      track("tango-range", "Tango Jive", 32),
+      jive,
       track("neither", "Tango Jive", 50),
     ]);
-    expect(kept).toEqual([]);
+    expect(kept).toEqual([jive]);
   });
 
   it("drops tracks matching no competition dance", () => {

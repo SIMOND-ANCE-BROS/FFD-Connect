@@ -50,6 +50,9 @@ function accountOwnerKey(config: AuthConfig): string {
   return `${config.impersonating ? "impersonating:" : ""}${config.username ?? ""}`;
 }
 
+/** Placeholder number of an account that holds no FFD license. */
+const NO_LICENSE_NUMBER = "Non renseigné";
+
 /** Holder names of a same-owner offline snapshot (#234). */
 function snapshotHolder(
   ffdUser: LicenseUser,
@@ -184,6 +187,10 @@ export const useLicenseLogic = (): {
   const [accountHolder, setAccountHolder] = useState<AccountHolder | null>(
     null,
   );
+  // Owner key of the account whose FFD license is loaded: in the STAFF/CLUB
+  // space, a multi-profile account also licensed sees it next to the account
+  // card (#248). Keyed by owner so a previous account's license never shows.
+  const [licenseOwner, setLicenseOwner] = useState<string | null>(null);
   // Non-null = licence affichée depuis le snapshot local (pas de réseau) ;
   // contient la date ISO de la dernière synchro réussie (#416).
   const [offlineSince, setOfflineSince] = useState<string | null>(null);
@@ -220,6 +227,9 @@ export const useLicenseLogic = (): {
             owner,
             ...snapshotHolder(snapshot.ffdUser),
           }));
+          setLicenseOwner(
+            snapshot.ffdUser.licenseNumber !== NO_LICENSE_NUMBER ? owner : null,
+          );
           // Older versions saved an invented "31/08/2026" / "2025/2026" when
           // the license had no date: re-derive from the raw date (#211).
           setFfdUser({
@@ -292,7 +302,7 @@ export const useLicenseLogic = (): {
             const mappedFfdUser: LicenseUser = {
               firstName: profile.firstName,
               lastName: profile.lastName,
-              licenseNumber: profile.license?.number ?? "Non renseigné",
+              licenseNumber: profile.license?.number ?? NO_LICENSE_NUMBER,
               type: profile.role === "ADMIN" ? "Administrateur" : "Athlète",
               structure: profile.clubName ?? "FFD",
               ...ffdValidityFields(profile.license?.validUntil),
@@ -305,6 +315,7 @@ export const useLicenseLogic = (): {
                 : "--/--/----",
             };
             setFfdUser(mappedFfdUser);
+            setLicenseOwner(profile.license ? accountOwnerKey(config) : null);
             let nextWdsfUser: LicenseUser | null = null;
 
             if (config.hasWdsfLicense) {
@@ -610,7 +621,23 @@ export const useLicenseLogic = (): {
     }
     if (role === "STAFF" || role === "CLUB") {
       // Real account holder only (#234): no demo name, number or structure.
-      return [{ type: "STAFF", data: buildAccountCard(role, accountHolder) }];
+      const items: Array<{ type: string; data: LicenseUser | null }> = [
+        { type: "STAFF", data: buildAccountCard(role, accountHolder) },
+      ];
+      // Multi-profile account also licensed (#248): its FFD (and WDSF)
+      // license, with QR and Apple Wallet, as in the licensee space. Only the
+      // current account's own license, never a previous account's.
+      const ownsLicense =
+        ffdUser !== null &&
+        licenseOwner !== null &&
+        licenseOwner === accountHolder?.owner;
+      if (ownsLicense) {
+        items.push({ type: "FFD", data: ffdUser });
+        if (showWdsf && wdsfUser) {
+          items.push({ type: "WDSF", data: wdsfUser });
+        }
+      }
+      return items;
     }
 
     // LICENSEE

@@ -8,6 +8,7 @@ import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { fillNormalizedEmails } from "./email-identity";
 
 @Injectable()
 export class SessionCleanupService implements OnModuleInit {
@@ -49,6 +50,24 @@ export class SessionCleanupService implements OnModuleInit {
       this.logger.log(`Device token retention: ${purged} token(s) deleted`);
     } catch (error) {
       this.logger.error("Error during device token retention purge", error);
+    }
+
+    // Lookup keys of rows written without one (#526): rows written by an
+    // older release during a rollback window converge here. Same hook, same
+    // reason (no new schedule); own try/catch so it never masks the above.
+    try {
+      const { filled, unresolved } = await fillNormalizedEmails(this.prisma);
+      if (filled > 0) {
+        this.logger.log(`E-mail lookup keys: ${filled} account(s) filled`);
+      }
+      if (unresolved > 0) {
+        // Counts only, never an address (#529).
+        this.logger.warn(
+          `E-mail lookup keys: ${unresolved} account(s) share an address differing only by case and have no key (docs/exploitation/email-normalise.md)`,
+        );
+      }
+    } catch (error) {
+      this.logger.error("Error while filling e-mail lookup keys", error);
     }
   }
 

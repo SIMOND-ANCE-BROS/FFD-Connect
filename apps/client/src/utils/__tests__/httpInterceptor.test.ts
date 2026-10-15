@@ -297,6 +297,27 @@ describe("httpRequest — retry", () => {
     await expect(httpRequest("/api/noretry")).rejects.toBeInstanceOf(HttpError);
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
+
+  it("does not retry a 429 even with retry: true (#585, #589)", async () => {
+    mockFetch({
+      ok: false,
+      status: 429,
+      statusText: "Too Many Requests",
+      headers: new Headers(),
+      json: jest.fn().mockResolvedValue({}),
+      text: jest.fn(),
+    });
+
+    const promise = httpRequest("/api/throttled", {
+      retry: { maxRetries: 3, initialDelay: 0 },
+    });
+    const assertion = expect(promise).rejects.toMatchObject({
+      statusCode: 429,
+    });
+    await jest.runAllTimersAsync();
+    await assertion;
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -384,7 +384,7 @@ describe("AdminUsersService.setStatus", () => {
     service = moduleRef.get(AdminUsersService);
   });
 
-  it("deactivates, revokes every session and audits, in one transaction", async () => {
+  it("deactivates, revokes every session, drops the push devices and audits, in one transaction", async () => {
     prisma.user.findUnique.mockResolvedValue({
       id: "u1",
       disabledAt: null,
@@ -403,6 +403,10 @@ describe("AdminUsersService.setStatus", () => {
       where: { userId: "u1", revoked: false },
       data: { revoked: true, revokedAt: expect.any(Date) as unknown },
     });
+    // #301: a disabled account's phone stops receiving push right away.
+    expect(prisma.deviceToken.deleteMany).toHaveBeenCalledWith({
+      where: { userId: "u1" },
+    });
     expect(audit.record).toHaveBeenCalledWith(prisma, {
       actorId: "admin-1",
       action: "USER_DISABLE",
@@ -411,7 +415,7 @@ describe("AdminUsersService.setStatus", () => {
     });
   });
 
-  it("reactivates without touching sessions", async () => {
+  it("reactivates without touching sessions nor devices", async () => {
     prisma.user.findUnique.mockResolvedValue({
       id: "u1",
       disabledAt: new Date(),
@@ -419,6 +423,7 @@ describe("AdminUsersService.setStatus", () => {
 
     await service.setStatus("admin-1", "u1", true);
 
+    expect(prisma.deviceToken.deleteMany).not.toHaveBeenCalled();
     expect(prisma.user.update).toHaveBeenCalledWith({
       where: { id: "u1" },
       data: { disabledAt: null },
@@ -448,6 +453,7 @@ describe("AdminUsersService.setStatus", () => {
 
       expect(prisma.user.update).not.toHaveBeenCalled();
       expect(prisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(prisma.deviceToken.deleteMany).not.toHaveBeenCalled();
       expect(audit.record).not.toHaveBeenCalled();
     },
   );
@@ -539,7 +545,11 @@ describe("AdminUsersService.delete", () => {
       targetId: "u1",
       after: { role: UserRole.LICENSEE },
     });
-    expect(deletion.deleteAccount).toHaveBeenCalledWith("u1", ["audit-op"]);
+    expect(deletion.deleteAccount).toHaveBeenCalledWith("u1", ["audit-op"], {
+      actorUserId: "admin-1",
+      actorRole: "ADMIN",
+      route: "DELETE /admin/users/:id",
+    });
   });
 
   it("accepts the email whatever its case and surrounding spaces", async () => {

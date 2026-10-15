@@ -21,6 +21,7 @@
     "test:cov": "jest --coverage",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand --forceExit",
     "test:integration": "npx dotenv-cli -e .env.test -- jest --config ./test/jest-integration.json --runInBand --forceExit",
+    "test:db:prepare": "tsx scripts/prepare-test-db.ts",
     "test:integration:setup": "bash scripts/start-test-proxy.sh && sleep 2 && pnpm run test:integration",
     "proxy:test:start": "bash scripts/start-test-proxy.sh",
     "proxy:test:stop": "bash scripts/stop-test-proxy.sh",

@@ -15,6 +15,8 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { CompetitionsController } from "./competitions.controller";
 import { CompetitionAccessService } from "./services/competition-access.service";
 import { CompetitionManagementService } from "./services/competition-management.service";
+import { CompetitionProgramQueryService } from "./services/competition-program-query.service";
+import { CompetitionProgramService } from "./services/competition-program.service";
 import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
@@ -66,6 +68,9 @@ describe("CompetitionsController", () => {
     organizerForNewCompetition: jest.fn(),
   };
 
+  const mockProgramQueryService = { getProgram: jest.fn() };
+  const mockProgramService = { replaceProgram: jest.fn() };
+
   const req = (userId: string, role = "LICENSEE") =>
     ({ user: { userId, role } }) as any as RequestWithUser;
 
@@ -85,6 +90,11 @@ describe("CompetitionsController", () => {
           useValue: mockManagementService,
         },
         { provide: CompetitionAccessService, useValue: mockAccessService },
+        {
+          provide: CompetitionProgramQueryService,
+          useValue: mockProgramQueryService,
+        },
+        { provide: CompetitionProgramService, useValue: mockProgramService },
       ],
     })
       .overrideGuard(ThrottlerUserGuard)
@@ -526,6 +536,74 @@ describe("CompetitionsController", () => {
         controller.update("c1", { title: "New" }, req("club-a", "CLUB")),
       ).rejects.toThrow(ForbiddenException);
       expect(mockManagementService.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("programme (#442)", () => {
+    const body = {
+      events: [
+        {
+          eventKind: "MAJEURE" as const,
+          eventType: "COUPLE" as const,
+          category: "Latin",
+          ageGroup: "Adulte",
+        },
+      ],
+      schedule: [],
+    };
+
+    it("reads the programme once the caller may manage the competition", async () => {
+      mockAccessService.assertCanManageCompetition.mockResolvedValue(undefined);
+      mockProgramQueryService.getProgram.mockResolvedValue({ events: [] });
+      const r = req("club-user", "CLUB");
+
+      await expect(controller.getProgram("c1", r)).resolves.toEqual({
+        events: [],
+      });
+      expect(mockAccessService.assertCanManageCompetition).toHaveBeenCalledWith(
+        "c1",
+        r.user,
+      );
+      expect(mockProgramQueryService.getProgram).toHaveBeenCalledWith("c1");
+    });
+
+    it("does not read another club's programme", async () => {
+      mockAccessService.assertCanManageCompetition.mockRejectedValue(
+        new ForbiddenException(),
+      );
+
+      await expect(
+        controller.getProgram("c1", req("club-b", "CLUB")),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockProgramQueryService.getProgram).not.toHaveBeenCalled();
+    });
+
+    it("saves the programme after the ownership check", async () => {
+      mockAccessService.assertCanManageCompetition.mockResolvedValue(undefined);
+      mockProgramService.replaceProgram.mockResolvedValue({ events: [] });
+      const r = req("club-user", "CLUB");
+
+      await controller.replaceProgram("c1", body, r);
+
+      expect(mockAccessService.assertCanManageCompetition).toHaveBeenCalledWith(
+        "c1",
+        r.user,
+      );
+      expect(mockProgramService.replaceProgram).toHaveBeenCalledWith(
+        "c1",
+        body,
+      );
+    });
+
+    it("does not save another club's programme", async () => {
+      mockAccessService.assertCanManageCompetition.mockRejectedValue(
+        new ForbiddenException(),
+      );
+
+      await expect(
+        controller.replaceProgram("c1", body, req("club-b", "CLUB")),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockProgramService.replaceProgram).not.toHaveBeenCalled();
     });
   });
 });

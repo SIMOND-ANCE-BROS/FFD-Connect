@@ -1,7 +1,7 @@
 import { Image } from "expo-image";
 import { MoreHorizontal } from "lucide-react-native";
 import { TouchableOpacity, View } from "react-native";
-import Svg, { Path, SvgUri } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import { AppText } from "../../../../components/AppText";
 import { FFD_VALIDITY_UNKNOWN } from "../../utils/licenseSeason";
 import { FFD_CONNECT_LOGO } from "./license-card.config";
@@ -69,11 +69,15 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
             />
           </View>
         ) : (
-          <SvgUri
-            width="44"
-            height="44"
-            uri={config.logo as string}
+          <Image
+            source={config.logo}
+            style={styles.wdsfLogoImage}
+            contentFit="contain"
             testID="license-card-wdsf-logo"
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel="Logo de la World DanceSport Federation"
+            accessibilityHint="Fédération qui délivre cette licence"
           />
         )}
       </View>

@@ -14,6 +14,9 @@ enum PassportLevel {
 model User {
   id                   String         @id @default(uuid())
   email                String         @unique
+  // Lookup key of `email` (#526): normalizeEmail(email), written with every address write. NULL for legacy
+  // case duplicates (never merged) and rows written by an older release (rollback); `email` stays the source of truth.
+  emailNormalized      String?        @unique
   password             String
   firstName            String
   lastName             String

@@ -2,6 +2,7 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
+  NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
 import * as Sentry from "@sentry/nestjs";
@@ -190,6 +191,18 @@ describe("HttpExceptionFilter", () => {
     (Sentry.captureException as jest.Mock).mockClear();
     filter.catch(new Error("Server error"), mockArgumentsHost);
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not report expected 4xx to Sentry, logs them at warn (#571)", () => {
+    (Sentry.captureException as jest.Mock).mockClear();
+    filter.catch(new NotFoundException("Track x not found"), mockArgumentsHost);
+    expect(mockResponse.status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(mockLogger.error).not.toHaveBeenCalled();
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ statusCode: 404 }),
+      expect.any(String),
+    );
   });
 
   it("should NOT report 503 (service unavailable) to Sentry but still log it", () => {

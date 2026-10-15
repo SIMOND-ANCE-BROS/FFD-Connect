@@ -151,7 +151,9 @@ export function useOfflineQueue(options: UseOfflineQueueOptions = {}) {
             // network works, so the fault is this entry alone: skip it and
             // let the rest through.
             const answered = httpStatusOf(err) !== null;
-            log.error(
+            // Warn (#589): fires on every reconnect/foreground until the
+            // entry succeeds; the final drop above is the error.
+            log.warn(
               `Failed to replay ${mutation.endpoint} (attempt ${attempts})`,
             );
             if (!answered) break;

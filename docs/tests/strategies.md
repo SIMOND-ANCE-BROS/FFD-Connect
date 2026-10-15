@@ -347,10 +347,10 @@ it('should render list within 500ms', async () => {
 
 ## Tests de Charge
 
-Pour les tests de charge, utiliser des outils externes :
-
-- **Artillery** pour les tests de charge API
-- **k6** pour les tests de performance
+Scénarios **k6** versionnés dans `apps/backend/test/load/` (lancement de
+l'app, pic de check-in, connexion/rafraîchissement, bibliothèque). Mode
+d'emploi, données dédiées et coût : [Tests de charge
+k6](../exploitation/tests-de-charge.md).
 
 ## CI/CD
 

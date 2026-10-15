@@ -150,14 +150,20 @@ describe("CompetitionManagementService", () => {
       expect(result).toEqual(mockComp);
     });
 
-    it("stamps the organizer resolved for a CLUB account (#381)", async () => {
+    it("stamps the organizer label and club link resolved for a CLUB account (#381, #408)", async () => {
       mockPrisma.competition.create.mockResolvedValue({ id: "comp-1" });
 
-      await service.create({ title: "T", date: "2026-06-01" } as any, "Club A");
+      await service.create({ title: "T", date: "2026-06-01" } as any, {
+        organizer: "Club A",
+        organizerClubId: "club-a",
+      });
 
       expect(mockPrisma.competition.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ organizer: "Club A" }),
+          data: expect.objectContaining({
+            organizer: "Club A",
+            organizerClubId: "club-a",
+          }),
         }),
       );
     });
@@ -171,6 +177,7 @@ describe("CompetitionManagementService", () => {
         data: Record<string, unknown>;
       };
       expect(arg.data).not.toHaveProperty("organizer");
+      expect(arg.data).not.toHaveProperty("organizerClubId");
     });
   });
 

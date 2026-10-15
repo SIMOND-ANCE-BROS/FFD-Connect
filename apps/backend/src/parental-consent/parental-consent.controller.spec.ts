@@ -1,5 +1,7 @@
 import { Test } from "@nestjs/testing";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
+import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { ParentalConsentController } from "./parental-consent.controller";
 import { ParentalConsentQueryService } from "./parental-consent.query-service";
 import { ParentalConsentService } from "./parental-consent.service";
@@ -23,7 +25,12 @@ describe("ParentalConsentController (#61)", () => {
         { provide: ParentalConsentService, useValue: service },
         { provide: ParentalConsentQueryService, useValue: query },
       ],
-    }).compile();
+    })
+      .overrideGuard(NoImpersonationGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(ThrottlerUserGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
     controller = module.get(ParentalConsentController);
   });
 

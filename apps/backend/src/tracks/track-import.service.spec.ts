@@ -323,7 +323,7 @@ describe("TrackImportService", () => {
       await expect(fsp.stat(path.dirname(analysed))).rejects.toThrow();
     });
 
-    it("keeps the rounded raw tempo as MPM without a dance", async () => {
+    it("keeps the raw tempo but no MPM without a dance (#338)", async () => {
       await service.importTrack(
         "admin-1",
         dto({ style: undefined, rawBpm: 123.6, mpm: undefined }),
@@ -332,9 +332,20 @@ describe("TrackImportService", () => {
       );
       expect(createData()).toMatchObject({
         rawBpm: 123.6,
-        bpm: 124,
+        bpm: 0,
         style: null,
+        status: TrackStatus.READY,
       });
+    });
+
+    it("converts an MPM given as a BPM for the dance (#338)", async () => {
+      await service.importTrack(
+        "admin-1",
+        dto({ style: "Valse Lente", rawBpm: undefined, mpm: 87 }),
+        file(MP3),
+        undefined,
+      );
+      expect(createData()).toMatchObject({ rawBpm: 0, bpm: 29 });
     });
 
     it("creates the track in ERROR when the analysis fails and no MPM is given", async () => {

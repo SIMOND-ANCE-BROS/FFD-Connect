@@ -7,7 +7,11 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { isEmailTaken, normalizeEmail } from "../auth/email-identity";
+import {
+  isEmailTaken,
+  normalizeEmail,
+  storedEmailData,
+} from "../auth/email-identity";
 import { EmailService } from "../auth/email.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -171,7 +175,7 @@ export class AdminUserIdentifiersService {
       const now = new Date();
       await tx.user.update({
         where: { id: userId },
-        data: { email: after.email },
+        data: storedEmailData(after.email),
         select: idOnlySelect,
       });
       await tx.refreshToken.updateMany({

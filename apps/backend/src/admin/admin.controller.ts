@@ -153,7 +153,11 @@ export class AdminController {
   })
   @ApiParam({ name: "id", format: "uuid" })
   @ApiResponse({ status: 200, type: AdminClubDetailDto })
-  @ApiResponse({ status: 409, description: "Nom déjà utilisé" })
+  @ApiResponse({
+    status: 409,
+    description:
+      "Nom déjà utilisé, club organisant des compétitions synchronisées FFD, ou compétitions non rattachées portant un nom partagé avec un homonyme (`competitionIds`)",
+  })
   updateClub(
     @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: UpdateAdminClubDto,

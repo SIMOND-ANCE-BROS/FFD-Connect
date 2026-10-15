@@ -3,11 +3,34 @@ import { ConfigService } from "@nestjs/config";
 import { UserRole } from "@prisma/client";
 import { Resend } from "resend";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
+import { getErrorMessage } from "../utils/error.utils";
 import { maskEmail } from "../utils/pii.utils";
 import { withTimeout } from "../utils/timeout.utils";
 
 /** Upper bound of one Resend call made through the circuit breaker. */
 export const EMAIL_SEND_TIMEOUT_MS = 8_000;
+
+/** A Resend refusal, with its HTTP status when Resend gave one. */
+export class EmailSendError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number | null | undefined,
+  ) {
+    super(`Failed to send email: ${message}`);
+    this.name = "EmailSendError";
+  }
+}
+
+/**
+ * Loggable cause of a failed send. A Resend refusal is reduced to its status:
+ * its message may quote the recipient address (RGPD, #527).
+ */
+function describeSendFailure(error: unknown): string {
+  if (error instanceof EmailSendError) {
+    return `refused by Resend (status ${error.statusCode ?? "unknown"})`;
+  }
+  return getErrorMessage(error);
+}
 
 /** Roles an admin can create and invite. ADMIN is granted afterwards, never invited. */
 export type InvitationRole = Exclude<UserRole, "ADMIN">;
@@ -94,27 +117,22 @@ export class EmailService {
     }
 
     try {
-      const { data, error } = await this.resend.emails.send({
-        from: this.fromEmail,
-        to: email,
-        subject: "Réinitialisation de votre mot de passe",
-        html: this.getPasswordResetEmailTemplate(url),
-      });
-
-      if (error) {
-        this.logger.error(
-          `Failed to send password reset email: ${error.message}`,
-        );
-        throw new Error(`Failed to send email: ${error.message}`);
-      }
-
+      const id = await this.send(
+        this.resend,
+        "email-auth",
+        {
+          to: email,
+          subject: "Réinitialisation de votre mot de passe",
+          html: this.getPasswordResetEmailTemplate(url),
+        },
+        "resend:password-reset",
+      );
       this.logger.log(
-        `Password reset email sent successfully to ${maskEmail(email)} (ID: ${data.id})`,
+        `Password reset email sent successfully to ${maskEmail(email)} (ID: ${id})`,
       );
     } catch (error) {
       this.logger.error(
-        `Error sending password reset email to ${maskEmail(email)}:`,
-        error,
+        `Error sending password reset email to ${maskEmail(email)}: ${describeSendFailure(error)}`,
       );
       throw error;
     }
@@ -139,19 +157,26 @@ export class EmailService {
       return;
     }
 
-    const { data, error } = await this.resend.emails.send({
-      from: this.fromEmail,
-      to: email,
-      subject: copy.subject,
-      html: this.getInvitationEmailTemplate(url, firstName, copy),
-    });
-    if (error) {
-      this.logger.error(`Failed to send invitation email: ${error.message}`);
-      throw new Error(`Failed to send email: ${error.message}`);
+    try {
+      const id = await this.send(
+        this.resend,
+        "email",
+        {
+          to: email,
+          subject: copy.subject,
+          html: this.getInvitationEmailTemplate(url, firstName, copy),
+        },
+        "resend:invitation",
+      );
+      this.logger.log(
+        `Invitation email sent to ${maskEmail(email)} (ID: ${id})`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to send invitation email: ${describeSendFailure(error)}`,
+      );
+      throw error;
     }
-    this.logger.log(
-      `Invitation email sent to ${maskEmail(email)} (ID: ${data.id})`,
-    );
   }
 
   /**
@@ -168,22 +193,42 @@ export class EmailService {
       this.logger.log("Email-changed notice not sent (no Resend config)");
       return;
     }
-    const resend = this.resend;
-    const { error } = await this.breaker.fire("email", () =>
-      withTimeout(
-        resend.emails.send({
-          from: this.fromEmail,
-          to: previousEmail,
-          subject: "L'email de votre compte FFD Connect a été modifié",
-          html: this.getEmailChangedTemplate(firstName),
-        }),
-        EMAIL_SEND_TIMEOUT_MS,
-        "resend:email-changed",
-      ),
+    await this.send(
+      this.resend,
+      "email",
+      {
+        to: previousEmail,
+        subject: "L'email de votre compte FFD Connect a été modifié",
+        html: this.getEmailChangedTemplate(firstName),
+      },
+      "resend:email-changed",
     );
-    if (error) {
-      throw new Error(`Failed to send email: ${error.message}`);
-    }
+  }
+
+  /**
+   * One Resend call through a circuit breaker, bounded by
+   * EMAIL_SEND_TIMEOUT_MS (ADR-0009, #464). Password resets use their own
+   * `email-auth` breaker so a forgot-password flood cannot block the other
+   * mails (`email`). Resend reports failures in its result instead of
+   * throwing: they are rethrown with their status so the breaker counts
+   * outages (5xx, 401/403, 429, network) but not refused messages (4xx).
+   * Returns the Resend message id; throws on any failure, the caller degrades.
+   */
+  private async send(
+    resend: Resend,
+    breakerKey: "email" | "email-auth",
+    message: { to: string; subject: string; html: string },
+    label: string,
+  ): Promise<string> {
+    return this.breaker.fire(breakerKey, async () => {
+      const { data, error } = await withTimeout(
+        resend.emails.send({ from: this.fromEmail, ...message }),
+        EMAIL_SEND_TIMEOUT_MS,
+        label,
+      );
+      if (error) throw new EmailSendError(error.message, error.statusCode);
+      return data.id;
+    });
   }
 
   private getEmailChangedTemplate(firstName: string): string {

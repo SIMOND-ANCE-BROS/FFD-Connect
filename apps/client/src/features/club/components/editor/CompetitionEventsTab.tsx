@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react-native";
+import { Lock, Plus, Trash2 } from "lucide-react-native";
 import React from "react";
 import { Modal, ScrollView, TouchableOpacity, View } from "react-native";
 import { AppButton } from "../../../../components/AppButton";
@@ -12,7 +12,7 @@ import {
   type EventItem,
   type EventKind,
 } from "../../hooks/useClubCompetitionEditorLogic";
-import { NotSavedNotice } from "./NotSavedNotice";
+import { EditorNotice } from "./EditorNotice";
 import { styles } from "./competition-editor.styles";
 import { formatDiscipline } from "../../../../utils/discipline";
 
@@ -41,6 +41,8 @@ interface Props {
   levelOptionsForNewEvent: string[];
   ageOptionsForNewEvent: string[];
   addEvent: () => void;
+  /** Banner above the events (loading, not loadable, FFD import…), if any. */
+  notice?: string;
 }
 
 export const CompetitionEventsTab: React.FC<Props> = ({
@@ -68,6 +70,7 @@ export const CompetitionEventsTab: React.FC<Props> = ({
   levelOptionsForNewEvent,
   ageOptionsForNewEvent,
   addEvent,
+  notice,
 }) => (
   <>
     <ScrollView style={styles.scrollContent}>
@@ -76,11 +79,13 @@ export const CompetitionEventsTab: React.FC<Props> = ({
           Définissez les catégories ouvertes à l'inscription.
         </AppText>
       </View>
-      <NotSavedNotice
-        theme={theme}
-        testID="competition-events-not-saved"
-        message="Aperçu : les épreuves ne sont pas encore enregistrées avec la compétition."
-      />
+      {notice ? (
+        <EditorNotice
+          theme={theme}
+          testID="competition-events-notice"
+          message={notice}
+        />
+      ) : null}
 
       {events.map((event) => (
         <View
@@ -149,11 +154,25 @@ export const CompetitionEventsTab: React.FC<Props> = ({
           </View>
           <TouchableOpacity
             accessibilityRole="button"
+            accessibilityLabel={
+              event.locked
+                ? "Épreuve avec inscriptions, non supprimable"
+                : "Retirer l'épreuve"
+            }
+            accessibilityHint={
+              event.locked
+                ? "Explique pourquoi l'épreuve ne peut pas être retirée"
+                : "Retire l'épreuve du programme, enregistré au prochain enregistrement"
+            }
             testID={`event-delete-${event.id}`}
             onPress={() => removeEvent(event.id)}
             style={styles.deleteButton}
           >
-            <Trash2 size={20} color={theme.danger} />
+            {event.locked ? (
+              <Lock size={20} color={theme.textSecondary} />
+            ) : (
+              <Trash2 size={20} color={theme.danger} />
+            )}
           </TouchableOpacity>
         </View>
       ))}

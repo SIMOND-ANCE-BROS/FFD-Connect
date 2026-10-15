@@ -36,9 +36,14 @@ export const ImpersonationBanner = ({
   const handleStop = () => {
     setStopping(true);
     AuthService.stopImpersonation()
-      .then(() => refreshAuth())
       .catch((e) => logger.error("stopImpersonation failed", e))
-      .finally(() => setStopping(false));
+      // Even on failure: the stored state may have changed half-way (session
+      // ended on a failed prefs write) — the UI must follow it, never stay on
+      // "impersonating" over other tokens.
+      .finally(() => {
+        setStopping(false);
+        void refreshAuth();
+      });
   };
 
   return (

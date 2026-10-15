@@ -36,6 +36,7 @@ export type RootStackParamList = {
   ClubSoloTeams: undefined;
   ClubSoloTeamDetail: { teamId: string };
   ClubRegistrations: undefined;
+  ClubRefundsDue: undefined;
   Scanner: { competitionId?: ID } | undefined;
   VolunteerCheckin: { competitionId: ID; token: string };
   SeatPicker: { competitionId: ID };

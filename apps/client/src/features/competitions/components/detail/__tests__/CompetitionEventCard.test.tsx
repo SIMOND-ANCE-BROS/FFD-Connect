@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react-native";
+import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 import type { AppTheme } from "../../../../../context/ThemeContext";
 import type { Event } from "../../../context/CompetitionContext";
@@ -82,5 +82,61 @@ describe("CompetitionEventCard", () => {
   it("shows no pending badge by default", async () => {
     const { queryByText } = await renderCard(false);
     expect(queryByText(/en attente de réseau/)).toBeNull();
+  });
+
+  describe("guest (#20)", () => {
+    const renderGuestCard = (onSignInToRegister?: () => void) =>
+      render(
+        <CompetitionEventCard
+          currentTheme={theme}
+          event={event}
+          isRegistered={false}
+          eligibility={{ eligible: false, reason: "GUEST" }}
+          isOrganizer={false}
+          canSelfRegister={undefined}
+          showResults={false}
+          onNavigateResults={jest.fn()}
+          onRegister={jest.fn()}
+          onUnregister={jest.fn()}
+          onSignInToRegister={onSignInToRegister}
+        />,
+      );
+
+    it("offers « S'inscrire », which sends the guest to sign in", async () => {
+      const onSignIn = jest.fn();
+      const onRegister = jest.fn();
+      const { getByTestId, queryByText } = await renderGuestCard(onSignIn);
+
+      // Not "not eligible": the guest just needs an account.
+      expect(queryByText("Non éligible")).toBeNull();
+      await fireEvent.press(getByTestId("guest-register-event-evt-1"));
+      expect(onSignIn).toHaveBeenCalledTimes(1);
+      expect(onRegister).not.toHaveBeenCalled();
+    });
+
+    it("falls back to « Connexion requise » without a sign-in handler", async () => {
+      const { getByText, queryByText } = await renderGuestCard();
+      expect(getByText("Connexion requise")).toBeTruthy();
+      expect(queryByText("S'inscrire")).toBeNull();
+    });
+
+    it("never offers it to the organizer", async () => {
+      const { queryByText } = await render(
+        <CompetitionEventCard
+          currentTheme={theme}
+          event={event}
+          isRegistered={false}
+          eligibility={{ eligible: false, reason: "GUEST" }}
+          isOrganizer={true}
+          canSelfRegister={undefined}
+          showResults={false}
+          onNavigateResults={jest.fn()}
+          onRegister={jest.fn()}
+          onUnregister={jest.fn()}
+          onSignInToRegister={jest.fn()}
+        />,
+      );
+      expect(queryByText("S'inscrire")).toBeNull();
+    });
   });
 });

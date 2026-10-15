@@ -123,13 +123,10 @@ export interface HttpRequestOptions extends RequestInit {
 function shouldRetryHttpError(error: unknown): boolean {
   if (error instanceof HttpError) {
     const status = error.statusCode;
-    // Retry sur les erreurs réseau (0), timeout (408), rate limit (429), et erreurs serveur (5xx)
-    return (
-      status === 0 ||
-      status === 408 ||
-      status === 429 ||
-      (status >= 500 && status < 600)
-    );
+    // Retry sur les erreurs réseau (0), timeout (408) et erreurs serveur
+    // (5xx). Pas de 429 (#585) : un backoff aveugle ne fait qu'alimenter le
+    // throttle ; seul l'intercepteur axios rejoue une fois après Retry-After.
+    return status === 0 || status === 408 || (status >= 500 && status < 600);
   }
   // Retry sur les erreurs réseau (TypeError avec fetch)
   if (error instanceof TypeError && error.message.includes("fetch")) {
@@ -228,12 +225,14 @@ export async function httpRequest<T = unknown>(
         // Never the response body (#225): it may carry personal or health
         // data, and these logs reach Sentry with the user's identity. Not
         // the code either: a fine code (MEDICAL_UNFIT) is health data too.
+        // Warn, not error (#589): the caller owns the failure and reports it
+        // with its own context; an error here would double every event.
         if (logErrors && !quietStatuses.includes(response.status)) {
-          logger.error(`HTTP ${response.status}: ${response.statusText}`, {
-            url,
-            status: response.status,
-            statusText: response.statusText,
-          });
+          logger.warn(
+            `HTTP ${response.status}: ${response.statusText}`,
+            undefined,
+            { url, status: response.status, statusText: response.statusText },
+          );
         }
 
         throw httpError;
@@ -262,7 +261,7 @@ export async function httpRequest<T = unknown>(
         );
 
         if (logErrors) {
-          logger.error("Request timeout", { url, timeout });
+          logger.warn("Request timeout", timeoutError, { url, timeout });
         }
 
         throw timeoutError;
@@ -278,7 +277,7 @@ export async function httpRequest<T = unknown>(
         );
 
         if (logErrors) {
-          logger.error("Network error", { url, error });
+          logger.warn("Network error", networkError, { url });
         }
 
         throw networkError;
@@ -298,7 +297,7 @@ export async function httpRequest<T = unknown>(
       );
 
       if (logErrors) {
-        logger.error("Unknown error", { url, error });
+        logger.warn("Unknown error", error, { url });
       }
 
       throw unknownError;

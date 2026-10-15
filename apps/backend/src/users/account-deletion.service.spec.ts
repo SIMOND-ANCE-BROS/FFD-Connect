@@ -3,6 +3,7 @@ import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
 import { mockDeep, MockProxy } from "jest-mock-extended";
 import { CompetitionCacheService } from "../competitions/services/competition-cache.service";
+import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { resultAnonymizationSelect } from "../utils/prisma-selects";
@@ -18,6 +19,7 @@ describe("AccountDeletionService", () => {
   let prisma: MockProxy<PrismaClient>;
   let files: { deleteFiles: jest.Mock };
   let cache: { invalidateResults: jest.Mock };
+  let healthAccess: { recordOp: jest.Mock };
 
   beforeEach(async () => {
     prisma = mockDeep<PrismaClient>();
@@ -29,12 +31,14 @@ describe("AccountDeletionService", () => {
     prisma.notification.findMany.mockResolvedValue([]);
     files = { deleteFiles: jest.fn().mockResolvedValue(new Set()) };
     cache = { invalidateResults: jest.fn().mockResolvedValue(undefined) };
+    healthAccess = { recordOp: jest.fn().mockReturnValue({ op: "healthLog" }) };
     const moduleRef = await Test.createTestingModule({
       providers: [
         AccountDeletionService,
         { provide: PrismaService, useValue: prisma },
         { provide: RenewalDocumentFileCleaner, useValue: files },
         { provide: CompetitionCacheService, useValue: cache },
+        { provide: HealthDataAccessLogService, useValue: healthAccess },
       ],
     }).compile();
     service = moduleRef.get(AccountDeletionService);
@@ -174,6 +178,62 @@ describe("AccountDeletionService", () => {
     expect(prisma.$transaction.mock.invocationCallOrder[0]).toBeLessThan(
       files.deleteFiles.mock.invocationCallOrder[0],
     );
+  });
+
+  describe("health-data access journal (#63)", () => {
+    const documents = [
+      { id: "med-1", type: "MEDICAL_CERTIFICATE", filePath: "a.pdf" },
+      { id: "lic-1", type: "LICENSE_CERTIFICATE", filePath: "b.pdf" },
+    ];
+
+    it("traces each medical certificate deleted by the holder, last in the transaction", async () => {
+      prisma.licenseRenewalDocument.findMany.mockResolvedValue(documents);
+      const marker = (op: string) => ({ op }) as never;
+      prisma.user.delete.mockReturnValue(marker("user"));
+
+      await service.deleteAccount("u1");
+
+      // A licence certificate is not health data: not traced.
+      expect(healthAccess.recordOp).toHaveBeenCalledWith([
+        {
+          subjectUserId: "u1",
+          actorUserId: "u1",
+          actorRole: "OWNER",
+          action: "DELETE",
+          resourceType: "MEDICAL_CERTIFICATE",
+          resourceId: "med-1",
+          route: "DELETE /users/me",
+        },
+      ]);
+      expect(opsOf().slice(-2)).toEqual(["user", "healthLog"]);
+    });
+
+    it("names the administrator on the admin path", async () => {
+      prisma.licenseRenewalDocument.findMany.mockResolvedValue(documents);
+
+      await service.deleteAccount("u1", [], {
+        actorUserId: "admin-1",
+        actorRole: "ADMIN",
+        route: "DELETE /admin/users/:id",
+      });
+
+      expect(healthAccess.recordOp).toHaveBeenCalledWith([
+        expect.objectContaining({
+          subjectUserId: "u1",
+          actorUserId: "admin-1",
+          actorRole: "ADMIN",
+          route: "DELETE /admin/users/:id",
+        }),
+      ]);
+    });
+
+    it("writes nothing without a medical certificate", async () => {
+      prisma.licenseRenewalDocument.findMany.mockResolvedValue([
+        documents[1],
+      ] as never);
+      await service.deleteAccount("u1");
+      expect(healthAccess.recordOp).not.toHaveBeenCalled();
+    });
   });
 
   describe("competition results (#382)", () => {

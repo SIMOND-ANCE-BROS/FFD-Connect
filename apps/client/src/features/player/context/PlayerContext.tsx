@@ -100,7 +100,9 @@ export const PlayerProvider = ({ children }: { children: ReactNode }) => {
       sub1 = TrackPlayer.addEventListener(
         TrackPlayerUtils.Event.PlaybackError,
         (e: TrackPlayerUtils.PlaybackErrorEvent) => {
-          logger.error("TrackPlayer Playback Error:", e);
+          // Warn (#589): a native event, not an Error, fired per failing
+          // track (offline, unplayable file) — a breadcrumb, not an event.
+          logger.warn("TrackPlayer Playback Error:", e);
         },
       );
 

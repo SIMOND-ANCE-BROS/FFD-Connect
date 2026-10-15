@@ -304,24 +304,38 @@ describe("ClubsHelloAssoService", () => {
     it("returns null when club credentials are incomplete", async () => {
       prisma.competition.findUnique.mockResolvedValue({
         organizer: "Test Club",
+        organizerClubId: "club-1",
       } as never);
-      prisma.club.findFirst.mockResolvedValue(makeClub() as never);
+      prisma.club.findUnique.mockResolvedValue(makeClub() as never);
       const result =
         await service.getHelloAssoCredentialsForCompetition("comp-1");
       expect(result).toBeNull();
     });
 
-    it("returns credentials when all set", async () => {
+    it("returns null when the linked club no longer exists", async () => {
       prisma.competition.findUnique.mockResolvedValue({
         organizer: "Test Club",
+        organizerClubId: "club-gone",
       } as never);
-      prisma.club.findFirst.mockResolvedValue(
-        makeClub({
-          helloAssoClientId: "id",
-          helloAssoClientSecret: "s",
-          helloAssoOrgSlug: "slug",
-        }) as never,
-      );
+      prisma.club.findUnique.mockResolvedValue(null);
+      await expect(
+        service.getHelloAssoCredentialsForCompetition("comp-1"),
+      ).resolves.toBeNull();
+    });
+
+    const connectedClub = makeClub({
+      helloAssoClientId: "id",
+      helloAssoClientSecret: "s",
+      helloAssoOrgSlug: "slug",
+    });
+
+    it("returns credentials of the linked club, by id, whatever the label (#408)", async () => {
+      // Label left stale by a rename: the link still finds the club.
+      prisma.competition.findUnique.mockResolvedValue({
+        organizer: "Old Club Name",
+        organizerClubId: "club-1",
+      } as never);
+      prisma.club.findUnique.mockResolvedValue(connectedClub as never);
       const result =
         await service.getHelloAssoCredentialsForCompetition("comp-1");
       expect(result).toEqual({
@@ -329,6 +343,48 @@ describe("ClubsHelloAssoService", () => {
         clientSecret: "s",
         organizationSlug: "slug",
       });
+      expect(prisma.club.findUnique).toHaveBeenCalledWith({
+        where: { id: "club-1" },
+        select: expect.any(Object),
+      });
+      expect(prisma.club.findMany).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the one club the label names on an unlinked competition", async () => {
+      prisma.competition.findUnique.mockResolvedValue({
+        organizer: "  test club ",
+        organizerClubId: null,
+      } as never);
+      prisma.club.findMany.mockResolvedValue([{ id: "club-1" }] as never);
+      prisma.club.findUnique.mockResolvedValue(connectedClub as never);
+      await expect(
+        service.getHelloAssoCredentialsForCompetition("comp-1"),
+      ).resolves.toEqual({
+        clientId: "id",
+        clientSecret: "s",
+        organizationSlug: "slug",
+      });
+      expect(prisma.club.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { name: { equals: "test club", mode: "insensitive" } },
+          take: 2,
+        }),
+      );
+    });
+
+    it("never picks one of two clubs whose names only differ by case (#408)", async () => {
+      prisma.competition.findUnique.mockResolvedValue({
+        organizer: "Club X",
+        organizerClubId: null,
+      } as never);
+      prisma.club.findMany.mockResolvedValue([
+        { id: "club-x" },
+        { id: "club-x-lower" },
+      ] as never);
+      await expect(
+        service.getHelloAssoCredentialsForCompetition("comp-1"),
+      ).resolves.toBeNull();
+      expect(prisma.club.findUnique).not.toHaveBeenCalled();
     });
   });
 
@@ -345,8 +401,9 @@ describe("ClubsHelloAssoService", () => {
     const mockCompetitionClub = (storedSecret: string) => {
       prisma.competition.findUnique.mockResolvedValue({
         organizer: "Test Club",
+        organizerClubId: "club-1",
       } as never);
-      prisma.club.findFirst.mockResolvedValue({
+      prisma.club.findUnique.mockResolvedValue({
         id: "club-1",
         helloAssoClientId: "id",
         helloAssoClientSecret: storedSecret,

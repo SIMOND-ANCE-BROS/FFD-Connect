@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Request,
   UseGuards,
@@ -20,6 +21,7 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
+import { ThrottleByIp } from "../common/decorators/throttle-by-ip.decorator";
 import { UserRole } from "@prisma/client";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -31,11 +33,17 @@ import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
 import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { CompetitionAccessService } from "./services/competition-access.service";
 import { CompetitionManagementService } from "./services/competition-management.service";
+import { CompetitionProgramQueryService } from "./services/competition-program-query.service";
+import { CompetitionProgramService } from "./services/competition-program.service";
 import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
 import { CheckInDto, CheckInResponseDto } from "./dto/checkin.dto";
 import { CompetitionResultDto } from "./dto/competition-result.dto";
+import {
+  CompetitionProgramDto,
+  ReplaceCompetitionProgramDto,
+} from "./dto/competition-program.dto";
 import {
   CreateCompetitionDto,
   UpdateCompetitionDto,
@@ -70,6 +78,8 @@ export class CompetitionsController {
     private readonly resultsService: CompetitionResultsService,
     private readonly managementService: CompetitionManagementService,
     private readonly accessService: CompetitionAccessService,
+    private readonly programQueryService: CompetitionProgramQueryService,
+    private readonly programService: CompetitionProgramService,
   ) {}
 
   @StoreReviewReadable()
@@ -487,6 +497,71 @@ export class CompetitionsController {
     return this.managementService.getSyncStatus();
   }
 
+  @Get(":id/program")
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Programme de la compétition pour l'éditeur club",
+    description:
+      "Épreuves et planning tels que saisis dans l'éditeur (ordre de saisie, heures `HH:MM`, Open multi-classes). STAFF et ADMIN : toute compétition. Compte club : seulement une compétition organisée par son club.",
+  })
+  @ApiParam({ name: "id", description: "ID de la compétition" })
+  @ApiResponse({ status: 200, type: CompetitionProgramDto })
+  @ApiResponse({
+    status: 403,
+    description: "Compétition organisée par un autre club",
+  })
+  @ApiResponse({ status: 404, description: "Compétition non trouvée" })
+  async getProgram(
+    @Param("id") id: string,
+    @Request() req: RequestWithUser,
+  ): Promise<CompetitionProgramDto> {
+    await this.accessService.assertCanManageCompetition(id, req.user);
+    return this.programQueryService.getProgram(id);
+  }
+
+  @Put(":id/program")
+  @UseGuards(JwtAuthGuard, RolesGuard, ThrottlerUserGuard)
+  @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Enregistre le programme (épreuves + planning) d'une compétition",
+    description:
+      "Remplace tout le programme saisi dans l'éditeur club, en une transaction. Une épreuve envoyée avec son `id` est conservée ou mise à jour, sans `id` elle est créée, absente elle est supprimée. Une épreuve qui a des inscriptions ou des résultats n'est jamais supprimée ni modifiée : 409, rien n'est enregistré. Pour une compétition importée de la FFD, la synchronisation ne remplace plus ensuite ses épreuves.",
+  })
+  @ApiParam({ name: "id", description: "ID de la compétition" })
+  @ApiBody({ type: ReplaceCompetitionProgramDto })
+  @ApiResponse({
+    status: 200,
+    description: "Programme enregistré, relu tel qu'il est stocké",
+    type: CompetitionProgramDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      "Épreuve contraire au règlement (nature, classe d'âge, niveau) ou identifiant inconnu",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "Compétition organisée par un autre club",
+  })
+  @ApiResponse({ status: 404, description: "Compétition non trouvée" })
+  @ApiResponse({
+    status: 409,
+    description:
+      "Une épreuve retirée ou modifiée a des inscriptions ou des résultats",
+  })
+  async replaceProgram(
+    @Param("id") id: string,
+    @Body() body: ReplaceCompetitionProgramDto,
+    @Request() req: RequestWithUser,
+  ): Promise<CompetitionProgramDto> {
+    await this.accessService.assertCanManageCompetition(id, req.user);
+    return this.programService.replaceProgram(id, body);
+  }
+
   @Get(":id")
   @ApiOperation({
     summary: "Récupère les détails d'une compétition",
@@ -789,7 +864,12 @@ export class CompetitionsController {
     return this.resultsService.generateVolunteerToken(competitionId, body.name);
   }
 
+  // Per IP, not per volunteer link (#633): the link is only checked against
+  // the database inside the handler, and keying on an unchecked body token
+  // would give each guessed token a fresh budget. The few scanners at a venue
+  // entrance fit this route's own per-IP budget.
   @Post("checkin/volunteer")
+  @ThrottleByIp()
   @ApiOperation({
     summary: "Effectue le check-in en tant que bénévole",
     description:

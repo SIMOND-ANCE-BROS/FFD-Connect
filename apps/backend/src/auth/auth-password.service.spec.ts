@@ -6,9 +6,15 @@ import {
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
-import { EmailService } from "./email.service";
+import * as Sentry from "@sentry/nestjs";
+import { EmailSendError, EmailService } from "./email.service";
 import { AuthPasswordService } from "./auth-password.service";
 import { AuthTokenService } from "./auth-token.service";
+
+jest.mock("@sentry/nestjs", () => ({ captureException: jest.fn() }));
+
+/** Lets detached promise chains (mocks resolve immediately) settle. */
+const flushDetached = () => new Promise((r) => setImmediate(r));
 
 jest.mock("bcrypt", () => ({
   compare: jest.fn(),
@@ -41,7 +47,8 @@ describe("AuthPasswordService", () => {
   };
 
   const mockEmailService = {
-    sendPasswordResetEmail: jest.fn(),
+    // An async method: always a promise (the send is detached, #610).
+    sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
   };
 
   const mockAuthTokenService = {
@@ -60,6 +67,9 @@ describe("AuthPasswordService", () => {
 
     service = module.get<AuthPasswordService>(AuthPasswordService);
     jest.clearAllMocks();
+    // No account unless a test says so: the unknown-address path also reads
+    // a (random) id since #610, it must never get a previous test's user.
+    mockPrismaService.user.findUnique.mockReset();
   });
 
   afterEach(async () => {
@@ -115,6 +125,26 @@ describe("AuthPasswordService", () => {
       expect(storedToken).toBe(hashToken(sentToken));
       expect(storedToken).not.toBe(sentToken);
     });
+
+    it.each([
+      ["open breaker", new Error("Service email is temporarily unavailable")],
+      ["timeout", new Error("[Timeout] resend:password-reset timed out")],
+    ])(
+      "keeps the generic answer when the mail fails (%s, #464)",
+      async (_case, failure) => {
+        mockPrismaService.user.findUnique.mockResolvedValue({
+          id: "u1",
+          email: "u@test.com",
+        });
+        mockPrismaService.passwordResetToken.updateMany.mockResolvedValue({});
+        mockPrismaService.passwordResetToken.create.mockResolvedValue({});
+        mockEmailService.sendPasswordResetEmail.mockRejectedValueOnce(failure);
+
+        await expect(service.forgotPassword("u@test.com")).resolves.toEqual({
+          success: true,
+        });
+      },
+    );
 
     describe("address typed with another casing or spaces (#465)", () => {
       const target = (id: string, email: string) => ({
@@ -183,7 +213,10 @@ describe("AuthPasswordService", () => {
           expect(mockPrismaService.$queryRaw).toHaveBeenCalledWith(
             emailLookupFor(typed),
           );
-          expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+          // Only the decoy lookup of a random id (#610), never the victim.
+          expect(mockPrismaService.user.findUnique).not.toHaveBeenCalledWith(
+            expect.objectContaining({ where: { id: "victim" } }),
+          );
           expect(
             mockPrismaService.passwordResetToken.create,
           ).not.toHaveBeenCalled();
@@ -222,7 +255,12 @@ describe("AuthPasswordService", () => {
           const result = await service.forgotPassword("DUP@exemple.fr");
 
           expect(result).toEqual({ success: true });
-          expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+          // Only the decoy lookup of a random id (#610), never a twin.
+          for (const id of ["a", "b"]) {
+            expect(mockPrismaService.user.findUnique).not.toHaveBeenCalledWith(
+              expect.objectContaining({ where: { id } }),
+            );
+          }
           expect(
             mockPrismaService.passwordResetToken.create,
           ).not.toHaveBeenCalled();
@@ -231,6 +269,160 @@ describe("AuthPasswordService", () => {
           ).not.toHaveBeenCalled();
         });
       });
+    });
+  });
+
+  describe("forgotPassword response does not reveal the account (#610)", () => {
+    const known = { id: "u1", email: "u@test.com", isStoreReview: false };
+
+    /** The Prisma operations a call ran, in order, by model.method. */
+    const prismaCalls = () =>
+      [
+        ["$queryRaw", mockPrismaService.$queryRaw],
+        ["user.findUnique", mockPrismaService.user.findUnique],
+        ["token.updateMany", mockPrismaService.passwordResetToken.updateMany],
+        ["token.create", mockPrismaService.passwordResetToken.create],
+        ["token.findUnique", mockPrismaService.passwordResetToken.findUnique],
+      ]
+        .flatMap(([name, fn]) =>
+          (fn as jest.Mock).mock.invocationCallOrder.map(
+            (order) => [order, name] as const,
+          ),
+        )
+        .sort((a, b) => a[0] - b[0])
+        .map(([, name]) => name);
+
+    beforeEach(() => {
+      mockPrismaService.passwordResetToken.updateMany.mockResolvedValue({
+        count: 0,
+      });
+      mockPrismaService.passwordResetToken.create.mockResolvedValue({});
+      mockPrismaService.passwordResetToken.findUnique.mockResolvedValue(null);
+      mockEmailService.sendPasswordResetEmail.mockResolvedValue(undefined);
+    });
+
+    it("answers without waiting for the e-mail to be sent", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(known);
+      // Resend never answers: the request must not hang on it.
+      mockEmailService.sendPasswordResetEmail.mockReturnValueOnce(
+        new Promise(() => undefined),
+      );
+
+      await expect(service.forgotPassword("u@test.com")).resolves.toEqual({
+        success: true,
+      });
+      expect(mockEmailService.sendPasswordResetEmail).toHaveBeenCalledTimes(1);
+    });
+
+    it("runs the same number of queries, in the same order, for an unknown address", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(known);
+      await service.forgotPassword("u@test.com");
+      const knownPath = prismaCalls();
+      jest.clearAllMocks();
+
+      mockPrismaService.$queryRaw.mockResolvedValueOnce([]);
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(null);
+      await service.forgotPassword("nobody@test.com");
+      const unknownPath = prismaCalls();
+
+      expect(knownPath).toEqual([
+        "$queryRaw",
+        "user.findUnique",
+        "token.updateMany",
+        "token.create",
+      ]);
+      expect(unknownPath).toEqual([
+        "$queryRaw",
+        "user.findUnique",
+        "token.updateMany",
+        "token.findUnique",
+      ]);
+    });
+
+    it("the unknown-address decoy matches no account and writes no row", async () => {
+      mockPrismaService.$queryRaw.mockResolvedValueOnce([]);
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(null);
+
+      await service.forgotPassword("nobody@test.com");
+
+      const uuid =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+      const lookedUp =
+        mockPrismaService.user.findUnique.mock.calls[0][0].where.id;
+      expect(lookedUp).toMatch(uuid);
+      const decoyWhere =
+        mockPrismaService.passwordResetToken.updateMany.mock.calls[0][0].where;
+      expect(decoyWhere.userId).toMatch(uuid);
+      expect(decoyWhere.userId).not.toBe(lookedUp);
+      expect(
+        mockPrismaService.passwordResetToken.findUnique,
+      ).toHaveBeenCalledWith({
+        where: { token: expect.stringMatching(/^[0-9a-f]{64}$/) },
+        select: { id: true },
+      });
+      expect(
+        mockPrismaService.passwordResetToken.create,
+      ).not.toHaveBeenCalled();
+      expect(mockEmailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
+    it("the store-review account takes the same decoy path", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValueOnce({
+        ...known,
+        isStoreReview: true,
+      });
+
+      await service.forgotPassword("u@test.com");
+
+      expect(prismaCalls()).toEqual([
+        "$queryRaw",
+        "user.findUnique",
+        "token.updateMany",
+        "token.findUnique",
+      ]);
+      expect(
+        mockPrismaService.passwordResetToken.updateMany.mock.calls[0][0].where
+          .userId,
+      ).not.toBe(known.id);
+      expect(
+        mockPrismaService.passwordResetToken.create,
+      ).not.toHaveBeenCalled();
+      expect(mockEmailService.sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
+    it("reports a failed send without the address, the token nor Resend's message", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(known);
+      mockEmailService.sendPasswordResetEmail.mockRejectedValueOnce(
+        new EmailSendError("u@test.com is on the suppression list", 422),
+      );
+
+      await expect(service.forgotPassword("u@test.com")).resolves.toEqual({
+        success: true,
+      });
+      await flushDetached();
+
+      expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+      const reported = (Sentry.captureException as jest.Mock).mock
+        .calls[0][0] as Error;
+      expect(reported.message).toBe(
+        "Password reset e-mail not sent (EmailSendError 422)",
+      );
+      const sentToken =
+        mockEmailService.sendPasswordResetEmail.mock.calls[0][1];
+      expect(reported.message).not.toContain("u@test.com");
+      expect(reported.message).not.toContain(sentToken);
+    });
+
+    it("reports a non-Error rejection by its kind only", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValueOnce(known);
+      mockEmailService.sendPasswordResetEmail.mockRejectedValueOnce("boom");
+
+      await service.forgotPassword("u@test.com");
+      await flushDetached();
+
+      expect(
+        (Sentry.captureException as jest.Mock).mock.calls[0][0].message,
+      ).toBe("Password reset e-mail not sent (unknown)");
     });
   });
 

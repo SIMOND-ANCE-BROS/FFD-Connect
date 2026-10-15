@@ -156,6 +156,10 @@ export interface EventItem {
   kind?: EventKind;
   /** Niveau pour épreuve classificatrice ou Solo Team. */
   level?: string;
+  /** Déjà enregistrée : `id` est celui du serveur (#442). */
+  persisted?: boolean;
+  /** Inscriptions ou résultats : ni modifiable ni supprimable (#442). */
+  locked?: boolean;
 }
 
 export interface ScheduleItem {
@@ -164,6 +168,8 @@ export interface ScheduleItem {
   type: "ROUND" | "BREAK" | "CEREMONY" | "OTHER";
   title: string;
   duration: number; // minutes
+  /** Déjà enregistré : `id` est celui du serveur (#442). */
+  persisted?: boolean;
 }
 
 export type LayoutOrientation = "horizontal" | "vertical";
@@ -213,7 +219,9 @@ export const AGES_COUPLE = [
   "Junior I",
   "Junior II",
   "Youth",
-  "Under 21",
+  // Épreuve couple « moins de 21 ans » (16-20 ans au 31/12) : classe d'épreuve,
+  // vérifiée à l'inscription.
+  "Espoir",
   "Adulte",
   "Senior I",
   "Senior II",
@@ -222,13 +230,41 @@ export const AGES_COUPLE = [
   "Senior V",
 ];
 
-// "LES SOLOS" (Article 5)
+// "LES SOLOS" (Article 5) — valeurs enregistrées telles quelles (#442).
 export const AGES_SOLO = [
-  "Juvénile",
-  "Junior I",
-  "Junior II",
-  "Junior II",
-  "Youth",
-  "Adulte",
-  "Senior",
+  "Solo Juvénile",
+  "Solo Junior 1",
+  "Solo Junior 2",
+  "Solo Youth",
+  "Solo Adulte",
+  "Solo Senior",
 ];
+
+/**
+ * Niveaux possibles d'une classificatrice selon la classe d'âge (table
+ * Niveaux du règlement, alignée sur le backend `getAllowedLevelsForAgeGroup`).
+ */
+const LEVELS_BY_AGE_GROUP: Record<string, readonly string[]> = {
+  "Juvénile I": ["Intermédiaire", "Débutant"],
+  "Juvénile II": ["Intermédiaire", "Débutant"],
+  "Junior I": ["Avancé", "Intermédiaire", "Débutant"],
+  "Junior II": ["Avancé", "Intermédiaire", "Débutant"],
+  Youth: ["Avancé", "Intermédiaire", "Débutant"],
+  Espoir: ["International", "Avancé", "Intermédiaire"],
+  Adulte: ["International", "Avancé", "Intermédiaire"],
+  "Senior I": ["International", "Avancé", "Intermédiaire"],
+  "Senior II": ["International", "Avancé", "Intermédiaire"],
+  "Senior III": ["International", "Avancé", "Intermédiaire", "Débutant"],
+  "Senior IV": ["International", "Avancé", "Intermédiaire"],
+  "Senior V": ["International", "Avancé", "Intermédiaire"],
+  "Solo Juvénile": ["Intermédiaire", "Débutant"],
+  "Solo Junior 1": ["Avancé", "Intermédiaire", "Débutant"],
+  "Solo Junior 2": ["Avancé", "Intermédiaire", "Débutant"],
+  "Solo Youth": ["Avancé", "Intermédiaire", "Débutant"],
+  "Solo Adulte": ["Avancé", "Intermédiaire", "Débutant"],
+  "Solo Senior": ["Avancé", "Intermédiaire", "Débutant"],
+};
+
+export function levelsForAgeGroup(ageGroup: string): readonly string[] {
+  return LEVELS_BY_AGE_GROUP[ageGroup] ?? [];
+}

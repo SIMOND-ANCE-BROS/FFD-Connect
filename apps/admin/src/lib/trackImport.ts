@@ -324,7 +324,9 @@ export function markBatchDuplicates(rows: readonly ImportRow[]): ImportRow[] {
  */
 export function withStyle(row: ImportRow, style: StyleOption | ''): ImportRow {
   if (row.mpmTouched) return { ...row, style };
-  return { ...row, style, mpm: row.rawBpm ? calculateMpm(row.rawBpm, style) : '' };
+  // Unknown dance: no MPM (the server stores 0, never the raw BPM — #338).
+  const mpm = row.rawBpm ? calculateMpm(row.rawBpm, style) : 0;
+  return { ...row, style, mpm: mpm > 0 ? mpm : '' };
 }
 
 export type CheckItem = { sha256: string; sourceKey?: string };

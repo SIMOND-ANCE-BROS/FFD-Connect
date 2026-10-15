@@ -88,7 +88,10 @@ describe("useLoginLogic", () => {
         isLoggedIn: true,
       });
       mockAuthRepository.getProfile.mockResolvedValue({
+        id: "user-uuid-2",
         email: "test@test.com",
+        firstName: "Jane",
+        lastName: "Doe",
         role: "LICENSEE",
       });
 
@@ -98,6 +101,16 @@ describe("useLoginLogic", () => {
         expect(rnBiometrics.simplePrompt).toHaveBeenCalled();
         expect(mockRefreshAuth).toHaveBeenCalled();
       });
+      // Opaque id + role only: no e-mail nor name reaches Sentry (#593).
+      expect(Sentry.setUser).toHaveBeenCalledWith({
+        id: "user-uuid-2",
+        data: { role: "LICENSEE" },
+      });
+      const sent = JSON.stringify((Sentry.setUser as jest.Mock).mock.calls);
+      expect(sent).not.toMatch(/test@test\.com|Jane|Doe/);
+      expect(mockAuthRepository.saveAuthConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: "user-uuid-2" }),
+      );
     });
   });
 
@@ -162,6 +175,8 @@ describe("useLoginLogic", () => {
       mockAuthRepository.getAuthConfig.mockResolvedValueOnce({
         role: "CLUB",
         mainRole: "LICENSEE",
+        username: "test@test.com",
+        userId: "user-uuid-1",
       });
 
       await act(async () => {
@@ -170,9 +185,39 @@ describe("useLoginLogic", () => {
 
       expect(Sentry.setUser).toHaveBeenCalledTimes(1);
       expect(Sentry.setUser).toHaveBeenCalledWith({
-        username: "test@test.com",
+        id: "user-uuid-1",
         data: { role: "LICENSEE" },
       });
+    });
+
+    it("never sends the e-mail to Sentry, even without a stored id (#593)", async () => {
+      mockAuthRepository.getAuthConfig.mockResolvedValue({
+        biometricsEnabled: false,
+        isLoggedIn: false,
+      });
+      const { result } = await renderHook(() =>
+        useLoginLogic({ navigation: mockNavigation }),
+      );
+
+      await act(() => {
+        result.current.actions.setUsername("test@test.com");
+        result.current.actions.setPassword("password123");
+      });
+
+      mockAuthRepository.login.mockResolvedValueOnce(undefined);
+      mockAuthRepository.getAuthConfig.mockResolvedValueOnce({
+        role: "LICENSEE",
+        mainRole: "LICENSEE",
+        username: "test@test.com",
+      });
+
+      await act(async () => {
+        await result.current.actions.onLogin();
+      });
+
+      const sent = JSON.stringify((Sentry.setUser as jest.Mock).mock.calls);
+      expect(sent).not.toContain("test@test.com");
+      expect(Sentry.setUser).toHaveBeenCalledWith(null);
     });
 
     it("handles login failure", async () => {

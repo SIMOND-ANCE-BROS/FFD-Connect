@@ -7,6 +7,7 @@ import { AuthService } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
 import { ParentalConsentService } from "../parental-consent/parental-consent.service";
 import { STORE_REVIEW_IMPERSONATION_MESSAGE } from "./store-review/store-review-protection";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 
 describe("AuthController", () => {
   let controller: AuthController;
@@ -48,7 +49,10 @@ describe("AuthController", () => {
           useValue: mockParentalConsentService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(ThrottlerUserGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<AuthController>(AuthController);
     authService = module.get<AuthService>(AuthService);

@@ -32,6 +32,7 @@ import { LicensesModule } from "./licenses/licenses.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { ParentalConsentModule } from "./parental-consent/parental-consent.module";
 import { PaymentModule } from "./payment/payment.module";
+import { buildBullConnection } from "./redis/bullmq-connection";
 import { RedisModule } from "./redis/redis.module";
 import { ReportsModule } from "./reports/reports.module";
 import { StorageModule } from "./storage/storage.module";
@@ -58,19 +59,7 @@ import { WdsfModule } from "./wdsf/wdsf.module";
     ]),
     ScheduleModule.forRoot(),
     BullModule.forRootAsync({
-      useFactory: (configService: ConfigService) => ({
-        connection: {
-          host: configService.get<string>("REDIS_HOST", "localhost"),
-          port: configService.get<number>("REDIS_PORT", 6379),
-          password: configService.get<string>("REDIS_PASSWORD"),
-          // BullMQ constructs its own ioredis client from these options, so
-          // ioredis 6's RESP3 default would reach the queue without any code
-          // change here. BullMQ leans on raw replies from Lua scripts and no
-          // test connects it to a real Redis (issue #771), so pin RESP2 until
-          // that coverage exists. Same rationale as RedisService.
-          protocol: 2,
-        },
-      }),
+      useFactory: buildBullConnection,
       inject: [ConfigService],
     }),
     CircuitBreakerModule,
@@ -103,7 +92,8 @@ import { WdsfModule } from "./wdsf/wdsf.module";
   providers: [
     AppService,
     {
-      // Per client IP; skips routes counted per user by ThrottlerUserGuard (#182).
+      // Per user for a verified access token, else per client IP; always per
+      // IP on @ThrottleByIp() routes (login, register…) (#182, #633).
       provide: APP_GUARD,
       useClass: GlobalThrottlerGuard,
     },

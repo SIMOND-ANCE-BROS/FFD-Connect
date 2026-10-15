@@ -32,7 +32,7 @@ interface DanceTempo {
   beatsPerMeasure: number;
 }
 
-const DANCE_TEMPOS: Record<string, DanceTempo> = {
+const DANCE_TEMPOS: Record<DanceKey, DanceTempo> = {
   rumba: { bpmRange: [95, 115], beatsPerMeasure: 4 },
   "cha-cha": { bpmRange: [115, 140], beatsPerMeasure: 4 },
   samba: { bpmRange: [90, 115], beatsPerMeasure: 2 },
@@ -45,21 +45,48 @@ const DANCE_TEMPOS: Record<string, DanceTempo> = {
   quickstep: { bpmRange: [188, 220], beatsPerMeasure: 4 },
 };
 
-function normalizeDance(
-  input?: string | null,
-): keyof typeof DANCE_TEMPOS | null {
+/** Canonical dance key (same keys as the backend's STYLE_CONFIG). */
+export type DanceKey =
+  | "rumba"
+  | "cha-cha"
+  | "samba"
+  | "paso doble"
+  | "jive"
+  | "valse lente"
+  | "tango"
+  | "viennoise"
+  | "slow fox"
+  | "quickstep";
+
+/**
+ * The single list of dance recognition patterns of the app (player, library,
+ * competition mode), most specific first: the first match wins. Same patterns,
+ * same order as the backend's normalizeStyle — pinned by the shared fixture
+ * apps/backend/test/fixtures/dance-style-cases.json (#338).
+ */
+const DANCE_STYLE_PATTERNS: ReadonlyArray<readonly [DanceKey, RegExp]> = [
+  ["cha-cha", /cha[\s-]*cha/],
+  ["paso doble", /paso/],
+  ["samba", /samba/],
+  ["jive", /jive/],
+  ["rumba", /rumba/],
+  ["quickstep", /quick\s*-?\s*step/],
+  ["slow fox", /slow\s*-?\s*fox|foxtrot|^fox$/],
+  ["viennoise", /vienn|valse\s*rapide/],
+  [
+    "valse lente",
+    /valse\s*lente|valse\s*anglaise|slow\s*waltz|^waltz$|^valse$/,
+  ],
+  ["tango", /tango/],
+];
+
+/** Canonical dance of a track `style`, or null when the dance is unknown. */
+export function normalizeDance(input?: string | null): DanceKey | null {
   if (!input) return null;
   const s = input.toLowerCase().trim();
-  if (/cha[\s-]?cha|chacha/.test(s)) return "cha-cha";
-  if (/paso/.test(s)) return "paso doble";
-  if (/samba/.test(s)) return "samba";
-  if (/jive/.test(s)) return "jive";
-  if (/rumba/.test(s)) return "rumba";
-  if (/quick\s?step/.test(s)) return "quickstep";
-  if (/slow ?fox|foxtrot|^fox$/.test(s)) return "slow fox";
-  if (/vienn|valse rapide/.test(s)) return "viennoise";
-  if (/slow ?waltz|valse lente|^waltz$|^valse$/.test(s)) return "valse lente";
-  if (/tango/.test(s)) return "tango";
+  for (const [key, pattern] of DANCE_STYLE_PATTERNS) {
+    if (pattern.test(s)) return key;
+  }
   return null;
 }
 
@@ -81,13 +108,13 @@ function normalizeToRange(bpm: number, [min, max]: [number, number]): number {
 
 /**
  * Convert a raw detected BPM to dance-aware MPM (mesures par minute).
- * Falls back to the rounded raw BPM when the dance is unknown.
- * Mirror of the backend BpmService.calculateMpm.
+ * Returns 0 (unknown MPM) when the dance is unknown: a raw BPM must never be
+ * shown as an MPM (#338). Mirror of the backend BpmService.calculateMpm.
  */
 export function mpmFromBpm(rawBpm: number, dance?: string | null): number {
   if (!rawBpm || rawBpm <= 0) return 0;
   const key = normalizeDance(dance);
-  if (key == null) return Math.round(rawBpm);
+  if (key == null) return 0;
   const cfg = DANCE_TEMPOS[key];
   return Math.round(
     normalizeToRange(rawBpm, cfg.bpmRange) / cfg.beatsPerMeasure,

@@ -6,7 +6,7 @@ Merci de votre intérêt ! Consultez le README principal pour l'installation et 
 
 - **pnpm** est le gestionnaire de paquets (pas npm/yarn)
 - Les **pre-commit** hooks (Husky) scannent les secrets avec gitleaks (binaire épinglé, téléchargé au premier commit), puis exécutent lint et format sur les fichiers stagés
-- Les **pre-push** hooks lancent `pnpm typecheck` puis les tests unitaires backend et client (`pnpm --filter backend test` / `pnpm --filter client test`) — pas toute la CI (e2e, couverture complète = GitHub Actions)
+- Le hook **pre-push** (`scripts/pre-push.sh`) lance `pnpm typecheck` complet puis les tests unitaires backend et client **impactés** par le push (par rapport à `origin/develop`), avec repli sur la suite complète d'une app quand sa config, le lockfile ou un mock change — pas toute la CI (e2e, couverture complète = GitHub Actions). Détails : `docs/exploitation/ci-cd-minimal.md` § « Hook pre-push »
 
 ## Workflow
 

@@ -109,6 +109,10 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 16,
   },
+  seatBooking: {
+    marginHorizontal: 16,
+    marginTop: 12,
+  },
   resultsOnly: {
     marginHorizontal: 16,
     marginBottom: 16,

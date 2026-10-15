@@ -1,6 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { LicenseRenewalDocumentType, Prisma } from "@prisma/client";
 import { CompetitionCacheService } from "../competitions/services/competition-cache.service";
+import {
+  HEALTH_DATA_ACCESS_ROUTES,
+  type HealthDataAccessActor,
+} from "../health-data-access/dto/health-data-access-log.dto";
+import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { licenseRenewalDocumentFileSelect } from "../utils/prisma-selects";
@@ -68,6 +73,11 @@ export const MAX_RENEWAL_DOCUMENTS_TO_PURGE = 200;
  * best-effort : un échec n'annule pas la suppression du compte (déjà
  * effective en base) ; il est remonté en erreur + Sentry (référence du
  * fichier uniquement) pour nettoyage manuel (RenewalDocumentFileCleaner).
+ *
+ * Journal des accès aux données de santé (#63) : la suppression de chaque
+ * certificat médical y est tracée (titulaire, auteur, route), dans la même
+ * transaction. Ces lignes, sans clé étrangère ni contenu, survivent à la
+ * suppression du compte jusqu'à la fin de leur rétention (1 an).
  */
 @Injectable()
 export class AccountDeletionService {
@@ -77,16 +87,24 @@ export class AccountDeletionService {
     private readonly prisma: PrismaService,
     private readonly renewalDocumentFiles: RenewalDocumentFileCleaner,
     private readonly competitionCache: CompetitionCacheService,
+    private readonly healthAccess: HealthDataAccessLogService,
   ) {}
 
   /**
    * @param alsoInTransaction operations appended to the same transaction,
    *   after the user row is deleted (the admin path adds its audit row here,
    *   so it survives the purge of rows that target the user).
+   * @param actor who deletes, for the health-data access journal (#63):
+   *   the account holder by default, the administrator on the admin path.
    */
   async deleteAccount(
     userId: string,
     alsoInTransaction: Prisma.PrismaPromise<unknown>[] = [],
+    actor: HealthDataAccessActor = {
+      actorUserId: userId,
+      actorRole: "OWNER",
+      route: HEALTH_DATA_ACCESS_ROUTES.selfAccountDeletion,
+    },
   ): Promise<void> {
     const documents = await this.prisma.licenseRenewalDocument.findMany({
       where: { request: { userId } },
@@ -100,10 +118,26 @@ export class AccountDeletionService {
         `Account deletion: renewal document read hit the ${MAX_RENEWAL_DOCUMENTS_TO_PURGE} cap — remaining files may be orphaned, run scripts/list-orphan-renewal-blobs.ts`,
       );
     }
+    const certificates = documents.filter(
+      (d) => d.type === LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+    );
     const plan = await prepareAccountDeletion(this.prisma, userId, this.logger);
     await this.prisma.$transaction([
       ...buildAccountDeletionOperations(this.prisma, userId, plan),
       ...alsoInTransaction,
+      ...(certificates.length > 0
+        ? [
+            this.healthAccess.recordOp(
+              certificates.map((d) => ({
+                ...actor,
+                subjectUserId: userId,
+                action: "DELETE" as const,
+                resourceType: "MEDICAL_CERTIFICATE" as const,
+                resourceId: d.id,
+              })),
+            ),
+          ]
+        : []),
     ]);
     await this.renewalDocumentFiles.deleteFiles(
       documents.map((d) => d.filePath),

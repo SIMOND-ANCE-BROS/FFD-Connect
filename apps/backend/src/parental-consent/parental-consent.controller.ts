@@ -16,8 +16,11 @@ import {
 import { Throttle } from "@nestjs/throttler";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
 import { StoreReviewOwnData } from "../auth/store-review/store-review.decorator";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
+import { ThrottleByIp } from "../common/decorators/throttle-by-ip.decorator";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import {
   ConfirmParentalConsentDto,
   ParentalConsentLinkDto,
@@ -58,7 +61,9 @@ export class ParentalConsentController {
   }
 
   @Post("request")
-  @UseGuards(JwtAuthGuard)
+  // Only the minor may name their legal representative: never staff through
+  // "log in as" (#545). Counted per account after authentication.
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, ThrottlerUserGuard)
   @ApiBearerAuth("JWT-auth")
   @HttpCode(200)
   @Throttle({ default: { ttl: 60000, limit: 3 } })
@@ -83,6 +88,8 @@ export class ParentalConsentController {
   @Post("lookup")
   @HttpCode(200)
   @Throttle({ default: { ttl: 60000, limit: 10 } })
+  // Public, token in the body: keyed on the client IP (#633).
+  @ThrottleByIp()
   @ApiOperation({
     summary:
       "Lire la demande désignée par un lien (page du représentant légal)",
@@ -97,6 +104,8 @@ export class ParentalConsentController {
   @Post("confirm")
   @HttpCode(200)
   @Throttle({ default: { ttl: 60000, limit: 5 } })
+  // Public, token in the body: keyed on the client IP (#633).
+  @ThrottleByIp()
   @ApiOperation({
     summary: "Le représentant légal donne son accord",
     description:
@@ -112,6 +121,8 @@ export class ParentalConsentController {
   @Post("revoke")
   @HttpCode(200)
   @Throttle({ default: { ttl: 60000, limit: 5 } })
+  // Public, token in the body: keyed on the client IP (#633).
+  @ThrottleByIp()
   @ApiOperation({
     summary: "Le représentant légal retire (ou refuse) son accord",
     description:

@@ -39,6 +39,7 @@ import { useCompetitionDetailLogic } from "../hooks/useCompetitionDetailLogic";
 import { addCompetitionToCalendar } from "../utils/addToCalendar";
 import { groupEvents } from "../utils/eventGroups";
 import { hasPlaceholderEvents } from "../utils/eventsSourceNotice";
+import { hasSeatsForSale } from "../utils/seatPlan";
 import {
   clearDeadlineStorage,
   deadlineStorageKey,
@@ -197,6 +198,13 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
   const detailsId = state.details.id;
   const openResults = () =>
     navigation.navigate("LiveResults", { competitionId: detailsId });
+  // Seat booking (#453): participants only (a club organises, a guest has no
+  // account to pay with), while the competition is still ahead or running.
+  const showSeatBooking =
+    !isOrganizer &&
+    !state.isGuest &&
+    (state.details.status === "UPCOMING" || state.details.status === "LIVE") &&
+    hasSeatsForSale(state.details.layout);
 
   return (
     <SafeAreaView style={styles.flexOne} edges={["left", "right"]}>
@@ -237,6 +245,22 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
             currentTheme={currentTheme}
             details={state.details}
           />
+
+          {showSeatBooking && (
+            <View style={styles.seatBooking}>
+              <AppButton
+                title="Choisir ma place"
+                variant="outline"
+                onPress={() =>
+                  navigation.navigate("SeatPicker", {
+                    competitionId: detailsId,
+                  })
+                }
+                accessibilityHint="Ouvre le plan de salle pour réserver une place"
+                testID="competition-detail-seat-booking"
+              />
+            </View>
+          )}
 
           {!!(state.details.delayMinutes && state.details.delayMinutes > 0) && (
             <View style={styles.delayBadgeContainer}>
@@ -351,6 +375,11 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
                             onNavigateResults={openResults}
                             onRegister={actions.handleRegister}
                             onUnregister={actions.handleUnregister}
+                            onSignInToRegister={
+                              state.isGuest
+                                ? actions.handleGuestSignInToRegister
+                                : undefined
+                            }
                             pendingAction={
                               state.pendingRegistrationActions[event.id]
                             }

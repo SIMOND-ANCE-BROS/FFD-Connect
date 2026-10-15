@@ -124,7 +124,10 @@ export const AddTrackModal = ({
   const applyAutoMpm = useCallback((dance: string) => {
     if (editedBpmRef.current) return;
     const raw = rawBpmRef.current;
-    if (raw > 0) setBpm(String(mpmFromBpm(raw, dance)));
+    if (raw <= 0) return;
+    // Unknown dance: no MPM rather than the raw BPM shown as one (#338).
+    const mpm = mpmFromBpm(raw, dance);
+    setBpm(mpm > 0 ? String(mpm) : "");
   }, []);
 
   const buildPatch = () => {

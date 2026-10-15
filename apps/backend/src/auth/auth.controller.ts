@@ -8,6 +8,8 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
+import { ThrottleByIp } from "../common/decorators/throttle-by-ip.decorator";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import {
   ApiBearerAuth,
   ApiBody,
@@ -49,6 +51,7 @@ export class AuthController {
 
   @Post("register")
   @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @ThrottleByIp()
   @ApiOperation({
     summary: "Inscription avec vérification de licence FFD",
     description:
@@ -94,6 +97,7 @@ export class AuthController {
 
   @Post("login")
   @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @ThrottleByIp()
   @ApiOperation({
     summary: "Authentifie un utilisateur",
     description:
@@ -281,6 +285,7 @@ export class AuthController {
 
   @Post("forgot-password")
   @Throttle({ default: { ttl: 60000, limit: 3 } })
+  @ThrottleByIp()
   @ApiOperation({
     summary: "Demande de réinitialisation de mot de passe",
     description:
@@ -303,6 +308,7 @@ export class AuthController {
 
   @Post("reset-password")
   @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @ThrottleByIp()
   @ApiOperation({
     summary: "Réinitialise le mot de passe avec un token",
     description:
@@ -341,7 +347,10 @@ export class AuthController {
   }
 
   @Post("change-password")
-  @UseGuards(JwtAuthGuard, NoImpersonationGuard)
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, ThrottlerUserGuard)
+  // Guessing the current password with a stolen access token: 5 tries/min
+  // per account, whatever the IP (#633).
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Change le mot de passe (utilisateur authentifié)",

@@ -106,9 +106,7 @@ export class HelloAssoService {
   private async getAccessToken(
     credentials: HelloAssoCredentials,
   ): Promise<string> {
-    // Keyed on the secret too: a club registering another club's clientId
-    // with a wrong secret never gets that club's cached token.
-    const cacheKey = `${credentials.clientId}:${createHash("sha256").update(credentials.clientSecret).digest("hex")}`;
+    const cacheKey = this.tokenCacheKey(credentials);
     const cached = this.tokenCache.get(cacheKey);
     if (cached && Date.now() < cached.expiresAt) {
       return cached.token;
@@ -161,6 +159,28 @@ export class HelloAssoService {
         `Failed to get HelloAsso access token (${axios.isAxiosError(error) ? (error.response?.status ?? error.code) : "unknown"})`,
       );
       throw error;
+    }
+  }
+
+  /**
+   * Keyed on the secret too: a club registering another club's clientId
+   * with a wrong secret never gets that club's cached token.
+   */
+  private tokenCacheKey(credentials: HelloAssoCredentials): string {
+    return `${credentials.clientId}:${createHash("sha256").update(credentials.clientSecret).digest("hex")}`;
+  }
+
+  /**
+   * A 401 on an API call means HelloAsso no longer accepts the cached token
+   * (revoked before its expiry, credentials rotated): drop it so the next
+   * call re-authenticates instead of failing until the expiry (#610).
+   */
+  private forgetTokenOnUnauthorized(
+    credentials: HelloAssoCredentials,
+    error: unknown,
+  ): void {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      this.tokenCache.delete(this.tokenCacheKey(credentials));
     }
   }
 
@@ -230,6 +250,7 @@ export class HelloAssoService {
 
       return response.data;
     } catch (error) {
+      this.forgetTokenOnUnauthorized(credentials, error);
       this.logger.error(
         `Failed to create HelloAsso checkout intent (${axios.isAxiosError(error) ? (error.response?.status ?? error.code) : "unknown"})`,
       );
@@ -269,6 +290,7 @@ export class HelloAssoService {
         this.breakerScope(credentials),
       );
     } catch (error) {
+      this.forgetTokenOnUnauthorized(credentials, error);
       this.logger.error(
         `${label} failed (${axios.isAxiosError(error) ? (error.response?.status ?? error.code) : "unknown"})`,
       );
