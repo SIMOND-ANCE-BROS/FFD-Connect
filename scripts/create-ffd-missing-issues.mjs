@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Crée les Epic et tâches manquantes issus de ffd.md (sections 3.4, 3.5, 3.6)
+ * Crée les Epic et tâches manquantes issus de la spec interne v2.5 (sections 3.4, 3.5, 3.6, document hors dépôt)
  * puis les lie en sub-issues à leur Epic. Utilise le format des templates .github/ISSUE_TEMPLATE/
  *
  * Usage: node scripts/create-ffd-missing-issues.mjs [--dry-run]
