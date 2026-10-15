@@ -61,6 +61,7 @@ model User {
   trackCorrectionsProposed TrackCorrection[] @relation("TrackCorrectionsProposed")
   trackCorrectionsReviewed TrackCorrection[] @relation("TrackCorrectionsReviewed")
   adminAuditActions    AdminAuditLog[] @relation("AdminAuditActor")
+  parentalConsents     ParentalConsent[]
 
   @@index([email])
   @@index([role])

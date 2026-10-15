@@ -1309,3 +1309,62 @@ export const notificationNameScrubSelect = {
   body: true,
   data: true,
 } as const;
+
+/**
+ * Parental consent (#61): the minor an action is about. The birth date decides
+ * whether consent is required; the first name personalises the parent's
+ * e-mail; the login address must not be given as the parent's.
+ */
+export const parentalConsentSubjectSelect = {
+  id: true,
+  firstName: true,
+  email: true,
+  birthDate: true,
+} as const;
+
+/** Parental consent (#61): birth date only, for the health-data gate. */
+export const userBirthDateSelect = {
+  birthDate: true,
+} as const;
+
+/**
+ * Parental consent (#61): what the minor's app shows of the latest request.
+ * Never the token hash nor the hash of the parent's address.
+ */
+export const parentalConsentStateSelect = {
+  status: true,
+  parentEmailMasked: true,
+  requestedAt: true,
+  expiresAt: true,
+  grantedAt: true,
+  revokedAt: true,
+} as const;
+
+/**
+ * Parental consent (#61): the request a link designates, as the parent's page
+ * needs it — the minor's first name only, never their e-mail or birth date.
+ */
+export const parentalConsentTokenTargetSelect = {
+  id: true,
+  userId: true,
+  status: true,
+  expiresAt: true,
+  grantedAt: true,
+  revokedAt: true,
+  user: { select: { firstName: true } },
+} as const;
+
+/**
+ * GDPR export (#61): the consent trail of the account. Neither the token hash
+ * (a secret) nor the parent's address hash (data of a third party).
+ */
+export const parentalConsentExportSelect = {
+  status: true,
+  parentEmailMasked: true,
+  cguVersion: true,
+  requestedAt: true,
+  expiresAt: true,
+  grantedAt: true,
+  revokedAt: true,
+  supersededAt: true,
+} as const;

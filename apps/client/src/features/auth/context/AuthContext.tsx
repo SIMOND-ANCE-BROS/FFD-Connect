@@ -20,6 +20,8 @@ export interface AuthRepository {
     licenseNumber: string,
     lastName: string,
     firstName: string,
+    /** Minor's sign-up (#61): a parent's address, sent the consent link. */
+    parentEmail?: string,
   ): Promise<void>;
   loginAsGuest(): Promise<void>;
   logout(): Promise<void>;

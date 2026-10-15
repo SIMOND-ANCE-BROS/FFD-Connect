@@ -55,6 +55,11 @@ module.exports = {
 
     // Utilitaires
     "src/utils/file-validation.util.ts",
+
+    // Consentement parental des mineurs (#61) — RGPD art. 8 / 9
+    "src/parental-consent/parental-consent.policy.ts",
+    "src/parental-consent/parental-consent.service.ts",
+    "src/parental-consent/parental-consent.query-service.ts",
   ],
 
   // Reporters

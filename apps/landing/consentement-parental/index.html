@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Accord parental — FFD Connect</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <!-- The URL carries the consent token: never leak it through the Referer header. -->
+    <meta name="referrer" content="no-referrer" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" src="/src/parental-consent.ts"></script>
+  </head>
+  <body>
+    <div class="legal reset">
+      <header class="legal__header">
+        <a class="legal__brand" href="../">
+          <img src="/ffd-logo.svg" alt="" width="28" height="28" />
+          <span>FFD Connect</span>
+        </a>
+      </header>
+
+      <main class="reset__body">
+        <p class="reset__kicker">Représentant légal</p>
+        <h1 class="reset__title" data-title>Accord parental</h1>
+
+        <p class="reset__status" data-status role="status" hidden></p>
+        <div class="reset__messages" data-messages role="alert" hidden></div>
+        <div class="consent__lines" data-lines></div>
+
+        <form class="reset__form" data-confirm-form novalidate hidden>
+          <label class="consent__check">
+            <input type="checkbox" name="acceptDataProcessing" data-accept-data />
+            <span>
+              J'autorise le traitement des données de mon enfant par FFD Connect, conformément aux
+              <a href="../cgu/" target="_blank" rel="noopener">conditions d'utilisation</a> et à la
+              <a href="../confidentialite/" target="_blank" rel="noopener"
+                >politique de confidentialité</a
+              >.
+            </span>
+          </label>
+          <label class="consent__check">
+            <input type="checkbox" name="acceptHealthData" data-accept-health />
+            <span>
+              J'autorise explicitement le traitement de son certificat médical (donnée de santé),
+              vérifié par l'éditeur de l'application pour le renouvellement de sa licence.
+            </span>
+          </label>
+          <button class="btn btn--primary reset__submit" type="submit" data-confirm>
+            Je donne mon accord
+          </button>
+        </form>
+
+        <p class="consent__revoke" data-revoke-box hidden>
+          <button class="btn consent__revoke-btn" type="button" data-revoke>
+            Retirer mon accord
+          </button>
+        </p>
+      </main>
+
+      <footer class="legal__footer">
+        <p>Projet indépendant — non affilié à la Fédération Française de Danse</p>
+        <a href="../">Retour à l'accueil</a>
+      </footer>
+    </div>
+  </body>
+</html>

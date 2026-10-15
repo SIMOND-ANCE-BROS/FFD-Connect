@@ -27,6 +27,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import { useSensitiveScreen } from "../../../hooks/useSensitiveScreen";
 import { RootStackParamList } from "../../../navigation/types";
 import type { LicenseRenewalDocumentType } from "../../../services/BackendService";
+import { ParentalConsentBanner } from "../../parental-consent/ParentalConsentBanner";
 import { useLicenseRenewalLogic } from "../hooks/useLicenseRenewalLogic";
 import { rejectionReasonLabel } from "../utils/renewalDecision";
 
@@ -213,6 +214,11 @@ export const LicenseRenewalScreen: React.FC<Props> = ({ navigation }) => {
         }}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Minor without a parent's consent (#61): the certificate would be
+            refused by the server — say why before the upload. */}
+        <ParentalConsentBanner
+          onPress={() => navigation.navigate("ParentalConsent")}
+        />
         {loading && !request && (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color={currentTheme.primary} />

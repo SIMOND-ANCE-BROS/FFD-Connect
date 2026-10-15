@@ -29,7 +29,7 @@ export const MAX_RENEWAL_DOCUMENTS_TO_PURGE = 200;
  *
  * Cascades Prisma (schéma) : refreshTokens, passwordResetTokens,
  * deviceTokens, notificationPrefs, partnerships, soloTeamMemberships,
- * licenseRenewalRequests (et leurs licenseRenewalDocuments).
+ * licenseRenewalRequests (et leurs licenseRenewalDocuments), parentalConsents.
  * SetNull : licence (reste propriété fédération), tracks soumis,
  * propositions de correction de musiques (auteur ET relecteur).
  * Propositions de correction de l'utilisateur : commentaire libre effacé

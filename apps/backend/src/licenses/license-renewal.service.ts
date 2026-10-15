@@ -9,6 +9,7 @@ import {
   LicenseRenewalStatus,
   Prisma,
 } from "@prisma/client";
+import { ParentalConsentQueryService } from "../parental-consent/parental-consent.query-service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
@@ -38,6 +39,7 @@ export class LicenseRenewalService {
     private blobStorage: BlobStorageService,
     private renewalDocumentFiles: RenewalDocumentFileCleaner,
     private renewalNotifications: LicenseRenewalNotificationService,
+    private parentalConsent: ParentalConsentQueryService,
   ) {}
 
   /**
@@ -123,6 +125,11 @@ export class LicenseRenewalService {
       throw new BadRequestException(
         "Seules les demandes en brouillon peuvent recevoir des documents",
       );
+    // Health data of a minor: never received, not even read by the OCR,
+    // without a parent's confirmed consent (#61, GDPR art. 8 / 9).
+    if (type === LicenseRenewalDocumentType.MEDICAL_CERTIFICATE) {
+      await this.parentalConsent.assertHealthDataAllowed(userId);
+    }
 
     // Only the whitelisted fields are kept (#224): the OCR must not be able to
     // persist raw certificate text, whatever it returns.
@@ -249,6 +256,9 @@ export class LicenseRenewalService {
       throw new BadRequestException(
         "Le certificat de licence est obligatoire pour soumettre la demande.",
       );
+    // Submitting hands the certificate to an administrator: same gate as the
+    // deposit (#61), for a draft filled before the consent was withdrawn.
+    await this.parentalConsent.assertHealthDataAllowed(userId);
 
     // Renewing is pointless when the current license already runs at least
     // as long as a renewal granted now would (#250): e.g. a license ending

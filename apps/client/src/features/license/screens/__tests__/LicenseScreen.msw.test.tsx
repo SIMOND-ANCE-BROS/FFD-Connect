@@ -13,6 +13,10 @@ import { useLicenseLogic } from "../../hooks/useLicenseLogic";
 import { LicenseScreen } from "../LicenseScreen";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
+// Parental consent banner (#61): own suite; reads the server state.
+jest.mock("../../../parental-consent/ParentalConsentBanner", () => ({
+  ParentalConsentBanner: () => null,
+}));
 jest.mock("../../../../components/NotificationBell", () => ({
   NotificationBell: () => null,
 }));

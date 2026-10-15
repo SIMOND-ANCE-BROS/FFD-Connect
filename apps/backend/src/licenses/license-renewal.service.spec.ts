@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
 } from "@nestjs/common";
 import {
@@ -13,6 +14,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
+import { ParentalConsentQueryService } from "../parental-consent/parental-consent.query-service";
 import { OcrService } from "../utils/ocr.service";
 import { LicenseRenewalService } from "./license-renewal.service";
 import { LicenseRenewalNotificationService } from "./license-renewal-notification.service";
@@ -102,6 +104,7 @@ describe("LicenseRenewalService", () => {
   };
 
   const mockCleaner = { deleteFiles: jest.fn() };
+  const mockParentalConsent = { assertHealthDataAllowed: jest.fn() };
   const mockNotifications = { sendToUsers: jest.fn(), sendToUser: jest.fn() };
 
   /** Lets the fire-and-forget notification settle. */
@@ -121,11 +124,16 @@ describe("LicenseRenewalService", () => {
         // fire-and-forget contract is part of what is tested here.
         LicenseRenewalNotificationService,
         { provide: NotificationsService, useValue: mockNotifications },
+        {
+          provide: ParentalConsentQueryService,
+          useValue: mockParentalConsent,
+        },
       ],
     }).compile();
 
     service = module.get<LicenseRenewalService>(LicenseRenewalService);
     jest.clearAllMocks();
+    mockParentalConsent.assertHealthDataAllowed.mockResolvedValue(undefined);
     mockBlob.isEnabled.mockReturnValue(true);
     mockBlob.getUploadsContainer.mockReturnValue("uploads");
     // Array form (document replacement) and interactive form (approval).
@@ -310,6 +318,68 @@ describe("LicenseRenewalService", () => {
       // Who decided stays internal: the licensee hears from the federation.
       expect(select).not.toHaveProperty("reviewedBy");
       expect(select).not.toHaveProperty("reviewedById");
+    });
+  });
+
+  describe("parental consent gate (#61)", () => {
+    const refusal = new ForbiddenException("consent required");
+
+    it("refuses a medical certificate without reading it when the gate refuses", async () => {
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+        status: LicenseRenewalStatus.DRAFT,
+        documents: [],
+      });
+      mockParentalConsent.assertHealthDataAllowed.mockRejectedValue(refusal);
+
+      await expect(
+        service.uploadRenewalDocument(
+          "user-1",
+          "req-1",
+          LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+          FILE_BUFFER,
+          BLOB_NAME,
+        ),
+      ).rejects.toBe(refusal);
+      expect(mockParentalConsent.assertHealthDataAllowed).toHaveBeenCalledWith(
+        "user-1",
+      );
+      expect(mockOcr.extractMedicalCertificateInfo).not.toHaveBeenCalled();
+      expect(mockBlob.uploadBuffer).not.toHaveBeenCalled();
+    });
+
+    it("does not gate the licence certificate (not health data)", async () => {
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.uploadRenewalDocument(
+          "user-1",
+          "req-1",
+          LicenseRenewalDocumentType.LICENSE_CERTIFICATE,
+          FILE_BUFFER,
+          BLOB_NAME,
+        ),
+      ).rejects.toThrow(NotFoundException);
+      expect(
+        mockParentalConsent.assertHealthDataAllowed,
+      ).not.toHaveBeenCalled();
+    });
+
+    it("refuses to submit a complete draft when the gate refuses", async () => {
+      mockPrisma.licenseRenewalRequest.findFirst.mockResolvedValue({
+        status: LicenseRenewalStatus.DRAFT,
+        documents: [
+          { type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE },
+          { type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE },
+        ],
+      });
+      mockParentalConsent.assertHealthDataAllowed.mockRejectedValue(refusal);
+
+      await expect(
+        service.submitRenewalRequest("user-1", "req-1"),
+      ).rejects.toBe(refusal);
+      expect(
+        mockPrisma.licenseRenewalRequest.updateMany,
+      ).not.toHaveBeenCalled();
     });
   });
 

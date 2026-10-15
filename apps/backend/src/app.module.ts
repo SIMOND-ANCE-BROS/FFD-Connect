@@ -30,6 +30,7 @@ import ffdConfig from "./config/ffd.config";
 import { HealthModule } from "./health/health.module";
 import { LicensesModule } from "./licenses/licenses.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { ParentalConsentModule } from "./parental-consent/parental-consent.module";
 import { PaymentModule } from "./payment/payment.module";
 import { RedisModule } from "./redis/redis.module";
 import { ReportsModule } from "./reports/reports.module";
@@ -94,6 +95,7 @@ import { WdsfModule } from "./wdsf/wdsf.module";
     WdsfModule,
     NotificationsModule,
     LicensesModule,
+    ParentalConsentModule,
     HealthModule,
     PaymentModule,
   ],

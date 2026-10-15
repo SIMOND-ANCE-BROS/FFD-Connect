@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react-native";
+import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
 import { BETA_NOTICES } from "../../../../constants/betaNotices";
 import { createMockScreenProps } from "../../../../utils/testUtils";
@@ -64,5 +64,33 @@ describe("RegisterScreen", () => {
     expect(getByTestId("register-beta-notice")).toBeTruthy();
     expect(getByText(BETA_NOTICES.register.message)).toBeTruthy();
     expect(getByTestId("register-license-input")).toBeTruthy();
+  });
+
+  it("hides the parent's e-mail field for an adult (#61)", async () => {
+    const { queryByTestId } = await render(
+      <RegisterScreen {...createMockScreenProps("Register", undefined)} />,
+    );
+    expect(queryByTestId("register-parent-email-input")).toBeNull();
+  });
+
+  it("asks a minor for a parent's e-mail (#61)", async () => {
+    const value = (useRegisterLogic as jest.Mock)() as {
+      state: Record<string, unknown>;
+      actions: Record<string, jest.Mock>;
+    };
+    const setParentEmail = jest.fn();
+    (useRegisterLogic as jest.Mock).mockReturnValue({
+      state: { ...value.state, isMinor: true, parentEmail: "" },
+      actions: { ...value.actions, setParentEmail },
+    });
+
+    const { getByTestId } = await render(
+      <RegisterScreen {...createMockScreenProps("Register", undefined)} />,
+    );
+    await fireEvent.changeText(
+      getByTestId("register-parent-email-input"),
+      "parent@example.fr",
+    );
+    expect(setParentEmail).toHaveBeenCalledWith("parent@example.fr");
   });
 });

@@ -6,6 +6,10 @@ import api from "../../../../services/api";
 import { ProfileScreen } from "../ProfileScreen";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
 
+// Parental consent banner (#61): own suite; reads the server state.
+jest.mock("../../../parental-consent/ParentalConsentBanner", () => ({
+  ParentalConsentBanner: () => null,
+}));
 jest.mock("../../../../context/ThemeContext");
 jest.mock("../../../../services/api", () => ({
   __esModule: true,

@@ -21,6 +21,7 @@ import {
   deviceTokenExportSelect,
   exportEventContextSelect,
   impersonationLogExportSelect,
+  parentalConsentExportSelect,
   licenseBaseSelect,
   licenseRenewalRequestExportSelect,
   notificationPreferenceExportSelect,
@@ -546,6 +547,14 @@ export class UsersService {
         refreshTokens: {
           select: refreshTokenExportSelect,
           orderBy: { createdAt: "desc" },
+          take: 100,
+        },
+        // Consentement parental (#61) : statut, dates, version des CGU et
+        // adresse MASQUÉE du parent. Ni le hash du jeton (secret), ni
+        // l'empreinte de l'adresse du parent (donnée d'un tiers).
+        parentalConsents: {
+          select: parentalConsentExportSelect,
+          orderBy: { requestedAt: "desc" },
           take: 100,
         },
         // AdminAuditLog volontairement absent : cf. arbitrages ci-dessus.
