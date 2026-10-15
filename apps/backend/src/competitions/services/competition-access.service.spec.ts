@@ -31,6 +31,8 @@ describe("CompetitionAccessService", () => {
     prisma.competition.findUnique.mockResolvedValue({
       organizer: "  dance club PARIS ",
     });
+    // Unlinked label resolves to the one club of that name (club-1).
+    prisma.club.findMany.mockResolvedValue([{ id: "club-1" }]);
   });
 
   describe("assertCanManageCheckIn", () => {
@@ -94,6 +96,7 @@ describe("CompetitionAccessService", () => {
     it("refuses a CLUB account of another club (403)", async () => {
       prisma.user.findUnique.mockResolvedValue(
         clubUser({
+          clubId: "club-2",
           clubName: "Other Club",
           club: { disabledAt: null, name: "Other Club" },
         }),
@@ -213,6 +216,7 @@ describe("CompetitionAccessService", () => {
     it("refuses a club editing another club's competition", async () => {
       prisma.user.findUnique.mockResolvedValue(
         clubUser({
+          clubId: "club-2",
           clubName: "Other Club",
           club: { disabledAt: null, name: "Other Club" },
         }),
@@ -239,6 +243,29 @@ describe("CompetitionAccessService", () => {
       await expect(
         service.assertCanManageCompetition("missing", club),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    describe("unlinked competition seen by a linked account (#408)", () => {
+      it("refuses every homonym club when the label is ambiguous", async () => {
+        prisma.club.findMany.mockResolvedValue([
+          { id: "club-1" },
+          { id: "club-2" },
+        ]);
+        prisma.user.findUnique.mockResolvedValue(clubUser());
+
+        await expect(
+          service.assertCanManageCompetition("comp-1", club),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it("refuses an account whose club is not the one the label names", async () => {
+        prisma.club.findMany.mockResolvedValue([{ id: "club-9" }]);
+        prisma.user.findUnique.mockResolvedValue(clubUser());
+
+        await expect(
+          service.assertCanManageCompetition("comp-1", club),
+        ).rejects.toThrow(ForbiddenException);
+      });
     });
 
     describe("linked competition (organizerClubId, #408)", () => {

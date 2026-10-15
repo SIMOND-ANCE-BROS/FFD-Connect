@@ -10,7 +10,11 @@ import {
   competitionOrganizerSelect,
   userRolesClubNameSelect,
 } from "../../utils/prisma-selects";
-import { findClubIdByName, isOrganizedByClub } from "../competition-organizer";
+import {
+  CompetitionOrganizerRef,
+  findClubIdByName,
+  isOrganizedByClub,
+} from "../competition-organizer";
 
 /** The authenticated caller, as set on `req.user` by the JWT strategy. */
 export interface CompetitionActor {
@@ -89,6 +93,30 @@ export class CompetitionAccessService {
     return hasRole(subject, UserRole.STAFF) || hasRole(subject, UserRole.ADMIN);
   }
 
+  /**
+   * Organiser check (#408). An unlinked competition seen by a linked account
+   * is resolved to the ONE club its label names: a label shared by homonym
+   * clubs (same name up to case) grants nobody — never a case-insensitive
+   * name match that would let both homonyms in.
+   */
+  private async isOrganizer(
+    competition: CompetitionOrganizerRef,
+    user: {
+      clubId: string | null;
+      clubName: string | null;
+      club: { name: string } | null;
+    },
+  ): Promise<boolean> {
+    if (!competition.organizerClubId && user.clubId) {
+      const clubId = await findClubIdByName(this.prisma, competition.organizer);
+      return clubId === user.clubId;
+    }
+    return isOrganizedByClub(competition, {
+      clubId: user.clubId,
+      clubNames: [user.clubName, user.club?.name],
+    });
+  }
+
   private async assertOrganizerOrStaff(
     competitionId: string,
     actor: CompetitionActor,
@@ -111,10 +139,7 @@ export class CompetitionAccessService {
     if (
       !user ||
       !hasRole(user, UserRole.CLUB) ||
-      !isOrganizedByClub(competition, {
-        clubId: user.clubId,
-        clubNames: [user.clubName, user.club?.name],
-      })
+      !(await this.isOrganizer(competition, user))
     ) {
       throw new ForbiddenException(
         "Réservé aux organisateurs de la compétition",

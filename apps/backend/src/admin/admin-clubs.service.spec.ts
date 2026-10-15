@@ -141,6 +141,8 @@ describe("AdminClubsService", () => {
       prisma.club.findUnique.mockResolvedValueOnce(current as never);
       prisma.club.findFirst.mockResolvedValue(null); // name is free
       prisma.competition.findFirst.mockResolvedValue(null); // no FFD competition
+      // Old name held by this club only (no homonym).
+      prisma.club.findMany.mockResolvedValue([{ id: "c1" }] as never);
     });
 
     it("renames, rewrites every copy of the name, and audits the diff", async () => {
@@ -166,17 +168,27 @@ describe("AdminClubsService", () => {
         where: { clubName: sameName },
         data: { clubName: "Club Z" },
       });
-      // Label of the club's competitions: linked by id, or unlinked by name.
+      // Label of the club's linked competitions…
+      expect(prisma.competition.updateMany).toHaveBeenCalledWith({
+        where: { organizerClubId: "c1" },
+        data: { organizer: "Club Z" },
+      });
+      // …and its unlinked ones (unambiguous old name), linked explicitly.
+      expect(prisma.club.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { name: { equals: "Club A", mode: "insensitive" } },
+        }),
+      );
+      expect(prisma.competition.updateMany).toHaveBeenCalledWith({
+        where: { organizerClubId: null, organizer: sameName },
+        data: { organizer: "Club Z", organizerClubId: "c1" },
+      });
       const organisedByC1 = {
         OR: [
           { organizerClubId: "c1" },
           { organizerClubId: null, organizer: sameName },
         ],
       };
-      expect(prisma.competition.updateMany).toHaveBeenCalledWith({
-        where: organisedByC1,
-        data: { organizer: "Club Z" },
-      });
       expect(prisma.club.findFirst).toHaveBeenCalledWith({
         where: {
           name: { equals: "Club Z", mode: "insensitive" },
@@ -195,6 +207,22 @@ describe("AdminClubsService", () => {
         targetId: "c1",
         before: { name: "Club A" },
         after: { name: "Club Z" },
+      });
+    });
+
+    it("never attaches a homonym's unlinked competition to the renamed club (#408)", async () => {
+      // "Club A" and "club a" both exist: the old name is ambiguous.
+      prisma.club.findMany.mockResolvedValue([
+        { id: "c1" },
+        { id: "c2" },
+      ] as never);
+
+      await service.update("admin-1", "c1", { name: "Club Z" });
+
+      expect(prisma.competition.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.competition.updateMany).toHaveBeenCalledWith({
+        where: { organizerClubId: "c1" },
+        data: { organizer: "Club Z" },
       });
     });
 

@@ -121,9 +121,24 @@ describe("Competition organising club by id (#408, integration, real DB)", () =>
       organizerClubId: club.id,
     });
     const paid = await booking(competition.id, manager.id);
+    // Still unlinked, labelled with the (unambiguous) old name.
+    const unlinked = await f.competition({
+      title: `Compétition non reliée ${suffix}`,
+      organizer: club.name.toUpperCase(),
+    });
 
     await adminClubs.update(admin.id, club.id, {
       name: `Club Nouveau Nom ${suffix}`,
+    });
+    // The rename relabels the unlinked row and links it explicitly.
+    expect(
+      await prisma.competition.findUniqueOrThrow({
+        where: { id: unlinked.id },
+        select: { organizer: true, organizerClubId: true },
+      }),
+    ).toEqual({
+      organizer: `Club Nouveau Nom ${suffix}`,
+      organizerClubId: club.id,
     });
     // The label follows the rename (display only)…
     expect(
@@ -228,6 +243,39 @@ describe("Competition organising club by id (#408, integration, real DB)", () =>
     const ids = mine.map((c) => c.id);
     expect(ids).toEqual(expect.arrayContaining([ofUpper.id]));
     expect(ids).not.toContain(ofLower.id);
+
+    // An unlinked row with an ambiguous label grants no homonym club rights.
+    for (const homonym of [upperManager, lowerManager]) {
+      await expect(
+        access.assertCanManageCompetition(unlinked.id, clubActor(homonym.id)),
+      ).rejects.toThrow(ForbiddenException);
+    }
+
+    // Renaming one homonym never attaches the ambiguous unlinked row to it
+    // (edit rights, HelloAsso payments): label and link stay untouched.
+    const { user: admin } = await f.user(UserRole.ADMIN);
+    await adminClubs.update(admin.id, upper.id, {
+      name: `Club Homonyme Renommé ${suffix}`,
+    });
+    expect(
+      await prisma.competition.findUniqueOrThrow({
+        where: { id: unlinked.id },
+        select: { organizer: true, organizerClubId: true },
+      }),
+    ).toEqual({ organizer: `Club Homonyme ${suffix}`, organizerClubId: null });
+    await expect(
+      access.assertCanManageCompetition(
+        unlinked.id,
+        clubActor(upperManager.id),
+      ),
+    ).rejects.toThrow(ForbiddenException);
+    // Its own linked competition follows the rename.
+    expect(
+      await prisma.competition.findUniqueOrThrow({
+        where: { id: ofUpper.id },
+        select: { organizer: true },
+      }),
+    ).toEqual({ organizer: `Club Homonyme Renommé ${suffix}` });
   });
 
   it("backfills unlinked competitions, listing unmatched and ambiguous ones", async () => {
