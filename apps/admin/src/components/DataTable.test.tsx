@@ -2,6 +2,7 @@ import { Checkbox } from '@mantine/core';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { type UserEvent } from '@testing-library/user-event';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router';
 import { vi } from 'vitest';
 import { columnPrefsKey } from '../lib/columnPrefs';
@@ -86,6 +87,14 @@ function Harness({
 
 let user: UserEvent;
 
+/** DataTransfer of a dragged header (jsdom has none). */
+const columnDrag = () => ({
+  setData: vi.fn(),
+  effectAllowed: '',
+  dropEffect: '',
+  types: ['application/x-ffd-column'],
+});
+
 describe('DataTable', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -95,7 +104,7 @@ describe('DataTable', () => {
   it('sorts from a header: ascending, descending, then the default order', async () => {
     const onSort = vi.fn();
     renderWithProviders(<Harness onSort={onSort} />);
-    const header = screen.getByRole('columnheader', { name: /^Nom/ });
+    const header = screen.getByRole('columnheader', { name: 'Nom' });
     expect(header).toHaveAttribute('aria-sort', 'none');
     await user.click(sortButton('Nom'));
     expect(onSort).toHaveBeenLastCalledWith({ by: 'name', order: 'asc' });
@@ -107,7 +116,7 @@ describe('DataTable', () => {
     expect(onSort).toHaveBeenLastCalledWith(null);
     expect(header).toHaveAttribute('aria-sort', 'none');
     // A column without sort field is plain text, with no aria-sort.
-    expect(screen.getByRole('columnheader', { name: /Email/ })).not.toHaveAttribute('aria-sort');
+    expect(screen.getByRole('columnheader', { name: 'Email' })).not.toHaveAttribute('aria-sort');
   });
 
   it('sorts with the keyboard', async () => {
@@ -326,6 +335,58 @@ describe('DataTable', () => {
       expect(onSort).not.toHaveBeenCalled();
     });
 
+    it('keeps fitting the screen after a click on the edge, or a move within 2 px', () => {
+      mockContainerWidth(1000);
+      renderWithProviders(<Harness />);
+      const edge = handle('Nom');
+      fireEvent.pointerDown(edge, { button: 0, clientX: 100, pointerId: 1 });
+      fireEvent.pointerUp(edge, { clientX: 100, pointerId: 1 });
+      fireEvent.pointerDown(edge, { button: 0, clientX: 100, pointerId: 1 });
+      fireEvent.pointerMove(edge, { clientX: 102, pointerId: 1 });
+      fireEvent.pointerUp(edge, { clientX: 102, pointerId: 1 });
+      expect(localStorage.getItem(columnPrefsKey('test'))).toBeNull();
+      expect(screen.getByRole('table').parentElement).not.toHaveClass('app-table-scroll');
+      expect(colWidths().every((w) => w.endsWith('%'))).toBe(true);
+    });
+
+    it.each(['pointerCancel', 'lostPointerCapture'] as const)(
+      'undoes a drag ended by %s, saving nothing, and frees the header for a move',
+      (end) => {
+        renderWithProviders(<Harness />);
+        const edge = handle('Nom');
+        fireEvent.pointerDown(edge, { button: 0, clientX: 100, pointerId: 1 });
+        fireEvent.pointerMove(edge, { clientX: 300, pointerId: 1 });
+        expect(colWidths()).toContain('310px');
+        fireEvent[end](edge, { clientX: 0, pointerId: 1 });
+        expect(colWidths()).not.toContain('310px');
+        expect(colWidths()).not.toContain('60px');
+        expect(localStorage.getItem(columnPrefsKey('test'))).toBeNull();
+        // The resize is over: dragging a header moves it again.
+        const [name, email] = screen.getAllByRole('columnheader');
+        const dataTransfer = columnDrag();
+        fireEvent.dragStart(email, { dataTransfer });
+        fireEvent.dragOver(name, { dataTransfer });
+        fireEvent.drop(name, { dataTransfer });
+        expect(headers()).toEqual(['Email', 'Nom']);
+      },
+    );
+
+    it('always tells assistive tech the width of the column', () => {
+      localStorage.setItem(columnPrefsKey('test'), JSON.stringify({ widths: { email: 300 } }));
+      renderWithProviders(<Harness />);
+      expect(handle('Email')).toHaveAttribute('aria-valuenow', '300');
+      expect(handle('Nom')).toHaveAttribute('aria-valuenow', '110');
+    });
+
+    it('names a header by its column only, not by the controls inside', async () => {
+      renderWithProviders(<Harness />);
+      await openColumnFilter(user, 'Email');
+      await user.click(screen.getByLabelText('Comptes actifs'));
+      expect(
+        screen.getByRole('columnheader', { name: 'Email (filtre actif)' }),
+      ).toBeInTheDocument();
+    });
+
     it('fits a column to its content on a double-click or Enter', async () => {
       renderWithProviders(<Harness />);
       const cell = screen.getByText('m@x.fr');
@@ -368,13 +429,75 @@ describe('DataTable', () => {
     it('moves a column by dragging its header onto another one', () => {
       renderWithProviders(<Harness />);
       const [name, email] = screen.getAllByRole('columnheader');
-      const dataTransfer = { setData: vi.fn(), effectAllowed: '', dropEffect: '' };
+      const dataTransfer = columnDrag();
       fireEvent.dragStart(email, { dataTransfer });
       fireEvent.dragOver(name, { dataTransfer });
       expect(name).toHaveClass('app-th-drop-before');
       fireEvent.drop(name, { dataTransfer });
       expect(headers()).toEqual(['Email', 'Nom']);
       expect(screen.getAllByRole('columnheader')[0]).not.toHaveClass('app-th-drop-before');
+    });
+
+    it('does not move a column when the drag starts on the resize edge', () => {
+      renderWithProviders(<Harness />);
+      const [name, email] = screen.getAllByRole('columnheader');
+      const dataTransfer = columnDrag();
+      fireEvent.pointerDown(
+        screen.getByRole('separator', { name: 'Redimensionner la colonne Email' }),
+        { button: 0, clientX: 100, pointerId: 1 },
+      );
+      fireEvent.dragStart(email, { dataTransfer });
+      fireEvent.dragOver(name, { dataTransfer });
+      fireEvent.drop(name, { dataTransfer });
+      expect(dataTransfer.setData).not.toHaveBeenCalled();
+      expect(headers()).toEqual(['Nom', 'Email']);
+    });
+
+    it('ignores what is not one of its headers: a dragged text, a portalled filter menu', async () => {
+      function PortalFilter() {
+        return (
+          <DataTable
+            tableId="portal"
+            columns={[
+              { key: 'name', label: 'Nom', required: true, cell: (r: Row) => r.name },
+              {
+                key: 'email',
+                label: 'Email',
+                cell: (r: Row) => r.email,
+                filter: {
+                  active: false,
+                  content: createPortal(<input aria-label="Texte du filtre" />, document.body),
+                },
+              },
+            ]}
+            rows={ROWS}
+            rowKey={(r) => r.id}
+            sort={null}
+            onSortChange={() => {}}
+            loading={false}
+            empty={<p>Rien</p>}
+            renderCard={(r) => <p>Carte {r.name}</p>}
+          />
+        );
+      }
+      renderWithProviders(<PortalFilter />);
+      const [name, email] = screen.getAllByRole('columnheader');
+      fireEvent.dragStart(name, { dataTransfer: columnDrag() });
+      // A text dragged over a header is not a column: no drop target, the browser handles it.
+      const text = { ...columnDrag(), types: ['text/plain'] };
+      expect(fireEvent.dragOver(email, { dataTransfer: text })).toBe(true);
+      expect(fireEvent.drop(email, { dataTransfer: text })).toBe(true);
+      expect(email).not.toHaveClass('app-th-drop-before');
+
+      // The filter menu is out of the header in the DOM, inside it in React: not the header's.
+      await openColumnFilter(user, 'Email');
+      const input = screen.getByRole('textbox', { name: 'Texte du filtre' });
+      expect(fireEvent.dragOver(input, { dataTransfer: columnDrag() })).toBe(true);
+      expect(fireEvent.drop(input, { dataTransfer: columnDrag() })).toBe(true);
+      expect(screen.getAllByRole('columnheader').map((h) => h.getAttribute('aria-label'))).toEqual([
+        'Nom',
+        'Email',
+      ]);
     });
 
     it('keeps the order after a reload and restores the default on request', async () => {

@@ -291,11 +291,17 @@ export function naturalWidth(cell: HTMLElement): number {
 interface ResizeProps {
   /** Current width in px, measured from the header when not set by hand. */
   width: (header: HTMLElement | null) => number;
+  /** Width announced to assistive tech (the one set by hand, else the fitted one). */
+  valueNow: number;
   /** `persist`: the drag or the key press is over, the width is remembered. */
   onResize: (width: number, persist: boolean) => void;
   onAutofit: () => void;
-  onDragging: (dragging: boolean) => void;
+  /** A drag starts (true) or ends (false); `cancelled`: its width is undone. */
+  onDragging: (dragging: boolean, cancelled?: boolean) => void;
 }
+
+/** Below this move, in px, pressing the edge is a click: nothing is resized. */
+const DRAG_THRESHOLD = 2;
 
 /**
  * Edge of a header that resizes its column (#670): drag it, or focus it and
@@ -305,35 +311,46 @@ interface ResizeProps {
 function ResizeHandle({
   label,
   width,
+  valueNow,
   onResize,
   onAutofit,
   onDragging,
 }: ResizeProps & { label: string }) {
-  const start = useRef<{ x: number; width: number } | null>(null);
-  const [current, setCurrent] = useState<number | null>(null);
+  const start = useRef<{ x: number; width: number; moved: boolean } | null>(null);
   const header = (element: HTMLElement) => element.closest('th');
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
-    const initial = width(header(event.currentTarget));
-    start.current = { x: event.clientX, width: initial };
-    setCurrent(initial);
+    start.current = { x: event.clientX, width: width(header(event.currentTarget)), moved: false };
     onDragging(true);
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
-  const resizeTo = (event: PointerEvent<HTMLDivElement>, persist: boolean) => {
-    if (!start.current) return;
-    const next = clampColumnWidth(start.current.width + event.clientX - start.current.x);
-    setCurrent(next);
-    onResize(next, persist);
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = start.current;
+    if (!drag) return;
+    const delta = event.clientX - drag.x;
+    // A press without a real move stays a click: the table keeps fitting the screen (#556).
+    if (!drag.moved && Math.abs(delta) <= DRAG_THRESHOLD) return;
+    drag.moved = true;
+    onResize(clampColumnWidth(drag.width + delta), false);
   };
-  const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
-    resizeTo(event, true);
+  /** End of a drag: `commit` remembers the width reached, else it is undone. */
+  const finish = (event: PointerEvent<HTMLDivElement>, commit: boolean) => {
+    const drag = start.current;
+    if (!drag) return;
     start.current = null;
-    onDragging(false);
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (commit && drag.moved && Math.abs(event.clientX - drag.x) > DRAG_THRESHOLD) {
+      onResize(clampColumnWidth(drag.width + event.clientX - drag.x), true);
+      onDragging(false);
+    } else {
+      // Cancelled (its coordinates mean nothing), or no real move: nothing is kept.
+      onDragging(false, drag.moved);
+    }
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Enter') {
@@ -345,9 +362,7 @@ function ResizeHandle({
     if (direction === 0) return;
     event.preventDefault();
     const step = event.shiftKey ? RESIZE_BIG_STEP : RESIZE_STEP;
-    const next = clampColumnWidth(width(header(event.currentTarget)) + direction * step);
-    setCurrent(next);
-    onResize(next, true);
+    onResize(clampColumnWidth(width(header(event.currentTarget)) + direction * step), true);
   };
 
   return (
@@ -357,17 +372,18 @@ function ResizeHandle({
       aria-label={`Redimensionner la colonne ${label}`}
       aria-valuemin={MIN_COLUMN_WIDTH}
       aria-valuemax={MAX_COLUMN_WIDTH}
-      aria-valuenow={current ?? undefined}
-      aria-valuetext={current === null ? undefined : `${current} px`}
+      aria-valuenow={valueNow}
+      aria-valuetext={`${valueNow} px`}
       title="Glisser pour redimensionner, double-clic pour ajuster au contenu"
       tabIndex={0}
       className="app-col-resize"
       draggable={false}
-      onFocus={(event) => setCurrent(width(header(event.currentTarget)))}
       onPointerDown={onPointerDown}
-      onPointerMove={(event) => resizeTo(event, false)}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerMove={onPointerMove}
+      onPointerUp={(event) => finish(event, true)}
+      onPointerCancel={(event) => finish(event, false)}
+      // Capture lost without a pointerup (window blur, element removed…): undone.
+      onLostPointerCapture={(event) => finish(event, false)}
       // A click on the edge neither sorts nor opens anything.
       onClick={(event) => event.stopPropagation()}
       onDoubleClick={(event) => {
@@ -414,6 +430,8 @@ function HeaderCell<Row>({
   const ariaSort = order === 'asc' ? 'ascending' : order === 'desc' ? 'descending' : 'none';
   return (
     <Table.Th
+      // The column's own name: not the names of the controls inside, read on every cell.
+      aria-label={column.filter?.active ? `${column.label} (filtre actif)` : column.label}
       aria-sort={sortField ? ariaSort : undefined}
       data-col={column.key}
       className={drag.dropSide ? `app-th app-th-drop-${drag.dropSide}` : 'app-th'}
@@ -788,13 +806,34 @@ export function DataTable<Row>({
     prefs.widths[c.key] ??
     (Math.round(header?.getBoundingClientRect().width ?? 0) || (c.minWidth ?? DEFAULT_MIN_WIDTH));
 
+  /** Width before a drag of the edge, restored when the drag is cancelled. */
+  const widthBeforeDrag = useRef<number | undefined>(undefined);
+  const restoreWidth = (key: string, previous: number | undefined) =>
+    // Nothing was saved during the drag: nothing to save now either.
+    changePrefs((current) => {
+      const widths = { ...current.widths };
+      if (previous === undefined) delete widths[key];
+      else widths[key] = previous;
+      return { ...current, widths };
+    }, false);
+
   const clearDrag = () => {
     setDragged(null);
     setDropTarget(null);
   };
+  /**
+   * A drag event of this header itself: React also bubbles those of the filter
+   * popover (portalled out of the header in the DOM, not in the React tree).
+   */
+  const ownEvent = (event: DragEvent<HTMLElement>) =>
+    event.target instanceof Node && event.currentTarget.contains(event.target);
+  /** A header being dragged, not a text dropped into a filter input. */
+  const carriesColumn = (event: DragEvent<HTMLElement>) =>
+    Array.from(event.dataTransfer?.types ?? []).includes(COLUMN_DRAG_TYPE);
   const dragProps = (c: DataTableColumn<Row>): HeaderDragProps => ({
     dropSide: dropTarget?.key === c.key ? dropTarget.side : null,
     onStart: (event) => {
+      if (!ownEvent(event)) return;
       // Dragging the edge resizes the column: it does not move it.
       if (resizing.current) {
         event.preventDefault();
@@ -805,6 +844,7 @@ export function DataTable<Row>({
       setDragged(c.key);
     },
     onOver: (event) => {
+      if (!ownEvent(event) || !carriesColumn(event)) return;
       if (!dragged || dragged === c.key) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
@@ -815,8 +855,9 @@ export function DataTable<Row>({
       }
     },
     onDrop: (event) => {
+      if (!ownEvent(event) || !carriesColumn(event) || !dragged) return;
       event.preventDefault();
-      if (dragged && dragged !== c.key) {
+      if (dragged !== c.key) {
         const side = dropTarget?.key === c.key ? dropTarget.side : 'before';
         const source = dragged;
         changePrefs((current) => ({ ...current, order: dropKey(orderKeys, source, c.key, side) }));
@@ -853,6 +894,18 @@ export function DataTable<Row>({
     manualWidths,
   );
   const shown = visible.filter((c) => fit.shown.includes(c.key));
+  /** Width in px of a shown column, as laid out (approximate while fitting the screen). */
+  const shownWidth = (c: DataTableColumn<Row>): number => {
+    const manual = prefs.widths[c.key];
+    if (manual !== undefined) return manual;
+    const laid = fit.widths[c.key] ?? '';
+    const value = Number.parseFloat(laid);
+    if (laid.endsWith('px') && Number.isFinite(value)) return Math.round(value);
+    if (laid.endsWith('%') && Number.isFinite(value) && containerWidth > 0) {
+      return Math.round((value / 100) * containerWidth);
+    }
+    return c.minWidth ?? DEFAULT_MIN_WIDTH;
+  };
   const hidden = visible.filter((c) => fit.hidden.includes(c.key));
   const withDetail = hidden.length > 0;
   const allExpanded = rows.length > 0 && rows.every((row) => expanded.has(rowKey(row)));
@@ -958,10 +1011,16 @@ export function DataTable<Row>({
                     onSortChange={onSortChange}
                     resize={{
                       width: (header) => widthOf(c, header),
+                      valueNow: shownWidth(c),
                       onResize: (width, persist) => setWidth(c.key, width, persist),
                       onAutofit: () => autofit(c.key),
-                      onDragging: (dragging) => {
+                      onDragging: (dragging, cancelled = false) => {
                         resizing.current = dragging;
+                        if (dragging) {
+                          widthBeforeDrag.current = prefs.widths[c.key];
+                        } else if (cancelled) {
+                          restoreWidth(c.key, widthBeforeDrag.current);
+                        }
                       },
                     }}
                     drag={dragProps(c)}

@@ -316,7 +316,7 @@ describe('UsersPage', () => {
       },
     });
     expect(screen.getByRole('textbox', { name: 'Rechercher un utilisateur' })).toHaveValue('mar');
-    expect(screen.getByRole('columnheader', { name: /^Nom/ })).toHaveAttribute(
+    expect(screen.getByRole('columnheader', { name: 'Nom' })).toHaveAttribute(
       'aria-sort',
       'descending',
     );
