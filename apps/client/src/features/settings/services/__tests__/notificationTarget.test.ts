@@ -34,6 +34,17 @@ describe("notificationTargetOf", () => {
     }
   });
 
+  it("opens the club's refunds due for a refund-owed alert (#516)", () => {
+    expect(
+      notificationTargetOf({
+        type: "club_payment_refund_owed",
+        competitionId: "comp-1",
+        bookingId: "booking-1",
+        orderId: "98765",
+      }),
+    ).toEqual({ screen: "ClubRefundsDue", params: undefined });
+  });
+
   // Moderation lives in the back-office: no mobile screen to open.
   it("designates nothing for the administrators' renewal to review", () => {
     expect(

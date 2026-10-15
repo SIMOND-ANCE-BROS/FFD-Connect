@@ -3,6 +3,7 @@ import React from "react";
 import { mockNavigation } from "../../../../__tests__/mocks/mockNavigation";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useAuthRepository } from "../../../../features/auth/context/AuthContext";
+import { clubRefundsDueControllerList } from "../../../../api/generated/sdk.gen";
 import { ClubService } from "../../services/ClubService";
 import { ClubDashboardScreen } from "../ClubDashboardScreen";
 
@@ -41,6 +42,13 @@ jest.mock("@react-navigation/native", () => ({
 
 // Mock Club Service
 jest.mock("../../services/ClubService");
+
+// Configure-client side-effect is irrelevant in tests.
+jest.mock("../../../../api/client", () => ({}));
+jest.mock("../../../../api/generated/sdk.gen", () => ({
+  clubRefundsDueControllerList: jest.fn(),
+}));
+const refundsDueMock = clubRefundsDueControllerList as jest.Mock;
 
 describe("ClubDashboardScreen", () => {
   const mockTheme = {
@@ -108,6 +116,67 @@ describe("ClubDashboardScreen", () => {
       { id: "m1" },
       { id: "m2" },
     ]);
+    refundsDueMock.mockResolvedValue({
+      data: { data: [], meta: { total: 0, skip: 0, take: 1, hasMore: false } },
+    });
+  });
+
+  const renderDashboard = () =>
+    render(
+      <ClubDashboardScreen
+        navigation={
+          mockNavigation as unknown as NonNullable<
+            Parameters<typeof ClubDashboardScreen>[0]
+          >["navigation"]
+        }
+        route={
+          {
+            key: "ClubDashboard",
+            name: "ClubDashboard",
+            params: undefined,
+          } as unknown as NonNullable<
+            Parameters<typeof ClubDashboardScreen>[0]
+          >["route"]
+        }
+      />,
+    );
+
+  it("shows the number of refunds due and opens their list (#516)", async () => {
+    refundsDueMock.mockResolvedValue({
+      data: { data: [], meta: { total: 3, skip: 0, take: 1, hasMore: true } },
+    });
+
+    const { getByText, getByTestId } = await renderDashboard();
+
+    await waitFor(() => {
+      expect(getByText("3 remboursements à effectuer")).toBeTruthy();
+    });
+    expect(refundsDueMock).toHaveBeenCalledWith({ query: { take: 1 } });
+
+    await fireEvent.press(getByTestId("club-dashboard-refunds-row"));
+    expect(mockNavigation.navigate).toHaveBeenCalledWith("ClubRefundsDue");
+  });
+
+  it("says when a single refund is due", async () => {
+    refundsDueMock.mockResolvedValue({
+      data: { data: [], meta: { total: 1, skip: 0, take: 1, hasMore: true } },
+    });
+
+    const { getByText } = await renderDashboard();
+
+    await waitFor(() => {
+      expect(getByText("1 remboursement à effectuer")).toBeTruthy();
+    });
+  });
+
+  it("keeps the refunds entry with a neutral subtitle when the count fails", async () => {
+    refundsDueMock.mockRejectedValue(new Error("network"));
+
+    const { getByText } = await renderDashboard();
+
+    await waitFor(() => {
+      expect(getByText("Paiements HelloAsso à rembourser")).toBeTruthy();
+    });
   });
 
   it("renders club name and navigates to members", async () => {

@@ -2,6 +2,7 @@ import {
   ChevronRight,
   ClipboardList,
   LucideIcon,
+  ReceiptEuro,
   Settings as SettingsIcon,
   Trophy,
   User,
@@ -34,6 +35,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { createLogger } from "../../../utils/logger";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 import { ClubService } from "../services/ClubService";
+// Side-effect : configure le client OpenAPI généré (baseUrl + auth + refresh).
+import "../../../api/client";
+import { clubRefundsDueControllerList } from "../../../api/generated/sdk.gen";
 import type { ClubRegistrationMode } from "../services/ClubService";
 import {
   DEFAULT_CLUB_DASHBOARD_WIDGETS,
@@ -187,6 +191,9 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
   const [registrationMode, setRegistrationMode] =
     React.useState<ClubRegistrationMode | null>(null);
 
+  // Remboursements HelloAsso dus par le club (#516) ; null = inconnu.
+  const [refundsDue, setRefundsDue] = React.useState<number | null>(null);
+
   const [isEditing, setIsEditing] = React.useState<boolean>(false);
 
   const persistWidgets = React.useCallback(
@@ -225,7 +232,18 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
       setRegistrationMode(null);
     }
 
-    // 4. Dashboard widgets configuration (per user)
+    // 4. Refunds owed by the club (#516): the total only (one-row page).
+    try {
+      const { data } = await clubRefundsDueControllerList({
+        query: { take: 1 },
+      });
+      setRefundsDue(data ? data.meta.total : null);
+    } catch (error) {
+      logger.error("Failed to load club refunds due", error);
+      setRefundsDue(null);
+    }
+
+    // 5. Dashboard widgets configuration (per user)
     try {
       const raw = await auth.getClubDashboardConfig();
       if (raw) {
@@ -594,6 +612,23 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
           theme={theme}
           iconSize={24}
           accessibilityHint="Ouvre la gestion des équipes solo"
+        />
+
+        <MenuRow
+          icon={ReceiptEuro}
+          label="Remboursements"
+          subtitle={
+            refundsDue === null || refundsDue === 0
+              ? "Paiements HelloAsso à rembourser"
+              : refundsDue === 1
+                ? "1 remboursement à effectuer"
+                : `${refundsDue} remboursements à effectuer`
+          }
+          color="#F44336"
+          onPress={() => navigateTo("ClubRefundsDue")}
+          testID="club-dashboard-refunds-row"
+          theme={theme}
+          accessibilityHint="Ouvre la liste des paiements HelloAsso à rembourser"
         />
 
         {registrationMode === "CLUB_AND_MEMBERS_PENDING" && (

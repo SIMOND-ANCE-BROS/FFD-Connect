@@ -206,6 +206,12 @@ jest.mock("../../features/club/screens/ClubMemberEditorScreen", () => ({
     return <Text testID="screen-ClubMemberEditor">ClubMemberEditor</Text>;
   },
 }));
+jest.mock("../../features/club/screens/ClubRefundsDueScreen", () => ({
+  ClubRefundsDueScreen: () => {
+    const { Text } = require("react-native");
+    return <Text testID="screen-ClubRefundsDue">ClubRefundsDue</Text>;
+  },
+}));
 jest.mock("../../features/club/screens/ClubRegistrationsScreen", () => ({
   ClubRegistrationsScreen: () => {
     const { Text } = require("react-native");
