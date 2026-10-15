@@ -8,7 +8,6 @@ import React, {
   useState,
 } from "react";
 import {
-  AccessibilityInfo,
   ActivityIndicator,
   Alert,
   Animated,
@@ -35,6 +34,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
 import { BackendService } from "../../../services/BackendService";
 import { useAuthStore } from "../../../stores/auth.store";
+import { announce } from "../../../utils/announce";
 import { logger } from "../../../utils/logger";
 import { SearchBar } from "../../../components/SearchBar";
 import { FilterSheet } from "../../../components/FilterSheet";
@@ -225,7 +225,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
   const showQueueNotice = useCallback((message: string) => {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
     setQueueNotice(message);
-    AccessibilityInfo.announceForAccessibility(message);
+    announce(message);
     noticeTimer.current = setTimeout(() => setQueueNotice(null), 2500);
   }, []);
 
@@ -565,6 +565,8 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
             </TouchableOpacity>
             <TouchableOpacity
               accessibilityRole="button"
+              accessibilityLabel="Mode compétition"
+              accessibilityHint="Prépare l'enchaînement des danses d'une compétition"
               testID="library-performance-button"
               onPress={() => navigation.navigate("PerformanceSetup")}
               style={[

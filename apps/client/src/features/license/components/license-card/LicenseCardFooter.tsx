@@ -28,7 +28,7 @@ const FooterColumn: React.FC<FooterColumnProps> = ({
   config,
   bold = false,
 }) => (
-  <View style={styles.footerColumn}>
+  <View style={styles.footerColumn} accessible>
     <AppText
       variant="caption"
       weight={bold ? "bold" : undefined}
@@ -111,7 +111,11 @@ export const LicenseCardFooter: React.FC<LicenseCardFooterProps> = ({
         </View>
       ) : null}
 
-      <View style={styles.validityContainer} testID="license-card-validity">
+      <View
+        style={styles.validityContainer}
+        testID="license-card-validity"
+        accessible
+      >
         <AppText
           variant="caption"
           style={[styles.validityLabel, { color: config.labelColor }]}
@@ -130,6 +134,8 @@ export const LicenseCardFooter: React.FC<LicenseCardFooterProps> = ({
       {!isFFD && (
         <TouchableOpacity
           accessibilityRole="button"
+          accessibilityLabel="Contacter ma fédération"
+          accessibilityHint="Ouvre un e-mail au secrétariat de la fédération"
           style={[
             styles.contactButton,
             { backgroundColor: config.highlightColor },

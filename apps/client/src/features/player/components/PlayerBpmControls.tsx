@@ -152,6 +152,9 @@ export const PlayerBpmControls = ({
             locked ? "Déverrouiller le tempo" : "Verrouiller le tempo"
           }
           accessibilityHint="Empêche toute modification accidentelle du tempo"
+          accessibilityState={{ checked: locked }}
+          // 26pt icon button: extend the touch area to 44pt.
+          hitSlop={9}
           style={styles.tempoLockButton}
         >
           {locked ? (
@@ -170,6 +173,12 @@ export const PlayerBpmControls = ({
         key={rangeKey}
         style={styles.speedSliderSmall}
         testID="audio-player-bpm-slider"
+        accessibilityLabel="Tempo en mesures par minute"
+        accessibilityHint="Balayez vers le haut ou le bas pour changer le tempo"
+        accessibilityState={{ disabled: locked }}
+        accessibilityValue={{
+          text: `${(dragValue ?? bpm).toFixed(1)} MPM`,
+        }}
         value={dragValue === null ? bpm : frozenValueRef.current}
         minimumValue={minMpm}
         maximumValue={maxMpm}
@@ -194,8 +203,11 @@ export const PlayerBpmControls = ({
       <View style={styles.speedMarkersSmall}>
         <TouchableOpacity
           testID="audio-player-bpm-min-button"
+          accessibilityRole="button"
           accessibilityLabel="MPM minimum"
           accessibilityHint="Règle la vitesse au minimum"
+          accessibilityState={{ disabled: locked }}
+          hitSlop={12}
           disabled={locked}
           onPress={() => {
             changeBpm(minMpm).catch(() => {});
@@ -209,8 +221,11 @@ export const PlayerBpmControls = ({
         </TouchableOpacity>
         <TouchableOpacity
           testID="audio-player-bpm-reset-button"
+          accessibilityRole="button"
           accessibilityLabel="Réinitialiser le MPM"
           accessibilityHint="Rétablit la vitesse originale de la musique"
+          accessibilityState={{ disabled: locked }}
+          hitSlop={12}
           disabled={locked}
           onPress={() => {
             resetBpm().catch(() => {});
@@ -229,8 +244,11 @@ export const PlayerBpmControls = ({
         </TouchableOpacity>
         <TouchableOpacity
           testID="audio-player-bpm-max-button"
+          accessibilityRole="button"
           accessibilityLabel="MPM maximum"
           accessibilityHint="Règle la vitesse au maximum"
+          accessibilityState={{ disabled: locked }}
+          hitSlop={12}
           disabled={locked}
           onPress={() => {
             changeBpm(maxMpm).catch(() => {});

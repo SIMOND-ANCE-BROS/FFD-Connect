@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
+import { joinA11yLabel } from "../../../utils/a11y";
 import { useProgress } from "../../../utils/TrackPlayerWrapper";
 import { usePlayer } from "../context/PlayerContext";
 
@@ -101,8 +102,30 @@ export const MiniPlayer = ({
       ]}
       {...panResponder.panHandlers}
     >
+      {/* The play button is a SIBLING of this touchable, not a child: a
+          touchable merges its subtree into one VoiceOver element, which made
+          the nested play button unreachable. Swipe-to-close has no screen
+          reader equivalent, hence the custom "Fermer le lecteur" action. */}
       <TouchableOpacity
         accessibilityRole="button"
+        accessibilityLabel={joinA11yLabel([
+          "Lecteur",
+          currentTrack.title,
+          currentTrack.style,
+          currentTrack.artist,
+        ])}
+        accessibilityHint="Ouvre le lecteur en plein écran"
+        accessibilityActions={[
+          { name: "activate" },
+          { name: "dismiss", label: "Fermer le lecteur" },
+        ]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === "dismiss") {
+            resetPlayer().catch(() => {});
+          } else {
+            navigation.navigate("AudioPlayer");
+          }
+        }}
         activeOpacity={0.9}
         onPress={() => navigation.navigate("AudioPlayer")}
         style={styles.innerContainer}
@@ -154,30 +177,28 @@ export const MiniPlayer = ({
           >
             {formatTime(progress.position)} / {formatTime(progress.duration)}
           </AppText>
-          <TouchableOpacity
-            accessibilityRole="button"
-            onPress={() => {
-              togglePlayback().catch(() => {});
-            }}
-            style={styles.playButton}
-            testID="mini-player-play-button"
-          >
-            {isPlaying ? (
-              <Pause
-                color={currentTheme.primary}
-                size={24}
-                fill={currentTheme.primary}
-                testID="mini-player-pause-icon"
-              />
-            ) : (
-              <Play
-                color={currentTheme.text}
-                size={24}
-                fill={currentTheme.text}
-              />
-            )}
-          </TouchableOpacity>
         </View>
+      </TouchableOpacity>
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel={isPlaying ? "Pause" : "Lecture"}
+        accessibilityHint="Met en pause ou reprend la musique"
+        onPress={() => {
+          togglePlayback().catch(() => {});
+        }}
+        style={styles.playButton}
+        testID="mini-player-play-button"
+      >
+        {isPlaying ? (
+          <Pause
+            color={currentTheme.primary}
+            size={24}
+            fill={currentTheme.primary}
+            testID="mini-player-pause-icon"
+          />
+        ) : (
+          <Play color={currentTheme.text} size={24} fill={currentTheme.text} />
+        )}
       </TouchableOpacity>
     </Animated.View>
   );
@@ -198,12 +219,15 @@ const styles = StyleSheet.create({
     elevation: 5,
     borderWidth: 1,
     zIndex: 100,
+    flexDirection: "row",
+    alignItems: "center",
   },
   innerContainer: {
     flex: 1,
+    alignSelf: "stretch",
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
+    paddingLeft: 10,
   },
   imageContainer: {
     width: 40,
@@ -241,5 +265,11 @@ const styles = StyleSheet.create({
   },
   playButton: {
     padding: 10,
+    // Takes over the right inset the inner row used to provide.
+    marginRight: 10,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

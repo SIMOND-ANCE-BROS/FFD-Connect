@@ -16,6 +16,8 @@ export const LibraryGridItem = React.memo(
   ({ item, currentTheme, isDark, onPress }: LibraryGridItemProps) => (
     <TouchableOpacity
       accessibilityRole="button"
+      accessibilityLabel={`${item.title}, ${item.data.length} titres`}
+      accessibilityHint="Affiche les titres de cette catégorie"
       testID={`library-section-${item.title}`}
       style={[
         styles.gridItem,

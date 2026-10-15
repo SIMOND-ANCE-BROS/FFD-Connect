@@ -186,6 +186,10 @@ export const audioPlayerStyles = StyleSheet.create({
   controlButton: {
     padding: 10,
     alignItems: "center",
+    justifyContent: "center",
+    // >= 44pt touch target (the 22pt shuffle/repeat icons were 42pt).
+    minWidth: 44,
+    minHeight: 44,
   },
   dotIndicator: {
     height: 4,

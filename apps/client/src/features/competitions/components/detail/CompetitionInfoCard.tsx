@@ -17,7 +17,7 @@ export function CompetitionInfoCard({
 }: CompetitionInfoCardProps) {
   return (
     <View style={[styles.infoCard, { backgroundColor: currentTheme.surface }]}>
-      <View style={styles.infoRow}>
+      <View style={styles.infoRow} accessible>
         <Calendar
           size={20}
           color={currentTheme.primary}
@@ -28,14 +28,14 @@ export function CompetitionInfoCard({
             Date
           </AppText>
           <AppText variant="body" color={currentTheme.text}>
-            {new Date(details.date).toLocaleDateString()}
+            {new Date(details.date).toLocaleDateString("fr-FR")}
           </AppText>
         </View>
       </View>
 
       <View style={styles.separator} />
 
-      <View style={styles.infoRow}>
+      <View style={styles.infoRow} accessible>
         <MapPin
           size={20}
           color={currentTheme.primary}
@@ -55,7 +55,7 @@ export function CompetitionInfoCard({
 
       <View style={styles.separator} />
 
-      <View style={styles.infoRow}>
+      <View style={styles.infoRow} accessible>
         <User
           size={20}
           color={currentTheme.primary}
@@ -74,7 +74,7 @@ export function CompetitionInfoCard({
       {!!details.organizerEmail && (
         <>
           <View style={styles.separator} />
-          <View style={styles.infoRow}>
+          <View style={styles.infoRow} accessible>
             <Mail
               size={20}
               color={currentTheme.primary}

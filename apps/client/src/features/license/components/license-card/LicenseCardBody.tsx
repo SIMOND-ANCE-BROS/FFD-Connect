@@ -69,7 +69,11 @@ const InfoCell: React.FC<{
   config: LicenseConfig;
   fullWidth?: boolean;
 }> = ({ field, config, fullWidth = false }) => (
-  <View style={[styles.infoCell, fullWidth && styles.infoCellFullWidth]}>
+  // One screen-reader stop per field: "Numéro, FFD-2025-12345".
+  <View
+    accessible
+    style={[styles.infoCell, fullWidth && styles.infoCellFullWidth]}
+  >
     {/* No line limit: a label wraps rather than being cut with an ellipsis
         (narrow phones, large accessibility font sizes). */}
     <AppText
@@ -187,6 +191,8 @@ export const LicenseCardBody: React.FC<LicenseCardBodyProps> = ({
             source={{ uri: user.photoUrl ?? photoUri ?? undefined }}
             style={styles.photo}
             contentFit="cover"
+            accessible
+            accessibilityRole="image"
             accessibilityLabel="Photo de licence"
             accessibilityHint="Photo d'identité du titulaire de la licence"
           />
@@ -198,16 +204,22 @@ export const LicenseCardBody: React.FC<LicenseCardBodyProps> = ({
       {!onShowQr ? null : isFFD ? (
         <TouchableOpacity
           accessibilityRole="button"
+          accessibilityLabel="Afficher le QR code de la licence"
+          accessibilityHint="Ouvre le QR code en grand pour le contrôle"
           onPress={onShowQr}
           style={styles.qrThumbnail}
+          testID="license-card-show-qr"
         >
           <QRCodeView value={qrData} size={56} />
         </TouchableOpacity>
       ) : (
         <TouchableOpacity
           accessibilityRole="button"
+          accessibilityLabel="Afficher le code-barres de la licence"
+          accessibilityHint="Ouvre le code-barres en grand pour le contrôle"
           onPress={onShowQr}
           style={styles.barcodeWrapper}
+          testID="license-card-show-barcode"
           activeOpacity={0.7}
         >
           <Barcode value={user.licenseNumber} width={80} />

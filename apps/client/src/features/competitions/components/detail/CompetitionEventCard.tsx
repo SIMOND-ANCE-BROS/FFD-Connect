@@ -6,6 +6,7 @@ import type { AppTheme } from "../../../../context/ThemeContext";
 import type { Event } from "../../context/CompetitionContext";
 import { getEligibilityReasonLabel, styles } from "./competition-detail.styles";
 import { formatDiscipline } from "../../../../utils/discipline";
+import { joinA11yLabel } from "../../../../utils/a11y";
 
 interface CompetitionEventCardProps {
   currentTheme: AppTheme;
@@ -56,6 +57,17 @@ export function CompetitionEventCard({
     eligibility.reason === "GUEST" &&
     onSignInToRegister !== undefined;
   const embedded = variantLabel !== undefined;
+  // Every row repeats the same buttons ("S'inscrire", "Inscrits"…): the
+  // screen reader must say WHICH event each one acts on (RGAA 6.1).
+  const eventName = joinA11yLabel([
+    formatDiscipline(event.category),
+    event.dance,
+    event.ageGroup,
+    variantLabel,
+    event.eventType === "SOLO" ? "solo" : "couple",
+  ]);
+  const showNotEligible =
+    !eligibility.eligible && showLicenceActions && !guestSignIn;
 
   return (
     <View
@@ -71,7 +83,26 @@ export function CompetitionEventCard({
       ]}
     >
       <View style={styles.eventCardBody}>
-        <View style={styles.eventInfo}>
+        {/* Event description = one screen-reader stop (name, pending state,
+            eligibility). Only Text inside, so grouping hides no control. */}
+        <View
+          style={styles.eventInfo}
+          accessible
+          accessibilityHint="Description de l'épreuve ; les boutons suivent"
+          accessibilityLabel={joinA11yLabel([
+            eventName,
+            pendingAction && showLicenceActions
+              ? pendingAction === "register"
+                ? "inscription en attente de réseau"
+                : "désinscription en attente de réseau"
+              : null,
+            isRegistered && showLicenceActions ? "inscrit" : null,
+            showNotEligible ? "non éligible" : null,
+            showNotEligible && eligibility.reason
+              ? getEligibilityReasonLabel(eligibility.reason)
+              : null,
+          ])}
+        >
           {embedded ? (
             <AppText variant="body" weight="600" color={currentTheme.text}>
               {variantLabel}
@@ -104,7 +135,7 @@ export function CompetitionEventCard({
                 : "Désinscription en attente de réseau"}
             </AppText>
           )}
-          {!eligibility.eligible && showLicenceActions && !guestSignIn && (
+          {showNotEligible && (
             <View style={styles.notEligibleBadge}>
               <AppText
                 variant="caption"
@@ -133,6 +164,9 @@ export function CompetitionEventCard({
               onPress={onNavigateResults}
               variant="primary"
               style={styles.compactActionButtonFromApp}
+              // Same target for every row (competition-wide results), so the
+              // plain "Résultats" label is unambiguous — and Maestro taps it.
+              accessibilityHint="Ouvre les résultats de la compétition"
             />
           ) : (
             <>
@@ -146,7 +180,7 @@ export function CompetitionEventCard({
                     "La liste des inscrits sera bientôt disponible.",
                   )
                 }
-                accessibilityLabel="Voir la liste des inscrits à cette épreuve"
+                accessibilityLabel={`Inscrits : ${eventName}`}
                 accessibilityHint="Affiche les participants inscrits à cette épreuve"
               />
 
@@ -158,6 +192,8 @@ export function CompetitionEventCard({
                   }}
                   variant="outline"
                   style={styles.compactActionButtonFromApp}
+                  accessibilityLabel={`Inscrire des membres : ${eventName}`}
+                  accessibilityHint="Choisir les membres du club à inscrire"
                 />
               )}
 
@@ -170,6 +206,8 @@ export function CompetitionEventCard({
                   }}
                   variant="outline"
                   style={styles.compactActionButtonFromApp}
+                  accessibilityLabel={`Se désinscrire : ${eventName}`}
+                  accessibilityHint="Annule votre inscription à cette épreuve"
                 />
               )}
               {showLicenceActions &&
@@ -184,6 +222,8 @@ export function CompetitionEventCard({
                     }}
                     variant="primary"
                     style={styles.compactActionButtonFromApp}
+                    accessibilityLabel={`S'inscrire : ${eventName}`}
+                    accessibilityHint="Vous inscrit à cette épreuve"
                   />
                 )}
               {guestSignIn && (
@@ -193,6 +233,7 @@ export function CompetitionEventCard({
                   onPress={onSignInToRegister}
                   variant="primary"
                   style={styles.compactActionButtonFromApp}
+                  accessibilityLabel={`S'inscrire : ${eventName}`}
                   accessibilityHint="Connectez-vous ou créez un compte pour vous inscrire, puis revenez sur cette compétition"
                 />
               )}

@@ -5,7 +5,7 @@ import {
   ListMusic,
   SlidersHorizontal,
 } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   SafeAreaView,
@@ -15,6 +15,7 @@ import {
 } from "react-native";
 import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
+import { announce } from "../../../utils/announce";
 import { RootStackParamList } from "../../../navigation/types";
 import { audioPlayerStyles as styles } from "../components/audio-player.styles";
 import {
@@ -63,6 +64,13 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
     [id, title, artist, style, baseBpm],
   );
 
+  // A playback error replaces the whole screen: say it out loud (VoiceOver
+  // does not move focus to new content on its own).
+  useEffect(() => {
+    if (state.errorMessage)
+      announce(`Erreur de lecture : ${state.errorMessage}`);
+  }, [state.errorMessage]);
+
   if (!state.isPlayerReady || state.isLoading) {
     return (
       <View
@@ -107,11 +115,17 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
         >
           Erreur
         </AppText>
-        <AppText align="center" style={styles.marginBottom20}>
+        <AppText
+          align="center"
+          style={styles.marginBottom20}
+          accessibilityRole="alert"
+        >
           {state.errorMessage}
         </AppText>
         <TouchableOpacity
           accessibilityRole="button"
+          accessibilityLabel="Réessayer"
+          accessibilityHint="Relance la lecture du morceau"
           testID="audio-player-retry-button"
           onPress={actions.togglePlayback}
           style={[
@@ -138,6 +152,8 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
       <View style={styles.header}>
         <TouchableOpacity
           accessibilityRole="button"
+          accessibilityLabel="Réduire le lecteur"
+          accessibilityHint="Revient à l'écran précédent, la musique continue"
           testID="audio-player-back-button"
           onPress={() => navigation.goBack()}
           style={styles.headerButton}

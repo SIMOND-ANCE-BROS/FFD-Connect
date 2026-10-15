@@ -10,9 +10,15 @@ import QRCode from "qrcode";
 interface QRCodeViewProps {
   value: string;
   size?: number;
+  /** Spoken name of the code when it stands alone (see the native view). */
+  spokenLabel?: string;
 }
 
-export function QRCodeView({ value, size = 120 }: QRCodeViewProps) {
+export function QRCodeView({
+  value,
+  size = 120,
+  spokenLabel,
+}: QRCodeViewProps) {
   const [uri, setUri] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,6 +43,9 @@ export function QRCodeView({ value, size = 120 }: QRCodeViewProps) {
       source={{ uri }}
       style={{ width: size, height: size }}
       resizeMode="contain"
+      accessible={Boolean(spokenLabel)}
+      accessibilityLabel={spokenLabel}
+      accessibilityHint="À présenter au contrôle pour être scanné"
     />
   );
 }
