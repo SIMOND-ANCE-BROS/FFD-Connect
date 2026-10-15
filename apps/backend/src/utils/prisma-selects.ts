@@ -1222,12 +1222,14 @@ export const volunteerTokenIssuedSelect = {
   createdAt: true,
 } as const;
 
-/** Volunteer check-in link validation: scope and expiry, never the hash. */
+/**
+ * Volunteer check-in link validation: scope and expiry, never the hash — nor
+ * the link's name, which may be a person's and must not reach the logs (#529).
+ */
 export const volunteerTokenAuthSelect = {
   id: true,
   competitionId: true,
   expiresAt: true,
-  name: true,
 } as const;
 
 /**

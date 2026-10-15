@@ -361,9 +361,8 @@ export class CompetitionResultsService {
       throw new UnauthorizedException("Lien d'accès invalide ou expiré");
     }
 
-    this.logger.log(
-      `Volunteer ${volunteerToken.name} performing check-in (link ${volunteerToken.id})`,
-    );
+    // The link id only: its name is free text, often a person's (RGPD, #529).
+    this.logger.log(`Volunteer link ${volunteerToken.id} performing check-in`);
     return this.checkIn(competitionId, qrData);
   }
 }
