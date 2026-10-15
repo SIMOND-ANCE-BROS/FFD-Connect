@@ -6,6 +6,7 @@ import {
   ERROR_MESSAGES,
   SUCCESS_MESSAGES,
 } from "../../../constants/errorMessages";
+import { useSignInAndReturn } from "../../../navigation/authReturn";
 import { RootStackParamList } from "../../../navigation/types";
 import { createLogger } from "../../../utils/logger";
 import {
@@ -62,6 +63,7 @@ export const useCompetitionDetailLogic = (
   } = useCompetitionRepository();
   const auth = useAuthRepository();
   const clubRepository = useClubRepository();
+  const signInAndReturn = useSignInAndReturn();
 
   const queryClient = useQueryClient();
 
@@ -499,6 +501,14 @@ export const useCompetitionDetailLogic = (
       "CLUB_AND_MEMBERS_PENDING" &&
     pendingRegistrationsForCompetition.length > 0;
 
+  // Guest tapping « S'inscrire »: sign in, then come back here (#20).
+  const handleGuestSignInToRegister = useCallback(() => {
+    void signInAndReturn({
+      screen: "CompetitionDetail",
+      params: { competitionId },
+    });
+  }, [signInAndReturn, competitionId]);
+
   return {
     state: {
       details,
@@ -527,6 +537,7 @@ export const useCompetitionDetailLogic = (
       handleRegisterMembers,
       handleConfirmRegistration,
       handleUnregisterMember,
+      handleGuestSignInToRegister,
     },
   };
 };
