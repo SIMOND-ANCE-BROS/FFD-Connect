@@ -639,19 +639,44 @@ describe("PaymentService", () => {
       expectRejected("booking_not_found");
     });
 
-    it.each(["CANCELLED", "SOMETHING_NEW"])(
-      "rejects an order for a %s booking (only PENDING transitions)",
-      async (status) => {
-        prisma.seatBooking.findUnique.mockResolvedValue({
-          ...bookingForCheck,
-          status,
-        } as any);
+    it("rejects an order for a booking in an unknown status", async () => {
+      prisma.seatBooking.findUnique.mockResolvedValue({
+        ...bookingForCheck,
+        status: "SOMETHING_NEW",
+      } as any);
 
-        await service.handleOrderWebhook(paidOrder());
+      await service.handleOrderWebhook(paidOrder());
 
-        expectRejected("not_pending");
-      },
-    );
+      expectRejected("not_pending");
+    });
+
+    it("never revives a CANCELLED booking on its own (refunded) intent: logged only", async () => {
+      prisma.seatBooking.findUnique.mockResolvedValue({
+        ...bookingForCheck,
+        status: "CANCELLED",
+      } as any);
+
+      await service.handleOrderWebhook(paidOrder());
+
+      expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
+      expect(prisma.seatBooking.update).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      expect(refundOwedAlert.alertClub).not.toHaveBeenCalled();
+    });
+
+    it("never revives a CANCELLED booking on an order without intent", async () => {
+      prisma.seatBooking.findUnique.mockResolvedValue({
+        ...bookingForCheck,
+        status: "CANCELLED",
+      } as any);
+
+      await service.handleOrderWebhook(
+        paidOrder({ checkoutIntentId: undefined }),
+      );
+
+      expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
+      expect(refundOwedAlert.alertClub).not.toHaveBeenCalled();
+    });
 
     it("rejects when the booking changed between the read and the write", async () => {
       prisma.seatBooking.findUnique
@@ -897,7 +922,7 @@ describe("PaymentService", () => {
       const markerCall = {
         where: {
           id: "booking-1",
-          status: { in: ["EXPIRED", "CONFIRMED"] },
+          status: { in: ["EXPIRED", "CONFIRMED", "CANCELLED"] },
           NOT: { refundOwedPaymentIds: { has: "4242" } },
         },
         data: {
@@ -1082,7 +1107,7 @@ describe("PaymentService", () => {
         expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith({
           where: {
             id: "booking-1",
-            status: { in: ["EXPIRED", "CONFIRMED"] },
+            status: { in: ["EXPIRED", "CONFIRMED", "CANCELLED"] },
             NOT: { refundOwedPaymentIds: { has: "4242" } },
           },
           data: {
@@ -1117,6 +1142,84 @@ describe("PaymentService", () => {
 
         expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
         expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      });
+
+      describe("released booking (#456)", () => {
+        const released = {
+          ...resumed,
+          status: "CANCELLED",
+          expiresAt: new Date(Date.now() - 60 * 60 * 1000),
+        };
+
+        it("flags a payment on an earlier intent as refund owed, alerts the club, keeps the seat released", async () => {
+          prisma.seatBooking.findUnique.mockResolvedValue(released as any);
+          prisma.seatBooking.updateMany.mockResolvedValue({ count: 1 });
+
+          await service.handleOrderWebhook(paidOrder());
+
+          expect(prisma.seatBooking.updateMany).toHaveBeenCalledTimes(1);
+          expect(prisma.seatBooking.updateMany).toHaveBeenCalledWith({
+            where: {
+              id: "booking-1",
+              status: { in: ["EXPIRED", "CONFIRMED", "CANCELLED"] },
+              NOT: { refundOwedPaymentIds: { has: "4242" } },
+            },
+            data: {
+              refundOwedPaymentIds: { push: "4242" },
+              refundOwedAt: expect.any(Date),
+            },
+          });
+          expect(Sentry.captureMessage).toHaveBeenCalledWith(
+            "HelloAsso order rejected",
+            expect.objectContaining({
+              tags: expect.objectContaining({
+                reason: "booking_cancelled",
+                refund: "required",
+              }),
+            }),
+          );
+          expect(refundOwedAlert.alertClub).toHaveBeenCalledWith(
+            "booking-1",
+            98765,
+          );
+          expect(
+            paymentNotificationService.notifyPaymentReceived,
+          ).not.toHaveBeenCalled();
+        });
+
+        it("does not alert twice when the same payment is redelivered", async () => {
+          prisma.seatBooking.findUnique.mockResolvedValue({
+            ...released,
+            refundOwedPaymentIds: ["4242"],
+          } as any);
+          prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+
+          await service.handleOrderWebhook(paidOrder());
+
+          expect(refundOwedAlert.alertClub).not.toHaveBeenCalled();
+        });
+
+        it("only logs an unpaid earlier intent (forgeable, no Sentry)", async () => {
+          prisma.seatBooking.findUnique.mockResolvedValue(released as any);
+
+          await service.handleOrderWebhook(
+            paidOrder({ payments: [{ amount: 1500, state: "Refunded" }] }),
+          );
+
+          expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
+          expect(Sentry.captureMessage).not.toHaveBeenCalled();
+        });
+
+        it("never flags a partial payment on an earlier intent", async () => {
+          prisma.seatBooking.findUnique.mockResolvedValue(released as any);
+
+          await service.handleOrderWebhook(
+            paidOrder({ payments: [{ amount: 100, state: "Authorized" }] }),
+          );
+
+          expect(prisma.seatBooking.updateMany).not.toHaveBeenCalled();
+          expect(refundOwedAlert.alertClub).not.toHaveBeenCalled();
+        });
       });
 
       it("asks HelloAsso to redeliver when the booking was resumed during the confirmation", async () => {

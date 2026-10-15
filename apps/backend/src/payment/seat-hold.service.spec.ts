@@ -1,13 +1,16 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
 import { seatBookingHoldSelect } from "../utils/prisma-selects";
 import {
+  DEFAULT_REHOLD_COOLDOWN_MINUTES,
   MAX_HOLD_LIFETIME_MS,
   MAX_PENDING_PER_COMPETITION,
   SEAT_HOLD_DURATION_MS,
   SeatHoldService,
+  resolveReholdCooldownMs,
   resumedHoldDeadline,
   type HeldBooking,
   type HoldRequest,
@@ -48,9 +51,15 @@ describe("SeatHoldService (#428)", () => {
       );
   };
 
+  const config = (value: unknown) =>
+    ({ get: jest.fn().mockReturnValue(value) }) as unknown as ConfigService;
+
   beforeEach(() => {
     prisma = mockDeep<PrismaClient>();
-    service = new SeatHoldService(prisma as unknown as PrismaService);
+    service = new SeatHoldService(
+      prisma as unknown as PrismaService,
+      config(undefined),
+    );
     prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
     prisma.seatBooking.findFirst.mockResolvedValue(null);
     prisma.seatBooking.create.mockResolvedValue(created as never);
@@ -243,6 +252,117 @@ describe("SeatHoldService (#428)", () => {
       });
     });
 
+    describe("re-hold cooldown after an expired hold (#455)", () => {
+      const MINUTE = 60 * 1000;
+      const lapsedAgo = (ms: number) => ({
+        expiresAt: new Date(Date.now() - ms),
+      });
+      /** findFirst: own pending hold first (none), then the recent lapse. */
+      const recentLapse = (lapse: { expiresAt: Date | null } | null) => {
+        prisma.seatBooking.findFirst
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(lapse as never);
+      };
+
+      it("refuses (409) a seat the user let expire, with the minutes left", async () => {
+        recentLapse(lapsedAgo(10 * MINUTE));
+
+        const error = await service.hold(numbered).catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(ConflictException);
+        expect((error as ConflictException).message).toBe(
+          "Vous avez laissé expirer votre réservation de cette place. Vous pourrez la réserver de nouveau dans 20 minutes.",
+        );
+        expect(prisma.seatBooking.findMany).not.toHaveBeenCalled();
+        expect(prisma.seatBooking.create).not.toHaveBeenCalled();
+      });
+
+      it("says « 1 minute » (singular, never 0) at the very end", async () => {
+        recentLapse(lapsedAgo(30 * MINUTE - 1000));
+
+        await expect(service.hold(numbered)).rejects.toThrow(
+          /de nouveau dans 1 minute\.$/,
+        );
+      });
+
+      it("looks only for this user's unpaid lapse of that seat, within the cooldown", async () => {
+        recentLapse(null);
+        occupancy([], []);
+        const before = Date.now();
+
+        await service.hold(numbered);
+
+        const query = prisma.seatBooking.findFirst.mock.calls[1][0];
+        expect(query).toEqual({
+          where: {
+            competitionId: "comp-1",
+            userId: "user-1",
+            itemId: "table-1",
+            status: "EXPIRED",
+            expiresAt: { gt: expect.any(Date) },
+            refundOwedPaymentIds: { isEmpty: true },
+            cancelReason: null,
+            seatIndex: 2,
+          },
+          orderBy: { expiresAt: "desc" },
+          select: { expiresAt: true },
+        });
+        const since = (query?.where?.expiresAt as { gt: Date }).gt.getTime();
+        expect(before - since).toBeGreaterThanOrEqual(
+          DEFAULT_REHOLD_COOLDOWN_MINUTES * MINUTE,
+        );
+        expect(before - since).toBeLessThan(
+          DEFAULT_REHOLD_COOLDOWN_MINUTES * MINUTE + 5000,
+        );
+        expect(prisma.seatBooking.create).toHaveBeenCalled();
+      });
+
+      it("checks the whole element when no seat index is requested", async () => {
+        recentLapse(lapsedAgo(MINUTE));
+
+        await expect(
+          service.hold({ ...numbered, seatIndex: undefined }),
+        ).rejects.toThrow(ConflictException);
+        expect(
+          prisma.seatBooking.findFirst.mock.calls[1][0]?.where,
+        ).not.toHaveProperty("seatIndex");
+      });
+
+      it("ignores a lapse without deadline (legacy row)", async () => {
+        recentLapse({ expiresAt: null });
+        occupancy([], []);
+
+        await expect(service.hold(numbered)).resolves.toEqual({
+          resumed: false,
+          booking: created,
+        });
+      });
+
+      it("never blocks resuming one's own pending hold", async () => {
+        const own = { id: "booking-own" } as unknown as HeldBooking;
+        prisma.seatBooking.findFirst.mockResolvedValueOnce(own as never);
+
+        await expect(service.hold(numbered)).resolves.toEqual({
+          resumed: true,
+          booking: own,
+        });
+        expect(prisma.seatBooking.findFirst).toHaveBeenCalledTimes(1);
+      });
+
+      it("uses the configured cooldown, and 0 disables it", async () => {
+        service = new SeatHoldService(
+          prisma as unknown as PrismaService,
+          config(0),
+        );
+        occupancy([], []);
+
+        await service.hold(numbered);
+
+        expect(prisma.seatBooking.findFirst).toHaveBeenCalledTimes(1);
+        expect(prisma.seatBooking.create).toHaveBeenCalled();
+      });
+    });
+
     describe("resume", () => {
       const own = { id: "booking-own" } as unknown as HeldBooking;
 
@@ -390,6 +510,35 @@ describe("SeatHoldService (#428)", () => {
       expect(
         prisma.seatBooking.updateMany.mock.calls[0][0].data,
       ).not.toHaveProperty("supersededPaymentIds");
+    });
+  });
+
+  describe("resolveReholdCooldownMs (#455)", () => {
+    const MINUTE = 60 * 1000;
+
+    it.each([
+      [undefined, DEFAULT_REHOLD_COOLDOWN_MINUTES],
+      [45, 45],
+      ["15", 15],
+      [0, 0],
+      [1440, 1440],
+      [1441, DEFAULT_REHOLD_COOLDOWN_MINUTES],
+      [-1, DEFAULT_REHOLD_COOLDOWN_MINUTES],
+      [2.5, DEFAULT_REHOLD_COOLDOWN_MINUTES],
+      ["", DEFAULT_REHOLD_COOLDOWN_MINUTES],
+      ["abc", DEFAULT_REHOLD_COOLDOWN_MINUTES],
+    ])("reads %p as %p minutes", (value, minutes) => {
+      expect(resolveReholdCooldownMs(config(value))).toBe(minutes * MINUTE);
+    });
+
+    it("reads SEAT_REHOLD_COOLDOWN_MINUTES", () => {
+      const configService = config(10);
+
+      resolveReholdCooldownMs(configService);
+
+      expect(configService.get).toHaveBeenCalledWith(
+        "SEAT_REHOLD_COOLDOWN_MINUTES",
+      );
     });
   });
 

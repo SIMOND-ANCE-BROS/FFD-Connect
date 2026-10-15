@@ -319,8 +319,10 @@ export class PaymentService {
    * have changed since.
    *
    * Money collected without a seat granted — a payment after the hold's
-   * deadline (#401), or a second payment of an already confirmed seat through
-   * an earlier intent of a resumed checkout (#428) — never confirms anything:
+   * deadline (#401), a second payment of an already confirmed seat through
+   * an earlier intent of a resumed checkout (#428), or a payment on an
+   * earlier intent of a booking released after a refund or dispute (#456) —
+   * never confirms anything:
    * the booking is flagged `refundOwedAt` and the organising club is alerted
    * to refund it by hand (#438).
    *
@@ -368,12 +370,15 @@ export class PaymentService {
       );
       return;
     }
-    if (reason && booking.status === "CONFIRMED") {
-      // An earlier intent of a confirmed seat that is not (or no longer)
-      // paid: anyone can name it in a forged notification — logged only,
-      // never sent to Sentry (quota).
+    if (
+      reason &&
+      (booking.status === "CONFIRMED" || booking.status === "CANCELLED")
+    ) {
+      // An earlier intent of a confirmed or released seat that is not (or no
+      // longer) paid: anyone can name it in a forged notification — logged
+      // only, never sent to Sentry (quota).
       this.logger.warn(
-        `HelloAsso order ${orderId ?? "?"} on an earlier intent of confirmed booking ${bookingId}: ${reason}`,
+        `HelloAsso order ${orderId ?? "?"} on an earlier intent of ${booking.status.toLowerCase()} booking ${bookingId}: ${reason}`,
       );
       return;
     }
@@ -475,7 +480,9 @@ export class PaymentService {
     const { count } = await this.prisma.seatBooking.updateMany({
       where: {
         id: booking.id,
-        status: { in: ["EXPIRED", "CONFIRMED"] },
+        // Never changes the status: a released (CANCELLED) seat is not
+        // given back by this path (#456).
+        status: { in: ["EXPIRED", "CONFIRMED", "CANCELLED"] },
         NOT: { refundOwedPaymentIds: { has: paidIntent } },
       },
       data: {

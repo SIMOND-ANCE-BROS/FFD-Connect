@@ -56,6 +56,8 @@ export class PaymentController {
       "Le montant est celui du tarif d'une place (`priceCents` de l'élément), jamais celui envoyé par le client. " +
       "La place est retenue 50 minutes. 409 si elle est déjà prise, si l'élément est complet " +
       "ou si l'utilisateur a déjà 4 réservations en attente pour la compétition. " +
+      "Une place qu'on a laissée expirer ne peut être réservée de nouveau par le même utilisateur " +
+      "qu'après un délai (30 minutes par défaut, `SEAT_REHOLD_COOLDOWN_MINUTES`) : 409 entre-temps. " +
       "Un nouveau checkout sur sa propre place en attente reprend le paiement (`resumed: true`).",
   })
   @ApiBody({ type: CreateCheckoutDto })
@@ -73,7 +75,7 @@ export class PaymentController {
   @ApiResponse({
     status: 409,
     description:
-      "Place déjà réservée, élément complet, 4 réservations en attente, ou paiement déjà en cours",
+      "Place déjà réservée, élément complet, 4 réservations en attente, place laissée expirer trop récemment, ou paiement déjà en cours",
   })
   @ApiResponse({
     status: 503,
@@ -98,6 +100,7 @@ export class PaymentController {
       "Une réservation n'est confirmée que si l'ordre est payé, du montant attendu, pour la bonne compétition ; " +
       "sinon elle reste en attente et la réponse reste 200 (pas de rejeu). " +
       "Un paiement remboursé (`Refunded`) ou contesté (`Contested`), confirmé par l'API HelloAsso, libère la place (`CANCELLED`). " +
+      "Un paiement reçu sur une ancienne intention d'une réservation libérée (`CANCELLED`) ne rend pas la place : il est noté remboursement dû et le club organisateur est alerté. " +
       "503 si HelloAsso est injoignable (rejeu).",
   })
   @ApiBody({ type: WebhookPayloadDto })

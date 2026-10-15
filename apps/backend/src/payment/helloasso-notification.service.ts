@@ -33,6 +33,15 @@ const UNAUTHENTICATED_REASONS: ReadonlySet<NotificationIgnoredReason> = new Set(
  */
 const REREAD_STATUSES: ReadonlySet<string> = new Set(["PENDING", "EXPIRED"]);
 
+/**
+ * Final statuses re-read only for one of the booking's EARLIER intents
+ * (stored `supersededPaymentIds`): a payment there is money owed back.
+ */
+const EARLIER_INTENT_STATUSES: ReadonlySet<string> = new Set([
+  "CONFIRMED",
+  "CANCELLED",
+]);
+
 export type NotificationIgnoredReason =
   | "booking_not_found"
   | "no_checkout_intent"
@@ -99,11 +108,13 @@ export class HelloAssoNotificationService {
       booking.supersededPaymentIds.includes(String(claimedIntentId))
         ? String(claimedIntentId)
         : null;
-    // A confirmed seat is only worth a re-read for an earlier intent: it may
-    // have been paid as well (duplicate payment, refund owed).
+    // A confirmed seat, or one released after a refund or dispute (#403), is
+    // only worth a re-read for an earlier intent: it may have been paid as
+    // well (duplicate payment #428, payment after the release #456: refund
+    // owed).
     const worthReading =
       REREAD_STATUSES.has(booking.status) ||
-      (booking.status === "CONFIRMED" && earlierIntent !== null);
+      (EARLIER_INTENT_STATUSES.has(booking.status) && earlierIntent !== null);
     if (!worthReading) {
       this.logger.log(
         `HelloAsso notification for booking ${bookingId} in status ${booking.status}: nothing to do`,
