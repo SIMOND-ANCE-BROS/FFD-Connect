@@ -193,7 +193,7 @@ describe('TracksPage', () => {
     expect(list).toHaveBeenLastCalledWith({
       query: { sortBy: 'bpm', sortOrder: 'asc', skip: 0, take: 50 },
     });
-    expect(screen.getByRole('columnheader', { name: 'MPM' })).toHaveAttribute(
+    expect(screen.getByRole('columnheader', { name: /^MPM/ })).toHaveAttribute(
       'aria-sort',
       'ascending',
     );

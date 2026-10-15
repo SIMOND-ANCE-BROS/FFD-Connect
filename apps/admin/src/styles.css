@@ -47,6 +47,58 @@ body {
   width: 100%;
 }
 
+/* A column resized by hand (#670): the table keeps its widths and may scroll. */
+.app-table-surface.app-table-scroll {
+  overflow-x: auto;
+}
+
+/* Header: dragged to move its column (#671), its right edge resizes it (#670). */
+.app-th {
+  position: relative;
+}
+
+.app-th-drop-before {
+  box-shadow: inset 3px 0 0 var(--mantine-primary-color-filled);
+}
+
+.app-th-drop-after {
+  box-shadow: inset -3px 0 0 var(--mantine-primary-color-filled);
+}
+
+.app-col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.app-col-resize::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  right: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--mantine-color-default-border);
+}
+
+.app-col-resize:hover::after,
+.app-col-resize:focus-visible::after {
+  top: 0;
+  bottom: 0;
+  background: var(--mantine-primary-color-filled);
+}
+
+.app-col-resize:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: -2px;
+}
+
 .app-table-fit > thead > tr > th,
 .app-cell-truncate {
   overflow: hidden;
