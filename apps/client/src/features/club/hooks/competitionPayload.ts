@@ -16,9 +16,9 @@ import type {
  * ValidationPipe (`whitelist` + `forbidNonWhitelisted`) can't reject a field
  * the backend doesn't declare.
  *
- * The « Épreuves » and « Timing » tabs are NOT sent: the API has no write path
- * for a competition's events or schedule yet, and sending them made every
- * save fail with 400.
+ * The « Épreuves » and « Planning » tabs are not part of this body: they are
+ * saved right after by PUT /competitions/:id/program (#442, see
+ * `competitionProgram.ts`).
  */
 
 export type ApiCompetitionStatus = NonNullable<CreateCompetitionDto["status"]>;

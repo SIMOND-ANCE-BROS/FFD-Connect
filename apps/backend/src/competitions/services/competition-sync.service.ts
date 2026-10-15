@@ -4,6 +4,7 @@ import { ConfigService } from "@nestjs/config";
 import { firstValueFrom } from "rxjs";
 import { PrismaService } from "../../prisma/prisma.service";
 import { getErrorMessage, getErrorStack } from "../../utils/error.utils";
+import { idOnlySelect } from "../../utils/prisma-selects";
 import { normalizeExternalWebUrl } from "../../utils/url.utils";
 import {
   FFDCompetitionItem,
@@ -457,7 +458,19 @@ export class CompetitionSyncService {
     const idsWithEvents = new Set(
       competitionsWithEvents.map((e) => e.competitionId),
     );
-    const idsToSeed = competitionIds.filter((id) => !idsWithEvents.has(id));
+    const idsWithoutEvents = competitionIds.filter(
+      (id) => !idsWithEvents.has(id),
+    );
+    if (idsWithoutEvents.length === 0) return;
+
+    // A club that saved an empty programme in its editor (#442) meant it:
+    // its competition is not re-seeded.
+    const seedable = await this.prisma.competition.findMany({
+      where: { id: { in: idsWithoutEvents }, programEditedAt: null },
+      select: idOnlySelect,
+      take: idsWithoutEvents.length,
+    });
+    const idsToSeed = seedable.map((c) => c.id);
 
     if (idsToSeed.length === 0) return;
 

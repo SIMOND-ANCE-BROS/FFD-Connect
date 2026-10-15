@@ -11,6 +11,8 @@ import { LiveGateway } from "./live.gateway";
 import { CompetitionAccessService } from "./services/competition-access.service";
 import { CompetitionCacheService } from "./services/competition-cache.service";
 import { CompetitionManagementService } from "./services/competition-management.service";
+import { CompetitionProgramQueryService } from "./services/competition-program-query.service";
+import { CompetitionProgramService } from "./services/competition-program.service";
 import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
@@ -46,6 +48,8 @@ import { SyncProcessor } from "./sync.processor";
   providers: [
     CompetitionAccessService,
     CompetitionManagementService,
+    CompetitionProgramQueryService,
+    CompetitionProgramService,
     CompetitionQueryService,
     CompetitionRegistrationService,
     CompetitionResultsService,

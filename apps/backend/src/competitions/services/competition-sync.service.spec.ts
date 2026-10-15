@@ -365,9 +365,18 @@ describe("CompetitionSyncService", () => {
       prisma.competition.upsert.mockResolvedValueOnce(mockCompetition as any);
       prisma.event.findMany.mockResolvedValue([]);
       prisma.event.createMany.mockResolvedValue({ count: 4 });
+      prisma.competition.findMany.mockResolvedValue([
+        { id: mockCompetition.id } as any,
+      ]);
 
       await service.syncFFDCompetitions();
 
+      // only competitions whose programme the club never saved are seeded (#442)
+      expect(prisma.competition.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: { in: [mockCompetition.id] }, programEditedAt: null },
+        }),
+      );
       // real programme info mapped onto the competition
       expect(prisma.competition.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -392,6 +401,22 @@ describe("CompetitionSyncService", () => {
         where: { id: { in: [mockCompetition.id] } },
         data: { eventsSource: "GENERIC" },
       });
+    });
+
+    it("does not seed a competition whose club saved an empty programme (#442)", async () => {
+      const items = [makeFFDItem()];
+      httpService.get
+        .mockReturnValueOnce(makeListResponse(items))
+        .mockReturnValueOnce(of(makeDetailResponse(items[0])));
+      prisma.competition.upsert.mockResolvedValueOnce(mockCompetition as any);
+      prisma.event.findMany.mockResolvedValue([]);
+      // programEditedAt is set: the seedable query finds nothing
+      prisma.competition.findMany.mockResolvedValue([]);
+
+      await service.syncFFDCompetitions();
+
+      expect(prisma.event.createMany).not.toHaveBeenCalled();
+      expect(prisma.competition.updateMany).not.toHaveBeenCalled();
     });
 
     it("does not reseed competitions that already have events", async () => {
