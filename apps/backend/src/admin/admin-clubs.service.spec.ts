@@ -210,12 +210,45 @@ describe("AdminClubsService", () => {
       });
     });
 
-    it("never attaches a homonym's unlinked competition to the renamed club (#408)", async () => {
+    it("409s a rename while unlinked competitions carry a homonym-shared name, changing nothing (#408)", async () => {
       // "Club A" and "club a" both exist: the old name is ambiguous.
       prisma.club.findMany.mockResolvedValue([
         { id: "c1" },
         { id: "c2" },
       ] as never);
+      prisma.competition.findMany.mockResolvedValue([
+        { id: "k1" },
+        { id: "k2" },
+      ] as never);
+
+      const err = await service
+        .update("admin-1", "c1", { name: "Club Z" })
+        .catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(ConflictException);
+      expect((err as ConflictException).getResponse()).toEqual(
+        expect.objectContaining({ competitionIds: ["k1", "k2"] }),
+      );
+      expect(prisma.competition.findMany).toHaveBeenCalledWith({
+        where: {
+          organizerClubId: null,
+          organizer: { equals: "Club A", mode: "insensitive" },
+        },
+        select: { id: true },
+        orderBy: { id: "asc" },
+        take: 20,
+      });
+      expect(prisma.club.update).not.toHaveBeenCalled();
+      expect(prisma.competition.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("never attaches a homonym's competition to the renamed club (#408)", async () => {
+      // Ambiguous old name, but no unlinked row carries it: rename allowed.
+      prisma.club.findMany.mockResolvedValue([
+        { id: "c1" },
+        { id: "c2" },
+      ] as never);
+      prisma.competition.findMany.mockResolvedValue([]);
 
       await service.update("admin-1", "c1", { name: "Club Z" });
 

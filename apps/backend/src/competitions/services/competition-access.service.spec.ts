@@ -32,7 +32,9 @@ describe("CompetitionAccessService", () => {
       organizer: "  dance club PARIS ",
     });
     // Unlinked label resolves to the one club of that name (club-1).
-    prisma.club.findMany.mockResolvedValue([{ id: "club-1" }]);
+    prisma.club.findMany.mockResolvedValue([
+      { id: "club-1", name: "Dance Club Paris" },
+    ]);
   });
 
   describe("assertCanManageCheckIn", () => {
@@ -248,8 +250,8 @@ describe("CompetitionAccessService", () => {
     describe("unlinked competition seen by a linked account (#408)", () => {
       it("refuses every homonym club when the label is ambiguous", async () => {
         prisma.club.findMany.mockResolvedValue([
-          { id: "club-1" },
-          { id: "club-2" },
+          { id: "club-1", name: "Dance Club Paris" },
+          { id: "club-2", name: "dance club paris" },
         ]);
         prisma.user.findUnique.mockResolvedValue(clubUser());
 
@@ -259,7 +261,9 @@ describe("CompetitionAccessService", () => {
       });
 
       it("refuses an account whose club is not the one the label names", async () => {
-        prisma.club.findMany.mockResolvedValue([{ id: "club-9" }]);
+        prisma.club.findMany.mockResolvedValue([
+          { id: "club-9", name: "Dance Club Paris" },
+        ]);
         prisma.user.findUnique.mockResolvedValue(clubUser());
 
         await expect(

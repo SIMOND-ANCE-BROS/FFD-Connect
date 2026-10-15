@@ -13,7 +13,7 @@ import {
 import {
   CompetitionOrganizerRef,
   findClubIdByName,
-  isOrganizedByClub,
+  organizerMatcher,
 } from "../competition-organizer";
 
 /** The authenticated caller, as set on `req.user` by the JWT strategy. */
@@ -97,7 +97,8 @@ export class CompetitionAccessService {
    * Organiser check (#408). An unlinked competition seen by a linked account
    * is resolved to the ONE club its label names: a label shared by homonym
    * clubs (same name up to case) grants nobody — never a case-insensitive
-   * name match that would let both homonyms in.
+   * name match that would let both homonyms in. Shares `organizerMatcher`
+   * with the club list and the `isOrganizedByMyClub` flag, so they agree.
    */
   private async isOrganizer(
     competition: CompetitionOrganizerRef,
@@ -107,14 +108,11 @@ export class CompetitionAccessService {
       club: { name: string } | null;
     },
   ): Promise<boolean> {
-    if (!competition.organizerClubId && user.clubId) {
-      const clubId = await findClubIdByName(this.prisma, competition.organizer);
-      return clubId === user.clubId;
-    }
-    return isOrganizedByClub(competition, {
+    const isMine = await organizerMatcher(this.prisma, [competition], {
       clubId: user.clubId,
       clubNames: [user.clubName, user.club?.name],
     });
+    return isMine(competition);
   }
 
   private async assertOrganizerOrStaff(

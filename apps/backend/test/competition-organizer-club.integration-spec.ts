@@ -5,12 +5,13 @@
  * and two clubs whose names only differ by case are never confused. Also runs
  * the re-runnable backfill against real rows.
  */
-import { ForbiddenException } from "@nestjs/common";
+import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { TestingModule } from "@nestjs/testing";
 import { BookingStatus, UserRole } from "@prisma/client";
 import { backfillCompetitionOrganizerClub } from "../scripts/backfill-competition-organizer-club.utils";
 import { AdminClubsService } from "../src/admin/admin-clubs.service";
 import { ClubsHelloAssoService } from "../src/clubs/clubs-helloasso.service";
+import { PaginationParamsDto } from "../src/common/dto/pagination-params.dto";
 import { CompetitionAccessService } from "../src/competitions/services/competition-access.service";
 import { CompetitionManagementService } from "../src/competitions/services/competition-management.service";
 import { CompetitionQueryService } from "../src/competitions/services/competition-query.service";
@@ -58,7 +59,8 @@ describe("Competition organising club by id (#408, integration, real DB)", () =>
     });
 
   beforeAll(async () => {
-    ({ module, prisma } = await buildServiceModule());
+    // Redis mocked: the competition list is never served from cache.
+    ({ module, prisma } = await buildServiceModule({ redis: true }));
     f = createFactories(prisma, suffix);
     helloAsso = module.get(ClubsHelloAssoService);
     paymentNotification = module.get(PaymentNotificationService);
@@ -196,18 +198,22 @@ describe("Competition organising club by id (#408, integration, real DB)", () =>
       clubId: lower.id,
       clubName: lower.name,
     });
+    // Dated first so they sit on the first page of the public list.
     const ofUpper = await f.competition({
       title: `Compétition upper ${suffix}`,
+      date: new Date("1900-01-01"),
       organizer: upper.name,
       organizerClubId: upper.id,
     });
     const ofLower = await f.competition({
       title: `Compétition lower ${suffix}`,
+      date: new Date("1900-01-02"),
       organizer: lower.name,
       organizerClubId: lower.id,
     });
     const unlinked = await f.competition({
       title: `Compétition ambiguë ${suffix}`,
+      date: new Date("1900-01-03"),
       organizer: upper.name,
     });
 
@@ -239,21 +245,66 @@ describe("Competition organising club by id (#408, integration, real DB)", () =>
       access.assertCanManageCompetition(ofUpper.id, clubActor(upperManager.id)),
     ).resolves.toBeUndefined();
 
-    const mine = await query.findOrganizedByClub(upperManager.id);
-    const ids = mine.map((c) => c.id);
-    expect(ids).toEqual(expect.arrayContaining([ofUpper.id]));
-    expect(ids).not.toContain(ofLower.id);
+    // List, flag and edit rights agree for each homonym: its own linked
+    // competition only — the ambiguous unlinked row is nobody's.
+    const page = Object.assign(new PaginationParamsDto(), {
+      skip: 0,
+      take: 100,
+    });
+    for (const [manager, own, other] of [
+      [upperManager, ofUpper, ofLower],
+      [lowerManager, ofLower, ofUpper],
+    ] as const) {
+      const listed = (await query.findOrganizedByClub(manager.id)).map(
+        (c) => c.id,
+      );
+      expect(listed).toContain(own.id);
+      expect(listed).not.toContain(other.id);
+      expect(listed).not.toContain(unlinked.id);
 
-    // An unlinked row with an ambiguous label grants no homonym club rights.
-    for (const homonym of [upperManager, lowerManager]) {
+      const all = (await query.findAll(manager.id, page)) as {
+        data: { id: string; isOrganizedByMyClub?: boolean }[];
+      };
+      const flag = (id: string) =>
+        all.data.find((c) => c.id === id)?.isOrganizedByMyClub;
+      expect([flag(own.id), flag(other.id), flag(unlinked.id)]).toEqual([
+        true,
+        false,
+        false,
+      ]);
+
       await expect(
-        access.assertCanManageCompetition(unlinked.id, clubActor(homonym.id)),
+        access.assertCanManageCompetition(own.id, clubActor(manager.id)),
+      ).resolves.toBeUndefined();
+      await expect(
+        access.assertCanManageCompetition(unlinked.id, clubActor(manager.id)),
       ).rejects.toThrow(ForbiddenException);
     }
 
-    // Renaming one homonym never attaches the ambiguous unlinked row to it
-    // (edit rights, HelloAsso payments): label and link stay untouched.
+    // Renaming a homonym is refused while the ambiguous unlinked row exists:
+    // it would otherwise silently fall to the other homonym.
     const { user: admin } = await f.user(UserRole.ADMIN);
+    const refused = await adminClubs
+      .update(admin.id, upper.id, { name: `Club Homonyme Renommé ${suffix}` })
+      .catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(ConflictException);
+    expect((refused as ConflictException).getResponse()).toEqual(
+      expect.objectContaining({ competitionIds: [unlinked.id] }),
+    );
+    expect(
+      await prisma.club.findUniqueOrThrow({
+        where: { id: upper.id },
+        select: { name: true },
+      }),
+    ).toEqual({ name: `Club Homonyme ${suffix}` });
+
+    // Once an admin links that row to its club, the rename goes through and
+    // leaves the other homonym's competition alone.
+    await prisma.competition.update({
+      where: { id: unlinked.id },
+      data: { organizerClubId: lower.id },
+      select: { id: true },
+    });
     await adminClubs.update(admin.id, upper.id, {
       name: `Club Homonyme Renommé ${suffix}`,
     });
@@ -262,13 +313,10 @@ describe("Competition organising club by id (#408, integration, real DB)", () =>
         where: { id: unlinked.id },
         select: { organizer: true, organizerClubId: true },
       }),
-    ).toEqual({ organizer: `Club Homonyme ${suffix}`, organizerClubId: null });
-    await expect(
-      access.assertCanManageCompetition(
-        unlinked.id,
-        clubActor(upperManager.id),
-      ),
-    ).rejects.toThrow(ForbiddenException);
+    ).toEqual({
+      organizer: `Club Homonyme ${suffix}`,
+      organizerClubId: lower.id,
+    });
     // Its own linked competition follows the rename.
     expect(
       await prisma.competition.findUniqueOrThrow({

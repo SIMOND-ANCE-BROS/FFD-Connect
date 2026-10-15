@@ -11,8 +11,8 @@ import { createPaginatedResponse } from "../../common/utils/pagination.util";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import {
-  isOrganizedByClub,
   organizedByClubWhere,
+  organizerMatcher,
 } from "../competition-organizer";
 import {
   enrichCompetitionsForUser,
@@ -333,12 +333,15 @@ export class CompetitionQueryService {
       return acc;
     }, {});
 
+    // Same rule as the edit rights (#408): an ambiguous unlinked label is
+    // nobody's.
+    const isMine = await organizerMatcher(this.prisma, competitions, {
+      clubId: club.clubId,
+      clubNames: [club.clubName],
+    });
     return competitions.map((comp) => ({
       ...comp,
-      isOrganizedByMyClub: isOrganizedByClub(comp, {
-        clubId: club.clubId,
-        clubNames: [club.clubName],
-      }),
+      isOrganizedByMyClub: isMine(comp),
       clubMembersRegisteredCount: countByCompetitionId[comp.id] ?? 0,
     }));
   }
@@ -420,17 +423,23 @@ export class CompetitionQueryService {
     });
     if (!user || !hasRole(user, UserRole.CLUB)) return [];
 
-    const where = organizedByClubWhere({
+    const actor = {
       clubId: user.clubId,
       clubNames: [user.club?.name, user.clubName],
-    });
+    };
+    const where = organizedByClubWhere(actor);
     if (!where) return [];
 
-    return this.prisma.competition.findMany({
+    // Candidates, then the same rule as the edit rights (#408): an unlinked
+    // row whose label is shared by homonym clubs is dropped. Unlinked rows
+    // are transitional, so the page may hold fewer than the limit.
+    const candidates = await this.prisma.competition.findMany({
       where,
       select: COMPETITION_BASE_SELECT,
       orderBy: { date: "desc" },
       take: CLUB_COMPETITIONS_LIMIT,
     });
+    const isMine = await organizerMatcher(this.prisma, candidates, actor);
+    return candidates.filter(isMine);
   }
 }

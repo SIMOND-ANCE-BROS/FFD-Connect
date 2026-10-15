@@ -30,6 +30,10 @@ import {
 } from "./dto/admin-clubs.dto";
 
 const NAME_TAKEN = "Un club porte déjà ce nom";
+const AMBIGUOUS_UNLINKED_COMPETITIONS =
+  "Un autre club porte ce nom à la casse près et des compétitions non rattachées portent ce nom : rattachez-les à leur club avant de renommer.";
+/** Upper bound of the competition ids listed in that 409. */
+const MAX_AMBIGUOUS_COMPETITIONS_LISTED = 20;
 const FFD_SYNCED_NAME =
   "Ce club organise des compétitions synchronisées avec la FFD : son nom ne peut pas être changé ici (la synchronisation rétablirait l'ancien nom).";
 
@@ -135,6 +139,25 @@ export class AdminClubsService {
           const match = await matchClubByName(tx, current.name);
           ownsUnlinkedByName =
             match.kind === "match" && match.clubId === clubId;
+          if (match.kind === "ambiguous") {
+            // Renaming would leave these rows to the homonym alone: refuse
+            // until an admin links or relabels them (#408).
+            const ambiguous = await tx.competition.findMany({
+              where: {
+                organizerClubId: null,
+                organizer: sameClubName(current.name),
+              },
+              select: idOnlySelect,
+              orderBy: { id: "asc" },
+              take: MAX_AMBIGUOUS_COMPETITIONS_LISTED,
+            });
+            if (ambiguous.length > 0) {
+              throw new ConflictException({
+                message: AMBIGUOUS_UNLINKED_COMPETITIONS,
+                competitionIds: ambiguous.map((c) => c.id),
+              });
+            }
+          }
           const ffdSynced = await tx.competition.findFirst({
             where: {
               ...organizedByClubOrLabel({ id: clubId, name: current.name }),

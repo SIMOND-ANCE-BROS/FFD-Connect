@@ -5,6 +5,7 @@ import {
   isOrganizedByClub,
   matchClubByName,
   organizedByClubWhere,
+  organizerMatcher,
   resolveOrganizerClubId,
 } from "./competition-organizer";
 
@@ -122,6 +123,63 @@ describe("competition-organizer (#408)", () => {
         ),
       ).toBe(false);
       expect(isOrganizedByClub({}, { clubNames: [undefined] })).toBe(false);
+    });
+  });
+
+  describe("organizerMatcher", () => {
+    const rows = [
+      { organizerClubId: "c1", organizer: "Old label" }, // mine by id
+      { organizerClubId: "c2", organizer: "Club A" }, // other club by id
+      { organizerClubId: null, organizer: " club a " }, // unique label → c1
+      { organizerClubId: null, organizer: "Club X" }, // homonyms c1/c3
+      { organizerClubId: null, organizer: "Inconnu" }, // no club
+    ];
+
+    it("applies ids, then exact label resolution, for a linked account", async () => {
+      prisma.club.findMany.mockResolvedValue([
+        { id: "c1", name: "Club A" },
+        { id: "c1", name: "Club X" },
+        { id: "c3", name: "club x" },
+      ] as never);
+
+      const isMine = await organizerMatcher(prisma, rows, {
+        clubId: "c1",
+        clubNames: ["Club X", "Club A"],
+      });
+
+      expect(rows.map(isMine)).toEqual([true, false, true, false, false]);
+      // One bounded read for the distinct unlinked labels.
+      expect(prisma.club.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.club.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [
+              { name: { equals: "club a", mode: "insensitive" } },
+              { name: { equals: "Club X", mode: "insensitive" } },
+              { name: { equals: "Inconnu", mode: "insensitive" } },
+            ],
+          },
+          take: 200,
+        }),
+      );
+    });
+
+    it("needs no lookup when every row is linked", async () => {
+      const isMine = await organizerMatcher(prisma, rows.slice(0, 2), {
+        clubId: "c1",
+        clubNames: [],
+      });
+      expect(rows.slice(0, 2).map(isMine)).toEqual([true, false]);
+      expect(prisma.club.findMany).not.toHaveBeenCalled();
+    });
+
+    it("keeps the name rule for a legacy account without clubId", async () => {
+      const isMine = await organizerMatcher(prisma, rows, {
+        clubId: null,
+        clubNames: ["club x"],
+      });
+      expect(isMine(rows[3])).toBe(true);
+      expect(prisma.club.findMany).not.toHaveBeenCalled();
     });
   });
 

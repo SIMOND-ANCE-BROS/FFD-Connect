@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { idOnlySelect } from "../utils/prisma-selects";
+import { clubIdNameSelect, idOnlySelect } from "../utils/prisma-selects";
 
 const normalize = (name: string | null | undefined): string =>
   name?.trim().toLowerCase() ?? "";
@@ -109,9 +109,10 @@ function distinctNames(
 }
 
 /**
- * Prisma filter matching the competitions `actor`'s club organises — the
- * query form of `isOrganizedByClub`. `null` when the actor has neither a club
- * id nor a club name (it organises nothing).
+ * Prisma filter selecting the CANDIDATE competitions `actor`'s club may
+ * organise — a superset for a linked account (unlinked rows by name): filter
+ * the result with `organizerMatcher`. `null` when the actor has neither a
+ * club id nor a club name (it organises nothing).
  */
 export function organizedByClubWhere(
   actor: OrganizerClubActor,
@@ -128,4 +129,71 @@ export function organizedByClubWhere(
       ...names.map((byName) => ({ organizerClubId: null, ...byName })),
     ],
   };
+}
+
+/** Upper bound of the clubs read to resolve a page of unlinked labels. */
+export const MAX_LABEL_CLUBS_PER_PAGE = 200;
+
+/**
+ * The club each label designates, keyed by normalised label: its id when
+ * exactly ONE club carries that name (case ignored), null when none or
+ * several (homonyms). One bounded read for all labels; a truncated read can
+ * only drop matches, never invent one (a label left without its club
+ * resolves to null — never granted).
+ */
+export async function resolveClubIdsByLabels(
+  db: ClubReader,
+  labels: readonly (string | null | undefined)[],
+): Promise<Map<string, string | null>> {
+  const distinct = distinctNames(labels);
+  const resolved = new Map<string, string | null>();
+  if (distinct.length === 0) return resolved;
+  const clubs = await db.club.findMany({
+    where: {
+      OR: distinct.map((label) => ({
+        name: { equals: label, mode: Prisma.QueryMode.insensitive },
+      })),
+    },
+    select: clubIdNameSelect,
+    orderBy: { id: "asc" },
+    take: MAX_LABEL_CLUBS_PER_PAGE,
+  });
+  const byKey = new Map<string, string[]>();
+  for (const club of clubs) {
+    const key = normalize(club.name);
+    byKey.set(key, [...(byKey.get(key) ?? []), club.id]);
+  }
+  for (const label of distinct) {
+    const ids = byKey.get(normalize(label)) ?? [];
+    resolved.set(normalize(label), ids.length === 1 ? ids[0] : null);
+  }
+  return resolved;
+}
+
+/**
+ * "Organised by `actor`'s club" for a page of competitions — the same rule
+ * as the access check (CompetitionAccessService), so the club list, the
+ * `isOrganizedByMyClub` flag and the edit rights always agree (#408):
+ * - linked competition, linked account: ids only;
+ * - unlinked competition, linked account: the label must designate exactly
+ *   the account's club (an ambiguous homonym label grants nobody);
+ * - legacy account without `clubId`: label equals one of its names.
+ */
+export async function organizerMatcher(
+  db: ClubReader,
+  competitions: readonly CompetitionOrganizerRef[],
+  actor: OrganizerClubActor,
+): Promise<(competition: CompetitionOrganizerRef) => boolean> {
+  const clubId = actor.clubId;
+  if (!clubId) return (competition) => isOrganizedByClub(competition, actor);
+  const resolved = await resolveClubIdsByLabels(
+    db,
+    competitions
+      .filter((competition) => !competition.organizerClubId)
+      .map((competition) => competition.organizer),
+  );
+  return (competition) =>
+    competition.organizerClubId
+      ? competition.organizerClubId === clubId
+      : resolved.get(normalize(competition.organizer)) === clubId;
 }
