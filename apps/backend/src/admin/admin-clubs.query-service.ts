@@ -3,6 +3,7 @@ import { Prisma, UserRole } from "@prisma/client";
 import { withRole } from "../auth/roles";
 import { listOrderBy, type SortOrder } from "../common/dto/sort-params";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
+import { effectivePaymentProvider } from "../payment/connectors/payment-providers";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   adminClubListSelect,
@@ -87,6 +88,7 @@ export class AdminClubsQueryService {
         ...r,
         ...(counts.get(r.id) ?? { memberCount: 0, clubAccountCount: 0 }),
         helloAssoConfigured: configured.has(r.id),
+        paymentProvider: effectivePaymentProvider(r.paymentProvider),
       })),
       total,
       skip,
@@ -124,6 +126,7 @@ export class AdminClubsQueryService {
       ...club,
       ...usage,
       helloAssoConfigured: configured.has(id),
+      paymentProvider: effectivePaymentProvider(club.paymentProvider),
       members,
     };
   }

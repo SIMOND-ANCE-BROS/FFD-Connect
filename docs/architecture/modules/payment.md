@@ -28,14 +28,17 @@ Routes :
 
 - `GET /api/v1/clubs/me/refunds-due` — compte `CLUB` seulement (`JwtAuthGuard`, `RolesGuard`, `ClubRefundsDueController`). Reservations des competitions organisees par le club (`Competition.organizer` = nom du club, sans tenir compte de la casse ni des espaces) dont `refundOwedAt` est renseigne. Paginee (`skip`, `take` <= 50, defaut 20), plus anciens d'abord : `{ data: [{ bookingId, competition, dancer, seatNumber, amountCents, helloAssoCheckoutIntentIds, refundOwedAt }], meta }`. Nom du danseur seulement, jamais le `seatLabel` libre. Compte de revue des stores : page vide.
 - `POST /api/v1/payment/checkout` — authentifie (`JwtAuthGuard`, `CreateCheckoutDto`). Reserve une place et renvoie `{ id, redirectUrl, bookingId, seatIndex, expiresAt, resumed }` (`CheckoutResponseDto`). `409` : place prise, element complet, 4 reservations en attente, ou paiement deja en cours ; `503` : HelloAsso injoignable pendant une reprise.
-- `POST /api/v1/payment/webhook` — non authentifie par JWT, `WebhookPayloadDto`. Pour `eventType === "Order"` avec `metadata.bookingId`, l'intention de paiement de la reservation est relue sur l'API HelloAsso (`HelloAssoNotificationService`) et seule cette version passe les controles. Renvoie `{ received: true }` (200) ; `503` si HelloAsso est injoignable ou si le paiement n'est pas encore autorise (HelloAsso rejoue) ; `401` seulement si une cle partenaire est configuree et que la signature `x-ha-signature` est absente ou fausse.
+- `GET` / `PUT /api/v1/clubs/me/payment-provider` — connecteur de paiement du club (ADR-0023, #388) : `{ clubName, paymentProvider, configured, selectableProviders }`, sans jamais d'identifiant. Seul `HELLOASSO` est selectionnable. Le back-office lit et modifie `paymentProvider` sur `GET` / `PATCH /api/v1/admin/clubs/:id`.
+- `POST /api/v1/payment/webhook/helloasso` — route du connecteur HelloAsso (une route par connecteur, ADR-0023), identique a la route historique ci-dessous.
+- `POST /api/v1/payment/webhook` — route historique HelloAsso, non authentifiee par JWT, `WebhookPayloadDto`. Pour `eventType === "Order"` avec `metadata.bookingId`, l'intention de paiement de la reservation est relue sur l'API HelloAsso (`HelloAssoNotificationService`) et seule cette version passe les controles. Renvoie `{ received: true }` (200) ; `503` si HelloAsso est injoignable ou si le paiement n'est pas encore autorise (HelloAsso rejoue) ; `401` seulement si une cle partenaire est configuree et que la signature `x-ha-signature` est absente ou fausse.
 
 ## 4) Fichiers cles
 
 Backend :
 
 - `apps/backend/src/payment/payment.controller.ts` — endpoints checkout + webhook.
-- `apps/backend/src/payment/payment.service.ts` — orchestration : creation de la reservation, appel HelloAsso, confirmation.
+- `apps/backend/src/payment/payment.service.ts` — orchestration : creation de la reservation, appel au connecteur du club organisateur, confirmation.
+- `apps/backend/src/payment/connectors/` — abstraction `PaymentConnector` (ADR-0023), registre (`PaymentConnectorRegistry`, choix `Club.paymentProvider`) et connecteur HelloAsso (`HelloAssoPaymentConnector`).
 - `apps/backend/src/payment/hello-asso.service.ts` — client HTTP HelloAsso (OAuth token + creation du checkout intent), sous circuit breaker + `withTimeout`.
 - `apps/backend/src/payment/helloasso-notification.service.ts` — relecture de l'intention de paiement sur l'API HelloAsso (source de verite du webhook).
 - `apps/backend/src/payment/helloasso-api-urls.ts` — hotes autorises de l'API HelloAsso (production, sandbox).
@@ -74,7 +77,7 @@ Backend :
 
 - **Authenticite des notifications** (ADR-0022, spike #404) : HelloAsso ne signe que les notifications des comptes **partenaires** (en-tete `x-ha-signature`, HMAC-SHA256 du corps brut avec la `signatureKey` de l'URL). Les clubs connectent un compte **association** : leurs notifications ne sont pas signees. Le webhook relit donc toujours le paiement sur l'API ; la signature n'est verifiee qu'en defense en profondeur si `HELLOASSO_SIGNATURE_KEY` est configuree.
 - **API HelloAsso** : `{HELLOASSO_API_URL}/oauth2/token` puis `{HELLOASSO_API_URL}/v5/...` (`/v1` repond 404). Hote par defaut `https://api.helloasso.com`, sandbox `https://api.helloasso-sandbox.com`.
-- **URL de notification** : chaque club doit inscrire `https://<backend>/api/v1/payment/webhook` dans son espace HelloAsso (« Mon compte > Integrations et API »).
+- **URL de notification** : chaque club doit inscrire `https://<backend>/api/v1/payment/webhook/helloasso` (ou la route historique `https://<backend>/api/v1/payment/webhook`, toujours servie) dans son espace HelloAsso (« Mon compte > Integrations et API »).
 - **Identifiants HelloAsso par club** : stockes sur le club (`helloAssoClientId`, `helloAssoClientSecret`, `helloAssoOrgSlug`) ; le module paiement ne detient pas de compte HelloAsso global.
 - **Appels externes** : le client HelloAsso est protege par circuit breaker (opossum) et `withTimeout` (10 s) ; les tokens OAuth sont mis en cache par `clientId` avec une marge d'expiration.
 - **Expiration reservation** : `expiresAt` a 50 min limite les reservations `PENDING` non payees ; avec le plafond de 4 par utilisateur et par competition, un compte ne peut pas bloquer une salle.
