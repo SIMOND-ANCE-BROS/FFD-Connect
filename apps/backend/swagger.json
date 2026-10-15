@@ -25548,6 +25548,359 @@
         "tags": ["admin"]
       }
     },
+    "/licenses/my/entry-qr": {
+      "get": {
+        "description": "Signatures Ed25519 d'un QR d'entrée par pas de 30 s, sur les 12 prochaines heures (au plus jusqu'à la fin de validité de la licence). L'application affiche le QR du pas courant (v3) et le renouvelle quand elle a du réseau ; un scanner le vérifie hors ligne avec la clé publique (GET /licenses/entry-qr/keys).",
+        "operationId": "EntryQrController_getMyEntryQr",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryQrBatchDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Session d'impersonation (« connecté en tant que »)"
+          },
+          "404": {
+            "description": "Aucune licence en cours de validité pour ce compte, ou QR tournant désactivé (pas de clé de signature) : garder le QR statique"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Lot de QR d'entrée tournants de ma licence",
+        "tags": ["licenses"]
+      }
+    },
+    "/licenses/entry-qr/keys": {
+      "get": {
+        "description": "Clés Ed25519 (active + retirées encore acceptées) avec lesquelles un scanner vérifie un QR v3 sans réseau. À télécharger à l'ouverture du scanner et à garder en cache.",
+        "operationId": "EntryQrController_getEntryQrKeys",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryQrKeySetDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Clés publiques de vérification des QR d'entrée tournants",
+        "tags": ["licenses"]
+      }
+    },
     "/health/live": {
       "get": {
         "operationId": "HealthController_live",
@@ -30482,9 +30835,14 @@
         "properties": {
           "qrData": {
             "type": "string",
-            "description": "Contenu du QR de licence scanné : QR signé lié à la licence (v2, #466), QR signé v1 (#168, accepté jusqu'à son expiration), ancien JSON non signé, ou identifiant brut",
-            "example": "{\"v\":2,\"id\":\"FFD-123456\",\"lid\":\"3f0c…\",\"exp\":\"2026-08-31\",\"sig\":\"…\"}",
+            "description": "Contenu du QR de licence scanné : QR d'entrée tournant (v3, #24, signé Ed25519, valable ~90 s), QR signé lié à la licence (v2, #466 — pass Wallet), QR signé v1 (#168, accepté jusqu'à son expiration), ancien JSON non signé, ou identifiant brut",
+            "example": "{\"v\":3,\"k\":\"AbCdEfGhIjK\",\"id\":\"FFD-123456\",\"lid\":\"3f0c…\",\"nm\":\"DUPONT Jean\",\"t\":59612345,\"sig\":\"…\"}",
             "maxLength": 512
+          },
+          "scannedAt": {
+            "type": "string",
+            "description": "Instant du scan (ISO 8601) pour un check-in scanné hors ligne puis synchronisé (#24) : le QR est vérifié à cet instant. QR tournant (v3) uniquement, valide à cet instant quel que soit le mode ; ni dans le futur, ni plus vieux que 12 h, et dans les jours de la compétition (Europe/Paris). Gardé à part (`checkInClaimedScanAt`) : l'heure du check-in reste celle du serveur. Absent = maintenant.",
+            "example": "2026-10-16T09:12:30.000Z"
           }
         },
         "required": ["qrData"]
@@ -30542,9 +30900,10 @@
               "UNSIGNED",
               "INVALID_SIGNATURE",
               "EXPIRED",
+              "STALE",
               "LICENSE_MISMATCH"
             ],
-            "description": "LICENSE_MISMATCH : QR authentique émis avant un changement de numéro de licence (#466) — accepté en mode warn pour la licence d'origine, refusé en enforce"
+            "description": "STALE : QR tournant (v3, #24) authentique mais hors de sa fenêtre de validité (capture d'écran rejouée, ou horloge décalée). LICENSE_MISMATCH : QR authentique émis avant un changement de numéro de licence (#466) — accepté en mode warn pour la licence d'origine, refusé en enforce"
           },
           "warning": {
             "type": "string",
@@ -30598,6 +30957,11 @@
             "type": "string",
             "description": "Données du QR code du participant",
             "maxLength": 512
+          },
+          "scannedAt": {
+            "type": "string",
+            "description": "Instant du scan (ISO 8601) pour un check-in scanné hors ligne puis synchronisé (#24). QR tournant (v3) uniquement, valide à cet instant quel que soit le mode ; ni dans le futur, ni plus vieux que 12 h, et dans les jours de la compétition (Europe/Paris). Gardé à part (`checkInClaimedScanAt`) : l'heure du check-in reste celle du serveur. Absent = maintenant.",
+            "example": "2026-10-16T09:12:30.000Z"
           }
         },
         "required": ["token", "competitionId", "qrData"]
@@ -31258,6 +31622,117 @@
           }
         },
         "required": ["reason"]
+      },
+      "EntryQrBatchDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "example": 3,
+            "description": "Version du QR (v3 = tournant)"
+          },
+          "keyId": {
+            "type": "string",
+            "example": "AbCdEfGhIjK",
+            "description": "Identifiant de la clé de signature (champ `k` du QR)"
+          },
+          "licenseId": {
+            "type": "string",
+            "example": "3f0c6d2e-…"
+          },
+          "number": {
+            "type": "string",
+            "example": "FFD-123456"
+          },
+          "holderName": {
+            "type": "string",
+            "example": "DUPONT Jean",
+            "description": "Nom affiché au scanner hors ligne (champ `nm` du QR)"
+          },
+          "stepSeconds": {
+            "type": "number",
+            "example": 30,
+            "description": "Durée d'un pas de temps (s)"
+          },
+          "toleranceSteps": {
+            "type": "number",
+            "example": 1,
+            "description": "Pas acceptés de part et d'autre de l'heure du scanner"
+          },
+          "firstStep": {
+            "type": "number",
+            "example": 59612345,
+            "description": "Pas de temps de `signatures[0]` (floor(secondes Unix / stepSeconds)) ; `signatures[i]` signe le pas `firstStep + i`"
+          },
+          "signatures": {
+            "description": "Signatures Ed25519 (base64url), une par pas de temps, sur 12 h au plus (jamais au-delà de la fin de validité de la licence)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "coversUntil": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fin du dernier pas couvert : l'application doit renouveler le lot avant"
+          }
+        },
+        "required": [
+          "version",
+          "keyId",
+          "licenseId",
+          "number",
+          "holderName",
+          "stepSeconds",
+          "toleranceSteps",
+          "firstStep",
+          "signatures",
+          "coversUntil"
+        ]
+      },
+      "EntryQrPublicKeyDto": {
+        "type": "object",
+        "properties": {
+          "kid": {
+            "type": "string",
+            "example": "AbCdEfGhIjK"
+          },
+          "publicKey": {
+            "type": "string",
+            "description": "Clé publique Ed25519 brute (32 octets), base64url",
+            "example": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Vrai pour la clé qui signe les nouveaux lots ; faux pour une clé retirée encore acceptée"
+          }
+        },
+        "required": ["kid", "publicKey", "active"]
+      },
+      "EntryQrKeySetDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "example": 3
+          },
+          "stepSeconds": {
+            "type": "number",
+            "example": 30
+          },
+          "toleranceSteps": {
+            "type": "number",
+            "example": 1
+          },
+          "keys": {
+            "description": "Vide si le QR tournant est désactivé",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntryQrPublicKeyDto"
+            }
+          }
+        },
+        "required": ["version", "stepSeconds", "toleranceSteps", "keys"]
       },
       "CreateCheckoutDto": {
         "type": "object",

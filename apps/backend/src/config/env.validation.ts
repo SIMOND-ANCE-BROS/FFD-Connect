@@ -283,6 +283,20 @@ class EnvironmentVariables {
   @IsOptional()
   QR_SIGNATURE_MODE?: string;
 
+  // QR d'entrée tournant vérifiable hors ligne (#24, ADR-0024) : clé privée
+  // Ed25519, PEM PKCS#8 (les `\n` littéraux sont acceptés). Absente ou
+  // invalide ⇒ fonctionnalité désactivée, l'app garde le QR statique ; le
+  // backend démarre.
+  @IsString()
+  @IsOptional()
+  ENTRY_QR_SIGNING_KEY?: string;
+
+  // Clés publiques brutes (base64url, séparées par des virgules) des clés de
+  // signature précédentes, encore acceptées pendant une rotation (≤ 12 h).
+  @IsString()
+  @IsOptional()
+  ENTRY_QR_RETIRED_PUBLIC_KEYS?: string;
+
   // Pass Apple Wallet de la licence (#162). Les cinq sont requises pour activer
   // la fonctionnalité ; une seule absente ou invalide ⇒ fonctionnalité
   // désactivée (503 + `appleWalletAvailable: false`), le backend démarre.
