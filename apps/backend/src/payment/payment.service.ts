@@ -455,8 +455,9 @@ export class PaymentService {
   /**
    * Money collected for a seat not granted (#428): the lapsed hold switches
    * to EXPIRED, the paid intent is recorded in `refundOwedPaymentIds` (once
-   * per intent: the alert is sent only by the write that adds it, so
-   * redeliveries do not repeat it, while each further payment is alerted)
+   * per intent: the alert and the Sentry event are sent only by the write
+   * that adds it, so redeliveries do not repeat them, while each further
+   * payment is alerted)
    * and the organising club is told to refund the payer.
    *
    * Refunds are manual for now (#438): the club refunds from its HelloAsso
@@ -490,10 +491,25 @@ export class PaymentService {
         refundOwedAt: now,
       },
     });
-    this.rejectOrder(booking.id, orderId, reason);
     if (count === 1) {
+      this.rejectOrder(booking.id, orderId, reason);
       await this.refundOwedAlertService.alertClub(booking.id, orderId);
+      return;
     }
+    // Not written: a redelivery of a payment already recorded is logged only
+    // (no repeated Sentry event); anything else means money owed that could
+    // not be recorded, so it still goes to Sentry.
+    const current = await this.prisma.seatBooking.findUnique({
+      where: { id: booking.id },
+      select: seatBookingPaymentCheckSelect,
+    });
+    if (current?.refundOwedPaymentIds.includes(paidIntent)) {
+      this.logger.warn(
+        `HelloAsso order ${orderId ?? "?"} for booking ${booking.id}: refund already owed for intent ${paidIntent} (${reason}), redelivery ignored`,
+      );
+      return;
+    }
+    this.rejectOrder(booking.id, orderId, reason);
   }
 
   private rejectOrder(

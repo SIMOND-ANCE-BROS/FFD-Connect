@@ -57,7 +57,8 @@ export class PaymentController {
       "La place est retenue 50 minutes. 409 si elle est déjà prise, si l'élément est complet " +
       "ou si l'utilisateur a déjà 4 réservations en attente pour la compétition. " +
       "Une place qu'on a laissée expirer ne peut être réservée de nouveau par le même utilisateur " +
-      "qu'après un délai (30 minutes par défaut, `SEAT_REHOLD_COOLDOWN_MINUTES`) : 409 entre-temps. " +
+      "qu'après un délai (30 minutes par défaut, `SEAT_REHOLD_COOLDOWN_MINUTES`) : 409 entre-temps " +
+      "si elle est demandée explicitement ; sans `seatIndex`, le choix automatique l'évite (409 seulement s'il ne reste qu'elle). " +
       "Un nouveau checkout sur sa propre place en attente reprend le paiement (`resumed: true`).",
   })
   @ApiBody({ type: CreateCheckoutDto })

@@ -1059,6 +1059,21 @@ describe("PaymentService", () => {
 
         await service.handleOrderWebhook(paidOrder());
 
+        // A redelivery of a payment already recorded: logged only, no
+        // repeated Sentry event nor alert.
+        expect(Sentry.captureMessage).not.toHaveBeenCalled();
+        expect(refundOwedAlert.alertClub).not.toHaveBeenCalled();
+      });
+
+      it("still reports to Sentry a refund owed that could not be recorded", async () => {
+        prisma.seatBooking.findUnique.mockResolvedValue({
+          ...bookingForCheck,
+          status: "EXPIRED",
+        } as any);
+        prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
+
+        await service.handleOrderWebhook(paidOrder());
+
         expectRefundAlert();
         expect(refundOwedAlert.alertClub).not.toHaveBeenCalled();
       });
@@ -1197,6 +1212,7 @@ describe("PaymentService", () => {
           await service.handleOrderWebhook(paidOrder());
 
           expect(refundOwedAlert.alertClub).not.toHaveBeenCalled();
+          expect(Sentry.captureMessage).not.toHaveBeenCalled();
         });
 
         it("only logs an unpaid earlier intent (forgeable, no Sentry)", async () => {

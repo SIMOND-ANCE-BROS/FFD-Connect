@@ -8,7 +8,7 @@ import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { handlePrismaError } from "../utils/prisma-errors.util";
 import {
-  seatBookingExpiresAtSelect,
+  seatBookingLapseSelect,
   seatBookingHoldSelect,
   seatBookingPendingSlotSelect,
   seatBookingSeatIndexSelect,
@@ -84,6 +84,12 @@ export interface HoldRequest {
   /** Display only, never trusted (#428). */
   seatLabel?: string;
   amountCents: number;
+}
+
+/** An unpaid hold of the user that lapsed within the cooldown (#455). */
+interface Lapse {
+  seatIndex: number | null;
+  expiresAt: Date;
 }
 
 export type HoldResult =
@@ -184,11 +190,21 @@ export class SeatHoldService {
 
     const own = await this.findOwnPendingHold(request);
     if (own) return { resumed: true, booking: own };
-    await this.assertNoRecentLapse(request, now);
+
+    // Re-hold cooldown (#455). "First free seat" of a numbered element just
+    // skips the seats the user let expire; any other request for them (the
+    // seat named explicitly, or a free-placement element whose places are
+    // interchangeable) is refused.
+    const lapses = await this.recentLapses(request, now);
+    const pickSeat =
+      request.seats.mode === "numbered" && request.seatIndex === undefined;
+    if (lapses.length > 0 && !pickSeat) {
+      throw this.cooldownConflict(lapses[0], now);
+    }
 
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const pendingSlot = await this.freePendingSlot(request);
-      const seatIndex = await this.freeSeatIndex(request);
+      const seatIndex = await this.freeSeatIndex(request, lapses, now);
       try {
         const booking = await this.prisma.seatBooking.create({
           data: {
@@ -295,21 +311,20 @@ export class SeatHoldService {
   }
 
   /**
-   * Refuses (409) to hold again a seat the user let expire less than the
-   * cooldown ago (#455): the seat stays open to other buyers meanwhile.
-   * Without a seat index (free placement, or "first free seat") the whole
-   * element is concerned, since the server may pick that seat again.
+   * The user's UNPAID holds of the element (of the requested seat, when one
+   * is named) that expired less than the cooldown ago (#455), latest first.
+   * The seat stays open to other buyers meanwhile.
    *
-   * Only an UNPAID lapse counts: a hold whose late payment was received
-   * (refund owed, or refunded since: `cancelReason`) is a genuine buyer,
-   * never penalised. Resuming one's own PENDING hold is handled before.
+   * A hold whose late payment was received (refund owed, or refunded since:
+   * `cancelReason`) is a genuine buyer, never penalised. Resuming one's own
+   * PENDING hold is handled before.
    */
-  private async assertNoRecentLapse(
+  private async recentLapses(
     request: HoldRequest,
     now: Date,
-  ): Promise<void> {
-    if (this.reholdCooldownMs === 0) return;
-    const lapsed = await this.prisma.seatBooking.findFirst({
+  ): Promise<Lapse[]> {
+    if (this.reholdCooldownMs === 0) return [];
+    const lapses = await this.prisma.seatBooking.findMany({
       where: {
         competitionId: request.competitionId,
         userId: request.userId,
@@ -323,12 +338,17 @@ export class SeatHoldService {
           : { seatIndex: request.seatIndex }),
       },
       orderBy: { expiresAt: "desc" },
-      select: seatBookingExpiresAtSelect,
+      select: seatBookingLapseSelect,
+      take: MAX_ELEMENT_SEATS + 1,
     });
-    if (!lapsed?.expiresAt) return;
+    return lapses.filter((lapse): lapse is Lapse => lapse.expiresAt !== null);
+  }
+
+  /** 409 telling when the seat of `lapse` can be held again. */
+  private cooldownConflict(lapse: Lapse, now: Date): ConflictException {
     const remainingMs =
-      lapsed.expiresAt.getTime() + this.reholdCooldownMs - now.getTime();
-    throw new ConflictException(
+      lapse.expiresAt.getTime() + this.reholdCooldownMs - now.getTime();
+    return new ConflictException(
       reholdCooldownMessage(Math.max(1, Math.ceil(remainingMs / 60_000))),
     );
   }
@@ -357,7 +377,16 @@ export class SeatHoldService {
     return slot;
   }
 
-  private async freeSeatIndex(request: HoldRequest): Promise<number> {
+  /**
+   * `lapses` (#455) only matter for "first free seat" on a numbered element:
+   * those seats are skipped, and when only they are left a 409 tells when
+   * the soonest one frees up.
+   */
+  private async freeSeatIndex(
+    request: HoldRequest,
+    lapses: readonly Lapse[],
+    now: Date,
+  ): Promise<number> {
     const active = await this.prisma.seatBooking.findMany({
       where: {
         competitionId: request.competitionId,
@@ -388,8 +417,29 @@ export class SeatHoldService {
       if (taken.has(request.seatIndex)) throw new ConflictException(SEAT_TAKEN);
       return request.seatIndex;
     }
-    const seat = firstFreeIndex(seats.seats, taken, seats.locked);
-    if (seat === null) throw new ConflictException(ELEMENT_FULL);
-    return seat;
+    const cooling = new Set(
+      lapses.flatMap((lapse) =>
+        lapse.seatIndex === null ? [] : [lapse.seatIndex],
+      ),
+    );
+    const seat = firstFreeIndex(
+      seats.seats,
+      taken,
+      new Set([...seats.locked, ...cooling]),
+    );
+    if (seat !== null) return seat;
+    // Only seats in cooldown are left: tell when the soonest one frees up
+    // (lapses are latest first).
+    const soonest = lapses
+      .filter(
+        (lapse) =>
+          lapse.seatIndex !== null &&
+          lapse.seatIndex < seats.seats &&
+          !taken.has(lapse.seatIndex) &&
+          !seats.locked.has(lapse.seatIndex),
+      )
+      .at(-1);
+    if (soonest) throw this.cooldownConflict(soonest, now);
+    throw new ConflictException(ELEMENT_FULL);
   }
 }

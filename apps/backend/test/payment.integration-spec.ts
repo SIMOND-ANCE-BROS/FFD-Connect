@@ -819,6 +819,23 @@ describe("Payment checkout + HelloAsso webhook (integration, real DB)", () => {
       ).resolves.toBeDefined();
     });
 
+    it("lets « first free seat » skip the seat in cooldown instead of refusing", async () => {
+      const first = await service.createCheckout(userId, {
+        competitionId,
+        itemId: "table-8",
+      });
+      expect(first.seatIndex).toBe(0);
+      await expire(first.bookingId);
+
+      const next = await service.createCheckout(userId, {
+        competitionId,
+        itemId: "table-8",
+      });
+
+      expect(next.resumed).toBe(false);
+      expect(next.seatIndex).toBe(1);
+    });
+
     it("never blocks a late payer (refund owed) from buying the seat again", async () => {
       const booking = await checkout();
       await expire(booking.id);
