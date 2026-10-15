@@ -33,6 +33,17 @@ export class FfdDocumentTooLargeError extends Error {
   }
 }
 
+/**
+ * Thrown by a downloader when the FFD site answers an HTTP error. Carries the
+ * status so the circuit breaker can ignore a 404 on a withdrawn circular (#437).
+ */
+export class FfdDocumentHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`FFD document request failed with HTTP ${status}`);
+    this.name = "FfdDocumentHttpError";
+  }
+}
+
 type DeductionCandidate = Prisma.CompetitionGetPayload<{
   select: typeof competitionEventsDeductionSelect;
 }>;

@@ -13,6 +13,7 @@ import { CompetitionCacheService } from "./competition-cache.service";
 import { CompetitionEventNotificationService } from "./competition-event-notification.service";
 import {
   CompetitionEventsDeductionService,
+  FfdDocumentHttpError,
   FfdDocumentTooLargeError,
   MAX_FFD_DOCUMENT_BYTES,
 } from "./competition-events-deduction.service";
@@ -347,7 +348,7 @@ export class CompetitionSyncService {
           continue;
         }
         if (status >= 400) {
-          throw new Error(`FFD document request failed with HTTP ${status}`);
+          throw new FfdDocumentHttpError(status);
         }
         return body as T;
       }

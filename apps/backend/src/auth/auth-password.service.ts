@@ -70,8 +70,14 @@ export class AuthPasswordService {
     );
 
     // Send plain token via email (DB only stores hash), to the stored address:
-    // never to the variant typed in the form.
-    await this.emailService.sendPasswordResetEmail(user.email, plainToken);
+    // never to the variant typed in the form. A mail outage (open breaker,
+    // timeout, Resend error) is logged by EmailService and keeps the generic
+    // answer: a 5xx here would tell that the address has an account (#464).
+    try {
+      await this.emailService.sendPasswordResetEmail(user.email, plainToken);
+    } catch {
+      // Already logged (masked address) by EmailService.
+    }
 
     return { success: true };
   }
