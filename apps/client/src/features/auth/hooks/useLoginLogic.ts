@@ -1,4 +1,3 @@
-import * as Sentry from "@sentry/react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useEffect, useRef, useState } from "react";
@@ -10,6 +9,7 @@ import { useAuthStore } from "../../../stores/auth.store";
 import rnBiometrics, { BiometryTypes } from "../../../utils/biometrics-adapter";
 import { validateForm } from "../../../utils/formValidation";
 import { createLogger } from "../../../utils/logger";
+import { clearSentryUser, setSentryUser } from "../../../utils/sentryUser";
 import { useAuthRepository } from "../context/AuthContext";
 import { previousSession, resolveSpace } from "../services/AuthService";
 import { loginSchema } from "../schemas/login.schema";
@@ -107,6 +107,7 @@ export const useLoginLogic = ({ navigation }: UseLoginLogicProps) => {
             ...config,
             isLoggedIn: true,
             username: profile.email,
+            userId: profile.id,
             role: resolveSpace({
               ...previousSession(config),
               user: profile.email,
@@ -120,10 +121,7 @@ export const useLoginLogic = ({ navigation }: UseLoginLogicProps) => {
           };
 
           await auth.saveAuthConfig(newConfig);
-          Sentry.setUser({
-            username: profile.email,
-            data: { role: profile.role },
-          });
+          setSentryUser(profile.id, profile.role);
           logger.info("Session restored", { role: profile.role });
           analytics.logEvent("login_biometric", { method: "biometric" });
 
@@ -134,7 +132,7 @@ export const useLoginLogic = ({ navigation }: UseLoginLogicProps) => {
             "Session expirée",
             "Votre session a expiré. Veuillez vous reconnecter avec votre mot de passe.",
           );
-          Sentry.setUser(null);
+          clearSentryUser();
           await auth.logout(); // Clean up stale token
         } finally {
           setLoading(false);
@@ -220,12 +218,12 @@ export const useLoginLogic = ({ navigation }: UseLoginLogicProps) => {
 
     setLoading(true);
     try {
-      logger.info("Attempting login", { username: u });
+      logger.info("Attempting login");
       await auth.login(u, p);
       const config = await auth.getAuthConfig();
       // The account's main role, not the space it opens on.
       const mainRole = config.mainRole ?? config.role;
-      Sentry.setUser({ username: u, data: { role: mainRole } });
+      setSentryUser(config.userId, mainRole);
       logger.info("Login success", { role: mainRole });
       analytics.logEvent("login", { method: "email" });
 

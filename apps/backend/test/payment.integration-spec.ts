@@ -777,4 +777,177 @@ describe("Payment checkout + HelloAsso webhook (integration, real DB)", () => {
       );
     });
   });
+
+  describe("re-hold cooldown after an expired hold (#455)", () => {
+    it("refuses (409) the same user re-holding a seat they let expire, not another user", async () => {
+      const first = await checkout();
+      await expire(first.id);
+
+      await expect(checkout()).rejects.toThrow(ConflictException);
+      expect(await statusOf(first.id)).toBe("EXPIRED");
+      expect(createCheckoutIntent).toHaveBeenCalledTimes(1);
+
+      await expect(
+        service.createCheckout(otherUserId, {
+          competitionId,
+          itemId: "table-1",
+        }),
+      ).resolves.toBeDefined();
+    });
+
+    it("only concerns that seat: another seat of the element can be held", async () => {
+      const first = await service.createCheckout(userId, {
+        competitionId,
+        itemId: "table-8",
+        seatIndex: 2,
+      });
+      await expire(first.bookingId);
+
+      await expect(
+        service.createCheckout(userId, {
+          competitionId,
+          itemId: "table-8",
+          seatIndex: 2,
+        }),
+      ).rejects.toThrow(ConflictException);
+      await expect(
+        service.createCheckout(userId, {
+          competitionId,
+          itemId: "table-8",
+          seatIndex: 3,
+        }),
+      ).resolves.toBeDefined();
+    });
+
+    it("lets « first free seat » skip the seat in cooldown instead of refusing", async () => {
+      const first = await service.createCheckout(userId, {
+        competitionId,
+        itemId: "table-8",
+      });
+      expect(first.seatIndex).toBe(0);
+      await expire(first.bookingId);
+
+      const next = await service.createCheckout(userId, {
+        competitionId,
+        itemId: "table-8",
+      });
+
+      expect(next.resumed).toBe(false);
+      expect(next.seatIndex).toBe(1);
+    });
+
+    it("never blocks a late payer (refund owed) from buying the seat again", async () => {
+      const booking = await checkout();
+      await expire(booking.id);
+      await service.handleOrderWebhook(
+        order(booking.id, { amount: SEAT_PRICE_CENTS, state: "Authorized" }),
+      );
+
+      await expect(checkout()).resolves.toBeDefined();
+    });
+  });
+
+  describe("payment on an earlier intent of a released booking (#456)", () => {
+    const CURRENT_INTENT = 9101;
+    const EARLIER_INTENT = 9100;
+
+    const releasedBooking = () =>
+      prisma.seatBooking.create({
+        data: {
+          competitionId,
+          userId,
+          itemId: "table-8",
+          seatIndex: 4,
+          status: "CANCELLED",
+          cancelReason: "HELLOASSO_REFUNDED",
+          paymentId: String(CURRENT_INTENT),
+          supersededPaymentIds: [String(EARLIER_INTENT)],
+          expectedAmountCents: SEAT_PRICE_CENTS,
+        },
+      });
+
+    const process = async (payload: WebhookPayloadDto) => {
+      const verifier = moduleRef.get(HelloAssoNotificationService);
+      const verified = await verifier.resolveOrderNotification(payload);
+      if (verified) await service.handleOrderWebhook(verified);
+    };
+
+    it("flags it as refund owed, alerts the club once and never gives the seat back", async () => {
+      const notifications = moduleRef.get(NotificationsService);
+      (notifications.sendToUsers as jest.Mock).mockClear();
+      const booking = await releasedBooking();
+      getCheckoutIntent.mockResolvedValue({
+        found: true,
+        value: {
+          id: EARLIER_INTENT,
+          metadata: { bookingId: booking.id, competitionId },
+          order: {
+            id: 777,
+            checkoutIntentId: EARLIER_INTENT,
+            payments: [
+              { id: 1, amount: SEAT_PRICE_CENTS, state: "Authorized" },
+            ],
+          },
+        },
+      });
+      const notification: WebhookPayloadDto = {
+        eventType: "Order",
+        metadata: { bookingId: booking.id, competitionId },
+        data: { id: 777, checkoutIntentId: EARLIER_INTENT },
+      };
+
+      await process(notification);
+      await process(notification); // HelloAsso redelivery
+
+      expect(getCheckoutIntent).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationSlug: "club" }),
+        String(EARLIER_INTENT),
+      );
+      const after = await prisma.seatBooking.findUniqueOrThrow({
+        where: { id: booking.id },
+      });
+      expect(after.status).toBe("CANCELLED");
+      expect(after.cancelReason).toBe("HELLOASSO_REFUNDED");
+      expect(after.paymentId).toBe(String(CURRENT_INTENT));
+      expect(after.refundOwedPaymentIds).toEqual([String(EARLIER_INTENT)]);
+      expect(after.refundOwedAt).not.toBeNull();
+      expect(notifications.sendToUsers).toHaveBeenCalledTimes(1);
+      expect(notifications.sendToUsers).toHaveBeenCalledWith(
+        [clubManagerId],
+        "CLUB_PAYMENT_RECEIVED",
+        "Remboursement à effectuer",
+        expect.stringContaining("Remboursez-le"),
+        expect.objectContaining({
+          type: "club_payment_refund_owed",
+          bookingId: booking.id,
+          orderId: "777",
+        }),
+      );
+      expect(
+        await prisma.seatBooking.count({
+          where: {
+            competitionId,
+            itemId: "table-8",
+            status: { in: ["PENDING", "CONFIRMED"] },
+          },
+        }),
+      ).toBe(0);
+    });
+
+    it("never re-reads the released seat's own (refunded) intent", async () => {
+      const booking = await releasedBooking();
+
+      await process({
+        eventType: "Order",
+        metadata: { bookingId: booking.id, competitionId },
+        data: { id: 777, checkoutIntentId: CURRENT_INTENT },
+      });
+
+      expect(getCheckoutIntent).not.toHaveBeenCalled();
+      const after = await prisma.seatBooking.findUniqueOrThrow({
+        where: { id: booking.id },
+      });
+      expect(after.refundOwedPaymentIds).toEqual([]);
+    });
+  });
 });

@@ -315,6 +315,14 @@ class EnvironmentVariables {
   @IsOptional()
   TRUST_PROXY_HOPS?: number;
 
+  // Minutes before a user may re-hold a seat they let expire (#455).
+  // Unset: 30. 0 disables the cooldown.
+  @IsInt()
+  @Min(0)
+  @Max(1440)
+  @IsOptional()
+  SEAT_REHOLD_COOLDOWN_MINUTES?: number;
+
   // Fonctionnalités optionnelles
   @IsString()
   @IsOptional()

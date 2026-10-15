@@ -6,6 +6,7 @@ import { LicenseCard, LicenseUser } from "../LicenseCard";
 import {
   FFD_CONNECT_LOGO,
   FFD_FEDERATION_LOGO,
+  WDSF_LOGO,
   getLicenseConfig,
 } from "../license-card/license-card.config";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
@@ -347,7 +348,12 @@ describe("LicenseCard", () => {
         expect(
           queryByLabelText("Logo de la Fédération Française de Danse"),
         ).toBeNull();
-        expect(getByTestId("license-card-wdsf-logo")).toBeTruthy();
+        // Bundled asset (#602): no request to a third-party host.
+        const wdsfLogo = getByTestId("license-card-wdsf-logo");
+        expect(wdsfLogo.props.source).toBe(WDSF_LOGO);
+        expect(
+          queryByLabelText("Logo de la World DanceSport Federation"),
+        ).toBeTruthy();
       },
     );
 
@@ -390,6 +396,18 @@ describe("LicenseCard", () => {
           FFD_FEDERATION_LOGO,
         );
       }
+    });
+
+    it("never points a card logo at a remote URL (#602)", () => {
+      for (const type of ["FFD", "WDSF"] as const) {
+        for (const isDark of [false, true]) {
+          const { logo } = getLicenseConfig(type, isDark);
+          expect(typeof logo).not.toBe("string");
+          expect(JSON.stringify(logo ?? null)).not.toMatch(/https?:/);
+        }
+      }
+      expect(getLicenseConfig("WDSF", false).logo).toBe(WDSF_LOGO);
+      expect(getLicenseConfig("WDSF", true).logo).toBe(WDSF_LOGO);
     });
   });
 
@@ -436,6 +454,67 @@ describe("LicenseCard", () => {
       expect(
         getByText("Danse Passion Nantes", { normalizer: (text) => text }),
       ).toBeTruthy();
+    });
+  });
+
+  describe("photo placeholder (#246)", () => {
+    const renderCard = (
+      type: "FFD" | "WDSF",
+      user: LicenseUser,
+      photoUri: string | null = null,
+    ) =>
+      render(
+        <ThemeContext.Provider value={themeMock as never}>
+          <LicenseCard
+            type={type}
+            user={user}
+            photoUri={photoUri}
+            onShowQr={mockOnShowQr}
+          />
+        </ThemeContext.Provider>,
+      );
+
+    it.each(["FFD", "WDSF"] as const)(
+      "shows the holder's initials locally without a photo (%s)",
+      async (type) => {
+        const { getByTestId, getByLabelText, getByText, toJSON } =
+          await renderCard(type, mockUser);
+
+        expect(getByTestId("license-card-photo-placeholder")).toBeTruthy();
+        expect(
+          getByLabelText("Aucune photo de licence, initiales JD"),
+        ).toBeTruthy();
+        expect(getByText("JD")).toBeTruthy();
+        // No image is fetched for a missing photo: no `source.uri` anywhere.
+        expect(JSON.stringify(toJSON())).not.toMatch(/"source":\{"uri"/);
+      },
+    );
+
+    it("falls back to a neutral silhouette when the name has no letter", async () => {
+      const { getByLabelText, queryByText } = await renderCard("FFD", {
+        ...mockUser,
+        firstName: "",
+        lastName: "",
+      });
+
+      expect(getByLabelText("Aucune photo de licence")).toBeTruthy();
+      expect(queryByText(/^[A-Z]{1,2}$/)).toBeNull();
+    });
+
+    it("shows the stored photo instead of the placeholder", async () => {
+      const { getByLabelText, queryByTestId, toJSON } = await renderCard(
+        "FFD",
+        mockUser,
+        "file:///photo.jpg",
+      );
+
+      // Guards the "no source.uri" assertion above against a false negative.
+      expect(JSON.stringify(toJSON())).toMatch(/"source":\{"uri"/);
+
+      expect(queryByTestId("license-card-photo-placeholder")).toBeNull();
+      expect(getByLabelText("Photo de licence").props.source).toEqual({
+        uri: "file:///photo.jpg",
+      });
     });
   });
 });

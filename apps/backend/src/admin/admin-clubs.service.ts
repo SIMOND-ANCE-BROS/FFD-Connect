@@ -242,7 +242,8 @@ export class AdminClubsService {
 
   /**
    * Deactivation blocks the club's CLUB accounts (login, refresh, live
-   * tokens) and revokes their sessions; its licensees are not affected.
+   * tokens), revokes their sessions and deletes their push device tokens;
+   * its licensees are not affected.
    */
   async setStatus(
     actorId: string,
@@ -267,6 +268,10 @@ export class AdminClubsService {
         await tx.refreshToken.updateMany({
           where: { revoked: false, user: { clubId, role: UserRole.CLUB } },
           data: { revoked: true, revokedAt: new Date() },
+        });
+        // Same for their push devices (#301); licensees keep theirs.
+        await tx.deviceToken.deleteMany({
+          where: { user: { clubId, role: UserRole.CLUB } },
         });
       }
       await this.audit.record(tx, {

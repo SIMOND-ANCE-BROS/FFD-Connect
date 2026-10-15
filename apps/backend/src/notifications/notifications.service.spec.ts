@@ -4,6 +4,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { NotificationType } from "@prisma/client";
 import { cert, initializeApp, type App } from "firebase-admin/app";
 import { getMessaging, type Message } from "firebase-admin/messaging";
+import { notifiableAccountWhere } from "../auth/account-status";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { NotificationPreferencesQueryService } from "./notification-preferences.query-service";
@@ -890,11 +891,32 @@ describe("NotificationsService", () => {
       );
 
       expect(mockPrisma.deviceToken.findMany).toHaveBeenCalledWith({
-        where: { userId: "u1" },
+        where: { userId: "u1", user: notifiableAccountWhere },
         select: { token: true },
         orderBy: { lastSeenAt: "desc" },
         take: 20,
       });
+    });
+
+    it("ne lit aucun appareil d'un compte désactivé (#301)", async () => {
+      withFirebaseApp();
+      // The account filter is in the device query: a blocked account
+      // resolves to no device, so nothing reaches FCM.
+      mockPrisma.deviceToken.findMany.mockResolvedValue([]);
+
+      const result = await service.sendToUser(
+        "u1",
+        NotificationType.REGISTRATION_STATUS,
+        "Titre",
+        "Corps",
+      );
+
+      const { where } = mockPrisma.deviceToken.findMany.mock.calls[0][0] as {
+        where: { user: unknown };
+      };
+      expect(where.user).toMatchObject({ disabledAt: null });
+      expect(sendMock()).not.toHaveBeenCalled();
+      expect(result).toEqual({ sent: 0, failed: 0, pruned: 0 });
     });
 
     it("envoie à tous les appareils de l'utilisateur", async () => {

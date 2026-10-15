@@ -4,6 +4,7 @@ import { UserRole } from "@prisma/client";
 import request from "supertest";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { LicenseRenewalService } from "./license-renewal.service";
+import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 import { LicensesController } from "./licenses.controller";
 import { LicensesService } from "./licenses.service";
 
@@ -27,6 +28,10 @@ describe("LicensesController — legacy routes granting a licence removed", () =
       controllers: [LicensesController],
       providers: [
         { provide: LicensesService, useValue: {} },
+        {
+          provide: HealthDataAccessLogService,
+          useValue: { record: jest.fn() },
+        },
         { provide: LicenseRenewalService, useValue: {} },
       ],
     })
