@@ -36,7 +36,8 @@ MAX_RELATED=${PRE_PUSH_MAX_RELATED:-150}
 REPO_ROOT=$(git rev-parse --show-toplevel) || exit 1
 cd "$REPO_ROOT" || exit 1
 
-WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/ffd-pre-push.XXXXXX") || exit 1
+TMP_ROOT=${TMPDIR:-/tmp}
+WORK_DIR=$(mktemp -d "${TMP_ROOT%/}/ffd-pre-push.XXXXXX") || exit 1
 CHANGED="$WORK_DIR/changed.txt"
 : >"$CHANGED"
 : >"$WORK_DIR/backend-files.txt"
@@ -184,7 +185,7 @@ print_failure() {
   echo "---- failing tests ------------------------------------------------"
   grep -E '^(FAIL |  ● |Tests: |Test Suites: )' "$1" | grep -v '● Console' | head -60
   echo "---- last lines of the log ----------------------------------------"
-  tail -n 25 "$1"
+  grep -v -e '^npm warn' -e '^undefined$' "$1" | tail -n 25
   echo "-------------------------------------------------------------------"
   echo "Full log: $1"
 }
