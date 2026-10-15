@@ -55,6 +55,7 @@ describe('UserIdentifiers (#672)', { timeout: 15_000 }, () => {
 
     expect(screen.queryByLabelText('Email')).toBeNull();
     expect(emailValue()).toHaveTextContent('jeanne@x.fr');
+    expect(emailValue()).toHaveFocus();
     expect(patch).not.toHaveBeenCalled();
   });
 
@@ -66,6 +67,7 @@ describe('UserIdentifiers (#672)', { timeout: 15_000 }, () => {
     await user.click(screen.getByRole('button', { name: 'Annuler (Licence)' }));
 
     expect(licenseValue()).toHaveTextContent('FFD-1');
+    expect(licenseValue()).toHaveFocus();
     expect(patch).not.toHaveBeenCalled();
     // Reopening starts from the stored value, not the abandoned draft.
     await user.click(licenseValue());
@@ -91,6 +93,33 @@ describe('UserIdentifiers (#672)', { timeout: 15_000 }, () => {
       expect(patch).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { email: 'new@x.fr' } }),
     );
     await waitFor(() => expect(screen.queryByLabelText('Email')).toBeNull());
+    // Back on the value, not lost on <body> with the closed dialog.
+    await waitFor(() => expect(emailValue()).toHaveFocus());
+  });
+
+  it('a double click on the confirmation sends a single change', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    const patch = vi.spyOn(sdk, 'adminControllerUpdateUserIdentifiers').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }) as never,
+    );
+    renderIdentifiers();
+    await user.click(emailValue());
+    await fill(user, screen.getByLabelText('Email'), 'new@x.fr');
+    await user.keyboard('{Enter}');
+    const confirm = within(await screen.findByRole('dialog')).getByRole('button', {
+      name: "Changer l'email",
+    });
+
+    await user.dblClick(confirm);
+    await user.click(confirm);
+
+    expect(patch).toHaveBeenCalledTimes(1);
+    answer({ data: { user: { ...user0, email: 'new@x.fr' }, previousEmailNotified: true } });
+    await waitFor(() => expect(screen.queryByLabelText('Email')).toBeNull());
+    expect(patch).toHaveBeenCalledTimes(1);
   });
 
   it('« Retour » in the confirmation keeps the draft in edition, unsaved', async () => {
@@ -116,13 +145,18 @@ describe('UserIdentifiers (#672)', { timeout: 15_000 }, () => {
     await user.click(licenseValue());
     expect(screen.queryByText(/QR codes et le pass Wallet déjà émis/)).toBeNull();
     await fill(user, screen.getByLabelText('Licence'), ' FFD-2 ');
-    expect(screen.getByText(/QR codes et le pass Wallet déjà émis/)).toBeInTheDocument();
+    const warning = screen.getByText(/QR codes et le pass Wallet déjà émis/);
+    // Announced with the field by screen readers.
+    const describedBy = screen.getByLabelText('Licence').getAttribute('aria-describedby') ?? '';
+    const linked = describedBy.split(' ').map((id) => document.getElementById(id));
+    expect(linked.some((el) => el?.contains(warning))).toBe(true);
     await user.keyboard('{Enter}');
 
     expect(screen.queryByRole('dialog')).toBeNull();
     await vi.waitFor(() =>
       expect(patch).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { licenseNumber: 'FFD-2' } }),
     );
+    await waitFor(() => expect(licenseValue()).toHaveFocus());
   });
 
   it('shows a duplicate under the field and stays in edition', async () => {
@@ -135,9 +169,15 @@ describe('UserIdentifiers (#672)', { timeout: 15_000 }, () => {
     await fill(user, screen.getByLabelText('Licence'), 'FFD-2');
     await user.keyboard('{Enter}');
 
-    expect(await screen.findByText('Ce numéro de licence est déjà utilisé')).toBeInTheDocument();
-    expect(screen.getByLabelText('Licence')).toHaveValue('FFD-2');
-    expect(screen.getByLabelText('Licence')).toHaveAttribute('aria-invalid', 'true');
+    const message = await screen.findByText('Ce numéro de licence est déjà utilisé');
+    const input = screen.getByLabelText('Licence');
+    expect(input).toHaveValue('FFD-2');
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    // The error stays linked to the field next to the change warning.
+    const linked = (input.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id));
+    expect(linked.some((el) => el?.contains(message))).toBe(true);
   });
 
   it('blocks a malformed email under the field, before any server call', async () => {

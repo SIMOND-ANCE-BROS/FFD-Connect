@@ -1,4 +1,4 @@
-import { Alert, Text } from '@mantine/core';
+import { Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminControllerUpdateUserIdentifiers } from '../api/generated/sdk.gen';
@@ -89,11 +89,7 @@ export function UserIdentifiers({ user, editable }: Props) {
           identifiersChanges(user, { licenseNumber: draft }).licenseNumber === undefined
         }
         changeWarning={
-          <Alert color="orange" p="xs" title="Changement de numéro de licence">
-            Les QR codes et le pass Wallet déjà émis portent l'ancien numéro et ne sont pas
-            invalidés : la personne doit rouvrir son e-licence dans l'app et réajouter son pass
-            Wallet pour obtenir le nouveau numéro.
-          </Alert>
+          "Changement de numéro de licence : les QR codes et le pass Wallet déjà émis portent l'ancien numéro et ne sont pas invalidés. La personne doit rouvrir son e-licence dans l'app et réajouter son pass Wallet pour obtenir le nouveau numéro."
         }
         onSave={(draft) => save.mutateAsync({ licenseNumber: draft.trim() })}
       />

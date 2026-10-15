@@ -1,5 +1,5 @@
 import { Button, Group, Modal, Stack, Text, TextInput, UnstyledButton } from '@mantine/core';
-import { type KeyboardEvent, type ReactNode, useState } from 'react';
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { apiErrorMessage } from '../lib/apiError';
 
 export interface InlineEditConfirm {
@@ -23,7 +23,7 @@ interface Props {
   /** True when saving the draft would change nothing (no server call then). */
   isUnchanged: (draft: string) => boolean;
   /** Shown under the input while the draft differs from the value. */
-  changeWarning?: ReactNode;
+  changeWarning?: string;
   /** A changed value is saved only after this confirmation. */
   confirm?: InlineEditConfirm;
   /** Saves the draft; a rejection keeps the field in edition with its message. */
@@ -74,6 +74,18 @@ export function InlineEditField({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // Strictly one save at a time, even for clicks faster than a re-render.
+  const savingRef = useRef(false);
+  const valueRef = useRef<HTMLButtonElement>(null);
+  // Leaving edition hands the focus back to the value, not to <body>.
+  const refocusValue = useRef(false);
+
+  useEffect(() => {
+    if (!editing && refocusValue.current) {
+      refocusValue.current = false;
+      valueRef.current?.focus();
+    }
+  }, [editing]);
 
   const shown = display ?? value;
 
@@ -83,6 +95,7 @@ export function InlineEditField({
         {label} :{' '}
         {editable ? (
           <UnstyledButton
+            ref={valueRef}
             className="app-inline-edit"
             aria-label={`${editLabel} (${value || 'vide'})`}
             title="Cliquer pour modifier"
@@ -102,29 +115,37 @@ export function InlineEditField({
     );
   }
 
-  const cancel = () => {
+  const leave = () => {
+    refocusValue.current = true;
     setEditing(false);
     setConfirming(false);
     setError(null);
+  };
+
+  const cancel = () => {
+    if (savingRef.current) return;
+    leave();
     setDraft(value);
   };
 
   const save = async () => {
-    setConfirming(false);
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       await onSave(draft);
-      setEditing(false);
-      setError(null);
+      leave();
     } catch (e) {
+      setConfirming(false);
       setError(apiErrorMessage(e, "Échec de l'enregistrement"));
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
   const submit = () => {
-    if (saving) return;
+    if (savingRef.current) return;
     const invalid = validate(draft);
     if (invalid) {
       setError(invalid);
@@ -149,7 +170,7 @@ export function InlineEditField({
     }
   };
 
-  const changed = !isUnchanged(draft);
+  const warningShown = changeWarning !== undefined && !isUnchanged(draft);
 
   return (
     <Stack gap={6}>
@@ -160,6 +181,10 @@ export function InlineEditField({
         // The admin just asked to edit this value.
         autoFocus
         error={error}
+        // As the field's description, Mantine links the warning to the input
+        // (aria-describedby, next to the error): read out with the field.
+        description={warningShown ? changeWarning : undefined}
+        styles={{ description: { color: 'var(--mantine-color-orange-text)' } }}
         disabled={saving}
         onChange={(e) => {
           setDraft(e.currentTarget.value);
@@ -167,7 +192,6 @@ export function InlineEditField({
         }}
         onKeyDown={onKeyDown}
       />
-      {changed && changeWarning}
       {/* Named after the field: the page has its own « Enregistrer » below. */}
       <Group gap="xs">
         <Button size="xs" loading={saving} onClick={submit} aria-label={`Enregistrer (${label})`}>
@@ -184,14 +208,22 @@ export function InlineEditField({
         </Button>
       </Group>
       {confirm && (
-        <Modal opened={confirming} onClose={() => setConfirming(false)} title={confirm.title}>
+        <Modal
+          opened={confirming}
+          onClose={() => {
+            if (!savingRef.current) setConfirming(false);
+          }}
+          title={confirm.title}
+        >
           <Stack>
             {confirm.body}
             <Group justify="flex-end">
-              <Button variant="default" onClick={() => setConfirming(false)}>
+              <Button variant="default" disabled={saving} onClick={() => setConfirming(false)}>
                 Retour
               </Button>
-              <Button onClick={() => void save()}>{confirm.confirmLabel}</Button>
+              <Button loading={saving} onClick={() => void save()}>
+                {confirm.confirmLabel}
+              </Button>
             </Group>
           </Stack>
         </Modal>
