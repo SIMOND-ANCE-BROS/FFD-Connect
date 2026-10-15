@@ -1,34 +1,33 @@
 /**
  * Normalised e-mail lookup key (#526) against a real Postgres.
  *
- * CI builds the test schema with `prisma db push`, which never replays the
- * hand-written parts of the migration (backfill, duplicate report, rollback
- * guard trigger). This suite replays the migration file itself — every
- * statement is idempotent — on rows written the way an older release wrote
- * them (no key), then checks the lookups and the hourly re-backfill.
+ * Replays the migration file itself (backfill, duplicate report, rollback
+ * guard trigger) on rows written the way an older release wrote them (no
+ * key), then checks the lookups and the hourly re-backfill.
+ *
+ * Isolated: everything runs on one connection inside a transaction that is
+ * rolled back at the end, so the other suites never see the backfill nor the
+ * trigger. Works whatever built the test schema: `prisma db push` (column and
+ * index only) or `prisma migrate deploy` (migration already applied — every
+ * statement is idempotent).
  */
 import { promises as fsp } from "fs";
 import * as path from "path";
-import { Prisma, UserRole } from "@prisma/client";
-import { TestingModule } from "@nestjs/testing";
+import { Prisma } from "@prisma/client";
 import { Client, NoticeMessage } from "pg";
 import {
   fillNormalizedEmails,
   findUserIdByEmail,
   isEmailTaken,
-  storedEmailData,
+  normalizeEmail,
 } from "../src/auth/email-identity";
-import { PrismaService } from "../src/prisma/prisma.service";
-import { buildServiceModule } from "./integration-app.builder";
 
 const MIGRATION = path.resolve(
   __dirname,
-  "../prisma/schema/migrations/20261015120000_user_email_normalized/migration.sql",
+  "../prisma/schema/migrations/20261015130000_user_email_normalized/migration.sql",
 );
 
 describe("User.emailNormalized (#526, integration, real DB)", () => {
-  let moduleRef: TestingModule;
-  let prisma: PrismaService;
   let pg: Client;
   const notices: string[] = [];
 
@@ -36,60 +35,71 @@ describe("User.emailNormalized (#526, integration, real DB)", () => {
   const solo = `Solo-${run}@Test.com`;
   const twinUpper = `Twin-${run}@Test.com`;
   const twinLower = twinUpper.toLowerCase();
-  const ids: Record<string, string> = {};
+  const ids = {
+    solo: `mig-solo-${run}`,
+    twinUpper: `mig-twin-u-${run}`,
+    twinLower: `mig-twin-l-${run}`,
+  };
+
+  /** The helpers' Prisma surface, served by the transaction's connection. */
+  const db = {
+    $queryRaw: async (sql: Prisma.Sql) =>
+      (await pg.query(sql.text, sql.values)).rows,
+    $executeRaw: async (sql: Prisma.Sql) =>
+      (await pg.query(sql.text, sql.values)).rowCount ?? 0,
+    user: {
+      count: async () =>
+        Number(
+          (
+            await pg.query<{ n: string }>(
+              'SELECT count(*) AS n FROM "User" WHERE "emailNormalized" IS NULL',
+            )
+          ).rows[0].n,
+        ),
+    },
+  };
+  const lookup = db as unknown as Parameters<typeof findUserIdByEmail>[0];
+  const filler = db as unknown as Parameters<typeof fillNormalizedEmails>[0];
 
   /** Inserts a row the way the previous release did: no lookup key. */
-  async function legacyRow(name: string, email: string): Promise<void> {
-    const user = await prisma.user.create({
-      data: {
-        email,
-        password: "x",
-        firstName: "Mig",
-        lastName: name,
-        role: UserRole.LICENSEE,
-      },
-      select: { id: true, emailNormalized: true },
-    });
-    expect(user.emailNormalized).toBeNull();
-    ids[name] = user.id;
-  }
+  const legacyRow = (id: string, email: string) =>
+    pg.query(
+      `INSERT INTO "User" (id, email, password, "firstName", "lastName", "updatedAt")
+       VALUES ($1, $2, 'x', 'Mig', 'Legacy', now())`,
+      [id, email],
+    );
 
   const keyOf = async (id: string) =>
     (
-      await prisma.user.findUnique({
-        where: { id },
-        select: { emailNormalized: true },
-      })
-    )?.emailNormalized;
+      await pg.query<{ k: string | null }>(
+        'SELECT "emailNormalized" AS k FROM "User" WHERE id = $1',
+        [id],
+      )
+    ).rows[0]?.k;
+
+  const replayMigration = async () =>
+    pg.query(await fsp.readFile(MIGRATION, "utf8"));
 
   beforeAll(async () => {
-    const built = await buildServiceModule();
-    moduleRef = built.module;
-    prisma = built.prisma;
-    // Simple-query protocol: the migration runs as one multi-statement
-    // script, exactly like `prisma migrate deploy` sends it.
     pg = new Client({ connectionString: process.env.DATABASE_URL });
     pg.on("notice", (n: NoticeMessage) => notices.push(n.message));
     await pg.connect();
+    await pg.query("BEGIN");
 
-    await legacyRow("solo", solo);
-    await legacyRow("twinUpper", twinUpper);
-    await legacyRow("twinLower", twinLower);
-    await pg.query(await fsp.readFile(MIGRATION, "utf8"));
+    await legacyRow(ids.solo, solo);
+    await legacyRow(ids.twinUpper, twinUpper);
+    await legacyRow(ids.twinLower, twinLower);
+    // Simple-query protocol: one multi-statement script, as Prisma sends it.
+    await replayMigration();
   });
 
   afterAll(async () => {
-    await prisma.user.deleteMany({ where: { id: { in: Object.values(ids) } } });
-    // Back to the `db push` state the other suites expect.
-    await pg.query(
-      'DROP TRIGGER IF EXISTS "User_email_normalized_guard" ON "User"; DROP FUNCTION IF EXISTS "user_email_normalized_guard"();',
-    );
+    await pg.query("ROLLBACK");
     await pg.end();
-    await moduleRef.close();
   });
 
   it("backfills a legacy row with its ASCII-folded address", async () => {
-    expect(await keyOf(ids.solo)).toBe(solo.toLowerCase());
+    expect(await keyOf(ids.solo)).toBe(normalizeEmail(solo));
   });
 
   it("never merges accounts differing only by case: both keep no key", async () => {
@@ -103,67 +113,71 @@ describe("User.emailNormalized (#526, integration, real DB)", () => {
     expect(report).not.toContain("@");
   });
 
+  it("sets a lock timeout for the migration's transaction", async () => {
+    const { rows } = await pg.query<{ lock_timeout: string }>(
+      "SHOW lock_timeout",
+    );
+    expect(rows[0].lock_timeout).toBe("5s");
+  });
+
   it("is idempotent: a second run changes nothing and does not fail", async () => {
-    await expect(
-      pg.query(await fsp.readFile(MIGRATION, "utf8")),
-    ).resolves.toBeDefined();
-    expect(await keyOf(ids.solo)).toBe(solo.toLowerCase());
+    await expect(replayMigration()).resolves.toBeDefined();
+    expect(await keyOf(ids.solo)).toBe(normalizeEmail(solo));
     expect(await keyOf(ids.twinUpper)).toBeNull();
   });
 
   it("finds keyed and keyless accounts with the #465 rules", async () => {
     // Keyed row, any casing.
-    expect(await findUserIdByEmail(prisma, solo.toUpperCase())).toBe(ids.solo);
+    expect(await findUserIdByEmail(lookup, solo.toUpperCase())).toBe(ids.solo);
     // Keyless twins: exact casing only, any other casing refused.
-    expect(await findUserIdByEmail(prisma, twinUpper)).toBe(ids.twinUpper);
-    expect(await findUserIdByEmail(prisma, twinLower)).toBe(ids.twinLower);
-    expect(await findUserIdByEmail(prisma, twinUpper.toUpperCase())).toBeNull();
+    expect(await findUserIdByEmail(lookup, twinUpper)).toBe(ids.twinUpper);
+    expect(await findUserIdByEmail(lookup, twinLower)).toBe(ids.twinLower);
+    expect(await findUserIdByEmail(lookup, twinUpper.toUpperCase())).toBeNull();
     // A new address colliding with either is taken.
-    expect(await isEmailTaken(prisma, twinUpper.toUpperCase())).toBe(true);
-    expect(await isEmailTaken(prisma, solo.toUpperCase(), ids.solo)).toBe(
+    expect(await isEmailTaken(lookup, twinUpper.toUpperCase())).toBe(true);
+    expect(await isEmailTaken(lookup, solo.toUpperCase(), ids.solo)).toBe(
       false,
     );
   });
 
   it("the unique key refuses a second account for the same address", async () => {
+    await pg.query("SAVEPOINT clash");
     await expect(
-      prisma.user.create({
-        data: {
-          ...storedEmailData(solo),
-          password: "x",
-          firstName: "Mig",
-          lastName: "Clash",
-          role: UserRole.LICENSEE,
-        },
-      }),
-    ).rejects.toMatchObject({ code: "P2002" });
+      pg.query(
+        `INSERT INTO "User" (id, email, "emailNormalized", password, "firstName", "lastName", "updatedAt")
+         VALUES ($1, $2, $2, 'x', 'Mig', 'Clash', now())`,
+        [`mig-clash-${run}`, normalizeEmail(solo)],
+      ),
+    ).rejects.toMatchObject({ code: "23505" });
+    await pg.query("ROLLBACK TO SAVEPOINT clash");
   });
 
   it("rollback guard: an address changed without its key loses the stale key", async () => {
     const moved = `Moved-${run}@test.com`;
     // What the previous release's back-office edit does: `email` only.
-    await prisma.$executeRaw(
-      Prisma.sql`UPDATE "User" SET email = ${moved} WHERE id = ${ids.solo}`,
-    );
+    await pg.query('UPDATE "User" SET email = $1 WHERE id = $2', [
+      moved,
+      ids.solo,
+    ]);
     expect(await keyOf(ids.solo)).toBeNull();
-    // Still found by its real address (fallback branch), not by the old one.
-    expect(await findUserIdByEmail(prisma, moved)).toBe(ids.solo);
-    expect(await findUserIdByEmail(prisma, solo)).toBeNull();
+    // Still found by its real address (keyless branch), not by the old one.
+    expect(await findUserIdByEmail(lookup, moved)).toBe(ids.solo);
+    expect(await findUserIdByEmail(lookup, solo)).toBeNull();
 
     // The hourly re-backfill gives it its key back; the twins stay keyless.
-    const { filled, unresolved } = await fillNormalizedEmails(prisma);
+    const { filled, unresolved } = await fillNormalizedEmails(filler);
     expect(filled).toBeGreaterThanOrEqual(1);
     expect(unresolved).toBeGreaterThanOrEqual(2);
-    expect(await keyOf(ids.solo)).toBe(moved.toLowerCase());
+    expect(await keyOf(ids.solo)).toBe(normalizeEmail(moved));
     expect(await keyOf(ids.twinUpper)).toBeNull();
   });
 
   it("rollback guard: keeps a key written with its address", async () => {
-    const next = `Next-${run}@test.com`;
-    await prisma.user.update({
-      where: { id: ids.solo },
-      data: storedEmailData(next),
-    });
-    expect(await keyOf(ids.solo)).toBe(next.toLowerCase());
+    const next = normalizeEmail(`Next-${run}@test.com`);
+    await pg.query(
+      'UPDATE "User" SET email = $1, "emailNormalized" = $1 WHERE id = $2',
+      [next, ids.solo],
+    );
+    expect(await keyOf(ids.solo)).toBe(next);
   });
 });

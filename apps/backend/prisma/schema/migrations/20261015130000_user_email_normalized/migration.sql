@@ -10,11 +10,20 @@
 -- source of truth. Every statement is idempotent, so the script can be
 -- re-run by hand (docs/exploitation/email-normalise.md).
 --
--- The index is built without CONCURRENTLY on purpose: Prisma runs a migration
--- file as one multi-statement script, i.e. inside an implicit transaction,
--- where CREATE INDEX CONCURRENTLY is refused. "User" is small (beta); the
--- build holds a SHARE lock (writes on "User" wait, reads go on) for a fraction
--- of a second, during the boot of the new revision.
+-- Locking: Prisma runs a migration file as one multi-statement script, i.e.
+-- inside ONE implicit transaction. ADD COLUMN takes an ACCESS EXCLUSIVE lock
+-- on "User" held until that transaction commits, so every read AND write of
+-- "User" waits for the whole script (backfill and index build included) —
+-- including the account-status read JwtStrategy does on every authenticated
+-- request. "User" is small (beta): well under a second during the boot of
+-- the new revision. For the same reason the index is built without
+-- CONCURRENTLY, which is refused inside a transaction.
+--
+-- lock_timeout: if a long transaction already holds a lock on "User", the
+-- migration gives up after 5 s instead of queueing every request behind it.
+-- The whole script then rolls back (nothing half-applied), the deploy fails
+-- its smoke test and is rolled back; being idempotent, it can be retried.
+SET LOCAL lock_timeout = '5s';
 
 -- 1. Column.
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "emailNormalized" TEXT;
