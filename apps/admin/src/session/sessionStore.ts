@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { safeSessionStorage } from '../lib/safeSessionStorage';
 
 export interface SessionUser {
   id: string;
@@ -17,17 +18,30 @@ export function isAdmin(user: SessionUser | null | undefined): boolean {
   return user ? (user.roles ?? [user.role]).includes('ADMIN') : false;
 }
 
+export interface SessionSnapshot {
+  accessToken: string;
+  refreshToken: string;
+  user: SessionUser;
+}
+
 interface SessionState {
   accessToken: string | null;
   refreshToken: string | null;
   user: SessionUser | null;
-  setSession: (s: { accessToken: string; refreshToken: string; user: SessionUser }) => void;
+  /**
+   * True while a fresh tab asks the other back-office tabs for their session
+   * (#669, `sessionSync.ts`). Never persisted.
+   */
+  restoring: boolean;
+  setSession: (s: SessionSnapshot) => void;
   clear: () => void;
 }
 
 /**
- * Admin session. sessionStorage on purpose: closing the tab ends the session.
- * Never localStorage (it outlives the browser session).
+ * Admin session. sessionStorage on purpose: closing the tab ends the session;
+ * a tab opened from another one gets it over BroadcastChannel (#669).
+ * Never localStorage (it outlives the browser session). Blocked storage keeps
+ * the session in memory for the tab (#577).
  */
 export const useSession = create<SessionState>()(
   persist(
@@ -35,12 +49,13 @@ export const useSession = create<SessionState>()(
       accessToken: null,
       refreshToken: null,
       user: null,
+      restoring: false,
       setSession: ({ accessToken, refreshToken, user }) => set({ accessToken, refreshToken, user }),
       clear: () => set({ accessToken: null, refreshToken: null, user: null }),
     }),
     {
       name: 'ffd-admin-session',
-      storage: createJSONStorage(() => sessionStorage),
+      storage: createJSONStorage(() => safeSessionStorage),
       partialize: ({ accessToken, refreshToken, user }) => ({
         accessToken,
         refreshToken,

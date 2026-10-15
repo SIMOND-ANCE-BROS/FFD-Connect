@@ -21,6 +21,7 @@ import { useEffect, useRef } from 'react';
 import { NavLink as RouterLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { pendingCountQuery, pendingRenewalsCountQuery } from '../api/queries';
 import { useSession } from '../session/sessionStore';
+import { signOut } from '../session/sessionSync';
 
 /** Queues whose pending count is shown as a badge in the menu. */
 type Queue = 'moderation' | 'renewals';
@@ -107,7 +108,6 @@ function ColorSchemeToggle() {
 
 export function AppLayout() {
   const user = useSession((s) => s.user);
-  const clear = useSession((s) => s.clear);
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [navOpened, { toggle: toggleNav, close: closeNav }] = useDisclosure(false);
@@ -135,7 +135,7 @@ export function AppLayout() {
   };
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
   const logout = () => {
-    clear();
+    signOut();
     navigate('/login', { replace: true });
   };
 
