@@ -15,13 +15,20 @@ type BreakerKey =
   | "azure-blob"
   | "azure-blob-write"
   | "ffd-documents"
-  | "email";
+  | "email"
+  | "email-auth";
 
 interface BreakerConfig {
   errorThresholdPercentage: number;
   timeout: number;
   resetTimeout: number;
   volumeThreshold: number;
+  /**
+   * Treat 401/403 as the caller's fault (per-tenant credentials) instead of
+   * an outage. Leave unset for a breaker using one global credential: a
+   * broken identity or revoked key must open it and fail fast.
+   */
+  ignoreAuthErrors?: boolean;
 }
 
 const BREAKER_CONFIGS: Record<BreakerKey, BreakerConfig> = {
@@ -43,7 +50,10 @@ const BREAKER_CONFIGS: Record<BreakerKey, BreakerConfig> = {
     resetTimeout: 60_000,
     volumeThreshold: 5,
   },
+  // Credentials are per club organisation (scoped breakers): a rejected club
+  // key is that club's problem, never a HelloAsso outage.
   helloasso: {
+    ignoreAuthErrors: true,
     errorThresholdPercentage: 50,
     timeout: 15_000,
     resetTimeout: 30_000,
@@ -90,6 +100,15 @@ const BREAKER_CONFIGS: Record<BreakerKey, BreakerConfig> = {
     resetTimeout: 30_000,
     volumeThreshold: 5,
   },
+  // Password-reset e-mails (Resend), on their own breaker: a forgot-password
+  // flood (Resend 429s) never blocks invitations or the e-mail-changed
+  // security notice sent through `email`.
+  "email-auth": {
+    errorThresholdPercentage: 50,
+    timeout: 10_000,
+    resetTimeout: 30_000,
+    volumeThreshold: 5,
+  },
 };
 
 /**
@@ -124,7 +143,8 @@ export class CircuitBreakerService {
           volumeThreshold: config.volumeThreshold,
           // A 4xx answer (bad id, missing file, refused payload) is the
           // caller's fault, not an outage: rethrown, never counted (#437).
-          errorFilter: isCallerError,
+          errorFilter: (error: unknown) =>
+            isCallerError(error, { ignoreAuthErrors: config.ignoreAuthErrors }),
         },
       );
 
@@ -165,9 +185,9 @@ export class CircuitBreakerService {
    * organisation), failures are counted per scope: one tenant's outage or
    * bad credentials never opens the breaker for the others.
    *
-   * A caller error raised by `fn` (remote 4xx other than 408/429, see
-   * `isCallerError`) is rethrown as is and never counted as a failure:
-   * only 5xx, 408/429, timeouts and network errors can open the breaker.
+   * A caller error raised by `fn` (remote 4xx other than 408/429, and
+   * other than 401/403 unless the key sets `ignoreAuthErrors`; see
+   * `isCallerError`) is rethrown as is and never counted as a failure.
    */
   async fire<T>(
     key: BreakerKey,

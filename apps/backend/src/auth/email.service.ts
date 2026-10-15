@@ -119,6 +119,7 @@ export class EmailService {
     try {
       const id = await this.send(
         this.resend,
+        "email-auth",
         {
           to: email,
           subject: "Réinitialisation de votre mot de passe",
@@ -159,6 +160,7 @@ export class EmailService {
     try {
       const id = await this.send(
         this.resend,
+        "email",
         {
           to: email,
           subject: copy.subject,
@@ -193,6 +195,7 @@ export class EmailService {
     }
     await this.send(
       this.resend,
+      "email",
       {
         to: previousEmail,
         subject: "L'email de votre compte FFD Connect a été modifié",
@@ -203,18 +206,21 @@ export class EmailService {
   }
 
   /**
-   * One Resend call through the `email` circuit breaker, bounded by
-   * EMAIL_SEND_TIMEOUT_MS (ADR-0009, #464). Resend reports failures in its
-   * result instead of throwing: they are rethrown with their status so the
-   * breaker counts outages (5xx, network) but not refused messages (4xx).
+   * One Resend call through a circuit breaker, bounded by
+   * EMAIL_SEND_TIMEOUT_MS (ADR-0009, #464). Password resets use their own
+   * `email-auth` breaker so a forgot-password flood cannot block the other
+   * mails (`email`). Resend reports failures in its result instead of
+   * throwing: they are rethrown with their status so the breaker counts
+   * outages (5xx, 401/403, 429, network) but not refused messages (4xx).
    * Returns the Resend message id; throws on any failure, the caller degrades.
    */
   private async send(
     resend: Resend,
+    breakerKey: "email" | "email-auth",
     message: { to: string; subject: string; html: string },
     label: string,
   ): Promise<string> {
-    return this.breaker.fire("email", async () => {
+    return this.breaker.fire(breakerKey, async () => {
       const { data, error } = await withTimeout(
         resend.emails.send({ from: this.fromEmail, ...message }),
         EMAIL_SEND_TIMEOUT_MS,

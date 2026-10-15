@@ -95,9 +95,8 @@ describe("CircuitBreakerService", () => {
       "azure-blob-write",
       "ffd-documents",
       "email",
+      "email-auth",
     ] as const;
-    const httpError = (status: number) =>
-      Object.assign(new Error(`HTTP ${status}`), { response: { status } });
     const axiosError = (status: number) =>
       new AxiosError(
         `Request failed with status code ${status}`,
@@ -149,7 +148,22 @@ describe("CircuitBreakerService", () => {
         "refused address (Resend 422)",
         () => new EmailSendError("invalid to", 422),
       ],
+      [
+        "email-auth",
+        "refused address (Resend 422)",
+        () => new EmailSendError("invalid to", 422),
+      ],
     ];
+    const openWith = async (
+      key: (typeof BREAKER_KEYS)[number],
+      error: Error,
+    ): Promise<void> => {
+      for (let i = 0; i < 10; i++) {
+        await service
+          .fire(key, () => Promise.reject(error))
+          .catch(() => undefined);
+      }
+    };
 
     it("covers every breaker key", () => {
       expect(CALLER_ERRORS.map(([key]) => key).sort()).toEqual(
@@ -173,24 +187,94 @@ describe("CircuitBreakerService", () => {
     );
 
     it.each(BREAKER_KEYS)("%s still opens on a burst of 5xx", async (key) => {
-      for (let i = 0; i < 10; i++) {
-        await service
-          .fire(key, () => Promise.reject(httpError(503)))
-          .catch(() => undefined);
-      }
+      await openWith(key, axiosError(503));
       await expect(
         service.fire(key, () => Promise.resolve("ok")),
       ).rejects.toBeInstanceOf(ServiceUnavailableException);
     });
 
     it.each([408, 429])("still opens on a burst of HTTP %i", async (status) => {
-      for (let i = 0; i < 10; i++) {
-        await service
-          .fire("wdsf", () => Promise.reject(httpError(status)))
-          .catch(() => undefined);
-      }
+      await openWith("wdsf", axiosError(status));
       await expect(
         service.fire("wdsf", () => Promise.resolve("ok")),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    });
+
+    // L1: one global credential (identity, API key) → 401/403 is an outage.
+    const GLOBAL_CREDENTIAL_KEYS = BREAKER_KEYS.filter(
+      (key) => key !== "helloasso",
+    );
+    describe.each([401, 403])("HTTP %i", (status) => {
+      it.each(GLOBAL_CREDENTIAL_KEYS)(
+        "opens the global-credential breaker %s",
+        async (key) => {
+          await openWith(key, axiosError(status));
+          await expect(
+            service.fire(key, () => Promise.resolve("ok")),
+          ).rejects.toBeInstanceOf(ServiceUnavailableException);
+        },
+      );
+
+      it("opens on Azure RestError and Resend refusals of our key", async () => {
+        await openWith(
+          "azure-blob",
+          new RestError("AuthorizationFailure", { statusCode: status }),
+        );
+        await openWith("email", new EmailSendError("bad key", status));
+        await expect(
+          service.fire("azure-blob", () => Promise.resolve("ok")),
+        ).rejects.toBeInstanceOf(ServiceUnavailableException);
+        await expect(
+          service.fire("email", () => Promise.resolve("ok")),
+        ).rejects.toBeInstanceOf(ServiceUnavailableException);
+      });
+
+      it("never opens helloasso (per-club credentials)", async () => {
+        await openWith("helloasso", axiosError(status));
+        await expect(
+          service.fire("helloasso", () => Promise.resolve("ok")),
+        ).resolves.toBe("ok");
+      });
+    });
+
+    it("counts FCM mismatched-credential (wrong Firebase project) as an outage", async () => {
+      await openWith(
+        "fcm",
+        Object.assign(new Error("mismatched"), {
+          code: "messaging/mismatched-credential",
+        }),
+      );
+      await expect(
+        service.fire("fcm", () => Promise.resolve("ok")),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    });
+
+    // L2: forgot-password floods only open their own breaker.
+    it("an open email-auth breaker leaves email closed", async () => {
+      await openWith("email-auth", new EmailSendError("rate limited", 429));
+      await expect(
+        service.fire("email-auth", () => Promise.resolve("ok")),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+      await expect(
+        service.fire("email", () => Promise.resolve("ok")),
+      ).resolves.toBe("ok");
+    });
+
+    // L3: a remote payload carrying `status` never hides an outage.
+    it("counts an error whose remote body says 404", async () => {
+      await openWith(
+        "wdsf",
+        Object.assign(new Error("down"), { response: { status: 404 } }),
+      );
+      await openWith(
+        "azure-tts",
+        new ServiceUnavailableException({ status: 404 }),
+      );
+      await expect(
+        service.fire("wdsf", () => Promise.resolve("ok")),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+      await expect(
+        service.fire("azure-tts", () => Promise.resolve("ok")),
       ).rejects.toBeInstanceOf(ServiceUnavailableException);
     });
 

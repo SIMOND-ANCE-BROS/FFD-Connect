@@ -253,6 +253,33 @@ describe("EmailService", () => {
       });
     });
 
+    it("a password-reset flood does not block invitations or notices (own breaker)", async () => {
+      mockSend.mockResolvedValue({
+        data: null,
+        error: {
+          message: "slow down",
+          statusCode: 429,
+          name: "rate_limit_exceeded",
+        },
+      });
+      for (let i = 0; i < 6; i++) {
+        await service
+          .sendPasswordResetEmail("u@test.com", "tok")
+          .catch(() => undefined);
+      }
+      await expect(
+        service.sendPasswordResetEmail("u@test.com", "tok"),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+
+      mockSend.mockResolvedValue({ data: { id: "m" }, error: null });
+      await expect(
+        service.sendInvitationEmail("c@x.fr", "tok", "Jo", "CLUB"),
+      ).resolves.toBeUndefined();
+      await expect(
+        service.sendEmailChangedNotice("old@x.fr", "Jo"),
+      ).resolves.toBeUndefined();
+    });
+
     describe("sendInvitationEmail", () => {
       it("sends a club invitation whose link opens the web reset page with the token", async () => {
         await service.sendInvitationEmail(
