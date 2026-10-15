@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { EntryQrBatch, EntryQrKeySet } from "../entryQr";
 import {
   clearEntryQrBatch,
+  ENTRY_QR_KEYS_MAX_AGE_MS,
   loadEntryQrBatch,
   loadEntryQrKeys,
   saveEntryQrBatch,
@@ -76,10 +77,29 @@ describe("entryQrStorage (#24)", () => {
     expect(await loadEntryQrKeys()).toEqual(KEYS);
   });
 
-  it("ignores malformed cached keys", async () => {
-    await AsyncStorage.setItem("entry_qr_keys_v1", JSON.stringify({ keys: 1 }));
+  it("stops trusting cached keys after 7 days", async () => {
+    const fetchedAt = new Date("2026-10-01T10:00:00.000Z");
+    await saveEntryQrKeys(KEYS, fetchedAt);
+    const day = 24 * 3600 * 1000;
+    expect(
+      await loadEntryQrKeys(new Date(fetchedAt.getTime() + 7 * day)),
+    ).toEqual(KEYS);
+    expect(
+      await loadEntryQrKeys(new Date(fetchedAt.getTime() + 7 * day + 1)),
+    ).toBeNull();
+    expect(ENTRY_QR_KEYS_MAX_AGE_MS).toBe(7 * day);
+  });
+
+  it("ignores malformed or legacy cached keys", async () => {
+    // Pre-fetchedAt format: never trusted.
+    await AsyncStorage.setItem("entry_qr_keys_v2", JSON.stringify(KEYS));
     expect(await loadEntryQrKeys()).toBeNull();
-    await AsyncStorage.setItem("entry_qr_keys_v1", "{oops");
+    await AsyncStorage.setItem(
+      "entry_qr_keys_v2",
+      JSON.stringify({ fetchedAt: Date.now(), keySet: { keys: 1 } }),
+    );
+    expect(await loadEntryQrKeys()).toBeNull();
+    await AsyncStorage.setItem("entry_qr_keys_v2", "{oops");
     expect(await loadEntryQrKeys()).toBeNull();
   });
 

@@ -4,18 +4,34 @@ import { enqueueMutation } from "../../../../services/offlineQueueStorage";
 import type { PendingMutation } from "../../../../services/offlineQueueStorage";
 import type { EntryQrKeySet } from "../../utils/entryQr";
 import { loadEntryQrKeys, saveEntryQrKeys } from "../../utils/entryQrStorage";
+import api from "../../../../services/api";
+import {
+  loadQueue,
+  removeMutations,
+} from "../../../../services/offlineQueueStorage";
 import {
   CHECKIN_KIND,
   checkInOffline,
   handleCheckinReplayError,
+  OFFLINE_CHECKIN_MAX_AGE_MS,
+  OFFLINE_CHECKIN_MESSAGES,
+  OfflineCheckinExpiredError,
+  purgeExpiredCheckins,
   refreshEntryQrKeys,
+  replayCheckin,
 } from "../offlineCheckin";
 
+jest.mock("../../../../services/api", () => ({
+  __esModule: true,
+  default: { post: jest.fn() },
+}));
 jest.mock("../../../../services/api/entry-qr-api", () => ({
   EntryQrApi: { getKeys: jest.fn() },
 }));
 jest.mock("../../../../services/offlineQueueStorage", () => ({
   enqueueMutation: jest.fn(),
+  loadQueue: jest.fn(),
+  removeMutations: jest.fn(),
 }));
 jest.mock("../../utils/entryQrStorage", () => ({
   loadEntryQrKeys: jest.fn(),
@@ -247,6 +263,106 @@ describe("offlineCheckin (#24)", () => {
         "Check-in hors ligne refusé",
         "refusé par le serveur",
       );
+    });
+
+    it("drops an expired replay and says so", () => {
+      expect(
+        handleCheckinReplayError(
+          mutation({ holderName: "DUPONT Jean" }),
+          new OfflineCheckinExpiredError(),
+        ),
+      ).toBe("drop");
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Check-in hors ligne refusé",
+        `DUPONT Jean : ${OFFLINE_CHECKIN_MESSAGES.REPLAY_EXPIRED}`,
+      );
+    });
+  });
+
+  describe("replayCheckin", () => {
+    const NOW_MS = Date.parse("2026-10-16T12:00:00.000Z");
+    const queued = (ageMs: number): PendingMutation => ({
+      id: "m1",
+      endpoint: "POST /competitions/checkin/volunteer",
+      payload: { token: "t", qrData: "qr" },
+      queryKeysToInvalidate: [],
+      enqueuedAt: NOW_MS - ageMs,
+      kind: CHECKIN_KIND,
+      meta: { holderName: "DUPONT Jean" },
+    });
+    const request = (m: PendingMutation) => ({
+      endpoint: m.endpoint,
+      payload: m.payload,
+    });
+    const post = api.post as jest.Mock;
+
+    beforeEach(() => {
+      jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    });
+
+    it("sends a recent entry to its endpoint, silently on success", async () => {
+      post.mockResolvedValue({
+        data: { registrations: [{ status: "SUCCESS" }] },
+      });
+      const m = queued(60_000);
+      await replayCheckin(request(m), m, new Date(NOW_MS));
+      expect(post).toHaveBeenCalledWith("/competitions/checkin/volunteer", {
+        token: "t",
+        qrData: "qr",
+      });
+      expect(Alert.alert).not.toHaveBeenCalled();
+    });
+
+    it("warns that the token may have been used twice on ALREADY_CHECKED_IN", async () => {
+      post.mockResolvedValue({
+        data: { registrations: [{ status: "ALREADY_CHECKED_IN" }] },
+      });
+      const m = queued(60_000);
+      await replayCheckin(request(m), m, new Date(NOW_MS));
+      expect(Alert.alert).toHaveBeenCalledWith(
+        OFFLINE_CHECKIN_MESSAGES.ALREADY_CHECKED_IN_TITLE,
+        `DUPONT Jean ${OFFLINE_CHECKIN_MESSAGES.ALREADY_CHECKED_IN}`,
+      );
+    });
+
+    it("names nobody when the entry has no holder, and tolerates an empty answer", async () => {
+      post.mockResolvedValueOnce({
+        data: { registrations: [{ status: "ALREADY_CHECKED_IN" }] },
+      });
+      const m = { ...queued(0), meta: undefined };
+      await replayCheckin(request(m), m, new Date(NOW_MS));
+      expect(Alert.alert).toHaveBeenCalledWith(
+        OFFLINE_CHECKIN_MESSAGES.ALREADY_CHECKED_IN_TITLE,
+        `Ce licencié ${OFFLINE_CHECKIN_MESSAGES.ALREADY_CHECKED_IN}`,
+      );
+      post.mockResolvedValueOnce({ data: {} });
+      await expect(
+        replayCheckin(request(m), m, new Date(NOW_MS)),
+      ).resolves.toBeUndefined();
+    });
+
+    it("never sends an entry older than 12 h", async () => {
+      const m = queued(OFFLINE_CHECKIN_MAX_AGE_MS + 1);
+      await expect(
+        replayCheckin(request(m), m, new Date(NOW_MS)),
+      ).rejects.toBeInstanceOf(OfflineCheckinExpiredError);
+      expect(post).not.toHaveBeenCalled();
+    });
+
+    it("purges expired check-ins (and their volunteer tokens) only", async () => {
+      (loadQueue as jest.Mock).mockResolvedValue([
+        queued(OFFLINE_CHECKIN_MAX_AGE_MS + 1),
+        { ...queued(60_000), id: "fresh" },
+        {
+          ...queued(OFFLINE_CHECKIN_MAX_AGE_MS + 1),
+          id: "registration",
+          kind: "registration",
+        },
+      ]);
+      await expect(purgeExpiredCheckins(new Date(NOW_MS))).resolves.toBe(1);
+      expect(removeMutations).toHaveBeenCalledWith(["m1"]);
+      (loadQueue as jest.Mock).mockResolvedValue([]);
+      await expect(purgeExpiredCheckins()).resolves.toBe(0);
     });
   });
 });

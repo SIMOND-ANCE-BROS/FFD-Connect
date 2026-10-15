@@ -78,7 +78,9 @@ export class EntryQrService {
   constructor(configService: ConfigService) {
     this.signingKey = this.loadSigningKey(
       configService.get<string>("ENTRY_QR_SIGNING_KEY"),
+      configService.get<string>("NODE_ENV") === "production",
     );
+
     if (this.signingKey) {
       this.verificationKeys.set(
         this.signingKey.kid,
@@ -108,7 +110,10 @@ export class EntryQrService {
     }
   }
 
-  private loadSigningKey(raw: string | undefined): SigningKey | null {
+  private loadSigningKey(
+    raw: string | undefined,
+    isProduction: boolean,
+  ): SigningKey | null {
     if (!raw?.trim()) {
       this.logger.log(
         "Rotating entry QR disabled (no ENTRY_QR_SIGNING_KEY): the app keeps the static license QR",
@@ -124,11 +129,14 @@ export class EntryQrService {
       return { privateKey, kid: entryQrKeyId(rawPublic), raw: rawPublic };
     } catch (error) {
       // Never log the key material, only why it was rejected.
-      this.logger.error(
-        `ENTRY_QR_SIGNING_KEY ignored (must be an Ed25519 PKCS#8 PEM private key): ${
-          error instanceof Error ? error.message : "invalid key"
-        }`,
-      );
+      const reason = `ENTRY_QR_SIGNING_KEY is set but unusable (must be an Ed25519 PKCS#8 PEM private key): ${
+        error instanceof Error ? error.message : "invalid key"
+      }`;
+      // A key that was meant to be there but is broken would silently turn
+      // the rotating QR off (and refuse every offline replay): in production,
+      // refuse to boot instead, like QR_SIGNATURE_MODE=enforce without secret.
+      if (isProduction) throw new Error(reason);
+      this.logger.error(`${reason} — ignored`);
       return null;
     }
   }

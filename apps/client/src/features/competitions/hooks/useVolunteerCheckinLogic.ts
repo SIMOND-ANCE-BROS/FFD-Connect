@@ -4,6 +4,7 @@ import { Alert } from "react-native";
 import { offlineCheckinVerdict } from "../../license/components/OfflineCheckinOverlay";
 import {
   checkInOffline,
+  purgeExpiredCheckins,
   refreshEntryQrKeys,
 } from "../../license/services/offlineCheckin";
 import { createLogger } from "../../../utils/logger";
@@ -26,6 +27,8 @@ export const useVolunteerCheckinLogic = (
   // Public keys for offline verification (#24), cached for the venue.
   useEffect(() => {
     refreshEntryQrKeys().catch(() => {});
+    // Queued scans older than 12 h (and volunteer tokens) never linger.
+    purgeExpiredCheckins().catch(() => {});
   }, []);
 
   const handleBarCodeScanned = useCallback(

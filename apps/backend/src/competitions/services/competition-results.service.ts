@@ -235,10 +235,9 @@ export class CompetitionResultsService {
       );
     }
 
-    const checkInResults = [];
-    const regsToUpdate: string[] = [];
     // Authoritative time: the server clock at receipt, never the claim.
     const now = new Date();
+    const checkInResults = [];
 
     for (const reg of registrations) {
       if (!reg.feePaid) {
@@ -250,37 +249,27 @@ export class CompetitionResultsService {
         continue;
       }
 
-      if (reg.checkedIn) {
-        checkInResults.push({
-          event: reg.event.category,
-          status: "ALREADY_CHECKED_IN",
-          bibNumber: reg.bibNumber,
-          partner: reg.partnerName,
-        });
-        continue;
-      }
-
-      // Collect IDs for batch update
-      regsToUpdate.push(reg.id);
+      // One conditional update per registration (a licence has a handful at
+      // most): `checkedIn: false` in the filter makes the check-in single use,
+      // and the row count tells a race lost to a concurrent scan or replay
+      // (count 0 ⇒ ALREADY_CHECKED_IN), never a false SUCCESS.
+      const claimed = reg.checkedIn
+        ? 0
+        : (
+            await this.prisma.registration.updateMany({
+              where: { id: reg.id, checkedIn: false },
+              data: {
+                checkedIn: true,
+                checkInTime: now,
+                checkInClaimedScanAt: scan.claimedAt,
+              },
+            })
+          ).count;
       checkInResults.push({
         event: reg.event.category,
-        status: "SUCCESS",
+        status: claimed === 1 ? "SUCCESS" : "ALREADY_CHECKED_IN",
         bibNumber: reg.bibNumber,
         partner: reg.partnerName,
-      });
-    }
-
-    // Perform batch update if there are registrations to check in
-    if (regsToUpdate.length > 0) {
-      await this.prisma.registration.updateMany({
-        // `checkedIn: false` in the filter: a concurrent replay of the same
-        // token cannot check the licence in twice (single use).
-        where: { id: { in: regsToUpdate }, checkedIn: false },
-        data: {
-          checkedIn: true,
-          checkInTime: now,
-          checkInClaimedScanAt: scan.claimedAt,
-        },
       });
     }
 

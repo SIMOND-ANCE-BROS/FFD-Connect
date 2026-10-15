@@ -14,7 +14,7 @@ import type { EntryQrBatch, EntryQrKeySet } from "./entryQr";
  * Purgés avec le snapshot (déconnexion, impersonation, refresh expiré).
  */
 const BATCH_KEY = "entry_qr_batch_v1";
-const KEYS_KEY = "entry_qr_keys_v1";
+const KEYS_KEY = "entry_qr_keys_v2";
 
 interface StoredBatch {
   owner: string;
@@ -83,28 +83,50 @@ export async function clearEntryQrBatch(): Promise<void> {
   }
 }
 
-export async function saveEntryQrKeys(keySet: EntryQrKeySet): Promise<void> {
+/**
+ * Cached public keys stop being trusted after 7 days (#24): a key removed
+ * from the server (compromised, rotated) must not keep validating QRs on a
+ * scanner that never went back online.
+ */
+export const ENTRY_QR_KEYS_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+
+interface StoredKeys {
+  fetchedAt: number;
+  keySet: EntryQrKeySet;
+}
+
+export async function saveEntryQrKeys(
+  keySet: EntryQrKeySet,
+  now: Date = new Date(),
+): Promise<void> {
   try {
-    await AsyncStorage.setItem(KEYS_KEY, JSON.stringify(keySet));
+    const stored: StoredKeys = { fetchedAt: now.getTime(), keySet };
+    await AsyncStorage.setItem(KEYS_KEY, JSON.stringify(stored));
   } catch {
     // Best-effort
   }
 }
 
-export async function loadEntryQrKeys(): Promise<EntryQrKeySet | null> {
+/** Cached keys, or null when absent, malformed or older than 7 days. */
+export async function loadEntryQrKeys(
+  now: Date = new Date(),
+): Promise<EntryQrKeySet | null> {
   try {
     const raw = await AsyncStorage.getItem(KEYS_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<EntryQrKeySet> | null;
+    const stored = JSON.parse(raw) as Partial<StoredKeys> | null;
+    const keySet = stored?.keySet;
     if (
-      !parsed ||
-      !Array.isArray(parsed.keys) ||
-      typeof parsed.stepSeconds !== "number" ||
-      typeof parsed.toleranceSteps !== "number"
+      typeof stored?.fetchedAt !== "number" ||
+      now.getTime() - stored.fetchedAt > ENTRY_QR_KEYS_MAX_AGE_MS ||
+      !keySet ||
+      !Array.isArray(keySet.keys) ||
+      typeof keySet.stepSeconds !== "number" ||
+      typeof keySet.toleranceSteps !== "number"
     ) {
       return null;
     }
-    return parsed as EntryQrKeySet;
+    return keySet;
   } catch {
     return null;
   }

@@ -10,6 +10,7 @@ import { createLogger } from "../../../utils/logger";
 import { CheckinResponse, CheckinService } from "../services/CheckinService";
 import {
   checkInOffline,
+  purgeExpiredCheckins,
   refreshEntryQrKeys,
   type OfflineCheckinResult,
 } from "../services/offlineCheckin";
@@ -63,6 +64,8 @@ export const useScannerLogic = (initialCompetitionId?: string) => {
   // cached for the gym without network.
   useEffect(() => {
     refreshEntryQrKeys().catch(() => {});
+    // Queued scans older than 12 h (and volunteer tokens) never linger.
+    purgeExpiredCheckins().catch(() => {});
   }, []);
 
   // Initial Permission Request — une seule fois, et seulement si iOS accepte

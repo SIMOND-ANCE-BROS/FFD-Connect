@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { CheckinService } from "../../services/CheckinService";
 import {
   checkInOffline,
+  purgeExpiredCheckins,
   refreshEntryQrKeys,
 } from "../../services/offlineCheckin";
 import { useScannerLogic } from "../useScannerLogic";
@@ -17,6 +18,7 @@ jest.mock("expo-camera", () => ({
 jest.mock("../../services/offlineCheckin", () => ({
   checkInOffline: jest.fn(),
   refreshEntryQrKeys: jest.fn().mockResolvedValue(null),
+  purgeExpiredCheckins: jest.fn().mockResolvedValue(0),
 }));
 
 jest.mock("../../services/CheckinService", () => ({
@@ -165,6 +167,7 @@ describe("useScannerLogic", () => {
 
     const { result } = await renderHook(() => useScannerLogic("comp-1"));
     expect(refreshEntryQrKeys).toHaveBeenCalled();
+    expect(purgeExpiredCheckins).toHaveBeenCalled();
 
     await act(async () => {
       void result.current.actions.handleBarcodeScanned({

@@ -1,8 +1,11 @@
 import { Alert } from "react-native";
 import type { ReplayDecision } from "../../../hooks/useOfflineQueue";
+import api from "../../../services/api";
 import { EntryQrApi } from "../../../services/api/entry-qr-api";
 import {
   enqueueMutation,
+  loadQueue,
+  removeMutations,
   type PendingMutation,
 } from "../../../services/offlineQueueStorage";
 import { createLogger } from "../../../utils/logger";
@@ -50,9 +53,78 @@ export const OFFLINE_CHECKIN_MESSAGES = {
   NOT_ENTRY_QR:
     "Ce QR (pass Wallet ou ancienne version de l'app) ne se vérifie qu'avec du réseau. Demandez à ouvrir l'E-Licence dans l'application.",
   NO_KEYS:
-    "Vérification hors ligne impossible : ouvrez le scanner une fois avec du réseau pour télécharger les clés de vérification.",
+    "Vérification hors ligne impossible : ouvrez le scanner avec du réseau pour télécharger les clés de vérification (elles expirent après 7 jours sans réseau).",
   REPLAY_REJECTED_TITLE: "Check-in hors ligne refusé",
+  REPLAY_EXPIRED:
+    "Scan hors ligne de plus de 12 h : il n'a pas été envoyé. Refaites le check-in en ligne si la personne est toujours là.",
+  ALREADY_CHECKED_IN_TITLE: "QR peut-être utilisé deux fois",
+  ALREADY_CHECKED_IN:
+    "était déjà pointé(e) quand le scan hors ligne a été synchronisé : le même QR a peut-être servi à deux personnes. Vérifiez l'identité si possible.",
 } as const;
+
+/**
+ * A queued check-in older than this is dropped, never sent: the server
+ * refuses a claimed scan time older than 12 h anyway, and the entry may hold
+ * a volunteer link token that must not linger on the device.
+ */
+export const OFFLINE_CHECKIN_MAX_AGE_MS = 12 * 3600 * 1000;
+
+export class OfflineCheckinExpiredError extends Error {
+  constructor() {
+    super("Offline check-in older than 12 h");
+    this.name = "OfflineCheckinExpiredError";
+  }
+}
+
+const isExpired = (m: PendingMutation, now: number): boolean =>
+  now - m.enqueuedAt > OFFLINE_CHECKIN_MAX_AGE_MS;
+
+/**
+ * Removes queued check-ins older than 12 h (and the volunteer tokens they
+ * carry). Called when a scanner opens; the replay drops them too.
+ */
+export async function purgeExpiredCheckins(
+  now: Date = new Date(),
+): Promise<number> {
+  const expired = (await loadQueue()).filter(
+    (m) => m.kind === CHECKIN_KIND && isExpired(m, now.getTime()),
+  );
+  await removeMutations(expired.map((m) => m.id));
+  if (expired.length > 0) {
+    log.info(`Purged ${expired.length} expired offline check-in(s)`);
+  }
+  return expired.length;
+}
+
+interface ReplayResponse {
+  registrations?: { status?: string }[];
+}
+
+/**
+ * Replays one queued check-in (mutationFn of the offline queue for
+ * CHECKIN_KIND). An entry older than 12 h is never sent. When the server
+ * answers ALREADY_CHECKED_IN, the licence was checked in meanwhile — by a
+ * concurrent scan of the same token, possibly a shared screenshot: the staff
+ * is told so.
+ */
+export async function replayCheckin(
+  request: { endpoint: string; payload: unknown },
+  m: PendingMutation,
+  now: Date = new Date(),
+): Promise<void> {
+  if (isExpired(m, now.getTime())) throw new OfflineCheckinExpiredError();
+  const [, path] = request.endpoint.split(" ");
+  const response = await api.post<ReplayResponse>(path, request.payload);
+  const already = (response.data.registrations ?? []).some(
+    (r) => r.status === "ALREADY_CHECKED_IN",
+  );
+  if (already) {
+    Alert.alert(
+      OFFLINE_CHECKIN_MESSAGES.ALREADY_CHECKED_IN_TITLE,
+      `${m.meta?.holderName ?? "Ce licencié"} ${OFFLINE_CHECKIN_MESSAGES.ALREADY_CHECKED_IN}`,
+    );
+  }
+}
 
 /**
  * Downloads the public keys when the network allows and caches them; falls
@@ -84,7 +156,7 @@ export async function checkInOffline({
   competitionId,
   now = new Date(),
 }: OfflineCheckinRequest): Promise<OfflineCheckinResult> {
-  const keySet = await loadEntryQrKeys();
+  const keySet = await loadEntryQrKeys(now);
   if (!keySet || keySet.keys.length === 0) {
     return { status: "NO_KEYS", queued: false };
   }
@@ -144,11 +216,18 @@ export function handleCheckinReplayError(
   err: unknown,
 ): ReplayDecision | undefined {
   if (m.kind !== CHECKIN_KIND) return undefined;
+  const who = m.meta?.holderName ? `${m.meta.holderName} : ` : "";
+  if (err instanceof OfflineCheckinExpiredError) {
+    Alert.alert(
+      OFFLINE_CHECKIN_MESSAGES.REPLAY_REJECTED_TITLE,
+      `${who}${OFFLINE_CHECKIN_MESSAGES.REPLAY_EXPIRED}`,
+    );
+    return "drop";
+  }
   const status = httpStatusOf(err);
   if (status === null || status === 408 || status === 429 || status >= 500) {
     return "retry";
   }
-  const who = m.meta?.holderName ? `${m.meta.holderName} : ` : "";
   Alert.alert(
     OFFLINE_CHECKIN_MESSAGES.REPLAY_REJECTED_TITLE,
     `${who}${serverMessageOf(err) ?? "refusé par le serveur"}`,

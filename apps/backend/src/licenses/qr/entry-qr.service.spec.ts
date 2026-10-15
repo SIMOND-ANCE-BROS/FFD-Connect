@@ -110,6 +110,27 @@ describe("EntryQrService", () => {
       );
     });
 
+    it("refuses to boot in production with a set but unusable key, without leaking it", () => {
+      expect(() =>
+        makeService({
+          ENTRY_QR_SIGNING_KEY: "not-a-key-material",
+          NODE_ENV: "production",
+        }),
+      ).toThrow(/ENTRY_QR_SIGNING_KEY is set but unusable/);
+      try {
+        makeService({
+          ENTRY_QR_SIGNING_KEY: "not-a-key-material",
+          NODE_ENV: "production",
+        });
+      } catch (error) {
+        expect(String(error)).not.toContain("not-a-key-material");
+      }
+    });
+
+    it("still boots in production without any key (feature off)", () => {
+      expect(makeService({ NODE_ENV: "production" }).canIssue()).toBe(false);
+    });
+
     it("ignores a private key of another type", () => {
       const { privateKey } = generateKeyPairSync("x25519");
       const service = makeService({

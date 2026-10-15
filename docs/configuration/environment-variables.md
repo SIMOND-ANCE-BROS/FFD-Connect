@@ -189,15 +189,16 @@ Précisions :
 
 Décision et format : [ADR-0024](../adr/0024-qr-entree-tournant-hors-ligne.md). Les deux variables sont optionnelles : sans clé, l'app garde le QR statique et le backend démarre.
 
-| Variable                       | Défaut | Rôle                                                                                                                                                                                                                                |
-| ------------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ENTRY_QR_SIGNING_KEY`         | —      | Clé privée **Ed25519**, PEM PKCS#8 (`openssl genpkey -algorithm ed25519`), `\n` littéraux acceptés. Signe les lots de QR tournants (`GET /licenses/my/entry-qr`). Absente ou invalide → fonctionnalité désactivée (404 sur le lot). |
-| `ENTRY_QR_RETIRED_PUBLIC_KEYS` | —      | Clés publiques brutes (base64url, séparées par des virgules) des clés précédentes : encore acceptées et publiées aux scanners (`GET /licenses/entry-qr/keys`).                                                                      |
+| Variable                       | Défaut | Rôle                                                                                                                                                                                                                                                                                                        |
+| ------------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ENTRY_QR_SIGNING_KEY`         | —      | Clé privée **Ed25519**, PEM PKCS#8 (`openssl genpkey -algorithm ed25519`), `\n` littéraux acceptés. Signe les lots de QR tournants (`GET /licenses/my/entry-qr`). Absente → fonctionnalité désactivée (404 sur le lot). Posée mais invalide → ignorée hors production, **refus de démarrer en production**. |
+| `ENTRY_QR_RETIRED_PUBLIC_KEYS` | —      | Clés publiques brutes (base64url, séparées par des virgules) des clés précédentes : encore acceptées et publiées aux scanners (`GET /licenses/entry-qr/keys`).                                                                                                                                              |
 
 Précisions :
 
-- La vérification suit `QR_SIGNATURE_MODE` : un QR tournant périmé (`STALE`) ou falsifié est signalé en `warn`, refusé en `enforce`, ignoré en `off`.
-- **Rotation** : générer la nouvelle clé, mettre l'ancienne clé **publique** dans `ENTRY_QR_RETIRED_PUBLIC_KEYS`, déployer, puis la retirer **au moins 12 h plus tard** (durée d'un lot). Les scanners doivent rouvrir l'écran de scan en ligne pour télécharger la nouvelle clé.
+- Le QR tournant est vérifié dès qu'une clé est posée, **même sans `QR_SIGNING_SECRET`** ; `QR_SIGNATURE_MODE` décide du refus : un QR périmé (`STALE`) ou falsifié est signalé en `warn`, refusé en `enforce`, accepté en `off` (avertissement au démarrage si une clé est posée avec `off`).
+- **Rotation** : générer la nouvelle clé, mettre l'ancienne clé **publique** dans `ENTRY_QR_RETIRED_PUBLIC_KEYS`, déployer, puis la retirer **au moins 12 h plus tard** (durée d'un lot). Les scanners doivent rouvrir l'écran de scan en ligne pour télécharger la nouvelle clé ; une clé en cache n'est plus utilisée après 7 jours sans réseau.
+- **Clé compromise** : la **retirer de la configuration** — ne jamais la « retirer » au sens de `ENTRY_QR_RETIRED_PUBLIC_KEYS`, qui la garderait valide. Générer une nouvelle clé et redéployer : les lots signés par l'ancienne deviennent invalides en ligne aussitôt ; hors ligne, un scanner peut encore l'accepter jusqu'à 7 jours s'il ne retrouve pas le réseau, et un lot déjà téléchargé vaut jusqu'à 12 h (voir ADR-0024).
 - La clé privée vit dans Key Vault comme les autres secrets runtime ; jamais dans le dépôt ni dans les logs (le backend ne journalise que la raison d'un rejet).
 
 ## Pass Apple Wallet de la licence (#162)

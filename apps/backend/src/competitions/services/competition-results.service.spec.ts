@@ -967,7 +967,7 @@ describe("CompetitionResultsService", () => {
           data: { checkInTime: Date; checkInClaimedScanAt: Date };
         };
         // Single use: only registrations not checked in yet are updated.
-        expect(call.where).toEqual({ id: { in: ["r1"] }, checkedIn: false });
+        expect(call.where).toEqual({ id: "r1", checkedIn: false });
         expect(call.data.checkInClaimedScanAt).toEqual(scannedAt);
         expect(call.data.checkInTime.getTime()).toBeGreaterThanOrEqual(before);
         expect(mockPrismaService.competition.findUnique).toHaveBeenCalledWith({
@@ -1047,6 +1047,21 @@ describe("CompetitionResultsService", () => {
         expect(mockPrismaService.competition.findUnique).not.toHaveBeenCalled();
       });
 
+      it("does not drop a genuine offline replay when the mode is off", async () => {
+        const scannedAt = new Date(Date.now() - 5 * 60_000);
+        competitionOn(scannedAt);
+        const result = await withMode("off").checkIn(
+          "c1",
+          entryQrAt(scannedAt),
+          scannedAt.toISOString(),
+        );
+        expect(result.registrations[0].status).toBe("SUCCESS");
+        expect(result.qrVerification).toMatchObject({
+          mode: "off",
+          status: "VALID",
+        });
+      });
+
       it("refuses a claim for an unknown competition", async () => {
         mockPrismaService.competition.findUnique.mockResolvedValue(null);
         await expect(
@@ -1056,6 +1071,41 @@ describe("CompetitionResultsService", () => {
             new Date().toISOString(),
           ),
         ).rejects.toThrow(NotFoundException);
+      });
+
+      it("reports a race lost to a concurrent scan as ALREADY_CHECKED_IN, not SUCCESS", async () => {
+        const scannedAt = new Date(Date.now() - 5 * 60_000);
+        competitionOn(scannedAt);
+        mockPrismaService.registration.findMany.mockResolvedValue([
+          {
+            id: "r1",
+            feePaid: true,
+            checkedIn: false,
+            event: { category: "Latin" },
+          },
+          {
+            id: "r2",
+            feePaid: true,
+            checkedIn: false,
+            event: { category: "Standard" },
+          },
+        ]);
+        // r1 was checked in by another request between the read and the write.
+        mockPrismaService.registration.updateMany
+          .mockResolvedValueOnce({ count: 0 })
+          .mockResolvedValueOnce({ count: 1 });
+        const result = await enforcing().checkIn(
+          "c1",
+          entryQrAt(scannedAt),
+          scannedAt.toISOString(),
+        );
+        expect(result.registrations.map((r) => r.status)).toEqual([
+          "ALREADY_CHECKED_IN",
+          "SUCCESS",
+        ]);
+        expect(mockPrismaService.registration.updateMany).toHaveBeenCalledTimes(
+          2,
+        );
       });
 
       it("never checks a licence in twice (replayed token)", async () => {

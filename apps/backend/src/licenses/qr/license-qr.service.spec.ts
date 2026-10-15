@@ -437,13 +437,43 @@ describe("LicenseQrService", () => {
       });
     });
 
-    it("does not check anything in mode off", () => {
+    it("still verifies in mode off, but refuses nothing and warns no one", () => {
       expect(withEntryKey("off").verify(entryQr(), NOW)).toMatchObject({
         accepted: true,
-        status: "NOT_CHECKED",
-        identifier: "FFD-123456",
-        licenseId: null,
+        mode: "off",
+        status: "VALID",
+        licenseId: LICENSE_ID,
       });
+      expect(withEntryKey("off").verify(entryQr(step - 3), NOW)).toMatchObject({
+        accepted: true,
+        mode: "off",
+        status: "STALE",
+        warning: null,
+      });
+    });
+
+    it("warns at startup when a key is set but the mode is off", () => {
+      withEntryKey("off");
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "ENTRY_QR_SIGNING_KEY is set but QR_SIGNATURE_MODE=off",
+        ),
+      );
+    });
+
+    it("verifies v3 without any HMAC secret, under the requested mode", () => {
+      const service = makeService({
+        QR_SIGNATURE_MODE: "warn",
+        ENTRY_QR_SIGNING_KEY: PEM,
+      });
+      expect(service.getMode()).toBe("off");
+      expect(service.verify(entryQr(), NOW)).toMatchObject({
+        status: "VALID",
+        mode: "warn",
+        licenseId: LICENSE_ID,
+      });
+      // Static QRs are still unchecked without the HMAC secret.
+      expect(service.verify(LEGACY_QR, NOW).status).toBe("NOT_CHECKED");
     });
 
     it("uses the injected EntryQrService when Nest provides one", () => {

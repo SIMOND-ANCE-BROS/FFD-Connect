@@ -94,6 +94,8 @@ export class LicenseQrService {
   private readonly logger = new Logger(LicenseQrService.name);
   private readonly secret: string | null;
   private readonly mode: QrSignatureMode;
+  /** Mode applied to rotating QRs (v3): the requested one, secret or not. */
+  private readonly entryMode: QrSignatureMode;
 
   constructor(
     configService: ConfigService,
@@ -131,6 +133,14 @@ export class LicenseQrService {
       );
     }
     this.mode = this.secret ? requested : "off";
+    // The rotating QR (#24) has its own keys: its verification does not
+    // depend on the HMAC secret, only on the requested mode.
+    this.entryMode = requested;
+    if (this.entryQrService.canVerify() && requested === "off") {
+      this.logger.warn(
+        "ENTRY_QR_SIGNING_KEY is set but QR_SIGNATURE_MODE=off: rotating entry QRs are verified and reported, never refused",
+      );
+    }
 
     if (!this.secret) {
       this.logger.warn(
@@ -165,6 +175,35 @@ export class LicenseQrService {
   /** Verifies a scanned QR according to the configured mode. */
   verify(qrData: string, now: Date = new Date()): LicenseQrCheck {
     const parsed = parseLicenseQr(qrData);
+    const entry = parseEntryQr(qrData);
+
+    // Rotating entry QR (v3, #24): Ed25519 + time step, own keys — verified
+    // whenever a key is configured, independently of the HMAC secret. In
+    // mode `off` the status is still computed (an offline replay needs a
+    // VALID token) but nothing is refused.
+    if (entry.kind === "entry" && this.entryQrService.canVerify()) {
+      const status = this.entryQrService.verify(entry.payload, now);
+      if (status === "VALID") {
+        return {
+          identifier: entry.payload.id,
+          signedLicenseNumber: true,
+          licenseId: entry.payload.lid,
+          accepted: true,
+          mode: this.entryMode,
+          status,
+          warning: null,
+        };
+      }
+      return {
+        identifier: entry.payload.id,
+        signedLicenseNumber: false,
+        licenseId: null,
+        accepted: this.entryMode !== "enforce",
+        mode: this.entryMode,
+        status,
+        warning: this.entryMode === "off" ? null : WARNINGS[status],
+      };
+    }
 
     if (this.mode === "off" || !this.secret) {
       return {
@@ -178,23 +217,9 @@ export class LicenseQrService {
       };
     }
 
-    // Rotating entry QR (v3, #24): Ed25519 + time step, own verifier.
-    const entry = parseEntryQr(qrData);
     let status: LicenseQrVerificationStatus;
-    if (entry.kind === "entry") {
-      status = this.entryQrService.verify(entry.payload, now);
-      if (status === "VALID") {
-        return {
-          identifier: entry.payload.id,
-          signedLicenseNumber: true,
-          licenseId: entry.payload.lid,
-          accepted: true,
-          mode: this.mode,
-          status,
-          warning: null,
-        };
-      }
-    } else if (entry.kind === "malformed") {
+    if (entry.kind !== "other") {
+      // A malformed v3 QR, or a v3 QR with no key to check it against.
       status = "INVALID_SIGNATURE";
     } else if (parsed.kind === "signed") {
       status = verifySignedLicenseQr(parsed.payload, this.secret, now);

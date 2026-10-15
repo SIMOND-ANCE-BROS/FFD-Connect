@@ -3,6 +3,7 @@ import { Alert } from "react-native";
 import { CheckinService } from "../../../license/services/CheckinService";
 import {
   checkInOffline,
+  purgeExpiredCheckins,
   OFFLINE_CHECKIN_MESSAGES,
   refreshEntryQrKeys,
 } from "../../../license/services/offlineCheckin";
@@ -17,6 +18,7 @@ jest.mock("../../../license/services/offlineCheckin", () => {
     ...actual,
     checkInOffline: jest.fn(),
     refreshEntryQrKeys: jest.fn().mockResolvedValue(null),
+    purgeExpiredCheckins: jest.fn().mockResolvedValue(0),
   };
 });
 
@@ -31,6 +33,7 @@ describe("useVolunteerCheckinLogic", () => {
   it("downloads the verification keys when the scanner opens (#24)", async () => {
     await renderHook(() => useVolunteerCheckinLogic("c1", "tok"));
     expect(refreshEntryQrKeys).toHaveBeenCalled();
+    expect(purgeExpiredCheckins).toHaveBeenCalled();
   });
 
   it("checks in online and shows the result", async () => {

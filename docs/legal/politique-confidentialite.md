@@ -108,6 +108,25 @@ Le pass est un justificatif pratique généré par FFD Connect, projet indépend
 ce n'est **pas** une carte ni un document officiel de la Fédération Française de
 Danse.
 
+## 4 ter. QR d'entrée et contrôle aux compétitions
+
+Le **QR d'entrée** affiché par l'E-Licence change toutes les 30 secondes. Il
+contient votre numéro de licence, l'identifiant interne de votre licence et vos
+nom et prénom, **signés** par le serveur FFD Connect : l'organisateur ou un
+bénévole peut vérifier le QR **sans réseau**, et voit à qui il appartient pour le
+comparer à la personne présente.
+
+- **Sur votre téléphone** : pour fonctionner sans réseau, l'application garde les
+  QR des 12 prochaines heures. Ils sont liés à votre compte et effacés à la
+  déconnexion.
+- **Sur le téléphone du scanner** : un scan fait sans réseau y reste en attente
+  (avec, pour un bénévole, son lien d'accès temporaire) jusqu'au retour du réseau,
+  **12 heures au plus** ; passé ce délai il est supprimé sans être envoyé. Les clés
+  publiques de vérification ne sont plus utilisées après 7 jours sans réseau.
+- **Sur le serveur** : le check-in enregistre l'heure de réception et, pour un
+  scan hors ligne, l'heure de scan déclarée par le scanner, conservées avec votre
+  inscription.
+
 ## 5. Durées de conservation
 
 - **Compte & licence** : pendant la durée d'activité du compte, puis **3 ans** après la dernière connexion, à l'issue desquels le compte est supprimé.
@@ -116,6 +135,7 @@ Danse.
 - **Données de paiement** : conservées par HelloAsso selon ses propres obligations comptables.
 - **Jetons de notification push (identifiants d'appareil)** : **90 jours** sans réutilisation de l'appareil. L'application réenregistre le jeton à chaque ouverture de session : passé ce délai sans signe de vie, l'appareil est considéré comme abandonné (application désinstallée, appareil remplacé) et la ligne est supprimée automatiquement. Le jeton est également supprimé immédiatement à la déconnexion, à la suppression du compte, et dès que Firebase le déclare invalide.
 - **Accord parental (mineurs)** : la preuve de l'accord (statut, dates, version des CGU, adresse masquée et empreinte) est conservée tant que le compte existe, et supprimée avec lui. Une demande non confirmée cesse d'être valable **7 jours** après son envoi ; elle reste dans l'historique du compte (sans l'adresse en clair). Le lien envoyé au représentant légal n'est jamais stocké en clair (seule son empreinte l'est).
+- **QR d'entrée** : 12 heures sur votre téléphone (renouvelés en ligne), effacés à la déconnexion ; un scan hors ligne reste au plus **12 heures** sur le téléphone du scanner (voir §4 ter).
 - **Jetons de session** : 30 jours maximum.
 - **Logs techniques** : **12 mois**.
 - **Journal des accès aux données de santé** : **1 an**, puis suppression automatique. Il ne contient que des identifiants techniques (personne concernée, auteur de l'accès), la nature de l'accès, sa date et son point d'entrée — jamais le certificat ni les informations qui y figurent. Il subsiste après la suppression du compte jusqu'au terme de ce délai, afin qu'un accès ne puisse pas être effacé en supprimant un compte.
