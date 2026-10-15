@@ -10,7 +10,7 @@ import { verifyEntryQrOffline, type EntryQrKeySet } from "../utils/entryQr";
 import { loadEntryQrKeys, saveEntryQrKeys } from "../utils/entryQrStorage";
 
 /**
- * Offline check-in (#24, ADR-0023).
+ * Offline check-in (#24, ADR-0024).
  *
  * Without network, a scanner verifies a rotating entry QR (v3) with the
  * public keys downloaded beforehand: signature + freshness. A valid scan is

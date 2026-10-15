@@ -8,7 +8,7 @@ import type {
 } from "../../features/license/utils/entryQr";
 
 /**
- * Rotating entry QR (#24, ADR-0023): the licensee's batch of signed tokens
+ * Rotating entry QR (#24, ADR-0024): the licensee's batch of signed tokens
  * and the public keys scanners verify them with offline.
  */
 export type EntryQrBatchResult =

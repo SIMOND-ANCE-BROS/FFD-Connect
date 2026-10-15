@@ -16,7 +16,7 @@ import { EntryQrBatchDto, EntryQrKeySetDto } from "./dto/entry-qr.dto";
 import { EntryQrQueryService } from "./entry-qr.query-service";
 
 /**
- * Rotating entry QR (#24, ADR-0023): the licensee's phone pre-fetches a
+ * Rotating entry QR (#24, ADR-0024): the licensee's phone pre-fetches a
  * batch of short-lived signed tokens; scanners download the public keys and
  * verify a QR without network.
  */

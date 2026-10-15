@@ -283,7 +283,7 @@ class EnvironmentVariables {
   @IsOptional()
   QR_SIGNATURE_MODE?: string;
 
-  // QR d'entrée tournant vérifiable hors ligne (#24, ADR-0023) : clé privée
+  // QR d'entrée tournant vérifiable hors ligne (#24, ADR-0024) : clé privée
   // Ed25519, PEM PKCS#8 (les `\n` littéraux sont acceptés). Absente ou
   // invalide ⇒ fonctionnalité désactivée, l'app garde le QR statique ; le
   // backend démarre.

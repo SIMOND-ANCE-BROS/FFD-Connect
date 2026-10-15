@@ -1,7 +1,7 @@
 import { ed25519 } from "@noble/curves/ed25519";
 
 /**
- * QR d'entrée tournant (v3, #24 — ADR-0023), côté application.
+ * QR d'entrée tournant (v3, #24 — ADR-0024), côté application.
  *
  * - Le licencié affiche le QR du pas de temps courant (30 s), tiré d'un lot
  *   de jetons signés par le serveur (`GET /licenses/my/entry-qr`).

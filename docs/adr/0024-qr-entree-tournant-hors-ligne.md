@@ -1,4 +1,4 @@
-# ADR-0023: QR d'entrée tournant, vérifiable hors ligne
+# ADR-0024: QR d'entrée tournant, vérifiable hors ligne
 
 **Date**: 2026-10-16
 **Status**: proposed

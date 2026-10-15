@@ -15,7 +15,7 @@ interface EntryQrCodeProps {
 }
 
 /**
- * Entry QR of the E-Licence (#24, ADR-0023): the rotating QR of the current
+ * Entry QR of the E-Licence (#24, ADR-0024): the rotating QR of the current
  * 30-second step when a batch covers now — useless as a screenshot,
  * verifiable offline — else the static QR, as before.
  */

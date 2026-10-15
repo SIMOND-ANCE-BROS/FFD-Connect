@@ -29,7 +29,7 @@ import {
  *   function (apps/client/src/features/license/utils/entryQr.ts): any change
  *   here is a new version.
  *
- * Pure (no Nest, no config). See docs/adr/0023-qr-entree-tournant-hors-ligne.md.
+ * Pure (no Nest, no config). See docs/adr/0024-qr-entree-tournant-hors-ligne.md.
  */
 
 export const ENTRY_QR_VERSION = 3;

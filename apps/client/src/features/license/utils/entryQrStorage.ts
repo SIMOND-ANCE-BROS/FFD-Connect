@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { EntryQrBatch, EntryQrKeySet } from "./entryQr";
 
 /**
- * Persistance locale du QR d'entrée tournant (#24, ADR-0023).
+ * Persistance locale du QR d'entrée tournant (#24, ADR-0024).
  *
  * - Lot de jetons du licencié : lié au compte qui l'a reçu (même règle que le
  *   snapshot de l'E-Licence, #416) — un appareil partagé ne montre jamais le

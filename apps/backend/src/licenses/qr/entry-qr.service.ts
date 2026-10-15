@@ -57,7 +57,7 @@ interface SigningKey {
 }
 
 /**
- * Signs and verifies the rotating entry QR (v3, #24 — ADR-0023).
+ * Signs and verifies the rotating entry QR (v3, #24 — ADR-0024).
  *
  * Config (via ConfigService):
  * - `ENTRY_QR_SIGNING_KEY`: Ed25519 private key, PKCS#8 PEM (literal `\n`

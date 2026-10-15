@@ -14,7 +14,7 @@ export const ENTRY_QR_NO_LICENSE_MESSAGE =
   "Aucune licence en cours de validité pour ce compte.";
 
 /**
- * Reads behind the rotating entry QR (#24, ADR-0023): the batch of signed
+ * Reads behind the rotating entry QR (#24, ADR-0024): the batch of signed
  * tokens for the requester's own licence, and the public keys scanners
  * verify them with. Nothing is written: a batch is derived from the licence
  * and the signing key, so re-fetching it is idempotent.

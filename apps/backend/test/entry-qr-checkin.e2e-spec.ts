@@ -49,7 +49,7 @@ interface BatchBody {
 }
 
 /**
- * Rotating entry QR, end to end (#24, ADR-0023): the licensee fetches a batch,
+ * Rotating entry QR, end to end (#24, ADR-0024): the licensee fetches a batch,
  * the QR of the current step is verified OFFLINE with the published public
  * key alone, accepted online at check-in, refused when replayed later, and an
  * offline scan synchronised afterwards is verified as of its scan time.

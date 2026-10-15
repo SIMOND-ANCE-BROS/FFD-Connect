@@ -187,7 +187,7 @@ Précisions :
 
 ## QR d'entrée tournant vérifiable hors ligne (#24)
 
-Décision et format : [ADR-0023](../adr/0023-qr-entree-tournant-hors-ligne.md). Les deux variables sont optionnelles : sans clé, l'app garde le QR statique et le backend démarre.
+Décision et format : [ADR-0024](../adr/0024-qr-entree-tournant-hors-ligne.md). Les deux variables sont optionnelles : sans clé, l'app garde le QR statique et le backend démarre.
 
 | Variable                       | Défaut | Rôle                                                                                                                                                                                                                                |
 | ------------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
