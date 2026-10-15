@@ -16,13 +16,19 @@ Apply endpoint-specific rate limits: login at 5/min, forgot-password at 3/min, a
 
 A per-IP limit sized for one person blocked dancers sharing one address (a gym Wi-Fi or mobile CGNAT on competition day): the 6th login in a minute from the venue got a 429. Login, register and forgot-password now carry two limits:
 
-| Route                        | Per IP (`@ThrottleByIp`) | Per identifier (`@ThrottleByIdentifier`) |
-| ---------------------------- | ------------------------ | ---------------------------------------- |
-| `POST /auth/login`           | 30/min                   | 5/min on `username`                      |
-| `POST /auth/register`        | 20/min                   | 5/min on `email`                         |
-| `POST /auth/forgot-password` | 10/min                   | 3/min on `email`                         |
+| Route                        | Per IP (`@ThrottleByIp`) | Per (identifier, IP) | Per identifier   |
+| ---------------------------- | ------------------------ | -------------------- | ---------------- |
+| `POST /auth/login`           | 20/min                   | 5/min on `username`  | 20/min           |
+| `POST /auth/register`        | 20/min                   | 5/min on `email`     | 10/min           |
+| `POST /auth/forgot-password` | 10/min                   | —                    | 3/min on `email` |
 
-The per-identifier key is the SHA-256 of the identifier normalised like stored e-mails (no address in the throttler storage). Brute force on one account stays at 5/min whatever the number of addresses used; a venue gets a budget sized for a crowd. `reset-password` keeps 5/min per IP: its token is unguessable.
+Identifiers are normalised like stored e-mails and hashed (SHA-256): no address sits in the throttler storage.
+
+- The tight limit is keyed on the (identifier, address) pair: someone hammering an account from one address only blocks that address, never the owner signing in from their own network (no targeted lockout from a single address).
+- The looser per-identifier limit holds brute force spread over many addresses. A distributed attacker can still exhaust it for a one-minute window: an accepted residual, far below the cost of an account lockout.
+- Per IP, login went from 5 to 20/min: a venue can sign in, at the price of faster credential stuffing across many accounts from one address (4× the old rate). `forgot-password` keeps a per-identifier limit (protects the inbox); blocking a victim's reset for a minute is harmless.
+
+`reset-password` keeps 5/min per IP: its token is unguessable.
 
 ## Alternatives Considered
 

@@ -52,7 +52,10 @@ export class AuthController {
   // Per IP sized for a venue sharing one address; per e-mail for abuse (#636).
   @Throttle({ default: { ttl: 60000, limit: 20 } })
   @ThrottleByIp()
-  @ThrottleByIdentifier({ field: "email", limit: 5, ttl: 60000 })
+  @ThrottleByIdentifier(
+    { field: "email", limit: 5, ttl: 60000, perIp: true },
+    { field: "email", limit: 10, ttl: 60000 },
+  )
   @ApiOperation({
     summary: "Inscription avec vérification de licence FFD",
     description:
@@ -89,10 +92,13 @@ export class AuthController {
 
   @Post("login")
   // Per IP sized for a gym Wi-Fi on competition day; brute force on one
-  // account is held by the per-identifier limit (#636).
-  @Throttle({ default: { ttl: 60000, limit: 30 } })
+  // account is held per (account, address) and, looser, per account (#636).
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
   @ThrottleByIp()
-  @ThrottleByIdentifier({ field: "username", limit: 5, ttl: 60000 })
+  @ThrottleByIdentifier(
+    { field: "username", limit: 5, ttl: 60000, perIp: true },
+    { field: "username", limit: 20, ttl: 60000 },
+  )
   @ApiOperation({
     summary: "Authentifie un utilisateur",
     description:

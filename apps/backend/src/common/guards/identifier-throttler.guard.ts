@@ -11,33 +11,43 @@ import { normalizeEmail } from "../../auth/email-identity";
 
 export const THROTTLE_BY_IDENTIFIER_KEY = "ffd:throttle-by-identifier";
 
-export interface IdentifierThrottleOptions {
+export interface IdentifierThrottleRule {
   /** Body field holding the identifier (login username, e-mail). */
   field: string;
-  /** Requests allowed per identifier within `ttl`. */
+  /** Requests allowed within `ttl`. */
   limit: number;
   /** Window in milliseconds. */
   ttl: number;
+  /**
+   * Count per (identifier, client IP) pair instead of per identifier alone.
+   * Someone hammering an account from one address then only blocks that
+   * address, not the account owner signing in from elsewhere.
+   */
+  perIp?: boolean;
 }
 
 /**
- * A second, per-identifier limit on a public anti-abuse route (#636).
+ * Per-identifier limits on a public anti-abuse route (#636).
  *
  * The route's own `@Throttle` limit stays keyed on the client IP
- * (`@ThrottleByIp`) and is sized for a whole venue sharing one address — a
- * gym Wi-Fi or mobile CGNAT on competition day. This guard adds the tight
- * limit that protects one account against brute force, keyed on the
- * identifier the caller typed (normalised like stored e-mails, then hashed so
- * no address sits in the throttler storage). Spreading attempts on one
- * account over many addresses gains nothing; many people signing in from the
- * same address no longer share a budget sized for one.
+ * (`@ThrottleByIp`) and is sized for a venue sharing one address — a gym
+ * Wi-Fi or mobile CGNAT on competition day. The rules added here key on the
+ * identifier the caller typed, normalised like stored e-mails and hashed (no
+ * address sits in the throttler storage):
+ *
+ * - a tight `perIp` rule (identifier + address): brute force on one account
+ *   from one address, without letting a third party lock the owner out from
+ *   their own network;
+ * - a looser rule on the identifier alone: brute force spread over many
+ *   addresses. A distributed attacker can still exhaust it for a window —
+ *   the residual cost of not letting one address lock an account.
  *
  * A request without a usable identifier is left to the IP limit alone: the
  * DTO validation rejects it anyway.
  */
-export const ThrottleByIdentifier = (options: IdentifierThrottleOptions) =>
+export const ThrottleByIdentifier = (...rules: IdentifierThrottleRule[]) =>
   applyDecorators(
-    SetMetadata(THROTTLE_BY_IDENTIFIER_KEY, options),
+    SetMetadata(THROTTLE_BY_IDENTIFIER_KEY, rules),
     UseGuards(IdentifierThrottlerGuard),
   );
 
@@ -46,41 +56,58 @@ export class IdentifierThrottlerGuard extends ThrottlerGuard {
   protected async handleRequest(
     requestProps: ThrottlerRequest,
   ): Promise<boolean> {
-    const options = this.optionsOf(requestProps.context);
-    if (!options) return true;
-    const tracker = identifierTracker(
-      requestProps.context.switchToHttp().getRequest<{ body?: unknown }>().body,
-      options.field,
-    );
-    if (!tracker) return true;
-    return super.handleRequest({
-      ...requestProps,
-      limit: options.limit,
-      ttl: options.ttl,
-      blockDuration: options.ttl,
-      getTracker: () => tracker,
-    });
+    const rules = this.rulesOf(requestProps.context);
+    if (!rules?.length) return true;
+    const req = requestProps.context
+      .switchToHttp()
+      .getRequest<Record<string, unknown>>();
+    const ip = rules.some((rule) => rule.perIp)
+      ? await super.getTracker(req)
+      : "";
+    for (const rule of rules) {
+      const tracker = identifierTracker(
+        req["body"],
+        rule.field,
+        rule.perIp ? ip : undefined,
+      );
+      if (!tracker) continue;
+      // Throws ThrottlerException (429) once this rule's budget is spent.
+      await super.handleRequest({
+        ...requestProps,
+        limit: rule.limit,
+        ttl: rule.ttl,
+        blockDuration: rule.ttl,
+        getTracker: () => tracker,
+      });
+    }
+    return true;
   }
 
-  private optionsOf(
+  private rulesOf(
     context: ExecutionContext,
-  ): IdentifierThrottleOptions | undefined {
+  ): IdentifierThrottleRule[] | undefined {
     return this.reflector.getAllAndOverride<
-      IdentifierThrottleOptions | undefined
+      IdentifierThrottleRule[] | undefined
     >(THROTTLE_BY_IDENTIFIER_KEY, [context.getHandler(), context.getClass()]);
   }
 }
 
 /**
- * `ident:<sha256>` of the normalised identifier found at `field`, or null when
- * the body carries no non-blank string there.
+ * Tracker of the normalised identifier found at `field` — `ident:<sha256>`,
+ * or `identip:<sha256>` when combined with the client `ip` — or null when the
+ * body carries no non-blank string there.
  */
-export function identifierTracker(body: unknown, field: string): string | null {
+export function identifierTracker(
+  body: unknown,
+  field: string,
+  ip?: string,
+): string | null {
   if (typeof body !== "object" || body === null) return null;
   const raw = (body as Record<string, unknown>)[field];
   if (typeof raw !== "string") return null;
   const normalized = normalizeEmail(raw);
   if (!normalized) return null;
-  const digest = createHash("sha256").update(normalized).digest("hex");
-  return `ident:${digest}`;
+  const subject = ip === undefined ? normalized : `${normalized}|${ip}`;
+  const digest = createHash("sha256").update(subject).digest("hex");
+  return `${ip === undefined ? "ident" : "identip"}:${digest}`;
 }
