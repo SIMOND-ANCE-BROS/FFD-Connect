@@ -91,7 +91,12 @@ export const DeleteAccountModal = ({
         >
           <View style={styles.titleRow}>
             <TriangleAlert size={22} color="#e74c3c" />
-            <AppText variant="h3" color={theme.text} style={styles.title}>
+            <AppText
+              variant="h3"
+              color={theme.text}
+              style={styles.title}
+              accessibilityRole="header"
+            >
               Supprimer mon compte
             </AppText>
           </View>
@@ -134,6 +139,7 @@ export const DeleteAccountModal = ({
             />
             <TouchableOpacity
               onPress={() => setShowPassword((s) => !s)}
+              hitSlop={12}
               accessibilityRole="button"
               accessibilityLabel={
                 showPassword

@@ -1,5 +1,6 @@
 import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
+import { announce } from "../../../../utils/announce";
 import { AppTheme } from "../../../../context/ThemeContext";
 import { TrackData } from "../../types";
 import { PlayerQueueModal } from "../PlayerQueueModal";
@@ -72,6 +73,8 @@ const t = (id: string): TrackData => ({
   baseBpm: 120,
 });
 
+jest.mock("../../../../utils/announce", () => ({ announce: jest.fn() }));
+
 // One-off react-native module loading, out of the first test's budget
 // (flaky under load otherwise, #546).
 preloadReactNative("Modal");
@@ -103,7 +106,9 @@ describe("PlayerQueueModal", () => {
     expect(getByText("Title a")).toBeTruthy();
     expect(getByText("En lecture")).toBeTruthy();
     expect(getByText("Maintenez un titre pour le déplacer.")).toBeTruthy();
-    expect(getByLabelText("Title b, Artist b, en lecture")).toBeTruthy();
+    expect(
+      getByLabelText("Title b, Artist b, en lecture, 2 sur 3"),
+    ).toBeTruthy();
   });
 
   it("plays a track on tap and removes one with the trash button", async () => {
@@ -120,7 +125,11 @@ describe("PlayerQueueModal", () => {
   it("starts a drag from the handle or a long-press", async () => {
     const { getByTestId } = await render(<PlayerQueueModal {...props()} />);
 
-    await fireEvent(getByTestId("queue-drag-a"), "onPressIn");
+    // The handle is a drag gesture only: hidden from screen readers.
+    await fireEvent(
+      getByTestId("queue-drag-a", { includeHiddenElements: true }),
+      "onPressIn",
+    );
     await fireEvent(getByTestId("queue-track-a"), "onLongPress");
 
     expect(mockDrag).toHaveBeenCalledTimes(2);
@@ -144,9 +153,9 @@ describe("PlayerQueueModal", () => {
     const last = getByTestId("queue-track-c");
     const names = (el: typeof first) =>
       (el.props.accessibilityActions as { name: string }[]).map((a) => a.name);
-    expect(names(first)).toEqual(["moveDown"]);
-    expect(names(middle)).toEqual(["moveUp", "moveDown"]);
-    expect(names(last)).toEqual(["moveUp"]);
+    expect(names(first)).toEqual(["moveDown", "remove"]);
+    expect(names(middle)).toEqual(["moveUp", "moveDown", "remove"]);
+    expect(names(last)).toEqual(["moveUp", "remove"]);
 
     await fireEvent(middle, "onAccessibilityAction", {
       nativeEvent: { actionName: "moveUp" },
@@ -156,6 +165,23 @@ describe("PlayerQueueModal", () => {
     });
     expect(p.moveQueueTrack).toHaveBeenNthCalledWith(1, 1, 0);
     expect(p.moveQueueTrack).toHaveBeenNthCalledWith(2, 1, 2);
+    expect(announce).toHaveBeenCalledWith("Title b, position 1 sur 3");
+  });
+
+  it("removes a track through the screen-reader action (nested button unreachable)", async () => {
+    const p = props();
+    const { getByTestId } = await render(<PlayerQueueModal {...p} />);
+
+    await fireEvent(getByTestId("queue-track-a"), "onAccessibilityAction", {
+      nativeEvent: { actionName: "remove" },
+    });
+    expect(p.removeQueueTrack).toHaveBeenCalledWith("a");
+    expect(announce).toHaveBeenCalledWith("Title a retiré de la file");
+  });
+
+  it("exposes the title as a heading", async () => {
+    const { getByRole } = await render(<PlayerQueueModal {...props()} />);
+    expect(getByRole("header", { name: "File d'attente" })).toBeTruthy();
   });
 
   it("shows the empty state without a drag hint", async () => {
@@ -171,7 +197,7 @@ describe("PlayerQueueModal", () => {
     const p = props();
     const { getByLabelText } = await render(<PlayerQueueModal {...p} />);
 
-    await fireEvent.press(getByLabelText("Fermer"));
+    await fireEvent.press(getByLabelText("Fermer", { exact: true }));
     expect(p.closeQueue).toHaveBeenCalled();
   });
 });

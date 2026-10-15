@@ -31,7 +31,10 @@ export const SettingsInterfaceSection: React.FC<
 }) => (
   <>
     <View style={styles.sectionTitleContainer}>
-      <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+      <Text
+        accessibilityRole="header"
+        style={[styles.sectionTitle, { color: theme.textSecondary }]}
+      >
         Interface
       </Text>
     </View>

@@ -7,6 +7,7 @@ import {
   SeatBookingApi,
   SeatBookingError,
 } from "../../../../services/api/seat-booking-api";
+import * as announceModule from "../../../../utils/announce";
 import { openExternalUrl } from "../../../../utils/externalUrl";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useCompetitionRepository } from "../../context/CompetitionContext";
@@ -317,6 +318,49 @@ describe("SeatPickerScreen", () => {
 
     await fireEvent.press(await findByTestId("seat-picker-retry"));
     expect(await findByLabelText("Table 1, Place 3, libre")).toBeTruthy();
+  });
+
+  describe("screen reader (#22)", () => {
+    it("reads each element header as one heading with price and availability", async () => {
+      const { findByRole, getByRole } = await renderScreen();
+
+      const header = await findByRole("header", {
+        name: "Table 1, 15,00 €, 1 place disponible",
+      });
+      expect(header.props.testID).toBe("seat-element-header-t1");
+      expect(
+        getByRole("header", { name: "Bar, 5,00 €, Complet, placement libre" }),
+      ).toBeTruthy();
+      expect(getByRole("header", { name: "Open de Lyon" })).toBeTruthy();
+    });
+
+    it("gives seats a 44pt touch target", async () => {
+      const { findByTestId } = await renderScreen();
+      const seat = await findByTestId("seat-t1-2");
+      expect(seat.props.hitSlop).toBe(5);
+    });
+
+    it("announces the reservation once on iOS (VoiceOver has no live regions)", async () => {
+      const spy = jest
+        .spyOn(announceModule, "announce")
+        .mockImplementation(() => {});
+      const { findByTestId, getByRole } = await renderScreen();
+
+      await fireEvent.press(await findByTestId("seat-t1-2"));
+      await fireEvent.press(
+        getByRole("button", {
+          name: "Payer Table 1, Place 3, 15,00 €, sur HelloAsso",
+        }),
+      );
+
+      await waitFor(() =>
+        expect(spy).toHaveBeenCalledWith(
+          expect.stringContaining("Table 1, Place 3 vous est réservée"),
+        ),
+      );
+      expect(spy).toHaveBeenCalledTimes(1);
+      spy.mockRestore();
+    });
   });
 
   it("goes back", async () => {

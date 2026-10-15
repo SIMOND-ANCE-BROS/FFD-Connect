@@ -1,9 +1,10 @@
 import { ChevronDown } from "lucide-react-native";
-import React, { useState } from "react";
-import { StyleSheet, TouchableOpacity } from "react-native";
+import React, { useRef, useState } from "react";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
 import type { AuthRole } from "../../../stores/auth.store";
+import { useRestoreFocusOnClose } from "../../../utils/a11yFocus";
 import { SpaceSheet } from "./SpaceSheet";
 import { SPACE_LABELS, type SpaceRole } from "./spaces";
 
@@ -26,6 +27,8 @@ export const SpaceSelector = ({
 }: SpaceSelectorProps) => {
   const { theme, isDark } = useTheme();
   const [open, setOpen] = useState(false);
+  const pillRef = useRef<View>(null);
+  useRestoreFocusOnClose(open, pillRef);
   const choices = roles.filter((r): r is SpaceRole => r !== "GUEST");
   if (choices.length < 2) return null;
 
@@ -40,6 +43,7 @@ export const SpaceSelector = ({
   return (
     <>
       <TouchableOpacity
+        ref={pillRef}
         onPress={() => setOpen(true)}
         accessibilityRole="button"
         accessibilityLabel={`Espace : ${label}`}

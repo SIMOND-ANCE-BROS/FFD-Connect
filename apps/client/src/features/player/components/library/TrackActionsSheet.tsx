@@ -135,6 +135,7 @@ export const TrackActionsSheet = ({
         />
         <View
           testID="track-actions-sheet"
+          onAccessibilityEscape={onClose}
           style={[
             styles.card,
             {

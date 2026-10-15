@@ -8,7 +8,7 @@ import {
   MapPin,
   SlidersHorizontal,
 } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -32,6 +32,7 @@ import { NotificationBell } from "../../../components/NotificationBell";
 import { FluidSegmentedTab } from "../../../components/FluidSegmentedTab";
 import { SearchBar } from "../../../components/SearchBar";
 import { FilterSheet } from "../../../components/FilterSheet";
+import { useRestoreFocusOnClose } from "../../../utils/a11yFocus";
 import { FilterChip } from "../../../components/FilterChip";
 import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
@@ -137,6 +138,9 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
 
   // Feuille de filtres avancés (discipline + style + distance + période)
   const [filterVisible, setFilterVisible] = useState(false);
+  // Screen-reader focus goes back to the filter button when the sheet closes.
+  const filterButtonRef = useRef<View>(null);
+  useRestoreFocusOnClose(filterVisible, filterButtonRef);
   // Saisie distance perso (km) + quel champ date le calendrier édite.
   const [customKm, setCustomKm] = useState("");
   const [pickerFor, setPickerFor] = useState<null | "from" | "to">(null);
@@ -698,6 +702,7 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
                 }
                 accessibilityHint="Filtrer par distance et période"
                 testID="competitions-filter-button"
+                ref={filterButtonRef}
                 onPress={() => setFilterVisible(true)}
                 style={[
                   styles.headerActionButton,

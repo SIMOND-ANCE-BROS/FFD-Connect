@@ -1,6 +1,6 @@
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Bell, CheckCheck, Inbox, Trash2 } from "lucide-react-native";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -25,6 +25,8 @@ import {
   useNotificationsLogic,
 } from "../hooks/useNotificationsLogic";
 import { notificationTargetOf } from "../services/notificationTarget";
+import { joinA11yLabel } from "../../../utils/a11y";
+import { announce } from "../../../utils/announce";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Notifications">;
 
@@ -55,6 +57,18 @@ export const NotificationsScreen = ({ navigation }: Props) => {
   const { state, actions } = useNotificationsLogic();
   const { notifications, loading, refreshing } = state;
   const { onRefresh, onMarkAsRead, onReadAll, onDelete, onDeleteAll } = actions;
+
+  // « Tout lire » disappears once everything is read, taking the reader focus
+  // with it: confirm the outcome out loud (only on success — the hook keeps
+  // the unread items when the request fails).
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const readAllRequested = useRef(false);
+  useEffect(() => {
+    if (readAllRequested.current && unreadCount === 0) {
+      readAllRequested.current = false;
+      announce("Toutes les notifications sont marquées comme lues");
+    }
+  }, [unreadCount]);
 
   // Propositions de correction de musique : file admin ou « Mes propositions ».
   const openTrackCorrection = useCallback(
@@ -107,6 +121,17 @@ export const NotificationsScreen = ({ navigation }: Props) => {
     >
       <TouchableOpacity
         accessibilityRole="button"
+        // One sentence instead of icon + title + short date + body fragments.
+        accessibilityLabel={joinA11yLabel([
+          item.isRead ? null : "Non lue",
+          item.title,
+          new Date(item.createdAt).toLocaleDateString("fr-FR", {
+            day: "numeric",
+            month: "long",
+          }),
+          item.body,
+        ])}
+        accessibilityHint="Ouvre la notification et la marque comme lue"
         style={styles.cardMain}
         onPress={() => {
           if (!item.isRead) onMarkAsRead(item.id).catch(() => {});
@@ -153,7 +178,9 @@ export const NotificationsScreen = ({ navigation }: Props) => {
         accessibilityLabel={`Supprimer la notification ${item.title}`}
         accessibilityHint="Retire définitivement cette notification de la liste"
         onPress={() => {
-          onDelete(item.id).catch(() => {});
+          onDelete(item.id)
+            .then(() => announce("Notification supprimée"))
+            .catch(() => {});
         }}
         style={styles.deleteButton}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -175,7 +202,11 @@ export const NotificationsScreen = ({ navigation }: Props) => {
         notifications.some((n) => !n.isRead) ? (
           <TouchableOpacity
             accessibilityRole="button"
+            accessibilityLabel="Tout marquer comme lu"
+            accessibilityHint="Marque toutes les notifications comme lues"
+            hitSlop={8}
             onPress={() => {
+              readAllRequested.current = true;
               onReadAll().catch(() => {});
             }}
             style={styles.readAllButton}
@@ -199,7 +230,12 @@ export const NotificationsScreen = ({ navigation }: Props) => {
     >
       {loading ? (
         <View style={[styles.center, { paddingTop: headerH }]}>
-          <ActivityIndicator color={theme.primary} size="large" />
+          {/* eslint-disable-next-line react-native-a11y/has-accessibility-hint -- static content, no action to hint */}
+          <ActivityIndicator
+            color={theme.primary}
+            size="large"
+            accessibilityLabel="Chargement des notifications"
+          />
         </View>
       ) : (
         <FlatList
@@ -223,6 +259,8 @@ export const NotificationsScreen = ({ navigation }: Props) => {
             notifications.length > 0 ? (
               <TouchableOpacity
                 accessibilityRole="button"
+                accessibilityLabel="Tout effacer"
+                accessibilityHint="Supprime toutes les notifications après confirmation"
                 onPress={confirmDeleteAll}
                 style={styles.clearAllButton}
                 testID="notifications-clear-all-button"
@@ -239,7 +277,11 @@ export const NotificationsScreen = ({ navigation }: Props) => {
             ) : null
           }
           ListEmptyComponent={
-            <View style={styles.empty} testID="notifications-empty-state">
+            <View
+              style={styles.empty}
+              testID="notifications-empty-state"
+              accessible
+            >
               <Inbox
                 size={48}
                 color={theme.textSecondary}

@@ -32,6 +32,9 @@ const { width } = Dimensions.get("window");
 const CARD_WIDTH = (width - 60) / 2; // 2 columns with padding (20+20) + gap (16) -> safe 60 deduction
 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { joinA11yLabel } from "../../../utils/a11y";
+import { useFocusOnChange } from "../../../utils/a11yFocus";
+import { announce } from "../../../utils/announce";
 import { createLogger } from "../../../utils/logger";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 import { ClubService } from "../services/ClubService";
@@ -49,6 +52,11 @@ import DraggableFlatList, {
 import { AppText as DraggableLabel } from "../../../components/AppText";
 
 const logger = createLogger("ClubDashboardScreen");
+
+/** The gear toggle is ~30×26pt: extend its touch area to 44pt. */
+const GEAR_HIT_SLOP = { top: 9, bottom: 9, left: 7, right: 7 };
+/** "Affiché / Caché" pill (~24pt high). */
+const BADGE_HIT_SLOP = { top: 10, bottom: 10, left: 4, right: 4 };
 
 // ... (existing imports)
 
@@ -80,7 +88,11 @@ const StatCard = ({
   <TouchableOpacity
     accessible
     accessibilityRole="button"
-    accessibilityLabel={accessibilityLabel ?? label}
+    accessibilityLabel={
+      accessibilityLabel ??
+      // "-" is a visual placeholder (no figure for this widget yet).
+      joinA11yLabel([label, value === "-" ? null : value])
+    }
     accessibilityHint={accessibilityHint}
     testID={testID}
     style={[styles.statCard, { backgroundColor: theme.surface }]}
@@ -130,7 +142,7 @@ const MenuRow = ({
   <TouchableOpacity
     accessible
     accessibilityRole="button"
-    accessibilityLabel={accessibilityLabel ?? label}
+    accessibilityLabel={accessibilityLabel ?? joinA11yLabel([label, subtitle])}
     accessibilityHint={accessibilityHint}
     testID={testID}
     style={[styles.menuRow, { backgroundColor: theme.surface }]}
@@ -195,6 +207,11 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
   const [refundsDue, setRefundsDue] = React.useState<number | null>(null);
 
   const [isEditing, setIsEditing] = React.useState<boolean>(false);
+
+  // Entering / leaving the edit mode swaps the whole screen: give the reader
+  // focus back on the toggle (it now says what pressing it again does).
+  const editToggleRef = React.useRef<View>(null);
+  useFocusOnChange(isEditing, editToggleRef);
 
   const persistWidgets = React.useCallback(
     async (next: { id: ClubDashboardWidgetId; visible: boolean }[]) => {
@@ -278,6 +295,33 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
     [persistWidgets],
   );
 
+  // Screen-reader alternative to drag-and-drop (WCAG 2.5.7): move a widget
+  // one step up / down through the rotor / TalkBack actions menu.
+  const moveWidget = React.useCallback(
+    (id: ClubDashboardWidgetId, delta: -1 | 1, label: string) => {
+      const from = widgets.findIndex((w) => w.id === id);
+      const to = from + delta;
+      if (from < 0 || to < 0 || to >= widgets.length) return;
+      const next = [...widgets];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      handleWidgetsReorder(next);
+      announce(`${label} déplacé en position ${to + 1} sur ${next.length}`);
+    },
+    [widgets, handleWidgetsReorder],
+  );
+
+  const toggleWidget = React.useCallback(
+    (id: ClubDashboardWidgetId) => {
+      const next = widgets.map((w) =>
+        w.id === id ? { ...w, visible: !w.visible } : w,
+      );
+      setWidgets(next);
+      persistWidgets(next).catch(() => {});
+    },
+    [widgets, persistWidgets],
+  );
+
   const navigateTo = (screen: keyof RootStackParamList) => {
     // Type-safe navigation - TypeScript correctly infers the screen type
     // Each screen in RootStackParamList has its params type defined
@@ -311,10 +355,13 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
             <AppText
               variant="h3"
               style={[styles.sectionTitle, { color: theme.text }]}
+              accessibilityRole="header"
             >
               Aperçu (édition)
             </AppText>
             <TouchableOpacity
+              ref={editToggleRef}
+              hitSlop={GEAR_HIT_SLOP}
               accessible
               accessibilityRole="button"
               onPress={() => setIsEditing(false)}
@@ -362,11 +409,39 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
                   opacity: disabledByMode ? 0.4 : 1,
                 };
 
+                const index = widgets.findIndex((w) => w.id === item.id);
+                const actions = [
+                  ...(index > 0 ? [{ name: "moveUp", label: "Monter" }] : []),
+                  ...(index < widgets.length - 1
+                    ? [{ name: "moveDown", label: "Descendre" }]
+                    : []),
+                  ...(disabledByMode
+                    ? []
+                    : [
+                        {
+                          name: "toggle",
+                          label: item.visible ? "Masquer" : "Afficher",
+                        },
+                      ]),
+                ];
+
                 return (
                   <TouchableOpacity
                     accessibilityRole="button"
-                    accessibilityLabel={`${def.label}, réordonner`}
-                    accessibilityHint="Appui long pour déplacer le widget"
+                    accessibilityLabel={joinA11yLabel([
+                      def.label,
+                      item.visible ? "affiché" : "caché",
+                      `position ${index + 1} sur ${widgets.length}`,
+                    ])}
+                    accessibilityHint="Appui long pour déplacer le widget. Actions disponibles : monter, descendre, afficher ou masquer"
+                    accessibilityActions={actions}
+                    onAccessibilityAction={(event) => {
+                      const name = event.nativeEvent.actionName;
+                      if (name === "moveUp") moveWidget(item.id, -1, def.label);
+                      else if (name === "moveDown")
+                        moveWidget(item.id, 1, def.label);
+                      else if (name === "toggle") toggleWidget(item.id);
+                    }}
                     onLongPress={drag}
                     disabled={isActive}
                     style={[
@@ -409,13 +484,9 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
                           ? `Masque le widget ${def.label} du tableau de bord`
                           : `Affiche le widget ${def.label} sur le tableau de bord`
                       }
-                      onPress={() => {
-                        const next = widgets.map((w) =>
-                          w.id === item.id ? { ...w, visible: !w.visible } : w,
-                        );
-                        setWidgets(next);
-                        persistWidgets(next).catch(() => {});
-                      }}
+                      accessibilityState={{ disabled: disabledByMode }}
+                      hitSlop={BADGE_HIT_SLOP}
+                      onPress={() => toggleWidget(item.id)}
                       disabled={disabledByMode}
                       style={[styles.visibilityBadge, visibilityBadgeStyle]}
                     >
@@ -475,10 +546,13 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
           <AppText
             variant="h3"
             style={[styles.sectionTitle, { color: theme.text }]}
+            accessibilityRole="header"
           >
             Aperçu
           </AppText>
           <TouchableOpacity
+            ref={editToggleRef}
+            hitSlop={GEAR_HIT_SLOP}
             accessible
             accessibilityRole="button"
             onPress={() => setIsEditing((prev) => !prev)}
@@ -565,6 +639,7 @@ export const ClubDashboardScreen = ({ navigation }: ClubDashboardProps) => {
         <AppText
           variant="h3"
           style={[styles.sectionTitleWithMargin, { color: theme.text }]}
+          accessibilityRole="header"
         >
           Gestion
         </AppText>

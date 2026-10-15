@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
+import { announce } from "../../../utils/announce";
 import { BackendService } from "../../../services/BackendService";
 import { useLibrary } from "../context/LibraryContext";
 import { DANCE_GROUPS, mpmFromBpm } from "../utils/danceTempo";
@@ -151,6 +152,8 @@ export const AddTrackModal = ({
     if (!editTrack) return;
     const patch = buildPatch();
     setSaving(true);
+    // The form is replaced by a spinner: tell the reader what happens.
+    announce("Enregistrement");
     try {
       if (Object.keys(patch).length > 0) {
         await BackendService.updateTrack(editTrack.id, patch);
@@ -199,10 +202,17 @@ export const AddTrackModal = ({
   };
 
   return (
-    <Modal visible={visible} animationType="none" transparent>
+    <Modal
+      visible={visible}
+      animationType="none"
+      transparent
+      onRequestClose={onClose}
+    >
       <Animated.View style={[styles.overlay, { opacity: overlayOpacity }]}>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel="Fermer l'édition"
+          accessibilityHint="Ferme la fenêtre sans enregistrer"
           style={StyleSheet.absoluteFill}
           onPress={onClose}
         >
@@ -214,6 +224,7 @@ export const AddTrackModal = ({
           />
         </Pressable>
         <Animated.View
+          onAccessibilityEscape={onClose}
           style={[
             styles.container,
             { backgroundColor: currentTheme.surface },
@@ -225,12 +236,18 @@ export const AddTrackModal = ({
           <View
             style={[styles.header, { borderBottomColor: currentTheme.border }]}
           >
-            <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
+            <Text
+              style={[styles.headerTitle, { color: currentTheme.text }]}
+              accessibilityRole="header"
+            >
               Modifier la musique
             </Text>
             <TouchableOpacity
               accessibilityRole="button"
+              accessibilityLabel="Fermer"
+              accessibilityHint="Ferme la fenêtre sans enregistrer"
               onPress={onClose}
+              hitSlop={12}
               style={styles.closeButton}
             >
               <Text style={[styles.closeText, { color: currentTheme.text }]}>
@@ -256,6 +273,8 @@ export const AddTrackModal = ({
             >
               <Text
                 style={[styles.label, { color: currentTheme.textSecondary }]}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
               >
                 Titre
               </Text>
@@ -280,6 +299,8 @@ export const AddTrackModal = ({
 
               <Text
                 style={[styles.label, { color: currentTheme.textSecondary }]}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
               >
                 Artiste
               </Text>
@@ -304,6 +325,8 @@ export const AddTrackModal = ({
 
               <Text
                 style={[styles.label, { color: currentTheme.textSecondary }]}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
               >
                 MPM (mesures/min)
               </Text>
@@ -329,6 +352,7 @@ export const AddTrackModal = ({
 
               <Text
                 style={[styles.label, { color: currentTheme.textSecondary }]}
+                accessibilityRole="header"
               >
                 Danse
               </Text>
@@ -346,6 +370,12 @@ export const AddTrackModal = ({
                     {group.dances.map((s) => (
                       <TouchableOpacity
                         accessibilityRole="button"
+                        accessibilityLabel={s}
+                        accessibilityHint="Choisit cette danse et recalcule le MPM"
+                        accessibilityState={{ selected: selectedStyle === s }}
+                        testID={`add-track-dance-${s}`}
+                        // 44pt target: the pill itself is ~31pt high.
+                        hitSlop={{ top: 7, bottom: 7 }}
                         key={s}
                         style={[
                           styles.styleChip,
@@ -382,6 +412,8 @@ export const AddTrackModal = ({
 
               <TouchableOpacity
                 accessibilityRole="button"
+                accessibilityLabel="Enregistrer les modifications"
+                accessibilityHint="Enregistre le titre, l'artiste, la danse et le MPM"
                 style={[
                   styles.button,
                   { backgroundColor: currentTheme.primary },
@@ -403,6 +435,8 @@ export const AddTrackModal = ({
 
               <TouchableOpacity
                 accessibilityRole="button"
+                accessibilityLabel="Supprimer la musique"
+                accessibilityHint="Retire la musique de la bibliothèque pour tout le monde, après confirmation"
                 style={[styles.button, styles.deleteButton]}
                 onPress={handleDelete}
                 testID="add-track-delete-button"

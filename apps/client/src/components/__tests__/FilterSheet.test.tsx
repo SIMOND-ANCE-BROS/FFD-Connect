@@ -67,6 +67,31 @@ describe("FilterSheet", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  it("exposes the title as a heading and the reset state to screen readers", async () => {
+    const { getByRole, rerender } = await renderSheet(0);
+    expect(getByRole("header", { name: "Filtres" })).toBeTruthy();
+    expect(
+      getByRole("button", { name: "Réinitialiser les filtres" }).props
+        .accessibilityState,
+    ).toEqual({ disabled: true });
+
+    await rerender(
+      <FilterSheet visible onClose={onClose} onReset={onReset} activeCount={2}>
+        <Text>Latines</Text>
+      </FilterSheet>,
+    );
+    expect(
+      getByRole("button", { name: "Réinitialiser les filtres, 2 actifs" }).props
+        .accessibilityState,
+    ).toEqual({ disabled: false });
+  });
+
+  it("closes with the screen-reader escape gesture", async () => {
+    const { getByTestId } = await renderSheet();
+    await fireEvent(getByTestId("filter-sheet-card"), "onAccessibilityEscape");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("resets the active filters", async () => {
     const { getByTestId, getByText } = await renderSheet(2);
 

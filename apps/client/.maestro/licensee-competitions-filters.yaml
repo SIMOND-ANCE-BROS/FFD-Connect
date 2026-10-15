@@ -23,5 +23,5 @@ tags:
 - hideKeyboard:
     optional: true
 - tapOn: { text: "Appliquer", optional: true }
-- tapOn: { text: "Réinitialiser", optional: true }
+- tapOn: { id: "filter-reset", optional: true }
 - back

@@ -185,12 +185,20 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
         <View style={[styles.header, { borderBottomColor: theme.border }]}>
           <TouchableOpacity
             accessibilityRole="button"
+            accessibilityLabel="Fermer l'éditeur"
+            accessibilityHint="Revient à l'écran précédent sans enregistrer"
+            testID="competition-editor-close-button"
+            hitSlop={8}
             onPress={() => navigation.goBack()}
             style={styles.closeButton}
           >
             <X size={24} color={theme.text} />
           </TouchableOpacity>
-          <AppText variant="h3" style={{ color: theme.text }}>
+          <AppText
+            variant="h3"
+            style={{ color: theme.text }}
+            accessibilityRole="header"
+          >
             {isEditing
               ? "Modifier"
               : isEvent

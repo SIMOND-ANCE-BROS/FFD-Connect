@@ -8,7 +8,12 @@ import React from "react";
 import { theme as tokens } from "../../../../theme";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useLiveResultsLogic } from "../../hooks/useLiveResultsLogic";
-import { LiveResultsScreen } from "../LiveResultsScreen";
+import * as announceModule from "../../../../utils/announce";
+import {
+  LiveResultsScreen,
+  newResultsMessage,
+  spokenRank,
+} from "../LiveResultsScreen";
 
 jest.mock("../../hooks/useLiveResultsLogic");
 jest.mock("../../../../utils/logger", () => ({
@@ -365,5 +370,73 @@ describe("LiveResultsScreen", () => {
 
     await fireEvent.press(getByTestId("refresh-control"));
     expect(mockLoadResults).toHaveBeenCalled();
+  });
+
+  describe("screen reader (#22)", () => {
+    const result = (
+      id: string,
+      ranking: number,
+      details: Record<string, unknown>,
+    ) => ({ id, eventId: "e1", round: "Finale", ranking, details });
+
+    const mockSections = (data: ReturnType<typeof result>[]) =>
+      mockUseLiveResultsLogic.mockReturnValue({
+        state: {
+          sections: [{ title: "Finale", data }],
+          refreshing: false,
+          eventLabel: "",
+        },
+        actions: { loadResults: jest.fn() },
+      });
+
+    it("reads each result as one sentence and the round as a heading", async () => {
+      mockSections([
+        result("a", 1, { participant: "Couple Martin" }),
+        result("b", 5, { participant: "Durand", status: "QUALIFIED" }),
+        result("c", 9, {
+          participant: "Petit",
+          status: "ELIMINATED",
+          marks: 2,
+        }),
+      ]);
+
+      const { getByLabelText, getByRole } = await render(
+        <LiveResultsScreen {...createTestProps()} />,
+      );
+
+      expect(getByRole("header", { name: "Finale" })).toBeTruthy();
+      expect(getByLabelText("Martin, 1re place").props.testID).toBe(
+        "live-result-a",
+      );
+      expect(getByLabelText("Durand, qualifié, 5e place")).toBeTruthy();
+      expect(getByLabelText("Petit, éliminé, 2 croix")).toBeTruthy();
+    });
+
+    it("announces new results once per refresh, never on the first load", async () => {
+      const spy = jest
+        .spyOn(announceModule, "announce")
+        .mockImplementation(() => {});
+      mockSections([result("a", 1, { participant: "Martin" })]);
+      const { rerender } = await render(
+        <LiveResultsScreen {...createTestProps()} />,
+      );
+      expect(spy).not.toHaveBeenCalled();
+
+      mockSections([
+        result("a", 1, { participant: "Martin" }),
+        result("b", 2, { participant: "Durand" }),
+        result("c", 3, { participant: "Petit" }),
+      ]);
+      await rerender(<LiveResultsScreen {...createTestProps()} />);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith("2 nouveaux résultats");
+      spy.mockRestore();
+    });
+
+    it("spells helper labels in French", () => {
+      expect(spokenRank(1)).toBe("1re place");
+      expect(spokenRank(3)).toBe("3e place");
+      expect(newResultsMessage(1)).toBe("1 nouveau résultat");
+    });
   });
 });

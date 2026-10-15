@@ -1,6 +1,12 @@
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-import React, { useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -11,6 +17,7 @@ import { BackButton } from "../../../components/BackButton";
 import { PinnedHeader } from "../../../components/PinnedHeader";
 import { useTheme, type AppTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
+import { announce } from "../../../utils/announce";
 import {
   SEAT_SIZE,
   SeatPlanElementCard,
@@ -82,6 +89,16 @@ export const SeatPickerScreen = ({ route, navigation }: Props) => {
   const [headerH, setHeaderH] = useState(insets.top + 56);
   const booking = useSeatBooking(competitionId);
 
+  // The hold banner is a polite live region on Android; VoiceOver has no
+  // live regions, so the new reservation is announced once on iOS.
+  const holdText = booking.hold ? holdMessage(booking.hold) : null;
+  const lastHoldText = useRef<string | null>(null);
+  useEffect(() => {
+    if (Platform.OS === "ios" && holdText && holdText !== lastHoldText.current)
+      announce(holdText);
+    lastHoldText.current = holdText;
+  }, [holdText]);
+
   const header = (
     <PinnedHeader
       theme={theme}
@@ -96,7 +113,12 @@ export const SeatPickerScreen = ({ route, navigation }: Props) => {
   if (booking.isLoading) {
     body = (
       <View style={[styles.center, { paddingTop: headerH }]}>
-        <ActivityIndicator color={theme.primary} testID="seat-picker-loading" />
+        <ActivityIndicator
+          color={theme.primary}
+          testID="seat-picker-loading"
+          accessibilityLabel="Chargement du plan de salle"
+          accessibilityHint="Patientez quelques secondes"
+        />
       </View>
     );
   } else if (booking.isError) {
@@ -107,6 +129,7 @@ export const SeatPickerScreen = ({ route, navigation }: Props) => {
           align="center"
           color={theme.text}
           style={styles.message}
+          accessibilityRole="alert"
         >
           Impossible de charger le plan de salle.
         </AppText>
@@ -155,7 +178,7 @@ export const SeatPickerScreen = ({ route, navigation }: Props) => {
             testID="seat-picker-hold"
           >
             <AppText variant="caption" color={theme.text}>
-              {holdMessage(booking.hold)}
+              {holdText}
             </AppText>
           </View>
         )}
@@ -207,6 +230,8 @@ export const SeatPickerScreen = ({ route, navigation }: Props) => {
             weight="600"
             color={theme.text}
             style={styles.footerLabel}
+            accessibilityLabel={`Place choisie : ${booking.selectedLabel}`}
+            accessibilityHint="Le bouton suivant lance le paiement"
           >
             {booking.selectedLabel}
           </AppText>

@@ -1,6 +1,6 @@
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Activity, Trophy } from "lucide-react-native";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { RefreshControl, SectionList, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
@@ -12,11 +12,47 @@ import { PinnedHeader } from "../../../components/PinnedHeader";
 import { SearchBar } from "../../../components/SearchBar";
 import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
+import { joinA11yLabel } from "../../../utils/a11y";
+import { announce } from "../../../utils/announce";
 import { getPodiumStyle, isPodiumRank } from "../../../utils/podium";
 import { Result } from "../context/CompetitionContext";
 import { useLiveResultsLogic } from "../hooks/useLiveResultsLogic";
 
 type Props = NativeStackScreenProps<RootStackParamList, "LiveResults">;
+
+/** The rank badge is a fixed 44pt circle: cap the system text scaling. */
+const BADGE_TEXT_MAX_SCALE = 1.3;
+
+/** Spoken rank: "1re place", "5e place". */
+export function spokenRank(rank: number): string {
+  return rank === 1 ? "1re place" : `${rank}e place`;
+}
+
+/** One result read as a single sentence by VoiceOver / TalkBack. */
+export function resultAccessibilityLabel(item: Result): string {
+  const rawName =
+    item.details.participant ?? item.details.name ?? "Participant";
+  const name = rawName.replace(/^Couple\s+/i, "");
+  const { status, marks } = item.details;
+  if (status === "QUALIFIED") {
+    return joinA11yLabel([name, "qualifié", spokenRank(item.ranking)]);
+  }
+  if (status === "ELIMINATED") {
+    return joinA11yLabel([
+      name,
+      "éliminé",
+      marks !== undefined && `${marks} croix`,
+    ]);
+  }
+  return joinA11yLabel([name, spokenRank(item.ranking)]);
+}
+
+/** "1 nouveau résultat" / "3 nouveaux résultats". */
+export function newResultsMessage(count: number): string {
+  return count > 1
+    ? `${count} nouveaux résultats`
+    : `${count} nouveau résultat`;
+}
 
 export const LiveResultsScreen = ({ route, navigation }: Props) => {
   const { competitionId } = route.params;
@@ -28,6 +64,20 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
   const { state, actions } = useLiveResultsLogic({ competitionId });
   const { sections, refreshing, eventLabel } = state;
   const { loadResults } = actions;
+
+  // Results are polled: voice the arrivals once per refresh (not each row),
+  // and never on the first load (the user is reading the list already).
+  const knownIds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const ids = sections.flatMap((section) => section.data.map((r) => r.id));
+    const known = knownIds.current;
+    if (known && known.size > 0) {
+      const added = ids.filter((id) => !known.has(id)).length;
+      if (added > 0) announce(newResultsMessage(added));
+    }
+    if (ids.length > 0) knownIds.current = new Set(ids);
+    else if (!known) knownIds.current = new Set();
+  }, [sections]);
 
   // Filtre local par nom de couple / compétiteur.
   const filteredSections = useMemo(() => {
@@ -52,7 +102,12 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
       onHeightChange={setHeaderH}
       left={<BackButton onPress={() => navigation.goBack()} />}
     >
-      <View style={styles.liveIndicatorContainer}>
+      <View
+        style={styles.liveIndicatorContainer}
+        accessible
+        accessibilityLabel="Mises à jour en temps réel"
+        accessibilityHint="Les nouveaux résultats sont annoncés automatiquement"
+      >
         <View style={[styles.liveDot, { backgroundColor: theme.danger }]} />
         <AppText variant="caption" color={theme.textSecondary}>
           Mises à jour en temps réel
@@ -93,7 +148,12 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
         },
       ]}
     >
-      <AppText variant="h3" weight="bold" color={theme.primary}>
+      <AppText
+        variant="h3"
+        weight="bold"
+        color={theme.primary}
+        accessibilityRole="header"
+      >
         {title}
       </AppText>
     </View>
@@ -122,6 +182,10 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
           isQualified && { borderLeftColor: theme.success },
           isEliminated && styles.eliminatedCard,
         ]}
+        accessible
+        accessibilityLabel={resultAccessibilityLabel(item)}
+        accessibilityHint="Résultat de la manche"
+        testID={`live-result-${item.id}`}
       >
         <View
           style={[
@@ -143,6 +207,7 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
             <AppText
               weight="bold"
               style={[styles.rankBadgeText, { color: theme.success }]}
+              maxFontSizeMultiplier={BADGE_TEXT_MAX_SCALE}
             >
               Q
             </AppText>
@@ -150,11 +215,15 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
             <AppText
               weight="bold"
               style={[styles.rankBadgeText, { color: theme.danger }]}
+              maxFontSizeMultiplier={BADGE_TEXT_MAX_SCALE}
             >
               X
             </AppText>
           ) : (
-            <AppText style={[styles.rankBadgeText, { color: statusColor }]}>
+            <AppText
+              style={[styles.rankBadgeText, { color: statusColor }]}
+              maxFontSizeMultiplier={BADGE_TEXT_MAX_SCALE}
+            >
               #{item.ranking}
             </AppText>
           )}
@@ -272,6 +341,7 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
               align="center"
               variant="h3"
               style={styles.emptyTitle}
+              accessibilityRole="header"
             >
               En attente de résultats
             </AppText>

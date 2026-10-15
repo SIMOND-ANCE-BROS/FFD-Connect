@@ -26,6 +26,15 @@ import { styles } from "./competition-editor.styles";
 
 const GOOGLE_PLACES_API_KEY: string = EXPO_PUBLIC_GOOGLE_API_KEY;
 
+/**
+ * Visual caption above a field: hidden from screen readers, the field itself
+ * carries the same name (no double reading).
+ */
+const HIDDEN_CAPTION = {
+  accessibilityElementsHidden: true,
+  importantForAccessibility: "no-hide-descendants",
+} as const;
+
 interface Props {
   theme: AppTheme;
   /** "COMPETITION" (défaut) ou "EVENT" (événement non compétitif). */
@@ -75,6 +84,7 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
       <AppText
         variant="caption"
         style={[styles.sectionLabel, { color: theme.textSecondary }]}
+        accessibilityRole="header"
       >
         Statut
       </AppText>
@@ -95,6 +105,7 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
         <AppText
           variant="caption"
           style={[styles.sectionLabel, { color: theme.textSecondary }]}
+          accessibilityRole="header"
         >
           Type de compétition
         </AppText>
@@ -114,6 +125,7 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
         <AppText
           variant="caption"
           style={[styles.sectionLabel, { color: theme.textSecondary }]}
+          accessibilityRole="header"
         >
           Type de compétition majeure
         </AppText>
@@ -125,6 +137,9 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
               <TouchableOpacity
                 key={subType}
                 accessibilityRole="button"
+                accessibilityLabel={MAJOR_SUB_TYPE_LABELS[subType]}
+                accessibilityHint="Choisit ce type de compétition majeure"
+                accessibilityState={{ selected: isSelected }}
                 onPress={() => setMajorSubType(subType)}
                 style={[
                   styles.chip,
@@ -155,12 +170,17 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
       <AppText
         variant="caption"
         style={[styles.sectionLabelLg, { color: theme.textSecondary }]}
+        accessibilityRole="header"
       >
         Informations Générales
       </AppText>
 
       <View style={styles.inputGroup}>
-        <AppText variant="body" style={[styles.mb8, { color: theme.text }]}>
+        <AppText
+          variant="body"
+          style={[styles.mb8, { color: theme.text }]}
+          {...HIDDEN_CAPTION}
+        >
           Nom de l'événement
         </AppText>
         <View
@@ -188,11 +208,17 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
       </View>
 
       <View style={styles.inputGroup}>
-        <AppText variant="body" style={[styles.mb8, { color: theme.text }]}>
+        <AppText
+          variant="body"
+          style={[styles.mb8, { color: theme.text }]}
+          {...HIDDEN_CAPTION}
+        >
           Date
         </AppText>
         <TouchableOpacity
           accessibilityRole="button"
+          accessibilityLabel={`Date, ${dateText || "non renseignée"}`}
+          accessibilityHint="Ouvre le sélecteur de date"
           testID="competition-editor-date-button"
           onPress={() => setShowDatePicker(true)}
           style={[
@@ -223,7 +249,11 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
       </View>
 
       <View style={[styles.inputGroup, styles.mb0ZIndex1000]}>
-        <AppText variant="body" style={[styles.mb8, { color: theme.text }]}>
+        <AppText
+          variant="body"
+          style={[styles.mb8, { color: theme.text }]}
+          {...HIDDEN_CAPTION}
+        >
           Lieu
         </AppText>
         <View style={styles.height200}>
@@ -237,6 +267,9 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
               language: "fr",
             }}
             textInputProps={{
+              accessibilityLabel: "Lieu",
+              accessibilityHint:
+                "Saisissez une adresse puis choisissez une suggestion",
               value: location,
               onChangeText: setLocation,
               placeholderTextColor: theme.textSecondary,
@@ -274,7 +307,11 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
       </View>
 
       <View style={styles.inputGroup}>
-        <AppText variant="body" style={[styles.mb8, { color: theme.text }]}>
+        <AppText
+          variant="body"
+          style={[styles.mb8, { color: theme.text }]}
+          {...HIDDEN_CAPTION}
+        >
           {isEvent ? "Programme" : "Programme des épreuves"}
         </AppText>
         <View
@@ -290,7 +327,9 @@ export const CompetitionGeneralTab: React.FC<Props> = ({
             style={styles.inputIcon}
           />
           <TextInput
-            accessibilityLabel="Programme"
+            accessibilityLabel={
+              isEvent ? "Programme" : "Programme des épreuves"
+            }
             accessibilityHint="Décrivez le programme (texte libre)"
             testID="competition-editor-programme-input"
             style={[styles.input, styles.textArea, { color: theme.text }]}

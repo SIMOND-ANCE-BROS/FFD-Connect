@@ -27,7 +27,10 @@ export const TrackCorrectionsSettingsSection = ({
   return (
     <>
       <View style={styles.sectionTitleContainer}>
-        <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+        <Text
+          accessibilityRole="header"
+          style={[styles.sectionTitle, { color: theme.textSecondary }]}
+        >
           Musiques
         </Text>
       </View>
@@ -60,7 +63,8 @@ export const TrackCorrectionsSettingsSection = ({
                   style={[local.badge, { backgroundColor: theme.danger }]}
                   testID="settings-track-corrections-badge"
                 >
-                  <Text style={local.badgeText}>
+                  {/* Fixed-height pill: cap Dynamic Type (count is in the label). */}
+                  <Text style={local.badgeText} maxFontSizeMultiplier={1.3}>
                     {pendingCount > 99 ? "99+" : pendingCount}
                   </Text>
                 </View>

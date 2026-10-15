@@ -1,8 +1,9 @@
 import { ChevronRight, CreditCard, Users } from "lucide-react-native";
-import React from "react";
+import React, { type RefObject } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { AppTheme } from "../../../context/ThemeContext";
 import type { HelloAssoStatus } from "../../club/services/ClubService";
+import { joinA11yLabel } from "../../../utils/a11y";
 import { styles } from "./settings.styles";
 
 interface SettingsClubSectionProps {
@@ -11,6 +12,8 @@ interface SettingsClubSectionProps {
   handleSetRegistrationPolicy: (value: string) => Promise<void>;
   helloAssoStatus: HelloAssoStatus | null;
   onOpenHelloAsso: () => void;
+  /** Receives the screen-reader focus back when the HelloAsso modal closes. */
+  helloAssoRef?: RefObject<View | null>;
 }
 
 export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
@@ -19,10 +22,14 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
   handleSetRegistrationPolicy,
   helloAssoStatus,
   onOpenHelloAsso,
+  helloAssoRef,
 }) => (
   <>
     <View style={styles.sectionTitleContainer}>
-      <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+      <Text
+        accessibilityRole="header"
+        style={[styles.sectionTitle, { color: theme.textSecondary }]}
+      >
         Politique d'inscription
       </Text>
     </View>
@@ -41,7 +48,12 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
       </View>
 
       <View style={styles.policyContainer}>
-        <View style={styles.gap12}>
+        {/* eslint-disable-next-line react-native-a11y/has-accessibility-hint -- static content, no action to hint */}
+        <View
+          style={styles.gap12}
+          accessibilityRole="radiogroup"
+          accessibilityLabel="Qui inscrit les membres ?"
+        >
           {[
             {
               label: "Club uniquement",
@@ -60,6 +72,10 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
             },
           ].map((option) => (
             <TouchableOpacity
+              accessibilityRole="radio"
+              accessibilityState={{
+                checked: registrationPolicy === option.value,
+              }}
               key={option.value}
               style={[
                 styles.policyOption,
@@ -74,8 +90,8 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
                 handleSetRegistrationPolicy(option.value).catch(() => {});
               }}
               testID={`settings-reg-policy-${option.value}`}
-              accessibilityLabel={`Politique d'inscription: ${option.label}`}
-              accessibilityHint={`Sélectionne la politique d'inscription ${option.label}`}
+              accessibilityLabel={joinA11yLabel([option.label, option.desc])}
+              accessibilityHint="Définit qui inscrit les membres aux compétitions"
             >
               <View
                 style={[
@@ -115,16 +131,24 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
 
     {/* Paiement HelloAsso */}
     <View style={styles.sectionTitleContainer}>
-      <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+      <Text
+        accessibilityRole="header"
+        style={[styles.sectionTitle, { color: theme.textSecondary }]}
+      >
         Paiement
       </Text>
     </View>
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
       <TouchableOpacity
+        ref={helloAssoRef}
+        accessibilityRole="button"
         style={styles.row}
         onPress={onOpenHelloAsso}
         testID="settings-helloasso-button"
-        accessibilityLabel="Compte HelloAsso du club"
+        accessibilityLabel={joinA11yLabel([
+          "Compte HelloAsso du club",
+          helloAssoStatus?.helloAssoConnected ? "connecté" : "non connecté",
+        ])}
         accessibilityHint="Ouvre la configuration du compte HelloAsso pour les paiements"
       >
         <View style={styles.rowLeft}>
