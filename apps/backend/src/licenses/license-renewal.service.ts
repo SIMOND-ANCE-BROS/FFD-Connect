@@ -175,9 +175,13 @@ export class LicenseRenewalService {
           where: { id: requestId, userId },
           select: licenseRenewalUploadTargetSelect,
         });
-        if (current?.status !== LicenseRenewalStatus.DRAFT)
-          throw new BadRequestException(
-            "Seules les demandes en brouillon peuvent recevoir des documents",
+        if (!current)
+          throw new NotFoundException("Demande de renouvellement non trouvée");
+        // Submitted while the OCR ran (#297): a concurrent state change, hence
+        // 409 rather than the 400 of the up-front check.
+        if (current.status !== LicenseRenewalStatus.DRAFT)
+          throw new ConflictException(
+            "La demande a été soumise pendant l'envoi du document : il n'a pas été enregistré.",
           );
         // Fichiers du document remplacé (même type) : lus sous le verrou,
         // supprimés une fois la nouvelle ligne enregistrée — sinon le

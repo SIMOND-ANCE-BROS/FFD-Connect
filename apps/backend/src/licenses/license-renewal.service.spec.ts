@@ -680,7 +680,45 @@ describe("LicenseRenewalService", () => {
       );
     });
 
-    it("demande soumise pendant l'OCR (#271) : 400, rien remplacé, le nouveau blob supprimé", async () => {
+    it.each([LicenseRenewalStatus.PENDING, LicenseRenewalStatus.APPROVED])(
+      "demande passée %s pendant l'OCR (#297) : 409, rien remplacé, le nouveau blob supprimé",
+      async (status) => {
+        draftWithDocuments();
+        mockPrisma.licenseRenewalRequest.findFirst
+          .mockResolvedValueOnce({
+            id: "req-1",
+            userId: "user-1",
+            status: LicenseRenewalStatus.DRAFT,
+            documents: [],
+          })
+          .mockResolvedValueOnce({
+            id: "req-1",
+            userId: "user-1",
+            status,
+            documents: [
+              {
+                id: "doc-old",
+                type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+                filePath: OLD_MEDICAL,
+              },
+            ],
+          });
+
+        await expect(upload()).rejects.toThrow(ConflictException);
+
+        expect(
+          mockPrisma.licenseRenewalDocument.deleteMany,
+        ).not.toHaveBeenCalled();
+        expect(mockPrisma.licenseRenewalDocument.create).not.toHaveBeenCalled();
+        expect(mockCleaner.deleteFiles).toHaveBeenCalledTimes(1);
+        expect(mockCleaner.deleteFiles).toHaveBeenCalledWith(
+          [BLOB_NAME],
+          "upload-rollback",
+        );
+      },
+    );
+
+    it("demande supprimée pendant l'OCR : 404, le nouveau blob supprimé", async () => {
       draftWithDocuments();
       mockPrisma.licenseRenewalRequest.findFirst
         .mockResolvedValueOnce({
@@ -689,26 +727,11 @@ describe("LicenseRenewalService", () => {
           status: LicenseRenewalStatus.DRAFT,
           documents: [],
         })
-        .mockResolvedValueOnce({
-          id: "req-1",
-          userId: "user-1",
-          status: LicenseRenewalStatus.PENDING,
-          documents: [
-            {
-              id: "doc-old",
-              type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
-              filePath: OLD_MEDICAL,
-            },
-          ],
-        });
+        .mockResolvedValueOnce(null);
 
-      await expect(upload()).rejects.toThrow(BadRequestException);
+      await expect(upload()).rejects.toThrow(NotFoundException);
 
-      expect(
-        mockPrisma.licenseRenewalDocument.deleteMany,
-      ).not.toHaveBeenCalled();
       expect(mockPrisma.licenseRenewalDocument.create).not.toHaveBeenCalled();
-      expect(mockCleaner.deleteFiles).toHaveBeenCalledTimes(1);
       expect(mockCleaner.deleteFiles).toHaveBeenCalledWith(
         [BLOB_NAME],
         "upload-rollback",
