@@ -9,7 +9,11 @@ import { Prisma, UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import * as crypto from "crypto";
 import { AuthPasswordService } from "../auth/auth-password.service";
-import { isEmailTaken, normalizeEmail } from "../auth/email-identity";
+import {
+  isEmailTaken,
+  normalizeEmail,
+  storedEmailData,
+} from "../auth/email-identity";
 import { EmailService, InvitationRole } from "../auth/email.service";
 import { hasRole, normalizeExtraRoles } from "../auth/roles";
 import { mirrorLegacyCompetitionLevel } from "../common/competition-level";
@@ -92,7 +96,7 @@ export class AdminUserAccountsService {
         const club = await this.resolveClub(tx, dto);
         const user = await tx.user.create({
           data: {
-            email,
+            ...storedEmailData(email),
             password,
             firstName,
             lastName,

@@ -1,3 +1,4 @@
+import { Logger } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -12,6 +13,8 @@ describe("SessionCleanupService", () => {
     passwordResetToken: {
       deleteMany: jest.fn(),
     },
+    $executeRaw: jest.fn(),
+    user: { count: jest.fn() },
   };
   const mockNotifications = {
     purgeExpiredDeviceTokens: jest.fn(),
@@ -20,6 +23,8 @@ describe("SessionCleanupService", () => {
   beforeEach(async () => {
     mockPrisma.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
     mockPrisma.passwordResetToken.deleteMany.mockResolvedValue({ count: 0 });
+    mockPrisma.$executeRaw.mockResolvedValue(0);
+    mockPrisma.user.count.mockResolvedValue(0);
     mockNotifications.purgeExpiredDeviceTokens.mockResolvedValue(0);
 
     const module: TestingModule = await Test.createTestingModule({
@@ -90,6 +95,73 @@ describe("SessionCleanupService", () => {
       );
 
       await expect(service.cleanupExpiredSessions()).resolves.not.toThrow();
+    });
+
+    // #526: lookup keys of rows written without one (rollback window)
+    // converge on this existing hourly hook — no new schedule.
+    describe("e-mail lookup keys", () => {
+      let log: jest.SpyInstance;
+      let warn: jest.SpyInstance;
+      let error: jest.SpyInstance;
+
+      beforeEach(() => {
+        log = jest.spyOn(Logger.prototype, "log").mockImplementation();
+        warn = jest.spyOn(Logger.prototype, "warn").mockImplementation();
+        error = jest.spyOn(Logger.prototype, "error").mockImplementation();
+      });
+
+      afterEach(() => {
+        log.mockRestore();
+        warn.mockRestore();
+        error.mockRestore();
+      });
+
+      it("fills missing keys and stays quiet when nothing is left", async () => {
+        mockPrisma.$executeRaw.mockResolvedValue(2);
+        mockPrisma.user.count.mockResolvedValue(0);
+
+        await service.cleanupExpiredSessions();
+
+        expect(mockPrisma.$executeRaw).toHaveBeenCalledTimes(1);
+        expect(log).toHaveBeenCalledWith(
+          "E-mail lookup keys: 2 account(s) filled",
+        );
+        expect(warn).not.toHaveBeenCalled();
+      });
+
+      it("warns with a count only (no address) about case duplicates left without key", async () => {
+        mockPrisma.$executeRaw.mockResolvedValue(0);
+        mockPrisma.user.count.mockResolvedValue(2);
+
+        await service.cleanupExpiredSessions();
+
+        expect(log).not.toHaveBeenCalledWith(expect.stringContaining("filled"));
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain("2 account(s)");
+        expect(warn.mock.calls[0][0]).not.toContain("@");
+      });
+
+      it("never fails the cleanup nor masks the token purges", async () => {
+        mockPrisma.$executeRaw.mockRejectedValue(new Error("DB error"));
+
+        await expect(service.cleanupExpiredSessions()).resolves.not.toThrow();
+        expect(mockPrisma.refreshToken.deleteMany).toHaveBeenCalled();
+        expect(mockNotifications.purgeExpiredDeviceTokens).toHaveBeenCalled();
+        expect(error).toHaveBeenCalledWith(
+          "Error while filling e-mail lookup keys",
+          expect.any(Error),
+        );
+      });
+
+      it("runs even when the session cleanup fails", async () => {
+        mockPrisma.refreshToken.deleteMany.mockRejectedValue(
+          new Error("DB error"),
+        );
+
+        await service.cleanupExpiredSessions();
+
+        expect(mockPrisma.$executeRaw).toHaveBeenCalledTimes(1);
+      });
     });
   });
 

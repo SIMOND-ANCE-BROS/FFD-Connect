@@ -16,6 +16,7 @@ import "dotenv/config"; // load DATABASE_URL from .env when run via `pnpm seed:e
 import { PrismaClient, UserRole } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
+import { normalizeEmail } from "../src/auth/email-identity";
 import * as bcrypt from "bcrypt";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -93,6 +94,7 @@ async function main() {
       },
       create: {
         email: p.email,
+        emailNormalized: normalizeEmail(p.email),
         password: hashedPassword,
         role: p.role,
         firstName: p.firstName,

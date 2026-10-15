@@ -100,6 +100,8 @@ describe("planUserRename", () => {
       ok: true,
       data: {
         email: STORE_REVIEW_EMAIL,
+        // Lookup key written with the address (#526).
+        emailNormalized: STORE_REVIEW_EMAIL,
         firstName: "Compte",
         lastName: "Démo",
       },

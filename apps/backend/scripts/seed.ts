@@ -7,6 +7,7 @@ import "dotenv/config";
 import * as fs from "fs";
 import * as path from "path";
 import { Pool } from "pg";
+import { normalizeEmail } from "../src/auth/email-identity";
 import { fullName, SEED_COUPLE } from "./seed-owner-couple";
 
 const connectionString = process.env.DATABASE_URL;
@@ -198,6 +199,7 @@ async function main() {
     },
     create: {
       email: owner.email,
+      emailNormalized: normalizeEmail(owner.email),
       password: passwordHash,
       firstName: owner.firstName,
       lastName: owner.lastName,
@@ -236,6 +238,7 @@ async function main() {
     },
     create: {
       email: partner.email,
+      emailNormalized: normalizeEmail(partner.email),
       password: passwordHash,
       firstName: partner.firstName,
       lastName: partner.lastName,
@@ -269,6 +272,7 @@ async function main() {
     update: { clubId: cvds.id, clubName: CVDS_NAME },
     create: {
       email: "direction@cvds.com",
+      emailNormalized: "direction@cvds.com",
       password: passwordHash,
       firstName: "Direction",
       lastName: "CVDS",

@@ -32,6 +32,7 @@ import * as path from "path";
 import { Pool } from "pg";
 import * as https from "https";
 import * as iconv from "iconv-lite";
+import { normalizeEmail } from "../src/auth/email-identity";
 import { SEED_COUPLE } from "./seed-owner-couple";
 
 const connectionString = process.env.DATABASE_URL;
@@ -596,6 +597,7 @@ Exemples:
               },
               create: {
                 email,
+                emailNormalized: normalizeEmail(email),
                 password: passwordHash,
                 firstName,
                 lastName,
