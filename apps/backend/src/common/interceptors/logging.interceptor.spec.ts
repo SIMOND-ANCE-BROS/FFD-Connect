@@ -1,6 +1,14 @@
-import { CallHandler, ExecutionContext } from "@nestjs/common";
+import {
+  BadRequestException,
+  CallHandler,
+  ExecutionContext,
+  ForbiddenException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { of, throwError } from "rxjs";
 import { LoggingInterceptor } from "./logging.interceptor";
+import { CodedBadRequestException } from "../errors/coded-bad-request.exception";
 
 describe("LoggingInterceptor", () => {
   let interceptor: LoggingInterceptor;
@@ -141,6 +149,115 @@ describe("LoggingInterceptor", () => {
         expect(logged).toContain("/api/v1/licenses/wallet/apple/[REDACTED]");
         done();
       },
+    });
+  });
+
+  describe("thrown exceptions (#571)", () => {
+    // The filter has not written the response yet: statusCode is still 200.
+    beforeEach(() => {
+      mockResponse.statusCode = 200;
+    });
+
+    function runError(err: unknown): Promise<void> {
+      (mockCallHandler.handle as jest.Mock).mockReturnValue(
+        throwError(() => err),
+      );
+      return new Promise((resolve) => {
+        interceptor.intercept(mockExecutionContext, mockCallHandler).subscribe({
+          error: (e) => {
+            expect(e).toBe(err);
+            resolve();
+          },
+        });
+      });
+    }
+
+    it("logs a NotFoundException at warn with statusCode 404, no stack", async () => {
+      await runError(new NotFoundException("Track abc not found"));
+
+      expect(mockLogger.error).not.toHaveBeenCalled();
+      expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+      const [data, text] = mockLogger.warn.mock.calls[0] as [
+        { statusCode: number; error: { stack?: string; message: string } },
+        string,
+      ];
+      expect(data.statusCode).toBe(404);
+      expect(data.error.stack).toBeUndefined();
+      expect(data.error.message).toBe("Track abc not found");
+      expect(text).toContain(" 404 ");
+      expect(text).not.toContain(" 200 ");
+    });
+
+    it.each([
+      [new BadRequestException("bad"), 400],
+      [new ForbiddenException(), 403],
+    ])("logs %p at warn with its own status", async (err, status) => {
+      await runError(err);
+
+      expect(mockLogger.error).not.toHaveBeenCalled();
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ statusCode: status }),
+        expect.stringContaining(` ${status} `),
+      );
+    });
+
+    it("logs a non-HTTP error at error with statusCode 500 and its stack", async () => {
+      await runError(new Error("boom"));
+
+      expect(mockLogger.warn).not.toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          statusCode: 500,
+          error: expect.objectContaining({
+            message: "boom",
+            stack: expect.stringContaining("boom"),
+          }) as unknown,
+        }),
+        expect.stringContaining(" 500 "),
+      );
+    });
+
+    it("logs a non-Error throw at error with statusCode 500", async () => {
+      await runError("plain string");
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ statusCode: 500 }),
+        expect.stringContaining("plain string"),
+      );
+    });
+
+    it("logs an HTTP 5xx at error with its own status", async () => {
+      await runError(new ServiceUnavailableException("down"));
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ statusCode: 503 }),
+        expect.stringContaining(" 503 "),
+      );
+    });
+
+    it("logs only the code of a coded 400, never its user text", async () => {
+      await runError(
+        new CodedBadRequestException(
+          "MEDICAL_CERTIFICATE_EXPIRED",
+          "Votre certificat médical a expiré",
+          "LICENSE_RENEWAL_REFUSED",
+        ),
+      );
+
+      const logged = JSON.stringify(mockLogger.warn.mock.calls);
+      expect(logged).toContain("LICENSE_RENEWAL_REFUSED");
+      expect(logged).not.toContain("certificat");
+      expect(logged).not.toContain("MEDICAL_CERTIFICATE_EXPIRED");
+    });
+
+    it("drops the stack header of a coded 5xx", async () => {
+      const err = new CodedBadRequestException("X_CODE", "secret text");
+      jest.spyOn(err, "getStatus").mockReturnValue(500);
+      await runError(err);
+
+      const logged = JSON.stringify(mockLogger.error.mock.calls);
+      expect(logged).toContain("X_CODE");
+      expect(logged).not.toContain("secret text");
     });
   });
 });

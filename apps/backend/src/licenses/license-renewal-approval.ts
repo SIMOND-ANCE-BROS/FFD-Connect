@@ -13,6 +13,11 @@ import {
   licenseRenewalApprovalTargetSelect,
 } from "../utils/prisma-selects";
 import { CodedBadRequestException } from "../common/errors/coded-bad-request.exception";
+import { practisedDiscipline } from "../common/competition-level/competition-level.util";
+import {
+  LICENSE_CATEGORY_UNKNOWN,
+  LICENSE_CLUB_UNKNOWN,
+} from "./beta-license-placeholder";
 import { normalizeLicenseNumber } from "./license-number.util";
 import { renewedLicenseValidUntil } from "./license-season";
 import { retireLicenseNumber } from "./retired-license-number";
@@ -106,6 +111,10 @@ export class LicenseNumberTakenException extends ConflictException {
  * licence's. None of them: LicenseNumberUnknownException (400). A number held
  * by another licence: LicenseNumberTakenException (409); the transaction rolls
  * back and the request stays PENDING.
+ *
+ * Nor are the category and club of a created licence (#282): the holder's
+ * practised discipline and club (free-text name, else the linked club), else
+ * LICENSE_CATEGORY_UNKNOWN / LICENSE_CLUB_UNKNOWN.
  */
 export async function approvePendingRenewal(
   tx: Prisma.TransactionClient,
@@ -168,8 +177,13 @@ export async function approvePendingRenewal(
         userId: request.userId,
         number: licenseNumber,
         validUntil,
-        category: request.user.category ?? "Standard",
-        clubName: request.user.clubName ?? "Club",
+        // Never invented (#282): the holder's real discipline and club, else
+        // an explicit "unknown" value (the columns are required).
+        category: practisedDiscipline(request.user) ?? LICENSE_CATEGORY_UNKNOWN,
+        clubName:
+          nonEmpty(request.user.clubName) ??
+          nonEmpty(request.user.club?.name) ??
+          LICENSE_CLUB_UNKNOWN,
       },
       select: idOnlySelect,
     });

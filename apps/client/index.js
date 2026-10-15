@@ -16,6 +16,7 @@ import { registerBackgroundMessageHandler } from "./src/features/settings/servic
 import {
   sentryBeforeSend,
   sentryIntegrations,
+  sentryMetricKitOptions,
   sentryPrivacyOptions,
 } from "./src/utils/sentryOptions";
 
@@ -118,6 +119,9 @@ if (sentryDsn && !sentryDisabled && Platform.OS !== "web") {
     // health data is mounted (#242). Native crashes get no screenshot (the
     // native SDKs would not ask beforeScreenshot). See src/utils/sentryOptions.
     ...sentryPrivacyOptions,
+    // iOS system kills (CPU, hang, disk writes) reported by MetricKit on a
+    // later launch (#540). See src/utils/sentryOptions.
+    ...sentryMetricKitOptions,
     // Session Replay disabled on iOS 26+ — RNSentryReplayUnmask shadow node
     // hooks the network stack and triggers nw_protocol_ipv6 crashes.
     replaysSessionSampleRate: 0,

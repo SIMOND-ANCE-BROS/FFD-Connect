@@ -2,6 +2,7 @@ import { screenshotIntegration } from "@sentry/react-native";
 import {
   sentryBeforeSend,
   sentryIntegrations,
+  sentryMetricKitOptions,
   sentryPrivacyOptions,
 } from "../sentryOptions";
 import { beforeScreenshot } from "../sentryPrivacy";
@@ -24,6 +25,17 @@ describe("sentryPrivacyOptions (#242)", () => {
 
   it("routes screenshots through our beforeScreenshot", () => {
     expect(sentryPrivacyOptions.beforeScreenshot).toBe(beforeScreenshot);
+  });
+});
+
+describe("sentryMetricKitOptions (#540)", () => {
+  it("enables MetricKit diagnostics without the raw payload attachment", () => {
+    // Read natively by sentry-cocoa (SentryOptionsInternal initWithDict):
+    // the key names must match exactly or the option is silently ignored.
+    expect(sentryMetricKitOptions).toEqual({
+      enableMetricKit: true,
+      enableMetricKitRawPayload: false,
+    });
   });
 });
 
