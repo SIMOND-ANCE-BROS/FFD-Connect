@@ -33,6 +33,7 @@ import { ClubSoloTeamsScreen } from "../features/club/screens/ClubSoloTeamsScree
 // --- Competition screens ---
 import { CompetitionDetailScreen } from "../features/competitions/screens/CompetitionDetailScreen";
 import { EventRegistrantsScreen } from "../features/competitions/screens/EventRegistrantsScreen";
+import { SeatPickerScreen } from "../features/competitions/screens/SeatPickerScreen";
 import { LiveResultsScreen } from "../features/competitions/screens/LiveResultsScreen";
 import { VolunteerCheckinScreen } from "../features/competitions/screens/VolunteerCheckinScreen";
 
@@ -195,6 +196,7 @@ export const AppNavigator = () => {
                 name="EventRegistrants"
                 component={EventRegistrantsScreen}
               />
+              <Stack.Screen name="SeatPicker" component={SeatPickerScreen} />
 
               {/* Club */}
               <Stack.Screen

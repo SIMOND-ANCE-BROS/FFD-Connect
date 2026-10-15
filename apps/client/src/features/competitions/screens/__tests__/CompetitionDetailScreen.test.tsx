@@ -589,6 +589,56 @@ describe("CompetitionDetailScreen", () => {
     expect(mapTiles()).toHaveLength(0);
   });
 
+  describe("seat booking (#453)", () => {
+    const PRICED_LAYOUT = [
+      {
+        id: "t1",
+        type: "TABLE",
+        label: "Table 1",
+        capacity: 6,
+        priceCents: 1500,
+      },
+    ];
+    const renderWith = async (
+      state: Partial<typeof baseState> & Record<string, unknown>,
+      details: Record<string, unknown> = {},
+    ) => {
+      const props = createTestProps();
+      mockUseLogic.mockReturnValue({
+        state: {
+          ...baseState,
+          ...state,
+          details: { ...mockCompetition, layout: PRICED_LAYOUT, ...details },
+        },
+        actions: baseActions,
+      });
+      const screen = await render(<CompetitionDetailScreen {...props} />);
+      return { ...screen, props };
+    };
+
+    it("opens the seat picker when seats are for sale", async () => {
+      const { getByTestId, props } = await renderWith({});
+
+      await fireEvent.press(getByTestId("competition-detail-seat-booking"));
+      expect(props.navigation.navigate).toHaveBeenCalledWith("SeatPicker", {
+        competitionId: "c1",
+      });
+    });
+
+    it.each([
+      ["no priced element", {}, { layout: [{ id: "t1", type: "TABLE" }] }],
+      ["a guest", { isGuest: true }, {}],
+      ["the organising club", { userRole: "CLUB" }, {}],
+      ["a past competition", {}, { status: "PAST" }],
+    ])("is not offered to %s", async (_label, state, details) => {
+      const { queryByTestId } = await renderWith(
+        state as Partial<typeof baseState>,
+        details,
+      );
+      expect(queryByTestId("competition-detail-seat-booking")).toBeNull();
+    });
+  });
+
   it("handles back navigation", async () => {
     const props = createTestProps();
     mockUseLogic.mockReturnValue({
