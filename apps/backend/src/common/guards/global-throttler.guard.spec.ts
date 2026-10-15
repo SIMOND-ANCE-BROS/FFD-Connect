@@ -19,6 +19,7 @@ import { Throttle, ThrottlerModule } from "@nestjs/throttler";
 import type { Request } from "express";
 import request from "supertest";
 import { applyTrustProxy } from "../../config/trust-proxy";
+import { ThrottleByIp } from "../decorators/throttle-by-ip.decorator";
 import { GlobalThrottlerGuard } from "./global-throttler.guard";
 import { ThrottlerUserGuard } from "./throttler-user.guard";
 
@@ -79,7 +80,21 @@ class RoutesController {
 
   @Post("public")
   @Throttle(ROUTE_THROTTLE)
+  @ThrottleByIp()
   publicRoute(): { ok: true } {
+    return { ok: true };
+  }
+
+  /** Authenticated route on the global limit only (`/licenses/my`…, #633). */
+  @Get("signed-in")
+  @UseGuards(FakeAuthGuard)
+  signedIn(): { ok: true } {
+    return { ok: true };
+  }
+
+  /** Public route the app calls signed in (`GET /competitions/:id`, #633). */
+  @Get("open")
+  open(): { ok: true } {
     return { ok: true };
   }
 
@@ -94,6 +109,15 @@ class RoutesController {
   @UseGuards(FakeAuthGuard, FakeRolesGuard, ThrottlerUserGuard)
   @Throttle(ROUTE_THROTTLE)
   adminOnly(): { ok: true } {
+    return { ok: true };
+  }
+}
+
+@ThrottleByIp()
+@Controller("class-ip")
+class ClassIpController {
+  @Get()
+  run(): { ok: true } {
     return { ok: true };
   }
 }
@@ -130,7 +154,7 @@ describe("GlobalThrottlerGuard (HTTP)", () => {
       imports: [
         ThrottlerModule.forRoot([{ ttl: 60_000, limit: GLOBAL_LIMIT }]),
       ],
-      controllers: [RoutesController, ClassLevelController],
+      controllers: [RoutesController, ClassLevelController, ClassIpController],
       providers: [
         { provide: ConfigService, useValue: config },
         { provide: APP_GUARD, useClass: GlobalThrottlerGuard },
@@ -220,6 +244,95 @@ describe("GlobalThrottlerGuard (HTTP)", () => {
         .set(from("203.0.113.1"))
         .set("Authorization", `Bearer ${tokenFor("user-x")}`)
         .expect(429);
+    });
+  });
+
+  // #633: every authenticated request is counted per user, not only on
+  // routes carrying ThrottlerUserGuard. A gym Wi-Fi or a mobile CGNAT must
+  // not make dancers share one budget on /licenses/my, /competitions/:id…
+  describe("global limit: per user for a verified token", () => {
+    beforeEach(() => boot(1));
+
+    const get = (path: string, ip: string, authorization?: string) => {
+      const req = request(server()).get(path).set(from(ip));
+      return authorization ? req.set("Authorization", authorization) : req;
+    };
+    const bearer = (userId: string) => `Bearer ${tokenFor(userId)}`;
+
+    it.each(["/t/signed-in", "/t/open"])(
+      "two users behind the same IP do not consume each other's budget (%s)",
+      async (path) => {
+        for (let i = 0; i < GLOBAL_LIMIT; i++) {
+          await get(path, "203.0.113.50", bearer("alice")).expect(200);
+        }
+        await get(path, "203.0.113.50", bearer("alice")).expect(429);
+        // Same address, another account: its own budget.
+        for (let i = 0; i < GLOBAL_LIMIT; i++) {
+          await get(path, "203.0.113.50", bearer("bob")).expect(200);
+        }
+        await get(path, "203.0.113.50", bearer("bob")).expect(429);
+      },
+    );
+
+    it("lets more signed-in users share an IP than the per-IP budget", async () => {
+      for (let u = 0; u < GLOBAL_LIMIT * 3; u++) {
+        await get("/t/signed-in", "203.0.113.51", bearer(`dancer-${u}`)).expect(
+          200,
+        );
+      }
+    });
+
+    it("keeps a user limited when they change IP", async () => {
+      for (let i = 0; i < GLOBAL_LIMIT; i++) {
+        await get(
+          "/t/signed-in",
+          `203.0.113.${60 + i}`,
+          bearer("alice"),
+        ).expect(200);
+      }
+      await get("/t/signed-in", "203.0.113.99", bearer("alice")).expect(429);
+    });
+
+    it("does not give anonymous callers of a public route a budget per user", async () => {
+      for (let i = 0; i < GLOBAL_LIMIT; i++) {
+        await get("/t/open", "203.0.113.52").expect(200);
+      }
+      await get("/t/open", "203.0.113.52").expect(429);
+      // A signed-in user on the same address is not blocked by them.
+      await get("/t/open", "203.0.113.52", bearer("alice")).expect(200);
+    });
+
+    // An unverified token must never pick its bucket: rotating forged tokens
+    // would otherwise dodge the limit.
+    it.each([
+      ["garbage bearer strings", (i: number) => `Bearer garbage-${i}`],
+      [
+        "tokens signed with another secret",
+        (i: number) =>
+          `Bearer ${new JwtService({ secret: "attacker" }).sign({ sub: `fake-${i}` })}`,
+      ],
+      [
+        "expired tokens",
+        (i: number) =>
+          `Bearer ${jwt.sign({ sub: `old-${i}`, exp: Math.floor(Date.now() / 1000) - 60 })}`,
+      ],
+      [
+        "unsigned (alg none) tokens",
+        (i: number) =>
+          `Bearer ${Buffer.from('{"alg":"none","typ":"JWT"}').toString("base64url")}.${Buffer.from(JSON.stringify({ sub: `none-${i}` })).toString("base64url")}.`,
+      ],
+    ])("counts rotating %s on the client IP", async (_label, authFor) => {
+      for (let i = 0; i < GLOBAL_LIMIT; i++) {
+        await get("/t/open", "203.0.113.53", authFor(i)).expect(200);
+      }
+      await get("/t/open", "203.0.113.53", authFor(99)).expect(429);
+    });
+
+    it("keeps a class-level @ThrottleByIp() route per IP, even signed in", async () => {
+      for (let i = 0; i < GLOBAL_LIMIT; i++) {
+        await get("/class-ip", "203.0.113.54", bearer(`user-${i}`)).expect(200);
+      }
+      await get("/class-ip", "203.0.113.54", bearer("user-x")).expect(429);
     });
   });
 
@@ -336,19 +449,23 @@ describe("GlobalThrottlerGuard (HTTP)", () => {
 });
 
 describe("GlobalThrottlerGuard.getTracker", () => {
-  class CustomPerUserGuard extends ThrottlerUserGuard {}
   const handler = () => undefined;
   class Ctrl {}
   const validHeaders = { authorization: `Bearer ${tokenFor("alice")}` };
 
   const trackerFor = (
-    guards: Map<unknown, unknown[]>,
+    byIp: Map<unknown, boolean>,
     headers: Record<string, unknown>,
     withContext = true,
   ) => {
-    const reflector = {
-      get: (_key: string, target: unknown) => guards.get(target),
-    } as unknown as Reflector;
+    const reflector = new Reflector();
+    jest
+      .spyOn(reflector, "getAllAndOverride")
+      .mockImplementation((_key, targets) =>
+        (targets as unknown[])
+          .map((t) => byIp.get(t))
+          .find((v) => v !== undefined),
+      );
     const guard = new GlobalThrottlerGuard(
       null as never,
       null as never,
@@ -372,60 +489,54 @@ describe("GlobalThrottlerGuard.getTracker", () => {
     );
   };
 
-  it.each([
-    ["the guard class", ThrottlerUserGuard],
-    ["a subclass", CustomPerUserGuard],
-    [
-      "a guard instance",
-      new ThrottlerUserGuard(null as never, null as never, null as never),
-    ],
-  ])(
-    "keys a route guarded by %s on the token subject (not `user:`)",
-    async (_label, perUserGuard) => {
-      await expect(
-        trackerFor(
-          new Map([[handler, [FakeAuthGuard, perUserGuard]]]),
-          validHeaders,
-        ),
-      ).resolves.toBe("gsub:alice");
-    },
-  );
+  it("keys a verified token on its subject (not `user:`), on any route", async () => {
+    await expect(trackerFor(new Map(), validHeaders)).resolves.toBe(
+      "gsub:alice",
+    );
+  });
 
-  it("reads a class-level per-user guard", async () => {
+  it("accepts a lowercase scheme and surrounding spaces", async () => {
     await expect(
-      trackerFor(new Map([[Ctrl, [ThrottlerUserGuard]]]), validHeaders),
+      trackerFor(new Map(), {
+        authorization: `  bearer ${tokenFor("alice")} `,
+      }),
     ).resolves.toBe("gsub:alice");
   });
 
   it.each([
     ["no authorization header", {}],
     ["a non-string authorization", { authorization: ["Bearer a", "b"] }],
+    ["another scheme", { authorization: `Basic ${tokenFor("alice")}` }],
     ["a token without subject", { authorization: `Bearer ${jwt.sign({})}` }],
+    [
+      "a non-string subject",
+      { authorization: `Bearer ${jwt.sign({ sub: 42 })}` },
+    ],
+    [
+      "a token signed with another secret",
+      {
+        authorization: `Bearer ${new JwtService({ secret: "attacker" }).sign({ sub: "alice" })}`,
+      },
+    ],
   ])("falls back on the IP with %s", async (_label, headers) => {
-    await expect(
-      trackerFor(new Map([[handler, [ThrottlerUserGuard]]]), headers),
-    ).resolves.toBe("203.0.113.1");
+    await expect(trackerFor(new Map(), headers)).resolves.toBe("203.0.113.1");
   });
 
-  it("keys routes without a per-user throttler on the IP, even with a valid token", async () => {
-    await expect(
-      trackerFor(
-        new Map<unknown, unknown[]>([[Ctrl, [FakeAuthGuard]]]),
-        validHeaders,
-      ),
-    ).resolves.toBe("203.0.113.1");
-    await expect(trackerFor(new Map(), validHeaders)).resolves.toBe(
-      "203.0.113.1",
-    );
-  });
+  it.each([
+    ["the handler", handler],
+    ["the controller", Ctrl],
+  ])(
+    "keys a @ThrottleByIp() route (on %s) on the IP, even with a valid token",
+    async (_label, target) => {
+      await expect(
+        trackerFor(new Map([[target, true]]), validHeaders),
+      ).resolves.toBe("203.0.113.1");
+    },
+  );
 
   it("falls back on the IP when called without an execution context", async () => {
-    await expect(
-      trackerFor(
-        new Map([[handler, [ThrottlerUserGuard]]]),
-        validHeaders,
-        false,
-      ),
-    ).resolves.toBe("203.0.113.1");
+    await expect(trackerFor(new Map(), validHeaders, false)).resolves.toBe(
+      "203.0.113.1",
+    );
   });
 });

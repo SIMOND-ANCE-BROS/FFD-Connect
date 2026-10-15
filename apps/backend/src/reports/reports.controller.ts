@@ -13,7 +13,9 @@ import {
   ApiResponse,
   ApiTags,
 } from "@nestjs/swagger";
+import { Throttle } from "@nestjs/throttler";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
+import { ThrottleByIp } from "../common/decorators/throttle-by-ip.decorator";
 import {
   createFileFilter,
   FILE_TYPES,
@@ -29,6 +31,10 @@ export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
   @Post()
+  // Anonymous, with an image upload: a dedicated per-IP limit (#633). Reports
+  // are sent by hand (report screen, crash screen), one at a time.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ThrottleByIp()
   @ApiOperation({
     summary: "Crée un rapport/signalement",
     description:

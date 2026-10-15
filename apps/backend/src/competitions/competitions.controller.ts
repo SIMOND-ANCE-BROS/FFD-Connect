@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
+import { ThrottleByIp } from "../common/decorators/throttle-by-ip.decorator";
 import { UserRole } from "@prisma/client";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
@@ -789,7 +790,12 @@ export class CompetitionsController {
     return this.resultsService.generateVolunteerToken(competitionId, body.name);
   }
 
+  // Per IP, not per volunteer link (#633): the link is only checked against
+  // the database inside the handler, and keying on an unchecked body token
+  // would give each guessed token a fresh budget. The few scanners at a venue
+  // entrance fit this route's own per-IP budget.
   @Post("checkin/volunteer")
+  @ThrottleByIp()
   @ApiOperation({
     summary: "Effectue le check-in en tant que bénévole",
     description:

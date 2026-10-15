@@ -6,6 +6,7 @@ import { LicenseRenewalService } from "./license-renewal.service";
 import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 import { LicensesController } from "./licenses.controller";
 import { LicensesService } from "./licenses.service";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 
 /** Minimal RequestWithUser stub for the local interface used in LicensesController */
 const req = (userId: string, email = "user@test.com") =>
@@ -53,6 +54,8 @@ describe("LicensesController", () => {
       ],
     })
       .overrideGuard(JwtAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(ThrottlerUserGuard)
       .useValue({ canActivate: () => true })
       .compile();
 
