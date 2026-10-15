@@ -28,6 +28,8 @@ import {
   CONFLICT_ERROR_SCHEMA,
 } from "../common/decorators/api-error-responses.decorator";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
+import { Throttle } from "@nestjs/throttler";
 import {
   createFileFilter,
   FILE_TYPES,
@@ -37,6 +39,8 @@ import {
   createMemoryUploadStorage,
   generateBlobName,
 } from "../utils/upload-storage.util";
+import { HEALTH_DATA_ACCESS_ROUTES } from "../health-data-access/dto/health-data-access-log.dto";
+import { ImpersonatedRenewalAccessInterceptor } from "./impersonated-renewal-access.interceptor";
 import { LicenseRenewalService } from "./license-renewal.service";
 import { LicensesService } from "./licenses.service";
 import {
@@ -53,6 +57,8 @@ interface RequestWithUser extends ExpressRequest {
   user: {
     userId: string;
     email: string;
+    /** Set during a "log in as" session (#545). */
+    impersonatedBy?: string;
   };
 }
 
@@ -176,8 +182,11 @@ export class LicensesController {
   */
 
   // --- Demande de renouvellement (workflow documents + OCR) ---
+  // Each response carries the medical certificate's OCR hints: read during an
+  // impersonation, it is traced as a health-data access (#63).
 
   @StoreReviewSimulation(simulatedRenewalStart)
+  @UseInterceptors(ImpersonatedRenewalAccessInterceptor)
   @Post("renewal/start")
   @ApiOperation({
     summary: "Démarrer une demande de renouvellement",
@@ -191,6 +200,7 @@ export class LicensesController {
   }
 
   @StoreReviewOwnData()
+  @UseInterceptors(ImpersonatedRenewalAccessInterceptor)
   @Get("renewal/my")
   @ApiOperation({
     summary: "Ma demande de renouvellement en cours",
@@ -204,7 +214,12 @@ export class LicensesController {
   }
 
   @StoreReviewSimulation(simulatedRenewalDocument)
+  @UseInterceptors(ImpersonatedRenewalAccessInterceptor)
   @Post("renewal/:id/documents")
+  // Each upload runs a paid Azure OCR call: 10 uploads/min per user (#633).
+  // The app sends one document per pick (2 document types per request).
+  @UseGuards(ThrottlerUserGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @ApiOperation({
     summary: "Déposer un document sur une demande (OCR automatique)",
     description:
@@ -236,6 +251,13 @@ export class LicensesController {
   })
   @ApiResponse({ status: 401, description: "Non autorisé" })
   @ApiResponse({ status: 404, description: "Demande non trouvée" })
+  // Replaces the common 409 description: same body schema.
+  @ApiResponse({
+    status: 409,
+    description:
+      "Conflit - La demande a été soumise pendant l'envoi : le document n'est pas enregistré",
+    schema: CONFLICT_ERROR_SCHEMA,
+  })
   @UseInterceptors(
     FileInterceptor("document", {
       storage: createMemoryUploadStorage(),
@@ -261,16 +283,25 @@ export class LicensesController {
       throw new BadRequestException(
         "type doit être MEDICAL_CERTIFICATE ou LICENSE_CERTIFICATE",
       );
+    const impersonator = req.user.impersonatedBy;
     return this.licenseRenewalService.uploadRenewalDocument(
       req.user.userId,
       id,
       docType,
       file.buffer,
       generateBlobName(file),
+      // A replaced medical certificate is deleted: journaled under whoever
+      // actually acts (#63).
+      {
+        actorUserId: impersonator ?? req.user.userId,
+        actorRole: impersonator ? "IMPERSONATOR" : "OWNER",
+        route: HEALTH_DATA_ACCESS_ROUTES.renewalDocumentUpload,
+      },
     );
   }
 
   @StoreReviewSimulation(simulatedRenewalSubmit)
+  @UseInterceptors(ImpersonatedRenewalAccessInterceptor)
   @Post("renewal/:id/submit")
   @ApiOperation({
     summary: "Soumettre la demande de renouvellement",

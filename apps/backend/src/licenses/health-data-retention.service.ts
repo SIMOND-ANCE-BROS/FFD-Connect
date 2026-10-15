@@ -6,6 +6,8 @@ import {
   Prisma,
 } from "@prisma/client";
 import * as Sentry from "@sentry/nestjs";
+import { HEALTH_DATA_ACCESS_ROUTES } from "../health-data-access/dto/health-data-access-log.dto";
+import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
@@ -97,6 +99,7 @@ export class HealthDataRetentionService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly fileCleaner: RenewalDocumentFileCleaner,
     private readonly blobStorage: BlobStorageService,
+    private readonly healthAccess: HealthDataAccessLogService,
   ) {}
 
   onModuleInit(): void {
@@ -117,6 +120,11 @@ export class HealthDataRetentionService implements OnModuleInit {
    * passer inaperçu.
    */
   private async runPass(trigger: "boot" | "cron"): Promise<void> {
+    await this.purgeCertificates(trigger);
+    await this.purgeAccessLog(trigger);
+  }
+
+  private async purgeCertificates(trigger: "boot" | "cron"): Promise<void> {
     try {
       const report = await this.purgeExpiredHealthData();
       // Journalisé À CHAQUE PASSAGE, y compris quand il n'y a rien à faire :
@@ -138,6 +146,31 @@ export class HealthDataRetentionService implements OnModuleInit {
       Sentry.captureMessage("Health data retention pass failed", {
         level: "error",
         tags: { rgpd: "retention-purge-failed", trigger },
+        extra: { error: message },
+      });
+    }
+  }
+
+  /**
+   * Rétention du journal des accès aux données de santé (#63) : 1 an. Une
+   * suppression indexée sur `createdAt`, dans le même passage que la purge
+   * des certificats — pas de nouvelle planification. Indépendante du stockage
+   * blob, et son échec n'empêche pas la purge des certificats.
+   */
+  private async purgeAccessLog(trigger: "boot" | "cron"): Promise<void> {
+    try {
+      const removed = await this.healthAccess.purgeExpired();
+      if (removed > 0) {
+        this.logger.log(
+          `Health data access log retention (${trigger}): ${removed} row(s) purged`,
+        );
+      }
+    } catch (error) {
+      const message = getErrorMessage(error);
+      this.logger.error(`Health data access log purge failed: ${message}`);
+      Sentry.captureMessage("Health data access log purge failed", {
+        level: "error",
+        tags: { rgpd: "access-log-purge-failed", trigger },
         extra: { error: message },
       });
     }
@@ -209,9 +242,23 @@ export class HealthDataRetentionService implements OnModuleInit {
       removedFiles.has(document.filePath),
     );
     if (purgeable.length > 0) {
-      await this.prisma.licenseRenewalDocument.deleteMany({
-        where: { id: { in: purgeable.map((document) => document.id) } },
-      });
+      // The deletion and its trace (#63) commit together.
+      await this.prisma.$transaction([
+        this.prisma.licenseRenewalDocument.deleteMany({
+          where: { id: { in: purgeable.map((document) => document.id) } },
+        }),
+        this.healthAccess.recordOp(
+          purgeable.map((document) => ({
+            subjectUserId: document.request.userId,
+            actorUserId: null,
+            actorRole: "SYSTEM",
+            action: "DELETE",
+            resourceType: "MEDICAL_CERTIFICATE",
+            resourceId: document.id,
+            route: HEALTH_DATA_ACCESS_ROUTES.retentionPurge,
+          })),
+        ),
+      ]);
     }
 
     return {

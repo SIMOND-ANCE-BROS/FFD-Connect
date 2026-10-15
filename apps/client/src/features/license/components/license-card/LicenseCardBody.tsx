@@ -1,10 +1,12 @@
 import { Image } from "expo-image";
+import { User } from "lucide-react-native";
 import { TouchableOpacity, View } from "react-native";
 import { AppText } from "../../../../components/AppText";
 import { QRCodeView } from "../QRCodeView.native";
 import { Barcode } from "./Barcode";
 import { styles } from "./license-card.styles";
 import { LicenseConfig, LicenseUser } from "./license-card.types";
+import { holderInitials } from "../../utils/holderInitials";
 
 interface LicenseCardBodyProps {
   isFFD: boolean;
@@ -88,6 +90,47 @@ const InfoCell: React.FC<{
   </View>
 );
 
+/**
+ * Shown when no licence photo is stored (#246): the holder's initials, or a
+ * neutral silhouette, drawn locally. Never a remote placeholder image (the
+ * former third-party service was gone and leaked the user's IP address).
+ */
+const PhotoPlaceholder: React.FC<{
+  user: LicenseUser;
+  config: LicenseConfig;
+}> = ({ user, config }) => {
+  const initials = holderInitials(user.firstName, user.lastName);
+  return (
+    <View
+      testID="license-card-photo-placeholder"
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={
+        initials
+          ? `Aucune photo de licence, initiales ${initials}`
+          : "Aucune photo de licence"
+      }
+      accessibilityHint="Photo d'identité du titulaire de la licence"
+      style={[
+        styles.photoFallback,
+        { backgroundColor: config.backgroundColor },
+      ]}
+    >
+      {initials ? (
+        <AppText
+          variant="h2"
+          weight="bold"
+          style={[styles.photoInitials, { color: config.headerTextColor }]}
+        >
+          {initials}
+        </AppText>
+      ) : (
+        <User color={config.headerTextColor} size={32} />
+      )}
+    </View>
+  );
+};
+
 export const LicenseCardBody: React.FC<LicenseCardBodyProps> = ({
   isFFD,
   config,
@@ -144,13 +187,11 @@ export const LicenseCardBody: React.FC<LicenseCardBodyProps> = ({
             source={{ uri: user.photoUrl ?? photoUri ?? undefined }}
             style={styles.photo}
             contentFit="cover"
+            accessibilityLabel="Photo de licence"
+            accessibilityHint="Photo d'identité du titulaire de la licence"
           />
         ) : (
-          <Image
-            source={{ uri: "https://via.placeholder.com/150" }}
-            style={styles.photo}
-            contentFit="cover"
-          />
+          <PhotoPlaceholder user={user} config={config} />
         )}
       </View>
 

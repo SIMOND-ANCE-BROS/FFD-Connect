@@ -1,7 +1,7 @@
 import * as Sentry from "@sentry/react-native";
 
 import { TokenStoreUnavailableError } from "../../api/tokenStoreErrors";
-import { logger, LogLevel } from "../logger";
+import { createLogger, logger, LogLevel } from "../logger";
 
 describe("logger", () => {
   let warnSpy: jest.SpyInstance;
@@ -129,7 +129,7 @@ describe("logger", () => {
       logger.error("no error object");
       expect(Sentry.captureMessage).toHaveBeenCalledWith(
         "[App] no error object",
-        "error",
+        { level: "error", extra: { context: "App", data: undefined } },
       );
     });
   });
@@ -141,5 +141,119 @@ describe("logger", () => {
 
     logger.error("Should log");
     expect(errorSpy).toHaveBeenCalled();
+  });
+
+  describe("release builds (#589)", () => {
+    const globals = globalThis as unknown as { __DEV__: boolean };
+    const originalDev = globals.__DEV__;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      globals.__DEV__ = false;
+    });
+
+    afterEach(() => {
+      globals.__DEV__ = originalDev;
+    });
+
+    it("is enabled with a WARN floor: debug and info are dropped", () => {
+      const log = createLogger("Release");
+      log.debug("debug");
+      log.info("info");
+      log.warn("warn");
+
+      expect(log.getLogs().map((l) => l.message)).toEqual(["[Release] warn"]);
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("sends logger.error to Sentry as an exception", () => {
+      const log = createLogger("Release");
+      const err = new Error("broken");
+      log.error("Something failed", err, { trackId: "t1" });
+
+      expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+      expect(Sentry.captureException).toHaveBeenCalledWith(err, {
+        extra: {
+          message: "Something failed",
+          context: "Release",
+          data: { trackId: "t1" },
+        },
+      });
+      // No console in release: the Sentry console integration would turn
+      // it into an unscrubbed breadcrumb.
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
+
+    it("turns logger.warn into a breadcrumb, never an event", () => {
+      const log = createLogger("Release");
+      log.warn("Degraded", new Error("slow"), { attempt: 2 });
+
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+      expect(Sentry.addBreadcrumb).toHaveBeenCalledWith({
+        category: "logger",
+        level: "warning",
+        message: "[Release] Degraded",
+        data: {
+          context: "Release",
+          error: { name: "Error", message: "slow" },
+          data: { attempt: 2 },
+        },
+      });
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it("still keeps expected 4xx and a locked token store out of events", () => {
+      const log = createLogger("Release");
+      log.error(
+        "API",
+        Object.assign(new Error("Request failed"), {
+          isAxiosError: true,
+          response: { status: 404 },
+          config: { url: "/x", method: "get" },
+        }),
+      );
+      log.error(
+        "Locked",
+        new TokenStoreUnavailableError(new Error("interaction not allowed")),
+      );
+
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+      expect(Sentry.captureMessage).not.toHaveBeenCalled();
+    });
+
+    it("scrubs personal data from what reaches Sentry", () => {
+      const log = createLogger("Release");
+      log.error("Login failed for jane@doe.fr", new Error("x"), {
+        email: "jane@doe.fr",
+        firstName: "Jane",
+        accessToken: "abc",
+        url: "/users/search?q=Jane",
+        status: 500,
+      });
+
+      const ctx = (Sentry.captureException as jest.Mock).mock.calls[0][1] as {
+        extra: Record<string, unknown>;
+      };
+      expect(ctx.extra.message).toBe("Login failed for [email]");
+      expect(ctx.extra.data).toEqual({
+        email: "[redacted]",
+        firstName: "[redacted]",
+        accessToken: "[redacted]",
+        url: "/users/search?[query]",
+        status: 500,
+      });
+      expect(JSON.stringify(ctx)).not.toContain("Jane");
+    });
+
+    it("keeps a non-Error second argument as data", () => {
+      const log = createLogger("Release");
+      log.error("Playback", { code: "E_NETWORK" });
+
+      expect(Sentry.captureMessage).toHaveBeenCalledWith("[Release] Playback", {
+        level: "error",
+        extra: { context: "Release", data: { code: "E_NETWORK" } },
+      });
+    });
   });
 });

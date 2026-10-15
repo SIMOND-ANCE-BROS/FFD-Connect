@@ -1,5 +1,4 @@
 import { ExecutionContext, Injectable } from "@nestjs/common";
-import { GUARDS_METADATA } from "@nestjs/common/constants";
 import { ConfigService } from "@nestjs/config";
 import { Reflector } from "@nestjs/core";
 import { JwtService } from "@nestjs/jwt";
@@ -10,21 +9,30 @@ import {
   type ThrottlerModuleOptions,
   type ThrottlerStorage,
 } from "@nestjs/throttler";
-import { ThrottlerUserGuard } from "./throttler-user.guard";
+import { THROTTLE_BY_IP_KEY } from "../decorators/throttle-by-ip.decorator";
 
 /**
  * Global rate limiter (APP_GUARD). It runs before any route guard, so before
  * authentication, and keys each request on:
  *
- * - `gsub:<sub>` on a route that declares a per-user limit with
- *   `ThrottlerUserGuard`, when the request carries a validly signed, unexpired
- *   access token (same secret and checks as JwtStrategy, #182). Users behind
- *   the same address (a gym Wi-Fi on competition day, mobile CGNAT) then no
- *   longer share a budget sized for one person;
+ * - `gsub:<sub>` when the request carries a validly signed, unexpired access
+ *   token (same secret and checks as JwtStrategy, verified here — never just
+ *   decoded). Users behind the same address (a gym Wi-Fi on competition day,
+ *   mobile CGNAT) then no longer share a budget sized for one person (#182,
+ *   #633). This holds on every route, public ones included (`GET
+ *   /competitions/:id` is public but the app calls it signed in);
  * - the client IP (`req.ip`, real client address once `trust proxy` is set —
- *   see `config/trust-proxy.ts`) everywhere else: public routes (login,
- *   refresh, register, Wallet pass links…), and per-user routes hit with a
- *   missing, forged or expired token.
+ *   see `config/trust-proxy.ts`) for a request without a token, or with a
+ *   missing, malformed, forged or expired one: an unverified token never picks
+ *   its bucket, so rotating fake tokens cannot dodge the limit;
+ * - the client IP, always, on a route marked `@ThrottleByIp()`: anti-abuse
+ *   limits aimed at anonymous callers (login, register, password reset,
+ *   Wallet pass links, volunteer check-in…), where one budget per account
+ *   would multiply an attacker's budget by the accounts they hold.
+ *
+ * A valid token of a disabled or deleted account still gets its own bucket:
+ * the request is then refused (401) by JwtAuthGuard, and the token expires
+ * within the access-token lifetime.
  *
  * It never skips: `ThrottlerUserGuard` runs after `JwtAuthGuard` (and
  * `RolesGuard`), so a request refused in between — 401 for a disabled or
@@ -59,7 +67,7 @@ export class GlobalThrottlerGuard extends ThrottlerGuard {
     req: Record<string, unknown>,
     context?: ExecutionContext,
   ): Promise<string> {
-    if (context && this.hasPerUserLimit(context)) {
+    if (context && !this.isKeyedByIp(context)) {
       const subject = await this.verifiedSubject(req);
       if (subject) {
         return `gsub:${subject}`;
@@ -68,11 +76,13 @@ export class GlobalThrottlerGuard extends ThrottlerGuard {
     return super.getTracker(req);
   }
 
-  private hasPerUserLimit(context: ExecutionContext): boolean {
-    return [
-      ...this.routeGuards(context.getClass()),
-      ...this.routeGuards(context.getHandler()),
-    ].some(isPerUserThrottler);
+  private isKeyedByIp(context: ExecutionContext): boolean {
+    return (
+      this.reflector.getAllAndOverride<boolean | undefined>(
+        THROTTLE_BY_IP_KEY,
+        [context.getHandler(), context.getClass()],
+      ) === true
+    );
   }
 
   /** `sub` of a validly signed, unexpired bearer token; otherwise null. */
@@ -97,24 +107,4 @@ export class GlobalThrottlerGuard extends ThrottlerGuard {
       return null;
     }
   }
-
-  private routeGuards(target: object): unknown[] {
-    return (
-      this.reflector.get<unknown[] | undefined>(
-        GUARDS_METADATA,
-        target as () => unknown,
-      ) ?? []
-    );
-  }
-}
-
-function isPerUserThrottler(guard: unknown): boolean {
-  if (guard instanceof ThrottlerUserGuard) {
-    return true;
-  }
-  return (
-    typeof guard === "function" &&
-    (guard === ThrottlerUserGuard ||
-      (guard.prototype as unknown) instanceof ThrottlerUserGuard)
-  );
 }

@@ -64,10 +64,14 @@ export class TrackCorrectionsQueryService {
    * le recalcul silencieux d'un changement de danse seul.
    */
   private toAdmin(row: TrackCorrectionAdminRow): TrackCorrectionAdminDto {
-    const bpm = this.tracksService.bpmForPatch(row.track.rawBpm, {
-      bpm: row.proposedBpm ?? undefined,
-      style: row.proposedStyle ?? undefined,
-    });
+    const bpm = this.tracksService.bpmForPatch(
+      row.track.rawBpm,
+      {
+        bpm: row.proposedBpm ?? undefined,
+        style: row.proposedStyle ?? undefined,
+      },
+      row.track.style,
+    );
     return toAdminDto(row, bpm ?? row.track.bpm);
   }
 

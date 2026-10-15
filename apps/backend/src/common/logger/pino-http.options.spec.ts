@@ -1,4 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
+import pino from "pino";
+import { Writable } from "stream";
 import { buildPinoHttpOptions } from "./pino-http.options";
 
 const TOKEN = "q3Vw8pZ0nC1rL5xT7yB2mK9dF4hJ6sA0eG3iN8oR1uW";
@@ -7,7 +9,7 @@ const req = {
   method: "GET",
   url: `/api/v1/licenses/wallet/apple/${TOKEN}`,
   headers: { host: "api.example.org", "user-agent": "Safari" },
-  socket: { remoteAddress: "10.0.0.1", remotePort: 1234 },
+  socket: { remoteAddress: "203.0.113.42", remotePort: 51234 },
 } as unknown as IncomingMessage;
 const res = (statusCode: number) => ({ statusCode }) as ServerResponse;
 
@@ -51,6 +53,66 @@ describe("buildPinoHttpOptions", () => {
       options.customErrorMessage?.(mixed, res(429), err),
     ]);
     expect(logged).not.toContain(TOKEN);
+  });
+
+  describe("client IP (RGPD, #529)", () => {
+    /** A real pino logger built from these options, writing into `lines`. */
+    const loggerWithOptions = () => {
+      const lines: string[] = [];
+      const stream = new Writable({
+        write(chunk: Buffer, _encoding, done) {
+          lines.push(chunk.toString());
+          done();
+        },
+      });
+      const { transport: _transport, ...pinoOptions } = options;
+      return { logger: pino(pinoOptions, stream), lines };
+    };
+
+    it("logs only the /24 network of the socket address, without its port", () => {
+      const serialized = (
+        options.serializers as { req: (r: IncomingMessage) => unknown }
+      ).req(req);
+      expect(serialized).toMatchObject({ remoteAddress: "203.0.113.0/24" });
+      expect(serialized).not.toHaveProperty("remotePort");
+      expect(JSON.stringify(serialized)).not.toContain("203.0.113.42");
+      expect(JSON.stringify(serialized)).not.toContain("51234");
+    });
+
+    it("truncates the `ip` the request interceptor logs, at the pino level", () => {
+      const { logger, lines } = loggerWithOptions();
+      // What LoggingInterceptor writes for each request and response.
+      logger.info(
+        { method: "GET", url: "/api/v1/x", ip: "203.0.113.42" },
+        "GET /api/v1/x 200",
+      );
+      logger
+        .child({ context: "HTTP" })
+        .warn({ ip: "2001:db8:abcd:12::1", clientIp: "198.51.100.7" }, "x");
+
+      const output = lines.join("");
+      expect(JSON.parse(lines[0] ?? "{}")).toMatchObject({
+        ip: "203.0.113.0/24",
+      });
+      expect(JSON.parse(lines[1] ?? "{}")).toMatchObject({
+        ip: "2001:db8:abcd::/48",
+        clientIp: "198.51.100.0/24",
+      });
+      expect(output).not.toContain("203.0.113.42");
+      expect(output).not.toContain("198.51.100.7");
+      expect(output).not.toContain(":12::1");
+    });
+
+    it("truncates an `ip` nested one level down and leaves other logs alone", () => {
+      const { logger, lines } = loggerWithOptions();
+      logger.info({ client: { ip: "203.0.113.42" } }, "nested");
+      logger.info({ userId: "u1" }, "no ip");
+
+      expect(JSON.parse(lines[0] ?? "{}")).toMatchObject({
+        client: { ip: "203.0.113.0/24" },
+      });
+      expect(JSON.parse(lines[1] ?? "{}")).not.toHaveProperty("ip");
+    });
   });
 
   it("handles a request without method or URL", () => {

@@ -9,6 +9,10 @@ import {
   Prisma,
 } from "@prisma/client";
 import {
+  LICENSE_CATEGORY_UNKNOWN,
+  LICENSE_CLUB_UNKNOWN,
+} from "./beta-license-placeholder";
+import {
   approvePendingRenewal,
   LicenseNumberTakenException,
   LicenseNumberUnknownException,
@@ -39,6 +43,14 @@ describe("approvePendingRenewal", () => {
       license?: { id?: string; number: string; validUntil: Date } | null;
       /** false: the medical certificate is gone (purged). */
       medical?: boolean;
+      /** Holder's profile override (discipline, levels, club). */
+      user?: Partial<{
+        category: string | null;
+        competitionLevelLatin: string | null;
+        competitionLevelStandard: string | null;
+        clubName: string | null;
+        club: { id: string; name: string } | null;
+      }>;
     } = {},
   ) => ({
     status: o.status ?? LicenseRenewalStatus.PENDING,
@@ -62,8 +74,12 @@ describe("approvePendingRenewal", () => {
           ]),
     ],
     user: {
-      category: "Elite",
+      category: "Latin",
+      competitionLevelLatin: null,
+      competitionLevelStandard: null,
       clubName: "CVDS",
+      club: null,
+      ...o.user,
       license: o.license ? { id: "L1", ...o.license } : null,
     },
   });
@@ -168,7 +184,7 @@ describe("approvePendingRenewal", () => {
         create: expect.objectContaining({
           number: "FFD-OCR",
           validUntil: SEASON_END_2028,
-          category: "Elite",
+          category: "Latin",
           clubName: "CVDS",
         }) as unknown,
         update: { validUntil: SEASON_END_2028 },
@@ -307,6 +323,128 @@ describe("approvePendingRenewal", () => {
         update: { validUntil: SEASON_END_2027 },
       }),
     );
+  });
+
+  it("an empty OCR number falls back to the existing licence number (#240)", async () => {
+    tx.licenseRenewalRequest.findUnique.mockResolvedValue(
+      target({
+        ocrNumber: "",
+        license: {
+          number: "FFD-OLD",
+          validUntil: new Date("2026-08-31T21:59:59.999Z"),
+        },
+      }),
+    );
+
+    const result = await approvePendingRenewal(client, "req-1", {
+      reviewerId: "admin-1",
+      licenseNumber: "",
+      now: new Date("2027-03-15T10:00:00.000Z"),
+    });
+
+    expect(result.licenseNumber).toBe("FFD-OLD");
+    expect(tx.license.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ number: "FFD-OLD" }) as unknown,
+        update: { validUntil: SEASON_END_2027 },
+      }),
+    );
+  });
+
+  it('an empty OCR number and no licence: 400, never a licence numbered "" (#240)', async () => {
+    tx.licenseRenewalRequest.findUnique.mockResolvedValue(
+      target({ ocrNumber: "" }),
+    );
+
+    await expect(
+      approvePendingRenewal(client, "req-1", {
+        reviewerId: "admin-1",
+        now: new Date(),
+      }),
+    ).rejects.toThrow(LicenseNumberUnknownException);
+    expect(tx.license.upsert).not.toHaveBeenCalled();
+  });
+
+  describe("category and club of a created licence (#282)", () => {
+    type Profile = NonNullable<Parameters<typeof target>[0]>["user"];
+    const createdWith = async (user: Profile) => {
+      tx.licenseRenewalRequest.findUnique.mockResolvedValue(target({ user }));
+      await approvePendingRenewal(client, "req-1", {
+        reviewerId: "admin-1",
+        now: new Date("2027-03-15T10:00:00.000Z"),
+      });
+      const [[args]] = tx.license.upsert.mock.calls as [
+        [{ create: { category: string; clubName: string } }],
+      ];
+      return {
+        category: args.create.category,
+        clubName: args.create.clubName,
+      };
+    };
+
+    it("invents nothing for a holder without discipline nor club", async () => {
+      const created = await createdWith({
+        category: null,
+        clubName: null,
+        club: null,
+      });
+
+      expect(created).toEqual({
+        category: LICENSE_CATEGORY_UNKNOWN,
+        clubName: LICENSE_CLUB_UNKNOWN,
+      });
+      expect(created.category).not.toBe("Standard");
+      expect(created.clubName).not.toBe("Club");
+    });
+
+    it("blank profile values count as unknown", async () => {
+      expect(
+        await createdWith({ category: "  ", clubName: "  ", club: null }),
+      ).toEqual({
+        category: LICENSE_CATEGORY_UNKNOWN,
+        clubName: LICENSE_CLUB_UNKNOWN,
+      });
+    });
+
+    it("a category that is not a discipline is not copied", async () => {
+      expect((await createdWith({ category: "Elite" })).category).toBe(
+        LICENSE_CATEGORY_UNKNOWN,
+      );
+    });
+
+    it("derives the discipline from the competition levels", async () => {
+      expect(
+        (
+          await createdWith({
+            category: null,
+            competitionLevelLatin: "Avancé",
+            competitionLevelStandard: "Intermédiaire",
+          })
+        ).category,
+      ).toBe("Ten Dance");
+    });
+
+    it("takes the linked club when the free-text club name is empty", async () => {
+      expect(
+        (
+          await createdWith({
+            clubName: null,
+            club: { id: "club-1", name: "Danse Club Lyon" },
+          })
+        ).clubName,
+      ).toBe("Danse Club Lyon");
+    });
+
+    it("the free-text club name wins, trimmed", async () => {
+      expect(
+        (
+          await createdWith({
+            clubName: " CVDS ",
+            club: { id: "club-1", name: "Other" },
+          })
+        ).clubName,
+      ).toBe("CVDS");
+    });
   });
 
   it("never invents a licence number: 400 when none is known (#262)", async () => {

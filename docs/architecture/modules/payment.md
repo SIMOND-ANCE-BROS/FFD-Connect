@@ -12,6 +12,7 @@ C'est une zone sensible : validation DTO obligatoire sur tous les endpoints ; le
 - Reservation en attente (`PENDING`) avec expiration a 50 minutes ; au plus 4 reservations en attente par utilisateur et par competition.
 - Reprise du paiement d'une place deja en attente pour le meme utilisateur (au lieu d'un `409`).
 - Paiement encaisse sans place attribuee (paiement tardif, double paiement) : marque `refundOwedAt` + alerte du club organisateur, qui rembourse depuis son espace HelloAsso (#428, #438).
+- Liste des remboursements dus du club organisateur (#516), en lecture seule : ecran « Remboursements » de l'espace club (tableau de bord), ouvert aussi par le tap sur l'alerte. Il n'y a pas d'action « marquer comme rembourse » : la ligne disparait quand HelloAsso notifie le paiement `Refunded` (relu sur l'API, ADR-0022), pour que nos donnees suivent ce que HelloAsso confirme.
 - Reception du webhook HelloAsso et confirmation de la reservation (`CONFIRMED`).
 - Liberation de la place quand le paiement est rembourse ou conteste (#403) : `CONFIRMED` → `CANCELLED`, motif dans `SeatBooking.cancelReason`.
 - Utilisation des identifiants HelloAsso du club organisateur (resolus depuis la competition).
@@ -25,6 +26,7 @@ Prefixe global : toutes les routes sont prefixees par `/api/v1` (voir `apps/back
 
 Routes :
 
+- `GET /api/v1/clubs/me/refunds-due` — compte `CLUB` seulement (`JwtAuthGuard`, `RolesGuard`, `ClubRefundsDueController`). Reservations des competitions organisees par le club (`Competition.organizer` = nom du club, sans tenir compte de la casse ni des espaces) dont `refundOwedAt` est renseigne. Paginee (`skip`, `take` <= 50, defaut 20), plus anciens d'abord : `{ data: [{ bookingId, competition, dancer, seatNumber, amountCents, helloAssoCheckoutIntentIds, refundOwedAt }], meta }`. Nom du danseur seulement, jamais le `seatLabel` libre. Compte de revue des stores : page vide.
 - `POST /api/v1/payment/checkout` — authentifie (`JwtAuthGuard`, `CreateCheckoutDto`). Reserve une place et renvoie `{ id, redirectUrl, bookingId, seatIndex, expiresAt, resumed }` (`CheckoutResponseDto`). `409` : place prise, element complet, 4 reservations en attente, ou paiement deja en cours ; `503` : HelloAsso injoignable pendant une reprise.
 - `POST /api/v1/payment/webhook` — non authentifie par JWT, `WebhookPayloadDto`. Pour `eventType === "Order"` avec `metadata.bookingId`, l'intention de paiement de la reservation est relue sur l'API HelloAsso (`HelloAssoNotificationService`) et seule cette version passe les controles. Renvoie `{ received: true }` (200) ; `503` si HelloAsso est injoignable ou si le paiement n'est pas encore autorise (HelloAsso rejoue) ; `401` seulement si une cle partenaire est configuree et que la signature `x-ha-signature` est absente ou fausse.
 
@@ -41,6 +43,7 @@ Backend :
 - `apps/backend/src/payment/seat-hold.service.ts` — ecritures des reservations : place, plafond des reservations en attente, reprise (#428).
 - `apps/backend/src/payment/seat-layout.ts` — places vendues par un element du plan (numerotees ou placement libre).
 - `apps/backend/src/payment/refund-owed-alert.service.ts` — alerte « remboursement a effectuer » aux gestionnaires du club organisateur.
+- `apps/backend/src/payment/club-refunds-due.controller.ts` + `club-refunds-due-query.service.ts` — liste des remboursements dus du club (#516).
 - `apps/backend/src/payment/dto/create-checkout.dto.ts` — `competitionId`, `itemId`, `seatIndex?`, `seatLabel?` (affichage seulement), `amount` (ignore).
 - `apps/backend/src/payment/dto/webhook-payload.dto.ts` — `eventType`, `data.metadata.bookingId`.
 - `apps/backend/src/payment/payment.module.ts` — importe `ClubsModule`, `PrismaModule`, `ConfigModule`.

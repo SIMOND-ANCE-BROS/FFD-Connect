@@ -23,6 +23,7 @@ import {
   UserRole,
 } from "@prisma/client";
 import * as bcrypt from "bcrypt";
+import { normalizeEmail } from "../../src/auth/email-identity";
 import { PrismaService } from "../../src/prisma/prisma.service";
 
 // ─── Partial overrides helpers ────────────────────────────────────────────────
@@ -61,6 +62,7 @@ export function createFactories(
     const created = await prisma.user.create({
       data: {
         email,
+        emailNormalized: normalizeEmail(email), // lookup key (#526)
         password: hashed,
         firstName: "Test",
         lastName: `User${n}`,
@@ -238,6 +240,11 @@ export function createFactories(
     await silentDelete(
       prisma.partnership.deleteMany({
         where: { OR: [{ user1: userWhere }, { user2: userWhere }] },
+      }),
+    );
+    await silentDelete(
+      prisma.scheduleItem.deleteMany({
+        where: { competition: { title: { contains: suffix } } },
       }),
     );
     await silentDelete(

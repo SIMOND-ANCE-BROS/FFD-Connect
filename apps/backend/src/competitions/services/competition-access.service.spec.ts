@@ -11,6 +11,7 @@ describe("CompetitionAccessService", () => {
   const prisma = {
     competition: { findUnique: jest.fn() },
     user: { findUnique: jest.fn() },
+    club: { findMany: jest.fn() },
   };
   const service = new CompetitionAccessService(
     prisma as unknown as PrismaService,
@@ -30,6 +31,10 @@ describe("CompetitionAccessService", () => {
     prisma.competition.findUnique.mockResolvedValue({
       organizer: "  dance club PARIS ",
     });
+    // Unlinked label resolves to the one club of that name (club-1).
+    prisma.club.findMany.mockResolvedValue([
+      { id: "club-1", name: "Dance Club Paris" },
+    ]);
   });
 
   describe("assertCanManageCheckIn", () => {
@@ -93,6 +98,7 @@ describe("CompetitionAccessService", () => {
     it("refuses a CLUB account of another club (403)", async () => {
       prisma.user.findUnique.mockResolvedValue(
         clubUser({
+          clubId: "club-2",
           clubName: "Other Club",
           club: { disabledAt: null, name: "Other Club" },
         }),
@@ -212,6 +218,7 @@ describe("CompetitionAccessService", () => {
     it("refuses a club editing another club's competition", async () => {
       prisma.user.findUnique.mockResolvedValue(
         clubUser({
+          clubId: "club-2",
           clubName: "Other Club",
           club: { disabledAt: null, name: "Other Club" },
         }),
@@ -238,6 +245,77 @@ describe("CompetitionAccessService", () => {
       await expect(
         service.assertCanManageCompetition("missing", club),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    describe("unlinked competition seen by a linked account (#408)", () => {
+      it("refuses every homonym club when the label is ambiguous", async () => {
+        prisma.club.findMany.mockResolvedValue([
+          { id: "club-1", name: "Dance Club Paris" },
+          { id: "club-2", name: "dance club paris" },
+        ]);
+        prisma.user.findUnique.mockResolvedValue(clubUser());
+
+        await expect(
+          service.assertCanManageCompetition("comp-1", club),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it("refuses an account whose club is not the one the label names", async () => {
+        prisma.club.findMany.mockResolvedValue([
+          { id: "club-9", name: "Dance Club Paris" },
+        ]);
+        prisma.user.findUnique.mockResolvedValue(clubUser());
+
+        await expect(
+          service.assertCanManageCompetition("comp-1", club),
+        ).rejects.toThrow(ForbiddenException);
+      });
+    });
+
+    describe("linked competition (organizerClubId, #408)", () => {
+      it("lets the linked club in even after a rename left the label stale", async () => {
+        prisma.competition.findUnique.mockResolvedValue({
+          organizer: "Ancien Nom",
+          organizerClubId: "club-1",
+        });
+        prisma.user.findUnique.mockResolvedValue(clubUser());
+
+        await expect(
+          service.assertCanManageCompetition("comp-1", club),
+        ).resolves.toBeUndefined();
+      });
+
+      it("refuses a homonym club (name differing only by case) — ids decide", async () => {
+        prisma.competition.findUnique.mockResolvedValue({
+          organizer: "Dance Club Paris",
+          organizerClubId: "club-1",
+        });
+        prisma.user.findUnique.mockResolvedValue(
+          clubUser({
+            clubId: "club-2",
+            clubName: "dance club paris",
+            club: { disabledAt: null, name: "dance club paris" },
+          }),
+        );
+
+        await expect(
+          service.assertCanManageCompetition("comp-1", club),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it("matches a legacy account without clubId on the label", async () => {
+        prisma.competition.findUnique.mockResolvedValue({
+          organizer: "Dance Club Paris",
+          organizerClubId: "club-1",
+        });
+        prisma.user.findUnique.mockResolvedValue(
+          clubUser({ clubId: null, club: null }),
+        );
+
+        await expect(
+          service.assertCanManageCompetition("comp-1", club),
+        ).resolves.toBeUndefined();
+      });
     });
   });
 
@@ -267,13 +345,15 @@ describe("CompetitionAccessService", () => {
         clubUser({ club: { disabledAt: null, name: " Dance Club Paris " } }),
       );
 
-      await expect(service.organizerForNewCompetition(club)).resolves.toBe(
-        "Dance Club Paris",
-      );
+      await expect(service.organizerForNewCompetition(club)).resolves.toEqual({
+        organizer: "Dance Club Paris",
+        organizerClubId: "club-1",
+      });
       expect(prisma.user.findUnique).toHaveBeenCalledWith({
         where: { id: "club-user" },
         select: userRolesClubNameSelect,
       });
+      expect(prisma.club.findMany).not.toHaveBeenCalled();
     });
 
     it("falls back to the stored club name", async () => {
@@ -281,9 +361,34 @@ describe("CompetitionAccessService", () => {
         clubUser({ club: { disabledAt: null, name: null } }),
       );
 
-      await expect(service.organizerForNewCompetition(club)).resolves.toBe(
-        "Dance Club Paris",
+      await expect(service.organizerForNewCompetition(club)).resolves.toEqual({
+        organizer: "Dance Club Paris",
+        organizerClubId: "club-1",
+      });
+    });
+
+    it("links a legacy account without clubId to the one club of its name (#408)", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        clubUser({ clubId: null, club: null }),
       );
+      prisma.club.findMany.mockResolvedValue([{ id: "club-legacy" }]);
+
+      await expect(service.organizerForNewCompetition(club)).resolves.toEqual({
+        organizer: "Dance Club Paris",
+        organizerClubId: "club-legacy",
+      });
+    });
+
+    it("leaves a legacy account unlinked when its name is ambiguous (#408)", async () => {
+      prisma.user.findUnique.mockResolvedValue(
+        clubUser({ clubId: null, club: null }),
+      );
+      prisma.club.findMany.mockResolvedValue([{ id: "a" }, { id: "b" }]);
+
+      await expect(service.organizerForNewCompetition(club)).resolves.toEqual({
+        organizer: "Dance Club Paris",
+        organizerClubId: null,
+      });
     });
 
     it.each([

@@ -181,12 +181,88 @@ describe("CompetitionQueryService", () => {
         clubName: "Club Test",
       });
       mockPrismaService.registration.findMany.mockResolvedValue([]);
+      mockPrismaService.club.findMany.mockResolvedValue([]);
 
       const result = await service.findAll("user-club");
 
       expect(mockPrismaService.registration.findMany).toHaveBeenCalled();
       expect(result.data[0]).toHaveProperty("isOrganizedByMyClub");
       expect(result.data[0]).toHaveProperty("clubMembersRegisteredCount");
+    });
+
+    it("flags isOrganizedByMyClub on the organiser link, not the label (#408)", async () => {
+      mockRedisService.get.mockResolvedValue(null);
+      mockPrismaService.competition.count.mockResolvedValue(2);
+      mockPrismaService.competition.findMany.mockResolvedValue([
+        // Mine by id, label left stale by a rename.
+        {
+          ...mockCompetition,
+          organizer: "Ancien Nom",
+          organizerClubId: "club-1",
+          events: [],
+        },
+        // Homonym club (case only): same label, other club.
+        {
+          ...mockCompetition,
+          id: "comp-2",
+          organizer: "club test",
+          organizerClubId: "club-2",
+          events: [],
+        },
+      ]);
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: "club-1",
+        clubName: "Club Test",
+      });
+      mockPrismaService.registration.findMany.mockResolvedValue([]);
+
+      const result = await service.findAll("user-club");
+
+      expect(
+        result.data.map(
+          (c: { isOrganizedByMyClub?: boolean }) => c.isOrganizedByMyClub,
+        ),
+      ).toEqual([true, false]);
+    });
+
+    it("flags an unlinked row only when its label designates exactly my club (#408)", async () => {
+      mockRedisService.get.mockResolvedValue(null);
+      mockPrismaService.competition.count.mockResolvedValue(2);
+      mockPrismaService.competition.findMany.mockResolvedValue([
+        {
+          ...mockCompetition,
+          organizer: "Club Test",
+          organizerClubId: null,
+          events: [],
+        },
+        {
+          ...mockCompetition,
+          id: "comp-2",
+          organizer: "Club Homo",
+          organizerClubId: null,
+          events: [],
+        },
+      ]);
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: "club-1",
+        clubName: "Club Homo",
+      });
+      mockPrismaService.registration.findMany.mockResolvedValue([]);
+      mockPrismaService.club.findMany.mockResolvedValue([
+        { id: "club-1", name: "Club Test" },
+        { id: "club-1", name: "Club Homo" },
+        { id: "club-2", name: "club homo" },
+      ] as never);
+
+      const result = await service.findAll("user-club");
+
+      expect(
+        result.data.map(
+          (c: { isOrganizedByMyClub?: boolean }) => c.isOrganizedByMyClub,
+        ),
+      ).toEqual([true, false]);
     });
 
     it("uses pagination parameters for cache key and query", async () => {
@@ -594,7 +670,7 @@ describe("CompetitionQueryService", () => {
   });
 
   describe("findOrganizedByClub", () => {
-    it("returns the competitions whose organizer is the club, bounded", async () => {
+    it("returns the competitions linked to the club, or unlinked with its name, bounded (#408)", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({
         role: "CLUB",
         extraRoles: [],
@@ -602,17 +678,36 @@ describe("CompetitionQueryService", () => {
         clubName: " Club Test ",
         club: { disabledAt: null, name: "Club Test" },
       });
+      const homonymRow = {
+        ...mockCompetition,
+        id: "comp-homonym",
+        organizer: "club homo",
+      };
       mockPrismaService.competition.findMany.mockResolvedValue([
         mockCompetition,
+        homonymRow,
       ]);
+      // "Club Test" is mine alone; "club homo" is shared by two clubs.
+      mockPrismaService.club.findMany.mockResolvedValue([
+        { id: "club-1", name: "Club Test" },
+        { id: "club-1", name: "Club Homo" },
+        { id: "club-2", name: "club homo" },
+      ] as never);
 
       const result = await service.findOrganizedByClub("user-1");
 
+      // Unlinked rows kept only when the label designates exactly my club.
       expect(result).toEqual([mockCompetition]);
       expect(mockPrismaService.competition.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
-            OR: [{ organizer: { equals: "Club Test", mode: "insensitive" } }],
+            OR: [
+              { organizerClubId: "club-1" },
+              {
+                organizerClubId: null,
+                organizer: { equals: "Club Test", mode: "insensitive" },
+              },
+            ],
           },
           orderBy: { date: "desc" },
           take: CLUB_COMPETITIONS_LIMIT,

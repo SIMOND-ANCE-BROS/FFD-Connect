@@ -5,6 +5,7 @@
  * The store-review account is RENAMED in place, never recreated: its id, its
  * career demo data and the reviewers' sessions must survive a rename.
  */
+import { storedEmailData } from "../src/auth/email-identity";
 import {
   LEGACY_STORE_REVIEW_CLUB_NAME,
   LEGACY_STORE_REVIEW_EMAIL,
@@ -98,7 +99,12 @@ export type RenamePlan<D> =
 export function planUserRename(
   existing: Pick<StoreReviewUserRow, "id" | "email">,
   emailHolder: { id: string } | null,
-): RenamePlan<{ email: string; firstName: string; lastName: string }> {
+): RenamePlan<{
+  email: string;
+  emailNormalized: string;
+  firstName: string;
+  lastName: string;
+}> {
   if (norm(existing.email) !== LEGACY_STORE_REVIEW_EMAIL) {
     return { ok: true, data: {} };
   }
@@ -111,7 +117,7 @@ export function planUserRename(
   return {
     ok: true,
     data: {
-      email: STORE_REVIEW_EMAIL,
+      ...storedEmailData(STORE_REVIEW_EMAIL),
       firstName: STORE_REVIEW_FIRST_NAME,
       lastName: STORE_REVIEW_LAST_NAME,
     },

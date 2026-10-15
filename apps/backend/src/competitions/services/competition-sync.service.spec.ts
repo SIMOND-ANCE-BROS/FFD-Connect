@@ -346,6 +346,101 @@ describe("CompetitionSyncService", () => {
       );
     });
 
+    describe("organising club link (#408)", () => {
+      const syncOne = async (companyName: string | undefined) => {
+        const item = makeFFDItem({
+          "@id": "/api/competitions/7",
+          company:
+            companyName === undefined ? undefined : { name: companyName },
+        });
+        httpService.get
+          .mockReturnValueOnce(makeListResponse([item]))
+          .mockReturnValueOnce(of(makeDetailResponse(item)));
+        prisma.competition.upsert.mockResolvedValue(mockCompetition as any);
+        prisma.event.findMany.mockResolvedValue([]);
+        prisma.event.createMany.mockResolvedValue({ count: 4 });
+        await service.syncFFDCompetitions();
+        const arg = prisma.competition.upsert.mock.calls[0][0] as {
+          update: Record<string, unknown>;
+          create: Record<string, unknown>;
+        };
+        return arg;
+      };
+
+      it("links the one club named by the FFD organiser, on create and update", async () => {
+        prisma.club.findMany.mockResolvedValue([{ id: "club-1" }] as any);
+
+        const arg = await syncOne(" Club Danse Lyon ");
+
+        expect(prisma.club.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: {
+              name: { equals: "Club Danse Lyon", mode: "insensitive" },
+            },
+            take: 2,
+          }),
+        );
+        expect(arg.update).toMatchObject({
+          organizer: " Club Danse Lyon ",
+          organizerClubId: "club-1",
+        });
+        expect(arg.create).toMatchObject({ organizerClubId: "club-1" });
+      });
+
+      it("unlinks when no club carries the organiser name (organiser changed)", async () => {
+        prisma.club.findMany.mockResolvedValue([]);
+
+        const arg = await syncOne("Club Inconnu");
+
+        expect(arg.update).toMatchObject({ organizerClubId: null });
+      });
+
+      it("leaves a competition without organiser unlinked, without lookup", async () => {
+        const arg = await syncOne(undefined);
+
+        expect(prisma.club.findMany).not.toHaveBeenCalled();
+        expect(arg.update).toMatchObject({ organizerClubId: null });
+      });
+
+      it("keeps the current link when it still designates one of homonym clubs", async () => {
+        prisma.club.findMany.mockResolvedValue([
+          { id: "club-x" },
+          { id: "club-x-lower" },
+        ] as any);
+        prisma.competition.findUnique.mockImplementation(((args: {
+          select?: Record<string, unknown>;
+        }) =>
+          Promise.resolve(
+            args.select && "organizerClub" in args.select
+              ? { organizerClub: { id: "club-x", name: "Club X" } }
+              : mockCompetition,
+          )) as any);
+
+        const arg = await syncOne("CLUB X");
+
+        expect(arg.update).toMatchObject({ organizerClubId: "club-x" });
+      });
+
+      it("never guesses between homonym clubs for an unlinked competition", async () => {
+        prisma.club.findMany.mockResolvedValue([
+          { id: "club-x" },
+          { id: "club-x-lower" },
+        ] as any);
+        prisma.competition.findUnique.mockImplementation(((args: {
+          select?: Record<string, unknown>;
+        }) =>
+          Promise.resolve(
+            args.select && "organizerClub" in args.select
+              ? { organizerClub: null }
+              : mockCompetition,
+          )) as any);
+
+        const arg = await syncOne("Club X");
+
+        expect(arg.update).toMatchObject({ organizerClubId: null });
+      });
+    });
+
     it("maps the real FFD programme fields and seeds generic events for registration", async () => {
       const items = [
         makeFFDItem({
@@ -365,9 +460,18 @@ describe("CompetitionSyncService", () => {
       prisma.competition.upsert.mockResolvedValueOnce(mockCompetition as any);
       prisma.event.findMany.mockResolvedValue([]);
       prisma.event.createMany.mockResolvedValue({ count: 4 });
+      prisma.competition.findMany.mockResolvedValue([
+        { id: mockCompetition.id } as any,
+      ]);
 
       await service.syncFFDCompetitions();
 
+      // only competitions whose programme the club never saved are seeded (#442)
+      expect(prisma.competition.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: { in: [mockCompetition.id] }, programEditedAt: null },
+        }),
+      );
       // real programme info mapped onto the competition
       expect(prisma.competition.upsert).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -392,6 +496,22 @@ describe("CompetitionSyncService", () => {
         where: { id: { in: [mockCompetition.id] } },
         data: { eventsSource: "GENERIC" },
       });
+    });
+
+    it("does not seed a competition whose club saved an empty programme (#442)", async () => {
+      const items = [makeFFDItem()];
+      httpService.get
+        .mockReturnValueOnce(makeListResponse(items))
+        .mockReturnValueOnce(of(makeDetailResponse(items[0])));
+      prisma.competition.upsert.mockResolvedValueOnce(mockCompetition as any);
+      prisma.event.findMany.mockResolvedValue([]);
+      // programEditedAt is set: the seedable query finds nothing
+      prisma.competition.findMany.mockResolvedValue([]);
+
+      await service.syncFFDCompetitions();
+
+      expect(prisma.event.createMany).not.toHaveBeenCalled();
+      expect(prisma.competition.updateMany).not.toHaveBeenCalled();
     });
 
     it("does not reseed competitions that already have events", async () => {
@@ -497,7 +617,10 @@ describe("CompetitionSyncService", () => {
 
       await expect(
         service.downloadFfdDocument("https://api.ffd.fr/uploads/missing.pdf"),
-      ).rejects.toThrow("HTTP 404");
+      ).rejects.toMatchObject({
+        message: expect.stringContaining("HTTP 404"),
+        status: 404,
+      });
     });
 
     it("is the downloader given to the events deduction", async () => {

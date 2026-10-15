@@ -1,10 +1,12 @@
 import { httpDelete, HttpError } from "../httpInterceptor";
 
-const mockError = jest.fn();
+// HTTP failures are logged at warn since #589 (the caller reports them);
+// error and warn share one spy so a regression to either level is caught.
+const mockLog = jest.fn();
 jest.mock("../logger", () => ({
   createLogger: () => ({
-    error: (...args: unknown[]) => mockError(...args),
-    warn: jest.fn(),
+    error: (...args: unknown[]) => mockLog(...args),
+    warn: (...args: unknown[]) => mockLog(...args),
     info: jest.fn(),
     debug: jest.fn(),
   }),
@@ -22,7 +24,7 @@ function respondWith(status: number) {
 }
 
 describe("httpRequest — quietStatuses", () => {
-  beforeEach(() => mockError.mockClear());
+  beforeEach(() => mockLog.mockClear());
 
   it("throws an expected status without logging it", async () => {
     respondWith(409);
@@ -31,7 +33,7 @@ describe("httpRequest — quietStatuses", () => {
     }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(HttpError);
     expect((err as HttpError).statusCode).toBe(409);
-    expect(mockError).not.toHaveBeenCalled();
+    expect(mockLog).not.toHaveBeenCalled();
   });
 
   it("still logs the other statuses", async () => {
@@ -39,6 +41,6 @@ describe("httpRequest — quietStatuses", () => {
     await expect(
       httpDelete("/api/tracks/t1", { quietStatuses: [409] }),
     ).rejects.toBeInstanceOf(HttpError);
-    expect(mockError).toHaveBeenCalledTimes(1);
+    expect(mockLog).toHaveBeenCalledTimes(1);
   });
 });

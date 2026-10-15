@@ -93,6 +93,7 @@ describe("AdminUserAccountsService", () => {
     const userData = prisma.user.create.mock.calls[0][0].data;
     expect(userData).toMatchObject({
       email: "jeanne@example.fr",
+      emailNormalized: "jeanne@example.fr", // lookup key (#526)
       firstName: "Jeanne",
       lastName: "Martin",
       role: UserRole.CLUB,

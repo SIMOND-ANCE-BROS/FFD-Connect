@@ -1,12 +1,13 @@
 import axios from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { refreshSession } from "../sessionRefresh";
+import { refreshSession, waitForPendingRefresh } from "../sessionRefresh";
 import { TokenStoreUnavailableError } from "../tokenStoreErrors";
 
 const mockRefreshAuth = jest.fn();
 const mockGetTokens = jest.fn();
 const mockSetTokens = jest.fn();
+const mockClearBackupTokens = jest.fn();
 const mockClearTokens = jest.fn();
 const mockClearLicenseSnapshot = jest.fn();
 
@@ -16,7 +17,7 @@ jest.mock("axios", () => ({
 }));
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
-  default: { getItem: jest.fn(), setItem: jest.fn() },
+  default: { getItem: jest.fn(), setItem: jest.fn(), removeItem: jest.fn() },
 }));
 jest.mock("../../config", () => ({
   API_URL: "http://test/api/v1",
@@ -30,8 +31,11 @@ jest.mock("../../utils/logger", () => ({
 }));
 jest.mock("../tokenStore", () => ({
   getTokens: () => mockGetTokens(),
-  setTokens: (t: unknown) => mockSetTokens(t),
-  clearTokens: () => mockClearTokens(),
+  setTokensIfRefreshIs: (expected: unknown, t: unknown) =>
+    mockSetTokens(expected, t),
+  clearImpersonationBackupTokens: () => mockClearBackupTokens(),
+  clearTokensIfRefreshIs: (expected: unknown) => mockClearTokens(expected),
+  IMPERSONATION_BACKUP_KEY: "impersonation_backup",
   setUnreadableSessionHandler: jest.fn(),
 }));
 // Captured before any beforeEach clears the mock calls: sessionRefresh
@@ -57,8 +61,9 @@ beforeEach(() => {
   getItem.mockResolvedValue(
     JSON.stringify({ isLoggedIn: true, role: "LICENSEE" }),
   );
-  mockSetTokens.mockResolvedValue(undefined);
-  mockClearTokens.mockResolvedValue(undefined);
+  mockSetTokens.mockResolvedValue(true);
+  mockClearBackupTokens.mockResolvedValue(undefined);
+  mockClearTokens.mockResolvedValue(true);
 });
 
 describe("refreshSession", () => {
@@ -94,6 +99,24 @@ describe("refreshSession", () => {
     expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
     const saved = JSON.parse(setItem.mock.calls[0][1] as string);
     expect(saved.isLoggedIn).toBe(false);
+    expect(mockClearBackupTokens).toHaveBeenCalledTimes(1);
+  });
+
+  it("a session end resets the impersonation flags, and survives a failed backup cleanup", async () => {
+    getItem.mockResolvedValue(
+      JSON.stringify({
+        isLoggedIn: true,
+        impersonating: true,
+        impersonatedName: "Club",
+      }),
+    );
+    mockClearBackupTokens.mockRejectedValue(new Error("Keystore failure"));
+
+    await unreadableHandler?.();
+
+    const saved = JSON.parse(setItem.mock.calls[0][1] as string);
+    expect(saved).toEqual({ isLoggedIn: false });
+    expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes and persists the new access + rotated refresh token", async () => {
@@ -104,12 +127,66 @@ describe("refreshSession", () => {
 
     await expect(refreshSession()).resolves.toBe("new-access");
 
-    expect(mockSetTokens).toHaveBeenCalledWith({
+    // Compare-and-set against the refresh token actually sent.
+    expect(mockSetTokens).toHaveBeenCalledWith("r1", {
       authToken: "new-access",
       refreshToken: "r2",
     });
     const saved = JSON.parse(setItem.mock.calls[0][1] as string);
     expect(saved.isLoggedIn).toBe(true);
+  });
+
+  it("drops the rotated tokens when the session changed meanwhile (#598 review)", async () => {
+    mockGetTokens.mockResolvedValue({ refreshToken: "r1" });
+    post.mockResolvedValue({
+      data: { access_token: "new-access", refresh_token: "r2" },
+    });
+    mockSetTokens.mockResolvedValue(false);
+
+    // Never handed to the request: it belongs to the previous session.
+    await expect(refreshSession()).resolves.toBeNull();
+
+    expect(setItem).not.toHaveBeenCalled();
+    expect(mockClearTokens).not.toHaveBeenCalled();
+  });
+
+  it("a 401 for a previous session never ends the current one (#598 review)", async () => {
+    // A stale refresh answered 401 after a new login (cold start).
+    mockGetTokens.mockResolvedValue({ refreshToken: "r1" });
+    post.mockRejectedValue({ response: { status: 401 } });
+    mockClearTokens.mockResolvedValue(false);
+
+    await expect(refreshSession()).resolves.toBeNull();
+
+    expect(mockClearTokens).toHaveBeenCalledWith("r1");
+    expect(mockClearLicenseSnapshot).not.toHaveBeenCalled();
+    expect(setItem).not.toHaveBeenCalled();
+    expect(mockClearBackupTokens).not.toHaveBeenCalled();
+    expect(mockRefreshAuth).not.toHaveBeenCalled();
+  });
+
+  it("waitForPendingRefresh resolves once the refresh in flight settles", async () => {
+    mockGetTokens.mockResolvedValue({ refreshToken: "r1" });
+    let release: (v: unknown) => void = () => undefined;
+    post.mockReturnValue(new Promise((resolve) => (release = resolve)));
+    const steps: string[] = [];
+
+    const refreshing = refreshSession().then(() => steps.push("refresh"));
+    const waiting = waitForPendingRefresh().then(() => steps.push("wait"));
+    await Promise.resolve();
+    release({ data: { access_token: "a2", refresh_token: "r2" } });
+    await Promise.all([refreshing, waiting]);
+
+    expect(steps).toEqual(["refresh", "wait"]);
+    await expect(waitForPendingRefresh()).resolves.toBeUndefined();
+  });
+
+  it("waitForPendingRefresh swallows the refresh's own failure", async () => {
+    mockGetTokens.mockRejectedValue(new Error("boom"));
+    const refreshing = refreshSession().catch(() => undefined);
+
+    await expect(waitForPendingRefresh()).resolves.toBeUndefined();
+    await refreshing;
   });
 
   it("logs out (clears tokens + notifies store) when refresh is rejected (401)", async () => {
@@ -124,6 +201,11 @@ describe("refreshSession", () => {
     expect(mockRefreshAuth).toHaveBeenCalledTimes(1);
     const saved = JSON.parse(setItem.mock.calls[0][1] as string);
     expect(saved.isLoggedIn).toBe(false);
+    // An impersonation backup never outlives the session (#598 review).
+    expect(mockClearBackupTokens).toHaveBeenCalledTimes(1);
+    expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
+      "impersonation_backup",
+    );
   });
 
   it("also ends the session (and purges the snapshot) on a 403", async () => {

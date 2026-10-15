@@ -13,7 +13,7 @@ describe("clubUsage", () => {
     prisma = createMockPrismaService();
   });
 
-  it("counts members, club accounts, competitions by name, partnerships and solo teams", async () => {
+  it("counts members, club accounts, competitions (link or unlinked label), partnerships and solo teams", async () => {
     prisma.user.count.mockResolvedValueOnce(3).mockResolvedValueOnce(1);
     prisma.competition.count.mockResolvedValue(2);
     prisma.partnership.count.mockResolvedValue(4);
@@ -35,7 +35,15 @@ describe("clubUsage", () => {
       where: { clubId: "c1", ...withRole(UserRole.CLUB) },
     });
     expect(prisma.competition.count).toHaveBeenCalledWith({
-      where: { organizer: { equals: "Club A", mode: "insensitive" } },
+      where: {
+        OR: [
+          { organizerClubId: "c1" },
+          {
+            organizerClubId: null,
+            organizer: { equals: "Club A", mode: "insensitive" },
+          },
+        ],
+      },
     });
     expect(prisma.partnership.count).toHaveBeenCalledWith({
       where: { clubId: "c1" },

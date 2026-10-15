@@ -41,6 +41,11 @@ export function notificationTargetOf(data: unknown): NotificationTarget | null {
   if (stringField(data, "type") === "LICENSE_RENEWAL_DECISION") {
     return { screen: "LicenseRenewal", params: undefined };
   }
+  // Refund owed by the organising club (#516): its list of refunds due,
+  // rather than the competition the payment was for.
+  if (stringField(data, "type") === "club_payment_refund_owed") {
+    return { screen: "ClubRefundsDue", params: undefined };
+  }
   const competitionId = stringField(data, "competitionId");
   if (competitionId) {
     return { screen: "CompetitionDetail", params: { competitionId } };

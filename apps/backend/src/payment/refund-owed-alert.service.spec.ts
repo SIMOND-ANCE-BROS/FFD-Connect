@@ -17,7 +17,13 @@ describe("RefundOwedAlertService (#428)", () => {
     id: "booking-1",
     seatIndex: 4,
     expectedAmountCents: 1550,
-    competition: { id: "comp-1", title: "Open de Lyon", organizer: " Club A " },
+    // Unlinked (#408): resolved through the label fallback.
+    competition: {
+      id: "comp-1",
+      title: "Open de Lyon",
+      organizer: " Club A ",
+      organizerClubId: null,
+    },
   };
 
   beforeEach(() => {
@@ -30,7 +36,8 @@ describe("RefundOwedAlertService (#428)", () => {
       { sendToUsers } as unknown as NotificationsService,
     );
     prisma.seatBooking.findUnique.mockResolvedValue(booking as never);
-    prisma.club.findFirst.mockResolvedValue({
+    prisma.club.findMany.mockResolvedValue([{ id: "club-a" }] as never);
+    prisma.club.findUnique.mockResolvedValue({
       id: "club-a",
       name: "Club A",
     } as never);
@@ -54,8 +61,14 @@ describe("RefundOwedAlertService (#428)", () => {
   it("alerts the organising club's managers, without payer data", async () => {
     await service.alertClub("booking-1", 98765);
 
-    expect(prisma.club.findFirst).toHaveBeenCalledWith({
-      where: { name: { equals: "Club A", mode: "insensitive" } },
+    expect(prisma.club.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { name: { equals: "Club A", mode: "insensitive" } },
+        take: 2,
+      }),
+    );
+    expect(prisma.club.findUnique).toHaveBeenCalledWith({
+      where: { id: "club-a" },
       select: { id: true, name: true },
     });
     expect(prisma.user.findMany).toHaveBeenCalledWith(
@@ -116,11 +129,56 @@ describe("RefundOwedAlertService (#428)", () => {
     expectUnalerted(reason);
   });
 
-  it("reports to Sentry when the organising club is unknown", async () => {
-    prisma.club.findFirst.mockResolvedValue(null);
+  it("alerts the linked club by id, whatever the label (#408)", async () => {
+    prisma.seatBooking.findUnique.mockResolvedValue({
+      ...booking,
+      competition: {
+        ...booking.competition,
+        organizer: null,
+        organizerClubId: "club-a",
+      },
+    } as never);
 
     await service.alertClub("booking-1", 1);
 
+    expect(prisma.club.findMany).not.toHaveBeenCalled();
+    expect(prisma.club.findUnique).toHaveBeenCalledWith({
+      where: { id: "club-a" },
+      select: { id: true, name: true },
+    });
+    expect(sendToUsers).toHaveBeenCalled();
+  });
+
+  it("reports to Sentry when the organising club is unknown", async () => {
+    prisma.club.findMany.mockResolvedValue([]);
+
+    await service.alertClub("booking-1", 1);
+
+    expect(prisma.club.findUnique).not.toHaveBeenCalled();
+    expectUnalerted("club_not_found");
+  });
+
+  it("reports to Sentry when the linked club is gone", async () => {
+    prisma.seatBooking.findUnique.mockResolvedValue({
+      ...booking,
+      competition: { ...booking.competition, organizerClubId: "club-gone" },
+    } as never);
+    prisma.club.findUnique.mockResolvedValue(null);
+
+    await service.alertClub("booking-1", 1);
+
+    expectUnalerted("club_not_found");
+  });
+
+  it("never guesses between two clubs differing only by case (#408)", async () => {
+    prisma.club.findMany.mockResolvedValue([
+      { id: "club-a" },
+      { id: "club-a-lower" },
+    ] as never);
+
+    await service.alertClub("booking-1", 1);
+
+    expect(prisma.club.findUnique).not.toHaveBeenCalled();
     expectUnalerted("club_not_found");
   });
 

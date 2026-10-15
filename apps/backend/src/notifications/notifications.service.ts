@@ -9,6 +9,7 @@ import {
   type ServiceAccount,
 } from "firebase-admin/app";
 import { getMessaging, type Message } from "firebase-admin/messaging";
+import { notifiableAccountWhere } from "../auth/account-status";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -876,8 +877,12 @@ export class NotificationsService implements OnModuleInit {
     body: string,
     data?: Record<string, string>,
   ): Promise<{ sent: number; failed: number; pruned: number }> {
+    // Central guard of every user-targeted push (#301): a disabled account, or
+    // the CLUB account of a disabled club, owns no reachable device, whatever
+    // the caller passed. Its in-app feed is still written (unreadable while
+    // the account is blocked, there again if it is re-enabled).
     const devices = await this.prisma.deviceToken.findMany({
-      where: { userId },
+      where: { userId, user: notifiableAccountWhere },
       select: deviceTokenPushSelect,
       orderBy: { lastSeenAt: "desc" },
       take: MAX_DEVICES_PER_USER,

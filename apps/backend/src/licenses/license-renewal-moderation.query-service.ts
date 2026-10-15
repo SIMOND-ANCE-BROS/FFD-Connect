@@ -5,7 +5,11 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from "@nestjs/common";
-import { LicenseRenewalStatus, Prisma } from "@prisma/client";
+import {
+  LicenseRenewalDocumentType,
+  LicenseRenewalStatus,
+  Prisma,
+} from "@prisma/client";
 import { extname } from "path";
 import { Readable } from "stream";
 import { AdminAuditService } from "../admin/admin-audit.service";
@@ -14,6 +18,8 @@ import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker
 import { listOrderBy, type SortOrder } from "../common/dto/sort-params";
 import { listFiltersWhere } from "../common/list-filters/list-filters";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
+import { HEALTH_DATA_ACCESS_ROUTES } from "../health-data-access/dto/health-data-access-log.dto";
+import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { getErrorMessage } from "../utils/error.utils";
@@ -122,10 +128,12 @@ function toBase(row: ListRow | DetailRow, automaticIds: ReadonlySet<string>) {
  * Human moderation of licence renewals (#266, ADR-0021): reads.
  *
  * Reading a request or one of its documents is an access to health data: each
- * one writes an audit row (`LICENSE_RENEWAL_VIEW`,
- * `LICENSE_RENEWAL_DOCUMENT_VIEW`, #63) BEFORE the data is returned — if the
- * trace cannot be written, nothing is shown. The list does not need it: it
- * shows no document content and no OCR reading.
+ * one writes, in one transaction and BEFORE the data is returned, an audit row
+ * (`LICENSE_RENEWAL_VIEW`, `LICENSE_RENEWAL_DOCUMENT_VIEW`, shown in the
+ * back-office journal) and a health-data access row (`HealthDataAccessLog`,
+ * #63: subject, retention of its own) — if the trace cannot be written,
+ * nothing is shown. The list does not need it: it shows no document content
+ * and no OCR reading.
  */
 @Injectable()
 export class LicenseRenewalModerationQueryService {
@@ -136,6 +144,7 @@ export class LicenseRenewalModerationQueryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AdminAuditService,
+    private readonly healthAccess: HealthDataAccessLogService,
     private readonly blobStorage: BlobStorageService,
     private readonly circuitBreaker: CircuitBreakerService,
   ) {}
@@ -185,12 +194,25 @@ export class LicenseRenewalModerationQueryService {
     requestId: string,
   ): Promise<AdminLicenseRenewalDetailDto> {
     const row = await this.findDetailRow(requestId);
-    await this.audit.recordOp({
-      actorId: adminId,
-      action: "LICENSE_RENEWAL_VIEW",
-      targetType: "LICENSE_RENEWAL",
-      targetId: requestId,
-    });
+    await this.prisma.$transaction([
+      this.audit.recordOp({
+        actorId: adminId,
+        action: "LICENSE_RENEWAL_VIEW",
+        targetType: "LICENSE_RENEWAL",
+        targetId: requestId,
+      }),
+      this.healthAccess.recordOp([
+        {
+          subjectUserId: row.userId,
+          actorUserId: adminId,
+          actorRole: "ADMIN",
+          action: "READ",
+          resourceType: "LICENSE_RENEWAL_REQUEST",
+          resourceId: requestId,
+          route: HEALTH_DATA_ACCESS_ROUTES.adminRenewalDetail,
+        },
+      ]),
+    ]);
     return this.toDetail(row);
   }
 
@@ -227,14 +249,33 @@ export class LicenseRenewalModerationQueryService {
       throw new NotFoundException("Fichier indisponible");
     }
 
-    await this.audit.recordOp({
-      actorId: adminId,
-      action: "LICENSE_RENEWAL_DOCUMENT_VIEW",
-      targetType: "LICENSE_RENEWAL",
-      targetId: requestId,
-      // Which document was opened, never what it says.
-      after: { documentId, documentType: document.type },
-    });
+    const traces: Prisma.PrismaPromise<unknown>[] = [
+      this.audit.recordOp({
+        actorId: adminId,
+        action: "LICENSE_RENEWAL_DOCUMENT_VIEW",
+        targetType: "LICENSE_RENEWAL",
+        targetId: requestId,
+        // Which document was opened, never what it says.
+        after: { documentId, documentType: document.type },
+      }),
+    ];
+    // A licence certificate is not health data: audit row only.
+    if (document.type === LicenseRenewalDocumentType.MEDICAL_CERTIFICATE) {
+      traces.push(
+        this.healthAccess.recordOp([
+          {
+            subjectUserId: document.request.userId,
+            actorUserId: adminId,
+            actorRole: "ADMIN",
+            action: "DOWNLOAD",
+            resourceType: "MEDICAL_CERTIFICATE",
+            resourceId: documentId,
+            route: HEALTH_DATA_ACCESS_ROUTES.adminRenewalDocumentFile,
+          },
+        ]),
+      );
+    }
+    await this.prisma.$transaction(traces);
 
     let stream: Readable | null;
     try {
