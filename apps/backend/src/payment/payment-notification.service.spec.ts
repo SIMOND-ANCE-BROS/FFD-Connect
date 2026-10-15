@@ -25,7 +25,12 @@ describe("PaymentNotificationService", () => {
       id: "comp-1",
       title: "Open de Lyon",
       organizer: "  Club Danse Lyon ",
+      organizerClubId: "club-1",
     },
+  };
+  const unlinked = {
+    ...booking,
+    competition: { ...booking.competition, organizerClubId: null },
   };
   const club = { id: "club-1", name: "Club Danse Lyon", disabledAt: null };
 
@@ -49,7 +54,7 @@ describe("PaymentNotificationService", () => {
 
   it("writes an in-app notification for the organizer club's managers only", async () => {
     prisma.seatBooking.findUnique.mockResolvedValue(booking as never);
-    prisma.club.findFirst.mockResolvedValue(club as never);
+    prisma.club.findUnique.mockResolvedValue(club as never);
     prisma.user.findMany.mockResolvedValue([
       { id: "manager-1" },
       { id: "manager-2" },
@@ -57,12 +62,11 @@ describe("PaymentNotificationService", () => {
 
     await service.notifyPaymentReceived("booking-1");
 
-    // The club is resolved from the competition organizer, trimmed.
-    expect(prisma.club.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { name: { equals: "Club Danse Lyon", mode: "insensitive" } },
-      }),
+    // The club is the competition's linked organiser (#408), by id.
+    expect(prisma.club.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "club-1" } }),
     );
+    expect(prisma.club.findMany).not.toHaveBeenCalled();
     // Only this club's active, enabled CLUB managers, bounded.
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -74,6 +78,7 @@ describe("PaymentNotificationService", () => {
               OR: [
                 { clubId: "club-1" },
                 {
+                  clubId: null,
                   clubName: { equals: "Club Danse Lyon", mode: "insensitive" },
                 },
               ],
@@ -104,18 +109,58 @@ describe("PaymentNotificationService", () => {
     );
   });
 
+  it("falls back to the one club the label names on an unlinked competition", async () => {
+    prisma.seatBooking.findUnique.mockResolvedValue(unlinked as never);
+    prisma.club.findMany.mockResolvedValue([{ id: "club-1" }] as never);
+    prisma.club.findUnique.mockResolvedValue(club as never);
+    prisma.user.findMany.mockResolvedValue([{ id: "manager-1" }] as never);
+
+    await service.notifyPaymentReceived("booking-1");
+
+    // Label trimmed, case ignored.
+    expect(prisma.club.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { name: { equals: "Club Danse Lyon", mode: "insensitive" } },
+      }),
+    );
+    expect(prisma.club.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "club-1" } }),
+    );
+    expect(notifications.createManyForUsers).toHaveBeenCalled();
+  });
+
+  it("notifies nobody when two clubs share the label up to case (#408)", async () => {
+    prisma.seatBooking.findUnique.mockResolvedValue(unlinked as never);
+    prisma.club.findMany.mockResolvedValue([
+      { id: "club-1" },
+      { id: "club-2" },
+    ] as never);
+
+    await service.notifyPaymentReceived("booking-1");
+
+    expect(prisma.club.findUnique).not.toHaveBeenCalled();
+    expect(notifications.createManyForUsers).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["the booking is unknown", null],
     [
       "the competition has no organizer",
-      { ...booking, competition: { ...booking.competition, organizer: " " } },
+      {
+        ...booking,
+        competition: {
+          ...booking.competition,
+          organizer: " ",
+          organizerClubId: null,
+        },
+      },
     ],
   ])("notifies nobody when %s", async (_label, found) => {
     prisma.seatBooking.findUnique.mockResolvedValue(found as never);
 
     await service.notifyPaymentReceived("booking-1");
 
-    expect(prisma.club.findFirst).not.toHaveBeenCalled();
+    expect(prisma.club.findUnique).not.toHaveBeenCalled();
     expect(notifications.createManyForUsers).not.toHaveBeenCalled();
   });
 
@@ -124,7 +169,7 @@ describe("PaymentNotificationService", () => {
     ["the club is disabled", { ...club, disabledAt: new Date() }],
   ])("notifies nobody when %s", async (_label, foundClub) => {
     prisma.seatBooking.findUnique.mockResolvedValue(booking as never);
-    prisma.club.findFirst.mockResolvedValue(foundClub as never);
+    prisma.club.findUnique.mockResolvedValue(foundClub as never);
 
     await service.notifyPaymentReceived("booking-1");
 
@@ -134,7 +179,7 @@ describe("PaymentNotificationService", () => {
 
   it("never rejects when the feed write fails", async () => {
     prisma.seatBooking.findUnique.mockResolvedValue(booking as never);
-    prisma.club.findFirst.mockResolvedValue(club as never);
+    prisma.club.findUnique.mockResolvedValue(club as never);
     prisma.user.findMany.mockResolvedValue([{ id: "manager-1" }] as never);
     notifications.createManyForUsers.mockRejectedValue(new Error("DB down"));
 

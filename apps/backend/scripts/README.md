@@ -146,6 +146,29 @@ node dist/scripts/recompute-track-mpm.js --apply   # écriture
 pnpm exec tsx scripts/recompute-track-mpm.ts       # en local, simulation
 ```
 
+### `backfill-competition-organizer-club.ts`
+
+**Rattachement des compétitions à leur club organisateur par identifiant (#408)**
+
+`Competition.organizerClubId` désigne le club organisateur (identifiants HelloAsso, notification
+de paiement, droits d'édition) ; `organizer` n'est plus qu'un libellé. La migration
+`20261015210000_competition_organizer_club_id` relie déjà les compétitions dont le libellé
+correspond à **un seul** club (casse et espaces ignorés). Ce script refait la même chose à la
+demande et **liste** ce qu'il ne peut pas relier : aucun club de ce nom (« unmatched ») ou
+plusieurs clubs qui ne diffèrent que par la casse (« ambiguous ») — jamais deviné. Ces lignes
+gardent le repli par nom tant qu'elles ne sont pas corrigées à la main (renommer / fusionner
+l'homonyme, puis relancer).
+
+Idempotent (seules les lignes à `organizerClubId` NULL sont lues et écrites). Sans option, il
+simule ; `--apply` écrit. Quand il ne rapporte plus rien sur chaque environnement, le repli par
+nom peut être retiré (suite de #408).
+
+```bash
+node dist/scripts/backfill-competition-organizer-club.js           # dans le conteneur, simulation
+node dist/scripts/backfill-competition-organizer-club.js --apply   # écriture
+pnpm exec tsx scripts/backfill-competition-organizer-club.ts       # en local, simulation
+```
+
 ---
 
 ## Scripts à la racine du projet

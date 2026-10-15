@@ -3009,7 +3009,7 @@
             }
           },
           "409": {
-            "description": "Nom déjà utilisé"
+            "description": "Nom déjà utilisé, club organisant des compétitions synchronisées FFD, ou compétitions non rattachées portant un nom partagé avec un homonyme (`competitionIds`)"
           },
           "429": {
             "description": "Trop de requêtes - Rate limit dépassé",

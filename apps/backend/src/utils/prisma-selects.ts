@@ -462,13 +462,16 @@ export const seatBookingExportSelect = {
 
 /**
  * HelloAsso payment notification (#39): what the organizer club is told about
- * a confirmed booking, and how to find that club (competition `organizer`).
- * Never the payer's identity nor the external payment reference.
+ * a confirmed booking, and how to find that club (`organizerClubId`, label
+ * fallback, #408). Never the payer's identity nor the external payment
+ * reference.
  */
 export const seatBookingPaymentNotificationSelect = {
   id: true,
   seatLabel: true,
-  competition: { select: { id: true, title: true, organizer: true } },
+  competition: {
+    select: { id: true, title: true, organizer: true, organizerClubId: true },
+  },
 } as const;
 
 /** A club's identity and status, to address its managers. */
@@ -540,7 +543,9 @@ export const seatBookingRefundAlertSelect = {
   id: true,
   seatIndex: true, // never the free-text seatLabel, typed by the buyer
   expectedAmountCents: true,
-  competition: { select: { id: true, title: true, organizer: true } },
+  competition: {
+    select: { id: true, title: true, organizer: true, organizerClubId: true },
+  },
 } as const;
 
 /**
@@ -1253,8 +1258,28 @@ export const userRolesClubNameSelect = {
   club: { select: { disabledAt: true, name: true } },
 } as const;
 
-/** Competition ownership check: the organizing club's name. */
-export const competitionOrganizerSelect = { organizer: true } as const;
+/**
+ * Competition ownership check / organising-club resolution (#408): the club
+ * link, and the label used as fallback while the row is unlinked.
+ */
+export const competitionOrganizerSelect = {
+  organizer: true,
+  organizerClubId: true,
+} as const;
+
+/**
+ * Organising-club backfill (#408): the unlinked competition and its label —
+ * ids and club names only, no personal data.
+ */
+export const competitionOrganizerBackfillSelect = {
+  id: true,
+  ...competitionOrganizerSelect,
+} as const;
+
+/** FFD sync (#408): the club a competition is currently linked to. */
+export const competitionLinkedOrganizerClubSelect = {
+  organizerClub: { select: clubIdNameSelect },
+} as const;
 
 /**
  * Volunteer check-in link as returned to the organizer: never the stored

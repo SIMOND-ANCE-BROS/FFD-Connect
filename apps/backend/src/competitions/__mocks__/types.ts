@@ -61,6 +61,9 @@ export type MockPrismaService = Partial<
     findUnique: jest.Mock;
     create: jest.Mock;
   };
+  club: {
+    findMany: jest.Mock;
+  };
 };
 
 /**
@@ -120,6 +123,10 @@ export function createMockPrismaService(): MockPrismaService {
     volunteerToken: {
       findUnique: jest.fn(),
       create: jest.fn(),
+    },
+    // Organising-club label resolution (#408).
+    club: {
+      findMany: jest.fn(),
     },
   } as MockPrismaService;
 }

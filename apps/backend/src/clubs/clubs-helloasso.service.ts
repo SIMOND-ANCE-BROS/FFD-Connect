@@ -14,8 +14,10 @@ import {
   clubHelloAssoCredentialsSelect,
   clubHelloAssoStatusSelect,
   clubIdNameSelect,
+  competitionOrganizerSelect,
   userRolesClubSelect,
 } from "../utils/prisma-selects";
+import { resolveOrganizerClubId } from "../competitions/competition-organizer";
 import { PrismaService } from "../prisma/prisma.service";
 import { ClubsService } from "./clubs.service";
 import type { ConnectHelloAssoDto } from "./dto/connect-helloasso.dto";
@@ -194,8 +196,9 @@ export class ClubsHelloAssoService {
   }
 
   /**
-   * Récupère les identifiants HelloAsso du club associé à une compétition (via organizer).
-   * Utilisé par le flux de paiement.
+   * Récupère les identifiants HelloAsso du club organisateur d'une compétition
+   * (`organizerClubId`, repli sur le libellé tant que la ligne n'est pas reliée,
+   * jamais sur un nom ambigu — #408). Utilisé par le flux de paiement.
    */
   async getHelloAssoCredentialsForCompetition(competitionId: string): Promise<{
     clientId: string;
@@ -204,16 +207,14 @@ export class ClubsHelloAssoService {
   } | null> {
     const competition = await this.prisma.competition.findUnique({
       where: { id: competitionId },
-      select: { organizer: true },
+      select: competitionOrganizerSelect,
     });
-    if (!competition?.organizer?.trim()) {
-      return null;
-    }
+    if (!competition) return null;
+    const clubId = await resolveOrganizerClubId(this.prisma, competition);
+    if (!clubId) return null;
 
-    const club = await this.prisma.club.findFirst({
-      where: {
-        name: { equals: competition.organizer.trim(), mode: "insensitive" },
-      },
+    const club = await this.prisma.club.findUnique({
+      where: { id: clubId },
       select: clubHelloAssoCredentialsSelect,
     });
     if (

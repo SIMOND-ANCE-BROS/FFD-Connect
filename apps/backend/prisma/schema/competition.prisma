@@ -67,7 +67,9 @@ model Competition {
   imageUrl        String?
   latitude        Float?
   longitude       Float?
-  organizer       String?
+  organizer       String?           // Libellé d'affichage du club organisateur (nom FFD)
+  organizerClubId String?           // Club organisateur (#408) : clé des résolutions (paiement, droits) ; null = pas encore relié
+  organizerClub   Club?             @relation("CompetitionOrganizerClub", fields: [organizerClubId], references: [id], onDelete: SetNull)
   registrationUrl String?
   endDate         DateTime?         // FFD endAt (fin de la compétition)
   eventsDescription String?         // FFD danceEventDescription : programme des épreuves (texte libre)
@@ -96,6 +98,7 @@ model Competition {
   @@index([city])
   @@index([competitionType])
   @@index([status, date])
+  @@index([organizerClubId])
 }
 
 model Event {

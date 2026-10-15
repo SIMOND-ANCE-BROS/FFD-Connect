@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { NotificationType, UserRole } from "@prisma/client";
 import { withActiveRole } from "../auth/roles";
+import { resolveOrganizerClubId } from "../competitions/competition-organizer";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { getErrorMessage } from "../utils/error.utils";
@@ -33,8 +34,9 @@ export const CLUB_PAYMENT_RECEIVED_COPY = {
  * payment was received for one of its bookings (#39).
  *
  * The concerned club is the one whose HelloAsso account was charged: the
- * competition's `organizer`, resolved by name exactly like
- * `ClubsHelloAssoService.getHelloAssoCredentialsForCompetition`. Only that
+ * competition's organising club, resolved exactly like
+ * `ClubsHelloAssoService.getHelloAssoCredentialsForCompetition`
+ * (`organizerClubId`, unambiguous label fallback — #408). Only that
  * club's managers (active CLUB role) are addressed — never a broadcast.
  *
  * IN-APP FEED ONLY: no push, push arbitration is decided elsewhere.
@@ -58,11 +60,15 @@ export class PaymentNotificationService {
         where: { id: bookingId },
         select: seatBookingPaymentNotificationSelect,
       });
-      const organizer = booking?.competition.organizer?.trim();
-      if (!booking || !organizer) return;
+      if (!booking) return;
+      const clubId = await resolveOrganizerClubId(
+        this.prisma,
+        booking.competition,
+      );
+      if (!clubId) return;
 
-      const club = await this.prisma.club.findFirst({
-        where: { name: { equals: organizer, mode: "insensitive" } },
+      const club = await this.prisma.club.findUnique({
+        where: { id: clubId },
         select: clubRecipientSelect,
       });
       // A disabled club's CLUB accounts cannot log in to read it.
@@ -76,7 +82,12 @@ export class PaymentNotificationService {
             {
               OR: [
                 { clubId: club.id },
-                { clubName: { equals: club.name.trim(), mode: "insensitive" } },
+                // Legacy accounts without clubId only: a manager of a homonym
+                // club (same name up to case) is never addressed (#408).
+                {
+                  clubId: null,
+                  clubName: { equals: club.name.trim(), mode: "insensitive" },
+                },
               ],
             },
           ],

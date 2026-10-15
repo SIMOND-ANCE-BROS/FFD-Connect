@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { ClubRegistrationMode, Prisma, UserRole } from "@prisma/client";
 import { assertClubNotStoreReview } from "../auth/store-review/store-review-protection";
+import { matchClubByName } from "../competitions/competition-organizer";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   adminClubDeletionTargetSelect,
@@ -15,7 +16,12 @@ import {
 } from "../utils/prisma-selects";
 import { AdminAuditService } from "./admin-audit.service";
 import { diffFields } from "./admin-audit.util";
-import { clubUsage, isClubEmpty, sameClubName } from "./admin-club-usage";
+import {
+  clubUsage,
+  isClubEmpty,
+  organizedByClubOrLabel,
+  sameClubName,
+} from "./admin-club-usage";
 import { AdminClubsQueryService } from "./admin-clubs.query-service";
 import {
   AdminClubDetailDto,
@@ -24,6 +30,10 @@ import {
 } from "./dto/admin-clubs.dto";
 
 const NAME_TAKEN = "Un club porte déjà ce nom";
+const AMBIGUOUS_UNLINKED_COMPETITIONS =
+  "Un autre club porte ce nom à la casse près et des compétitions non rattachées portent ce nom : rattachez-les à leur club avant de renommer.";
+/** Upper bound of the competition ids listed in that 409. */
+const MAX_AMBIGUOUS_COMPETITIONS_LISTED = 20;
 const FFD_SYNCED_NAME =
   "Ce club organise des compétitions synchronisées avec la FFD : son nom ne peut pas être changé ici (la synchronisation rétablirait l'ancien nom).";
 
@@ -87,13 +97,16 @@ export class AdminClubsService {
   }
 
   /**
-   * Club.name is copied into User.clubName, License.clubName and
-   * Competition.organizer: a rename rewrites every copy in the same
+   * Club.name is copied into User.clubName, License.clubName and the
+   * Competition.organizer label: a rename rewrites every copy in the same
    * transaction. Users of another club are never touched; legacy members
-   * without clubId are matched on the old name (case-insensitive).
-   * The FFD sync rewrites Competition.organizer on every run, so a club that
-   * organises FFD-synced competitions cannot be renamed here: the rename
-   * would be silently undone and break the HelloAsso lookup by organizer.
+   * without clubId are matched on the old name (case-insensitive). The
+   * competitions rewritten are the club's (organizerClubId, #408); unlinked
+   * ones carrying its old name are relabelled AND linked to it, only when no
+   * homonym club shares that name (otherwise left untouched).
+   * The FFD sync rewrites Competition.organizer on every run and links the
+   * club by that name, so a club that organises FFD-synced competitions
+   * cannot be renamed here: the rename would be silently undone.
    */
   async update(
     actorId: string,
@@ -118,10 +131,36 @@ export class AdminClubsService {
 
         const newName =
           typeof diff.after.name === "string" ? diff.after.name : undefined;
+        // Unlinked competitions labelled with the old name belong to this
+        // club only if no homonym club (same name up to case) exists —
+        // read before the rename changes the name (#408).
+        let ownsUnlinkedByName = false;
         if (newName !== undefined) {
+          const match = await matchClubByName(tx, current.name);
+          ownsUnlinkedByName =
+            match.kind === "match" && match.clubId === clubId;
+          if (match.kind === "ambiguous") {
+            // Renaming would leave these rows to the homonym alone: refuse
+            // until an admin links or relabels them (#408).
+            const ambiguous = await tx.competition.findMany({
+              where: {
+                organizerClubId: null,
+                organizer: sameClubName(current.name),
+              },
+              select: idOnlySelect,
+              orderBy: { id: "asc" },
+              take: MAX_AMBIGUOUS_COMPETITIONS_LISTED,
+            });
+            if (ambiguous.length > 0) {
+              throw new ConflictException({
+                message: AMBIGUOUS_UNLINKED_COMPETITIONS,
+                competitionIds: ambiguous.map((c) => c.id),
+              });
+            }
+          }
           const ffdSynced = await tx.competition.findFirst({
             where: {
-              organizer: sameClubName(current.name),
+              ...organizedByClubOrLabel({ id: clubId, name: current.name }),
               ffdId: { not: null },
             },
             select: idOnlySelect,
@@ -161,10 +200,23 @@ export class AdminClubsService {
             where: { clubName: sameClubName(current.name) },
             data: { clubName: newName },
           });
+          // Display label only: linked rows resolve the club by id (#408).
           await tx.competition.updateMany({
-            where: { organizer: sameClubName(current.name) },
+            where: { organizerClubId: clubId },
             data: { organizer: newName },
           });
+          // Unlinked rows of the old name: linked explicitly, and only when
+          // the name was unambiguous — a homonym's ambiguous competition is
+          // never attached to this club (rights, HelloAsso payments).
+          if (ownsUnlinkedByName) {
+            await tx.competition.updateMany({
+              where: {
+                organizerClubId: null,
+                organizer: sameClubName(current.name),
+              },
+              data: { organizer: newName, organizerClubId: clubId },
+            });
+          }
         }
         await this.audit.record(tx, {
           actorId,
