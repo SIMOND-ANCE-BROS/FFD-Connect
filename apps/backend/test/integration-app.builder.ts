@@ -41,6 +41,7 @@ import { PrismaService } from "../src/prisma/prisma.service";
 import { RedisService } from "../src/redis/redis.service";
 import { TtsService } from "../src/tts/tts.service";
 import { ThrottlerUserGuard } from "../src/common/guards/throttler-user.guard";
+import { IdentifierThrottlerGuard } from "../src/common/guards/identifier-throttler.guard";
 import { configureTestApp } from "./test-app.factory";
 
 // ─── Mock values ──────────────────────────────────────────────────────────────
@@ -113,6 +114,8 @@ function applyBaseOverrides(
       .overrideGuard(ThrottlerGuard)
       .useValue({ canActivate: () => true })
       .overrideGuard(ThrottlerUserGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(IdentifierThrottlerGuard)
       .useValue({ canActivate: () => true })
       .overrideProvider(ThrottlerStorageService)
       .useValue(mockThrottlerStorage)

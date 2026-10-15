@@ -7,6 +7,7 @@ import {
   ThrottlerStorageService,
 } from "@nestjs/throttler";
 import { ThrottlerUserGuard } from "./../src/common/guards/throttler-user.guard";
+import { IdentifierThrottlerGuard } from "./../src/common/guards/identifier-throttler.guard";
 import { UserRole } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import request from "supertest";
@@ -66,6 +67,8 @@ describe("AuthController (integration with real DB)", () => {
       .overrideGuard(ThrottlerGuard)
       .useValue({ canActivate: () => true })
       .overrideGuard(ThrottlerUserGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(IdentifierThrottlerGuard)
       .useValue({ canActivate: () => true })
       .overrideProvider(ThrottlerStorageService)
       .useValue({

@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { ThrottleByIp } from "../common/decorators/throttle-by-ip.decorator";
+import { ThrottleByIdentifier } from "../common/guards/identifier-throttler.guard";
 import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import {
   ApiBearerAuth,
@@ -48,8 +49,13 @@ export class AuthController {
   ) {}
 
   @Post("register")
-  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  // Per IP sized for a venue sharing one address; per e-mail for abuse (#636).
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
   @ThrottleByIp()
+  @ThrottleByIdentifier(
+    { field: "email", limit: 5, ttl: 60000, perIp: true },
+    { field: "email", limit: 10, ttl: 60000 },
+  )
   @ApiOperation({
     summary: "Inscription avec vérification de licence FFD",
     description:
@@ -85,8 +91,14 @@ export class AuthController {
   }
 
   @Post("login")
-  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  // Per IP sized for a gym Wi-Fi on competition day; brute force on one
+  // account is held per (account, address) and, looser, per account (#636).
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
   @ThrottleByIp()
+  @ThrottleByIdentifier(
+    { field: "username", limit: 5, ttl: 60000, perIp: true },
+    { field: "username", limit: 20, ttl: 60000 },
+  )
   @ApiOperation({
     summary: "Authentifie un utilisateur",
     description:
@@ -273,8 +285,9 @@ export class AuthController {
   }
 
   @Post("forgot-password")
-  @Throttle({ default: { ttl: 60000, limit: 3 } })
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @ThrottleByIp()
+  @ThrottleByIdentifier({ field: "email", limit: 3, ttl: 60000 })
   @ApiOperation({
     summary: "Demande de réinitialisation de mot de passe",
     description:

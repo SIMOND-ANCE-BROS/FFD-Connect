@@ -7,6 +7,7 @@ import { AuthService } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
 import { STORE_REVIEW_IMPERSONATION_MESSAGE } from "./store-review/store-review-protection";
 import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
+import { IdentifierThrottlerGuard } from "../common/guards/identifier-throttler.guard";
 
 describe("AuthController", () => {
   let controller: AuthController;
@@ -41,6 +42,8 @@ describe("AuthController", () => {
       ],
     })
       .overrideGuard(ThrottlerUserGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(IdentifierThrottlerGuard)
       .useValue({ canActivate: () => true })
       .compile();
 
