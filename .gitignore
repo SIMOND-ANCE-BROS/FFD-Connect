@@ -108,3 +108,6 @@ graphify-out/
 
 # Liste locale des personnes réelles traquées par scripts/public-repo/scan-pii.sh
 scripts/public-repo/.pii-denylist
+
+# Internal working documents (kept local, never published)
+/ffd.md
