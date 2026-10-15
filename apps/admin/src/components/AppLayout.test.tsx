@@ -161,6 +161,7 @@ describe('AppLayout', () => {
       '/moderation',
       '/license-renewals',
       '/audit-log',
+      '/health-data-access-log',
       '/stats',
       '/usage',
     ]);

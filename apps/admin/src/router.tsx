@@ -2,6 +2,7 @@ import { createBrowserRouter, Navigate } from 'react-router';
 import { AppLayout } from './components/AppLayout';
 import { AuditLogPage } from './pages/AuditLogPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { HealthDataAccessLogPage } from './pages/HealthDataAccessLogPage';
 import { LoginPage } from './pages/LoginPage';
 import { ModerationDetailPage } from './pages/ModerationDetailPage';
 import { ModerationPage } from './pages/ModerationPage';
@@ -43,6 +44,7 @@ export const router = createBrowserRouter([
       { path: 'tracks/import', element: <TrackImportPage /> },
       { path: 'tracks/:id', element: <TrackDetailPage /> },
       { path: 'audit-log', element: <AuditLogPage /> },
+      { path: 'health-data-access-log', element: <HealthDataAccessLogPage /> },
       {
         path: 'stats',
         // Lazy: keeps @mantine/charts and recharts out of the main bundle.
