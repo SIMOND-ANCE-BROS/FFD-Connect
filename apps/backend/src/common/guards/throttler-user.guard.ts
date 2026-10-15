@@ -5,8 +5,9 @@ import { ThrottlerGuard } from "@nestjs/throttler";
  * Guard de rate limiting qui utilise l'ID utilisateur (JWT) comme clé
  * si l'utilisateur est authentifié, sinon fallback sur l'IP.
  *
- * Le guard global (`GlobalThrottlerGuard`) ignore les routes qui portent ce
- * guard : leur limite n'est comptée QUE par utilisateur (#182).
+ * Le guard global (`GlobalThrottlerGuard`) compte déjà toute requête portant
+ * un jeton valide par utilisateur (`gsub:`, #633) ; ce guard, placé après
+ * `JwtAuthGuard`, applique en plus la limite de la route à `req.user`.
  *
  * Permet d'avoir des limites per-user indépendamment de l'IP :
  * - Un utilisateur derrière un NAT partagé est limité individuellement
