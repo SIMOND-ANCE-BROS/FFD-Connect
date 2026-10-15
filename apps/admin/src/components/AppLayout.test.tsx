@@ -162,6 +162,7 @@ describe('AppLayout', () => {
       '/license-renewals',
       '/refunds-due',
       '/audit-log',
+      '/health-data-access-log',
       '/stats',
       '/usage',
     ]);
