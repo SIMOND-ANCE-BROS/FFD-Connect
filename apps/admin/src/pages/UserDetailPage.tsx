@@ -40,6 +40,7 @@ import {
   userQuery,
 } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
+import { HealthAccessHistory } from '../components/HealthAccessHistory';
 import { StoreReviewBlockedModal, StoreReviewNotice } from '../components/StoreReview';
 import { UserIdentifiersModal } from '../components/UserIdentifiersModal';
 import { apiErrorMessage } from '../lib/apiError';
@@ -524,6 +525,8 @@ export function UserDetailPage() {
       </Modal>
 
       <StoreReviewBlockedModal target="user" action={blocked} onClose={() => setBlocked(null)} />
+
+      <HealthAccessHistory userId={u.id} />
 
       <Title order={4}>Historique admin</Title>
       {history.data?.data.length ? (
