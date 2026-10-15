@@ -2,9 +2,10 @@
 # to the full suites: scripts/pre-push.sh. CI is the authority and is unchanged.
 # Never bypass with --no-verify; PRE_PUSH_FULL=1 forces the full suites.
 #
-# core.hooksPath is shared by every worktree and points at ONE checkout's
-# .husky/_, so this file may run against a worktree whose branch predates
-# scripts/pre-push.sh: use the pushed tree's copy, else the one next to this hook.
+# core.hooksPath lives in the .git/config shared by every worktree. When it is
+# an absolute path to one checkout's .husky/_, this file may run against a
+# worktree whose branch predates scripts/pre-push.sh: use the pushed tree's
+# copy, else the one next to this hook.
 script=scripts/pre-push.sh
 [ -f "$script" ] || script="$(dirname "$0")/../scripts/pre-push.sh"
 sh "$script" "$@"
