@@ -16,6 +16,7 @@ import {
   handleRegistrationReplayError,
   handleRegistrationReplaySuccess,
 } from "../features/competitions/services/registrationQueue";
+import { handleCheckinReplayError } from "../features/license/services/offlineCheckin";
 import { dispatchMutation, useOfflineQueue } from "../hooks/useOfflineQueue";
 import { isNetStateOnline } from "../utils/connectivity";
 import { onSessionEnd } from "./sessionCleanup";
@@ -143,7 +144,9 @@ const OfflineQueueRunner = () => {
       assertReplayable(mutation);
       await dispatchMutation(request);
     },
-    onReplayError: handleRegistrationReplayError,
+    onReplayError: (mutation, error) =>
+      handleCheckinReplayError(mutation, error) ??
+      handleRegistrationReplayError(mutation, error),
     onReplaySuccess: handleRegistrationReplaySuccess,
     onConflict: () =>
       Alert.alert(

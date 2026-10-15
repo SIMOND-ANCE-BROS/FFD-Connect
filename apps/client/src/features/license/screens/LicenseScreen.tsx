@@ -17,7 +17,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { QRCodeView } from "../components/QRCodeView.native";
+import { EntryQrCode } from "../components/EntryQrCode";
 
 import { AppText } from "../../../components/AppText";
 import { BetaNotice } from "../../../components/BetaNotice";
@@ -46,6 +46,7 @@ import { WdsfEntryModal } from "../components/WdsfEntryModal";
 import { useTheme } from "../../../context/ThemeContext";
 import type { RootStackParamList } from "../../../navigation/types";
 import { isWdsfQrData } from "../../../utils/typeGuards";
+import { useEntryQrBatch } from "../hooks/useEntryQrBatch";
 import { useLicenseLogic } from "../hooks/useLicenseLogic";
 import { buildLicenseQrData } from "../utils/licenseQrData";
 
@@ -94,6 +95,15 @@ export const LicenseScreen: React.FC = () => {
 
   const ffdUser =
     state.listItems.find((item) => item.type === "FFD")?.data ?? null;
+  // Rotating entry QR (#24): fetched while online, served offline at the venue.
+  const entryQrBatch = useEntryQrBatch(ffdUser !== null);
+  const activeQrId =
+    state.activeQrData !== null && typeof state.activeQrData === "object"
+      ? state.activeQrData.id
+      : undefined;
+  // Only the FFD licence QR rotates: never the WDSF card, nor another number.
+  const modalEntryQrBatch =
+    entryQrBatch && activeQrId === entryQrBatch.number ? entryQrBatch : null;
   const ffdValidUntilRaw = ffdUser?.validUntilRaw ?? null;
   // Offline validity dot: neutral without an expiry date (#211) — an unknown
   // validity is neither "valid" (green) nor "expired" (red).
@@ -491,8 +501,9 @@ export const LicenseScreen: React.FC = () => {
               <BigBarcode value={state.activeQrData.id ?? ""} />
             ) : (
               <View style={styles.qrCodeContainer}>
-                <QRCodeView
-                  value={JSON.stringify(state.activeQrData)}
+                <EntryQrCode
+                  batch={modalEntryQrBatch}
+                  fallbackValue={JSON.stringify(state.activeQrData)}
                   size={220}
                   spokenLabel="QR code de votre licence"
                 />

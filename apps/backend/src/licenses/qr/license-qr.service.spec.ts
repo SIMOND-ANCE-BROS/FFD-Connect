@@ -1,6 +1,14 @@
 import { Logger } from "@nestjs/common";
 import { createHmac } from "crypto";
 import { ConfigService } from "@nestjs/config";
+import { buildEntryQr, entryQrStep, signEntryQrStep } from "./entry-qr";
+import {
+  ACTIVE_TEST_KEY_LABEL,
+  ENTRY_QR_GOLDEN_VECTOR,
+  testEntryQrPem,
+  testEntryQrPrivateKey,
+} from "./entry-qr-test-keys.mock";
+import { EntryQrService } from "./entry-qr.service";
 import { buildSignedLicenseQr } from "./license-qr";
 import { LicenseQrService } from "./license-qr.service";
 
@@ -349,6 +357,104 @@ describe("LicenseQrService", () => {
           status: "EXPIRED",
         });
       });
+    });
+  });
+
+  describe("rotating entry QR (v3, #24)", () => {
+    const PEM = testEntryQrPem(ACTIVE_TEST_KEY_LABEL);
+    const SUBJECT = {
+      licenseId: LICENSE_ID,
+      number: "FFD-123456",
+      holderName: "DOE John",
+    };
+    const step = entryQrStep(NOW);
+    const entryQr = (s = step) =>
+      buildEntryQr(
+        ENTRY_QR_GOLDEN_VECTOR.keyId,
+        SUBJECT,
+        s,
+        signEntryQrStep(
+          testEntryQrPrivateKey(ACTIVE_TEST_KEY_LABEL),
+          ENTRY_QR_GOLDEN_VECTOR.keyId,
+          SUBJECT,
+          s,
+        ),
+      );
+    const withEntryKey = (mode: string, entryKey = PEM) =>
+      makeService({
+        QR_SIGNING_SECRET: SECRET,
+        QR_SIGNATURE_MODE: mode,
+        ENTRY_QR_SIGNING_KEY: entryKey,
+      });
+
+    it("accepts a fresh v3 QR, bound to its licence", () => {
+      expect(withEntryKey("enforce").verify(entryQr(), NOW)).toEqual({
+        identifier: "FFD-123456",
+        signedLicenseNumber: true,
+        licenseId: LICENSE_ID,
+        accepted: true,
+        mode: "enforce",
+        status: "VALID",
+        warning: null,
+      });
+    });
+
+    it("refuses a replayed capture in enforce, flags it in warn", () => {
+      const replayed = entryQr(step - 3);
+      expect(withEntryKey("enforce").verify(replayed, NOW)).toMatchObject({
+        accepted: false,
+        status: "STALE",
+        licenseId: null,
+        signedLicenseNumber: false,
+        identifier: "FFD-123456",
+      });
+      const warned = withEntryKey("warn").verify(replayed, NOW);
+      expect(warned).toMatchObject({ accepted: true, status: "STALE" });
+      expect(warned.warning).toContain("QR tournant périmé");
+    });
+
+    it("refuses a tampered v3 QR", () => {
+      const tampered = entryQr().replace("DOE John", "ROE Jane");
+      expect(withEntryKey("enforce").verify(tampered, NOW)).toMatchObject({
+        accepted: false,
+        status: "INVALID_SIGNATURE",
+      });
+    });
+
+    it("refuses a malformed v3 QR", () => {
+      const malformed = JSON.stringify({ v: 3, id: "FFD-123456", sig: "x" });
+      expect(withEntryKey("enforce").verify(malformed, NOW)).toMatchObject({
+        accepted: false,
+        status: "INVALID_SIGNATURE",
+        identifier: "FFD-123456",
+      });
+    });
+
+    it("cannot vouch for a v3 QR without the entry key", () => {
+      expect(withEntryKey("warn", "").verify(entryQr(), NOW)).toMatchObject({
+        accepted: true,
+        status: "INVALID_SIGNATURE",
+      });
+    });
+
+    it("does not check anything in mode off", () => {
+      expect(withEntryKey("off").verify(entryQr(), NOW)).toMatchObject({
+        accepted: true,
+        status: "NOT_CHECKED",
+        identifier: "FFD-123456",
+        licenseId: null,
+      });
+    });
+
+    it("uses the injected EntryQrService when Nest provides one", () => {
+      const config = {
+        get: jest.fn((key: string) => ({ QR_SIGNING_SECRET: SECRET })[key]),
+      } as unknown as ConfigService;
+      const entry = new EntryQrService({
+        get: (key: string) => ({ ENTRY_QR_SIGNING_KEY: PEM })[key],
+      } as unknown as ConfigService);
+      const service = new LicenseQrService(config, entry);
+      expect(service.verify(entryQr(), NOW).status).toBe("VALID");
     });
   });
 });

@@ -836,7 +836,11 @@ export class CompetitionsController {
     @Request() req: RequestWithUser,
   ) {
     await this.accessService.assertCanManageCheckIn(competitionId, req.user);
-    return this.resultsService.checkIn(competitionId, body.qrData);
+    return this.resultsService.checkIn(
+      competitionId,
+      body.qrData,
+      body.scannedAt,
+    );
   }
 
   @StoreReviewSimulation(simulatedVolunteerToken)
@@ -888,6 +892,7 @@ export class CompetitionsController {
       body.competitionId,
       body.token,
       body.qrData,
+      body.scannedAt,
     );
   }
 

@@ -33,6 +33,15 @@ import {
 
 type CheckInUser = Prisma.UserGetPayload<{ select: typeof userNameSelect }>;
 
+/**
+ * A check-in scanned offline (#24) is replayed later with the instant of the
+ * scan: the QR (a rotating one lasts ~90 s) is verified as of that instant.
+ * Bounded so a replay can only refer to a recent, past scan.
+ */
+export const CHECK_IN_SCANNED_AT_MAX_AGE_MS = 48 * 3600 * 1000;
+/** Clock drift tolerated between the scanner and the server. */
+export const CHECK_IN_SCANNED_AT_MAX_SKEW_MS = 2 * 60 * 1000;
+
 @Injectable()
 export class CompetitionResultsService {
   private readonly logger = new Logger(CompetitionResultsService.name);
@@ -134,11 +143,12 @@ export class CompetitionResultsService {
     });
   }
 
-  async checkIn(competitionId: string, qrData: string) {
+  async checkIn(competitionId: string, qrData: string, scannedAt?: string) {
+    const scanInstant = this.resolveScanInstant(competitionId, scannedAt);
     // Signature check first (#168): in `enforce` mode an unsigned, forged or
     // expired QR never reaches the lookup; in `warn` mode it goes through but
     // the response carries a warning for the staff screen.
-    const qrCheck = this.licenseQrService.verify(qrData);
+    const qrCheck = this.licenseQrService.verify(qrData, scanInstant);
     if (!qrCheck.accepted) {
       this.logger.warn(
         `Check-in refused for competition ${competitionId}: QR ${qrCheck.status}`,
@@ -188,7 +198,7 @@ export class CompetitionResultsService {
 
     const checkInResults = [];
     const regsToUpdate: string[] = [];
-    const now = new Date();
+    const now = scanInstant;
 
     for (const reg of registrations) {
       if (!reg.feePaid) {
@@ -237,6 +247,30 @@ export class CompetitionResultsService {
       registrations: checkInResults,
       qrVerification,
     };
+  }
+
+  /**
+   * Instant the QR was scanned: now, or the `scannedAt` of a check-in made
+   * offline and replayed (#24) — never in the future, never older than 48 h.
+   */
+  private resolveScanInstant(competitionId: string, scannedAt?: string): Date {
+    const now = new Date();
+    if (scannedAt === undefined) return now;
+    const instant = new Date(scannedAt);
+    const age = now.getTime() - instant.getTime();
+    if (
+      Number.isNaN(instant.getTime()) ||
+      age < -CHECK_IN_SCANNED_AT_MAX_SKEW_MS ||
+      age > CHECK_IN_SCANNED_AT_MAX_AGE_MS
+    ) {
+      throw new BadRequestException(
+        "Heure de scan invalide : un scan hors ligne doit être synchronisé dans les 48 h",
+      );
+    }
+    this.logger.log(
+      `Offline check-in replayed for competition ${competitionId} (scanned ${Math.round(age / 1000)} s ago)`,
+    );
+    return age < 0 ? now : instant;
   }
 
   /**
@@ -348,6 +382,7 @@ export class CompetitionResultsService {
     competitionId: string,
     token: string,
     qrData: string,
+    scannedAt?: string,
   ) {
     const volunteerToken = await this.prisma.volunteerToken.findUnique({
       where: { token: hashToken(token) },
@@ -363,6 +398,6 @@ export class CompetitionResultsService {
 
     // The link id only: its name is free text, often a person's (RGPD, #529).
     this.logger.log(`Volunteer link ${volunteerToken.id} performing check-in`);
-    return this.checkIn(competitionId, qrData);
+    return this.checkIn(competitionId, qrData, scannedAt);
   }
 }

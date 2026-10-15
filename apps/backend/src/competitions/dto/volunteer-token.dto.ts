@@ -1,5 +1,5 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { IsOptional, IsString, MaxLength } from "class-validator";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { IsISO8601, IsOptional, IsString, MaxLength } from "class-validator";
 import { CHECK_IN_QR_DATA_MAX_LENGTH } from "./checkin.dto";
 
 export class GenerateVolunteerTokenDto {
@@ -53,4 +53,13 @@ export class VolunteerCheckInDto {
   @IsString()
   @MaxLength(CHECK_IN_QR_DATA_MAX_LENGTH)
   qrData!: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Instant du scan (ISO 8601) pour un check-in scanné hors ligne puis synchronisé (#24). Ni dans le futur, ni plus vieux que 48 h. Absent = maintenant.",
+    example: "2026-10-16T09:12:30.000Z",
+  })
+  @IsOptional()
+  @IsISO8601({ strict: true })
+  scannedAt?: string;
 }

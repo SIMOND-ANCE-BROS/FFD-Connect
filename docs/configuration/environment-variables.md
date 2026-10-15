@@ -185,6 +185,21 @@ Précisions :
 - Le QR v2 (#466) lie aussi l'identifiant interne de la licence : un QR émis avant un changement de numéro est signalé (`warn`) ou refusé (`enforce`), et un QR lié au seul numéro (v1, non signé) est refusé pour un numéro retiré. Les QR v1 restent acceptés jusqu'à leur expiration. Formats et transition : [runbook](../exploitation/qr-licence-signe.md).
 - **Avant de passer en `enforce`**, chaque utilisateur doit avoir mis à jour l'app **et rouvert sa licence en ligne** au moins une fois : le QR signé n'est mis en cache (E-Licence hors ligne) qu'à ce moment-là. Sinon il présentera encore l'ancien QR non signé, refusé en `enforce`. Rester en `warn` pendant la transition et surveiller les avertissements « QR non vérifié » au check-in.
 
+## QR d'entrée tournant vérifiable hors ligne (#24)
+
+Décision et format : [ADR-0023](../adr/0023-qr-entree-tournant-hors-ligne.md). Les deux variables sont optionnelles : sans clé, l'app garde le QR statique et le backend démarre.
+
+| Variable                       | Défaut | Rôle                                                                                                                                                                                                                                |
+| ------------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ENTRY_QR_SIGNING_KEY`         | —      | Clé privée **Ed25519**, PEM PKCS#8 (`openssl genpkey -algorithm ed25519`), `\n` littéraux acceptés. Signe les lots de QR tournants (`GET /licenses/my/entry-qr`). Absente ou invalide → fonctionnalité désactivée (404 sur le lot). |
+| `ENTRY_QR_RETIRED_PUBLIC_KEYS` | —      | Clés publiques brutes (base64url, séparées par des virgules) des clés précédentes : encore acceptées et publiées aux scanners (`GET /licenses/entry-qr/keys`).                                                                      |
+
+Précisions :
+
+- La vérification suit `QR_SIGNATURE_MODE` : un QR tournant périmé (`STALE`) ou falsifié est signalé en `warn`, refusé en `enforce`, ignoré en `off`.
+- **Rotation** : générer la nouvelle clé, mettre l'ancienne clé **publique** dans `ENTRY_QR_RETIRED_PUBLIC_KEYS`, déployer, puis la retirer **au moins 12 h plus tard** (durée d'un lot). Les scanners doivent rouvrir l'écran de scan en ligne pour télécharger la nouvelle clé.
+- La clé privée vit dans Key Vault comme les autres secrets runtime ; jamais dans le dépôt ni dans les logs (le backend ne journalise que la raison d'un rejet).
+
 ## Pass Apple Wallet de la licence (#162)
 
 Les cinq variables sont nécessaires. Une seule absente ou invalide ⇒ **fonctionnalité désactivée** : le backend démarre, `appleWalletAvailable` vaut `false` dans la licence (`GET /users/me`, `GET /licenses/my`) et les routes du pass répondent 503. Le pass exige aussi un `QR_SIGNING_SECRET` valide : jamais de pass avec un QR non signé.

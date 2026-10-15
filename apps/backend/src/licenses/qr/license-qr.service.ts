@@ -1,5 +1,7 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { parseEntryQr } from "./entry-qr";
+import { EntryQrService } from "./entry-qr.service";
 import {
   buildSignedLicenseQr,
   LicenseQrSubject,
@@ -21,6 +23,11 @@ export type LicenseQrVerificationStatus =
   | "UNSIGNED"
   | "INVALID_SIGNATURE"
   | "EXPIRED"
+  /**
+   * Genuine rotating QR (v3, #24) outside its time window: a captured QR
+   * replayed later, or a phone/scanner clock that is off.
+   */
+  | "STALE"
   /**
    * Genuine QR, but issued for another licence than the one now holding its
    * number (the number was changed by an administrator — #466).
@@ -55,6 +62,8 @@ const WARNINGS: Record<
   UNSIGNED: "QR non vérifié : ancien QR non signé",
   INVALID_SIGNATURE: "QR non vérifié : signature invalide",
   EXPIRED: "QR non vérifié : licence expirée",
+  STALE:
+    "QR non vérifié : QR tournant périmé (capture d'écran, ou heure du téléphone décalée)",
   LICENSE_MISMATCH:
     "QR non vérifié : numéro de licence modifié depuis l'émission du QR",
 };
@@ -75,6 +84,10 @@ export const STALE_LICENSE_QR_MESSAGE =
  *   signature produced and no verification (equivalent to mode `off`), the
  *   backend still boots — except in mode `enforce`, which refuses to boot.
  * - `QR_SIGNATURE_MODE`: `off` | `warn` (default) | `enforce`.
+ *
+ * The mode also governs the rotating entry QR (v3, #24): verified by
+ * EntryQrService (Ed25519 public keys) whenever the mode is not `off`, and a
+ * stale or forged v3 QR is refused in `enforce` like any unverified QR.
  */
 @Injectable()
 export class LicenseQrService {
@@ -82,7 +95,15 @@ export class LicenseQrService {
   private readonly secret: string | null;
   private readonly mode: QrSignatureMode;
 
-  constructor(configService: ConfigService) {
+  constructor(
+    configService: ConfigService,
+    // Optional so the static-QR code paths (Wallet generator, tests) can build
+    // the service from config alone; Nest always injects the shared instance.
+    @Optional()
+    private readonly entryQrService: EntryQrService = new EntryQrService(
+      configService,
+    ),
+  ) {
     const rawSecret = configService.get<string>("QR_SIGNING_SECRET")?.trim();
     if (rawSecret && rawSecret.length >= QR_SIGNING_SECRET_MIN_LENGTH) {
       this.secret = rawSecret;
@@ -157,8 +178,25 @@ export class LicenseQrService {
       };
     }
 
+    // Rotating entry QR (v3, #24): Ed25519 + time step, own verifier.
+    const entry = parseEntryQr(qrData);
     let status: LicenseQrVerificationStatus;
-    if (parsed.kind === "signed") {
+    if (entry.kind === "entry") {
+      status = this.entryQrService.verify(entry.payload, now);
+      if (status === "VALID") {
+        return {
+          identifier: entry.payload.id,
+          signedLicenseNumber: true,
+          licenseId: entry.payload.lid,
+          accepted: true,
+          mode: this.mode,
+          status,
+          warning: null,
+        };
+      }
+    } else if (entry.kind === "malformed") {
+      status = "INVALID_SIGNATURE";
+    } else if (parsed.kind === "signed") {
       status = verifySignedLicenseQr(parsed.payload, this.secret, now);
     } else if (parsed.kind === "malformed-signed") {
       status = "INVALID_SIGNATURE";

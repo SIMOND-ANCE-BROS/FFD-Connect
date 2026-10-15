@@ -223,6 +223,18 @@ export const licenseWalletPassSelect = {
 } as const;
 
 /**
+ * Champs d'une licence nécessaires au lot de QR d'entrée tournants (#24) :
+ * ce que le QR porte (id, numéro, nom du titulaire) et jusqu'à quand il peut
+ * être émis. Rien d'autre (minimisation).
+ */
+export const licenseEntryQrSelect = {
+  id: true,
+  number: true,
+  validUntil: true,
+  user: { select: { firstName: true, lastName: true } },
+} as const;
+
+/**
  * Jeton de téléchargement de pass Wallet (#162) : à qui il appartient,
  * jusqu'à quand il vaut et combien de téléchargements il a déjà servis.
  */
