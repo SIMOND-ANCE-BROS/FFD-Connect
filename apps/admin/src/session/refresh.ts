@@ -5,16 +5,26 @@ import { adoptPeerSession, requestPeerSession } from './sessionSync';
 let inFlight: Promise<string | null> | null = null;
 
 /**
- * New access token if another tab rotated `rejected` meanwhile: already
- * pushed to this tab, or held by an open tab.
+ * What the session became while a refresh was in flight (#669): the access
+ * token another tab rotated in for the same account, null if this tab was
+ * logged out or switched account, or undefined when nothing changed.
  */
-async function rotatedByAnotherTab(rejected: string): Promise<string | null> {
+function changedMeanwhile(sent: string, userId: string): string | null | undefined {
   const current = useSession.getState();
-  if (current.accessToken && current.refreshToken && current.refreshToken !== rejected) {
-    return current.accessToken;
-  }
+  if (current.refreshToken === sent) return undefined;
+  return current.accessToken && current.user?.id === userId ? current.accessToken : null;
+}
+
+/**
+ * New access token if an open tab of the same account already rotated the
+ * rejected refresh token; null otherwise. Another account's session is never
+ * adopted.
+ */
+async function rotatedByAnotherTab(rejected: string, userId: string): Promise<string | null> {
   const peer = await requestPeerSession();
-  if (!peer || peer.refreshToken === rejected) return null;
+  if (!peer || peer.refreshToken === rejected || peer.user.id !== userId) return null;
+  // A logout or a rotation pushed while we waited wins over the peer's answer.
+  if (useSession.getState().refreshToken !== rejected) return null;
   adoptPeerSession(peer);
   return peer.accessToken;
 }
@@ -31,13 +41,20 @@ async function performRefresh(): Promise<string | null> {
     return null;
   }
 
+  // Logged out (here or in another tab) or rotated by another tab during the
+  // call: write nothing, a late answer must not bring a session back.
+  const meanwhile = changedMeanwhile(refreshToken, user.id);
+  if (meanwhile !== undefined) return meanwhile;
+
   const { data, response } = result;
   const status = response?.status;
   if (status === 401 || status === 403) {
     // Another back-office tab may have rotated the shared refresh token just
     // before us (#669): take its tokens rather than ending the session.
-    const rotated = await rotatedByAnotherTab(refreshToken);
+    const rotated = await rotatedByAnotherTab(refreshToken, user.id);
     if (rotated) return rotated;
+    const after = changedMeanwhile(refreshToken, user.id);
+    if (after !== undefined) return after;
     // The refresh token itself is rejected: the session is over.
     useSession.getState().clear();
     return null;

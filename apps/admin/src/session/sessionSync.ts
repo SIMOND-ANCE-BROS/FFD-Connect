@@ -1,3 +1,4 @@
+import { authControllerLogout } from '../api/generated/sdk.gen';
 import { isAdmin, type SessionSnapshot, type SessionUser, useSession } from './sessionStore';
 
 /**
@@ -16,9 +17,12 @@ import { isAdmin, type SessionSnapshot, type SessionUser, useSession } from './s
  *
  * The tabs also keep each other in step: a token rotation (refresh) is pushed
  * to the others, since the backend revokes the previous refresh token, and a
- * logout in one tab logs the others out.
+ * logout in one tab revokes the refresh token (#680) and logs out the other
+ * tabs of the same account.
  */
 const CHANNEL_NAME = 'ffd-admin-session';
+/** sessionStorage key of the persisted session (sessionStore.ts). */
+const STORAGE_KEY = 'ffd-admin-session';
 
 /** How long a fresh tab waits for another tab before showing the login page. */
 export const PEER_WAIT_MS = 300;
@@ -27,12 +31,15 @@ type SyncMessage =
   | { type: 'request'; id: string }
   | { type: 'reply'; id: string; session: SessionSnapshot }
   | { type: 'update'; session: SessionSnapshot }
-  | { type: 'logout' };
+  | { type: 'logout'; userId: string };
 
 let channel: BroadcastChannel | null = null;
 let unsubscribe: (() => void) | null = null;
+let removePageShow: (() => void) | null = null;
 /** Set while a change received from another tab is applied: not echoed back. */
 let applyingRemote = false;
+/** A logout was announced while this tab was restoring: adopt no reply. */
+let logoutSeenWhileRestoring = false;
 const pendingRequests = new Map<string, (session: SessionSnapshot) => void>();
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -75,7 +82,7 @@ function parseMessage(data: unknown): SyncMessage | null {
     case 'update':
       return isSnapshot(data.session) ? { type: 'update', session: data.session } : null;
     case 'logout':
-      return { type: 'logout' };
+      return typeof data.userId === 'string' ? { type: 'logout', userId: data.userId } : null;
     default:
       return null;
   }
@@ -131,9 +138,15 @@ function onMessage(event: MessageEvent<unknown>): void {
       }
       return;
     }
-    case 'logout':
-      if (useSession.getState().user) applyRemote(() => useSession.getState().clear());
+    case 'logout': {
+      const state = useSession.getState();
+      // Arriving between the request and the reply of a restoring tab: the
+      // session it is about to receive is being ended.
+      if (state.restoring) logoutSeenWhileRestoring = true;
+      // Only the account that logged out: a tab on another account stays.
+      if (state.user?.id === message.userId) applyRemote(() => state.clear());
       return;
+    }
   }
 }
 
@@ -161,10 +174,65 @@ export function requestPeerSession(waitMs = PEER_WAIT_MS): Promise<SessionSnapsh
   });
 }
 
-/** Logs this tab out and tells the other back-office tabs to do the same. */
+/**
+ * Logs out: revokes the refresh token on the server (#680, best effort, not
+ * awaited — offline, the local logout still happens), clears this tab and
+ * tells the other back-office tabs of the same account to do the same.
+ */
 export function signOut(): void {
+  const { refreshToken, user } = useSession.getState();
+  if (refreshToken) {
+    try {
+      void authControllerLogout({ body: { refresh_token: refreshToken } }).catch(() => undefined);
+    } catch {
+      // Never block the local logout.
+    }
+  }
   useSession.getState().clear();
-  post({ type: 'logout' });
+  if (user) post({ type: 'logout', userId: user.id });
+}
+
+/** Session state saved in this tab's sessionStorage: false when none, null when unreadable. */
+function storedSessionPresent(): boolean | null {
+  let raw: string | null;
+  try {
+    raw = window.sessionStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+  if (!raw) return false;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return (
+      isRecord(parsed) && isRecord(parsed.state) && typeof parsed.state.refreshToken === 'string'
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A page restored from the back/forward cache missed the messages sent while
+ * it was frozen: drop a session its storage no longer has, and take a token
+ * rotation an open tab of the same account made meanwhile.
+ */
+export async function resyncAfterRestore(waitMs = PEER_WAIT_MS): Promise<void> {
+  if (storedSessionPresent() === false && useSession.getState().user) {
+    applyRemote(() => useSession.getState().clear());
+    return;
+  }
+  const mine = currentSnapshot();
+  if (!mine) return;
+  const peer = await requestPeerSession(waitMs);
+  const current = useSession.getState();
+  if (
+    peer &&
+    peer.user.id === mine.user.id &&
+    peer.refreshToken !== mine.refreshToken &&
+    current.refreshToken === mine.refreshToken
+  ) {
+    adoptPeerSession(peer);
+  }
 }
 
 /**
@@ -187,12 +255,20 @@ export function startSessionSync(waitMs = PEER_WAIT_MS): Promise<void> {
     const session = currentSnapshot();
     if (rotated && session) post({ type: 'update', session });
   });
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (event.persisted) void resyncAfterRestore();
+  };
+  window.addEventListener('pageshow', onPageShow);
+  removePageShow = () => window.removeEventListener('pageshow', onPageShow);
 
   if (currentSnapshot()) return Promise.resolve();
+  logoutSeenWhileRestoring = false;
   useSession.setState({ restoring: true });
   return requestPeerSession(waitMs).then((session) => {
-    // A login in this tab meanwhile wins over the peer's session.
-    if (session && !currentSnapshot()) adoptPeerSession(session);
+    // A login in this tab meanwhile wins over the peer's session, and a
+    // logout seen meanwhile voids it.
+    if (session && !currentSnapshot() && !logoutSeenWhileRestoring) adoptPeerSession(session);
+    logoutSeenWhileRestoring = false;
     useSession.setState({ restoring: false });
   });
 }
@@ -201,6 +277,9 @@ export function startSessionSync(waitMs = PEER_WAIT_MS): Promise<void> {
 export function stopSessionSync(): void {
   unsubscribe?.();
   unsubscribe = null;
+  removePageShow?.();
+  removePageShow = null;
+  logoutSeenWhileRestoring = false;
   channel?.close();
   channel = null;
   pendingRequests.clear();

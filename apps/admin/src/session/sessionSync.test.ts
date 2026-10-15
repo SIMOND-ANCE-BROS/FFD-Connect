@@ -1,9 +1,11 @@
 import { vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
+import * as sdk from '../api/generated/sdk.gen';
 import { type SessionSnapshot, useSession } from './sessionStore';
 import {
   PEER_WAIT_MS,
   requestPeerSession,
+  resyncAfterRestore,
   signOut,
   startSessionSync,
   stopSessionSync,
@@ -37,8 +39,14 @@ describe('sessionSync (#669)', () => {
     return peer;
   };
 
+  let logoutCall: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     useSession.getState().clear();
+    logoutCall = vi.spyOn(sdk, 'authControllerLogout').mockResolvedValue({
+      data: { success: true, message: 'ok' },
+      error: undefined,
+    } as never);
   });
 
   afterEach(() => {
@@ -118,7 +126,7 @@ describe('sessionSync (#669)', () => {
     signOut();
 
     expect(useSession.getState().user).toBeNull();
-    await waitFor(() => expect(peer.received).toContainEqual({ type: 'logout' }));
+    await waitFor(() => expect(peer.received).toContainEqual({ type: 'logout', userId: 'a1' }));
   });
 
   it('a logout from another tab clears this one', async () => {
@@ -126,13 +134,105 @@ describe('sessionSync (#669)', () => {
     await startSessionSync();
     const peer = peerTab();
 
-    peer.channel.postMessage({ type: 'logout' });
+    peer.channel.postMessage({ type: 'logout', userId: 'a1' });
 
     await waitFor(() => expect(useSession.getState().user).toBeNull());
     expect(sessionStorage.getItem('ffd-admin-session')).not.toContain('"rt"');
     // Not echoed back.
     await new Promise((r) => setTimeout(r, 30));
     expect(peer.received).toEqual([]);
+  });
+
+  it('signOut revokes the refresh token on the server, once (#680)', async () => {
+    useSession.getState().setSession(admin);
+    await startSessionSync();
+
+    signOut();
+
+    expect(logoutCall).toHaveBeenCalledTimes(1);
+    expect(logoutCall).toHaveBeenCalledWith({ body: { refresh_token: 'rt' } });
+    expect(useSession.getState().user).toBeNull();
+  });
+
+  it('signOut still logs out locally when the server cannot be reached (#680)', async () => {
+    logoutCall.mockRejectedValue(new TypeError('Failed to fetch'));
+    useSession.getState().setSession(admin);
+    await startSessionSync();
+    const peer = peerTab();
+
+    expect(() => signOut()).not.toThrow();
+
+    expect(useSession.getState().user).toBeNull();
+    await waitFor(() => expect(peer.received).toContainEqual({ type: 'logout', userId: 'a1' }));
+  });
+
+  it('a tab logged out by another tab does not call the server itself', async () => {
+    useSession.getState().setSession(admin);
+    await startSessionSync();
+    const peer = peerTab();
+
+    peer.channel.postMessage({ type: 'logout', userId: 'a1' });
+
+    await waitFor(() => expect(useSession.getState().user).toBeNull());
+    expect(logoutCall).not.toHaveBeenCalled();
+  });
+
+  it('a logout of another account leaves this tab logged in', async () => {
+    useSession.getState().setSession(admin);
+    await startSessionSync();
+    const peer = peerTab();
+
+    peer.channel.postMessage({ type: 'logout', userId: 'b2' });
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(useSession.getState().refreshToken).toBe('rt');
+  });
+
+  it('a logout seen while restoring voids the reply that follows', async () => {
+    const channel = new BroadcastChannel('ffd-admin-session');
+    peers.push(channel);
+    channel.onmessage = (event: MessageEvent<{ type?: string; id?: string }>) => {
+      if (event.data.type === 'request') {
+        channel.postMessage({ type: 'logout', userId: 'a1' });
+        channel.postMessage({ type: 'reply', id: event.data.id, session: admin });
+      }
+    };
+
+    await startSessionSync();
+
+    expect(useSession.getState()).toMatchObject({ user: null, restoring: false });
+  });
+
+  it('back/forward cache: takes a rotation made by another tab while frozen', async () => {
+    useSession.getState().setSession(admin);
+    await startSessionSync();
+    peerTab({ ...admin, accessToken: 'at2', refreshToken: 'rt2' });
+
+    const event = new Event('pageshow');
+    Object.defineProperty(event, 'persisted', { value: true });
+    window.dispatchEvent(event);
+
+    await waitFor(() => expect(useSession.getState().refreshToken).toBe('rt2'));
+  });
+
+  it('back/forward cache: ignores a peer of another account', async () => {
+    useSession.getState().setSession(admin);
+    await startSessionSync();
+    peerTab({ ...admin, refreshToken: 'other', user: { ...admin.user, id: 'b2' } });
+
+    await resyncAfterRestore(50);
+
+    expect(useSession.getState().refreshToken).toBe('rt');
+  });
+
+  it('back/forward cache: a session gone from storage sends to the login page', async () => {
+    useSession.getState().setSession(admin);
+    await startSessionSync();
+    sessionStorage.removeItem('ffd-admin-session');
+
+    await resyncAfterRestore(10);
+
+    expect(useSession.getState().user).toBeNull();
   });
 
   it('pushes a token rotation to the other tabs', async () => {
@@ -184,6 +284,7 @@ describe('sessionSync (#669)', () => {
 
   it.each([
     ['not an object', 'logout'],
+    ['a logout without account', { type: 'logout' }],
     ['an unknown type', { type: 'steal' }],
     ['a reply without session', { type: 'reply', id: 'x' }],
     ['an update with a bad user', { type: 'update', session: { ...admin, user: { id: 1 } } }],
