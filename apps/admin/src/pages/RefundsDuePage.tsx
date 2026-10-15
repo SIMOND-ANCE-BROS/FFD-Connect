@@ -1,6 +1,5 @@
 import { Anchor, Badge, Group, Pagination, Paper, Stack, Text } from '@mantine/core';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import dayjs from 'dayjs';
 import { Link } from 'react-router';
 import type { AdminRefundDueDto } from '../api/generated/types.gen';
 import { refundsDueQuery } from '../api/queries';
@@ -15,6 +14,8 @@ import {
   clubLabel,
   clubPath,
   formatAmount,
+  formatParisDateTime,
+  formatParisDay,
   readRefundsDueParams,
   REFUNDS_DUE_FILTERS,
   REFUNDS_DUE_SORT_FIELDS,
@@ -32,8 +33,8 @@ type Refund = AdminRefundDueDto;
 const isSortField = (value: string): value is RefundsDueSortField =>
   REFUNDS_DUE_SORT_FIELDS.some((f) => f === value);
 
-const day = (iso: string) => dayjs(iso).format('DD/MM/YYYY');
-const since = (r: Refund) => dayjs(r.refundOwedAt).format('DD/MM/YYYY HH:mm');
+const day = formatParisDay;
+const since = (r: Refund) => formatParisDateTime(r.refundOwedAt);
 const dancer = (r: Refund) => `${r.dancer.firstName} ${r.dancer.lastName}`;
 const seat = (r: Refund) => (r.seatNumber === null ? '—' : `Place ${r.seatNumber}`);
 const references = (r: Refund) => r.helloAssoCheckoutIntentIds.join(', ');
