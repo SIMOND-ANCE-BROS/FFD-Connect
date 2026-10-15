@@ -15,7 +15,12 @@ import {
 } from "../utils/prisma-selects";
 import { AdminAuditService } from "./admin-audit.service";
 import { diffFields } from "./admin-audit.util";
-import { clubUsage, isClubEmpty, sameClubName } from "./admin-club-usage";
+import {
+  clubUsage,
+  isClubEmpty,
+  organizedByClubOrLabel,
+  sameClubName,
+} from "./admin-club-usage";
 import { AdminClubsQueryService } from "./admin-clubs.query-service";
 import {
   AdminClubDetailDto,
@@ -87,13 +92,15 @@ export class AdminClubsService {
   }
 
   /**
-   * Club.name is copied into User.clubName, License.clubName and
-   * Competition.organizer: a rename rewrites every copy in the same
+   * Club.name is copied into User.clubName, License.clubName and the
+   * Competition.organizer label: a rename rewrites every copy in the same
    * transaction. Users of another club are never touched; legacy members
-   * without clubId are matched on the old name (case-insensitive).
-   * The FFD sync rewrites Competition.organizer on every run, so a club that
-   * organises FFD-synced competitions cannot be renamed here: the rename
-   * would be silently undone and break the HelloAsso lookup by organizer.
+   * without clubId are matched on the old name (case-insensitive). The
+   * competitions rewritten are the club's (organizerClubId, #408) plus the
+   * still unlinked ones carrying its old name.
+   * The FFD sync rewrites Competition.organizer on every run and links the
+   * club by that name, so a club that organises FFD-synced competitions
+   * cannot be renamed here: the rename would be silently undone.
    */
   async update(
     actorId: string,
@@ -121,7 +128,7 @@ export class AdminClubsService {
         if (newName !== undefined) {
           const ffdSynced = await tx.competition.findFirst({
             where: {
-              organizer: sameClubName(current.name),
+              ...organizedByClubOrLabel({ id: clubId, name: current.name }),
               ffdId: { not: null },
             },
             select: idOnlySelect,
@@ -161,8 +168,9 @@ export class AdminClubsService {
             where: { clubName: sameClubName(current.name) },
             data: { clubName: newName },
           });
+          // Display label only: linked rows resolve the club by id (#408).
           await tx.competition.updateMany({
-            where: { organizer: sameClubName(current.name) },
+            where: organizedByClubOrLabel({ id: clubId, name: current.name }),
             data: { organizer: newName },
           });
         }

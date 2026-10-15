@@ -10,7 +10,10 @@ import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../../common/utils/pagination.util";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
-import { isOrganizedByClub } from "../competition-organizer";
+import {
+  isOrganizedByClub,
+  organizedByClubWhere,
+} from "../competition-organizer";
 import {
   enrichCompetitionsForUser,
   mapEventsWithEligibility,
@@ -36,6 +39,8 @@ export const COMPETITION_BASE_SELECT = {
   competitionType: true,
   majorSubType: true,
   organizer: true,
+  // Organising club link (#408): what "organised by my club" is decided on.
+  organizerClubId: true,
   circularUrl: true,
   registrationUrl: true,
   ticketingUrl: true,
@@ -278,7 +283,11 @@ export class CompetitionQueryService {
   }
 
   private async enrichCompetitionsForOrganizer<
-    T extends { id: string; organizer?: string | null },
+    T extends {
+      id: string;
+      organizer?: string | null;
+      organizerClubId?: string | null;
+    },
   >(
     competitions: T[],
     club: { clubId?: string | null; clubName?: string },
@@ -326,7 +335,10 @@ export class CompetitionQueryService {
 
     return competitions.map((comp) => ({
       ...comp,
-      isOrganizedByMyClub: isOrganizedByClub(comp.organizer, [club.clubName]),
+      isOrganizedByMyClub: isOrganizedByClub(comp, {
+        clubId: club.clubId,
+        clubNames: [club.clubName],
+      }),
       clubMembersRegisteredCount: countByCompetitionId[comp.id] ?? 0,
     }));
   }
@@ -395,8 +407,9 @@ export class CompetitionQueryService {
 
   /**
    * Competitions organized by the caller's club (#441), most recent first:
-   * `Competition.organizer` equals the club's name, ignoring case — the name a
-   * CLUB account stamps on the competitions it creates. Includes `layout` so
+   * linked to the caller's club (`organizerClubId`, #408), or — while a row is
+   * unlinked, or for a legacy account without `clubId` — whose `organizer`
+   * label equals the club's name, ignoring case. Includes `layout` so
    * the editor opened from this list doesn't wipe the seat plan on save.
    * Empty for an account without an active CLUB role or without a club.
    */
@@ -407,21 +420,14 @@ export class CompetitionQueryService {
     });
     if (!user || !hasRole(user, UserRole.CLUB)) return [];
 
-    const clubNames = [
-      ...new Set(
-        [user.club?.name, user.clubName]
-          .map((name) => name?.trim())
-          .filter((name): name is string => !!name),
-      ),
-    ];
-    if (clubNames.length === 0) return [];
+    const where = organizedByClubWhere({
+      clubId: user.clubId,
+      clubNames: [user.club?.name, user.clubName],
+    });
+    if (!where) return [];
 
     return this.prisma.competition.findMany({
-      where: {
-        OR: clubNames.map((name) => ({
-          organizer: { equals: name, mode: "insensitive" as const },
-        })),
-      },
+      where,
       select: COMPETITION_BASE_SELECT,
       orderBy: { date: "desc" },
       take: CLUB_COMPETITIONS_LIMIT,

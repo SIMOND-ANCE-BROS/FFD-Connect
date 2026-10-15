@@ -9,6 +9,23 @@ export function sameClubName(name: string): Prisma.StringFilter {
   return { equals: name, mode: "insensitive" };
 }
 
+/**
+ * Competitions organised by `club` (#408): linked to it by id, or — while a
+ * row is unlinked — whose `organizer` label is its name. Linked rows of a
+ * homonym club (same name, other case) are not counted.
+ */
+export function organizedByClubOrLabel(club: {
+  id: string;
+  name: string;
+}): Prisma.CompetitionWhereInput {
+  return {
+    OR: [
+      { organizerClubId: club.id },
+      { organizerClubId: null, organizer: sameClubName(club.name) },
+    ],
+  };
+}
+
 /** What still points at a club. A club can be deleted only when all are 0. */
 export interface ClubUsage {
   memberCount: number;
@@ -33,9 +50,8 @@ export async function clubUsage(
   const clubAccountCount = await db.user.count({
     where: { clubId: club.id, ...withRole(UserRole.CLUB) },
   });
-  // Competition.organizer holds a copy of the club name, not an id.
   const competitionCount = await db.competition.count({
-    where: { organizer: sameClubName(club.name) },
+    where: organizedByClubOrLabel(club),
   });
   const partnershipCount = await db.partnership.count({
     where: { clubId: club.id },

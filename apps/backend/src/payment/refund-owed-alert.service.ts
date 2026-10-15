@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { NotificationType, UserRole } from "@prisma/client";
 import * as Sentry from "@sentry/nestjs";
 import { withActiveRole } from "../auth/roles";
+import { resolveOrganizerClubId } from "../competitions/competition-organizer";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -47,16 +48,26 @@ export class RefundOwedAlertService {
         where: { id: bookingId },
         select: seatBookingRefundAlertSelect,
       });
-      const organizer = booking?.competition.organizer?.trim();
-      if (!booking || !organizer) {
+      if (
+        !booking ||
+        (!booking.competition.organizerClubId &&
+          !booking.competition.organizer?.trim())
+      ) {
         this.unalerted(bookingId, "no_organizer");
         return;
       }
 
-      const club = await this.prisma.club.findFirst({
-        where: { name: { equals: organizer, mode: "insensitive" } },
-        select: clubIdNameSelect,
-      });
+      // Same resolution as the HelloAsso credentials (#408).
+      const clubId = await resolveOrganizerClubId(
+        this.prisma,
+        booking.competition,
+      );
+      const club = clubId
+        ? await this.prisma.club.findUnique({
+            where: { id: clubId },
+            select: clubIdNameSelect,
+          })
+        : null;
       if (!club) {
         this.unalerted(bookingId, "club_not_found");
         return;
@@ -69,7 +80,12 @@ export class RefundOwedAlertService {
             {
               OR: [
                 { clubId: club.id },
-                { clubName: { equals: club.name.trim(), mode: "insensitive" } },
+                // Legacy accounts without clubId only: never a homonym
+                // club's manager (#408).
+                {
+                  clubId: null,
+                  clubName: { equals: club.name.trim(), mode: "insensitive" },
+                },
               ],
             },
           ],

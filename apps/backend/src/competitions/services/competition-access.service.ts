@@ -10,13 +10,21 @@ import {
   competitionOrganizerSelect,
   userRolesClubNameSelect,
 } from "../../utils/prisma-selects";
-import { isOrganizedByClub } from "../competition-organizer";
+import { findClubIdByName, isOrganizedByClub } from "../competition-organizer";
 
 /** The authenticated caller, as set on `req.user` by the JWT strategy. */
 export interface CompetitionActor {
   userId: string;
   role: string;
   roles?: readonly UserRole[];
+}
+
+/** Organising club stamped on a competition created by a CLUB account. */
+export interface NewCompetitionOrganizer {
+  /** Display label (the club's name). */
+  organizer: string;
+  /** Link to the club (#408); null only for an unresolvable legacy account. */
+  organizerClubId: string | null;
 }
 
 /** Access rules on competitions (reads only, never writes). */
@@ -50,13 +58,15 @@ export class CompetitionAccessService {
 
   /**
    * Organizer to stamp on a competition created through the API: `undefined`
-   * for STAFF/ADMIN (unchanged behaviour), the caller's club name for a CLUB
-   * account — so it can edit its competition afterwards and cannot create one
-   * on behalf of another club. A CLUB account without a club is refused.
+   * for STAFF/ADMIN (unchanged behaviour), the caller's club for a CLUB
+   * account — its name as label and its id as link (#408) — so it can edit
+   * its competition afterwards and cannot create one on behalf of another
+   * club. A CLUB account without a club is refused. A legacy account without
+   * `clubId` is linked to the club its name unambiguously designates, if any.
    */
   async organizerForNewCompetition(
     actor: CompetitionActor,
-  ): Promise<string | undefined> {
+  ): Promise<NewCompetitionOrganizer | undefined> {
     if (this.isStaffOrAdmin(actor)) return undefined;
 
     const user = await this.prisma.user.findUnique({
@@ -69,7 +79,9 @@ export class CompetitionAccessService {
         "Seul un compte club rattaché à un club peut créer une compétition",
       );
     }
-    return clubName;
+    const organizerClubId =
+      user.clubId ?? (await findClubIdByName(this.prisma, clubName));
+    return { organizer: clubName, organizerClubId };
   }
 
   private isStaffOrAdmin(actor: CompetitionActor): boolean {
@@ -99,10 +111,10 @@ export class CompetitionAccessService {
     if (
       !user ||
       !hasRole(user, UserRole.CLUB) ||
-      !isOrganizedByClub(competition.organizer, [
-        user.clubName,
-        user.club?.name,
-      ])
+      !isOrganizedByClub(competition, {
+        clubId: user.clubId,
+        clubNames: [user.clubName, user.club?.name],
+      })
     ) {
       throw new ForbiddenException(
         "Réservé aux organisateurs de la compétition",

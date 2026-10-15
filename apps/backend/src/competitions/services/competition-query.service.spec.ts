@@ -189,6 +189,42 @@ describe("CompetitionQueryService", () => {
       expect(result.data[0]).toHaveProperty("clubMembersRegisteredCount");
     });
 
+    it("flags isOrganizedByMyClub on the organiser link, not the label (#408)", async () => {
+      mockRedisService.get.mockResolvedValue(null);
+      mockPrismaService.competition.count.mockResolvedValue(2);
+      mockPrismaService.competition.findMany.mockResolvedValue([
+        // Mine by id, label left stale by a rename.
+        {
+          ...mockCompetition,
+          organizer: "Ancien Nom",
+          organizerClubId: "club-1",
+          events: [],
+        },
+        // Homonym club (case only): same label, other club.
+        {
+          ...mockCompetition,
+          id: "comp-2",
+          organizer: "club test",
+          organizerClubId: "club-2",
+          events: [],
+        },
+      ]);
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: "club-1",
+        clubName: "Club Test",
+      });
+      mockPrismaService.registration.findMany.mockResolvedValue([]);
+
+      const result = await service.findAll("user-club");
+
+      expect(
+        result.data.map(
+          (c: { isOrganizedByMyClub?: boolean }) => c.isOrganizedByMyClub,
+        ),
+      ).toEqual([true, false]);
+    });
+
     it("uses pagination parameters for cache key and query", async () => {
       mockRedisService.get.mockResolvedValue(null);
       mockPrismaService.competition.count.mockResolvedValue(0);
@@ -594,7 +630,7 @@ describe("CompetitionQueryService", () => {
   });
 
   describe("findOrganizedByClub", () => {
-    it("returns the competitions whose organizer is the club, bounded", async () => {
+    it("returns the competitions linked to the club, or unlinked with its name, bounded (#408)", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({
         role: "CLUB",
         extraRoles: [],
@@ -612,7 +648,13 @@ describe("CompetitionQueryService", () => {
       expect(mockPrismaService.competition.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
-            OR: [{ organizer: { equals: "Club Test", mode: "insensitive" } }],
+            OR: [
+              { organizerClubId: "club-1" },
+              {
+                organizerClubId: null,
+                organizer: { equals: "Club Test", mode: "insensitive" },
+              },
+            ],
           },
           orderBy: { date: "desc" },
           take: CLUB_COMPETITIONS_LIMIT,

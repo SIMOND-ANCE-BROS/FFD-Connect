@@ -166,8 +166,15 @@ describe("AdminClubsService", () => {
         where: { clubName: sameName },
         data: { clubName: "Club Z" },
       });
+      // Label of the club's competitions: linked by id, or unlinked by name.
+      const organisedByC1 = {
+        OR: [
+          { organizerClubId: "c1" },
+          { organizerClubId: null, organizer: sameName },
+        ],
+      };
       expect(prisma.competition.updateMany).toHaveBeenCalledWith({
-        where: { organizer: sameName },
+        where: organisedByC1,
         data: { organizer: "Club Z" },
       });
       expect(prisma.club.findFirst).toHaveBeenCalledWith({
@@ -178,7 +185,7 @@ describe("AdminClubsService", () => {
         select: { id: true, name: true },
       });
       expect(prisma.competition.findFirst).toHaveBeenCalledWith({
-        where: { organizer: sameName, ffdId: { not: null } },
+        where: { ...organisedByC1, ffdId: { not: null } },
         select: { id: true },
       });
       expect(audit.record).toHaveBeenCalledWith(prisma, {
