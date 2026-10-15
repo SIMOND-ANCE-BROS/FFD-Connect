@@ -1,7 +1,7 @@
 /**
  * Re-runnable backfill of Competition.organizerClubId (#408).
  *
- * The migration 20261015130000_competition_organizer_club_id already links
+ * The migration 20261015210000_competition_organizer_club_id already links
  * every competition whose `organizer` label names exactly one club. This
  * script does the same for rows created or left unlinked since (a club
  * created after the migration, a homonym clash resolved by an admin…), and

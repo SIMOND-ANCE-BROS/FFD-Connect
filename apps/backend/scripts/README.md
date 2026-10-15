@@ -152,7 +152,7 @@ pnpm exec tsx scripts/recompute-track-mpm.ts       # en local, simulation
 
 `Competition.organizerClubId` désigne le club organisateur (identifiants HelloAsso, notification
 de paiement, droits d'édition) ; `organizer` n'est plus qu'un libellé. La migration
-`20261015130000_competition_organizer_club_id` relie déjà les compétitions dont le libellé
+`20261015210000_competition_organizer_club_id` relie déjà les compétitions dont le libellé
 correspond à **un seul** club (casse et espaces ignorés). Ce script refait la même chose à la
 demande et **liste** ce qu'il ne peut pas relier : aucun club de ce nom (« unmatched ») ou
 plusieurs clubs qui ne diffèrent que par la casse (« ambiguous ») — jamais deviné. Ces lignes
