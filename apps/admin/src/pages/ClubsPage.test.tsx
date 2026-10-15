@@ -18,6 +18,7 @@ const page = {
         memberCount: 12,
         clubAccountCount: 1,
         helloAssoConfigured: true,
+        paymentProvider: 'HELLOASSO',
         createdAt: '2026-01-01T00:00:00.000Z',
       },
       {
@@ -28,6 +29,7 @@ const page = {
         memberCount: 0,
         clubAccountCount: 0,
         helloAssoConfigured: false,
+        paymentProvider: 'HELLOASSO',
         createdAt: '2026-02-01T00:00:00.000Z',
       },
     ],
@@ -59,7 +61,7 @@ describe('ClubsPage', () => {
     userEvent = setupUser();
   });
 
-  it('lists clubs with their counts, HelloAsso badge, mode and status', async () => {
+  it('lists clubs with their counts, payment connector, mode and status', async () => {
     vi.spyOn(sdk, 'adminControllerListClubs').mockResolvedValue(page as never);
     renderPage();
     const rowA = (await screen.findByRole('link', { name: 'Club A' })).closest('tr') as HTMLElement;
@@ -70,6 +72,7 @@ describe('ClubsPage', () => {
     const rowB = screen.getByRole('link', { name: 'Club B' }).closest('tr') as HTMLElement;
     expect(within(rowB).getByText('Désactivé')).toBeInTheDocument();
     expect(within(rowB).queryByText('HelloAsso')).toBeNull();
+    expect(within(rowB).getByText('HelloAsso · non configuré')).toBeInTheDocument();
     expect(screen.getByText('2 clubs')).toBeInTheDocument();
   });
 
