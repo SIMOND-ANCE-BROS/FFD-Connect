@@ -74,7 +74,14 @@ WORKDIR /app/apps/backend
 #   binary is glibc-linked and does NOT run on Alpine/musl, so we install the
 #   system (musl) ffmpeg instead.
 # No pnpm/npm: the entrypoint calls the Prisma CLI binary directly.
-RUN apk add --no-cache ffmpeg
+# The node:22-alpine base still ships npm, npx, corepack and yarn: nothing runs
+# them at runtime, and their bundled deps carried every HIGH the Trivy gate
+# found in the first scan (#486: brace-expansion, pacote, sigstore,
+# ip-address, picomatch inside npm). Removed rather than patched or ignored.
+RUN apk add --no-cache ffmpeg && \
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+      /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+      /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-v*
 
 ENV FFMPEG_PATH=/usr/bin/ffmpeg \
     NODE_ENV=production
