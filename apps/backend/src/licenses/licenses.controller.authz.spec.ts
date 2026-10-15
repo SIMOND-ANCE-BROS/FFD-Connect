@@ -6,6 +6,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { LicenseRenewalService } from "./license-renewal.service";
 import { LicensesController } from "./licenses.controller";
 import { LicensesService } from "./licenses.service";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 
 /**
  * POST /licenses/renewal/:id/approve is gone (#266): renewal decisions are
@@ -39,6 +40,8 @@ describe("LicensesController — legacy routes granting a licence removed", () =
           return true;
         },
       })
+      .overrideGuard(ThrottlerUserGuard)
+      .useValue({ canActivate: () => true })
       .compile();
 
     app = moduleRef.createNestApplication();

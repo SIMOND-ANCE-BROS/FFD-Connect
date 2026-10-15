@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { ThrottleByIp } from "../common/decorators/throttle-by-ip.decorator";
+import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import {
   ApiBearerAuth,
   ApiBody,
@@ -335,7 +336,10 @@ export class AuthController {
   }
 
   @Post("change-password")
-  @UseGuards(JwtAuthGuard, NoImpersonationGuard)
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, ThrottlerUserGuard)
+  // Guessing the current password with a stolen access token: 5 tries/min
+  // per account, whatever the IP (#633).
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Change le mot de passe (utilisateur authentifié)",
