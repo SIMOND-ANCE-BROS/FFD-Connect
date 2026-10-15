@@ -357,12 +357,47 @@ describe("BpmService", () => {
       expect(service.calculateMpm(50, "Samba")).toBe(50);
     });
 
-    it("returns raw BPM when style is unknown, missing, or ambiguous", () => {
+    it("returns 0 (unknown MPM), never the raw BPM, when the style is unknown, missing, or ambiguous (#338)", () => {
       // Federation umbrella categories aren't specific dances → can't normalize.
-      expect(service.calculateMpm(120, "LATIN")).toBe(120);
-      expect(service.calculateMpm(120, "STANDARD")).toBe(120);
-      expect(service.calculateMpm(120, "Unknown")).toBe(120);
-      expect(service.calculateMpm(120)).toBe(120);
+      expect(service.calculateMpm(120, "LATIN")).toBe(0);
+      expect(service.calculateMpm(120, "STANDARD")).toBe(0);
+      expect(service.calculateMpm(120, "Unknown")).toBe(0);
+      expect(service.calculateMpm(120)).toBe(0);
+      expect(service.calculateMpm(120, null)).toBe(0);
+    });
+
+    it("recognises « valse anglaise » as a valse lente (#338)", () => {
+      expect(service.calculateMpm(87, "Valse anglaise")).toBe(29);
+      expect(service.calculateMpm(87, "VALSE ANGLAISE")).toBe(29);
+    });
+
+    it("returns 0 for a negative tempo", () => {
+      expect(service.calculateMpm(-5, "Rumba")).toBe(0);
+    });
+  });
+
+  describe("toMpm (hand-entered tempo)", () => {
+    it("converts a BPM typed as an MPM (inside the dance's BPM range)", () => {
+      expect(service.toMpm(87, "Valse Lente")).toBe(29);
+      expect(service.toMpm(87, "Valse anglaise")).toBe(29);
+      expect(service.toMpm(78, "Valse Lente")).toBe(26);
+      expect(service.toMpm(98, "Valse Lente")).toBe(33);
+      expect(service.toMpm(176, "Jive")).toBe(44);
+      expect(service.toMpm(124, "Paso Doble")).toBe(62);
+    });
+
+    it("keeps a real MPM or any value outside the BPM range", () => {
+      expect(service.toMpm(29, "Valse Lente")).toBe(29);
+      expect(service.toMpm(77, "Valse Lente")).toBe(77);
+      expect(service.toMpm(99, "Valse Lente")).toBe(99);
+      expect(service.toMpm(62, "Paso Doble")).toBe(62);
+      expect(service.toMpm(0, "Rumba")).toBe(0);
+    });
+
+    it("keeps the value when the dance is unknown or missing", () => {
+      expect(service.toMpm(120, "LATIN")).toBe(120);
+      expect(service.toMpm(120)).toBe(120);
+      expect(service.toMpm(120, null)).toBe(120);
     });
   });
 });

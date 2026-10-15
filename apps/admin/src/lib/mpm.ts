@@ -25,20 +25,29 @@ const DANCE_TEMPOS = {
 
 export type DanceKey = keyof typeof DANCE_TEMPOS;
 
-/** Same patterns, same order as the backend's normalizeStyle. */
+/**
+ * Same patterns, same order as the backend's normalizeStyle (first match
+ * wins); pinned by apps/backend/test/fixtures/dance-style-cases.json.
+ */
+const DANCE_STYLE_PATTERNS: ReadonlyArray<readonly [DanceKey, RegExp]> = [
+  ['cha-cha', /cha[\s-]*cha/],
+  ['paso doble', /paso/],
+  ['samba', /samba/],
+  ['jive', /jive/],
+  ['rumba', /rumba/],
+  ['quickstep', /quick\s*-?\s*step/],
+  ['slow fox', /slow\s*-?\s*fox|foxtrot|^fox$/],
+  ['viennoise', /vienn|valse\s*rapide/],
+  ['valse lente', /valse\s*lente|valse\s*anglaise|slow\s*waltz|^waltz$|^valse$/],
+  ['tango', /tango/],
+];
+
 export function normalizeDance(input?: string | null): DanceKey | null {
   if (!input) return null;
   const s = input.toLowerCase().trim();
-  if (/cha[\s-]?cha|chacha/.test(s)) return 'cha-cha';
-  if (/paso/.test(s)) return 'paso doble';
-  if (/samba/.test(s)) return 'samba';
-  if (/jive/.test(s)) return 'jive';
-  if (/rumba/.test(s)) return 'rumba';
-  if (/quick\s?step/.test(s)) return 'quickstep';
-  if (/slow ?fox|foxtrot|^fox$/.test(s)) return 'slow fox';
-  if (/vienn|valse rapide/.test(s)) return 'viennoise';
-  if (/slow ?waltz|valse lente|^waltz$|^valse$/.test(s)) return 'valse lente';
-  if (/tango/.test(s)) return 'tango';
+  for (const [key, pattern] of DANCE_STYLE_PATTERNS) {
+    if (pattern.test(s)) return key;
+  }
   return null;
 }
 
@@ -58,24 +67,31 @@ function normalizeToRange(bpm: number, [min, max]: [number, number]): number {
   return best;
 }
 
-/** Raw BPM → MPM for the dance; the rounded raw BPM when the dance is unknown. */
+/** Raw BPM → MPM for the dance; 0 (unknown MPM) when the dance is unknown. */
 export function calculateMpm(rawBpm: number, style?: string | null): number {
-  if (rawBpm === 0) return 0;
+  if (rawBpm <= 0) return 0;
   const key = normalizeDance(style);
-  if (key === null) return Math.round(rawBpm);
+  if (key === null) return 0;
   const tempo: DanceTempo = DANCE_TEMPOS[key];
   return Math.round(normalizeToRange(rawBpm, tempo.bpmRange) / tempo.beatsPerMeasure);
+}
+
+/** Hand-entered tempo → MPM: a BPM typed as an MPM (in the dance's BPM range) is converted. */
+export function toMpm(tempo: number, style?: string | null): number {
+  const key = normalizeDance(style);
+  if (key === null) return tempo;
+  const { bpmRange, beatsPerMeasure }: DanceTempo = DANCE_TEMPOS[key];
+  if (tempo < bpmRange[0] || tempo > bpmRange[1]) return tempo;
+  return Math.round(tempo / beatsPerMeasure);
 }
 
 /** MPM a PATCH will write, or undefined when it leaves the MPM as it is. */
 export function bpmForPatch(
   rawBpm: number,
   patch: { bpm?: number; style?: string },
+  currentStyle?: string | null,
 ): number | undefined {
-  if (patch.bpm !== undefined) return patch.bpm;
-  if (patch.style && rawBpm > 0) {
-    const mpm = calculateMpm(rawBpm, patch.style);
-    if (mpm > 0) return mpm;
-  }
+  if (patch.bpm !== undefined) return toMpm(patch.bpm, patch.style ?? currentStyle);
+  if (patch.style && rawBpm > 0) return calculateMpm(rawBpm, patch.style);
   return undefined;
 }

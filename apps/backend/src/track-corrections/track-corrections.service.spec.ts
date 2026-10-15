@@ -1275,7 +1275,10 @@ describe("TrackCorrectionsService", () => {
     beforeEach(() => {
       const realTracks = new TracksService(
         prisma as unknown as PrismaService,
-        { calculateMpm: jest.fn().mockReturnValue(0) } as never,
+        {
+          calculateMpm: jest.fn().mockReturnValue(0),
+          toMpm: jest.fn((tempo: number) => tempo),
+        } as never,
         {} as never,
         audit as unknown as AdminAuditService,
       );

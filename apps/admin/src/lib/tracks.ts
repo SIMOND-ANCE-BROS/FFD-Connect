@@ -217,7 +217,7 @@ export function trackPatch(
 
 /** MPM after this PATCH, computed as the server does (TracksService.bpmForPatch). */
 export const resultingBpm = (t: AdminTrackDto, patch: TrackPatch): number =>
-  bpmForPatch(t.rawBpm, patch) ?? t.bpm;
+  bpmForPatch(t.rawBpm, patch, t.style) ?? t.bpm;
 
 /** Before → after of the confirmation, as the server will apply it (status included). */
 export function trackChangePreview(
@@ -235,7 +235,7 @@ export function trackChangePreview(
   if (patch.title !== undefined) set('title', t.title, patch.title);
   if (patch.artist !== undefined) set('artist', t.artist, patch.artist);
   if (patch.style !== undefined) set('style', t.style, patch.style || null);
-  const bpm = bpmForPatch(t.rawBpm, patch);
+  const bpm = bpmForPatch(t.rawBpm, patch, t.style);
   if (bpm !== undefined) set('bpm', t.bpm, bpm);
   if (patch.clashTimecodes !== undefined) {
     set('clashTimecodes', t.clashTimecodes, patch.clashTimecodes);
