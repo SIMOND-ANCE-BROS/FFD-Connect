@@ -56,7 +56,7 @@ export class VolunteerCheckInDto {
 
   @ApiPropertyOptional({
     description:
-      "Instant du scan (ISO 8601) pour un check-in scanné hors ligne puis synchronisé (#24). Ni dans le futur, ni plus vieux que 48 h. Absent = maintenant.",
+      "Instant du scan (ISO 8601) pour un check-in scanné hors ligne puis synchronisé (#24). QR tournant (v3) uniquement, valide à cet instant quel que soit le mode ; ni dans le futur, ni plus vieux que 12 h, et dans les jours de la compétition (Europe/Paris). Gardé à part (`checkInClaimedScanAt`) : l'heure du check-in reste celle du serveur. Absent = maintenant.",
     example: "2026-10-16T09:12:30.000Z",
   })
   @IsOptional()

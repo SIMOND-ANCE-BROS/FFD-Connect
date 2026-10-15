@@ -10,6 +10,8 @@ interface EntryQrCodeProps {
   /** Static content (signed v2 QR, Wallet-compatible) shown without batch. */
   fallbackValue: string;
   size: number;
+  /** Spoken name of the code (screen readers). */
+  spokenLabel?: string;
 }
 
 /**
@@ -17,7 +19,12 @@ interface EntryQrCodeProps {
  * 30-second step when a batch covers now — useless as a screenshot,
  * verifiable offline — else the static QR, as before.
  */
-export function EntryQrCode({ batch, fallbackValue, size }: EntryQrCodeProps) {
+export function EntryQrCode({
+  batch,
+  fallbackValue,
+  size,
+  spokenLabel,
+}: EntryQrCodeProps) {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -30,7 +37,11 @@ export function EntryQrCode({ batch, fallbackValue, size }: EntryQrCodeProps) {
 
   return (
     <View style={styles.container} testID="entry-qr-code">
-      <QRCodeView value={current?.qrData ?? fallbackValue} size={size} />
+      <QRCodeView
+        value={current?.qrData ?? fallbackValue}
+        size={size}
+        spokenLabel={spokenLabel}
+      />
       {current ? (
         <AppText
           variant="caption"

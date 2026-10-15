@@ -172,7 +172,10 @@ describe("Rotating entry QR check-in (e2e)", () => {
     const comp = await prisma.competition.create({
       data: {
         title: "Entry QR Comp",
-        date: new Date(),
+        // Spans yesterday to tomorrow: offline scans stay inside the event
+        // days whatever the hour the suite runs at.
+        date: new Date(Date.now() - 86_400_000),
+        endDate: new Date(Date.now() + 86_400_000),
         location: "Paris",
         status: CompetitionStatus.UPCOMING,
       },
@@ -309,12 +312,39 @@ describe("Rotating entry QR check-in (e2e)", () => {
     ).expect(400);
   });
 
-  it("checks in an offline scan synchronised later, dated at the scan", async () => {
+  it("refuses a backdated replay of a captured token (security review)", async () => {
+    const batch = await fetchBatch();
+    // Token captured 3 h ago, replayed with a scan time that does not match
+    // its step, then with a scan time beyond the 12 h sync window.
+    const captured = pastQr(batch, new Date(Date.now() - 3 * 3_600_000));
+    const wrongClaim = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    const refused = await checkIn(captured, wrongClaim).expect(400);
+    expect(String(refused.body.message)).toContain("QR d'entrée tournant");
+    const tooOld = new Date(Date.now() - 13 * 3_600_000);
+    await checkIn(pastQr(batch, tooOld), tooOld.toISOString()).expect(400);
+    // A static QR can never carry a claimed scan time.
+    const me = await request(server())
+      .get("/api/v1/users/me")
+      .set("Authorization", `Bearer ${participantToken}`)
+      .expect(200);
+    await checkIn(
+      (me.body as { license: { qrCode: string } }).license.qrCode,
+      new Date().toISOString(),
+    ).expect(400);
+    const registration = await prisma.registration.findFirst({
+      where: { userId: participantId },
+      select: { checkedIn: true },
+    });
+    expect(registration?.checkedIn).toBe(false);
+  });
+
+  it("checks in an offline scan synchronised later, keeping the claimed time apart", async () => {
     const batch = await fetchBatch();
     // Scanned offline two hours ago, synchronised now.
     const pastScan = new Date(Date.now() - 2 * 3_600_000);
     const qr = pastQr(batch, pastScan);
     await checkIn(qr).expect(400);
+    const receivedFrom = Date.now();
     const res = await checkIn(qr, pastScan.toISOString()).expect(201);
     expect(res.body.qrVerification).toEqual({
       mode: "enforce",
@@ -324,12 +354,23 @@ describe("Rotating entry QR check-in (e2e)", () => {
     expect(res.body.registrations[0].status).toBe("SUCCESS");
     const registration = await prisma.registration.findFirst({
       where: { userId: participantId },
-      select: { checkedIn: true, checkInTime: true },
+      select: {
+        checkedIn: true,
+        checkInTime: true,
+        checkInClaimedScanAt: true,
+      },
     });
     expect(registration?.checkedIn).toBe(true);
-    expect(registration?.checkInTime?.toISOString()).toBe(
+    // Authoritative time = server receipt; the claim is stored apart.
+    expect(registration?.checkInTime?.getTime()).toBeGreaterThanOrEqual(
+      receivedFrom,
+    );
+    expect(registration?.checkInClaimedScanAt?.toISOString()).toBe(
       pastScan.toISOString(),
     );
+    // Replaying the same token again: single use per licence.
+    const again = await checkIn(qr, pastScan.toISOString()).expect(201);
+    expect(again.body.registrations[0].status).toBe("ALREADY_CHECKED_IN");
   });
 
   it("checks in the QR of the current step (already checked in now)", async () => {

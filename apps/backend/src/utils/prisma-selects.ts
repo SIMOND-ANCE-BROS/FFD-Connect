@@ -223,6 +223,15 @@ export const licenseWalletPassSelect = {
 } as const;
 
 /**
+ * Jours d'une compétition (début, fin éventuelle) : borne l'heure de scan
+ * déclarée par un check-in hors ligne rejoué (#24).
+ */
+export const competitionDaysSelect = {
+  date: true,
+  endDate: true,
+} as const;
+
+/**
  * Champs d'une licence nécessaires au lot de QR d'entrée tournants (#24) :
  * ce que le QR porte (id, numéro, nom du titulaire) et jusqu'à quand il peut
  * être émis. Rien d'autre (minimisation).

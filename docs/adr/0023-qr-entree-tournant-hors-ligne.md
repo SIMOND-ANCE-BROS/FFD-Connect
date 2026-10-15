@@ -37,11 +37,17 @@ Le cahier des charges (doc, § 3.1) évoque « signature RSA256 + régénératio
    - **En ligne** : `LicenseQrService.verify` reconnaît la v3 et la confie à `EntryQrService` ; mêmes modes `off` / `warn` / `enforce` que #168 (STALE refusé en `enforce`, signalé au staff en `warn`) ; la résolution par `lid` de #466 s'applique telle quelle.
    - **Hors ligne** : `GET /licenses/entry-qr/keys` (public : ce sont des clés publiques ; un bénévole n'a pas forcément de compte) publie les clés active et retirées. Le scanner les télécharge à l'ouverture et les garde en cache. Sans réseau, il vérifie localement (`@noble/curves`, Ed25519) : vert = licence authentique et QR frais, avec le nom du titulaire.
 
-4. **Synchronisation** : un scan hors ligne valide est mis dans la file hors ligne existante (#416) et rejoué au retour du réseau avec un champ **`scannedAt`** (ISO 8601, ajouté à `CheckInDto` et `VolunteerCheckInDto`). Le serveur vérifie le QR **à cet instant**, refuse un `scannedAt` futur (au-delà de 2 min de dérive) ou vieux de plus de 48 h, et date le check-in de l'instant du scan. L'inscription et les droits ne sont vérifiés qu'à ce moment-là ; un refus est annoncé au staff.
+4. **Synchronisation** : un scan hors ligne valide est mis dans la file hors ligne existante (#416) et rejoué au retour du réseau avec un champ **`scannedAt`** (ISO 8601, ajouté à `CheckInDto` et `VolunteerCheckInDto`). L'heure étant fournie par le client, elle est **bornée** pour qu'un jeton capturé ne puisse pas être « antidaté » :
+   - `scannedAt` n'est accepté qu'avec un **QR tournant v3**, qui doit être `VALID` **à cet instant** quel que soit le mode (aucune tolérance `warn`, ni `off`) : la déclaration doit donc tomber dans les ±1 pas du jeton ;
+   - ni dans le futur (2 min de dérive), ni plus vieux que **12 h** (durée d'un lot), et **dans les jours de la compétition** (`date` → `endDate`, Europe/Paris) ;
+   - **usage unique par (licence, compétition)** : une licence déjà pointée ne l'est jamais une seconde fois (`ALREADY_CHECKED_IN`, mise à jour conditionnée à `checkedIn = false`) ;
+   - l'instant **déclaré** est stocké à part (`Registration.checkInClaimedScanAt`, colonne nullable ajoutée par migration additive) ; l'heure **qui fait foi** (`checkInTime`) reste l'horloge du serveur à la réception.
+
+   L'inscription et les droits ne sont vérifiés qu'à ce moment-là ; un refus est annoncé au staff.
 
 5. **Configuration** (`ConfigService`) : `ENTRY_QR_SIGNING_KEY` (clé privée Ed25519, PEM PKCS#8, `\n` littéraux acceptés) et `ENTRY_QR_RETIRED_PUBLIC_KEYS` (clés publiques brutes séparées par des virgules, gardées ≥ 12 h après une rotation). Clé absente ou invalide ⇒ fonctionnalité désactivée (404 sur le lot — jamais 503, que l'app interprète comme un backend endormi à réveiller — ; l'app garde le QR statique), le backend démarre. Génération : `openssl genpkey -algorithm ed25519`. La clé privée vit dans Key Vault (`ffd-connect-kv`, comme les autres secrets runtime), jamais dans le dépôt.
 
-6. **Rétrocompatibilité** : payload versionné. Les QR v2 et v1 restent acceptés en ligne comme avant ; le **pass Wallet garde le QR statique v2** (un pass ne se met pas à jour toutes les 30 s). Aucune migration de base.
+6. **Rétrocompatibilité** : payload versionné. Les QR v2 et v1 restent acceptés en ligne comme avant ; le **pass Wallet garde le QR statique v2** (un pass ne se met pas à jour toutes les 30 s). Seule migration : une colonne nullable `checkInClaimedScanAt` (additive, ADR-0017).
 
 ## Alternatives Considered
 
@@ -76,7 +82,7 @@ Le cahier des charges (doc, § 3.1) évoque « signature RSA256 + régénératio
 - Contrôle d'accès **sans réseau** : signature + fraîcheur vérifiées localement, nom du titulaire affiché.
 - Aucun secret sur les scanners : un téléphone de bénévole perdu ne permet de fabriquer aucun QR.
 - Une capture d'écran du QR tournant ne vaut que 90 s.
-- Aucune table, aucune migration ; le lot est dérivé de la licence et de la clé.
+- Aucune table pour les lots : ils sont dérivés de la licence et de la clé (seule une colonne nullable est ajoutée pour l'heure de scan déclarée).
 - Rotation de clé sans coupure (`ENTRY_QR_RETIRED_PUBLIC_KEYS`).
 
 ### Negative
@@ -90,5 +96,5 @@ Le cahier des charges (doc, § 3.1) évoque « signature RSA256 + régénératio
 ### Risks
 
 - **Fuite de la clé privée** : permettrait de forger des QR. Mitigation : Key Vault + identité managée, rotation documentée, clé dédiée à cet usage (séparateur de domaine `ffd-entry-qr`).
-- **`scannedAt` déclaré par le scanner** : un staff pourrait antidater un scan pour valider une capture ancienne. Le staff et les bénévoles sont déjà de confiance pour faire entrer quelqu'un ; la fenêtre est bornée à 48 h et chaque rejeu est journalisé.
+- **`scannedAt` déclaré par le scanner** : un détenteur d'un lien bénévole ou d'un compte staff pourrait antidater un scan pour valider une capture. Bornes ci-dessus (v3 seul, valide à l'instant déclaré, 12 h, jours de la compétition, usage unique, instant déclaré conservé à part et journalisé) : le reste du risque — rejouer une capture de moins de 12 h, le jour de la compétition, pour une licence pas encore pointée — suppose un scanner complice, qui peut de toute façon faire entrer quelqu'un. Un lot de jetons consommés `(licence, pas)` côté serveur serait l'étape suivante si ce risque devait être réduit.
 - **Divergence backend / client du contenu signé** : vecteur de référence commun (`entry-qr-test-keys.mock.ts`, `entryQr.test.ts`) qui casse les deux suites au moindre écart.

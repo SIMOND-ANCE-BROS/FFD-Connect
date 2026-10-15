@@ -7,6 +7,12 @@ import {
 } from "@nestjs/common";
 import * as crypto from "crypto";
 import { Prisma } from "@prisma/client";
+import { parseEntryQr } from "../../licenses/qr/entry-qr";
+import {
+  parisEndOfDay,
+  parisStartOfDay,
+  toLicenseQrExpiry,
+} from "../../licenses/qr/license-qr";
 import {
   LicenseQrCheck,
   LicenseQrService,
@@ -16,6 +22,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import {
   checkInLicenseSelect,
+  competitionDaysSelect,
   competitionPublicResultsSelect,
   idOnlySelect,
   retiredLicenseNumberSelect,
@@ -35,12 +42,33 @@ type CheckInUser = Prisma.UserGetPayload<{ select: typeof userNameSelect }>;
 
 /**
  * A check-in scanned offline (#24) is replayed later with the instant of the
- * scan: the QR (a rotating one lasts ~90 s) is verified as of that instant.
- * Bounded so a replay can only refer to a recent, past scan.
+ * scan it CLAIMS (`scannedAt`): the rotating QR (~90 s) is verified as of
+ * that instant. Because the instant comes from the client, it is bounded so
+ * a captured token cannot be "backdated" into validity:
+ * - rotating QR (v3) only, and it must verify as VALID at that instant in
+ *   every mode (no `warn` leniency);
+ * - in the past (2 min of clock drift), at most 12 h old — the length of a
+ *   token batch — and within the competition's day(s), Europe/Paris;
+ * - single use per (licence, competition): a licence already checked in is
+ *   never checked in again (ALREADY_CHECKED_IN);
+ * - the claimed instant is stored apart (`checkInClaimedScanAt`); the
+ *   authoritative `checkInTime` is the server clock at receipt.
  */
-export const CHECK_IN_SCANNED_AT_MAX_AGE_MS = 48 * 3600 * 1000;
+export const CHECK_IN_SCANNED_AT_MAX_AGE_MS = 12 * 3600 * 1000;
 /** Clock drift tolerated between the scanner and the server. */
 export const CHECK_IN_SCANNED_AT_MAX_SKEW_MS = 2 * 60 * 1000;
+
+export const INVALID_SCANNED_AT_MESSAGE =
+  "Heure de scan invalide : un scan hors ligne doit dater du jour de la compétition et être synchronisé dans les 12 h";
+export const SCANNED_AT_ROTATING_ONLY_MESSAGE =
+  "Heure de scan refusée : seul un QR d'entrée tournant valide peut être synchronisé après un scan hors ligne";
+
+interface ScanInstant {
+  /** Instant the QR is verified at. */
+  verifyAt: Date;
+  /** Client-claimed scan instant of an offline replay, null online. */
+  claimedAt: Date | null;
+}
 
 @Injectable()
 export class CompetitionResultsService {
@@ -144,11 +172,22 @@ export class CompetitionResultsService {
   }
 
   async checkIn(competitionId: string, qrData: string, scannedAt?: string) {
-    const scanInstant = this.resolveScanInstant(competitionId, scannedAt);
+    const scan = await this.resolveScanInstant(
+      competitionId,
+      qrData,
+      scannedAt,
+    );
     // Signature check first (#168): in `enforce` mode an unsigned, forged or
     // expired QR never reaches the lookup; in `warn` mode it goes through but
     // the response carries a warning for the staff screen.
-    const qrCheck = this.licenseQrService.verify(qrData, scanInstant);
+    const qrCheck = this.licenseQrService.verify(qrData, scan.verifyAt);
+    if (scan.claimedAt && qrCheck.status !== "VALID") {
+      // A backdated replay never rides on `warn` leniency (nor on `off`).
+      this.logger.warn(
+        `Offline check-in replay refused for competition ${competitionId}: QR ${qrCheck.status} at the claimed scan time`,
+      );
+      throw new BadRequestException(SCANNED_AT_ROTATING_ONLY_MESSAGE);
+    }
     if (!qrCheck.accepted) {
       this.logger.warn(
         `Check-in refused for competition ${competitionId}: QR ${qrCheck.status}`,
@@ -198,7 +237,8 @@ export class CompetitionResultsService {
 
     const checkInResults = [];
     const regsToUpdate: string[] = [];
-    const now = scanInstant;
+    // Authoritative time: the server clock at receipt, never the claim.
+    const now = new Date();
 
     for (const reg of registrations) {
       if (!reg.feePaid) {
@@ -233,8 +273,14 @@ export class CompetitionResultsService {
     // Perform batch update if there are registrations to check in
     if (regsToUpdate.length > 0) {
       await this.prisma.registration.updateMany({
-        where: { id: { in: regsToUpdate } },
-        data: { checkedIn: true, checkInTime: now },
+        // `checkedIn: false` in the filter: a concurrent replay of the same
+        // token cannot check the licence in twice (single use).
+        where: { id: { in: regsToUpdate }, checkedIn: false },
+        data: {
+          checkedIn: true,
+          checkInTime: now,
+          checkInClaimedScanAt: scan.claimedAt,
+        },
       });
     }
 
@@ -250,12 +296,22 @@ export class CompetitionResultsService {
   }
 
   /**
-   * Instant the QR was scanned: now, or the `scannedAt` of a check-in made
-   * offline and replayed (#24) — never in the future, never older than 48 h.
+   * Instant the QR is verified at: the server clock, or — for an offline
+   * scan replayed later (#24) — the claimed `scannedAt`, within the bounds
+   * documented on CHECK_IN_SCANNED_AT_MAX_AGE_MS.
    */
-  private resolveScanInstant(competitionId: string, scannedAt?: string): Date {
+  private async resolveScanInstant(
+    competitionId: string,
+    qrData: string,
+    scannedAt?: string,
+  ): Promise<ScanInstant> {
     const now = new Date();
-    if (scannedAt === undefined) return now;
+    if (scannedAt === undefined) return { verifyAt: now, claimedAt: null };
+    // Static QRs (v1/v2, Wallet) are valid all day: a claimed time would only
+    // ever widen what they already allow. Only a rotating QR is replayable.
+    if (parseEntryQr(qrData).kind !== "entry") {
+      throw new BadRequestException(SCANNED_AT_ROTATING_ONLY_MESSAGE);
+    }
     const instant = new Date(scannedAt);
     const age = now.getTime() - instant.getTime();
     if (
@@ -263,14 +319,27 @@ export class CompetitionResultsService {
       age < -CHECK_IN_SCANNED_AT_MAX_SKEW_MS ||
       age > CHECK_IN_SCANNED_AT_MAX_AGE_MS
     ) {
-      throw new BadRequestException(
-        "Heure de scan invalide : un scan hors ligne doit être synchronisé dans les 48 h",
-      );
+      throw new BadRequestException(INVALID_SCANNED_AT_MESSAGE);
+    }
+    const claimedAt = age < 0 ? now : instant;
+    const competition = await this.prisma.competition.findUnique({
+      where: { id: competitionId },
+      select: competitionDaysSelect,
+    });
+    if (!competition) {
+      throw new NotFoundException("Compétition non trouvée");
+    }
+    const firstDay = parisStartOfDay(toLicenseQrExpiry(competition.date));
+    const lastDay = parisEndOfDay(
+      toLicenseQrExpiry(competition.endDate ?? competition.date),
+    );
+    if (claimedAt < firstDay || claimedAt >= lastDay) {
+      throw new BadRequestException(INVALID_SCANNED_AT_MESSAGE);
     }
     this.logger.log(
-      `Offline check-in replayed for competition ${competitionId} (scanned ${Math.round(age / 1000)} s ago)`,
+      `Offline check-in replayed for competition ${competitionId} (claimed scan ${Math.round(age / 1000)} s before receipt)`,
     );
-    return age < 0 ? now : instant;
+    return { verifyAt: claimedAt, claimedAt };
   }
 
   /**
