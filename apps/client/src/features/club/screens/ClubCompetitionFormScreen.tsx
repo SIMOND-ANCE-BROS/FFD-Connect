@@ -132,6 +132,8 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
     setNewLayoutHeight,
     newLayoutRotation,
     setNewLayoutRotation,
+    newLayoutPrice,
+    setNewLayoutPrice,
     openLayoutModal,
     updateLayoutItemPosition,
     toggleLayoutItemSeatLock,
@@ -343,6 +345,8 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
               setNewLayoutHeight={setNewLayoutHeight}
               newLayoutRotation={newLayoutRotation}
               setNewLayoutRotation={setNewLayoutRotation}
+              newLayoutPrice={newLayoutPrice}
+              setNewLayoutPrice={setNewLayoutPrice}
               openLayoutModal={openLayoutModal}
               updateLayoutItemPosition={updateLayoutItemPosition}
               toggleLayoutItemSeatLock={toggleLayoutItemSeatLock}
