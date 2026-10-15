@@ -77,27 +77,46 @@ const STYLE_CONFIG: Record<string, StyleConfig> = {
 };
 
 /**
- * Map any synonym/uppercase variant the user or filename may provide to one of
- * the 10 canonical ballroom dances handled by `STYLE_CONFIG`. Returns null for
- * federation categories ("LATIN", "STANDARD") or unknown labels — caller
- * falls back to raw BPM.
+ * Dance recognition patterns, most specific first: the first match wins. A
+ * style that matches none (federation categories "LATIN"/"STANDARD",
+ * "Ambiance", free text) is unknown and gets no MPM.
+ *
+ * Mirrored by apps/client/src/features/player/utils/danceTempo.ts and
+ * apps/admin/src/lib/mpm.ts (same patterns, same order); the three are pinned
+ * by test/fixtures/dance-style-cases.json (#338: the client recognised
+ * « valse anglaise » and the backend did not).
  */
-function normalizeStyle(
+const DANCE_STYLE_PATTERNS: ReadonlyArray<
+  readonly [keyof typeof STYLE_CONFIG, RegExp]
+> = [
+  ["cha-cha", /cha[\s-]*cha/],
+  ["paso doble", /paso/],
+  ["samba", /samba/],
+  ["jive", /jive/],
+  ["rumba", /rumba/],
+  ["quickstep", /quick\s*-?\s*step/],
+  ["slow fox", /slow\s*-?\s*fox|foxtrot|^fox$/],
+  ["viennoise", /vienn|valse\s*rapide/],
+  [
+    "valse lente",
+    /valse\s*lente|valse\s*anglaise|slow\s*waltz|^waltz$|^valse$/,
+  ],
+  ["tango", /tango/],
+];
+
+/**
+ * Map any synonym/uppercase variant the user or filename may provide to one of
+ * the 10 canonical ballroom dances handled by `STYLE_CONFIG`, or null when the
+ * dance is unknown.
+ */
+export function normalizeStyle(
   input?: string | null,
 ): keyof typeof STYLE_CONFIG | null {
   if (!input) return null;
   const s = input.toLowerCase().trim();
-  // Order matters: more specific patterns first.
-  if (/cha[\s-]?cha|chacha/.test(s)) return "cha-cha";
-  if (/paso/.test(s)) return "paso doble";
-  if (/samba/.test(s)) return "samba";
-  if (/jive/.test(s)) return "jive";
-  if (/rumba/.test(s)) return "rumba";
-  if (/quick\s?step/.test(s)) return "quickstep";
-  if (/slow ?fox|foxtrot|^fox$/.test(s)) return "slow fox";
-  if (/vienn|valse rapide/.test(s)) return "viennoise";
-  if (/slow ?waltz|valse lente|^waltz$|^valse$/.test(s)) return "valse lente";
-  if (/tango/.test(s)) return "tango";
+  for (const [key, pattern] of DANCE_STYLE_PATTERNS) {
+    if (pattern.test(s)) return key;
+  }
   return null;
 }
 
@@ -245,17 +264,32 @@ export class BpmService {
    * recalant le BPM dans la plage attendue, puis divise par le nombre de
    * temps par mesure de la danse.
    *
-   * Retourne le BPM brut si le style est inconnu (catégorie LATIN/STANDARD
-   * sans danse précise, ou label non reconnu).
+   * Retourne 0 (« MPM inconnu ») si le style est inconnu (catégorie
+   * LATIN/STANDARD sans danse précise, Ambiance, label non reconnu) : un BPM
+   * brut présenté comme MPM écartait le morceau du mode compétition (#338).
    */
-  calculateMpm(rawBpm: number, style?: string): number {
-    if (rawBpm === 0) return 0;
+  calculateMpm(rawBpm: number, style?: string | null): number {
+    if (rawBpm <= 0) return 0;
     const key = normalizeStyle(style);
-    if (key == null) {
-      return Math.round(rawBpm);
-    }
+    if (key == null) return 0;
     const config = STYLE_CONFIG[key];
     const normalized = normalizeToRange(rawBpm, config.bpmRange);
     return Math.round(normalized / config.beatsPerMeasure);
+  }
+
+  /**
+   * Tempo saisi à la main (admin, import) ramené en MPM : une valeur dans la
+   * plage de BPM de la danse est un BPM tapé à la place d'un MPM (ex. 87 pour
+   * une valse lente) et est convertie (÷ temps par mesure). Les plages BPM et
+   * MPM d'une même danse ne se chevauchent pas. Toute autre valeur, ou une
+   * danse inconnue, est gardée telle quelle.
+   */
+  toMpm(tempo: number, style?: string | null): number {
+    const key = normalizeStyle(style);
+    if (key == null) return tempo;
+    const { bpmRange, beatsPerMeasure } = STYLE_CONFIG[key];
+    const [min, max] = bpmRange;
+    if (tempo < min || tempo > max) return tempo;
+    return Math.round(tempo / beatsPerMeasure);
   }
 }

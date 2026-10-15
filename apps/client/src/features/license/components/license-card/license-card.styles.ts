@@ -70,6 +70,10 @@ export const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
+  wdsfLogoImage: {
+    width: 44,
+    height: 44,
+  },
   titleContainer: {
     alignItems: "center",
     paddingHorizontal: 48,
@@ -167,6 +171,15 @@ export const styles = StyleSheet.create({
   photo: {
     width: "100%",
     height: "100%",
+  },
+  photoFallback: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  photoInitials: {
+    letterSpacing: 1,
   },
   qrThumbnail: {
     padding: 2,

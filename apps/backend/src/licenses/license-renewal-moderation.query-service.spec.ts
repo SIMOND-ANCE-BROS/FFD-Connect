@@ -10,6 +10,7 @@ import {
 import { Readable } from "stream";
 import { AdminAuditService } from "../admin/admin-audit.service";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
+import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { LicenseRenewalModerationQueryService } from "./license-renewal-moderation.query-service";
@@ -25,8 +26,10 @@ describe("LicenseRenewalModerationQueryService", () => {
     },
     licenseRenewalDocument: { findFirst: jest.fn() },
     adminAuditLog: { findMany: jest.fn() },
+    $transaction: jest.fn(),
   };
   const audit = { recordOp: jest.fn() };
+  const healthAccess = { recordOp: jest.fn() };
   const blob = {
     isEnabled: jest.fn(),
     downloadStream: jest.fn(),
@@ -36,6 +39,7 @@ describe("LicenseRenewalModerationQueryService", () => {
   const service = new LicenseRenewalModerationQueryService(
     prisma as unknown as PrismaService,
     audit as unknown as AdminAuditService,
+    healthAccess as unknown as HealthDataAccessLogService,
     blob as unknown as BlobStorageService,
     breaker as unknown as CircuitBreakerService,
   );
@@ -73,6 +77,10 @@ describe("LicenseRenewalModerationQueryService", () => {
     prisma.licenseRenewalRequest.findMany.mockResolvedValue([]);
     prisma.adminAuditLog.findMany.mockResolvedValue([]);
     audit.recordOp.mockResolvedValue({ id: "a1" });
+    healthAccess.recordOp.mockResolvedValue({ count: 1 });
+    prisma.$transaction.mockImplementation((ops: Promise<unknown>[]) =>
+      Promise.all(ops),
+    );
     blob.isEnabled.mockReturnValue(true);
     blob.getUploadsContainer.mockReturnValue("uploads");
     breaker.fire.mockImplementation(
@@ -199,6 +207,20 @@ describe("LicenseRenewalModerationQueryService", () => {
         targetType: "LICENSE_RENEWAL",
         targetId: "req-1",
       });
+      // Health-data access journal (#63): subject, ids, route — no content.
+      expect(healthAccess.recordOp).toHaveBeenCalledWith([
+        {
+          subjectUserId: "user-1",
+          actorUserId: "admin-1",
+          actorRole: "ADMIN",
+          action: "READ",
+          resourceType: "LICENSE_RENEWAL_REQUEST",
+          resourceId: "req-1",
+          route: "GET /admin/license-renewals/:id",
+        },
+      ]);
+      // Both traces in one transaction.
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(detail.documents[0].ocr).toEqual({
         isApte: true,
         date: "2027-01-01",
@@ -224,6 +246,19 @@ describe("LicenseRenewalModerationQueryService", () => {
       expect(detail.documents[0].ocr).toBeNull();
       expect(detail.renewsUntil).toBeNull();
       expect(audit.recordOp).not.toHaveBeenCalled();
+      expect(healthAccess.recordOp).not.toHaveBeenCalled();
+    });
+
+    it("shows nothing when the health-data access row cannot be written", async () => {
+      prisma.licenseRenewalRequest.findUnique.mockResolvedValue(
+        row(LicenseRenewalStatus.PENDING),
+      );
+      healthAccess.recordOp.mockRejectedValue(new Error("db down"));
+      await expect(service.detail("admin-1", "req-1")).rejects.toThrow(
+        "db down",
+      );
+      // The detail (and its OCR hints) is never assembled.
+      expect(prisma.licenseRenewalRequest.findMany).not.toHaveBeenCalled();
     });
   });
 
@@ -324,10 +359,17 @@ describe("LicenseRenewalModerationQueryService", () => {
   });
 
   describe("openDocument", () => {
-    const doc = (o: { status?: LicenseRenewalStatus; filePath?: string }) => ({
-      type: LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
+    const doc = (o: {
+      status?: LicenseRenewalStatus;
+      filePath?: string;
+      type?: LicenseRenewalDocumentType;
+    }) => ({
+      type: o.type ?? LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
       filePath: o.filePath ?? "document-1.PDF",
-      request: { status: o.status ?? LicenseRenewalStatus.PENDING },
+      request: {
+        status: o.status ?? LicenseRenewalStatus.PENDING,
+        userId: "user-1",
+      },
     });
 
     it("404 for a document of another request", async () => {
@@ -399,6 +441,41 @@ describe("LicenseRenewalModerationQueryService", () => {
       expect(audit.recordOp.mock.invocationCallOrder[0]).toBeLessThan(
         blob.downloadStream.mock.invocationCallOrder[0],
       );
+      expect(healthAccess.recordOp).toHaveBeenCalledWith([
+        {
+          subjectUserId: "user-1",
+          actorUserId: "admin-1",
+          actorRole: "ADMIN",
+          action: "DOWNLOAD",
+          resourceType: "MEDICAL_CERTIFICATE",
+          resourceId: "doc-1",
+          route: "GET /admin/license-renewals/:id/documents/:docId/file",
+        },
+      ]);
+      expect(prisma.$transaction.mock.invocationCallOrder[0]).toBeLessThan(
+        blob.downloadStream.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("a licence certificate is not health data: audit row only", async () => {
+      prisma.licenseRenewalDocument.findFirst.mockResolvedValue(
+        doc({ type: LicenseRenewalDocumentType.LICENSE_CERTIFICATE }),
+      );
+      blob.downloadStream.mockResolvedValue(Readable.from([]));
+
+      await service.openDocument("admin-1", "req-1", "doc-1");
+
+      expect(audit.recordOp).toHaveBeenCalledTimes(1);
+      expect(healthAccess.recordOp).not.toHaveBeenCalled();
+    });
+
+    it("no file served when the health-data access row cannot be written", async () => {
+      prisma.licenseRenewalDocument.findFirst.mockResolvedValue(doc({}));
+      healthAccess.recordOp.mockRejectedValue(new Error("db down"));
+      await expect(
+        service.openDocument("admin-1", "req-1", "doc-1"),
+      ).rejects.toThrow("db down");
+      expect(blob.downloadStream).not.toHaveBeenCalled();
     });
 
     it("unknown extension → application/octet-stream", async () => {

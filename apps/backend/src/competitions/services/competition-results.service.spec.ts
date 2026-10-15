@@ -280,12 +280,12 @@ describe("CompetitionResultsService", () => {
     const validToken = (overrides: Record<string, unknown> = {}) => ({
       id: "vt-1",
       competitionId: "c1",
-      name: "Bénévole",
+      name: "Jeanne Martin",
       expiresAt: new Date(Date.now() + 3_600_000),
       ...overrides,
     });
 
-    it("checks in with a token bound to the requested competition, without logging the token", async () => {
+    it("checks in with a token bound to the requested competition, without logging the token or the link name", async () => {
       const logSpy = jest
         .spyOn(service["logger"], "log")
         .mockImplementation(() => undefined);
@@ -305,6 +305,10 @@ describe("CompetitionResultsService", () => {
       expect(checkInSpy).toHaveBeenCalledWith("c1", "u1");
       const logged = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
       expect(logged).not.toContain(TOKEN.slice(0, 7));
+      // The link's name may be a person's (RGPD, #529): only its id is logged.
+      expect(logged).not.toContain("Jeanne");
+      expect(logged).not.toContain("Martin");
+      expect(logged).toContain("vt-1");
       logSpy.mockRestore();
       checkInSpy.mockRestore();
     });

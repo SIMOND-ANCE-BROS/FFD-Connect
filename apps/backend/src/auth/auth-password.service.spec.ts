@@ -116,6 +116,26 @@ describe("AuthPasswordService", () => {
       expect(storedToken).not.toBe(sentToken);
     });
 
+    it.each([
+      ["open breaker", new Error("Service email is temporarily unavailable")],
+      ["timeout", new Error("[Timeout] resend:password-reset timed out")],
+    ])(
+      "keeps the generic answer when the mail fails (%s, #464)",
+      async (_case, failure) => {
+        mockPrismaService.user.findUnique.mockResolvedValue({
+          id: "u1",
+          email: "u@test.com",
+        });
+        mockPrismaService.passwordResetToken.updateMany.mockResolvedValue({});
+        mockPrismaService.passwordResetToken.create.mockResolvedValue({});
+        mockEmailService.sendPasswordResetEmail.mockRejectedValueOnce(failure);
+
+        await expect(service.forgotPassword("u@test.com")).resolves.toEqual({
+          success: true,
+        });
+      },
+    );
+
     describe("address typed with another casing or spaces (#465)", () => {
       const target = (id: string, email: string) => ({
         id,

@@ -68,6 +68,8 @@ export interface AuthConfig {
   /** Account handed to the store reviewers (#212): no usage measurement (lot 5). */
   isStoreReview?: boolean;
   username?: string;
+  /** Opaque internal user id: the only identifier sent to Sentry (#593). */
+  userId?: string;
   clubName?: string;
   biometricsEnabled?: boolean;
   licensePhotoUri?: string;
@@ -176,6 +178,7 @@ interface ApiErrorData {
 }
 
 interface LoginResponseUser {
+  id: string;
   role: UserRole;
   roles?: UserRole[];
   clubName?: string;
@@ -392,10 +395,11 @@ export const AuthService = {
             ? currentConfig.isStoreReview
             : false,
         username: user.email,
+        userId: user.id,
         lastLoginDate: new Date().toISOString(),
       };
       await AuthService.saveAuthConfig(newConfig);
-      logger.info(`User logged in: ${username} (Role: ${user.role})`);
+      logger.info(`User logged in (Role: ${user.role})`);
       // Fire-and-forget: a push registration must never delay or fail a
       // login. The module swallows its own errors and is a no-op on builds
       // without Firebase (plugins are gated per variant in app.config.js).
@@ -681,6 +685,7 @@ export const AuthService = {
         mainRole: undefined,
         isGuest: false,
         username: undefined,
+        userId: undefined,
         impersonating: undefined,
         impersonatedName: undefined,
         // Space memory: the next login of this account (password or

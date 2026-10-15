@@ -312,10 +312,13 @@ export const notificationPreferenceExportSelect = {
 
 /**
  * Sélecteur pour la purge des documents de renouvellement de licence à la
- * suppression de compte (RGPD art. 17) : seule la référence du fichier
- * (nom de blob, ou chemin disque historique) est lue.
+ * suppression de compte (RGPD art. 17) : la référence du fichier (nom de
+ * blob, ou chemin disque historique), plus l'id et le type pour tracer la
+ * suppression des certificats médicaux (#63). Jamais `ocrData`.
  */
 export const licenseRenewalDocumentFileSelect = {
+  id: true,
+  type: true,
   filePath: true,
 } as const;
 
@@ -412,6 +415,8 @@ export const licenseRenewalRequestResponseSelect = {
  * référence de stockage (`filePath`) et l'échéance de purge restent internes.
  */
 export const licenseRenewalDocumentExportSelect = {
+  // Not exported: names the document in the health-data access journal (#63).
+  id: true,
   type: true,
   ocrData: true,
   createdAt: true,
@@ -518,6 +523,12 @@ export const seatBookingHoldSelect = {
 /** Checkout (#428) : place occupée par une réservation active. */
 export const seatBookingSeatIndexSelect = { seatIndex: true } as const;
 
+/** Checkout (#455) : place et échéance d'une réservation laissée expirer (délai avant de la reprendre). */
+export const seatBookingLapseSelect = {
+  seatIndex: true,
+  expiresAt: true,
+} as const;
+
 /** Checkout (#428) : créneau de réservation en attente (plafond de 4). */
 export const seatBookingPendingSlotSelect = { pendingSlot: true } as const;
 
@@ -616,10 +627,13 @@ export const refreshTokenExportSelect = {
   revokedAt: true,
 } as const;
 
-/** Dépôt d'un document : statut de la demande + fichiers déjà déposés. */
+/**
+ * Dépôt d'un document : statut de la demande + fichiers déjà déposés (l'id
+ * trace la suppression d'un certificat médical remplacé, #63).
+ */
 export const licenseRenewalUploadTargetSelect = {
   status: true,
-  documents: { select: { type: true, filePath: true } },
+  documents: { select: { id: true, type: true, filePath: true } },
 } as const;
 
 /**
@@ -636,6 +650,9 @@ export const userLicenseValidUntilSelect = {
   license: { select: { validUntil: true } },
 } as const;
 
+/** Club identity only (id + name). */
+export const clubIdNameSelect = { id: true, name: true } as const;
+
 /** Approbation : de quoi renouveler la licence, sans le reste du profil. */
 export const licenseRenewalApprovalTargetSelect = {
   status: true,
@@ -643,8 +660,11 @@ export const licenseRenewalApprovalTargetSelect = {
   documents: { select: { type: true, ocrData: true } },
   user: {
     select: {
-      category: true,
+      // Category and club of a licence created by the approval come from the
+      // holder's real profile, never invented (#282).
+      ...userDisciplineSelect,
       clubName: true,
+      club: { select: clubIdNameSelect },
       // `id`: the number a renewal replaces is retired against it (#466).
       license: { select: { id: true, number: true, validUntil: true } },
     },
@@ -659,6 +679,8 @@ export const healthDataPurgeDueSelect = {
   id: true,
   filePath: true,
   requestId: true,
+  // Whose certificate is purged, for the health-data access journal (#63).
+  request: { select: { userId: true } },
 } as const;
 
 /** Sélecteur minimal : identifiant seul (destinataires d'une notification…). */
@@ -760,11 +782,14 @@ export const licenseRenewalHistorySelect = {
   reviewedAt: true,
 } as const;
 
-/** Fichier d'un document à servir à l'administrateur, et l'état de sa demande. */
+/**
+ * Fichier d'un document à servir à l'administrateur, l'état de sa demande et
+ * son titulaire (journal des accès aux données de santé, #63).
+ */
 export const licenseRenewalDocumentFileTargetSelect = {
   type: true,
   filePath: true,
-  request: { select: { status: true } },
+  request: { select: { status: true, userId: true } },
 } as const;
 
 /**
@@ -1002,6 +1027,22 @@ export const adminAuditLogSelect = {
   actor: { select: userNameSelect },
 } as const;
 
+/**
+ * Journal des accès aux données de santé (#63) : identifiants seulement, aucun
+ * nom joint.
+ */
+export const healthDataAccessLogSelect = {
+  id: true,
+  subjectUserId: true,
+  actorUserId: true,
+  actorRole: true,
+  action: true,
+  resourceType: true,
+  resourceId: true,
+  route: true,
+  createdAt: true,
+} as const;
+
 /** Back-office: club options for selects (id + name only). */
 export const adminClubOptionSelect = { id: true, name: true } as const;
 
@@ -1147,9 +1188,6 @@ export const clubHelloAssoStatusSelect = {
   helloAssoOrgSlug: true,
 } as const;
 
-/** Club identity only (id + name). */
-export const clubIdNameSelect = { id: true, name: true } as const;
-
 /** Back-office club page: one member row. */
 export const adminClubMemberSelect = {
   id: true,
@@ -1219,12 +1257,14 @@ export const volunteerTokenIssuedSelect = {
   createdAt: true,
 } as const;
 
-/** Volunteer check-in link validation: scope and expiry, never the hash. */
+/**
+ * Volunteer check-in link validation: scope and expiry, never the hash — nor
+ * the link's name, which may be a person's and must not reach the logs (#529).
+ */
 export const volunteerTokenAuthSelect = {
   id: true,
   competitionId: true,
   expiresAt: true,
-  name: true,
 } as const;
 
 /**

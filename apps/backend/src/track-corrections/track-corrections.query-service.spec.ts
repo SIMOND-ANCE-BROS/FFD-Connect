@@ -274,10 +274,11 @@ describe("TrackCorrectionsQueryService", () => {
 
     it("danse seule : MPM recalculé depuis le BPM brut (recalcul visible pour l'admin)", async () => {
       const dto = await listOne({ proposedStyle: "Rumba" });
-      expect(tracks.bpmForPatch).toHaveBeenCalledWith(120, {
-        bpm: undefined,
-        style: "Rumba",
-      });
+      expect(tracks.bpmForPatch).toHaveBeenCalledWith(
+        120,
+        { bpm: undefined, style: "Rumba" },
+        adminRow.track.style,
+      );
       expect(dto.resultingBpm).toBe(60);
       expect(dto.track.bpm).toBe(60);
     });

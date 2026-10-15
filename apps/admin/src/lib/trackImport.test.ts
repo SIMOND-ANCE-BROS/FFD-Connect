@@ -298,8 +298,9 @@ describe('dance change in the table', () => {
       style: 'Rumba',
       mpm: 25,
     });
+    // No dance: no MPM, never the raw BPM (#338).
     expect(withStyle(row({ style: 'Samba', rawBpm: 123.6, mpm: 62 }), '')).toMatchObject({
-      mpm: 124,
+      mpm: '',
     });
   });
 

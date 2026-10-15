@@ -9,6 +9,11 @@ import {
   LicenseRenewalStatus,
   Prisma,
 } from "@prisma/client";
+import {
+  HEALTH_DATA_ACCESS_ROUTES,
+  type HealthDataAccessActor,
+} from "../health-data-access/dto/health-data-access-log.dto";
+import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BlobStorageService } from "../storage/blob-storage.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
@@ -38,6 +43,7 @@ export class LicenseRenewalService {
     private blobStorage: BlobStorageService,
     private renewalDocumentFiles: RenewalDocumentFileCleaner,
     private renewalNotifications: LicenseRenewalNotificationService,
+    private healthAccess: HealthDataAccessLogService,
   ) {}
 
   /**
@@ -105,6 +111,11 @@ export class LicenseRenewalService {
    * Le fichier est reçu en mémoire (buffer) : l'OCR lit directement les octets,
    * puis le document est archivé dans Azure Blob Storage (backend sans état). La
    * référence blob (`blobName`) est persistée dans le champ `filePath`.
+   *
+   * Un certificat médical remplacé est supprimé : chaque suppression est
+   * inscrite au journal des accès aux données de santé (#63), dans la même
+   * transaction, au nom de `actor` (le licencié, ou l'intervenant d'un accès
+   * support qui dépose à sa place).
    */
   async uploadRenewalDocument(
     userId: string,
@@ -112,6 +123,11 @@ export class LicenseRenewalService {
     type: LicenseRenewalDocumentType,
     fileBuffer: Buffer,
     blobName: string,
+    actor: HealthDataAccessActor = {
+      actorUserId: userId,
+      actorRole: "OWNER",
+      route: HEALTH_DATA_ACCESS_ROUTES.renewalDocumentUpload,
+    },
   ) {
     const request = await this.prisma.licenseRenewalRequest.findFirst({
       where: { id: requestId, userId },
@@ -172,6 +188,20 @@ export class LicenseRenewalService {
         await tx.licenseRenewalDocument.deleteMany({
           where: { requestId, type },
         });
+        if (type === LicenseRenewalDocumentType.MEDICAL_CERTIFICATE) {
+          await this.healthAccess.recordInTransaction(
+            tx,
+            current.documents
+              .filter((d) => d.type === type)
+              .map((d) => ({
+                ...actor,
+                subjectUserId: userId,
+                action: "DELETE" as const,
+                resourceType: "MEDICAL_CERTIFICATE" as const,
+                resourceId: d.id,
+              })),
+          );
+        }
         await tx.licenseRenewalDocument.create({
           data: {
             requestId,

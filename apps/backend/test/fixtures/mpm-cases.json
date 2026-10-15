@@ -16,9 +16,11 @@
   { "rawBpm": 169.64, "style": "Jive", "mpm": 42 },
   { "rawBpm": 87.3, "style": "Valse Lente", "mpm": 29 },
   { "rawBpm": 123.6, "style": "Paso Doble", "mpm": 62 },
-  { "rawBpm": 120, "style": "Ambiance", "mpm": 120 },
-  { "rawBpm": 120, "style": null, "mpm": 120 },
-  { "rawBpm": 123.6, "style": null, "mpm": 124 },
-  { "rawBpm": 120, "style": "LATIN", "mpm": 120 },
+  { "rawBpm": 120, "style": "Ambiance", "mpm": 0 },
+  { "rawBpm": 120, "style": null, "mpm": 0 },
+  { "rawBpm": 123.6, "style": null, "mpm": 0 },
+  { "rawBpm": 120, "style": "LATIN", "mpm": 0 },
+  { "rawBpm": 87, "style": "Valse anglaise", "mpm": 29 },
+  { "rawBpm": 116, "style": "Slow-fox", "mpm": 29 },
   { "rawBpm": 0, "style": "Rumba", "mpm": 0 }
 ]

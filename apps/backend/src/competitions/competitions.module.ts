@@ -18,6 +18,7 @@ import { RegistrationNotificationService } from "./services/registration-notific
 import { CompetitionEventNotificationService } from "./services/competition-event-notification.service";
 import { CompetitionEventsDeductionService } from "./services/competition-events-deduction.service";
 import { CompetitionSyncService } from "./services/competition-sync.service";
+import { ffdSyncQueueOptions } from "./sync-queue.config";
 import { SyncProcessor } from "./sync.processor";
 
 @Module({
@@ -32,15 +33,7 @@ import { SyncProcessor } from "./sync.processor";
       }),
       inject: [ConfigService],
     }),
-    BullModule.registerQueue({
-      name: "ffd-sync",
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: { type: "exponential", delay: 5000 },
-        removeOnComplete: { count: 10 },
-        removeOnFail: { count: 50 },
-      },
-    }),
+    BullModule.registerQueue(ffdSyncQueueOptions),
   ],
   controllers: [CompetitionsController],
   providers: [

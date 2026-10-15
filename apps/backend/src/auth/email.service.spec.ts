@@ -1,8 +1,12 @@
-import { Logger } from "@nestjs/common";
+import { Logger, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
 import { CircuitBreakerService } from "../common/circuit-breaker/circuit-breaker.service";
-import { EMAIL_SEND_TIMEOUT_MS, EmailService } from "./email.service";
+import {
+  EMAIL_SEND_TIMEOUT_MS,
+  EmailSendError,
+  EmailService,
+} from "./email.service";
 
 const mockSend = jest.fn();
 jest.mock("resend", () => ({
@@ -180,6 +184,100 @@ describe("EmailService", () => {
       await expect(
         service.sendPasswordResetEmail("u@test.com", "tok"),
       ).rejects.toThrow("Network error");
+    });
+
+    // #464: every Resend call goes through the `email` breaker + withTimeout.
+    describe.each([
+      [
+        "password reset",
+        (svc: EmailService) => svc.sendPasswordResetEmail("u@test.com", "tok"),
+      ],
+      [
+        "invitation",
+        (svc: EmailService) =>
+          svc.sendInvitationEmail("c@x.fr", "tok", "Jo", "CLUB"),
+      ],
+      [
+        "email-changed notice",
+        (svc: EmailService) => svc.sendEmailChangedNotice("old@x.fr", "Jo"),
+      ],
+    ])("%s through the email circuit breaker", (_name, sendOne) => {
+      it("is bounded by the send timeout", async () => {
+        jest.useFakeTimers();
+        try {
+          mockSend.mockReturnValue(new Promise(() => undefined));
+          const sent = sendOne(service);
+          const assertion = expect(sent).rejects.toThrow(/timed out/);
+          await jest.advanceTimersByTimeAsync(EMAIL_SEND_TIMEOUT_MS + 1);
+          await assertion;
+        } finally {
+          jest.useRealTimers();
+        }
+      });
+
+      it("fails fast without calling Resend once the breaker is open", async () => {
+        mockSend.mockResolvedValue({
+          data: null,
+          error: {
+            message: "down",
+            statusCode: 500,
+            name: "internal_server_error",
+          },
+        });
+        for (let i = 0; i < 6; i++) {
+          await sendOne(service).catch(() => undefined);
+        }
+        mockSend.mockClear();
+
+        await expect(sendOne(service)).rejects.toBeInstanceOf(
+          ServiceUnavailableException,
+        );
+        expect(mockSend).not.toHaveBeenCalled();
+      });
+
+      it("does not open the breaker on refused messages (4xx, #437)", async () => {
+        mockSend.mockResolvedValue({
+          data: null,
+          error: {
+            message: "bad to",
+            statusCode: 422,
+            name: "validation_error",
+          },
+        });
+        for (let i = 0; i < 10; i++) {
+          await expect(sendOne(service)).rejects.toBeInstanceOf(EmailSendError);
+        }
+        mockSend.mockResolvedValue({ data: { id: "m" }, error: null });
+
+        await expect(sendOne(service)).resolves.toBeUndefined();
+      });
+    });
+
+    it("a password-reset flood does not block invitations or notices (own breaker)", async () => {
+      mockSend.mockResolvedValue({
+        data: null,
+        error: {
+          message: "slow down",
+          statusCode: 429,
+          name: "rate_limit_exceeded",
+        },
+      });
+      for (let i = 0; i < 6; i++) {
+        await service
+          .sendPasswordResetEmail("u@test.com", "tok")
+          .catch(() => undefined);
+      }
+      await expect(
+        service.sendPasswordResetEmail("u@test.com", "tok"),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+
+      mockSend.mockResolvedValue({ data: { id: "m" }, error: null });
+      await expect(
+        service.sendInvitationEmail("c@x.fr", "tok", "Jo", "CLUB"),
+      ).resolves.toBeUndefined();
+      await expect(
+        service.sendEmailChangedNotice("old@x.fr", "Jo"),
+      ).resolves.toBeUndefined();
     });
 
     describe("sendInvitationEmail", () => {

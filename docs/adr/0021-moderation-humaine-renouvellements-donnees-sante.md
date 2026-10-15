@@ -65,6 +65,7 @@ C'est la **première fois** qu'un écran d'administration donne accès au conten
 - Chaque licence renouvelée l'est après un regard humain sur le certificat ; l'OCR n'est plus qu'une aide.
 - Plus de double décision ni d'état incohérent (#261), plus de numéro de licence inventé (#262).
 - Chaque accès à un document de santé depuis le back-office laisse une trace consultable dans le journal d'audit, sans y recopier la donnée (#63).
+- Ces accès sont aussi inscrits au journal dédié des accès aux données de santé (`HealthDataAccessLog`, #63), qui couvre en plus l'accès support, l'export RGPD et les suppressions (compte, purge de rétention) ; conservé 1 an, consultable par `GET /admin/health-data-access-log`.
 - Un certificat refusé disparaît au plus tard 30 jours après la décision.
 - Aucune nouvelle ressource cloud, aucun coût supplémentaire.
 
