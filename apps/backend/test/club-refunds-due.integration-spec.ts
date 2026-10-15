@@ -74,9 +74,10 @@ describe("Club refunds due (#516, integration, real DB)", () => {
     });
     // Unlinked, label ambiguous between club A and its homonym: nobody's.
     const compAmbiguous = await f.competition({ organizer: clubA.name });
-    // Unlinked, label naming exactly one club (spaces, case): club B's.
+    // Unlinked, label naming exactly one club (case-insensitive): club B's.
+    // Surrounding spaces are not trimmed by the shared organiser rule (#625).
     const compB = await f.competition({
-      organizer: ` ${clubB.name.toUpperCase()} `,
+      organizer: clubB.name.toUpperCase(),
     });
 
     const booking = (
