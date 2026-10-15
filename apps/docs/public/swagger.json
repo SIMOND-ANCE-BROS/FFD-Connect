@@ -22148,7 +22148,7 @@
             "description": "Demande non trouvée"
           },
           "409": {
-            "description": "Conflit - La ressource existe déjà",
+            "description": "Conflit - La demande a été soumise pendant l'envoi : le document n'est pas enregistré",
             "content": {
               "application/json": {
                 "schema": {

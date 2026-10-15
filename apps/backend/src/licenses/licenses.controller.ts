@@ -236,6 +236,13 @@ export class LicensesController {
   })
   @ApiResponse({ status: 401, description: "Non autorisé" })
   @ApiResponse({ status: 404, description: "Demande non trouvée" })
+  // Replaces the common 409 description: same body schema.
+  @ApiResponse({
+    status: 409,
+    description:
+      "Conflit - La demande a été soumise pendant l'envoi : le document n'est pas enregistré",
+    schema: CONFLICT_ERROR_SCHEMA,
+  })
   @UseInterceptors(
     FileInterceptor("document", {
       storage: createMemoryUploadStorage(),
