@@ -2,6 +2,8 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { ClubsModule } from "../clubs/clubs.module";
 import { PrismaModule } from "../prisma/prisma.module";
+import { ClubRefundsDueController } from "./club-refunds-due.controller";
+import { ClubRefundsDueQueryService } from "./club-refunds-due-query.service";
 import { HelloAssoService } from "./hello-asso.service";
 import { HelloAssoNotificationService } from "./helloasso-notification.service";
 import { PaymentNotificationService } from "./payment-notification.service";
@@ -14,8 +16,9 @@ import { SeatReleaseService } from "./seat-release.service";
 // NotificationsService comes from the @Global() NotificationsModule.
 @Module({
   imports: [PrismaModule, ConfigModule, ClubsModule],
-  controllers: [PaymentController],
+  controllers: [PaymentController, ClubRefundsDueController],
   providers: [
+    ClubRefundsDueQueryService,
     HelloAssoService,
     HelloAssoNotificationService,
     PaymentNotificationService,

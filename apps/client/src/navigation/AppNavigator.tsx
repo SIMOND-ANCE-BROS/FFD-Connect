@@ -26,6 +26,7 @@ import { ClubCouplesScreen } from "../features/club/screens/ClubCouplesScreen";
 import { ClubDashboardScreen } from "../features/club/screens/ClubDashboardScreen";
 import { ClubMemberEditorScreen } from "../features/club/screens/ClubMemberEditorScreen";
 import { ClubMembersScreen } from "../features/club/screens/ClubMembersScreen";
+import { ClubRefundsDueScreen } from "../features/club/screens/ClubRefundsDueScreen";
 import { ClubRegistrationsScreen } from "../features/club/screens/ClubRegistrationsScreen";
 import { ClubSoloTeamDetailScreen } from "../features/club/screens/ClubSoloTeamDetailScreen";
 import { ClubSoloTeamsScreen } from "../features/club/screens/ClubSoloTeamsScreen";
@@ -229,6 +230,10 @@ export const AppNavigator = () => {
               <Stack.Screen
                 name="ClubRegistrations"
                 component={ClubRegistrationsScreen}
+              />
+              <Stack.Screen
+                name="ClubRefundsDue"
+                component={ClubRefundsDueScreen}
               />
 
               {/* Player & Performance */}

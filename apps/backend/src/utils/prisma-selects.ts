@@ -687,6 +687,28 @@ export const userNameSelect = {
 } as const;
 
 /**
+ * Remboursements dus d'un club organisateur (#516) : de quoi retrouver les
+ * paiements dans HelloAsso (intentions de paiement) et savoir qui rembourser.
+ * Nom du danseur seulement (ni e-mail ni téléphone), jamais le `seatLabel`
+ * libre saisi par l'acheteur.
+ */
+export const seatBookingRefundDueSelect = {
+  id: true,
+  seatIndex: true,
+  expectedAmountCents: true,
+  refundOwedPaymentIds: true,
+  refundOwedAt: true,
+  competition: { select: { id: true, title: true, date: true } },
+  user: { select: userNameSelect },
+} as const;
+
+/** Compétitions candidates d'un club organisateur (#516) : id + organisateur. */
+export const competitionIdOrganizerSelect = {
+  id: true,
+  organizer: true,
+} as const;
+
+/**
  * Licence résolue au check-in par QR : son id (comparé à celui que porte un QR
  * signé v2, #466) et le nom de son titulaire.
  */
