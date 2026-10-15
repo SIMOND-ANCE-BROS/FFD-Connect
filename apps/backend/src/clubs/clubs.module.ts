@@ -1,4 +1,6 @@
 import { Module } from "@nestjs/common";
+import { ClubPaymentProviderQueryService } from "./club-payment-provider.query-service";
+import { ClubPaymentProviderService } from "./club-payment-provider.service";
 import { ClubsController } from "./clubs.controller";
 import { ClubsHelloAssoService } from "./clubs-helloasso.service";
 import { ClubsService } from "./clubs.service";
@@ -12,6 +14,8 @@ import { SoloTeamService } from "./solo-team.service";
   imports: [PrismaModule, SecretCipherModule],
   controllers: [ClubsController],
   providers: [
+    ClubPaymentProviderQueryService,
+    ClubPaymentProviderService,
     ClubsService,
     ClubsHelloAssoService,
     PartnershipService,

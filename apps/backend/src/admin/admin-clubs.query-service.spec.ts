@@ -114,6 +114,7 @@ describe("AdminClubsQueryService", () => {
           memberCount: 4,
           clubAccountCount: 1,
           helloAssoConfigured: false,
+          paymentProvider: "HELLOASSO",
         },
         {
           ...club,
@@ -122,6 +123,7 @@ describe("AdminClubsQueryService", () => {
           memberCount: 0,
           clubAccountCount: 0,
           helloAssoConfigured: true,
+          paymentProvider: "HELLOASSO",
         },
       ]);
       expect(page.meta.total).toBe(2);
@@ -189,6 +191,7 @@ describe("AdminClubsQueryService", () => {
         partnershipCount: 0,
         soloTeamCount: 0,
         helloAssoConfigured: true,
+        paymentProvider: "HELLOASSO",
         members: [member],
       });
       expect(prisma.user.findMany).toHaveBeenCalledWith({

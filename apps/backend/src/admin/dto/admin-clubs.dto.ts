@@ -1,5 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { ClubRegistrationMode, Prisma, UserRole } from "@prisma/client";
+import {
+  ClubRegistrationMode,
+  PaymentProvider,
+  Prisma,
+  UserRole,
+} from "@prisma/client";
 import { Transform } from "class-transformer";
 import {
   IsEnum,
@@ -12,6 +17,7 @@ import {
   ValidateIf,
 } from "class-validator";
 import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
+import { SELECTABLE_PAYMENT_PROVIDERS } from "../../payment/connectors/payment-providers";
 import {
   SortByParam,
   SortOrderParam,
@@ -108,6 +114,12 @@ export class AdminClubListItemDto {
     description: "Identifiants HelloAsso renseignés (jamais exposés)",
   })
   helloAssoConfigured!: boolean;
+  @ApiProperty({
+    enum: PaymentProvider,
+    enumName: "PaymentProvider",
+    description: "Connecteur de paiement en ligne choisi par le club (#388)",
+  })
+  paymentProvider!: PaymentProvider;
   @ApiProperty() createdAt!: Date;
 }
 
@@ -157,6 +169,19 @@ export class UpdateAdminClubDto {
   @ValidateIf(notUndefined)
   @IsEnum(ClubRegistrationMode)
   registrationMode?: ClubRegistrationMode;
+
+  @ApiPropertyOptional({
+    enum: PaymentProvider,
+    enumName: "PaymentProvider",
+    description:
+      "Connecteur de paiement en ligne du club (#388). Seuls les connecteurs disponibles sont acceptés (aujourd'hui : HELLOASSO).",
+  })
+  @ValidateIf(notUndefined)
+  @IsEnum(PaymentProvider)
+  @IsIn(SELECTABLE_PAYMENT_PROVIDERS, {
+    message: "Ce connecteur de paiement n'est pas encore disponible",
+  })
+  paymentProvider?: PaymentProvider;
 }
 
 export class CreateAdminClubDto {
