@@ -25,6 +25,7 @@ import {
 import { LicenseQrService } from "../licenses/qr/license-qr.service";
 import { AppleWalletPassGenerator } from "../licenses/wallet/apple-wallet-pass.generator";
 import { UsersService } from "./users.service";
+import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 
 jest.mock("bcrypt", () => ({
   compare: jest.fn(),
@@ -74,6 +75,7 @@ describe("UsersService", () => {
   let service: UsersService;
   let prisma: MockProxy<PrismaClient>;
   let renewalDocumentFiles: { deleteFiles: jest.Mock };
+  let healthAccess: { record: jest.Mock; recordOp: jest.Mock };
   let wdsfService: { getAthleteByMin: jest.Mock };
 
   beforeEach(async () => {
@@ -85,6 +87,10 @@ describe("UsersService", () => {
     prisma = mockDeep<PrismaClient>();
     renewalDocumentFiles = {
       deleteFiles: jest.fn().mockResolvedValue(new Set()),
+    };
+    healthAccess = {
+      record: jest.fn().mockResolvedValue(undefined),
+      recordOp: jest.fn().mockReturnValue({}),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -108,6 +114,7 @@ describe("UsersService", () => {
           useValue: renewalDocumentFiles,
         },
         { provide: WdsfService, useValue: wdsfService },
+        { provide: HealthDataAccessLogService, useValue: healthAccess },
         {
           provide: CompetitionCacheService,
           useValue: {
@@ -956,6 +963,8 @@ describe("UsersService", () => {
         (renewals.select as Record<string, unknown>).reviewedBy,
       ).toBeUndefined();
       expect(renewals.select.documents.select).toEqual({
+        // Read for the health-data access journal (#63), never exported.
+        id: true,
         type: true,
         ocrData: true,
         createdAt: true,
@@ -976,6 +985,7 @@ describe("UsersService", () => {
               updatedAt: submittedAt,
               documents: [
                 {
+                  id: "med-1",
                   type: "MEDICAL_CERTIFICATE",
                   createdAt: submittedAt,
                   ocrData: {
@@ -986,6 +996,7 @@ describe("UsersService", () => {
                   },
                 },
                 {
+                  id: "lic-1",
                   type: "LICENSE_CERTIFICATE",
                   createdAt: submittedAt,
                   ocrData: {
@@ -1038,6 +1049,20 @@ describe("UsersService", () => {
       const json = JSON.stringify(result);
       expect(json).not.toContain("rawText");
       expect(json).not.toContain("asthme");
+      // The document ids are not exported, only journaled (#63)…
+      expect(json).not.toContain("med-1");
+      // …one EXPORT row per medical certificate, before the export leaves.
+      expect(healthAccess.record).toHaveBeenCalledWith([
+        {
+          subjectUserId: "u1",
+          actorUserId: "u1",
+          actorRole: "OWNER",
+          action: "EXPORT",
+          resourceType: "MEDICAL_CERTIFICATE",
+          resourceId: "med-1",
+          route: "GET /users/me/export",
+        },
+      ]);
     });
 
     it("ne sort jamais la référence de fichier d'un document, même si la base la renvoie", async () => {
@@ -1485,7 +1510,8 @@ describe("UsersService", () => {
 
       expect(prisma.licenseRenewalDocument.findMany).toHaveBeenCalledWith({
         where: { request: { userId: "u1" } },
-        select: { filePath: true },
+        // id + type: the deletion of each medical certificate is journaled (#63).
+        select: { id: true, type: true, filePath: true },
         take: MAX_RENEWAL_DOCUMENTS_TO_PURGE,
       });
       const readOrder =

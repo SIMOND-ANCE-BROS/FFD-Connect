@@ -10,6 +10,10 @@ import {
   UserRole,
 } from "@prisma/client";
 import request from "supertest";
+import {
+  LICENSE_CATEGORY_UNKNOWN,
+  LICENSE_CLUB_UNKNOWN,
+} from "../src/licenses/beta-license-placeholder";
 import { HealthDataRetentionService } from "../src/licenses/health-data-retention.service";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { BlobStorageService } from "../src/storage/blob-storage.service";
@@ -334,6 +338,16 @@ describe("Licence renewal moderation (integration, real DB)", () => {
       .expect(200);
     expect(res.body.status).toBe("APPROVED");
     expect(res.body.reviewedBy.id).toBe(admin.id);
+    // No discipline nor club on the profile: nothing invented (#282).
+    expect(
+      await prisma.license.findUnique({
+        where: { userId: licensee.id },
+        select: { category: true, clubName: true },
+      }),
+    ).toEqual({
+      category: LICENSE_CATEGORY_UNKNOWN,
+      clubName: LICENSE_CLUB_UNKNOWN,
+    });
   });
 
   it("retires the number an approval replaces, in the same transaction (#466)", async () => {

@@ -214,7 +214,7 @@ export class TracksService {
       }
       data.clashTimecodes = clashes;
     }
-    const bpm = this.bpmForPatch(existing.rawBpm, patch);
+    const bpm = this.bpmForPatch(existing.rawBpm, patch, existing.style);
     if (bpm !== undefined) data.bpm = bpm;
     // A back-office import without a detectable tempo creates the track in
     // ERROR (out of the library): the admin who sets its MPM publishes it.
@@ -254,18 +254,24 @@ export class TracksService {
    * Tempo (MPM) qu'un patch écrira sur la piste, ou undefined s'il n'y touche
    * pas. Source unique de la règle appliquée par updateTrack, exposée pour que
    * la file de modération affiche le MPM qui RÉSULTERA d'une validation :
-   * - tempo explicite → il est appliqué tel quel ;
+   * - tempo explicite → appliqué, sauf s'il est dans la plage de BPM de la
+   *   danse (nouvelle, sinon actuelle) : c'est alors un BPM saisi à la place
+   *   d'un MPM, converti (#338) ;
    * - sinon, changement de danse avec un tempo brut détecté → MPM recalculé
-   *   depuis le BPM brut pour la nouvelle danse (en danse on parle en MPM).
+   *   depuis le BPM brut pour la nouvelle danse (en danse on parle en MPM) ;
+   *   0 (« MPM inconnu ») si la nouvelle danse n'est pas reconnue, plutôt que
+   *   le BPM brut présenté comme MPM.
    */
   bpmForPatch(
     rawBpm: number,
     patch: Pick<UpdateTrackDto, "bpm" | "style">,
+    currentStyle?: string | null,
   ): number | undefined {
-    if (patch.bpm !== undefined) return patch.bpm;
+    if (patch.bpm !== undefined) {
+      return this.bpmService.toMpm(patch.bpm, patch.style ?? currentStyle);
+    }
     if (patch.style && rawBpm > 0) {
-      const mpm = this.bpmService.calculateMpm(rawBpm, patch.style);
-      if (mpm > 0) return mpm;
+      return this.bpmService.calculateMpm(rawBpm, patch.style);
     }
     return undefined;
   }

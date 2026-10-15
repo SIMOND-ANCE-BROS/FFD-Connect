@@ -19,6 +19,12 @@ interface CompetitionEventCardProps {
   onNavigateResults: () => void;
   onRegister: (event: Event) => void;
   onUnregister: (event: Event) => void;
+  /**
+   * Guest (eligibility reason `GUEST`): « S'inscrire » sends them to sign in,
+   * then back to this competition (#20). Without it the guest only sees
+   * « Connexion requise ».
+   */
+  onSignInToRegister?: () => void;
   /** Action queued offline for this event, waiting for the network (#416). */
   pendingAction?: "register" | "unregister";
   /**
@@ -39,10 +45,16 @@ export function CompetitionEventCard({
   onNavigateResults,
   onRegister,
   onUnregister,
+  onSignInToRegister,
   pendingAction,
   variantLabel,
 }: CompetitionEventCardProps) {
   const showLicenceActions = !isOrganizer;
+  // A guest is not "not eligible": they just need an account first.
+  const guestSignIn =
+    showLicenceActions &&
+    eligibility.reason === "GUEST" &&
+    onSignInToRegister !== undefined;
   const embedded = variantLabel !== undefined;
 
   return (
@@ -52,7 +64,10 @@ export function CompetitionEventCard({
         embedded
           ? styles.eventRow
           : [styles.eventCard, { backgroundColor: currentTheme.surface }],
-        !eligibility.eligible && showLicenceActions && styles.disabledEvent,
+        !eligibility.eligible &&
+          showLicenceActions &&
+          !guestSignIn &&
+          styles.disabledEvent,
       ]}
     >
       <View style={styles.eventCardBody}>
@@ -89,7 +104,7 @@ export function CompetitionEventCard({
                 : "Désinscription en attente de réseau"}
             </AppText>
           )}
-          {!eligibility.eligible && showLicenceActions && (
+          {!eligibility.eligible && showLicenceActions && !guestSignIn && (
             <View style={styles.notEligibleBadge}>
               <AppText
                 variant="caption"
@@ -171,6 +186,16 @@ export function CompetitionEventCard({
                     style={styles.compactActionButtonFromApp}
                   />
                 )}
+              {guestSignIn && (
+                <AppButton
+                  testID={`guest-register-event-${event.id}`}
+                  title="S'inscrire"
+                  onPress={onSignInToRegister}
+                  variant="primary"
+                  style={styles.compactActionButtonFromApp}
+                  accessibilityHint="Connectez-vous ou créez un compte pour vous inscrire, puis revenez sur cette compétition"
+                />
+              )}
               {showLicenceActions &&
                 !isRegistered &&
                 eligibility.eligible &&

@@ -35,6 +35,35 @@ export const sentryPrivacyOptions = {
 } as const;
 
 /**
+ * iOS system-termination diagnostics through MetricKit (#540).
+ *
+ * iOS kills the app with SIGKILL (background CPU limit, #539; hangs, disk
+ * writes): no crash report is possible and Sentry assumes a background app
+ * exited normally. MetricKit hands those diagnostics to the app on a later
+ * launch (at most once a day per device), and sentry-cocoa turns them into
+ * events — `MXCPUExceptionDiagnostic`, `MXHangDiagnostic`,
+ * `MXDiskWriteExceptionDiagnostic` (crash diagnostics stay off in the SDK;
+ * the crash handler already covers them).
+ *
+ * Not typed by @sentry/react-native, but forwarded as is to the native SDK
+ * (`RNSentry.initNativeSdk` → `SentryOptionsInternal initWithDict`, which
+ * reads both keys since sentry-cocoa 8.x): no native build needed, ships by
+ * OTA. Ignored on Android and below iOS 15.
+ *
+ * These events are captured natively, so our JS `beforeSend` never sees them
+ * and cannot tag them. They are told apart by their exception mechanism:
+ * `error.mechanism:mx_cpu_exception` / `mx_hang_diagnostic` /
+ * `mx_disk_write_exception` in Sentry search (level `warning`).
+ *
+ * The raw payload attachment stays off: it adds quota (attachment size) for
+ * data the event already carries (stack tree, CPU time).
+ */
+export const sentryMetricKitOptions = {
+  enableMetricKit: true,
+  enableMetricKitRawPayload: false,
+} as const;
+
+/**
  * `integrations` callback for `Sentry.init`: drops the replay integrations
  * (iOS 26 crash) and adds the JS screenshot integration that
  * `attachScreenshot: false` no longer adds by default.

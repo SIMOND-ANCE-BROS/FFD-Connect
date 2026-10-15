@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert } from "react-native";
 import { createLogger } from "../../../utils/logger";
 import {
@@ -6,6 +6,16 @@ import {
   VolunteerTokenResponse,
 } from "../../license/services/CheckinService";
 import { CompetitionService } from "../services/CompetitionService";
+import {
+  CompetitionProgramError,
+  fetchCompetitionProgram,
+  saveCompetitionProgram,
+} from "../services/competitionProgramApi";
+import {
+  buildProgramPayload,
+  eventsFromProgram,
+  scheduleFromProgram,
+} from "./competitionProgram";
 import {
   buildCompetitionPayload,
   buildCompetitionUpdatePayload,
@@ -38,6 +48,13 @@ const formatDisplayDate = (value: Date) =>
     year: "numeric",
   });
 
+/**
+ * Programme (« Épreuves » + « Planning ») of the competition being edited
+ * (#442): `loading` while an existing competition's programme is fetched,
+ * `error` when it could not be (it is then never overwritten by a save).
+ */
+export type ProgramStatus = "loading" | "ready" | "error";
+
 interface UseClubCompetitionEditorLogicProps {
   initialCompetition?: Partial<Competition>;
   navigation: {
@@ -49,7 +66,14 @@ export const useClubCompetitionEditorLogic = ({
   initialCompetition = {},
   navigation,
 }: UseClubCompetitionEditorLogicProps) => {
-  const isEditing = !!initialCompetition.id;
+  // Set once the competition exists: after a creation whose programme could
+  // not be saved, the next save updates it instead of creating a duplicate.
+  const [competitionId, setCompetitionId] = useState(initialCompetition.id);
+  const isEditing = !!competitionId;
+  const [programStatus, setProgramStatus] = useState<ProgramStatus>(
+    initialCompetition.id ? "loading" : "ready",
+  );
+  const [syncedFromFfd, setSyncedFromFfd] = useState(false);
 
   // Compétition vs Événement (non compétitif). Dérivé du champ `type`.
   const [kind, setKind] = useState<CompetitionKind>(
@@ -122,6 +146,33 @@ export const useClubCompetitionEditorLogic = ({
     initialLayoutItems: initialCompetition.layout,
   });
 
+  const { replaceEvents } = eventEditor;
+  const { replaceSchedule } = timingEditor;
+
+  // --- PROGRAMME (#442): load the stored events and schedule once ---
+  useEffect(() => {
+    const id = initialCompetition.id;
+    if (!id) return;
+    let cancelled = false;
+    fetchCompetitionProgram(id)
+      .then((program) => {
+        if (cancelled) return;
+        replaceEvents(eventsFromProgram(program));
+        replaceSchedule(scheduleFromProgram(program));
+        setSyncedFromFfd(program.syncedFromFfd);
+        setProgramStatus("ready");
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        logger.error("Error loading competition programme", error);
+        setProgramStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Loaded once per opened competition.
+  }, [initialCompetition.id, replaceEvents, replaceSchedule]);
+
   // --- ACTIONS ---
   const handleSave = async () => {
     if (!title || !hasDate || !location) {
@@ -132,6 +183,13 @@ export const useClubCompetitionEditorLogic = ({
       return;
     }
     const isEvent = kind === "EVENT";
+    if (!isEvent && programStatus === "loading") {
+      Alert.alert(
+        "Patientez",
+        "Les épreuves et le planning sont en cours de chargement. Réessayez dans un instant.",
+      );
+      return;
+    }
 
     if (
       !isEvent &&
@@ -159,29 +217,58 @@ export const useClubCompetitionEditorLogic = ({
     };
     logger.debug("Saving Competition:", form);
 
+    let savedId = competitionId;
     try {
-      if (isEditing && initialCompetition.id) {
+      if (savedId) {
         await CompetitionService.update(
-          initialCompetition.id,
+          savedId,
           buildCompetitionUpdatePayload(form),
         );
       } else {
-        await CompetitionService.create(buildCompetitionPayload(form));
+        savedId = (
+          await CompetitionService.create(buildCompetitionPayload(form))
+        ).id;
+        setCompetitionId(savedId);
       }
-
-      Alert.alert(
-        "Succès",
-        `Compétition ${isEditing ? "modifiée" : "créée"} avec succès !`,
-        [{ text: "OK", onPress: () => navigation.goBack() }],
-      );
     } catch (error) {
       logger.error("Error saving competition:", error);
       Alert.alert("Erreur", "Impossible de sauvegarder la compétition");
+      return;
     }
+
+    // The programme of a competition (not of a non-competitive event), only
+    // once it is known: a programme that failed to load is left untouched.
+    if (!isEvent && programStatus === "ready" && savedId) {
+      try {
+        const program = await saveCompetitionProgram(
+          savedId,
+          buildProgramPayload(eventEditor.events, timingEditor.schedule),
+        );
+        replaceEvents(eventsFromProgram(program));
+        replaceSchedule(scheduleFromProgram(program));
+      } catch (error) {
+        logger.error("Error saving competition programme:", error);
+        const reason =
+          error instanceof CompetitionProgramError
+            ? error.message
+            : "Impossible d'enregistrer les épreuves et le planning";
+        Alert.alert(
+          "Épreuves non enregistrées",
+          `La compétition est enregistrée, mais pas ses épreuves ni son planning : ${reason}`,
+        );
+        return;
+      }
+    }
+
+    Alert.alert(
+      "Succès",
+      `Compétition ${isEditing ? "modifiée" : "créée"} avec succès !`,
+      [{ text: "OK", onPress: () => navigation.goBack() }],
+    );
   };
 
   const handleGenerateVolunteerToken = async () => {
-    if (!initialCompetition.id) {
+    if (!competitionId) {
       Alert.alert(
         "Erreur",
         "Veuillez enregistrer la compétition avant de générer un accès.",
@@ -190,9 +277,7 @@ export const useClubCompetitionEditorLogic = ({
     }
     setIsGeneratingToken(true);
     try {
-      const token = await CheckinService.generateVolunteerToken(
-        initialCompetition.id,
-      );
+      const token = await CheckinService.generateVolunteerToken(competitionId);
       setVolunteerToken(token);
     } catch (error) {
       logger.error("Error generating volunteer token", error);
@@ -213,6 +298,8 @@ export const useClubCompetitionEditorLogic = ({
 
   return {
     isEditing,
+    programStatus,
+    syncedFromFfd,
     kind,
     setKind,
     activeTab,

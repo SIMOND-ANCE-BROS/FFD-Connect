@@ -1,5 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getTokens } from "../../../../api/tokenStore";
+import {
+  clearImpersonationBackupTokens,
+  getTokens,
+  setImpersonationBackupTokens,
+  setTokens,
+} from "../../../../api/tokenStore";
 import { TokenStoreUnavailableError } from "../../../../api/tokenStoreErrors";
 import api from "../../../../services/api";
 import { usage } from "../../../../services/analytics/usage";
@@ -23,6 +28,9 @@ jest.mock("../../../../services/api", () => ({
 const mockRegisterPush = jest.fn();
 const mockUnregisterPush = jest.fn();
 const mockClearTokens = jest.fn();
+const mockSwitch = jest.fn(async (_t: string) => {});
+const mockRestore = jest.fn(async () => true);
+const mockWaitForPendingRefresh = jest.fn(async () => {});
 
 jest.mock("../../../settings/services/pushRegistration", () => ({
   registerDeviceTokenForPush: () => mockRegisterPush() as unknown,
@@ -43,6 +51,15 @@ jest.mock("../../../../api/tokenStore", () => ({
   clearTokens: () => mockClearTokens() as unknown,
   getTokens: jest.fn(async () => ({})),
   setTokens: jest.fn(async () => {}),
+  setImpersonationBackupTokens: jest.fn(async () => {}),
+  clearImpersonationBackupTokens: jest.fn(async () => {}),
+  switchToImpersonation: (t: string) => mockSwitch(t),
+  restoreFromImpersonation: () => mockRestore(),
+  IMPERSONATION_BACKUP_KEY: "impersonation_backup",
+}));
+
+jest.mock("../../../../api/sessionRefresh", () => ({
+  waitForPendingRefresh: () => mockWaitForPendingRefresh(),
 }));
 
 jest.mock("../../../../utils/logger", () => ({
@@ -727,6 +744,560 @@ describe("AuthService", () => {
       expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
         "license_snapshot_v1",
       );
+    });
+  });
+
+  describe("impersonation switches (#591, #598 review)", () => {
+    const writesOf = (key: string): string[] =>
+      (AsyncStorage.setItem as jest.Mock).mock.calls
+        .filter((c) => c[0] === key)
+        .map((c) => c[1] as string);
+    const noTokenIn = (json: string) => {
+      expect(json).not.toMatch(/authToken|refreshToken|admin-a|admin-r/);
+    };
+    const order: string[] = [];
+
+    beforeEach(() => {
+      order.length = 0;
+      (AsyncStorage.setItem as jest.Mock).mockImplementation(
+        async (k: string, v: string) => {
+          order.push(
+            k === "auth_config"
+              ? `prefs:${(JSON.parse(v) as { impersonating?: boolean }).impersonating === true ? "imp" : "admin"}`
+              : `set:${k}`,
+          );
+        },
+      );
+      (AsyncStorage.removeItem as jest.Mock).mockImplementation(
+        async (k: string) => {
+          order.push(`remove:${k}`);
+        },
+      );
+      mockSwitch.mockImplementation(async () => {
+        order.push("switch");
+      });
+      mockRestore.mockImplementation(async () => {
+        order.push("restore");
+        return true;
+      });
+      mockWaitForPendingRefresh.mockImplementation(async () => {
+        order.push("waitRefresh");
+      });
+      mockClearTokens.mockImplementation(async () => {
+        order.push("clearTokens");
+      });
+      (clearImpersonationBackupTokens as jest.Mock).mockImplementation(
+        async () => {
+          order.push("clearBackupTokens");
+        },
+      );
+    });
+
+    afterAll(() => {
+      mockClearTokens.mockReset();
+      (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
+      (AsyncStorage.removeItem as jest.Mock).mockResolvedValue(undefined);
+      (clearImpersonationBackupTokens as jest.Mock).mockResolvedValue(
+        undefined,
+      );
+    });
+
+    const impersonateTarget = () => {
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+        JSON.stringify({ role: "ADMIN", username: "admin@test.com" }),
+      );
+      (api.post as jest.Mock).mockResolvedValue({
+        data: {
+          access_token: "imp-tok",
+          user: { role: "CLUB", email: "club@test.com" },
+        },
+      });
+      return AuthService.impersonate("target-1", "Test Club");
+    };
+
+    it("start: waits for a pending refresh, writes 'impersonating' BEFORE the target token", async () => {
+      await impersonateTarget();
+
+      expect(mockSwitch).toHaveBeenCalledWith("imp-tok");
+      expect(order.slice(0, 4)).toEqual([
+        "waitRefresh",
+        "set:impersonation_backup",
+        "prefs:imp",
+        "switch",
+      ]);
+      const backups = writesOf("impersonation_backup");
+      expect(backups).toHaveLength(1);
+      noTokenIn(backups[0]);
+      expect(JSON.parse(backups[0])).toMatchObject({
+        role: "ADMIN",
+        username: "admin@test.com",
+      });
+      // No direct token write: the atomic switch does it all.
+      expect(setTokens).not.toHaveBeenCalled();
+      expect(mockClearTokens).not.toHaveBeenCalled();
+    });
+
+    it("start: a failed switch (incomplete or unreadable admin session) puts the admin's prefs back", async () => {
+      mockSwitch.mockRejectedValueOnce(
+        new TokenStoreUnavailableError(new Error("Keystore failure")),
+      );
+
+      await expect(impersonateTarget()).rejects.toThrow(
+        "Secure token store unavailable",
+      );
+
+      expect(order.slice(-2)).toEqual([
+        "remove:impersonation_backup",
+        "prefs:admin",
+      ]);
+      expect(AsyncStorage.removeItem).not.toHaveBeenCalledWith(
+        "license_snapshot_v1",
+      );
+    });
+
+    it("start: a failed prefs write aborts before any token is touched", async () => {
+      (AsyncStorage.setItem as jest.Mock).mockImplementation(
+        async (k: string) => {
+          if (k === "auth_config") throw new Error("Disk full");
+        },
+      );
+
+      await expect(impersonateTarget()).rejects.toThrow("Disk full");
+
+      expect(mockSwitch).not.toHaveBeenCalled();
+    });
+
+    const backupPrefs = (json: string | null) => {
+      (AsyncStorage.getItem as jest.Mock).mockImplementation((k: string) =>
+        Promise.resolve(
+          k === "impersonation_backup"
+            ? json
+            : JSON.stringify({
+                isLoggedIn: true,
+                role: "CLUB",
+                impersonating: true,
+                impersonatedName: "Test Club",
+              }),
+        ),
+      );
+      (api.post as jest.Mock).mockResolvedValue({ data: {} });
+    };
+
+    it("stop: restores atomically, writes the prefs, THEN drops the backup", async () => {
+      backupPrefs(JSON.stringify({ role: "ADMIN", isLoggedIn: true }));
+
+      await AuthService.stopImpersonation();
+
+      expect(order).toEqual([
+        "restore",
+        "prefs:admin",
+        "remove:license_snapshot_v1",
+        "remove:impersonation_backup",
+        "clearBackupTokens",
+      ]);
+      const saved = writesOf("auth_config");
+      noTokenIn(saved[0]);
+      expect(JSON.parse(saved[0])).toMatchObject({
+        role: "ADMIN",
+        isLoggedIn: true,
+      });
+    });
+
+    it("stop: a failed backup cleanup does not report the switch back as failed", async () => {
+      backupPrefs(JSON.stringify({ role: "ADMIN", isLoggedIn: true }));
+      (clearImpersonationBackupTokens as jest.Mock).mockRejectedValueOnce(
+        new Error("Keystore failure"),
+      );
+
+      await expect(AuthService.stopImpersonation()).resolves.toBeUndefined();
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "Failed to clear the impersonation backup",
+        expect.any(Error),
+      );
+      expect(mockClearTokens).not.toHaveBeenCalled();
+    });
+
+    it("stop: without the admin's tokens, ends on the login screen", async () => {
+      backupPrefs(JSON.stringify({ role: "ADMIN", isLoggedIn: true }));
+      mockRestore.mockResolvedValueOnce(false);
+
+      await AuthService.stopImpersonation();
+
+      const saved = JSON.parse(writesOf("auth_config").pop()!) as Record<
+        string,
+        unknown
+      >;
+      expect(saved).toMatchObject({ role: "ADMIN", isLoggedIn: false });
+      expect(saved.impersonating).toBeUndefined();
+    });
+
+    it("stop: an unreadable prefs backup wipes the session and ends on the login screen", async () => {
+      backupPrefs("{not json");
+      (api.post as jest.Mock).mockRejectedValue(new Error("offline"));
+
+      await AuthService.stopImpersonation();
+
+      expect(mockRestore).not.toHaveBeenCalled();
+      expect(mockClearTokens).toHaveBeenCalled();
+      const saved = JSON.parse(writesOf("auth_config").pop()!) as Record<
+        string,
+        unknown
+      >;
+      expect(saved.isLoggedIn).toBe(false);
+      expect(saved.impersonating).toBeUndefined();
+      expect(saved.impersonatedName).toBeUndefined();
+    });
+
+    it("stop: an unreadable token backup switches nothing", async () => {
+      backupPrefs(JSON.stringify({ role: "ADMIN", isLoggedIn: true }));
+      mockRestore.mockRejectedValueOnce(
+        new TokenStoreUnavailableError(new Error("Keystore failure")),
+      );
+
+      await expect(AuthService.stopImpersonation()).rejects.toThrow(
+        "Secure token store unavailable",
+      );
+
+      expect(writesOf("auth_config")).toHaveLength(0);
+      expect(clearImpersonationBackupTokens).not.toHaveBeenCalled();
+    });
+
+    it("stop: a failed prefs write ends the session and keeps the backup for a retry", async () => {
+      backupPrefs(JSON.stringify({ role: "ADMIN", isLoggedIn: true }));
+      (AsyncStorage.setItem as jest.Mock).mockImplementation(
+        async (k: string) => {
+          if (k === "auth_config") throw new Error("Disk full");
+        },
+      );
+
+      await expect(AuthService.stopImpersonation()).rejects.toThrow(
+        "Disk full",
+      );
+
+      // Never the admin's JWT behind "impersonating" preferences.
+      expect(order).toEqual(["restore", "clearTokens"]);
+      expect(clearImpersonationBackupTokens).not.toHaveBeenCalled();
+    });
+
+    it("stop: restores a pre-#591 plaintext backup, moving its tokens first", async () => {
+      const kv = new Map<string, string>([
+        [
+          "impersonation_backup",
+          JSON.stringify({
+            role: "ADMIN",
+            isLoggedIn: true,
+            authToken: "admin-a",
+            refreshToken: "admin-r",
+          }),
+        ],
+      ]);
+      (AsyncStorage.getItem as jest.Mock).mockImplementation((k: string) =>
+        Promise.resolve(kv.get(k) ?? null),
+      );
+      (AsyncStorage.setItem as jest.Mock).mockImplementation(
+        (k: string, v: string) => {
+          kv.set(k, v);
+          return Promise.resolve();
+        },
+      );
+      (AsyncStorage.removeItem as jest.Mock).mockImplementation((k: string) => {
+        kv.delete(k);
+        return Promise.resolve();
+      });
+      (api.post as jest.Mock).mockResolvedValue({ data: {} });
+
+      await AuthService.stopImpersonation();
+
+      expect(setImpersonationBackupTokens).toHaveBeenCalledWith({
+        authToken: "admin-a",
+        refreshToken: "admin-r",
+      });
+      expect(mockRestore).toHaveBeenCalled();
+      writesOf("impersonation_backup").forEach(noTokenIn);
+      writesOf("auth_config").forEach(noTokenIn);
+      expect(kv.has("impersonation_backup")).toBe(false);
+      expect(JSON.parse(kv.get("auth_config")!)).toMatchObject({
+        role: "ADMIN",
+        isLoggedIn: true,
+      });
+    });
+  });
+
+  describe("impersonation backup out of plaintext (#591)", () => {
+    const writesOf = (key: string): string[] =>
+      (AsyncStorage.setItem as jest.Mock).mock.calls
+        .filter((c) => c[0] === key)
+        .map((c) => c[1] as string);
+    const noTokenIn = (json: string) => {
+      expect(json).not.toMatch(/authToken|refreshToken|admin-a|admin-r/);
+    };
+    const order: string[] = [];
+
+    beforeEach(() => {
+      order.length = 0;
+      (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
+      (AsyncStorage.removeItem as jest.Mock).mockResolvedValue(undefined);
+      (setImpersonationBackupTokens as jest.Mock).mockImplementation(
+        async () => {
+          order.push("backupTokens");
+        },
+      );
+    });
+
+    afterAll(() => {
+      mockClearTokens.mockReset();
+      (setImpersonationBackupTokens as jest.Mock).mockResolvedValue(undefined);
+    });
+
+    describe("launch migration", () => {
+      it("moves the tokens to SecureStore, then strips them from the blob", async () => {
+        (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+          JSON.stringify({
+            role: "ADMIN",
+            authToken: "admin-a",
+            refreshToken: "admin-r",
+          }),
+        );
+
+        await AuthService.migrateImpersonationBackup();
+
+        expect(setImpersonationBackupTokens).toHaveBeenCalledWith({
+          authToken: "admin-a",
+          refreshToken: "admin-r",
+        });
+        const rewritten = writesOf("impersonation_backup");
+        expect(rewritten).toHaveLength(1);
+        noTokenIn(rewritten[0]);
+        expect(JSON.parse(rewritten[0])).toEqual({ role: "ADMIN" });
+        expect(order[0]).toBe("backupTokens");
+      });
+
+      it("ignores a non-string token value but still strips its key", async () => {
+        (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+          JSON.stringify({ role: "ADMIN", authToken: null }),
+        );
+
+        await AuthService.migrateImpersonationBackup();
+
+        expect(setImpersonationBackupTokens).toHaveBeenCalledWith({
+          authToken: undefined,
+          refreshToken: undefined,
+        });
+        expect(writesOf("impersonation_backup")).toEqual([
+          JSON.stringify({ role: "ADMIN" }),
+        ]);
+      });
+
+      it("does nothing without a backup, or with a backup already free of tokens", async () => {
+        (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(null);
+        await AuthService.migrateImpersonationBackup();
+        (AsyncStorage.getItem as jest.Mock).mockResolvedValueOnce(
+          JSON.stringify({ role: "ADMIN" }),
+        );
+        await AuthService.migrateImpersonationBackup();
+
+        expect(setImpersonationBackupTokens).not.toHaveBeenCalled();
+        expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+      });
+
+      it("drops an unparsable backup (it may hold tokens)", async () => {
+        (AsyncStorage.getItem as jest.Mock).mockResolvedValue("{broken");
+
+        await AuthService.migrateImpersonationBackup();
+
+        expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
+          "impersonation_backup",
+        );
+        expect(setImpersonationBackupTokens).not.toHaveBeenCalled();
+      });
+
+      it("keeps the blob untouched when SecureStore refuses the write, and never throws", async () => {
+        (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+          JSON.stringify({ role: "ADMIN", authToken: "admin-a" }),
+        );
+        (setImpersonationBackupTokens as jest.Mock).mockRejectedValueOnce(
+          new Error("User interaction is not allowed."),
+        );
+
+        await expect(
+          AuthService.migrateImpersonationBackup(),
+        ).resolves.toBeUndefined();
+
+        expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          "Failed to migrate the impersonation backup",
+          expect.any(Error),
+        );
+      });
+    });
+
+    describe("logout", () => {
+      it("drops both halves of the backup", async () => {
+        (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+          JSON.stringify({ ...DEFAULT_CONFIG, isLoggedIn: true }),
+        );
+
+        await AuthService.logout();
+
+        expect(clearImpersonationBackupTokens).toHaveBeenCalled();
+        expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
+          "impersonation_backup",
+        );
+      });
+
+      it("never keeps an impersonation for a biometric unlock", async () => {
+        (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+          JSON.stringify({
+            ...DEFAULT_CONFIG,
+            isLoggedIn: true,
+            biometricsEnabled: true,
+            impersonating: true,
+            impersonatedName: "Test Club",
+          }),
+        );
+
+        await AuthService.logout();
+
+        expect(mockClearTokens).toHaveBeenCalled();
+        const saved = JSON.parse(writesOf("auth_config").pop()!) as Record<
+          string,
+          unknown
+        >;
+        expect(saved.impersonating).toBeUndefined();
+        expect(saved.impersonatedName).toBeUndefined();
+        expect(saved.biometricsEnabled).toBe(true);
+      });
+
+      it("still logs out when the backup cannot be cleared", async () => {
+        (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+          JSON.stringify({ ...DEFAULT_CONFIG, isLoggedIn: true }),
+        );
+        (clearImpersonationBackupTokens as jest.Mock).mockRejectedValueOnce(
+          new Error("Keystore failure"),
+        );
+
+        await AuthService.logout();
+
+        const saved = JSON.parse(writesOf("auth_config").pop()!) as Record<
+          string,
+          unknown
+        >;
+        expect(saved.isLoggedIn).toBe(false);
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          "Failed to clear the impersonation backup",
+          expect.any(Error),
+        );
+      });
+    });
+  });
+
+  describe("token writes (#592)", () => {
+    beforeEach(() => {
+      (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
+      (AsyncStorage.getItem as jest.Mock).mockResolvedValue(null);
+    });
+
+    it("saveAuthConfig writes the preferences only, never the tokens", async () => {
+      await AuthService.saveAuthConfig({
+        ...DEFAULT_CONFIG,
+        isLoggedIn: true,
+        authToken: "stale-a",
+        refreshToken: "stale-r",
+      });
+
+      expect(setTokens).not.toHaveBeenCalled();
+      const [key, json] = (AsyncStorage.setItem as jest.Mock).mock.calls[0] as [
+        string,
+        string,
+      ];
+      expect(key).toBe("auth_config");
+      expect(json).not.toMatch(/authToken|refreshToken|stale/);
+    });
+
+    it.each([
+      ["login", () => AuthService.login("u@x.fr", "pw")],
+      [
+        "register",
+        () => AuthService.register("u@x.fr", "pw", "123", "Doe", "Jane"),
+      ],
+    ])(
+      "%s writes the new tokens explicitly, before the logged-in prefs",
+      async (_name, run) => {
+        const order: string[] = [];
+        (setTokens as jest.Mock).mockImplementationOnce(async () => {
+          order.push("setTokens");
+        });
+        (AsyncStorage.setItem as jest.Mock).mockImplementation(
+          async (k: string) => {
+            order.push(k);
+          },
+        );
+        (api.post as jest.Mock).mockResolvedValueOnce({
+          data: {
+            access_token: "a2",
+            refresh_token: "r2",
+            user: { email: "u@x.fr", role: "LICENSEE" },
+          },
+        });
+
+        await run();
+
+        expect(setTokens).toHaveBeenCalledWith({
+          authToken: "a2",
+          refreshToken: "r2",
+        });
+        expect(order).toEqual(["setTokens", "auth_config"]);
+        (AsyncStorage.setItem as jest.Mock).mockResolvedValue(undefined);
+      },
+    );
+
+    it.each([
+      ["login", () => AuthService.login("u@x.fr", "pw")],
+      [
+        "register",
+        () => AuthService.register("u@x.fr", "pw", "123", "Doe", "Jane"),
+      ],
+    ])(
+      "%s is never an impersonation: flags reset, backup dropped",
+      async (_name, run) => {
+        (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+          JSON.stringify({ impersonating: true, impersonatedName: "Club" }),
+        );
+        (api.post as jest.Mock).mockResolvedValueOnce({
+          data: {
+            access_token: "a2",
+            refresh_token: "r2",
+            user: { email: "u@x.fr", role: "LICENSEE" },
+          },
+        });
+
+        await run();
+
+        expect(clearImpersonationBackupTokens).toHaveBeenCalled();
+        expect(AsyncStorage.removeItem).toHaveBeenCalledWith(
+          "impersonation_backup",
+        );
+        const calls = (AsyncStorage.setItem as jest.Mock).mock.calls.filter(
+          (c) => c[0] === "auth_config",
+        );
+        const saved = JSON.parse(
+          calls[calls.length - 1][1] as string,
+        ) as Record<string, unknown>;
+        expect(saved.impersonating).toBeUndefined();
+        expect(saved.impersonatedName).toBeUndefined();
+      },
+    );
+
+    it("preference setters never touch the tokens", async () => {
+      (getTokens as jest.Mock).mockResolvedValueOnce({
+        authToken: "a1",
+        refreshToken: "r1",
+      });
+
+      await AuthService.setAppTheme("dark");
+
+      expect(setTokens).not.toHaveBeenCalled();
     });
   });
 });

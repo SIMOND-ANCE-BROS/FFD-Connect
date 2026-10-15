@@ -30,6 +30,7 @@ import {
   findUserIdByEmail,
   isEmailTaken,
   normalizeEmail,
+  storedEmailData,
 } from "./email-identity";
 import { LICENSE_NUMBER_MAX_LENGTH } from "./dto/register.dto";
 import { PasswordValidator } from "./password-validator";
@@ -283,7 +284,7 @@ export class AuthService {
       const newUser = await tx.user
         .create({
           data: {
-            email: normalizedEmail,
+            ...storedEmailData(normalizedEmail),
             password: hashedPassword,
             firstName: firstName.trim(),
             lastName: lastName.trim(),
@@ -358,18 +359,20 @@ export class AuthService {
     });
 
     if (license.id === null) {
+      // The account id, never the licence number: it identifies a person
+      // and the FFD publishes it next to their name (RGPD, #529).
       this.logger.log(
-        { licenseNumber: license.number },
+        { userId: user.id },
         "Beta license auto-created during registration (BETA_AUTO_LICENSE)",
       );
     }
 
     this.logger.log(
-      // The date itself is personal data and the number already encodes it;
-      // only whether it could be derived is logged.
+      // The birth date is personal data and so is the licence number, which
+      // encodes it (RGPD, #529): only the account id and whether the date
+      // could be derived are logged.
       {
         userId: user.id,
-        licenseNumber: license.number,
         birthDateResolved: birthDate !== null,
       },
       "New user registered via license verification",

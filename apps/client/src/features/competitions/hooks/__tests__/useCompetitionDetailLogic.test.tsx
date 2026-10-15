@@ -24,6 +24,11 @@ jest.mock("../../../../features/auth/context/AuthContext", () => ({
   UserRole: { LICENSEE: "LICENSEE", CLUB: "CLUB", GUEST: "GUEST" },
 }));
 
+const mockSignInAndReturn = jest.fn();
+jest.mock("../../../../navigation/authReturn", () => ({
+  useSignInAndReturn: () => mockSignInAndReturn,
+}));
+
 jest.mock("../../context/CompetitionContext", () => ({
   useCompetitionRepository: jest.fn(),
 }));
@@ -720,6 +725,30 @@ describe("useCompetitionDetailLogic", () => {
       expect(result.current.state.selectedEventForRegistration?.id).toBe(
         "evt-1",
       );
+    });
+  });
+
+  describe("Guest sign-in (#20)", () => {
+    it("signs the guest in and comes back to this competition", async () => {
+      mockGetAuthConfig.mockResolvedValue({ role: "GUEST" });
+
+      const { result } = await renderHook(
+        () =>
+          useCompetitionDetailLogic(mockCompetitionId, mockNavigation as never),
+        { wrapper: createWrapper() },
+      );
+      await waitFor(() => expect(result.current.state.loading).toBe(false));
+      expect(result.current.state.isGuest).toBe(true);
+
+      await act(async () => {
+        result.current.actions.handleGuestSignInToRegister();
+        await Promise.resolve();
+      });
+
+      expect(mockSignInAndReturn).toHaveBeenCalledWith({
+        screen: "CompetitionDetail",
+        params: { competitionId: mockCompetitionId },
+      });
     });
   });
 });

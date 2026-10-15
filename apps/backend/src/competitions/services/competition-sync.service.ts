@@ -4,7 +4,10 @@ import { ConfigService } from "@nestjs/config";
 import { firstValueFrom } from "rxjs";
 import { PrismaService } from "../../prisma/prisma.service";
 import { getErrorMessage, getErrorStack } from "../../utils/error.utils";
+import { idOnlySelect } from "../../utils/prisma-selects";
 import { normalizeExternalWebUrl } from "../../utils/url.utils";
+import { competitionLinkedOrganizerClubSelect } from "../../utils/prisma-selects";
+import { matchClubByName } from "../competition-organizer";
 import {
   FFDCompetitionItem,
   FFDResponse,
@@ -13,6 +16,7 @@ import { CompetitionCacheService } from "./competition-cache.service";
 import { CompetitionEventNotificationService } from "./competition-event-notification.service";
 import {
   CompetitionEventsDeductionService,
+  FfdDocumentHttpError,
   FfdDocumentTooLargeError,
   MAX_FFD_DOCUMENT_BYTES,
 } from "./competition-events-deduction.service";
@@ -347,7 +351,7 @@ export class CompetitionSyncService {
           continue;
         }
         if (status >= 400) {
-          throw new Error(`FFD document request failed with HTTP ${status}`);
+          throw new FfdDocumentHttpError(status);
         }
         return body as T;
       }
@@ -396,7 +400,13 @@ export class CompetitionSyncService {
   }
 
   private async upsertCompetition(ffdId: string, details: FFDCompetitionItem) {
-    const competitionData = this.mapFFDCompetitionToDB(details);
+    const competitionData = {
+      ...this.mapFFDCompetitionToDB(details),
+      organizerClubId: await this.organizerClubIdFor(
+        ffdId,
+        details.company?.name,
+      ),
+    };
     this.logger.debug(`Upserting competition: ${competitionData.title}`);
 
     return this.prisma.competition.upsert({
@@ -408,6 +418,31 @@ export class CompetitionSyncService {
         status: "UPCOMING",
       },
     });
+  }
+
+  /**
+   * Organising club link (#408) for the FFD organiser name: the ONE club with
+   * that name (case ignored). When several clubs share it (case only), the
+   * current link is kept if it still designates one of them — never a guess;
+   * otherwise (no club, organiser changed to an ambiguous name) no link, and
+   * reads fall back to the label.
+   */
+  private async organizerClubIdFor(
+    ffdId: string,
+    organizerName: string | undefined,
+  ): Promise<string | null> {
+    const match = await matchClubByName(this.prisma, organizerName);
+    if (match.kind === "match") return match.clubId;
+    if (match.kind === "none" || !organizerName) return null;
+
+    const current = await this.prisma.competition.findUnique({
+      where: { ffdId },
+      select: competitionLinkedOrganizerClubSelect,
+    });
+    const linkedName = current?.organizerClub?.name.trim().toLowerCase();
+    return linkedName === organizerName.trim().toLowerCase()
+      ? (current?.organizerClub?.id ?? null)
+      : null;
   }
 
   private mapFFDCompetitionToDB(details: FFDCompetitionItem) {
@@ -457,7 +492,19 @@ export class CompetitionSyncService {
     const idsWithEvents = new Set(
       competitionsWithEvents.map((e) => e.competitionId),
     );
-    const idsToSeed = competitionIds.filter((id) => !idsWithEvents.has(id));
+    const idsWithoutEvents = competitionIds.filter(
+      (id) => !idsWithEvents.has(id),
+    );
+    if (idsWithoutEvents.length === 0) return;
+
+    // A club that saved an empty programme in its editor (#442) meant it:
+    // its competition is not re-seeded.
+    const seedable = await this.prisma.competition.findMany({
+      where: { id: { in: idsWithoutEvents }, programEditedAt: null },
+      select: idOnlySelect,
+      take: idsWithoutEvents.length,
+    });
+    const idsToSeed = seedable.map((c) => c.id);
 
     if (idsToSeed.length === 0) return;
 

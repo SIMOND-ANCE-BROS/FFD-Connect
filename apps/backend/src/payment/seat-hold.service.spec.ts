@@ -1,13 +1,16 @@
 import { BadRequestException, ConflictException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
 import { seatBookingHoldSelect } from "../utils/prisma-selects";
 import {
+  DEFAULT_REHOLD_COOLDOWN_MINUTES,
   MAX_HOLD_LIFETIME_MS,
   MAX_PENDING_PER_COMPETITION,
   SEAT_HOLD_DURATION_MS,
   SeatHoldService,
+  resolveReholdCooldownMs,
   resumedHoldDeadline,
   type HeldBooking,
   type HoldRequest,
@@ -34,26 +37,46 @@ describe("SeatHoldService (#428)", () => {
     amountCents: 1500,
   };
 
-  /** findMany is called for the pending slots first, then the seats. */
+  // findMany answers by query: the user's recent lapses (#455), the pending
+  // slots, then the seats — one queued answer per attempt.
+  let pendingAnswers: { pendingSlot: number | null }[][];
+  let seatAnswers: { seatIndex: number | null }[][];
+  let lapseRows: { seatIndex: number | null; expiresAt: Date | null }[];
   const occupancy = (
     pendingSlots: (number | null)[],
     seatIndexes: (number | null)[],
   ) => {
-    prisma.seatBooking.findMany
-      .mockResolvedValueOnce(
-        pendingSlots.map((pendingSlot) => ({ pendingSlot })) as never,
-      )
-      .mockResolvedValueOnce(
-        seatIndexes.map((seatIndex) => ({ seatIndex })) as never,
-      );
+    pendingAnswers.push(pendingSlots.map((pendingSlot) => ({ pendingSlot })));
+    seatAnswers.push(seatIndexes.map((seatIndex) => ({ seatIndex })));
   };
+  const findManyStatus = (call: number) =>
+    prisma.seatBooking.findMany.mock.calls[call][0]?.where?.status;
+
+  const config = (value: unknown) =>
+    ({ get: jest.fn().mockReturnValue(value) }) as unknown as ConfigService;
 
   beforeEach(() => {
     prisma = mockDeep<PrismaClient>();
-    service = new SeatHoldService(prisma as unknown as PrismaService);
+    service = new SeatHoldService(
+      prisma as unknown as PrismaService,
+      config(undefined),
+    );
     prisma.seatBooking.updateMany.mockResolvedValue({ count: 0 });
     prisma.seatBooking.findFirst.mockResolvedValue(null);
     prisma.seatBooking.create.mockResolvedValue(created as never);
+    pendingAnswers = [];
+    seatAnswers = [];
+    lapseRows = [];
+    prisma.seatBooking.findMany.mockImplementation(((args: {
+      where?: { status?: unknown };
+    }) => {
+      const status = args.where?.status;
+      if (status === "EXPIRED") return Promise.resolve(lapseRows);
+      if (status === "PENDING") {
+        return Promise.resolve(pendingAnswers.shift() ?? []);
+      }
+      return Promise.resolve(seatAnswers.shift() ?? []);
+    }) as never);
   });
 
   const createdData = () => prisma.seatBooking.create.mock.calls[0][0].data;
@@ -119,7 +142,7 @@ describe("SeatHoldService (#428)", () => {
 
       await service.hold(numbered);
 
-      const [pending, seats] = prisma.seatBooking.findMany.mock.calls;
+      const [, pending, seats] = prisma.seatBooking.findMany.mock.calls;
       expect(pending[0]).toEqual({
         where: { competitionId: "comp-1", userId: "user-1", status: "PENDING" },
         select: { pendingSlot: true },
@@ -240,6 +263,154 @@ describe("SeatHoldService (#428)", () => {
         await service.hold(numbered);
 
         expect(createdData().pendingSlot).toBe(2);
+      });
+    });
+
+    describe("re-hold cooldown after an expired hold (#455)", () => {
+      const MINUTE = 60 * 1000;
+      const lapsed = (seatIndex: number | null, agoMs: number) => ({
+        seatIndex,
+        expiresAt: new Date(Date.now() - agoMs),
+      });
+      const pickSeat: HoldRequest = { ...numbered, seatIndex: undefined };
+
+      it("refuses (409) a seat the user names again, with the minutes left", async () => {
+        lapseRows = [lapsed(2, 10 * MINUTE)];
+
+        const error = await service.hold(numbered).catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(ConflictException);
+        expect((error as ConflictException).message).toBe(
+          "Vous avez laissé expirer votre réservation de cette place. Vous pourrez la réserver de nouveau dans 20 minutes.",
+        );
+        // Refused before reading the pending slots or the seats.
+        expect(prisma.seatBooking.findMany).toHaveBeenCalledTimes(1);
+        expect(prisma.seatBooking.create).not.toHaveBeenCalled();
+      });
+
+      it("says « 1 minute » (singular, never 0) at the very end", async () => {
+        lapseRows = [lapsed(2, 30 * MINUTE - 1000)];
+
+        await expect(service.hold(numbered)).rejects.toThrow(
+          /de nouveau dans 1 minute\.$/,
+        );
+      });
+
+      it("looks only for this user's unpaid lapses of that seat, within the cooldown, bounded", async () => {
+        occupancy([], []);
+        const before = Date.now();
+
+        await service.hold(numbered);
+
+        expect(findManyStatus(0)).toBe("EXPIRED");
+        const query = prisma.seatBooking.findMany.mock.calls[0][0];
+        expect(query).toEqual({
+          where: {
+            competitionId: "comp-1",
+            userId: "user-1",
+            itemId: "table-1",
+            status: "EXPIRED",
+            expiresAt: { gt: expect.any(Date) },
+            refundOwedPaymentIds: { isEmpty: true },
+            cancelReason: null,
+            seatIndex: 2,
+          },
+          orderBy: { expiresAt: "desc" },
+          select: { seatIndex: true, expiresAt: true },
+          take: 1001,
+        });
+        const since = (query?.where?.expiresAt as { gt: Date }).gt.getTime();
+        expect(before - since).toBeGreaterThanOrEqual(
+          DEFAULT_REHOLD_COOLDOWN_MINUTES * MINUTE,
+        );
+        expect(before - since).toBeLessThan(
+          DEFAULT_REHOLD_COOLDOWN_MINUTES * MINUTE + 5000,
+        );
+        expect(prisma.seatBooking.create).toHaveBeenCalled();
+      });
+
+      describe("first free seat of a numbered element", () => {
+        it("skips the seats the user let expire instead of refusing", async () => {
+          lapseRows = [lapsed(0, MINUTE)];
+          occupancy([], []);
+
+          await service.hold(pickSeat);
+
+          expect(
+            prisma.seatBooking.findMany.mock.calls[0][0]?.where,
+          ).not.toHaveProperty("seatIndex");
+          // Seat 0 is cooling down, seat 1 is locked.
+          expect(createdData().seatIndex).toBe(2);
+        });
+
+        it("refuses (409) when only seats in cooldown are left, with the soonest one", async () => {
+          // Latest first: seat 0 frees in 25 min, seat 3 in 10 min.
+          lapseRows = [lapsed(0, 5 * MINUTE), lapsed(3, 20 * MINUTE)];
+          occupancy([], [2]);
+
+          await expect(service.hold(pickSeat)).rejects.toThrow(
+            /de nouveau dans 10 minutes\.$/,
+          );
+          expect(prisma.seatBooking.create).not.toHaveBeenCalled();
+        });
+
+        it("answers « full » when the seats in cooldown are taken by others too", async () => {
+          lapseRows = [lapsed(0, MINUTE), lapsed(null, MINUTE)];
+          occupancy([], [0, 2, 3]);
+
+          await expect(service.hold(pickSeat)).rejects.toThrow(
+            /plus de place disponible/,
+          );
+        });
+      });
+
+      it("refuses (409) any place of a free-placement element", async () => {
+        lapseRows = [lapsed(1, MINUTE)];
+
+        await expect(
+          service.hold({
+            ...numbered,
+            seatIndex: undefined,
+            seats: { mode: "free", places: 4 },
+          }),
+        ).rejects.toThrow(/laissé expirer/);
+        expect(prisma.seatBooking.create).not.toHaveBeenCalled();
+      });
+
+      it("ignores a lapse without deadline (legacy row)", async () => {
+        lapseRows = [{ seatIndex: 2, expiresAt: null }];
+        occupancy([], []);
+
+        await expect(service.hold(numbered)).resolves.toEqual({
+          resumed: false,
+          booking: created,
+        });
+      });
+
+      it("never blocks resuming one's own pending hold", async () => {
+        const own = { id: "booking-own" } as unknown as HeldBooking;
+        lapseRows = [lapsed(2, MINUTE)];
+        prisma.seatBooking.findFirst.mockResolvedValueOnce(own as never);
+
+        await expect(service.hold(numbered)).resolves.toEqual({
+          resumed: true,
+          booking: own,
+        });
+        expect(prisma.seatBooking.findMany).not.toHaveBeenCalled();
+      });
+
+      it("uses the configured cooldown, and 0 disables it", async () => {
+        service = new SeatHoldService(
+          prisma as unknown as PrismaService,
+          config(0),
+        );
+        lapseRows = [lapsed(2, MINUTE)];
+        occupancy([], []);
+
+        await service.hold(numbered);
+
+        expect(findManyStatus(0)).toBe("PENDING");
+        expect(prisma.seatBooking.create).toHaveBeenCalled();
       });
     });
 
@@ -390,6 +561,35 @@ describe("SeatHoldService (#428)", () => {
       expect(
         prisma.seatBooking.updateMany.mock.calls[0][0].data,
       ).not.toHaveProperty("supersededPaymentIds");
+    });
+  });
+
+  describe("resolveReholdCooldownMs (#455)", () => {
+    const MINUTE = 60 * 1000;
+
+    it.each([
+      [undefined, DEFAULT_REHOLD_COOLDOWN_MINUTES],
+      [45, 45],
+      ["15", 15],
+      [0, 0],
+      [1440, 1440],
+      [1441, DEFAULT_REHOLD_COOLDOWN_MINUTES],
+      [-1, DEFAULT_REHOLD_COOLDOWN_MINUTES],
+      [2.5, DEFAULT_REHOLD_COOLDOWN_MINUTES],
+      ["", DEFAULT_REHOLD_COOLDOWN_MINUTES],
+      ["abc", DEFAULT_REHOLD_COOLDOWN_MINUTES],
+    ])("reads %p as %p minutes", (value, minutes) => {
+      expect(resolveReholdCooldownMs(config(value))).toBe(minutes * MINUTE);
+    });
+
+    it("reads SEAT_REHOLD_COOLDOWN_MINUTES", () => {
+      const configService = config(10);
+
+      resolveReholdCooldownMs(configService);
+
+      expect(configService.get).toHaveBeenCalledWith(
+        "SEAT_REHOLD_COOLDOWN_MINUTES",
+      );
     });
   });
 

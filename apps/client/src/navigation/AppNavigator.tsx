@@ -10,6 +10,7 @@ import React, { useRef, useState } from "react";
 import { ActivityIndicator, Platform, View } from "react-native";
 import { useTheme } from "../context/ThemeContext";
 import { useAuthStore } from "../stores/auth.store";
+import { useAuthReturnStore } from "../stores/authReturn.store";
 import { analytics } from "../services/analytics";
 import { logger } from "../utils/logger";
 
@@ -34,6 +35,7 @@ import { ClubSoloTeamsScreen } from "../features/club/screens/ClubSoloTeamsScree
 // --- Competition screens ---
 import { CompetitionDetailScreen } from "../features/competitions/screens/CompetitionDetailScreen";
 import { EventRegistrantsScreen } from "../features/competitions/screens/EventRegistrantsScreen";
+import { SeatPickerScreen } from "../features/competitions/screens/SeatPickerScreen";
 import { LiveResultsScreen } from "../features/competitions/screens/LiveResultsScreen";
 import { VolunteerCheckinScreen } from "../features/competitions/screens/VolunteerCheckinScreen";
 
@@ -60,6 +62,7 @@ import { TrackCorrectionsReviewScreen } from "../features/track-corrections/scre
 
 // --- Components ---
 import { MiniPlayer } from "../features/player/components/MiniPlayer";
+import { nextAuthReturnStep } from "./authReturn";
 import { linking } from "./linking";
 import { MainTabs } from "./MainTabs";
 import { RootStackParamList } from "./types";
@@ -68,8 +71,15 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export const AppNavigator = () => {
   const { theme: currentTheme, isDark } = useTheme();
-  const { isLoggedIn, refreshAuth, pendingDeepLink, setPendingDeepLink } =
-    useAuthStore();
+  const {
+    isLoggedIn,
+    isGuest,
+    refreshAuth,
+    pendingDeepLink,
+    setPendingDeepLink,
+  } = useAuthStore();
+  const authReturnTarget = useAuthReturnStore((s) => s.target);
+  const clearAuthReturn = useAuthReturnStore((s) => s.clear);
   const [currentRouteName, setCurrentRouteName] = useState<string | undefined>(
     "Login",
   );
@@ -103,6 +113,27 @@ export const AppNavigator = () => {
       }
     }
   }, [isLoggedIn, pendingDeepLink, setPendingDeepLink]);
+
+  // Guest who left for Login from a protected action (#20): once signed in,
+  // reopen the screen they started from instead of leaving them on the home
+  // tab. Same dispatch as the deep link above.
+  React.useEffect(() => {
+    const step = nextAuthReturnStep(isLoggedIn, isGuest, authReturnTarget);
+    if (step === "drop") {
+      clearAuthReturn();
+      return;
+    }
+    if (step !== "navigate" || !authReturnTarget) return;
+    const nav = navigationRef.current;
+    if (nav?.getState() == null) return;
+    nav.dispatch(
+      CommonActions.navigate({
+        name: authReturnTarget.screen,
+        params: authReturnTarget.params,
+      }),
+    );
+    clearAuthReturn();
+  }, [isLoggedIn, isGuest, authReturnTarget, clearAuthReturn]);
 
   // Show loading while auth state is being determined from AsyncStorage
   if (isLoggedIn === null) {
@@ -196,6 +227,7 @@ export const AppNavigator = () => {
                 name="EventRegistrants"
                 component={EventRegistrantsScreen}
               />
+              <Stack.Screen name="SeatPicker" component={SeatPickerScreen} />
 
               {/* Club */}
               <Stack.Screen

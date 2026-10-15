@@ -11,6 +11,8 @@ import { LiveGateway } from "./live.gateway";
 import { CompetitionAccessService } from "./services/competition-access.service";
 import { CompetitionCacheService } from "./services/competition-cache.service";
 import { CompetitionManagementService } from "./services/competition-management.service";
+import { CompetitionProgramQueryService } from "./services/competition-program-query.service";
+import { CompetitionProgramService } from "./services/competition-program.service";
 import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
@@ -18,6 +20,7 @@ import { RegistrationNotificationService } from "./services/registration-notific
 import { CompetitionEventNotificationService } from "./services/competition-event-notification.service";
 import { CompetitionEventsDeductionService } from "./services/competition-events-deduction.service";
 import { CompetitionSyncService } from "./services/competition-sync.service";
+import { ffdSyncQueueOptions } from "./sync-queue.config";
 import { SyncProcessor } from "./sync.processor";
 
 @Module({
@@ -32,20 +35,14 @@ import { SyncProcessor } from "./sync.processor";
       }),
       inject: [ConfigService],
     }),
-    BullModule.registerQueue({
-      name: "ffd-sync",
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: { type: "exponential", delay: 5000 },
-        removeOnComplete: { count: 10 },
-        removeOnFail: { count: 50 },
-      },
-    }),
+    BullModule.registerQueue(ffdSyncQueueOptions),
   ],
   controllers: [CompetitionsController],
   providers: [
     CompetitionAccessService,
     CompetitionManagementService,
+    CompetitionProgramQueryService,
+    CompetitionProgramService,
     CompetitionQueryService,
     CompetitionRegistrationService,
     CompetitionResultsService,

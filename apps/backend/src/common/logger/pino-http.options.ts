@@ -1,6 +1,15 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import type { Options } from "pino-http";
+import { anonymizeIp } from "./anonymize-ip";
 import { redactSecretsInText, redactUrl } from "./redact-url";
+
+/**
+ * Log keys holding a client IP, wherever a caller puts them: the request
+ * interceptor logs `ip` (`req.ip`). Truncated by {@link anonymizeIp} through
+ * pino's `redact`, so no call site can write a full address (RGPD, #529).
+ * The access log's own `req.remoteAddress` is truncated in its serializer.
+ */
+export const IP_LOG_PATHS = ["ip", "clientIp", "remoteAddress", "*.ip"];
 
 /**
  * pino-http options (access log). Extracted from LoggerModule so the
@@ -21,6 +30,10 @@ export function buildPinoHttpOptions(isDevelopment: boolean): Options {
           },
         }
       : undefined,
+    redact: {
+      paths: IP_LOG_PATHS,
+      censor: (value: unknown) => anonymizeIp(value),
+    },
     serializers: {
       req: (req: IncomingMessage) => ({
         id: req.id,
@@ -30,8 +43,8 @@ export function buildPinoHttpOptions(isDevelopment: boolean): Options {
           host: req.headers.host,
           "user-agent": req.headers["user-agent"],
         },
-        remoteAddress: req.socket?.remoteAddress,
-        remotePort: req.socket?.remotePort,
+        // Network prefix only, and no source port (RGPD, #529).
+        remoteAddress: anonymizeIp(req.socket?.remoteAddress),
       }),
       res: (res: ServerResponse) => ({
         statusCode: res.statusCode,

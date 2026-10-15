@@ -6,6 +6,11 @@ import {
 import { Prisma, UserRole } from "@prisma/client";
 import { hasRole } from "../auth/roles";
 import { createPaginatedResponse } from "../common/utils/pagination.util";
+import {
+  organizedByClubWhere,
+  organizerMatcher,
+  type OrganizerClubActor,
+} from "../competitions/competition-organizer";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   competitionIdOrganizerSelect,
@@ -24,10 +29,9 @@ type RefundDueRow = Prisma.SeatBookingGetPayload<{
 export const DEFAULT_REFUNDS_DUE_PAGE_SIZE = 20;
 
 /**
- * Bound on the club's competitions that currently have a refund owed. Refunds
- * owed are exceptional (late or duplicate payments); past this bound the
- * oldest-dated competitions would be left out, which would need a real
- * organiser foreign key rather than a larger number.
+ * Bound on the club's candidate competitions that currently have a refund
+ * owed. Refunds owed are exceptional (late or duplicate payments); past this
+ * bound the oldest-dated competitions would be left out.
  */
 export const MAX_COMPETITIONS_WITH_REFUNDS = 200;
 
@@ -39,9 +43,11 @@ export const MAX_COMPETITIONS_WITH_REFUNDS = 200;
  * back-office (`SeatReleaseService`, ADR-0022), never by hand in the app —
  * our records follow what HelloAsso confirms.
  *
- * The organising club is matched on `Competition.organizer` like the
- * refund-owed alert and the HelloAsso credentials: the club name, trimmed,
- * case insensitive.
+ * "Organised by the caller's club" is the rule of the organiser rights
+ * (#408, CompetitionAccessService, via `organizerMatcher`): the
+ * `organizerClubId` link; an unlinked competition only when its label
+ * designates exactly the caller's club — a homonym label grants nobody, so a
+ * club never sees another club's dancers.
  */
 @Injectable()
 export class ClubRefundsDueQueryService {
@@ -52,10 +58,8 @@ export class ClubRefundsDueQueryService {
     skip = 0,
     take = DEFAULT_REFUNDS_DUE_PAGE_SIZE,
   ): Promise<ClubRefundsDuePageDto> {
-    const clubName = await this.clubNameOf(userId);
-    const competitionIds = clubName
-      ? await this.competitionsWithRefundsOwed(clubName)
-      : [];
+    const actor = await this.clubActorOf(userId);
+    const competitionIds = await this.competitionsWithRefundsOwed(actor);
     if (competitionIds.length === 0) {
       return createPaginatedResponse([], 0, skip, take);
     }
@@ -78,11 +82,8 @@ export class ClubRefundsDueQueryService {
     return createPaginatedResponse(rows.map(toDto), total, skip, take);
   }
 
-  /**
-   * The requester's club name (its club, else the free-text club name of the
-   * profile), without creating any club. `null` when the account has none.
-   */
-  private async clubNameOf(userId: string): Promise<string | null> {
+  /** The requester as a club actor (its club id and names), CLUB role only. */
+  private async clubActorOf(userId: string): Promise<OrganizerClubActor> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: userRolesClubNameSelect,
@@ -91,33 +92,36 @@ export class ClubRefundsDueQueryService {
     if (!hasRole(user, UserRole.CLUB)) {
       throw new ForbiddenException("Only a club account can list its refunds");
     }
-    const name = (user.club?.name ?? user.clubName)?.trim();
-    if (!name) return null; // Blank club name: no club.
-    return name;
+    return {
+      clubId: user.clubId,
+      clubNames: [user.club?.name, user.clubName],
+    };
   }
 
   /**
-   * Ids of the competitions organised by `clubName` that have a refund owed.
-   * `organizer` is free text that may carry surrounding spaces: the database
-   * narrows with `contains`, the exact (trimmed, case-insensitive) match is
-   * made here.
+   * Ids of the competitions organised by the actor's club that have a refund
+   * owed: candidates from `organizedByClubWhere` (a superset), filtered by
+   * `organizerMatcher`.
    */
   private async competitionsWithRefundsOwed(
-    clubName: string,
+    actor: OrganizerClubActor,
   ): Promise<string[]> {
+    const organizedBy = organizedByClubWhere(actor);
+    if (!organizedBy) return [];
     const candidates = await this.prisma.competition.findMany({
       where: {
-        organizer: { contains: clubName, mode: "insensitive" },
-        seatBookings: { some: { refundOwedAt: { not: null } } },
+        AND: [
+          organizedBy,
+          { seatBookings: { some: { refundOwedAt: { not: null } } } },
+        ],
       },
       select: competitionIdOrganizerSelect,
       orderBy: { date: "desc" },
       take: MAX_COMPETITIONS_WITH_REFUNDS,
     });
-    const wanted = clubName.toLowerCase();
-    return candidates
-      .filter((c) => c.organizer?.trim().toLowerCase() === wanted)
-      .map((c) => c.id);
+    if (candidates.length === 0) return [];
+    const isMine = await organizerMatcher(this.prisma, candidates, actor);
+    return candidates.filter(isMine).map((c) => c.id);
   }
 }
 

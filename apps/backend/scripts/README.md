@@ -126,6 +126,49 @@ node dist/scripts/backfill-registration-partner-user.js --apply   # écriture
 pnpm exec tsx scripts/backfill-registration-partner-user.ts       # en local, simulation
 ```
 
+### `recompute-track-mpm.ts`
+
+**Recalcul ponctuel des MPM stockés comme BPM brut (#338)**
+
+Avant #338, une musique dont la danse n'était pas reconnue par le backend (« Valse anglaise »,
+« Slow-fox », pas de danse…) gardait son BPM brut arrondi comme MPM, et un BPM saisi par un admin à
+la place d'un MPM était appliqué tel quel. Le script convertit ces valeurs (danse reconnue) ou
+vide le MPM (danse inconnue : 0 = MPM inconnu, l'app affiche « - »). Une valeur qui n'est pas un
+BPM brut (MPM saisi par un admin, conversion correcte) n'est jamais touchée.
+
+Idempotent, compare-and-set par piste, affiche chaque correction (id, ancien → nouveau MPM) et les
+compteurs. **À lancer une fois après le déploiement** : sans option, il simule (dry run) ;
+`--apply` écrit.
+
+```bash
+node dist/scripts/recompute-track-mpm.js           # dans le conteneur, simulation
+node dist/scripts/recompute-track-mpm.js --apply   # écriture
+pnpm exec tsx scripts/recompute-track-mpm.ts       # en local, simulation
+```
+
+### `backfill-competition-organizer-club.ts`
+
+**Rattachement des compétitions à leur club organisateur par identifiant (#408)**
+
+`Competition.organizerClubId` désigne le club organisateur (identifiants HelloAsso, notification
+de paiement, droits d'édition) ; `organizer` n'est plus qu'un libellé. La migration
+`20261015210000_competition_organizer_club_id` relie déjà les compétitions dont le libellé
+correspond à **un seul** club (casse et espaces ignorés). Ce script refait la même chose à la
+demande et **liste** ce qu'il ne peut pas relier : aucun club de ce nom (« unmatched ») ou
+plusieurs clubs qui ne diffèrent que par la casse (« ambiguous ») — jamais deviné. Ces lignes
+gardent le repli par nom tant qu'elles ne sont pas corrigées à la main (renommer / fusionner
+l'homonyme, puis relancer).
+
+Idempotent (seules les lignes à `organizerClubId` NULL sont lues et écrites). Sans option, il
+simule ; `--apply` écrit. Quand il ne rapporte plus rien sur chaque environnement, le repli par
+nom peut être retiré (suite de #408).
+
+```bash
+node dist/scripts/backfill-competition-organizer-club.js           # dans le conteneur, simulation
+node dist/scripts/backfill-competition-organizer-club.js --apply   # écriture
+pnpm exec tsx scripts/backfill-competition-organizer-club.ts       # en local, simulation
+```
+
 ---
 
 ## Scripts à la racine du projet

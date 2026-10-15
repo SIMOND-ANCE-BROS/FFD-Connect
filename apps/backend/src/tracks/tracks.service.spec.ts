@@ -28,7 +28,7 @@ import {
 describe("TracksService", () => {
   let service: TracksService;
   let prisma: MockPrismaService;
-  let mockBpm: { calculateMpm: jest.Mock };
+  let mockBpm: { calculateMpm: jest.Mock; toMpm: jest.Mock };
   let files: { remove: jest.Mock };
   let audit: { record: jest.Mock };
 
@@ -40,6 +40,7 @@ describe("TracksService", () => {
       fn(prisma)) as never);
     mockBpm = {
       calculateMpm: jest.fn((bpm: number) => Math.round(bpm)),
+      toMpm: jest.fn((tempo: number) => tempo),
     };
     files = { remove: jest.fn().mockResolvedValue(undefined) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -615,9 +616,17 @@ describe("TracksService", () => {
   });
 
   describe("bpmForPatch", () => {
-    it("returns an explicit tempo as-is", () => {
+    it("returns an explicit MPM through the BPM guard of the new dance", () => {
       expect(service.bpmForPatch(120, { bpm: 30, style: "Rumba" })).toBe(30);
+      expect(mockBpm.toMpm).toHaveBeenCalledWith(30, "Rumba");
       expect(mockBpm.calculateMpm).not.toHaveBeenCalled();
+    });
+
+    it("converts an explicit BPM typed as an MPM (#338)", () => {
+      mockBpm.toMpm.mockReturnValueOnce(29);
+      expect(service.bpmForPatch(0, { bpm: 87 }, "Valse Lente")).toBe(29);
+      // No new dance in the patch: the track's current dance applies.
+      expect(mockBpm.toMpm).toHaveBeenCalledWith(87, "Valse Lente");
     });
 
     it("recomputes the MPM from the raw BPM when only the dance changes", () => {
@@ -626,11 +635,15 @@ describe("TracksService", () => {
       expect(mockBpm.calculateMpm).toHaveBeenCalledWith(100, "Rumba");
     });
 
-    it("leaves the tempo untouched without raw BPM, dance, or a usable MPM", () => {
+    it("clears the MPM (0) when the new dance is unknown, never the raw BPM (#338)", () => {
+      mockBpm.calculateMpm.mockReturnValueOnce(0);
+      expect(service.bpmForPatch(100, { style: "LATIN" })).toBe(0);
+    });
+
+    it("leaves the tempo untouched without raw BPM or dance", () => {
       expect(service.bpmForPatch(0, { style: "Rumba" })).toBeUndefined();
       expect(service.bpmForPatch(100, {})).toBeUndefined();
-      mockBpm.calculateMpm.mockReturnValueOnce(0);
-      expect(service.bpmForPatch(100, { style: "Rumba" })).toBeUndefined();
+      expect(service.bpmForPatch(100, { style: "" })).toBeUndefined();
     });
   });
 

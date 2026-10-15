@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
+import { ThrottleByIp } from "../../common/decorators/throttle-by-ip.decorator";
 import { Request as ExpressRequest } from "express";
 import { JwtAuthGuard } from "../../auth/jwt-auth.guard";
 import { API_GLOBAL_PREFIX } from "../../common/api-prefix";
@@ -117,6 +118,7 @@ export class AppleWalletController {
    */
   @Head("wallet/apple/:token")
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ThrottleByIp()
   @Header("Cache-Control", "no-store")
   @Header("Referrer-Policy", "no-referrer")
   @Header("Content-Type", PKPASS_MIME_TYPE)
@@ -137,6 +139,7 @@ export class AppleWalletController {
 
   @Get("wallet/apple/:token")
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ThrottleByIp()
   @Header("Cache-Control", "no-store")
   @Header("Referrer-Policy", "no-referrer")
   @ApiOperation({

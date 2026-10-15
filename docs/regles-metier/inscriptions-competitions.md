@@ -263,3 +263,29 @@ Règles d’équipe : chaque équipe doit être composée d’**au moins 6** dan
 - **Référentiel règlement** : `GET /competitions/regulation` retourne `competitionTypes`, `eventKinds`, `competitionLevels` pour construire les formulaires côté client.
 - Les réponses compétition/événements incluent `competitionType`, `eventKind` et `level` lorsque présents.
 - **Inscription** : le body peut inclure `registrantLevel` (obligatoire conseillé pour les épreuves classificatrices).
+
+## 8. Programme saisi par le club : épreuves et planning (#442)
+
+L'éditeur de compétition du club (onglets « Épreuves » et « Planning ») enregistre le programme avec la compétition : `GET /competitions/:id/program` le relit, `PUT /competitions/:id/program` le remplace en entier, en une seule transaction. Réservé à l'organisateur (compte club dont le club organise la compétition, contrôle `CompetitionAccessService`) ainsi qu'au STAFF et à l'ADMIN.
+
+### 8.1 Épreuves
+
+- Valeurs enregistrées canoniques : spécialité `Latin` / `Standard` / `Ten Dance` (les libellés « Latines », « Standards », « 10 danses » sont acceptés), classes d'âge de l'article 5 (« Espoir » en couple, « Solo … » en solo), niveaux de la table Niveaux.
+- Règles vérifiées à l'enregistrement : nature autorisée pour le type de compétition (article 8) ; classificatrice = un niveau compatible avec la classe d'âge (et Débutant / Intermédiaire en proximité) ; 10 danses = majeure sans niveau ; Espoir = épreuve couple ; pas de Senior V en Latines ; Open = une ou plusieurs classes d'âge (`ageGroups`) et une restriction facultative par niveaux (`openLevels`, vide = tous niveaux) ; Solo Team = catégorie d'équipe et niveau Débutant / Intermédiaire ; Show danse = couple sans niveau.
+- **Une épreuve qui a des inscriptions ou des résultats n'est jamais supprimée ni modifiée** : l'enregistrement entier est refusé (409) en la nommant, rien n'est écrit. L'éditeur la marque d'un cadenas.
+- Une épreuve renvoyée telle quelle est conservée sans être revalidée (épreuves importées de la FFD, parfois sans nature).
+
+### 8.2 Planning
+
+- L'heure est saisie en `HH:MM`, heure française, sans fuseau : elle est conservée telle quelle (`startClock`) et convertie en instant le jour de la compétition (`startTime`, Europe/Paris, exact aux changements d'heure). La durée (`durationMinutes`) et l'ordre (`position`) sont conservés.
+
+### 8.3 Compétitions importées de la FFD
+
+- Le club organisateur **peut** modifier les épreuves d'une compétition importée : il connaît mieux son programme que la déduction automatique (circulaire, description).
+- Dès qu'il l'a enregistré (`programEditedAt` renseigné), **la synchronisation FFD ne remplace plus ses épreuves** (déduction désactivée pour cette compétition) **et n'y remet plus les épreuves génériques**, même si le club a tout retiré. L'éditeur le signale par un bandeau.
+- La synchronisation continue de mettre à jour les autres informations de la compétition (titre, date, lieu…), comme avant.
+
+### 8.4 Hors périmètre
+
+- Pas de statut « Brouillon » : une compétition créée par un club est publiée (`UPCOMING`). Ajouter une valeur à `CompetitionStatus` n'est pas rétrocompatible (une révision précédente ne saurait pas la lire) ; à traiter dans un ticket dédié.
+- L'éligibilité à une épreuve Open ne lit pas encore `ageGroups` / `openLevels` (seule la première classe d'âge, `ageGroup`, est prise en compte).

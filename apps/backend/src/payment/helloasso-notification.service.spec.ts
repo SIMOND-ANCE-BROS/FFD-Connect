@@ -310,11 +310,32 @@ describe("HelloAssoNotificationService (#404)", () => {
       expect(verified).not.toBeNull();
     });
 
-    it("never re-reads a CONFIRMED booking's current intent", async () => {
-      findUnique.mockResolvedValue({ ...resumed, status: "CONFIRMED" });
+    it.each(["CONFIRMED", "CANCELLED"])(
+      "never re-reads a %s booking's current intent",
+      async (status) => {
+        findUnique.mockResolvedValue({ ...resumed, status });
+
+        await expect(
+          service.resolveOrderNotification(naming(5000)),
+        ).resolves.toBeNull();
+        expect(getCheckoutIntent).not.toHaveBeenCalled();
+      },
+    );
+
+    it("re-reads an earlier intent of a CANCELLED booking: refund owed (#456)", async () => {
+      findUnique.mockResolvedValue({ ...resumed, status: "CANCELLED" });
+
+      const verified = await service.resolveOrderNotification(naming(4242));
+
+      expect(getCheckoutIntent).toHaveBeenCalledWith(credentials, "4242");
+      expect(verified?.data.checkoutIntentId).toBe(4242);
+    });
+
+    it("never re-reads an intent a CANCELLED booking never had", async () => {
+      findUnique.mockResolvedValue({ ...resumed, status: "CANCELLED" });
 
       await expect(
-        service.resolveOrderNotification(naming(5000)),
+        service.resolveOrderNotification(naming(777)),
       ).resolves.toBeNull();
       expect(getCheckoutIntent).not.toHaveBeenCalled();
     });

@@ -19,9 +19,11 @@ import { clearLicenseSnapshot } from "../features/license/utils/licenseSnapshot"
 import { useAuthStore } from "../stores/auth.store";
 import { createLogger } from "../utils/logger";
 import {
-  clearTokens,
+  IMPERSONATION_BACKUP_KEY,
+  clearImpersonationBackupTokens,
+  clearTokensIfRefreshIs,
   getTokens,
-  setTokens,
+  setTokensIfRefreshIs,
   setUnreadableSessionHandler,
 } from "./tokenStore";
 import { isTokenStoreUnavailable } from "./tokenStoreErrors";
@@ -46,7 +48,28 @@ async function setLoggedInFlag(value: boolean): Promise<void> {
     }
   }
   prefs.isLoggedIn = value;
+  if (!value) {
+    // A session end is never an impersonation any more.
+    delete prefs.impersonating;
+    delete prefs.impersonatedName;
+  }
   await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(prefs));
+}
+
+/**
+ * Session over without logout(): the admin's tokens set aside by an
+ * impersonation go with it (#591, #598 review). Best-effort.
+ */
+async function endSessionState(): Promise<void> {
+  await setLoggedInFlag(false);
+  try {
+    await Promise.all([
+      AsyncStorage.removeItem(IMPERSONATION_BACKUP_KEY),
+      clearImpersonationBackupTokens(),
+    ]);
+  } catch {
+    // best-effort
+  }
 }
 
 // Le backend ROTE le refresh token à chaque appel (révoque l'ancien, en émet un
@@ -77,7 +100,20 @@ async function performRefresh(): Promise<string | null> {
       { timeout: API_TIMEOUT_MS },
     );
     const { access_token, refresh_token } = res.data;
-    await setTokens({ authToken: access_token, refreshToken: refresh_token });
+    // Compare-and-set: the session may have changed while the request was in
+    // flight (impersonation switch, logout, new login). The rotated tokens
+    // then belong to the previous session and must never land over the
+    // current one (#598 review).
+    const stored = await setTokensIfRefreshIs(refreshToken, {
+      authToken: access_token,
+      refreshToken: refresh_token,
+    });
+    if (!stored) {
+      logger.info(
+        "Session changed during the refresh — rotated tokens dropped",
+      );
+      return null;
+    }
     await setLoggedInFlag(true);
     return access_token;
   } catch (error) {
@@ -87,13 +123,19 @@ async function performRefresh(): Promise<string | null> {
 
     // Seul un refresh token invalide/expiré/révoqué met fin à la session.
     if (status === 401 || status === 403) {
+      // Compare-and-set too: a stale refresh answered 401 after a NEW login
+      // (a cold start stretches the request) must not end the newer session.
+      const cleared = await clearTokensIfRefreshIs(refreshToken);
+      if (!cleared) {
+        logger.info("Rejected refresh of a previous session — current kept");
+        return null;
+      }
       logger.warn("Refresh token invalide/expiré — déconnexion");
-      await clearTokens();
       // Session over: the offline license snapshot (PII + signed QR) goes with
       // it, like on an explicit logout. Not via runSessionEndCleanups — that
       // registry also runs on the biometric lock, which keeps the snapshot.
       await clearLicenseSnapshot();
-      await setLoggedInFlag(false);
+      await endSessionState();
       // Notifie le store pour que l'UI reflète la déconnexion (au lieu de rester
       // "connectée" avec un token mort).
       try {
@@ -121,7 +163,7 @@ async function performRefresh(): Promise<string | null> {
 async function endUnreadableSession(): Promise<void> {
   logger.warn("Token store unreadable — session ended");
   await clearLicenseSnapshot();
-  await setLoggedInFlag(false);
+  await endSessionState();
   try {
     await useAuthStore.getState().refreshAuth();
   } catch {
@@ -135,6 +177,19 @@ setUnreadableSessionHandler(endUnreadableSession);
  * partagent la même requête en vol. Renvoie le nouvel access token, ou `null`
  * si la session n'a pas pu être rafraîchie.
  */
+/**
+ * Resolves once the refresh in flight, if any, has settled. The impersonation
+ * switch waits for it so it backs up the admin's CURRENT refresh token, not
+ * the one this refresh is rotating out.
+ */
+export async function waitForPendingRefresh(): Promise<void> {
+  try {
+    await inFlight;
+  } catch {
+    // its outcome is not ours to handle
+  }
+}
+
 export function refreshSession(): Promise<string | null> {
   inFlight ??= performRefresh().finally(() => {
     inFlight = null;

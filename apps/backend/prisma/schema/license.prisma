@@ -132,3 +132,42 @@ model WalletPassDownloadToken {
   createdAt     DateTime @default(now())
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+/// Journal des accès aux données de santé (RGPD art. 9 et 32, #63).
+///
+/// Une ligne par accès d'un TIERS (administrateur, impersonation), par export
+/// ou par suppression d'un certificat médical ou d'une demande de
+/// renouvellement : qui, en quelle qualité, quoi, quand, par quelle route.
+/// JAMAIS le contenu (ni `ocrData`, ni commentaire, ni nom, ni e-mail) : on
+/// trace l'accès, pas la donnée.
+///
+/// Aucune clé étrangère : la trace survit à la suppression du compte concerné
+/// comme à celle de l'acteur (seuls des UUID restent). Rétention : 1 an, purgée
+/// par `HealthDataRetentionService` (politique de confidentialité §5).
+///
+/// Colonnes texte validées côté TypeScript plutôt qu'enums PostgreSQL, dont
+/// l'ajout de valeurs se migre mal (même choix que `rejectionReason`).
+model HealthDataAccessLog {
+  id            String   @id @default(uuid())
+  /// Personne dont les données de santé sont concernées.
+  subjectUserId String
+  /// Auteur de l'accès ; null pour un traitement automatique (purge).
+  actorUserId   String?
+  /// Qualité de l'acteur : ADMIN, OWNER, IMPERSONATOR, SYSTEM.
+  actorRole     String
+  /// READ, DOWNLOAD, EXPORT, DELETE.
+  action        String
+  /// LICENSE_RENEWAL_REQUEST ou MEDICAL_CERTIFICATE (id du document).
+  resourceType  String
+  resourceId    String
+  /// Route (gabarit, sans identifiant) ou traitement à l'origine de l'accès.
+  route         String
+  createdAt     DateTime @default(now())
+
+  // « Qui a accédé aux données de santé de X ? »
+  @@index([subjectUserId, createdAt])
+  // « À quoi l'administrateur Y a-t-il accédé ? »
+  @@index([actorUserId, createdAt])
+  // Purge de rétention et tri du journal.
+  @@index([createdAt])
+}

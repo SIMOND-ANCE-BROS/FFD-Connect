@@ -1,4 +1,3 @@
-import * as Sentry from "@sentry/react-native";
 import { AlertCircle } from "lucide-react-native";
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -34,13 +33,10 @@ export class ErrorBoundary extends Component<Props, State> {
       error,
       errorInfo,
     });
+    // One event (#589): logger.error captures it to Sentry, with the
+    // component stack in `extra`. No direct Sentry.captureException as well.
     logger.error("Uncaught error in ErrorBoundary", error, {
       componentStack: errorInfo.componentStack,
-    });
-    Sentry.captureException(error, {
-      contexts: {
-        react: { componentStack: errorInfo.componentStack ?? "" },
-      },
     });
   }
 

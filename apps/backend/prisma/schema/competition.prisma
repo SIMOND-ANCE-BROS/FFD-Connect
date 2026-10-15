@@ -67,7 +67,9 @@ model Competition {
   imageUrl        String?
   latitude        Float?
   longitude       Float?
-  organizer       String?
+  organizer       String?           // Libellé d'affichage du club organisateur (nom FFD)
+  organizerClubId String?           // Club organisateur (#408) : clé des résolutions (paiement, droits) ; null = pas encore relié
+  organizerClub   Club?             @relation("CompetitionOrganizerClub", fields: [organizerClubId], references: [id], onDelete: SetNull)
   registrationUrl String?
   endDate         DateTime?         // FFD endAt (fin de la compétition)
   eventsDescription String?         // FFD danceEventDescription : programme des épreuves (texte libre)
@@ -84,6 +86,10 @@ model Competition {
   registrationDeadline   DateTime?        // Date limite d'inscription (pour countdown)
   eventsSource           EventsSource?    // TEMPORAIRE : origine des épreuves (null = antérieur / saisie manuelle)
   eventsFingerprint      String?          // TEMPORAIRE : empreinte des documents déjà analysés (évite de retraiter)
+  // Dernier enregistrement des épreuves / du planning par l'organisateur dans
+  // l'éditeur club (#442). Non nul : la synchro FFD ne remplace plus ni ne
+  // complète les épreuves (la saisie du club fait foi).
+  programEditedAt        DateTime?
   seatBookings           SeatBooking[]
 
   @@index([date])
@@ -92,6 +98,7 @@ model Competition {
   @@index([city])
   @@index([competitionType])
   @@index([status, date])
+  @@index([organizerClubId])
 }
 
 model Event {
@@ -102,6 +109,11 @@ model Event {
   eventType     EventType      @default(COUPLE) // SOLO | COUPLE
   level         String?        // Niveau épreuve classificatrice : International, Avancé, Intermédiaire, Débutant
   eventKind     EventKind?     // Article 9 : CLASSIFICATRICE | OPEN | MAJEURE | SOLO_TEAM | SHOW_DANSE
+  // Open (#442) : classes d'âge réunies (la première est aussi dans `ageGroup`)
+  // et restriction par niveaux (vide = tous niveaux). Vides hors Open.
+  ageGroups     String[]       @default([])
+  openLevels    String[]       @default([])
+  position      Int?           // Ordre de saisie dans l'éditeur club (#442)
   competition   Competition    @relation(fields: [competitionId], references: [id])
   registrations Registration[]
   results       Result[]
@@ -167,6 +179,12 @@ model ScheduleItem {
   title         String
   type          String
   eventId       String?
+  // Saisie de l'éditeur club (#442) : heure locale `HH:MM` telle que tapée
+  // (`startTime` en est l'instant, jour de la compétition, Europe/Paris),
+  // durée en minutes et rang dans le planning.
+  startClock      String?
+  durationMinutes Int?
+  position        Int?
   createdAt     DateTime    @default(now())
   competition   Competition @relation(fields: [competitionId], references: [id])
   event         Event?      @relation(fields: [eventId], references: [id])

@@ -40,7 +40,8 @@ export interface LicenseConfig {
   textColor: string;
   highlightColor: string;
   labelColor: string;
-  logo: ImageSource | string;
+  /** Bundled asset only: the card never loads a remote image (#246, #602). */
+  logo: ImageSource;
   curveColor: string;
   cardBackground: string;
   borderColor: string;

@@ -77,13 +77,13 @@ describe("AdminUserIdentifiersService", () => {
       // Any casing of another account's address, the edited one excluded.
       expect(prisma.$queryRaw).toHaveBeenCalledWith(
         expect.objectContaining({
-          text: expect.stringContaining("AND id <> $2"),
+          text: expect.stringContaining("WHERE id <> $3"),
           values: expect.arrayContaining(["new@x.fr", "u1"]),
         }),
       );
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: "u1" },
-        data: { email: "new@x.fr" },
+        data: { email: "new@x.fr", emailNormalized: "new@x.fr" },
         select: { id: true },
       });
       expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({

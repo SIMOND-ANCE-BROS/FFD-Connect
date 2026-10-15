@@ -40,6 +40,17 @@ describe("ClubRefundsDueQueryService (#516)", () => {
     user: { id: "u-1", firstName: "Jeanne", lastName: "Martin" },
   };
 
+  const linked = (id: string, clubId: string) => ({
+    id,
+    organizer: "Club A",
+    organizerClubId: clubId,
+  });
+  const unlinked = (id: string, organizer: string | null) => ({
+    id,
+    organizer,
+    organizerClubId: null,
+  });
+
   beforeEach(() => {
     prisma = mockDeep<PrismaClient>();
     service = new ClubRefundsDueQueryService(
@@ -47,13 +58,22 @@ describe("ClubRefundsDueQueryService (#516)", () => {
     );
     prisma.user.findUnique.mockResolvedValue(clubManager as never);
     prisma.competition.findMany.mockResolvedValue([
-      { id: "comp-1", organizer: " club a " },
-      // Contains the name but is another club: excluded.
-      { id: "comp-2", organizer: "Club A Bis" },
+      linked("comp-1", "club-a"),
+    ] as never);
+    // Labels of unlinked competitions: "Club A" names exactly one club.
+    prisma.club.findMany.mockResolvedValue([
+      { id: "club-a", name: "Club A" },
     ] as never);
     prisma.seatBooking.findMany.mockResolvedValue([row] as never);
     prisma.seatBooking.count.mockResolvedValue(1);
   });
+
+  const listedCompetitionIds = () =>
+    (
+      prisma.seatBooking.findMany.mock.calls[0][0] as {
+        where: { competitionId: { in: string[] } };
+      }
+    ).where.competitionId.in;
 
   it("lists the refunds owed on the club's competitions, oldest first", async () => {
     const page = await service.listForClubManager("user-1", 0, 20);
@@ -64,8 +84,18 @@ describe("ClubRefundsDueQueryService (#516)", () => {
     });
     expect(prisma.competition.findMany).toHaveBeenCalledWith({
       where: {
-        organizer: { contains: "Club A", mode: "insensitive" },
-        seatBookings: { some: { refundOwedAt: { not: null } } },
+        AND: [
+          {
+            OR: [
+              { organizerClubId: "club-a" },
+              {
+                organizerClubId: null,
+                organizer: { equals: "Club A", mode: "insensitive" },
+              },
+            ],
+          },
+          { seatBookings: { some: { refundOwedAt: { not: null } } } },
+        ],
       },
       select: competitionIdOrganizerSelect,
       orderBy: { date: "desc" },
@@ -99,6 +129,76 @@ describe("ClubRefundsDueQueryService (#516)", () => {
     });
   });
 
+  it("includes an unlinked competition whose label designates exactly the caller's club", async () => {
+    prisma.competition.findMany.mockResolvedValue([
+      linked("comp-1", "club-a"),
+      unlinked("comp-3", " club a "),
+    ] as never);
+
+    await service.listForClubManager("user-1");
+
+    expect(listedCompetitionIds()).toEqual(["comp-1", "comp-3"]);
+  });
+
+  it("never shows a homonym club's competitions (linked to another club)", async () => {
+    // Club B is also named "Club A": linked by id, it is not the caller's.
+    prisma.competition.findMany.mockResolvedValue([
+      linked("comp-1", "club-a"),
+      linked("comp-b", "club-b"),
+    ] as never);
+
+    await service.listForClubManager("user-1");
+
+    expect(listedCompetitionIds()).toEqual(["comp-1"]);
+  });
+
+  it("skips an unlinked competition whose label is ambiguous between homonym clubs", async () => {
+    prisma.competition.findMany.mockResolvedValue([
+      unlinked("comp-x", "Club A"),
+    ] as never);
+    prisma.club.findMany.mockResolvedValue([
+      { id: "club-a", name: "Club A" },
+      { id: "club-b", name: "club a" },
+    ] as never);
+
+    const page = await service.listForClubManager("user-1", 0, 20);
+
+    expect(prisma.seatBooking.findMany).not.toHaveBeenCalled();
+    expect(page).toEqual({
+      data: [],
+      meta: { total: 0, skip: 0, take: 20, hasMore: false },
+    });
+  });
+
+  it("matches a legacy account without club id on its club name", async () => {
+    prisma.user.findUnique.mockResolvedValue({
+      ...clubManager,
+      clubId: null,
+      club: null,
+      clubName: "  Club A ",
+    } as never);
+    prisma.competition.findMany.mockResolvedValue([
+      unlinked("comp-3", "club a"),
+      unlinked("comp-4", "Club A Bis"),
+    ] as never);
+
+    await service.listForClubManager("user-1");
+
+    expect(prisma.competition.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            {
+              OR: [{ organizer: { equals: "Club A", mode: "insensitive" } }],
+            },
+            { seatBookings: { some: { refundOwedAt: { not: null } } } },
+          ],
+        },
+      }),
+    );
+    expect(listedCompetitionIds()).toEqual(["comp-3"]);
+  });
+
   it("uses the default page and reports more pages", async () => {
     prisma.seatBooking.count.mockResolvedValue(45);
 
@@ -127,41 +227,16 @@ describe("ClubRefundsDueQueryService (#516)", () => {
     );
   });
 
-  it("matches on the profile's club name when the account has no club row", async () => {
-    prisma.user.findUnique.mockResolvedValue({
-      ...clubManager,
-      clubId: null,
-      club: null,
-      clubName: "  Club A ",
-    } as never);
+  it("returns an empty page when no competition has a refund owed", async () => {
+    prisma.competition.findMany.mockResolvedValue([]);
 
-    await service.listForClubManager("user-1");
-
-    expect(prisma.competition.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          organizer: { contains: "Club A", mode: "insensitive" },
-        }) as unknown,
-      }),
-    );
-  });
-
-  it("returns an empty page without querying bookings when no competition matches", async () => {
-    prisma.competition.findMany.mockResolvedValue([
-      { id: "comp-2", organizer: "Club A Bis" },
-      { id: "comp-3", organizer: null },
-    ] as never);
-
-    const page = await service.listForClubManager("user-1", 0, 20);
+    const page = await service.listForClubManager("user-1");
 
     expect(prisma.seatBooking.findMany).not.toHaveBeenCalled();
-    expect(page).toEqual({
-      data: [],
-      meta: { total: 0, skip: 0, take: 20, hasMore: false },
-    });
+    expect(page.data).toEqual([]);
   });
 
-  it("returns an empty page for a club account without a club", async () => {
+  it("returns an empty page for a club account without any club", async () => {
     prisma.user.findUnique.mockResolvedValue({
       ...clubManager,
       clubId: null,
@@ -183,9 +258,9 @@ describe("ClubRefundsDueQueryService (#516)", () => {
       extraRoles: [UserRole.CLUB],
     } as never);
 
-    await expect(service.listForClubManager("user-1")).resolves.toEqual(
-      expect.objectContaining({ data: expect.any(Array) as unknown }),
-    );
+    await service.listForClubManager("user-1");
+
+    expect(listedCompetitionIds()).toEqual(["comp-1"]);
   });
 
   it("refuses an account without an effective CLUB role", async () => {

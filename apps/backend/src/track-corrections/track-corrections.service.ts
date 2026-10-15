@@ -12,13 +12,15 @@ import {
   Prisma,
   TrackCorrectionReason,
   TrackCorrectionStatus,
-  UserRole,
 } from "@prisma/client";
 import { AdminAuditService } from "../admin/admin-audit.service";
 import { diffFields } from "../admin/admin-audit.util";
 import type { AuditEntry } from "../admin/dto/admin-audit.dto";
-import { withActiveRole } from "../auth/roles";
-import { MAX_ADMINS_NOTIFIED } from "../notifications/admin-recipients";
+import {
+  adminRecipientsOrderBy,
+  adminRecipientsWhere,
+  MAX_ADMINS_NOTIFIED,
+} from "../notifications/admin-recipients";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { UpdateTrackDto } from "../tracks/dto/update-track.dto";
@@ -788,8 +790,9 @@ export class TrackCorrectionsService {
   ): Promise<void> {
     try {
       const admins = await this.prisma.user.findMany({
-        where: withActiveRole(UserRole.ADMIN),
+        where: adminRecipientsWhere(),
         select: idOnlySelect,
+        orderBy: adminRecipientsOrderBy,
         take: MAX_ADMINS_NOTIFIED,
       });
       // Le commentaire libre de l'auteur n'est PAS recopié ici : une

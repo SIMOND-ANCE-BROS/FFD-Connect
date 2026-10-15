@@ -18,6 +18,15 @@ export const FFD_CONNECT_LOGO =
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require("../../../../assets/logo.png") as ImageSource;
 
+/**
+ * World DanceSport Federation logotype, shown small on the WDSF licence card
+ * only, as before. Bundled with the app (#602): it used to be loaded from
+ * Wikimedia on every display (third-party request, missing offline).
+ */
+export const WDSF_LOGO =
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("../../../../assets/wdsf-logo.png") as ImageSource;
+
 export function getLicenseConfig(
   type: LicenseType,
   isDark: boolean,
@@ -59,7 +68,7 @@ export function getLicenseConfig(
       textColor: "#E5E5EA",
       highlightColor: "#FFD700",
       labelColor: "#B0B0B0",
-      logo: "https://upload.wikimedia.org/wikipedia/fr/6/65/Logotype_WDSF.svg",
+      logo: WDSF_LOGO,
       curveColor: "#1E1E1E",
       cardBackground: "#1E1E1E",
       borderColor: "#333",
@@ -72,7 +81,7 @@ export function getLicenseConfig(
     textColor: "#333",
     highlightColor: "#B8860B",
     labelColor: "#666",
-    logo: "https://upload.wikimedia.org/wikipedia/fr/6/65/Logotype_WDSF.svg",
+    logo: WDSF_LOGO,
     curveColor: "#FFF",
     cardBackground: "#FFF",
     borderColor: "#CCC",

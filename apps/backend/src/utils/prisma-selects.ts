@@ -312,10 +312,13 @@ export const notificationPreferenceExportSelect = {
 
 /**
  * Sélecteur pour la purge des documents de renouvellement de licence à la
- * suppression de compte (RGPD art. 17) : seule la référence du fichier
- * (nom de blob, ou chemin disque historique) est lue.
+ * suppression de compte (RGPD art. 17) : la référence du fichier (nom de
+ * blob, ou chemin disque historique), plus l'id et le type pour tracer la
+ * suppression des certificats médicaux (#63). Jamais `ocrData`.
  */
 export const licenseRenewalDocumentFileSelect = {
+  id: true,
+  type: true,
   filePath: true,
 } as const;
 
@@ -412,6 +415,8 @@ export const licenseRenewalRequestResponseSelect = {
  * référence de stockage (`filePath`) et l'échéance de purge restent internes.
  */
 export const licenseRenewalDocumentExportSelect = {
+  // Not exported: names the document in the health-data access journal (#63).
+  id: true,
   type: true,
   ocrData: true,
   createdAt: true,
@@ -457,13 +462,16 @@ export const seatBookingExportSelect = {
 
 /**
  * HelloAsso payment notification (#39): what the organizer club is told about
- * a confirmed booking, and how to find that club (competition `organizer`).
- * Never the payer's identity nor the external payment reference.
+ * a confirmed booking, and how to find that club (`organizerClubId`, label
+ * fallback, #408). Never the payer's identity nor the external payment
+ * reference.
  */
 export const seatBookingPaymentNotificationSelect = {
   id: true,
   seatLabel: true,
-  competition: { select: { id: true, title: true, organizer: true } },
+  competition: {
+    select: { id: true, title: true, organizer: true, organizerClubId: true },
+  },
 } as const;
 
 /** A club's identity and status, to address its managers. */
@@ -518,6 +526,12 @@ export const seatBookingHoldSelect = {
 /** Checkout (#428) : place occupée par une réservation active. */
 export const seatBookingSeatIndexSelect = { seatIndex: true } as const;
 
+/** Checkout (#455) : place et échéance d'une réservation laissée expirer (délai avant de la reprendre). */
+export const seatBookingLapseSelect = {
+  seatIndex: true,
+  expiresAt: true,
+} as const;
+
 /** Checkout (#428) : créneau de réservation en attente (plafond de 4). */
 export const seatBookingPendingSlotSelect = { pendingSlot: true } as const;
 
@@ -529,7 +543,20 @@ export const seatBookingRefundAlertSelect = {
   id: true,
   seatIndex: true, // never the free-text seatLabel, typed by the buyer
   expectedAmountCents: true,
-  competition: { select: { id: true, title: true, organizer: true } },
+  competition: {
+    select: { id: true, title: true, organizer: true, organizerClubId: true },
+  },
+} as const;
+
+/**
+ * Occupation du plan de salle (#454) : état d'une place réservée. `userId`
+ * sert seulement à signaler les places de l'appelant ; il n'est jamais rendu.
+ */
+export const seatBookingOccupancySelect = {
+  itemId: true,
+  seatIndex: true,
+  status: true,
+  userId: true,
 } as const;
 
 /**
@@ -616,10 +643,13 @@ export const refreshTokenExportSelect = {
   revokedAt: true,
 } as const;
 
-/** Dépôt d'un document : statut de la demande + fichiers déjà déposés. */
+/**
+ * Dépôt d'un document : statut de la demande + fichiers déjà déposés (l'id
+ * trace la suppression d'un certificat médical remplacé, #63).
+ */
 export const licenseRenewalUploadTargetSelect = {
   status: true,
-  documents: { select: { type: true, filePath: true } },
+  documents: { select: { id: true, type: true, filePath: true } },
 } as const;
 
 /**
@@ -636,6 +666,9 @@ export const userLicenseValidUntilSelect = {
   license: { select: { validUntil: true } },
 } as const;
 
+/** Club identity only (id + name). */
+export const clubIdNameSelect = { id: true, name: true } as const;
+
 /** Approbation : de quoi renouveler la licence, sans le reste du profil. */
 export const licenseRenewalApprovalTargetSelect = {
   status: true,
@@ -643,8 +676,11 @@ export const licenseRenewalApprovalTargetSelect = {
   documents: { select: { type: true, ocrData: true } },
   user: {
     select: {
-      category: true,
+      // Category and club of a licence created by the approval come from the
+      // holder's real profile, never invented (#282).
+      ...userDisciplineSelect,
       clubName: true,
+      club: { select: clubIdNameSelect },
       // `id`: the number a renewal replaces is retired against it (#466).
       license: { select: { id: true, number: true, validUntil: true } },
     },
@@ -659,6 +695,8 @@ export const healthDataPurgeDueSelect = {
   id: true,
   filePath: true,
   requestId: true,
+  // Whose certificate is purged, for the health-data access journal (#63).
+  request: { select: { userId: true } },
 } as const;
 
 /** Sélecteur minimal : identifiant seul (destinataires d'une notification…). */
@@ -702,10 +740,14 @@ export const seatBookingRefundDueSelect = {
   user: { select: userNameSelect },
 } as const;
 
-/** Compétitions candidates d'un club organisateur (#516) : id + organisateur. */
+/**
+ * Compétitions candidates d'un club organisateur (#516) : id, club relié et
+ * libellé de repli (#408, cf. organizerMatcher).
+ */
 export const competitionIdOrganizerSelect = {
   id: true,
   organizer: true,
+  organizerClubId: true,
 } as const;
 
 /**
@@ -782,11 +824,14 @@ export const licenseRenewalHistorySelect = {
   reviewedAt: true,
 } as const;
 
-/** Fichier d'un document à servir à l'administrateur, et l'état de sa demande. */
+/**
+ * Fichier d'un document à servir à l'administrateur, l'état de sa demande et
+ * son titulaire (journal des accès aux données de santé, #63).
+ */
 export const licenseRenewalDocumentFileTargetSelect = {
   type: true,
   filePath: true,
-  request: { select: { status: true } },
+  request: { select: { status: true, userId: true } },
 } as const;
 
 /**
@@ -1024,6 +1069,22 @@ export const adminAuditLogSelect = {
   actor: { select: userNameSelect },
 } as const;
 
+/**
+ * Journal des accès aux données de santé (#63) : identifiants seulement, aucun
+ * nom joint.
+ */
+export const healthDataAccessLogSelect = {
+  id: true,
+  subjectUserId: true,
+  actorUserId: true,
+  actorRole: true,
+  action: true,
+  resourceType: true,
+  resourceId: true,
+  route: true,
+  createdAt: true,
+} as const;
+
 /** Back-office: club options for selects (id + name only). */
 export const adminClubOptionSelect = { id: true, name: true } as const;
 
@@ -1169,9 +1230,6 @@ export const clubHelloAssoStatusSelect = {
   helloAssoOrgSlug: true,
 } as const;
 
-/** Club identity only (id + name). */
-export const clubIdNameSelect = { id: true, name: true } as const;
-
 /** Back-office club page: one member row. */
 export const adminClubMemberSelect = {
   id: true,
@@ -1226,8 +1284,28 @@ export const userRolesClubNameSelect = {
   club: { select: { disabledAt: true, name: true } },
 } as const;
 
-/** Competition ownership check: the organizing club's name. */
-export const competitionOrganizerSelect = { organizer: true } as const;
+/**
+ * Competition ownership check / organising-club resolution (#408): the club
+ * link, and the label used as fallback while the row is unlinked.
+ */
+export const competitionOrganizerSelect = {
+  organizer: true,
+  organizerClubId: true,
+} as const;
+
+/**
+ * Organising-club backfill (#408): the unlinked competition and its label —
+ * ids and club names only, no personal data.
+ */
+export const competitionOrganizerBackfillSelect = {
+  id: true,
+  ...competitionOrganizerSelect,
+} as const;
+
+/** FFD sync (#408): the club a competition is currently linked to. */
+export const competitionLinkedOrganizerClubSelect = {
+  organizerClub: { select: clubIdNameSelect },
+} as const;
 
 /**
  * Volunteer check-in link as returned to the organizer: never the stored
@@ -1241,12 +1319,14 @@ export const volunteerTokenIssuedSelect = {
   createdAt: true,
 } as const;
 
-/** Volunteer check-in link validation: scope and expiry, never the hash. */
+/**
+ * Volunteer check-in link validation: scope and expiry, never the hash — nor
+ * the link's name, which may be a person's and must not reach the logs (#529).
+ */
 export const volunteerTokenAuthSelect = {
   id: true,
   competitionId: true,
   expiresAt: true,
-  name: true,
 } as const;
 
 /**
@@ -1262,6 +1342,8 @@ export const competitionEventsDeductionSelect = {
   circularUrl: true,
   eventsSource: true,
   eventsFingerprint: true,
+  // Programme saved by the club (#442): its events are never replaced.
+  programEditedAt: true,
   events: {
     select: {
       category: true,
@@ -1330,4 +1412,42 @@ export const notificationNameScrubSelect = {
   id: true,
   body: true,
   data: true,
+} as const;
+
+/**
+ * Club competition editor (#442): competition fields the programme read and
+ * write need (calendar day of the schedule, Article 8 type, FFD origin).
+ */
+export const competitionProgramHeaderSelect = {
+  id: true,
+  date: true,
+  competitionType: true,
+  ffdId: true,
+  eventsSource: true,
+  programEditedAt: true,
+} as const;
+
+/** An event of the club editor, with what locks it (registrations, results). */
+export const competitionProgramEventSelect = {
+  id: true,
+  eventKind: true,
+  eventType: true,
+  category: true,
+  ageGroup: true,
+  ageGroups: true,
+  level: true,
+  openLevels: true,
+  position: true,
+  _count: { select: { registrations: true, results: true } },
+} as const;
+
+/** A schedule slot of the club editor. */
+export const competitionProgramScheduleSelect = {
+  id: true,
+  startTime: true,
+  startClock: true,
+  durationMinutes: true,
+  type: true,
+  title: true,
+  eventId: true,
 } as const;

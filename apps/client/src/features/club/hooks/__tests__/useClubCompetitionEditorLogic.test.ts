@@ -1,6 +1,11 @@
-import { act, renderHook } from "@testing-library/react-native";
+import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { Alert } from "react-native";
 import { CompetitionService } from "../../services/CompetitionService";
+import {
+  CompetitionProgramError,
+  fetchCompetitionProgram,
+  saveCompetitionProgram,
+} from "../../services/competitionProgramApi";
 import {
   isValidCompetitionStatus,
   toCompetitionStatus,
@@ -13,6 +18,49 @@ jest.mock("../../services/CompetitionService", () => ({
     update: jest.fn(),
   },
 }));
+
+jest.mock("../../services/competitionProgramApi", () => {
+  class CompetitionProgramError extends Error {}
+  return {
+    CompetitionProgramError,
+    fetchCompetitionProgram: jest.fn(),
+    saveCompetitionProgram: jest.fn(),
+  };
+});
+
+const emptyProgram = {
+  competitionId: "comp-1",
+  syncedFromFfd: false,
+  eventsSource: null,
+  programEditedAt: null,
+  events: [],
+  schedule: [],
+};
+
+/** Three slots: 10:00 (15 min), 10:15 (15 min), 10:30 (10 min). */
+const sampleSchedule = [
+  {
+    id: "1",
+    startTime: "10:00",
+    type: "ROUND" as const,
+    title: "Latine - Adulte - 1/4 Finale",
+    duration: 15,
+  },
+  {
+    id: "2",
+    startTime: "10:15",
+    type: "BREAK" as const,
+    title: "Pause",
+    duration: 15,
+  },
+  {
+    id: "3",
+    startTime: "10:30",
+    type: "ROUND" as const,
+    title: "Standard - Senior - Finale",
+    duration: 10,
+  },
+];
 
 describe("useClubCompetitionEditorLogic", () => {
   const mockNavigation = { goBack: jest.fn() };
@@ -44,7 +92,18 @@ describe("useClubCompetitionEditorLogic", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(Alert, "alert").mockImplementation(() => {});
+    (fetchCompetitionProgram as jest.Mock).mockResolvedValue(emptyProgram);
+    (saveCompetitionProgram as jest.Mock).mockResolvedValue(emptyProgram);
   });
+
+  /** Editor of a new competition with a sample schedule. */
+  const renderWithSchedule = () =>
+    renderHook(() =>
+      useClubCompetitionEditorLogic({
+        initialCompetition: { schedule: sampleSchedule },
+        navigation: mockNavigation,
+      }),
+    );
 
   it("initializes with default state", async () => {
     const { result } = await renderHook(() =>
@@ -54,8 +113,11 @@ describe("useClubCompetitionEditorLogic", () => {
     expect(result.current.title).toBe("");
     expect(result.current.status).toBe("UPCOMING");
     expect(result.current.dateText).toBe("");
-    expect(result.current.events.length).toBeGreaterThan(0);
-    expect(result.current.schedule.length).toBeGreaterThan(0);
+    // No sample programme: it would be saved as real events (#442).
+    expect(result.current.events).toEqual([]);
+    expect(result.current.schedule).toEqual([]);
+    expect(result.current.programStatus).toBe("ready");
+    expect(fetchCompetitionProgram).not.toHaveBeenCalled();
   });
 
   it("initializes with provided competition data", async () => {
@@ -127,7 +189,19 @@ describe("useClubCompetitionEditorLogic", () => {
 
     it("removes an event", async () => {
       const { result } = await renderHook(() =>
-        useClubCompetitionEditorLogic({ navigation: mockNavigation }),
+        useClubCompetitionEditorLogic({
+          initialCompetition: {
+            events: [
+              {
+                id: "e1",
+                type: "Couple",
+                category: "Latine",
+                ageGroup: "Adulte",
+              },
+            ],
+          },
+          navigation: mockNavigation,
+        }),
       );
       const eventId = result.current.events[0].id;
 
@@ -169,9 +243,7 @@ describe("useClubCompetitionEditorLogic", () => {
     });
 
     it("recalculates schedule times when adding item", async () => {
-      const { result } = await renderHook(() =>
-        useClubCompetitionEditorLogic({ navigation: mockNavigation }),
-      );
+      const { result } = await renderWithSchedule();
 
       // Clear schedule for predictable testing
       // We can't clear explicitly via exposed methods easily without removing one by one,
@@ -188,9 +260,7 @@ describe("useClubCompetitionEditorLogic", () => {
     });
 
     it("edits an existing timing item and recalculates subsequent times", async () => {
-      const { result } = await renderHook(() =>
-        useClubCompetitionEditorLogic({ navigation: mockNavigation }),
-      );
+      const { result } = await renderWithSchedule();
 
       // Default:
       // 1. 10:00 (15m) -> Ends 10:15
@@ -222,9 +292,7 @@ describe("useClubCompetitionEditorLogic", () => {
     });
 
     it("removes a timing item and recalculates", async () => {
-      const { result } = await renderHook(() =>
-        useClubCompetitionEditorLogic({ navigation: mockNavigation }),
-      );
+      const { result } = await renderWithSchedule();
 
       // Default:
       // 1. 10:00 (15m)
@@ -334,7 +402,9 @@ describe("useClubCompetitionEditorLogic", () => {
         result.current.setTicketingUrl("");
       });
 
-      (CompetitionService.create as jest.Mock).mockResolvedValueOnce({});
+      (CompetitionService.create as jest.Mock).mockResolvedValueOnce({
+        id: "new-comp",
+      });
 
       await act(async () => {
         await result.current.handleSave();
@@ -350,10 +420,14 @@ describe("useClubCompetitionEditorLogic", () => {
         eventsDescription: "",
         layout: [],
       });
-      // The tabs « Épreuves » / « Timing » aren't persisted: never sent.
+      // The programme goes through its own endpoint (#442).
       const body = (CompetitionService.create as jest.Mock).mock.calls[0][0];
       expect(body).not.toHaveProperty("events");
       expect(body).not.toHaveProperty("schedule");
+      expect(saveCompetitionProgram).toHaveBeenCalledWith("new-comp", {
+        events: [],
+        schedule: [],
+      });
 
       expect(Alert.alert).toHaveBeenCalledWith(
         "Succès",
@@ -386,6 +460,7 @@ describe("useClubCompetitionEditorLogic", () => {
       );
 
       (CompetitionService.update as jest.Mock).mockResolvedValueOnce({});
+      await waitFor(() => expect(result.current.programStatus).toBe("ready"));
 
       await act(async () => {
         await result.current.handleSave();
@@ -429,6 +504,289 @@ describe("useClubCompetitionEditorLogic", () => {
         "Impossible de sauvegarder la compétition",
       );
       expect(mockNavigation.goBack).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Programme (#442)", () => {
+    const storedProgram = {
+      ...emptyProgram,
+      syncedFromFfd: true,
+      events: [
+        {
+          id: "ev-1",
+          eventKind: "OPEN",
+          eventType: "COUPLE",
+          category: "Standard",
+          ageGroup: "Youth",
+          ageGroups: ["Youth", "Adulte"],
+          level: null,
+          openLevels: ["Débutant"],
+          locked: false,
+        },
+        {
+          id: "ev-ffd",
+          eventKind: null,
+          eventType: "COUPLE",
+          category: "Latin",
+          ageGroup: "Adult",
+          ageGroups: [],
+          level: null,
+          openLevels: [],
+          locked: true,
+        },
+      ],
+      schedule: [
+        {
+          id: "slot-1",
+          startTime: "09:00",
+          durationMinutes: 30,
+          type: "ROUND",
+          title: "Ouverture",
+          eventId: null,
+        },
+      ],
+    };
+
+    const renderExisting = () =>
+      renderHook(() =>
+        useClubCompetitionEditorLogic({
+          initialCompetition: {
+            id: "comp-1",
+            title: "Open de Lyon",
+            date: "2026-06-13T00:00:00.000Z",
+            location: "Lyon",
+            competitionType: "NATIONALE",
+          },
+          navigation: mockNavigation,
+        }),
+      );
+
+    it("loads the stored programme of an existing competition", async () => {
+      (fetchCompetitionProgram as jest.Mock).mockResolvedValue(storedProgram);
+      const { result } = await renderExisting();
+
+      expect(fetchCompetitionProgram).toHaveBeenCalledWith("comp-1");
+      await waitFor(() => expect(result.current.programStatus).toBe("ready"));
+      expect(result.current.syncedFromFfd).toBe(true);
+      expect(result.current.events.map((e) => e.id)).toEqual([
+        "ev-1",
+        "ev-ffd",
+      ]);
+      expect(result.current.events[0]).toMatchObject({
+        type: "Couple",
+        kind: "OPEN",
+        ageGroups: ["Youth", "Adulte"],
+        openLevels: ["Débutant"],
+        persisted: true,
+      });
+      expect(result.current.schedule).toEqual([
+        {
+          id: "slot-1",
+          startTime: "09:00",
+          type: "ROUND",
+          title: "Ouverture",
+          duration: 30,
+          persisted: true,
+        },
+      ]);
+    });
+
+    it("sends stored events back with their id and values, new ones without id", async () => {
+      (fetchCompetitionProgram as jest.Mock).mockResolvedValue(storedProgram);
+      (CompetitionService.update as jest.Mock).mockResolvedValue({});
+      const { result } = await renderExisting();
+      await waitFor(() => expect(result.current.programStatus).toBe("ready"));
+
+      await act(() => {
+        result.current.setNewEventKind("CLASSIFICATRICE");
+        result.current.setNewEventCategory("Latine");
+        result.current.setNewEventAge("Youth");
+        result.current.setNewEventLevel("Avancé");
+      });
+      await act(() => {
+        result.current.addEvent();
+      });
+      await act(async () => {
+        await result.current.handleSave();
+      });
+
+      expect(saveCompetitionProgram).toHaveBeenCalledWith("comp-1", {
+        events: [
+          {
+            id: "ev-1",
+            eventKind: "OPEN",
+            eventType: "COUPLE",
+            category: "Standard",
+            ageGroup: "Youth",
+            ageGroups: ["Youth", "Adulte"],
+            level: null,
+            openLevels: ["Débutant"],
+          },
+          {
+            id: "ev-ffd",
+            eventKind: null,
+            eventType: "COUPLE",
+            category: "Latin",
+            ageGroup: "Adult",
+            ageGroups: [],
+            level: null,
+            openLevels: [],
+          },
+          {
+            eventKind: "CLASSIFICATRICE",
+            eventType: "COUPLE",
+            category: "Latine",
+            ageGroup: "Youth",
+            ageGroups: [],
+            level: "Avancé",
+            openLevels: [],
+          },
+        ],
+        schedule: [
+          {
+            id: "slot-1",
+            startTime: "09:00",
+            durationMinutes: 30,
+            type: "ROUND",
+            title: "Ouverture",
+          },
+        ],
+      });
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Succès",
+        "Compétition modifiée avec succès !",
+        expect.any(Array),
+      );
+    });
+
+    it("keeps an event with registrations", async () => {
+      (fetchCompetitionProgram as jest.Mock).mockResolvedValue(storedProgram);
+      const { result } = await renderExisting();
+      await waitFor(() => expect(result.current.programStatus).toBe("ready"));
+
+      await act(() => {
+        result.current.removeEvent("ev-ffd");
+      });
+
+      expect(result.current.events.map((e) => e.id)).toContain("ev-ffd");
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Épreuve verrouillée",
+        expect.any(String),
+      );
+    });
+
+    it("waits for the programme before saving", async () => {
+      (fetchCompetitionProgram as jest.Mock).mockReturnValue(
+        new Promise(() => {}),
+      );
+      const { result } = await renderExisting();
+
+      await act(async () => {
+        await result.current.handleSave();
+      });
+
+      expect(result.current.programStatus).toBe("loading");
+      expect(CompetitionService.update).not.toHaveBeenCalled();
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Patientez",
+        expect.stringContaining("en cours de chargement"),
+      );
+    });
+
+    it("never overwrites a programme it could not load", async () => {
+      (fetchCompetitionProgram as jest.Mock).mockRejectedValue(
+        new Error("500"),
+      );
+      (CompetitionService.update as jest.Mock).mockResolvedValue({});
+      const { result } = await renderExisting();
+      await waitFor(() => expect(result.current.programStatus).toBe("error"));
+
+      await act(async () => {
+        await result.current.handleSave();
+      });
+
+      expect(CompetitionService.update).toHaveBeenCalled();
+      expect(saveCompetitionProgram).not.toHaveBeenCalled();
+    });
+
+    it("does not save a programme for a non-competitive event", async () => {
+      (CompetitionService.update as jest.Mock).mockResolvedValue({});
+      const { result } = await renderExisting();
+      await waitFor(() => expect(result.current.programStatus).toBe("ready"));
+
+      await act(() => {
+        result.current.setKind("EVENT");
+      });
+      await act(async () => {
+        await result.current.handleSave();
+      });
+
+      expect(CompetitionService.update).toHaveBeenCalled();
+      expect(saveCompetitionProgram).not.toHaveBeenCalled();
+    });
+
+    it("shows the server's reason and stays open when the programme is refused", async () => {
+      (CompetitionService.update as jest.Mock).mockResolvedValue({});
+      (saveCompetitionProgram as jest.Mock).mockRejectedValue(
+        new CompetitionProgramError(
+          "L'épreuve « Latines Adulte » a des inscriptions ou des résultats : elle ne peut plus être modifiée.",
+        ),
+      );
+      const { result } = await renderExisting();
+      await waitFor(() => expect(result.current.programStatus).toBe("ready"));
+
+      await act(async () => {
+        await result.current.handleSave();
+      });
+
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Épreuves non enregistrées",
+        expect.stringContaining("a des inscriptions"),
+      );
+      expect(mockNavigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it("updates (no duplicate) on retry after a creation whose programme failed", async () => {
+      (CompetitionService.create as jest.Mock).mockResolvedValue({
+        id: "new-comp",
+      });
+      (CompetitionService.update as jest.Mock).mockResolvedValue({});
+      (saveCompetitionProgram as jest.Mock).mockRejectedValueOnce(
+        new Error("network"),
+      );
+      const { result } = await renderHook(() =>
+        useClubCompetitionEditorLogic({ navigation: mockNavigation }),
+      );
+      await act(() => {
+        result.current.setTitle("Gala");
+        result.current.onDateChange(undefined, new Date(2026, 5, 13));
+        result.current.setLocation("Lyon");
+      });
+
+      await act(async () => {
+        await result.current.handleSave();
+      });
+      expect(Alert.alert).toHaveBeenLastCalledWith(
+        "Épreuves non enregistrées",
+        expect.stringContaining(
+          "Impossible d'enregistrer les épreuves et le planning",
+        ),
+      );
+      expect(result.current.isEditing).toBe(true);
+
+      await act(async () => {
+        await result.current.handleSave();
+      });
+
+      expect(CompetitionService.create).toHaveBeenCalledTimes(1);
+      expect(CompetitionService.update).toHaveBeenCalledWith(
+        "new-comp",
+        expect.objectContaining({ title: "Gala" }),
+      );
+      expect(saveCompetitionProgram).toHaveBeenLastCalledWith("new-comp", {
+        events: [],
+        schedule: [],
+      });
     });
   });
 

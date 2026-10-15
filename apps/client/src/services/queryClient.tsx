@@ -3,13 +3,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   QueryClient,
   defaultShouldDehydrateQuery,
+  focusManager,
   onlineManager,
   type Query,
 } from "@tanstack/react-query";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import React from "react";
-import { Alert } from "react-native";
+import { Alert, AppState, type AppStateStatus } from "react-native";
 import {
   assertReplayable,
   handleRegistrationReplayError,
@@ -39,6 +40,40 @@ onlineManager.setEventListener((setOnline) =>
   }),
 );
 
+/**
+ * Same story for focus (#300): on React Native `focusManager` listens to the
+ * DOM `visibilitychange` event, which never fires, so `refetchOnWindowFocus`
+ * was dead. Wire it to AppState: back to the foreground = focus.
+ *
+ * - Only `background` -> `active` counts. iOS goes `inactive` for the Face ID
+ *   prompt, Control Center, the notification shade or the app switcher peek;
+ *   those keep the previous focus so they never trigger a refetch.
+ * - React Query only refetches queries that have a mounted observer AND are
+ *   stale (`staleTime`, 30 s by default), once per transition (`setFocused`
+ *   is a no-op when the value does not change) — no burst, no global reload.
+ * - Unfocused while in background: no focus-driven work there (#539).
+ * - A sleeping backend is woken by the existing wake-and-replay of `api.ts`
+ *   (WakeOverlay), exactly like a screen mount — no ad hoc wake logic here.
+ */
+export function focusFromAppState(
+  status: AppStateStatus | null | undefined,
+): boolean | undefined {
+  if (status === "active") return true;
+  if (status === "background") return false;
+  return undefined;
+}
+
+focusManager.setEventListener((setFocused) => {
+  // A data-only push can launch the JS in the background (#775): start
+  // unfocused so the first real foreground counts as a focus.
+  if (AppState.currentState === "background") setFocused(false);
+  const subscription = AppState.addEventListener("change", (status) => {
+    const focused = focusFromAppState(status);
+    if (focused !== undefined) setFocused(focused);
+  });
+  return () => subscription.remove();
+});
+
 // QueryClient partagé pour l'app mobile
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,6 +82,9 @@ export const queryClient = new QueryClient({
       gcTime: 1000 * 60 * 60 * 24,
       staleTime: 1000 * 30, // 30s fraîches par défaut
       refetchOnReconnect: true,
+      // Effective through the AppState-wired focusManager above (#300).
+      // Stale queries only: a screen needing fresher data on focus sets a
+      // shorter staleTime; one that must never refetch sets this to false.
       refetchOnWindowFocus: true,
     },
   },

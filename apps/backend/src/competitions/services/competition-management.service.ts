@@ -20,6 +20,7 @@ import {
   CreateCompetitionDto,
   UpdateCompetitionDto,
 } from "../dto/competition-management.dto";
+import type { NewCompetitionOrganizer } from "./competition-access.service";
 import { CompetitionCacheService } from "./competition-cache.service";
 import { COMPETITION_BASE_SELECT } from "./competition-query.service";
 import { SyncResult } from "../sync.processor";
@@ -101,10 +102,14 @@ export class CompetitionManagementService {
   }
 
   /**
-   * @param organizer organizing club name, stamped for a competition created
-   *   by a CLUB account (see CompetitionAccessService.organizerForNewCompetition).
+   * @param organizer organizing club (label + link, #408), stamped for a
+   *   competition created by a CLUB account (see
+   *   CompetitionAccessService.organizerForNewCompetition).
    */
-  async create(data: CreateCompetitionDto, organizer?: string) {
+  async create(
+    data: CreateCompetitionDto,
+    organizer?: NewCompetitionOrganizer,
+  ) {
     const { date, layout, registrationDeadline, ...rest } = data;
     const competitionDate = new Date(date);
     const deadline =
@@ -115,7 +120,10 @@ export class CompetitionManagementService {
     return this.prisma.competition.create({
       data: {
         ...rest,
-        ...(organizer !== undefined && { organizer }),
+        ...(organizer !== undefined && {
+          organizer: organizer.organizer,
+          organizerClubId: organizer.organizerClubId,
+        }),
         date: competitionDate,
         ...(deadline !== undefined && { registrationDeadline: deadline }),
         ...(layout !== undefined && {

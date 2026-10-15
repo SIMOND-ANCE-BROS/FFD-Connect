@@ -1,6 +1,8 @@
 /**
  * #516 on a real database: the organising club lists the refunds it owes
- * (`refundOwedPaymentIds` / `refundOwedAt` on SeatBooking), and only its own.
+ * (`refundOwedPaymentIds` / `refundOwedAt` on SeatBooking), and only its own —
+ * the organising club is the `organizerClubId` link (#408), a homonym club
+ * never sees another club's dancers.
  */
 import { INestApplication } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
@@ -15,6 +17,7 @@ describe("Club refunds due (#516, integration, real DB)", () => {
   let prisma: PrismaService;
   let f: ReturnType<typeof createFactories>;
   let clubAToken: string;
+  let homonymToken: string;
   let clubBToken: string;
   let licenseeToken: string;
   let dancerId: string;
@@ -28,6 +31,14 @@ describe("Club refunds due (#516, integration, real DB)", () => {
       .get(`/api/v1/clubs/me/refunds-due${query}`)
       .set("Authorization", `Bearer ${token}`);
 
+  type Page = {
+    data: Array<{ bookingId: string; helloAssoCheckoutIntentIds: string[] }>;
+    meta: Record<string, unknown>;
+  };
+
+  const intentIdsOf = (body: unknown) =>
+    (body as Page).data.map((r) => r.helloAssoCheckoutIntentIds);
+
   beforeAll(async () => {
     const built = await buildHttpApp();
     app = built.app;
@@ -35,13 +46,15 @@ describe("Club refunds due (#516, integration, real DB)", () => {
     f = createFactories(prisma, suffix, built.jwt);
 
     const clubA = await f.club({ name: `Club A ${suffix}` });
+    // Homonym: same name but for the case (Club.name is unique).
+    const homonym = await f.club({ name: `CLUB A ${suffix}` });
     const clubB = await f.club({ name: `Club B ${suffix}` });
-    clubAToken = (
-      await f.user(UserRole.CLUB, { clubId: clubA.id, clubName: clubA.name })
-    ).token;
-    clubBToken = (
-      await f.user(UserRole.CLUB, { clubId: clubB.id, clubName: clubB.name })
-    ).token;
+    const manager = async (club: { id: string; name: string }) =>
+      (await f.user(UserRole.CLUB, { clubId: club.id, clubName: club.name }))
+        .token;
+    clubAToken = await manager(clubA);
+    homonymToken = await manager(homonym);
+    clubBToken = await manager(clubB);
     const licensee = await f.user(UserRole.LICENSEE, {
       firstName: "Jeanne",
       lastName: "Martin",
@@ -49,11 +62,22 @@ describe("Club refunds due (#516, integration, real DB)", () => {
     licenseeToken = licensee.token;
     dancerId = licensee.user.id;
 
-    // Free-text organiser with surrounding spaces and another case.
+    // Linked to club A (label irrelevant once linked).
     const compA = await f.competition({
-      organizer: ` ${clubA.name.toUpperCase()} `,
+      organizer: clubA.name,
+      organizerClubId: clubA.id,
     });
-    const compB = await f.competition({ organizer: clubB.name });
+    // Same label as club A, but linked to the homonym: never club A's.
+    const compHomonym = await f.competition({
+      organizer: clubA.name,
+      organizerClubId: homonym.id,
+    });
+    // Unlinked, label ambiguous between club A and its homonym: nobody's.
+    const compAmbiguous = await f.competition({ organizer: clubA.name });
+    // Unlinked, label naming exactly one club (spaces, case): club B's.
+    const compB = await f.competition({
+      organizer: ` ${clubB.name.toUpperCase()} `,
+    });
 
     const booking = (
       competitionId: string,
@@ -72,27 +96,37 @@ describe("Club refunds due (#516, integration, real DB)", () => {
           ...data,
         },
       });
+    const owed = (intentIds: string[], at: string) => ({
+      refundOwedPaymentIds: intentIds,
+      refundOwedAt: new Date(at),
+    });
 
     owedBookingId = (
-      await booking(compA.id, "table-1", {
-        refundOwedPaymentIds: ["901", "902"],
-        refundOwedAt: new Date("2026-10-12T10:00:00Z"),
-      })
+      await booking(
+        compA.id,
+        "table-1",
+        owed(["901", "902"], "2026-10-12T10:00:00Z"),
+      )
     ).id;
     olderOwedBookingId = (
       await booking(compA.id, "table-2", {
         status: "CONFIRMED",
-        refundOwedPaymentIds: ["903"],
-        refundOwedAt: new Date("2026-10-11T10:00:00Z"),
+        ...owed(["903"], "2026-10-11T10:00:00Z"),
       })
     ).id;
     // Nothing owed (refund settled): not listed.
     await booking(compA.id, "table-3", {});
-    // Club B's refund: never shown to club A.
-    await booking(compB.id, "table-1", {
-      refundOwedPaymentIds: ["904"],
-      refundOwedAt: new Date("2026-10-10T10:00:00Z"),
-    });
+    await booking(
+      compHomonym.id,
+      "table-1",
+      owed(["905"], "2026-10-09T10:00:00Z"),
+    );
+    await booking(
+      compAmbiguous.id,
+      "table-1",
+      owed(["906"], "2026-10-08T10:00:00Z"),
+    );
+    await booking(compB.id, "table-1", owed(["904"], "2026-10-10T10:00:00Z"));
   });
 
   afterAll(async () => {
@@ -133,10 +167,7 @@ describe("Club refunds due (#516, integration, real DB)", () => {
 
   it("paginates", async () => {
     const res = await get(clubAToken, "?skip=1&take=1").expect(200);
-    const body = res.body as {
-      data: Array<{ bookingId: string }>;
-      meta: { hasMore: boolean; total: number };
-    };
+    const body = res.body as Page;
 
     expect(body.data.map((r) => r.bookingId)).toEqual([owedBookingId]);
     expect(body.meta).toEqual(
@@ -144,15 +175,16 @@ describe("Club refunds due (#516, integration, real DB)", () => {
     );
   });
 
-  it("shows another club only its own refunds", async () => {
-    const res = await get(clubBToken).expect(200);
-    const body = res.body as {
-      data: Array<{ helloAssoCheckoutIntentIds: string[] }>;
-    };
+  it("shows a homonym club only the competitions linked to it", async () => {
+    const res = await get(homonymToken).expect(200);
 
-    expect(body.data.map((r) => r.helloAssoCheckoutIntentIds)).toEqual([
-      ["904"],
-    ]);
+    expect(intentIdsOf(res.body)).toEqual([["905"]]);
+  });
+
+  it("falls back to an unambiguous label for an unlinked competition", async () => {
+    const res = await get(clubBToken).expect(200);
+
+    expect(intentIdsOf(res.body)).toEqual([["904"]]);
   });
 
   it("refuses a non-club account (403)", async () => {

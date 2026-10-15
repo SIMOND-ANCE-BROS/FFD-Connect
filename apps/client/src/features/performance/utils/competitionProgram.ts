@@ -24,6 +24,7 @@ import {
 import { fnv1aHash } from "../../../utils/stableHash";
 import { formatDiscipline } from "../../../utils/discipline";
 import { isTempoCompliant, tempoRange } from "./competitionTempo";
+import { normalizeDance, type DanceKey } from "../../player/utils/danceTempo";
 
 // --- Dances -----------------------------------------------------------------
 
@@ -38,37 +39,37 @@ interface DanceInfo {
   spoken?: string;
   /** Grammatical gender of the dance name in French ("la Samba", "le Tango"). */
   feminine: boolean;
-  /** Matches a track `style` coming from the library. */
-  pattern: RegExp;
+  /** Canonical dance a library track `style` must normalise to. */
+  key: DanceKey;
 }
 
 const DANCE_INFO: Partial<Record<string, DanceInfo>> = {
   "Valse Lente": {
     label: "Valse lente",
     feminine: true,
-    pattern: /valse\s*lente|valse\s*anglaise|slow\s*waltz|^waltz$|^valse$/,
+    key: "valse lente",
   },
-  Tango: { label: "Tango", feminine: false, pattern: /tango/ },
+  Tango: { label: "Tango", feminine: false, key: "tango" },
   "Valse Viennoise": {
     label: "Valse viennoise",
     feminine: true,
-    pattern: /vienn|valse\s*rapide/,
+    key: "viennoise",
   },
   "Slow Fox": {
     label: "Slow fox",
     feminine: false,
-    pattern: /slow\s*-?\s*fox|foxtrot|^fox$/,
+    key: "slow fox",
   },
-  Quickstep: { label: "Quickstep", feminine: false, pattern: /quick\s*-?step/ },
-  Samba: { label: "Samba", feminine: true, pattern: /samba/ },
+  Quickstep: { label: "Quickstep", feminine: false, key: "quickstep" },
+  Samba: { label: "Samba", feminine: true, key: "samba" },
   "Cha-Cha-Cha": {
     label: "Cha-cha-cha",
     feminine: false,
-    pattern: /cha[\s-]*cha/,
+    key: "cha-cha",
   },
-  Rumba: { label: "Rumba", feminine: true, pattern: /rumba/ },
-  "Paso Doble": { label: "Paso doble", feminine: false, pattern: /paso/ },
-  Jive: { label: "Jive", spoken: "Jaïve", feminine: false, pattern: /jive/ },
+  Rumba: { label: "Rumba", feminine: true, key: "rumba" },
+  "Paso Doble": { label: "Paso doble", feminine: false, key: "paso doble" },
+  Jive: { label: "Jive", spoken: "Jaïve", feminine: false, key: "jive" },
 };
 
 export const CATEGORY_LABELS: Record<Category, string> = {
@@ -93,13 +94,12 @@ export const trackMatchesDance = (
 ): boolean => {
   if (!style) return false;
   const info = DANCE_INFO[dance];
-  const s = style.toLowerCase().trim();
-  // Regex per dance (mirrors features/player/utils/danceTempo normalizeDance):
-  // the library stores "Valse Viennoise", "Cha-cha", "Slowfox"… so a plain
-  // substring match on the UI label is not enough.
-  if (info) return info.pattern.test(s);
+  // The library stores "Valse Viennoise", "Cha-cha", "Slowfox"… so a plain
+  // substring match on the UI label is not enough: the style goes through
+  // the app's single dance recognition (danceTempo, mirror of the backend).
+  if (info) return normalizeDance(style) === info.key;
   const clean = (v: string) => v.toLowerCase().replace(/[^a-z]/g, "");
-  return clean(s) === clean(dance);
+  return clean(style) === clean(dance);
 };
 
 /** Legacy + current heuristics for "pause music" tracks. */

@@ -8,30 +8,10 @@ interface UseTimingEditorParams {
 
 export const useTimingEditor = ({ initialSchedule }: UseTimingEditorParams) => {
   // --- TIMING STATE ---
+  // Saved with the competition since #442: no sample slots, a new
+  // competition starts empty; an existing one is loaded from the API.
   const [schedule, setSchedule] = useState<ScheduleItem[]>(
-    initialSchedule ?? [
-      {
-        id: "1",
-        startTime: "10:00",
-        type: "ROUND",
-        title: "Latine - Adulte - 1/4 Finale",
-        duration: 15,
-      },
-      {
-        id: "2",
-        startTime: "10:15",
-        type: "BREAK",
-        title: "Pause",
-        duration: 15,
-      },
-      {
-        id: "3",
-        startTime: "10:30",
-        type: "ROUND",
-        title: "Standard - Senior - Finale",
-        duration: 10,
-      },
-    ],
+    initialSchedule ?? [],
   );
   const [showTimingModal, setShowTimingModal] = useState(false);
 
@@ -175,6 +155,7 @@ export const useTimingEditor = ({ initialSchedule }: UseTimingEditorParams) => {
 
   return {
     schedule,
+    replaceSchedule: setSchedule,
     showTimingModal,
     setShowTimingModal,
     newTime,
