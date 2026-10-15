@@ -1,29 +1,36 @@
 import {
+  ActionIcon,
   Button,
   Checkbox,
   Group,
   NumberInput,
   ScrollArea,
+  SegmentedControl,
   Select,
   Stack,
+  Text,
   TextInput,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import dayjs from 'dayjs';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   type ActiveFilter,
   describeFilter,
   type FilterFieldSpec,
+  type FilterJoin,
   type FilterOp,
   type FilterSpecs,
   type FilterValue,
   isValidFilter,
+  MAX_FIELD_CONDITIONS,
   MAX_FILTER_TEXT_LENGTH,
+  MAX_FILTERS,
   needsValue,
   opLabel,
   opsFor,
-  withFilter,
+  withFieldFilters,
+  withoutCondition,
 } from '../lib/listFilters';
 import type { ColumnFilter } from './DataTable';
 
@@ -105,14 +112,16 @@ function ValueInput({
   value,
   onChange,
   onSubmit,
+  label,
 }: {
   spec: FilterFieldSpec;
   op: FilterOp;
   value: FilterValue | undefined;
   onChange: (value: FilterValue | undefined) => void;
   onSubmit: () => void;
+  /** Accessible name of the value. */
+  label: string;
 }) {
-  const label = `Valeur : ${spec.label}`;
   switch (spec.kind) {
     case 'text':
       return (
@@ -171,76 +180,203 @@ function ValueInput({
   }
 }
 
+/** A condition being edited; `id` keeps its inputs when another one is removed. */
+interface DraftCondition {
+  id: number;
+  op: FilterOp;
+  value?: FilterValue;
+}
+
+const JOIN_LABELS: Record<FilterJoin, string> = { and: 'ET', or: 'OU' };
+
+function ConditionEditor({
+  spec,
+  condition,
+  index,
+  onChange,
+  onRemove,
+  onSubmit,
+}: {
+  spec: FilterFieldSpec;
+  condition: DraftCondition;
+  index: number;
+  onChange: (next: DraftCondition) => void;
+  /** Absent on the only condition: « Retirer » removes the whole filter. */
+  onRemove?: () => void;
+  onSubmit: () => void;
+}) {
+  const ops = opsFor(spec);
+  const { op, value } = condition;
+  // The first condition keeps the names of #557; the others are numbered.
+  const suffix = index === 0 ? '' : ` (condition ${index + 1})`;
+  return (
+    <Stack gap={6}>
+      <Group gap="xs" wrap="nowrap" align="flex-start">
+        <Select
+          aria-label={`Opérateur : ${spec.label}${suffix}`}
+          allowDeselect={false}
+          comboboxProps={IN_MENU}
+          data={ops.map((o) => ({ value: o, label: opLabel(spec.kind, o) }))}
+          value={op}
+          style={{ flex: 1 }}
+          onChange={(next) => {
+            const nextOp = ops.find((o) => o === next);
+            if (!nextOp) return;
+            // A single date or number does not carry over to a range, and back.
+            const reset =
+              (nextOp === 'between') !== (op === 'between') &&
+              spec.kind !== 'enum' &&
+              spec.kind !== 'text';
+            onChange({ ...condition, op: nextOp, value: reset ? undefined : value });
+          }}
+        />
+        {onRemove && (
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            mt={6}
+            aria-label={`Supprimer la condition ${index + 1} : ${spec.label}`}
+            onClick={onRemove}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.8" />
+            </svg>
+          </ActionIcon>
+        )}
+      </Group>
+      {needsValue(op) && (
+        <ValueInput
+          spec={spec}
+          op={op}
+          value={value}
+          label={`Valeur : ${spec.label}${suffix}`}
+          onChange={(next) => onChange({ ...condition, value: next })}
+          onSubmit={onSubmit}
+        />
+      )}
+    </Stack>
+  );
+}
+
 /**
- * Operator + value of one column filter (#557). The draft is applied with
- * « Appliquer » (or Enter in a text): typing does not query the API.
+ * Conditions of one column filter (#557, #673): an operator and a value each,
+ * up to `maxConditions`, joined by an explicit ET / OU. The draft is applied
+ * with « Appliquer » (or Enter in a text): typing does not query the API.
  */
 export function ColumnFilterEditor<Field extends string>({
   field,
   spec,
   current,
   onChange,
+  maxConditions = MAX_FIELD_CONDITIONS,
 }: {
   field: Field;
   spec: FilterFieldSpec;
-  current: ActiveFilter<Field> | undefined;
-  onChange: (next: ActiveFilter<Field> | null) => void;
+  /** The column's applied conditions; none when it is not filtered. */
+  current: readonly ActiveFilter<Field>[];
+  /** The new conditions of the column; none: its filter is removed. */
+  onChange: (next: ActiveFilter<Field>[]) => void;
+  maxConditions?: number;
 }) {
   const ops = opsFor(spec);
-  const [op, setOp] = useState<FilterOp>(current?.op ?? ops[0]);
-  const [value, setValue] = useState<FilterValue | undefined>(current?.value);
-  const draft: ActiveFilter<Field> = needsValue(op) ? { field, op, value } : { field, op };
-  const valid = isValidFilter(draft, spec);
+  const nextId = useRef(current.length);
+  const [conditions, setConditions] = useState<DraftCondition[]>(() =>
+    current.length > 0
+      ? current.map(({ op, value }, id) => ({ id, op, value }))
+      : [{ id: 0, op: ops[0] }],
+  );
+  const [join, setJoin] = useState<FilterJoin>(current[0]?.join ?? 'and');
+  const draft: ActiveFilter<Field>[] = conditions.map(({ op, value }) => ({
+    field,
+    op,
+    ...(needsValue(op) && { value }),
+    ...(conditions.length > 1 && join === 'or' && { join }),
+  }));
+  const valid = draft.every((condition) => isValidFilter(condition, spec));
   const apply = () => {
     if (valid) onChange(draft);
+  };
+  const update = (next: DraftCondition) =>
+    setConditions((list) => list.map((c) => (c.id === next.id ? next : c)));
+  const add = () => {
+    const id = nextId.current + 1;
+    nextId.current = id;
+    setConditions((list) => [...list, { id, op: ops[0] }]);
   };
 
   return (
     <Stack gap="xs">
-      <Select
-        aria-label={`Opérateur : ${spec.label}`}
-        allowDeselect={false}
-        comboboxProps={IN_MENU}
-        data={ops.map((o) => ({ value: o, label: opLabel(spec.kind, o) }))}
-        value={op}
-        onChange={(next) => {
-          const nextOp = ops.find((o) => o === next);
-          if (!nextOp) return;
-          // A single date or number does not carry over to a range, and back.
-          if (
-            (nextOp === 'between') !== (op === 'between') &&
-            spec.kind !== 'enum' &&
-            spec.kind !== 'text'
-          ) {
-            setValue(undefined);
-          }
-          setOp(nextOp);
-        }}
-      />
-      {needsValue(op) && (
-        <ValueInput spec={spec} op={op} value={value} onChange={setValue} onSubmit={apply} />
-      )}
-      <Group gap="xs" justify="flex-end">
-        {current && (
-          <Button
-            variant="subtle"
-            color="gray"
-            size="xs"
-            aria-label={`Retirer le filtre : ${spec.label}`}
-            onClick={() => onChange(null)}
-          >
-            Retirer
-          </Button>
-        )}
-        {/* On a phone every editor sits in one panel: the name says which one. */}
+      {conditions.map((condition, index) => (
+        <Stack key={condition.id} gap="xs">
+          {index === 1 && (
+            <Group gap="xs" wrap="nowrap">
+              <Text size="xs" c="dimmed" id={`join-${field}`}>
+                Conditions reliées par
+              </Text>
+              <SegmentedControl
+                size="xs"
+                aria-labelledby={`join-${field}`}
+                value={join}
+                onChange={(next) => setJoin(next === 'or' ? 'or' : 'and')}
+                data={(['and', 'or'] as const).map((value) => ({
+                  value,
+                  label: JOIN_LABELS[value],
+                }))}
+              />
+            </Group>
+          )}
+          {index > 1 && (
+            <Text size="xs" fw={700} c="dimmed">
+              {JOIN_LABELS[join]}
+            </Text>
+          )}
+          <ConditionEditor
+            spec={spec}
+            condition={condition}
+            index={index}
+            onChange={update}
+            onRemove={
+              conditions.length > 1
+                ? () => setConditions((list) => list.filter((c) => c.id !== condition.id))
+                : undefined
+            }
+            onSubmit={apply}
+          />
+        </Stack>
+      ))}
+      <Group gap="xs" justify="space-between">
         <Button
+          variant="subtle"
           size="xs"
-          disabled={!valid}
-          aria-label={`Appliquer le filtre : ${spec.label}`}
-          onClick={apply}
+          px={0}
+          disabled={conditions.length >= maxConditions}
+          aria-label={`Ajouter une condition : ${spec.label}`}
+          onClick={add}
         >
-          Appliquer
+          + Ajouter une condition
         </Button>
+        <Group gap="xs">
+          {current.length > 0 && (
+            <Button
+              variant="subtle"
+              color="gray"
+              size="xs"
+              aria-label={`Retirer le filtre : ${spec.label}`}
+              onClick={() => onChange([])}
+            >
+              Retirer
+            </Button>
+          )}
+          {/* On a phone every editor sits in one panel: the name says which one. */}
+          <Button
+            size="xs"
+            disabled={!valid}
+            aria-label={`Appliquer le filtre : ${spec.label}`}
+            onClick={apply}
+          >
+            Appliquer
+          </Button>
+        </Group>
       </Group>
     </Stack>
   );
@@ -254,36 +390,42 @@ export interface FilterChip {
 
 /**
  * Header filters and chips of a list's operator filters: `filter(field)` is
- * the `filter` of its column, `chips` the active filters, each removable.
+ * the `filter` of its column, `chips` one per condition, each removable (the
+ * conditions after the first of a column say how they join: « ou … »).
  */
 export function operatorFilters<Field extends string>(
   specs: FilterSpecs<Field>,
   filters: readonly ActiveFilter<Field>[],
   setFilters: (next: ActiveFilter<Field>[]) => void,
 ): { filter: (field: Field) => ColumnFilter; chips: FilterChip[] } {
-  const update = (field: Field, next: ActiveFilter<Field> | null) =>
-    setFilters(withFilter(filters, field, next));
   return {
     filter: (field) => {
-      const current = filters.find((f) => f.field === field);
+      const current = filters.filter((f) => f.field === field);
+      // Room left under the API's bound on a whole list.
+      const room = MAX_FILTERS - (filters.length - current.length);
       return {
-        active: current !== undefined,
+        active: current.length > 0,
         content: (
           <ColumnFilterEditor
             // A new URL value (Back, a chip removed) resets the draft.
-            key={current ? JSON.stringify(current) : 'none'}
+            key={current.length > 0 ? JSON.stringify(current) : 'none'}
             field={field}
             spec={specs[field]}
             current={current}
-            onChange={(next) => update(field, next)}
+            maxConditions={Math.max(1, Math.min(MAX_FIELD_CONDITIONS, room))}
+            onChange={(next) => setFilters(withFieldFilters(filters, field, next))}
           />
         ),
       };
     },
-    chips: filters.map((f) => ({
-      key: f.field,
-      label: describeFilter(f, specs[f.field]),
-      onRemove: () => update(f.field, null),
-    })),
+    chips: filters.map((f, index) => {
+      const first = filters.findIndex((other) => other.field === f.field) === index;
+      const description = describeFilter(f, specs[f.field]);
+      return {
+        key: `${f.field}-${index}`,
+        label: first ? description : `${f.join === 'or' ? 'ou' : 'et'} ${description}`,
+        onRemove: () => setFilters(withoutCondition(filters, index)),
+      };
+    }),
   };
 }

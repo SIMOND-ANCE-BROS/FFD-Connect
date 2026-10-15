@@ -1,15 +1,18 @@
 import dayjs from 'dayjs';
-import type { ListFilterOp } from '../api/generated/types.gen';
+import type { ListFilterJoin, ListFilterOp } from '../api/generated/types.gen';
 
 /**
  * Column filters with operators (#557). Each list declares its filterable
  * fields (the API's whitelist: the generated `…FilterDto['field']` union);
  * active filters live in the URL as `f.<field>=<op>[:<value>]` and go to the
- * API as the `filters` JSON parameter, where they are applied server-side and
- * combined with AND.
+ * API as the `filters` JSON parameter, where they are applied server-side.
+ * A column may carry several conditions (#673): `f.<field>` is repeated, and
+ * `j.<field>=or` joins them with OR (AND otherwise). Different columns are
+ * always combined with AND.
  */
 
 export type FilterOp = ListFilterOp;
+export type FilterJoin = ListFilterJoin;
 export type FilterKind = 'text' | 'date' | 'number' | 'enum';
 
 export interface FilterOption {
@@ -31,16 +34,22 @@ export type FilterSpecs<Field extends string> = Readonly<Record<Field, FilterFie
 
 export type FilterValue = string | number | string[] | number[];
 
+/** One condition of a column filter; a column may have several (#673). */
 export interface ActiveFilter<Field extends string = string> {
   field: Field;
   op: FilterOp;
   /** Absent for « est vide » / « n'est pas vide ». */
   value?: FilterValue;
+  /** « or »: the conditions of this column are joined with OR; absent = AND. */
+  join?: FilterJoin;
 }
 
 /** Same bounds as the API (400 beyond). */
 export const MAX_FILTER_TEXT_LENGTH = 100;
+/** Conditions of a list, every column included. */
 export const MAX_FILTERS = 10;
+/** Conditions of one column (#673). */
+export const MAX_FIELD_CONDITIONS = 5;
 
 const TEXT_OPS: readonly FilterOp[] = [
   'contains',
@@ -131,6 +140,7 @@ export function isValidFilter(filter: ActiveFilter, spec: FilterFieldSpec): bool
 }
 
 const PREFIX = 'f.';
+const JOIN_PREFIX = 'j.';
 
 function parseValue(spec: FilterFieldSpec, op: FilterOp, raw: string): FilterValue | undefined {
   if (spec.kind === 'text') return raw;
@@ -144,7 +154,28 @@ function parseValue(spec: FilterFieldSpec, op: FilterOp, raw: string): FilterVal
   return spec.kind === 'number' ? toNumber(raw) : raw;
 }
 
-/** Filters kept in the URL (`f.email=contains:marie`, `f.club=isEmpty`); invalid ones are dropped. */
+/**
+ * The conditions grouped by column, in their order, each column carrying one
+ * join: « or » only on a column with several conditions, set on all of them.
+ */
+export function normalizeFilters<Field extends string>(
+  filters: readonly ActiveFilter<Field>[],
+): ActiveFilter<Field>[] {
+  const byField = new Map<Field, ActiveFilter<Field>[]>();
+  for (const f of filters) byField.set(f.field, [...(byField.get(f.field) ?? []), f]);
+  return [...byField.values()].flatMap((conditions) => {
+    const or = conditions.length > 1 && conditions[0].join === 'or';
+    return conditions.map(({ join: _join, ...condition }) =>
+      or ? { ...condition, join: 'or' as const } : condition,
+    );
+  });
+}
+
+/**
+ * Filters kept in the URL (`f.email=contains:marie`, `f.club=isEmpty`,
+ * `f.email=contains:gmail&f.email=contains:hotmail&j.email=or`); invalid
+ * conditions, and those beyond the API's bounds, are dropped.
+ */
 export function readFilters<Field extends string>(
   params: URLSearchParams,
   specs: FilterSpecs<Field>,
@@ -154,7 +185,8 @@ export function readFilters<Field extends string>(
   for (const [key, raw] of params.entries()) {
     if (!key.startsWith(PREFIX)) continue;
     const field = fields.find((f) => f === key.slice(PREFIX.length));
-    if (!field || filters.some((f) => f.field === field)) continue;
+    if (!field) continue;
+    if (filters.filter((f) => f.field === field).length === MAX_FIELD_CONDITIONS) continue;
     const spec = specs[field];
     const colon = raw.indexOf(':');
     const op = opsFor(spec).find((o) => o === (colon === -1 ? raw : raw.slice(0, colon)));
@@ -162,17 +194,19 @@ export function readFilters<Field extends string>(
     const filter: ActiveFilter<Field> = needsValue(op)
       ? { field, op, value: parseValue(spec, op, raw.slice(colon + 1)) }
       : { field, op };
+    if (params.get(`${JOIN_PREFIX}${field}`) === 'or') filter.join = 'or';
     if (isValidFilter(filter, spec)) filters.push(filter);
     if (filters.length === MAX_FILTERS) break;
   }
-  return filters;
+  return normalizeFilters(filters);
 }
 
-/** Writes `filters` into `params`, one `f.<field>` each. */
+/** Writes `filters` into `params`: one `f.<field>` per condition, `j.<field>=or` for an OR column. */
 export function writeFilters(params: URLSearchParams, filters: readonly ActiveFilter[]): void {
-  for (const { field, op, value } of filters) {
+  for (const { field, op, value, join } of normalizeFilters(filters)) {
     const encoded = Array.isArray(value) ? value.join(',') : value;
-    params.set(`${PREFIX}${field}`, encoded === undefined ? op : `${op}:${encoded}`);
+    params.append(`${PREFIX}${field}`, encoded === undefined ? op : `${op}:${encoded}`);
+    if (join === 'or') params.set(`${JOIN_PREFIX}${field}`, 'or');
   }
 }
 
@@ -181,21 +215,31 @@ export function filtersQuery(filters: readonly ActiveFilter[]): { filters?: stri
   if (filters.length === 0) return {};
   return {
     filters: JSON.stringify(
-      filters.map(({ field, op, value }) =>
-        value === undefined ? { field, op } : { field, op, value },
-      ),
+      normalizeFilters(filters).map(({ field, op, value, join }) => ({
+        field,
+        op,
+        ...(value !== undefined && { value }),
+        ...(join && { join }),
+      })),
     ),
   };
 }
 
-/** The list with `next` for its field (or without it when null). */
-export function withFilter<Field extends string>(
+/** The list with `next` as the conditions of `field` (none: its filter removed). */
+export function withFieldFilters<Field extends string>(
   filters: readonly ActiveFilter<Field>[],
   field: Field,
-  next: ActiveFilter<Field> | null,
+  next: readonly ActiveFilter<Field>[],
 ): ActiveFilter<Field>[] {
-  const others = filters.filter((f) => f.field !== field);
-  return next ? [...others, next] : others;
+  return normalizeFilters([...filters.filter((f) => f.field !== field), ...next]);
+}
+
+/** The list without its `index`-th condition (a chip removed). */
+export function withoutCondition<Field extends string>(
+  filters: readonly ActiveFilter<Field>[],
+  index: number,
+): ActiveFilter<Field>[] {
+  return normalizeFilters(filters.filter((_, i) => i !== index));
 }
 
 const formatDay = (day: string) => dayjs(day).format('DD/MM/YYYY');

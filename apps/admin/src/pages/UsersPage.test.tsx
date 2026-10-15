@@ -328,6 +328,33 @@ describe('UsersPage', () => {
     );
   });
 
+  it('restores several conditions of one column from the URL, with their chips (#673)', async () => {
+    const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(120) as never);
+    renderPage('/?f.email=contains:gmail&f.email=contains:hotmail&j.email=or&f.role=in:CLUB');
+    await screen.findByText('jeanne@x.fr');
+    expect(spy).toHaveBeenCalledWith({
+      query: {
+        filters: JSON.stringify([
+          { field: 'email', op: 'contains', value: 'gmail', join: 'or' },
+          { field: 'email', op: 'contains', value: 'hotmail', join: 'or' },
+          { field: 'role', op: 'in', value: ['CLUB'] },
+        ]),
+        skip: 0,
+        take: 50,
+      },
+    });
+    const chips = screen.getByRole('group', { name: 'Filtres actifs' });
+    expect(within(chips).getByText('ou Email contient « hotmail »')).toBeInTheDocument();
+    await user.click(
+      within(chips).getByRole('button', { name: 'Retirer le filtre : Email contient « gmail »' }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/?f.email=contains%3Ahotmail&f.role=in%3ACLUB',
+      ),
+    );
+  });
+
   it('sorts the whole list from a header, from the first page', async () => {
     const spy = vi.spyOn(sdk, 'adminControllerListUsers').mockResolvedValue(page(120) as never);
     renderPage('/?page=3');
