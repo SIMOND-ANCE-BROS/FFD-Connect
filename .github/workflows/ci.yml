@@ -221,6 +221,10 @@ jobs:
       DATABASE_URL: postgresql://test:test@localhost:5432/test
       JWT_SECRET: test-secret-key-for-ci-min-32-chars!!
       NODE_ENV: test
+      # Address the redis service explicitly: test/bullmq-queue.integration-spec.ts
+      # runs the real ffd-sync queue against it (#36).
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
