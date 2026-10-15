@@ -50,6 +50,9 @@ interface Props {
   setNewLayoutHeight: (h: number) => void;
   newLayoutRotation: string;
   setNewLayoutRotation: (r: string) => void;
+  /** Seat price typed in euros (#405); "" = not payable online. */
+  newLayoutPrice: string;
+  setNewLayoutPrice: (p: string) => void;
   openLayoutModal: (
     item?: LayoutItem,
     type?: "TABLE" | "GRADIN" | "OTHER",
@@ -94,6 +97,8 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
   setNewLayoutHeight,
   newLayoutRotation,
   setNewLayoutRotation,
+  newLayoutPrice,
+  setNewLayoutPrice,
   openLayoutModal,
   updateLayoutItemPosition,
   toggleLayoutItemSeatLock,
@@ -290,6 +295,30 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
               onChangeText={setNewLayoutLabel}
             />
           </View>
+
+          {/* Tarif d'une place (#405) : tables et gradins seulement. */}
+          {newLayoutType !== "OTHER" && (
+            <View style={[styles.inputGroup, styles.mt16]}>
+              <AppText variant="caption" color={theme.textSecondary}>
+                Tarif d'une place (€) — laisser vide si non payante en ligne
+              </AppText>
+              <TextInput
+                testID="layout-price-input"
+                accessibilityLabel="Tarif d'une place en euros"
+                accessibilityHint="Montant payé en ligne pour une place de cet élément ; vide pour ne pas vendre en ligne"
+                style={[
+                  styles.input,
+                  styles.borderBox,
+                  { color: theme.text, borderColor: theme.border },
+                ]}
+                placeholder="Ex : 15 ou 15,50"
+                placeholderTextColor={theme.textSecondary}
+                keyboardType="decimal-pad"
+                value={newLayoutPrice}
+                onChangeText={setNewLayoutPrice}
+              />
+            </View>
+          )}
 
           {/* Gradin : colonnes × lignes = nombre de places */}
           {newLayoutType === "GRADIN" && (

@@ -191,6 +191,8 @@ export interface LayoutItem {
   orientation?: LayoutOrientation;
   /** Rotation supplémentaire en degrés (optionnel, purement visuel) */
   rotationDeg?: number;
+  /** Seat price in cents (#405); absent → not payable online. */
+  priceCents?: number;
 }
 
 export interface Competition {
