@@ -283,6 +283,40 @@ async function dropImpersonationBackup(): Promise<void> {
   }
 }
 
+/**
+ * The admin's preferences set aside by an impersonation, or null when there is
+ * none or it is unreadable.
+ */
+async function readImpersonationBackupPrefs(): Promise<AuthConfig | null> {
+  try {
+    const json = await AsyncStorage.getItem(IMPERSONATION_BACKUP_KEY);
+    return json ? (JSON.parse(json) as AuthConfig) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The impersonated account's own data a logout must not leave on the admin's
+ * device (#599): identity and profile fields of a third party, maybe a minor.
+ */
+function withoutAccountData(config: AuthConfig): AuthConfig {
+  return {
+    ...config,
+    username: undefined,
+    userId: undefined,
+    clubName: undefined,
+    ageGroup: undefined,
+    level: undefined,
+    category: undefined,
+    passportLevelLatin: undefined,
+    passportLevelStandard: undefined,
+    hasWdsfLicense: undefined,
+    licensePhotoUri: undefined,
+    registrationPolicy: undefined,
+  };
+}
+
 /** saveAuthConfig's body, throwing: for the impersonation switches. */
 async function writeAuthConfig(config: AuthConfig): Promise<void> {
   await AsyncStorage.setItem(AUTH_KEY, JSON.stringify(withoutTokens(config)));
@@ -668,6 +702,19 @@ export const AuthService = {
   logout: async (): Promise<void> => {
     try {
       const currentConfig = await AuthService.getAuthConfig();
+      const impersonating = currentConfig.impersonating === true;
+      if (impersonating) {
+        // Close the server-side impersonation log while the impersonation
+        // token is still valid (#599). Best-effort: never blocks the logout.
+        await api.post("/auth/impersonate/stop", {}).catch(() => undefined);
+      }
+      // During an impersonation the preferences are the impersonated
+      // account's: fall back to the admin's own (the backup), and never keep
+      // the third party's data on this device (#599).
+      const baseConfig = impersonating
+        ? ((await readImpersonationBackupPrefs()) ??
+          withoutAccountData(currentConfig))
+        : currentConfig;
       // Biometric quick-login re-uses the retained token (handleBiometricLogin →
       // getProfile). So when Face ID / Touch ID is enabled, logout LOCKS the app
       // (isLoggedIn=false) but keeps the tokens in the Keychain so the user can
@@ -678,7 +725,7 @@ export const AuthService = {
         currentConfig.biometricsEnabled === true &&
         currentConfig.impersonating !== true;
       const newConfig: AuthConfig = {
-        ...currentConfig,
+        ...baseConfig,
         isLoggedIn: false,
         role: "LICENSEE",
         roles: undefined,
@@ -690,10 +737,8 @@ export const AuthService = {
         impersonatedName: undefined,
         // Space memory: the next login of this account (password or
         // biometrics) reopens this space. A guest logout keeps the previous.
-        lastUser: currentConfig.username ?? currentConfig.lastUser,
-        lastSpace: currentConfig.username
-          ? currentConfig.role
-          : currentConfig.lastSpace,
+        lastUser: baseConfig.username ?? baseConfig.lastUser,
+        lastSpace: baseConfig.username ? baseConfig.role : baseConfig.lastSpace,
       };
       if (!keepTokensForBiometrics) {
         // Before clearTokens(): the unregister call is authenticated, so it

@@ -1169,6 +1169,100 @@ describe("AuthService", () => {
         expect(saved.biometricsEnabled).toBe(true);
       });
 
+      describe("during an impersonation (#599)", () => {
+        const target = {
+          ...DEFAULT_CONFIG,
+          isLoggedIn: true,
+          impersonating: true,
+          impersonatedName: "Jeune Danseuse",
+          username: "minor@club.fr",
+          userId: "target-id",
+          clubName: "Club Cible",
+          ageGroup: "Juvénile I",
+          category: "Latin",
+        };
+        const adminPrefs = {
+          ...DEFAULT_CONFIG,
+          isLoggedIn: true,
+          username: "admin@ffd.fr",
+          userId: "admin-id",
+          role: "ADMIN",
+        };
+        const storage = (backup: unknown) =>
+          (AsyncStorage.getItem as jest.Mock).mockImplementation(
+            (key: string) =>
+              Promise.resolve(
+                key === "auth_config"
+                  ? JSON.stringify(target)
+                  : key === "impersonation_backup" && backup !== undefined
+                    ? JSON.stringify(backup)
+                    : null,
+              ),
+          );
+        const saved = () =>
+          JSON.parse(writesOf("auth_config").pop()!) as Record<string, unknown>;
+
+        it("closes the server-side impersonation log first", async () => {
+          storage(adminPrefs);
+          (api.post as jest.Mock).mockResolvedValue({ status: 200 });
+
+          await AuthService.logout();
+
+          expect(api.post).toHaveBeenCalledWith("/auth/impersonate/stop", {});
+          expect(saved().isLoggedIn).toBe(false);
+        });
+
+        it("still logs out when closing the log fails", async () => {
+          storage(adminPrefs);
+          (api.post as jest.Mock).mockRejectedValue(new Error("offline"));
+
+          await AuthService.logout();
+
+          expect(saved().isLoggedIn).toBe(false);
+        });
+
+        it("keeps the admin's preferences, never the impersonated account's", async () => {
+          storage(adminPrefs);
+          (api.post as jest.Mock).mockResolvedValue({ status: 200 });
+
+          await AuthService.logout();
+
+          const config = saved();
+          expect(config.lastUser).toBe("admin@ffd.fr");
+          expect(JSON.stringify(config)).not.toContain("minor@club.fr");
+          expect(config.clubName).toBeUndefined();
+          expect(config.ageGroup).toBeUndefined();
+        });
+
+        it("drops the third party's data when no backup is left", async () => {
+          storage(undefined);
+          (api.post as jest.Mock).mockResolvedValue({ status: 200 });
+
+          await AuthService.logout();
+
+          const config = saved();
+          const text = JSON.stringify(config);
+          expect(text).not.toContain("minor@club.fr");
+          expect(text).not.toContain("Club Cible");
+          expect(text).not.toContain("target-id");
+          expect(config.ageGroup).toBeUndefined();
+          expect(config.category).toBeUndefined();
+        });
+
+        it("does not call the stop endpoint outside an impersonation", async () => {
+          (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
+            JSON.stringify({ ...DEFAULT_CONFIG, isLoggedIn: true }),
+          );
+
+          await AuthService.logout();
+
+          expect(api.post).not.toHaveBeenCalledWith(
+            "/auth/impersonate/stop",
+            {},
+          );
+        });
+      });
+
       it("still logs out when the backup cannot be cleared", async () => {
         (AsyncStorage.getItem as jest.Mock).mockResolvedValue(
           JSON.stringify({ ...DEFAULT_CONFIG, isLoggedIn: true }),
