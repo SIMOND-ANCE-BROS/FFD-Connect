@@ -351,6 +351,11 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
                             onNavigateResults={openResults}
                             onRegister={actions.handleRegister}
                             onUnregister={actions.handleUnregister}
+                            onSignInToRegister={
+                              state.isGuest
+                                ? actions.handleGuestSignInToRegister
+                                : undefined
+                            }
                             pendingAction={
                               state.pendingRegistrationActions[event.id]
                             }
