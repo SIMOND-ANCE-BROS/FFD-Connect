@@ -16,23 +16,60 @@ La PR #398 protégeait le webhook par une signature HMAC-SHA256 lue dans l'en-t�
 4. L'API publique est en **`/v5`** ; l'URL `/v1/organizations/{slug}/checkout-intents` utilisée par le code répond **404** (vérifié en sandbox). Le jeton s'obtient sur `{hôte}/oauth2/token` (`client_credentials`, durée 1 800 s, jeton de rafraîchissement fourni).
 5. Le jeton d'un compte association porte le rôle `OrganizationAdmin` et les privilèges `AccessPublicData`, `AccessTransactions`, `Checkout`, `PublicToolbox`, `RefundManagement` : il peut relire une intention de paiement (`GET /v5/organizations/{slug}/checkout-intents/{id}`, qui renvoie la commande une fois le paiement autorisé), un paiement (`GET /v5/payments/{id}`) et une commande (`GET /v5/orders/{id}`).
 
+Les notifications `Payment` (remboursement ou contestation, #403) suivent le même modèle : une association n'y reçoit aucune signature.
+
 Aucune clé de signature n'est donc disponible dans notre modèle, ni globale ni par club.
 
 ## Decision
 
-**Le contenu d'une notification HelloAsso n'est jamais cru.** La notification ne sert que de déclencheur :
+**Le contenu d'une notification HelloAsso n'est jamais cru.** Une notification ne sert que de déclencheur. Deux types sont traités : `Order` (confirmation de la place, #381 / #404) et `Payment` (libération de la place sur remboursement ou contestation, #403).
 
-1. elle désigne une réservation (`metadata.bookingId`, métadonnée que nous posons à la création de l'intention) ;
-2. le backend relit l'intention de paiement **de cette réservation** (`SeatBooking.paymentId`, jamais l'identifiant envoyé dans la notification) sur l'API HelloAsso, avec les identifiants du club organisateur ;
-3. seule la commande renvoyée par l'API (paiements, montants en centimes, états, métadonnées) passe dans les contrôles fail-closed de #381.
+### Flux d'une notification `Order`
 
-Conséquences de mise en œuvre (`HelloAssoNotificationService`) :
+1. Le webhook (`POST /payment/webhook`, `PaymentController`) reçoit la notification. Le corps est validé par `WebhookPayloadDto` : les champs non déclarés sont retirés, jamais rejetés (HelloAsso en envoie beaucoup d'autres).
+2. `HelloAssoNotificationService` lit `metadata.bookingId`, métadonnée que nous posons à la création de l'intention. Un identifiant qui n'est pas un UUID est ignoré, sans appel sortant.
+3. Seules les réservations `PENDING` ou `EXPIRED` (hold échu, #401) sont relues. Tout autre statut est final : aucun appel vers HelloAsso.
+4. Le backend relit l'intention de paiement **de cette réservation** (`SeatBooking.paymentId`, jamais l'identifiant envoyé dans la notification), avec les identifiants du club organisateur. Les métadonnées relues doivent désigner la même réservation.
+5. La commande renvoyée par l'API (paiements, montants en centimes, états) est reconstruite dans un `WebhookPayloadDto` qui ne garde que les champs lus, puis passe dans `checkOrderAgainstBooking` : contrôles fail-closed de #381, échéance du hold (#401) vérifiée en dernier.
+6. Si tout concorde, `PaymentService.handleOrderWebhook` fait passer la réservation de `PENDING` à `CONFIRMED`. L'écriture est conditionnelle (statut `PENDING`, même montant attendu, échéance non atteinte) : une réservation annulée, re-tarifée ou expirée entre la lecture et l'écriture n'est jamais confirmée.
 
-- intention inconnue, métadonnées d'une autre réservation, club non connecté, commande mal formée → notification ignorée et tracée (journal + Sentry, identifiants seulement), réponse 200 ;
-- HelloAsso injoignable, ou paiement pas encore autorisé (pas de commande sur l'intention) → **503**, HelloAsso rejoue la notification (`min(48 h, 3·2^n)` s, 16 essais) ;
-- la signature reste vérifiée, en défense en profondeur, **si** une clé partenaire est configurée (`HELLOASSO_SIGNATURE_KEY`, en-tête `x-ha-signature`) ; sans clé, les notifications non signées sont acceptées ;
-- `HELLOASSO_WEBHOOK_SECRET` est obsolète et ignoré (avertissement au démarrage) ;
-- l'hôte de l'API devient configurable (`HELLOASSO_API_URL`, liste fermée : production ou sandbox) et les chemins passent en `/v5`.
+### Flux d'une notification `Payment` (#403)
+
+1. L'état annoncé par la notification ne sert que de filtre : seuls `Refunded` et `Contested` déclenchent un travail. Une réservation `PENDING` répond **503** (la commande peut être en cours de confirmation). Une réservation qui n'est pas `CONFIRMED` est laissée telle quelle, sans appel.
+2. `SeatReleaseService` relit le paiement (`GET /v5/payments/{id}`) puis, si la notification ne porte pas l'intention, sa commande (`GET /v5/orders/{id}`). L'intention de paiement de cette commande doit être celle de la réservation.
+   - **Exception assumée à la règle générale** : l'identifiant de paiement est lu dans le corps de la notification (`seat-release.service.ts`, appel à `HelloAssoService` pour `GET /v5/payments/{id}`). Une réservation ne mémorise que son intention, pas l'identifiant des paiements qui la règlent : la notification est donc le seul moyen de savoir quel paiement relire.
+   - Ce chemin reste sûr pour trois raisons :
+     - c'est une lecture seule ;
+     - elle est faite avec les identifiants du club organisateur **de la réservation**, et non d'un club désigné par la notification ;
+     - le paiement relu n'est retenu que si sa commande porte l'intention de cette réservation.
+   - Au pire, un identifiant forgé déclenche une lecture inutile ou un refus. Il ne peut pas libérer la place d'une autre réservation.
+3. **L'état relu sur HelloAsso, et non celui de la notification, décide.** `Refunded` donne la raison `HELLOASSO_REFUNDED`, `Contested` la raison `HELLOASSO_CONTESTED`. Tout autre état (par exemple `Refunding`, remboursement en cours, ou un remboursement échoué repassé en `Authorized`) laisse la place.
+4. La libération est une écriture conditionnelle `CONFIRMED` → `CANCELLED`, avec `cancelReason`. Une relivraison ne libère donc pas deux fois. Une place `CANCELLED` n'est plus bloquée : l'index unique partiel ne retient que `PENDING` et `CONFIRMED`.
+
+### États et réponses
+
+- **Order**, paiement autorisé, montant et intention conformes : `PENDING` → `CONFIRMED`, réponse 200.
+- **Order**, paiement reçu après l'échéance du hold (#401) : la réservation passe à `EXPIRED` si elle était `PENDING`, le paiement est signalé `refund: required` dans Sentry, réponse 200. Le remboursement n'est pas automatique (voir Risques).
+- **Order**, paiement pas encore autorisé (intention sans commande) : statut inchangé, réponse **503** (rejeu).
+- **Payment** `Refunded` ou `Contested` sur une réservation `CONFIRMED` : `CANCELLED` avec `cancelReason`, réponse 200, alerte Sentry `helloasso-seat-released` (niveau warning).
+- **Payment** `Refunded` ou `Contested` sur une réservation `PENDING` : statut inchangé, réponse **503** (rejeu).
+- **Payment** avec un autre état, sur une réservation `CONFIRMED` : statut inchangé, réponse 200.
+- Intention, réservation ou club inconnu ou incohérent : statut inchangé, réponse 200, tracé dans le journal. Sentry n'est sollicité que lorsque la relecture contredit la notification (identifiants seulement).
+- HelloAsso injoignable (relecture de l'intention, du paiement ou de la commande) : statut inchangé, réponse **503** (rejeu).
+
+### Frontière de confiance
+
+- **Non fiable** : tout le corps de la notification, y compris les identifiants de réservation et de paiement et l'état annoncé. L'endpoint est public. L'en-tête `x-ha-signature` n'existe que pour les comptes partenaires.
+- **Fiable** : la réponse de l'API HelloAsso, lue avec les identifiants du club organisateur (chiffrés au repos, #389), pour la seule réservation désignée et sa seule intention de paiement.
+- **Ce qu'une notification forgée peut obtenir** : des lectures sur une réservation `PENDING`, `EXPIRED` ou `CONFIRMED` (les autres statuts ne déclenchent aucun appel). Elle ne peut ni confirmer une place, ni en libérer une : il faut un paiement réel, autorisé, remboursé ou contesté sur HelloAsso, pour cette intention.
+- **Signature** : `x-ha-signature` (HMAC-SHA256 du corps brut) est vérifiée si `HELLOASSO_SIGNATURE_KEY` est configurée, en défense en profondeur. Sans clé, les notifications non signées sont acceptées.
+
+### Conséquences de mise en œuvre
+
+- Intention inconnue, métadonnées d'une autre réservation, club non connecté, commande mal formée : notification ignorée et tracée, réponse 200. Les rejets qu'un appelant peut provoquer sans secret (réservation inconnue, identifiant de paiement d'une autre intention) sont journalisés sans passer par Sentry, pour ne pas consommer le quota.
+- HelloAsso injoignable, ou paiement pas encore autorisé : **503**, HelloAsso rejoue la notification (`min(48 h, 3·2^n)` s, 16 essais).
+- `HELLOASSO_WEBHOOK_SECRET` est obsolète et ignoré (avertissement au démarrage).
+- L'hôte de l'API devient configurable (`HELLOASSO_API_URL`, liste fermée : production ou sandbox) et les chemins passent en `/v5`.
 
 ## Alternatives Considered
 
@@ -51,7 +88,7 @@ Conséquences de mise en œuvre (`HelloAssoNotificationService`) :
 ### Alternative 3 : faire confiance au contenu non signé
 
 - **Pros**: aucun appel sortant.
-- **Cons**: n'importe qui pourrait confirmer une place en postant un faux ordre « payé ».
+- **Cons**: n'importe qui pourrait confirmer une place en postant un faux ordre « payé », ou libérer une place en postant un faux remboursement.
 - **Why not**: inacceptable.
 
 ## Consequences
@@ -60,14 +97,18 @@ Conséquences de mise en œuvre (`HelloAssoNotificationService`) :
 
 - Un faux appel au webhook ne peut, au pire, que provoquer la relecture d'un paiement réel.
 - Fonctionne avec le modèle actuel (un compte association par club), sans secret partagé entre clubs.
-- Même mécanisme réutilisable pour les remboursements et contestations (#403) : relire le paiement sur l'API.
+- Les remboursements et contestations (#403) réutilisent le même mécanisme : aucune libération de place n'est déclenchée par le contenu d'une notification.
+- Les rejets provoqués par un tiers restent dans le journal et n'encombrent pas Sentry.
 
 ### Negative
 
-- Un appel sortant vers HelloAsso par notification (jeton mis en cache par club).
-- Le webhook dépend de la disponibilité de HelloAsso ; une panne retarde la confirmation (rejeu par HelloAsso), sans perte.
+- Un ou deux appels sortants vers HelloAsso par notification pertinente (une intention pour `Order` ; un paiement, et sa commande si la notification ne la porte pas, pour `Payment`) ; le jeton est mis en cache par club.
+- Le webhook dépend de la disponibilité de HelloAsso ; une panne retarde la confirmation ou la libération (rejeu par HelloAsso), sans perte.
+- Une contestation que le club gagne ne rend pas la place (elle peut avoir été revendue) : la réservation reste `CANCELLED` et l'organisateur traite le cas à la main.
+- Un paiement reçu après l'échéance du hold n'est pas confirmé, et son remboursement n'est pas automatique : le paiement est seulement signalé dans Sentry (`refund: required`).
 
 ### Risks
 
-- **Comportement non observé en vrai** : la forme exacte d'une notification réelle et le délai entre la notification `Order` et la disponibilité de la commande sur l'intention restent à confirmer par un paiement de bout en bout en sandbox (critère d'acceptation de #404). Atténuation : le 503 provoque un rejeu si la commande n'est pas encore visible.
-- **Appels provoqués par un tiers** : un attaquant connaissant un `bookingId` (UUID) peut déclencher des relectures ; limité par le rate limiting global et sans effet de bord.
+- **Comportement non observé en vrai** : la forme exacte des notifications `Order` et `Payment`, le délai entre la notification `Order` et la disponibilité de la commande sur l'intention, et l'enchaînement `Refunding` → `Refunded` (ou remboursement échoué) restent à confirmer par des paiements de bout en bout en sandbox (critères d'acceptation de #404 et #403). Atténuation : les 503 provoquent un rejeu si la commande ou le remboursement n'est pas encore visible.
+- **Remboursement manuel oublié** : tant que le remboursement automatique n'existe pas, un paiement tardif dépend d'un traitement à la main à partir de l'alerte Sentry `refund: required`. Aucun contrôle automatique ne vérifie qu'il a été traité.
+- **Appels provoqués par un tiers** : un attaquant connaissant un `bookingId` (UUID) peut déclencher des relectures. Un `Payment` ne relit que les réservations `CONFIRMED` ; l'ensemble est limité par le rate limiting global et ne produit pas d'effet de bord sans paiement réel sur HelloAsso.

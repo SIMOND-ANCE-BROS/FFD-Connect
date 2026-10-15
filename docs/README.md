@@ -32,6 +32,7 @@ voir le [README racine](../README.md).
 - [Isolation des secrets DB](exploitation/isolation-secrets-db.md) — users par env, Key Vault
 - [Chiffrement des secrets HelloAsso des clubs](exploitation/chiffrement-secrets-clubs.md) — clé AES-256-GCM, Key Vault, migration, rotation
 - [Clés de distribution](exploitation/rotation-cles-distribution.md) — inventaire, Key Vault, rotation (ASC, APNs, Play, EXPO_TOKEN)
+- [Données personnelles dans les logs](exploitation/donnees-personnelles-logs.md) — IP tronquées, identifiants plutôt que noms (RGPD)
 
 ## 🧪 Tests
 

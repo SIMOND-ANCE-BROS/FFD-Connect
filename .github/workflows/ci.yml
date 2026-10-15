@@ -54,6 +54,9 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'package.json'
               - '.dockerignore'
+              # Trivy exceptions and installer of docker-build-check (#486).
+              - '.trivyignore.yaml'
+              - '.github/scripts/install-trivy.sh'
               # The backend image copies every workspace manifest to resolve the
               # graph, so a change here can break its build — as apps/client's
               # postinstall did. Without this line that PR skipped the check.
@@ -230,11 +233,12 @@ jobs:
       - name: Setup Prisma
         uses: ./.github/actions/setup-prisma
 
-      - name: Push schema to test database
-        # --accept-data-loss is safe here: this is an ephemeral CI database (postgres:15 service container).
-        # Do NOT use this flag against staging/production. For real deployments, use `prisma migrate deploy`.
+      - name: Apply migrations to test database
+        # Real migration chain (`prisma migrate deploy`, as at container boot), then a
+        # drift check (schema change without a migration fails here). #272.
+        # The integration/e2e globalSetup re-runs it as a no-op.
         working-directory: apps/backend
-        run: pnpm exec prisma db push --accept-data-loss
+        run: pnpm test:db:prepare
 
       - name: Run backend unit tests with coverage
         working-directory: apps/backend
@@ -722,6 +726,8 @@ jobs:
   # build-image only runs on push to staging/master and logs into ACR, so a
   # broken Dockerfile reached staging unnoticed and failed the whole cascade
   # (issue #841). No Azure login and no push: nothing lands in ACR from a PR.
+  # The built image is then scanned by Trivy (#486) — same build, no second
+  # one. See docs/exploitation/ci-cd-minimal.md, "Scan de l'image backend".
   # ============================================================
   docker-build-check:
     name: Docker Build Check
@@ -734,6 +740,9 @@ jobs:
 
     permissions:
       contents: read
+      # Trivy SARIF → code scanning (Security tab + PR annotations), free on
+      # this public repository. Nothing else is written.
+      security-events: write
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
@@ -757,12 +766,78 @@ jobs:
       # repository quota. Nothing writes a develop-scoped Docker cache either
       # (build-image caches to ACR, which a PR cannot read without Azure
       # credentials), so the build is always cold: ~5 min, free runner minutes.
+      # load: the image goes into the runner's Docker daemon for Trivy (local
+      # tag only, never pushed).
       - name: Build backend (no push)
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v6
         with:
           context: .
           file: apps/backend/Dockerfile
           push: false
+          load: true
+          tags: ffd-connect-backend:ci-scan
+
+      # Trivy (#486) on the image built above. Two passes, one vulnerability DB:
+      # 1. GATE (blocking): HIGH/CRITICAL with a fix available, on everything
+      #    EXCEPT the backend's own node_modules — Alpine packages (apk) and the
+      #    runtime tooling of the node:22-alpine base (npm, corepack under
+      #    /usr/local/lib/node_modules) that osv-scanner never sees. The app's
+      #    npm dependencies stay gated by audit-dependencies (osv-scanner on
+      #    pnpm-lock.yaml, with its own exception list): blocking on them here
+      #    too would double the gate and bypass that list.
+      # 2. REPORT (never blocks): HIGH/CRITICAL, fixed or not, whole image
+      #    including the app's node_modules (pnpm deploy --legacy can resolve
+      #    other versions than the lockfile) → SARIF in code scanning.
+      # Exceptions: .trivyignore.yaml (statement + review date mandatory).
+      - name: Install Trivy (pinned, checksum-verified)
+        run: sh .github/scripts/install-trivy.sh
+
+      - name: Trivy gate (OS + base image tooling, HIGH/CRITICAL fixable)
+        env:
+          TRIVY_DISABLE_VEX_NOTICE: 'true'
+        run: |
+          trivy image \
+            --cache-dir "$RUNNER_TEMP/trivy-cache" \
+            --scanners vuln \
+            --pkg-types os,library \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --skip-dirs /app/apps/backend/node_modules \
+            --ignorefile .trivyignore.yaml \
+            --exit-code 1 \
+            --format table \
+            ffd-connect-backend:ci-scan
+
+      - name: Trivy report (whole image, SARIF)
+        id: trivy-report
+        if: ${{ !cancelled() }}
+        env:
+          TRIVY_DISABLE_VEX_NOTICE: 'true'
+        run: |
+          trivy image \
+            --cache-dir "$RUNNER_TEMP/trivy-cache" \
+            --skip-db-update \
+            --scanners vuln \
+            --pkg-types os,library \
+            --severity HIGH,CRITICAL \
+            --ignorefile .trivyignore.yaml \
+            --exit-code 0 \
+            --format sarif \
+            --output "$RUNNER_TEMP/trivy-backend.sarif" \
+            ffd-connect-backend:ci-scan
+
+      # Fork PRs get a read-only token (upload would 403): skipped there. Never
+      # blocks — the gate above is the blocking part.
+      - name: Upload Trivy SARIF to code scanning
+        if: >-
+          !cancelled()
+          && steps.trivy-report.outcome == 'success'
+          && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: ${{ runner.temp }}/trivy-backend.sarif
+          category: trivy-backend-image
 
   build-image:
     # The name must keep "Backend": deploy-backend.yml finds this job by name
@@ -844,22 +919,26 @@ jobs:
             type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-backend:latest
           cache-to: type=registry,ref=${{ env.ACR_NAME }}.azurecr.io/ffd-connect-backend:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
 
-      # Scan the pushed image for OS/base-image CVEs (Trivy). pnpm audit only
-      # covers npm deps, not the Alpine layer. Report-only (exit-code 0): results
-      # print to the job log, the deploy is never blocked. SARIF → Security tab is
-      # not used because it needs GHAS code scanning (off on this private repo).
-      # To make CRITICALs blocking once the baseline is triaged: set exit-code '1'
-      # + ignore-unfixed true.
-      - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      # Scan the pushed image again (Trivy, same pinned binary as the PR gate
+      # in docker-build-check, #486). Report-only on purpose: the blocking gate
+      # is the PR one; a CVE published between the PR and the promotion must
+      # not block a deploy (or a rollback-fix). Results print to the job log.
+      - name: Install Trivy (pinned, checksum-verified)
+        run: sh .github/scripts/install-trivy.sh
+
+      - name: Scan image with Trivy (report-only)
         env:
           ACR_NAME: ${{ secrets.ACR_NAME }}
-        with:
-          image-ref: ${{ env.ACR_NAME }}.azurecr.io/ffd-connect-backend:${{ github.sha }}
-          format: table
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '0'
+          TRIVY_DISABLE_VEX_NOTICE: 'true'
+        run: |
+          trivy image \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --ignorefile .trivyignore.yaml \
+            --exit-code 0 \
+            --format table \
+            "${ACR_NAME}.azurecr.io/ffd-connect-backend:${GITHUB_SHA}"
 
   # ============================================================
   # CI GATE — single required check for branch protection

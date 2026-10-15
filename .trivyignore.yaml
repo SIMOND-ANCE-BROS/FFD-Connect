@@ -1,0 +1,16 @@
+# Trivy exceptions for the backend image scan (ci.yml, docker-build-check, #486).
+#
+# Keep this list SHORT. Every entry needs:
+#   - id:          the CVE/GHSA id reported by Trivy
+#   - statement:   why it is accepted (not reachable, no fix usable yet, ...)
+#                  and the issue that tracks its removal
+#   - expired_at:  review date (YYYY-MM-DD, at most 3 months out). Past that
+#                  date Trivy ignores the entry and the gate turns red again,
+#                  which forces the review.
+# Runbook: docs/exploitation/ci-cd-minimal.md, "Scan de l'image backend".
+#
+# Example:
+#   - id: CVE-2099-0001
+#     statement: busybox applet not used at runtime; wait for node:22-alpine rebuild (#NNN)
+#     expired_at: 2099-01-31
+vulnerabilities: []

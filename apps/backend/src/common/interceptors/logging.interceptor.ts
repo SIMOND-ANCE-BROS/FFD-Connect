@@ -1,6 +1,8 @@
 import {
   CallHandler,
   ExecutionContext,
+  HttpException,
+  HttpStatus,
   Injectable,
   NestInterceptor,
 } from "@nestjs/common";
@@ -9,6 +11,7 @@ import { tap } from "rxjs/operators";
 import { Request, Response } from "express";
 import { PinoLogger } from "nestjs-pino";
 import { redactSecretsInText, redactUrl } from "../logger/redact-url";
+import { logCodeOf } from "../errors/coded-bad-request.exception";
 
 /**
  * Intercepteur de logging structuré pour tracer les requêtes HTTP
@@ -76,27 +79,53 @@ export class LoggingInterceptor implements NestInterceptor {
           }
         },
         error: (error: unknown) => {
-          const response = context.switchToHttp().getResponse<Response>();
+          // This runs before the global exception filter writes the response,
+          // so `response.statusCode` is still the default 200 here (#571):
+          // the status comes from the exception itself.
           const delay = Date.now() - now;
-          const statusCode = response.statusCode || 500;
+          const statusCode =
+            error instanceof HttpException
+              ? error.getStatus()
+              : HttpStatus.INTERNAL_SERVER_ERROR;
           const err = error instanceof Error ? error : new Error(String(error));
+          // A coded error (#225) only ever shows its code in the logs.
+          const logCode = logCodeOf(
+            error,
+            error instanceof HttpException ? error.getResponse() : null,
+          );
+          const message = logCode ?? redactSecretsInText(err.message);
+          const logData = {
+            method,
+            url,
+            statusCode,
+            duration: delay,
+            ip,
+            context: "HTTP_ERROR",
+          };
+          const text = `${method} ${url} ${statusCode} - ${delay}ms - ${message}`;
 
-          // Log structuré de l'erreur
+          if (statusCode < 500) {
+            // An expected client error: no stack, warn level.
+            this.logger.warn(
+              { ...logData, error: { name: err.name, message } },
+              text,
+            );
+            return;
+          }
+
+          // With a log code, the stack header ("Name: message") is dropped
+          // like in HttpExceptionFilter so the original text never leaks.
+          const stack = err.stack && redactSecretsInText(err.stack);
           this.logger.error(
             {
-              method,
-              url,
-              statusCode,
-              duration: delay,
-              ip,
+              ...logData,
               error: {
                 name: err.name,
-                message: redactSecretsInText(err.message),
-                stack: err.stack && redactSecretsInText(err.stack),
+                message,
+                stack: logCode ? stack?.split("\n").slice(1).join("\n") : stack,
               },
-              context: "HTTP_ERROR",
             },
-            `${method} ${url} ${statusCode} - ${delay}ms - ${redactSecretsInText(err.message)}`,
+            text,
           );
         },
       }),

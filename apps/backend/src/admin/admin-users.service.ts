@@ -141,8 +141,8 @@ export class AdminUsersService {
   }
 
   /**
-   * Reversible measure. Deactivation revokes every refresh token in the same
-   * transaction; live access tokens are refused by JwtStrategy right away.
+   * Reversible measure. Deactivation revokes every refresh token and deletes
+   * every push device token in the same transaction; live access tokens are refused by JwtStrategy right away.
    * Asking for the state already in place writes and audits nothing.
    */
   async setStatus(
@@ -174,6 +174,9 @@ export class AdminUsersService {
           where: { userId, revoked: false },
           data: { revoked: true, revokedAt: new Date() },
         });
+        // No push reaches a disabled account (#301). The app registers its
+        // device again at the next login once the account is re-enabled.
+        await tx.deviceToken.deleteMany({ where: { userId } });
       }
       await this.audit.record(tx, {
         actorId,

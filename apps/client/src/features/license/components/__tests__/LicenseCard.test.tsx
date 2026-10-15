@@ -438,4 +438,65 @@ describe("LicenseCard", () => {
       ).toBeTruthy();
     });
   });
+
+  describe("photo placeholder (#246)", () => {
+    const renderCard = (
+      type: "FFD" | "WDSF",
+      user: LicenseUser,
+      photoUri: string | null = null,
+    ) =>
+      render(
+        <ThemeContext.Provider value={themeMock as never}>
+          <LicenseCard
+            type={type}
+            user={user}
+            photoUri={photoUri}
+            onShowQr={mockOnShowQr}
+          />
+        </ThemeContext.Provider>,
+      );
+
+    it.each(["FFD", "WDSF"] as const)(
+      "shows the holder's initials locally without a photo (%s)",
+      async (type) => {
+        const { getByTestId, getByLabelText, getByText, toJSON } =
+          await renderCard(type, mockUser);
+
+        expect(getByTestId("license-card-photo-placeholder")).toBeTruthy();
+        expect(
+          getByLabelText("Aucune photo de licence, initiales JD"),
+        ).toBeTruthy();
+        expect(getByText("JD")).toBeTruthy();
+        // No image is fetched for a missing photo: no `source.uri` anywhere.
+        expect(JSON.stringify(toJSON())).not.toMatch(/"source":\{"uri"/);
+      },
+    );
+
+    it("falls back to a neutral silhouette when the name has no letter", async () => {
+      const { getByLabelText, queryByText } = await renderCard("FFD", {
+        ...mockUser,
+        firstName: "",
+        lastName: "",
+      });
+
+      expect(getByLabelText("Aucune photo de licence")).toBeTruthy();
+      expect(queryByText(/^[A-Z]{1,2}$/)).toBeNull();
+    });
+
+    it("shows the stored photo instead of the placeholder", async () => {
+      const { getByLabelText, queryByTestId, toJSON } = await renderCard(
+        "FFD",
+        mockUser,
+        "file:///photo.jpg",
+      );
+
+      // Guards the "no source.uri" assertion above against a false negative.
+      expect(JSON.stringify(toJSON())).toMatch(/"source":\{"uri"/);
+
+      expect(queryByTestId("license-card-photo-placeholder")).toBeNull();
+      expect(getByLabelText("Photo de licence").props.source).toEqual({
+        uri: "file:///photo.jpg",
+      });
+    });
+  });
 });
