@@ -54,9 +54,16 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'package.json'
               - '.dockerignore'
-              # Trivy exceptions and installer of docker-build-check (#486).
+              # Both drive the image's `pnpm deploy` (#692): overrides live in
+              # pnpm-workspace.yaml, and node-linker=hoisted (.npmrc) is what
+              # made the legacy deploy ignore the lockfile.
+              - 'pnpm-workspace.yaml'
+              - '.npmrc'
+              # Trivy exceptions and installer of docker-build-check (#486),
+              # and its lockfile check (#692).
               - '.trivyignore.yaml'
               - '.github/scripts/install-trivy.sh'
+              - '.github/scripts/check-image-lockfile.mjs'
               # The backend image copies every workspace manifest to resolve the
               # graph, so a change here can break its build — as apps/client's
               # postinstall did. Without this line that PR skipped the check.
@@ -794,6 +801,20 @@ jobs:
           load: true
           tags: ffd-connect-backend:ci-scan
 
+      # Reproducibility gate (#692): every package version in the image's
+      # node_modules must be pinned by the repository's pnpm-lock.yaml. Fails if
+      # the deploy stage stops following the lockfile (`pnpm deploy --legacy`
+      # under node-linker=hoisted re-resolved 136 of 655 versions). Runs with
+      # the image's own node (no pnpm/npm in it); both inputs mounted read-only.
+      # A few seconds on a job that already runs.
+      - name: Image dependencies match the lockfile
+        run: |
+          docker run --rm --network none \
+            -v "$PWD/pnpm-lock.yaml:/check/pnpm-lock.yaml:ro" \
+            -v "$PWD/.github/scripts/check-image-lockfile.mjs:/check/check.mjs:ro" \
+            ffd-connect-backend:ci-scan \
+            node /check/check.mjs /app/apps/backend/node_modules /check/pnpm-lock.yaml
+
       # Trivy (#486) on the image built above. Two passes, one vulnerability DB:
       # 1. GATE (blocking): HIGH/CRITICAL with a fix available, on everything
       #    EXCEPT the backend's own node_modules — Alpine packages (apk) and the
@@ -803,8 +824,9 @@ jobs:
       #    pnpm-lock.yaml, with its own exception list): blocking on them here
       #    too would double the gate and bypass that list.
       # 2. REPORT (never blocks): HIGH/CRITICAL, fixed or not, whole image
-      #    including the app's node_modules (pnpm deploy --legacy can resolve
-      #    other versions than the lockfile) → SARIF in code scanning.
+      #    including the app's node_modules → SARIF in code scanning. Since #692
+      #    those match the lockfile (step above), so this mostly mirrors
+      #    osv-scanner with Trivy's DB; kept as a second opinion.
       # Exceptions: .trivyignore.yaml (statement + review date mandatory).
       - name: Install Trivy (pinned, checksum-verified)
         run: sh .github/scripts/install-trivy.sh
