@@ -5,7 +5,11 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import { CompetitionCacheService } from "./competition-cache.service";
-import { CompetitionManagementService } from "./competition-management.service";
+import { EntryQrService } from "../../licenses/qr/entry-qr.service";
+import {
+  CompetitionManagementService,
+  ROTATING_QR_UNAVAILABLE_MESSAGE,
+} from "./competition-management.service";
 import { createMockPrismaService } from "../__mocks__/types";
 
 const mockPrisma = createMockPrismaService();
@@ -18,6 +22,8 @@ const mockRedis = {
   get: jest.fn(),
   set: jest.fn().mockResolvedValue(undefined),
 };
+
+const mockEntryQr = { canIssue: jest.fn().mockReturnValue(true) };
 
 const mockQueue = {
   getJobs: jest.fn(),
@@ -36,6 +42,7 @@ describe("CompetitionManagementService", () => {
         { provide: CompetitionCacheService, useValue: mockCache },
         { provide: RedisService, useValue: mockRedis },
         { provide: getQueueToken("ffd-sync"), useValue: mockQueue },
+        { provide: EntryQrService, useValue: mockEntryQr },
       ],
     }).compile();
 
@@ -300,6 +307,58 @@ describe("CompetitionManagementService", () => {
       );
       expect(mockCache.invalidateCompetition).toHaveBeenCalledWith("comp-1");
       expect(result).toEqual(mockComp);
+    });
+
+    describe("requireRotatingQr (#668)", () => {
+      beforeEach(() => {
+        mockPrisma.competition.update.mockResolvedValue({ id: "comp-1" });
+      });
+      afterEach(() => {
+        mockEntryQr.canIssue.mockReturnValue(true);
+      });
+
+      it("makes the rotating QR mandatory when the server can issue it", async () => {
+        await service.update("comp-1", { requireRotatingQr: true });
+        expect(mockPrisma.competition.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ requireRotatingQr: true }),
+          }),
+        );
+        expect(mockCache.invalidateCompetition).toHaveBeenCalledWith("comp-1");
+      });
+
+      it("refuses to make it mandatory without an entry QR key: nobody could enter", async () => {
+        mockEntryQr.canIssue.mockReturnValue(false);
+        await expect(
+          service.update("comp-1", { requireRotatingQr: true }),
+        ).rejects.toThrow(
+          new BadRequestException(ROTATING_QR_UNAVAILABLE_MESSAGE),
+        );
+        expect(mockPrisma.competition.update).not.toHaveBeenCalled();
+      });
+
+      it("always allows turning it off, even without a key", async () => {
+        mockEntryQr.canIssue.mockReturnValue(false);
+        await service.update("comp-1", { requireRotatingQr: false });
+        expect(mockPrisma.competition.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({ requireRotatingQr: false }),
+          }),
+        );
+      });
+
+      it("refuses it at creation too without a key", async () => {
+        mockEntryQr.canIssue.mockReturnValue(false);
+        await expect(
+          service.create({
+            title: "T",
+            date: "2026-06-01",
+            location: "Paris",
+            requireRotatingQr: true,
+          }),
+        ).rejects.toThrow(ROTATING_QR_UNAVAILABLE_MESSAGE);
+        expect(mockPrisma.competition.create).not.toHaveBeenCalled();
+      });
     });
   });
 });

@@ -5,6 +5,7 @@ import { offlineCheckinVerdict } from "../../license/components/OfflineCheckinOv
 import {
   checkInOffline,
   purgeExpiredCheckins,
+  refreshCheckinPolicy,
   refreshEntryQrKeys,
 } from "../../license/services/offlineCheckin";
 import { createLogger } from "../../../utils/logger";
@@ -30,6 +31,12 @@ export const useVolunteerCheckinLogic = (
     // Queued scans older than 12 h (and volunteer tokens) never linger.
     purgeExpiredCheckins().catch(() => {});
   }, []);
+
+  // The competition's check-in policy (#668), cached for the venue: a static
+  // QR is refused offline too when the rotating QR is mandatory.
+  useEffect(() => {
+    refreshCheckinPolicy(competitionId).catch(() => {});
+  }, [competitionId]);
 
   const handleBarCodeScanned = useCallback(
     async (qrData: string) => {

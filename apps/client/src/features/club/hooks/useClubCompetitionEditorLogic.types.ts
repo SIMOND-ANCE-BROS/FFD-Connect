@@ -212,6 +212,8 @@ export interface Competition {
   schedule: ScheduleItem[];
   ticketingUrl?: string;
   layout?: LayoutItem[];
+  /** QR d'entrée tournant obligatoire au check-in (#668) ; absent = non. */
+  requireRotatingQr?: boolean;
 }
 
 // "LES COUPLES" (Article 5)

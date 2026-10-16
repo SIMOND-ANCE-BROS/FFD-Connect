@@ -4,6 +4,11 @@ import { enqueueMutation } from "../../../../services/offlineQueueStorage";
 import type { PendingMutation } from "../../../../services/offlineQueueStorage";
 import type { EntryQrKeySet } from "../../utils/entryQr";
 import { loadEntryQrKeys, saveEntryQrKeys } from "../../utils/entryQrStorage";
+import {
+  loadCheckinPolicy,
+  saveCheckinPolicy,
+} from "../../utils/checkinPolicyStorage";
+import { competitionsControllerFindOne } from "../../../../api/generated";
 import api from "../../../../services/api";
 import {
   loadQueue,
@@ -17,6 +22,7 @@ import {
   OFFLINE_CHECKIN_MESSAGES,
   OfflineCheckinExpiredError,
   purgeExpiredCheckins,
+  refreshCheckinPolicy,
   refreshEntryQrKeys,
   replayCheckin,
 } from "../offlineCheckin";
@@ -36,6 +42,13 @@ jest.mock("../../../../services/offlineQueueStorage", () => ({
 jest.mock("../../utils/entryQrStorage", () => ({
   loadEntryQrKeys: jest.fn(),
   saveEntryQrKeys: jest.fn(),
+}));
+jest.mock("../../utils/checkinPolicyStorage", () => ({
+  loadCheckinPolicy: jest.fn(),
+  saveCheckinPolicy: jest.fn(),
+}));
+jest.mock("../../../../api/generated", () => ({
+  competitionsControllerFindOne: jest.fn(),
 }));
 
 /** Golden vector shared with the backend (see entryQr.test.ts). */
@@ -65,12 +78,14 @@ const NOW = new Date((STEP * 30 + 5) * 1000);
 
 const loadKeys = loadEntryQrKeys as jest.Mock;
 const enqueue = enqueueMutation as jest.Mock;
+const loadPolicy = loadCheckinPolicy as jest.Mock;
 
 describe("offlineCheckin (#24)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     loadKeys.mockResolvedValue(KEY_SET);
     enqueue.mockResolvedValue("enqueued");
+    loadPolicy.mockResolvedValue(null);
   });
 
   describe("refreshEntryQrKeys", () => {
@@ -89,6 +104,94 @@ describe("offlineCheckin (#24)", () => {
       });
       await expect(refreshEntryQrKeys()).resolves.toBe(KEY_SET);
       expect(saveEntryQrKeys).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("refreshCheckinPolicy (#668)", () => {
+    const findOne = competitionsControllerFindOne as jest.Mock;
+
+    it("caches the policy downloaded from the public competition endpoint", async () => {
+      findOne.mockResolvedValue({ data: { requireRotatingQr: true } });
+      await expect(refreshCheckinPolicy("c1")).resolves.toBe(true);
+      expect(findOne).toHaveBeenCalledWith({ path: { id: "c1" } });
+      expect(saveCheckinPolicy).toHaveBeenCalledWith("c1", {
+        requireRotatingQr: true,
+      });
+    });
+
+    it("falls back to the cached policy offline", async () => {
+      findOne.mockRejectedValue(new Error("Network Error"));
+      loadPolicy.mockResolvedValue({ requireRotatingQr: true });
+      await expect(refreshCheckinPolicy("c1")).resolves.toBe(true);
+      expect(saveCheckinPolicy).not.toHaveBeenCalled();
+    });
+
+    it("keeps the cache when the answer carries no policy (older backend)", async () => {
+      findOne.mockResolvedValue({ data: {} });
+      loadPolicy.mockResolvedValue(null);
+      await expect(refreshCheckinPolicy("c1")).resolves.toBeNull();
+      expect(saveCheckinPolicy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("checkInOffline — rotating QR mandatory (#668)", () => {
+    const STATIC_V2 = JSON.stringify({
+      v: 2,
+      id: "FFD-123456",
+      lid: "3f0c6d2e-1111-4222-8333-944445555666",
+      exp: "2027-01-01",
+      sig: "abc",
+    });
+
+    it("refuses a static QR with the server's reason, without queuing", async () => {
+      loadPolicy.mockResolvedValue({ requireRotatingQr: true });
+      const result = await checkInOffline({
+        qrData: STATIC_V2,
+        endpoint: "POST /competitions/c1/checkin",
+        competitionId: "c1",
+        now: NOW,
+      });
+      expect(result).toEqual({ status: "STATIC_QR_REFUSED", queued: false });
+      expect(loadPolicy).toHaveBeenCalledWith("c1");
+      expect(enqueue).not.toHaveBeenCalled();
+      expect(OFFLINE_CHECKIN_MESSAGES.STATIC_QR_REFUSED).toBe(
+        "QR statique refusé : présentez le QR tournant de l'E-Licence",
+      );
+    });
+
+    it("refuses it even before the keys were ever downloaded", async () => {
+      loadPolicy.mockResolvedValue({ requireRotatingQr: true });
+      loadKeys.mockResolvedValue(null);
+      const result = await checkInOffline({
+        qrData: "FFD-123456",
+        endpoint: "POST /competitions/c1/checkin",
+        competitionId: "c1",
+        now: NOW,
+      });
+      expect(result.status).toBe("STATIC_QR_REFUSED");
+    });
+
+    it("still asks for a network check when the competition does not require it", async () => {
+      loadPolicy.mockResolvedValue({ requireRotatingQr: false });
+      const result = await checkInOffline({
+        qrData: STATIC_V2,
+        endpoint: "POST /competitions/c1/checkin",
+        competitionId: "c1",
+        now: NOW,
+      });
+      expect(result.status).toBe("NOT_ENTRY_QR");
+    });
+
+    it("verifies the rotating QR as usual, without reading the policy", async () => {
+      loadPolicy.mockResolvedValue({ requireRotatingQr: true });
+      const result = await checkInOffline({
+        qrData: QR,
+        endpoint: "POST /competitions/c1/checkin",
+        competitionId: "c1",
+        now: NOW,
+      });
+      expect(result).toMatchObject({ status: "VALID", queued: true });
+      expect(loadPolicy).not.toHaveBeenCalled();
     });
   });
 

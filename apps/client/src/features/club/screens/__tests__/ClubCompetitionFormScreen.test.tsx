@@ -115,6 +115,7 @@ jest.mock("lucide-react-native", () => {
     Info: MockIcon,
     Lock: MockIcon,
     Plus: MockIcon,
+    QrCode: MockIcon,
     Trash2: MockIcon,
     Trophy: MockIcon,
     Users: MockIcon,
@@ -572,6 +573,38 @@ describe("ClubCompetitionFormScreen", () => {
 
       expect(queryByTestId("competition-results-import-button")).toBeNull();
     });
+  });
+
+  it("toggles « QR tournant obligatoire » in the Organisation tab (#668)", async () => {
+    const { getByTestId, getByLabelText, getByText } = await render(
+      <ClubCompetitionFormScreen
+        navigation={
+          navigation as unknown as NativeStackNavigationProp<
+            RootStackParamList,
+            "ClubCompetitionEditor"
+          >
+        }
+        route={
+          {
+            params: {
+              competition: { id: "comp-123", requireRotatingQr: true },
+            },
+          } as unknown as RouteProp<RootStackParamList, "ClubCompetitionEditor">
+        }
+      />,
+    );
+
+    await fireEvent.press(getByTestId("tab-ORGANISATION"));
+    const toggle = getByLabelText("QR tournant obligatoire");
+    // Loaded from the competition.
+    expect(toggle.props.value).toBe(true);
+    // The organiser is told what gets refused.
+    expect(
+      getByText(/pass Apple Wallet et les anciennes versions/),
+    ).toBeTruthy();
+
+    await fireEvent(toggle, "valueChange", false);
+    expect(getByLabelText("QR tournant obligatoire").props.value).toBe(false);
   });
 
   describe("screen reader (#22)", () => {

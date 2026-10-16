@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { CompetitionStatus, CompetitionType } from "@prisma/client";
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsOptional,
@@ -16,6 +17,13 @@ const LAYOUT_API_PROPERTY = {
   example: [{ id: "t1", type: "TABLE", label: "Table 1", priceCents: 1500 }],
   type: "array",
   items: { type: "object", additionalProperties: true },
+} as const;
+
+const REQUIRE_ROTATING_QR_API_PROPERTY = {
+  description:
+    "QR d'entrée tournant obligatoire au check-in (#668, ADR-0024) : les QR statiques (v1/v2 — pass Wallet, anciennes versions de l'app) sont alors refusés, en ligne comme hors ligne. Désactivé par défaut. Refusé (400) si le QR tournant n'est pas configuré sur le serveur.",
+  example: false,
+  default: false,
 } as const;
 
 export class CreateCompetitionDto {
@@ -84,6 +92,11 @@ export class CreateCompetitionDto {
   @IsString()
   @IsOptional()
   eventsDescription?: string;
+
+  @ApiPropertyOptional(REQUIRE_ROTATING_QR_API_PROPERTY)
+  @IsBoolean()
+  @IsOptional()
+  requireRotatingQr?: boolean;
 }
 
 export class UpdateCompetitionDto {
@@ -162,4 +175,9 @@ export class UpdateCompetitionDto {
   @IsString()
   @IsOptional()
   eventsDescription?: string;
+
+  @ApiPropertyOptional(REQUIRE_ROTATING_QR_API_PROPERTY)
+  @IsBoolean()
+  @IsOptional()
+  requireRotatingQr?: boolean;
 }

@@ -419,6 +419,7 @@ describe("useClubCompetitionEditorLogic", () => {
         competitionType: "PROXIMITE",
         eventsDescription: "",
         layout: [],
+        requireRotatingQr: false,
       });
       // The programme goes through its own endpoint (#442).
       const body = (CompetitionService.create as jest.Mock).mock.calls[0][0];
@@ -441,6 +442,38 @@ describe("useClubCompetitionEditorLogic", () => {
       okButton.onPress();
 
       expect(mockNavigation.goBack).toHaveBeenCalled();
+    });
+
+    it("loads and saves « QR tournant obligatoire » (#668)", async () => {
+      const { result } = await renderHook(() =>
+        useClubCompetitionEditorLogic({
+          initialCompetition: {
+            id: "comp-1",
+            title: "Existing",
+            status: "UPCOMING",
+            date: "2026-05-15T00:00:00.000Z",
+            location: "Lyon",
+            competitionType: "NATIONALE",
+            requireRotatingQr: true,
+          },
+          navigation: mockNavigation,
+        }),
+      );
+      expect(result.current.requireRotatingQr).toBe(true);
+
+      (CompetitionService.update as jest.Mock).mockResolvedValueOnce({});
+      await waitFor(() => expect(result.current.programStatus).toBe("ready"));
+      await act(() => {
+        result.current.setRequireRotatingQr(false);
+      });
+      await act(async () => {
+        await result.current.handleSave();
+      });
+
+      expect(CompetitionService.update).toHaveBeenCalledWith(
+        "comp-1",
+        expect.objectContaining({ requireRotatingQr: false }),
+      );
     });
 
     it("updates an existing competition with the API payload (#417)", async () => {
@@ -478,6 +511,7 @@ describe("useClubCompetitionEditorLogic", () => {
         eventsDescription: "",
         ticketingUrl: "https://www.helloasso.com/x",
         layout: [],
+        requireRotatingQr: false,
       });
     });
 

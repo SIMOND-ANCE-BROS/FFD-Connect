@@ -111,6 +111,8 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
     // Ticketing & Layout
     ticketingUrl,
     setTicketingUrl,
+    requireRotatingQr,
+    setRequireRotatingQr,
     layoutItems,
     showLayoutModal,
     setShowLayoutModal,
@@ -344,6 +346,8 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
               handleGenerateVolunteerToken={handleGenerateVolunteerToken}
               ticketingUrl={ticketingUrl}
               setTicketingUrl={setTicketingUrl}
+              requireRotatingQr={requireRotatingQr}
+              setRequireRotatingQr={setRequireRotatingQr}
               layoutItems={layoutItems}
               showLayoutModal={showLayoutModal}
               setShowLayoutModal={setShowLayoutModal}

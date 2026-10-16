@@ -22,7 +22,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import {
   checkInLicenseSelect,
-  competitionDaysSelect,
+  competitionCheckInPolicySelect,
   competitionPublicResultsSelect,
   idOnlySelect,
   retiredLicenseNumberSelect,
@@ -39,6 +39,9 @@ import {
 } from "./competition-cache.service";
 
 type CheckInUser = Prisma.UserGetPayload<{ select: typeof userNameSelect }>;
+type CheckInCompetition = Prisma.CompetitionGetPayload<{
+  select: typeof competitionCheckInPolicySelect;
+}>;
 
 /**
  * A check-in scanned offline (#24) is replayed later with the instant of the
@@ -62,6 +65,13 @@ export const INVALID_SCANNED_AT_MESSAGE =
   "Heure de scan invalide : un scan hors ligne doit dater du jour de la compétition et être synchronisé dans les 12 h";
 export const SCANNED_AT_ROTATING_ONLY_MESSAGE =
   "Heure de scan refusée : seul un QR d'entrée tournant valide peut être synchronisé après un scan hors ligne";
+/**
+ * Competition requiring the rotating entry QR (#668): a static QR (v1/v2 —
+ * Wallet pass, older app, snapshot) is refused. Same wording as the offline
+ * scanner (`apps/client/.../offlineCheckin.ts`).
+ */
+export const STATIC_QR_REFUSED_MESSAGE =
+  "QR statique refusé : présentez le QR tournant de l'E-Licence";
 
 interface ScanInstant {
   /** Instant the QR is verified at. */
@@ -172,11 +182,29 @@ export class CompetitionResultsService {
   }
 
   async checkIn(competitionId: string, qrData: string, scannedAt?: string) {
-    const scan = await this.resolveScanInstant(
+    const competition = await this.prisma.competition.findUnique({
+      where: { id: competitionId },
+      select: competitionCheckInPolicySelect,
+    });
+    if (!competition) {
+      throw new NotFoundException("Compétition non trouvée");
+    }
+    const isRotatingQr = parseEntryQr(qrData).kind === "entry";
+    const scan = this.resolveScanInstant(
       competitionId,
-      qrData,
+      competition,
+      isRotatingQr,
       scannedAt,
     );
+    // Rotating QR mandatory for this competition (#668): a static QR is
+    // refused before any lookup, in every signature mode — a screenshot of
+    // it would otherwise stay valid all season.
+    if (competition.requireRotatingQr && !isRotatingQr) {
+      this.logger.warn(
+        `Check-in refused for competition ${competitionId}: static QR while the rotating QR is mandatory`,
+      );
+      throw new BadRequestException(STATIC_QR_REFUSED_MESSAGE);
+    }
     // Signature check first (#168): in `enforce` mode an unsigned, forged or
     // expired QR never reaches the lookup; in `warn` mode it goes through but
     // the response carries a warning for the staff screen.
@@ -289,16 +317,17 @@ export class CompetitionResultsService {
    * scan replayed later (#24) — the claimed `scannedAt`, within the bounds
    * documented on CHECK_IN_SCANNED_AT_MAX_AGE_MS.
    */
-  private async resolveScanInstant(
+  private resolveScanInstant(
     competitionId: string,
-    qrData: string,
+    competition: CheckInCompetition,
+    isRotatingQr: boolean,
     scannedAt?: string,
-  ): Promise<ScanInstant> {
+  ): ScanInstant {
     const now = new Date();
     if (scannedAt === undefined) return { verifyAt: now, claimedAt: null };
     // Static QRs (v1/v2, Wallet) are valid all day: a claimed time would only
     // ever widen what they already allow. Only a rotating QR is replayable.
-    if (parseEntryQr(qrData).kind !== "entry") {
+    if (!isRotatingQr) {
       throw new BadRequestException(SCANNED_AT_ROTATING_ONLY_MESSAGE);
     }
     const instant = new Date(scannedAt);
@@ -311,13 +340,6 @@ export class CompetitionResultsService {
       throw new BadRequestException(INVALID_SCANNED_AT_MESSAGE);
     }
     const claimedAt = age < 0 ? now : instant;
-    const competition = await this.prisma.competition.findUnique({
-      where: { id: competitionId },
-      select: competitionDaysSelect,
-    });
-    if (!competition) {
-      throw new NotFoundException("Compétition non trouvée");
-    }
     const firstDay = parisStartOfDay(toLicenseQrExpiry(competition.date));
     const lastDay = parisEndOfDay(
       toLicenseQrExpiry(competition.endDate ?? competition.date),
