@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TextStyle,
   useColorScheme,
+  View,
   ViewStyle,
 } from "react-native";
 import Animated, {
@@ -46,47 +47,60 @@ const GradientBackground = React.memo<{ borderRadius: number }>(
   ),
 );
 
-const AppButtonComponent: React.FC<AppButtonProps> = ({
-  title,
-  onPress,
-  variant = "primary",
-  loading = false,
-  disabled = false,
-  icon,
-  style,
-  textStyle,
-  testID,
-  accessibilityLabel,
-  accessibilityHint,
-}) => {
-  const scheme = useColorScheme();
-  const currentTheme = theme[scheme === "dark" ? "dark" : "light"];
-  const palette = theme.colors;
+/**
+ * The ref reaches the inner Pressable, so a modal opened by the button can
+ * return the screen reader focus to it on close (`useRestoreFocusOnClose`).
+ */
+const AppButtonComponent = React.forwardRef<View, AppButtonProps>(
+  function AppButtonComponent(
+    {
+      title,
+      onPress,
+      variant = "primary",
+      loading = false,
+      disabled = false,
+      icon,
+      style,
+      textStyle,
+      testID,
+      accessibilityLabel,
+      accessibilityHint,
+    },
+    ref,
+  ) {
+    const scheme = useColorScheme();
+    const currentTheme = theme[scheme === "dark" ? "dark" : "light"];
+    const palette = theme.colors;
 
-  // Animation State
-  const scale = useSharedValue(1);
+    // Animation State
+    const scale = useSharedValue(1);
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: scale.value }],
-    };
-  });
+    const animatedStyle = useAnimatedStyle(() => {
+      return {
+        transform: [{ scale: scale.value }],
+      };
+    });
 
-  const handlePressIn = useCallback(() => {
-    if (!disabled && !loading) {
-      scale.value = withSpring(0.96, { damping: 10, stiffness: 300 });
-    }
-  }, [disabled, loading, scale]);
+    const handlePressIn = useCallback(() => {
+      if (!disabled && !loading) {
+        scale.value = withSpring(0.96, { damping: 10, stiffness: 300 });
+      }
+    }, [disabled, loading, scale]);
 
-  const handlePressOut = useCallback(() => {
-    if (!disabled && !loading) {
-      scale.value = withSpring(1, { damping: 10, stiffness: 300 });
-    }
-  }, [disabled, loading, scale]);
+    const handlePressOut = useCallback(() => {
+      if (!disabled && !loading) {
+        scale.value = withSpring(1, { damping: 10, stiffness: 300 });
+      }
+    }, [disabled, loading, scale]);
 
-  // Memoize color calculations based on variant and state
-  const { backgroundColor, textColor, borderColor, borderWidth, showGradient } =
-    useMemo(() => {
+    // Memoize color calculations based on variant and state
+    const {
+      backgroundColor,
+      textColor,
+      borderColor,
+      borderWidth,
+      showGradient,
+    } = useMemo(() => {
       const isPrimary = variant === "primary";
       const showGrad = isPrimary && !disabled;
       let bgColor: string;
@@ -137,55 +151,57 @@ const AppButtonComponent: React.FC<AppButtonProps> = ({
       };
     }, [variant, disabled, currentTheme, palette]);
 
-  const buttonStyle = useMemo(
-    () => [
-      styles.button,
-      { backgroundColor, borderColor, borderWidth },
-      variant === "primary" && !disabled && styles.primaryShadow,
-    ],
-    [variant, backgroundColor, borderColor, borderWidth, disabled],
-  );
+    const buttonStyle = useMemo(
+      () => [
+        styles.button,
+        { backgroundColor, borderColor, borderWidth },
+        variant === "primary" && !disabled && styles.primaryShadow,
+      ],
+      [variant, backgroundColor, borderColor, borderWidth, disabled],
+    );
 
-  const textStyleWithColor = useMemo(
-    () => [
-      styles.text,
-      { color: textColor },
-      icon ? styles.textWithIcon : undefined,
-      textStyle,
-    ],
-    [textColor, icon, textStyle],
-  );
+    const textStyleWithColor = useMemo(
+      () => [
+        styles.text,
+        { color: textColor },
+        icon ? styles.textWithIcon : undefined,
+        textStyle,
+      ],
+      [textColor, icon, textStyle],
+    );
 
-  return (
-    <Animated.View style={[style, animatedStyle]}>
-      <Pressable
-        style={buttonStyle}
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        disabled={disabled || loading}
-        testID={testID ?? `button-${variant}`}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: disabled || loading, busy: loading }}
-        accessibilityLabel={accessibilityLabel ?? title}
-        accessibilityHint={accessibilityHint}
-      >
-        {showGradient && <GradientBackground borderRadius={30} />}
+    return (
+      <Animated.View style={[style, animatedStyle]}>
+        <Pressable
+          ref={ref}
+          style={buttonStyle}
+          onPress={onPress}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          disabled={disabled || loading}
+          testID={testID ?? `button-${variant}`}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: disabled || loading, busy: loading }}
+          accessibilityLabel={accessibilityLabel ?? title}
+          accessibilityHint={accessibilityHint}
+        >
+          {showGradient && <GradientBackground borderRadius={30} />}
 
-        {loading ? (
-          <ActivityIndicator color={textColor} testID="button-loader" />
-        ) : (
-          <>
-            {icon}
-            <AppText variant="button" style={textStyleWithColor}>
-              {title}
-            </AppText>
-          </>
-        )}
-      </Pressable>
-    </Animated.View>
-  );
-};
+          {loading ? (
+            <ActivityIndicator color={textColor} testID="button-loader" />
+          ) : (
+            <>
+              {icon}
+              <AppText variant="button" style={textStyleWithColor}>
+                {title}
+              </AppText>
+            </>
+          )}
+        </Pressable>
+      </Animated.View>
+    );
+  },
+);
 
 export const AppButton = React.memo(AppButtonComponent);
 

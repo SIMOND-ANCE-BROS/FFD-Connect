@@ -12,6 +12,7 @@ import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { UserRole } from "@prisma/client";
 import { ROLES_KEY } from "../auth/decorators/roles.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
+import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
 import { CompetitionsController } from "./competitions.controller";
 import { CompetitionAccessService } from "./services/competition-access.service";
 import { CompetitionManagementService } from "./services/competition-management.service";
@@ -20,6 +21,7 @@ import { CompetitionProgramService } from "./services/competition-program.servic
 import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
+import { CompetitionResultsImportService } from "./services/competition-results-import.service";
 
 describe("CompetitionsController", () => {
   let controller: CompetitionsController;
@@ -70,6 +72,7 @@ describe("CompetitionsController", () => {
 
   const mockProgramQueryService = { getProgram: jest.fn() };
   const mockProgramService = { replaceProgram: jest.fn() };
+  const mockResultsImportService = { importCsv: jest.fn() };
 
   const req = (userId: string, role = "LICENSEE") =>
     ({ user: { userId, role } }) as any as RequestWithUser;
@@ -95,6 +98,10 @@ describe("CompetitionsController", () => {
           useValue: mockProgramQueryService,
         },
         { provide: CompetitionProgramService, useValue: mockProgramService },
+        {
+          provide: CompetitionResultsImportService,
+          useValue: mockResultsImportService,
+        },
       ],
     })
       .overrideGuard(ThrottlerUserGuard)
@@ -243,6 +250,50 @@ describe("CompetitionsController", () => {
       await expect(
         controller.register("comp1", req("u1"), { eventId: "e1" } as any),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("importResults (#652)", () => {
+    it("is restricted to STAFF and ADMIN behind the JWT and roles guards", () => {
+      const handler = CompetitionsController.prototype.importResults;
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([
+        UserRole.STAFF,
+        UserRole.ADMIN,
+      ]);
+      expect(Reflect.getMetadata("__guards__", handler)).toContain(RolesGuard);
+    });
+
+    it("refuses « connecté en tant que » sessions (L5)", () => {
+      const handler = CompetitionsController.prototype.importResults;
+      expect(Reflect.getMetadata("__guards__", handler)).toContain(
+        NoImpersonationGuard,
+      );
+    });
+
+    it("forwards the competition id, the CSV text and the author to the import service", async () => {
+      const report = {
+        created: 1,
+        updated: 0,
+        unchanged: 0,
+        relinked: 0,
+        anonymisedKept: 0,
+        linked: 1,
+        unlinked: 0,
+      };
+      mockResultsImportService.importCsv.mockResolvedValue(report);
+
+      const result = await controller.importResults(
+        "comp1",
+        { csv: "epreuve;tour;classement;couple\nev;F;1;A / B" },
+        req("staff-1", "STAFF"),
+      );
+
+      expect(mockResultsImportService.importCsv).toHaveBeenCalledWith(
+        "comp1",
+        "epreuve;tour;classement;couple\nev;F;1;A / B",
+        "staff-1",
+      );
+      expect(result).toBe(report);
     });
   });
 

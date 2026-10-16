@@ -48,6 +48,11 @@ interface LibraryTrackItemProps {
   bar3: Animated.Value;
   onPress: (item: TrackData) => void;
   onLongPress?: (item: TrackData) => void;
+  /**
+   * Registers the row's host view (null on unmount), so the screen can give
+   * the reader focus back to the row when its long-press sheet closes (#22).
+   */
+  registerRow?: (id: string, node: View | null) => void;
 }
 
 export const LibraryTrackItem = React.memo(
@@ -62,6 +67,7 @@ export const LibraryTrackItem = React.memo(
     bar3,
     onPress,
     onLongPress,
+    registerRow,
   }: LibraryTrackItemProps) => {
     const isOnline = useIsOnline();
     // Hors ligne, seules les copies locales (favoris téléchargés / imports)
@@ -93,6 +99,7 @@ export const LibraryTrackItem = React.memo(
 
     return (
       <TouchableOpacity
+        ref={registerRow ? (node) => registerRow(item.id, node) : undefined}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
         accessibilityHint={

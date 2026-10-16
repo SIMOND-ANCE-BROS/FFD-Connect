@@ -19,9 +19,10 @@ COPY packages/jest-config ./packages/jest-config
 COPY patches ./patches
 COPY scripts ./scripts
 
-# Note: --no-frozen-lockfile because patchedDependencies can drift;
-# the lockfile is validated in CI instead.
-RUN pnpm install --no-frozen-lockfile
+# --frozen-lockfile: install exactly what pnpm-lock.yaml pins, and fail rather
+# than rewrite it. The deploy stage below reads this same lockfile, so a
+# rewritten one would make the image drift from what CI tested (#692).
+RUN pnpm install --frozen-lockfile
 
 # ================================================================
 # Stage 2 — build: compile TypeScript + generate Prisma client
@@ -40,6 +41,18 @@ RUN pnpm exec prisma generate && pnpm build
 # client/landing/docs deps hoisted into the root node_modules AND the backend's
 # own devDeps (jest, stryker, nest-cli, eslint, typescript...). The Prisma CLI
 # is a runtime dependency (entrypoint runs `prisma migrate deploy` at boot).
+#
+# Reproducible (#692): the deploy follows pnpm-lock.yaml. `--legacy` must NOT
+# come back: with node-linker=hoisted (.npmrc) the legacy implementation
+# installs WITHOUT the lockfile and re-resolves every range (measured: 136 of
+# 655 package versions in the bundle were not the locked ones). The default
+# implementation (pnpm 10) builds a lockfile for the deployed project from the
+# shared one and installs it frozen, injecting @ffd-connect/shared as a copy.
+# It refuses to run unless inject-workspace-packages is true; the flag is set
+# for this command only, not in pnpm-workspace.yaml, because the deploy turns
+# workspace links into injected copies itself (the shared lockfile does not
+# need to be injected) and setting it globally would make local installs copy
+# packages/shared instead of linking it.
 # ================================================================
 FROM build AS deploy
 
@@ -48,13 +61,10 @@ WORKDIR /app/packages/shared
 RUN pnpm exec tsc
 
 WORKDIR /app
-# The workspace patches only client deps (react-native, track-player); a
-# backend-only deploy re-resolves without them and errors ERR_PNPM_UNUSED_PATCH.
-# Strip patchedDependencies from the root manifest before deploying (the backend
-# does not depend on any patched package). Does not affect the already-installed
-# build stage.
-RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));if(p.pnpm)delete p.pnpm.patchedDependencies;fs.writeFileSync('package.json',JSON.stringify(p,null,2));" && \
-    pnpm --filter=backend --prod --legacy deploy /app/out
+# The bundle also gets its own pnpm-lock.yaml (subset of the shared one), which
+# ships in the image. docker-build-check (ci.yml) verifies that every package
+# in the image's node_modules is pinned by the repository's pnpm-lock.yaml.
+RUN pnpm --filter=backend --prod --config.inject-workspace-packages=true deploy /app/out
 
 # The fresh install ships @prisma/client but not the schema-specific generated
 # client — regenerate it inside the pruned bundle (no DB connection needed).

@@ -1,3 +1,4 @@
+import { ConfigService } from "@nestjs/config";
 import { Logger } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { PrismaClient } from "@prisma/client";
@@ -39,6 +40,8 @@ describe("AccountDeletionService", () => {
         { provide: RenewalDocumentFileCleaner, useValue: files },
         { provide: CompetitionCacheService, useValue: cache },
         { provide: HealthDataAccessLogService, useValue: healthAccess },
+        // No pseudonymisation key outside production: development key (#652).
+        { provide: ConfigService, useValue: { get: jest.fn() } },
       ],
     }).compile();
     service = moduleRef.get(AccountDeletionService);
@@ -144,7 +147,11 @@ describe("AccountDeletionService", () => {
     // (userId -> tombstone): both are guarded updateMany calls.
     prisma.result.updateMany.mockImplementation((args) =>
       marker(
-        args && "userId" in (args.data ?? {}) ? "resultSweep" : "coupleResult",
+        args && "partnerUserId" in (args.where ?? {})
+          ? "partnerResultLink"
+          : args && "userId" in (args.data ?? {})
+            ? "resultSweep"
+            : "coupleResult",
       ),
     );
     prisma.user.delete.mockReturnValue(marker("user"));
@@ -152,11 +159,14 @@ describe("AccountDeletionService", () => {
     await service.deleteAccount("u1");
 
     // partnerReg twice: the partnerUserId-linked rows, then the legacy ones.
+    // The imported results' second-member link goes after the label scrub
+    // that found them through it (#652).
     expect(opsOf()).toEqual([
       "resultSweep",
       "partnerReg",
       "partnerReg",
       "coupleResult",
+      "partnerResultLink",
       "user",
     ]);
     expect(
@@ -271,9 +281,14 @@ describe("AccountDeletionService", () => {
 
       await service.deleteAccount("u1");
 
-      // 3 guarded per-row updates + the sweep; never a throwing `update`.
+      // 3 guarded per-row updates + the sweep + the second-member unlink
+      // (#652); never a throwing `update`.
       expect(prisma.result.update).not.toHaveBeenCalled();
-      expect(prisma.result.updateMany).toHaveBeenCalledTimes(4);
+      expect(prisma.result.updateMany).toHaveBeenCalledTimes(5);
+      expect(prisma.result.updateMany).toHaveBeenCalledWith({
+        where: { partnerUserId: "u1" },
+        data: { partnerUserId: null },
+      });
       expect(prisma.result.updateMany).toHaveBeenCalledWith({
         where: { id: "r1", userId: "u1" },
         data: { userId: DELETED_USER_ID, details: { totalParticipants: 8 } },
@@ -296,7 +311,11 @@ describe("AccountDeletionService", () => {
       // Every result write is scoped to the deleted user's id: a row
       // re-imported under another account matches no `where` and stays as is.
       for (const [args] of prisma.result.updateMany.mock.calls) {
-        expect(args.where).toEqual(expect.objectContaining({ userId: "u1" }));
+        const where = (args.where ?? {}) as {
+          userId?: unknown;
+          partnerUserId?: unknown;
+        };
+        expect(where.partnerUserId ?? where.userId).toBe("u1");
       }
     });
 
@@ -313,7 +332,11 @@ describe("AccountDeletionService", () => {
       const marker = (op: string) => ({ op }) as never;
       prisma.result.updateMany.mockImplementation((args) =>
         marker(
-          args && "id" in (args.where ?? {}) ? "resultRow" : "resultSweep",
+          args && "id" in (args.where ?? {})
+            ? "resultRow"
+            : args && "partnerUserId" in (args.where ?? {})
+              ? "partnerResultLink"
+              : "resultSweep",
         ),
       );
       prisma.user.delete.mockReturnValue(marker("user"));
@@ -321,7 +344,12 @@ describe("AccountDeletionService", () => {
       await service.deleteAccount("u1");
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-      expect(opsOf()).toEqual(["resultRow", "resultSweep", "user"]);
+      expect(opsOf()).toEqual([
+        "resultRow",
+        "resultSweep",
+        "partnerResultLink",
+        "user",
+      ]);
     });
 
     it("invalidates the results cache once per competition, after the transaction", async () => {

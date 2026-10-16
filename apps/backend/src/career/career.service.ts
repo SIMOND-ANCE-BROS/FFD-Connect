@@ -78,15 +78,11 @@ export class CareerService {
    * Récupère la carrière du licencié : partenariats, inscriptions aux compétitions, et résultats.
    */
   async getMyCareer(userId: string) {
-    const [partnerships, registrations] = await Promise.all([
+    const [partnerships, registrations, results] = await Promise.all([
       this.careerQueryService.getPartnershipsForUser(userId),
       this.careerQueryService.getRegistrationsWithCompetition(userId),
+      this.careerQueryService.getResultsForUser(userId),
     ]);
-
-    const results = await this.careerQueryService.getResultsForUser(
-      userId,
-      registrations,
-    );
 
     return { partnerships, registrations, results };
   }

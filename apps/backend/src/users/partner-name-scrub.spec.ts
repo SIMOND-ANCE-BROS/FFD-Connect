@@ -59,10 +59,35 @@ describe("buildPartnerNameScrubOps", () => {
     });
   });
 
-  it("returns no op and reads nothing more without any couple", async () => {
+  it("returns no op without any couple, looking up only the imported results naming the user as second member (#652)", async () => {
     await expect(run()).resolves.toEqual([]);
     expect(prisma.registration.findMany).toHaveBeenCalledTimes(2);
-    expect(prisma.result.findMany).not.toHaveBeenCalled();
+    expect(prisma.result.findMany).toHaveBeenCalledWith({
+      where: { userId: { not: "deleted" }, OR: [{ partnerUserId: "deleted" }] },
+      select: partnerCoupleResultSelect,
+      take: MAX_PARTNER_SCRUB_ROWS,
+    });
+  });
+
+  it("scrubs the user's half of an imported couple label found by partnerUserId (#652)", async () => {
+    prisma.result.findMany.mockResolvedValue([
+      {
+        id: "r9",
+        userId: "holder",
+        details: { participant: "Sam PETIT / Alex MARTIN", bib: "7" },
+        event: { competitionId: "c9" },
+      },
+    ] as never);
+
+    const scrubbed = await scrub();
+
+    expect(prisma.result.updateMany).toHaveBeenCalledWith({
+      where: { id: "r9", userId: "holder" },
+      data: {
+        details: { participant: "Sam PETIT / Partenaire supprimé", bib: "7" },
+      },
+    });
+    expect(scrubbed.competitionIds).toEqual(["c9"]);
   });
 
   it("ignores own registrations without a usable bib", async () => {
@@ -73,7 +98,15 @@ describe("buildPartnerNameScrubOps", () => {
       ] as never)
       .mockResolvedValueOnce([]);
     await expect(run()).resolves.toEqual([]);
-    expect(prisma.result.findMany).not.toHaveBeenCalled();
+    // No bib filter: only the second-member link (#652) is looked up.
+    expect(prisma.result.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId: { not: "deleted" },
+          OR: [{ partnerUserId: "deleted" }],
+        },
+      }),
+    );
   });
 
   it("clears partnerName on the legacy partner registration of the same couple, confirmed by name", async () => {
@@ -130,6 +163,7 @@ describe("buildPartnerNameScrubOps", () => {
           { eventId: "e1", details: { path: ["bib"], equals: "12" } },
           { eventId: "e1", details: { path: ["bib"], equals: 12 } },
           { eventId: "e2", userId: "partner" },
+          { partnerUserId: "deleted" },
         ],
       },
       select: partnerCoupleResultSelect,

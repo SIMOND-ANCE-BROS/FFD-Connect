@@ -291,11 +291,10 @@ describe("CareerService", () => {
       ).toHaveBeenCalledWith("u1");
     });
 
-    it("should delegate to careerQueryService.getResultsForUser with registrations (by userId)", async () => {
-      const registrations = [{ event: { id: "ev-1" } }] as never;
+    it("should delegate to careerQueryService.getResultsForUser by userId only (#652)", async () => {
       mockCareerQueryService.getPartnershipsForUser.mockResolvedValue([]);
       mockCareerQueryService.getRegistrationsWithCompetition.mockResolvedValue(
-        registrations,
+        [],
       );
       mockCareerQueryService.getResultsForUser.mockResolvedValue([]);
 
@@ -303,7 +302,6 @@ describe("CareerService", () => {
 
       expect(mockCareerQueryService.getResultsForUser).toHaveBeenCalledWith(
         "u1",
-        registrations,
       );
     });
 

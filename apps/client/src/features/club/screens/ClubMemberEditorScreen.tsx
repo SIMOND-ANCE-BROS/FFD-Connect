@@ -1,4 +1,3 @@
-/* eslint-disable react-native-a11y/has-accessibility-hint, react-native-a11y/has-valid-accessibility-descriptors -- TODO: add a11y to form fields */
 import {
   Award,
   CreditCard,
@@ -103,6 +102,8 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
       <View style={styles.avatarBlock}>
         <View
           style={[styles.avatarPlaceholder, { backgroundColor: theme.primary }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
         >
           <AppText variant="h1" style={styles.colorWhite}>
             {firstName && lastName ? `${firstName[0]}${lastName[0]}` : "+"}
@@ -116,18 +117,30 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
               : { backgroundColor: theme.textSecondary },
           ]}
         >
-          <AppText variant="caption" style={styles.colorWhite}>
+          <AppText
+            variant="caption"
+            style={styles.colorWhite}
+            accessibilityLabel={`Statut : ${
+              statusLabel === "ACTIVE" ? "actif" : "inactif"
+            }, géré par la date de validité de la licence`}
+            accessibilityHint="Non modifiable"
+          >
             Statut : {statusLabel === "ACTIVE" ? "Actif" : "Inactif"}
           </AppText>
         </View>
         <AppText
           variant="caption"
           style={[styles.statusHint, { color: theme.textSecondary }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
         >
           Géré par la date de validité de la licence
         </AppText>
         {member?.id && (
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Voir la carrière"
+            accessibilityHint="Ouvre les résultats en compétition du membre"
             style={[styles.careerButton, { borderColor: theme.border }]}
             onPress={() =>
               navigation.navigate("ViewCareer", {
@@ -152,6 +165,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
         <AppText
           variant="caption"
           style={[styles.sectionLabel, { color: theme.textSecondary }]}
+          accessibilityRole="header"
         >
           Identité
         </AppText>
@@ -159,6 +173,8 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
           <AppText
             variant="caption"
             style={[styles.mb6, { color: theme.textSecondary }]}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
           >
             Prénom
           </AppText>
@@ -175,6 +191,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
             />
             <TextInput
               accessibilityLabel="Prénom"
+              accessibilityHint="Obligatoire"
               style={[styles.input, { color: theme.text }]}
               placeholder="Ex: Jean"
               placeholderTextColor={theme.textSecondary}
@@ -187,6 +204,8 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
           <AppText
             variant="caption"
             style={[styles.mb6, { color: theme.textSecondary }]}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
           >
             Nom
           </AppText>
@@ -203,6 +222,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
             />
             <TextInput
               accessibilityLabel="Nom"
+              accessibilityHint="Obligatoire"
               style={[styles.input, { color: theme.text }]}
               placeholder="Ex: Dupont"
               placeholderTextColor={theme.textSecondary}
@@ -218,6 +238,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
         <AppText
           variant="caption"
           style={[styles.sectionLabel, { color: theme.textSecondary }]}
+          accessibilityRole="header"
         >
           Licence FFD
         </AppText>
@@ -227,7 +248,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
             color={theme.textSecondary}
             style={styles.inputIcon}
           />
-          <View style={styles.readOnlyContent}>
+          <View style={styles.readOnlyContent} accessible>
             <AppText variant="caption" style={{ color: theme.textSecondary }}>
               Numéro de licence
             </AppText>
@@ -239,7 +260,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
           </View>
         </View>
         <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
-          <View style={styles.readOnlyContent}>
+          <View style={styles.readOnlyContent} accessible>
             <AppText variant="caption" style={{ color: theme.textSecondary }}>
               Valide jusqu'à
             </AppText>
@@ -249,7 +270,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
           </View>
         </View>
         <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
-          <View style={styles.readOnlyContent}>
+          <View style={styles.readOnlyContent} accessible>
             <AppText variant="caption" style={{ color: theme.textSecondary }}>
               Classe d'âge
             </AppText>
@@ -259,7 +280,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
           </View>
         </View>
         <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
-          <View style={styles.readOnlyContent}>
+          <View style={styles.readOnlyContent} accessible>
             <AppText variant="caption" style={{ color: theme.textSecondary }}>
               Catégorie de danse
             </AppText>
@@ -269,7 +290,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
           </View>
         </View>
         <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
-          <View style={styles.readOnlyContent}>
+          <View style={styles.readOnlyContent} accessible>
             <AppText variant="caption" style={{ color: theme.textSecondary }}>
               Niveau de compétition
             </AppText>
@@ -279,7 +300,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
           </View>
         </View>
         <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
-          <View style={styles.readOnlyContent}>
+          <View style={styles.readOnlyContent} accessible>
             <AppText variant="caption" style={{ color: theme.textSecondary }}>
               Couleur du passeport (Latines)
             </AppText>
@@ -289,7 +310,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
           </View>
         </View>
         <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
-          <View style={styles.readOnlyContent}>
+          <View style={styles.readOnlyContent} accessible>
             <AppText variant="caption" style={{ color: theme.textSecondary }}>
               Couleur du passeport (Standard)
             </AppText>
@@ -306,11 +327,12 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
           <AppText
             variant="caption"
             style={[styles.sectionLabel, { color: theme.textSecondary }]}
+            accessibilityRole="header"
           >
             Licence WDSF
           </AppText>
           <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
-            <View style={styles.readOnlyContent}>
+            <View style={styles.readOnlyContent} accessible>
               <AppText variant="caption" style={{ color: theme.textSecondary }}>
                 MIN (numéro de licence WDSF)
               </AppText>
@@ -320,7 +342,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
             </View>
           </View>
           <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
-            <View style={styles.readOnlyContent}>
+            <View style={styles.readOnlyContent} accessible>
               <AppText variant="caption" style={{ color: theme.textSecondary }}>
                 Nationality
               </AppText>
@@ -330,7 +352,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
             </View>
           </View>
           <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
-            <View style={styles.readOnlyContent}>
+            <View style={styles.readOnlyContent} accessible>
               <AppText variant="caption" style={{ color: theme.textSecondary }}>
                 Licence Type
               </AppText>
@@ -340,7 +362,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
             </View>
           </View>
           <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
-            <View style={styles.readOnlyContent}>
+            <View style={styles.readOnlyContent} accessible>
               <AppText variant="caption" style={{ color: theme.textSecondary }}>
                 Age group
               </AppText>
@@ -350,7 +372,7 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
             </View>
           </View>
           <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
-            <View style={styles.readOnlyContent}>
+            <View style={styles.readOnlyContent} accessible>
               <AppText variant="caption" style={{ color: theme.textSecondary }}>
                 License expires on
               </AppText>
@@ -369,12 +391,13 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
         <AppText
           variant="caption"
           style={[styles.sectionLabel, { color: theme.textSecondary }]}
+          accessibilityRole="header"
         >
           Partenaire & équipes
         </AppText>
         {partnerName ? (
           <View style={[styles.readOnlyRow, { borderColor: theme.border }]}>
-            <View style={styles.readOnlyContent}>
+            <View style={styles.readOnlyContent} accessible>
               <AppText variant="caption" style={{ color: theme.textSecondary }}>
                 Partenaire (fréquent)
               </AppText>
@@ -393,6 +416,9 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
         )}
         <View style={styles.linkRow}>
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Gérer les couples"
+            accessibilityHint="Ouvre la liste des couples du club"
             style={[styles.linkButton, { borderColor: theme.border }]}
             onPress={() => navigation.navigate("ClubCouples")}
           >
@@ -402,6 +428,9 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
             </AppText>
           </TouchableOpacity>
           <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Voir les Solo Teams"
+            accessibilityHint="Ouvre la liste des équipes du club"
             style={[styles.linkButton, { borderColor: theme.border }]}
             onPress={() => navigation.navigate("ClubSoloTeams")}
           >
@@ -425,12 +454,18 @@ export const ClubMemberEditorScreen: React.FC<Props> = ({
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
         <TouchableOpacity
           accessibilityRole="button"
+          accessibilityLabel="Fermer la fiche"
+          accessibilityHint="Revient à la liste des membres sans enregistrer"
           onPress={() => navigation.goBack()}
           style={styles.closeButton}
         >
           <X size={24} color={theme.text} />
         </TouchableOpacity>
-        <AppText variant="h3" style={{ color: theme.text }}>
+        <AppText
+          variant="h3"
+          style={{ color: theme.text }}
+          accessibilityRole="header"
+        >
           {isEditing ? "Fiche membre" : "Nouveau membre"}
         </AppText>
         <View style={styles.w40} />

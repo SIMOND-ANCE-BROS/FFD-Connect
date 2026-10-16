@@ -32,7 +32,9 @@ export const MAX_PARTNER_SCRUB_ROWS = 1000;
  *    couple, au nom du premier membre reconnu) : retrouvé par épreuve +
  *    dossard, ou par l'inscription du partenaire qui la nomme ; seule la
  *    moitié du libellé `details.participant` qui la nomme est remplacée par
- *    « Partenaire supprimé ». La ligne et son classement restent (ils
+ *    « Partenaire supprimé ». Aussi retrouvé par `partnerUserId` quand
+ *    l'import a reconnu la personne comme second membre (#652). La ligne et
+ *    son classement restent (ils
  *    appartiennent aussi au partenaire). Un libellé où aucune moitié ne la
  *    nomme n'est pas touché (pas de devinette).
  *
@@ -110,15 +112,14 @@ export async function buildPartnerNameScrubOps(
       { eventId: c.eventId, details: { path: ["bib"], equals: c.bib } },
     ]),
     ...asPartner.map((r) => ({ eventId: r.eventId, userId: r.userId })),
+    // Imported couple results recognising the user as second member (#652).
+    { partnerUserId: userId },
   ];
-  const coupleResults =
-    resultFilters.length === 0
-      ? []
-      : await prisma.result.findMany({
-          where: { userId: { not: userId }, OR: resultFilters },
-          select: partnerCoupleResultSelect,
-          take: MAX_PARTNER_SCRUB_ROWS,
-        });
+  const coupleResults = await prisma.result.findMany({
+    where: { userId: { not: userId }, OR: resultFilters },
+    select: partnerCoupleResultSelect,
+    take: MAX_PARTNER_SCRUB_ROWS,
+  });
 
   if (
     [own, asPartner, legacyPartnerRegistrations, coupleResults].some(

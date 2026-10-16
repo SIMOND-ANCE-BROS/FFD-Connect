@@ -37,8 +37,10 @@ overrides:
   # effect : ligne 3.x UNIQUEMENT. @prisma/config utilise Either, supprime de
   # la 4.0.0 -> `defineConfig` jette "Cannot read properties of undefined
   # (reading 'right')". Invisible dans le workspace (qui resout 3.x), mais
-  # `pnpm deploy --prod` du Dockerfile RE-RESOUT l'arbre et prenait la 4.0.0,
-  # cassant le build de l'image backend puis `prisma migrate deploy` au boot.
+  # `pnpm deploy --legacy` du Dockerfile RE-RESOLVAIT l'arbre et prenait la
+  # 4.0.0, cassant le build de l'image backend puis `prisma migrate deploy` au
+  # boot. Depuis #692 l'image suit le lockfile ; le plancher reste utile pour
+  # toute re-resolution du lockfile (mise a jour Dependabot, `pnpm update`).
   effect: '^3.22.2'
   socket.io-parser: '>=4.2.7'
   h3: '>=1.15.6'

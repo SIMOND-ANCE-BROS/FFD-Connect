@@ -5,6 +5,7 @@ import { useTheme } from "../../../../context/ThemeContext";
 import { usePerformanceEngine } from "../../hooks/usePerformanceEngine";
 import { usePerformanceStore } from "../../../../stores/performance.store";
 import { PerformancePlayerScreen } from "../PerformancePlayerScreen";
+import { announce } from "../../../../utils/announce";
 
 // Mock dependencies
 jest.mock("../../hooks/usePerformanceEngine");
@@ -13,6 +14,7 @@ jest.mock("../../../../services/TtsService", () => ({
 }));
 jest.mock("../../../../context/ThemeContext");
 jest.mock("@react-navigation/native");
+jest.mock("../../../../utils/announce", () => ({ announce: jest.fn() }));
 
 const mockUsePerformance = usePerformanceEngine as jest.MockedFunction<
   typeof usePerformanceEngine
@@ -378,6 +380,58 @@ describe("PerformancePlayerScreen", () => {
 
       // Assert
       expect(getByText("1:05")).toBeTruthy();
+    });
+  });
+
+  describe("screen reader (#22)", () => {
+    it("reads the phase as one sentence and names the controls in French", async () => {
+      const { getByLabelText, getByRole } = await render(
+        <PerformancePlayerScreen />,
+      );
+
+      expect(
+        getByLabelText("En cours, Samba, il reste 1 minute 30 secondes"),
+      ).toBeTruthy();
+      expect(getByLabelText("Tour 1 sur 2")).toBeTruthy();
+      expect(getByRole("button", { name: "Mettre en pause" })).toBeTruthy();
+      expect(
+        getByRole("button", { name: "Arrêter la performance" }),
+      ).toBeTruthy();
+    });
+
+    it("announces a new dance, not the clock ticks, when the MC is off", async () => {
+      const { rerender } = await render(<PerformancePlayerScreen />);
+      expect(announce).not.toHaveBeenCalled();
+
+      mockUsePerformance.mockReturnValue({
+        ...mockPerformanceData,
+        timeRemaining: 89,
+      });
+      await rerender(<PerformancePlayerScreen />);
+      expect(announce).not.toHaveBeenCalled();
+
+      mockUsePerformance.mockReturnValue({
+        ...mockPerformanceData,
+        currentDanceIndex: 1,
+      });
+      await rerender(<PerformancePlayerScreen />);
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce).toHaveBeenCalledWith(
+        expect.stringMatching(/^En cours, Cha/),
+      );
+    });
+
+    it("stays silent on phase changes while the MC announces them", async () => {
+      const withMc = {
+        ...mockPerformanceData,
+        config: { announcements: true } as never,
+      };
+      mockUsePerformance.mockReturnValue(withMc);
+      const { rerender } = await render(<PerformancePlayerScreen />);
+
+      mockUsePerformance.mockReturnValue({ ...withMc, currentDanceIndex: 1 });
+      await rerender(<PerformancePlayerScreen />);
+      expect(announce).not.toHaveBeenCalled();
     });
   });
 });

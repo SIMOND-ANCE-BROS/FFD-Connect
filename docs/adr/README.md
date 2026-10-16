@@ -28,3 +28,4 @@ Ce dossier contient les ADRs (Architecture Decision Records) du projet FFD-Conne
 | [0022](0022-notifications-helloasso-relues-sur-api.md)           | Notifications HelloAsso relues sur l'API                   | proposed   | 2026-10-12 |
 | [0023](0023-connecteurs-de-paiement-par-club.md)                 | Connecteurs de paiement choisis par chaque club            | proposed   | 2026-10-15 |
 | [0024](0024-qr-entree-tournant-hors-ligne.md)                    | QR d'entree tournant, verifiable hors ligne                | proposed   | 2026-10-16 |
+| [0025](0025-migrations-prisma-au-deploiement-image-slim.md)      | Migrations Prisma au deploiement, image runtime sans CLI   | proposed   | 2026-10-16 |

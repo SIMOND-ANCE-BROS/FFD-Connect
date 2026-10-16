@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { LicenseRenewalDocumentType, Prisma } from "@prisma/client";
 import { CompetitionCacheService } from "../competitions/services/competition-cache.service";
 import {
@@ -9,6 +10,7 @@ import { HealthDataAccessLogService } from "../health-data-access/health-data-ac
 import { PrismaService } from "../prisma/prisma.service";
 import { RenewalDocumentFileCleaner } from "../storage/renewal-document-file-cleaner.service";
 import { licenseRenewalDocumentFileSelect } from "../utils/prisma-selects";
+import { resultsPseudonymisationKey } from "../utils/results-pseudonym";
 import {
   affectedResultCompetitionIds,
   buildAccountDeletionOperations,
@@ -88,6 +90,7 @@ export class AccountDeletionService {
     private readonly renewalDocumentFiles: RenewalDocumentFileCleaner,
     private readonly competitionCache: CompetitionCacheService,
     private readonly healthAccess: HealthDataAccessLogService,
+    private readonly config: ConfigService,
   ) {}
 
   /**
@@ -121,7 +124,14 @@ export class AccountDeletionService {
     const certificates = documents.filter(
       (d) => d.type === LicenseRenewalDocumentType.MEDICAL_CERTIFICATE,
     );
-    const plan = await prepareAccountDeletion(this.prisma, userId, this.logger);
+    // The user's licence fingerprints are kept so a later results import never
+    // re-publishes their name (#652).
+    const plan = await prepareAccountDeletion(
+      this.prisma,
+      userId,
+      this.logger,
+      resultsPseudonymisationKey(this.config),
+    );
     await this.prisma.$transaction([
       ...buildAccountDeletionOperations(this.prisma, userId, plan),
       ...alsoInTransaction,

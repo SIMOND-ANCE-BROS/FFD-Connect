@@ -22,6 +22,7 @@ export const TARGET_TYPE_LABELS: Record<AuditTargetType, string> = {
   TRACK_CORRECTION: 'Proposition de correction',
   TRACK: 'Musique',
   LICENSE_RENEWAL: 'Renouvellement de licence',
+  COMPETITION: 'Compétition',
 };
 
 export type AuditFilterField = AuditLogFilterDto['field'];

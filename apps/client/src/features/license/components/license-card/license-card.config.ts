@@ -90,3 +90,10 @@ export function getLicenseConfig(
     headerTextColor: "#333",
   };
 }
+
+/**
+ * Largest text scale inside the licence card (#22, large text): its cells
+ * have a fixed credit-card size, so text grows with the system setting up to
+ * this cap instead of being clipped; the reader still gets every value.
+ */
+export const LICENSE_CARD_TEXT_MAX_SCALE = 1.3;

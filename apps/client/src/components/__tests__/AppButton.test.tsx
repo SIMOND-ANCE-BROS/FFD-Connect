@@ -1,5 +1,6 @@
 import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
+import { View } from "react-native";
 import { ThemeProvider } from "../../context/ThemeContext";
 import {
   AuthProvider,
@@ -101,5 +102,14 @@ describe("AppButton", () => {
     );
     await fireEvent.press(getByTestId("button-loader"));
     expect(mockPress).not.toHaveBeenCalled();
+  });
+
+  it("forwards its ref to the pressable, for focus restore (#22)", async () => {
+    const ref = React.createRef<View>();
+    const { getByRole } = await renderWithTheme(
+      <AppButton ref={ref} title="Générer" onPress={jest.fn()} />,
+    );
+    expect(getByRole("button", { name: "Générer" })).toBeTruthy();
+    expect(ref.current).not.toBeNull();
   });
 });

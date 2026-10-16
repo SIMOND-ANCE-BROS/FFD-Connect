@@ -1,6 +1,7 @@
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { CameraView } from "expo-camera";
 import { X, Zap, ZapOff } from "lucide-react-native";
+import { useEffect } from "react";
 import {
   Linking,
   StatusBar,
@@ -16,6 +17,13 @@ import { useScannerLogic } from "../hooks/useScannerLogic";
 import { OfflineCheckinOverlay } from "../components/OfflineCheckinOverlay";
 import { CheckinResponse } from "../services/CheckinService";
 import { formatDiscipline } from "../../../utils/discipline";
+import { announce } from "../../../utils/announce";
+import {
+  CHECKIN_TITLES,
+  checkinAnnouncement,
+  checkinOutcome,
+  registrationA11yLabel,
+} from "../utils/scanAnnouncement";
 
 // --- Subcomponent: Result Overlay ---
 const CheckinResultOverlay = ({
@@ -29,15 +37,21 @@ const CheckinResultOverlay = ({
   onClose: () => void;
   currentTheme: ThemeContextType["theme"];
 }) => {
+  // The verdict is only a coloured card over the camera: speak it (#22).
+  useEffect(() => {
+    const message = checkinAnnouncement(result, error);
+    if (message) announce(message);
+  }, [result, error]);
+
   if (!result && !error) return null;
 
   // Determine overall status
-  let title = "RÉSULTAT DU SCAN";
+  const outcome = checkinOutcome(result, error);
+  const title = CHECKIN_TITLES[outcome];
   let color = currentTheme.primary;
   let content = null;
 
   if (error) {
-    title = "ERREUR";
     color = currentTheme.danger;
     content = (
       <AppText
@@ -48,16 +62,9 @@ const CheckinResultOverlay = ({
       </AppText>
     );
   } else if (result) {
-    const successes = result.registrations.filter(
-      (r) => r.status === "SUCCESS" || r.status === "ALREADY_CHECKED_IN",
-    );
-    const failures = result.registrations.filter((r) => r.status === "ERROR");
-
-    if (failures.length > 0 && successes.length === 0) {
-      title = "ACCÈS REFUSÉ";
+    if (outcome === "DENIED") {
       color = currentTheme.danger;
-    } else if (successes.length > 0) {
-      title = "CHECK-IN RÉUSSI";
+    } else if (outcome === "SUCCESS") {
       color = "#4CAF50"; // Success Green
     }
 
@@ -86,6 +93,9 @@ const CheckinResultOverlay = ({
           <View
             key={index}
             style={[styles.regItem, { borderColor: currentTheme.border }]}
+            accessible
+            accessibilityLabel={registrationA11yLabel(reg)}
+            accessibilityHint="Inscription vérifiée par ce scan"
           >
             <AppText
               variant="caption"
@@ -141,12 +151,20 @@ const CheckinResultOverlay = ({
   }
 
   return (
-    <View style={styles.resultOverlay} testID="scanner-result-overlay">
+    <View
+      style={styles.resultOverlay}
+      testID="scanner-result-overlay"
+      accessibilityViewIsModal
+    >
       <View
         style={[styles.resultCard, { backgroundColor: currentTheme.surface }]}
       >
         <View style={[styles.resultHeader, { backgroundColor: color }]}>
-          <AppText variant="h3" style={styles.whiteText}>
+          <AppText
+            variant="h3"
+            style={styles.whiteText}
+            accessibilityRole="header"
+          >
             {title}
           </AppText>
         </View>
@@ -155,6 +173,7 @@ const CheckinResultOverlay = ({
 
           <TouchableOpacity
             testID="scanner-close-button"
+            accessibilityRole="button"
             accessibilityLabel="Fermer le résultat et scanner un autre code"
             accessibilityHint="Fermer et retourner au scanner"
             style={[styles.closeButton, { borderColor: currentTheme.border }]}
@@ -208,7 +227,11 @@ export const ScannerScreen = ({ navigation, route }: ScannerScreenProps) => {
           { backgroundColor: currentTheme.background },
         ]}
       >
-        <AppText variant="body" style={{ color: currentTheme.text }}>
+        <AppText
+          variant="body"
+          style={{ color: currentTheme.text }}
+          accessibilityRole="header"
+        >
           Accès caméra requis
         </AppText>
         {!canAskAgain && (
@@ -224,6 +247,7 @@ export const ScannerScreen = ({ navigation, route }: ScannerScreenProps) => {
         )}
         <TouchableOpacity
           testID="scanner-permission-button"
+          accessibilityRole="button"
           accessibilityLabel={
             canAskAgain
               ? "Autoriser l'accès à la caméra"
@@ -265,6 +289,7 @@ export const ScannerScreen = ({ navigation, route }: ScannerScreenProps) => {
         <View style={[styles.header, { top: insets.top + 10 }]}>
           <TouchableOpacity
             testID="scanner-back-button"
+            accessibilityRole="button"
             accessibilityLabel="Retour"
             accessibilityHint="Retourner à l'écran précédent"
             style={styles.circleButton}
@@ -275,6 +300,7 @@ export const ScannerScreen = ({ navigation, route }: ScannerScreenProps) => {
 
           <TouchableOpacity
             testID="scanner-torch-toggle"
+            accessibilityRole="button"
             accessibilityLabel={
               torch === "on" ? "Éteindre la lampe" : "Allumer la lampe"
             }
@@ -291,14 +317,22 @@ export const ScannerScreen = ({ navigation, route }: ScannerScreenProps) => {
         </View>
 
         <View style={styles.scanFrameContainer}>
-          <View style={styles.scanFrame}>
+          <View
+            style={styles.scanFrame}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
             <View style={[styles.corner, styles.tl]} />
             <View style={[styles.corner, styles.tr]} />
             <View style={[styles.corner, styles.bl]} />
             <View style={[styles.corner, styles.br]} />
             {isActive && <View style={styles.scanLine} />}
           </View>
-          <AppText variant="body" style={styles.scanPrompt}>
+          <AppText
+            variant="body"
+            style={styles.scanPrompt}
+            accessibilityHint="Le résultat du scan sera annoncé"
+          >
             Placez le QR code dans le cadre
           </AppText>
         </View>

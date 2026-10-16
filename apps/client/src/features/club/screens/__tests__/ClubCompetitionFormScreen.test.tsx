@@ -564,28 +564,38 @@ describe("ClubCompetitionFormScreen", () => {
     });
 
     it("reads a slot as one sentence and moves it with accessibility actions", async () => {
-      const { getByTestId, getByLabelText, getAllByTestId, getByRole } =
-        await renderWith({
-          schedule: [
-            {
-              id: "t1",
-              type: "ROUND",
-              title: "Finale",
-              startTime: "10:00",
-              duration: 15,
-            },
-            {
-              id: "t2",
-              type: "BREAK",
-              title: "Déjeuner",
-              startTime: "10:15",
-              duration: 45,
-            },
-          ],
-        });
+      const {
+        getByTestId,
+        getByLabelText,
+        getAllByTestId,
+        getByRole,
+        getByText,
+        queryByText,
+      } = await renderWith({
+        schedule: [
+          {
+            id: "t1",
+            type: "ROUND",
+            title: "Finale",
+            startTime: "10:00",
+            duration: 15,
+          },
+          {
+            id: "t2",
+            type: "BREAK",
+            title: "Déjeuner",
+            startTime: "10:15",
+            duration: 45,
+          },
+        ],
+      });
       await fireEvent.press(getByTestId("tab-TIMING"));
 
       const first = getByLabelText("10:00, 15 minutes, Finale, Tour");
+      // The visible type is French too, never the raw « ROUND » enum.
+      expect(getByText("Tour")).toBeTruthy();
+      expect(getByText("Pause")).toBeTruthy();
+      expect(queryByText("ROUND")).toBeNull();
       expect(
         (first.props.accessibilityActions as { name: string }[]).map(
           (a) => a.name,

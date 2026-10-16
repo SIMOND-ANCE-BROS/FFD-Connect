@@ -4,7 +4,10 @@ import { TouchableOpacity, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { AppText } from "../../../../components/AppText";
 import { FFD_VALIDITY_UNKNOWN } from "../../utils/licenseSeason";
-import { FFD_CONNECT_LOGO } from "./license-card.config";
+import {
+  FFD_CONNECT_LOGO,
+  LICENSE_CARD_TEXT_MAX_SCALE,
+} from "./license-card.config";
 import { styles } from "./license-card.styles";
 import { LicenseConfig, LicenseUser } from "./license-card.types";
 
@@ -93,6 +96,7 @@ export const LicenseCardHeader: React.FC<LicenseCardHeaderProps> = ({
           variant="h1"
           numberOfLines={1}
           adjustsFontSizeToFit
+          maxFontSizeMultiplier={LICENSE_CARD_TEXT_MAX_SCALE}
           style={[styles.typeLabel, { color: config.headerTextColor }]}
         >
           {user.type}
