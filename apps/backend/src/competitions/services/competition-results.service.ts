@@ -72,6 +72,9 @@ export const SCANNED_AT_ROTATING_ONLY_MESSAGE =
  */
 export const STATIC_QR_REFUSED_MESSAGE =
   "QR statique refusé : présentez le QR tournant de l'E-Licence";
+/** Rotating-QR-only competition, v3 QR that does not verify (#668). */
+export const ROTATING_QR_NOT_VERIFIED_MESSAGE =
+  "QR tournant non vérifié : demandez à rouvrir l'E-Licence";
 
 interface ScanInstant {
   /** Instant the QR is verified at. */
@@ -215,6 +218,19 @@ export class CompetitionResultsService {
         `Offline check-in replay refused for competition ${competitionId}: QR ${qrCheck.status} at the claimed scan time`,
       );
       throw new BadRequestException(SCANNED_AT_ROTATING_ONLY_MESSAGE);
+    }
+    // Rotating QR mandatory: the v3 shape alone proves nothing — anyone can
+    // type `{"v":3,"id":"<number>",…}` with a junk signature, which `warn`
+    // and `off` would accept and resolve by licence number. Only a token
+    // that VERIFIES (genuine signature, fresh) goes through, in every mode;
+    // with no entry key configured nothing verifies, so nothing goes through.
+    if (competition.requireRotatingQr && qrCheck.status !== "VALID") {
+      this.logger.warn(
+        `Check-in refused for competition ${competitionId}: rotating QR mandatory, QR ${qrCheck.status}`,
+      );
+      throw new BadRequestException(
+        qrCheck.warning ?? ROTATING_QR_NOT_VERIFIED_MESSAGE,
+      );
     }
     if (!qrCheck.accepted) {
       this.logger.warn(

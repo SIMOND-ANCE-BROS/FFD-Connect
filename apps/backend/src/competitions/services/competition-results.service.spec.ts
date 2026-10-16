@@ -37,6 +37,7 @@ import { publicResultDetails } from "../public-result";
 import {
   CompetitionResultsService,
   INVALID_SCANNED_AT_MESSAGE,
+  ROTATING_QR_NOT_VERIFIED_MESSAGE,
   SCANNED_AT_ROTATING_ONLY_MESSAGE,
   STATIC_QR_REFUSED_MESSAGE,
 } from "./competition-results.service";
@@ -999,6 +1000,73 @@ describe("CompetitionResultsService", () => {
           STATIC_QR_REFUSED_MESSAGE,
         );
         expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+      });
+
+      // Security review: the v3 SHAPE alone must not pass — `warn` and `off`
+      // accept a v3 QR whose signature does not verify, and would resolve it
+      // by the licence number it names.
+      const forgedV3 = () =>
+        JSON.stringify({
+          v: 3,
+          k: ENTRY_QR_GOLDEN_VECTOR.keyId,
+          id: "FFD-123456",
+          lid: "lic-1",
+          nm: "DOE John",
+          t: entryQrStep(new Date()),
+          sig: "A".repeat(86),
+        });
+
+      it.each(["off", "warn", "enforce"] as const)(
+        "refuses a forged rotating QR (junk signature) in %s mode",
+        async (mode) => {
+          requiring(true);
+          await expect(
+            serviceIn(mode).checkIn("c1", forgedV3()),
+          ).rejects.toThrow(BadRequestException);
+          expect(mockPrismaService.license.findUnique).not.toHaveBeenCalled();
+          expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+          expect(
+            mockPrismaService.registration.updateMany,
+          ).not.toHaveBeenCalled();
+        },
+      );
+
+      it("accepts that forged QR (with a warning) only where the rotating QR is not required", async () => {
+        requiring(false);
+        const result = await serviceIn("warn").checkIn("c1", forgedV3());
+        expect(result.qrVerification.status).toBe("INVALID_SIGNATURE");
+      });
+
+      it("refuses a stale rotating QR even in off mode", async () => {
+        requiring(true);
+        await expect(
+          serviceIn("off").checkIn(
+            "c1",
+            entryQrAt(new Date(Date.now() - 5 * 60_000)),
+          ),
+        ).rejects.toThrow(ROTATING_QR_NOT_VERIFIED_MESSAGE);
+      });
+
+      it("fails closed when the server has no entry QR key: nothing verifies", async () => {
+        requiring(true);
+        const noKey = new CompetitionResultsService(
+          mockPrismaService as unknown as PrismaService,
+          mockRedisService as unknown as RedisService,
+          mockCacheService as unknown as CompetitionCacheService,
+          makeQrService({
+            QR_SIGNING_SECRET: QR_SECRET,
+            QR_SIGNATURE_MODE: "warn",
+          }),
+        );
+        await expect(
+          noKey.checkIn("c1", entryQrAt(new Date())),
+        ).rejects.toThrow(BadRequestException);
+        await expect(noKey.checkIn("c1", v2())).rejects.toThrow(
+          STATIC_QR_REFUSED_MESSAGE,
+        );
+        expect(
+          mockPrismaService.registration.updateMany,
+        ).not.toHaveBeenCalled();
       });
 
       it("checks in a fresh rotating QR", async () => {

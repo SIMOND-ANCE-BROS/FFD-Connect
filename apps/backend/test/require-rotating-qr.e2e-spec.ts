@@ -321,6 +321,53 @@ describe("Rotating QR mandatory per competition (e2e)", () => {
     expect(await checkedIn()).toBe(false);
   });
 
+  it("refuses a forged rotating QR (v3 shape, junk signature) although the mode is warn", async () => {
+    const forged = JSON.stringify({
+      v: 3,
+      k: batch.keyId,
+      id: batch.number,
+      lid: batch.licenseId,
+      nm: batch.holderName,
+      t: entryQrStep(new Date()),
+      sig: "A".repeat(86),
+    });
+    await staffCheckIn(forged).expect(400);
+    await volunteerCheckIn(forged).expect(400);
+    expect(await checkedIn()).toBe(false);
+  });
+
+  it("keeps the scanners scoped to the competition (no IDOR)", async () => {
+    // A CLUB account of another club cannot scan here, nor a licensee.
+    for (const token of [otherClubToken, participantToken]) {
+      await request(server())
+        .post(`/api/v1/competitions/${competitionId}/checkin`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ qrData: rotatingQrAt(new Date()) })
+        .expect(403);
+    }
+    // A volunteer link of another competition is refused here.
+    const other = await prisma.competition.create({
+      data: { title: "Other", date: new Date(), location: "Lyon" },
+    });
+    await prisma.volunteerToken.create({
+      data: {
+        token: hashToken("rqr-other-competition-token"),
+        competitionId: other.id,
+        expiresAt: new Date(Date.now() + 3_600_000),
+        name: "Bénévole",
+      },
+    });
+    await request(server())
+      .post("/api/v1/competitions/checkin/volunteer")
+      .send({
+        competitionId,
+        token: "rqr-other-competition-token",
+        qrData: rotatingQrAt(new Date()),
+      })
+      .expect(401);
+    expect(await checkedIn()).toBe(false);
+  });
+
   it("checks in an offline scan of the rotating QR replayed later", async () => {
     const pastScan = new Date(Date.now() - 30 * 60_000);
     const res = await volunteerCheckIn(
@@ -341,6 +388,26 @@ describe("Rotating QR mandatory per competition (e2e)", () => {
     await setRequirement(organizerToken, false).expect(200);
     const res = await staffCheckIn(staticQr).expect(201);
     expect(res.body.user.firstName).toBe("Jeanne");
+  });
+
+  it("is refused to the organiser account once its club is disabled", async () => {
+    await prisma.club.update({
+      where: { name: ORGANIZER_CLUB },
+      data: { disabledAt: new Date() },
+    });
+    try {
+      await setRequirement(organizerToken, true).expect(401);
+    } finally {
+      await prisma.club.update({
+        where: { name: ORGANIZER_CLUB },
+        data: { disabledAt: null },
+      });
+    }
+    const stored = await prisma.competition.findUnique({
+      where: { id: competitionId },
+      select: { requireRotatingQr: true },
+    });
+    expect(stored?.requireRotatingQr).toBe(false);
   });
 
   it("cannot be turned on while the server issues no rotating QR", async () => {
