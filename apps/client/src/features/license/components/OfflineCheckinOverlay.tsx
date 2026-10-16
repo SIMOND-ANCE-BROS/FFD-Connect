@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { AppText } from "../../../components/AppText";
 import type { ThemeContextType } from "../../../context/ThemeContext";
+import { announce } from "../../../utils/announce";
+import { offlineCheckinAnnouncement } from "../utils/scanAnnouncement";
 import {
   OFFLINE_CHECKIN_MESSAGES,
   type OfflineCheckinResult,
@@ -70,17 +72,30 @@ export function OfflineCheckinOverlay({
   onClose: () => void;
   currentTheme: ThemeContextType["theme"];
 }) {
+  const { danger } = currentTheme;
+  // The verdict is only shown over the camera: speak it once per scan (#22).
+  useEffect(() => {
+    if (!result) return;
+    const { title, message } = offlineCheckinVerdict(result, danger);
+    announce(offlineCheckinAnnouncement(title, message, result.holderName));
+  }, [result, danger]);
+
   if (!result) return null;
   const verdict = offlineCheckinVerdict(result, currentTheme.danger);
 
   return (
-    <View style={styles.overlay} testID="scanner-offline-overlay">
+    <View
+      style={styles.overlay}
+      testID="scanner-offline-overlay"
+      accessibilityViewIsModal
+    >
       <View style={[styles.card, { backgroundColor: currentTheme.surface }]}>
-        <View
-          style={[styles.header, { backgroundColor: verdict.color }]}
-          accessibilityRole="header"
-        >
-          <AppText variant="h3" style={styles.whiteText}>
+        <View style={[styles.header, { backgroundColor: verdict.color }]}>
+          <AppText
+            variant="h3"
+            style={styles.whiteText}
+            accessibilityRole="header"
+          >
             {verdict.title}
           </AppText>
         </View>
@@ -98,6 +113,8 @@ export function OfflineCheckinOverlay({
             <AppText
               variant="caption"
               style={[styles.centered, { color: currentTheme.textSecondary }]}
+              accessibilityLabel={`Licence ${result.licenseNumber}`}
+              accessibilityHint="À comparer avec la licence présentée"
             >
               {result.licenseNumber}
             </AppText>

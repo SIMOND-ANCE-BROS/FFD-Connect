@@ -1,6 +1,6 @@
 import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
-import { Text } from "react-native";
+import { Text, View } from "react-native";
 import type { Gesture } from "react-native-gesture-handler";
 import type { SharedValue } from "react-native-reanimated";
 import { withTiming } from "react-native-reanimated";
@@ -157,5 +157,28 @@ describe("StackedCard", () => {
       nativeEvent: { layout: { x: 0, y: 0, width: 335, height: 312 } },
     });
     expect(onHeightChange).toHaveBeenCalledWith(1, 312);
+  });
+
+  it("forwards its ref to the back-card button, for focus restore (#22)", async () => {
+    const ref = React.createRef<View>();
+    const { getByRole } = await render(
+      <StackedCard
+        ref={ref}
+        index={1}
+        isActive={false}
+        offset={0}
+        pullY={pullY}
+        pullGesture={pullGesture}
+        isPullable={false}
+        onPress={jest.fn()}
+        backCardLabel="Ajouter la licence WDSF"
+      >
+        <Text>card content</Text>
+      </StackedCard>,
+    );
+    expect(
+      getByRole("button", { name: "Ajouter la licence WDSF" }),
+    ).toBeTruthy();
+    expect(ref.current).not.toBeNull();
   });
 });

@@ -65,4 +65,20 @@ describe("EntryQrCode (#24)", () => {
     );
     expect(screen.getByTestId("qr-value")).toHaveTextContent("static");
   });
+
+  it("gives the reader a stable caption, not the ticking countdown (#22)", async () => {
+    jest.useFakeTimers({ now: (STEP * 30 + 25) * 1000 });
+    await render(
+      <EntryQrCode batch={BATCH} fallbackValue="static" size={10} />,
+    );
+    const label =
+      "QR d'entrée sécurisé, il se renouvelle automatiquement toutes les 30 secondes";
+    const caption = screen.getByLabelText(label);
+    expect(caption.props.accessibilityLiveRegion).toBe("none");
+
+    await act(async () => {
+      jest.advanceTimersByTime(3000);
+    });
+    expect(screen.getByLabelText(label)).toBeTruthy();
+  });
 });

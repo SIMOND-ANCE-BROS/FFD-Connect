@@ -1,13 +1,18 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
 import React from "react";
 import type { ThemeContextType } from "../../../../context/ThemeContext";
-import { OFFLINE_CHECKIN_MESSAGES } from "../../services/offlineCheckin";
+import { announce } from "../../../../utils/announce";
+import {
+  OFFLINE_CHECKIN_MESSAGES,
+  type OfflineCheckinResult,
+} from "../../services/offlineCheckin";
 import {
   OfflineCheckinOverlay,
   offlineCheckinVerdict,
 } from "../OfflineCheckinOverlay";
 
 jest.mock("../../../../components/AppText");
+jest.mock("../../../../utils/announce", () => ({ announce: jest.fn() }));
 
 const theme = {
   surface: "#fff",
@@ -83,4 +88,58 @@ describe("OfflineCheckinOverlay (#24)", () => {
       });
     },
   );
+
+  describe("screen reader (#22)", () => {
+    beforeEach(() => jest.clearAllMocks());
+
+    it("announces the verdict once per scan, not on re-render", async () => {
+      const result: OfflineCheckinResult = {
+        status: "STALE",
+        holderName: "DUPONT Jean",
+        queued: false,
+      };
+      const { rerender } = await render(
+        <OfflineCheckinOverlay
+          result={result}
+          onClose={jest.fn()}
+          currentTheme={theme}
+        />,
+      );
+      expect(announce).toHaveBeenCalledTimes(1);
+      expect(announce).toHaveBeenCalledWith(
+        `QR périmé, DUPONT Jean, ${OFFLINE_CHECKIN_MESSAGES.STALE}`,
+      );
+      expect(screen.getByRole("header", { name: "QR PÉRIMÉ" })).toBeTruthy();
+
+      await rerender(
+        <OfflineCheckinOverlay
+          result={result}
+          onClose={jest.fn()}
+          currentTheme={theme}
+        />,
+      );
+      expect(announce).toHaveBeenCalledTimes(1);
+    });
+
+    it("names the licence number and stays silent without a result", async () => {
+      await render(
+        <OfflineCheckinOverlay
+          result={{ status: "VALID", licenseNumber: "FFD-1", queued: true }}
+          onClose={jest.fn()}
+          currentTheme={theme}
+        />,
+      );
+      expect(screen.getByLabelText("Licence FFD-1")).toBeTruthy();
+
+      jest.clearAllMocks();
+      await render(
+        <OfflineCheckinOverlay
+          result={null}
+          onClose={jest.fn()}
+          currentTheme={theme}
+        />,
+      );
+      expect(announce).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -100,80 +100,93 @@ const MOVE_CONFIG = {
   reduceMotion: ReduceMotion.System,
 };
 
-export const StackedCard: React.FC<StackedCardProps> = ({
-  index,
-  isActive,
-  offset,
-  clipHeight,
-  onHeightChange,
-  pullY,
-  pullGesture,
-  isPullable,
-  onPress,
-  backCardLabel,
-  children,
-  testID,
-}) => {
-  // Starts at its slot: no animation on mount, only when the stack changes.
-  const translateY = useSharedValue(offset);
+/**
+ * The ref reaches the card's touchable: the element that takes the screen
+ * reader focus when the card is behind the front one — e.g. to return the
+ * focus to « Ajouter une licence WDSF » when its modal closes (#22).
+ */
+export const StackedCard = React.forwardRef<View, StackedCardProps>(
+  function StackedCard(
+    {
+      index,
+      isActive,
+      offset,
+      clipHeight,
+      onHeightChange,
+      pullY,
+      pullGesture,
+      isPullable,
+      onPress,
+      backCardLabel,
+      children,
+      testID,
+    },
+    ref,
+  ) {
+    // Starts at its slot: no animation on mount, only when the stack changes.
+    const translateY = useSharedValue(offset);
 
-  useEffect(() => {
-    translateY.value = withTiming(offset, MOVE_CONFIG);
-  }, [offset, translateY]);
+    useEffect(() => {
+      translateY.value = withTiming(offset, MOVE_CONFIG);
+    }, [offset, translateY]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: translateY.value + (isPullable ? pullY.value : 0) },
-    ],
-  }));
+    const animatedStyle = useAnimatedStyle(() => ({
+      transform: [
+        { translateY: translateY.value + (isPullable ? pullY.value : 0) },
+      ],
+    }));
 
-  const handleLayout = (event: LayoutChangeEvent) => {
-    onHeightChange?.(index, event.nativeEvent.layout.height);
-  };
+    const handleLayout = (event: LayoutChangeEvent) => {
+      onHeightChange?.(index, event.nativeEvent.layout.height);
+    };
 
-  const content = (
-    <Animated.View
-      testID={testID}
-      onLayout={handleLayout}
-      style={[styles.card, { zIndex: isActive ? 100 : index }, animatedStyle]}
-    >
-      <TouchableOpacity
-        activeOpacity={1}
-        onPress={onPress}
-        // Front card: not one big button, its own controls stay reachable.
-        // Card behind: a single labelled button that brings it forward.
-        accessible={!isActive}
-        accessibilityRole="button"
-        accessibilityLabel={isActive ? undefined : backCardLabel}
-        accessibilityHint={
-          isActive ? undefined : "Affiche cette carte au premier plan"
-        }
+    const content = (
+      <Animated.View
+        testID={testID}
+        onLayout={handleLayout}
+        style={[styles.card, { zIndex: isActive ? 100 : index }, animatedStyle]}
       >
-        <View
-          // Behind the front card, only the header shows: a tap anywhere on
-          // it brings the card forward, it never reaches the card's buttons.
-          testID={testID ? `${testID}-content` : undefined}
-          pointerEvents={isActive ? "auto" : "none"}
-          importantForAccessibility={isActive ? "auto" : "no-hide-descendants"}
-          accessibilityElementsHidden={!isActive}
-          style={
-            clipHeight === undefined
-              ? undefined
-              : [styles.clip, { maxHeight: clipHeight }]
+        <TouchableOpacity
+          ref={ref}
+          activeOpacity={1}
+          onPress={onPress}
+          // Front card: not one big button, its own controls stay reachable.
+          // Card behind: a single labelled button that brings it forward.
+          accessible={!isActive}
+          accessibilityRole="button"
+          accessibilityLabel={isActive ? undefined : backCardLabel}
+          accessibilityHint={
+            isActive ? undefined : "Affiche cette carte au premier plan"
           }
         >
-          {children}
-        </View>
-      </TouchableOpacity>
-    </Animated.View>
-  );
+          <View
+            // Behind the front card, only the header shows: a tap anywhere on
+            // it brings the card forward, it never reaches the card's buttons.
+            testID={testID ? `${testID}-content` : undefined}
+            pointerEvents={isActive ? "auto" : "none"}
+            importantForAccessibility={
+              isActive ? "auto" : "no-hide-descendants"
+            }
+            accessibilityElementsHidden={!isActive}
+            style={
+              clipHeight === undefined
+                ? undefined
+                : [styles.clip, { maxHeight: clipHeight }]
+            }
+          >
+            {children}
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
 
-  if (isPullable) {
-    return <GestureDetector gesture={pullGesture}>{content}</GestureDetector>;
-  }
+    if (isPullable) {
+      return <GestureDetector gesture={pullGesture}>{content}</GestureDetector>;
+    }
 
-  return content;
-};
+    return content;
+  },
+);
 
 const styles = StyleSheet.create({
   // Every card is positioned in the stack (same width, offset only); the
