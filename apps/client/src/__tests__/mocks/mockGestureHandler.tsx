@@ -13,6 +13,7 @@ export const mockGesture = {
   onEnd: jest.fn().mockReturnThis(),
   onFinalize: jest.fn().mockReturnThis(),
   Tap: jest.fn().mockReturnThis(),
+  numberOfTaps: jest.fn().mockReturnThis(),
   Race: jest.fn((...gestures: unknown[]) => gestures),
   Simultaneous: jest.fn((...gestures: unknown[]) => gestures),
 };

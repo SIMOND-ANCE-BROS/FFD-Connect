@@ -12,6 +12,7 @@ import DraggableFlatList, {
 } from "react-native-draggable-flatlist";
 import { AppText } from "../../../components/AppText";
 import { useTheme } from "../../../context/ThemeContext";
+import { announce } from "../../../utils/announce";
 import type { DanceOrder } from "../../../stores/danceOrder.store";
 import type { Category } from "../../../stores/performance.store";
 import {
@@ -65,8 +66,12 @@ export const DanceOrderEditor: React.FC<DanceOrderEditorProps> = ({
   const renderCategory = (category: Category) => {
     const order = danceOrder[category];
     const prefix = `performance-dance-order-${category.toLowerCase()}`;
-    const move = (from: number, to: number) =>
+    const move = (from: number, to: number) => {
       onChange(category, moveDance(order, from, to));
+      // The row moves under the finger: say where it landed (#22).
+      const dance = order[from];
+      if (dance) announce(`${danceLabel(dance)}, position ${to + 1}`);
+    };
 
     const renderItem = ({
       item,
@@ -93,9 +98,11 @@ export const DanceOrderEditor: React.FC<DanceOrderEditorProps> = ({
               disabled={isActive}
               style={styles.iconButton}
               testID={`${prefix}-${slug(item)}-drag`}
-              accessibilityRole="button"
-              accessibilityLabel={`Déplacer ${label}`}
-              accessibilityHint="Maintenez et faites glisser pour changer l'ordre"
+              // Drag only: a screen reader cannot drag, it uses « Monter » /
+              // « Descendre » below — the grip stays out of its way (#22).
+              accessible={false}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
             >
               <GripVertical size={18} color={theme.textSecondary} />
             </TouchableOpacity>
@@ -104,6 +111,8 @@ export const DanceOrderEditor: React.FC<DanceOrderEditorProps> = ({
               weight="600"
               color={theme.textSecondary}
               style={styles.position}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
             >
               {position + 1}.
             </AppText>
@@ -112,6 +121,8 @@ export const DanceOrderEditor: React.FC<DanceOrderEditorProps> = ({
               weight="600"
               color={theme.text}
               style={styles.label}
+              accessibilityLabel={`${label}, position ${position + 1} sur ${order.length}`}
+              accessibilityHint="Ordre de passage dans chaque tour"
             >
               {label}
             </AppText>

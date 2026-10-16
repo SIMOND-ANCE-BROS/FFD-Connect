@@ -233,7 +233,22 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
     noticeTimer.current = setTimeout(() => setQueueNotice(null), 2500);
   }, []);
 
+  // Reader focus goes back to the long-pressed row once the sheet — and the
+  // edit / correction modal it may open — is closed (#22). Every Library
+  // modal but the filters comes from this sheet.
+  const trackRows = useRef(new Map<string, View | null>());
+  const sheetRowRef = useRef<View | null>(null);
+  const registerTrackRow = useCallback((id: string, node: View | null) => {
+    if (node) trackRows.current.set(id, node);
+    else trackRows.current.delete(id);
+  }, []);
+  useRestoreFocusOnClose(
+    sheetVisible || isModalVisible || reportVisible,
+    sheetRowRef,
+  );
+
   const handleTrackLongPress = useCallback((item: TrackData) => {
+    sheetRowRef.current = trackRows.current.get(item.id) ?? null;
     setSheetTrack(item);
     setSheetVisible(true);
   }, []);
@@ -397,6 +412,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
         bar3={bar3}
         onPress={handleTrackPress}
         onLongPress={handleTrackLongPress}
+        registerRow={registerTrackRow}
       />
     ),
     [
@@ -405,6 +421,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
       currentTrack,
       isPlaying,
       handleTrackLongPress,
+      registerTrackRow,
       bar1,
       bar2,
       bar3,

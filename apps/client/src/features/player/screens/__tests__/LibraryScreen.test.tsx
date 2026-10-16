@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import React from "react";
-import { Alert } from "react-native";
+import { AccessibilityInfo, Alert } from "react-native";
 import { useTheme } from "../../../../context/ThemeContext";
 import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useLibraryLogic } from "../../hooks/useLibraryLogic";
@@ -428,6 +428,25 @@ describe("LibraryScreen", () => {
         expect.any(String),
       );
       alertSpy.mockRestore();
+    });
+
+    it("returns the reader focus to the long-pressed row when the sheet closes (#22)", async () => {
+      const sendSpy = jest
+        .spyOn(AccessibilityInfo, "sendAccessibilityEvent")
+        .mockImplementation(() => {});
+      withTrack();
+      const { getByTestId } = await render(
+        <LibraryScreen {...createTestProps()} />,
+      );
+
+      await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+      await fireEvent.press(getByTestId("track-action-play-next"));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 700));
+      });
+
+      expect(sendSpy).toHaveBeenCalledWith(expect.anything(), "focus");
+      sendSpy.mockRestore();
     });
 
     it("opens the report modal from the sheet for a non-admin", async () => {

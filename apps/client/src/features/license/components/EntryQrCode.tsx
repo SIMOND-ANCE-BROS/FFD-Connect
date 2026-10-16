@@ -4,6 +4,11 @@ import { AppText } from "../../../components/AppText";
 import { currentEntryQr, type EntryQrBatch } from "../utils/entryQr";
 import { QRCodeView } from "./QRCodeView.native";
 
+/** Spoken caption of the rotating QR (stable, unlike the visible countdown). */
+export function entryQrSpokenCaption(stepSeconds: number): string {
+  return `QR d'entrée sécurisé, il se renouvelle automatiquement toutes les ${stepSeconds} secondes`;
+}
+
 interface EntryQrCodeProps {
   /** Batch of the licensee (#24); null ⇒ static QR. */
   batch: EntryQrBatch | null;
@@ -48,6 +53,12 @@ export function EntryQrCode({
           align="center"
           style={styles.caption}
           testID="entry-qr-countdown"
+          // The visible countdown ticks every second: the reader gets a
+          // stable sentence instead, and never a live region (#22) — no
+          // announcement on each tick or QR rotation.
+          accessibilityLabel={entryQrSpokenCaption(batch?.stepSeconds ?? 30)}
+          accessibilityHint="Le QR change tout seul, rien à faire"
+          accessibilityLiveRegion="none"
         >
           {`QR d'entrée sécurisé · se renouvelle dans ${current.secondsLeft} s`}
         </AppText>

@@ -48,6 +48,7 @@ import type { RootStackParamList } from "../../../navigation/types";
 import { isWdsfQrData } from "../../../utils/typeGuards";
 import { useEntryQrBatch } from "../hooks/useEntryQrBatch";
 import { useLicenseLogic } from "../hooks/useLicenseLogic";
+import { useRestoreFocusOnClose } from "../../../utils/a11yFocus";
 import { buildLicenseQrData } from "../utils/licenseQrData";
 
 if (Platform.OS === "android") {
@@ -92,6 +93,9 @@ export const LicenseScreen: React.FC = () => {
     width: number;
     height: number;
   } | null>(null);
+  // Focus back on « Ajouter la licence WDSF » when its modal closes (#22).
+  const addWdsfCardRef = useRef<View>(null);
+  useRestoreFocusOnClose(state.wdsfModalVisible, addWdsfCardRef);
 
   const ffdUser =
     state.listItems.find((item) => item.type === "FFD")?.data ?? null;
@@ -349,6 +353,7 @@ export const LicenseScreen: React.FC = () => {
               return (
                 <StackedCard
                   key="add-wdsf"
+                  ref={addWdsfCardRef}
                   {...stackProps(index)}
                   isPullable={false}
                   onPress={actions.handleAddWdsf}

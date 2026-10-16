@@ -6,6 +6,9 @@ import { createMockScreenProps } from "../../../../utils/testUtils";
 import { useScannerLogic } from "../../hooks/useScannerLogic";
 import { ScannerScreen } from "../ScannerScreen";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
+import { announce } from "../../../../utils/announce";
+
+jest.mock("../../../../utils/announce", () => ({ announce: jest.fn() }));
 
 jest.mock("../../hooks/useScannerLogic");
 jest.mock("../../../../context/ThemeContext", () => ({
@@ -252,5 +255,107 @@ describe("ScannerScreen", () => {
 
     await fireEvent.press(getByTestId("scanner-torch-toggle"));
     expect(toggleTorch).toHaveBeenCalled();
+  });
+
+  describe("screen reader (#22)", () => {
+    const actions = {
+      toggleTorch: jest.fn(),
+      resetScan: jest.fn(),
+      handleBarcodeScanned: jest.fn(),
+    };
+
+    it("announces the check-in verdict and reads each registration as one sentence", async () => {
+      (useScannerLogic as jest.Mock).mockReturnValue({
+        state: {
+          hasPermission: true,
+          torch: "off",
+          isActive: false,
+          isLoading: false,
+          result: {
+            user: { firstName: "John", lastName: "Doe" },
+            registrations: [
+              {
+                event: "Cha Cha",
+                bibNumber: 123,
+                status: "SUCCESS",
+                partner: "Jane",
+              },
+            ],
+          },
+          offlineResult: null,
+          error: null,
+        },
+        actions,
+      });
+
+      const { getByRole, getByLabelText } = await render(
+        <ScannerScreen {...createMockScreenProps("Scanner", undefined)} />,
+      );
+
+      expect(announce).toHaveBeenCalledWith(
+        expect.stringMatching(/^Check-in réussi, John Doe, /),
+      );
+      expect(getByRole("header", { name: "CHECK-IN RÉUSSI" })).toBeTruthy();
+      expect(
+        getByLabelText(/dossard 123, validé, partenaire Jane$/),
+      ).toBeTruthy();
+      expect(
+        getByRole("button", {
+          name: "Fermer le résultat et scanner un autre code",
+        }),
+      ).toBeTruthy();
+    });
+
+    it("announces a refused access", async () => {
+      (useScannerLogic as jest.Mock).mockReturnValue({
+        state: {
+          hasPermission: true,
+          torch: "off",
+          isActive: false,
+          isLoading: false,
+          result: {
+            user: { firstName: "John", lastName: "Doe" },
+            registrations: [
+              { event: "Cha Cha", status: "ERROR", message: "Non inscrit" },
+            ],
+          },
+          offlineResult: null,
+          error: null,
+        },
+        actions,
+      });
+
+      const { getByRole } = await render(
+        <ScannerScreen {...createMockScreenProps("Scanner", undefined)} />,
+      );
+
+      expect(getByRole("header", { name: "ACCÈS REFUSÉ" })).toBeTruthy();
+      expect(announce).toHaveBeenCalledWith(
+        expect.stringMatching(/^Accès refusé, John Doe, .*Non inscrit$/),
+      );
+    });
+
+    it("announces nothing while the camera waits for a code", async () => {
+      (useScannerLogic as jest.Mock).mockReturnValue({
+        state: {
+          hasPermission: true,
+          torch: "off",
+          isActive: true,
+          isLoading: false,
+          result: null,
+          offlineResult: null,
+          error: null,
+        },
+        actions,
+      });
+
+      const { getByRole } = await render(
+        <ScannerScreen {...createMockScreenProps("Scanner", undefined)} />,
+      );
+
+      expect(announce).not.toHaveBeenCalled();
+      expect(getByRole("button", { name: "Allumer la lampe" })).toBeTruthy();
+      expect(getByRole("button", { name: "Retour" })).toBeTruthy();
+    });
   });
 });

@@ -67,8 +67,14 @@ export const CreateCoupleModal = React.memo(function CreateCoupleModal({
             styles.createModalBox,
             { backgroundColor: theme.surface },
           ]}
+          accessibilityViewIsModal
+          onAccessibilityEscape={onClose}
         >
-          <AppText variant="h3" style={[styles.mb8, { color: theme.text }]}>
+          <AppText
+            variant="h3"
+            style={[styles.mb8, { color: theme.text }]}
+            accessibilityRole="header"
+          >
             Créer un couple
           </AppText>
           <AppText

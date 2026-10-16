@@ -5,6 +5,7 @@ import { AppText } from "../../../../components/AppText";
 import type { AppTheme } from "../../../../context/ThemeContext";
 import type { Partnership } from "../../services/ClubService";
 import { styles } from "./club-couples.styles";
+import { joinA11yLabel } from "../../../../utils/a11y";
 
 interface CoupleCardProps {
   theme: AppTheme;
@@ -29,13 +30,39 @@ export const CoupleCard = React.memo(function CoupleCard({
   const isPendingSecondary =
     item.status === "PENDING_SECOND_CLUB" && item.secondaryClubId === myClubId;
   const canEnd = activeOnly && item.status === "ACTIVE";
+  const coupleName = `${name(item.user1)} et ${name(item.user2)}`;
+  const formatDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
       <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
         <Users size={22} color="#fff" />
       </View>
-      <View style={styles.cardBody}>
+      {/* One sentence instead of "&", "•" and the separate status line. */}
+      <View
+        style={styles.cardBody}
+        accessible
+        accessibilityLabel={joinA11yLabel([
+          coupleName,
+          `depuis le ${formatDate(item.startDate)}`,
+          item.endDate ? `fin le ${formatDate(item.endDate)}` : null,
+          item.secondaryClub ? `avec ${item.secondaryClub.name}` : null,
+          item.status === "PENDING_SECOND_CLUB"
+            ? "en attente de validation du club partenaire"
+            : null,
+          item.status === "REJECTED" ? "refusé par le club partenaire" : null,
+        ])}
+        accessibilityHint={
+          canEnd || isPendingSecondary
+            ? "Actions dans les boutons qui suivent"
+            : "Couple du club"
+        }
+      >
         <AppText variant="body" style={[styles.bold, { color: theme.text }]}>
           {name(item.user1)} & {name(item.user2)}
         </AppText>
@@ -70,7 +97,7 @@ export const CoupleCard = React.memo(function CoupleCard({
             }}
             style={[styles.endButton, { borderColor: theme.primary }]}
             accessibilityRole="button"
-            accessibilityLabel="Valider le partenariat"
+            accessibilityLabel={`Valider le partenariat de ${coupleName}`}
             accessibilityHint="Accepte la demande de partenariat inter-club"
           >
             <AppText variant="caption" style={{ color: theme.primary }}>
@@ -83,7 +110,7 @@ export const CoupleCard = React.memo(function CoupleCard({
             }}
             style={[styles.endButton, { borderColor: theme.textSecondary }]}
             accessibilityRole="button"
-            accessibilityLabel="Refuser le partenariat"
+            accessibilityLabel={`Refuser le partenariat de ${coupleName}`}
             accessibilityHint="Refuse la demande de partenariat inter-club"
           >
             <AppText variant="caption" style={{ color: theme.textSecondary }}>
@@ -97,7 +124,7 @@ export const CoupleCard = React.memo(function CoupleCard({
           onPress={() => onEnd(item)}
           style={[styles.endButton, { borderColor: theme.textSecondary }]}
           accessibilityRole="button"
-          accessibilityLabel="Clôturer le partenariat"
+          accessibilityLabel={`Clôturer le partenariat de ${coupleName}`}
           accessibilityHint="Met fin au partenariat entre les deux danseurs"
         >
           <AppText variant="caption" style={{ color: theme.textSecondary }}>

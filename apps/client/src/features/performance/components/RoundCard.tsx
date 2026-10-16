@@ -78,7 +78,12 @@ export const RoundCard: React.FC<RoundCardProps> = ({
       testID={`${prefix}-card`}
     >
       <View style={styles.cardHeader}>
-        <AppText variant="body" weight="bold" color={theme.text}>
+        <AppText
+          variant="body"
+          weight="bold"
+          color={theme.text}
+          accessibilityRole="header"
+        >
           Tour {index + 1}
         </AppText>
         {canDelete && (

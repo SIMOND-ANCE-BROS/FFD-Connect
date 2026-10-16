@@ -19,6 +19,9 @@ interface FluidSegmentedTabProps {
   testID?: string;
 }
 
+/** Largest text scale of a segment label (fixed-height capsule, #22). */
+export const SEGMENT_TEXT_MAX_SCALE = 1.3;
+
 const GradientBackground = ({ borderRadius }: { borderRadius: number }) => (
   <LinearGradient
     colors={["#004481", "#0088CE"]}
@@ -194,6 +197,9 @@ export const FluidSegmentedTab: React.FC<FluidSegmentedTabProps> = ({
                       weight={isActive ? "600" : "normal"}
                       numberOfLines={1}
                       adjustsFontSizeToFit
+                      // Fixed 40pt segment: grows with the system text size,
+                      // capped so the label still fits (#22, large text).
+                      maxFontSizeMultiplier={SEGMENT_TEXT_MAX_SCALE}
                       style={[styles.labelText, { color: textColor }]}
                     >
                       {opt.label}

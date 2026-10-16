@@ -1,4 +1,3 @@
-/* eslint-disable react-native-a11y/has-accessibility-hint -- TODO: add accessibilityHint to member list items */
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../../navigation/types";
@@ -19,6 +18,7 @@ import { SearchBar } from "../../../components/SearchBar";
 import { useTheme } from "../../../context/ThemeContext";
 import { useClubMembersLogic } from "../hooks/useClubMembersLogic";
 import { formatDiscipline } from "../../../utils/discipline";
+import { joinA11yLabel } from "../../../utils/a11y";
 
 export const ClubMembersScreen = () => {
   const { theme, isDark } = useTheme();
@@ -34,7 +34,12 @@ export const ClubMembersScreen = () => {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {isLoading && members.length === 0 ? (
         <View style={[styles.center, { paddingTop: headerH }]}>
-          <ActivityIndicator size="large" color={theme.primary} />
+          <ActivityIndicator
+            size="large"
+            color={theme.primary}
+            accessibilityLabel="Chargement des membres"
+            accessibilityHint="Patientez quelques secondes"
+          />
         </View>
       ) : (
         <FlashList
@@ -43,67 +48,89 @@ export const ClubMembersScreen = () => {
             refresh().catch(() => {});
           }}
           refreshing={isLoading}
-          renderItem={({ item }) => (
-            <View style={[styles.card, { backgroundColor: theme.surface }]}>
-              <TouchableOpacity
-                accessibilityRole="button"
-                testID={`club-member-${item.id}`}
-                activeOpacity={0.7}
-                onPress={() =>
-                  navigation.navigate("ClubMemberEditor", {
-                    member: item,
-                  })
-                }
-                style={styles.cardMain}
-              >
-                <View style={styles.avatarContainer}>
-                  <View
-                    style={[styles.avatar, { backgroundColor: theme.primary }]}
-                  >
-                    <AppText variant="h3" style={styles.textWhite}>
-                      {item.firstName[0]}
-                      {item.lastName[0]}
+          renderItem={({ item }) => {
+            const fullName = `${item.firstName} ${item.lastName}`.trim();
+            const category =
+              (item.category ? formatDiscipline(item.category) : null) ??
+              item.ageGroup;
+            return (
+              <View style={[styles.card, { backgroundColor: theme.surface }]}>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  // One sentence instead of initials, "•" and the menu icon.
+                  accessibilityLabel={joinA11yLabel([
+                    fullName,
+                    item.license?.number
+                      ? `licence ${item.license.number}`
+                      : "sans licence",
+                    category,
+                  ])}
+                  accessibilityHint="Ouvre la fiche du membre"
+                  testID={`club-member-${item.id}`}
+                  activeOpacity={0.7}
+                  onPress={() =>
+                    navigation.navigate("ClubMemberEditor", {
+                      member: item,
+                    })
+                  }
+                  style={styles.cardMain}
+                >
+                  <View style={styles.avatarContainer}>
+                    <View
+                      style={[
+                        styles.avatar,
+                        { backgroundColor: theme.primary },
+                      ]}
+                    >
+                      <AppText variant="h3" style={styles.textWhite}>
+                        {item.firstName[0]}
+                        {item.lastName[0]}
+                      </AppText>
+                    </View>
+                  </View>
+                  <View style={styles.infoContainer}>
+                    <AppText
+                      variant="body"
+                      style={[styles.fontWeight600, { color: theme.text }]}
+                    >
+                      {item.firstName} {item.lastName}
+                    </AppText>
+                    <AppText
+                      variant="caption"
+                      style={{ color: theme.textSecondary }}
+                    >
+                      {item.license?.number ?? "Sans licence"} •{" "}
+                      {(item.category
+                        ? formatDiscipline(item.category)
+                        : null) ??
+                        item.ageGroup ??
+                        "—"}
                     </AppText>
                   </View>
-                </View>
-                <View style={styles.infoContainer}>
-                  <AppText
-                    variant="body"
-                    style={[styles.fontWeight600, { color: theme.text }]}
-                  >
-                    {item.firstName} {item.lastName}
-                  </AppText>
-                  <AppText
-                    variant="caption"
-                    style={{ color: theme.textSecondary }}
-                  >
-                    {item.license?.number ?? "Sans licence"} •{" "}
-                    {(item.category ? formatDiscipline(item.category) : null) ??
-                      item.ageGroup ??
-                      "—"}
-                  </AppText>
-                </View>
-                <View style={styles.actionButton}>
-                  <MoreVertical size={20} color={theme.textSecondary} />
-                </View>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.careerIconBtn,
-                  { backgroundColor: theme.background },
-                ]}
-                onPress={() =>
-                  navigation.navigate("ViewCareer", {
-                    userId: item.id,
-                    userName: `${item.firstName} ${item.lastName}`.trim(),
-                  })
-                }
-                accessibilityLabel="Voir la carrière"
-              >
-                <Award size={20} color={theme.primary} />
-              </TouchableOpacity>
-            </View>
-          )}
+                  <View style={styles.actionButton}>
+                    <MoreVertical size={20} color={theme.textSecondary} />
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.careerIconBtn,
+                    { backgroundColor: theme.background },
+                  ]}
+                  onPress={() =>
+                    navigation.navigate("ViewCareer", {
+                      userId: item.id,
+                      userName: fullName,
+                    })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={`Voir la carrière de ${fullName}`}
+                  accessibilityHint="Ouvre ses résultats en compétition"
+                >
+                  <Award size={20} color={theme.primary} />
+                </TouchableOpacity>
+              </View>
+            );
+          }}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[
             styles.listContent,
@@ -120,6 +147,7 @@ export const ClubMembersScreen = () => {
                 variant="h3"
                 align="center"
                 style={[styles.marginBottom8, { color: theme.text }]}
+                accessibilityRole="header"
               >
                 Aucun membre trouvé
               </AppText>
@@ -154,6 +182,8 @@ export const ClubMembersScreen = () => {
       <TouchableOpacity
         accessibilityRole="button"
         testID="club-members-add-button"
+        accessibilityLabel="Ajouter un membre"
+        accessibilityHint="Ouvre le formulaire d'un nouveau membre"
         style={[
           styles.fab,
           { backgroundColor: theme.primary, bottom: insets.bottom + 20 },

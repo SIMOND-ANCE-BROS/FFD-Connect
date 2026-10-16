@@ -1,9 +1,8 @@
-/* eslint-disable react-native-a11y/has-valid-accessibility-descriptors -- TODO: add a11y descriptors to team list items */
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../../navigation/types";
 import { Plus } from "lucide-react-native";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -24,6 +23,9 @@ import { SearchBar } from "../../../components/SearchBar";
 import { useTheme } from "../../../context/ThemeContext";
 import { ClubService } from "../services/ClubService";
 import { TeamIcon } from "../../../components/icons/TeamIcon";
+import { joinA11yLabel } from "../../../utils/a11y";
+import { announce } from "../../../utils/announce";
+import { useRestoreFocusOnClose } from "../../../utils/a11yFocus";
 
 const LEVELS: Array<"Débutant" | "Intermédiaire"> = [
   "Débutant",
@@ -43,6 +45,13 @@ export const ClubSoloTeamsScreen = () => {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [headerH, setHeaderH] = useState(insets.top + 120);
+  // Focus back on « Créer une équipe » when its modal closes (#22).
+  const createButtonRef = useRef<View>(null);
+  useRestoreFocusOnClose(createModalVisible, createButtonRef);
+  const closeCreateModal = () => {
+    setCreateModalVisible(false);
+    setNewName("");
+  };
 
   const { data: teams = [], isLoading } = useQuery({
     queryKey: ["clubSoloTeams"],
@@ -73,6 +82,7 @@ export const ClubSoloTeamsScreen = () => {
       setNewName("");
       setNewLevel("Débutant");
       refresh();
+      announce(`Équipe ${name} créée`);
     } catch (e: unknown) {
       Alert.alert(
         "Erreur",
@@ -86,7 +96,12 @@ export const ClubSoloTeamsScreen = () => {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {isLoading ? (
         <View style={[styles.centered, { paddingTop: headerH }]}>
-          <ActivityIndicator size="large" color={theme.primary} />
+          <ActivityIndicator
+            size="large"
+            color={theme.primary}
+            accessibilityLabel="Chargement des équipes"
+            accessibilityHint="Patientez quelques secondes"
+          />
         </View>
       ) : (
         <FlashList
@@ -101,6 +116,13 @@ export const ClubSoloTeamsScreen = () => {
           renderItem={({ item }) => (
             <TouchableOpacity
               style={[styles.card, { backgroundColor: theme.surface }]}
+              accessibilityRole="button"
+              accessibilityLabel={joinA11yLabel([
+                item.name,
+                `niveau ${item.level}`,
+                `${item.members.length} membre${item.members.length > 1 ? "s" : ""}`,
+              ])}
+              accessibilityHint="Ouvre l'équipe et ses membres"
               onPress={() =>
                 navigation.navigate("ClubSoloTeamDetail", {
                   teamId: item.id,
@@ -158,11 +180,15 @@ export const ClubSoloTeamsScreen = () => {
       </PinnedHeader>
 
       <TouchableOpacity
+        ref={createButtonRef}
         style={[
           styles.fab,
           { backgroundColor: theme.primary, bottom: insets.bottom + 20 },
         ]}
         onPress={() => setCreateModalVisible(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Créer une équipe"
+        accessibilityHint="Ouvre le formulaire d'une nouvelle Solo Team"
       >
         <Plus size={24} color="#FFF" />
         <AppText
@@ -173,22 +199,37 @@ export const ClubSoloTeamsScreen = () => {
         </AppText>
       </TouchableOpacity>
 
-      <Modal visible={createModalVisible} transparent animationType="fade">
+      <Modal
+        visible={createModalVisible}
+        transparent
+        animationType="fade"
+        // Android back button closes it, like « Annuler ».
+        onRequestClose={closeCreateModal}
+      >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { backgroundColor: theme.surface }]}>
+          <View
+            style={[styles.modalBox, { backgroundColor: theme.surface }]}
+            accessibilityViewIsModal
+            onAccessibilityEscape={closeCreateModal}
+          >
             <AppText
               variant="h3"
               style={[styles.modalTitle, { color: theme.text }]}
+              accessibilityRole="header"
             >
               Nouvelle Solo Team
             </AppText>
             <AppText
               variant="caption"
               style={[styles.fieldLabel, { color: theme.textSecondary }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
             >
               Nom
             </AppText>
             <TextInput
+              accessibilityLabel="Nom de l'équipe"
+              accessibilityHint="Par exemple Étoiles du club"
               value={newName}
               onChangeText={setNewName}
               placeholder="Ex. Étoiles du club"
@@ -204,7 +245,12 @@ export const ClubSoloTeamsScreen = () => {
             >
               Niveau
             </AppText>
-            <View style={styles.levelRow}>
+            <View
+              style={styles.levelRow}
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Niveau"
+              accessibilityHint="Un seul choix possible"
+            >
               {LEVELS.map((l) => {
                 const isSelected = newLevel === l;
                 const chipBg = isSelected ? theme.primary : theme.background;
@@ -213,6 +259,10 @@ export const ClubSoloTeamsScreen = () => {
                   <TouchableOpacity
                     key={l}
                     onPress={() => setNewLevel(l)}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`Niveau ${l}`}
+                    accessibilityHint="Choisit le niveau de l'équipe"
+                    accessibilityState={{ checked: isSelected }}
                     style={[
                       styles.chip,
                       { backgroundColor: chipBg, borderColor: theme.border },
@@ -231,10 +281,7 @@ export const ClubSoloTeamsScreen = () => {
             <View style={styles.modalActions}>
               <AppButton
                 variant="secondary"
-                onPress={() => {
-                  setCreateModalVisible(false);
-                  setNewName("");
-                }}
+                onPress={closeCreateModal}
                 title="Annuler"
               />
               <AppButton
@@ -242,6 +289,8 @@ export const ClubSoloTeamsScreen = () => {
                   handleCreate().catch(() => {});
                 }}
                 title="Créer"
+                accessibilityLabel="Créer l'équipe"
+                accessibilityHint="Enregistre la nouvelle équipe"
               />
             </View>
           </View>

@@ -28,7 +28,7 @@ import { announce } from "../../../../utils/announce";
 import { EditorNotice } from "./EditorNotice";
 import { styles } from "./competition-editor.styles";
 
-/** Spoken type of a schedule slot (the raw enum is not French). */
+/** French name of a schedule slot type (the raw enum is English). */
 const TIMING_TYPE_LABELS: Record<string, string> = {
   ROUND: "Tour",
   BREAK: "Pause",
@@ -36,13 +36,18 @@ const TIMING_TYPE_LABELS: Record<string, string> = {
   OTHER: "Autre",
 };
 
+/** Displayed and spoken type of a slot: « Tour », not « ROUND » (#22). */
+export function timingTypeLabel(type: string): string {
+  return TIMING_TYPE_LABELS[type] ?? type;
+}
+
 /** One slot read as a single sentence: "14:30, 20 minutes, Finale, Tour". */
 export function timingAccessibilityLabel(item: ScheduleItem): string {
   return joinA11yLabel([
     item.startTime,
     `${item.duration} minutes`,
     item.title,
-    TIMING_TYPE_LABELS[item.type] ?? item.type,
+    timingTypeLabel(item.type),
   ]);
 }
 
@@ -194,7 +199,7 @@ export function CompetitionTimingTab({
                 {item.title}
               </AppText>
               <AppText variant="caption" style={{ color: theme.textSecondary }}>
-                {item.type}
+                {timingTypeLabel(item.type)}
               </AppText>
             </View>
           </View>

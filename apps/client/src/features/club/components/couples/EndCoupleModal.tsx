@@ -29,16 +29,34 @@ export const EndCoupleModal = React.memo(function EndCoupleModal({
   onEnd,
 }: EndCoupleModalProps) {
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      // Android back button closes it, like « Annuler ».
+      onRequestClose={onClose}
+    >
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalBox, { backgroundColor: theme.surface }]}>
-          <AppText variant="h3" style={[styles.mb8, { color: theme.text }]}>
+        <View
+          style={[styles.modalBox, { backgroundColor: theme.surface }]}
+          accessibilityViewIsModal
+          onAccessibilityEscape={onClose}
+        >
+          <AppText
+            variant="h3"
+            style={[styles.mb8, { color: theme.text }]}
+            accessibilityRole="header"
+          >
             Mettre fin au partenariat
           </AppText>
           {selectedPartnership && (
             <AppText
               variant="body"
               style={[styles.mb16, { color: theme.textSecondary }]}
+              accessibilityLabel={`${name(selectedPartnership.user1)} et ${name(
+                selectedPartnership.user2,
+              )}`}
+              accessibilityHint="Couple concerné"
             >
               {name(selectedPartnership.user1)} &{" "}
               {name(selectedPartnership.user2)}
@@ -47,6 +65,8 @@ export const EndCoupleModal = React.memo(function EndCoupleModal({
           <AppText
             variant="caption"
             style={[styles.mb4, { color: theme.textSecondary }]}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
           >
             Date de fin (AAAA-MM-JJ)
           </AppText>
@@ -64,7 +84,12 @@ export const EndCoupleModal = React.memo(function EndCoupleModal({
           />
           <View style={styles.modalActions}>
             <AppButton variant="secondary" onPress={onClose} title="Annuler" />
-            <AppButton onPress={onEnd} title="Clôturer" />
+            <AppButton
+              onPress={onEnd}
+              title="Clôturer"
+              accessibilityLabel="Clôturer le partenariat"
+              accessibilityHint="Met fin au partenariat à la date indiquée"
+            />
           </View>
         </View>
       </View>

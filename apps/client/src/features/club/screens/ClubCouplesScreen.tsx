@@ -1,7 +1,6 @@
-/* eslint-disable react-native-a11y/has-valid-accessibility-descriptors -- TODO: add a11y descriptors to couple list items */
 import { useNavigation } from "@react-navigation/native";
 import { Plus, Users } from "lucide-react-native";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, Alert, TouchableOpacity, View } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -19,6 +18,8 @@ import { styles } from "../components/couples/club-couples.styles";
 import { ClubService, type Partnership } from "../services/ClubService";
 import { formatSuggestedCoupleLevels } from "../../../utils/competitionLevel";
 import { formatDiscipline } from "../../../utils/discipline";
+import { announce } from "../../../utils/announce";
+import { useRestoreFocusOnClose } from "../../../utils/a11yFocus";
 
 type Tab = "active" | "history";
 
@@ -45,6 +46,9 @@ export const ClubCouplesScreen = () => {
   const [selectedSecondaryClubId, setSelectedSecondaryClubId] = useState<
     string | null
   >(null);
+  // Focus back on « Créer un couple » when its modal closes (#22).
+  const createButtonRef = useRef<View>(null);
+  useRestoreFocusOnClose(createModalVisible, createButtonRef);
 
   const activeOnly = tab === "active";
   const { data: partnershipsData, isLoading } = useQuery({
@@ -199,6 +203,7 @@ export const ClubCouplesScreen = () => {
       setEndModalVisible(false);
       setSelectedPartnership(null);
       refresh();
+      announce("Partenariat clôturé");
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } }).response
         ?.data?.message;
@@ -227,6 +232,7 @@ export const ClubCouplesScreen = () => {
     try {
       await ClubService.validatePartnership(partnershipId, accepted);
       refresh();
+      announce(accepted ? "Partenariat validé" : "Partenariat refusé");
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } }).response
         ?.data?.message;
@@ -245,7 +251,12 @@ export const ClubCouplesScreen = () => {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {isLoading ? (
         <View style={[styles.centered, { paddingTop: headerH }]}>
-          <ActivityIndicator size="large" color={theme.primary} />
+          <ActivityIndicator
+            size="large"
+            color={theme.primary}
+            accessibilityLabel="Chargement des couples"
+            accessibilityHint="Patientez quelques secondes"
+          />
         </View>
       ) : (
         <FlashList
@@ -299,13 +310,17 @@ export const ClubCouplesScreen = () => {
           placeholder="Rechercher un couple…"
           testID="club-couples-search"
         />
-        <View style={styles.tabs}>
+        <View style={styles.tabs} accessibilityRole="tablist">
           <TouchableOpacity
             style={[
               styles.tab,
               tab === "active" && { backgroundColor: theme.primary },
             ]}
             onPress={() => setTab("active")}
+            accessibilityRole="tab"
+            accessibilityLabel="Couples actifs"
+            accessibilityHint="Affiche les couples en cours"
+            accessibilityState={{ selected: tab === "active" }}
           >
             <AppText
               variant="button"
@@ -324,6 +339,10 @@ export const ClubCouplesScreen = () => {
               tab === "history" && { backgroundColor: theme.primary },
             ]}
             onPress={() => setTab("history")}
+            accessibilityRole="tab"
+            accessibilityLabel="Historique des couples"
+            accessibilityHint="Affiche les couples terminés"
+            accessibilityState={{ selected: tab === "history" }}
           >
             <AppText
               variant="button"
@@ -341,11 +360,15 @@ export const ClubCouplesScreen = () => {
 
       {tab === "active" && (
         <TouchableOpacity
+          ref={createButtonRef}
           style={[
             styles.fab,
             { backgroundColor: theme.primary, bottom: insets.bottom + 20 },
           ]}
           onPress={() => setCreateModalVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Créer un couple"
+          accessibilityHint="Choisissez les deux partenaires"
         >
           <Plus size={24} color="#FFF" />
           <AppText variant="button" style={[styles.textWhite, styles.ml8]}>

@@ -1,6 +1,9 @@
 import { fireEvent, render } from "@testing-library/react-native";
 import React from "react";
-import { FluidSegmentedTab } from "../FluidSegmentedTab";
+import {
+  FluidSegmentedTab,
+  SEGMENT_TEXT_MAX_SCALE,
+} from "../FluidSegmentedTab";
 
 // Screen-reader contract of the segmented filter (RGAA, issue #22).
 
@@ -63,5 +66,18 @@ describe("FluidSegmentedTab accessibility", () => {
 
     await fireEvent.press(upcoming);
     expect(onChange).toHaveBeenCalledWith("UPCOMING");
+  });
+
+  it("lets labels grow with the system text size, capped in the fixed segment", async () => {
+    const { getByText } = await render(
+      <FluidSegmentedTab
+        options={options}
+        activeValue="PAST"
+        onChange={jest.fn()}
+      />,
+    );
+    const label = getByText("À venir");
+    expect(label.props.allowFontScaling).not.toBe(false);
+    expect(label.props.maxFontSizeMultiplier).toBe(SEGMENT_TEXT_MAX_SCALE);
   });
 });

@@ -1,6 +1,6 @@
 import { Lock } from "lucide-react-native";
 import React, { useCallback } from "react";
-import { View, ViewStyle } from "react-native";
+import { type AccessibilityActionEvent, View, ViewStyle } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
@@ -11,7 +11,22 @@ import Animated, {
 import { AppText } from "../../../../components/AppText";
 import { AppTheme } from "../../../../context/ThemeContext";
 import type { LayoutItem } from "../../hooks/useClubCompetitionEditorLogic";
+import { announce } from "../../../../utils/announce";
 import { styles } from "./layout-canvas.styles";
+import {
+  clampLayoutPosition,
+  LAYOUT_MOVE_ACTIONS,
+  layoutItemA11yLabel,
+  layoutMoveAnnouncement,
+  moveLayoutItem,
+} from "./layoutItemA11y";
+
+/** Reader actions of a block: details (activate), edit, and the 4 moves. */
+const A11Y_ACTIONS = [
+  { name: "activate" },
+  { name: "edit", label: "Modifier" },
+  ...LAYOUT_MOVE_ACTIONS.map(({ name, label }) => ({ name, label })),
+];
 
 interface DraggableLayoutItemProps {
   item: LayoutItem;
@@ -39,24 +54,12 @@ export function DraggableLayoutItem({
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
 
-  const clampPosition = useCallback(
-    (xPct: number, yPct: number) => {
-      const maxX = Math.max(0, 100 - item.width);
-      const maxY = Math.max(0, 100 - item.height);
-      return {
-        x: Math.max(0, Math.min(maxX, xPct)),
-        y: Math.max(0, Math.min(maxY, yPct)),
-      };
-    },
-    [item.width, item.height],
-  );
-
   const commitPosition = useCallback(
     (newX: number, newY: number) => {
-      const { x, y } = clampPosition(newX, newY);
+      const { x, y } = clampLayoutPosition(item, newX, newY);
       onPositionChange(item.id, x, y);
     },
-    [item.id, clampPosition, onPositionChange],
+    [item, onPositionChange],
   );
 
   const firePress = useCallback(() => onBlockPress(item), [onBlockPress, item]);
@@ -100,6 +103,26 @@ export function DraggableLayoutItem({
     });
 
   const gestures = Gesture.Simultaneous(pan, doubleTap);
+
+  // Gesture-free editing for VoiceOver / TalkBack (#22).
+  const handleAccessibilityAction = (event: AccessibilityActionEvent) => {
+    const { actionName } = event.nativeEvent;
+    if (actionName === "activate") {
+      firePress();
+      return;
+    }
+    if (actionName === "edit") {
+      fireQuickEdit();
+      return;
+    }
+    const move = LAYOUT_MOVE_ACTIONS.find((a) => a.name === actionName);
+    if (!move) return;
+    const next = moveLayoutItem(item, move.direction);
+    if (next.x !== item.x || next.y !== item.y) {
+      onPositionChange(item.id, next.x, next.y);
+    }
+    announce(layoutMoveAnnouncement(item, next));
+  };
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [
@@ -232,6 +255,14 @@ export function DraggableLayoutItem({
     <GestureDetector gesture={gestures}>
       <Animated.View
         style={[styles.draggableItem, itemDynamicStyle, animatedStyle]}
+        testID={`layout-item-${item.id}`}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={layoutItemA11yLabel(item)}
+        accessibilityHint="Ouvre les détails. Balayez vers le haut ou le bas pour le déplacer ou le modifier"
+        accessibilityState={{ selected: isSelected }}
+        accessibilityActions={A11Y_ACTIONS}
+        onAccessibilityAction={handleAccessibilityAction}
       >
         <View style={styles.draggableItemHeader}>
           <View style={styles.draggableItemLabel}>

@@ -3,6 +3,9 @@ import React, { PropsWithChildren } from "react";
 import { useTheme } from "../../../../context/ThemeContext";
 import { OFFICIAL_DANCE_ORDER } from "../../../../stores/danceOrder.store";
 import { DanceOrderEditor } from "../DanceOrderEditor";
+import { announce } from "../../../../utils/announce";
+
+jest.mock("../../../../utils/announce", () => ({ announce: jest.fn() }));
 
 interface ListProps {
   data: string[];
@@ -106,5 +109,25 @@ describe("DanceOrderEditor", () => {
     expect(
       getByTestId("performance-dance-order-latin-jive-down"),
     ).toBeDisabled();
+  });
+
+  describe("screen reader (#22)", () => {
+    it("reads the position with the dance and announces a move", async () => {
+      const { getByLabelText, getAllByRole, queryByRole } = await setup();
+      const [first, second] = OFFICIAL_DANCE_ORDER.Latin;
+      expect(first).toBeDefined();
+      expect(second).toBeDefined();
+
+      expect(getByLabelText(/, position 1 sur 5$/)).toBeTruthy();
+      // The drag grip is gesture-only: hidden, the arrows replace it.
+      expect(queryByRole("button", { name: /^Déplacer / })).toBeNull();
+
+      const [firstDown] = getAllByRole("button", { name: /^Descendre / });
+      if (!firstDown) throw new Error("no Descendre button");
+      await fireEvent.press(firstDown);
+      expect(announce).toHaveBeenCalledWith(
+        expect.stringMatching(/, position 2$/),
+      );
+    });
   });
 });
