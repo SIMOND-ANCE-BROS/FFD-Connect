@@ -1,7 +1,6 @@
-/* eslint-disable react-native-a11y/has-valid-accessibility-descriptors -- TODO: add a11y descriptors to team actions */
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Plus, Trash2 } from "lucide-react-native";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +22,9 @@ import { RootStackParamList } from "../../../navigation/types";
 import { ClubService, type ClubMember } from "../services/ClubService";
 import { TeamIcon } from "../../../components/icons/TeamIcon";
 import { formatCompetitionLevels } from "../../../utils/competitionLevel";
+import { joinA11yLabel } from "../../../utils/a11y";
+import { announce } from "../../../utils/announce";
+import { useRestoreFocusOnClose } from "../../../utils/a11yFocus";
 
 type Props = NativeStackScreenProps<RootStackParamList, "ClubSoloTeamDetail">;
 
@@ -33,6 +35,9 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
   const queryClient = useQueryClient();
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [headerH, setHeaderH] = useState(insets.top + 56);
+  // Focus back on « Ajouter » when the member picker closes (#22).
+  const addButtonRef = useRef<View>(null);
+  useRestoreFocusOnClose(addModalVisible, addButtonRef);
 
   const { data: team, isLoading } = useQuery({
     queryKey: ["clubSoloTeam", teamId],
@@ -55,11 +60,12 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
       .catch(() => {});
   }, [queryClient, teamId]);
 
-  const handleAddMember = async (userId: string) => {
+  const handleAddMember = async (userId: string, name: string) => {
     try {
       await ClubService.addSoloTeamMember(teamId, userId);
       setAddModalVisible(false);
       refresh();
+      announce(`${name} ajouté à l'équipe`);
     } catch (e: unknown) {
       Alert.alert(
         "Erreur",
@@ -79,6 +85,7 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
           ClubService.removeSoloTeamMember(teamId, userId)
             .then(() => {
               refresh();
+              announce(`${name} retiré de l'équipe`);
             })
             .catch((e: unknown) => {
               Alert.alert(
@@ -101,7 +108,12 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {isLoading || !team ? (
         <View style={[styles.centered, { paddingTop: headerH }]}>
-          <ActivityIndicator size="large" color={theme.primary} />
+          <ActivityIndicator
+            size="large"
+            color={theme.primary}
+            accessibilityLabel="Chargement de l'équipe"
+            accessibilityHint="Patientez quelques secondes"
+          />
         </View>
       ) : (
         <>
@@ -111,7 +123,11 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
               <TeamIcon size={28} color="#fff" />
             </View>
             <View style={styles.infoBody}>
-              <AppText variant="h3" style={{ color: theme.text }}>
+              <AppText
+                variant="h3"
+                style={{ color: theme.text }}
+                accessibilityRole="header"
+              >
                 {team.name}
               </AppText>
               <AppText variant="body" style={{ color: theme.textSecondary }}>
@@ -121,10 +137,18 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
           </View>
 
           <View style={styles.sectionHeader}>
-            <AppText variant="h3" style={{ color: theme.text }}>
+            <AppText
+              variant="h3"
+              style={{ color: theme.text }}
+              accessibilityRole="header"
+            >
               Membres ({team.members.length})
             </AppText>
             <TouchableOpacity
+              ref={addButtonRef}
+              accessibilityRole="button"
+              accessibilityLabel="Ajouter un membre"
+              accessibilityHint="Choisissez un danseur du club"
               onPress={() => setAddModalVisible(true)}
               style={[styles.addButton, { backgroundColor: theme.primary }]}
             >
@@ -142,47 +166,50 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
               styles.listContent,
               { paddingBottom: insets.bottom + 24 },
             ]}
-            renderItem={({ item }) => (
-              <View
-                style={[styles.memberRow, { backgroundColor: theme.surface }]}
-              >
+            renderItem={({ item }) => {
+              const fullName = `${item.user.firstName} ${item.user.lastName}`;
+              return (
                 <View
-                  style={[
-                    styles.memberAvatar,
-                    { backgroundColor: theme.background },
-                  ]}
+                  style={[styles.memberRow, { backgroundColor: theme.surface }]}
                 >
-                  <AppText variant="body" style={{ color: theme.text }}>
-                    {item.user.firstName[0]}
-                    {item.user.lastName[0]}
-                  </AppText>
-                </View>
-                <View style={styles.memberBody}>
-                  <AppText variant="body" style={{ color: theme.text }}>
-                    {item.user.firstName} {item.user.lastName}
-                  </AppText>
-                  {formatCompetitionLevels(item.user) && (
-                    <AppText
-                      variant="caption"
-                      style={{ color: theme.textSecondary }}
-                    >
-                      {formatCompetitionLevels(item.user)}
+                  <View
+                    style={[
+                      styles.memberAvatar,
+                      { backgroundColor: theme.background },
+                    ]}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                  >
+                    <AppText variant="body" style={{ color: theme.text }}>
+                      {item.user.firstName[0]}
+                      {item.user.lastName[0]}
                     </AppText>
-                  )}
+                  </View>
+                  <View style={styles.memberBody}>
+                    <AppText variant="body" style={{ color: theme.text }}>
+                      {item.user.firstName} {item.user.lastName}
+                    </AppText>
+                    {formatCompetitionLevels(item.user) && (
+                      <AppText
+                        variant="caption"
+                        style={{ color: theme.textSecondary }}
+                      >
+                        {formatCompetitionLevels(item.user)}
+                      </AppText>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => handleRemoveMember(item.userId, fullName)}
+                    style={styles.removeButton}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Retirer ${fullName} de l'équipe`}
+                    accessibilityHint="Demande une confirmation"
+                  >
+                    <Trash2 size={20} color={theme.textSecondary} />
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity
-                  onPress={() =>
-                    handleRemoveMember(
-                      item.userId,
-                      `${item.user.firstName} ${item.user.lastName}`,
-                    )
-                  }
-                  style={styles.removeButton}
-                >
-                  <Trash2 size={20} color={theme.textSecondary} />
-                </TouchableOpacity>
-              </View>
-            )}
+              );
+            }}
             ListEmptyComponent={
               <AppText
                 variant="body"
@@ -204,12 +231,22 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
         onHeightChange={setHeaderH}
       />
 
-      <Modal visible={addModalVisible} transparent animationType="fade">
+      <Modal
+        visible={addModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddModalVisible(false)}
+      >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { backgroundColor: theme.surface }]}>
+          <View
+            style={[styles.modalBox, { backgroundColor: theme.surface }]}
+            accessibilityViewIsModal
+            onAccessibilityEscape={() => setAddModalVisible(false)}
+          >
             <AppText
               variant="h3"
               style={[styles.modalTitle, { color: theme.text }]}
+              accessibilityRole="header"
             >
               Ajouter un membre
             </AppText>
@@ -225,8 +262,17 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
                 availableMembers.map((m: ClubMember) => (
                   <TouchableOpacity
                     key={m.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={joinA11yLabel([
+                      `${m.firstName} ${m.lastName}`,
+                      formatCompetitionLevels(m),
+                    ])}
+                    accessibilityHint="Ajoute ce danseur à l'équipe"
                     onPress={() => {
-                      handleAddMember(m.id).catch(() => {});
+                      handleAddMember(
+                        m.id,
+                        `${m.firstName} ${m.lastName}`,
+                      ).catch(() => {});
                     }}
                     style={[
                       styles.memberChip,
@@ -255,6 +301,7 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
               variant="secondary"
               onPress={() => setAddModalVisible(false)}
               title="Fermer"
+              accessibilityHint="Ferme la liste des membres"
               style={styles.modalClose}
             />
           </View>

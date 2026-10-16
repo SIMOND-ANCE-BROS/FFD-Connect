@@ -1,4 +1,3 @@
-/* eslint-disable react-native-a11y/has-valid-accessibility-descriptors -- TODO: add a11y to registration modal actions */
 import { Check, X } from "lucide-react-native";
 import React, { useState } from "react";
 import {
@@ -16,6 +15,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import { Event } from "../../competitions/context/CompetitionContext";
 import { ClubMember } from "../services/ClubService";
 import { formatDiscipline } from "../../../utils/discipline";
+import { joinA11yLabel } from "../../../utils/a11y";
 
 interface Props {
   visible: boolean;
@@ -81,11 +81,19 @@ export const ClubEventRegistrationModal: React.FC<Props> = ({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <View
+        style={[styles.container, { backgroundColor: theme.background }]}
+        accessibilityViewIsModal
+        onAccessibilityEscape={onClose}
+      >
         {/* Header */}
         <View style={[styles.header, { borderBottomColor: theme.border }]}>
           <View style={styles.flex1}>
-            <AppText variant="h3" style={{ color: theme.text }}>
+            <AppText
+              variant="h3"
+              style={{ color: theme.text }}
+              accessibilityRole="header"
+            >
               Gérer les inscriptions
             </AppText>
             <AppText variant="caption" style={{ color: theme.textSecondary }}>
@@ -95,6 +103,8 @@ export const ClubEventRegistrationModal: React.FC<Props> = ({
           </View>
           <TouchableOpacity
             accessibilityRole="button"
+            accessibilityLabel="Fermer"
+            accessibilityHint="Ferme sans inscrire les membres sélectionnés"
             onPress={onClose}
             style={[styles.closeButton, { backgroundColor: theme.surface }]}
           >
@@ -108,10 +118,14 @@ export const ClubEventRegistrationModal: React.FC<Props> = ({
               <AppText
                 variant="caption"
                 style={[styles.labelText, { color: theme.textSecondary }]}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
               >
                 Nom du partenaire (obligatoire)
               </AppText>
               <TextInput
+                accessibilityLabel="Nom du partenaire"
+                accessibilityHint="Obligatoire pour une épreuve couple : prénom et nom"
                 placeholder="Prénom Nom du partenaire"
                 placeholderTextColor={theme.textSecondary}
                 value={partnerName}
@@ -143,7 +157,20 @@ export const ClubEventRegistrationModal: React.FC<Props> = ({
                 };
                 return (
                   <TouchableOpacity
-                    accessibilityRole="button"
+                    // A checkbox: the reader says checked / not checked.
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: isSelected }}
+                    accessibilityLabel={joinA11yLabel([
+                      member.partnerName
+                        ? `${member.firstName} et ${member.partnerName}`
+                        : `${member.firstName} ${member.lastName}`,
+                      member.license?.number
+                        ? `licence ${member.license.number}`
+                        : "sans licence",
+                      member.ageGroup,
+                      formatDiscipline(member.category),
+                    ])}
+                    accessibilityHint="Ajoute ou retire ce membre de l'inscription"
                     key={member.id}
                     style={[styles.memberCard, memberCardBorder]}
                     onPress={() => toggleMember(member.id)}
@@ -187,6 +214,7 @@ export const ClubEventRegistrationModal: React.FC<Props> = ({
           <AppText
             variant="caption"
             style={[styles.footerText, { color: theme.textSecondary }]}
+            accessibilityLiveRegion="polite"
           >
             {selectedMemberIds.length} membre(s) sélectionné(s)
           </AppText>

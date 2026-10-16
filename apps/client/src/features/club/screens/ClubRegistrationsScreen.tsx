@@ -28,6 +28,8 @@ import {
   type ClubRegistrationMode,
 } from "../services/ClubService";
 import { formatDiscipline } from "../../../utils/discipline";
+import { joinA11yLabel } from "../../../utils/a11y";
+import { announce } from "../../../utils/announce";
 
 interface RegistrationRequest {
   id: string;
@@ -159,6 +161,12 @@ export const ClubRegistrationsScreen = () => {
               body: { eventId: item.eventId, userId: item.userId },
             });
       if (error) throw new Error("ACTION_FAILED");
+      // The card just disappears: say what happened (#22).
+      announce(
+        `Inscription de ${item.dancerName} ${
+          action === "APPROVE" ? "validée" : "refusée"
+        }`,
+      );
     } catch {
       setRequests(previous);
       Alert.alert(
@@ -192,37 +200,55 @@ export const ClubRegistrationsScreen = () => {
 
   const renderItem = ({ item }: { item: RegistrationRequest }) => (
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
-      <View style={styles.cardHeader}>
-        <View style={styles.badgeContainer}>
-          <Clock size={12} color="#FF9800" />
-          <AppText variant="caption" style={styles.badgeText}>
-            EN ATTENTE
+      {/* Read as one sentence; the two actions stay separate buttons. */}
+      <View
+        accessible
+        accessibilityLabel={joinA11yLabel([
+          "En attente",
+          item.dancerName,
+          item.competitionName,
+          item.category,
+          item.date ? `demandée ${item.date.toLocaleLowerCase("fr-FR")}` : null,
+        ])}
+        accessibilityHint="Validez ou refusez avec les boutons qui suivent"
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.badgeContainer}>
+            <Clock size={12} color="#FF9800" />
+            <AppText variant="caption" style={styles.badgeText}>
+              EN ATTENTE
+            </AppText>
+          </View>
+          <AppText variant="caption" style={{ color: theme.textSecondary }}>
+            {item.date}
           </AppText>
         </View>
-        <AppText variant="caption" style={{ color: theme.textSecondary }}>
-          {item.date}
+
+        <AppText
+          variant="h3"
+          style={[styles.marginTop8, { color: theme.text }]}
+        >
+          {item.dancerName}
+        </AppText>
+        <AppText
+          variant="body"
+          style={[styles.marginTop4, { color: theme.textSecondary }]}
+        >
+          {item.competitionName}
+        </AppText>
+        <AppText
+          variant="caption"
+          style={[styles.marginTop2, { color: theme.primary }]}
+        >
+          {item.category}
         </AppText>
       </View>
-
-      <AppText variant="h3" style={[styles.marginTop8, { color: theme.text }]}>
-        {item.dancerName}
-      </AppText>
-      <AppText
-        variant="body"
-        style={[styles.marginTop4, { color: theme.textSecondary }]}
-      >
-        {item.competitionName}
-      </AppText>
-      <AppText
-        variant="caption"
-        style={[styles.marginTop2, { color: theme.primary }]}
-      >
-        {item.category}
-      </AppText>
 
       <View style={[styles.actionRow, { borderTopColor: theme.border }]}>
         <TouchableOpacity
           accessibilityRole="button"
+          accessibilityLabel={`Refuser l'inscription de ${item.dancerName}`}
+          accessibilityHint="Demande une confirmation"
           style={[styles.actionButton, styles.bgRedLight]}
           onPress={() => handleAction(item, "REJECT")}
         >
@@ -234,6 +260,8 @@ export const ClubRegistrationsScreen = () => {
 
         <TouchableOpacity
           accessibilityRole="button"
+          accessibilityLabel={`Valider l'inscription de ${item.dancerName}`}
+          accessibilityHint="Demande une confirmation"
           style={[styles.actionButton, styles.bgGreenLight]}
           onPress={() => handleAction(item, "APPROVE")}
         >
@@ -269,7 +297,12 @@ export const ClubRegistrationsScreen = () => {
         <View
           style={[styles.container, styles.center, { paddingTop: headerH }]}
         >
-          <ActivityIndicator size="large" color={theme.primary} />
+          <ActivityIndicator
+            size="large"
+            color={theme.primary}
+            accessibilityLabel="Chargement des inscriptions"
+            accessibilityHint="Patientez quelques secondes"
+          />
         </View>
         {header}
       </View>
@@ -297,6 +330,7 @@ export const ClubRegistrationsScreen = () => {
               variant="h3"
               align="center"
               style={[styles.marginBottom8, { color: theme.text }]}
+              accessibilityRole="header"
             >
               {hasError ? "Chargement impossible" : "Aucune demande"}
             </AppText>

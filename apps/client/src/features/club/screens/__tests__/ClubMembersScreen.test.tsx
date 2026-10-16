@@ -157,4 +157,26 @@ describe("ClubMembersScreen", () => {
     await fireEvent.press(getByText("Ajouter"));
     expect(navigation.navigate).toHaveBeenCalledWith("ClubMemberEditor");
   });
+
+  describe("screen reader (#22)", () => {
+    it("reads each member as one sentence and names the career and add buttons", async () => {
+      (useClubMembersLogic as jest.Mock).mockReturnValue({
+        members: mockMembers,
+        isLoading: false,
+        searchQuery: "",
+        setSearchQuery: jest.fn(),
+        refresh: jest.fn().mockResolvedValue(undefined),
+      });
+
+      const { getByRole } = await render(<ClubMembersScreen />);
+
+      expect(
+        getByRole("button", { name: "Jean Dupont, licence LIC-123" }),
+      ).toBeTruthy();
+      expect(
+        getByRole("button", { name: "Voir la carrière de Jean Dupont" }),
+      ).toBeTruthy();
+      expect(getByRole("button", { name: "Ajouter un membre" })).toBeTruthy();
+    });
+  });
 });

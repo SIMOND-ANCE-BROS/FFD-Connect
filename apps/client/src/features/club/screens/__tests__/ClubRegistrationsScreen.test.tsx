@@ -9,6 +9,7 @@ import {
 import { useTheme } from "../../../../context/ThemeContext";
 import { ClubService } from "../../services/ClubService";
 import { ClubRegistrationsScreen } from "../ClubRegistrationsScreen";
+import { announce } from "../../../../utils/announce";
 
 jest.mock("../../../../context/ThemeContext", () => ({
   ThemeProvider: ({ children }: PropsWithChildren) => <>{children}</>,
@@ -28,6 +29,7 @@ jest.mock("../../../../api/generated/sdk.gen", () => ({
 }));
 
 jest.mock("../../services/ClubService");
+jest.mock("../../../../utils/announce", () => ({ announce: jest.fn() }));
 
 const pendingMock =
   competitionsControllerGetClubPendingRegistrations as jest.Mock;
@@ -153,6 +155,44 @@ describe("ClubRegistrationsScreen", () => {
 
     await waitFor(() => {
       expect(getByText("Chargement impossible")).toBeTruthy();
+    });
+  });
+
+  describe("screen reader (#22)", () => {
+    it("reads a request as one sentence and names each action with the dancer", async () => {
+      const { findByLabelText, getByRole } = await render(
+        <ClubRegistrationsScreen />,
+      );
+
+      expect(
+        await findByLabelText(
+          /^En attente, Eelef Testeur, Gala Latin E2E Connect, Latines - Adulte/,
+        ),
+      ).toBeTruthy();
+      expect(
+        getByRole("button", { name: "Refuser l'inscription de Eelef Testeur" }),
+      ).toBeTruthy();
+      expect(
+        getByRole("button", { name: "Valider l'inscription de Eelef Testeur" }),
+      ).toBeTruthy();
+    });
+
+    it("announces the validated registration once it leaves the list", async () => {
+      const { findByRole } = await render(<ClubRegistrationsScreen />);
+
+      await fireEvent.press(
+        await findByRole("button", {
+          name: "Valider l'inscription de Eelef Testeur",
+        }),
+      );
+      const [, , buttons] = (Alert.alert as jest.Mock).mock.calls[0];
+      await buttons
+        .find((b: { text: string }) => b.text === "Confirmer")
+        .onPress();
+
+      expect(announce).toHaveBeenCalledWith(
+        "Inscription de Eelef Testeur validée",
+      );
     });
   });
 });
