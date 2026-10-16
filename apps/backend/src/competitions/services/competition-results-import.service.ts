@@ -6,8 +6,9 @@ import {
   ServiceUnavailableException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Prisma } from "@prisma/client";
+import { Prisma, UserRole } from "@prisma/client";
 import { AdminAuditService } from "../../admin/admin-audit.service";
+import { hasRole, rolesOf } from "../../auth/roles";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   DELETED_USER_ID,
@@ -16,25 +17,32 @@ import {
 import { DELETED_PARTNER_LABEL } from "../../users/partner-name-scrub.utils";
 import {
   erasedResultIdentitySelect,
+  eventResultImportLabelSelect,
   idOnlySelect,
   licenseNumberSelect,
   licenseNumberUserSelect,
   registrationBibUserSelect,
   resultImportExistingSelect,
   resultTombstoneSelect,
+  resultUndoSelect,
 } from "../../utils/prisma-selects";
 import {
   erasedLicenceFingerprint,
   resultsPseudonym,
   resultsPseudonymisationKey,
 } from "../../utils/results-pseudonym";
-import { ImportResultsReportDto } from "../dto/results-import.dto";
+import {
+  DeleteEventResultsReportDto,
+  ImportResultsReportDto,
+} from "../dto/results-import.dto";
 import {
   MAX_RESULT_IMPORT_ROWS,
   ParsedResultRow,
   ResultParseError,
   parseResultsCsv,
 } from "../results-import/results-csv.parser";
+import { buildEventNameMatcher } from "../results-import/results-event-matcher";
+import type { CompetitionActor } from "./competition-access.service";
 import { CompetitionCacheService } from "./competition-cache.service";
 import { CompetitionEventNotificationService } from "./competition-event-notification.service";
 
@@ -46,6 +54,30 @@ import { CompetitionEventNotificationService } from "./competition-event-notific
  * import links the row once one of the couple has an account.
  */
 export const UNLINKED_RESULT_USER_ID = "unlinked-import";
+
+/** Upper bound of the events of one competition read to match a name. */
+const MAX_COMPETITION_EVENTS = 500;
+
+/** Upper bound of the imported rows of one event removed in one call. */
+const MAX_EVENT_RESULTS_DELETED = 5000;
+
+/** Role the audit trail records for the author of an import (#690). */
+export type ResultsActorRole = "ADMIN" | "STAFF" | "CLUB";
+
+export function resultsActorRole(actor: CompetitionActor): ResultsActorRole {
+  const subject = { roles: actor.roles ?? rolesOf({ role: actor.role }) };
+  if (hasRole(subject, UserRole.ADMIN)) return "ADMIN";
+  if (hasRole(subject, UserRole.STAFF)) return "STAFF";
+  // Anyone else got through `assertCanManageCompetition`: the organising club.
+  return "CLUB";
+}
+
+type ImportResultsCounts = Omit<ImportResultsReportDto, "dryRun">;
+
+export interface ImportResultsOptions {
+  /** Validate and count only: nothing written, no notification (#690). */
+  dryRun?: boolean;
+}
 
 /** Keys of `details` that name the couple (kept when already scrubbed). */
 const IDENTIFYING_DETAIL_KEYS = ["participant", "bib", "club"] as const;
@@ -180,7 +212,10 @@ interface ImportContext {
  *   never rewritten nor recreated (same key, or same event + round + rank);
  *   a line carrying a deleted account's licence is written anonymised; a
  *   label scrubbed for a deleted partner keeps its scrub. Rows absent from a
- *   re-import are left as they are (no deletion).
+ *   re-import are left as they are: `deleteEventResults` removes an event's
+ *   imported rows (#690).
+ * - Events: the `epreuve` column is an event id or an event name (#690).
+ * - Dry run (#690): same validation and counts, nothing written.
  * - Every import is written to the admin audit trail (actor, counts).
  */
 @Injectable()
@@ -198,8 +233,10 @@ export class CompetitionResultsImportService {
   async importCsv(
     competitionId: string,
     csv: string,
-    actorId: string,
+    actor: CompetitionActor,
+    options: ImportResultsOptions = {},
   ): Promise<ImportResultsReportDto> {
+    const dryRun = options.dryRun === true;
     const key = resultsPseudonymisationKey(this.config);
     if (!key) {
       throw new ServiceUnavailableException(
@@ -214,10 +251,15 @@ export class CompetitionResultsImportService {
       throw new NotFoundException("Compétition non trouvée");
     }
 
-    const { rows, errors } = parseResultsCsv(csv);
+    const parsed = parseResultsCsv(csv);
+    const errors = parsed.errors;
+    let rows = parsed.rows;
     if (errors.length === 0) {
+      // Names resolved to ids first: the key and the duplicate check use ids.
+      const resolved = await this.resolveEvents(competitionId, rows);
+      rows = resolved.rows;
+      errors.push(...resolved.errors);
       errors.push(...this.duplicateErrors(key, rows));
-      errors.push(...(await this.unknownEventErrors(competitionId, rows)));
     }
     if (errors.length > 0) {
       throw new BadRequestException({
@@ -238,7 +280,7 @@ export class CompetitionResultsImportService {
 
     const creates: Prisma.ResultCreateManyInput[] = [];
     const updates: Prisma.PrismaPromise<unknown>[] = [];
-    const report: ImportResultsReportDto = {
+    const report: ImportResultsCounts = {
       created: 0,
       updated: 0,
       unchanged: 0,
@@ -337,6 +379,11 @@ export class CompetitionResultsImportService {
       );
     }
 
+    if (dryRun) {
+      // Nothing written, nothing audited, nobody notified: a preview.
+      return { dryRun, ...report };
+    }
+
     await this.prisma.$transaction([
       ...(creates.length > 0
         ? [
@@ -348,12 +395,13 @@ export class CompetitionResultsImportService {
         : []),
       ...updates,
       // Who imported what, counts only: the file names third parties.
+      // The organising club is recorded as such (#690).
       this.audit.recordOp({
-        actorId,
+        actorId: actor.userId,
         action: "COMPETITION_RESULTS_IMPORT",
         targetType: "COMPETITION",
         targetId: competitionId,
-        after: { ...report },
+        after: { ...report, actorRole: resultsActorRole(actor) },
       }),
     ]);
     if (creates.length > 0 || updates.length > 0) {
@@ -366,7 +414,123 @@ export class CompetitionResultsImportService {
     this.logger.log(
       `Results import for competition ${competitionId}: ${JSON.stringify(report)}`,
     );
+    return { dryRun, ...report };
+  }
+
+  /**
+   * Undo of an import (#690): removes the imported results of one event of
+   * the competition. Rows that carry an erasure are kept, so a later import
+   * still never recreates an erased couple with its name: a row anonymised by
+   * an account deletion (`userId` sentinel) and a label scrubbed for a deleted
+   * partner (#395). Rows not created by the import (no `importKey`) are never
+   * touched. Audited (author, role, counts), cache invalidated. The
+   * « Résultats disponibles » notification is not sent again by a re-import.
+   */
+  async deleteEventResults(
+    competitionId: string,
+    eventId: string,
+    actor: CompetitionActor,
+  ): Promise<DeleteEventResultsReportDto> {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, competitionId },
+      select: idOnlySelect,
+    });
+    if (!event) {
+      throw new NotFoundException("Épreuve inconnue pour cette compétition");
+    }
+
+    const rows = await this.prisma.result.findMany({
+      where: { eventId, importKey: { not: null } },
+      select: resultUndoSelect,
+      take: MAX_EVENT_RESULTS_DELETED,
+    });
+    const deletable = rows.filter(
+      (row) => row.userId !== DELETED_USER_ID && !hasScrubbedLabel(row.details),
+    );
+    const report: DeleteEventResultsReportDto = {
+      deleted: 0,
+      anonymisedKept: rows.length - deletable.length,
+    };
+
+    const [deleted] = await this.prisma.$transaction([
+      // Guarded again on the sentinel: a row anonymised meanwhile stays.
+      this.prisma.result.deleteMany({
+        where: {
+          id: { in: deletable.map((row) => row.id) },
+          userId: { not: DELETED_USER_ID },
+        },
+      }),
+      this.audit.recordOp({
+        actorId: actor.userId,
+        action: "COMPETITION_RESULTS_DELETE",
+        targetType: "COMPETITION",
+        targetId: competitionId,
+        after: {
+          eventId,
+          candidates: deletable.length,
+          anonymisedKept: report.anonymisedKept,
+          actorRole: resultsActorRole(actor),
+        },
+      }),
+    ]);
+    report.deleted = deleted.count;
+    if (report.deleted > 0) {
+      await this.cacheService.invalidateResults(competitionId);
+    }
+    this.logger.log(
+      `Results of event ${eventId} (competition ${competitionId}) deleted: ${JSON.stringify(report)}`,
+    );
     return report;
+  }
+
+  /**
+   * The `epreuve` column holds an event id or an event name (#690). Ids are
+   * looked up first; only when some value is not an id of the competition are
+   * its events read to match the names. Every row gets the event id.
+   */
+  private async resolveEvents(
+    competitionId: string,
+    rows: ParsedResultRow[],
+  ): Promise<{ rows: ParsedResultRow[]; errors: ResultParseError[] }> {
+    const refs = [...new Set(rows.map((r) => r.eventId))];
+    const known = await this.prisma.event.findMany({
+      where: { id: { in: refs }, competitionId },
+      select: idOnlySelect,
+      take: refs.length,
+    });
+    const knownIds = new Set(known.map((e) => e.id));
+    if (refs.every((ref) => knownIds.has(ref))) return { rows, errors: [] };
+
+    const events = await this.prisma.event.findMany({
+      where: { competitionId },
+      select: eventResultImportLabelSelect,
+      orderBy: { id: "asc" },
+      take: MAX_COMPETITION_EVENTS,
+    });
+    const match = buildEventNameMatcher(events);
+    const errors: ResultParseError[] = [];
+    const resolved: ParsedResultRow[] = [];
+    for (const row of rows) {
+      if (knownIds.has(row.eventId)) {
+        resolved.push(row);
+        continue;
+      }
+      const found = match(row.eventId);
+      if (found.kind === "match") {
+        resolved.push({ ...row, eventId: found.eventId });
+      } else if (found.kind === "ambiguous") {
+        errors.push({
+          line: row.line,
+          message: `nom d'épreuve ambigu (${found.count} épreuves) : utiliser l'identifiant de l'épreuve`,
+        });
+      } else {
+        errors.push({
+          line: row.line,
+          message: "épreuve inconnue pour cette compétition",
+        });
+      }
+    }
+    return { rows: resolved, errors };
   }
 
   /** The same couple twice in an (event, round) is ambiguous: refused. */
@@ -389,25 +553,6 @@ export class CompetitionResultsImportService {
       }
     }
     return errors;
-  }
-
-  private async unknownEventErrors(
-    competitionId: string,
-    rows: ParsedResultRow[],
-  ): Promise<ResultParseError[]> {
-    const eventIds = [...new Set(rows.map((r) => r.eventId))];
-    const known = await this.prisma.event.findMany({
-      where: { id: { in: eventIds }, competitionId },
-      select: idOnlySelect,
-      take: eventIds.length,
-    });
-    const knownIds = new Set(known.map((e) => e.id));
-    return rows
-      .filter((row) => !knownIds.has(row.eventId))
-      .map((row) => ({
-        line: row.line,
-        message: "épreuve inconnue pour cette compétition",
-      }));
   }
 
   private async loadContext(

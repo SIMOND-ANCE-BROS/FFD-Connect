@@ -34,6 +34,7 @@ describe("ListAuditLogQueryDto", () => {
         "LICENSE_RENEWAL_APPROVE",
         "LICENSE_RENEWAL_REJECT",
         "COMPETITION_RESULTS_IMPORT",
+        "COMPETITION_RESULTS_DELETE",
       ]),
     );
     expect(AUDIT_TARGET_TYPES).toEqual([

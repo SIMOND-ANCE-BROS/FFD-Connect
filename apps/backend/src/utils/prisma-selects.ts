@@ -406,6 +406,28 @@ export const resultTombstoneSelect = {
   ranking: true,
 } as const;
 
+/**
+ * Import de résultats (#690) : épreuve d'une compétition avec ce qui forme
+ * son nom (« Latines Adultes Avancé »), pour relier une ligne par le nom de
+ * l'épreuve au lieu de son identifiant.
+ */
+export const eventResultImportLabelSelect = {
+  id: true,
+  category: true,
+  ageGroup: true,
+  level: true,
+} as const;
+
+/**
+ * Suppression des résultats importés d'une épreuve (#690) : `userId` et
+ * `details` disent si la ligne porte un effacement RGPD (gardée).
+ */
+export const resultUndoSelect = {
+  id: true,
+  userId: true,
+  details: true,
+} as const;
+
 /** Numéro de licence seul (licences retirées, licences d'un compte supprimé). */
 export const licenseNumberSelect = {
   number: true,

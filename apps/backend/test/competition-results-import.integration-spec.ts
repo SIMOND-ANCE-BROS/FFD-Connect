@@ -10,6 +10,7 @@ import {
   CompetitionResultsImportService,
   UNLINKED_RESULT_USER_ID,
 } from "../src/competitions/services/competition-results-import.service";
+import { CompetitionAccessService } from "../src/competitions/services/competition-access.service";
 import { NotificationsService } from "../src/notifications/notifications.service";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { DELETED_USER_ID } from "../src/users/account-deletion.core";
@@ -33,6 +34,7 @@ describe("Competition results import (integration, real DB)", () => {
   let importService: CompetitionResultsImportService;
   let careerService: CareerService;
   let accountDeletion: AccountDeletionService;
+  let accessService: CompetitionAccessService;
 
   const suffix = randomUUID().slice(0, 8);
   const lastName = `Imp${suffix}`;
@@ -44,7 +46,19 @@ describe("Competition results import (integration, real DB)", () => {
   let alphaId: string;
   let bravoId: string;
   let echoId: string;
+  let clubAccountId: string;
+  let clubId: string;
   const sendToUsers = jest.fn();
+  const staff = () => ({
+    userId: staffId,
+    role: "STAFF",
+    roles: [UserRole.STAFF],
+  });
+  const clubActor = () => ({
+    userId: clubAccountId,
+    role: "CLUB",
+    roles: [UserRole.CLUB],
+  });
 
   const csv = () =>
     readFileSync(
@@ -112,6 +126,7 @@ describe("Competition results import (integration, real DB)", () => {
     importService = moduleRef.get(CompetitionResultsImportService);
     careerService = moduleRef.get(CareerService);
     accountDeletion = moduleRef.get(AccountDeletionService);
+    accessService = moduleRef.get(CompetitionAccessService);
 
     const [staff, alpha, bravo, echo] = await Promise.all(
       (["Staff", "Alpha", "Bravo", "Echo"] as const).map((firstName) =>
@@ -145,9 +160,28 @@ describe("Competition results import (integration, real DB)", () => {
       });
     }
 
+    // The organising club (#690) and its CLUB account.
+    const club = await prisma.club.create({
+      data: { name: `Club Import ${suffix}` },
+    });
+    clubId = club.id;
+    const clubAccount = await prisma.user.create({
+      data: {
+        email: `results-import-club-${suffix}@test.local`,
+        password: "x",
+        firstName: "Club",
+        lastName,
+        role: UserRole.CLUB,
+        clubId,
+      },
+    });
+    clubAccountId = clubAccount.id;
+
     const competition = await prisma.competition.create({
       data: {
         title: `Import résultats ${suffix}`,
+        organizer: club.name,
+        organizerClubId: clubId,
         date: new Date("2026-09-20"),
         location: "Lyon",
         status: "PAST",
@@ -175,7 +209,7 @@ describe("Competition results import (integration, real DB)", () => {
   });
 
   afterAll(async () => {
-    const userIds = [staffId, alphaId, bravoId, echoId];
+    const userIds = [staffId, alphaId, bravoId, echoId, clubAccountId];
     await prisma.notification.deleteMany({
       where: { userId: { in: userIds } },
     });
@@ -202,12 +236,52 @@ describe("Competition results import (integration, real DB)", () => {
       });
     }
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    await prisma.club.deleteMany({ where: { id: clubId } });
     await moduleRef.close();
   });
 
+  it("a dry run validates and counts without writing anything (#690)", async () => {
+    const report = await importService.importCsv(
+      competitionId,
+      csv(),
+      clubActor(),
+      { dryRun: true },
+    );
+    expect(report).toMatchObject({ dryRun: true, created: 4, linked: 2 });
+    expect(await prisma.result.count({ where: { eventId } })).toBe(0);
+    expect(
+      await prisma.adminAuditLog.count({
+        where: { targetType: "COMPETITION", targetId: competitionId },
+      }),
+    ).toBe(0);
+    expect(sendToUsers).not.toHaveBeenCalled();
+  });
+
+  it("the organising club may manage the results, another club may not (#690)", async () => {
+    await expect(
+      accessService.assertCanManageCompetition(competitionId, clubActor()),
+    ).resolves.toBeUndefined();
+    const other = await prisma.competition.create({
+      data: {
+        title: `Autre ${suffix}`,
+        date: new Date("2026-09-21"),
+        location: "Lyon",
+        organizer: "Un autre club",
+      },
+    });
+    try {
+      await expect(
+        accessService.assertCanManageCompetition(other.id, clubActor()),
+      ).rejects.toThrow("Réservé aux organisateurs");
+    } finally {
+      await prisma.competition.delete({ where: { id: other.id } });
+    }
+  });
+
   it("imports, links both members of a couple, fills the palmarès of a licensee who never registered in the app, notifies once and audits", async () => {
-    const report = await importService.importCsv(competitionId, csv(), staffId);
+    const report = await importService.importCsv(competitionId, csv(), staff());
     expect(report).toEqual({
+      dryRun: false,
       created: 4,
       updated: 0,
       unchanged: 0,
@@ -258,17 +332,18 @@ describe("Competition results import (integration, real DB)", () => {
       select: { actorId: true, action: true, after: true },
       take: 5,
     });
+    const { dryRun: _dryRun, ...counts } = report;
     expect(audit).toEqual([
       {
         actorId: staffId,
         action: "COMPETITION_RESULTS_IMPORT",
-        after: report,
+        after: { ...counts, actorRole: "STAFF" },
       },
     ]);
   });
 
   it("re-running the same file duplicates nothing and does not notify again", async () => {
-    const report = await importService.importCsv(competitionId, csv(), staffId);
+    const report = await importService.importCsv(competitionId, csv(), staff());
 
     expect(report).toMatchObject({ created: 0, updated: 0, unchanged: 4 });
     expect(await prisma.result.count({ where: { eventId } })).toBe(4);
@@ -298,7 +373,7 @@ describe("Competition results import (integration, real DB)", () => {
     ).toBe(1);
 
     // Re-import of the same published ranking: the scrub stays.
-    const report = await importService.importCsv(competitionId, csv(), staffId);
+    const report = await importService.importCsv(competitionId, csv(), staff());
     expect(report).toMatchObject({ created: 0, updated: 0, unchanged: 4 });
     const [, again] = await resultsOf();
     expect(JSON.stringify(again.details)).not.toContain(`Bravo ${lastName}`);
@@ -307,7 +382,7 @@ describe("Competition results import (integration, real DB)", () => {
     const quarter = await importService.importCsv(
       competitionId,
       `epreuve;tour;classement;couple;licences\n${eventId};1/4 finale;2;Bravo ${lastName} / Zulu;${licenceBravo}\n`,
-      staffId,
+      staff(),
     );
     expect(quarter).toMatchObject({ created: 1, anonymisedKept: 1 });
     const anonymised = await prisma.result.findFirst({
@@ -332,7 +407,7 @@ describe("Competition results import (integration, real DB)", () => {
     const report = await importService.importCsv(
       competitionId,
       corrected,
-      staffId,
+      staff(),
     );
 
     expect(report).toMatchObject({ created: 0, updated: 1, anonymisedKept: 1 });
@@ -342,6 +417,66 @@ describe("Competition results import (integration, real DB)", () => {
       select: { details: true },
     });
     expect(JSON.stringify(tombstone?.details)).not.toContain("Echo");
+    expect(sendToUsers).toHaveBeenCalledTimes(1);
+  });
+  it("deleting the event's results keeps the erased rows, audits the club, and a re-import by event name restores the rest (#690)", async () => {
+    const before = await resultsOf();
+    const erased = before.filter(
+      (r) =>
+        r.userId === DELETED_USER_ID ||
+        JSON.stringify(r.details).includes("Partenaire supprimé"),
+    );
+    expect(erased.length).toBeGreaterThan(0);
+
+    const report = await importService.deleteEventResults(
+      competitionId,
+      eventId,
+      clubActor(),
+    );
+    expect(report).toEqual({
+      deleted: before.length - erased.length,
+      anonymisedKept: erased.length,
+    });
+    const kept = await resultsOf();
+    expect(kept).toHaveLength(erased.length);
+    expect(
+      kept.every(
+        (r) =>
+          r.userId === DELETED_USER_ID ||
+          JSON.stringify(r.details).includes("Partenaire supprimé"),
+      ),
+    ).toBe(true);
+
+    const audit = await prisma.adminAuditLog.findFirst({
+      where: {
+        targetId: competitionId,
+        action: "COMPETITION_RESULTS_DELETE",
+      },
+      select: { actorId: true, after: true },
+    });
+    expect(audit).toEqual({
+      actorId: clubAccountId,
+      after: {
+        eventId,
+        candidates: before.length - erased.length,
+        anonymisedKept: erased.length,
+        actorRole: "CLUB",
+      },
+    });
+
+    // The `epreuve` column names the event instead of its id.
+    const byName = csv().split(eventId).join("Latines Adulte");
+    const again = await importService.importCsv(
+      competitionId,
+      byName,
+      clubActor(),
+    );
+    expect(again.created).toBeGreaterThan(0);
+    const after = await resultsOf();
+    // Erased couples are still never recreated with their names.
+    expect(JSON.stringify(after)).not.toContain(`Bravo ${lastName}`);
+    expect(JSON.stringify(after)).not.toContain("Echo /");
+    // Notified once per competition, re-import included.
     expect(sendToUsers).toHaveBeenCalledTimes(1);
   });
 });
