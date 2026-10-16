@@ -196,7 +196,7 @@ export const WdsfEntryModal: React.FC<WdsfEntryModalProps> = ({
               {error && (
                 <AppText
                   variant="caption"
-                  style={[styles.errorText, { color: theme.colors.error }]}
+                  style={[styles.errorText, { color: theme.dangerText }]}
                 >
                   {error}
                 </AppText>

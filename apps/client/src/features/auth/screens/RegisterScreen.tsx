@@ -120,9 +120,7 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                     accessibilityHint="Saisissez votre numéro de licence FFD"
                     style={inputStyle("licenseNumber")}
                     placeholder="Ex: FFD-2025-12345"
-                    placeholderTextColor={
-                      isDark ? theme.colors.slate500 : theme.colors.slate400
-                    }
+                    placeholderTextColor={currentTheme.placeholder}
                     value={state.licenseNumber}
                     onChangeText={actions.setLicenseNumber}
                     onFocus={() => actions.setFocusedField("licenseNumber")}
@@ -166,9 +164,7 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                       accessibilityHint="Saisissez l'adresse e-mail d'un parent ou représentant légal"
                       style={inputStyle("parentEmail")}
                       placeholder="parent@exemple.fr"
-                      placeholderTextColor={
-                        isDark ? theme.colors.slate500 : theme.colors.slate400
-                      }
+                      placeholderTextColor={currentTheme.placeholder}
                       value={state.parentEmail}
                       onChangeText={actions.setParentEmail}
                       onFocus={() => actions.setFocusedField("parentEmail")}
@@ -208,9 +204,7 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                     accessibilityHint="Saisissez votre nom tel qu'il apparaît sur la licence"
                     style={inputStyle("lastName")}
                     placeholder="Tel qu'il apparaît sur la licence"
-                    placeholderTextColor={
-                      isDark ? theme.colors.slate500 : theme.colors.slate400
-                    }
+                    placeholderTextColor={currentTheme.placeholder}
                     value={state.lastName}
                     onChangeText={actions.setLastName}
                     onFocus={() => actions.setFocusedField("lastName")}
@@ -247,9 +241,7 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                     accessibilityHint="Saisissez votre prénom"
                     style={inputStyle("firstName")}
                     placeholder="Votre prénom"
-                    placeholderTextColor={
-                      isDark ? theme.colors.slate500 : theme.colors.slate400
-                    }
+                    placeholderTextColor={currentTheme.placeholder}
                     value={state.firstName}
                     onChangeText={actions.setFirstName}
                     onFocus={() => actions.setFocusedField("firstName")}
@@ -286,9 +278,7 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                     accessibilityHint="Saisissez votre adresse email"
                     style={inputStyle("email")}
                     placeholder="votre@email.com"
-                    placeholderTextColor={
-                      isDark ? theme.colors.slate500 : theme.colors.slate400
-                    }
+                    placeholderTextColor={currentTheme.placeholder}
                     value={state.email}
                     onChangeText={actions.setEmail}
                     onFocus={() => actions.setFocusedField("email")}
@@ -344,9 +334,7 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                         { color: currentTheme.text },
                       ]}
                       placeholder="Min. 8 car., majuscule, chiffre, spécial"
-                      placeholderTextColor={
-                        isDark ? theme.colors.slate500 : theme.colors.slate400
-                      }
+                      placeholderTextColor={currentTheme.placeholder}
                       value={state.password}
                       onChangeText={actions.setPassword}
                       onFocus={() => actions.setFocusedField("password")}
@@ -406,9 +394,7 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                     accessibilityHint="Retapez votre mot de passe pour confirmation"
                     style={inputStyle("confirmPassword")}
                     placeholder="Retapez votre mot de passe"
-                    placeholderTextColor={
-                      isDark ? theme.colors.slate500 : theme.colors.slate400
-                    }
+                    placeholderTextColor={currentTheme.placeholder}
                     value={state.confirmPassword}
                     onChangeText={actions.setConfirmPassword}
                     onFocus={() => actions.setFocusedField("confirmPassword")}

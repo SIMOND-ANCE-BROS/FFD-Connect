@@ -127,7 +127,7 @@ export function CompetitionEventCard({
             <AppText
               testID={`pending-event-${event.id}`}
               variant="caption"
-              color={currentTheme.warning}
+              color={currentTheme.warningText}
               weight="600"
             >
               {pendingAction === "register"

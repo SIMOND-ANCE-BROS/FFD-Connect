@@ -120,7 +120,7 @@ export const PlayerProgress = ({
       {upcoming && (
         <AppText
           variant="caption"
-          color={currentTheme.warning}
+          color={currentTheme.warningText}
           align="center"
           style={markerStyles.nextClash}
           testID="paso-next-clash"

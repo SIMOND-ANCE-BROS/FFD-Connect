@@ -16,6 +16,8 @@ export interface AppTheme {
   surface: string;
   text: string;
   textSecondary: string;
+  /** Placeholder text colour for inputs (AA on the input fill). */
+  placeholder: string;
   primary: string;
   secondary: string;
   accent: string;
@@ -26,6 +28,10 @@ export interface AppTheme {
   success: string;
   warning: string;
   danger: string;
+  /** Semantic colours to use for text on surface/background (WCAG AA). */
+  successText: string;
+  warningText: string;
+  dangerText: string;
   colors: typeof theme.colors;
 }
 

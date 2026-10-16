@@ -45,10 +45,9 @@ describe("contrast helpers", () => {
 
 /**
  * Regression guard for the theme (RGAA 3.2 / WCAG 1.4.3). These pairs are the
- * ones every screen relies on for body text; they must stay AA. Known failing
- * pairs (placeholders, semantic colours used as text on white, white on the
- * cyan/red buttons) are tracked on issue #22 and listed in `KNOWN_BELOW_AA`
- * so a future fix flips them into the guarded list.
+ * ones every screen relies on for body text; they must stay AA. Issue #22
+ * fixed the pairs that were below AA (placeholders, semantic colours used as
+ * text, white on the cyan/red buttons) by darkening only those tones.
  */
 describe("theme contrast (WCAG AA)", () => {
   const { light, dark, colors } = theme;
@@ -76,20 +75,73 @@ describe("theme contrast (WCAG AA)", () => {
     expect(meetsWcagAA(fg, bg)).toBe(true);
   });
 
-  const KNOWN_BELOW_AA: [string, string, string][] = [
-    ["light: placeholder on input", colors.slate400, colors.slate100],
+  /*
+   * Pairs that were below AA before issue #22 (ratio before → after). Inputs
+   * use a slate100 fill in light mode and slate800 in dark mode (login,
+   * register); semantic "text" tokens carry text, the plain fills stay for
+   * badges, borders and tints.
+   */
+  it.each([
+    // 2.34 → 4.97
+    ["light: placeholder on input", light.placeholder, colors.slate100],
+    // 4.34 → 4.97
     ["light: secondary text on input", light.textSecondary, colors.slate100],
-    ["light: cyan on white", colors.ffdCyan, colors.white],
-    ["light: white on danger button", colors.white, colors.error],
-    ["light: success as text on white", colors.success, colors.white],
-    ["light: warning as text on white", colors.warning, colors.white],
-    ["dark: placeholder on input", colors.slate500, colors.slate800],
-  ];
+    // 3.07 → 5.71
+    ["dark: placeholder on input", dark.placeholder, colors.slate800],
+    ["dark: secondary text on input", dark.textSecondary, colors.slate800],
+    // 3.88 → 4.87
+    ["light: cyan (secondary) on white", light.secondary, colors.white],
+    [
+      "light: cyan (secondary) on background",
+      light.secondary,
+      light.background,
+    ],
+    // 3.88 → 4.87 (end of the primary button gradient)
+    ["white on the gradient end", colors.white, theme.gradients.primary[1]],
+    ["white on the gradient start", colors.white, theme.gradients.primary[0]],
+    // 3.76 → 4.83 (AppButton "danger" uses colors.error in both themes)
+    ["white on danger button", colors.white, colors.error],
+    ["light: danger as text on white", light.danger, colors.white],
+    ["light: danger text on white", light.dangerText, colors.white],
+    ["dark: danger text on surface", dark.dangerText, dark.surface],
+    // 2.54 → 5.48
+    ["light: success text on white", light.successText, colors.white],
+    // 2.15 → 5.43
+    ["light: warning text on white", light.warningText, colors.white],
+    ["light: success text on background", light.successText, light.background],
+    ["light: warning text on background", light.warningText, light.background],
+    ["dark: success text on surface", dark.successText, dark.surface],
+    ["dark: warning text on surface", dark.warningText, dark.surface],
+    // White "QUALIFIÉ" badge in the live results
+    ["white on the deep success badge", colors.white, colors.successDeep],
+  ])("%s meets AA (#22)", (_name, fg, bg) => {
+    expect(meetsWcagAA(fg, bg)).toBe(true);
+  });
 
-  it.each(KNOWN_BELOW_AA)(
-    "%s is still below AA (update the list once fixed)",
-    (_name, fg, bg) => {
-      expect(meetsWcagAA(fg, bg)).toBe(false);
-    },
-  );
+  /** Alpha-blends `hex` at `alpha` over the opaque `under` colour. */
+  const tint = (hex: string, alpha: number, under: string): string => {
+    const top = parseHexColor(hex);
+    const bottom = parseHexColor(under);
+    return `#${top
+      .map((c, i) => Math.round(c * alpha + bottom[i] * (1 - alpha)))
+      .map((c) => c.toString(16).padStart(2, "0"))
+      .join("")}`;
+  };
+
+  // License-expiry / parental-consent banners: text tone on a ~10 % tint
+  // (`${color}1A`) of the fill tone, over the light background.
+  it.each([
+    ["danger", light.dangerText, light.danger],
+    ["warning", light.warningText, light.warning],
+    ["success", light.successText, light.success],
+  ])("light: %s text on its 10 %% tint meets AA", (_name, fg, fill) => {
+    expect(meetsWcagAA(fg, tint(fill, 0x1a / 255, light.background))).toBe(
+      true,
+    );
+  });
+
+  it("keeps the brand cyan for dark surfaces, where it already passes", () => {
+    expect(dark.primary).toBe(colors.ffdCyan);
+    expect(contrastRatio(colors.ffdCyan, colors.white)).toBeLessThan(4.5);
+  });
 });

@@ -4,7 +4,6 @@ import React, { useEffect, useRef, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { AppText } from "../../../components/AppText";
 import { AppTheme } from "../../../context/ThemeContext";
-import { theme } from "../../../theme";
 import { audioPlayerStyles as styles } from "./audio-player.styles";
 
 /** Minimum delay between two playback-rate updates while dragging. */
@@ -133,9 +132,9 @@ export const PlayerBpmControls = ({
               {
                 color:
                   shownDiff > 0
-                    ? theme.colors.success
+                    ? currentTheme.successText
                     : shownDiff < 0
-                      ? theme.colors.error
+                      ? currentTheme.dangerText
                       : currentTheme.textSecondary,
               },
             ]}
