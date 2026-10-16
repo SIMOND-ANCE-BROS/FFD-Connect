@@ -101,7 +101,7 @@ pnpm install
 **Patch pnpm appliqué automatiquement :** `pnpm install` applique le patch déclaré dans
 `patchedDependencies` de `pnpm-workspace.yaml` (aujourd'hui un seul : `react-native@0.86.3`, correctif
 TurboModule iOS 26). Aucun script post-install custom n'est nécessaire. Le seul hook est
-`prepare` (installation des hooks Husky).
+`prepare` (`scripts/install-git-hooks.sh` : `core.hooksPath=.githooks`, hooks versionnés).
 
 > ⚠️ Lors des montées de version d'Expo ou React Native, ce patch peut devenir obsolète.
 > En cas de souci au démarrage du client, relancer `pnpm install`. Détails et workarounds :
@@ -482,7 +482,7 @@ Elle inclut :
 
 - **TypeScript strict** activé
 - **ESLint** + **Prettier** configurés
-- **Pre-commit** (lint-staged) et **pre-push** (tests) avec Husky
+- **Pre-commit** (gitleaks + lint-staged) et **pre-push** (typecheck + tests) versionnés dans `.githooks/`
 - **Tests requis** pour les nouvelles fonctionnalités
 - **Documentation JSDoc** pour les fonctions publiques
 

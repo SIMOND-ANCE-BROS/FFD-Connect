@@ -16,7 +16,7 @@ reports
 # === Git & CI ===
 .git
 .github
-.husky
+.githooks
 .changeset
 
 # === IDE & tooling ===
