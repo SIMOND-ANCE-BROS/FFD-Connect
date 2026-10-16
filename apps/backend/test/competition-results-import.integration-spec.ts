@@ -247,7 +247,7 @@ describe("Competition results import (integration, real DB)", () => {
       clubActor(),
       { dryRun: true },
     );
-    expect(report).toMatchObject({ dryRun: true, created: 4, linked: 2 });
+    expect(report).toMatchObject({ dryRun: true, created: 4, linked: null });
     expect(await prisma.result.count({ where: { eventId } })).toBe(0);
     expect(
       await prisma.adminAuditLog.count({

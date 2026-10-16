@@ -31236,7 +31236,7 @@
           },
           "updated": {
             "type": "number",
-            "description": "Lignes déjà importées et corrigées",
+            "description": "Lignes déjà importées et corrigées (compte club : contenu publié seulement — rang, libellé, dossard…)",
             "example": 0
           },
           "unchanged": {
@@ -31246,22 +31246,26 @@
           },
           "relinked": {
             "type": "number",
-            "description": "Lignes déjà importées dont le rattachement à un compte a changé (sous-ensemble de « updated »)",
+            "nullable": true,
+            "description": "Null pour un compte club (non communiqué : dépend des numéros de licence). Lignes déjà importées dont le rattachement à un compte a changé (sous-ensemble de « updated »)",
             "example": 0
           },
           "anonymisedKept": {
             "type": "number",
-            "description": "Lignes laissées ou écrites anonymisées : un compte du couple a été supprimé",
+            "nullable": true,
+            "description": "Null pour un compte club (non communiqué : dépend des numéros de licence). Lignes laissées ou écrites anonymisées : un compte du couple a été supprimé",
             "example": 0
           },
           "linked": {
             "type": "number",
-            "description": "Couples rattachés à un compte (licence ou dossard)",
+            "nullable": true,
+            "description": "Null pour un compte club (non communiqué : dépend des numéros de licence). Couples rattachés à un compte (licence ou dossard)",
             "example": 4
           },
           "unlinked": {
             "type": "number",
-            "description": "Couples sans compte rattaché",
+            "nullable": true,
+            "description": "Null pour un compte club (non communiqué : dépend des numéros de licence). Couples sans compte rattaché",
             "example": 8
           }
         },

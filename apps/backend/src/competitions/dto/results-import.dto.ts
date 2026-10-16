@@ -88,7 +88,8 @@ export class ImportResultsReportDto {
   created!: number;
 
   @ApiProperty({
-    description: "Lignes déjà importées et corrigées",
+    description:
+      "Lignes déjà importées et corrigées (compte club : contenu publié seulement — rang, libellé, dossard…)",
     example: 0,
   })
   updated!: number;
@@ -100,25 +101,38 @@ export class ImportResultsReportDto {
   unchanged!: number;
 
   @ApiProperty({
+    nullable: true,
+    type: Number,
     description:
-      "Lignes déjà importées dont le rattachement à un compte a changé (sous-ensemble de « updated »)",
+      "Null pour un compte club (non communiqué : dépend des numéros de licence). Lignes déjà importées dont le rattachement à un compte a changé (sous-ensemble de « updated »)",
     example: 0,
   })
-  relinked!: number;
+  relinked!: number | null;
 
   @ApiProperty({
+    nullable: true,
+    type: Number,
     description:
-      "Lignes laissées ou écrites anonymisées : un compte du couple a été supprimé",
+      "Null pour un compte club (non communiqué : dépend des numéros de licence). Lignes laissées ou écrites anonymisées : un compte du couple a été supprimé",
     example: 0,
   })
-  anonymisedKept!: number;
+  anonymisedKept!: number | null;
 
   @ApiProperty({
-    description: "Couples rattachés à un compte (licence ou dossard)",
+    nullable: true,
+    type: Number,
+    description:
+      "Null pour un compte club (non communiqué : dépend des numéros de licence). Couples rattachés à un compte (licence ou dossard)",
     example: 4,
   })
-  linked!: number;
+  linked!: number | null;
 
-  @ApiProperty({ description: "Couples sans compte rattaché", example: 8 })
-  unlinked!: number;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description:
+      "Null pour un compte club (non communiqué : dépend des numéros de licence). Couples sans compte rattaché",
+    example: 8,
+  })
+  unlinked!: number | null;
 }

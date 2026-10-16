@@ -670,7 +670,11 @@ describe("CompetitionResultsImportService (#652)", () => {
       const report = await service.importCsv("comp-1", FIXTURE, CLUB, {
         dryRun: true,
       });
-      expect(report).toMatchObject({ dryRun: true, created: 4, unlinked: 4 });
+      expect(report).toMatchObject({
+        dryRun: true,
+        created: 4,
+        unlinked: null,
+      });
       expect(prisma.$transaction).not.toHaveBeenCalled();
       expect(prisma.result.createMany).not.toHaveBeenCalled();
       expect(audit.recordOp).not.toHaveBeenCalled();
@@ -685,6 +689,92 @@ describe("CompetitionResultsImportService (#652)", () => {
         })
         .catch((e: unknown) => e);
       expect(error).toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe("no licence oracle for the organising club (#690)", () => {
+    const licenceCsv = `${HEADER}\nev-latin;Finale;1;A / B;12;100001\n`;
+
+    it("withholds every count that depends on what a licence resolves to", async () => {
+      prisma.license.findMany.mockResolvedValue([
+        { number: "100001", userId: "user-alpha" },
+      ] as never);
+      const report = await service.importCsv("comp-1", licenceCsv, CLUB, {
+        dryRun: true,
+      });
+      expect(report).toEqual({
+        dryRun: true,
+        created: 1,
+        updated: 0,
+        unchanged: 0,
+        relinked: null,
+        anonymisedKept: null,
+        linked: null,
+        unlinked: null,
+      });
+    });
+
+    it("answers the same whether the licence has an account, a deleted one, or none", async () => {
+      const answers = [];
+      for (const setup of [
+        () => prisma.license.findMany.mockResolvedValue([]),
+        () =>
+          prisma.license.findMany.mockResolvedValue([
+            { number: "100001", userId: "user-alpha" },
+          ] as never),
+        () => {
+          prisma.license.findMany.mockResolvedValue([]);
+          prisma.erasedResultIdentity.findMany.mockResolvedValue([
+            { fingerprint: erasedLicenceFingerprint(KEY, "100001") },
+          ] as never);
+        },
+      ]) {
+        setup();
+        // An existing row of that couple, as an earlier import left it.
+        existingRows([
+          existing(licenceCsv, {
+            details: { participant: "A / B", bib: "12" },
+          }),
+        ]);
+        answers.push(
+          await service.importCsv("comp-1", licenceCsv, CLUB, {
+            dryRun: true,
+          }),
+        );
+      }
+      expect(answers[1]).toEqual(answers[0]);
+      expect(answers[2]).toEqual(answers[0]);
+      expect(answers[0]).toMatchObject({ updated: 0, unchanged: 1 });
+    });
+
+    it("still counts a corrected rank as updated for the club", async () => {
+      existingRows([
+        existing(licenceCsv, {
+          ranking: 2,
+          details: { participant: "A / B", bib: "12" },
+        }),
+      ]);
+      const report = await service.importCsv("comp-1", licenceCsv, CLUB, {
+        dryRun: true,
+      });
+      expect(report).toMatchObject({ created: 0, updated: 1, unchanged: 0 });
+    });
+
+    it("STAFF still gets the full counts, and the audit keeps them for a club", async () => {
+      prisma.license.findMany.mockResolvedValue([
+        { number: "100001", userId: "user-alpha" },
+      ] as never);
+      const staffReport = await service.importCsv("comp-1", licenceCsv, STAFF, {
+        dryRun: true,
+      });
+      expect(staffReport).toMatchObject({ linked: 1, unlinked: 0 });
+
+      await service.importCsv("comp-1", licenceCsv, CLUB);
+      expect(audit.recordOp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          after: expect.objectContaining({ linked: 1, actorRole: "CLUB" }),
+        }),
+      );
     });
   });
 

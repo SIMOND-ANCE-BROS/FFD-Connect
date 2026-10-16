@@ -72,7 +72,42 @@ export function resultsActorRole(actor: CompetitionActor): ResultsActorRole {
   return "CLUB";
 }
 
-type ImportResultsCounts = Omit<ImportResultsReportDto, "dryRun">;
+/** Full counts, as audited. */
+interface ImportResultsCounts {
+  created: number;
+  updated: number;
+  unchanged: number;
+  relinked: number;
+  anonymisedKept: number;
+  linked: number;
+  unlinked: number;
+}
+
+/**
+ * What the caller is told (#690). STAFF and ADMIN get every count. The
+ * organising club gets only what its own file determines: the counts that
+ * depend on what a licence number resolves to (an account, a deleted
+ * account) are withheld (null), and `updated` / `unchanged` compare the
+ * published content only — otherwise a (free) dry run would tell whether
+ * any licence number belongs to an account or to a deleted one.
+ */
+function disclosedReport(
+  report: ImportResultsCounts,
+  role: ResultsActorRole,
+  lines: number,
+  contentUpdated: number,
+): Omit<ImportResultsReportDto, "dryRun"> {
+  if (role !== "CLUB") return { ...report };
+  return {
+    created: report.created,
+    updated: contentUpdated,
+    unchanged: lines - report.created - contentUpdated,
+    relinked: null,
+    anonymisedKept: null,
+    linked: null,
+    unlinked: null,
+  };
+}
 
 export interface ImportResultsOptions {
   /** Validate and count only: nothing written, no notification (#690). */
@@ -290,9 +325,23 @@ export class CompetitionResultsImportService {
       unlinked: 0,
     };
 
+    // Rows whose published content (rank, label…) changed, ignoring what the
+    // licence numbers resolved to: the only "updated" an organiser sees.
+    let contentUpdated = 0;
     for (const { row, importKey } of keyed) {
       const current = context.existing.get(`${row.eventId}|${importKey}`);
       const members = context.members.get(row.line) ?? [];
+      if (
+        current &&
+        current.userId !== DELETED_USER_ID &&
+        (current.ranking !== row.ranking ||
+          !sameDetails(
+            current.details,
+            preserveScrubbedIdentity(current.details, buildDetails(row)),
+          ))
+      ) {
+        contentUpdated++;
+      }
 
       // Erased couples: never rewritten, never recreated with a name.
       if (current?.userId === DELETED_USER_ID) {
@@ -379,9 +428,15 @@ export class CompetitionResultsImportService {
       );
     }
 
+    const disclosed = disclosedReport(
+      report,
+      resultsActorRole(actor),
+      rows.length,
+      contentUpdated,
+    );
     if (dryRun) {
       // Nothing written, nothing audited, nobody notified: a preview.
-      return { dryRun, ...report };
+      return { dryRun, ...disclosed };
     }
 
     await this.prisma.$transaction([
@@ -414,7 +469,7 @@ export class CompetitionResultsImportService {
     this.logger.log(
       `Results import for competition ${competitionId}: ${JSON.stringify(report)}`,
     );
-    return { dryRun, ...report };
+    return { dryRun, ...disclosed };
   }
 
   /**

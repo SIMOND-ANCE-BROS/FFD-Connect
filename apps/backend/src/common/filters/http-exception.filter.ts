@@ -39,6 +39,30 @@ const CONFLICT_DETAIL_KEYS = [
   "pendingCorrections",
 ] as const;
 
+const HTTP_STATUS_BAD_REQUEST = 400;
+const MAX_LINE_ERRORS = 100;
+
+/**
+ * Line errors of a rejected file (results import, #652/#690): `{ line,
+ * message }` pairs only, primitives only, bounded. Anything else is dropped.
+ */
+function lineErrorsOf(
+  body: unknown,
+): { line: number; message: string }[] | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const errors = (body as { errors?: unknown }).errors;
+  if (!Array.isArray(errors)) return undefined;
+  const kept: { line: number; message: string }[] = [];
+  for (const item of errors.slice(0, MAX_LINE_ERRORS)) {
+    if (typeof item !== "object" || item === null) continue;
+    const { line, message } = item as { line?: unknown; message?: unknown };
+    if (typeof line === "number" && typeof message === "string") {
+      kept.push({ line, message: message.slice(0, 300) });
+    }
+  }
+  return kept.length > 0 ? kept : undefined;
+}
+
 /**
  * The logged shape of an error. With a log code, neither the message nor the
  * stack header ("Name: message", its first line) may carry the original text.
@@ -117,6 +141,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // replaced by a neutral one.
     const code = errorCodeOf(body);
     const logCode = logCodeOf(exception, body);
+    // A rejected file tells which lines to fix (never logged).
+    const errors =
+      status === HTTP_STATUS_BAD_REQUEST ? lineErrorsOf(body) : undefined;
 
     // Logging structuré pour le debugging
     const errorResponse = {
@@ -182,6 +209,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     // Retourner la réponse standardisée
-    response.status(status).json(errorResponse);
+    response
+      .status(status)
+      .json(errors ? { ...errorResponse, errors } : errorResponse);
   }
 }
