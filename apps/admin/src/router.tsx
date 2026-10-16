@@ -13,6 +13,8 @@ import { RefundsDuePage } from './pages/RefundsDuePage';
 import { UserDetailPage } from './pages/UserDetailPage';
 import { ClubDetailPage } from './pages/ClubDetailPage';
 import { ClubsPage } from './pages/ClubsPage';
+import { CompetitionDetailPage } from './pages/CompetitionDetailPage';
+import { CompetitionsPage } from './pages/CompetitionsPage';
 import { TrackDetailPage } from './pages/TrackDetailPage';
 import { TrackImportPage } from './pages/TrackImportPage';
 import { TracksPage } from './pages/TracksPage';
@@ -37,6 +39,8 @@ export const router = createBrowserRouter([
       { path: 'clubs', element: <ClubsPage /> },
       { path: 'clubs/new', element: <NewClubPage /> },
       { path: 'clubs/:id', element: <ClubDetailPage /> },
+      { path: 'competitions', element: <CompetitionsPage /> },
+      { path: 'competitions/:id', element: <CompetitionDetailPage /> },
       { path: 'moderation', element: <ModerationPage /> },
       { path: 'moderation/:id', element: <ModerationDetailPage /> },
       { path: 'license-renewals', element: <LicenseRenewalsPage /> },

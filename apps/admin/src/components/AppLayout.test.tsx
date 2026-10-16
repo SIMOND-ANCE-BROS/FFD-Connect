@@ -60,7 +60,12 @@ describe('AppLayout', () => {
       '/moderation',
     );
     const order = screen.getAllByRole('link').map((link) => link.textContent);
-    expect(order.indexOf('Bibliothèque')).toBe(order.indexOf('Clubs') + 1);
+    expect(screen.getByRole('link', { name: 'Compétitions' })).toHaveAttribute(
+      'href',
+      '/competitions',
+    );
+    expect(order.indexOf('Compétitions')).toBe(order.indexOf('Clubs') + 1);
+    expect(order.indexOf('Bibliothèque')).toBe(order.indexOf('Compétitions') + 1);
     expect(order.indexOf('Modération')).toBe(order.indexOf('Bibliothèque') + 1);
     expect(screen.getByRole('link', { name: 'Renouvellements' })).toHaveAttribute(
       'href',
@@ -157,6 +162,7 @@ describe('AppLayout', () => {
       '/',
       '/users',
       '/clubs',
+      '/competitions',
       '/tracks',
       '/moderation',
       '/license-renewals',
