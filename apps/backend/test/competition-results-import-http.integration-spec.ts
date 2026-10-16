@@ -283,6 +283,74 @@ describe("Results import HTTP access (integration, real DB)", () => {
     ]);
   });
 
+  it("403 for a legacy club account without club link, even named after the organiser", async () => {
+    const token = await tokenFor(UserRole.CLUB);
+    const id = jwt.decode<{ sub: string }>(token).sub;
+    await prisma.user.update({
+      where: { id },
+      data: { clubName: `Club Organisateur ${suffix}` },
+    });
+    await importAs(token).expect(403);
+    await importAs(token, "?dryRun=false").expect(403);
+    await deleteAs(token).expect(403);
+  });
+
+  it("a club's dry run answers the same for a licence of an outside account, of nobody, or none (no oracle)", async () => {
+    const token = await tokenFor(UserRole.CLUB, { clubId: organiserClubId });
+    const outsider = await prisma.user.create({
+      data: {
+        email: `outsider${domain}`,
+        password: "x",
+        firstName: "Out",
+        lastName: suffix,
+        role: UserRole.LICENSEE,
+      },
+    });
+    const number = `RIH${Date.now()}`;
+    await prisma.license.create({
+      data: {
+        number,
+        validUntil: new Date("2030-08-31"),
+        category: "Compétiteur",
+        clubName: "Club X",
+        userId: outsider.id,
+      },
+    });
+    try {
+      const withLicence = (licence: string) =>
+        request(app.getHttpServer())
+          .post(
+            `/api/v1/competitions/${competitionId}/results/import?dryRun=true`,
+          )
+          .set("Authorization", `Bearer ${token}`)
+          .send({
+            csv: `epreuve;tour;classement;couple;dossard;licences\n${eventId};Finale;1;Alpha / Bravo;12;${licence}\n`,
+          })
+          .expect(200);
+      const known = await withLicence(number);
+      const unknown = await withLicence(`RIH${Date.now()}X`);
+      const none = await withLicence("");
+      expect(known.body).toEqual(unknown.body);
+      expect(known.body).toEqual(none.body);
+      expect(known.body.linked).toBeNull();
+
+      // A real import does not link the outsider either.
+      await request(app.getHttpServer())
+        .post(`/api/v1/competitions/${competitionId}/results/import`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          csv: `epreuve;tour;classement;couple;dossard;licences\n${eventId};Finale;1;Alpha / Bravo;12;${number}\n`,
+        })
+        .expect(200);
+      expect(
+        await prisma.result.count({ where: { userId: outsider.id } }),
+      ).toBe(0);
+      await deleteAs(token).expect(200);
+    } finally {
+      await prisma.license.deleteMany({ where: { number } });
+    }
+  });
+
   it("STAFF keeps access to any competition, with the full counts", async () => {
     const token = await tokenFor(UserRole.STAFF);
     const res = await importAs(token).expect(200);

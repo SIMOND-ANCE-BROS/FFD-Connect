@@ -61,6 +61,23 @@ export class CompetitionAccessService {
   }
 
   /**
+   * Publishing or removing a competition's results (#690), which name third
+   * parties: STAFF and ADMIN on any competition; a CLUB account only when it
+   * is LINKED to an active club (`clubId`, club not disabled) and that club is
+   * the one the competition resolves to (`organizerClubId`, or the one club
+   * its label names). Stricter than `assertCanManageCompetition`: never the
+   * legacy match of an unlinked account on a club name.
+   */
+  async assertCanManageResults(
+    competitionId: string,
+    actor: CompetitionActor,
+  ): Promise<void> {
+    return this.assertOrganizerOrStaff(competitionId, actor, {
+      requireActiveClubLink: true,
+    });
+  }
+
+  /**
    * Organizer to stamp on a competition created through the API: `undefined`
    * for STAFF/ADMIN (unchanged behaviour), the caller's club for a CLUB
    * account — its name as label and its id as link (#408) — so it can edit
@@ -118,6 +135,7 @@ export class CompetitionAccessService {
   private async assertOrganizerOrStaff(
     competitionId: string,
     actor: CompetitionActor,
+    options: { requireActiveClubLink?: boolean } = {},
   ): Promise<void> {
     if (this.isStaffOrAdmin(actor)) return;
 
@@ -134,8 +152,12 @@ export class CompetitionAccessService {
     if (!competition) {
       throw new NotFoundException("Compétition non trouvée");
     }
+    const unlinked =
+      options.requireActiveClubLink === true &&
+      (!user?.clubId || user.club?.disabledAt !== null);
     if (
       !user ||
+      unlinked ||
       !hasRole(user, UserRole.CLUB) ||
       !(await this.isOrganizer(competition, user))
     ) {

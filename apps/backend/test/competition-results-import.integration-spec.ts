@@ -259,7 +259,7 @@ describe("Competition results import (integration, real DB)", () => {
 
   it("the organising club may manage the results, another club may not (#690)", async () => {
     await expect(
-      accessService.assertCanManageCompetition(competitionId, clubActor()),
+      accessService.assertCanManageResults(competitionId, clubActor()),
     ).resolves.toBeUndefined();
     const other = await prisma.competition.create({
       data: {
@@ -271,7 +271,7 @@ describe("Competition results import (integration, real DB)", () => {
     });
     try {
       await expect(
-        accessService.assertCanManageCompetition(other.id, clubActor()),
+        accessService.assertCanManageResults(other.id, clubActor()),
       ).rejects.toThrow("Réservé aux organisateurs");
     } finally {
       await prisma.competition.delete({ where: { id: other.id } });

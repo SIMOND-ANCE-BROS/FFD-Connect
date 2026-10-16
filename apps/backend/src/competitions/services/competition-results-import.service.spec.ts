@@ -769,12 +769,68 @@ describe("CompetitionResultsImportService (#652)", () => {
       });
       expect(staffReport).toMatchObject({ linked: 1, unlinked: 0 });
 
+      // The licence holder is a competitor of this competition.
+      prisma.registration.findMany.mockResolvedValue([
+        { userId: "user-alpha", partnerUserId: null },
+      ] as never);
       await service.importCsv("comp-1", licenceCsv, CLUB);
       expect(audit.recordOp).toHaveBeenCalledWith(
         expect.objectContaining({
           after: expect.objectContaining({ linked: 1, actorRole: "CLUB" }),
         }),
       );
+    });
+
+    it("a club links a licence only to an account registered in its competition", async () => {
+      prisma.license.findMany.mockResolvedValue([
+        { number: "100001", userId: "outsider" },
+      ] as never);
+      prisma.registration.findMany.mockResolvedValue([
+        { userId: "competitor", partnerUserId: "partner" },
+      ] as never);
+
+      await service.importCsv("comp-1", licenceCsv, CLUB);
+
+      expect(prisma.registration.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            event: { competitionId: "comp-1" },
+            status: { not: "CANCELLED" },
+          },
+        }),
+      );
+      expect(createdRows()[0]).toMatchObject({
+        userId: UNLINKED_RESULT_USER_ID,
+        partnerUserId: null,
+      });
+      expect(notifications.notifyResultsPublished).toHaveBeenCalledWith(
+        "comp-1",
+      );
+    });
+
+    it("a club's file still honours an erased licence held by nobody, and a living outsider still lifts it", async () => {
+      prisma.erasedResultIdentity.findMany.mockResolvedValue([
+        { fingerprint: erasedLicenceFingerprint(KEY, "100001") },
+      ] as never);
+      await service.importCsv("comp-1", licenceCsv, CLUB);
+      expect(createdRows()[0].userId).toBe(DELETED_USER_ID);
+
+      prisma.result.createMany.mockClear();
+      prisma.license.findMany.mockResolvedValue([
+        { number: "100001", userId: "outsider" },
+      ] as never);
+      await service.importCsv("comp-1", licenceCsv, CLUB);
+      // Not erased (the licence lives again), not linked (outsider).
+      expect(createdRows()[0].userId).toBe(UNLINKED_RESULT_USER_ID);
+    });
+
+    it("STAFF links any account, without reading the registrations", async () => {
+      prisma.license.findMany.mockResolvedValue([
+        { number: "100001", userId: "outsider" },
+      ] as never);
+      await service.importCsv("comp-1", licenceCsv, STAFF);
+      expect(createdRows()[0].userId).toBe("outsider");
+      expect(prisma.registration.findMany).not.toHaveBeenCalled();
     });
   });
 

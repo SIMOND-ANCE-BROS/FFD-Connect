@@ -22,6 +22,7 @@ import {
   licenseNumberSelect,
   licenseNumberUserSelect,
   registrationBibUserSelect,
+  registrationMembersSelect,
   resultImportExistingSelect,
   resultTombstoneSelect,
   resultUndoSelect,
@@ -57,6 +58,9 @@ export const UNLINKED_RESULT_USER_ID = "unlinked-import";
 
 /** Upper bound of the events of one competition read to match a name. */
 const MAX_COMPETITION_EVENTS = 500;
+
+/** Upper bound of the registrations of one competition read (club import). */
+const MAX_COMPETITION_REGISTRATIONS = 10_000;
 
 /** Upper bound of the imported rows of one event removed in one call. */
 const MAX_EVENT_RESULTS_DELETED = 5000;
@@ -307,10 +311,18 @@ export class CompetitionResultsImportService {
       row,
       importKey: resultImportKey(key, row),
     }));
+    // An organising club links licences to its own competitors only (#690):
+    // its file can never reach, nor reveal, an account outside its
+    // competition (palmarès, notification, public result).
+    const linkableUsers =
+      resultsActorRole(actor) === "CLUB"
+        ? await this.competitionMembers(competitionId)
+        : null;
     const context = await this.loadContext(
       key,
       rows,
       keyed.map((k) => k.importKey),
+      linkableUsers,
     );
 
     const creates: Prisma.ResultCreateManyInput[] = [];
@@ -610,10 +622,28 @@ export class CompetitionResultsImportService {
     return errors;
   }
 
+  /** Accounts registered (holder or partner) in an event of the competition. */
+  private async competitionMembers(
+    competitionId: string,
+  ): Promise<Set<string>> {
+    const registrations = await this.prisma.registration.findMany({
+      where: { event: { competitionId }, status: { not: "CANCELLED" } },
+      select: registrationMembersSelect,
+      take: MAX_COMPETITION_REGISTRATIONS,
+    });
+    const members = new Set<string>();
+    for (const reg of registrations) {
+      members.add(reg.userId);
+      if (reg.partnerUserId) members.add(reg.partnerUserId);
+    }
+    return members;
+  }
+
   private async loadContext(
     key: string,
     rows: ParsedResultRow[],
     importKeys: string[],
+    linkableUsers: Set<string> | null,
   ): Promise<ImportContext> {
     const eventIds = [...new Set(rows.map((r) => r.eventId))];
     const numbers = [...new Set(rows.flatMap((r) => r.licenceNumbers))];
@@ -640,7 +670,7 @@ export class CompetitionResultsImportService {
               select: erasedResultIdentitySelect,
               take: numbers.length,
             }),
-        this.resolveMembers(rows, numbers),
+        this.resolveMembers(rows, numbers, linkableUsers),
       ]);
 
     const erasedFingerprints = new Set(erased.map((e) => e.fingerprint));
@@ -681,6 +711,7 @@ export class CompetitionResultsImportService {
   private async resolveMembers(
     rows: ParsedResultRow[],
     numbers: string[],
+    linkableUsers: Set<string> | null,
   ): Promise<{ members: Map<number, string[]>; liveNumbers: Set<string> }> {
     const [licences, retired] =
       numbers.length === 0
@@ -698,10 +729,16 @@ export class CompetitionResultsImportService {
             }),
           ]);
     const retiredNumbers = new Set(retired.map((r) => r.number));
+    // Every living holder (the erasure rule needs it), and the ones this
+    // caller may link to (all, or the competition's members for a club).
+    const liveNumbers = new Set<string>();
     const userByLicence = new Map<string, string>();
     for (const licence of licences) {
       if (licence.userId && !retiredNumbers.has(licence.number)) {
-        userByLicence.set(licence.number, licence.userId);
+        liveNumbers.add(licence.number);
+        if (!linkableUsers || linkableUsers.has(licence.userId)) {
+          userByLicence.set(licence.number, licence.userId);
+        }
       }
     }
 
@@ -755,6 +792,6 @@ export class CompetitionResultsImportService {
         members.set(row.line, accounts);
       }
     }
-    return { members, liveNumbers: new Set(userByLicence.keys()) };
+    return { members, liveNumbers };
   }
 }

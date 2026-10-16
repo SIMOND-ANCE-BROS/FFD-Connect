@@ -67,6 +67,7 @@ describe("CompetitionsController", () => {
   const mockAccessService = {
     assertCanManageCheckIn: jest.fn(),
     assertCanManageCompetition: jest.fn(),
+    assertCanManageResults: jest.fn(),
     organizerForNewCompetition: jest.fn(),
   };
 
@@ -295,7 +296,7 @@ describe("CompetitionsController", () => {
         request,
       );
 
-      expect(mockAccessService.assertCanManageCompetition).toHaveBeenCalledWith(
+      expect(mockAccessService.assertCanManageResults).toHaveBeenCalledWith(
         "comp1",
         request.user,
       );
@@ -324,7 +325,7 @@ describe("CompetitionsController", () => {
     });
 
     it("does not import when the caller is not the organiser", async () => {
-      mockAccessService.assertCanManageCompetition.mockRejectedValueOnce(
+      mockAccessService.assertCanManageResults.mockRejectedValueOnce(
         new ForbiddenException(),
       );
       await expect(
@@ -363,7 +364,7 @@ describe("CompetitionsController", () => {
         request,
       );
 
-      expect(mockAccessService.assertCanManageCompetition).toHaveBeenCalledWith(
+      expect(mockAccessService.assertCanManageResults).toHaveBeenCalledWith(
         "comp1",
         request.user,
       );
@@ -376,7 +377,7 @@ describe("CompetitionsController", () => {
     });
 
     it("deletes nothing for another club", async () => {
-      mockAccessService.assertCanManageCompetition.mockRejectedValueOnce(
+      mockAccessService.assertCanManageResults.mockRejectedValueOnce(
         new ForbiddenException(),
       );
       await expect(

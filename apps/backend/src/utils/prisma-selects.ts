@@ -454,6 +454,15 @@ export const licenseNumberUserSelect = {
 } as const;
 
 /** Import de résultats (#652) : inscription retrouvée par épreuve + dossard. */
+/**
+ * Import de résultats par un club (#690) : comptes inscrits (titulaire ou
+ * partenaire) à la compétition, seuls rattachables par numéro de licence.
+ */
+export const registrationMembersSelect = {
+  userId: true,
+  partnerUserId: true,
+} as const;
+
 export const registrationBibUserSelect = {
   eventId: true,
   bibNumber: true,

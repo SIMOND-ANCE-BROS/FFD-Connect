@@ -817,7 +817,8 @@ export class CompetitionsController {
     @Body() body: ImportResultsDto,
     @Request() req: RequestWithUser,
   ): Promise<ImportResultsReportDto> {
-    await this.accessService.assertCanManageCompetition(id, req.user);
+    // Organising club resolved from the path id only, never from the body.
+    await this.accessService.assertCanManageResults(id, req.user);
     return this.resultsImportService.importCsv(id, body.csv, req.user, {
       dryRun: query.dryRun === true,
     });
@@ -849,7 +850,8 @@ export class CompetitionsController {
     @Query() query: DeleteEventResultsQueryDto,
     @Request() req: RequestWithUser,
   ): Promise<DeleteEventResultsReportDto> {
-    await this.accessService.assertCanManageCompetition(id, req.user);
+    // Organising club resolved from the path id only, never from the body.
+    await this.accessService.assertCanManageResults(id, req.user);
     return this.resultsImportService.deleteEventResults(
       id,
       query.eventId,
