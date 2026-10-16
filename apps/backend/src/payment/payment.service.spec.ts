@@ -15,6 +15,8 @@ import { PaymentNotificationService } from "./payment-notification.service";
 import { seatBookingPaymentCheckSelect } from "../utils/prisma-selects";
 import type { CreateCheckoutDto } from "./dto/create-checkout.dto";
 import type { WebhookPayloadDto } from "./dto/webhook-payload.dto";
+import { HelloAssoPaymentConnector } from "./connectors/helloasso-payment.connector";
+import { PaymentConnectorRegistry } from "./connectors/payment-connector.registry";
 import { HelloAssoService } from "./hello-asso.service";
 import {
   CHECKOUT_REDIRECT_REUSE_MS,
@@ -124,6 +126,10 @@ describe("PaymentService", () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentService,
+        // Real connector wiring (#388): PaymentService reaches the HelloAsso
+        // mocks below through the connector abstraction.
+        PaymentConnectorRegistry,
+        HelloAssoPaymentConnector,
         { provide: PrismaService, useValue: prisma },
         { provide: HelloAssoService, useValue: helloAssoService },
         { provide: ClubsHelloAssoService, useValue: clubsService },

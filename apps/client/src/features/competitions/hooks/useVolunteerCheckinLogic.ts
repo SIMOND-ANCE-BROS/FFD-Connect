@@ -1,5 +1,12 @@
-import { useCallback, useState } from "react";
+import axios from "axios";
+import { useCallback, useEffect, useState } from "react";
 import { Alert } from "react-native";
+import { offlineCheckinVerdict } from "../../license/components/OfflineCheckinOverlay";
+import {
+  checkInOffline,
+  purgeExpiredCheckins,
+  refreshEntryQrKeys,
+} from "../../license/services/offlineCheckin";
 import { createLogger } from "../../../utils/logger";
 import {
   CheckinResponse,
@@ -16,6 +23,13 @@ export const useVolunteerCheckinLogic = (
   const [isScanning, setIsScanning] = useState(true);
   const [isValidating, setIsValidating] = useState(false);
   const [lastCheckin, setLastCheckin] = useState<CheckinResponse | null>(null);
+
+  // Public keys for offline verification (#24), cached for the venue.
+  useEffect(() => {
+    refreshEntryQrKeys().catch(() => {});
+    // Queued scans older than 12 h (and volunteer tokens) never linger.
+    purgeExpiredCheckins().catch(() => {});
+  }, []);
 
   const handleBarCodeScanned = useCallback(
     async (qrData: string) => {
@@ -40,6 +54,24 @@ export const useVolunteerCheckinLogic = (
         );
       } catch (error) {
         logger.error("Volunteer check-in error", error);
+        // No answer at all (no network at the venue): verify the rotating QR
+        // offline and queue the check-in for the next reconnect (#24).
+        if (axios.isAxiosError(error) && !error.response) {
+          const offline = await checkInOffline({
+            qrData,
+            endpoint: "POST /competitions/checkin/volunteer",
+            payload: { competitionId, token },
+            competitionId,
+          });
+          const verdict = offlineCheckinVerdict(offline, "");
+          Alert.alert(
+            verdict.title,
+            offline.holderName
+              ? `${offline.holderName}\n\n${verdict.message}`
+              : verdict.message,
+          );
+          return;
+        }
         const errorWithResponse = error as {
           response?: { data?: { message?: string } };
         };

@@ -72,6 +72,15 @@ describe('RequireAdmin', () => {
     expect(screen.getByText('login page')).toBeInTheDocument();
   });
 
+  it('renders neither the page nor the login page while the session is restored (#669)', () => {
+    useSession.getState().clear();
+    useSession.setState({ restoring: true });
+    renderAt();
+    expect(screen.queryByText('secret')).not.toBeInTheDocument();
+    expect(screen.queryByText('login page')).not.toBeInTheDocument();
+    useSession.setState({ restoring: false });
+  });
+
   it('renders children for an ADMIN', () => {
     useSession.getState().setSession({
       accessToken: 'a',

@@ -1,7 +1,8 @@
 import { Checkbox } from '@mantine/core';
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { type UserEvent } from '@testing-library/user-event';
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router';
 import { vi } from 'vitest';
 import { columnPrefsKey } from '../lib/columnPrefs';
@@ -86,6 +87,14 @@ function Harness({
 
 let user: UserEvent;
 
+/** DataTransfer of a dragged header (jsdom has none). */
+const columnDrag = () => ({
+  setData: vi.fn(),
+  effectAllowed: '',
+  dropEffect: '',
+  types: ['application/x-ffd-column'],
+});
+
 describe('DataTable', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -107,7 +116,7 @@ describe('DataTable', () => {
     expect(onSort).toHaveBeenLastCalledWith(null);
     expect(header).toHaveAttribute('aria-sort', 'none');
     // A column without sort field is plain text, with no aria-sort.
-    expect(screen.getByRole('columnheader', { name: /Email/ })).not.toHaveAttribute('aria-sort');
+    expect(screen.getByRole('columnheader', { name: 'Email' })).not.toHaveAttribute('aria-sort');
   });
 
   it('sorts with the keyboard', async () => {
@@ -151,14 +160,14 @@ describe('DataTable', () => {
     await user.click(screen.getByRole('button', { name: 'Colonnes' }));
     await user.click(screen.getByRole('checkbox', { name: 'Email' }));
     expect(JSON.parse(localStorage.getItem(columnPrefsKey('test')) ?? '{}')).toEqual({
-      email: false,
+      visible: { email: false },
     });
     first.unmount();
 
     renderWithProviders(<Harness />);
     expect(headers()).toEqual(['Nom']);
     await user.click(screen.getByRole('button', { name: 'Colonnes' }));
-    await user.click(screen.getByRole('button', { name: 'Colonnes par défaut' }));
+    await user.click(screen.getByRole('button', { name: 'Réinitialiser les colonnes' }));
     expect(headers()).toEqual(['Nom', 'Email']);
     expect(localStorage.getItem(columnPrefsKey('test'))).toBeNull();
   });
@@ -286,6 +295,224 @@ describe('DataTable', () => {
       await user.unhover(cell);
       await user.hover(cell);
       expect(cell).not.toHaveAttribute('title');
+    });
+  });
+
+  describe('resizing columns (#670)', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    const handle = (column: string) =>
+      screen.getByRole('separator', { name: `Redimensionner la colonne ${column}` });
+    const colWidths = () =>
+      Array.from(screen.getByRole('table').querySelectorAll('col')).map((c) => c.style.width);
+    const stored = () => JSON.parse(localStorage.getItem(columnPrefsKey('test')) ?? '{}');
+
+    it('resizes with the keyboard, remembers the width and lets the table scroll', async () => {
+      mockContainerWidth(1000);
+      renderWithProviders(<Harness />);
+      expect(screen.getByRole('table').parentElement).not.toHaveClass('app-table-scroll');
+      handle('Email').focus();
+      // Unmeasured header in jsdom: the column starts from its minimum (110 px).
+      await user.keyboard('{ArrowRight}');
+      expect(handle('Email')).toHaveAttribute('aria-valuenow', '120');
+      await user.keyboard('{Shift>}{ArrowRight}{/Shift}');
+      expect(stored()).toEqual({ widths: { email: 170 } });
+      expect(colWidths()).toEqual(['830px', '170px']);
+      expect(screen.getByRole('table').parentElement).toHaveClass('app-table-scroll');
+    });
+
+    it('resizes by dragging the edge of a header, without sorting', async () => {
+      const onSort = vi.fn();
+      renderWithProviders(<Harness onSort={onSort} />);
+      const edge = handle('Nom');
+      fireEvent.pointerDown(edge, { button: 0, clientX: 100, pointerId: 1 });
+      fireEvent.pointerMove(edge, { clientX: 190, pointerId: 1 });
+      // Not remembered until released.
+      expect(localStorage.getItem(columnPrefsKey('test'))).toBeNull();
+      fireEvent.pointerUp(edge, { clientX: 230, pointerId: 1 });
+      expect(stored()).toEqual({ widths: { name: 240 } });
+      await user.click(edge);
+      expect(onSort).not.toHaveBeenCalled();
+    });
+
+    it('keeps fitting the screen after a click on the edge, or a move within 2 px', () => {
+      mockContainerWidth(1000);
+      renderWithProviders(<Harness />);
+      const edge = handle('Nom');
+      fireEvent.pointerDown(edge, { button: 0, clientX: 100, pointerId: 1 });
+      fireEvent.pointerUp(edge, { clientX: 100, pointerId: 1 });
+      fireEvent.pointerDown(edge, { button: 0, clientX: 100, pointerId: 1 });
+      fireEvent.pointerMove(edge, { clientX: 102, pointerId: 1 });
+      fireEvent.pointerUp(edge, { clientX: 102, pointerId: 1 });
+      expect(localStorage.getItem(columnPrefsKey('test'))).toBeNull();
+      expect(screen.getByRole('table').parentElement).not.toHaveClass('app-table-scroll');
+      expect(colWidths().every((w) => w.endsWith('%'))).toBe(true);
+    });
+
+    it.each(['pointerCancel', 'lostPointerCapture'] as const)(
+      'undoes a drag ended by %s, saving nothing, and frees the header for a move',
+      (end) => {
+        renderWithProviders(<Harness />);
+        const edge = handle('Nom');
+        fireEvent.pointerDown(edge, { button: 0, clientX: 100, pointerId: 1 });
+        fireEvent.pointerMove(edge, { clientX: 300, pointerId: 1 });
+        expect(colWidths()).toContain('310px');
+        fireEvent[end](edge, { clientX: 0, pointerId: 1 });
+        expect(colWidths()).not.toContain('310px');
+        expect(colWidths()).not.toContain('60px');
+        expect(localStorage.getItem(columnPrefsKey('test'))).toBeNull();
+        // The resize is over: dragging a header moves it again.
+        const [name, email] = screen.getAllByRole('columnheader');
+        const dataTransfer = columnDrag();
+        fireEvent.dragStart(email, { dataTransfer });
+        fireEvent.dragOver(name, { dataTransfer });
+        fireEvent.drop(name, { dataTransfer });
+        expect(headers()).toEqual(['Email', 'Nom']);
+      },
+    );
+
+    it('always tells assistive tech the width of the column', () => {
+      localStorage.setItem(columnPrefsKey('test'), JSON.stringify({ widths: { email: 300 } }));
+      renderWithProviders(<Harness />);
+      expect(handle('Email')).toHaveAttribute('aria-valuenow', '300');
+      expect(handle('Nom')).toHaveAttribute('aria-valuenow', '110');
+    });
+
+    it('names a header by its column only, not by the controls inside', async () => {
+      renderWithProviders(<Harness />);
+      await openColumnFilter(user, 'Email');
+      await user.click(screen.getByLabelText('Comptes actifs'));
+      expect(
+        screen.getByRole('columnheader', { name: 'Email (filtre actif)' }),
+      ).toBeInTheDocument();
+    });
+
+    it('fits a column to its content on a double-click or Enter', async () => {
+      renderWithProviders(<Harness />);
+      const cell = screen.getByText('m@x.fr');
+      Object.defineProperty(cell, 'scrollWidth', { configurable: true, value: 260 });
+      await user.dblClick(handle('Email'));
+      expect(stored()).toEqual({ widths: { email: 260 } });
+      Object.defineProperty(cell, 'scrollWidth', { configurable: true, value: 180 });
+      handle('Email').focus();
+      await user.keyboard('{Enter}');
+      expect(stored()).toEqual({ widths: { email: 180 } });
+    });
+
+    it('restores the widths with the columns, back to fitting the screen', async () => {
+      localStorage.setItem(columnPrefsKey('test'), JSON.stringify({ widths: { email: 400 } }));
+      renderWithProviders(<Harness />);
+      expect(colWidths()).toContain('400px');
+      await user.click(screen.getByRole('button', { name: 'Colonnes' }));
+      await user.click(screen.getByRole('button', { name: 'Réinitialiser les colonnes' }));
+      expect(colWidths()).not.toContain('400px');
+      expect(localStorage.getItem(columnPrefsKey('test'))).toBeNull();
+    });
+  });
+
+  describe('reordering columns (#671)', () => {
+    it('moves a column from the picker with the keyboard, focus following it', async () => {
+      renderWithProviders(<Harness />);
+      await user.click(screen.getByRole('button', { name: 'Colonnes' }));
+      expect(screen.getByRole('button', { name: 'Monter la colonne Nom' })).toBeDisabled();
+      const up = screen.getByRole('button', { name: 'Monter la colonne Email' });
+      up.focus();
+      await user.keyboard('{Enter}');
+      expect(headers()).toEqual(['Email', 'Nom']);
+      // At the top: the focus moves to the button still usable.
+      expect(screen.getByRole('button', { name: 'Descendre la colonne Email' })).toHaveFocus();
+      expect(JSON.parse(localStorage.getItem(columnPrefsKey('test')) ?? '{}')).toEqual({
+        order: ['email', 'name', 'login'],
+      });
+    });
+
+    it('moves a column by dragging its header onto another one', () => {
+      renderWithProviders(<Harness />);
+      const [name, email] = screen.getAllByRole('columnheader');
+      const dataTransfer = columnDrag();
+      fireEvent.dragStart(email, { dataTransfer });
+      fireEvent.dragOver(name, { dataTransfer });
+      expect(name).toHaveClass('app-th-drop-before');
+      fireEvent.drop(name, { dataTransfer });
+      expect(headers()).toEqual(['Email', 'Nom']);
+      expect(screen.getAllByRole('columnheader')[0]).not.toHaveClass('app-th-drop-before');
+    });
+
+    it('does not move a column when the drag starts on the resize edge', () => {
+      renderWithProviders(<Harness />);
+      const [name, email] = screen.getAllByRole('columnheader');
+      const dataTransfer = columnDrag();
+      fireEvent.pointerDown(
+        screen.getByRole('separator', { name: 'Redimensionner la colonne Email' }),
+        { button: 0, clientX: 100, pointerId: 1 },
+      );
+      fireEvent.dragStart(email, { dataTransfer });
+      fireEvent.dragOver(name, { dataTransfer });
+      fireEvent.drop(name, { dataTransfer });
+      expect(dataTransfer.setData).not.toHaveBeenCalled();
+      expect(headers()).toEqual(['Nom', 'Email']);
+    });
+
+    it('ignores what is not one of its headers: a dragged text, a portalled filter menu', async () => {
+      function PortalFilter() {
+        return (
+          <DataTable
+            tableId="portal"
+            columns={[
+              { key: 'name', label: 'Nom', required: true, cell: (r: Row) => r.name },
+              {
+                key: 'email',
+                label: 'Email',
+                cell: (r: Row) => r.email,
+                filter: {
+                  active: false,
+                  content: createPortal(<input aria-label="Texte du filtre" />, document.body),
+                },
+              },
+            ]}
+            rows={ROWS}
+            rowKey={(r) => r.id}
+            sort={null}
+            onSortChange={() => {}}
+            loading={false}
+            empty={<p>Rien</p>}
+            renderCard={(r) => <p>Carte {r.name}</p>}
+          />
+        );
+      }
+      renderWithProviders(<PortalFilter />);
+      const [name, email] = screen.getAllByRole('columnheader');
+      fireEvent.dragStart(name, { dataTransfer: columnDrag() });
+      // A text dragged over a header is not a column: no drop target, the browser handles it.
+      const text = { ...columnDrag(), types: ['text/plain'] };
+      expect(fireEvent.dragOver(email, { dataTransfer: text })).toBe(true);
+      expect(fireEvent.drop(email, { dataTransfer: text })).toBe(true);
+      expect(email).not.toHaveClass('app-th-drop-before');
+
+      // The filter menu is out of the header in the DOM, inside it in React: not the header's.
+      await openColumnFilter(user, 'Email');
+      const input = screen.getByRole('textbox', { name: 'Texte du filtre' });
+      expect(fireEvent.dragOver(input, { dataTransfer: columnDrag() })).toBe(true);
+      expect(fireEvent.drop(input, { dataTransfer: columnDrag() })).toBe(true);
+      expect(screen.getAllByRole('columnheader').map((h) => h.getAttribute('aria-label'))).toEqual([
+        'Nom',
+        'Email',
+      ]);
+    });
+
+    it('keeps the order after a reload and restores the default on request', async () => {
+      localStorage.setItem(
+        columnPrefsKey('test'),
+        JSON.stringify({ order: ['login', 'email', 'name'], visible: { login: true } }),
+      );
+      renderWithProviders(<Harness />);
+      expect(headers()).toEqual(['Connexion', 'Email', 'Nom']);
+      // The cells follow their header.
+      const firstRow = screen.getAllByRole('row')[1];
+      expect(within(firstRow).getAllByRole('cell')[0]).toHaveTextContent('01/10/2026');
+      await user.click(screen.getByRole('button', { name: 'Colonnes' }));
+      await user.click(screen.getByRole('button', { name: 'Réinitialiser les colonnes' }));
+      expect(headers()).toEqual(['Nom', 'Email']);
     });
   });
 

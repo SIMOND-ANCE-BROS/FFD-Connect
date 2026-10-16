@@ -19,12 +19,31 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { type NavigateFunction, useNavigate } from 'react-router';
-import { Fragment, useId, useState, type MouseEvent, type ReactNode } from 'react';
 import {
+  type DragEvent,
+  Fragment,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
+import {
+  clampColumnWidth,
   type ColumnPrefs,
   type ColumnVisibility,
+  DEFAULT_COLUMN_PREFS,
+  dropKey,
   isColumnVisible,
+  isDefaultColumnPrefs,
   loadColumnPrefs,
+  MAX_COLUMN_WIDTH,
+  MIN_COLUMN_WIDTH,
+  moveKey,
+  orderColumns,
   saveColumnPrefs,
 } from '../lib/columnPrefs';
 import { nextSort, type SortOrder, type SortState } from '../lib/listSort';
@@ -253,21 +272,177 @@ function HeaderControls<Row>({
   );
 }
 
+/** Keyboard step of a column resize, in px (Shift: {@link RESIZE_BIG_STEP}). */
+const RESIZE_STEP = 10;
+const RESIZE_BIG_STEP = 50;
+
+/**
+ * Width a column needs to show its cells uncut (#670): what overflows each
+ * cell, its own or that of a cut label inside (a header's).
+ */
+export function naturalWidth(cell: HTMLElement): number {
+  let width = cell.scrollWidth;
+  cell.querySelectorAll<HTMLElement>('.app-truncate').forEach((inner) => {
+    width += Math.max(0, inner.scrollWidth - inner.clientWidth);
+  });
+  return width;
+}
+
+interface ResizeProps {
+  /** Current width in px, measured from the header when not set by hand. */
+  width: (header: HTMLElement | null) => number;
+  /** Width announced to assistive tech (the one set by hand, else the fitted one). */
+  valueNow: number;
+  /** `persist`: the drag or the key press is over, the width is remembered. */
+  onResize: (width: number, persist: boolean) => void;
+  onAutofit: () => void;
+  /** A drag starts (true) or ends (false); `cancelled`: its width is undone. */
+  onDragging: (dragging: boolean, cancelled?: boolean) => void;
+}
+
+/** Below this move, in px, pressing the edge is a click: nothing is resized. */
+const DRAG_THRESHOLD = 2;
+
+/**
+ * Edge of a header that resizes its column (#670): drag it, or focus it and
+ * use the arrows (Shift: bigger steps); a double-click or Enter fits the
+ * column to its content. The window-splitter pattern of WAI-ARIA.
+ */
+function ResizeHandle({
+  label,
+  width,
+  valueNow,
+  onResize,
+  onAutofit,
+  onDragging,
+}: ResizeProps & { label: string }) {
+  const start = useRef<{ x: number; width: number; moved: boolean } | null>(null);
+  const header = (element: HTMLElement) => element.closest('th');
+
+  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    start.current = { x: event.clientX, width: width(header(event.currentTarget)), moved: false };
+    onDragging(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const drag = start.current;
+    if (!drag) return;
+    const delta = event.clientX - drag.x;
+    // A press without a real move stays a click: the table keeps fitting the screen (#556).
+    if (!drag.moved && Math.abs(delta) <= DRAG_THRESHOLD) return;
+    drag.moved = true;
+    onResize(clampColumnWidth(drag.width + delta), false);
+  };
+  /** End of a drag: `commit` remembers the width reached, else it is undone. */
+  const finish = (event: PointerEvent<HTMLDivElement>, commit: boolean) => {
+    const drag = start.current;
+    if (!drag) return;
+    start.current = null;
+    if (commit && drag.moved && Math.abs(event.clientX - drag.x) > DRAG_THRESHOLD) {
+      onResize(clampColumnWidth(drag.width + event.clientX - drag.x), true);
+      onDragging(false);
+    } else {
+      // Cancelled (its coordinates mean nothing), or no real move: nothing is kept.
+      onDragging(false, drag.moved);
+    }
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      onAutofit();
+      return;
+    }
+    const direction = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (direction === 0) return;
+    event.preventDefault();
+    const step = event.shiftKey ? RESIZE_BIG_STEP : RESIZE_STEP;
+    onResize(clampColumnWidth(width(header(event.currentTarget)) + direction * step), true);
+  };
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Redimensionner la colonne ${label}`}
+      aria-valuemin={MIN_COLUMN_WIDTH}
+      aria-valuemax={MAX_COLUMN_WIDTH}
+      aria-valuenow={valueNow}
+      aria-valuetext={`${valueNow} px`}
+      title="Glisser pour redimensionner, double-clic pour ajuster au contenu"
+      tabIndex={0}
+      className="app-col-resize"
+      draggable={false}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={(event) => finish(event, true)}
+      onPointerCancel={(event) => finish(event, false)}
+      // Capture lost without a pointerup (window blur, element removed…): undone.
+      onLostPointerCapture={(event) => finish(event, false)}
+      // A click on the edge neither sorts nor opens anything.
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        onAutofit();
+      }}
+      onKeyDown={onKeyDown}
+    />
+  );
+}
+
+/** Where a dragged header would land (#671). */
+interface DropTarget {
+  key: string;
+  side: 'before' | 'after';
+}
+
+interface HeaderDragProps {
+  dropSide: DropTarget['side'] | null;
+  onStart: (event: DragEvent<HTMLElement>) => void;
+  onOver: (event: DragEvent<HTMLElement>) => void;
+  onDrop: (event: DragEvent<HTMLElement>) => void;
+  onEnd: () => void;
+}
+
+/** Type of the data a dragged header carries. */
+const COLUMN_DRAG_TYPE = 'application/x-ffd-column';
+
 function HeaderCell<Row>({
   column,
   sort,
   onSortChange,
+  resize,
+  drag,
 }: {
   column: DataTableColumn<Row>;
   sort: SortState | null;
   onSortChange: (sort: SortState | null) => void;
+  resize: ResizeProps;
+  drag: HeaderDragProps;
 }) {
   const { sortField } = column;
   const order = sortField && sort?.by === sortField ? sort.order : null;
   const ariaSort = order === 'asc' ? 'ascending' : order === 'desc' ? 'descending' : 'none';
   return (
-    <Table.Th aria-sort={sortField ? ariaSort : undefined}>
+    <Table.Th
+      // The column's own name: not the names of the controls inside, read on every cell.
+      aria-label={column.filter?.active ? `${column.label} (filtre actif)` : column.label}
+      aria-sort={sortField ? ariaSort : undefined}
+      data-col={column.key}
+      className={drag.dropSide ? `app-th app-th-drop-${drag.dropSide}` : 'app-th'}
+      draggable
+      onDragStart={drag.onStart}
+      onDragOver={drag.onOver}
+      onDrop={drag.onDrop}
+      onDragEnd={drag.onEnd}
+    >
       <HeaderControls column={column} sort={sort} onSortChange={onSortChange} />
+      <ResizeHandle label={column.label} {...resize} />
     </Table.Th>
   );
 }
@@ -364,42 +539,114 @@ function HiddenColumnsMenu<Row>({
   );
 }
 
+function ArrowIcon({ up }: { up: boolean }) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+      <path d={up ? 'M6 2 10.5 7.5h-9z' : 'M6 10 1.5 4.5h9z'} fill="currentColor" />
+    </svg>
+  );
+}
+
+/**
+ * « Colonnes »: which columns are shown (#444) and in which order (#671),
+ * with « Monter » / « Descendre » buttons usable from the keyboard.
+ * « Réinitialiser les colonnes » restores the default choice, order and
+ * widths (#670).
+ */
 function ColumnPicker<Row>({
   columns,
   isVisible,
   onToggle,
+  onMove,
   onReset,
+  canReset,
 }: {
+  /** Every column, in the order displayed. */
   columns: DataTableColumn<Row>[];
   isVisible: (column: DataTableColumn<Row>) => boolean;
   onToggle: (column: DataTableColumn<Row>, visible: boolean) => void;
+  onMove: (column: DataTableColumn<Row>, delta: -1 | 1) => void;
   onReset: () => void;
+  canReset: boolean;
 }) {
-  const optional = columns.filter((c) => !c.required);
-  if (optional.length === 0) return null;
+  const listRef = useRef<HTMLDivElement>(null);
+  const [moved, setMoved] = useState<{ key: string; up: boolean } | null>(null);
+  // A moved row is rendered elsewhere: the focus follows its button (the
+  // other one once it reached an end).
+  useEffect(() => {
+    if (!moved) return;
+    const buttons = Array.from(
+      listRef.current?.querySelectorAll<HTMLButtonElement>('[data-move-key]') ?? [],
+    ).filter((b) => b.dataset.moveKey === moved.key && !b.disabled);
+    const same = buttons.find((b) => b.dataset.moveUp === String(moved.up));
+    (same ?? buttons[0])?.focus();
+    setMoved(null);
+  }, [moved]);
+  if (columns.length < 2 && !canReset) return null;
+  const move = (c: DataTableColumn<Row>, up: boolean) => {
+    onMove(c, up ? -1 : 1);
+    setMoved({ key: c.key, up });
+  };
   return (
     <Popover position="bottom-end" shadow="md" withArrow trapFocus returnFocus>
       <Popover.Target>
         <Button variant="default">Colonnes</Button>
       </Popover.Target>
       <Popover.Dropdown>
-        <Stack gap="xs" miw={220}>
+        <Stack gap="xs" miw={240} maw={360} ref={listRef}>
           <Text size="sm" fw={600}>
             Colonnes affichées
           </Text>
-          {optional.map((c) => (
-            <Checkbox
-              key={c.key}
-              label={c.label}
-              checked={isVisible(c)}
-              // A filtered column stays visible: its filter would be out of reach.
-              disabled={c.filter?.active}
-              description={c.filter?.active ? 'Filtre actif' : undefined}
-              onChange={(e) => onToggle(c, e.currentTarget.checked)}
-            />
+          {columns.map((c, index) => (
+            <Group key={c.key} gap="xs" wrap="nowrap" justify="space-between">
+              {c.required ? (
+                <Text size="sm" title="Toujours affichée">
+                  {c.label}
+                </Text>
+              ) : (
+                <Checkbox
+                  label={c.label}
+                  checked={isVisible(c)}
+                  // A filtered column stays visible: its filter would be out of reach.
+                  disabled={c.filter?.active}
+                  description={c.filter?.active ? 'Filtre actif' : undefined}
+                  onChange={(e) => onToggle(c, e.currentTarget.checked)}
+                />
+              )}
+              <Group gap={2} wrap="nowrap">
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  aria-label={`Monter la colonne ${c.label}`}
+                  data-move-key={c.key}
+                  data-move-up="true"
+                  disabled={index === 0}
+                  onClick={() => move(c, true)}
+                >
+                  <ArrowIcon up />
+                </ActionIcon>
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="sm"
+                  aria-label={`Descendre la colonne ${c.label}`}
+                  data-move-key={c.key}
+                  data-move-up="false"
+                  disabled={index === columns.length - 1}
+                  onClick={() => move(c, false)}
+                >
+                  <ArrowIcon up={false} />
+                </ActionIcon>
+              </Group>
+            </Group>
           ))}
-          <Button variant="subtle" size="xs" onClick={onReset}>
-            Colonnes par défaut
+          <Text size="xs" c="dimmed">
+            Glissez un en-tête pour déplacer la colonne, ou son bord droit pour changer sa largeur
+            (double-clic : ajuster au contenu).
+          </Text>
+          <Button variant="subtle" size="xs" onClick={onReset} disabled={!canReset}>
+            Réinitialiser les colonnes
           </Button>
         </Stack>
       </Popover.Dropdown>
@@ -481,12 +728,15 @@ function PhoneControls<Row>({
  * Shared back-office list (#443, #444, #556). Clicking a sortable header sorts
  * the whole (server-side) list ascending, descending, then back to the
  * default; the funnel of a header opens its filter. « Colonnes » shows or
- * hides the optional columns, remembered per table in this browser. The table
- * always fits the width of the screen: columns share it by weight, long values
- * are cut with « … » (full value on hover), and when their minimum widths do
- * not fit, the least important columns move into a detail row unfolded per
- * line. On a phone the rows become cards, with the sort and every filter in a
- * folded panel.
+ * hides the optional columns and reorders them; a header is also dragged to
+ * move its column (#671) and its right edge to resize it (#670). These
+ * choices are remembered per table in this browser. By default the table fits
+ * the width of the screen: columns share it by weight, long values are cut
+ * with « … » (full value on hover), and when their minimum widths do not fit,
+ * the least important columns move into a detail row unfolded per line. Once a
+ * column is resized by hand, the table keeps those widths and scrolls
+ * horizontally if it has to. On a phone the rows become cards, with the sort
+ * and every filter in a folded panel.
  */
 export function DataTable<Row>({
   tableId,
@@ -511,30 +761,128 @@ export function DataTable<Row>({
   const [prefs, setPrefs] = useState<ColumnPrefs>(() => loadColumnPrefs(tableId));
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [containerRef, containerWidth] = useContainerWidth<HTMLDivElement>();
+  const tableRef = useRef<HTMLTableElement>(null);
+  const resizing = useRef(false);
+  const [dragged, setDragged] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const activeFilters = columns.filter((c) => c.filter?.active).length;
 
   const isVisible = (c: DataTableColumn<Row>) =>
     isColumnVisible(c, prefs) || Boolean(c.filter?.active);
-  const updatePrefs = (next: ColumnPrefs) => {
-    setPrefs(next);
-    saveColumnPrefs(tableId, next);
-  };
-  const toggleColumn = (c: DataTableColumn<Row>, visible: boolean) => {
-    const next = { ...prefs };
-    // Only a choice that differs from the default is kept.
-    if (visible === !c.hiddenByDefault) delete next[c.key];
-    else next[c.key] = visible;
-    updatePrefs(next);
-  };
-  const visible = columns.filter(isVisible);
+  /** `persist` false: a drag in progress, remembered once the header edge is released. */
+  const changePrefs = (update: (current: ColumnPrefs) => ColumnPrefs, persist = true) =>
+    setPrefs((current) => {
+      const next = update(current);
+      if (persist) saveColumnPrefs(tableId, next);
+      return next;
+    });
+  const toggleColumn = (c: DataTableColumn<Row>, shown: boolean) =>
+    changePrefs((current) => {
+      const choice = { ...current.visible };
+      // Only a choice that differs from the default is kept.
+      if (shown === !c.hiddenByDefault) delete choice[c.key];
+      else choice[c.key] = shown;
+      return { ...current, visible: choice };
+    });
 
-  // The columns the admin chose (#444), fitted to the width of the screen (#556).
+  // Every column in the order the admin chose (#671): headers, picker, detail row, phone panel.
+  const ordered = orderColumns(columns, prefs.order);
+  const orderKeys = ordered.map((c) => c.key);
+  const moveColumn = (c: DataTableColumn<Row>, delta: -1 | 1) =>
+    changePrefs((current) => ({ ...current, order: moveKey(orderKeys, c.key, delta) }));
+  const setWidth = (key: string, width: number, persist: boolean) =>
+    changePrefs(
+      (current) => ({ ...current, widths: { ...current.widths, [key]: clampColumnWidth(width) } }),
+      persist,
+    );
+  const autofit = (key: string) => {
+    const cells = Array.from(
+      tableRef.current?.querySelectorAll<HTMLElement>('[data-col]') ?? [],
+    ).filter((cell) => cell.dataset.col === key);
+    setWidth(key, Math.max(0, ...cells.map(naturalWidth)), true);
+  };
+  /** Width of a column now: the one set by hand, else its header's, else its minimum. */
+  const widthOf = (c: DataTableColumn<Row>, header: HTMLElement | null) =>
+    prefs.widths[c.key] ??
+    (Math.round(header?.getBoundingClientRect().width ?? 0) || (c.minWidth ?? DEFAULT_MIN_WIDTH));
+
+  /** Width before a drag of the edge, restored when the drag is cancelled. */
+  const widthBeforeDrag = useRef<number | undefined>(undefined);
+  const restoreWidth = (key: string, previous: number | undefined) =>
+    // Nothing was saved during the drag: nothing to save now either.
+    changePrefs((current) => {
+      const widths = { ...current.widths };
+      if (previous === undefined) delete widths[key];
+      else widths[key] = previous;
+      return { ...current, widths };
+    }, false);
+
+  const clearDrag = () => {
+    setDragged(null);
+    setDropTarget(null);
+  };
+  /**
+   * A drag event of this header itself: React also bubbles those of the filter
+   * popover (portalled out of the header in the DOM, not in the React tree).
+   */
+  const ownEvent = (event: DragEvent<HTMLElement>) =>
+    event.target instanceof Node && event.currentTarget.contains(event.target);
+  /** A header being dragged, not a text dropped into a filter input. */
+  const carriesColumn = (event: DragEvent<HTMLElement>) =>
+    Array.from(event.dataTransfer?.types ?? []).includes(COLUMN_DRAG_TYPE);
+  const dragProps = (c: DataTableColumn<Row>): HeaderDragProps => ({
+    dropSide: dropTarget?.key === c.key ? dropTarget.side : null,
+    onStart: (event) => {
+      if (!ownEvent(event)) return;
+      // Dragging the edge resizes the column: it does not move it.
+      if (resizing.current) {
+        event.preventDefault();
+        return;
+      }
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData(COLUMN_DRAG_TYPE, c.key);
+      setDragged(c.key);
+    },
+    onOver: (event) => {
+      if (!ownEvent(event) || !carriesColumn(event)) return;
+      if (!dragged || dragged === c.key) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      const box = event.currentTarget.getBoundingClientRect();
+      const side = event.clientX > box.left + box.width / 2 ? 'after' : 'before';
+      if (dropTarget?.key !== c.key || dropTarget.side !== side) {
+        setDropTarget({ key: c.key, side });
+      }
+    },
+    onDrop: (event) => {
+      if (!ownEvent(event) || !carriesColumn(event) || !dragged) return;
+      event.preventDefault();
+      if (dragged !== c.key) {
+        const side = dropTarget?.key === c.key ? dropTarget.side : 'before';
+        const source = dragged;
+        changePrefs((current) => ({ ...current, order: dropKey(orderKeys, source, c.key, side) }));
+      }
+      clearDrag();
+    },
+    onEnd: clearDrag,
+  });
+
+  const visible = ordered.filter(isVisible);
+  const manualWidths: Record<string, number> = {};
+  for (const c of visible) {
+    const width = prefs.widths[c.key];
+    if (width !== undefined) manualWidths[c.key] = width;
+  }
+
+  // The columns the admin chose (#444), fitted to the width of the screen (#556)
+  // unless some were resized by hand (#670).
   const fit = fitColumns(
-    visible.map((c, index) => ({
+    visible.map((c) => ({
       key: c.key,
       minWidth: c.minWidth ?? DEFAULT_MIN_WIDTH,
       weight: c.weight ?? 1,
-      priority: c.priority ?? index,
+      // Importance follows the declaration of the columns, not the order shown.
+      priority: c.priority ?? columns.indexOf(c),
       // Its header carries the active filter or sort: it stays in view.
       pinned:
         Boolean(c.required) ||
@@ -543,8 +891,21 @@ export function DataTable<Row>({
     })),
     containerWidth,
     selection ? SELECT_WIDTH : 0,
+    manualWidths,
   );
   const shown = visible.filter((c) => fit.shown.includes(c.key));
+  /** Width in px of a shown column, as laid out (approximate while fitting the screen). */
+  const shownWidth = (c: DataTableColumn<Row>): number => {
+    const manual = prefs.widths[c.key];
+    if (manual !== undefined) return manual;
+    const laid = fit.widths[c.key] ?? '';
+    const value = Number.parseFloat(laid);
+    if (laid.endsWith('px') && Number.isFinite(value)) return Math.round(value);
+    if (laid.endsWith('%') && Number.isFinite(value) && containerWidth > 0) {
+      return Math.round((value / 100) * containerWidth);
+    }
+    return c.minWidth ?? DEFAULT_MIN_WIDTH;
+  };
   const hidden = visible.filter((c) => fit.hidden.includes(c.key));
   const withDetail = hidden.length > 0;
   const allExpanded = rows.length > 0 && rows.every((row) => expanded.has(rowKey(row)));
@@ -609,8 +970,20 @@ export function DataTable<Row>({
             )}
           </Group>
         )}
-        <Box className="app-table-surface">
-          <Table striped highlightOnHover className="app-table-fit">
+        <Box
+          className={
+            fit.tableWidth === null ? 'app-table-surface' : 'app-table-surface app-table-scroll'
+          }
+        >
+          <Table
+            striped
+            highlightOnHover
+            className="app-table-fit"
+            ref={tableRef}
+            style={
+              fit.tableWidth === null ? undefined : { width: fit.tableWidth, minWidth: '100%' }
+            }
+          >
             <colgroup>
               {selection && <col style={{ width: fit.reservedWidth }} />}
               {withDetail && <col style={{ width: fit.expanderWidth ?? undefined }} />}
@@ -631,7 +1004,27 @@ export function DataTable<Row>({
                   </Table.Th>
                 )}
                 {shown.map((c) => (
-                  <HeaderCell key={c.key} column={c} sort={sort} onSortChange={onSortChange} />
+                  <HeaderCell
+                    key={c.key}
+                    column={c}
+                    sort={sort}
+                    onSortChange={onSortChange}
+                    resize={{
+                      width: (header) => widthOf(c, header),
+                      valueNow: shownWidth(c),
+                      onResize: (width, persist) => setWidth(c.key, width, persist),
+                      onAutofit: () => autofit(c.key),
+                      onDragging: (dragging, cancelled = false) => {
+                        resizing.current = dragging;
+                        if (dragging) {
+                          widthBeforeDrag.current = prefs.widths[c.key];
+                        } else if (cancelled) {
+                          restoreWidth(c.key, widthBeforeDrag.current);
+                        }
+                      },
+                    }}
+                    drag={dragProps(c)}
+                  />
                 ))}
               </Table.Tr>
             </Table.Thead>
@@ -681,6 +1074,7 @@ export function DataTable<Row>({
                         {shown.map((c) => (
                           <Table.Td
                             key={c.key}
+                            data-col={c.key}
                             className={c.wrap ? 'app-cell-wrap' : 'app-cell-truncate'}
                             onMouseEnter={c.wrap ? undefined : showFullValue}
                           >
@@ -724,10 +1118,12 @@ export function DataTable<Row>({
             {resetButton}
             {!isMobile && (
               <ColumnPicker
-                columns={columns}
+                columns={ordered}
                 isVisible={isVisible}
                 onToggle={toggleColumn}
-                onReset={() => updatePrefs({})}
+                onMove={moveColumn}
+                onReset={() => changePrefs(() => DEFAULT_COLUMN_PREFS)}
+                canReset={!isDefaultColumnPrefs(prefs)}
               />
             )}
           </Group>
@@ -735,7 +1131,7 @@ export function DataTable<Row>({
       )}
       {isMobile && (
         <PhoneControls
-          columns={columns}
+          columns={ordered}
           sort={sort}
           onSortChange={onSortChange}
           activeFilters={activeFilters}

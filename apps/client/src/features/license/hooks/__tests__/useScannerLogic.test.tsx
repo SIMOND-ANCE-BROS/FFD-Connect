@@ -1,5 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { CheckinService } from "../../services/CheckinService";
+import {
+  checkInOffline,
+  purgeExpiredCheckins,
+  refreshEntryQrKeys,
+} from "../../services/offlineCheckin";
 import { useScannerLogic } from "../useScannerLogic";
 
 jest.mock("expo-camera", () => ({
@@ -8,6 +13,12 @@ jest.mock("expo-camera", () => ({
     { granted: true, canAskAgain: true, expires: "never", status: "granted" },
     jest.fn().mockResolvedValue({ granted: true, status: "granted" }),
   ]),
+}));
+
+jest.mock("../../services/offlineCheckin", () => ({
+  checkInOffline: jest.fn(),
+  refreshEntryQrKeys: jest.fn().mockResolvedValue(null),
+  purgeExpiredCheckins: jest.fn().mockResolvedValue(0),
 }));
 
 jest.mock("../../services/CheckinService", () => ({
@@ -138,6 +149,46 @@ describe("useScannerLogic", () => {
         "Utilisateur introuvable avec ce QR Code",
       );
     });
+  });
+
+  it("verifies the QR offline and queues the check-in without network (#24)", async () => {
+    const offline = {
+      status: "VALID",
+      holderName: "DUPONT Jean",
+      licenseNumber: "FFD-1",
+      queued: true,
+    };
+    (checkInOffline as jest.Mock).mockResolvedValue(offline);
+    // No HTTP answer at all: axios network error.
+    (CheckinService.checkIn as jest.Mock).mockRejectedValue({
+      isAxiosError: true,
+      message: "Network Error",
+    });
+
+    const { result } = await renderHook(() => useScannerLogic("comp-1"));
+    expect(refreshEntryQrKeys).toHaveBeenCalled();
+    expect(purgeExpiredCheckins).toHaveBeenCalled();
+
+    await act(async () => {
+      void result.current.actions.handleBarcodeScanned({
+        data: "qr-v3",
+      } as never);
+    });
+
+    await waitFor(() => {
+      expect(result.current.state.offlineResult).toEqual(offline);
+    });
+    expect(result.current.state.error).toBeNull();
+    expect(checkInOffline).toHaveBeenCalledWith({
+      qrData: "qr-v3",
+      endpoint: "POST /competitions/comp-1/checkin",
+      competitionId: "comp-1",
+    });
+
+    await act(() => {
+      result.current.actions.resetScan();
+    });
+    expect(result.current.state.offlineResult).toBeNull();
   });
 
   it("handles missing competition", async () => {

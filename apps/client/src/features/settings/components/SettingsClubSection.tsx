@@ -3,6 +3,13 @@ import React, { type RefObject } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { AppTheme } from "../../../context/ThemeContext";
 import type { HelloAssoStatus } from "../../club/services/ClubService";
+import {
+  canChoosePaymentProvider,
+  isHelloAssoProvider,
+  paymentProviderLabel,
+  type ClubPaymentProviderStatusDto,
+  type PaymentProvider,
+} from "../../../services/api/payment-provider-api";
 import { joinA11yLabel } from "../../../utils/a11y";
 import { styles } from "./settings.styles";
 
@@ -11,9 +18,34 @@ interface SettingsClubSectionProps {
   registrationPolicy: string;
   handleSetRegistrationPolicy: (value: string) => Promise<void>;
   helloAssoStatus: HelloAssoStatus | null;
+  /** Club payment connector (#665); null on a backend older than #388. */
+  paymentProviderStatus: ClubPaymentProviderStatusDto | null;
+  onSelectPaymentProvider: (provider: PaymentProvider) => Promise<void>;
+  /** Opens the credentials form of the current connector (HelloAsso today). */
   onOpenHelloAsso: () => void;
   /** Receives the screen-reader focus back when the HelloAsso modal closes. */
   helloAssoRef?: RefObject<View | null>;
+}
+
+/** Connector shown to the club: the chosen one, HelloAsso before #388. */
+function currentConnector(
+  paymentProviderStatus: ClubPaymentProviderStatusDto | null,
+  helloAssoStatus: HelloAssoStatus | null,
+): {
+  /** Typed as a string: compared with connectors this build may not know. */
+  provider: string;
+  configured: boolean;
+} {
+  if (paymentProviderStatus) {
+    return {
+      provider: paymentProviderStatus.paymentProvider,
+      configured: paymentProviderStatus.configured,
+    };
+  }
+  return {
+    provider: "HELLOASSO",
+    configured: helloAssoStatus?.helloAssoConnected === true,
+  };
 }
 
 export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
@@ -21,155 +53,230 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
   registrationPolicy,
   handleSetRegistrationPolicy,
   helloAssoStatus,
+  paymentProviderStatus,
+  onSelectPaymentProvider,
   onOpenHelloAsso,
   helloAssoRef,
-}) => (
-  <>
-    <View style={styles.sectionTitleContainer}>
-      <Text
-        accessibilityRole="header"
-        style={[styles.sectionTitle, { color: theme.textSecondary }]}
-      >
-        Politique d'inscription
-      </Text>
-    </View>
-    <View style={[styles.card, { backgroundColor: theme.surface }]}>
-      <View style={[styles.row, styles.noPaddingBottom]}>
-        <View style={styles.rowLeft}>
-          <View style={[styles.iconBox, styles.organizerIconBox]}>
-            <Users size={18} color="#9b59b6" />
-          </View>
-          <View>
-            <Text style={[styles.rowLabel, { color: theme.text }]}>
-              Qui inscrit les membres ?
-            </Text>
-          </View>
-        </View>
-      </View>
+}) => {
+  const connector = currentConnector(paymentProviderStatus, helloAssoStatus);
+  const connectorName = paymentProviderLabel(connector.provider);
+  const connectorState = connector.configured
+    ? isHelloAssoProvider(connector.provider) &&
+      helloAssoStatus?.organizationSlug
+      ? `Configuré (${helloAssoStatus.organizationSlug})`
+      : "Configuré"
+    : "Non configuré — renseignez vos identifiants pour encaisser en ligne";
 
-      <View style={styles.policyContainer}>
-        {/* eslint-disable-next-line react-native-a11y/has-accessibility-hint -- static content, no action to hint */}
-        <View
-          style={styles.gap12}
-          accessibilityRole="radiogroup"
-          accessibilityLabel="Qui inscrit les membres ?"
+  return (
+    <>
+      <View style={styles.sectionTitleContainer}>
+        <Text
+          accessibilityRole="header"
+          style={[styles.sectionTitle, { color: theme.textSecondary }]}
         >
-          {[
-            {
-              label: "Club uniquement",
-              value: "CLUB_ONLY",
-              desc: "Seul le club peut inscrire les membres.",
-            },
-            {
-              label: "Membre (avec validation)",
-              value: "MEMBER_VALIDATION",
-              desc: "Les membres s'inscrivent, le club valide.",
-            },
-            {
-              label: "Membre (auto)",
-              value: "MEMBER_AUTO",
-              desc: "Inscription automatique sans validation.",
-            },
-          ].map((option) => (
-            <TouchableOpacity
-              accessibilityRole="radio"
-              accessibilityState={{
-                checked: registrationPolicy === option.value,
-              }}
-              key={option.value}
-              style={[
-                styles.policyOption,
-                registrationPolicy === option.value
-                  ? {
-                      borderColor: theme.primary,
-                      backgroundColor: `${theme.primary}10`,
-                    }
-                  : { borderColor: theme.border },
-              ]}
-              onPress={() => {
-                handleSetRegistrationPolicy(option.value).catch(() => {});
-              }}
-              testID={`settings-reg-policy-${option.value}`}
-              accessibilityLabel={joinA11yLabel([option.label, option.desc])}
-              accessibilityHint="Définit qui inscrit les membres aux compétitions"
-            >
-              <View
+          Politique d'inscription
+        </Text>
+      </View>
+      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+        <View style={[styles.row, styles.noPaddingBottom]}>
+          <View style={styles.rowLeft}>
+            <View style={[styles.iconBox, styles.organizerIconBox]}>
+              <Users size={18} color="#9b59b6" />
+            </View>
+            <View>
+              <Text style={[styles.rowLabel, { color: theme.text }]}>
+                Qui inscrit les membres ?
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.policyContainer}>
+          {/* eslint-disable-next-line react-native-a11y/has-accessibility-hint -- static group, the radios carry the hints */}
+          <View
+            style={styles.gap12}
+            accessibilityRole="radiogroup"
+            accessibilityLabel="Qui inscrit les membres ?"
+          >
+            {[
+              {
+                label: "Club uniquement",
+                value: "CLUB_ONLY",
+                desc: "Seul le club peut inscrire les membres.",
+              },
+              {
+                label: "Membre (avec validation)",
+                value: "MEMBER_VALIDATION",
+                desc: "Les membres s'inscrivent, le club valide.",
+              },
+              {
+                label: "Membre (auto)",
+                value: "MEMBER_AUTO",
+                desc: "Inscription automatique sans validation.",
+              },
+            ].map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                accessibilityRole="radio"
+                accessibilityState={{
+                  checked: registrationPolicy === option.value,
+                }}
                 style={[
-                  styles.radioCircle,
-                  {
-                    borderColor:
-                      registrationPolicy === option.value
-                        ? theme.primary
-                        : theme.textSecondary,
-                  },
+                  styles.policyOption,
+                  registrationPolicy === option.value
+                    ? {
+                        borderColor: theme.primary,
+                        backgroundColor: `${theme.primary}10`,
+                      }
+                    : { borderColor: theme.border },
                 ]}
+                onPress={() => {
+                  handleSetRegistrationPolicy(option.value).catch(() => {});
+                }}
+                testID={`settings-reg-policy-${option.value}`}
+                accessibilityLabel={joinA11yLabel([option.label, option.desc])}
+                accessibilityHint="Définit qui inscrit les membres aux compétitions"
               >
-                {registrationPolicy === option.value && (
-                  <View
-                    style={[
-                      styles.radioDot,
-                      { backgroundColor: theme.primary },
-                    ]}
-                  />
-                )}
-              </View>
-              <View style={styles.flex1}>
-                <Text style={[styles.policyLabel, { color: theme.text }]}>
-                  {option.label}
-                </Text>
-                <Text
-                  style={[styles.policyDesc, { color: theme.textSecondary }]}
+                <View
+                  style={[
+                    styles.radioCircle,
+                    {
+                      borderColor:
+                        registrationPolicy === option.value
+                          ? theme.primary
+                          : theme.textSecondary,
+                    },
+                  ]}
                 >
-                  {option.desc}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+                  {registrationPolicy === option.value && (
+                    <View
+                      style={[
+                        styles.radioDot,
+                        { backgroundColor: theme.primary },
+                      ]}
+                    />
+                  )}
+                </View>
+                <View style={styles.flex1}>
+                  <Text style={[styles.policyLabel, { color: theme.text }]}>
+                    {option.label}
+                  </Text>
+                  <Text
+                    style={[styles.policyDesc, { color: theme.textSecondary }]}
+                  >
+                    {option.desc}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       </View>
-    </View>
 
-    {/* Paiement HelloAsso */}
-    <View style={styles.sectionTitleContainer}>
-      <Text
-        accessibilityRole="header"
-        style={[styles.sectionTitle, { color: theme.textSecondary }]}
-      >
-        Paiement
-      </Text>
-    </View>
-    <View style={[styles.card, { backgroundColor: theme.surface }]}>
-      <TouchableOpacity
-        ref={helloAssoRef}
-        accessibilityRole="button"
-        style={styles.row}
-        onPress={onOpenHelloAsso}
-        testID="settings-helloasso-button"
-        accessibilityLabel={joinA11yLabel([
-          "Compte HelloAsso du club",
-          helloAssoStatus?.helloAssoConnected ? "connecté" : "non connecté",
-        ])}
-        accessibilityHint="Ouvre la configuration du compte HelloAsso pour les paiements"
-      >
-        <View style={styles.rowLeft}>
-          <View style={[styles.iconBox, styles.helloAssoIconBox]}>
-            <CreditCard size={20} color="#00B894" />
+      {/* Paiement en ligne (#665): neutral section, the connector is a choice */}
+      <View style={styles.sectionTitleContainer}>
+        <Text
+          accessibilityRole="header"
+          style={[styles.sectionTitle, { color: theme.textSecondary }]}
+        >
+          Paiement en ligne
+        </Text>
+      </View>
+      <View style={[styles.card, { backgroundColor: theme.surface }]}>
+        {paymentProviderStatus &&
+          canChoosePaymentProvider(paymentProviderStatus) && (
+            <View style={styles.policyContainer}>
+              <View style={styles.gap12}>
+                {paymentProviderStatus.selectableProviders.map((provider) => {
+                  const selected = provider === connector.provider;
+                  const label = paymentProviderLabel(provider);
+                  return (
+                    <TouchableOpacity
+                      key={provider}
+                      style={[
+                        styles.policyOption,
+                        selected
+                          ? {
+                              borderColor: theme.primary,
+                              backgroundColor: `${theme.primary}10`,
+                            }
+                          : { borderColor: theme.border },
+                      ]}
+                      onPress={() => {
+                        onSelectPaymentProvider(provider).catch(() => {});
+                      }}
+                      testID={`settings-payment-provider-${provider}`}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected, checked: selected }}
+                      accessibilityLabel={`Connecteur de paiement : ${label}`}
+                      accessibilityHint={`Encaisse les paiements en ligne du club avec ${label}`}
+                    >
+                      <View
+                        style={[
+                          styles.radioCircle,
+                          {
+                            borderColor: selected
+                              ? theme.primary
+                              : theme.textSecondary,
+                          },
+                        ]}
+                      >
+                        {selected && (
+                          <View
+                            style={[
+                              styles.radioDot,
+                              { backgroundColor: theme.primary },
+                            ]}
+                          />
+                        )}
+                      </View>
+                      <View style={styles.flex1}>
+                        <Text
+                          style={[styles.policyLabel, { color: theme.text }]}
+                        >
+                          {label}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+        <TouchableOpacity
+          ref={helloAssoRef}
+          style={styles.row}
+          onPress={onOpenHelloAsso}
+          disabled={!isHelloAssoProvider(connector.provider)}
+          testID="settings-helloasso-button"
+          accessibilityRole="button"
+          accessibilityState={{
+            disabled: !isHelloAssoProvider(connector.provider),
+          }}
+          accessibilityLabel={`Connecteur de paiement : ${connectorName}, ${connector.configured ? "configuré" : "non configuré"}`}
+          accessibilityHint={`Ouvre la saisie des identifiants ${connectorName} du club`}
+        >
+          <View style={styles.rowLeft}>
+            <View style={[styles.iconBox, styles.helloAssoIconBox]}>
+              <CreditCard size={20} color="#00B894" />
+            </View>
+            <View style={styles.flex1}>
+              <Text style={[styles.rowLabel, { color: theme.text }]}>
+                {connectorName}
+              </Text>
+              <Text
+                testID="settings-payment-provider-state"
+                style={[styles.rowSubtext, { color: theme.textSecondary }]}
+              >
+                {connectorState}
+              </Text>
+            </View>
           </View>
-          <View>
-            <Text style={[styles.rowLabel, { color: theme.text }]}>
-              Compte HelloAsso
-            </Text>
-            <Text style={[styles.rowSubtext, { color: theme.textSecondary }]}>
-              {helloAssoStatus?.helloAssoConnected
-                ? `Connecté (${helloAssoStatus.organizationSlug ?? helloAssoStatus.clubName})`
-                : "Non connecté — connectez pour accepter les paiements"}
-            </Text>
+          <View style={styles.rowRight}>
+            <ChevronRight size={16} color={theme.textSecondary} />
           </View>
-        </View>
-        <View style={styles.rowRight}>
-          <ChevronRight size={16} color={theme.textSecondary} />
-        </View>
-      </TouchableOpacity>
-    </View>
-  </>
-);
+        </TouchableOpacity>
+      </View>
+    </>
+  );
+};

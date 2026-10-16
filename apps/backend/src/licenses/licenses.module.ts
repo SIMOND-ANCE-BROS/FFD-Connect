@@ -12,6 +12,8 @@ import { LicenseRenewalModerationQueryService } from "./license-renewal-moderati
 import { LicenseRenewalModerationService } from "./license-renewal-moderation.service";
 import { LicenseRenewalNotificationService } from "./license-renewal-notification.service";
 import { LicenseRenewalService } from "./license-renewal.service";
+import { EntryQrController } from "./entry-qr.controller";
+import { EntryQrQueryService } from "./entry-qr.query-service";
 import { LicensesController } from "./licenses.controller";
 import { LicensesService } from "./licenses.service";
 
@@ -24,9 +26,14 @@ import { LicensesService } from "./licenses.service";
     ParentalConsentModule,
     HealthDataAccessModule,
   ],
-  controllers: [LicensesController, AdminLicenseRenewalsController],
+  controllers: [
+    LicensesController,
+    AdminLicenseRenewalsController,
+    EntryQrController,
+  ],
   providers: [
     LicensesService,
+    EntryQrQueryService,
     LicenseRenewalService,
     LicenseRenewalModerationService,
     LicenseRenewalModerationQueryService,

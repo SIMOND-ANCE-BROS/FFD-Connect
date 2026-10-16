@@ -71,6 +71,8 @@ interface Props {
   newEventOpenLevels: string[];
   toggleOpenLevel: (l: string) => void;
   allowedEventKindsForCurrentCompetition: readonly EventKind[];
+  /** Disciplines offered for the selected kind (« 10 danses » in majeure only). */
+  categoryOptionsForNewEvent: readonly string[];
   levelOptionsForNewEvent: string[];
   ageOptionsForNewEvent: string[];
   addEvent: () => void;
@@ -100,6 +102,7 @@ export const CompetitionEventsTab: React.FC<Props> = ({
   newEventOpenLevels,
   toggleOpenLevel,
   allowedEventKindsForCurrentCompetition,
+  categoryOptionsForNewEvent,
   levelOptionsForNewEvent,
   ageOptionsForNewEvent,
   addEvent,
@@ -366,13 +369,10 @@ export const CompetitionEventsTab: React.FC<Props> = ({
                   <FluidSegmentedTab
                     activeValue={newEventCategory}
                     onChange={(v) => setNewEventCategory(v)}
-                    options={[
-                      { label: formatDiscipline("Latine"), value: "Latine" },
-                      {
-                        label: formatDiscipline("Standard"),
-                        value: "Standard",
-                      },
-                    ]}
+                    options={categoryOptionsForNewEvent.map((value) => ({
+                      label: formatDiscipline(value),
+                      value,
+                    }))}
                   />
                 </View>
               )}

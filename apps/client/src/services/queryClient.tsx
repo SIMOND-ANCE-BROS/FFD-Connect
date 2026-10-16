@@ -16,6 +16,11 @@ import {
   handleRegistrationReplayError,
   handleRegistrationReplaySuccess,
 } from "../features/competitions/services/registrationQueue";
+import {
+  CHECKIN_KIND,
+  handleCheckinReplayError,
+  replayCheckin,
+} from "../features/license/services/offlineCheckin";
 import { dispatchMutation, useOfflineQueue } from "../hooks/useOfflineQueue";
 import { isNetStateOnline } from "../utils/connectivity";
 import { onSessionEnd } from "./sessionCleanup";
@@ -140,10 +145,16 @@ interface Props {
 const OfflineQueueRunner = () => {
   useOfflineQueue({
     mutationFn: async (request, mutation) => {
+      if (mutation.kind === CHECKIN_KIND) {
+        await replayCheckin(request, mutation);
+        return;
+      }
       assertReplayable(mutation);
       await dispatchMutation(request);
     },
-    onReplayError: handleRegistrationReplayError,
+    onReplayError: (mutation, error) =>
+      handleCheckinReplayError(mutation, error) ??
+      handleRegistrationReplayError(mutation, error),
     onReplaySuccess: handleRegistrationReplaySuccess,
     onConflict: () =>
       Alert.alert(

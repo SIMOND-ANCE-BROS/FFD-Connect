@@ -8,6 +8,12 @@ import { useCallback, useEffect, useState } from "react";
 import { analytics } from "../../../services/analytics";
 import { createLogger } from "../../../utils/logger";
 import { CheckinResponse, CheckinService } from "../services/CheckinService";
+import {
+  checkInOffline,
+  purgeExpiredCheckins,
+  refreshEntryQrKeys,
+  type OfflineCheckinResult,
+} from "../services/offlineCheckin";
 
 const logger = createLogger("useScannerLogic");
 
@@ -19,6 +25,8 @@ export interface ScannerState {
   isActive: boolean;
   isLoading: boolean;
   result: CheckinResponse | null;
+  /** Scan verified without network (#24): shown instead of `result`. */
+  offlineResult: OfflineCheckinResult | null;
   error: string | null;
 }
 
@@ -48,7 +56,17 @@ export const useScannerLogic = (initialCompetitionId?: string) => {
   const [isActive, setIsActive] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<CheckinResponse | null>(null);
+  const [offlineResult, setOfflineResult] =
+    useState<OfflineCheckinResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Public keys for offline verification (#24): refreshed while online,
+  // cached for the gym without network.
+  useEffect(() => {
+    refreshEntryQrKeys().catch(() => {});
+    // Queued scans older than 12 h (and volunteer tokens) never linger.
+    purgeExpiredCheckins().catch(() => {});
+  }, []);
 
   // Initial Permission Request — une seule fois, et seulement si iOS accepte
   // encore d'afficher le prompt (sinon requestPermission() se résout en silence
@@ -111,6 +129,18 @@ export const useScannerLogic = (initialCompetitionId?: string) => {
         // Surface le message MÉTIER du backend (« Utilisateur introuvable… »,
         // « Aucune inscription confirmée… ») plutôt que « Request failed with
         // status code 404 » d'axios.
+        // No answer at all (gym without network): verify the rotating QR
+        // offline and queue the check-in for the next reconnect (#24).
+        if (axios.isAxiosError(err) && !err.response) {
+          setOfflineResult(
+            await checkInOffline({
+              qrData: data,
+              endpoint: `POST /competitions/${competitionId}/checkin`,
+              competitionId,
+            }),
+          );
+          return;
+        }
         let message = "Une erreur est survenue lors du scan.";
         if (axios.isAxiosError(err)) {
           const data = err.response?.data as { message?: string } | undefined;
@@ -128,6 +158,7 @@ export const useScannerLogic = (initialCompetitionId?: string) => {
 
   const resetScan = useCallback(() => {
     setResult(null);
+    setOfflineResult(null);
     setError(null);
     setIsActive(true);
     setIsLoading(false);
@@ -173,6 +204,7 @@ export const useScannerLogic = (initialCompetitionId?: string) => {
       isActive,
       isLoading,
       result,
+      offlineResult,
       error,
     },
     actions: {

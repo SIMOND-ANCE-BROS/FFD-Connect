@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { LicenseUser } from "../components/LicenseCard";
+import { clearEntryQrBatch } from "./entryQrStorage";
 
 /**
  * Snapshot local de l'E-Licence (#416 — exigence « Jour J » : la licence et
@@ -92,4 +93,6 @@ export async function clearLicenseSnapshot(): Promise<void> {
   } catch {
     // Best-effort
   }
+  // The rotating entry QR batch (#24) is the same licence, same owner rule.
+  await clearEntryQrBatch();
 }

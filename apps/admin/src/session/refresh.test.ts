@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import * as sdk from '../api/generated/sdk.gen';
 import { refreshSession } from './refresh';
 import { useSession } from './sessionStore';
+import { startSessionSync, stopSessionSync } from './sessionSync';
 
 const user = {
   id: 'a1',
@@ -42,6 +43,143 @@ describe('refreshSession', () => {
 
     await expect(refreshSession()).resolves.toBeNull();
     expect(useSession.getState().user).toBeNull();
+  });
+
+  it('takes the tokens another tab rotated just before (#669)', async () => {
+    const spy = vi.spyOn(sdk, 'authControllerRefresh').mockImplementation(async () => {
+      // The other tab's rotation reaches this one while the request is in flight.
+      useSession.getState().setSession({ accessToken: 'peer-at', refreshToken: 'peer-rt', user });
+      return {
+        data: undefined,
+        error: { message: 'revoked' },
+        response: new Response(null, { status: 401 }),
+      } as never;
+    });
+
+    await expect(refreshSession()).resolves.toBe('peer-at');
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(useSession.getState().refreshToken).toBe('peer-rt');
+  });
+
+  it('asks the open tabs for a newer session before giving up (#669)', async () => {
+    await startSessionSync();
+    const peer = new BroadcastChannel('ffd-admin-session');
+    peer.onmessage = (event: MessageEvent<{ type: string; id: string }>) => {
+      if (event.data.type === 'request') {
+        peer.postMessage({
+          type: 'reply',
+          id: event.data.id,
+          session: { accessToken: 'peer-at', refreshToken: 'peer-rt', user },
+        });
+      }
+    };
+    vi.spyOn(sdk, 'authControllerRefresh').mockResolvedValue({
+      data: undefined,
+      error: { message: 'revoked' },
+      response: new Response(null, { status: 401 }),
+    } as never);
+
+    try {
+      await expect(refreshSession()).resolves.toBe('peer-at');
+      expect(useSession.getState().refreshToken).toBe('peer-rt');
+    } finally {
+      peer.close();
+      stopSessionSync();
+    }
+  });
+
+  it('clears the session when the open tabs hold the same rejected token (#669)', async () => {
+    await startSessionSync();
+    const peer = new BroadcastChannel('ffd-admin-session');
+    peer.onmessage = (event: MessageEvent<{ type: string; id: string }>) => {
+      if (event.data.type === 'request') {
+        peer.postMessage({
+          type: 'reply',
+          id: event.data.id,
+          session: { accessToken: 'old', refreshToken: 'rt', user },
+        });
+      }
+    };
+    vi.spyOn(sdk, 'authControllerRefresh').mockResolvedValue({
+      data: undefined,
+      error: { message: 'revoked' },
+      response: new Response(null, { status: 401 }),
+    } as never);
+
+    try {
+      await expect(refreshSession()).resolves.toBeNull();
+      expect(useSession.getState().user).toBeNull();
+    } finally {
+      peer.close();
+      stopSessionSync();
+    }
+  });
+
+  it('never adopts the session of another account held by an open tab (#669)', async () => {
+    await startSessionSync();
+    const peer = new BroadcastChannel('ffd-admin-session');
+    peer.onmessage = (event: MessageEvent<{ type: string; id: string }>) => {
+      if (event.data.type === 'request') {
+        peer.postMessage({
+          type: 'reply',
+          id: event.data.id,
+          session: { accessToken: 'b-at', refreshToken: 'b-rt', user: { ...user, id: 'b2' } },
+        });
+      }
+    };
+    vi.spyOn(sdk, 'authControllerRefresh').mockResolvedValue({
+      data: undefined,
+      error: { message: 'revoked' },
+      response: new Response(null, { status: 401 }),
+    } as never);
+
+    try {
+      await expect(refreshSession()).resolves.toBeNull();
+      expect(useSession.getState().user).toBeNull();
+      expect(useSession.getState().refreshToken).toBeNull();
+    } finally {
+      peer.close();
+      stopSessionSync();
+    }
+  });
+
+  it('a logout during the call is not undone by the late answer (#669)', async () => {
+    vi.spyOn(sdk, 'authControllerRefresh').mockImplementation(async () => {
+      useSession.getState().clear();
+      return {
+        data: { access_token: 'new', refresh_token: 'rt2' },
+        error: undefined,
+        response: new Response(null, { status: 200 }),
+      } as never;
+    });
+
+    await expect(refreshSession()).resolves.toBeNull();
+    expect(useSession.getState()).toMatchObject({ user: null, refreshToken: null });
+  });
+
+  it('does not ask the open tabs after a 401 when logged out meanwhile (#669)', async () => {
+    await startSessionSync();
+    const peer = new BroadcastChannel('ffd-admin-session');
+    const received: unknown[] = [];
+    peer.onmessage = (event: MessageEvent<unknown>) => received.push(event.data);
+    vi.spyOn(sdk, 'authControllerRefresh').mockImplementation(async () => {
+      useSession.getState().clear();
+      return {
+        data: undefined,
+        error: { message: 'revoked' },
+        response: new Response(null, { status: 401 }),
+      } as never;
+    });
+
+    try {
+      await expect(refreshSession()).resolves.toBeNull();
+      await new Promise((r) => setTimeout(r, 30));
+      expect(received).toEqual([]);
+      expect(useSession.getState().user).toBeNull();
+    } finally {
+      peer.close();
+      stopSessionSync();
+    }
   });
 
   it('clears the session when a 2xx response carries no tokens', async () => {

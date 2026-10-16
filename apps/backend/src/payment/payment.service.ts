@@ -7,7 +7,6 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as Sentry from "@sentry/nestjs";
-import { ClubsHelloAssoService } from "../clubs/clubs-helloasso.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   competitionSeatPricingSelect,
@@ -18,11 +17,12 @@ import {
   CreateCheckoutDto,
 } from "./dto/create-checkout.dto";
 import { WebhookPayloadDto } from "./dto/webhook-payload.dto";
-import {
-  HelloAssoService,
-  type HelloAssoCheckoutIntent,
-  type HelloAssoCredentials,
-} from "./hello-asso.service";
+import type {
+  PaymentAccount,
+  PaymentCheckout,
+  PaymentConnector,
+} from "./connectors/payment-connector";
+import { PaymentConnectorRegistry } from "./connectors/payment-connector.registry";
 import { PaymentNotificationService } from "./payment-notification.service";
 import {
   checkOrderAgainstBooking,
@@ -59,12 +59,27 @@ export const MAX_INTENTS_PER_BOOKING = 8;
 const PAYMENT_IN_PROGRESS =
   "Un paiement est déjà en cours pour cette place. Réessayez dans quelques instants.";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+/**
+ * 400 of a checkout whose organising club cannot take payments: its chosen
+ * connector is not configured (same text as before #388 for HelloAsso), or
+ * it has no usable connector at all.
+ */
+function notConnectedMessage(connector: PaymentConnector | null): string {
+  if (!connector) {
+    return (
+      "Le club organisateur de cette compétition n'a pas de paiement en ligne utilisable. " +
+      "L'organisateur doit configurer le paiement en ligne dans Paramètres du club."
+    );
+  }
+  return (
+    `Le club organisateur de cette compétition n'a pas connecté son compte ${connector.displayName}. ` +
+    `L'organisateur doit configurer ${connector.displayName} dans Paramètres du club.`
+  );
 }
 
 interface CheckoutContext {
-  credentials: HelloAssoCredentials;
+  connector: PaymentConnector;
+  account: PaymentAccount;
   label: string;
   user: { email: string; firstName: string; lastName: string };
   competitionId: string;
@@ -76,8 +91,7 @@ export class PaymentService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly helloAssoService: HelloAssoService,
-    private readonly clubsHelloAssoService: ClubsHelloAssoService,
+    private readonly paymentConnectors: PaymentConnectorRegistry,
     private readonly configService: ConfigService,
     private readonly seatHoldService: SeatHoldService,
     private readonly refundOwedAlertService: RefundOwedAlertService,
@@ -85,8 +99,8 @@ export class PaymentService {
   ) {}
 
   /**
-   * Holds one seat and returns the HelloAsso page to pay it (#381, #401,
-   * #402, #428). Everything is sold per seat; the price is the element's
+   * Holds one seat and returns the payment page of the organising club's
+   * connector (#388, HelloAsso today) to pay it (#381, #401, #402, #428). Everything is sold per seat; the price is the element's
    * `priceCents`, never the request's `amount`. A checkout by the same user
    * on their own pending seat resumes its payment instead of a 409.
    */
@@ -94,16 +108,15 @@ export class PaymentService {
     userId: string,
     body: CreateCheckoutDto,
   ): Promise<CheckoutResponseDto> {
-    // 1. Vérifier que la compétition a un club organisateur avec HelloAsso connecté
-    const credentials =
-      await this.clubsHelloAssoService.getHelloAssoCredentialsForCompetition(
-        body.competitionId,
-      );
-    if (!credentials) {
-      throw new BadRequestException(
-        "Le club organisateur de cette compétition n'a pas connecté son compte HelloAsso. " +
-          "L'organisateur doit configurer HelloAsso dans Paramètres du club.",
-      );
+    // 1. Connecteur de paiement du club organisateur, et son compte (#388)
+    const connector = await this.paymentConnectors.forCompetition(
+      body.competitionId,
+    );
+    const account = connector
+      ? await connector.accountForCompetition(body.competitionId)
+      : null;
+    if (!connector || !account) {
+      throw new BadRequestException(notConnectedMessage(connector));
     }
 
     // 2. Prix et places de l'élément, fixés côté serveur (#381, #428)
@@ -146,10 +159,11 @@ export class PaymentService {
       amountCents,
     });
     const respond = (
-      intent: { id: number; redirectUrl: string },
+      intent: PaymentCheckout,
       expiresAt: Date,
     ): CheckoutResponseDto => ({
-      id: intent.id,
+      // Numeric: the API field predates #388 (HelloAsso intent ids).
+      id: Number(intent.id),
       redirectUrl: intent.redirectUrl,
       bookingId: booking.id,
       // A free-placement slot is internal: no seat number to show.
@@ -159,8 +173,9 @@ export class PaymentService {
     });
 
     const now = new Date();
-    const checkout = {
-      credentials,
+    const checkout: CheckoutContext = {
+      connector,
+      account,
       label: `Place Compétition - ${body.seatLabel ?? body.itemId}`,
       user,
       competitionId: body.competitionId,
@@ -170,12 +185,12 @@ export class PaymentService {
       return this.resumeCheckout(booking, checkout, now, respond);
     }
 
-    let intent: HelloAssoCheckoutIntent;
+    let intent: PaymentCheckout;
     try {
       intent = await this.createIntent(booking, checkout);
       await this.seatHoldService.recordIntent(
         booking.id,
-        { id: String(intent.id), redirectUrl: intent.redirectUrl },
+        { id: intent.id, redirectUrl: intent.redirectUrl },
         now,
       );
     } catch (error) {
@@ -191,7 +206,7 @@ export class PaymentService {
 
   /**
    * Resumes the payment of the user's own PENDING booking (#428): the stored
-   * HelloAsso page while it is still valid, otherwise a fresh intent for the
+   * payment page while it is still valid, otherwise a fresh intent for the
    * same booking. An earlier intent that already carries a payment is never
    * replaced (its order is about to confirm the seat).
    */
@@ -199,10 +214,7 @@ export class PaymentService {
     booking: HeldBooking,
     checkout: CheckoutContext,
     now: Date,
-    respond: (
-      intent: { id: number; redirectUrl: string },
-      expiresAt: Date,
-    ) => CheckoutResponseDto,
+    respond: (intent: PaymentCheckout, expiresAt: Date) => CheckoutResponseDto,
   ): Promise<CheckoutResponseDto> {
     const expiresAt = booking.expiresAt ?? now;
     if (
@@ -213,10 +225,7 @@ export class PaymentService {
         CHECKOUT_REDIRECT_REUSE_MS
     ) {
       return respond(
-        {
-          id: Number(booking.paymentId),
-          redirectUrl: booking.checkoutRedirectUrl,
-        },
+        { id: booking.paymentId, redirectUrl: booking.checkoutRedirectUrl },
         expiresAt,
       );
     }
@@ -230,11 +239,11 @@ export class PaymentService {
         "Trop de tentatives de paiement pour cette place. Attendez l'expiration de la réservation.",
       );
     }
-    if (await this.intentHasOrder(checkout.credentials, booking.paymentId)) {
+    if (await this.intentHasOrder(checkout, booking.paymentId)) {
       throw new ConflictException(PAYMENT_IN_PROGRESS);
     }
 
-    let intent: HelloAssoCheckoutIntent;
+    let intent: PaymentCheckout;
     try {
       intent = await this.createIntent(booking, checkout);
     } catch (error) {
@@ -248,7 +257,7 @@ export class PaymentService {
     const { replaced, expiresAt: newDeadline } =
       await this.seatHoldService.replaceIntent(
         booking,
-        { id: String(intent.id), redirectUrl: intent.redirectUrl },
+        { id: intent.id, redirectUrl: intent.redirectUrl },
         now,
       );
     if (!replaced) {
@@ -259,48 +268,44 @@ export class PaymentService {
     return respond(intent, newDeadline);
   }
 
-  /** HelloAsso intent for the booking, at the price fixed at checkout. */
+  /** Provider checkout for the booking, at the price fixed at checkout. */
   private createIntent(
     booking: Pick<HeldBooking, "id" | "expectedAmountCents">,
     checkout: CheckoutContext,
-  ): Promise<HelloAssoCheckoutIntent> {
+  ): Promise<PaymentCheckout> {
     const appBaseUrl =
       this.configService.get<string>("APP_URL") ?? "https://app.example.com";
-    return this.helloAssoService.createCheckoutIntent(
-      checkout.credentials,
-      appBaseUrl,
-      {
-        // Fixed at the first checkout: a resumed payment keeps its price.
-        amount: booking.expectedAmountCents ?? 0,
-        label: checkout.label,
-        consumerEmail: checkout.user.email,
-        consumerFirstName: checkout.user.firstName,
-        consumerLastName: checkout.user.lastName,
-        metadata: {
-          bookingId: booking.id,
-          competitionId: checkout.competitionId,
-        },
+    return checkout.account.createCheckout({
+      // Fixed at the first checkout: a resumed payment keeps its price.
+      amountCents: booking.expectedAmountCents ?? 0,
+      label: checkout.label,
+      payer: {
+        email: checkout.user.email,
+        firstName: checkout.user.firstName,
+        lastName: checkout.user.lastName,
       },
-    );
+      metadata: {
+        bookingId: booking.id,
+        competitionId: checkout.competitionId,
+      },
+      appBaseUrl,
+    });
   }
 
   /**
-   * Whether HelloAsso already has an (authorised) order on the intent. An
-   * unreadable intent is not replaced: 503, the buyer tries again.
+   * Whether the provider already has an (authorised) payment on the
+   * checkout. An unreadable checkout is not replaced: 503, the buyer tries
+   * again.
    */
   private async intentHasOrder(
-    credentials: HelloAssoCredentials,
+    checkout: CheckoutContext,
     intentId: string,
   ): Promise<boolean> {
     try {
-      const read = await this.helloAssoService.getCheckoutIntent(
-        credentials,
-        intentId,
-      );
-      return read.found && isRecord(read.value.order);
+      return await checkout.account.hasPaymentOnCheckout(intentId);
     } catch {
       throw new ServiceUnavailableException(
-        "HelloAsso est momentanément indisponible. Réessayez dans quelques instants.",
+        `${checkout.connector.displayName} est momentanément indisponible. Réessayez dans quelques instants.`,
       );
     }
   }

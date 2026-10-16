@@ -892,6 +892,8 @@ describe("AuthService", () => {
         "restore",
         "prefs:admin",
         "remove:license_snapshot_v1",
+        // The rotating entry QR batch goes with the snapshot (#24).
+        "remove:entry_qr_batch_v1",
         "remove:impersonation_backup",
         "clearBackupTokens",
       ]);

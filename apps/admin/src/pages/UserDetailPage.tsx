@@ -30,7 +30,6 @@ import {
   adminControllerUpdateUser,
 } from '../api/generated/sdk.gen';
 import type { AdminControllerUpdateUserData, UserRole } from '../api/generated/types.gen';
-import { formatLicenseValidUntil } from '../lib/licenseDate';
 import {
   auditQuery,
   clubOptionsQuery,
@@ -42,7 +41,7 @@ import {
 import { ChangeSummary } from '../components/ChangeSummary';
 import { HealthAccessHistory } from '../components/HealthAccessHistory';
 import { StoreReviewBlockedModal, StoreReviewNotice } from '../components/StoreReview';
-import { UserIdentifiersModal } from '../components/UserIdentifiersModal';
+import { UserIdentifiers } from '../components/UserIdentifiers';
 import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
 import { ROLE_LABELS } from '../lib/labels';
@@ -80,7 +79,6 @@ export function UserDetailPage() {
   const navigate = useNavigate();
   const [statusOpen, setStatusOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [identifiersOpen, setIdentifiersOpen] = useState(false);
   const [typedEmail, setTypedEmail] = useState('');
   const [blocked, setBlocked] = useState<ProtectedAction | null>(null);
 
@@ -276,11 +274,7 @@ export function UserDetailPage() {
       )}
       <Card withBorder>
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
-          <Text size="sm">Email : {u.email}</Text>
-          <Text size="sm">
-            Licence : {u.licenseNumber ?? '—'}
-            {u.licenseValidUntil && ` (jusqu'au ${formatLicenseValidUntil(u.licenseValidUntil)})`}
-          </Text>
+          <UserIdentifiers user={u} editable={!isSelf} />
           <Text size="sm">WDSF : {u.wdsfMin ?? '—'}</Text>
           <Text size="sm">Inscription : {dayjs(u.createdAt).format('DD/MM/YYYY')}</Text>
           <Text size="sm">
@@ -288,21 +282,7 @@ export function UserDetailPage() {
             {u.lastLoginAt ? dayjs(u.lastLoginAt).format('DD/MM/YYYY HH:mm') : 'inconnue'}
           </Text>
         </SimpleGrid>
-        {!isSelf && (
-          <Group mt="sm">
-            <Button size="xs" variant="light" onClick={() => setIdentifiersOpen(true)}>
-              Modifier l'email ou la licence
-            </Button>
-          </Group>
-        )}
       </Card>
-      {!isSelf && (
-        <UserIdentifiersModal
-          user={u}
-          opened={identifiersOpen}
-          onClose={() => setIdentifiersOpen(false)}
-        />
-      )}
       <form onSubmit={onSubmit}>
         <Stack>
           <Fieldset legend="Identité et club">

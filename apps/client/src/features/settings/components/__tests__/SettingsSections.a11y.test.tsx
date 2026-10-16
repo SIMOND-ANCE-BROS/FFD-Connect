@@ -110,6 +110,8 @@ describe("Settings sections accessibility", () => {
         registrationPolicy="MEMBER_VALIDATION"
         handleSetRegistrationPolicy={onSet}
         helloAssoStatus={null}
+        paymentProviderStatus={null}
+        onSelectPaymentProvider={jest.fn().mockResolvedValue(undefined)}
         onOpenHelloAsso={jest.fn()}
       />,
     );
@@ -127,7 +129,7 @@ describe("Settings sections accessibility", () => {
     expect(onSet).toHaveBeenCalledWith("CLUB_ONLY");
     expect(
       getByRole("button", {
-        name: "Compte HelloAsso du club, non connecté",
+        name: "Connecteur de paiement : HelloAsso, non configuré",
       }),
     ).toBeTruthy();
   });

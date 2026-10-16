@@ -2,8 +2,9 @@
  * Fitting a back-office table into the width of the screen (#556): no
  * horizontal scroll. Every visible column has a minimum width and a relative
  * weight; when their minimums do not fit, the least important columns move
- * into a detail row the admin unfolds per line. Pure functions, so the
- * DataTable only measures its container.
+ * into a detail row the admin unfolds per line. Once the admin resizes a
+ * column by hand (#670), the table follows those widths instead and may scroll
+ * horizontally. Pure functions, so the DataTable only measures its container.
  */
 
 /** Default minimum width of a column, in px: a short label or a date. */
@@ -34,6 +35,11 @@ export interface FitResult {
   expanderWidth: string | null;
   /** Width of the `reserved` px (a selection column…), in % (px while unmeasured). */
   reservedWidth: string;
+  /**
+   * Width of the table in px once a column was resized by hand (#670), which
+   * may exceed the container (horizontal scroll); null when it fits the screen.
+   */
+  tableWidth: number | null;
 }
 
 const percent = (value: number): string => `${Math.round(value * 10000) / 100}%`;
@@ -48,7 +54,11 @@ export function fitColumns(
   columns: readonly FitColumn[],
   available: number,
   reserved = 0,
+  manualWidths: Readonly<Record<string, number>> = {},
 ): FitResult {
+  if (columns.some((c) => manualWidths[c.key] !== undefined)) {
+    return manualLayout(columns, available, reserved, manualWidths);
+  }
   const minTotal = columns.reduce((sum, c) => sum + c.minWidth, 0);
   const room = available - reserved;
   let kept: FitColumn[];
@@ -88,6 +98,7 @@ export function fitColumns(
       widths,
       expanderWidth: null,
       reservedWidth: `${reserved}px`,
+      tableWidth: null,
     };
   }
 
@@ -105,5 +116,40 @@ export function fitColumns(
     widths,
     expanderWidth: hidden.length > 0 ? percent(expander / base) : null,
     reservedWidth: percent(reserved / base),
+    tableWidth: null,
+  };
+}
+
+/**
+ * Layout once a column was resized by hand (#670): those columns keep their
+ * width in px, the others share what is left of the screen by weight (never
+ * below their minimum), nothing moves into the detail row and the table
+ * scrolls horizontally when it gets wider than its container.
+ */
+function manualLayout(
+  columns: readonly FitColumn[],
+  available: number,
+  reserved: number,
+  manualWidths: Readonly<Record<string, number>>,
+): FitResult {
+  const free = columns.filter((c) => manualWidths[c.key] === undefined);
+  const fixed = columns.reduce((sum, c) => sum + (manualWidths[c.key] ?? 0), 0);
+  const freeMin = free.reduce((sum, c) => sum + c.minWidth, 0);
+  const freeWeight = free.reduce((sum, c) => sum + c.weight, 0) || 1;
+  const spare = available > 0 ? Math.max(0, available - reserved - fixed - freeMin) : 0;
+  const widths: Record<string, string> = {};
+  let total = reserved;
+  for (const c of columns) {
+    const width = Math.floor(manualWidths[c.key] ?? c.minWidth + (spare * c.weight) / freeWeight);
+    widths[c.key] = `${width}px`;
+    total += width;
+  }
+  return {
+    shown: columns.map((c) => c.key),
+    hidden: [],
+    widths,
+    expanderWidth: null,
+    reservedWidth: `${reserved}px`,
+    tableWidth: total,
   };
 }
