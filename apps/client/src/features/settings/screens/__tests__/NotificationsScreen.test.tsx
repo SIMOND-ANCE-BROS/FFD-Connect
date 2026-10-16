@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, waitFor } from "@testing-library/react-native";
 import React, { PropsWithChildren } from "react";
-import { Alert } from "react-native";
+import { AccessibilityInfo, Alert } from "react-native";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useAuthRepository } from "../../../../features/auth/context/AuthContext";
 import { NotificationApi } from "../../../../services/api/notification-api";
@@ -320,5 +320,60 @@ describe("NotificationsScreen", () => {
     );
 
     expect(queryByTestId("notifications-clear-all-button")).toBeNull();
+  });
+
+  describe("screen reader (#22)", () => {
+    it("reads a notification card as one sentence, unread first", async () => {
+      (BackendService.getNotifications as jest.Mock).mockResolvedValue([
+        {
+          id: "n1",
+          title: "Résultats publiés",
+          body: "Le classement est disponible",
+          createdAt: "2026-10-15T10:00:00.000Z",
+          isRead: false,
+        },
+      ]);
+      const { findByRole } = await renderScreen();
+      const card = await findByRole("button", {
+        name: "Non lue, Résultats publiés, 15 octobre, Le classement est disponible",
+      });
+      expect(card.props.testID).toBe("notifications-card-n1");
+    });
+
+    it("names the header and footer actions", async () => {
+      const { findByRole, getByRole } = await renderScreen();
+      expect(
+        await findByRole("button", { name: "Tout marquer comme lu" }),
+      ).toBeTruthy();
+      expect(getByRole("button", { name: "Tout effacer" }).props.testID).toBe(
+        "notifications-clear-all-button",
+      );
+      expect(
+        getByRole("button", {
+          name: "Supprimer la notification Nouvelle notification",
+        }),
+      ).toBeTruthy();
+    });
+
+    it("announces the deletion of a notification", async () => {
+      const spy = jest
+        .spyOn(AccessibilityInfo, "announceForAccessibility")
+        .mockImplementation(() => {});
+      const spyIos = jest
+        .spyOn(AccessibilityInfo, "announceForAccessibilityWithOptions")
+        .mockImplementation(() => {});
+      const { findByRole } = await renderScreen();
+      await fireEvent.press(
+        await findByRole("button", {
+          name: "Supprimer la notification Nouvelle notification",
+        }),
+      );
+      await waitFor(() => {
+        const calls = [...spy.mock.calls, ...spyIos.mock.calls].map(
+          (c) => c[0],
+        );
+        expect(calls).toContain("Notification supprimée");
+      });
+    });
   });
 });

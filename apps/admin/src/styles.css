@@ -47,6 +47,58 @@ body {
   width: 100%;
 }
 
+/* A column resized by hand (#670): the table keeps its widths and may scroll. */
+.app-table-surface.app-table-scroll {
+  overflow-x: auto;
+}
+
+/* Header: dragged to move its column (#671), its right edge resizes it (#670). */
+.app-th {
+  position: relative;
+}
+
+.app-th-drop-before {
+  box-shadow: inset 3px 0 0 var(--mantine-primary-color-filled);
+}
+
+.app-th-drop-after {
+  box-shadow: inset -3px 0 0 var(--mantine-primary-color-filled);
+}
+
+.app-col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.app-col-resize::after {
+  content: '';
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  right: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--mantine-color-default-border);
+}
+
+.app-col-resize:hover::after,
+.app-col-resize:focus-visible::after {
+  top: 0;
+  bottom: 0;
+  background: var(--mantine-primary-color-filled);
+}
+
+.app-col-resize:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: -2px;
+}
+
 .app-table-fit > thead > tr > th,
 .app-cell-truncate {
   overflow: hidden;
@@ -148,5 +200,42 @@ body {
   *::after {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Values edited in place on a record page (#672): the value is the button,
+ * a pencil shows on hover and keyboard focus to say it can be changed.
+ */
+.app-inline-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border-radius: var(--mantine-radius-xs);
+  cursor: text;
+}
+
+.app-inline-edit:hover {
+  text-decoration: underline dotted;
+}
+
+.app-inline-edit-pencil {
+  flex: none;
+  color: var(--mantine-color-dimmed);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.app-inline-edit:hover .app-inline-edit-pencil,
+.app-inline-edit:focus-visible .app-inline-edit-pencil {
+  opacity: 1;
+}
+
+/* Touch screens have no hover: keep the pencil visible. */
+@media (hover: none) {
+  .app-inline-edit-pencil {
+    opacity: 1;
   }
 }

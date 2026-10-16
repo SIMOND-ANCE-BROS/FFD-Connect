@@ -32,6 +32,12 @@ describe("queryClient — persistance et déconnexion", () => {
     );
   });
 
+  it("ne persiste jamais l'état de l'accord parental (#61)", async () => {
+    expect(shouldPersistQuery(await seed(["parental-consent", "self"]))).toBe(
+      false,
+    );
+  });
+
   it("persiste les autres requêtes réussies (comportement par défaut)", async () => {
     expect(shouldPersistQuery(await seed(["notifications"]))).toBe(true);
   });

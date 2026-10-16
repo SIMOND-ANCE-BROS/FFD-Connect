@@ -1,4 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
+import { PaymentProvider } from "@prisma/client";
+import { ClubPaymentProviderQueryService } from "./club-payment-provider.query-service";
+import { ClubPaymentProviderService } from "./club-payment-provider.service";
 import { ClubsController } from "./clubs.controller";
 import { ClubsHelloAssoService } from "./clubs-helloasso.service";
 import { PartnershipQueryService } from "./partnership-query.service";
@@ -36,6 +39,9 @@ describe("ClubsController", () => {
     removeSoloTeamMember: jest.fn(),
   };
 
+  const mockPaymentProviderQuery = { getMyClubPaymentProvider: jest.fn() };
+  const mockPaymentProviderService = { setMyClubPaymentProvider: jest.fn() };
+
   const req = { user: { userId: "user-1" } } as unknown as RequestWithUser;
 
   beforeEach(async () => {
@@ -46,6 +52,14 @@ describe("ClubsController", () => {
       providers: [
         { provide: ClubsHelloAssoService, useValue: mockClubsHelloAssoService },
         {
+          provide: ClubPaymentProviderQueryService,
+          useValue: mockPaymentProviderQuery,
+        },
+        {
+          provide: ClubPaymentProviderService,
+          useValue: mockPaymentProviderService,
+        },
+        {
           provide: PartnershipQueryService,
           useValue: mockPartnershipQueryService,
         },
@@ -55,6 +69,42 @@ describe("ClubsController", () => {
     }).compile();
 
     controller = module.get<ClubsController>(ClubsController);
+  });
+
+  // ─── Payment connector (#388) ───────────────────────────────────────────────
+
+  describe("payment provider", () => {
+    const status = {
+      clubName: "Club A",
+      paymentProvider: "HELLOASSO",
+      configured: true,
+      selectableProviders: ["HELLOASSO"],
+    };
+
+    it("reads the club's connector for the caller", async () => {
+      mockPaymentProviderQuery.getMyClubPaymentProvider.mockResolvedValue(
+        status,
+      );
+
+      await expect(controller.getPaymentProvider(req)).resolves.toBe(status);
+      expect(
+        mockPaymentProviderQuery.getMyClubPaymentProvider,
+      ).toHaveBeenCalledWith("user-1");
+    });
+
+    it("sets the club's connector for the caller", async () => {
+      mockPaymentProviderService.setMyClubPaymentProvider.mockResolvedValue(
+        status,
+      );
+      const body = { paymentProvider: PaymentProvider.HELLOASSO };
+
+      await expect(controller.setPaymentProvider(req, body)).resolves.toBe(
+        status,
+      );
+      expect(
+        mockPaymentProviderService.setMyClubPaymentProvider,
+      ).toHaveBeenCalledWith("user-1", body);
+    });
   });
 
   // ─── Registration mode ───────────────────────────────────────────────────────

@@ -4,9 +4,12 @@ import {
   type FilterSpecs,
   filtersQuery,
   isValidFilter,
+  MAX_FIELD_CONDITIONS,
+  MAX_FILTERS,
   opsFor,
   readFilters,
-  withFilter,
+  withFieldFilters,
+  withoutCondition,
   writeFilters,
 } from './listFilters';
 
@@ -92,17 +95,38 @@ describe('operator filters (#557)', () => {
           'f.password=isEmpty&f.name=regex:x&f.name=contains&f.login=isEmpty:x&f.bpm=gt:&f.bpm=between:28,',
         ),
       ).toEqual([]);
-      // The first valid value of a field wins.
-      expect(read('f.name=contains:a&f.name=contains:b')).toEqual([
+    });
+
+    it('reads several conditions of one column, joined by AND unless `j.<field>=or` (#673)', () => {
+      expect(read('f.name=contains:a&f.bpm=gt:30&f.name=notContains:b')).toEqual([
         { field: 'name', op: 'contains', value: 'a' },
+        { field: 'name', op: 'notContains', value: 'b' },
+        { field: 'bpm', op: 'gt', value: 30 },
       ]);
+      expect(read('f.name=contains:a&f.name=contains:b&j.name=or&j.bpm=or&f.bpm=gt:1')).toEqual([
+        { field: 'name', op: 'contains', value: 'a', join: 'or' },
+        { field: 'name', op: 'contains', value: 'b', join: 'or' },
+        // A single condition has nothing to join.
+        { field: 'bpm', op: 'gt', value: 1 },
+      ]);
+    });
+
+    it('keeps the API bounds: conditions per column and in total (#673)', () => {
+      const many = (field: string, count: number) =>
+        Array.from({ length: count }, (_, i) => `f.${field}=contains:v${i}`).join('&');
+      expect(read(many('name', MAX_FIELD_CONDITIONS + 2))).toHaveLength(MAX_FIELD_CONDITIONS);
+      const bpm = Array.from({ length: 5 }, (_, i) => `f.bpm=gt:${i}`).join('&');
+      const role = Array.from({ length: 5 }, () => 'f.role=in:CLUB').join('&');
+      expect(read([many('name', 5), bpm, role].join('&'))).toHaveLength(MAX_FILTERS);
     });
 
     it('writes what it reads', () => {
       const filters: ActiveFilter[] = [
-        { field: 'name', op: 'notContains', value: 'a,b' },
+        { field: 'name', op: 'notContains', value: 'a,b', join: 'or' },
+        { field: 'name', op: 'isEmpty', join: 'or' },
         { field: 'reason', op: 'isEmpty' },
         { field: 'login', op: 'between', value: ['2026-01-01', '2026-01-31'] },
+        { field: 'login', op: 'isEmpty' },
       ];
       const params = new URLSearchParams();
       writeFilters(params, filters);
@@ -120,19 +144,50 @@ describe('operator filters (#557)', () => {
     ).toEqual({
       filters: '[{"field":"name","op":"isEmpty"},{"field":"bpm","op":"lt","value":30}]',
     });
+    expect(
+      JSON.parse(
+        filtersQuery([
+          { field: 'name', op: 'contains', value: 'gmail', join: 'or' },
+          { field: 'bpm', op: 'lt', value: 30 },
+          { field: 'name', op: 'contains', value: 'hotmail', join: 'or' },
+        ]).filters ?? '',
+      ),
+    ).toEqual([
+      { field: 'name', op: 'contains', value: 'gmail', join: 'or' },
+      { field: 'name', op: 'contains', value: 'hotmail', join: 'or' },
+      { field: 'bpm', op: 'lt', value: 30 },
+    ]);
   });
 
-  it('replaces or removes the filter of one field', () => {
+  it('replaces or removes the conditions of one field', () => {
     const filters: ActiveFilter<'name' | 'bpm'>[] = [
       { field: 'name', op: 'contains', value: 'a' },
       { field: 'bpm', op: 'gt', value: 1 },
     ];
-    expect(withFilter(filters, 'name', { field: 'name', op: 'isEmpty' })).toEqual([
+    expect(
+      withFieldFilters(filters, 'name', [
+        { field: 'name', op: 'isEmpty', join: 'or' },
+        { field: 'name', op: 'contains', value: 'b', join: 'or' },
+      ]),
+    ).toEqual([
       { field: 'bpm', op: 'gt', value: 1 },
-      { field: 'name', op: 'isEmpty' },
+      { field: 'name', op: 'isEmpty', join: 'or' },
+      { field: 'name', op: 'contains', value: 'b', join: 'or' },
     ]);
-    expect(withFilter(filters, 'bpm', null)).toEqual([
+    expect(withFieldFilters(filters, 'bpm', [])).toEqual([
       { field: 'name', op: 'contains', value: 'a' },
+    ]);
+  });
+
+  it('removes one condition, the join going with the last but one (#673)', () => {
+    const filters: ActiveFilter<'name' | 'bpm'>[] = [
+      { field: 'name', op: 'contains', value: 'a', join: 'or' },
+      { field: 'name', op: 'contains', value: 'b', join: 'or' },
+      { field: 'bpm', op: 'gt', value: 1 },
+    ];
+    expect(withoutCondition(filters, 0)).toEqual([
+      { field: 'name', op: 'contains', value: 'b' },
+      { field: 'bpm', op: 'gt', value: 1 },
     ]);
   });
 

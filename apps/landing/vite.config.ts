@@ -30,6 +30,7 @@ export default defineConfig({
         suppression: resolve(__dirname, 'suppression-compte/index.html'),
         beta: resolve(__dirname, 'beta/index.html'),
         resetPassword: resolve(__dirname, 'reset-password/index.html'),
+        parentalConsent: resolve(__dirname, 'consentement-parental/index.html'),
       },
     },
   },

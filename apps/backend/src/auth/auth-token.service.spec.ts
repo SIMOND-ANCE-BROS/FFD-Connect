@@ -44,6 +44,12 @@ describe("AuthTokenService", () => {
 
     service = module.get<AuthTokenService>(AuthTokenService);
     jest.clearAllMocks();
+    // Interactive transaction: run the callback against the same mock.
+    mockPrismaService.$transaction.mockImplementation(
+      (cb: (tx: typeof mockPrismaService) => Promise<unknown>) =>
+        cb(mockPrismaService),
+    );
+    mockPrismaService.refreshToken.updateMany.mockResolvedValue({ count: 1 });
   });
 
   afterEach(async () => {
@@ -93,7 +99,6 @@ describe("AuthTokenService", () => {
           license: { number: "L1" },
         },
       });
-      mockPrismaService.$transaction.mockResolvedValue([{}, {}]);
       mockJwtService.sign.mockReturnValue("new-access");
 
       const result = await service.refreshAccessToken(plainToken);
@@ -129,7 +134,6 @@ describe("AuthTokenService", () => {
           club: { disabledAt: null },
         },
       });
-      mockPrismaService.$transaction.mockResolvedValue([{}, {}, {}]);
       mockJwtService.sign.mockReturnValue("new-access");
 
       const result = await service.refreshAccessToken("old-refresh-plain");
@@ -145,19 +149,100 @@ describe("AuthTokenService", () => {
         expiresAt: new Date(Date.now() + 86400000),
         user: { id: "u1", email: "u@test.com", role: UserRole.CLUB },
       });
-      mockPrismaService.user.update.mockReturnValue("user-update-op");
-      mockPrismaService.$transaction.mockResolvedValue([{}, {}, {}]);
       mockJwtService.sign.mockReturnValue("new-access");
 
       await service.refreshAccessToken("old-refresh-plain");
 
+      expect(mockPrismaService.$transaction).toHaveBeenCalledTimes(1);
       expect(mockPrismaService.user.update).toHaveBeenCalledWith({
         where: { id: "u1" },
         data: { lastLoginAt: expect.any(Date) as unknown },
         select: { id: true },
       });
-      const ops = mockPrismaService.$transaction.mock.calls[0][0] as unknown[];
-      expect(ops).toContain("user-update-op");
+    });
+
+    describe("atomic consumption (#681)", () => {
+      const validRecord = () => ({
+        id: "tok-1",
+        revoked: false,
+        expiresAt: new Date(Date.now() + 86400000),
+        user: { id: "u1", email: "u@test.com", role: UserRole.LICENSEE },
+      });
+
+      it("consumes the token with a conditional update on revoked=false and not expired", async () => {
+        mockPrismaService.refreshToken.findUnique.mockResolvedValue(
+          validRecord(),
+        );
+        mockJwtService.sign.mockReturnValue("new-access");
+
+        await service.refreshAccessToken("plain");
+
+        expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalledWith({
+          where: {
+            id: "tok-1",
+            revoked: false,
+            expiresAt: { gt: expect.any(Date) as unknown },
+          },
+          data: {
+            revoked: true,
+            revokedAt: expect.any(Date) as unknown,
+          },
+        });
+        expect(mockPrismaService.refreshToken.update).not.toHaveBeenCalled();
+        const created = mockPrismaService.refreshToken.create.mock
+          .calls[0][0] as { data: { token: string; userId: string } };
+        expect(created.data.userId).toBe("u1");
+      });
+
+      it("returns 401 and issues nothing when a concurrent refresh consumed the token first", async () => {
+        mockPrismaService.refreshToken.findUnique.mockResolvedValue(
+          validRecord(),
+        );
+        mockPrismaService.refreshToken.updateMany.mockResolvedValue({
+          count: 0,
+        });
+
+        await expect(service.refreshAccessToken("plain")).rejects.toThrow(
+          new UnauthorizedException("Invalid or expired refresh token"),
+        );
+        expect(mockPrismaService.refreshToken.create).not.toHaveBeenCalled();
+        expect(mockPrismaService.user.update).not.toHaveBeenCalled();
+        expect(mockJwtService.sign).not.toHaveBeenCalled();
+      });
+
+      it("does not revoke the user's other sessions when it loses the race", async () => {
+        mockPrismaService.refreshToken.findUnique.mockResolvedValue(
+          validRecord(),
+        );
+        mockPrismaService.refreshToken.updateMany.mockResolvedValue({
+          count: 0,
+        });
+
+        await expect(service.refreshAccessToken("plain")).rejects.toThrow();
+        // Only the single conditional consume ran — no userId-wide revocation.
+        expect(mockPrismaService.refreshToken.updateMany).toHaveBeenCalledTimes(
+          1,
+        );
+        expect(
+          mockPrismaService.refreshToken.updateMany.mock.calls[0][0],
+        ).toEqual(
+          expect.objectContaining({
+            where: expect.objectContaining({ id: "tok-1" }) as unknown,
+          }),
+        );
+      });
+
+      it("rejects an expired token without touching the database", async () => {
+        mockPrismaService.refreshToken.findUnique.mockResolvedValue({
+          ...validRecord(),
+          expiresAt: new Date(Date.now() - 1000),
+        });
+
+        await expect(service.refreshAccessToken("plain")).rejects.toThrow(
+          "Invalid or expired refresh token",
+        );
+        expect(mockPrismaService.$transaction).not.toHaveBeenCalled();
+      });
     });
 
     it("does not record lastLoginAt when the refresh token is rejected", async () => {

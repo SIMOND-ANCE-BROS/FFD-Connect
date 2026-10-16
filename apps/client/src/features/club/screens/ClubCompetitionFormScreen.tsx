@@ -67,6 +67,7 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
     newEventLevel,
     setNewEventLevel,
     allowedEventKindsForCurrentCompetition,
+    categoryOptionsForNewEvent,
     levelOptionsForNewEvent,
     ageOptionsForNewEvent,
     newEventAgeGroups,
@@ -132,6 +133,8 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
     setNewLayoutHeight,
     newLayoutRotation,
     setNewLayoutRotation,
+    newLayoutPrice,
+    setNewLayoutPrice,
     openLayoutModal,
     updateLayoutItemPosition,
     toggleLayoutItemSeatLock,
@@ -183,12 +186,20 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
         <View style={[styles.header, { borderBottomColor: theme.border }]}>
           <TouchableOpacity
             accessibilityRole="button"
+            accessibilityLabel="Fermer l'éditeur"
+            accessibilityHint="Revient à l'écran précédent sans enregistrer"
+            testID="competition-editor-close-button"
+            hitSlop={8}
             onPress={() => navigation.goBack()}
             style={styles.closeButton}
           >
             <X size={24} color={theme.text} />
           </TouchableOpacity>
-          <AppText variant="h3" style={{ color: theme.text }}>
+          <AppText
+            variant="h3"
+            style={{ color: theme.text }}
+            accessibilityRole="header"
+          >
             {isEditing
               ? "Modifier"
               : isEvent
@@ -280,6 +291,7 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
               allowedEventKindsForCurrentCompetition={
                 allowedEventKindsForCurrentCompetition
               }
+              categoryOptionsForNewEvent={categoryOptionsForNewEvent}
               levelOptionsForNewEvent={levelOptionsForNewEvent}
               ageOptionsForNewEvent={ageOptionsForNewEvent}
               addEvent={addEvent}
@@ -343,6 +355,8 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
               setNewLayoutHeight={setNewLayoutHeight}
               newLayoutRotation={newLayoutRotation}
               setNewLayoutRotation={setNewLayoutRotation}
+              newLayoutPrice={newLayoutPrice}
+              setNewLayoutPrice={setNewLayoutPrice}
               openLayoutModal={openLayoutModal}
               updateLayoutItemPosition={updateLayoutItemPosition}
               toggleLayoutItemSeatLock={toggleLayoutItemSeatLock}

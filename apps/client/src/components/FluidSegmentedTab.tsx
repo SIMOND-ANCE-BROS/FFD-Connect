@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 import { useTheme } from "../context/ThemeContext";
+import { useMotionEnabled } from "../hooks/useReducedMotion";
 import { AppText } from "./AppText";
 
 interface FluidSegmentedTabProps {
@@ -33,7 +34,11 @@ export const FluidSegmentedTab: React.FC<FluidSegmentedTabProps> = ({
   onChange,
   testID,
 }) => {
-  const { theme, animationsEnabled } = useTheme();
+  const { theme } = useTheme();
+  // In-app toggle AND the OS "Reduce motion" setting (RGAA 13.8).
+  const animationsEnabled = useMotionEnabled();
+  const animationsEnabledRef = useRef(animationsEnabled);
+  animationsEnabledRef.current = animationsEnabled;
   const [containerWidth, setContainerWidth] = useState(0);
 
   const tabWidth = useMemo(
@@ -115,6 +120,10 @@ export const FluidSegmentedTab: React.FC<FluidSegmentedTabProps> = ({
         if (opt) changeRef.current(opt.value);
         // Snap the indicator to the resolved segment (needed when the drag stays
         // within the same segment, where onChange fires no state update).
+        if (!animationsEnabledRef.current) {
+          translateX.setValue(idx * tw);
+          return;
+        }
         Animated.spring(translateX, {
           toValue: idx * tw,
           damping: 15,
@@ -138,7 +147,9 @@ export const FluidSegmentedTab: React.FC<FluidSegmentedTabProps> = ({
       }}
     >
       <GestureDetector gesture={panGesture}>
-        <View style={styles.gestureContainer}>
+        {/* tablist + tab roles: screen readers announce "onglet, 1 sur 4"
+            and which segment is selected. */}
+        <View accessibilityRole="tablist" style={styles.gestureContainer}>
           {tabWidth > 0 && (
             <Animated.View
               collapsable={false}
@@ -163,8 +174,16 @@ export const FluidSegmentedTab: React.FC<FluidSegmentedTabProps> = ({
 
               return (
                 <Pressable
-                  accessibilityRole="button"
+                  accessibilityRole="tab"
+                  accessibilityLabel={opt.label}
+                  accessibilityState={{ selected: isActive }}
+                  accessibilityHint={
+                    isActive ? "Filtre actif" : `Affiche : ${opt.label}`
+                  }
                   key={opt.value}
+                  // The segment is 40pt tall inside a 48pt capsule: extend the
+                  // touch area to the capsule edges (>= 44pt).
+                  hitSlop={{ top: 4, bottom: 4 }}
                   style={[styles.tabButton, { width: tabWidth }]}
                   onPress={() => onChange(opt.value)}
                   testID={testID ? `${testID}-${opt.value}` : undefined}

@@ -46,3 +46,14 @@ Use JWT access tokens (60 min TTL) paired with refresh tokens (30 days TTL) with
 - Requires database writes on every token refresh
 - Token rotation adds complexity to the mobile client (must handle concurrent refresh races)
 - Revocation checks on refresh tokens add a DB round-trip compared to pure stateless JWT
+
+## Amendement 2026-10 — consommation atomique et course entre clients (#681)
+
+**Constat** : la rotation lisait le jeton (`findUnique`), vérifiait `revoked`, puis le révoquait par un `update` sans condition. Deux `POST /auth/refresh` simultanés avec le même jeton passaient tous les deux la vérification et émettaient chacun une paire valide (un jeton de rafraîchissement orphelin, valable 30 jours).
+
+**Décision** :
+
+- Le jeton est consommé dans une transaction par un `updateMany` conditionnel (`id`, `revoked = false`, `expiresAt > maintenant`). Seul l'appel dont la mise à jour touche exactement une ligne émet la nouvelle paire ; PostgreSQL verrouille la ligne et le second écrivain réévalue la condition après le commit du premier, donc ne trouve plus rien.
+- Le perdant de la course reçoit le même 401 qu'un jeton révoqué (`Invalid or expired refresh token`), **sans révoquer les autres sessions de l'utilisateur**. Une course est le fait d'un client légitime (deux onglets du back-office, deux instances de l'app) : le client reprend les jetons stockés par le gagnant (#676) et ne doit pas être déconnecté.
+- **Pas de détection de réutilisation par famille pour l'instant** : sans notion de famille de jetons en base, « révoquer la famille » reviendrait à déconnecter tous les appareils de l'utilisateur, y compris pour des cas bénins (réponse de rotation perdue sur le réseau, onglet resté ouvert après une déconnexion). Une telle détection demanderait une colonne de famille (migration additive) et une fenêtre de grâce ; elle fera l'objet d'une décision séparée.
+- Les jetons d'impersonation ne sont pas concernés : ce sont des jetons d'accès courts, sans jeton de rafraîchissement.

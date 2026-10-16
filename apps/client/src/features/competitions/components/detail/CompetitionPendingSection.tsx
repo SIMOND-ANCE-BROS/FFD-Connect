@@ -63,12 +63,16 @@ export function CompetitionPendingSection({
           <View style={styles.rowGap8}>
             <AppButton
               title="Valider"
+              accessibilityLabel={`Valider l'inscription de ${reg.user.firstName} ${reg.user.lastName}`}
+              accessibilityHint="Confirme cette inscription en attente"
               onPress={() => handleConfirmRegistration(reg.id)}
               variant="primary"
               style={styles.smallButton}
             />
             <AppButton
               title="Refuser"
+              accessibilityLabel={`Refuser l'inscription de ${reg.user.firstName} ${reg.user.lastName}`}
+              accessibilityHint="Demande une confirmation avant de désinscrire ce membre"
               onPress={() =>
                 Alert.alert("Désinscrire", "Désinscrire ce membre ?", [
                   { text: "Annuler", style: "cancel" },

@@ -1,0 +1,42 @@
+/// Consentement d'un représentant légal pour un utilisateur mineur (#61, RGPD
+/// art. 8 et 9). Double opt-in par e-mail : le mineur saisit l'adresse d'un
+/// parent, qui reçoit un lien (jeton aléatoire, seul son SHA-256 est stocké).
+/// Le même lien confirme puis, plus tard, retire le consentement.
+///
+/// Une ligne par DEMANDE : une nouvelle demande remplace la précédente encore
+/// en attente (statut SUPERSEDED), jamais une demande déjà tranchée — la ligne
+/// GRANTED ou REVOKED reste la preuve horodatée, rattachée à une version des
+/// CGU.
+///
+/// Minimisation : l'adresse du parent n'est PAS stockée en clair. Seuls son
+/// empreinte (SHA-256 de l'adresse normalisée, pour établir « c'est bien cette
+/// adresse » si elle est présentée plus tard) et une version masquée
+/// (affichage au mineur) sont conservées.
+///
+/// `status` est un texte validé côté TypeScript (`PARENTAL_CONSENT_STATUSES`)
+/// et non une enum PostgreSQL, dont l'ajout de valeurs se migre mal.
+model ParentalConsent {
+  id                String    @id @default(uuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 hex du jeton du lien (le jeton en clair n'est jamais stocké).
+  tokenHash         String    @unique
+  /// PENDING | GRANTED | REVOKED | SUPERSEDED
+  status            String    @default("PENDING")
+  /// SHA-256 hex de l'adresse du représentant légal, normalisée.
+  parentEmailHash   String
+  /// Adresse masquée (« p***@g***.fr »), seule montrée au mineur.
+  parentEmailMasked String
+  /// Version des CGU en vigueur à l'émission du lien, acceptée par le parent.
+  cguVersion        String
+  requestedAt       DateTime  @default(now())
+  /// Échéance de la CONFIRMATION. Le retrait, lui, reste possible après.
+  expiresAt         DateTime
+  grantedAt         DateTime?
+  revokedAt         DateTime?
+  supersededAt      DateTime?
+
+  // État courant d'un utilisateur : sa dernière demande non remplacée.
+  @@index([userId, status])
+  @@index([userId, requestedAt])
+}

@@ -14,7 +14,8 @@ tags:
       - runFlow: ensure-licensee.yaml
 - tapOn: { id: "tab-license" }
 - extendedWaitUntil: { visible: "Mes licences", timeout: 20000 }
-- assertVisible: "FFD-E2E-LIC"
+# Regex: each identity field is one accessibility element ("Numéro, FFD-E2E-LIC").
+- assertVisible: ".*FFD-E2E-LIC.*"
 # The WDSF "add" affordance is a StackedCard in the licence wallet — it sits
 # behind the active card, so it's often occluded rather than scrollable-to.
 # Assert it exists best-effort (don't fail the licence-screen check on stack z-order).

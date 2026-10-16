@@ -31,6 +31,8 @@ export const ChoiceChip = ({
       accessibilityHint={accessibilityHint}
       testID={testID}
       onPress={onPress}
+      // 44pt target: the pill itself is ~31pt high.
+      hitSlop={{ top: 7, bottom: 7 }}
       style={[
         styles.chip,
         isDark ? styles.bgDarkChip : styles.bgLightChip,
@@ -106,6 +108,9 @@ export const StatusBadge = ({ status }: { status: TrackCorrectionStatus }) => {
     <View
       style={[styles.badge, { backgroundColor: `${color}22` }]}
       testID={`correction-status-${status}`}
+      accessible
+      accessibilityLabel={`Statut : ${STATUS_LABELS[status]}`}
+      accessibilityHint="Statut de la proposition de correction"
     >
       <Text style={[styles.badgeText, { color }]}>{STATUS_LABELS[status]}</Text>
     </View>

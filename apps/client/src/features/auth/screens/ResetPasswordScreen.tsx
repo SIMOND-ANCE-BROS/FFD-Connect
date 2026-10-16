@@ -20,6 +20,11 @@ import { useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
 import { AuthService } from "../services/AuthService";
 
+// The visual policy list is a bulleted caption: read it as one sentence
+// instead of six fragments starting with "puce".
+const PASSWORD_POLICY_LABEL =
+  "Le mot de passe doit contenir : au moins 8 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial";
+
 type ResetPasswordScreenProps = NativeStackScreenProps<
   RootStackParamList,
   "ResetPassword"
@@ -126,14 +131,22 @@ export const ResetPasswordScreen = ({
         >
           {/* Header */}
           <View style={styles.header}>
-            <AppText variant="h1" color={currentTheme.text}>
+            <AppText
+              variant="h1"
+              color={currentTheme.text}
+              accessibilityRole="header"
+            >
               Réinitialiser le mot de passe
             </AppText>
           </View>
 
           {/* Content */}
           <View style={styles.content}>
-            <View style={styles.iconContainer}>
+            <View
+              style={styles.iconContainer}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
               <View
                 style={[
                   styles.iconCircle,
@@ -154,7 +167,10 @@ export const ResetPasswordScreen = ({
             </AppText>
 
             {/* Password Policy */}
+            {/* eslint-disable-next-line react-native-a11y/has-accessibility-hint -- static content, no action to hint */}
             <View
+              accessible
+              accessibilityLabel={PASSWORD_POLICY_LABEL}
               style={[
                 styles.policyContainer,
                 {
@@ -242,6 +258,14 @@ export const ResetPasswordScreen = ({
                 />
                 <TouchableOpacity
                   accessibilityRole="button"
+                  accessibilityLabel={
+                    showNewPassword
+                      ? "Masquer le nouveau mot de passe"
+                      : "Afficher le nouveau mot de passe"
+                  }
+                  accessibilityHint="Bascule l'affichage du mot de passe en clair"
+                  hitSlop={12}
+                  testID="reset-password-new-toggle"
                   onPress={() => setShowNewPassword(!showNewPassword)}
                   style={styles.eyeButton}
                 >
@@ -283,6 +307,14 @@ export const ResetPasswordScreen = ({
                 />
                 <TouchableOpacity
                   accessibilityRole="button"
+                  accessibilityLabel={
+                    showConfirmPassword
+                      ? "Masquer la confirmation du mot de passe"
+                      : "Afficher la confirmation du mot de passe"
+                  }
+                  accessibilityHint="Bascule l'affichage du mot de passe en clair"
+                  hitSlop={12}
+                  testID="reset-password-confirm-toggle"
                   onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                   style={styles.eyeButton}
                 >
@@ -298,6 +330,8 @@ export const ResetPasswordScreen = ({
             <AppButton
               testID="reset-password-submit"
               title={loading ? "Réinitialisation..." : "Réinitialiser"}
+              accessibilityLabel="Réinitialiser le mot de passe"
+              accessibilityHint="Enregistre le nouveau mot de passe"
               onPress={() => {
                 handleSubmit().catch(() => {});
               }}
@@ -307,6 +341,8 @@ export const ResetPasswordScreen = ({
 
             <TouchableOpacity
               accessibilityRole="button"
+              accessibilityLabel="Retour à la connexion"
+              accessibilityHint="Revient à l'écran de connexion"
               onPress={() => navigation.navigate("Login")}
               style={styles.backLink}
             >

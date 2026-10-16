@@ -51,6 +51,7 @@ export const LegalScreen = ({ route, navigation }: Props) => {
                 variant="h3"
                 color={theme.text}
                 style={styles.sectionHeading}
+                accessibilityRole="header"
               >
                 {section.heading}
               </AppText>

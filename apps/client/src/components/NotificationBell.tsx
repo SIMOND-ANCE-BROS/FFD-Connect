@@ -57,7 +57,14 @@ export const NotificationBell = ({
           style={[styles.badge, { backgroundColor: theme.danger }]}
           testID="notification-bell-badge"
         >
-          <AppText variant="caption" color="#fff" style={styles.badgeText}>
+          {/* Fixed 16pt circle: cap Dynamic Type so the digit stays inside
+              (the count is spoken through the button label). */}
+          <AppText
+            variant="caption"
+            color="#fff"
+            style={styles.badgeText}
+            maxFontSizeMultiplier={1.2}
+          >
             {unread > 9 ? "9+" : String(unread)}
           </AppText>
         </View>

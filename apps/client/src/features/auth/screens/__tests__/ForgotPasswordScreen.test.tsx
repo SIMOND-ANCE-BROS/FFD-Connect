@@ -162,4 +162,25 @@ describe("ForgotPasswordScreen", () => {
 
     expect(props.navigation.goBack).toHaveBeenCalled();
   });
+
+  describe("screen reader (#22)", () => {
+    it("names the e-mail field and keeps its testID", async () => {
+      const { getByLabelText } = await render(
+        <ForgotPasswordScreen {...createTestProps()} />,
+      );
+      expect(getByLabelText("E-mail").props.testID).toBe(
+        "forgot-password-email-input",
+      );
+    });
+
+    it("exposes the screen title as a heading and names the back link", async () => {
+      const props = createTestProps();
+      const { getByRole } = await render(<ForgotPasswordScreen {...props} />);
+      expect(getByRole("header", { name: "Mot de passe oublié" })).toBeTruthy();
+      await fireEvent.press(
+        getByRole("button", { name: "Retour à la connexion" }),
+      );
+      expect(props.navigation.goBack).toHaveBeenCalled();
+    });
+  });
 });

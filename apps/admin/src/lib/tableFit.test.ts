@@ -92,5 +92,37 @@ describe('fitColumns', () => {
     expect(fit.shown).toEqual(['a', 'b']);
     expect(fit.hidden).toEqual(['c']);
     expect(sum(fit.widths, fit.expanderWidth)).toBeCloseTo(100, 1);
+    expect(fit.tableWidth).toBeNull();
+  });
+});
+
+describe('fitColumns with columns resized by hand (#670)', () => {
+  it('keeps the hand-set widths in px and shares the rest of the screen by weight', () => {
+    // 1000 px: a is 300, b and c share 700 - 200 of minimums = 500 → 350 each.
+    const fit = fitColumns([col('a'), col('b'), col('c')], 1000, 0, { a: 300 });
+    expect(fit.shown).toEqual(['a', 'b', 'c']);
+    expect(fit.widths).toEqual({ a: '300px', b: '350px', c: '350px' });
+    expect(fit.tableWidth).toBe(1000);
+  });
+
+  it('never moves a column out: the table gets wider than the screen and scrolls', () => {
+    const fit = fitColumns([col('a'), col('b'), col('c')], 300, 40, { a: 500 });
+    expect(fit.hidden).toEqual([]);
+    expect(fit.expanderWidth).toBeNull();
+    expect(fit.widths).toEqual({ a: '500px', b: '100px', c: '100px' });
+    expect(fit.reservedWidth).toBe('40px');
+    expect(fit.tableWidth).toBe(740);
+  });
+
+  it('gives the other columns their minimum while unmeasured', () => {
+    const fit = fitColumns([col('a'), col('b')], 0, 0, { b: 220 });
+    expect(fit.widths).toEqual({ a: '100px', b: '220px' });
+    expect(fit.tableWidth).toBe(320);
+  });
+
+  it('ignores the width of a column that is not shown', () => {
+    const fit = fitColumns([col('a'), col('b')], 1000, 0, { gone: 300 });
+    expect(fit.tableWidth).toBeNull();
+    expect(fit.widths).toEqual({ a: '50%', b: '50%' });
   });
 });

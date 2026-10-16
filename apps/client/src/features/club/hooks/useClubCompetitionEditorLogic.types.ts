@@ -191,6 +191,8 @@ export interface LayoutItem {
   orientation?: LayoutOrientation;
   /** Rotation supplémentaire en degrés (optionnel, purement visuel) */
   rotationDeg?: number;
+  /** Seat price in cents (#405); absent → not payable online. */
+  priceCents?: number;
 }
 
 export interface Competition {
@@ -267,4 +269,28 @@ const LEVELS_BY_AGE_GROUP: Record<string, readonly string[]> = {
 
 export function levelsForAgeGroup(ageGroup: string): readonly string[] {
   return LEVELS_BY_AGE_GROUP[ageGroup] ?? [];
+}
+
+/** Canonical value of the « 10 danses » discipline (#639), as stored by the API. */
+export const TEN_DANCE_CATEGORY = "Ten Dance";
+
+/**
+ * Disciplines the club can pick for an event of this kind. « 10 danses » is
+ * a majeure-only event without level (backend `program-rules.ts`, #442).
+ */
+export function categoryOptionsForKind(kind: EventKind): readonly string[] {
+  return kind === "MAJEURE"
+    ? ["Latine", "Standard", TEN_DANCE_CATEGORY]
+    : ["Latine", "Standard"];
+}
+
+/**
+ * Couple age classes of a discipline: no « Senior V » in Latin (those couples
+ * dance Senior IV); Standard and 10 danses keep it (backend
+ * `ageGroupsForEvent`).
+ */
+export function coupleAgesForCategory(category: string): string[] {
+  return category === "Latine"
+    ? AGES_COUPLE.filter((age) => age !== "Senior V")
+    : [...AGES_COUPLE];
 }

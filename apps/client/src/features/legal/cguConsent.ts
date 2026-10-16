@@ -6,7 +6,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
  * la demande d'acceptation au prochain lancement.
  */
 // v2 (#270) : vérification du certificat médical par une personne (CGU §5).
-export const CGU_VERSION = "2";
+// v3 (#61) : comptes de mineurs ouverts avec l'accord d'un représentant légal
+// (CGU §6). Doit rester égale à PARENTAL_CONSENT_CGU_VERSION côté backend.
+export const CGU_VERSION = "3";
 
 const STORAGE_KEY = "cgu_accepted_version";
 

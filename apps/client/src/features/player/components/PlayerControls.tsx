@@ -25,6 +25,13 @@ interface PlayerControlsProps {
   toggleRepeat: () => void;
 }
 
+/** Spoken state of the repeat button (VoiceOver/TalkBack). */
+export function repeatModeLabel(mode: ContextRepeatMode): string {
+  if (mode === ContextRepeatMode.Track) return "Répéter le morceau";
+  if (mode === ContextRepeatMode.Queue) return "Répéter la file";
+  return "Répétition désactivée";
+}
+
 export const PlayerControls = ({
   currentTheme,
   isShuffle,
@@ -39,7 +46,10 @@ export const PlayerControls = ({
   <View style={styles.controls}>
     {/* Shuffle */}
     <TouchableOpacity
-      accessibilityRole="button"
+      accessibilityRole="switch"
+      accessibilityLabel="Lecture aléatoire"
+      accessibilityState={{ checked: isShuffle }}
+      accessibilityHint="Active ou désactive la lecture aléatoire"
       testID="audio-player-shuffle-button"
       onPress={toggleShuffle}
       style={styles.controlButton}
@@ -60,6 +70,8 @@ export const PlayerControls = ({
 
     <TouchableOpacity
       accessibilityRole="button"
+      accessibilityLabel="Morceau précédent"
+      accessibilityHint="Revient au début ou au morceau précédent"
       testID="audio-player-prev-button"
       onPress={handlePrev}
       style={styles.controlButton}
@@ -69,6 +81,7 @@ export const PlayerControls = ({
 
     <TouchableOpacity
       testID="audio-player-play-button"
+      accessibilityRole="button"
       accessibilityLabel={isPlaying ? "Pause" : "Lecture"}
       accessibilityHint="Met en pause ou reprend la musique"
       style={[
@@ -89,6 +102,8 @@ export const PlayerControls = ({
 
     <TouchableOpacity
       accessibilityRole="button"
+      accessibilityLabel="Morceau suivant"
+      accessibilityHint="Passe au morceau suivant de la file"
       testID="audio-player-next-button"
       onPress={handleNext}
       style={styles.controlButton}
@@ -99,6 +114,8 @@ export const PlayerControls = ({
     {/* Repeat */}
     <TouchableOpacity
       accessibilityRole="button"
+      accessibilityLabel={repeatModeLabel(repeatMode)}
+      accessibilityHint="Change le mode de répétition : désactivé, file, morceau"
       testID="audio-player-repeat-button"
       onPress={toggleRepeat}
       style={styles.controlButton}

@@ -133,6 +133,8 @@ export const PinnedHeader = ({
             variant="h3"
             color={theme.text}
             numberOfLines={1}
+            // Screen title: VoiceOver/TalkBack "headings" rotor lands here.
+            accessibilityRole="header"
             style={styles.title}
           >
             {title}

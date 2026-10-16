@@ -13,6 +13,7 @@ import { AppText } from "../../../components/AppText";
 import { ThemeContextType, useTheme } from "../../../context/ThemeContext";
 import { RootStackParamList } from "../../../navigation/types";
 import { useScannerLogic } from "../hooks/useScannerLogic";
+import { OfflineCheckinOverlay } from "../components/OfflineCheckinOverlay";
 import { CheckinResponse } from "../services/CheckinService";
 import { formatDiscipline } from "../../../utils/discipline";
 
@@ -185,6 +186,7 @@ export const ScannerScreen = ({ navigation, route }: ScannerScreenProps) => {
     isActive,
     isLoading,
     result,
+    offlineResult,
     error,
   } = state;
 
@@ -251,7 +253,7 @@ export const ScannerScreen = ({ navigation, route }: ScannerScreenProps) => {
         enableTorch={torch === "on"}
         barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
         onBarcodeScanned={
-          isActive && !isLoading && !result
+          isActive && !isLoading && !result && !offlineResult
             ? (scanResult) => {
                 void actions.handleBarcodeScanned(scanResult);
               }
@@ -305,6 +307,11 @@ export const ScannerScreen = ({ navigation, route }: ScannerScreenProps) => {
       <CheckinResultOverlay
         result={result}
         error={error}
+        onClose={actions.resetScan}
+        currentTheme={currentTheme}
+      />
+      <OfflineCheckinOverlay
+        result={offlineResult}
         onClose={actions.resetScan}
         currentTheme={currentTheme}
       />

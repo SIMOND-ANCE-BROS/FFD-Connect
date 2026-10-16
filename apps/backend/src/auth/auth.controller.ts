@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { ThrottleByIp } from "../common/decorators/throttle-by-ip.decorator";
+import { ThrottleByIdentifier } from "../common/guards/identifier-throttler.guard";
 import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import {
   ApiBearerAuth,
@@ -19,6 +20,7 @@ import {
 } from "@nestjs/swagger";
 import { UserRole } from "@prisma/client";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
+import { ParentalConsentService } from "../parental-consent/parental-consent.service";
 import { AuthPasswordService } from "./auth-password.service";
 import { AuthService } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
@@ -45,11 +47,17 @@ export class AuthController {
     private authService: AuthService,
     private authTokenService: AuthTokenService,
     private authPasswordService: AuthPasswordService,
+    private parentalConsentService: ParentalConsentService,
   ) {}
 
   @Post("register")
-  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  // Per IP sized for a venue sharing one address; per e-mail for abuse (#636).
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
   @ThrottleByIp()
+  @ThrottleByIdentifier(
+    { field: "email", limit: 5, ttl: 60000, perIp: true },
+    { field: "email", limit: 10, ttl: 60000 },
+  )
   @ApiOperation({
     summary: "Inscription avec vérification de licence FFD",
     description:
@@ -75,18 +83,33 @@ export class AuthController {
   async register(
     @Body() body: RegisterDto,
   ): Promise<import("./auth.service").LoginResponse> {
-    return this.authService.register(
+    const response = await this.authService.register(
       body.email,
       body.password,
       body.licenseNumber,
       body.lastName,
       body.firstName,
     );
+    // Minor (#61): the parent's address of the sign-up form gets the consent
+    // link. Best effort, and ignored for an adult account.
+    if (body.parentEmail) {
+      await this.parentalConsentService.requestAfterRegistration(
+        response.user.id,
+        body.parentEmail,
+      );
+    }
+    return response;
   }
 
   @Post("login")
-  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  // Per IP sized for a gym Wi-Fi on competition day; brute force on one
+  // account is held per (account, address) and, looser, per account (#636).
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
   @ThrottleByIp()
+  @ThrottleByIdentifier(
+    { field: "username", limit: 5, ttl: 60000, perIp: true },
+    { field: "username", limit: 20, ttl: 60000 },
+  )
   @ApiOperation({
     summary: "Authentifie un utilisateur",
     description:
@@ -273,8 +296,9 @@ export class AuthController {
   }
 
   @Post("forgot-password")
-  @Throttle({ default: { ttl: 60000, limit: 3 } })
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
   @ThrottleByIp()
+  @ThrottleByIdentifier({ field: "email", limit: 3, ttl: 60000 })
   @ApiOperation({
     summary: "Demande de réinitialisation de mot de passe",
     description:

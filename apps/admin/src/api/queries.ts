@@ -10,7 +10,9 @@ import {
   adminLicenseRenewalsControllerDetail,
   adminLicenseRenewalsControllerList,
   adminStatsControllerGet,
+  adminRefundsDueControllerList,
   adminUsageControllerGet,
+  healthDataAccessLogControllerList,
   adminTracksControllerFindOne,
   adminTracksControllerList,
   trackCorrectionsControllerFindOne,
@@ -22,7 +24,9 @@ import type {
   AdminControllerListClubsData,
   AdminControllerListUsersData,
   AdminLicenseRenewalsControllerListData,
+  AdminRefundsDueControllerListData,
   AdminTracksControllerListData,
+  HealthDataAccessLogControllerListData,
   TrackCorrectionsControllerListData,
 } from './generated/types.gen';
 import type { StatsPeriod } from '../lib/stats';
@@ -34,6 +38,8 @@ export type AuditFilter = NonNullable<AdminControllerAuditLogData['query']>;
 export type ModerationFilter = NonNullable<TrackCorrectionsControllerListData['query']>;
 export type TracksFilter = NonNullable<AdminTracksControllerListData['query']>;
 export type LicenseRenewalsFilter = NonNullable<AdminLicenseRenewalsControllerListData['query']>;
+export type RefundsDueFilter = NonNullable<AdminRefundsDueControllerListData['query']>;
+export type HealthAccessFilter = NonNullable<HealthDataAccessLogControllerListData['query']>;
 
 /** Throws so React Query surfaces the error state (the generated client never throws). */
 export async function unwrap<T>(p: Promise<{ data?: T; error?: unknown }>): Promise<T> {
@@ -211,3 +217,43 @@ export const pendingRenewalsCountQuery = queryOptions({
   refetchOnReconnect: false,
   retry: false,
 });
+
+/**
+ * Refunds owed by every club (#627). Same rule as moderation: a refocus, a
+ * reconnect or a retry would wake the scale-to-zero backend.
+ */
+export const refundsDueQuery = (q: RefundsDueFilter) =>
+  queryOptions({
+    queryKey: ['admin', 'refunds-due', q],
+    queryFn: () => unwrap(adminRefundsDueControllerList({ query: q })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/**
+ * Health-data access journal (#63, #606): ids only, names are looked up with
+ * {@link userNameQuery}. Same rule as moderation: no refetch on focus or
+ * reconnect, no retry (scale-to-zero backend).
+ */
+export const healthAccessLogQuery = (q: HealthAccessFilter) =>
+  queryOptions({
+    queryKey: ['admin', 'health-access-log', q],
+    queryFn: () => unwrap(healthDataAccessLogControllerList({ query: q })),
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/**
+ * A user record read only for its name (journal rows carry ids): shares the
+ * cache of the record page, kept 5 minutes, never refetched on its own.
+ */
+export const userNameQuery = (id: string) =>
+  queryOptions({
+    ...userQuery(id),
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });

@@ -443,6 +443,76 @@ describe("Admin routes (e2e) — role matrix", () => {
       });
     });
 
+    it("ORs the conditions of one column, ANDed with the other columns (#673)", async () => {
+      currentRole = UserRole.ADMIN;
+      prisma.user.count.mockResolvedValue(0);
+      prisma.user.findMany.mockResolvedValue([]);
+      await request(server())
+        .get(
+          `/api/v1/admin/users?${filters([
+            { field: "email", op: "contains", value: "gmail", join: "or" },
+            { field: "email", op: "contains", value: "hotmail", join: "or" },
+            { field: "lastLoginAt", op: "isEmpty" },
+          ])}`,
+        )
+        .expect(200);
+      const call = prisma.user.findMany.mock.calls.at(-1)?.[0] as {
+        where: unknown;
+        take: number;
+      };
+      expect(call.take).toBeLessThanOrEqual(100);
+      expect(call.where).toEqual({
+        AND: [
+          {
+            OR: [
+              { email: { contains: "gmail", mode: "insensitive" } },
+              { email: { contains: "hotmail", mode: "insensitive" } },
+            ],
+          },
+          { lastLoginAt: null },
+        ],
+      });
+    });
+
+    it.each([
+      ["/api/v1/admin/users", "name"],
+      ["/api/v1/admin/clubs", "name"],
+      ["/api/v1/admin/audit-log", "actor"],
+      ["/api/v1/admin/tracks", "title"],
+      ["/api/v1/track-corrections", "track"],
+      ["/api/v1/admin/license-renewals", "name"],
+    ])(
+      "%s refuses more than 5 conditions on one column (#673)",
+      async (path, field) => {
+        currentRole = UserRole.ADMIN;
+        const sixOnOneField = Array.from({ length: 6 }, (_, i) => ({
+          field,
+          op: "contains",
+          value: `v${i}`,
+          join: "or",
+        }));
+        const res = await request(server())
+          .get(`${path}?${filters(sixOnOneField)}`)
+          .expect(400);
+        expect(JSON.stringify(res.body)).toContain(
+          `5 conditions au plus sur ${field}`,
+        );
+      },
+    );
+
+    it("refuses mixed joins on one column with 400 (#673)", async () => {
+      currentRole = UserRole.ADMIN;
+      const res = await request(server())
+        .get(
+          `/api/v1/admin/users?${filters([
+            { field: "name", op: "contains", value: "a", join: "or" },
+            { field: "name", op: "contains", value: "b", join: "and" },
+          ])}`,
+        )
+        .expect(400);
+      expect(JSON.stringify(res.body)).toContain("même join");
+    });
+
     it.each([
       "/api/v1/admin/users",
       "/api/v1/admin/clubs",

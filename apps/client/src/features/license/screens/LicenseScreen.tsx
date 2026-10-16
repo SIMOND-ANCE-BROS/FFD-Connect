@@ -17,7 +17,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { QRCodeView } from "../components/QRCodeView.native";
+import { EntryQrCode } from "../components/EntryQrCode";
 
 import { AppText } from "../../../components/AppText";
 import { BetaNotice } from "../../../components/BetaNotice";
@@ -37,6 +37,7 @@ import {
   LicenseUser,
 } from "../components/LicenseCard";
 import { LicenseRenewalBanner } from "../components/LicenseRenewalBanner";
+import { ParentalConsentBanner } from "../../parental-consent/ParentalConsentBanner";
 import { computeLicenseExpiry } from "../utils/licenseExpiry";
 import { getFfdSeason } from "../utils/licenseSeason";
 import { SwipeableLicenseCard } from "../components/SwipeableLicenseCard";
@@ -45,6 +46,7 @@ import { WdsfEntryModal } from "../components/WdsfEntryModal";
 import { useTheme } from "../../../context/ThemeContext";
 import type { RootStackParamList } from "../../../navigation/types";
 import { isWdsfQrData } from "../../../utils/typeGuards";
+import { useEntryQrBatch } from "../hooks/useEntryQrBatch";
 import { useLicenseLogic } from "../hooks/useLicenseLogic";
 import { buildLicenseQrData } from "../utils/licenseQrData";
 
@@ -93,6 +95,15 @@ export const LicenseScreen: React.FC = () => {
 
   const ffdUser =
     state.listItems.find((item) => item.type === "FFD")?.data ?? null;
+  // Rotating entry QR (#24): fetched while online, served offline at the venue.
+  const entryQrBatch = useEntryQrBatch(ffdUser !== null);
+  const activeQrId =
+    state.activeQrData !== null && typeof state.activeQrData === "object"
+      ? state.activeQrData.id
+      : undefined;
+  // Only the FFD licence QR rotates: never the WDSF card, nor another number.
+  const modalEntryQrBatch =
+    entryQrBatch && activeQrId === entryQrBatch.number ? entryQrBatch : null;
   const ffdValidUntilRaw = ffdUser?.validUntilRaw ?? null;
   // Offline validity dot: neutral without an expiry date (#211) — an unknown
   // validity is neither "valid" (green) nor "expired" (red).
@@ -197,6 +208,12 @@ export const LicenseScreen: React.FC = () => {
                 dédié dans l'en-tête (redondant). */}
             <TouchableOpacity
               accessibilityRole="button"
+              accessibilityLabel="Partager la licence en PDF"
+              accessibilityHint="Génère un PDF de votre licence à partager"
+              accessibilityState={{
+                disabled: state.loadingPdf,
+                busy: state.loadingPdf,
+              }}
               testID="license-screen-share-button"
               onPress={() => {
                 actions.generateAndSharePdf().catch(() => {});
@@ -250,6 +267,8 @@ export const LicenseScreen: React.FC = () => {
               { backgroundColor: `${currentTheme.textSecondary}18` },
             ]}
             testID="license-offline-banner"
+            // Dot colour is decorative: the text carries the information.
+            accessible
           >
             <View
               testID="license-offline-dot"
@@ -274,6 +293,7 @@ export const LicenseScreen: React.FC = () => {
               },
             ]}
             testID="license-unavailable"
+            accessible
             accessibilityRole="alert"
           >
             {state.licenseUnavailableReason === "offline" ? (
@@ -300,6 +320,9 @@ export const LicenseScreen: React.FC = () => {
             </AppText>
           </View>
         ) : null}
+        <ParentalConsentBanner
+          onPress={() => navigation.getParent()?.navigate("ParentalConsent")}
+        />
         <LicenseRenewalBanner
           validUntil={ffdValidUntilRaw}
           onPress={() => navigation.getParent()?.navigate("LicenseRenewal")}
@@ -467,6 +490,8 @@ export const LicenseScreen: React.FC = () => {
           />
           <View
             testID="qr-modal-card"
+            // Keep VoiceOver inside the card while the code is displayed.
+            accessibilityViewIsModal
             style={[
               styles.qrModalContent,
               { backgroundColor: currentTheme.surface },
@@ -476,14 +501,18 @@ export const LicenseScreen: React.FC = () => {
               <BigBarcode value={state.activeQrData.id ?? ""} />
             ) : (
               <View style={styles.qrCodeContainer}>
-                <QRCodeView
-                  value={JSON.stringify(state.activeQrData)}
+                <EntryQrCode
+                  batch={modalEntryQrBatch}
+                  fallbackValue={JSON.stringify(state.activeQrData)}
                   size={220}
+                  spokenLabel="QR code de votre licence"
                 />
               </View>
             )}
             <TouchableOpacity
               accessibilityRole="button"
+              accessibilityLabel="Fermer"
+              accessibilityHint="Ferme le code de la licence"
               onPress={() => actions.setShowQr(false)}
               style={styles.modalCloseButton}
               testID="qr-modal-close-button"
@@ -545,6 +574,8 @@ const styles = StyleSheet.create({
   },
   modalCloseButton: {
     padding: 10,
+    minHeight: 44,
+    justifyContent: "center",
   },
   guestCard: {
     padding: 24,

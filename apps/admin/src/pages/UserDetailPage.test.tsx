@@ -94,6 +94,70 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
       data: { data: [], meta: { total: 0, skip: 0, take: 20, hasMore: false } },
       error: undefined,
     } as never);
+    vi.spyOn(sdk, 'healthDataAccessLogControllerList').mockResolvedValue({
+      data: { data: [], meta: { total: 0, skip: 0, take: 10, hasMore: false } },
+      error: undefined,
+    } as never);
+  });
+
+  it('lists who accessed the health data, names resolved from the user records', async () => {
+    const list = vi.spyOn(sdk, 'healthDataAccessLogControllerList').mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 'h1',
+            subjectUserId: 'u1',
+            actorUserId: 'admin-1',
+            actorRole: 'ADMIN',
+            action: 'DOWNLOAD',
+            resourceType: 'MEDICAL_CERTIFICATE',
+            resourceId: 'd1',
+            route: 'GET /admin/license-renewals/:id/documents/:docId/file',
+            createdAt: '2026-10-07T10:00:00.000Z',
+          },
+          {
+            id: 'h2',
+            subjectUserId: 'u1',
+            actorUserId: 'u1',
+            actorRole: 'OWNER',
+            action: 'EXPORT',
+            resourceType: 'LICENSE_RENEWAL_REQUEST',
+            resourceId: 'r1',
+            route: 'GET /users/me/export',
+            createdAt: '2026-10-06T10:00:00.000Z',
+          },
+        ],
+        meta: { total: 12, skip: 0, take: 10, hasMore: true },
+      },
+      error: undefined,
+    } as never);
+    vi.spyOn(sdk, 'adminControllerGetUser').mockImplementation((({
+      path,
+    }: {
+      path: { id: string };
+    }) =>
+      Promise.resolve({
+        data:
+          path.id === 'u1'
+            ? detail
+            : { ...detail, id: path.id, firstName: 'Gabin', lastName: 'Simond' },
+        error: undefined,
+      })) as never);
+    renderPage();
+    expect(
+      await screen.findByRole('heading', { name: 'Qui a consulté ses données de santé' }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Téléchargement \(certificat médical\) par Gabin Simond/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Export \(demande de renouvellement\) par la personne elle-même/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Voir tout le journal (12)' })).toHaveAttribute(
+      'href',
+      '/health-data-access-log?subject=u1',
+    );
+    expect(list).toHaveBeenCalledWith({ query: { subjectUserId: 'u1', skip: 0, take: 10 } });
   });
 
   it('shows a legacy category instead of a blank select', async () => {
@@ -227,20 +291,34 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
     expect(screen.queryByRole('button', { name: /renvoyer l'invitation/i })).toBeNull();
   });
 
-  it('edits the email from its own modal and shows the updated card', async () => {
+  it('edits the email in place and shows the updated card (#672)', async () => {
     const patch = vi.spyOn(sdk, 'adminControllerUpdateUserIdentifiers').mockResolvedValue({
       data: { user: { ...detail, email: 'new@x.fr' }, previousEmailNotified: true },
       error: undefined,
     } as never);
     renderPage();
-    await user.click(
-      await screen.findByRole('button', { name: /modifier l'email ou la licence/i }),
-    );
+    await user.click(await screen.findByRole('button', { name: /modifier l'email/i }));
+    await fill(user, screen.getByLabelText('Email'), 'new@x.fr');
+    await user.keyboard('{Enter}');
     const dialog = await screen.findByRole('dialog');
-    await fill(user, within(dialog).getByLabelText(/Email de connexion/), 'new@x.fr');
-    await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }));
+    await user.click(within(dialog).getByRole('button', { name: "Changer l'email" }));
     expect(patch).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { email: 'new@x.fr' } });
-    expect(await screen.findByText('Email : new@x.fr')).toBeInTheDocument();
+    expect(
+      await screen.findByRole('button', { name: /modifier l'email \(new@x\.fr\)/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('edits the licence number in place (#672)', async () => {
+    const patch = vi.spyOn(sdk, 'adminControllerUpdateUserIdentifiers').mockResolvedValue({
+      data: { user: { ...detail, licenseNumber: 'L2' }, previousEmailNotified: null },
+      error: undefined,
+    } as never);
+    renderPage();
+    await user.click(await screen.findByRole('button', { name: /modifier le numéro de licence/i }));
+    await fill(user, screen.getByLabelText('Licence'), 'L2');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer (Licence)' }));
+    expect(patch).toHaveBeenCalledWith({ path: { id: 'u1' }, body: { licenseNumber: 'L2' } });
+    expect(await screen.findByText(/L2 \(jusqu'au/)).toBeInTheDocument();
   });
 
   it("does not offer to edit the admin's own identifiers", async () => {
@@ -250,7 +328,9 @@ describe('UserDetailPage', { timeout: 15_000 }, () => {
     } as never);
     renderPage();
     expect(await screen.findByText(/Dernière connexion/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /modifier l'email ou la licence/i })).toBeNull();
+    expect(screen.getByText(/Email : jeanne@x\.fr/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /modifier l'email/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /modifier le numéro de licence/i })).toBeNull();
   });
 
   it('shows an unrecorded last login as "inconnue", not "jamais"', async () => {

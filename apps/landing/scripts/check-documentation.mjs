@@ -40,6 +40,7 @@ for (const path of [
   'mentions-legales',
   'suppression-compte',
   'reset-password',
+  'consentement-parental',
 ])
   assert(existsSync(resolve(root, path, 'index.html')), path + ' must remain available');
 console.log(

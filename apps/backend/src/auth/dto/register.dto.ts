@@ -1,9 +1,10 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
 import {
   IsAscii,
   IsEmail,
   IsNotEmpty,
+  IsOptional,
   IsString,
   MaxLength,
   MinLength,
@@ -69,4 +70,16 @@ export class RegisterDto {
   @MinLength(2)
   @MaxLength(100)
   firstName!: string;
+
+  @ApiPropertyOptional({
+    description:
+      "E-mail d'un parent ou représentant légal (#61). Utilisé seulement si la licence désigne un mineur : un lien d'accord lui est envoyé. Ignoré pour un majeur.",
+    example: "parent@example.com",
+  })
+  @IsOptional()
+  @Transform(normalizeEmailTransform)
+  @IsEmail(STORED_EMAIL_OPTIONS)
+  @IsAscii({ message: STORED_EMAIL_ASCII_MESSAGE })
+  @MaxLength(255)
+  parentEmail?: string;
 }

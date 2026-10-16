@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
+import { ParentalConsentModule } from "../parental-consent/parental-consent.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { AuthController } from "./auth.controller";
 import { AuthPasswordService } from "./auth-password.service";
@@ -15,6 +16,7 @@ import { SessionCleanupService } from "./session-cleanup.service";
   imports: [
     PassportModule,
     PrismaModule,
+    ParentalConsentModule,
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService) => ({
         secret: configService.getOrThrow<string>("JWT_SECRET"),

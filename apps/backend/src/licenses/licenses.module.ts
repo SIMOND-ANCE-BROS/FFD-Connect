@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { AdminAuditModule } from "../admin/admin-audit.module";
+import { ParentalConsentModule } from "../parental-consent/parental-consent.module";
 import { HealthDataAccessModule } from "../health-data-access/health-data-access.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { LicenseQrModule } from "./qr/license-qr.module";
@@ -11,6 +12,8 @@ import { LicenseRenewalModerationQueryService } from "./license-renewal-moderati
 import { LicenseRenewalModerationService } from "./license-renewal-moderation.service";
 import { LicenseRenewalNotificationService } from "./license-renewal-notification.service";
 import { LicenseRenewalService } from "./license-renewal.service";
+import { EntryQrController } from "./entry-qr.controller";
+import { EntryQrQueryService } from "./entry-qr.query-service";
 import { LicensesController } from "./licenses.controller";
 import { LicensesService } from "./licenses.service";
 
@@ -20,11 +23,17 @@ import { LicensesService } from "./licenses.service";
     LicenseQrModule,
     AppleWalletModule,
     AdminAuditModule,
+    ParentalConsentModule,
     HealthDataAccessModule,
   ],
-  controllers: [LicensesController, AdminLicenseRenewalsController],
+  controllers: [
+    LicensesController,
+    AdminLicenseRenewalsController,
+    EntryQrController,
+  ],
   providers: [
     LicensesService,
+    EntryQrQueryService,
     LicenseRenewalService,
     LicenseRenewalModerationService,
     LicenseRenewalModerationQueryService,

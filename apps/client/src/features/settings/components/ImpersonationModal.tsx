@@ -193,7 +193,12 @@ export const ImpersonationModal = ({
         >
           <View style={styles.titleRow}>
             <UserCog size={22} color={theme.primary} />
-            <AppText variant="h3" color={theme.text} style={styles.title}>
+            <AppText
+              variant="h3"
+              color={theme.text}
+              style={styles.title}
+              accessibilityRole="header"
+            >
               Se connecter en tant que
             </AppText>
             <TouchableOpacity
@@ -233,6 +238,7 @@ export const ImpersonationModal = ({
                 color={theme.textSecondary}
                 align="center"
                 style={styles.empty}
+                accessibilityLiveRegion="polite"
               >
                 Aucun utilisateur trouvé.
               </AppText>

@@ -17,6 +17,7 @@ import { RootStackParamList } from "../../../navigation/types";
 import api from "../../../services/api";
 import type { CareerResult } from "../../../services/BackendService";
 import { LicenseRenewalBanner } from "../../license/components/LicenseRenewalBanner";
+import { ParentalConsentBanner } from "../../parental-consent/ParentalConsentBanner";
 import { useRefreshRenewalStatusIfPending } from "../../license/hooks/useRenewalPending";
 import {
   type CompetitionLevelProfile,
@@ -118,6 +119,9 @@ export const ProfileScreen = ({ navigation }: Props) => {
           />
         }
       >
+        <ParentalConsentBanner
+          onPress={() => navigation.navigate("ParentalConsent")}
+        />
         <LicenseRenewalBanner
           validUntil={license?.validUntil}
           onPress={() => navigation.navigate("LicenseRenewal")}

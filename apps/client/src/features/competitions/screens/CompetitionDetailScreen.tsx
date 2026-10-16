@@ -174,6 +174,8 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
             <ActivityIndicator
               color={currentTheme.primary}
               testID="competition-detail-loading"
+              accessibilityLabel="Chargement de la compétition"
+              accessibilityHint="Le détail s'affichera dès qu'il sera chargé"
             />
           </View>
           {renderHeader()}
@@ -265,6 +267,13 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
           {!!(state.details.delayMinutes && state.details.delayMinutes > 0) && (
             <View style={styles.delayBadgeContainer}>
               <View
+                // Spoken without the emoji; polite live region so TalkBack
+                // reads a delay that appears while the screen is open.
+                accessible
+                accessibilityRole="alert"
+                accessibilityLabel={`Retard estimé : ${state.details.delayMinutes} minutes`}
+                accessibilityHint="Les horaires annoncés sont décalés d'autant"
+                accessibilityLiveRegion="polite"
                 style={[
                   styles.delayBadge,
                   styles.alignSelfStart,
@@ -327,6 +336,7 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
                       title="Résultats"
                       variant="outline"
                       onPress={openResults}
+                      accessibilityHint="Ouvre les résultats de la compétition"
                       testID="competition-detail-results"
                     />
                   </View>
@@ -335,7 +345,13 @@ export const CompetitionDetailScreen = ({ route, navigation }: Props) => {
                 <>
                   {showEligibleFilter && (
                     <View style={styles.eligibleOnlyRow}>
-                      <AppText variant="body" color={currentTheme.text}>
+                      <AppText
+                        variant="body"
+                        color={currentTheme.text}
+                        // The Switch carries the same name: no double reading.
+                        accessibilityElementsHidden
+                        importantForAccessibility="no"
+                      >
                         Épreuves éligibles uniquement
                       </AppText>
                       <Switch

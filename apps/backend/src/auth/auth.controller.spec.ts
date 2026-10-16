@@ -5,8 +5,10 @@ import { AuthController } from "./auth.controller";
 import { AuthPasswordService } from "./auth-password.service";
 import { AuthService } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
+import { ParentalConsentService } from "../parental-consent/parental-consent.service";
 import { STORE_REVIEW_IMPERSONATION_MESSAGE } from "./store-review/store-review-protection";
 import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
+import { IdentifierThrottlerGuard } from "../common/guards/identifier-throttler.guard";
 
 describe("AuthController", () => {
   let controller: AuthController;
@@ -15,6 +17,7 @@ describe("AuthController", () => {
   let authPasswordService: AuthPasswordService;
 
   const mockAuthService = {
+    register: jest.fn(),
     login: jest.fn(),
     validateUser: jest.fn(),
     impersonate: jest.fn(),
@@ -31,6 +34,10 @@ describe("AuthController", () => {
     changePassword: jest.fn(),
   };
 
+  const mockParentalConsentService = {
+    requestAfterRegistration: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [AuthController],
@@ -38,9 +45,15 @@ describe("AuthController", () => {
         { provide: AuthService, useValue: mockAuthService },
         { provide: AuthTokenService, useValue: mockAuthTokenService },
         { provide: AuthPasswordService, useValue: mockAuthPasswordService },
+        {
+          provide: ParentalConsentService,
+          useValue: mockParentalConsentService,
+        },
       ],
     })
       .overrideGuard(ThrottlerUserGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(IdentifierThrottlerGuard)
       .useValue({ canActivate: () => true })
       .compile();
 
@@ -53,6 +66,52 @@ describe("AuthController", () => {
 
   it("should be defined", () => {
     expect(controller).toBeDefined();
+  });
+
+  describe("register (#61 parental consent)", () => {
+    const body = {
+      email: "lea@example.com",
+      password: "Secret123!",
+      licenseNumber: "20120101-mar-le01",
+      lastName: "Martin",
+      firstName: "Léa",
+    };
+    const registered = { access_token: "a", user: { id: "u-minor" } };
+
+    it("sends the consent request when the form carries a parent's address", async () => {
+      mockAuthService.register.mockResolvedValue(registered);
+
+      const result = await controller.register({
+        ...body,
+        parentEmail: "parent@example.com",
+      });
+
+      expect(result).toBe(registered);
+      expect(
+        mockParentalConsentService.requestAfterRegistration,
+      ).toHaveBeenCalledWith("u-minor", "parent@example.com");
+    });
+
+    it("sends nothing without a parent's address", async () => {
+      mockAuthService.register.mockResolvedValue(registered);
+
+      await controller.register(body);
+
+      expect(
+        mockParentalConsentService.requestAfterRegistration,
+      ).not.toHaveBeenCalled();
+    });
+
+    it("sends nothing when the registration fails", async () => {
+      mockAuthService.register.mockRejectedValue(new Error("taken"));
+
+      await expect(
+        controller.register({ ...body, parentEmail: "parent@example.com" }),
+      ).rejects.toThrow("taken");
+      expect(
+        mockParentalConsentService.requestAfterRegistration,
+      ).not.toHaveBeenCalled();
+    });
   });
 
   describe("login", () => {

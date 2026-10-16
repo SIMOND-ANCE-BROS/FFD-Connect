@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Alert } from "react-native";
+import { parseSeatPrice, seatPriceToInput } from "../utils/seatPrice";
 import type {
   LayoutItem,
   LayoutOrientation,
@@ -38,6 +39,8 @@ export const useLayoutEditor = ({
   const [newLayoutWidth, setNewLayoutWidth] = useState(15);
   const [newLayoutHeight, setNewLayoutHeight] = useState(10);
   const [newLayoutRotation, setNewLayoutRotation] = useState("0");
+  // Seat price typed in euros (#405); "" = not payable online.
+  const [newLayoutPrice, setNewLayoutPrice] = useState("");
 
   // --- HELPERS ---
   /** Default position for new items: left side, stacked vertically (piste au centre) */
@@ -65,6 +68,7 @@ export const useLayoutEditor = ({
       setNewLayoutWidth(item.width);
       setNewLayoutHeight(item.height);
       setNewLayoutRotation((item.rotationDeg ?? 0).toString());
+      setNewLayoutPrice(seatPriceToInput(item.priceCents));
     } else {
       setEditingLayoutItem(null);
       const type = presetType ?? "TABLE";
@@ -79,6 +83,7 @@ export const useLayoutEditor = ({
       setNewLayoutWidth(type === "GRADIN" ? 18 : 12);
       setNewLayoutHeight(type === "GRADIN" ? 25 : 10);
       setNewLayoutRotation("0");
+      setNewLayoutPrice("");
     }
     setShowLayoutModal(true);
   };
@@ -128,6 +133,16 @@ export const useLayoutEditor = ({
       Alert.alert("Erreur", "Veuillez donner un nom à cet élément");
       return;
     }
+    // Only tables and gradins are bookable: no price on other elements.
+    const price =
+      newLayoutType === "OTHER"
+        ? ({ ok: true, cents: undefined } as const)
+        : parseSeatPrice(newLayoutPrice);
+    if (!price.ok) {
+      Alert.alert("Tarif invalide", price.error);
+      return;
+    }
+    const priceCents = price.cents;
 
     if (editingLayoutItem) {
       const capacity =
@@ -160,6 +175,7 @@ export const useLayoutEditor = ({
                 : undefined,
             lockedSeats: validLocked,
             rotationDeg: rotation,
+            priceCents,
           };
         }),
       );
@@ -204,6 +220,7 @@ export const useLayoutEditor = ({
         lockedSeats: [],
         orientation,
         rotationDeg: rotation,
+        ...(priceCents !== undefined ? { priceCents } : {}),
       };
       setLayoutItems([...layoutItems, newItem]);
     }
@@ -271,6 +288,8 @@ export const useLayoutEditor = ({
     setNewLayoutHeight,
     newLayoutRotation,
     setNewLayoutRotation,
+    newLayoutPrice,
+    setNewLayoutPrice,
     openLayoutModal,
     updateLayoutItemPosition,
     toggleLayoutItemSeatLock,

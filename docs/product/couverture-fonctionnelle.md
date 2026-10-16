@@ -2,7 +2,7 @@
 
 **Date :** 2026-07-18 — Instantané / Snapshot
 
-**Source :** Comparaison de la spec `ffd.md` v2.5 au code réel (`apps/backend/src`, `apps/client/src`, `apps/backend/prisma/schema`).
+**Source :** Comparaison de la spec interne v2.5 (document de travail hors dépôt) au code réel (`apps/backend/src`, `apps/client/src`, `apps/backend/prisma/schema`).
 
 **Méthodologie :** Les statuts reflètent une vérification d'**implémentation réelle et de câblage** (grep des appelants, imports d'écrans, schéma Prisma) — pas une simple présence de fichiers. Un composant présent mais jamais appelé est classé comme non livré.
 

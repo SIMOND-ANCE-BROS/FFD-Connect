@@ -16,6 +16,11 @@ import {
   handleRegistrationReplayError,
   handleRegistrationReplaySuccess,
 } from "../features/competitions/services/registrationQueue";
+import {
+  CHECKIN_KIND,
+  handleCheckinReplayError,
+  replayCheckin,
+} from "../features/license/services/offlineCheckin";
 import { dispatchMutation, useOfflineQueue } from "../hooks/useOfflineQueue";
 import { isNetStateOnline } from "../utils/connectivity";
 import { onSessionEnd } from "./sessionCleanup";
@@ -108,6 +113,8 @@ const NON_PERSISTED_QUERY_ROOTS: readonly string[] = [
   "track-corrections",
   // Renewal state (#268): tied to a medical certificate, kept in memory only.
   "license-renewal",
+  // Parental consent (#61): carries a parent's (masked) address.
+  "parental-consent",
 ];
 
 /** Filtre de persistance : le défaut de React Query, moins les exclusions. */
@@ -138,10 +145,16 @@ interface Props {
 const OfflineQueueRunner = () => {
   useOfflineQueue({
     mutationFn: async (request, mutation) => {
+      if (mutation.kind === CHECKIN_KIND) {
+        await replayCheckin(request, mutation);
+        return;
+      }
       assertReplayable(mutation);
       await dispatchMutation(request);
     },
-    onReplayError: handleRegistrationReplayError,
+    onReplayError: (mutation, error) =>
+      handleCheckinReplayError(mutation, error) ??
+      handleRegistrationReplayError(mutation, error),
     onReplaySuccess: handleRegistrationReplaySuccess,
     onConflict: () =>
       Alert.alert(

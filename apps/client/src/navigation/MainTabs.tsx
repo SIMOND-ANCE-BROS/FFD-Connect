@@ -228,6 +228,7 @@ export const MainTabs = ({ route }: MainTabsProps) => {
             component={LicenseScreenWithTransition}
             options={{
               tabBarIcon: getTabIcon(IdCard, currentTheme),
+              tabBarLabel: "Licence",
               // @ts-expect-error: tabBarTestID is a custom property used by CurvedTabBar
               tabBarTestID: "tab-license",
             }}

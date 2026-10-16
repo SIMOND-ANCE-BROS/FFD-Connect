@@ -6,7 +6,7 @@ import {
   Shield,
   Trash2,
 } from "lucide-react-native";
-import React from "react";
+import React, { type RefObject } from "react";
 import {
   ActivityIndicator,
   Switch,
@@ -29,6 +29,8 @@ interface SettingsPrivacySectionProps {
   /** Mesure d'audience anonyme (lot 5) ; null pendant le chargement. */
   usageEnabled: boolean | null;
   onToggleUsage: (on: boolean) => void;
+  /** Receives the screen-reader focus back when the deletion modal closes. */
+  deleteAccountRef?: RefObject<View | null>;
 }
 
 /**
@@ -44,10 +46,14 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
   onOpenLegal,
   usageEnabled,
   onToggleUsage,
+  deleteAccountRef,
 }) => (
   <>
     <View style={styles.sectionTitleContainer}>
-      <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+      <Text
+        accessibilityRole="header"
+        style={[styles.sectionTitle, { color: theme.textSecondary }]}
+      >
         Confidentialité et données
       </Text>
     </View>
@@ -80,6 +86,7 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
 
       {!isGuest && (
         <TouchableOpacity
+          accessibilityRole="button"
           style={[
             styles.row,
             usageEnabled !== null && styles.borderTop,
@@ -87,6 +94,7 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
           ]}
           onPress={onExportData}
           disabled={exporting}
+          accessibilityState={{ disabled: exporting, busy: exporting }}
           testID="settings-export-data-button"
           accessibilityLabel="Exporter mes données"
           accessibilityHint="Télécharge toutes vos données personnelles au format JSON (RGPD)"
@@ -117,6 +125,7 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
         ] as [LegalDoc, string][]
       ).map(([doc, label], index) => (
         <TouchableOpacity
+          accessibilityRole="button"
           key={doc}
           style={[
             styles.row,
@@ -151,6 +160,8 @@ export const SettingsPrivacySection: React.FC<SettingsPrivacySectionProps> = ({
 
       {!isGuest && (
         <TouchableOpacity
+          ref={deleteAccountRef}
+          accessibilityRole="button"
           style={[
             styles.row,
             styles.borderTop,

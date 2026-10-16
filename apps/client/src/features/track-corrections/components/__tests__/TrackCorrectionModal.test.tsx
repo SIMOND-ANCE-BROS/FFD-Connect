@@ -96,7 +96,10 @@ describe("TrackCorrectionModal", () => {
     await fireEvent.press(getByTestId("correction-reason-DELETE"));
     expect(getByTestId("correction-delete-info")).toBeTruthy();
     expect(
-      getByText("Pourquoi retirer cette musique ? (obligatoire)"),
+      // Visual caption, hidden from AT (the input's hint says « Obligatoire »).
+      getByText("Pourquoi retirer cette musique ? (obligatoire)", {
+        includeHiddenElements: true,
+      }),
     ).toBeTruthy();
 
     await fireEvent.changeText(getByTestId("correction-message-input"), "   ");
@@ -273,7 +276,9 @@ describe("TrackCorrectionModal", () => {
   it("« Autre » s'envoie avec la seule description", async () => {
     const { getByTestId, getByText } = await renderModal();
     await fireEvent.press(getByTestId("correction-reason-OTHER"));
-    expect(getByText("Décrivez le problème")).toBeTruthy();
+    expect(
+      getByText("Décrivez le problème", { includeHiddenElements: true }),
+    ).toBeTruthy();
     await fireEvent.changeText(
       getByTestId("correction-message-input"),
       "Le son coupe à 1:30",

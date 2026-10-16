@@ -18,6 +18,7 @@ const empty = {
   partnershipCount: 0,
   soloTeamCount: 0,
   helloAssoConfigured: false,
+  paymentProvider: 'HELLOASSO',
   createdAt: '2026-01-01T00:00:00.000Z',
   members: [],
 };
@@ -93,6 +94,21 @@ describe('ClubDetailPage', () => {
     expect(dialog).toHaveTextContent(/reporté/);
     await user.click(within(dialog).getByRole('button', { name: 'Confirmer' }));
     expect(patch).toHaveBeenCalledWith({ path: { id: 'c1' }, body: { name: 'Club Z' } });
+  });
+
+  it('shows the club payment connector and its state (#665)', async () => {
+    renderPage({ ...empty, helloAssoConfigured: true });
+    expect(
+      await screen.findByText('Paiement en ligne : HelloAsso (configuré)'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Paiement en ligne/ })).toHaveValue('HelloAsso');
+  });
+
+  it('says when the connector has no credentials yet (#665)', async () => {
+    renderPage(empty);
+    expect(
+      await screen.findByText('Paiement en ligne : HelloAsso (non configuré)'),
+    ).toBeInTheDocument();
   });
 
   it('shows the server message when the new name is taken', async () => {

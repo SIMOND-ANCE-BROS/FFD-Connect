@@ -3,6 +3,10 @@ import * as ImagePicker from "expo-image-picker";
 import { Alert } from "react-native";
 import { useTheme } from "../../../../context/ThemeContext";
 import { useBackendHealth } from "../../../../hooks/useBackendHealth";
+import {
+  PaymentProviderApi,
+  PaymentProviderApiError,
+} from "../../../../services/api/payment-provider-api";
 import rnBiometrics from "../../../../utils/biometrics-adapter";
 import { createMockNavigation } from "../../../../utils/testUtils";
 import { useAuthRepository } from "../../../auth/context/AuthContext";
@@ -35,6 +39,14 @@ jest.mock("expo-image-picker", () => ({
   requestMediaLibraryPermissionsAsync: jest.fn(),
   launchImageLibraryAsync: jest.fn(),
   MediaTypeOptions: { Images: "Images" },
+}));
+
+jest.mock("../../../../services/api/payment-provider-api", () => ({
+  ...jest.requireActual("../../../../services/api/payment-provider-api"),
+  PaymentProviderApi: {
+    getStatus: jest.fn().mockResolvedValue(null),
+    setProvider: jest.fn(),
+  },
 }));
 
 jest.mock("../../../club/services/ClubService", () => ({
@@ -406,6 +418,83 @@ describe("useSettingsLogic", () => {
 
       expect(result.current.state.defaultFilter).toBe("style");
       expect(mockAuth.setDefaultLibraryFilter).toHaveBeenCalledWith("style");
+    });
+  });
+
+  describe("payment connector (#665)", () => {
+    const status = {
+      clubName: "Club Test",
+      paymentProvider: "HELLOASSO" as const,
+      configured: false,
+      selectableProviders: ["HELLOASSO" as const],
+    };
+
+    it("loads the club's connector for a club account", async () => {
+      mockAuth.getAuthConfig.mockResolvedValue({ role: "CLUB" });
+      (PaymentProviderApi.getStatus as jest.Mock).mockResolvedValue(status);
+      const { result } = await renderHook(() =>
+        useSettingsLogic({ navigation: mockNavigation }),
+      );
+      await act(async () => {});
+      expect(result.current.state.paymentProviderStatus).toEqual(status);
+    });
+
+    it("does not ask for a connector for a licensee", async () => {
+      const { result } = await renderHook(() =>
+        useSettingsLogic({ navigation: mockNavigation }),
+      );
+      await act(async () => {});
+      expect(PaymentProviderApi.getStatus).not.toHaveBeenCalled();
+      expect(result.current.state.paymentProviderStatus).toBeNull();
+    });
+
+    it("switches the connector and keeps the server's answer", async () => {
+      mockAuth.getAuthConfig.mockResolvedValue({ role: "CLUB" });
+      (PaymentProviderApi.getStatus as jest.Mock).mockResolvedValue(status);
+      const next = { ...status, paymentProvider: "OTHER" as never };
+      (PaymentProviderApi.setProvider as jest.Mock).mockResolvedValue(next);
+      const { result } = await renderHook(() =>
+        useSettingsLogic({ navigation: mockNavigation }),
+      );
+      await act(async () => {});
+      await act(async () => {
+        await result.current.actions.handleSetPaymentProvider("OTHER" as never);
+      });
+      expect(PaymentProviderApi.setProvider).toHaveBeenCalledWith("OTHER");
+      expect(result.current.state.paymentProviderStatus).toEqual(next);
+    });
+
+    it("does nothing when the connector is already the current one", async () => {
+      mockAuth.getAuthConfig.mockResolvedValue({ role: "CLUB" });
+      (PaymentProviderApi.getStatus as jest.Mock).mockResolvedValue(status);
+      const { result } = await renderHook(() =>
+        useSettingsLogic({ navigation: mockNavigation }),
+      );
+      await act(async () => {});
+      await act(async () => {
+        await result.current.actions.handleSetPaymentProvider("HELLOASSO");
+      });
+      expect(PaymentProviderApi.setProvider).not.toHaveBeenCalled();
+    });
+
+    it("shows the server's reason when the change is refused", async () => {
+      mockAuth.getAuthConfig.mockResolvedValue({ role: "CLUB" });
+      (PaymentProviderApi.getStatus as jest.Mock).mockResolvedValue(status);
+      (PaymentProviderApi.setProvider as jest.Mock).mockRejectedValue(
+        new PaymentProviderApiError("Pas encore disponible", 400),
+      );
+      const { result } = await renderHook(() =>
+        useSettingsLogic({ navigation: mockNavigation }),
+      );
+      await act(async () => {});
+      await act(async () => {
+        await result.current.actions.handleSetPaymentProvider("OTHER" as never);
+      });
+      expect(Alert.alert).toHaveBeenCalledWith(
+        "Erreur",
+        "Pas encore disponible",
+      );
+      expect(result.current.state.paymentProviderStatus).toEqual(status);
     });
   });
 

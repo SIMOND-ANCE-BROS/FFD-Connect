@@ -223,6 +223,27 @@ export const licenseWalletPassSelect = {
 } as const;
 
 /**
+ * Jours d'une compétition (début, fin éventuelle) : borne l'heure de scan
+ * déclarée par un check-in hors ligne rejoué (#24).
+ */
+export const competitionDaysSelect = {
+  date: true,
+  endDate: true,
+} as const;
+
+/**
+ * Champs d'une licence nécessaires au lot de QR d'entrée tournants (#24) :
+ * ce que le QR porte (id, numéro, nom du titulaire) et jusqu'à quand il peut
+ * être émis. Rien d'autre (minimisation).
+ */
+export const licenseEntryQrSelect = {
+  id: true,
+  number: true,
+  validUntil: true,
+  user: { select: { firstName: true, lastName: true } },
+} as const;
+
+/**
  * Jeton de téléchargement de pass Wallet (#162) : à qui il appartient,
  * jusqu'à quand il vaut et combien de téléchargements il a déjà servis.
  */
@@ -741,6 +762,24 @@ export const seatBookingRefundDueSelect = {
 } as const;
 
 /**
+ * Remboursements dus vus par l'administrateur (#627), tous clubs confondus :
+ * les mêmes champs que pour le club, plus le club organisateur (relié, ou son
+ * libellé de repli) de la compétition.
+ */
+export const adminSeatBookingRefundDueSelect = {
+  ...seatBookingRefundDueSelect,
+  competition: {
+    select: {
+      id: true,
+      title: true,
+      date: true,
+      organizer: true,
+      organizerClub: { select: { id: true, name: true } },
+    },
+  },
+} as const;
+
+/**
  * Compétitions candidates d'un club organisateur (#516) : id, club relié et
  * libellé de repli (#408, cf. organizerMatcher).
  */
@@ -1201,6 +1240,7 @@ export const adminClubListSelect = {
   id: true,
   name: true,
   registrationMode: true,
+  paymentProvider: true,
   disabledAt: true,
   isStoreReview: true,
   createdAt: true,
@@ -1213,6 +1253,25 @@ export const adminClubListSelect = {
  */
 export const clubHelloAssoCredentialsSelect = {
   id: true,
+  helloAssoClientId: true,
+  helloAssoClientSecret: true,
+  helloAssoOrgSlug: true,
+} as const;
+
+/** Payment connector chosen by a club (#388); NULL = HelloAsso. */
+export const clubPaymentProviderSelect = {
+  paymentProvider: true,
+} as const;
+
+/**
+ * Club payment connector status (#388): the chosen connector and whether
+ * its credentials are set. The HelloAsso secret is read only to know whether
+ * it is set — never returned.
+ */
+export const clubPaymentProviderStatusSelect = {
+  id: true,
+  name: true,
+  paymentProvider: true,
   helloAssoClientId: true,
   helloAssoClientSecret: true,
   helloAssoOrgSlug: true,
@@ -1246,6 +1305,7 @@ export const adminClubEditableSelect = {
   id: true,
   name: true,
   registrationMode: true,
+  paymentProvider: true,
 } as const;
 
 /** Back-office club status toggle: current state + store-review protection. */
@@ -1412,6 +1472,65 @@ export const notificationNameScrubSelect = {
   id: true,
   body: true,
   data: true,
+} as const;
+
+/**
+ * Parental consent (#61): the minor an action is about. The birth date decides
+ * whether consent is required; the first name personalises the parent's
+ * e-mail; the login address must not be given as the parent's.
+ */
+export const parentalConsentSubjectSelect = {
+  id: true,
+  firstName: true,
+  email: true,
+  birthDate: true,
+} as const;
+
+/** Parental consent (#61): birth date only, for the health-data gate. */
+export const userBirthDateSelect = {
+  birthDate: true,
+} as const;
+
+/**
+ * Parental consent (#61): what the minor's app shows of the latest request.
+ * Never the token hash nor the hash of the parent's address.
+ */
+export const parentalConsentStateSelect = {
+  status: true,
+  parentEmailMasked: true,
+  requestedAt: true,
+  expiresAt: true,
+  grantedAt: true,
+  revokedAt: true,
+} as const;
+
+/**
+ * Parental consent (#61): the request a link designates, as the parent's page
+ * needs it — the minor's first name only, never their e-mail or birth date.
+ */
+export const parentalConsentTokenTargetSelect = {
+  id: true,
+  userId: true,
+  status: true,
+  expiresAt: true,
+  grantedAt: true,
+  revokedAt: true,
+  user: { select: { firstName: true } },
+} as const;
+
+/**
+ * GDPR export (#61): the consent trail of the account. Neither the token hash
+ * (a secret) nor the parent's address hash (data of a third party).
+ */
+export const parentalConsentExportSelect = {
+  status: true,
+  parentEmailMasked: true,
+  cguVersion: true,
+  requestedAt: true,
+  expiresAt: true,
+  grantedAt: true,
+  revokedAt: true,
+  supersededAt: true,
 } as const;
 
 /**

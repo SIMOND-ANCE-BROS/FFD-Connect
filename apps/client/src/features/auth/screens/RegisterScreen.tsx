@@ -38,6 +38,7 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
   const licenseRef = useRef<TextInput>(null);
   const lastNameRef = useRef<TextInput>(null);
   const firstNameRef = useRef<TextInput>(null);
+  const parentEmailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const confirmPasswordRef = useRef<TextInput>(null);
 
@@ -74,6 +75,7 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                 align="center"
                 style={styles.title}
                 color={currentTheme.text}
+                accessibilityRole="header"
               >
                 Inscription
               </AppText>
@@ -100,6 +102,9 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                   variant="caption"
                   style={styles.label}
                   color={currentTheme.textSecondary}
+                  // Duplicates the input's accessibilityLabel: hidden from AT.
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
                 >
                   NUMÉRO DE LICENCE FFD
                 </AppText>
@@ -130,12 +135,64 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                 </Pressable>
               </View>
 
+              {/* Parent's e-mail — minors only (#61) */}
+              {state.isMinor ? (
+                <View style={styles.inputGroup} testID="register-parent-group">
+                  <AppText
+                    variant="caption"
+                    style={styles.label}
+                    color={currentTheme.textSecondary}
+                  >
+                    E-MAIL D'UN PARENT OU REPRÉSENTANT LÉGAL
+                  </AppText>
+                  <AppText
+                    variant="caption"
+                    color={currentTheme.textSecondary}
+                    style={styles.parentHint}
+                  >
+                    Votre licence indique que vous êtes mineur(e). Votre
+                    représentant légal recevra un lien pour donner son accord ;
+                    d'ici là, vous ne pourrez pas déposer de certificat médical.
+                  </AppText>
+                  <Pressable
+                    accessible={false}
+                    onPress={() => parentEmailRef.current?.focus()}
+                    style={styles.inputPressable}
+                  >
+                    <TextInput
+                      ref={parentEmailRef}
+                      testID="register-parent-email-input"
+                      accessibilityLabel="E-mail du représentant légal"
+                      accessibilityHint="Saisissez l'adresse e-mail d'un parent ou représentant légal"
+                      style={inputStyle("parentEmail")}
+                      placeholder="parent@exemple.fr"
+                      placeholderTextColor={
+                        isDark ? theme.colors.slate500 : theme.colors.slate400
+                      }
+                      value={state.parentEmail}
+                      onChangeText={actions.setParentEmail}
+                      onFocus={() => actions.setFocusedField("parentEmail")}
+                      onBlur={() => actions.setFocusedField(null)}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="email-address"
+                      returnKeyType="next"
+                      onSubmitEditing={() => lastNameRef.current?.focus()}
+                      blurOnSubmit={false}
+                    />
+                  </Pressable>
+                </View>
+              ) : null}
+
               {/* Last Name */}
               <View style={styles.inputGroup}>
                 <AppText
                   variant="caption"
                   style={styles.label}
                   color={currentTheme.textSecondary}
+                  // Duplicates the input's accessibilityLabel: hidden from AT.
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
                 >
                   NOM DE FAMILLE
                 </AppText>
@@ -172,6 +229,9 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                   variant="caption"
                   style={styles.label}
                   color={currentTheme.textSecondary}
+                  // Duplicates the input's accessibilityLabel: hidden from AT.
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
                 >
                   PRÉNOM
                 </AppText>
@@ -208,6 +268,9 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                   variant="caption"
                   style={styles.label}
                   color={currentTheme.textSecondary}
+                  // Duplicates the input's accessibilityLabel: hidden from AT.
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
                 >
                   ADRESSE EMAIL
                 </AppText>
@@ -247,6 +310,9 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                   variant="caption"
                   style={styles.label}
                   color={currentTheme.textSecondary}
+                  // Duplicates the input's accessibilityLabel: hidden from AT.
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
                 >
                   MOT DE PASSE
                 </AppText>
@@ -297,6 +363,12 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                   </Pressable>
                   <TouchableOpacity
                     accessibilityRole="button"
+                    accessibilityLabel={
+                      state.isPasswordVisible
+                        ? "Masquer les mots de passe"
+                        : "Afficher les mots de passe"
+                    }
+                    accessibilityHint="Bascule l'affichage des mots de passe en clair"
                     onPress={actions.togglePasswordVisibility}
                     style={styles.eyeIcon}
                     testID="register-password-toggle"
@@ -316,6 +388,9 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                   variant="caption"
                   style={styles.label}
                   color={currentTheme.textSecondary}
+                  // Duplicates the input's accessibilityLabel: hidden from AT.
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
                 >
                   CONFIRMER LE MOT DE PASSE
                 </AppText>
@@ -358,6 +433,8 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                   accessibilityHint="Obligatoire pour créer un compte"
                   testID="register-cgu-checkbox"
                   onPress={actions.toggleCguAccepted}
+                  // The visual box is 22pt: extend the touch area to 44pt.
+                  hitSlop={11}
                   style={[
                     styles.cguCheckbox,
                     {
@@ -382,6 +459,8 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                     variant="caption"
                     color={currentTheme.primary}
                     onPress={() => navigation.navigate("Legal", { doc: "cgu" })}
+                    accessibilityRole="link"
+                    accessibilityHint="Ouvre les conditions générales d'utilisation"
                     testID="register-cgu-link"
                   >
                     conditions générales d'utilisation
@@ -393,6 +472,8 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
                     onPress={() =>
                       navigation.navigate("Legal", { doc: "privacy" })
                     }
+                    accessibilityRole="link"
+                    accessibilityHint="Ouvre la politique de confidentialité"
                     testID="register-privacy-link"
                   >
                     politique de confidentialité
@@ -401,8 +482,8 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
               </View>
 
               <AppButton
-                accessibilityLabel="Register Button"
-                accessibilityHint="Créer mon compte"
+                accessibilityLabel="S'inscrire"
+                accessibilityHint="Crée votre compte avec les informations saisies"
                 testID="register-submit-button"
                 title={state.loading ? "Inscription..." : "S'INSCRIRE"}
                 onPress={() => {
@@ -414,6 +495,8 @@ export const RegisterScreen = ({ navigation }: RegisterScreenProps) => {
 
               <TouchableOpacity
                 accessibilityRole="button"
+                accessibilityLabel="Déjà un compte ? Se connecter"
+                accessibilityHint="Revient à l'écran de connexion"
                 style={styles.linkButton}
                 onPress={actions.onGoToLogin}
                 testID="register-login-link"
@@ -468,6 +551,10 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     letterSpacing: 1,
   },
+  parentHint: {
+    marginBottom: 8,
+    lineHeight: 18,
+  },
   inputPressable: {
     width: "100%",
   },
@@ -501,6 +588,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   eyeIcon: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
     padding: 12,
   },
   cguRow: {

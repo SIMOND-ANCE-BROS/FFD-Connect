@@ -55,6 +55,11 @@ export function CompetitionMapCard({
             }}
             style={styles.mapImage}
             resizeMode="cover"
+            // Informative image: name what it shows (RGAA 1.1).
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel={`Carte du lieu : ${details.location}`}
+            accessibilityHint="Le bouton S'y rendre ouvre l'itinéraire"
             onError={() => setMapFailed(true)}
           />
         )}
@@ -63,6 +68,7 @@ export function CompetitionMapCard({
         <AppButton
           title="S'y rendre"
           variant="outline"
+          accessibilityHint="Choisir une application GPS pour l'itinéraire"
           onPress={() => {
             const lat = details.latitude;
             const lng = details.longitude;

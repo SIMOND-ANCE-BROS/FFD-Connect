@@ -102,7 +102,11 @@ export const ForgotPasswordScreen = ({
         >
           {/* Content */}
           <View style={styles.content}>
-            <View style={styles.iconContainer}>
+            <View
+              style={styles.iconContainer}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
               <View
                 style={[
                   styles.iconCircle,
@@ -135,8 +139,8 @@ export const ForgotPasswordScreen = ({
               >
                 <Mail size={20} color={currentTheme.textSecondary} />
                 <TextInput
-                  accessibilityLabel="Email"
-                  accessibilityHint="Saisissez votre adresse email pour réinitialiser le mot de passe"
+                  accessibilityLabel="E-mail"
+                  accessibilityHint="Saisissez l'e-mail de votre compte pour recevoir le lien de réinitialisation"
                   testID="forgot-password-email-input"
                   style={[styles.input, { color: currentTheme.text }]}
                   placeholder="Votre adresse email"
@@ -160,6 +164,8 @@ export const ForgotPasswordScreen = ({
             <AppButton
               testID="forgot-password-submit"
               title={loading ? "Envoi en cours..." : "Envoyer"}
+              accessibilityLabel="Envoyer le lien de réinitialisation"
+              accessibilityHint="Envoie un e-mail avec le lien pour choisir un nouveau mot de passe"
               onPress={() => {
                 handleSubmit().catch(() => {});
               }}
@@ -169,6 +175,8 @@ export const ForgotPasswordScreen = ({
 
             <TouchableOpacity
               accessibilityRole="button"
+              accessibilityLabel="Retour à la connexion"
+              accessibilityHint="Revient à l'écran de connexion"
               onPress={() => navigation.goBack()}
               style={styles.backLink}
             >

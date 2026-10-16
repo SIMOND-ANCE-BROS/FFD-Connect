@@ -6,6 +6,10 @@ import { analytics } from "../../../services/analytics";
 import { useAuthStore } from "../../../stores/auth.store";
 import { createLogger } from "../../../utils/logger";
 import { acceptCgu } from "../../legal/cguConsent";
+import {
+  isMinorLicenseNumber,
+  looksLikeEmail,
+} from "../../parental-consent/parentalConsent";
 import { useAuthRepository } from "../context/AuthContext";
 
 const logger = createLogger("useRegisterLogic");
@@ -29,6 +33,10 @@ export const useRegisterLogic = ({ navigation }: UseRegisterLogicProps) => {
   const [licenseNumber, setLicenseNumber] = useState("");
   const [lastName, setLastName] = useState("");
   const [firstName, setFirstName] = useState("");
+  const [parentEmail, setParentEmail] = useState("");
+  // Minor (#61): the licence number encodes the birth date — ask for a
+  // parent's address. The server decides for real; this only shows the field.
+  const isMinor = isMinorLicenseNumber(licenseNumber);
 
   const [loading, setLoading] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -60,6 +68,24 @@ export const useRegisterLogic = ({ navigation }: UseRegisterLogicProps) => {
       return;
     }
 
+    if (isMinor) {
+      const trimmedParent = parentEmail.trim();
+      if (!looksLikeEmail(trimmedParent)) {
+        Alert.alert(
+          "Accord parental",
+          "Vous êtes mineur(e) : indiquez l'adresse e-mail d'un parent ou représentant légal. Il recevra un lien pour donner son accord.",
+        );
+        return;
+      }
+      if (trimmedParent.toLowerCase() === email.trim().toLowerCase()) {
+        Alert.alert(
+          "Accord parental",
+          "L'adresse du représentant légal doit être différente de la vôtre.",
+        );
+        return;
+      }
+    }
+
     if (!cguAccepted) {
       Alert.alert(
         "Conditions d'utilisation",
@@ -76,6 +102,7 @@ export const useRegisterLogic = ({ navigation }: UseRegisterLogicProps) => {
         licenseNumber.trim(),
         lastName.trim(),
         firstName.trim(),
+        isMinor ? parentEmail.trim() : undefined,
       );
       analytics.logEvent("register", {});
       // La case CGU cochée vaut acceptation → la modale premier lancement
@@ -103,6 +130,8 @@ export const useRegisterLogic = ({ navigation }: UseRegisterLogicProps) => {
       licenseNumber,
       lastName,
       firstName,
+      parentEmail,
+      isMinor,
       loading,
       isPasswordVisible,
       focusedField,
@@ -115,6 +144,7 @@ export const useRegisterLogic = ({ navigation }: UseRegisterLogicProps) => {
       setLicenseNumber,
       setLastName,
       setFirstName,
+      setParentEmail,
       togglePasswordVisibility: () => setIsPasswordVisible((prev) => !prev),
       setFocusedField,
       toggleCguAccepted: () => setCguAccepted((prev) => !prev),
