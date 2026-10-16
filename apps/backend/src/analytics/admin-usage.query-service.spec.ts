@@ -46,6 +46,9 @@ describe("AdminUsageQueryService", () => {
     expect(u.sessions).toBe(0);
     expect(u.medianSessionMinutes).toBeNull();
     expect(u.activeInstallsPerDay).toBe(0);
+    expect(u.activeInstallsPerDayByPlatform).toEqual({ ios: 0, android: 0 });
+    expect(u.activeInstallsToday).toBe(0);
+    expect(u.activeInstallsLast7Days).toBe(0);
     expect(u.activeInstallsThisMonth).toBe(0);
     expect(u.screens).toEqual([]);
     expect(u.competitions).toEqual([]);
@@ -60,9 +63,12 @@ describe("AdminUsageQueryService", () => {
         { dow: 6, hour: 23, count: BigInt(2) },
       ],
       actives: [
-        { day: "2026-10-09", installs: BigInt(6) },
-        { day: "2026-10-10", installs: BigInt(3) },
+        { platform: "ios", installs: BigInt(6) },
+        { platform: "android", installs: BigInt(3) },
+        { platform: "web", installs: BigInt(50) }, // unknown platform ignored
       ],
+      dau: [{ installs: BigInt(2) }],
+      wau: [{ installs: BigInt(8) }],
       month: [{ installs: BigInt(12) }],
       sessions: [{ sessions: BigInt(4), median: 450 }],
       platforms: [
@@ -83,7 +89,13 @@ describe("AdminUsageQueryService", () => {
     const u = await serviceOf(prisma).get("7d", undefined, NOW);
     expect(u.heatmap[0][9]).toBe(5);
     expect(u.heatmap[6][23]).toBe(2);
-    expect(u.activeInstallsPerDay).toBe(1.3); // (6 + 3) / 7 days
+    expect(u.activeInstallsPerDay).toBe(1.3); // (6 + 3) install-days / 7 days
+    expect(u.activeInstallsPerDayByPlatform).toEqual({
+      ios: 0.9,
+      android: 0.4,
+    });
+    expect(u.activeInstallsToday).toBe(2);
+    expect(u.activeInstallsLast7Days).toBe(8);
     expect(u.activeInstallsThisMonth).toBe(12);
     expect(u.sessions).toBe(4);
     expect(u.medianSessionMinutes).toBe(7.5);
@@ -125,6 +137,44 @@ describe("AdminUsageQueryService", () => {
     expect(markers).not.toContain("sessions");
     const heatmapAgg = sqls.find((s) => markerOf(s) === "heatmapAgg");
     expect(heatmapAgg?.values).toEqual(["2025-11-01", "2026-10-10"]);
+  });
+
+  it("90d: 90 zero-filled days read from raw events, with sessions", async () => {
+    const prisma = makePrisma({ sessions: [{ sessions: 1, median: 60 }] });
+    const u = await serviceOf(prisma).get("90d", undefined, NOW);
+    expect(u.period).toBe("90d");
+    expect(u.bucket).toBe("day");
+    expect(u.from).toBe("2026-07-13");
+    expect(u.events).toHaveLength(90);
+    expect(u.events[0].start).toBe("2026-07-13");
+    expect(u.sessions).toBe(1);
+    expect(u.aggregatedUntil).toBeNull();
+    const markers = prisma.$queryRaw.mock.calls.map((c) => markerOf(c[0]));
+    expect(markers).not.toContain("heatmapAgg");
+  });
+
+  it("DAU, WAU and MAU windows: today, last 7 days, since the 1st (Paris)", async () => {
+    const prisma = makePrisma();
+    await serviceOf(prisma).get("30d", undefined, NOW);
+    const sqls = prisma.$queryRaw.mock.calls.map((c) => c[0]);
+    const startOf = (marker: string) =>
+      sqls.find((s) => markerOf(s) === marker)?.values[0];
+    // 2026-10-10 00:00 Paris (CEST) = 2026-10-09T22:00Z
+    expect(startOf("dau")).toBe("2026-10-09T22:00:00.000Z");
+    expect(startOf("wau")).toBe("2026-10-03T22:00:00.000Z");
+    expect(startOf("month")).toBe("2026-09-30T22:00:00.000Z");
+  });
+
+  it("12m: per-platform daily average over the aggregated days", async () => {
+    const prisma = makePrisma({
+      activesAgg: [
+        { platform: "ios", installs: BigInt(30), days: BigInt(10) },
+        { platform: "android", installs: BigInt(12), days: BigInt(10) },
+      ],
+    });
+    const u = await serviceOf(prisma, "2026-10-09").get("12m", undefined, NOW);
+    expect(u.activeInstallsPerDay).toBe(4.2);
+    expect(u.activeInstallsPerDayByPlatform).toEqual({ ios: 3, android: 1.2 });
   });
 
   it("space filter applies to screens only", async () => {

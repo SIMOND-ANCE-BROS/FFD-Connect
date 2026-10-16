@@ -19,5 +19,7 @@ describe("AdminUsageController", () => {
     expect(get).toHaveBeenCalledWith("30d", undefined);
     await controller.get({ period: "7d", space: "CLUB" });
     expect(get).toHaveBeenLastCalledWith("7d", "CLUB");
+    await controller.get({ period: "90d" });
+    expect(get).toHaveBeenLastCalledWith("90d", undefined);
   });
 });

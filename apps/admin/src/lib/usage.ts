@@ -1,9 +1,10 @@
-export type UsagePeriod = '7d' | '30d' | '12m';
+export type UsagePeriod = '7d' | '30d' | '90d' | '12m';
 export type UsageSpace = 'LICENSEE' | 'CLUB' | 'STAFF' | 'ADMIN' | 'GUEST';
 
 export const USAGE_PERIOD_OPTIONS: { value: UsagePeriod; label: string }[] = [
   { value: '7d', label: '7 jours' },
   { value: '30d', label: '30 jours' },
+  { value: '90d', label: '90 jours' },
   { value: '12m', label: '12 mois' },
 ];
 
@@ -46,6 +47,14 @@ export function formatMinutes(minutes: number | null): string {
 export function share(part: number, total: number): string {
   if (total === 0) return '—';
   return `${Math.round((part / total) * 100)} %`;
+}
+
+/**
+ * The install ID is renewed on the 1st: a 7-day window that spans the 1st
+ * (today is the 1st to the 6th) can count one install twice.
+ */
+export function weekSpansMonthStart(todayIso: string): boolean {
+  return Number(todayIso.slice(8, 10)) < 7;
 }
 
 /** YYYY-MM-DD → JJ/MM/AAAA. */

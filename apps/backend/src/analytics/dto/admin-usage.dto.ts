@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsIn, IsOptional } from "class-validator";
 import { USAGE_SPACES, type UsageSpace } from "../usage.constants";
 
-export const USAGE_PERIODS = ["7d", "30d", "12m"] as const;
+export const USAGE_PERIODS = ["7d", "30d", "90d", "12m"] as const;
 export type UsagePeriod = (typeof USAGE_PERIODS)[number];
 
 export class AdminUsageQueryDto {
@@ -61,13 +61,32 @@ export class AdminUsageDto {
   @ApiProperty({ type: String, nullable: true }) aggregatedUntil!:
     | string
     | null;
-  @ApiProperty() activeInstallsPerDay!: number;
-  @ApiProperty() activeInstallsThisMonth!: number;
+  @ApiProperty({
+    description: "Average of daily distinct installs over the period",
+  })
+  activeInstallsPerDay!: number;
+  @ApiProperty({
+    type: UsagePlatformsDto,
+    description: "activeInstallsPerDay split by platform",
+  })
+  activeInstallsPerDayByPlatform!: UsagePlatformsDto;
+  @ApiProperty({ description: "DAU: distinct installs today (Paris)" })
+  activeInstallsToday!: number;
+  @ApiProperty({
+    description:
+      "WAU: distinct installs over the last 7 Paris days, today included (the monthly ID renewal can count an install twice when the window spans the 1st)",
+  })
+  activeInstallsLast7Days!: number;
+  @ApiProperty({
+    description: "MAU: distinct installs since the 1st of the month (Paris)",
+  })
+  activeInstallsThisMonth!: number;
   @ApiProperty({ type: Number, nullable: true }) sessions!: number | null;
   @ApiProperty({ type: Number, nullable: true }) medianSessionMinutes!:
     | number
     | null;
-  @ApiProperty({ type: UsagePlatformsDto }) platforms!: UsagePlatformsDto;
+  @ApiProperty({ type: UsagePlatformsDto, description: "Event counts" })
+  platforms!: UsagePlatformsDto;
   @ApiProperty({
     description: "7 rows (Monday first) × 24 hours, Paris time",
     type: "array",

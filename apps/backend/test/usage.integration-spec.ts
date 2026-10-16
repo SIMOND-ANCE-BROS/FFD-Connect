@@ -152,6 +152,27 @@ describe("Usage analytics (integration, real DB)", () => {
     expect(u.activeInstallsThisMonth).toBe(2);
   });
 
+  it("DAU / WAU / MAU and per-platform daily actives use Paris days", async () => {
+    const usage = moduleRef.get(AdminUsageQueryService);
+    await ev(installA, "2001-07-18T08:00:00Z"); // today
+    await ev(installA, "2001-07-18T08:30:00Z"); // same install, same day
+    await ev(installA, "2001-07-16T06:00:00Z");
+    // 23:30 Paris on the 17th: yesterday, not today.
+    await ev(installB, "2001-07-17T21:30:00Z", { platform: "android" });
+    // Before the 7-day window (starts 2001-07-12), within the month.
+    await ev(installB, "2001-07-10T10:00:00Z", { platform: "android" });
+    const u = await usage.get("7d", undefined, NOW);
+    expect(u.activeInstallsToday).toBe(1);
+    expect(u.activeInstallsLast7Days).toBe(2);
+    expect(u.activeInstallsThisMonth).toBe(2);
+    // install-days in the window: A ×2 (ios), B ×1 (android), over 7 days
+    expect(u.activeInstallsPerDay).toBe(0.4);
+    expect(u.activeInstallsPerDayByPlatform).toEqual({
+      ios: 0.3,
+      android: 0.1,
+    });
+  });
+
   it("12m read comes from the aggregates", async () => {
     const usage = moduleRef.get(AdminUsageQueryService);
     await state("2001-07-15");
@@ -162,6 +183,8 @@ describe("Usage analytics (integration, real DB)", () => {
     expect(u.aggregatedUntil).toBe("2001-07-17");
     expect(u.heatmap[0][8]).toBe(2);
     expect(u.platforms).toEqual({ ios: 1, android: 1 });
+    expect(u.activeInstallsPerDay).toBe(2);
+    expect(u.activeInstallsPerDayByPlatform).toEqual({ ios: 1, android: 1 });
     expect(u.screens[0]).toEqual({ screen: "Home", views: 2, durationSec: 20 });
   });
 });
