@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -51,7 +52,10 @@ import {
 } from "./dto/competition-management.dto";
 import { RegisterEventDto } from "./dto/register-event.dto";
 import {
+  DeleteEventResultsQueryDto,
+  DeleteEventResultsReportDto,
   ImportResultsDto,
+  ImportResultsQueryDto,
   ImportResultsReportDto,
 } from "./dto/results-import.dto";
 import { CompetitionResultsImportService } from "./services/competition-results-import.service";
@@ -782,13 +786,13 @@ export class CompetitionsController {
   // Never through « connecté en tant que » (#545): the audit row names the
   // real author of an import that publishes third parties' names.
   @UseGuards(JwtAuthGuard, NoImpersonationGuard, RolesGuard, ThrottlerUserGuard)
-  @Roles(UserRole.STAFF, UserRole.ADMIN)
+  @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Importe les résultats publiés d'une compétition (CSV)",
     description:
-      "STAFF et ADMIN. Importe le classement publié (une ligne par couple, épreuve et tour). Rejouable : un couple déjà importé pour la même épreuve et le même tour est mis à jour, jamais dupliqué. Tout ou rien : une ligne invalide, une épreuve inconnue ou un couple en double rejette le fichier (400, lignes en erreur), rien n'est écrit. Chaque couple est rattaché aux comptes de ses numéros de licence (jamais un numéro retiré) ; une ligne sans licence l'est à l'inscription portant le même dossard. Un résultat anonymisé par une suppression de compte n'est jamais réécrit ni recréé avec le nom ; une ligne portant la licence d'un compte supprimé est écrite anonymisée. Chaque import est tracé au journal d'audit (auteur, compteurs). Déclenche la notification « Résultats disponibles » (une seule fois par compétition).",
+      "STAFF et ADMIN : toute compétition ; compte club : seulement une compétition organisée par son club (#690). Importe le classement publié (une ligne par couple, épreuve et tour). La colonne `epreuve` porte l'identifiant de l'épreuve ou son nom (spécialité + classe d'âge + niveau) ; un nom qui désigne plusieurs épreuves est refusé. `?dryRun=true` valide le fichier et renvoie les compteurs sans rien écrire (aperçu). Rejouable : un couple déjà importé pour la même épreuve et le même tour est mis à jour, jamais dupliqué. Tout ou rien : une ligne invalide, une épreuve inconnue ou un couple en double rejette le fichier (400, lignes en erreur), rien n'est écrit. Chaque couple est rattaché aux comptes de ses numéros de licence (jamais un numéro retiré) ; une ligne sans licence l'est à l'inscription portant le même dossard. Un résultat anonymisé par une suppression de compte n'est jamais réécrit ni recréé avec le nom ; une ligne portant la licence d'un compte supprimé est écrite anonymisée. Chaque import est tracé au journal d'audit (auteur, rôle, compteurs). Déclenche la notification « Résultats disponibles » (une seule fois par compétition).",
   })
   @ApiParam({ name: "id", description: "ID de la compétition" })
   @ApiBody({ type: ImportResultsDto })
@@ -799,19 +803,60 @@ export class CompetitionsController {
   })
   @ApiResponse({
     status: 403,
-    description: "Rôle insuffisant ou session « connecté en tant que »",
+    description:
+      "Rôle insuffisant, compétition organisée par un autre club ou session « connecté en tant que »",
   })
   @ApiResponse({ status: 404, description: "Compétition non trouvée" })
   @ApiResponse({
     status: 503,
     description: "Clé de pseudonymisation des résultats non configurée",
   })
-  importResults(
+  async importResults(
     @Param("id") id: string,
+    @Query() query: ImportResultsQueryDto,
     @Body() body: ImportResultsDto,
     @Request() req: RequestWithUser,
   ): Promise<ImportResultsReportDto> {
-    return this.resultsImportService.importCsv(id, body.csv, req.user.userId);
+    // Organising club resolved from the path id only, never from the body.
+    await this.accessService.assertCanManageResults(id, req.user);
+    return this.resultsImportService.importCsv(id, body.csv, req.user, {
+      dryRun: query.dryRun === true,
+    });
+  }
+
+  @Delete(":id/results")
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, RolesGuard, ThrottlerUserGuard)
+  @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Supprime les résultats importés d'une épreuve",
+    description:
+      "Annule un import (#690). Mêmes droits que l'import : STAFF et ADMIN, ou le club organisateur ; jamais en « connecté en tant que ». Supprime les résultats importés de l'épreuve (pas ceux créés autrement). Les lignes qui portent un effacement RGPD (compte supprimé, partenaire supprimé) sont gardées, pour qu'un nouvel import ne recrée jamais un couple effacé avec son nom. Tracé au journal d'audit (auteur, rôle, compteurs). La notification « Résultats disponibles » n'est pas renvoyée par un nouvel import.",
+  })
+  @ApiParam({ name: "id", description: "ID de la compétition" })
+  @ApiResponse({ status: 200, type: DeleteEventResultsReportDto })
+  @ApiResponse({
+    status: 403,
+    description:
+      "Rôle insuffisant, compétition organisée par un autre club ou session « connecté en tant que »",
+  })
+  @ApiResponse({
+    status: 404,
+    description: "Compétition ou épreuve non trouvée",
+  })
+  async deleteEventResults(
+    @Param("id") id: string,
+    @Query() query: DeleteEventResultsQueryDto,
+    @Request() req: RequestWithUser,
+  ): Promise<DeleteEventResultsReportDto> {
+    // Organising club resolved from the path id only, never from the body.
+    await this.accessService.assertCanManageResults(id, req.user);
+    return this.resultsImportService.deleteEventResults(
+      id,
+      query.eventId,
+      req.user,
+    );
   }
 
   @Post(":id/unregister")

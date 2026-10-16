@@ -37,6 +37,8 @@ export type RootStackParamList = {
   ClubSoloTeamDetail: { teamId: string };
   ClubRegistrations: undefined;
   ClubRefundsDue: undefined;
+  // Import des résultats publiés par le club organisateur (#690).
+  ClubResultsImport: { competitionId: ID; competitionTitle?: string };
   Scanner: { competitionId?: ID } | undefined;
   VolunteerCheckin: { competitionId: ID; token: string };
   SeatPicker: { competitionId: ID };

@@ -319,6 +319,95 @@ describe("CompetitionAccessService", () => {
     });
   });
 
+  describe("assertCanManageResults (#690)", () => {
+    const club = {
+      userId: "club-user",
+      role: UserRole.CLUB,
+      roles: [UserRole.CLUB],
+    };
+    const linked = { organizer: "Dance Club Paris", organizerClubId: "club-1" };
+
+    it.each([UserRole.STAFF, UserRole.ADMIN])(
+      "lets %s manage any competition's results",
+      async (role) => {
+        await expect(
+          service.assertCanManageResults("comp-1", {
+            userId: "u1",
+            role,
+            roles: [role],
+          }),
+        ).resolves.toBeUndefined();
+      },
+    );
+
+    it("lets the linked organising club in", async () => {
+      prisma.competition.findUnique.mockResolvedValue(linked);
+      prisma.user.findUnique.mockResolvedValue(clubUser());
+      await expect(
+        service.assertCanManageResults("comp-1", club),
+      ).resolves.toBeUndefined();
+      expect(prisma.competition.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "comp-1" } }),
+      );
+    });
+
+    it("refuses another club, even with the same label", async () => {
+      prisma.competition.findUnique.mockResolvedValue(linked);
+      prisma.user.findUnique.mockResolvedValue(clubUser({ clubId: "club-2" }));
+      await expect(
+        service.assertCanManageResults("comp-1", club),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("refuses a legacy account without club link, unlike the programme editor", async () => {
+      prisma.competition.findUnique.mockResolvedValue(linked);
+      prisma.user.findUnique.mockResolvedValue(
+        clubUser({ clubId: null, club: null }),
+      );
+      await expect(
+        service.assertCanManageResults("comp-1", club),
+      ).rejects.toThrow(ForbiddenException);
+      // The programme editor keeps its legacy rule.
+      await expect(
+        service.assertCanManageCompetition("comp-1", club),
+      ).resolves.toBeUndefined();
+    });
+
+    it("refuses the account of a disabled club", async () => {
+      prisma.competition.findUnique.mockResolvedValue(linked);
+      prisma.user.findUnique.mockResolvedValue(
+        clubUser({
+          club: { disabledAt: new Date(), name: "Dance Club Paris" },
+        }),
+      );
+      await expect(
+        service.assertCanManageResults("comp-1", club),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("refuses a licensee whose JWT claims nothing more", async () => {
+      prisma.competition.findUnique.mockResolvedValue(linked);
+      prisma.user.findUnique.mockResolvedValue(
+        clubUser({ role: UserRole.LICENSEE }),
+      );
+      await expect(
+        service.assertCanManageResults("comp-1", {
+          userId: "lic",
+          role: UserRole.LICENSEE,
+          roles: [UserRole.LICENSEE],
+        }),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("404 for an unknown competition", async () => {
+      prisma.competition.findUnique.mockResolvedValue(null);
+      prisma.user.findUnique.mockResolvedValue(clubUser());
+      await expect(
+        service.assertCanManageResults("missing", club),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe("organizerForNewCompetition (#381)", () => {
     const club = {
       userId: "club-user",

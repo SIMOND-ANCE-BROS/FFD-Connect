@@ -4547,7 +4547,8 @@
                 "LICENSE_RENEWAL_DOCUMENT_VIEW",
                 "LICENSE_RENEWAL_APPROVE",
                 "LICENSE_RENEWAL_REJECT",
-                "COMPETITION_RESULTS_IMPORT"
+                "COMPETITION_RESULTS_IMPORT",
+                "COMPETITION_RESULTS_DELETE"
               ]
             }
           },
@@ -4575,7 +4576,7 @@
             "name": "filters",
             "required": false,
             "in": "query",
-            "description": "Filtres de colonne, tableau JSON de { field, op, value, join }. Un champ peut porter jusqu'à 5 conditions, reliées par join (and par défaut, or : identique pour toutes les conditions du champ) ; les champs différents sont combinés par ET (10 conditions au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : createdAt (date : lt|gt|eq|between) ; actor (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; action (enum [USER_UPDATE, CLUB_ACCOUNT_CREATE, INVITATION_RESEND, USER_CREATE, USER_DISABLE, USER_ENABLE, USER_DELETE, USER_IDENTIFIERS_UPDATE, CLUB_CREATE, CLUB_UPDATE, CLUB_DISABLE, CLUB_ENABLE, CLUB_DELETE, TRACK_CORRECTION_APPROVE, TRACK_CORRECTION_REJECT, TRACK_CREATE, TRACK_UPDATE, TRACK_DELETE, LICENSE_RENEWAL_VIEW, LICENSE_RENEWAL_DOCUMENT_VIEW, LICENSE_RENEWAL_APPROVE, LICENSE_RENEWAL_REJECT, COMPETITION_RESULTS_IMPORT] : in|notIn) ; targetType (enum [USER, CLUB, TRACK_CORRECTION, TRACK, LICENSE_RENEWAL, COMPETITION] : in|notIn)",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value, join }. Un champ peut porter jusqu'à 5 conditions, reliées par join (and par défaut, or : identique pour toutes les conditions du champ) ; les champs différents sont combinés par ET (10 conditions au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : createdAt (date : lt|gt|eq|between) ; actor (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; action (enum [USER_UPDATE, CLUB_ACCOUNT_CREATE, INVITATION_RESEND, USER_CREATE, USER_DISABLE, USER_ENABLE, USER_DELETE, USER_IDENTIFIERS_UPDATE, CLUB_CREATE, CLUB_UPDATE, CLUB_DISABLE, CLUB_ENABLE, CLUB_DELETE, TRACK_CORRECTION_APPROVE, TRACK_CORRECTION_REJECT, TRACK_CREATE, TRACK_UPDATE, TRACK_DELETE, LICENSE_RENEWAL_VIEW, LICENSE_RENEWAL_DOCUMENT_VIEW, LICENSE_RENEWAL_APPROVE, LICENSE_RENEWAL_REJECT, COMPETITION_RESULTS_IMPORT, COMPETITION_RESULTS_DELETE] : in|notIn) ; targetType (enum [USER, CLUB, TRACK_CORRECTION, TRACK, LICENSE_RENEWAL, COMPETITION] : in|notIn)",
             "schema": {
               "type": "string"
             }
@@ -20669,11 +20670,186 @@
         },
         "summary": "Récupère les résultats d'une compétition",
         "tags": ["competitions"]
+      },
+      "delete": {
+        "description": "Annule un import (#690). Mêmes droits que l'import : STAFF et ADMIN, ou le club organisateur ; jamais en « connecté en tant que ». Supprime les résultats importés de l'épreuve (pas ceux créés autrement). Les lignes qui portent un effacement RGPD (compte supprimé, partenaire supprimé) sont gardées, pour qu'un nouvel import ne recrée jamais un couple effacé avec son nom. Tracé au journal d'audit (auteur, rôle, compteurs). La notification « Résultats disponibles » n'est pas renvoyée par un nouvel import.",
+        "operationId": "CompetitionsController_deleteEventResults",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID de la compétition",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "eventId",
+            "required": true,
+            "in": "query",
+            "description": "ID de l'épreuve de la compétition",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteEventResultsReportDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rôle insuffisant, compétition organisée par un autre club ou session « connecté en tant que »"
+          },
+          "404": {
+            "description": "Compétition ou épreuve non trouvée"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Supprime les résultats importés d'une épreuve",
+        "tags": ["competitions"]
       }
     },
     "/competitions/{id}/results/import": {
       "post": {
-        "description": "STAFF et ADMIN. Importe le classement publié (une ligne par couple, épreuve et tour). Rejouable : un couple déjà importé pour la même épreuve et le même tour est mis à jour, jamais dupliqué. Tout ou rien : une ligne invalide, une épreuve inconnue ou un couple en double rejette le fichier (400, lignes en erreur), rien n'est écrit. Chaque couple est rattaché aux comptes de ses numéros de licence (jamais un numéro retiré) ; une ligne sans licence l'est à l'inscription portant le même dossard. Un résultat anonymisé par une suppression de compte n'est jamais réécrit ni recréé avec le nom ; une ligne portant la licence d'un compte supprimé est écrite anonymisée. Chaque import est tracé au journal d'audit (auteur, compteurs). Déclenche la notification « Résultats disponibles » (une seule fois par compétition).",
+        "description": "STAFF et ADMIN : toute compétition ; compte club : seulement une compétition organisée par son club (#690). Importe le classement publié (une ligne par couple, épreuve et tour). La colonne `epreuve` porte l'identifiant de l'épreuve ou son nom (spécialité + classe d'âge + niveau) ; un nom qui désigne plusieurs épreuves est refusé. `?dryRun=true` valide le fichier et renvoie les compteurs sans rien écrire (aperçu). Rejouable : un couple déjà importé pour la même épreuve et le même tour est mis à jour, jamais dupliqué. Tout ou rien : une ligne invalide, une épreuve inconnue ou un couple en double rejette le fichier (400, lignes en erreur), rien n'est écrit. Chaque couple est rattaché aux comptes de ses numéros de licence (jamais un numéro retiré) ; une ligne sans licence l'est à l'inscription portant le même dossard. Un résultat anonymisé par une suppression de compte n'est jamais réécrit ni recréé avec le nom ; une ligne portant la licence d'un compte supprimé est écrite anonymisée. Chaque import est tracé au journal d'audit (auteur, rôle, compteurs). Déclenche la notification « Résultats disponibles » (une seule fois par compétition).",
         "operationId": "CompetitionsController_importResults",
         "parameters": [
           {
@@ -20683,6 +20859,16 @@
             "description": "ID de la compétition",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "dryRun",
+            "required": false,
+            "in": "query",
+            "description": "true : valide le fichier et calcule les compteurs sans rien écrire (aperçu), sans journal d'audit ni notification",
+            "schema": {
+              "default": false,
+              "type": "boolean"
             }
           }
         ],
@@ -20735,7 +20921,7 @@
             }
           },
           "403": {
-            "description": "Rôle insuffisant ou session « connecté en tant que »"
+            "description": "Rôle insuffisant, compétition organisée par un autre club ou session « connecté en tant que »"
           },
           "404": {
             "description": "Compétition non trouvée"
@@ -28199,7 +28385,8 @@
               "LICENSE_RENEWAL_DOCUMENT_VIEW",
               "LICENSE_RENEWAL_APPROVE",
               "LICENSE_RENEWAL_REJECT",
-              "COMPETITION_RESULTS_IMPORT"
+              "COMPETITION_RESULTS_IMPORT",
+              "COMPETITION_RESULTS_DELETE"
             ]
           },
           "targetType": {
@@ -31027,7 +31214,7 @@
         "properties": {
           "csv": {
             "type": "string",
-            "description": "Contenu CSV du classement (séparateur `;` ou `,`, ligne d'en-tête obligatoire). Colonnes : epreuve (id de l'épreuve), tour, classement, couple ; facultatives : dossard, club, licences (numéros séparés par `|`), statut, participants.",
+            "description": "Contenu CSV du classement (séparateur `;` ou `,`, ligne d'en-tête obligatoire). Colonnes : epreuve (id de l'épreuve, ou son nom : spécialité + classe d'âge + niveau, par ex. « Latines Adultes Avancé »), tour, classement, couple ; facultatives : dossard, club, licences (numéros séparés par `|`), statut, participants.",
             "example": "epreuve;tour;classement;couple;dossard;club;licences\n550e8400-e29b-41d4-a716-446655440001;Finale;1;Martin / Durand;12;Club A;123456|654321",
             "maxLength": 80000
           }
@@ -31037,6 +31224,11 @@
       "ImportResultsReportDto": {
         "type": "object",
         "properties": {
+          "dryRun": {
+            "type": "boolean",
+            "description": "true : aperçu (dryRun), rien n'a été écrit",
+            "example": false
+          },
           "created": {
             "type": "number",
             "description": "Lignes de résultat créées",
@@ -31044,7 +31236,7 @@
           },
           "updated": {
             "type": "number",
-            "description": "Lignes déjà importées et corrigées",
+            "description": "Lignes déjà importées et corrigées (compte club : contenu publié seulement — rang, libellé, dossard…)",
             "example": 0
           },
           "unchanged": {
@@ -31054,26 +31246,31 @@
           },
           "relinked": {
             "type": "number",
-            "description": "Lignes déjà importées dont le rattachement à un compte a changé (sous-ensemble de « updated »)",
+            "nullable": true,
+            "description": "Null pour un compte club (non communiqué : dépend des numéros de licence). Lignes déjà importées dont le rattachement à un compte a changé (sous-ensemble de « updated »)",
             "example": 0
           },
           "anonymisedKept": {
             "type": "number",
-            "description": "Lignes laissées ou écrites anonymisées : un compte du couple a été supprimé",
+            "nullable": true,
+            "description": "Null pour un compte club (non communiqué : dépend des numéros de licence). Lignes laissées ou écrites anonymisées : un compte du couple a été supprimé",
             "example": 0
           },
           "linked": {
             "type": "number",
-            "description": "Couples rattachés à un compte (licence ou dossard)",
+            "nullable": true,
+            "description": "Null pour un compte club (non communiqué : dépend des numéros de licence). Couples rattachés à un compte (licence ou dossard)",
             "example": 4
           },
           "unlinked": {
             "type": "number",
-            "description": "Couples sans compte rattaché",
+            "nullable": true,
+            "description": "Null pour un compte club (non communiqué : dépend des numéros de licence). Couples sans compte rattaché",
             "example": 8
           }
         },
         "required": [
+          "dryRun",
           "created",
           "updated",
           "unchanged",
@@ -31082,6 +31279,22 @@
           "linked",
           "unlinked"
         ]
+      },
+      "DeleteEventResultsReportDto": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "number",
+            "description": "Lignes de résultat supprimées",
+            "example": 12
+          },
+          "anonymisedKept": {
+            "type": "number",
+            "description": "Lignes gardées parce qu'elles portent un effacement RGPD (compte supprimé, partenaire supprimé)",
+            "example": 0
+          }
+        },
+        "required": ["deleted", "anonymisedKept"]
       },
       "UnregisterEventDto": {
         "type": "object",

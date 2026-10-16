@@ -28,6 +28,7 @@ import { ClubDashboardScreen } from "../features/club/screens/ClubDashboardScree
 import { ClubMemberEditorScreen } from "../features/club/screens/ClubMemberEditorScreen";
 import { ClubMembersScreen } from "../features/club/screens/ClubMembersScreen";
 import { ClubRefundsDueScreen } from "../features/club/screens/ClubRefundsDueScreen";
+import { ClubResultsImportScreen } from "../features/club/screens/ClubResultsImportScreen";
 import { ClubRegistrationsScreen } from "../features/club/screens/ClubRegistrationsScreen";
 import { ClubSoloTeamDetailScreen } from "../features/club/screens/ClubSoloTeamDetailScreen";
 import { ClubSoloTeamsScreen } from "../features/club/screens/ClubSoloTeamsScreen";
@@ -267,6 +268,10 @@ export const AppNavigator = () => {
               <Stack.Screen
                 name="ClubRefundsDue"
                 component={ClubRefundsDueScreen}
+              />
+              <Stack.Screen
+                name="ClubResultsImport"
+                component={ClubResultsImportScreen}
               />
 
               {/* Player & Performance */}

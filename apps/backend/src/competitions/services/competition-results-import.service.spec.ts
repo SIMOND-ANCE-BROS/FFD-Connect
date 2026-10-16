@@ -5,7 +5,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, UserRole } from "@prisma/client";
 import { createHash } from "crypto";
 import { readFileSync } from "fs";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
@@ -32,6 +32,8 @@ const FIXTURE = readFileSync(
 // A fake key (not a secret): only its length matters.
 const KEY = "k".repeat(40);
 const HEADER = "epreuve;tour;classement;couple;dossard;licences";
+const STAFF = { userId: "staff-1", role: "STAFF", roles: [UserRole.STAFF] };
+const CLUB = { userId: "club-1", role: "CLUB", roles: [UserRole.CLUB] };
 
 function rowOf(csv: string, index = 0) {
   return parseResultsCsv(csv).rows[index];
@@ -163,7 +165,7 @@ describe("CompetitionResultsImportService (#652)", () => {
   it("503 in production without a pseudonymisation key, before any read", async () => {
     config = { NODE_ENV: "production", RESULTS_PSEUDONYMISATION_KEY: "short" };
     await expect(
-      service.importCsv("comp-1", FIXTURE, "staff-1"),
+      service.importCsv("comp-1", FIXTURE, STAFF),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(prisma.competition.findUnique).not.toHaveBeenCalled();
   });
@@ -171,14 +173,14 @@ describe("CompetitionResultsImportService (#652)", () => {
   it("uses the development key outside production", async () => {
     config = { NODE_ENV: "development" };
     await expect(
-      service.importCsv("comp-1", FIXTURE, "staff-1"),
+      service.importCsv("comp-1", FIXTURE, STAFF),
     ).resolves.toMatchObject({ created: 4 });
   });
 
   it("404 when the competition does not exist", async () => {
     prisma.competition.findUnique.mockResolvedValue(null);
     await expect(
-      service.importCsv("nope", FIXTURE, "staff-1"),
+      service.importCsv("nope", FIXTURE, STAFF),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -197,9 +199,10 @@ describe("CompetitionResultsImportService (#652)", () => {
       },
     ] as never);
 
-    const report = await service.importCsv("comp-1", FIXTURE, "staff-1");
+    const report = await service.importCsv("comp-1", FIXTURE, STAFF);
 
     expect(report).toEqual({
+      dryRun: false,
       created: 4,
       updated: 0,
       unchanged: 0,
@@ -262,14 +265,16 @@ describe("CompetitionResultsImportService (#652)", () => {
   });
 
   it("writes an audit row with the author and the counts only (L5)", async () => {
-    const report = await service.importCsv("comp-1", FIXTURE, "staff-1");
+    const report = await service.importCsv("comp-1", FIXTURE, STAFF);
 
+    const { dryRun, ...counts } = report;
+    expect(dryRun).toBe(false);
     expect(audit.recordOp).toHaveBeenCalledWith({
       actorId: "staff-1",
       action: "COMPETITION_RESULTS_IMPORT",
       targetType: "COMPETITION",
       targetId: "comp-1",
-      after: report,
+      after: { ...counts, actorRole: "STAFF" },
     });
     expect(JSON.stringify(audit.recordOp.mock.calls)).not.toContain("Alpha");
   });
@@ -283,7 +288,7 @@ describe("CompetitionResultsImportService (#652)", () => {
     ] as never);
     const csv = `${HEADER}\nev-latin;Finale;1;A / B;12;100001\n`;
 
-    const report = await service.importCsv("comp-1", csv, "staff-1");
+    const report = await service.importCsv("comp-1", csv, STAFF);
 
     expect(prisma.retiredLicenseNumber.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { number: { in: ["100001"] } } }),
@@ -311,7 +316,7 @@ describe("CompetitionResultsImportService (#652)", () => {
     ] as never);
     const csv = `${HEADER}\nev-latin;Finale;1;A / B;12;\nev-latin;Finale;2;C / D;A7;\n`;
 
-    const report = await service.importCsv("comp-1", csv, "staff-1");
+    const report = await service.importCsv("comp-1", csv, STAFF);
 
     expect(report.linked).toBe(0);
     expect(createdRows().map((r) => r.userId)).toEqual([
@@ -331,7 +336,7 @@ describe("CompetitionResultsImportService (#652)", () => {
     await service.importCsv(
       "comp-1",
       "epreuve;tour;classement;couple\nev-latin;Finale;1;A / B\n",
-      "staff-1",
+      STAFF,
     );
     expect(prisma.license.findMany).not.toHaveBeenCalled();
     expect(prisma.retiredLicenseNumber.findMany).not.toHaveBeenCalled();
@@ -346,7 +351,7 @@ describe("CompetitionResultsImportService (#652)", () => {
       existing(csv, { details: { bib: "12", participant: "Alpha / Bravo" } }),
     ]);
 
-    const report = await service.importCsv("comp-1", csv, "staff-1");
+    const report = await service.importCsv("comp-1", csv, STAFF);
 
     expect(report).toMatchObject({ created: 0, updated: 0, unchanged: 1 });
     expect(prisma.$transaction).toHaveBeenCalledWith(["audit-op"]);
@@ -362,7 +367,7 @@ describe("CompetitionResultsImportService (#652)", () => {
       { number: "100002", userId: "user-bravo" },
     ] as never);
 
-    const report = await service.importCsv("comp-1", csv, "staff-1");
+    const report = await service.importCsv("comp-1", csv, STAFF);
 
     expect(report).toMatchObject({
       created: 0,
@@ -388,7 +393,7 @@ describe("CompetitionResultsImportService (#652)", () => {
       existing(csv, { userId: "user-alpha", partnerUserId: "user-bravo" }),
     ]);
 
-    const report = await service.importCsv("comp-1", csv, "staff-1");
+    const report = await service.importCsv("comp-1", csv, STAFF);
 
     expect(report).toMatchObject({ updated: 1, relinked: 0, linked: 1 });
     expect(prisma.result.updateMany).toHaveBeenCalledWith(
@@ -409,9 +414,10 @@ describe("CompetitionResultsImportService (#652)", () => {
       { number: "100001", userId: "user-new" },
     ] as never);
 
-    const report = await service.importCsv("comp-1", csv, "staff-1");
+    const report = await service.importCsv("comp-1", csv, STAFF);
 
     expect(report).toEqual({
+      dryRun: false,
       created: 0,
       updated: 0,
       unchanged: 0,
@@ -432,7 +438,7 @@ describe("CompetitionResultsImportService (#652)", () => {
     );
     const csv = `${HEADER}\nev-latin;1/2 finale;4;Alpha / Bravo (corrigé);;\nev-latin;1/2 finale;5;Charlie / Delta;;\n`;
 
-    const report = await service.importCsv("comp-1", csv, "staff-1");
+    const report = await service.importCsv("comp-1", csv, STAFF);
 
     expect(prisma.result.findMany).toHaveBeenCalledWith({
       where: { eventId: { in: ["ev-latin"] }, userId: DELETED_USER_ID },
@@ -454,7 +460,7 @@ describe("CompetitionResultsImportService (#652)", () => {
     ] as never);
     const csv = `${HEADER}\nev-latin;Finale;1;Alpha / Bravo;12;100001|100002\n`;
 
-    const report = await service.importCsv("comp-1", csv, "staff-1");
+    const report = await service.importCsv("comp-1", csv, STAFF);
 
     // Fingerprints only are looked up, never the numbers.
     expect(prisma.erasedResultIdentity.findMany).toHaveBeenCalledWith(
@@ -492,7 +498,7 @@ describe("CompetitionResultsImportService (#652)", () => {
       }),
     ]);
 
-    await service.importCsv("comp-1", csv, "staff-1");
+    await service.importCsv("comp-1", csv, STAFF);
 
     expect(prisma.result.updateMany).toHaveBeenCalledWith({
       where: { id: "r1", userId: UNLINKED_RESULT_USER_ID },
@@ -520,7 +526,7 @@ describe("CompetitionResultsImportService (#652)", () => {
       }),
     ]);
 
-    const report = await service.importCsv("comp-1", csv, "staff-1");
+    const report = await service.importCsv("comp-1", csv, STAFF);
 
     expect(report).toMatchObject({
       unchanged: 1,
@@ -539,7 +545,7 @@ describe("CompetitionResultsImportService (#652)", () => {
     ] as never);
     const csv = `${HEADER}\nev-latin;Finale;1;Alpha / Bravo;12;100001\n`;
 
-    await service.importCsv("comp-1", csv, "staff-1");
+    await service.importCsv("comp-1", csv, STAFF);
 
     expect(createdRows()[0]).toMatchObject({
       userId: "came-back",
@@ -551,7 +557,7 @@ describe("CompetitionResultsImportService (#652)", () => {
     const csv = `${HEADER}\nev-latin;Finale;3;Alpha / Bravo;12;\n`;
     existingRows([existing(csv, { userId: "user-alpha" })]);
 
-    const report = await service.importCsv("comp-1", csv, "staff-1");
+    const report = await service.importCsv("comp-1", csv, STAFF);
 
     expect(report.linked).toBe(1);
     expect(prisma.result.updateMany).toHaveBeenCalledWith(
@@ -570,7 +576,7 @@ describe("CompetitionResultsImportService (#652)", () => {
       }),
     ]);
 
-    await service.importCsv("comp-1", csv, "staff-1");
+    await service.importCsv("comp-1", csv, STAFF);
 
     expect(prisma.result.updateMany).toHaveBeenCalledWith({
       where: { id: "r1", userId: "user-alpha" },
@@ -587,14 +593,14 @@ describe("CompetitionResultsImportService (#652)", () => {
     const csv = `${HEADER}\nev-latin;Finale;1;Alpha / Bravo;12;\n`;
     existingRows([existing(csv, { details: null })]);
 
-    const report = await service.importCsv("comp-1", csv, "staff-1");
+    const report = await service.importCsv("comp-1", csv, STAFF);
     expect(report.updated).toBe(1);
   });
 
   describe("all or nothing", () => {
     const rejected = async (csv: string) => {
       const error: unknown = await service
-        .importCsv("comp-1", csv, "staff-1")
+        .importCsv("comp-1", csv, STAFF)
         .catch((e: unknown) => e);
       expect(error).toBeInstanceOf(BadRequestException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -635,6 +641,382 @@ describe("CompetitionResultsImportService (#652)", () => {
           message: "même couple que la ligne 2 pour cette épreuve et ce tour",
         },
       ]);
+    });
+  });
+  describe("organising club and dry run (#690)", () => {
+    it("records the organising club as such in the audit trail", async () => {
+      await service.importCsv("comp-1", FIXTURE, CLUB);
+      expect(audit.recordOp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorId: "club-1",
+          after: expect.objectContaining({ actorRole: "CLUB" }),
+        }),
+      );
+    });
+
+    it("records ADMIN for an administrator, even with a legacy single role", async () => {
+      await service.importCsv("comp-1", FIXTURE, {
+        userId: "admin-1",
+        role: "ADMIN",
+      });
+      expect(audit.recordOp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          after: expect.objectContaining({ actorRole: "ADMIN" }),
+        }),
+      );
+    });
+
+    it("dry run: same counts, nothing written, audited, invalidated nor notified", async () => {
+      const report = await service.importCsv("comp-1", FIXTURE, CLUB, {
+        dryRun: true,
+      });
+      expect(report).toMatchObject({
+        dryRun: true,
+        created: 4,
+        unlinked: null,
+      });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(prisma.result.createMany).not.toHaveBeenCalled();
+      expect(audit.recordOp).not.toHaveBeenCalled();
+      expect(cache.invalidateResults).not.toHaveBeenCalled();
+      expect(notifications.notifyResultsPublished).not.toHaveBeenCalled();
+    });
+
+    it("dry run still rejects an invalid file with its lines", async () => {
+      const error: unknown = await service
+        .importCsv("comp-1", `${HEADER}\nev-latin;Finale;x;A / B;;\n`, CLUB, {
+          dryRun: true,
+        })
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe("no licence oracle for the organising club (#690)", () => {
+    const licenceCsv = `${HEADER}\nev-latin;Finale;1;A / B;12;100001\n`;
+
+    it("withholds every count that depends on what a licence resolves to", async () => {
+      prisma.license.findMany.mockResolvedValue([
+        { number: "100001", userId: "user-alpha" },
+      ] as never);
+      const report = await service.importCsv("comp-1", licenceCsv, CLUB, {
+        dryRun: true,
+      });
+      expect(report).toEqual({
+        dryRun: true,
+        created: 1,
+        updated: 0,
+        unchanged: 0,
+        relinked: null,
+        anonymisedKept: null,
+        linked: null,
+        unlinked: null,
+      });
+    });
+
+    it("answers the same whether the licence has an account, a deleted one, or none", async () => {
+      const answers = [];
+      for (const setup of [
+        () => prisma.license.findMany.mockResolvedValue([]),
+        () =>
+          prisma.license.findMany.mockResolvedValue([
+            { number: "100001", userId: "user-alpha" },
+          ] as never),
+        () => {
+          prisma.license.findMany.mockResolvedValue([]);
+          prisma.erasedResultIdentity.findMany.mockResolvedValue([
+            { fingerprint: erasedLicenceFingerprint(KEY, "100001") },
+          ] as never);
+        },
+      ]) {
+        setup();
+        // An existing row of that couple, as an earlier import left it.
+        existingRows([
+          existing(licenceCsv, {
+            details: { participant: "A / B", bib: "12" },
+          }),
+        ]);
+        answers.push(
+          await service.importCsv("comp-1", licenceCsv, CLUB, {
+            dryRun: true,
+          }),
+        );
+      }
+      expect(answers[1]).toEqual(answers[0]);
+      expect(answers[2]).toEqual(answers[0]);
+      expect(answers[0]).toMatchObject({ updated: 0, unchanged: 1 });
+    });
+
+    it("still counts a corrected rank as updated for the club", async () => {
+      existingRows([
+        existing(licenceCsv, {
+          ranking: 2,
+          details: { participant: "A / B", bib: "12" },
+        }),
+      ]);
+      const report = await service.importCsv("comp-1", licenceCsv, CLUB, {
+        dryRun: true,
+      });
+      expect(report).toMatchObject({ created: 0, updated: 1, unchanged: 0 });
+    });
+
+    it("STAFF still gets the full counts, and the audit keeps them for a club", async () => {
+      prisma.license.findMany.mockResolvedValue([
+        { number: "100001", userId: "user-alpha" },
+      ] as never);
+      const staffReport = await service.importCsv("comp-1", licenceCsv, STAFF, {
+        dryRun: true,
+      });
+      expect(staffReport).toMatchObject({ linked: 1, unlinked: 0 });
+
+      // The licence holder is a competitor of this competition.
+      prisma.registration.findMany.mockResolvedValue([
+        { userId: "user-alpha", partnerUserId: null },
+      ] as never);
+      await service.importCsv("comp-1", licenceCsv, CLUB);
+      expect(audit.recordOp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          after: expect.objectContaining({ linked: 1, actorRole: "CLUB" }),
+        }),
+      );
+    });
+
+    it("a club links a licence only to an account registered in its competition", async () => {
+      prisma.license.findMany.mockResolvedValue([
+        { number: "100001", userId: "outsider" },
+      ] as never);
+      prisma.registration.findMany.mockResolvedValue([
+        { userId: "competitor", partnerUserId: "partner" },
+      ] as never);
+
+      await service.importCsv("comp-1", licenceCsv, CLUB);
+
+      expect(prisma.registration.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            event: { competitionId: "comp-1" },
+            status: { not: "CANCELLED" },
+          },
+        }),
+      );
+      expect(createdRows()[0]).toMatchObject({
+        userId: UNLINKED_RESULT_USER_ID,
+        partnerUserId: null,
+      });
+      expect(notifications.notifyResultsPublished).toHaveBeenCalledWith(
+        "comp-1",
+      );
+    });
+
+    it("a club's file still honours an erased licence held by nobody, and a living outsider still lifts it", async () => {
+      prisma.erasedResultIdentity.findMany.mockResolvedValue([
+        { fingerprint: erasedLicenceFingerprint(KEY, "100001") },
+      ] as never);
+      await service.importCsv("comp-1", licenceCsv, CLUB);
+      expect(createdRows()[0].userId).toBe(DELETED_USER_ID);
+
+      prisma.result.createMany.mockClear();
+      prisma.license.findMany.mockResolvedValue([
+        { number: "100001", userId: "outsider" },
+      ] as never);
+      await service.importCsv("comp-1", licenceCsv, CLUB);
+      // Not erased (the licence lives again), not linked (outsider).
+      expect(createdRows()[0].userId).toBe(UNLINKED_RESULT_USER_ID);
+    });
+
+    it("STAFF links any account, without reading the registrations", async () => {
+      prisma.license.findMany.mockResolvedValue([
+        { number: "100001", userId: "outsider" },
+      ] as never);
+      await service.importCsv("comp-1", licenceCsv, STAFF);
+      expect(createdRows()[0].userId).toBe("outsider");
+      expect(prisma.registration.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("event matched by name (#690)", () => {
+    const events = [
+      {
+        id: "ev-latin-adv",
+        category: "Latin",
+        ageGroup: "Adultes",
+        level: "Avancé",
+      },
+      {
+        id: "ev-latin-deb",
+        category: "Latin",
+        ageGroup: "Adultes",
+        level: "Débutant",
+      },
+      {
+        id: "ev-std-jun",
+        category: "Standard",
+        ageGroup: "Juniors",
+        level: null,
+      },
+    ];
+
+    beforeEach(() => {
+      prisma.event.findMany.mockImplementation(((args: {
+        where: { id?: unknown };
+      }) =>
+        Promise.resolve(args.where.id === undefined ? events : [])) as never);
+    });
+
+    it("links a line through the event name (discipline label, accents and case ignored)", async () => {
+      const report = await service.importCsv(
+        "comp-1",
+        `${HEADER}\nlatines adultes avance;Finale;1;A / B;12;\nStandards - Juniors;Finale;1;C / D;13;\n`,
+        STAFF,
+      );
+      expect(report.created).toBe(2);
+      expect(
+        createdRows().map((r) => (r as { eventId?: string }).eventId),
+      ).toEqual(["ev-latin-adv", "ev-std-jun"]);
+      expect(prisma.event.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          where: { competitionId: "comp-1" },
+          take: 500,
+        }),
+      );
+    });
+
+    it("the same couple named once by id and once by name is a duplicate", async () => {
+      prisma.event.findMany.mockImplementation(((args: {
+        where: { id?: unknown };
+      }) =>
+        Promise.resolve(
+          args.where.id === undefined ? events : [{ id: "ev-std-jun" }],
+        )) as never);
+      const error: unknown = await service
+        .importCsv(
+          "comp-1",
+          `${HEADER}\nev-std-jun;Finale;1;A / B;12;\nStandard Juniors;Finale;2;A / B;12;\n`,
+          STAFF,
+        )
+        .catch((e: unknown) => e);
+      const body = (error as BadRequestException).getResponse() as {
+        errors: { line: number; message: string }[];
+      };
+      expect(body.errors).toEqual([
+        {
+          line: 3,
+          message: "même couple que la ligne 2 pour cette épreuve et ce tour",
+        },
+      ]);
+    });
+
+    it("refuses an ambiguous or unknown name, never guesses", async () => {
+      const error: unknown = await service
+        .importCsv(
+          "comp-1",
+          `${HEADER}\nLatines Adultes;Finale;1;A / B;12;\nRock Seniors;Finale;1;C / D;13;\n`,
+          STAFF,
+        )
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(BadRequestException);
+      const body = (error as BadRequestException).getResponse() as {
+        errors: { line: number; message: string }[];
+      };
+      expect(body.errors).toEqual([
+        {
+          line: 2,
+          message:
+            "nom d'épreuve ambigu (2 épreuves) : utiliser l'identifiant de l'épreuve",
+        },
+        { line: 3, message: "épreuve inconnue pour cette compétition" },
+      ]);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("deleteEventResults (#690)", () => {
+    beforeEach(() => {
+      prisma.event.findFirst.mockResolvedValue({ id: "ev-latin" } as never);
+      prisma.result.deleteMany.mockReturnValue("delete-op" as never);
+      prisma.$transaction.mockResolvedValue([
+        { count: 2 },
+        { id: "a" },
+      ] as never);
+    });
+
+    it("404 when the event is not one of the competition", async () => {
+      prisma.event.findFirst.mockResolvedValue(null);
+      await expect(
+        service.deleteEventResults("comp-1", "ev-other", CLUB),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.event.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "ev-other", competitionId: "comp-1" },
+        }),
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("removes the imported rows, keeps the erased ones, audits and invalidates the cache", async () => {
+      prisma.result.findMany.mockResolvedValue([
+        { id: "r1", userId: "user-a", details: { participant: "A / B" } },
+        { id: "r2", userId: UNLINKED_RESULT_USER_ID, details: null },
+        { id: "r3", userId: DELETED_USER_ID, details: {} },
+        {
+          id: "r4",
+          userId: "user-c",
+          details: { participant: "C / Partenaire supprimé" },
+        },
+      ] as never);
+
+      const report = await service.deleteEventResults(
+        "comp-1",
+        "ev-latin",
+        CLUB,
+      );
+
+      expect(report).toEqual({ deleted: 2, anonymisedKept: 2 });
+      expect(prisma.result.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { eventId: "ev-latin", importKey: { not: null } },
+          take: 5000,
+        }),
+      );
+      expect(prisma.result.deleteMany).toHaveBeenCalledWith({
+        where: {
+          id: { in: ["r1", "r2"] },
+          userId: { not: DELETED_USER_ID },
+        },
+      });
+      expect(audit.recordOp).toHaveBeenCalledWith({
+        actorId: "club-1",
+        action: "COMPETITION_RESULTS_DELETE",
+        targetType: "COMPETITION",
+        targetId: "comp-1",
+        after: {
+          eventId: "ev-latin",
+          candidates: 2,
+          anonymisedKept: 2,
+          actorRole: "CLUB",
+        },
+      });
+      expect(prisma.$transaction).toHaveBeenCalledWith([
+        "delete-op",
+        "audit-op",
+      ]);
+      expect(cache.invalidateResults).toHaveBeenCalledWith("comp-1");
+      expect(JSON.stringify(audit.recordOp.mock.calls)).not.toContain("A / B");
+    });
+
+    it("does not invalidate the cache when nothing was removed", async () => {
+      prisma.result.findMany.mockResolvedValue([]);
+      prisma.$transaction.mockResolvedValue([
+        { count: 0 },
+        { id: "a" },
+      ] as never);
+      const report = await service.deleteEventResults(
+        "comp-1",
+        "ev-latin",
+        STAFF,
+      );
+      expect(report).toEqual({ deleted: 0, anonymisedKept: 0 });
+      expect(cache.invalidateResults).not.toHaveBeenCalled();
     });
   });
 });

@@ -47,7 +47,7 @@ describe('AuditLogPage', () => {
     expect(screen.getByText('Durand')).toBeInTheDocument();
   });
 
-  it('shows a results import without a link: the back-office has no competition page (#652)', async () => {
+  it('links a results import to the competition page (#652, #690)', async () => {
     vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue({
       data: {
         data: [
@@ -79,7 +79,10 @@ describe('AuditLogPage', () => {
     expect(await screen.findByText('Import des résultats')).toBeInTheDocument();
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
     expect(screen.queryByText('Supprimé')).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /voir/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Voir la compétition' })).toHaveAttribute(
+      'href',
+      '/competitions/comp-1',
+    );
   });
 
   it('links club targets to the club page and does not link deleted targets', async () => {

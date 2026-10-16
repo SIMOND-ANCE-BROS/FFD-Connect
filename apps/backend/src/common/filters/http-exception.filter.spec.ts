@@ -289,6 +289,71 @@ describe("HttpExceptionFilter", () => {
     expect(body).not.toHaveProperty("existingClubId");
   });
 
+  describe("line errors of a rejected file (#690)", () => {
+    const lastBody = () =>
+      (mockResponse.json.mock.lastCall as [Record<string, unknown>])[0];
+
+    it("answers the { line, message } pairs of a 400, never logs them", () => {
+      const exception = new HttpException(
+        {
+          message: "Fichier de résultats invalide",
+          errors: [
+            { line: 3, message: "classement invalide" },
+            { line: "4", message: "dropped: line is not a number" },
+            { line: 5, message: { nested: true } },
+            null,
+            { line: 6, message: "x".repeat(400), extra: "dropped" },
+          ],
+        },
+        HttpStatus.BAD_REQUEST,
+      );
+      filter.catch(exception, mockArgumentsHost);
+      expect(lastBody().errors).toEqual([
+        { line: 3, message: "classement invalide" },
+        { line: 6, message: "x".repeat(300) },
+      ]);
+      expect(JSON.stringify(mockLogger.warn.mock.calls)).not.toContain(
+        "classement invalide",
+      );
+    });
+
+    it("bounds the list to 100 lines", () => {
+      const errors = Array.from({ length: 150 }, (_, i) => ({
+        line: i + 2,
+        message: "m",
+      }));
+      filter.catch(
+        new HttpException({ message: "x", errors }, HttpStatus.BAD_REQUEST),
+        mockArgumentsHost,
+      );
+      expect(lastBody().errors).toHaveLength(100);
+    });
+
+    it("adds nothing on other statuses, nor for a body without valid pairs", () => {
+      filter.catch(
+        new HttpException(
+          { message: "x", errors: [{ line: 2, message: "m" }] },
+          HttpStatus.CONFLICT,
+        ),
+        mockArgumentsHost,
+      );
+      expect(lastBody()).not.toHaveProperty("errors");
+      filter.catch(
+        new HttpException(
+          { message: "x", errors: "nope" },
+          HttpStatus.BAD_REQUEST,
+        ),
+        mockArgumentsHost,
+      );
+      expect(lastBody()).not.toHaveProperty("errors");
+      filter.catch(
+        new HttpException({ message: "x", errors: [] }, HttpStatus.BAD_REQUEST),
+        mockArgumentsHost,
+      );
+      expect(lastBody()).not.toHaveProperty("errors");
+    });
+  });
+
   // #225: some 4xx messages are health data (medical unfitness). The user still
   // reads them; the logs only see the stable code.
   describe("coded errors (#225)", () => {

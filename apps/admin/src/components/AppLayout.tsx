@@ -40,6 +40,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { to: '/', label: 'Tableau de bord' },
   { to: '/users', label: 'Utilisateurs' },
   { to: '/clubs', label: 'Clubs' },
+  { to: '/competitions', label: 'Compétitions' },
   {
     label: 'Musiques',
     children: [
