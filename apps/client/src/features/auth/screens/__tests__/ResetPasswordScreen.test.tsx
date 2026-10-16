@@ -190,4 +190,48 @@ describe("ResetPasswordScreen", () => {
 
     expect(props.navigation.navigate).toHaveBeenCalledWith("Login");
   });
+
+  describe("screen reader (#22)", () => {
+    it("exposes the title as a heading and reads the policy as one sentence", async () => {
+      const { getByRole, getByLabelText } = await render(
+        <ResetPasswordScreen {...createTestProps()} />,
+      );
+      expect(
+        getByRole("header", { name: "Réinitialiser le mot de passe" }),
+      ).toBeTruthy();
+      expect(
+        getByLabelText(
+          /^Le mot de passe doit contenir : au moins 8 caractères/,
+        ),
+      ).toBeTruthy();
+    });
+
+    it("names both visibility toggles after the action they perform", async () => {
+      const { getByRole } = await render(
+        <ResetPasswordScreen {...createTestProps()} />,
+      );
+      const toggle = getByRole("button", {
+        name: "Afficher le nouveau mot de passe",
+      });
+      expect(toggle.props.testID).toBe("reset-password-new-toggle");
+      await fireEvent.press(toggle);
+      expect(
+        getByRole("button", { name: "Masquer le nouveau mot de passe" }),
+      ).toBeTruthy();
+      expect(
+        getByRole("button", {
+          name: "Afficher la confirmation du mot de passe",
+        }),
+      ).toBeTruthy();
+    });
+
+    it("names the back link", async () => {
+      const props = createTestProps();
+      const { getByRole } = await render(<ResetPasswordScreen {...props} />);
+      await fireEvent.press(
+        getByRole("button", { name: "Retour à la connexion" }),
+      );
+      expect(props.navigation.navigate).toHaveBeenCalledWith("Login");
+    });
+  });
 });

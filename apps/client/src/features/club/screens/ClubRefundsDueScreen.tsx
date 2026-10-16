@@ -12,6 +12,7 @@ import { useTheme } from "../../../context/ThemeContext";
 import "../../../api/client";
 import { clubRefundsDueControllerList } from "../../../api/generated/sdk.gen";
 import type { ClubRefundDueDto } from "../../../api/generated/types.gen";
+import { joinA11yLabel } from "../../../utils/a11y";
 
 const PAGE_SIZE = 20;
 
@@ -95,44 +96,61 @@ export const ClubRefundsDueScreen = () => {
     const count = item.helloAssoCheckoutIntentIds.length;
     const amount = formatRefundAmount(item.amountCents);
     const dancer = `${item.dancer.firstName} ${item.dancer.lastName}`.trim();
+    const paymentsText =
+      count > 1
+        ? `${count} paiements${amount ? ` de ${amount}` : ""} à rembourser`
+        : `1 paiement${amount ? ` de ${amount}` : ""} à rembourser`;
     return (
       <View
         style={[styles.card, { backgroundColor: theme.surface }]}
         testID={`club-refund-${item.bookingId}`}
       >
-        <View style={styles.cardHeader}>
-          <View style={styles.badge}>
-            <AppText variant="caption" style={styles.badgeText}>
-              À REMBOURSER
+        {/* Read as one sentence; the HelloAsso reference stays a separate,
+            selectable element below. */}
+        <View
+          accessible
+          accessibilityLabel={joinA11yLabel([
+            dancer,
+            "à rembourser",
+            paymentsText,
+            `${item.competition.title}, ${formatDate(item.competition.date)}`,
+            item.seatNumber !== null && `place ${item.seatNumber}`,
+            `depuis le ${formatDate(item.refundOwedAt)}`,
+          ])}
+          accessibilityHint="À rembourser depuis votre espace HelloAsso"
+        >
+          <View style={styles.cardHeader}>
+            <View style={styles.badge}>
+              <AppText variant="caption" style={styles.badgeText}>
+                À REMBOURSER
+              </AppText>
+            </View>
+            <AppText variant="caption" style={{ color: theme.textSecondary }}>
+              Depuis le {formatDate(item.refundOwedAt)}
             </AppText>
           </View>
-          <AppText variant="caption" style={{ color: theme.textSecondary }}>
-            Depuis le {formatDate(item.refundOwedAt)}
-          </AppText>
-        </View>
 
-        <AppText variant="h3" style={[styles.mt8, { color: theme.text }]}>
-          {dancer}
-        </AppText>
-        <AppText
-          variant="body"
-          style={[styles.mt4, { color: theme.textSecondary }]}
-        >
-          {item.competition.title} · {formatDate(item.competition.date)}
-        </AppText>
-        {item.seatNumber !== null && (
+          <AppText variant="h3" style={[styles.mt8, { color: theme.text }]}>
+            {dancer}
+          </AppText>
           <AppText
-            variant="caption"
+            variant="body"
             style={[styles.mt4, { color: theme.textSecondary }]}
           >
-            Place {item.seatNumber}
+            {item.competition.title} · {formatDate(item.competition.date)}
           </AppText>
-        )}
-        <AppText variant="body" style={[styles.mt8, { color: theme.text }]}>
-          {count > 1
-            ? `${count} paiements${amount ? ` de ${amount}` : ""} à rembourser`
-            : `1 paiement${amount ? ` de ${amount}` : ""} à rembourser`}
-        </AppText>
+          {item.seatNumber !== null && (
+            <AppText
+              variant="caption"
+              style={[styles.mt4, { color: theme.textSecondary }]}
+            >
+              Place {item.seatNumber}
+            </AppText>
+          )}
+          <AppText variant="body" style={[styles.mt8, { color: theme.text }]}>
+            {paymentsText}
+          </AppText>
+        </View>
         <AppText
           variant="caption"
           selectable
@@ -161,7 +179,12 @@ export const ClubRefundsDueScreen = () => {
         <View
           style={[styles.container, styles.center, { paddingTop: headerH }]}
         >
-          <ActivityIndicator size="large" color={theme.primary} />
+          <ActivityIndicator
+            size="large"
+            color={theme.primary}
+            accessibilityLabel="Chargement des remboursements"
+            accessibilityHint="Patientez quelques secondes"
+          />
         </View>
         {header}
       </View>
@@ -196,7 +219,12 @@ export const ClubRefundsDueScreen = () => {
         }
         ListFooterComponent={
           loadingMore ? (
-            <ActivityIndicator color={theme.primary} style={styles.mt8} />
+            <ActivityIndicator
+              color={theme.primary}
+              style={styles.mt8}
+              accessibilityLabel="Chargement de la suite"
+              accessibilityHint="Patientez quelques secondes"
+            />
           ) : null
         }
         ListEmptyComponent={
@@ -210,6 +238,7 @@ export const ClubRefundsDueScreen = () => {
               variant="h3"
               align="center"
               style={[styles.mb8, { color: theme.text }]}
+              accessibilityRole="header"
             >
               {hasError ? "Chargement impossible" : "Aucun remboursement dû"}
             </AppText>

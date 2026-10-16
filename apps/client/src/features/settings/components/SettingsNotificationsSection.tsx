@@ -31,7 +31,10 @@ export const SettingsNotificationsSection: React.FC<
 > = ({ theme, preferences, loading, pending, error, onToggle }) => (
   <>
     <View style={styles.sectionTitleContainer}>
-      <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+      <Text
+        accessibilityRole="header"
+        style={[styles.sectionTitle, { color: theme.textSecondary }]}
+      >
         Notifications
       </Text>
     </View>
@@ -46,13 +49,21 @@ export const SettingsNotificationsSection: React.FC<
 
       {loading && preferences.length === 0 ? (
         <View style={styles.row} testID="notification-preferences-loading">
-          <ActivityIndicator color={theme.primary} />
+          {/* eslint-disable-next-line react-native-a11y/has-accessibility-hint -- static content, no action to hint */}
+          <ActivityIndicator
+            color={theme.primary}
+            accessibilityLabel="Chargement des préférences de notification"
+          />
         </View>
       ) : null}
 
       {error ? (
         <View style={styles.row}>
-          <Text style={[styles.rowLabel, { color: theme.danger }]}>
+          <Text
+            style={[styles.rowLabel, { color: theme.danger }]}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+          >
             {error}
           </Text>
         </View>

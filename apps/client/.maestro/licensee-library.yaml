@@ -29,5 +29,5 @@ tags:
 - assertVisible: { id: "library-track-.*" }
 - tapOn: { id: "library-filter-button", optional: true }
 - tapOn: { id: "library-filter-mpm-min", optional: true }
-- tapOn: { text: "Réinitialiser", optional: true }
+- tapOn: { id: "filter-reset", optional: true }
 - tapOn: { text: "Fermer", optional: true }

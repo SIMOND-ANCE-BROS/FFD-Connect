@@ -39,6 +39,7 @@ import { SpaceSelector } from "../components/SpaceSelector";
 import { AuthService } from "../../auth/services/AuthService";
 import { useAuthStore } from "../../../stores/auth.store";
 import { createLogger } from "../../../utils/logger";
+import { useRestoreFocusOnClose } from "../../../utils/a11yFocus";
 import { SettingsClubSection } from "../components/SettingsClubSection";
 import { SettingsFiltersSection } from "../components/SettingsFiltersSection";
 import { SettingsInterfaceSection } from "../components/SettingsInterfaceSection";
@@ -183,6 +184,19 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
   }, [isGuest, loadNotificationPreferences]);
   const scrollY = useRef(new Animated.Value(0)).current;
 
+  // Screen-reader focus goes back to the row that opened each modal (#22):
+  // without it VoiceOver lands on the top of the screen after closing.
+  const changePasswordRef = useRef<View>(null);
+  const deleteAccountRef = useRef<View>(null);
+  const reportRef = useRef<View>(null);
+  const helloAssoRef = useRef<View>(null);
+  const impersonationRef = useRef<View>(null);
+  useRestoreFocusOnClose(changePasswordModalVisible, changePasswordRef);
+  useRestoreFocusOnClose(deleteAccountModalVisible, deleteAccountRef);
+  useRestoreFocusOnClose(reportModalVisible, reportRef);
+  useRestoreFocusOnClose(helloAssoModalVisible, helloAssoRef);
+  useRestoreFocusOnClose(impersonationVisible, impersonationRef);
+
   // --- Confidentialité et données (#424, RGPD) ---
   const handleExportData = useCallback(() => {
     setExporting(true);
@@ -226,6 +240,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
     toggleBiometrics,
     isFaceId,
     onChangePassword: () => setChangePasswordModalVisible(true),
+    changePasswordRef,
     isGuest: role === "GUEST",
   };
 
@@ -262,6 +277,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
               />
             )}
             <TouchableOpacity
+              accessibilityRole="button"
               onPress={() => {
                 if (isGuest) {
                   handleGuestSignIn();
@@ -311,6 +327,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
       >
         {canImpersonate && (
           <TouchableOpacity
+            ref={impersonationRef}
             onPress={() => setImpersonationVisible(true)}
             accessibilityRole="button"
             accessibilityLabel="Se connecter en tant qu'un utilisateur"
@@ -334,6 +351,8 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
 
         {licenseExpiryDays !== null && (
           <View
+            accessible
+            accessibilityRole="alert"
             style={[
               licenseExpiryStyles.banner,
               { backgroundColor: `${currentTheme.warning}20` },
@@ -376,6 +395,7 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
             paymentProviderStatus={paymentProviderStatus}
             onSelectPaymentProvider={handleSetPaymentProvider}
             onOpenHelloAsso={() => setHelloAssoModalVisible(true)}
+            helloAssoRef={helloAssoRef}
           />
         )}
 
@@ -434,12 +454,14 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
           onOpenLegal={handleOpenLegal}
           usageEnabled={state.usageEnabled}
           onToggleUsage={(on) => void actions.handleToggleUsage(on)}
+          deleteAccountRef={deleteAccountRef}
         />
 
         <SettingsTechnicalSection
           theme={currentTheme}
           handleShowTechInfo={handleShowTechInfo}
           onOpenReportModal={() => setReportModalVisible(true)}
+          reportRef={reportRef}
         />
 
         <ReportModal

@@ -1,5 +1,5 @@
 import { ChevronRight, CreditCard, Users } from "lucide-react-native";
-import React from "react";
+import React, { type RefObject } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { AppTheme } from "../../../context/ThemeContext";
 import type { HelloAssoStatus } from "../../club/services/ClubService";
@@ -10,6 +10,7 @@ import {
   type ClubPaymentProviderStatusDto,
   type PaymentProvider,
 } from "../../../services/api/payment-provider-api";
+import { joinA11yLabel } from "../../../utils/a11y";
 import { styles } from "./settings.styles";
 
 interface SettingsClubSectionProps {
@@ -22,6 +23,8 @@ interface SettingsClubSectionProps {
   onSelectPaymentProvider: (provider: PaymentProvider) => Promise<void>;
   /** Opens the credentials form of the current connector (HelloAsso today). */
   onOpenHelloAsso: () => void;
+  /** Receives the screen-reader focus back when the HelloAsso modal closes. */
+  helloAssoRef?: RefObject<View | null>;
 }
 
 /** Connector shown to the club: the chosen one, HelloAsso before #388. */
@@ -53,6 +56,7 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
   paymentProviderStatus,
   onSelectPaymentProvider,
   onOpenHelloAsso,
+  helloAssoRef,
 }) => {
   const connector = currentConnector(paymentProviderStatus, helloAssoStatus);
   const connectorName = paymentProviderLabel(connector.provider);
@@ -66,7 +70,10 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
   return (
     <>
       <View style={styles.sectionTitleContainer}>
-        <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+        <Text
+          accessibilityRole="header"
+          style={[styles.sectionTitle, { color: theme.textSecondary }]}
+        >
           Politique d'inscription
         </Text>
       </View>
@@ -85,7 +92,12 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
         </View>
 
         <View style={styles.policyContainer}>
-          <View style={styles.gap12}>
+          {/* eslint-disable-next-line react-native-a11y/has-accessibility-hint -- static group, the radios carry the hints */}
+          <View
+            style={styles.gap12}
+            accessibilityRole="radiogroup"
+            accessibilityLabel="Qui inscrit les membres ?"
+          >
             {[
               {
                 label: "Club uniquement",
@@ -105,6 +117,10 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
             ].map((option) => (
               <TouchableOpacity
                 key={option.value}
+                accessibilityRole="radio"
+                accessibilityState={{
+                  checked: registrationPolicy === option.value,
+                }}
                 style={[
                   styles.policyOption,
                   registrationPolicy === option.value
@@ -118,8 +134,8 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
                   handleSetRegistrationPolicy(option.value).catch(() => {});
                 }}
                 testID={`settings-reg-policy-${option.value}`}
-                accessibilityLabel={`Politique d'inscription: ${option.label}`}
-                accessibilityHint={`Sélectionne la politique d'inscription ${option.label}`}
+                accessibilityLabel={joinA11yLabel([option.label, option.desc])}
+                accessibilityHint="Définit qui inscrit les membres aux compétitions"
               >
                 <View
                   style={[
@@ -159,7 +175,10 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
 
       {/* Paiement en ligne (#665): neutral section, the connector is a choice */}
       <View style={styles.sectionTitleContainer}>
-        <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+        <Text
+          accessibilityRole="header"
+          style={[styles.sectionTitle, { color: theme.textSecondary }]}
+        >
           Paiement en ligne
         </Text>
       </View>
@@ -188,7 +207,7 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
                       }}
                       testID={`settings-payment-provider-${provider}`}
                       accessibilityRole="radio"
-                      accessibilityState={{ selected }}
+                      accessibilityState={{ selected, checked: selected }}
                       accessibilityLabel={`Connecteur de paiement : ${label}`}
                       accessibilityHint={`Encaisse les paiements en ligne du club avec ${label}`}
                     >
@@ -225,11 +244,15 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
             </View>
           )}
         <TouchableOpacity
+          ref={helloAssoRef}
           style={styles.row}
           onPress={onOpenHelloAsso}
           disabled={!isHelloAssoProvider(connector.provider)}
           testID="settings-helloasso-button"
           accessibilityRole="button"
+          accessibilityState={{
+            disabled: !isHelloAssoProvider(connector.provider),
+          }}
           accessibilityLabel={`Connecteur de paiement : ${connectorName}, ${connector.configured ? "configuré" : "non configuré"}`}
           accessibilityHint={`Ouvre la saisie des identifiants ${connectorName} du club`}
         >

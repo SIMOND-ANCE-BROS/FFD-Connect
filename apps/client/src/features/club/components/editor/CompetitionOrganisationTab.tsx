@@ -1,4 +1,3 @@
-/* eslint-disable react-native-a11y/has-accessibility-hint -- TODO: add a11y hints to org settings */
 import * as Clipboard from "expo-clipboard";
 import { Copy, Users, X } from "lucide-react-native";
 import React from "react";
@@ -18,6 +17,18 @@ import { VolunteerTokenResponse } from "../../../license/services/CheckinService
 import { LayoutItem } from "../../hooks/useClubCompetitionEditorLogic";
 import { LayoutCanvas } from "../LayoutCanvas";
 import { styles } from "./competition-editor.styles";
+
+/** Visual caption above a field that already carries the same name. */
+const HIDDEN_CAPTION = {
+  accessibilityElementsHidden: true,
+  importantForAccessibility: "no-hide-descendants",
+} as const;
+
+const LAYOUT_TYPE_LABELS: Record<"TABLE" | "GRADIN" | "OTHER", string> = {
+  TABLE: "Table",
+  GRADIN: "Gradin",
+  OTHER: "Autre",
+};
 
 interface Props {
   theme: AppTheme;
@@ -127,7 +138,12 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
             <Users size={20} color={theme.primary} />
           </View>
           <View style={styles.flex1ML12}>
-            <AppText variant="body" weight="600" style={{ color: theme.text }}>
+            <AppText
+              variant="body"
+              weight="600"
+              style={{ color: theme.text }}
+              accessibilityRole="header"
+            >
               Accès Bénévoles
             </AppText>
             <AppText variant="caption" style={{ color: theme.textSecondary }}>
@@ -139,6 +155,7 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
         <View style={styles.mt16}>
           <AppButton
             title="Générer un QR d'accès"
+            accessibilityHint="Crée un QR code que les bénévoles scannent pour faire le contrôle d'accès"
             onPress={() => {
               handleGenerateVolunteerToken().catch(() => {});
             }}
@@ -155,7 +172,11 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
           styles.mt16,
         ]}
       >
-        <AppText variant="h3" style={[styles.mb12, { color: theme.text }]}>
+        <AppText
+          variant="h3"
+          style={[styles.mb12, { color: theme.text }]}
+          accessibilityRole="header"
+        >
           Billetterie HelloAsso
         </AppText>
         <AppText
@@ -177,7 +198,11 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
 
       <View style={[styles.section, styles.layoutSection]}>
         <View style={styles.layoutHeader}>
-          <AppText variant="h3" style={{ color: theme.text }}>
+          <AppText
+            variant="h3"
+            style={{ color: theme.text }}
+            accessibilityRole="header"
+          >
             Plan de salle
           </AppText>
         </View>
@@ -216,6 +241,7 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
     >
       <View style={styles.modalOverlay}>
         <View
+          accessibilityViewIsModal
           style={[
             styles.modalContent,
             { backgroundColor: theme.surface },
@@ -225,12 +251,17 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
           <AppText
             variant="h3"
             style={[styles.modalTitle, { color: theme.text }]}
+            accessibilityRole="header"
           >
             {editingLayoutItem ? "Modifier l'élément" : "Ajouter un élément"}
           </AppText>
 
           <View style={styles.inputGroup}>
-            <AppText variant="caption" color={theme.textSecondary}>
+            <AppText
+              variant="caption"
+              color={theme.textSecondary}
+              accessibilityRole="header"
+            >
               Type d'élément
             </AppText>
             <View style={styles.tagRowMT8}>
@@ -243,13 +274,10 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
                   <TouchableOpacity
                     accessibilityRole="button"
                     accessibilityLabel={
-                      type === "TABLE"
-                        ? "Table"
-                        : type === "GRADIN"
-                          ? "Gradin"
-                          : "Autre"
+                      LAYOUT_TYPE_LABELS[type as "TABLE" | "GRADIN" | "OTHER"]
                     }
-                    accessibilityHint={`Sélectionner le type ${type}`}
+                    accessibilityHint="Choisit ce type d'élément"
+                    accessibilityState={{ selected: isSelected }}
                     key={type}
                     onPress={() =>
                       setNewLayoutType(type as "TABLE" | "GRADIN" | "OTHER")
@@ -278,7 +306,11 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
           </View>
 
           <View style={[styles.inputGroup, styles.mt16]}>
-            <AppText variant="caption" color={theme.textSecondary}>
+            <AppText
+              variant="caption"
+              color={theme.textSecondary}
+              {...HIDDEN_CAPTION}
+            >
               Nom / Numéro
             </AppText>
             <TextInput
@@ -299,7 +331,11 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
           {/* Tarif d'une place (#405) : tables et gradins seulement. */}
           {newLayoutType !== "OTHER" && (
             <View style={[styles.inputGroup, styles.mt16]}>
-              <AppText variant="caption" color={theme.textSecondary}>
+              <AppText
+                variant="caption"
+                color={theme.textSecondary}
+                {...HIDDEN_CAPTION}
+              >
                 Tarif d'une place (€) — laisser vide si non payante en ligne
               </AppText>
               <TextInput
@@ -324,11 +360,16 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
           {newLayoutType === "GRADIN" && (
             <View style={styles.rowInput}>
               <View style={[styles.inputGroup, styles.flex1MR8]}>
-                <AppText variant="caption" color={theme.textSecondary}>
+                <AppText
+                  variant="caption"
+                  color={theme.textSecondary}
+                  {...HIDDEN_CAPTION}
+                >
                   Colonnes
                 </AppText>
                 <TextInput
                   accessibilityLabel="Nombre de colonnes"
+                  accessibilityHint="Nombre de places par rang"
                   style={[styles.ticketingInput, { color: theme.text }]}
                   keyboardType="numeric"
                   placeholder="4"
@@ -338,11 +379,16 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
                 />
               </View>
               <View style={[styles.inputGroup, styles.flex1]}>
-                <AppText variant="caption" color={theme.textSecondary}>
+                <AppText
+                  variant="caption"
+                  color={theme.textSecondary}
+                  {...HIDDEN_CAPTION}
+                >
                   Lignes (rangs)
                 </AppText>
                 <TextInput
                   accessibilityLabel="Nombre de lignes"
+                  accessibilityHint="Nombre de rangs du gradin"
                   style={[styles.ticketingInput, { color: theme.text }]}
                   keyboardType="numeric"
                   placeholder="3"
@@ -367,11 +413,16 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
           {/* Table : nombre de places */}
           {newLayoutType === "TABLE" && (
             <View style={[styles.inputGroup, styles.mt16]}>
-              <AppText variant="caption" color={theme.textSecondary}>
+              <AppText
+                variant="caption"
+                color={theme.textSecondary}
+                {...HIDDEN_CAPTION}
+              >
                 Nombre de places
               </AppText>
               <TextInput
                 accessibilityLabel="Nombre de places à la table"
+                accessibilityHint="Nombre de places autour de la table"
                 style={[styles.ticketingInput, { color: theme.text }]}
                 placeholder="8"
                 keyboardType="numeric"
@@ -385,11 +436,16 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
           {/* Autre : capacité */}
           {newLayoutType === "OTHER" && (
             <View style={[styles.inputGroup, styles.mt16]}>
-              <AppText variant="caption" color={theme.textSecondary}>
+              <AppText
+                variant="caption"
+                color={theme.textSecondary}
+                {...HIDDEN_CAPTION}
+              >
                 Capacité (places)
               </AppText>
               <TextInput
                 accessibilityLabel="Capacité"
+                accessibilityHint="Nombre de places de l'élément"
                 style={[styles.ticketingInput, { color: theme.text }]}
                 placeholder="8"
                 keyboardType="numeric"
@@ -401,11 +457,16 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
           )}
 
           <View style={[styles.inputGroup, styles.mt16]}>
-            <AppText variant="caption" color={theme.textSecondary}>
+            <AppText
+              variant="caption"
+              color={theme.textSecondary}
+              {...HIDDEN_CAPTION}
+            >
               Rotation (°)
             </AppText>
             <TextInput
               accessibilityLabel="Rotation de l'élément en degrés"
+              accessibilityHint="Angle de rotation sur le plan, en degrés"
               style={[styles.ticketingInput, { color: theme.text }]}
               keyboardType="numeric"
               placeholder="0"
@@ -420,11 +481,16 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
             <>
               <View style={styles.rowInput}>
                 <View style={[styles.inputGroup, styles.flex1MR8]}>
-                  <AppText variant="caption" color={theme.textSecondary}>
+                  <AppText
+                    variant="caption"
+                    color={theme.textSecondary}
+                    {...HIDDEN_CAPTION}
+                  >
                     Position X (%)
                   </AppText>
                   <TextInput
                     accessibilityLabel="Position X"
+                    accessibilityHint="Position horizontale sur le plan, en pourcentage"
                     style={[styles.ticketingInput, { color: theme.text }]}
                     keyboardType="numeric"
                     value={newLayoutX.toString()}
@@ -432,11 +498,16 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
                   />
                 </View>
                 <View style={[styles.inputGroup, styles.flex1]}>
-                  <AppText variant="caption" color={theme.textSecondary}>
+                  <AppText
+                    variant="caption"
+                    color={theme.textSecondary}
+                    {...HIDDEN_CAPTION}
+                  >
                     Position Y (%)
                   </AppText>
                   <TextInput
                     accessibilityLabel="Position Y"
+                    accessibilityHint="Position verticale sur le plan, en pourcentage"
                     style={[styles.ticketingInput, { color: theme.text }]}
                     keyboardType="numeric"
                     value={newLayoutY.toString()}
@@ -446,11 +517,16 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
               </View>
               <View style={styles.rowInput}>
                 <View style={[styles.inputGroup, styles.flex1MR8]}>
-                  <AppText variant="caption" color={theme.textSecondary}>
+                  <AppText
+                    variant="caption"
+                    color={theme.textSecondary}
+                    {...HIDDEN_CAPTION}
+                  >
                     Largeur (%)
                   </AppText>
                   <TextInput
                     accessibilityLabel="Largeur"
+                    accessibilityHint="Largeur sur le plan, en pourcentage"
                     style={[styles.ticketingInput, { color: theme.text }]}
                     keyboardType="numeric"
                     value={newLayoutWidth.toString()}
@@ -460,11 +536,16 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
                   />
                 </View>
                 <View style={[styles.inputGroup, styles.flex1]}>
-                  <AppText variant="caption" color={theme.textSecondary}>
+                  <AppText
+                    variant="caption"
+                    color={theme.textSecondary}
+                    {...HIDDEN_CAPTION}
+                  >
                     Hauteur (%)
                   </AppText>
                   <TextInput
                     accessibilityLabel="Hauteur"
+                    accessibilityHint="Hauteur sur le plan, en pourcentage"
                     style={[styles.ticketingInput, { color: theme.text }]}
                     keyboardType="numeric"
                     value={newLayoutHeight.toString()}
@@ -515,6 +596,7 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
     >
       <View style={styles.modalOverlay}>
         <View
+          accessibilityViewIsModal
           style={[
             styles.modalContent,
             { backgroundColor: theme.surface },
@@ -522,13 +604,18 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
           ]}
         >
           <View style={styles.rowBetweenMB16}>
-            <AppText variant="h3" style={{ color: theme.text }}>
+            <AppText
+              variant="h3"
+              style={{ color: theme.text }}
+              accessibilityRole="header"
+            >
               Accès Bénévole
             </AppText>
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel="Fermer"
               accessibilityHint="Fermer la fenêtre d'accès bénévole"
+              hitSlop={10}
               onPress={() => setVolunteerToken(null)}
             >
               <X color={theme.text} size={24} />
@@ -543,7 +630,13 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
             check-in.
           </AppText>
 
-          <View style={styles.qrContainer}>
+          <View
+            style={styles.qrContainer}
+            accessible
+            accessibilityRole="image"
+            accessibilityLabel="QR code d'accès bénévole"
+            accessibilityHint="À scanner avec le téléphone du bénévole"
+          >
             {volunteerToken && (
               <QRCode
                 value={volunteerToken.accessUrl}

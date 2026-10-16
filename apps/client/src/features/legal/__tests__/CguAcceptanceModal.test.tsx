@@ -52,4 +52,18 @@ describe("CguAcceptanceModal", () => {
       expect(await hasAcceptedCgu()).toBe(true);
     });
   });
+
+  it("lecteur d'écran (#22) : titre et sections en intitulés, bouton nommé", async () => {
+    const { findByRole, getAllByRole } = await render(<CguAcceptanceModal />);
+    expect(
+      await findByRole("header", {
+        name: "Conditions générales d'utilisation",
+      }),
+    ).toBeTruthy();
+    expect(getAllByRole("header").length).toBeGreaterThan(1);
+    const accept = await findByRole("button", {
+      name: "Accepter les conditions générales d'utilisation",
+    });
+    expect(accept.props.testID).toBe("cgu-accept-button");
+  });
 });

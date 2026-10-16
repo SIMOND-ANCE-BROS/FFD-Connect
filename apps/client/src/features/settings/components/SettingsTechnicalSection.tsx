@@ -1,5 +1,5 @@
 import { ChevronRight, Info, MessageSquare } from "lucide-react-native";
-import React from "react";
+import React, { type RefObject } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
 import { APP_VERSION_LABEL } from "../../../config";
 import { AppTheme } from "../../../context/ThemeContext";
@@ -9,14 +9,19 @@ interface SettingsTechnicalSectionProps {
   theme: AppTheme;
   handleShowTechInfo: () => Promise<void>;
   onOpenReportModal: () => void;
+  /** Receives the screen-reader focus back when the report modal closes. */
+  reportRef?: RefObject<View | null>;
 }
 
 export const SettingsTechnicalSection: React.FC<
   SettingsTechnicalSectionProps
-> = ({ theme, handleShowTechInfo, onOpenReportModal }) => (
+> = ({ theme, handleShowTechInfo, onOpenReportModal, reportRef }) => (
   <>
     <View style={styles.sectionTitleContainer}>
-      <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+      <Text
+        accessibilityRole="header"
+        style={[styles.sectionTitle, { color: theme.textSecondary }]}
+      >
         Technique
       </Text>
     </View>
@@ -24,6 +29,7 @@ export const SettingsTechnicalSection: React.FC<
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
       {/* Tech Info Row */}
       <TouchableOpacity
+        accessibilityRole="button"
         style={styles.row}
         onPress={() => {
           handleShowTechInfo().catch(() => {});
@@ -47,6 +53,8 @@ export const SettingsTechnicalSection: React.FC<
 
       {/* Report Bug */}
       <TouchableOpacity
+        ref={reportRef}
+        accessibilityRole="button"
         style={[styles.row, styles.borderTop, { borderTopColor: theme.border }]}
         onPress={onOpenReportModal}
         testID="settings-report-bug-button"

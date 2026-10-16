@@ -121,6 +121,7 @@ export const styles = StyleSheet.create({
   chipRadius8: { borderRadius: 8 },
   padding8: { padding: 8 },
   timeAlignCol: { alignItems: "center", width: 60 },
+  timingSummary: { flex: 1, flexDirection: "row", alignItems: "center" },
   flex1PadH12: { flex: 1, paddingHorizontal: 12 },
   dirRow: { flexDirection: "row" },
   flex1: { flex: 1 },

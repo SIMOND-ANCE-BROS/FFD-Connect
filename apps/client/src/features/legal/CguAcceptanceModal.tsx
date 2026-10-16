@@ -37,8 +37,16 @@ export const CguAcceptanceModal = () => {
   return (
     <Modal visible transparent animationType="slide">
       <View style={styles.backdrop}>
-        <View style={[styles.card, { backgroundColor: theme.surface }]}>
-          <AppText variant="h2" color={theme.text} style={styles.title}>
+        <View
+          style={[styles.card, { backgroundColor: theme.surface }]}
+          accessibilityViewIsModal
+        >
+          <AppText
+            variant="h2"
+            color={theme.text}
+            style={styles.title}
+            accessibilityRole="header"
+          >
             Conditions générales d'utilisation
           </AppText>
           <AppText variant="caption" color={theme.textSecondary}>
@@ -57,6 +65,7 @@ export const CguAcceptanceModal = () => {
                     variant="h3"
                     color={theme.text}
                     style={styles.sectionHeading}
+                    accessibilityRole="header"
                   >
                     {section.heading}
                   </AppText>

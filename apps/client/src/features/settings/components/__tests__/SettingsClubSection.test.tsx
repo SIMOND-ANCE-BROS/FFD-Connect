@@ -105,7 +105,7 @@ describe("SettingsClubSection — online payment (#665)", () => {
     expect(
       screen.getByTestId("settings-payment-provider-HELLOASSO").props
         .accessibilityState,
-    ).toEqual({ selected: true });
+    ).toMatchObject({ selected: true, checked: true });
     await fireEvent.press(
       screen.getByTestId("settings-payment-provider-OTHER"),
     );
