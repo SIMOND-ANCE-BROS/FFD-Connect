@@ -49,6 +49,11 @@ import {
   UpdateCompetitionDto,
 } from "./dto/competition-management.dto";
 import { RegisterEventDto } from "./dto/register-event.dto";
+import {
+  ImportResultsDto,
+  ImportResultsReportDto,
+} from "./dto/results-import.dto";
+import { CompetitionResultsImportService } from "./services/competition-results-import.service";
 import { RegisterMemberDto } from "./dto/register-member.dto";
 import { UnregisterEventDto } from "./dto/unregister-event.dto";
 import { UnregisterMemberDto } from "./dto/unregister-member.dto";
@@ -80,6 +85,7 @@ export class CompetitionsController {
     private readonly accessService: CompetitionAccessService,
     private readonly programQueryService: CompetitionProgramQueryService,
     private readonly programService: CompetitionProgramService,
+    private readonly resultsImportService: CompetitionResultsImportService,
   ) {}
 
   @StoreReviewReadable()
@@ -768,6 +774,32 @@ export class CompetitionsController {
   })
   getResults(@Param("id") id: string): Promise<CompetitionResultDto[]> {
     return this.resultsService.getResults(id);
+  }
+
+  @Post(":id/results/import")
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard, ThrottlerUserGuard)
+  @Roles(UserRole.STAFF, UserRole.ADMIN)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Importe les résultats publiés d'une compétition (CSV)",
+    description:
+      "STAFF et ADMIN. Importe le classement publié (une ligne par couple, épreuve et tour). Rejouable : un couple déjà importé pour la même épreuve et le même tour est mis à jour, jamais dupliqué. Tout ou rien : une ligne invalide, une épreuve inconnue ou un couple en double rejette le fichier (400, lignes en erreur), rien n'est écrit. Chaque couple est rattaché au compte d'un de ses numéros de licence, sinon à l'inscription portant le même dossard. Un résultat anonymisé par une suppression de compte n'est jamais réécrit. Déclenche la notification « Résultats disponibles » (une seule fois par compétition).",
+  })
+  @ApiParam({ name: "id", description: "ID de la compétition" })
+  @ApiBody({ type: ImportResultsDto })
+  @ApiResponse({ status: 200, type: ImportResultsReportDto })
+  @ApiResponse({
+    status: 400,
+    description: "Fichier invalide : liste des lignes en erreur",
+  })
+  @ApiResponse({ status: 404, description: "Compétition non trouvée" })
+  importResults(
+    @Param("id") id: string,
+    @Body() body: ImportResultsDto,
+  ): Promise<ImportResultsReportDto> {
+    return this.resultsImportService.importCsv(id, body.csv);
   }
 
   @Post(":id/unregister")

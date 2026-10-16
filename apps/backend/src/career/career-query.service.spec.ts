@@ -3,7 +3,6 @@ import { PrismaClient } from "@prisma/client";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
 import { PrismaService } from "../prisma/prisma.service";
 import { CareerQueryService } from "./career-query.service";
-import type { CareerRegistration } from "./career.types";
 
 type MockPrisma = DeepMockProxy<PrismaClient>;
 const createMock = () => mockDeep<PrismaClient>();
@@ -222,38 +221,16 @@ describe("CareerQueryService", () => {
   // getResultsForUser
   // ---------------------------------------------------------------------------
   describe("getResultsForUser", () => {
-    const baseRegistrations: CareerRegistration[] = [
-      {
-        id: "reg-1",
-        status: "CONFIRMED",
-        bibNumber: 1,
-        partnerName: null,
-        event: {
-          id: "ev-1",
-          category: "LATIN",
-          ageGroup: "ADULT",
-          level: null,
-        },
-        competition: {
-          id: "comp-1",
-          title: "Comp",
-          date: "2025-01-01T00:00:00.000Z",
-          location: "Paris",
-          status: "FINISHED",
-        },
-      },
-    ];
+    it("queries the user's results by userId only, without the registrations (#652)", async () => {
+      prisma.result.findMany.mockResolvedValue([]);
+      prisma.competition.findMany.mockResolvedValue([]);
 
-    it("should return empty array when registrations list is empty", async () => {
-      const result = await service.getResultsForUser(
-        "user-1",
-        [],
-        "Alice",
-        "Martin",
-      );
+      const result = await service.getResultsForUser("user-1");
 
       expect(result).toEqual([]);
-      expect(prisma.result.findMany).not.toHaveBeenCalled();
+      expect(prisma.result.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: "user-1" }, take: 1000 }),
+      );
     });
 
     it("returns all of the user's results (by userId, no name filter)", async () => {
@@ -290,10 +267,7 @@ describe("CareerQueryService", () => {
         { id: "comp-1", title: "Comp", date: compDate },
       ] as never);
 
-      const result = await service.getResultsForUser(
-        "user-1",
-        baseRegistrations,
-      );
+      const result = await service.getResultsForUser("user-1");
 
       expect(result).toHaveLength(2);
       expect(result.map((r) => r.id).sort()).toEqual(["res-1", "res-2"]);
@@ -320,10 +294,7 @@ describe("CareerQueryService", () => {
       ] as never);
       prisma.competition.findMany.mockResolvedValue([]);
 
-      const result = await service.getResultsForUser(
-        "user-1",
-        baseRegistrations,
-      );
+      const result = await service.getResultsForUser("user-1");
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe("res-3");
@@ -331,32 +302,6 @@ describe("CareerQueryService", () => {
     });
 
     it("should return results sorted by competition date descending", async () => {
-      const regs: CareerRegistration[] = [
-        {
-          ...baseRegistrations[0],
-          event: { ...baseRegistrations[0].event, id: "ev-1" },
-        },
-        {
-          id: "reg-2",
-          status: "CONFIRMED",
-          bibNumber: null,
-          partnerName: null,
-          event: {
-            id: "ev-2",
-            category: "STANDARD",
-            ageGroup: "ADULT",
-            level: null,
-          },
-          competition: {
-            id: "comp-2",
-            title: "",
-            date: "",
-            location: "",
-            status: "",
-          },
-        },
-      ];
-
       prisma.result.findMany.mockResolvedValue([
         {
           id: "res-old",
@@ -390,12 +335,7 @@ describe("CareerQueryService", () => {
         { id: "comp-2", title: "Older", date: new Date("2024-01-01") },
       ] as never);
 
-      const result = await service.getResultsForUser(
-        "user-1",
-        regs,
-        "Alice",
-        "Martin",
-      );
+      const result = await service.getResultsForUser("user-1");
 
       expect(result[0].id).toBe("res-new");
       expect(result[1].id).toBe("res-old");

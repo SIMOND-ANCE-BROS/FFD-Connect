@@ -20669,6 +20669,178 @@
         "tags": ["competitions"]
       }
     },
+    "/competitions/{id}/results/import": {
+      "post": {
+        "description": "STAFF et ADMIN. Importe le classement publié (une ligne par couple, épreuve et tour). Rejouable : un couple déjà importé pour la même épreuve et le même tour est mis à jour, jamais dupliqué. Tout ou rien : une ligne invalide, une épreuve inconnue ou un couple en double rejette le fichier (400, lignes en erreur), rien n'est écrit. Chaque couple est rattaché au compte d'un de ses numéros de licence, sinon à l'inscription portant le même dossard. Un résultat anonymisé par une suppression de compte n'est jamais réécrit. Déclenche la notification « Résultats disponibles » (une seule fois par compétition).",
+        "operationId": "CompetitionsController_importResults",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "ID de la compétition",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportResultsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResultsReportDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Fichier invalide : liste des lignes en erreur"
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Compétition non trouvée"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Importe les résultats publiés d'une compétition (CSV)",
+        "tags": ["competitions"]
+      }
+    },
     "/competitions/{id}/unregister": {
       "post": {
         "description": "Permet à un utilisateur de se désinscrire d'un événement auquel il était inscrit.",
@@ -30465,6 +30637,61 @@
           }
         },
         "required": ["id", "eventId", "round", "ranking", "details", "event"]
+      },
+      "ImportResultsDto": {
+        "type": "object",
+        "properties": {
+          "csv": {
+            "type": "string",
+            "description": "Contenu CSV du classement (séparateur `;` ou `,`, ligne d'en-tête obligatoire). Colonnes : epreuve (id de l'épreuve), tour, classement, couple ; facultatives : dossard, club, licences (numéros séparés par `|`, `/` ou espaces), statut, participants.",
+            "example": "epreuve;tour;classement;couple;dossard;club;licences\n550e8400-e29b-41d4-a716-446655440001;Finale;1;Martin / Durand;12;Club A;123456|654321",
+            "maxLength": 80000
+          }
+        },
+        "required": ["csv"]
+      },
+      "ImportResultsReportDto": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "number",
+            "description": "Lignes de résultat créées",
+            "example": 12
+          },
+          "updated": {
+            "type": "number",
+            "description": "Lignes déjà importées et corrigées",
+            "example": 0
+          },
+          "unchanged": {
+            "type": "number",
+            "description": "Lignes déjà importées, identiques (import rejoué)",
+            "example": 0
+          },
+          "anonymisedKept": {
+            "type": "number",
+            "description": "Lignes laissées anonymisées : le compte du couple a été supprimé",
+            "example": 0
+          },
+          "linked": {
+            "type": "number",
+            "description": "Couples rattachés à un compte (licence ou dossard)",
+            "example": 4
+          },
+          "unlinked": {
+            "type": "number",
+            "description": "Couples sans compte rattaché",
+            "example": 8
+          }
+        },
+        "required": [
+          "created",
+          "updated",
+          "unchanged",
+          "anonymisedKept",
+          "linked",
+          "unlinked"
+        ]
       },
       "UnregisterEventDto": {
         "type": "object",

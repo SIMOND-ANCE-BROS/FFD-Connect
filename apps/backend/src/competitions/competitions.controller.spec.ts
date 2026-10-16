@@ -20,6 +20,7 @@ import { CompetitionProgramService } from "./services/competition-program.servic
 import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
+import { CompetitionResultsImportService } from "./services/competition-results-import.service";
 
 describe("CompetitionsController", () => {
   let controller: CompetitionsController;
@@ -70,6 +71,7 @@ describe("CompetitionsController", () => {
 
   const mockProgramQueryService = { getProgram: jest.fn() };
   const mockProgramService = { replaceProgram: jest.fn() };
+  const mockResultsImportService = { importCsv: jest.fn() };
 
   const req = (userId: string, role = "LICENSEE") =>
     ({ user: { userId, role } }) as any as RequestWithUser;
@@ -95,6 +97,10 @@ describe("CompetitionsController", () => {
           useValue: mockProgramQueryService,
         },
         { provide: CompetitionProgramService, useValue: mockProgramService },
+        {
+          provide: CompetitionResultsImportService,
+          useValue: mockResultsImportService,
+        },
       ],
     })
       .overrideGuard(ThrottlerUserGuard)
@@ -243,6 +249,39 @@ describe("CompetitionsController", () => {
       await expect(
         controller.register("comp1", req("u1"), { eventId: "e1" } as any),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe("importResults (#652)", () => {
+    it("is restricted to STAFF and ADMIN behind the JWT and roles guards", () => {
+      const handler = CompetitionsController.prototype.importResults;
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([
+        UserRole.STAFF,
+        UserRole.ADMIN,
+      ]);
+      expect(Reflect.getMetadata("__guards__", handler)).toContain(RolesGuard);
+    });
+
+    it("forwards the competition id and the CSV text to the import service", async () => {
+      const report = {
+        created: 1,
+        updated: 0,
+        unchanged: 0,
+        anonymisedKept: 0,
+        linked: 1,
+        unlinked: 0,
+      };
+      mockResultsImportService.importCsv.mockResolvedValue(report);
+
+      const result = await controller.importResults("comp1", {
+        csv: "epreuve;tour;classement;couple\nev;F;1;A / B",
+      });
+
+      expect(mockResultsImportService.importCsv).toHaveBeenCalledWith(
+        "comp1",
+        "epreuve;tour;classement;couple\nev;F;1;A / B",
+      );
+      expect(result).toBe(report);
     });
   });
 

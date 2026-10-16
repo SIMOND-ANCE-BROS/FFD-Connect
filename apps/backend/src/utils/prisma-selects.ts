@@ -359,6 +359,39 @@ export const publicResultSelect = {
   details: true,
 } as const;
 
+/**
+ * Import de résultats (#652) : ligne déjà importée, relue pour être mise à
+ * jour. `userId` dit si elle a été anonymisée (suppression de compte) ;
+ * `details` si un libellé a été expurgé (« Partenaire supprimé »).
+ */
+export const resultImportExistingSelect = {
+  id: true,
+  eventId: true,
+  round: true,
+  importKey: true,
+  userId: true,
+  ranking: true,
+  details: true,
+} as const;
+
+/** Import de résultats (#652) : licence → compte, pour rattacher un couple. */
+export const licenseNumberUserSelect = {
+  number: true,
+  userId: true,
+} as const;
+
+/** Import de résultats (#652) : inscription retrouvée par épreuve + dossard. */
+export const registrationBibUserSelect = {
+  eventId: true,
+  bibNumber: true,
+  userId: true,
+} as const;
+
+/** Titulaire d'un résultat (destinataires de « Résultats disponibles », #652). */
+export const resultOwnerSelect = {
+  userId: true,
+} as const;
+
 /** Épreuves d'une compétition avec leurs résultats publics, classés. */
 export const competitionPublicResultsSelect = {
   id: true,

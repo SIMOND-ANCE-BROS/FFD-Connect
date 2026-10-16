@@ -10,7 +10,11 @@ import {
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { getErrorMessage, getErrorStack } from "../../utils/error.utils";
-import { userEligibilityProfileSelect } from "../../utils/prisma-selects";
+import {
+  idOnlySelect,
+  resultOwnerSelect,
+  userEligibilityProfileSelect,
+} from "../../utils/prisma-selects";
 
 /** Payload `kind` discriminator stored in Notification.data. */
 export const NEW_COMPETITION_KIND = "NEW_COMPETITION";
@@ -41,7 +45,8 @@ interface LicenseeProfile extends CompetitionLevelProfile {
 /**
  * Notifications déclenchées par la synchro FFD :
  *  - « Nouvelle compétition » → licenciés éligibles (profil ⊆ au moins une épreuve).
- *  - « Résultats disponibles » → participants inscrits à la compétition.
+ *  - « Résultats disponibles » → participants inscrits à la compétition et
+ *    comptes rattachés à un résultat importé (#652).
  *
  * Idempotence : garde par requête sur Notification.data (competitionId + kind),
  * aucune migration nécessaire. Chaque notification métier ne part qu'une fois.
@@ -171,7 +176,32 @@ export class CompetitionEventNotificationService {
         take: this.MAX_RECIPIENTS,
       });
 
-      const participantIds = [...new Set(registrations.map((r) => r.userId))];
+      // Couples linked by a results import (#652) without an in-app
+      // registration are participants too. `Result.userId` has no FK (it may
+      // hold the deletion tombstone or an unlinked marker): only ids of an
+      // existing account are kept.
+      const owners = await this.prisma.result.findMany({
+        where: { event: { competitionId } },
+        select: resultOwnerSelect,
+        distinct: ["userId"],
+        take: this.MAX_RECIPIENTS,
+      });
+      const ownerIds = owners.map((o) => o.userId);
+      const ownerAccounts =
+        ownerIds.length === 0
+          ? []
+          : await this.prisma.user.findMany({
+              where: { id: { in: ownerIds } },
+              select: idOnlySelect,
+              take: this.MAX_RECIPIENTS,
+            });
+
+      const participantIds = [
+        ...new Set([
+          ...registrations.map((r) => r.userId),
+          ...ownerAccounts.map((u) => u.id),
+        ]),
+      ];
       if (participantIds.length === 0) return;
 
       const title = "Résultats disponibles";

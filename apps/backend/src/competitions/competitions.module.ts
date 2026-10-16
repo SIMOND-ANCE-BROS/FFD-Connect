@@ -16,6 +16,7 @@ import { CompetitionProgramService } from "./services/competition-program.servic
 import { CompetitionQueryService } from "./services/competition-query.service";
 import { CompetitionRegistrationService } from "./services/competition-registration.service";
 import { CompetitionResultsService } from "./services/competition-results.service";
+import { CompetitionResultsImportService } from "./services/competition-results-import.service";
 import { RegistrationNotificationService } from "./services/registration-notification.service";
 import { CompetitionEventNotificationService } from "./services/competition-event-notification.service";
 import { CompetitionEventsDeductionService } from "./services/competition-events-deduction.service";
@@ -46,6 +47,7 @@ import { SyncProcessor } from "./sync.processor";
     CompetitionQueryService,
     CompetitionRegistrationService,
     CompetitionResultsService,
+    CompetitionResultsImportService,
     RegistrationNotificationService,
     CompetitionEventNotificationService,
     CompetitionCacheService,

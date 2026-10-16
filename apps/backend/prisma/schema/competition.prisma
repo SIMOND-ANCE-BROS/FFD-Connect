@@ -165,9 +165,15 @@ model Result {
   round     String
   ranking   Int
   details   Json?
+  // Import de résultats (#652) : empreinte SHA-256 du couple dans le fichier
+  // importé (dossard, sinon libellé), jamais le nom en clair. Rend l'import
+  // rejouable (une ligne par couple, épreuve et tour) ; null pour les lignes
+  // créées autrement (seeds, tests).
+  importKey String?
   createdAt DateTime @default(now())
   event     Event    @relation(fields: [eventId], references: [id])
 
+  @@unique([eventId, round, importKey]) // idempotence de l'import (#652)
   @@index([userId, createdAt]) // résultats d'un user triés par date
   @@index([eventId])           // lookup résultats par épreuve (career-query)
 }

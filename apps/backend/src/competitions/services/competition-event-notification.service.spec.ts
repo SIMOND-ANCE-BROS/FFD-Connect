@@ -30,6 +30,8 @@ describe("CompetitionEventNotificationService", () => {
     // Idempotence guard defaults to "not yet notified".
     prisma.notification.findFirst.mockResolvedValue(null);
     prisma.notification.createMany.mockResolvedValue({ count: 0 });
+    // No imported result owner by default (#652).
+    prisma.result.findMany.mockResolvedValue([]);
 
     notifications = {
       createManyForUsers: jest.fn().mockResolvedValue({ count: 0 }),
@@ -333,6 +335,77 @@ describe("CompetitionEventNotificationService", () => {
           where: { event: { competitionId: "comp-1" } },
         }),
       );
+    });
+
+    it("also notifies the accounts linked to an imported result, never a tombstone or unlinked marker (#652)", async () => {
+      prisma.competition.findUnique.mockResolvedValue({
+        id: "comp-1",
+        title: "X",
+      } as any);
+      prisma.registration.findMany.mockResolvedValue([{ userId: "u1" }] as any);
+      prisma.result.findMany.mockResolvedValue([
+        { userId: "u1" },
+        { userId: "u-imported" },
+        { userId: "00000000-0000-0000-0000-000000000000" },
+        { userId: "unlinked-import" },
+      ] as any);
+      // Only real accounts come back from the lookup.
+      prisma.user.findMany.mockResolvedValue([
+        { id: "u1" },
+        { id: "u-imported" },
+      ] as any);
+
+      await service.notifyResultsPublished("comp-1");
+
+      expect(prisma.result.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { event: { competitionId: "comp-1" } },
+          distinct: ["userId"],
+          take: 5000,
+        }),
+      );
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: {
+              in: [
+                "u1",
+                "u-imported",
+                "00000000-0000-0000-0000-000000000000",
+                "unlinked-import",
+              ],
+            },
+          },
+        }),
+      );
+      const [userIds] = notifications.sendToUsers.mock.calls[0];
+      expect([...userIds].sort()).toEqual(["u-imported", "u1"]);
+    });
+
+    it("notifies result owners even when nobody registered in the app (#652)", async () => {
+      prisma.competition.findUnique.mockResolvedValue({
+        id: "comp-1",
+        title: "X",
+      } as any);
+      prisma.registration.findMany.mockResolvedValue([]);
+      prisma.result.findMany.mockResolvedValue([{ userId: "u9" }] as any);
+      prisma.user.findMany.mockResolvedValue([{ id: "u9" }] as any);
+
+      await service.notifyResultsPublished("comp-1");
+
+      expect(notifications.sendToUsers.mock.calls[0][0]).toEqual(["u9"]);
+    });
+
+    it("does not look accounts up when no result has an owner", async () => {
+      prisma.competition.findUnique.mockResolvedValue({
+        id: "comp-1",
+        title: "X",
+      } as any);
+      prisma.registration.findMany.mockResolvedValue([{ userId: "u1" }] as any);
+
+      await service.notifyResultsPublished("comp-1");
+
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
     });
 
     it("does nothing when there are no participants", async () => {
