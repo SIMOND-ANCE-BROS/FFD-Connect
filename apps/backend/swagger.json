@@ -26598,7 +26598,7 @@
             "name": "filters",
             "required": false,
             "in": "query",
-            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : club (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; competition (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; competitionDate (date : lt|gt|eq|between) ; dancer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; refundOwedAt (date : lt|gt|eq|between)",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value, join }. Un champ peut porter jusqu'à 5 conditions, reliées par join (and par défaut, or : identique pour toutes les conditions du champ) ; les champs différents sont combinés par ET (10 conditions au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : club (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; competition (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; competitionDate (date : lt|gt|eq|between) ; dancer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; refundOwedAt (date : lt|gt|eq|between)",
             "schema": {
               "type": "string"
             }
@@ -31979,6 +31979,14 @@
               }
             ],
             "description": "Absente pour isEmpty / isNotEmpty"
+          },
+          "join": {
+            "description": "Avec les autres conditions du même champ (and par défaut) : identique pour toutes",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterJoin"
+              }
+            ]
           }
         },
         "required": ["field", "op"]
