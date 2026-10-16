@@ -1,8 +1,10 @@
 # ADR-0025: Migrations Prisma exécutées au déploiement, image runtime sans CLI Prisma
 
 **Date**: 2026-10-16
-**Status**: proposed
+**Status**: accepted (2026-10-16)
 **Deciders**: Gabin Simond (analyse : agent architect)
+
+Décision : Gabin, 2026-10-16. Démarrage par la phase 0 sur staging ; résultats dans [Mesures de la phase 0](../exploitation/migrations-adr-0025-phase-0.md).
 
 ## Context
 
@@ -85,6 +87,16 @@ Ce contrôle ne bloque **pas** le démarrage, pour qu'un réveil ne casse jamais
 | **2. Arrêt de la migration au boot** (staging) | <ul><li>L'entrypoint lit `MIGRATE_ON_BOOT` : `true` par défaut, `false` sur `backend-staging`.</li><li>Ajout du contrôle de schéma dans `/health` et dans le smoke test.</li></ul>                                                                                                                                                             | remettre `MIGRATE_ON_BOOT=true` (nouvelle révision, sans rebuild) |
 | **3. Image slim**                              | <ul><li>`prisma` passe en `devDependencies` ; la cible `production` n'a plus la CLI.</li><li>La branche « migrate » de l'entrypoint et la variable `MIGRATE_ON_BOOT` disparaissent.</li><li>Mise à jour de la documentation d'exploitation, de `docker-compose.yml` et de l'agent infra.</li></ul>                                             | revert du commit                                                  |
 | **4. Prod**                                    | Job `backend-migrate-prod` et étape prod, appliqués **au redémarrage de prod**, pas avant.                                                                                                                                                                                                                                                     | identique à la phase 1                                            |
+
+### Résultats de la phase 0 (2026-10-16)
+
+Détail, méthode et commandes : [Mesures de la phase 0](../exploitation/migrations-adr-0025-phase-0.md).
+
+- **Réveil de `backend-staging`** (image de 482 Mo) : 29,5 s jusqu'à la première réponse quand Redis est déjà réveillé, 57,5 s quand Redis dort aussi. Le pull de l'image et la création du conteneur prennent 18 à 21 s, soit environ deux tiers du réveil. `migrate deploy` à vide prend environ **3 à 6 s** sur 0,5 vCPU, soit 10 à 20 % du réveil (1,3 s sur un poste de dev). Le boot NestJS jusqu'à l'écoute prend environ 5 s.
+- **Poids de la CLI** : 111 paquets, environ **236 Mio** sur les 833 Mio de `node_modules` du bundle (environ 28 %). Les plus gros sont `@prisma/studio-core`, `prisma`, `effect`, `@prisma/engines`, `@electric-sql/pglite` et `@prisma/dev`.
+- **P3009 confirmé** sur une base jetable : après l'échec d'une migration, `migrate deploy` sort en code 1 à chaque démarrage, **y compris avec l'image précédente**, qui ne contient pas la migration fautive. `migrate resolve --rolled-back` lancé depuis l'image précédente débloque. **La migration en échec était appliquée à moitié** : la colonne ajoutée par sa première instruction est restée en base. Avec un `BEGIN; … COMMIT;` explicite, rien n'est resté.
+- **Prérequis lockfile** : déjà rempli par #692 (le `Dockerfile` n'utilise plus `pnpm deploy --legacy`). Le point ouvert du contexte et le risque « Résolution non reproductible » sont donc levés.
+- **Identité** : `backend-staging` utilise une identité managée **attribuée par le système**. Le job ne pourra pas la partager : il faudra l'attribution RBAC supplémentaire prévue, limitée au secret Key Vault de la chaîne de connexion staging.
 
 **Évolution possible, hors périmètre** : séparer les privilèges DB, avec un rôle de migration (DDL) réservé au job et un rôle applicatif réduit au DML. Ce découpage n'est possible qu'une fois les migrations sorties de l'app. Il ajoute un secret par environnement, d'où une décision séparée. De même, les seeds staging pourraient passer dans le job.
 
