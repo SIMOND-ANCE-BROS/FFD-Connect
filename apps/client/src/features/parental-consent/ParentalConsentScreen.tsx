@@ -187,7 +187,9 @@ export const ParentalConsentScreen = ({
                   variant="body"
                   testID="parental-consent-feedback"
                   color={
-                    feedback.kind === "error" ? theme.danger : theme.success
+                    feedback.kind === "error"
+                      ? theme.dangerText
+                      : theme.successText
                   }
                   accessibilityLiveRegion="polite"
                 >

@@ -36,8 +36,11 @@ export const LicenseExpiryBanner: React.FC<LicenseExpiryBannerProps> = ({
   if (status === "valid") return null;
 
   // Expirée ou urgente (≤ 7 j) → rouge ; sinon (≤ 30 j) → orange.
-  const color =
-    status === "urgent" || status === "expired" ? theme.danger : theme.warning;
+  const isUrgent = status === "urgent" || status === "expired";
+  // Fill tone for the tint/border, darker "text" tone for the icon and message
+  // so they stay AA on the tinted background (#22).
+  const color = isUrgent ? theme.danger : theme.warning;
+  const inkColor = isUrgent ? theme.dangerText : theme.warningText;
 
   const message =
     status === "expired"
@@ -57,9 +60,9 @@ export const LicenseExpiryBanner: React.FC<LicenseExpiryBannerProps> = ({
         { backgroundColor: `${color}1A`, borderColor: color },
       ]}
     >
-      <AlertTriangle size={20} color={color} />
+      <AlertTriangle size={20} color={inkColor} />
       <View style={styles.textWrap}>
-        <AppText variant="body" weight="600" color={color}>
+        <AppText variant="body" weight="600" color={inkColor}>
           {message}
         </AppText>
         <AppText variant="caption" color={theme.textSecondary}>

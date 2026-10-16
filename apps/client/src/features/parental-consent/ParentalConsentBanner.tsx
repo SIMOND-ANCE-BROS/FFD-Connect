@@ -40,7 +40,7 @@ export const ParentalConsentBanner: React.FC<ParentalConsentBannerProps> = ({
         { backgroundColor: `${theme.warning}1A`, borderColor: theme.warning },
       ]}
     >
-      <ShieldAlert size={20} color={theme.warning} />
+      <ShieldAlert size={20} color={theme.warningText} />
       <View style={styles.textWrap}>
         <AppText variant="body" weight="600" color={theme.text}>
           {copy.title}

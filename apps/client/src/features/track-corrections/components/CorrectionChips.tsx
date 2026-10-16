@@ -98,12 +98,13 @@ export const DanceChips = ({
 /** Pastille de statut d'une proposition. */
 export const StatusBadge = ({ status }: { status: TrackCorrectionStatus }) => {
   const { theme } = useTheme();
+  // Text tones: the badge is only a light tint of them (AA, #22).
   const color =
     status === "APPROVED"
-      ? theme.success
+      ? theme.successText
       : status === "REJECTED"
-        ? theme.danger
-        : theme.warning;
+        ? theme.dangerText
+        : theme.warningText;
   return (
     <View
       style={[styles.badge, { backgroundColor: `${color}22` }]}

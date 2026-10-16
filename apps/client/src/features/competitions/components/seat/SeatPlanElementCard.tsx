@@ -61,7 +61,7 @@ export function seatColors(
       return {
         background: theme.surface,
         border: theme.success,
-        text: theme.success,
+        text: theme.successText,
       };
     default:
       return {

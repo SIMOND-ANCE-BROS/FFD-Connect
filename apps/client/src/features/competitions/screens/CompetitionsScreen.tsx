@@ -338,7 +338,7 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
                     <AppText
                       variant="caption"
                       weight="600"
-                      color={theme.success}
+                      color={theme.successText}
                     >
                       Inscrit
                     </AppText>
@@ -424,12 +424,12 @@ export const CompetitionsScreen = ({ navigation }: Props) => {
                   <View style={styles.deadlineContainer}>
                     <Clock
                       size={14}
-                      color={days <= 3 ? theme.danger : theme.warning}
+                      color={days <= 3 ? theme.dangerText : theme.warningText}
                     />
                     <AppText
                       variant="caption"
                       weight="bold"
-                      color={days <= 3 ? theme.danger : theme.warning}
+                      color={days <= 3 ? theme.dangerText : theme.warningText}
                       style={styles.deadlineText}
                     >
                       {deadlineLabel(days)}
