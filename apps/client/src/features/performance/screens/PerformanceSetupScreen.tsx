@@ -213,6 +213,7 @@ export const PerformanceSetupScreen = () => {
             weight="600"
             color={currentTheme.textSecondary}
             style={styles.sectionLabel}
+            accessibilityRole="header"
           >
             Programme
           </AppText>
@@ -260,6 +261,7 @@ export const PerformanceSetupScreen = () => {
             weight="600"
             color={currentTheme.textSecondary}
             style={styles.sectionLabel}
+            accessibilityRole="header"
           >
             Ordre des danses
           </AppText>
@@ -280,6 +282,7 @@ export const PerformanceSetupScreen = () => {
             weight="600"
             color={currentTheme.textSecondary}
             style={styles.sectionLabel}
+            accessibilityRole="header"
           >
             Temps
           </AppText>

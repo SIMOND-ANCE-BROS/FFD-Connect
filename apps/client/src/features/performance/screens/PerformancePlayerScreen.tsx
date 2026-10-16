@@ -20,6 +20,13 @@ import {
   describeGroup,
   describeItem,
 } from "../utils/competitionProgram";
+import { announce } from "../../../utils/announce";
+import {
+  phaseA11yLabel,
+  phaseChangeAnnouncement,
+  roundChipA11yLabel,
+  type PerformancePhase,
+} from "../utils/performanceA11y";
 
 export const PerformancePlayerScreen = () => {
   const { theme: currentTheme, isDark } = useTheme();
@@ -34,6 +41,7 @@ export const PerformancePlayerScreen = () => {
     stopPerformance,
     nextStep,
     previousStep,
+    config,
   } = usePerformanceEngine();
   const navigation = useNavigation<{ goBack: () => void }>();
 
@@ -108,6 +116,39 @@ export const PerformancePlayerScreen = () => {
   const canSkipForward = isRunning && !isAnnouncing;
   const canSkipBack = canSkipForward && hasCurrentItem;
 
+  // Screen reader (#22): one sentence for the phase block, read on focus.
+  const phase: PerformancePhase = isPreparation
+    ? "preparation"
+    : isBreak
+      ? "break"
+      : "dance";
+  const danceName = currentItem ? danceLabel(currentItem.style) : null;
+  const phaseDetail = isPreparation
+    ? isAnnouncing
+      ? "Annonce en cours…"
+      : nextItem
+        ? `Premier : ${describeItem(nextItem)}`
+        : "Préparez-vous"
+    : isBreak
+      ? isAnnouncing
+        ? "Annonce en cours…"
+        : `Suivant : ${nextItem ? describeItem(nextItem) : "Fin"}`
+      : null;
+  // Announce each new phase (not the clock ticks), unless the MC already
+  // speaks it — two voices at once would cover each other.
+  const phaseKey = `${phase}-${currentDanceIndex}`;
+  const lastPhaseKey = useRef<string | null>(null);
+  const mcSpeaks = config.announcements;
+  useEffect(() => {
+    const previous = lastPhaseKey.current;
+    lastPhaseKey.current = phaseKey;
+    if (previous === null || previous === phaseKey || mcSpeaks) return;
+    if (status === "loading" || status === "finished") return;
+    announce(
+      phaseChangeAnnouncement({ phase, danceName, detail: phaseDetail }),
+    );
+  }, [phaseKey, phase, danceName, phaseDetail, mcSpeaks, status]);
+
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: currentTheme.background }]}
@@ -120,6 +161,7 @@ export const PerformancePlayerScreen = () => {
           onPress={handleExit}
           style={[styles.backButton, { backgroundColor: currentTheme.surface }]}
           testID="performance-player-exit-button"
+          accessibilityRole="button"
           accessibilityLabel="Arrêter la performance"
           accessibilityHint="Arrête la session de performance actuelle"
         >
@@ -133,7 +175,21 @@ export const PerformancePlayerScreen = () => {
               { backgroundColor: currentTheme.surface },
             ]}
           >
-            <AppText variant="caption" weight="bold" color={currentTheme.text}>
+            <AppText
+              variant="caption"
+              weight="bold"
+              color={currentTheme.text}
+              // Sentence case: some voices spell all-caps words out.
+              accessibilityLabel={
+                hasCurrentItem && currentItem
+                  ? currentItem.roundType === "Final" &&
+                    currentItem.totalGroups <= 1
+                    ? "Finale"
+                    : describeGroup(currentItem)
+                  : "Préparation"
+              }
+              accessibilityHint="Groupe en cours"
+            >
               {hasCurrentItem && currentItem
                 ? currentItem.roundType === "Final" &&
                   currentItem.totalGroups <= 1
@@ -153,6 +209,11 @@ export const PerformancePlayerScreen = () => {
                 variant="caption"
                 weight="bold"
                 color={currentTheme.text}
+                accessibilityLabel={roundChipA11yLabel(
+                  currentItem.roundIndex,
+                  currentItem.totalRounds,
+                )}
+                accessibilityHint="Avancement dans les tours"
               >
                 {`TOUR ${currentItem.roundIndex}/${currentItem.totalRounds}`}
               </AppText>
@@ -173,8 +234,20 @@ export const PerformancePlayerScreen = () => {
         </AppText>
       )}
 
-      {/* Main Visual */}
-      <View style={styles.mainContent}>
+      {/* Main Visual — one element for the reader, no live region: the
+          clock ticks every second. */}
+      <View
+        style={styles.mainContent}
+        accessible
+        accessibilityLabel={phaseA11yLabel({
+          phase,
+          danceName,
+          timeRemaining,
+          detail: phaseDetail,
+        })}
+        accessibilityHint="Temps restant de l'étape en cours"
+        testID="performance-player-phase"
+      >
         {isPreparation ? (
           <View
             style={[
@@ -287,10 +360,13 @@ export const PerformancePlayerScreen = () => {
           style={[styles.playBtn, { backgroundColor: currentTheme.primary }]}
           onPress={togglePlayPause}
           testID="performance-player-play-pause-button"
+          accessibilityRole="button"
           accessibilityLabel={
-            status === "playing" ? "Pause performance" : "Play performance"
+            status === "playing" || status === "break"
+              ? "Mettre en pause"
+              : "Reprendre"
           }
-          accessibilityHint="Met en pause ou reprend la performance"
+          accessibilityHint="Met en pause ou reprend la compétition"
         >
           {status === "playing" || status === "break" ? (
             <Pause
