@@ -297,6 +297,7 @@ export const useClubCompetitionEditorLogic = ({
   };
 
   return {
+    competitionId,
     isEditing,
     programStatus,
     syncedFromFfd,

@@ -116,6 +116,7 @@ jest.mock("lucide-react-native", () => {
     Lock: MockIcon,
     Plus: MockIcon,
     Trash2: MockIcon,
+    Trophy: MockIcon,
     Users: MockIcon,
     X: MockIcon,
   };
@@ -517,6 +518,60 @@ describe("ClubCompetitionFormScreen", () => {
     );
     expect(await findByText("Accès Bénévole")).toBeTruthy();
     expect(getByText("Copier le lien")).toBeTruthy();
+  });
+
+  describe("results import entry (#690)", () => {
+    const renderWith = (params: Record<string, unknown>) =>
+      render(
+        <ClubCompetitionFormScreen
+          navigation={
+            navigation as unknown as NativeStackNavigationProp<
+              RootStackParamList,
+              "ClubCompetitionEditor"
+            >
+          }
+          route={
+            { params } as unknown as RouteProp<
+              RootStackParamList,
+              "ClubCompetitionEditor"
+            >
+          }
+        />,
+      );
+
+    it("opens the import for a saved competition of the club", async () => {
+      const { getByTestId, getByRole } = await renderWith({
+        competition: { id: "comp-123", title: "Open de Lyon" },
+      });
+
+      await fireEvent.press(getByTestId("tab-ORGANISATION"));
+      await fireEvent.press(
+        getByRole("button", { name: "Importer les résultats" }),
+      );
+
+      expect(navigation.navigate).toHaveBeenCalledWith("ClubResultsImport", {
+        competitionId: "comp-123",
+        competitionTitle: "Open de Lyon",
+      });
+    });
+
+    it("is not offered for a competition not created yet", async () => {
+      const { getByTestId, queryByTestId } = await renderWith({});
+
+      await fireEvent.press(getByTestId("tab-ORGANISATION"));
+
+      expect(queryByTestId("competition-results-import-button")).toBeNull();
+    });
+
+    it("is not offered for an event (no épreuves, no results)", async () => {
+      const { getByTestId, queryByTestId } = await renderWith({
+        competition: { id: "comp-123", type: "EVENT" },
+      });
+
+      await fireEvent.press(getByTestId("tab-ORGANISATION"));
+
+      expect(queryByTestId("competition-results-import-button")).toBeNull();
+    });
   });
 
   describe("screen reader (#22)", () => {
