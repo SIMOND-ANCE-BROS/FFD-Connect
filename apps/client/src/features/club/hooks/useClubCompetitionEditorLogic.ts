@@ -125,6 +125,11 @@ export const useClubCompetitionEditorLogic = ({
     initialCompetition.ticketingUrl ?? "",
   );
 
+  // --- CHECK-IN : QR tournant obligatoire (#668) ---
+  const [requireRotatingQr, setRequireRotatingQr] = useState(
+    initialCompetition.requireRotatingQr === true,
+  );
+
   // --- PROGRAMME (texte libre, réutilise le champ `eventsDescription`) ---
   const [eventsDescription, setEventsDescription] = useState(
     initialCompetition.eventsDescription ?? "",
@@ -214,6 +219,7 @@ export const useClubCompetitionEditorLogic = ({
       eventsDescription,
       ticketingUrl,
       layoutItems: layoutEditor.layoutItems,
+      requireRotatingQr,
     };
     logger.debug("Saving Competition:", form);
 
@@ -297,6 +303,7 @@ export const useClubCompetitionEditorLogic = ({
   };
 
   return {
+    competitionId,
     isEditing,
     programStatus,
     syncedFromFfd,
@@ -328,6 +335,9 @@ export const useClubCompetitionEditorLogic = ({
     // Ticketing
     ticketingUrl,
     setTicketingUrl,
+    // Check-in (#668)
+    requireRotatingQr,
+    setRequireRotatingQr,
     // Programme (texte libre)
     eventsDescription,
     setEventsDescription,

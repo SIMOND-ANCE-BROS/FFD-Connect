@@ -10,10 +10,11 @@ import {
 // import { TouchableOpacity } from 'react-native-gesture-handler'; // Removed to avoid potential context issues
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../context/ThemeContext";
+import { theme as appTheme } from "../theme";
 import { AppText } from "./AppText";
 const GradientBackground = ({ borderRadius }: { borderRadius: number }) => (
   <LinearGradient
-    colors={["#004481", "#0088CE"]}
+    colors={appTheme.gradients.primary}
     start={{ x: 0, y: 0 }}
     end={{ x: 1, y: 1 }}
     style={[StyleSheet.absoluteFill, { borderRadius }]}

@@ -206,7 +206,7 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
           ) : isQualified ? (
             <AppText
               weight="bold"
-              style={[styles.rankBadgeText, { color: theme.success }]}
+              style={[styles.rankBadgeText, { color: theme.successText }]}
               maxFontSizeMultiplier={BADGE_TEXT_MAX_SCALE}
             >
               Q
@@ -214,7 +214,7 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
           ) : isEliminated ? (
             <AppText
               weight="bold"
-              style={[styles.rankBadgeText, { color: theme.danger }]}
+              style={[styles.rankBadgeText, { color: theme.dangerText }]}
               maxFontSizeMultiplier={BADGE_TEXT_MAX_SCALE}
             >
               X
@@ -246,7 +246,8 @@ export const LiveResultsScreen = ({ route, navigation }: Props) => {
                 <View
                   style={[
                     styles.qualifiedBadge,
-                    { backgroundColor: theme.success },
+                    // White text: deep green in both themes (AA, #22).
+                    { backgroundColor: theme.colors.successDeep },
                   ]}
                 >
                   <AppText variant="caption" weight="bold" color="white">

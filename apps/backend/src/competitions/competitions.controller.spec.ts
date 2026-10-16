@@ -67,12 +67,16 @@ describe("CompetitionsController", () => {
   const mockAccessService = {
     assertCanManageCheckIn: jest.fn(),
     assertCanManageCompetition: jest.fn(),
+    assertCanManageResults: jest.fn(),
     organizerForNewCompetition: jest.fn(),
   };
 
   const mockProgramQueryService = { getProgram: jest.fn() };
   const mockProgramService = { replaceProgram: jest.fn() };
-  const mockResultsImportService = { importCsv: jest.fn() };
+  const mockResultsImportService = {
+    importCsv: jest.fn(),
+    deleteEventResults: jest.fn(),
+  };
 
   const req = (userId: string, role = "LICENSEE") =>
     ({ user: { userId, role } }) as any as RequestWithUser;
@@ -253,10 +257,11 @@ describe("CompetitionsController", () => {
     });
   });
 
-  describe("importResults (#652)", () => {
-    it("is restricted to STAFF and ADMIN behind the JWT and roles guards", () => {
+  describe("importResults (#652, #690)", () => {
+    it("is open to the organising club, STAFF and ADMIN behind the JWT and roles guards", () => {
       const handler = CompetitionsController.prototype.importResults;
       expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([
+        UserRole.CLUB,
         UserRole.STAFF,
         UserRole.ADMIN,
       ]);
@@ -270,8 +275,9 @@ describe("CompetitionsController", () => {
       );
     });
 
-    it("forwards the competition id, the CSV text and the author to the import service", async () => {
+    it("checks the organiser rule, then forwards the competition id, the CSV text, the author and the dry-run flag", async () => {
       const report = {
+        dryRun: true,
         created: 1,
         updated: 0,
         unchanged: 0,
@@ -281,19 +287,109 @@ describe("CompetitionsController", () => {
         unlinked: 0,
       };
       mockResultsImportService.importCsv.mockResolvedValue(report);
+      const request = req("club-1", "CLUB");
 
       const result = await controller.importResults(
         "comp1",
+        { dryRun: true },
         { csv: "epreuve;tour;classement;couple\nev;F;1;A / B" },
-        req("staff-1", "STAFF"),
+        request,
       );
 
+      expect(mockAccessService.assertCanManageResults).toHaveBeenCalledWith(
+        "comp1",
+        request.user,
+      );
       expect(mockResultsImportService.importCsv).toHaveBeenCalledWith(
         "comp1",
         "epreuve;tour;classement;couple\nev;F;1;A / B",
-        "staff-1",
+        request.user,
+        { dryRun: true },
       );
       expect(result).toBe(report);
+    });
+
+    it("writes by default (no dryRun)", async () => {
+      await controller.importResults(
+        "comp1",
+        {},
+        { csv: "x" },
+        req("staff-1", "STAFF"),
+      );
+      expect(mockResultsImportService.importCsv).toHaveBeenCalledWith(
+        "comp1",
+        "x",
+        expect.objectContaining({ userId: "staff-1" }),
+        { dryRun: false },
+      );
+    });
+
+    it("does not import when the caller is not the organiser", async () => {
+      mockAccessService.assertCanManageResults.mockRejectedValueOnce(
+        new ForbiddenException(),
+      );
+      await expect(
+        controller.importResults(
+          "comp1",
+          {},
+          { csv: "x" },
+          req("club-2", "CLUB"),
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockResultsImportService.importCsv).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("deleteEventResults (#690)", () => {
+    it("has the same actors and guards as the import", () => {
+      const handler = CompetitionsController.prototype.deleteEventResults;
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([
+        UserRole.CLUB,
+        UserRole.STAFF,
+        UserRole.ADMIN,
+      ]);
+      const guards: unknown[] = Reflect.getMetadata("__guards__", handler);
+      expect(guards).toContain(RolesGuard);
+      expect(guards).toContain(NoImpersonationGuard);
+    });
+
+    it("checks the organiser rule, then removes the event's imported results", async () => {
+      const report = { deleted: 3, anonymisedKept: 1 };
+      mockResultsImportService.deleteEventResults.mockResolvedValue(report);
+      const request = req("club-1", "CLUB");
+
+      const result = await controller.deleteEventResults(
+        "comp1",
+        { eventId: "ev-1" },
+        request,
+      );
+
+      expect(mockAccessService.assertCanManageResults).toHaveBeenCalledWith(
+        "comp1",
+        request.user,
+      );
+      expect(mockResultsImportService.deleteEventResults).toHaveBeenCalledWith(
+        "comp1",
+        "ev-1",
+        request.user,
+      );
+      expect(result).toBe(report);
+    });
+
+    it("deletes nothing for another club", async () => {
+      mockAccessService.assertCanManageResults.mockRejectedValueOnce(
+        new ForbiddenException(),
+      );
+      await expect(
+        controller.deleteEventResults(
+          "comp1",
+          { eventId: "ev-1" },
+          req("club-2", "CLUB"),
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(
+        mockResultsImportService.deleteEventResults,
+      ).not.toHaveBeenCalled();
     });
   });
 

@@ -4,7 +4,7 @@
   "description": "Application mobile et API pour la gestion des compétitions de danse FFD",
   "packageManager": "pnpm@10.30.0",
   "scripts": {
-    "prepare": "husky",
+    "prepare": "if [ -f scripts/install-git-hooks.sh ]; then sh scripts/install-git-hooks.sh; fi",
     "test": "jest --silent",
     "test:debug": "jest --verbose",
     "test:watch": "jest --watch",
@@ -58,7 +58,6 @@
     "@ffd-connect/jest-config": "workspace:*",
     "@types/node": "^26.4.0",
     "eslint": "^9.25.1",
-    "husky": "^9.1.7",
     "jest": "^29.7.0",
     "lint-staged": "^16.0.0",
     "prettier": "^3.8.1",

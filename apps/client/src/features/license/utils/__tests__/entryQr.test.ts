@@ -2,6 +2,7 @@ import {
   base64UrlToBytes,
   batchRemainingMs,
   canonicalEntryQrContent,
+  claimsEntryQr,
   currentEntryQr,
   entryQrStep,
   parseEntryQr,
@@ -222,6 +223,19 @@ describe("entryQr (#24)", () => {
     it("rejects foreign characters and impossible lengths", () => {
       expect(base64UrlToBytes("a+b/")).toBeNull();
       expect(base64UrlToBytes("abcde")).toBeNull();
+    });
+  });
+
+  describe("claimsEntryQr (#668)", () => {
+    it("is true for anything presented as a rotating QR, even malformed", () => {
+      expect(claimsEntryQr(JSON.stringify({ v: 3 }))).toBe(true);
+    });
+
+    it("is false for static QRs and raw content", () => {
+      expect(claimsEntryQr(JSON.stringify({ v: 2, id: "FFD-1" }))).toBe(false);
+      expect(claimsEntryQr(JSON.stringify({ id: "FFD-1" }))).toBe(false);
+      expect(claimsEntryQr("FFD-1")).toBe(false);
+      expect(claimsEntryQr("null")).toBe(false);
     });
   });
 });

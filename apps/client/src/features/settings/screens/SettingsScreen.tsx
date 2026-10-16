@@ -358,10 +358,10 @@ export const SettingsScreen = ({ navigation }: SettingsScreenProps) => {
               { backgroundColor: `${currentTheme.warning}20` },
             ]}
           >
-            <AlertTriangle size={20} color={currentTheme.warning} />
+            <AlertTriangle size={20} color={currentTheme.warningText} />
             <AppText
               variant="body"
-              color={currentTheme.warning}
+              color={currentTheme.warningText}
               style={licenseExpiryStyles.text}
             >
               {formatLicenseExpiryCountdown(licenseExpiryDays)}. Contactez votre

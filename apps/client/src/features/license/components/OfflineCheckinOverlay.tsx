@@ -49,6 +49,12 @@ export function offlineCheckinVerdict(
         color: ORANGE,
         message: OFFLINE_CHECKIN_MESSAGES.NOT_ENTRY_QR,
       };
+    case "STATIC_QR_REFUSED":
+      return {
+        title: "QR STATIQUE REFUSÉ",
+        color: danger,
+        message: OFFLINE_CHECKIN_MESSAGES.STATIC_QR_REFUSED,
+      };
     case "NO_KEYS":
       return {
         title: "VÉRIFICATION IMPOSSIBLE",

@@ -78,6 +78,14 @@ describe("OfflineCheckinOverlay (#24)", () => {
       "#FF9800",
     ],
     ["NO_KEYS", false, "VÉRIFICATION IMPOSSIBLE", "NO_KEYS", "#FF9800"],
+    // Rotating QR mandatory for the competition (#668).
+    [
+      "STATIC_QR_REFUSED",
+      false,
+      "QR STATIQUE REFUSÉ",
+      "STATIC_QR_REFUSED",
+      "#f00",
+    ],
   ] as const)(
     "%s (queued: %s) ⇒ %s",
     (status, queued, title, messageKey, color) => {

@@ -46,6 +46,8 @@ pnpm api:sync               # Export Swagger + regenerate client types
 pnpm install --frozen-lockfile
 ```
 
+**Git hooks & worktrees (#623):** hooks are versioned in `.githooks/` (`core.hooksPath=.githooks`, set by `pnpm install`; relative, so each worktree runs its own). A fresh worktree without `pnpm install` gets its commits and pushes **refused** with « Hooks FFD-Connect : dépendances absentes » — run `pnpm install --frozen-lockfile` in that worktree first, never `--no-verify`. If `core.hooksPath` is not `.githooks` (older clone), run `git config core.hooksPath .githooks`.
+
 ## Merge gate (CI blocking jobs)
 
 A PR cannot merge unless these pass (see `docs/exploitation/ci-cd-minimal.md`):

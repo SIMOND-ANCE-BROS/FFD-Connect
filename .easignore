@@ -56,7 +56,7 @@ apps/backend/uploads/
 docs/
 scripts/
 .github/
-.husky/
+.githooks/
 .changeset/
 
 # Dev artifacts in apps/client (logs, coverage, lint results)

@@ -49,6 +49,8 @@ export const AUDIT_ACTIONS = [
   "LICENSE_RENEWAL_REJECT",
   // Published results imported for a competition (#652): counts only.
   "COMPETITION_RESULTS_IMPORT",
+  // Imported results of an event removed (#690): event id and counts only.
+  "COMPETITION_RESULTS_DELETE",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const AUDIT_TARGET_TYPES = [

@@ -1,10 +1,11 @@
 import * as Clipboard from "expo-clipboard";
-import { Copy, Users, X } from "lucide-react-native";
+import { Copy, QrCode, Trophy, Users, X } from "lucide-react-native";
 import React, { useRef } from "react";
 import {
   Alert,
   Modal,
   ScrollView,
+  Switch,
   TextInput,
   TouchableOpacity,
   View,
@@ -39,6 +40,9 @@ interface Props {
   handleGenerateVolunteerToken: () => Promise<void>;
   ticketingUrl: string;
   setTicketingUrl: (u: string) => void;
+  /** Rotating entry QR mandatory at check-in (#668). */
+  requireRotatingQr: boolean;
+  setRequireRotatingQr: (v: boolean) => void;
   layoutItems: LayoutItem[];
   showLayoutModal: boolean;
   setShowLayoutModal: (v: boolean) => void;
@@ -76,6 +80,12 @@ interface Props {
   addLayoutItem: () => void;
   removeLayoutItem: (id: string) => void;
   duplicateLayoutItem: (id: string) => void;
+  /**
+   * Opens the results import (#690). Only given for a saved competition of
+   * the club (the editor's list is the club's own competitions): the
+   * server applies the same organiser rule as the programme editor.
+   */
+  onImportResults?: () => void;
 }
 
 export const CompetitionOrganisationTab: React.FC<Props> = ({
@@ -86,6 +96,8 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
   handleGenerateVolunteerToken,
   ticketingUrl,
   setTicketingUrl,
+  requireRotatingQr,
+  setRequireRotatingQr,
   layoutItems,
   showLayoutModal,
   setShowLayoutModal,
@@ -119,6 +131,7 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
   addLayoutItem,
   removeLayoutItem,
   duplicateLayoutItem,
+  onImportResults,
 }) => {
   // Focus back on « Générer un QR d'accès » when the volunteer modal closes.
   const volunteerButtonRef = useRef<View>(null);
@@ -170,6 +183,99 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
               variant="outline"
             />
           </View>
+        </View>
+
+        {onImportResults ? (
+          <View
+            style={[
+              styles.section,
+              { backgroundColor: theme.surface },
+              styles.mt16,
+            ]}
+            testID="competition-results-import-section"
+          >
+            <View style={styles.infoRow}>
+              <View
+                style={[
+                  styles.iconContainer,
+                  { backgroundColor: `${theme.primary}20` },
+                ]}
+              >
+                <Trophy size={20} color={theme.primary} />
+              </View>
+              <View style={styles.flex1ML12}>
+                <AppText
+                  variant="body"
+                  weight="600"
+                  style={{ color: theme.text }}
+                  accessibilityRole="header"
+                >
+                  Résultats
+                </AppText>
+                <AppText
+                  variant="caption"
+                  style={{ color: theme.textSecondary }}
+                >
+                  Publiez le classement de votre compétition (fichier CSV)
+                </AppText>
+              </View>
+            </View>
+            <View style={styles.mt16}>
+              <AppButton
+                title="Importer les résultats"
+                accessibilityHint="Ouvre l'import du classement publié au format CSV"
+                testID="competition-results-import-button"
+                onPress={onImportResults}
+                variant="outline"
+              />
+            </View>
+          </View>
+        ) : null}
+        {/* QR d'entrée tournant obligatoire (#668, ADR-0024). */}
+        <View
+          style={[
+            styles.section,
+            { backgroundColor: theme.surface },
+            styles.mt16,
+          ]}
+        >
+          <View style={styles.infoRow}>
+            <View
+              style={[
+                styles.iconContainer,
+                { backgroundColor: `${theme.primary}20` },
+              ]}
+            >
+              <QrCode size={20} color={theme.primary} />
+            </View>
+            <View style={styles.flex1ML12}>
+              <AppText
+                variant="body"
+                weight="600"
+                style={{ color: theme.text }}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
+                QR tournant obligatoire
+              </AppText>
+            </View>
+            <Switch
+              testID="require-rotating-qr-switch"
+              value={requireRotatingQr}
+              onValueChange={setRequireRotatingQr}
+              accessibilityLabel="QR tournant obligatoire"
+              accessibilityHint="Refuse à l'entrée les QR statiques : pass Wallet et anciennes versions de l'application"
+            />
+          </View>
+          <AppText
+            variant="caption"
+            style={[styles.mt8, { color: theme.textSecondary }]}
+          >
+            À l'entrée, seul le QR tournant de l'E-Licence (il change toutes les
+            30 secondes) sera accepté. Les pass Apple Wallet et les anciennes
+            versions de l'application seront refusés : prévenez les participants
+            de mettre l'application à jour et d'ouvrir leur E-Licence.
+          </AppText>
         </View>
 
         <View

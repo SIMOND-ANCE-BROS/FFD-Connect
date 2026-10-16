@@ -196,7 +196,7 @@ export const PasoClashEditorModal = ({
           {droppedStoredCount > 0 ? (
             <AppText
               variant="caption"
-              color={theme.warning}
+              color={theme.warningText}
               style={styles.notice}
               testID="paso-truncated-notice"
             >
@@ -253,10 +253,10 @@ export const PasoClashEditorModal = ({
             testID="paso-add-point"
             style={[styles.addRow, { backgroundColor: `${theme.warning}22` }]}
           >
-            <Plus size={18} color={theme.warning} />
+            <Plus size={18} color={theme.warningText} />
             <AppText
               variant="body"
-              color={theme.warning}
+              color={theme.warningText}
               style={styles.addText}
             >
               Poser un appel à {formatTime(position)}

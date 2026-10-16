@@ -15,6 +15,9 @@ import {
   healthDataAccessLogControllerList,
   adminTracksControllerFindOne,
   adminTracksControllerList,
+  competitionsControllerFindAll,
+  competitionsControllerFindOne,
+  competitionsControllerGetProgram,
   trackCorrectionsControllerFindOne,
   trackCorrectionsControllerList,
   trackCorrectionsControllerPendingCount,
@@ -29,6 +32,7 @@ import type {
   HealthDataAccessLogControllerListData,
   TrackCorrectionsControllerListData,
 } from './generated/types.gen';
+import { type CompetitionSummary, toCompetitionSummary } from '../lib/competitions';
 import type { StatsPeriod } from '../lib/stats';
 import type { UsagePeriod, UsageSpace } from '../lib/usage';
 
@@ -253,6 +257,51 @@ export const userNameQuery = (id: string) =>
   queryOptions({
     ...userQuery(id),
     staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/**
+ * Competitions (#690), from the public list (sorted by date, no search on the
+ * API side). Same rule as moderation: no refetch on focus or reconnect, no
+ * retry (scale-to-zero backend).
+ */
+export const competitionsQuery = (q: { skip: number; take: number }) =>
+  queryOptions({
+    queryKey: ['admin', 'competitions', 'list', q],
+    queryFn: async () => {
+      const page = await unwrap(competitionsControllerFindAll({ query: q }));
+      const rows = (page.data ?? [])
+        .map(toCompetitionSummary)
+        .filter((c): c is CompetitionSummary => c !== null);
+      return { rows, total: page.meta?.total ?? rows.length };
+    },
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+export const competitionQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['admin', 'competitions', 'item', id],
+    queryFn: async () => {
+      const competition = toCompetitionSummary(
+        await unwrap(competitionsControllerFindOne({ path: { id } })),
+      );
+      if (!competition) throw new Error('Compétition introuvable');
+      return competition;
+    },
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+
+/** Events of a competition (ids and names for the results CSV). */
+export const competitionProgramQuery = (id: string) =>
+  queryOptions({
+    queryKey: ['admin', 'competitions', 'program', id],
+    queryFn: () => unwrap(competitionsControllerGetProgram({ path: { id } })),
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: false,

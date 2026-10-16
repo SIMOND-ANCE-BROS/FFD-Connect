@@ -102,7 +102,7 @@
 ### 🟡 Manques critiques
 
 - **Points absents en base** — Le modèle `Result` (`apps/backend/prisma/schema/competition.prisma`) n'a pas de champ `points` (id, eventId, userId, round, `ranking`, details Json?). Le palmarès affiche le **rang**, jamais des points.
-- **Données = seed de démo** — Les résultats visibles proviennent de `apps/backend/scripts/seed-beta-career.ts` (compte `beta@test.com`, staging/beta). Seul flux de production : l'import CSV des classements publiés par un compte STAFF/ADMIN (#652, `docs/exploitation/import-resultats.md`) ; aucune source fédérale automatique.
+- **Données = seed de démo** — Les résultats visibles proviennent de `apps/backend/scripts/seed-beta-career.ts` (compte `beta@test.com`, staging/beta). Seul flux de production : l'import CSV des classements publiés par un compte STAFF/ADMIN ou le club organisateur (#652, #690, `docs/exploitation/import-resultats.md`) ; aucune source fédérale automatique.
 - **Jauge de progression absente** — `apps/backend/src/common/level-accession/level-accession.util.ts` calcule l'éligibilité par passeport mais porte des TODO explicites « points à compléter » ; pas de jauge cliente ni de seuils (#137).
 - **Podium or/argent/bronze non mergé** — Story #136, portée par la PR **#688** (`apps/client/src/utils/podium.ts` + tokens thème) — **branche non mergée** dans `develop`. Statut = en vol.
 - **Règlements intelligents absents** — Aucune recherche full-text/TSVECTOR, aucun écran, aucun modèle `Reglement`. Les « règles » backend (`common/level-accession`, `common/participation-rules`) sont des utilitaires d'éligibilité codés en dur, pas un référentiel interrogeable.

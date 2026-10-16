@@ -39,7 +39,7 @@ interface AppButtonProps {
 const GradientBackground = React.memo<{ borderRadius: number }>(
   ({ borderRadius }) => (
     <LinearGradient
-      colors={["#004481", "#0088CE"]}
+      colors={theme.gradients.primary}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[StyleSheet.absoluteFill, { borderRadius }]}

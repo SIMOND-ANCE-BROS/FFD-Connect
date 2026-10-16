@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useTheme } from "../context/ThemeContext";
 import { useMotionEnabled } from "../hooks/useReducedMotion";
+import { theme as appTheme } from "../theme";
 import { AppText } from "./AppText";
 
 interface FluidSegmentedTabProps {
@@ -24,7 +25,7 @@ export const SEGMENT_TEXT_MAX_SCALE = 1.3;
 
 const GradientBackground = ({ borderRadius }: { borderRadius: number }) => (
   <LinearGradient
-    colors={["#004481", "#0088CE"]}
+    colors={appTheme.gradients.primary}
     start={{ x: 0, y: 0 }}
     end={{ x: 1, y: 1 }}
     style={[StyleSheet.absoluteFill, { borderRadius }]}
@@ -248,7 +249,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   indicatorColor: {
-    backgroundColor: "#0088CE",
+    backgroundColor: appTheme.colors.ffdCyanDeep,
   },
   labelWrapper: {
     zIndex: 10,

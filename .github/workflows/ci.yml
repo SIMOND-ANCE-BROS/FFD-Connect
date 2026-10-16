@@ -273,7 +273,7 @@ jobs:
         run: pnpm test:integration --verbose 2>&1 | tee /tmp/integration-output.txt; exit ${PIPESTATUS[0]}
 
       - name: Upload integration test output on failure
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: failure()
         with:
           name: integration-test-output
@@ -475,7 +475,7 @@ jobs:
           PLAYWRIGHT_BASE_URL: http://localhost:8081
 
       - name: Upload Playwright report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: playwright-report-shard-${{ matrix.shard }}
@@ -533,7 +533,7 @@ jobs:
         run: pnpm audit:dependencies
 
       - name: Upload audit report
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: dependency-audit-report
@@ -873,7 +873,7 @@ jobs:
           && steps.trivy-report.outcome == 'success'
           && github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           sarif_file: ${{ runner.temp }}/trivy-backend.sarif
           category: trivy-backend-image

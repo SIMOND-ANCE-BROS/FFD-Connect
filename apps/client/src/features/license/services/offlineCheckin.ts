@@ -1,5 +1,6 @@
 import { Alert } from "react-native";
 import type { ReplayDecision } from "../../../hooks/useOfflineQueue";
+import { competitionsControllerFindOne } from "../../../api/generated";
 import api from "../../../services/api";
 import { EntryQrApi } from "../../../services/api/entry-qr-api";
 import {
@@ -9,7 +10,15 @@ import {
   type PendingMutation,
 } from "../../../services/offlineQueueStorage";
 import { createLogger } from "../../../utils/logger";
-import { verifyEntryQrOffline, type EntryQrKeySet } from "../utils/entryQr";
+import {
+  loadCheckinPolicy,
+  saveCheckinPolicy,
+} from "../utils/checkinPolicyStorage";
+import {
+  claimsEntryQr,
+  verifyEntryQrOffline,
+  type EntryQrKeySet,
+} from "../utils/entryQr";
 import { loadEntryQrKeys, saveEntryQrKeys } from "../utils/entryQrStorage";
 
 /**
@@ -20,7 +29,9 @@ import { loadEntryQrKeys, saveEntryQrKeys } from "../utils/entryQrStorage";
  * shown at once (holder name, from the signed QR) and queued; on reconnect
  * the queue replays it with its scan time, and the server checks the
  * registration and fees then. A static QR (Wallet pass, older app) cannot be
- * verified offline.
+ * verified offline; at a competition that makes the rotating QR mandatory
+ * (#668, policy cached when the scanner opened online) it is refused outright,
+ * with the server's wording.
  */
 const log = createLogger("offlineCheckin");
 
@@ -31,6 +42,8 @@ export type OfflineCheckinStatus =
   | "STALE"
   | "INVALID_SIGNATURE"
   | "NOT_ENTRY_QR"
+  /** Static QR at a competition requiring the rotating QR (#668). */
+  | "STATIC_QR_REFUSED"
   /** No public key cached on this device yet. */
   | "NO_KEYS";
 
@@ -52,6 +65,9 @@ export const OFFLINE_CHECKIN_MESSAGES = {
   INVALID_SIGNATURE: "QR invalide : sa signature ne correspond pas.",
   NOT_ENTRY_QR:
     "Ce QR (pass Wallet ou ancienne version de l'app) ne se vérifie qu'avec du réseau. Demandez à ouvrir l'E-Licence dans l'application.",
+  /** Same wording as the server (STATIC_QR_REFUSED_MESSAGE, #668). */
+  STATIC_QR_REFUSED:
+    "QR statique refusé : présentez le QR tournant de l'E-Licence",
   NO_KEYS:
     "Vérification hors ligne impossible : ouvrez le scanner avec du réseau pour télécharger les clés de vérification (elles expirent après 7 jours sans réseau).",
   REPLAY_REJECTED_TITLE: "Check-in hors ligne refusé",
@@ -139,6 +155,30 @@ export async function refreshEntryQrKeys(): Promise<EntryQrKeySet | null> {
   return loadEntryQrKeys();
 }
 
+/**
+ * Downloads the competition's check-in policy (#668) when the network allows
+ * and caches it, so that it applies offline too; falls back to the cached
+ * one. Called when a scanner opens, next to the keys. The endpoint is public:
+ * a volunteer has no account.
+ */
+export async function refreshCheckinPolicy(
+  competitionId: string,
+): Promise<boolean | null> {
+  try {
+    const result = await competitionsControllerFindOne({
+      path: { id: competitionId },
+    });
+    const requireRotatingQr = result.data?.requireRotatingQr;
+    if (typeof requireRotatingQr === "boolean") {
+      await saveCheckinPolicy(competitionId, { requireRotatingQr });
+      return requireRotatingQr;
+    }
+  } catch {
+    // Offline: the cached policy applies.
+  }
+  return (await loadCheckinPolicy(competitionId))?.requireRotatingQr ?? null;
+}
+
 interface OfflineCheckinRequest {
   qrData: string;
   /** "POST /path" replayed on reconnect; null ⇒ verify only, nothing queued. */
@@ -156,6 +196,13 @@ export async function checkInOffline({
   competitionId,
   now = new Date(),
 }: OfflineCheckinRequest): Promise<OfflineCheckinResult> {
+  // Rotating QR mandatory (#668): a static QR is refused whatever the keys.
+  if (competitionId && !claimsEntryQr(qrData)) {
+    const policy = await loadCheckinPolicy(competitionId);
+    if (policy?.requireRotatingQr) {
+      return { status: "STATIC_QR_REFUSED", queued: false };
+    }
+  }
   const keySet = await loadEntryQrKeys(now);
   if (!keySet || keySet.keys.length === 0) {
     return { status: "NO_KEYS", queued: false };

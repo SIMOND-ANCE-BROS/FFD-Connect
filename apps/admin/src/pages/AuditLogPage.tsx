@@ -19,7 +19,7 @@ const PAGE_SIZE = 50;
 
 const DELETIONS: AuditLogEntryDto['action'][] = ['USER_DELETE', 'CLUB_DELETE', 'TRACK_DELETE'];
 
-// null: the back-office has no record page for that target (competitions).
+// null: the back-office has no record page for that target.
 const TARGET_LINKS: Record<AuditLogEntryDto['targetType'], { path: string; label: string } | null> =
   {
     USER: { path: 'users', label: 'Voir la fiche' },
@@ -27,7 +27,7 @@ const TARGET_LINKS: Record<AuditLogEntryDto['targetType'], { path: string; label
     TRACK_CORRECTION: { path: 'moderation', label: 'Voir la proposition' },
     TRACK: { path: 'tracks', label: 'Voir la musique' },
     LICENSE_RENEWAL: { path: 'license-renewals', label: 'Voir la demande' },
-    COMPETITION: null,
+    COMPETITION: { path: 'competitions', label: 'Voir la compétition' },
   };
 
 /**

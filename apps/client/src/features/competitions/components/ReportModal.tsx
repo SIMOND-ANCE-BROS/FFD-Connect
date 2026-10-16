@@ -82,7 +82,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
             { backgroundColor: currentTheme.background },
           ]}
         >
-          <CheckCircle size={80} color="#4CAF50" />
+          <CheckCircle size={80} color={currentTheme.successText} />
           <Text style={[styles.successTitle, { color: currentTheme.text }]}>
             Rapport envoyé !
           </Text>
@@ -155,13 +155,17 @@ export const ReportModal: React.FC<ReportModalProps> = ({
             >
               <Bug
                 size={20}
-                color={type === "BUG" ? "#e74c3c" : currentTheme.textSecondary}
+                color={
+                  type === "BUG"
+                    ? currentTheme.dangerText
+                    : currentTheme.textSecondary
+                }
               />
               <Text
                 style={[
                   styles.typeText,
                   { color: currentTheme.textSecondary },
-                  type === "BUG" && styles.bugText,
+                  type === "BUG" && { color: currentTheme.dangerText },
                   type === "BUG" && styles.boldText,
                 ]}
               >
@@ -189,14 +193,16 @@ export const ReportModal: React.FC<ReportModalProps> = ({
               <Lightbulb
                 size={20}
                 color={
-                  type === "FEATURE" ? "#2196f3" : currentTheme.textSecondary
+                  type === "FEATURE"
+                    ? currentTheme.primary
+                    : currentTheme.textSecondary
                 }
               />
               <Text
                 style={[
                   styles.typeText,
                   { color: currentTheme.textSecondary },
-                  type === "FEATURE" && styles.featureText,
+                  type === "FEATURE" && { color: currentTheme.primary },
                   type === "FEATURE" && styles.boldText,
                 ]}
               >
@@ -232,7 +238,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     size={16}
                     color={
                       severity === "LOW"
-                        ? "#4CAF50"
+                        ? currentTheme.successText
                         : currentTheme.textSecondary
                     }
                   />
@@ -242,7 +248,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                       { color: currentTheme.textSecondary },
                       severity === "LOW" && [
                         styles.boldText,
-                        { color: "#4CAF50" },
+                        { color: currentTheme.successText },
                       ],
                     ]}
                   >
@@ -270,7 +276,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     size={16}
                     color={
                       severity === "MEDIUM"
-                        ? "#FF9800"
+                        ? currentTheme.warningText
                         : currentTheme.textSecondary
                     }
                   />
@@ -280,7 +286,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                       { color: currentTheme.textSecondary },
                       severity === "MEDIUM" && [
                         styles.boldText,
-                        { color: "#FF9800" },
+                        { color: currentTheme.warningText },
                       ],
                     ]}
                   >
@@ -308,7 +314,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                     size={16}
                     color={
                       severity === "HIGH"
-                        ? "#F44336"
+                        ? currentTheme.dangerText
                         : currentTheme.textSecondary
                     }
                   />
@@ -318,7 +324,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                       { color: currentTheme.textSecondary },
                       severity === "HIGH" && [
                         styles.boldText,
-                        { color: "#F44336" },
+                        { color: currentTheme.dangerText },
                       ],
                     ]}
                   >
@@ -499,7 +505,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                 style={styles.removeImageButton}
                 testID="remove-image-button"
               >
-                <Trash2 size={20} color={isDark ? "#ff6b6b" : "#e74c3c"} />
+                <Trash2 size={20} color={currentTheme.dangerText} />
               </TouchableOpacity>
             </View>
           ) : (
@@ -728,11 +734,9 @@ const styles = StyleSheet.create({
   bugBgDark: { backgroundColor: "rgba(231, 76, 60, 0.2)" },
   bugBgLight: { backgroundColor: "#ffebee" },
   bugBorder: { borderColor: "#e74c3c" },
-  bugText: { color: "#e74c3c" },
   featureBgDark: { backgroundColor: "rgba(33, 150, 243, 0.2)" },
   featureBgLight: { backgroundColor: "#e3f2fd" },
   featureBorder: { borderColor: "#2196f3" },
-  featureText: { color: "#2196f3" },
   lowBgDark: { backgroundColor: "rgba(76, 175, 80, 0.2)" },
   lowBgLight: { backgroundColor: "#E8F5E9" },
   lowBorder: { borderColor: "#4CAF50" },

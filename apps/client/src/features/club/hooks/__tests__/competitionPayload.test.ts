@@ -17,6 +17,7 @@ const baseForm: CompetitionEditorForm = {
   majorSubType: null,
   eventsDescription: "",
   ticketingUrl: "",
+  requireRotatingQr: false,
   layoutItems: [
     {
       id: "t1",
@@ -42,8 +43,23 @@ describe("competitionPayload (#417)", () => {
         type: "COMPETITION",
         competitionType: "PROXIMITE",
         eventsDescription: "",
+        requireRotatingQr: false,
         layout: baseForm.layoutItems,
       });
+    });
+
+    it("sends the « QR tournant obligatoire » setting (#668)", () => {
+      expect(
+        buildCompetitionPayload({ ...baseForm, requireRotatingQr: true })
+          .requireRotatingQr,
+      ).toBe(true);
+      expect(
+        buildCompetitionUpdatePayload({
+          ...baseForm,
+          kind: "EVENT",
+          requireRotatingQr: true,
+        }).requireRotatingQr,
+      ).toBe(true);
     });
 
     it("never sends events or schedule (no backend persistence yet)", () => {
@@ -107,6 +123,7 @@ describe("competitionPayload (#417)", () => {
         location: "Lyon",
         type: "EVENT",
         eventsDescription: "Soirée",
+        requireRotatingQr: false,
       });
     });
   });

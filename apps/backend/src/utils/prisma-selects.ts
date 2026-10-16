@@ -232,6 +232,16 @@ export const competitionDaysSelect = {
 } as const;
 
 /**
+ * What a check-in needs to know about the competition: its days (bounds of
+ * an offline replay's claimed scan time, #24) and whether the rotating entry
+ * QR is mandatory (#668).
+ */
+export const competitionCheckInPolicySelect = {
+  ...competitionDaysSelect,
+  requireRotatingQr: true,
+} as const;
+
+/**
  * Champs d'une licence nécessaires au lot de QR d'entrée tournants (#24) :
  * ce que le QR porte (id, numéro, nom du titulaire) et jusqu'à quand il peut
  * être émis. Rien d'autre (minimisation).
@@ -406,6 +416,28 @@ export const resultTombstoneSelect = {
   ranking: true,
 } as const;
 
+/**
+ * Import de résultats (#690) : épreuve d'une compétition avec ce qui forme
+ * son nom (« Latines Adultes Avancé »), pour relier une ligne par le nom de
+ * l'épreuve au lieu de son identifiant.
+ */
+export const eventResultImportLabelSelect = {
+  id: true,
+  category: true,
+  ageGroup: true,
+  level: true,
+} as const;
+
+/**
+ * Suppression des résultats importés d'une épreuve (#690) : `userId` et
+ * `details` disent si la ligne porte un effacement RGPD (gardée).
+ */
+export const resultUndoSelect = {
+  id: true,
+  userId: true,
+  details: true,
+} as const;
+
 /** Numéro de licence seul (licences retirées, licences d'un compte supprimé). */
 export const licenseNumberSelect = {
   number: true,
@@ -432,6 +464,15 @@ export const licenseNumberUserSelect = {
 } as const;
 
 /** Import de résultats (#652) : inscription retrouvée par épreuve + dossard. */
+/**
+ * Import de résultats par un club (#690) : comptes inscrits (titulaire ou
+ * partenaire) à la compétition, seuls rattachables par numéro de licence.
+ */
+export const registrationMembersSelect = {
+  userId: true,
+  partnerUserId: true,
+} as const;
+
 export const registrationBibUserSelect = {
   eventId: true,
   bibNumber: true,

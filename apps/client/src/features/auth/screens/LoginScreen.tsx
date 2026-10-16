@@ -114,9 +114,7 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                         : styles.inputUnfocused,
                     ]}
                     placeholder="E-mail de votre compte FFD-Connect"
-                    placeholderTextColor={
-                      isDark ? theme.colors.slate500 : theme.colors.slate400
-                    }
+                    placeholderTextColor={currentTheme.placeholder}
                     value={state.username}
                     onChangeText={actions.setUsername}
                     onFocus={() => actions.setFocusedField("username")}
@@ -173,9 +171,7 @@ export const LoginScreen = ({ navigation }: LoginScreenProps) => {
                         },
                       ]}
                       placeholder="Mot de passe de votre compte FFD-Connect"
-                      placeholderTextColor={
-                        isDark ? theme.colors.slate500 : theme.colors.slate400
-                      }
+                      placeholderTextColor={currentTheme.placeholder}
                       value={state.password}
                       onChangeText={actions.setPassword}
                       onFocus={() => actions.setFocusedField("password")}

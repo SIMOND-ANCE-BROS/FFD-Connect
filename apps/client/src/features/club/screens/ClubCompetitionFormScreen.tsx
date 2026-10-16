@@ -30,6 +30,7 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
   const { theme } = useTheme();
 
   const {
+    competitionId,
     isEditing,
     programStatus,
     syncedFromFfd,
@@ -110,6 +111,8 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
     // Ticketing & Layout
     ticketingUrl,
     setTicketingUrl,
+    requireRotatingQr,
+    setRequireRotatingQr,
     layoutItems,
     showLayoutModal,
     setShowLayoutModal,
@@ -151,6 +154,17 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
   });
 
   const isEvent = kind === "EVENT";
+
+  // Results import (#690): a saved competition of the club (this editor
+  // only lists the club's own competitions), not an event (no épreuves).
+  const onImportResults =
+    isEditing && !isEvent && competitionId
+      ? () =>
+          navigation.navigate("ClubResultsImport", {
+            competitionId,
+            competitionTitle: title.trim() || undefined,
+          })
+      : undefined;
 
   // Banner of the « Épreuves » / « Planning » tabs (#442).
   const programNotice =
@@ -332,6 +346,8 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
               handleGenerateVolunteerToken={handleGenerateVolunteerToken}
               ticketingUrl={ticketingUrl}
               setTicketingUrl={setTicketingUrl}
+              requireRotatingQr={requireRotatingQr}
+              setRequireRotatingQr={setRequireRotatingQr}
               layoutItems={layoutItems}
               showLayoutModal={showLayoutModal}
               setShowLayoutModal={setShowLayoutModal}
@@ -365,6 +381,7 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
               addLayoutItem={addLayoutItem}
               removeLayoutItem={removeLayoutItem}
               duplicateLayoutItem={duplicateLayoutItem}
+              onImportResults={onImportResults}
             />
           )}
         </View>
