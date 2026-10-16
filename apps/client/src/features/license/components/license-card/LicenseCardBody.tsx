@@ -4,6 +4,7 @@ import { TouchableOpacity, View } from "react-native";
 import { AppText } from "../../../../components/AppText";
 import { QRCodeView } from "../QRCodeView.native";
 import { Barcode } from "./Barcode";
+import { LICENSE_CARD_TEXT_MAX_SCALE } from "./license-card.config";
 import { styles } from "./license-card.styles";
 import { LicenseConfig, LicenseUser } from "./license-card.types";
 import { holderInitials } from "../../utils/holderInitials";
@@ -87,6 +88,9 @@ const InfoCell: React.FC<{
       weight="600"
       numberOfLines={1}
       adjustsFontSizeToFit
+      // Fixed-size card cell (credit-card format): grows with the system
+      // text size up to a cap, then the reader still gets the full value.
+      maxFontSizeMultiplier={LICENSE_CARD_TEXT_MAX_SCALE}
       style={[styles.cellValue, { color: config.textColor }]}
     >
       {field.value}
