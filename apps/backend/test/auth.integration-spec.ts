@@ -268,6 +268,47 @@ describe("AuthController (integration with real DB)", () => {
         .send({ refresh_token })
         .expect(401);
     });
+
+    // #681: rotation must consume the token atomically. Without the
+    // conditional update, every concurrent call passed the read check and
+    // minted its own valid refresh token.
+    it("lets exactly one of several concurrent refreshes with the same token succeed", async () => {
+      const { user, email, password } = await makeUser();
+      const server = app.getHttpServer() as Parameters<typeof request>[0];
+
+      const loginRes = await request(server)
+        .post("/api/v1/auth/login")
+        .send({ username: email, password })
+        .expect(201);
+      const { refresh_token } = loginRes.body as { refresh_token: string };
+
+      const CONCURRENT = 5;
+      const results = await Promise.all(
+        Array.from({ length: CONCURRENT }, () =>
+          request(server).post("/api/v1/auth/refresh").send({ refresh_token }),
+        ),
+      );
+
+      const statuses = results.map((r) => r.status).sort();
+      expect(statuses).toEqual([201, 401, 401, 401, 401]);
+
+      // Exactly one live refresh token remains: the winner's. The losers
+      // minted nothing, and losing the race revoked nothing else.
+      const live = await prisma.refreshToken.findMany({
+        where: { userId: user.id, revoked: false },
+        select: { id: true },
+        take: 10,
+      });
+      expect(live).toHaveLength(1);
+
+      // The winner's session keeps working.
+      const winner = results.find((r) => r.status === 201);
+      const { refresh_token: next } = winner?.body as { refresh_token: string };
+      await request(server)
+        .post("/api/v1/auth/refresh")
+        .send({ refresh_token: next })
+        .expect(201);
+    });
   });
 
   // ---------------------------------------------------------------------------
