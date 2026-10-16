@@ -99,7 +99,7 @@
     "@ffd-connect/jest-config": "workspace:*",
     "@hey-api/client-axios": "^0.9.1",
     "@hey-api/openapi-ts": "^0.99.0",
-    "@playwright/test": "^1.62.1",
+    "@playwright/test": "^1.64.0",
     "@react-native-community/cli": "20.1.3",
     "@react-native-community/cli-platform-android": "20.0.0",
     "@react-native-community/cli-platform-ios": "20.0.0",
