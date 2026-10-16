@@ -1,3 +1,4 @@
+import { ConfigService } from "@nestjs/config";
 import {
   BadRequestException,
   Logger,
@@ -115,6 +116,8 @@ describe("UsersService", () => {
         },
         { provide: WdsfService, useValue: wdsfService },
         { provide: HealthDataAccessLogService, useValue: healthAccess },
+        // No pseudonymisation key outside production: development key (#652).
+        { provide: ConfigService, useValue: { get: jest.fn() } },
         {
           provide: CompetitionCacheService,
           useValue: {
@@ -1195,7 +1198,9 @@ describe("UsersService", () => {
       const result = await service.exportMyData("u1");
 
       const query = prisma.result.findMany.mock.calls[0][0];
-      expect(query?.where).toEqual({ userId: "u1" });
+      expect(query?.where).toEqual({
+        OR: [{ userId: "u1" }, { partnerUserId: "u1" }],
+      });
       expect(query?.take).toBe(1000);
       expect(query?.select).toEqual(
         expect.objectContaining({ round: true, ranking: true }),
@@ -1496,6 +1501,8 @@ describe("UsersService", () => {
         "seatBookings",
         "registrations",
         "partnerAnon",
+        // Imported results' second-member link (#652).
+        "resultAnon",
         "trackCorrectionAnon",
         "bugReports",
         "adminAudit",

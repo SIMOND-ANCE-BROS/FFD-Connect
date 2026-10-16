@@ -23,4 +23,5 @@ export const ACTION_LABELS: Record<AuditLogEntryDto['action'], string> = {
   LICENSE_RENEWAL_DOCUMENT_VIEW: 'Consultation de document de renouvellement',
   LICENSE_RENEWAL_APPROVE: 'Renouvellement approuvé',
   LICENSE_RENEWAL_REJECT: 'Renouvellement refusé',
+  COMPETITION_RESULTS_IMPORT: 'Import des résultats',
 };

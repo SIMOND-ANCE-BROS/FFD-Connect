@@ -27,6 +27,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
 import { OptionalJwtAuthGuard } from "../auth/optional-jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
@@ -49,6 +50,11 @@ import {
   UpdateCompetitionDto,
 } from "./dto/competition-management.dto";
 import { RegisterEventDto } from "./dto/register-event.dto";
+import {
+  ImportResultsDto,
+  ImportResultsReportDto,
+} from "./dto/results-import.dto";
+import { CompetitionResultsImportService } from "./services/competition-results-import.service";
 import { RegisterMemberDto } from "./dto/register-member.dto";
 import { UnregisterEventDto } from "./dto/unregister-event.dto";
 import { UnregisterMemberDto } from "./dto/unregister-member.dto";
@@ -80,6 +86,7 @@ export class CompetitionsController {
     private readonly accessService: CompetitionAccessService,
     private readonly programQueryService: CompetitionProgramQueryService,
     private readonly programService: CompetitionProgramService,
+    private readonly resultsImportService: CompetitionResultsImportService,
   ) {}
 
   @StoreReviewReadable()
@@ -768,6 +775,43 @@ export class CompetitionsController {
   })
   getResults(@Param("id") id: string): Promise<CompetitionResultDto[]> {
     return this.resultsService.getResults(id);
+  }
+
+  @Post(":id/results/import")
+  @HttpCode(HttpStatus.OK)
+  // Never through « connecté en tant que » (#545): the audit row names the
+  // real author of an import that publishes third parties' names.
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, RolesGuard, ThrottlerUserGuard)
+  @Roles(UserRole.STAFF, UserRole.ADMIN)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiBearerAuth("JWT-auth")
+  @ApiOperation({
+    summary: "Importe les résultats publiés d'une compétition (CSV)",
+    description:
+      "STAFF et ADMIN. Importe le classement publié (une ligne par couple, épreuve et tour). Rejouable : un couple déjà importé pour la même épreuve et le même tour est mis à jour, jamais dupliqué. Tout ou rien : une ligne invalide, une épreuve inconnue ou un couple en double rejette le fichier (400, lignes en erreur), rien n'est écrit. Chaque couple est rattaché aux comptes de ses numéros de licence (jamais un numéro retiré) ; une ligne sans licence l'est à l'inscription portant le même dossard. Un résultat anonymisé par une suppression de compte n'est jamais réécrit ni recréé avec le nom ; une ligne portant la licence d'un compte supprimé est écrite anonymisée. Chaque import est tracé au journal d'audit (auteur, compteurs). Déclenche la notification « Résultats disponibles » (une seule fois par compétition).",
+  })
+  @ApiParam({ name: "id", description: "ID de la compétition" })
+  @ApiBody({ type: ImportResultsDto })
+  @ApiResponse({ status: 200, type: ImportResultsReportDto })
+  @ApiResponse({
+    status: 400,
+    description: "Fichier invalide : liste des lignes en erreur",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "Rôle insuffisant ou session « connecté en tant que »",
+  })
+  @ApiResponse({ status: 404, description: "Compétition non trouvée" })
+  @ApiResponse({
+    status: 503,
+    description: "Clé de pseudonymisation des résultats non configurée",
+  })
+  importResults(
+    @Param("id") id: string,
+    @Body() body: ImportResultsDto,
+    @Request() req: RequestWithUser,
+  ): Promise<ImportResultsReportDto> {
+    return this.resultsImportService.importCsv(id, body.csv, req.user.userId);
   }
 
   @Post(":id/unregister")

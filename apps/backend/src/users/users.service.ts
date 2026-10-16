@@ -574,7 +574,8 @@ export class UsersService {
     // Tables sans relation Prisma vers User : requêtes dédiées, bornées.
     const [results, bugReports, impersonations] = await Promise.all([
       this.prisma.result.findMany({
-        where: { userId },
+        // Held, or as the couple's recognised second member (#652).
+        where: { OR: [{ userId }, { partnerUserId: userId }] },
         select: resultExportSelect,
         orderBy: { createdAt: "desc" },
         take: 1000,

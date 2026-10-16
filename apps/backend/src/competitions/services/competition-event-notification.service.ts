@@ -10,7 +10,12 @@ import {
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { getErrorMessage, getErrorStack } from "../../utils/error.utils";
-import { userEligibilityProfileSelect } from "../../utils/prisma-selects";
+import {
+  competitionResultsNotificationSelect,
+  idOnlySelect,
+  resultOwnerSelect,
+  userEligibilityProfileSelect,
+} from "../../utils/prisma-selects";
 
 /** Payload `kind` discriminator stored in Notification.data. */
 export const NEW_COMPETITION_KIND = "NEW_COMPETITION";
@@ -41,7 +46,8 @@ interface LicenseeProfile extends CompetitionLevelProfile {
 /**
  * Notifications déclenchées par la synchro FFD :
  *  - « Nouvelle compétition » → licenciés éligibles (profil ⊆ au moins une épreuve).
- *  - « Résultats disponibles » → participants inscrits à la compétition.
+ *  - « Résultats disponibles » → participants inscrits à la compétition et
+ *    comptes rattachés à un résultat importé (#652).
  *
  * Idempotence : garde par requête sur Notification.data (competitionId + kind),
  * aucune migration nécessaire. Chaque notification métier ne part qu'une fois.
@@ -150,44 +156,60 @@ export class CompetitionEventNotificationService {
   }
 
   /**
-   * Notifie les participants (users inscrits à la compétition) de la
-   * publication des résultats. N'envoie qu'une fois par compétition.
+   * Notifie les participants de la publication des résultats : inscrits à la
+   * compétition et comptes rattachés à un résultat importé (#652, titulaire
+   * ou second membre du couple). N'envoie qu'une fois par compétition :
+   * l'envoi est réservé par une mise à jour conditionnelle de
+   * `Competition.resultsNotifiedAt` (deux imports simultanés ne peuvent pas
+   * l'obtenir tous les deux), libérée si l'envoi échoue. Sans destinataire,
+   * rien n'est réservé : un import suivant qui rattache des comptes notifie.
    */
   async notifyResultsPublished(competitionId: string): Promise<void> {
     try {
+      // Competitions notified before the reservation column existed.
       if (await this.alreadyNotified(competitionId, RESULTS_KIND)) {
         return;
       }
 
       const competition = await this.prisma.competition.findUnique({
         where: { id: competitionId },
-        select: { id: true, title: true },
+        select: competitionResultsNotificationSelect,
       });
-      if (!competition) return;
+      if (!competition || competition.resultsNotifiedAt) return;
 
-      const registrations = await this.prisma.registration.findMany({
-        where: { event: { competitionId } },
-        select: { userId: true },
-        take: this.MAX_RECIPIENTS,
-      });
-
-      const participantIds = [...new Set(registrations.map((r) => r.userId))];
+      const participantIds = await this.resultsRecipients(competitionId);
       if (participantIds.length === 0) return;
+
+      const claimedAt = new Date();
+      const claim = await this.prisma.competition.updateMany({
+        where: { id: competitionId, resultsNotifiedAt: null },
+        data: { resultsNotifiedAt: claimedAt },
+      });
+      if (claim.count === 0) return; // another import sent it
 
       const title = "Résultats disponibles";
       const body = `Les résultats de «${competition.title}» sont disponibles.`;
 
-      // Push : ne touche que ceux qui ont dansé, et c'est ce qu'ils attendent.
-      await this.notificationsService.sendToUsers(
-        participantIds,
-        NotificationType.COMPETITION_RESULTS,
-        title,
-        body,
-        {
-          competitionId,
-          kind: RESULTS_KIND,
-        },
-      );
+      try {
+        // Push : ne touche que ceux qui ont dansé, et c'est ce qu'ils attendent.
+        await this.notificationsService.sendToUsers(
+          participantIds,
+          NotificationType.COMPETITION_RESULTS,
+          title,
+          body,
+          {
+            competitionId,
+            kind: RESULTS_KIND,
+          },
+        );
+      } catch (error: unknown) {
+        // Nothing reached the feed: free the reservation for a later import.
+        await this.prisma.competition.updateMany({
+          where: { id: competitionId, resultsNotifiedAt: claimedAt },
+          data: { resultsNotifiedAt: null },
+        });
+        throw error;
+      }
 
       this.logger.log(
         `Notified ${participantIds.length} participants of results for competition ${competitionId}`,
@@ -198,6 +220,47 @@ export class CompetitionEventNotificationService {
         getErrorStack(error),
       );
     }
+  }
+
+  /**
+   * Inscrits + comptes rattachés aux résultats. `Result.userId` /
+   * `partnerUserId` n'ont pas de clé étrangère (sentinelle de suppression,
+   * marqueur « non rattaché ») : seuls les comptes existants sont gardés.
+   */
+  private async resultsRecipients(competitionId: string): Promise<string[]> {
+    const [registrations, owners] = await Promise.all([
+      this.prisma.registration.findMany({
+        where: { event: { competitionId } },
+        select: { userId: true },
+        take: this.MAX_RECIPIENTS,
+      }),
+      this.prisma.result.findMany({
+        where: { event: { competitionId } },
+        select: resultOwnerSelect,
+        take: this.MAX_RECIPIENTS,
+      }),
+    ]);
+    const ownerIds = [
+      ...new Set(
+        owners.flatMap((o) =>
+          o.partnerUserId ? [o.userId, o.partnerUserId] : [o.userId],
+        ),
+      ),
+    ];
+    const ownerAccounts =
+      ownerIds.length === 0
+        ? []
+        : await this.prisma.user.findMany({
+            where: { id: { in: ownerIds } },
+            select: idOnlySelect,
+            take: this.MAX_RECIPIENTS,
+          });
+    return [
+      ...new Set([
+        ...registrations.map((r) => r.userId),
+        ...ownerAccounts.map((u) => u.id),
+      ]),
+    ];
   }
 
   /**
