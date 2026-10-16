@@ -3,7 +3,7 @@ import { JwtService } from "@nestjs/jwt";
 import * as crypto from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { hashToken } from "../utils/token-hash.util";
-import { accountStatusSelect } from "../utils/prisma-selects";
+import { accountStatusSelect, idOnlySelect } from "../utils/prisma-selects";
 import { ACCOUNT_DISABLED_MESSAGE, accountBlockReason } from "./account-status";
 import { rolesOf } from "./roles";
 import { LoginResponse } from "./auth.service";
@@ -87,22 +87,40 @@ export class AuthTokenService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + this.REFRESH_TOKEN_EXPIRY_DAYS);
 
-    await this.prisma.$transaction([
-      this.prisma.refreshToken.update({
-        where: { id: tokenRecord.id },
-        data: { revoked: true, revokedAt: new Date() },
-      }),
-      this.prisma.refreshToken.create({
+    // Atomic consumption (#681). The read above is only a fast path: two
+    // concurrent refreshes with the same token both pass it. The conditional
+    // updateMany is the real gate — Postgres row-locks the token, the second
+    // writer re-evaluates `revoked: false` after the first commits and matches
+    // nothing. Exactly one caller rotates; the loser gets the same 401 as a
+    // revoked token and nothing else happens (no session-wide revocation: a
+    // legitimate client racing itself across tabs/app instances must not be
+    // logged out — it picks up the tokens the winner stored, cf. #676).
+    const now = new Date();
+    const rotated = await this.prisma.$transaction(async (tx) => {
+      const consumed = await tx.refreshToken.updateMany({
+        where: { id: tokenRecord.id, revoked: false, expiresAt: { gt: now } },
+        data: { revoked: true, revokedAt: now },
+      });
+      if (consumed.count !== 1) {
+        return false;
+      }
+      await tx.refreshToken.create({
         data: { token: newTokenHash, userId: user.id, expiresAt },
-      }),
+        select: idOnlySelect,
+      });
       // A refresh is a returning session: keep lastLoginAt meaningful for
       // users who stay logged in and never go through login() again.
-      this.prisma.user.update({
+      await tx.user.update({
         where: { id: user.id },
-        data: { lastLoginAt: new Date() },
-        select: { id: true },
-      }),
-    ]);
+        data: { lastLoginAt: now },
+        select: idOnlySelect,
+      });
+      return true;
+    });
+
+    if (!rotated) {
+      throw new UnauthorizedException("Invalid or expired refresh token");
+    }
 
     const payload = {
       email: user.email,
