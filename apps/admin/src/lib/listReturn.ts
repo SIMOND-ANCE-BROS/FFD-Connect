@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { safeSessionStorage } from './safeSessionStorage';
 
 /**
  * Last query string of each back-office list (#562), so « Retour à la liste »
@@ -8,34 +9,6 @@ import { createJSONStorage, persist, type StateStorage } from 'zustand/middlewar
  * session (sessionStorage), like the admin session; a tab opened on a record
  * goes back to the plain list.
  */
-/**
- * sessionStorage that never throws (private window, blocked site data): the
- * list URLs are then remembered for this page load only, and a list never
- * breaks because of it.
- */
-const safeSessionStorage: StateStorage = {
-  getItem: (name) => {
-    try {
-      return window.sessionStorage.getItem(name);
-    } catch {
-      return null;
-    }
-  },
-  setItem: (name, value) => {
-    try {
-      window.sessionStorage.setItem(name, value);
-    } catch {
-      // Not remembered across reloads; still applied in memory.
-    }
-  },
-  removeItem: (name) => {
-    try {
-      window.sessionStorage.removeItem(name);
-    } catch {
-      // Same as above.
-    }
-  },
-};
 
 interface ListReturnState {
   searches: Record<string, string>;

@@ -136,8 +136,12 @@ model Registration {
   status                 RegistrationStatus  @default(PENDING)
   bibNumber              Int?
   checkedIn              Boolean             @default(false)
+  /// Instant AUTHORITATIVE du check-in : horloge du serveur à la réception.
   checkInTime            DateTime?
-  feePaid                Boolean             @default(false)
+  /// Instant de scan DÉCLARÉ par un scanner hors ligne (#24, `scannedAt`),
+  /// gardé à part : jamais utilisé comme heure du check-in. Null en ligne.
+  checkInClaimedScanAt   DateTime?
+  feePaid               Boolean             @default(false)
   createdAt              DateTime            @default(now())
   // Profil couple/solo : classe d'âge (calculée si birthDate(s) connus, sinon fournie)
   coupleAgeGroup         String?
@@ -203,7 +207,8 @@ model SeatBooking {
   itemId        String          // ID within the layout JSON
   seatLabel     String?         // e.g. "Rang A, Place 5"
   status        BookingStatus   @default(PENDING)
-  paymentId     String?         // External ID (HelloAsso)
+  paymentId     String?         // External ID, issued by `paymentProvider`
+  paymentProvider PaymentProvider? @default(HELLOASSO) // Connector that issued paymentId / supersededPaymentIds (#388); NULL read as HELLOASSO
   expectedAmountCents Int?      // Server-side price in cents, fixed at checkout (#381)
   expiresAt     DateTime?       // For temporary holds
   cancelReason  String?         // Why a seat was released, e.g. HELLOASSO_REFUNDED / HELLOASSO_CONTESTED (#403)

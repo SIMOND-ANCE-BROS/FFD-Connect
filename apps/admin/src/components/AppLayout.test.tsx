@@ -160,14 +160,20 @@ describe('AppLayout', () => {
       '/tracks',
       '/moderation',
       '/license-renewals',
+      '/refunds-due',
       '/audit-log',
+      '/health-data-access-log',
       '/stats',
       '/usage',
     ]);
   });
 
-  it('logs out from the header', async () => {
+  it('logs out from the header, revoking the refresh token (#680)', async () => {
     countSpy(0);
+    const revoke = vi.spyOn(sdk, 'authControllerLogout').mockResolvedValue({
+      data: { success: true, message: 'ok' },
+      error: undefined,
+    } as never);
     useSession.getState().setSession({
       accessToken: 'a',
       refreshToken: 'r',
@@ -179,6 +185,7 @@ describe('AppLayout', () => {
     await user.click(logout);
     expect(await screen.findByText('login page')).toBeInTheDocument();
     expect(useSession.getState().user).toBeNull();
+    expect(revoke).toHaveBeenCalledWith({ body: { refresh_token: 'r' } });
   });
 
   it('refreshes the count on navigation, never on a timer', async () => {

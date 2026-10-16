@@ -279,6 +279,14 @@ jest.mock("../../../../stores/club.store", () => ({
   useClubRepository: jest.fn(() => ({})),
 }));
 
+jest.mock("../../../../services/api/payment-provider-api", () => ({
+  ...jest.requireActual("../../../../services/api/payment-provider-api"),
+  PaymentProviderApi: {
+    getStatus: jest.fn().mockResolvedValue(null),
+    setProvider: jest.fn(),
+  },
+}));
+
 jest.mock("../../../club/services/ClubService", () => ({
   ClubService: {
     getHelloAssoStatus: jest.fn().mockResolvedValue({ registrationMode: null }),

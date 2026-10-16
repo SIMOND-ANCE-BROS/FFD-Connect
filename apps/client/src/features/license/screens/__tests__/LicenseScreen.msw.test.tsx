@@ -40,6 +40,9 @@ jest.mock("../../components/SwipeableLicenseCard", () => ({
 jest.mock("../../hooks/useLicenseLogic", () => ({
   useLicenseLogic: jest.fn(),
 }));
+jest.mock("../../hooks/useEntryQrBatch", () => ({
+  useEntryQrBatch: () => null,
+}));
 
 jest.mock("../../../../context/ThemeContext", () => ({
   useTheme: jest.fn(),

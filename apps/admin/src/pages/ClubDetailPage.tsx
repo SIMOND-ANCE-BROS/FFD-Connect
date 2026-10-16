@@ -29,19 +29,31 @@ import {
   adminControllerSetClubStatus,
   adminControllerUpdateClub,
 } from '../api/generated/sdk.gen';
-import type { AdminClubDetailDto, ClubRegistrationMode } from '../api/generated/types.gen';
+import type {
+  AdminClubDetailDto,
+  ClubRegistrationMode,
+  PaymentProvider,
+} from '../api/generated/types.gen';
 import { auditQuery, clubQuery, ensureOk, unwrap } from '../api/queries';
 import { ChangeSummary } from '../components/ChangeSummary';
 import { LinkMemberModal } from '../components/LinkMemberModal';
 import { StoreReviewBlockedModal, StoreReviewNotice } from '../components/StoreReview';
 import { apiErrorMessage } from '../lib/apiError';
 import { ACTION_LABELS } from '../lib/auditLabels';
-import { extraRoleLabels, REGISTRATION_MODE_LABELS, ROLE_LABELS } from '../lib/labels';
+import {
+  extraRoleLabels,
+  PAYMENT_PROVIDER_LABELS,
+  paymentConfigured,
+  paymentProviderLabel,
+  REGISTRATION_MODE_LABELS,
+  ROLE_LABELS,
+} from '../lib/labels';
 import { protectedActionError, type ProtectedAction } from '../lib/storeReview';
 
 interface ClubForm {
   name: string;
   registrationMode: ClubRegistrationMode;
+  paymentProvider: PaymentProvider;
 }
 
 type UsageKey =
@@ -77,6 +89,10 @@ const MODE_OPTIONS = (Object.keys(REGISTRATION_MODE_LABELS) as ClubRegistrationM
   (value) => ({ value, label: REGISTRATION_MODE_LABELS[value] }),
 );
 
+const PAYMENT_PROVIDER_OPTIONS = (Object.keys(PAYMENT_PROVIDER_LABELS) as PaymentProvider[]).map(
+  (value) => ({ value, label: PAYMENT_PROVIDER_LABELS[value] }),
+);
+
 export function ClubDetailPage() {
   const { id = '' } = useParams();
   const navigate = useNavigate();
@@ -90,13 +106,21 @@ export function ClubDetailPage() {
   const [blocked, setBlocked] = useState<ProtectedAction | null>(null);
 
   const form = useForm<ClubForm>({
-    initialValues: { name: '', registrationMode: 'MEMBERS_AUTO_CONFIRM' },
+    initialValues: {
+      name: '',
+      registrationMode: 'MEMBERS_AUTO_CONFIRM',
+      paymentProvider: 'HELLOASSO',
+    },
     validate: { name: (v) => (v.trim().length >= 2 ? null : 'Nom trop court') },
   });
   const { setValues } = form;
   useEffect(() => {
     if (club.data) {
-      setValues({ name: club.data.name, registrationMode: club.data.registrationMode });
+      setValues({
+        name: club.data.name,
+        registrationMode: club.data.registrationMode,
+        paymentProvider: club.data.paymentProvider,
+      });
     }
   }, [club.data, setValues]);
 
@@ -172,6 +196,7 @@ export function ClubDetailPage() {
     const changes: Partial<ClubForm> = {};
     if (v.name.trim() !== c.name) changes.name = v.name.trim();
     if (v.registrationMode !== c.registrationMode) changes.registrationMode = v.registrationMode;
+    if (v.paymentProvider !== c.paymentProvider) changes.paymentProvider = v.paymentProvider;
     if (Object.keys(changes).length) {
       save.reset();
       setPending(changes);
@@ -209,7 +234,11 @@ export function ClubDetailPage() {
       <Card withBorder>
         <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <Text size="sm">Création : {dayjs(c.createdAt).format('DD/MM/YYYY')}</Text>
-          <Text size="sm">HelloAsso : {c.helloAssoConfigured ? 'configuré' : 'non configuré'}</Text>
+          <Text size="sm">
+            Paiement en ligne : {paymentProviderLabel(c.paymentProvider)}
+            {paymentConfigured(c) !== null &&
+              (paymentConfigured(c) ? ' (configuré)' : ' (non configuré)')}
+          </Text>
           <Text size="sm">
             Membres : {c.memberCount} · comptes Club : {c.clubAccountCount}
           </Text>
@@ -217,13 +246,20 @@ export function ClubDetailPage() {
       </Card>
 
       <form onSubmit={onSubmit}>
-        <SimpleGrid cols={{ base: 1, sm: 2 }}>
+        <SimpleGrid cols={{ base: 1, sm: 3 }}>
           <TextInput label="Nom du club" withAsterisk {...form.getInputProps('name')} />
           <Select
             label="Mode d'inscription"
             allowDeselect={false}
             data={MODE_OPTIONS}
             {...form.getInputProps('registrationMode')}
+          />
+          <Select
+            label="Paiement en ligne"
+            description="Connecteur utilisé pour encaisser les places"
+            allowDeselect={false}
+            data={PAYMENT_PROVIDER_OPTIONS}
+            {...form.getInputProps('paymentProvider')}
           />
         </SimpleGrid>
         <Group mt="md">

@@ -30,6 +30,8 @@ export interface CheckinResponse {
       | "UNSIGNED"
       | "INVALID_SIGNATURE"
       | "EXPIRED"
+      /** QR tournant (#24) hors de sa fenêtre : capture rejouée ou horloge décalée. */
+      | "STALE"
       | "LICENSE_MISMATCH";
     warning: string | null;
   };

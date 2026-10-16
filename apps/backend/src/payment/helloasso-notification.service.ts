@@ -9,6 +9,7 @@ import { isUUID, validateSync } from "class-validator";
 import { ClubsHelloAssoService } from "../clubs/clubs-helloasso.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { seatBookingPaymentCheckSelect } from "../utils/prisma-selects";
+import type { PaymentOrderNotificationVerifier } from "./connectors/payment-connector";
 import { WebhookPayloadDto } from "./dto/webhook-payload.dto";
 import {
   HelloAssoService,
@@ -70,7 +71,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * redelivers the notification later (its retry policy spans ~27 h).
  */
 @Injectable()
-export class HelloAssoNotificationService {
+// Inbound side of the HelloAsso connector (#388, ADR-0023).
+export class HelloAssoNotificationService implements PaymentOrderNotificationVerifier<WebhookPayloadDto> {
   private readonly logger = new Logger(HelloAssoNotificationService.name);
 
   constructor(

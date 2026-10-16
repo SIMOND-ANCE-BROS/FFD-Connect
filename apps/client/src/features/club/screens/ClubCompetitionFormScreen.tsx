@@ -67,6 +67,7 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
     newEventLevel,
     setNewEventLevel,
     allowedEventKindsForCurrentCompetition,
+    categoryOptionsForNewEvent,
     levelOptionsForNewEvent,
     ageOptionsForNewEvent,
     newEventAgeGroups,
@@ -282,6 +283,7 @@ export const ClubCompetitionFormScreen: React.FC<Props> = ({
               allowedEventKindsForCurrentCompetition={
                 allowedEventKindsForCurrentCompetition
               }
+              categoryOptionsForNewEvent={categoryOptionsForNewEvent}
               levelOptionsForNewEvent={levelOptionsForNewEvent}
               ageOptionsForNewEvent={ageOptionsForNewEvent}
               addEvent={addEvent}

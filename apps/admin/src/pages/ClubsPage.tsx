@@ -19,7 +19,7 @@ import {
   readClubsParams,
   writeClubsParams,
 } from '../lib/clubList';
-import { REGISTRATION_MODE_LABELS } from '../lib/labels';
+import { paymentConfigured, paymentProviderLabel, REGISTRATION_MODE_LABELS } from '../lib/labels';
 import type { SortState } from '../lib/listSort';
 import { useListParams } from '../lib/useListParams';
 import { useUrlSearch } from '../lib/useUrlSearch';
@@ -29,10 +29,17 @@ const PAGE_SIZE = 50;
 const isClubsSortField = (value: string): value is ClubsSortField =>
   CLUBS_SORT_FIELDS.some((f) => f === value);
 
-function HelloAssoBadge() {
+/** Club connector (#665): green once its credentials are filled in. */
+function PaymentBadge({ club }: { club: AdminClubListItemDto }) {
+  const configured = paymentConfigured(club);
+  const label = paymentProviderLabel(club.paymentProvider);
   return (
-    <Badge color="green" variant="light">
-      HelloAsso
+    <Badge
+      color={configured ? 'green' : 'gray'}
+      variant="light"
+      title={configured === false ? `${label} non configuré` : undefined}
+    >
+      {configured === false ? `${label} · non configuré` : label}
     </Badge>
   );
 }
@@ -106,7 +113,7 @@ export function ClubsPage() {
       minWidth: 110,
       priority: 5,
       label: 'Paiement',
-      cell: (c) => (c.helloAssoConfigured ? <HelloAssoBadge /> : '—'),
+      cell: (c) => <PaymentBadge club={c} />,
     },
     {
       key: 'registrationMode',
@@ -176,7 +183,7 @@ export function ClubsPage() {
                     Désactivé
                   </Badge>
                 )}
-                {c.helloAssoConfigured && <HelloAssoBadge />}
+                <PaymentBadge club={c} />
                 {c.isStoreReview && <StoreReviewBadge />}
               </>
             }
