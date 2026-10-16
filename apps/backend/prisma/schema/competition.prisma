@@ -140,8 +140,12 @@ model Registration {
   status                 RegistrationStatus  @default(PENDING)
   bibNumber              Int?
   checkedIn              Boolean             @default(false)
+  /// Instant AUTHORITATIVE du check-in : horloge du serveur à la réception.
   checkInTime            DateTime?
-  feePaid                Boolean             @default(false)
+  /// Instant de scan DÉCLARÉ par un scanner hors ligne (#24, `scannedAt`),
+  /// gardé à part : jamais utilisé comme heure du check-in. Null en ligne.
+  checkInClaimedScanAt   DateTime?
+  feePaid               Boolean             @default(false)
   createdAt              DateTime            @default(now())
   // Profil couple/solo : classe d'âge (calculée si birthDate(s) connus, sinon fournie)
   coupleAgeGroup         String?

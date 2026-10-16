@@ -5,7 +5,7 @@ import {
   ListMusic,
   SlidersHorizontal,
 } from "lucide-react-native";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   SafeAreaView,
@@ -27,6 +27,7 @@ import { PlayerBpmControls } from "../components/PlayerBpmControls";
 import { PlayerControls } from "../components/PlayerControls";
 import { PlayerProgress } from "../components/PlayerProgress";
 import { PlayerQueueModal } from "../components/PlayerQueueModal";
+import { useRestoreFocusOnClose } from "../../../utils/a11yFocus";
 import { PlayerTrackInfo } from "../components/PlayerTrackInfo";
 import { useAudioPlayerLogic } from "../hooks/useAudioPlayerLogic";
 import { isPasoDoble } from "../utils/pasoClashes";
@@ -51,6 +52,11 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
   const [clashEditorMode, setClashEditorMode] =
     useState<PasoClashEditorMode | null>(null);
   const [correctionVisible, setCorrectionVisible] = useState(false);
+  // Screen-reader focus returns to the button that opened the modal.
+  const queueButtonRef = useRef<View>(null);
+  const correctionButtonRef = useRef<View>(null);
+  useRestoreFocusOnClose(correctionVisible, correctionButtonRef);
+  useRestoreFocusOnClose(state.isQueueVisible, queueButtonRef);
   const isAdmin = useAuthStore((s) => s.hasRole("ADMIN"));
   // Tout compte connecté peut proposer une correction ; pas un invité.
   const canPropose = role !== null && role !== "GUEST" && !isGuest;
@@ -174,6 +180,8 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
 
         <TouchableOpacity
           testID="audio-player-queue-button"
+          ref={queueButtonRef}
+          accessibilityRole="button"
           accessibilityLabel="Ouvrir la file d'attente"
           accessibilityHint="Affiche la liste des morceaux à suivre"
           style={styles.headerButton}
@@ -260,6 +268,7 @@ export const AudioPlayerScreen = ({ navigation }: AudioPlayerScreenProps) => {
           {canPropose && (
             <TouchableOpacity
               onPress={() => setCorrectionVisible(true)}
+              ref={correctionButtonRef}
               accessibilityRole="button"
               accessibilityLabel="Signaler ou proposer une correction"
               accessibilityHint="Propose aux administrateurs une correction du titre, de l'artiste, de la danse ou du MPM"

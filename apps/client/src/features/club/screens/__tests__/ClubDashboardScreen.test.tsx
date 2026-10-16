@@ -43,6 +43,34 @@ jest.mock("@react-navigation/native", () => ({
 // Mock Club Service
 jest.mock("../../services/ClubService");
 
+// The draggable list needs the native gesture / reanimated stack: render its
+// rows plainly (the edit mode is only exercised for its accessibility).
+jest.mock("react-native-draggable-flatlist", () => {
+  const { View } = require("react-native") as typeof import("react-native");
+  const DraggableFlatList = ({
+    data,
+    renderItem,
+    keyExtractor,
+  }: {
+    data: { id: string }[];
+    renderItem: (params: {
+      item: { id: string };
+      drag: () => void;
+      isActive: boolean;
+    }) => React.ReactNode;
+    keyExtractor: (item: { id: string }) => string;
+  }) => (
+    <View>
+      {data.map((item) => (
+        <View key={keyExtractor(item)}>
+          {renderItem({ item, drag: () => {}, isActive: false })}
+        </View>
+      ))}
+    </View>
+  );
+  return { __esModule: true, default: DraggableFlatList };
+});
+
 // Configure-client side-effect is irrelevant in tests.
 jest.mock("../../../../api/client", () => ({}));
 jest.mock("../../../../api/generated/sdk.gen", () => ({
@@ -265,6 +293,69 @@ describe("ClubDashboardScreen", () => {
 
     await waitFor(() => {
       expect(queryByText("Inscriptions en attente")).toBeNull();
+    });
+  });
+
+  describe("screen reader (#22)", () => {
+    it("reads each stat card with its figure and each row with its subtitle", async () => {
+      refundsDueMock.mockResolvedValue({
+        data: { data: [], meta: { total: 2, skip: 0, take: 1, hasMore: true } },
+      });
+      const { getByRole, findByRole } = await renderDashboard();
+
+      const members = await findByRole("button", { name: "Membres, 2" });
+      expect(members.props.testID).toBe("club-dashboard-members-card");
+      expect(
+        getByRole("button", {
+          name: "Remboursements, 2 remboursements à effectuer",
+        }).props.testID,
+      ).toBe("club-dashboard-refunds-row");
+      // "-" is a visual placeholder, not read aloud.
+      expect(getByRole("button", { name: "Couples" })).toBeTruthy();
+      expect(getByRole("header", { name: "Aperçu" })).toBeTruthy();
+      expect(getByRole("header", { name: "Gestion" })).toBeTruthy();
+    });
+
+    it("lets a screen reader reorder and hide widgets without drag-and-drop", async () => {
+      const auth = {
+        getAuthConfig: jest.fn().mockResolvedValue({ clubName: "Mon Club" }),
+        getClubDashboardConfig: jest.fn().mockResolvedValue(null),
+        setClubDashboardConfig: jest.fn().mockResolvedValue(undefined),
+      };
+      (useAuthRepository as jest.Mock).mockReturnValue(auth);
+      const { findByRole, getByLabelText, getByRole } = await renderDashboard();
+
+      await fireEvent.press(
+        await findByRole("button", {
+          name: "Personnaliser le tableau de bord",
+        }),
+      );
+      expect(getByRole("header", { name: "Aperçu (édition)" })).toBeTruthy();
+
+      const membersRow = getByLabelText("Membres, affiché, position 1 sur 5");
+      expect(
+        (membersRow.props.accessibilityActions as { name: string }[]).map(
+          (a) => a.name,
+        ),
+      ).toEqual(["moveDown", "toggle"]);
+
+      await fireEvent(membersRow, "accessibilityAction", {
+        nativeEvent: { actionName: "moveDown" },
+      });
+      const saved = JSON.parse(
+        auth.setClubDashboardConfig.mock.calls.at(-1)?.[0] as string,
+      ) as { id: string }[];
+      expect(saved.map((w) => w.id).slice(0, 2)).toEqual([
+        "competitions",
+        "members",
+      ]);
+
+      await fireEvent(
+        getByLabelText("Membres, affiché, position 2 sur 5"),
+        "accessibilityAction",
+        { nativeEvent: { actionName: "toggle" } },
+      );
+      expect(getByLabelText("Membres, caché, position 2 sur 5")).toBeTruthy();
     });
   });
 });

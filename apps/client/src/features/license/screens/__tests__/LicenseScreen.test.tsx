@@ -41,6 +41,10 @@ jest.mock("../../components/SwipeableLicenseCard", () => ({
 jest.mock("../../hooks/useLicenseLogic", () => ({
   useLicenseLogic: jest.fn(),
 }));
+const mockEntryQrBatch = jest.fn((_enabled: boolean): unknown => null);
+jest.mock("../../hooks/useEntryQrBatch", () => ({
+  useEntryQrBatch: (enabled: boolean) => mockEntryQrBatch(enabled),
+}));
 const mockRenewalPending = jest.fn(() => false);
 jest.mock("../../hooks/useRenewalPending", () => ({
   useRenewalPending: () => mockRenewalPending(),
@@ -375,6 +379,51 @@ describe("LicenseScreen Integration", () => {
 
     const { getByTestId } = await render(<LicenseScreen />);
     expect(getByTestId("qr-code-modal")).toBeTruthy();
+  });
+
+  describe("rotating entry QR (#24)", () => {
+    const batchFor = (number: string) => {
+      const firstStep = Math.floor(Date.now() / 30_000) - 1;
+      return {
+        version: 3,
+        keyId: "b3N-LHLYjEQ",
+        licenseId: "lic-1",
+        number,
+        holderName: "DOE John",
+        stepSeconds: 30,
+        toleranceSteps: 1,
+        firstStep,
+        signatures: Array.from({ length: 10 }, () => "s".repeat(86)),
+        coversUntil: new Date((firstStep + 10) * 30_000).toISOString(),
+      };
+    };
+    const showFfdQr = () =>
+      (useLicenseLogic as jest.Mock).mockReturnValue({
+        state: {
+          ...mockState,
+          showQr: true,
+          activeQrData: { type: "FFD", id: "123" },
+        },
+        actions: mockActions,
+      });
+
+    afterEach(() => {
+      mockEntryQrBatch.mockReturnValue(null);
+    });
+
+    it("shows the rotating QR of the FFD licence in the modal", async () => {
+      showFfdQr();
+      mockEntryQrBatch.mockReturnValue(batchFor("123"));
+      const { getByTestId } = await render(<LicenseScreen />);
+      expect(getByTestId("entry-qr-countdown")).toBeTruthy();
+    });
+
+    it("keeps the static QR when the batch is for another number", async () => {
+      showFfdQr();
+      mockEntryQrBatch.mockReturnValue(batchFor("999"));
+      const { queryByTestId } = await render(<LicenseScreen />);
+      expect(queryByTestId("entry-qr-countdown")).toBeNull();
+    });
   });
 
   it("closes QR Code modal", async () => {

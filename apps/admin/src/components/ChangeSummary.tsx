@@ -1,5 +1,5 @@
 import { Table } from '@mantine/core';
-import { REGISTRATION_MODE_LABELS, ROLE_LABELS } from '../lib/labels';
+import { PAYMENT_PROVIDER_LABELS, REGISTRATION_MODE_LABELS, ROLE_LABELS } from '../lib/labels';
 import { formatDiscipline } from '../lib/discipline';
 import { formatTimecode } from '../lib/moderation';
 
@@ -22,6 +22,7 @@ const LABELS: Record<string, string> = {
   licenseNumber: 'N° de licence',
   name: 'Nom du club',
   registrationMode: "Mode d'inscription",
+  paymentProvider: 'Paiement en ligne',
   title: 'Titre',
   artist: 'Artiste',
   style: 'Danse',
@@ -41,6 +42,7 @@ const VALUE_LABELS: Record<string, Record<string, string>> = {
   role: ROLE_LABELS,
   extraRoles: ROLE_LABELS,
   registrationMode: REGISTRATION_MODE_LABELS,
+  paymentProvider: PAYMENT_PROVIDER_LABELS,
   // Track status (audit rows of the track catalogue).
   status: { READY: 'Prête', PENDING: 'En attente', ERROR: 'En erreur' },
 };

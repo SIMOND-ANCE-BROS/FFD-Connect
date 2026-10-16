@@ -2,6 +2,7 @@ import React from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { AppText } from "../../../../components/AppText";
 import type { AppTheme } from "../../../../context/ThemeContext";
+import { joinA11yLabel } from "../../../../utils/a11y";
 import {
   canBookFreeElement,
   formatPrice,
@@ -25,6 +26,13 @@ interface Props {
 }
 
 export const SEAT_SIZE = 34;
+
+/**
+ * Seat numbers sit in a fixed 34pt square: past this multiplier of the
+ * system text size the number overflows the seat. The full name (row, seat,
+ * state) is still given to the screen reader.
+ */
+const SEAT_TEXT_MAX_SCALE = 1.4;
 
 interface SeatColors {
   background: string;
@@ -97,7 +105,8 @@ const SeatButton = ({
       }}
       disabled={!selectable || disabled}
       onPress={() => onPress(element.id, index)}
-      hitSlop={4}
+      // 34pt seat + 5pt on each side = 44pt touch target (WCAG 2.5.5).
+      hitSlop={5}
       style={[
         styles.seat,
         {
@@ -112,6 +121,7 @@ const SeatButton = ({
         weight={selected ? "bold" : "500"}
         color={colors.text}
         style={!selectable && status !== "minePaid" && styles.struck}
+        maxFontSizeMultiplier={SEAT_TEXT_MAX_SCALE}
       >
         {number}
       </AppText>
@@ -142,6 +152,7 @@ const NumberedSeats = ({
                 color={theme.textSecondary}
                 style={styles.rowName}
                 accessible={false}
+                maxFontSizeMultiplier={SEAT_TEXT_MAX_SCALE}
               >
                 {rowName(row)}
               </AppText>
@@ -212,7 +223,19 @@ export const SeatPlanElementCard = ({
       ]}
       testID={`seat-element-${element.id}`}
     >
-      <View style={styles.header}>
+      <View
+        style={styles.header}
+        accessible
+        accessibilityRole="header"
+        accessibilityLabel={joinA11yLabel([
+          element.label,
+          element.priceCents !== null && formatPrice(element.priceCents),
+          availabilityText(element),
+          element.mode === "free" && "placement libre",
+        ])}
+        accessibilityHint="Élément du plan de salle, ses places suivent"
+        testID={`seat-element-header-${element.id}`}
+      >
         <View style={styles.headerText}>
           <AppText variant="body" weight="600" color={theme.text}>
             {element.label}

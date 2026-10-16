@@ -167,7 +167,7 @@ const AppButtonComponent: React.FC<AppButtonProps> = ({
         testID={testID ?? `button-${variant}`}
         accessibilityRole="button"
         accessibilityState={{ disabled: disabled || loading, busy: loading }}
-        accessibilityLabel={accessibilityLabel}
+        accessibilityLabel={accessibilityLabel ?? title}
         accessibilityHint={accessibilityHint}
       >
         {showGradient && <GradientBackground borderRadius={30} />}

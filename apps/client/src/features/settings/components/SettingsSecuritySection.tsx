@@ -1,5 +1,5 @@
 import { ChevronRight, Key, Shield } from "lucide-react-native";
-import React from "react";
+import React, { type RefObject } from "react";
 import { Switch, Text, TouchableOpacity, View } from "react-native";
 import { AppTheme } from "../../../context/ThemeContext";
 import { styles } from "./settings.styles";
@@ -12,6 +12,8 @@ interface SettingsSecuritySectionProps {
   isFaceId: boolean;
   onChangePassword: () => void;
   isGuest?: boolean;
+  /** Receives the screen-reader focus back when the modal closes. */
+  changePasswordRef?: RefObject<View | null>;
 }
 
 export const SettingsSecuritySection: React.FC<
@@ -24,6 +26,7 @@ export const SettingsSecuritySection: React.FC<
   isFaceId,
   onChangePassword,
   isGuest = false,
+  changePasswordRef,
 }) => {
   // A guest has no account password to change and no biometrics tied to a real
   // session — hide the whole Security section (including Face ID) for guests.
@@ -32,7 +35,10 @@ export const SettingsSecuritySection: React.FC<
   return (
     <>
       <View style={styles.sectionTitleContainer}>
-        <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+        <Text
+          accessibilityRole="header"
+          style={[styles.sectionTitle, { color: theme.textSecondary }]}
+        >
           Sécurité
         </Text>
       </View>
@@ -40,6 +46,8 @@ export const SettingsSecuritySection: React.FC<
       <View style={[styles.card, { backgroundColor: theme.surface }]}>
         {/* Change Password (guests never reach here — section returns null). */}
         <TouchableOpacity
+          ref={changePasswordRef}
+          accessibilityRole="button"
           style={styles.row}
           onPress={onChangePassword}
           testID="settings-change-password-button"
@@ -86,7 +94,9 @@ export const SettingsSecuritySection: React.FC<
               onValueChange={toggleBiometrics}
               value={biometricsEnabled}
               testID="settings-biometrics-switch"
-              accessibilityLabel="Activer la biométrie"
+              accessibilityLabel={
+                isFaceId ? "Connexion avec Face ID" : "Connexion biométrique"
+              }
               accessibilityHint="Active ou désactive la connexion biométrique"
             />
           </View>

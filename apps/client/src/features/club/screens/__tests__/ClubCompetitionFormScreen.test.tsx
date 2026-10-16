@@ -518,4 +518,94 @@ describe("ClubCompetitionFormScreen", () => {
     expect(await findByText("Accès Bénévole")).toBeTruthy();
     expect(getByText("Copier le lien")).toBeTruthy();
   });
+
+  describe("screen reader (#22)", () => {
+    const renderWith = (competition: Record<string, unknown>) =>
+      render(
+        <ClubCompetitionFormScreen
+          navigation={
+            navigation as unknown as NativeStackNavigationProp<
+              RootStackParamList,
+              "ClubCompetitionEditor"
+            >
+          }
+          route={
+            {
+              params: { competition },
+            } as unknown as RouteProp<
+              RootStackParamList,
+              "ClubCompetitionEditor"
+            >
+          }
+        />,
+      );
+
+    it("names the close button and exposes the title as a heading", async () => {
+      const { getByRole } = await renderWith({});
+      await fireEvent.press(getByRole("button", { name: "Fermer l'éditeur" }));
+      expect(navigation.goBack).toHaveBeenCalled();
+      expect(
+        getByRole("header", { name: "Nouvelle Compétition" }),
+      ).toBeTruthy();
+    });
+
+    it("names each event's delete button with the event it removes", async () => {
+      const { getByTestId, getByRole } = await renderWith({
+        events: [
+          { id: "e1", type: "Solo", category: "Latine", ageGroup: "Junior I" },
+        ],
+      });
+      await fireEvent.press(getByTestId("tab-EVENTS"));
+      const del = getByRole("button", { name: /^Retirer l'épreuve : Solo, / });
+      expect(del.props.testID).toBe("event-delete-e1");
+      expect(getByTestId("event-summary-e1").props.accessibilityLabel).toMatch(
+        /Junior I$/,
+      );
+    });
+
+    it("reads a slot as one sentence and moves it with accessibility actions", async () => {
+      const { getByTestId, getByLabelText, getAllByTestId, getByRole } =
+        await renderWith({
+          schedule: [
+            {
+              id: "t1",
+              type: "ROUND",
+              title: "Finale",
+              startTime: "10:00",
+              duration: 15,
+            },
+            {
+              id: "t2",
+              type: "BREAK",
+              title: "Déjeuner",
+              startTime: "10:15",
+              duration: 45,
+            },
+          ],
+        });
+      await fireEvent.press(getByTestId("tab-TIMING"));
+
+      const first = getByLabelText("10:00, 15 minutes, Finale, Tour");
+      expect(
+        (first.props.accessibilityActions as { name: string }[]).map(
+          (a) => a.name,
+        ),
+      ).toEqual(["moveDown"]);
+      expect(
+        getByRole("button", { name: "Modifier le créneau : Déjeuner" }).props
+          .testID,
+      ).toBe("timing-edit-t2");
+      expect(
+        getByRole("button", { name: "Supprimer le créneau : Finale" }).props
+          .testID,
+      ).toBe("timing-delete-t1");
+
+      await fireEvent(first, "accessibilityAction", {
+        nativeEvent: { actionName: "moveDown" },
+      });
+      expect(
+        getAllByTestId(/^timing-summary-/).map((n) => n.props.testID as string),
+      ).toEqual(["timing-summary-t2", "timing-summary-t1"]);
+    });
+  });
 });

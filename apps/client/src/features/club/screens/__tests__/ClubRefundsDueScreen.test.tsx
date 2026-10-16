@@ -135,4 +135,33 @@ describe("ClubRefundsDueScreen (#516)", () => {
     expect(formatRefundAmount(1550)).toMatch(/^15,50\s€$/);
     expect(formatRefundAmount(null)).toBe("");
   });
+
+  describe("screen reader (#22)", () => {
+    it("reads a refund as one sentence and keeps the reference apart", async () => {
+      listMock.mockResolvedValue(page([buildRefund()]));
+
+      const { findByLabelText, getByText, getByRole } = await render(
+        <ClubRefundsDueScreen />,
+      );
+
+      expect(
+        await findByLabelText(
+          /^Jeanne Martin, à rembourser, 1 paiement de 15,50\s€ à rembourser, Open de Lyon, 1 novembre 2026, place 5, depuis le 12 octobre 2026$/,
+        ),
+      ).toBeTruthy();
+      // The HelloAsso reference stays its own (selectable) element.
+      expect(getByText(/Référence HelloAsso : 111/)).toBeTruthy();
+      expect(getByRole("header", { name: "Remboursements" })).toBeTruthy();
+    });
+
+    it("exposes the empty / error title as a heading", async () => {
+      listMock.mockRejectedValue(new Error("network"));
+
+      const { findByRole } = await render(<ClubRefundsDueScreen />);
+
+      expect(
+        await findByRole("header", { name: "Chargement impossible" }),
+      ).toBeTruthy();
+    });
+  });
 });

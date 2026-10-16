@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useTheme } from "../../../context/ThemeContext";
+import { announce } from "../../../utils/announce";
 import type {
   CreateTrackCorrectionDto,
   TrackCorrectionReason,
@@ -167,6 +168,8 @@ export const TrackCorrectionModal = ({
       return;
     }
     setSending(true);
+    // The form is replaced by a spinner: tell the reader what happens.
+    announce("Envoi de la proposition");
     try {
       await createCorrection.mutateAsync(body);
       Alert.alert(CORRECTION_SENT_TITLE, CORRECTION_SENT_MESSAGE);
@@ -190,7 +193,11 @@ export const TrackCorrectionModal = ({
       case "TITLE":
         return (
           <>
-            <Text style={[styles.label, { color: currentTheme.textSecondary }]}>
+            <Text
+              style={[styles.label, { color: currentTheme.textSecondary }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            >
               Titre correct
             </Text>
             <TextInput
@@ -207,7 +214,11 @@ export const TrackCorrectionModal = ({
       case "ARTIST":
         return (
           <>
-            <Text style={[styles.label, { color: currentTheme.textSecondary }]}>
+            <Text
+              style={[styles.label, { color: currentTheme.textSecondary }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            >
               Artiste correct
             </Text>
             <TextInput
@@ -224,7 +235,10 @@ export const TrackCorrectionModal = ({
       case "DANCE":
         return (
           <>
-            <Text style={[styles.label, { color: currentTheme.textSecondary }]}>
+            <Text
+              style={[styles.label, { color: currentTheme.textSecondary }]}
+              accessibilityRole="header"
+            >
               Bonne danse
             </Text>
             <DanceChips
@@ -237,12 +251,20 @@ export const TrackCorrectionModal = ({
       case "MPM":
         return (
           <>
-            <Text style={[styles.label, { color: currentTheme.textSecondary }]}>
+            <Text
+              style={[styles.label, { color: currentTheme.textSecondary }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            >
               MPM correct (mesures par minute)
             </Text>
             <TextInput
               accessibilityLabel="MPM correct"
-              accessibilityHint="Saisissez le bon tempo en mesures par minute"
+              accessibilityHint={
+                track?.bpm
+                  ? `Saisissez le bon tempo en mesures par minute. Valeur actuelle : ${Math.round(track.bpm)}`
+                  : "Saisissez le bon tempo en mesures par minute"
+              }
               testID="correction-mpm-input"
               style={inputStyle}
               value={mpm}
@@ -302,6 +324,7 @@ export const TrackCorrectionModal = ({
           />
         </Pressable>
         <Animated.View
+          onAccessibilityEscape={onClose}
           style={[
             styles.container,
             { backgroundColor: currentTheme.surface },
@@ -311,7 +334,10 @@ export const TrackCorrectionModal = ({
           <View
             style={[styles.header, { borderBottomColor: currentTheme.border }]}
           >
-            <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
+            <Text
+              style={[styles.headerTitle, { color: currentTheme.text }]}
+              accessibilityRole="header"
+            >
               Proposer une correction
             </Text>
             <TouchableOpacity
@@ -319,6 +345,7 @@ export const TrackCorrectionModal = ({
               accessibilityLabel="Fermer"
               accessibilityHint="Ferme la fenêtre de proposition"
               onPress={onClose}
+              hitSlop={12}
               style={styles.closeButton}
             >
               <Text style={[styles.closeText, { color: currentTheme.text }]}>
@@ -366,6 +393,7 @@ export const TrackCorrectionModal = ({
 
               <Text
                 style={[styles.label, { color: currentTheme.textSecondary }]}
+                accessibilityRole="header"
               >
                 Qu&apos;est-ce qui est incorrect ?
               </Text>
@@ -386,12 +414,18 @@ export const TrackCorrectionModal = ({
 
               <Text
                 style={[styles.label, { color: currentTheme.textSecondary }]}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
               >
                 {messageLabel(reason)}
               </Text>
               <TextInput
                 accessibilityLabel="Commentaire pour les administrateurs"
-                accessibilityHint="Ajoutez des précisions pour les administrateurs"
+                accessibilityHint={
+                  reason === "DELETE" || reason === "OTHER"
+                    ? `Obligatoire. ${messageLabel(reason).replace(" (obligatoire)", "")}`
+                    : "Facultatif. Ajoutez des précisions pour les administrateurs"
+                }
                 style={[...inputStyle, styles.multiline]}
                 testID="correction-message-input"
                 value={message}

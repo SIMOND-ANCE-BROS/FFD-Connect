@@ -26,6 +26,7 @@ export const SettingsProfileSection: React.FC<SettingsProfileSectionProps> = ({
     return (
       <View style={styles.profileSection}>
         <TouchableOpacity
+          accessibilityRole="button"
           onPress={onSelectPhoto}
           activeOpacity={0.8}
           testID="settings-avatar-button"
@@ -63,7 +64,12 @@ export const SettingsProfileSection: React.FC<SettingsProfileSectionProps> = ({
             </View>
           </View>
         </TouchableOpacity>
-        <Text style={[styles.changePhotoText, { color: theme.primary }]}>
+        {/* Same action as the avatar button above: hidden from the reader. */}
+        <Text
+          style={[styles.changePhotoText, { color: theme.primary }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        >
           Modifier ma photo
         </Text>
       </View>
@@ -74,6 +80,7 @@ export const SettingsProfileSection: React.FC<SettingsProfileSectionProps> = ({
     return (
       <View style={styles.profileSection}>
         <TouchableOpacity
+          accessibilityRole="button"
           onPress={onSelectClubLogo}
           activeOpacity={0.8}
           testID="settings-club-logo-button"
@@ -111,7 +118,12 @@ export const SettingsProfileSection: React.FC<SettingsProfileSectionProps> = ({
             </View>
           </View>
         </TouchableOpacity>
-        <Text style={[styles.changePhotoText, { color: theme.primary }]}>
+        {/* Same action as the avatar button above: hidden from the reader. */}
+        <Text
+          style={[styles.changePhotoText, { color: theme.primary }]}
+          accessibilityElementsHidden
+          importantForAccessibility="no"
+        >
           Modifier le logo
         </Text>
       </View>

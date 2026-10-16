@@ -16,6 +16,8 @@ import DraggableFlatList, {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AppText } from "../../../components/AppText";
 import { AppTheme } from "../../../context/ThemeContext";
+import { joinA11yLabel } from "../../../utils/a11y";
+import { announce } from "../../../utils/announce";
 import { TrackData } from "../types";
 import { audioPlayerStyles as styles } from "./audio-player.styles";
 
@@ -55,18 +57,34 @@ export const PlayerQueueModal = ({
   }: RenderItemParams<TrackData>) => {
     const isCurrent = item.id === currentTrackId;
     const index = getIndex() ?? -1;
-    // Screen-reader alternative to drag-and-drop.
+    // Screen-reader alternative to drag-and-drop, and to the nested remove
+    // button: the row is one accessible element, so VoiceOver cannot reach
+    // the buttons inside it — they are exposed as actions instead.
     const accessibilityActions = [
       ...(index > 0 ? [{ name: "moveUp", label: "Monter" }] : []),
       ...(index >= 0 && index < tracks.length - 1
         ? [{ name: "moveDown", label: "Descendre" }]
         : []),
+      { name: "remove", label: "Retirer de la file" },
     ];
+    const move = (to: number) => {
+      moveQueueTrack(index, to);
+      announce(`${item.title}, position ${to + 1} sur ${tracks.length}`);
+    };
     const onAccessibilityAction = (event: AccessibilityActionEvent) => {
-      if (event.nativeEvent.actionName === "moveUp") {
-        moveQueueTrack(index, index - 1);
-      } else if (event.nativeEvent.actionName === "moveDown") {
-        moveQueueTrack(index, index + 1);
+      switch (event.nativeEvent.actionName) {
+        case "moveUp":
+          move(index - 1);
+          break;
+        case "moveDown":
+          move(index + 1);
+          break;
+        case "remove":
+          removeQueueTrack(item.id);
+          announce(`${item.title} retiré de la file`);
+          break;
+        default:
+          break;
       }
     };
 
@@ -74,8 +92,13 @@ export const PlayerQueueModal = ({
       <ScaleDecorator>
         <TouchableOpacity
           accessibilityRole="button"
-          accessibilityLabel={`${item.title}, ${item.artist}${isCurrent ? ", en lecture" : ""}`}
-          accessibilityHint="Lance ce titre. Appui long pour le déplacer dans la file."
+          accessibilityLabel={joinA11yLabel([
+            item.title,
+            item.artist,
+            isCurrent && "en lecture",
+            index >= 0 && `${index + 1} sur ${tracks.length}`,
+          ])}
+          accessibilityHint="Lance ce titre. Actions disponibles pour le déplacer ou le retirer de la file."
           accessibilityActions={accessibilityActions}
           onAccessibilityAction={onAccessibilityAction}
           testID={`queue-track-${item.id}`}
@@ -96,6 +119,10 @@ export const PlayerQueueModal = ({
             accessibilityHint="Maintenez et faites glisser pour changer l'ordre de la file"
             testID={`queue-drag-${item.id}`}
             onPressIn={drag}
+            // Drag gesture only: the row's « Monter / Descendre » actions
+            // are the screen-reader equivalent.
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
             style={styles.queueHandle}
           >
             <GripVertical size={18} color={currentTheme.textSecondary} />
@@ -124,7 +151,11 @@ export const PlayerQueueModal = ({
           </View>
           <View style={styles.queueActions}>
             {isCurrent && (
-              <AppText variant="caption" color={currentTheme.primary}>
+              <AppText
+                variant="caption"
+                color={currentTheme.primary}
+                maxFontSizeMultiplier={1.5}
+              >
                 En lecture
               </AppText>
             )}
@@ -133,7 +164,7 @@ export const PlayerQueueModal = ({
               accessibilityLabel={`Retirer ${item.title} de la file`}
               accessibilityHint="Enlève ce titre de la file d'attente"
               testID={`queue-remove-${item.id}`}
-              hitSlop={8}
+              hitSlop={12}
               style={styles.queueIconButton}
               onPress={() => removeQueueTrack(item.id)}
             >
@@ -170,19 +201,24 @@ export const PlayerQueueModal = ({
           />
         </Pressable>
         <View
+          onAccessibilityEscape={closeQueue}
           style={[
             styles.queueContainer,
             { backgroundColor: currentTheme.surface },
           ]}
         >
           <View style={styles.queueHeader}>
-            <AppText style={[styles.queueTitle, { color: currentTheme.text }]}>
+            <AppText
+              style={[styles.queueTitle, { color: currentTheme.text }]}
+              accessibilityRole="header"
+            >
               File d'attente
             </AppText>
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel="Fermer"
               accessibilityHint="Ferme la file d'attente"
+              hitSlop={12}
               onPress={closeQueue}
             >
               <X size={20} color={currentTheme.textSecondary} />

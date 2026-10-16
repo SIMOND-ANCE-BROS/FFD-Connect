@@ -395,7 +395,11 @@ describe("CompetitionsController", () => {
         "comp1",
         staff.user,
       );
-      expect(resultsService.checkIn).toHaveBeenCalledWith("comp1", "qr-code");
+      expect(resultsService.checkIn).toHaveBeenCalledWith(
+        "comp1",
+        "qr-code",
+        undefined,
+      );
       expect(result).toBe(checkInResult);
     });
 

@@ -190,6 +190,74 @@ describe("Admin list filters (integration, real DB)", () => {
     ).toEqual(["MARTIN"]);
   });
 
+  it("several conditions on one column: OR, AND, still ANDed with the others (#673)", async () => {
+    expect(
+      await names([
+        { field: "email", op: "startsWith", value: "a@", join: "or" },
+        { field: "email", op: "startsWith", value: "c@", join: "or" },
+      ]),
+    ).toEqual(["MARTIN", "Petit"]);
+    expect(
+      await names([
+        { field: "name", op: "contains", value: "r" },
+        { field: "name", op: "notContains", value: "mart" },
+      ]),
+    ).toEqual(["Durand"]);
+    expect(
+      await names([
+        { field: "createdAt", op: "lt", value: "2026-03-11", join: "or" },
+        { field: "createdAt", op: "gt", value: "2026-03-31", join: "or" },
+      ]),
+    ).toEqual(["Petit"]);
+    expect(
+      await names([
+        { field: "role", op: "in", value: ["CLUB"], join: "or" },
+        { field: "role", op: "notIn", value: ["CLUB"], join: "or" },
+        { field: "club", op: "isEmpty" },
+      ]),
+    ).toEqual(["Durand", "Petit"]);
+  });
+
+  it("a negative operator on a nullable column keeps the empty rows inside an OR (#673)", async () => {
+    // MARTIN: « Paris Danse » ; Durand: NULL ; Petit: "".
+    expect(
+      await names([
+        { field: "club", op: "notContains", value: "danse", join: "or" },
+        { field: "club", op: "startsWith", value: "zzz", join: "or" },
+      ]),
+    ).toEqual(["Durand", "Petit"]);
+    expect(
+      await names([
+        { field: "club", op: "notContains", value: "paris", join: "or" },
+        { field: "club", op: "startsWith", value: "paris", join: "or" },
+      ]),
+    ).toEqual(["Durand", "MARTIN", "Petit"]);
+    // Same negation ANDed with « n'est pas vide »: NULL and "" both drop out.
+    expect(
+      await names([
+        { field: "club", op: "notContains", value: "paris" },
+        { field: "club", op: "isNotEmpty" },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("refuses too many conditions on one column (#673)", async () => {
+    await request(server())
+      .get("/api/v1/admin/users")
+      .query({
+        filters: JSON.stringify(
+          Array.from({ length: 6 }, (_, i) => ({
+            field: "name",
+            op: "contains",
+            value: `x${i}`,
+            join: "or",
+          })),
+        ),
+      })
+      .set("Authorization", `Bearer ${adminToken}`)
+      .expect(400);
+  });
+
   it("refuses a field outside the whitelist", async () => {
     await request(server())
       .get("/api/v1/admin/users")

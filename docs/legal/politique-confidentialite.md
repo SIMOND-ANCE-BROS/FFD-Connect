@@ -108,7 +108,26 @@ Le pass est un justificatif pratique généré par FFD Connect, projet indépend
 ce n'est **pas** une carte ni un document officiel de la Fédération Française de
 Danse.
 
-## 4 ter. Résultats de compétition et personnes sans compte
+## 4 ter. QR d'entrée et contrôle aux compétitions
+
+Le **QR d'entrée** affiché par l'E-Licence change toutes les 30 secondes. Il
+contient votre numéro de licence, l'identifiant interne de votre licence et vos
+nom et prénom, **signés** par le serveur FFD Connect : l'organisateur ou un
+bénévole peut vérifier le QR **sans réseau**, et voit à qui il appartient pour le
+comparer à la personne présente.
+
+- **Sur votre téléphone** : pour fonctionner sans réseau, l'application garde les
+  QR des 12 prochaines heures. Ils sont liés à votre compte et effacés à la
+  déconnexion.
+- **Sur le téléphone du scanner** : un scan fait sans réseau y reste en attente
+  (avec, pour un bénévole, son lien d'accès temporaire) jusqu'au retour du réseau,
+  **12 heures au plus** ; passé ce délai il est supprimé sans être envoyé. Les clés
+  publiques de vérification ne sont plus utilisées après 7 jours sans réseau.
+- **Sur le serveur** : le check-in enregistre l'heure de réception et, pour un
+  scan hors ligne, l'heure de scan déclarée par le scanner, conservées avec votre
+  inscription.
+
+## 4 quater. Résultats de compétition et personnes sans compte
 
 - **Source** : les classements affichés dans l'application (écran des résultats, palmarès) sont ceux que **l'organisateur de la compétition publie**. Un administrateur de FFD Connect les importe à partir du classement publié : épreuve, tour, rang, nom du couple tel qu'il est publié, dossard, club et, lorsque le classement les indique, les numéros de licence. Ces classements nomment aussi des danseurs **qui n'ont pas de compte** FFD Connect.
 - **Utilisation des numéros de licence** : ils servent uniquement à rattacher un résultat au compte d'un licencié, pour son palmarès et la notification « Résultats disponibles ». Ils ne sont **pas conservés** avec le résultat.
@@ -120,10 +139,11 @@ Danse.
 
 - **Compte & licence** : pendant la durée d'activité du compte, puis **3 ans** après la dernière connexion, à l'issue desquels le compte est supprimé.
 - **Données de santé (certificat médical)** : conservées le temps nécessaire à la vérification de l'aptitude, puis supprimées **au plus tard 12 mois après la fin de validité** du certificat. Un certificat **refusé** est supprimé **au plus tard 30 jours après la décision**, avec les informations lues sur le document et le commentaire de l'administrateur ; un motif de refus d'ordre médical (contre-indication) est alors remplacé par un motif neutre.
-- **Résultats de compétition** : après la suppression du compte, ils sont conservés **sans aucun lien** avec votre compte ni avec votre nom, afin de ne pas fausser le classement des autres couples (seuls l'épreuve, le tour et le classement subsistent). Les classements de la FFD étant publics à la source, il s'agit d'une **pseudonymisation** et non d'une anonymisation complète. Si le résultat de votre couple est rattaché au compte de votre partenaire, il reste le sien : la partie du libellé qui vous nomme est remplacée par « Partenaire supprimé », lorsque l'épreuve permet de faire le lien avec votre compte. L'empreinte de vos numéros de licence (§4 ter) est conservée tant que des résultats importés peuvent vous concerner.
+- **Résultats de compétition** : après la suppression du compte, ils sont conservés **sans aucun lien** avec votre compte ni avec votre nom, afin de ne pas fausser le classement des autres couples (seuls l'épreuve, le tour et le classement subsistent). Les classements de la FFD étant publics à la source, il s'agit d'une **pseudonymisation** et non d'une anonymisation complète. Si le résultat de votre couple est rattaché au compte de votre partenaire, il reste le sien : la partie du libellé qui vous nomme est remplacée par « Partenaire supprimé », lorsque l'épreuve permet de faire le lien avec votre compte. L'empreinte de vos numéros de licence (§4 quater) est conservée tant que des résultats importés peuvent vous concerner.
 - **Données de paiement** : conservées par HelloAsso selon ses propres obligations comptables.
 - **Jetons de notification push (identifiants d'appareil)** : **90 jours** sans réutilisation de l'appareil. L'application réenregistre le jeton à chaque ouverture de session : passé ce délai sans signe de vie, l'appareil est considéré comme abandonné (application désinstallée, appareil remplacé) et la ligne est supprimée automatiquement. Le jeton est également supprimé immédiatement à la déconnexion, à la suppression du compte, et dès que Firebase le déclare invalide.
 - **Accord parental (mineurs)** : la preuve de l'accord (statut, dates, version des CGU, adresse masquée et empreinte) est conservée tant que le compte existe, et supprimée avec lui. Une demande non confirmée cesse d'être valable **7 jours** après son envoi ; elle reste dans l'historique du compte (sans l'adresse en clair). Le lien envoyé au représentant légal n'est jamais stocké en clair (seule son empreinte l'est).
+- **QR d'entrée** : 12 heures sur votre téléphone (renouvelés en ligne), effacés à la déconnexion ; un scan hors ligne reste au plus **12 heures** sur le téléphone du scanner (voir §4 ter).
 - **Jetons de session** : 30 jours maximum.
 - **Logs techniques** : **12 mois**.
 - **Journal des accès aux données de santé** : **1 an**, puis suppression automatique. Il ne contient que des identifiants techniques (personne concernée, auteur de l'accès), la nature de l'accès, sa date et son point d'entrée — jamais le certificat ni les informations qui y figurent. Il subsiste après la suppression du compte jusqu'au terme de ce délai, afin qu'un accès ne puisse pas être effacé en supprimant un compte.

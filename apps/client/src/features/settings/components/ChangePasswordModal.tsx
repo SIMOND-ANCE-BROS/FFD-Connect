@@ -139,7 +139,11 @@ export const ChangePasswordModal = ({
           style={[styles.modal, { backgroundColor: currentTheme.surface }]}
         >
           <View style={styles.header}>
-            <AppText variant="h2" color={currentTheme.text}>
+            <AppText
+              variant="h2"
+              color={currentTheme.text}
+              accessibilityRole="header"
+            >
               Changer le mot de passe
             </AppText>
             <TouchableOpacity
@@ -147,6 +151,7 @@ export const ChangePasswordModal = ({
               accessibilityLabel="Fermer"
               accessibilityHint="Ferme la fenêtre de changement de mot de passe"
               onPress={handleClose}
+              hitSlop={6}
               style={styles.closeButton}
             >
               <Text
@@ -161,52 +166,62 @@ export const ChangePasswordModal = ({
           </View>
 
           <View style={styles.content}>
-            <Text
-              style={[styles.policyText, { color: currentTheme.textSecondary }]}
+            {/* Bulleted caption read as one sentence (no "puce" × 5). */}
+            {/* eslint-disable-next-line react-native-a11y/has-accessibility-hint -- static content, no action to hint */}
+            <View
+              accessible
+              accessibilityLabel="Le mot de passe doit contenir : au moins 8 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial"
             >
-              Le mot de passe doit contenir :
-            </Text>
-            <View style={styles.policyList}>
               <Text
                 style={[
-                  styles.policyItem,
+                  styles.policyText,
                   { color: currentTheme.textSecondary },
                 ]}
               >
-                • Au moins 8 caractères
+                Le mot de passe doit contenir :
               </Text>
-              <Text
-                style={[
-                  styles.policyItem,
-                  { color: currentTheme.textSecondary },
-                ]}
-              >
-                • Au moins une majuscule
-              </Text>
-              <Text
-                style={[
-                  styles.policyItem,
-                  { color: currentTheme.textSecondary },
-                ]}
-              >
-                • Au moins une minuscule
-              </Text>
-              <Text
-                style={[
-                  styles.policyItem,
-                  { color: currentTheme.textSecondary },
-                ]}
-              >
-                • Au moins un chiffre
-              </Text>
-              <Text
-                style={[
-                  styles.policyItem,
-                  { color: currentTheme.textSecondary },
-                ]}
-              >
-                • Au moins un caractère spécial
-              </Text>
+              <View style={styles.policyList}>
+                <Text
+                  style={[
+                    styles.policyItem,
+                    { color: currentTheme.textSecondary },
+                  ]}
+                >
+                  • Au moins 8 caractères
+                </Text>
+                <Text
+                  style={[
+                    styles.policyItem,
+                    { color: currentTheme.textSecondary },
+                  ]}
+                >
+                  • Au moins une majuscule
+                </Text>
+                <Text
+                  style={[
+                    styles.policyItem,
+                    { color: currentTheme.textSecondary },
+                  ]}
+                >
+                  • Au moins une minuscule
+                </Text>
+                <Text
+                  style={[
+                    styles.policyItem,
+                    { color: currentTheme.textSecondary },
+                  ]}
+                >
+                  • Au moins un chiffre
+                </Text>
+                <Text
+                  style={[
+                    styles.policyItem,
+                    { color: currentTheme.textSecondary },
+                  ]}
+                >
+                  • Au moins un caractère spécial
+                </Text>
+              </View>
             </View>
 
             {/* Current Password */}
@@ -236,6 +251,13 @@ export const ChangePasswordModal = ({
                 />
                 <TouchableOpacity
                   accessibilityRole="button"
+                  accessibilityLabel={
+                    showCurrentPassword
+                      ? "Masquer le mot de passe actuel"
+                      : "Afficher le mot de passe actuel"
+                  }
+                  accessibilityHint="Bascule l'affichage du mot de passe en clair"
+                  hitSlop={12}
                   onPress={() => setShowCurrentPassword(!showCurrentPassword)}
                   style={styles.eyeButton}
                 >
@@ -275,6 +297,13 @@ export const ChangePasswordModal = ({
                 />
                 <TouchableOpacity
                   accessibilityRole="button"
+                  accessibilityLabel={
+                    showNewPassword
+                      ? "Masquer le nouveau mot de passe"
+                      : "Afficher le nouveau mot de passe"
+                  }
+                  accessibilityHint="Bascule l'affichage du mot de passe en clair"
+                  hitSlop={12}
                   onPress={() => setShowNewPassword(!showNewPassword)}
                   style={styles.eyeButton}
                 >
@@ -301,7 +330,7 @@ export const ChangePasswordModal = ({
                   style={styles.icon}
                 />
                 <TextInput
-                  accessibilityLabel="Confirmation"
+                  accessibilityLabel="Confirmer le nouveau mot de passe"
                   accessibilityHint="Confirmez votre nouveau mot de passe"
                   style={[styles.input, { color: currentTheme.text }]}
                   placeholder="Confirmer le nouveau mot de passe"
@@ -314,6 +343,13 @@ export const ChangePasswordModal = ({
                 />
                 <TouchableOpacity
                   accessibilityRole="button"
+                  accessibilityLabel={
+                    showConfirmPassword
+                      ? "Masquer la confirmation"
+                      : "Afficher la confirmation"
+                  }
+                  accessibilityHint="Bascule l'affichage du mot de passe en clair"
+                  hitSlop={12}
                   onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                   style={styles.eyeButton}
                 >

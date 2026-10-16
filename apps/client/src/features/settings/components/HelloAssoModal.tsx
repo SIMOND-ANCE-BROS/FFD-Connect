@@ -115,7 +115,11 @@ export const HelloAssoModal = ({
           style={[styles.modal, { backgroundColor: currentTheme.surface }]}
         >
           <View style={styles.header}>
-            <AppText variant="h2" color={currentTheme.text}>
+            <AppText
+              variant="h2"
+              color={currentTheme.text}
+              accessibilityRole="header"
+            >
               Connecter HelloAsso
             </AppText>
             <TouchableOpacity
@@ -148,7 +152,12 @@ export const HelloAssoModal = ({
             </Text>
 
             <View style={styles.inputContainer}>
-              <Text style={[styles.label, { color: currentTheme.text }]}>
+              <Text
+                style={[styles.label, { color: currentTheme.text }]}
+                // Caption duplicated by the input's own label.
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              >
                 Client ID
               </Text>
               <TextInput
@@ -170,7 +179,12 @@ export const HelloAssoModal = ({
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={[styles.label, { color: currentTheme.text }]}>
+              <Text
+                style={[styles.label, { color: currentTheme.text }]}
+                // Caption duplicated by the input's own label.
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              >
                 Client Secret
               </Text>
               <TextInput
@@ -193,7 +207,12 @@ export const HelloAssoModal = ({
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={[styles.label, { color: currentTheme.text }]}>
+              <Text
+                style={[styles.label, { color: currentTheme.text }]}
+                // Caption duplicated by the input's own label.
+                accessibilityElementsHidden
+                importantForAccessibility="no"
+              >
                 Slug de l’organisation
               </Text>
               <TextInput

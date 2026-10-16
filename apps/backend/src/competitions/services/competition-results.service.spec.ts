@@ -3,6 +3,17 @@ import { ConfigService } from "@nestjs/config";
 import { Test, TestingModule } from "@nestjs/testing";
 import { createHash, createHmac } from "crypto";
 import {
+  buildEntryQr,
+  entryQrStep,
+  signEntryQrStep,
+} from "../../licenses/qr/entry-qr";
+import {
+  ACTIVE_TEST_KEY_LABEL,
+  ENTRY_QR_GOLDEN_VECTOR,
+  testEntryQrPem,
+  testEntryQrPrivateKey,
+} from "../../licenses/qr/entry-qr-test-keys.mock";
+import {
   buildSignedLicenseQr,
   toLicenseQrExpiry,
 } from "../../licenses/qr/license-qr";
@@ -22,7 +33,11 @@ import {
 import { createMockPrismaService } from "../__mocks__/types";
 import { CompetitionCacheService } from "./competition-cache.service";
 import { publicResultDetails } from "../public-result";
-import { CompetitionResultsService } from "./competition-results.service";
+import {
+  CompetitionResultsService,
+  INVALID_SCANNED_AT_MESSAGE,
+  SCANNED_AT_ROTATING_ONLY_MESSAGE,
+} from "./competition-results.service";
 
 const mockPrismaService = createMockPrismaService();
 const mockRedisService = {
@@ -302,7 +317,7 @@ describe("CompetitionResultsService", () => {
         where: { token: sha256(TOKEN) },
         select: volunteerTokenAuthSelect,
       });
-      expect(checkInSpy).toHaveBeenCalledWith("c1", "u1");
+      expect(checkInSpy).toHaveBeenCalledWith("c1", "u1", undefined);
       const logged = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
       expect(logged).not.toContain(TOKEN.slice(0, 7));
       // The link's name may be a person's (RGPD, #529): only its id is logged.
@@ -831,6 +846,338 @@ describe("CompetitionResultsService", () => {
           });
         },
       );
+    });
+  });
+
+  describe("checkIn — rotating entry QR and offline replay (#24)", () => {
+    const PEM = testEntryQrPem(ACTIVE_TEST_KEY_LABEL);
+    const subject = {
+      licenseId: "lic-1",
+      number: "FFD-123456",
+      holderName: "DOE John",
+    };
+    const entryQrAt = (instant: Date) => {
+      const step = entryQrStep(instant);
+      return buildEntryQr(
+        ENTRY_QR_GOLDEN_VECTOR.keyId,
+        subject,
+        step,
+        signEntryQrStep(
+          testEntryQrPrivateKey(ACTIVE_TEST_KEY_LABEL),
+          ENTRY_QR_GOLDEN_VECTOR.keyId,
+          subject,
+          step,
+        ),
+      );
+    };
+    let warnSpy: jest.SpyInstance;
+    let logSpy: jest.SpyInstance;
+
+    function enforcing() {
+      return new CompetitionResultsService(
+        mockPrismaService as unknown as PrismaService,
+        mockRedisService as unknown as RedisService,
+        mockCacheService as unknown as CompetitionCacheService,
+        makeQrService({
+          QR_SIGNING_SECRET: QR_SECRET,
+          QR_SIGNATURE_MODE: "enforce",
+          ENTRY_QR_SIGNING_KEY: PEM,
+        }),
+      );
+    }
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      warnSpy = jest.spyOn(Logger.prototype, "warn").mockImplementation();
+      logSpy = jest.spyOn(Logger.prototype, "log").mockImplementation();
+      mockPrismaService.license.findUnique.mockResolvedValue({
+        id: "lic-1",
+        user: { id: "u1", firstName: "John", lastName: "Doe" },
+      });
+      mockPrismaService.registration.findMany.mockResolvedValue([
+        {
+          id: "r1",
+          feePaid: true,
+          checkedIn: false,
+          event: { category: "Latin" },
+        },
+      ]);
+      mockPrismaService.registration.updateMany.mockResolvedValue({
+        count: 1,
+      });
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
+    });
+
+    it("checks in a fresh rotating QR, bound to its licence", async () => {
+      const result = await enforcing().checkIn("c1", entryQrAt(new Date()));
+      expect(result.qrVerification).toEqual({
+        mode: "enforce",
+        status: "VALID",
+        warning: null,
+      });
+      expect(result.user).toEqual({ firstName: "John", lastName: "Doe" });
+      expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("refuses a screenshot replayed minutes later (enforce)", async () => {
+      const captured = entryQrAt(new Date(Date.now() - 5 * 60_000));
+      await expect(enforcing().checkIn("c1", captured)).rejects.toThrow(
+        "QR tournant périmé",
+      );
+      expect(mockPrismaService.registration.updateMany).not.toHaveBeenCalled();
+    });
+
+    describe("offline replay with a claimed scan time", () => {
+      function withMode(mode: "off" | "warn" | "enforce") {
+        return new CompetitionResultsService(
+          mockPrismaService as unknown as PrismaService,
+          mockRedisService as unknown as RedisService,
+          mockCacheService as unknown as CompetitionCacheService,
+          makeQrService({
+            QR_SIGNING_SECRET: QR_SECRET,
+            QR_SIGNATURE_MODE: mode,
+            ENTRY_QR_SIGNING_KEY: PEM,
+          }),
+        );
+      }
+      /** Competition held on the day of `instant`. */
+      const competitionOn = (instant: Date, endDate: Date | null = null) =>
+        mockPrismaService.competition.findUnique.mockResolvedValue({
+          date: instant,
+          endDate,
+        });
+
+      it("verifies the token as of the claimed scan, but dates the check-in at receipt", async () => {
+        const scannedAt = new Date(Date.now() - 20 * 60_000);
+        competitionOn(scannedAt);
+        const before = Date.now();
+        const result = await enforcing().checkIn(
+          "c1",
+          entryQrAt(scannedAt),
+          scannedAt.toISOString(),
+        );
+        expect(result.qrVerification.status).toBe("VALID");
+        const call = mockPrismaService.registration.updateMany.mock
+          .calls[0][0] as {
+          where: unknown;
+          data: { checkInTime: Date; checkInClaimedScanAt: Date };
+        };
+        // Single use: only registrations not checked in yet are updated.
+        expect(call.where).toEqual({ id: "r1", checkedIn: false });
+        expect(call.data.checkInClaimedScanAt).toEqual(scannedAt);
+        expect(call.data.checkInTime.getTime()).toBeGreaterThanOrEqual(before);
+        expect(mockPrismaService.competition.findUnique).toHaveBeenCalledWith({
+          where: { id: "c1" },
+          select: { date: true, endDate: true },
+        });
+      });
+
+      it("records no claimed time for an online scan", async () => {
+        await enforcing().checkIn("c1", entryQrAt(new Date()));
+        const call = mockPrismaService.registration.updateMany.mock
+          .calls[0][0] as { data: { checkInClaimedScanAt: Date | null } };
+        expect(call.data.checkInClaimedScanAt).toBeNull();
+        expect(mockPrismaService.competition.findUnique).not.toHaveBeenCalled();
+      });
+
+      it.each(["off", "warn", "enforce"] as const)(
+        "refuses a backdated replay of a token captured earlier, even in %s",
+        async (mode) => {
+          // Screenshot taken 10 min before the claimed scan: backdating the
+          // claim to the screenshot's step is the only way in, and it is
+          // bounded by everything below; a mismatched claim never passes.
+          const scannedAt = new Date(Date.now() - 30 * 60_000);
+          competitionOn(scannedAt);
+          const captured = entryQrAt(
+            new Date(scannedAt.getTime() - 10 * 60_000),
+          );
+          await expect(
+            withMode(mode).checkIn("c1", captured, scannedAt.toISOString()),
+          ).rejects.toThrow(SCANNED_AT_ROTATING_ONLY_MESSAGE);
+          expect(
+            mockPrismaService.registration.updateMany,
+          ).not.toHaveBeenCalled();
+        },
+      );
+
+      it("refuses a token backdated to before the competition day", async () => {
+        const scannedAt = new Date(Date.now() - 60 * 60_000);
+        // The competition is tomorrow: a claim of "scanned an hour ago" is a
+        // replay of a token captured earlier.
+        competitionOn(new Date(Date.now() + 36 * 3600_000));
+        await expect(
+          enforcing().checkIn(
+            "c1",
+            entryQrAt(scannedAt),
+            scannedAt.toISOString(),
+          ),
+        ).rejects.toThrow(INVALID_SCANNED_AT_MESSAGE);
+      });
+
+      it("accepts a claim within a multi-day competition", async () => {
+        const scannedAt = new Date(Date.now() - 60 * 60_000);
+        competitionOn(
+          new Date(Date.now() - 48 * 3600_000),
+          new Date(Date.now() + 48 * 3600_000),
+        );
+        const result = await enforcing().checkIn(
+          "c1",
+          entryQrAt(scannedAt),
+          scannedAt.toISOString(),
+        );
+        expect(result.qrVerification.status).toBe("VALID");
+      });
+
+      it("refuses a claimed scan time for a static QR (v2, Wallet pass)", async () => {
+        const v2 = buildSignedLicenseQr(
+          {
+            id: "lic-1",
+            number: "FFD-123456",
+            validUntil: new Date(Date.now() + 30 * 86_400_000),
+          },
+          QR_SECRET,
+        );
+        await expect(
+          withMode("warn").checkIn("c1", v2, new Date().toISOString()),
+        ).rejects.toThrow(SCANNED_AT_ROTATING_ONLY_MESSAGE);
+        expect(mockPrismaService.competition.findUnique).not.toHaveBeenCalled();
+      });
+
+      it("does not drop a genuine offline replay when the mode is off", async () => {
+        const scannedAt = new Date(Date.now() - 5 * 60_000);
+        competitionOn(scannedAt);
+        const result = await withMode("off").checkIn(
+          "c1",
+          entryQrAt(scannedAt),
+          scannedAt.toISOString(),
+        );
+        expect(result.registrations[0].status).toBe("SUCCESS");
+        expect(result.qrVerification).toMatchObject({
+          mode: "off",
+          status: "VALID",
+        });
+      });
+
+      it("refuses a claim for an unknown competition", async () => {
+        mockPrismaService.competition.findUnique.mockResolvedValue(null);
+        await expect(
+          enforcing().checkIn(
+            "c1",
+            entryQrAt(new Date()),
+            new Date().toISOString(),
+          ),
+        ).rejects.toThrow(NotFoundException);
+      });
+
+      it("reports a race lost to a concurrent scan as ALREADY_CHECKED_IN, not SUCCESS", async () => {
+        const scannedAt = new Date(Date.now() - 5 * 60_000);
+        competitionOn(scannedAt);
+        mockPrismaService.registration.findMany.mockResolvedValue([
+          {
+            id: "r1",
+            feePaid: true,
+            checkedIn: false,
+            event: { category: "Latin" },
+          },
+          {
+            id: "r2",
+            feePaid: true,
+            checkedIn: false,
+            event: { category: "Standard" },
+          },
+        ]);
+        // r1 was checked in by another request between the read and the write.
+        mockPrismaService.registration.updateMany
+          .mockResolvedValueOnce({ count: 0 })
+          .mockResolvedValueOnce({ count: 1 });
+        const result = await enforcing().checkIn(
+          "c1",
+          entryQrAt(scannedAt),
+          scannedAt.toISOString(),
+        );
+        expect(result.registrations.map((r) => r.status)).toEqual([
+          "ALREADY_CHECKED_IN",
+          "SUCCESS",
+        ]);
+        expect(mockPrismaService.registration.updateMany).toHaveBeenCalledTimes(
+          2,
+        );
+      });
+
+      it("never checks a licence in twice (replayed token)", async () => {
+        const scannedAt = new Date(Date.now() - 5 * 60_000);
+        competitionOn(scannedAt);
+        mockPrismaService.registration.findMany.mockResolvedValue([
+          {
+            id: "r1",
+            feePaid: true,
+            checkedIn: true,
+            event: { category: "Latin" },
+          },
+        ]);
+        const result = await enforcing().checkIn(
+          "c1",
+          entryQrAt(scannedAt),
+          scannedAt.toISOString(),
+        );
+        expect(result.registrations[0].status).toBe("ALREADY_CHECKED_IN");
+        expect(
+          mockPrismaService.registration.updateMany,
+        ).not.toHaveBeenCalled();
+      });
+
+      it("treats a claim slightly ahead of the server clock as now", async () => {
+        competitionOn(new Date());
+        await enforcing().checkIn(
+          "c1",
+          entryQrAt(new Date()),
+          new Date(Date.now() + 30_000).toISOString(),
+        );
+        const data = mockPrismaService.registration.updateMany.mock.calls[0][0]
+          .data as { checkInClaimedScanAt: Date };
+        expect(data.checkInClaimedScanAt.getTime()).toBeLessThanOrEqual(
+          Date.now(),
+        );
+      });
+
+      it.each([
+        [
+          "in the future",
+          () => new Date(Date.now() + 10 * 60_000).toISOString(),
+        ],
+        [
+          "older than 12 h",
+          () => new Date(Date.now() - 13 * 3600_000).toISOString(),
+        ],
+        ["not a date", () => "yesterday"],
+      ])("refuses a scan time %s", async (_label, scannedAt) => {
+        competitionOn(new Date());
+        await expect(
+          enforcing().checkIn("c1", entryQrAt(new Date()), scannedAt()),
+        ).rejects.toThrow(INVALID_SCANNED_AT_MESSAGE);
+        expect(mockPrismaService.license.findUnique).not.toHaveBeenCalled();
+      });
+
+      it("replays a volunteer's offline scan with its scan time", async () => {
+        mockPrismaService.volunteerToken.findUnique.mockResolvedValue({
+          id: "vt1",
+          competitionId: "c1",
+          expiresAt: new Date(Date.now() + 3600_000),
+        });
+        const scannedAt = new Date(Date.now() - 600_000);
+        competitionOn(scannedAt);
+        const result = await enforcing().checkInAsVolunteer(
+          "c1",
+          "token",
+          entryQrAt(scannedAt),
+          scannedAt.toISOString(),
+        );
+        expect(result.qrVerification.status).toBe("VALID");
+      });
     });
   });
 });

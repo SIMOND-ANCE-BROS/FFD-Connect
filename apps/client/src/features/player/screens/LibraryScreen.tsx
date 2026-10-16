@@ -38,6 +38,7 @@ import { announce } from "../../../utils/announce";
 import { logger } from "../../../utils/logger";
 import { SearchBar } from "../../../components/SearchBar";
 import { FilterSheet } from "../../../components/FilterSheet";
+import { useRestoreFocusOnClose } from "../../../utils/a11yFocus";
 import { FilterChip } from "../../../components/FilterChip";
 import { AddTrackModal, type EditableTrack } from "../components/AddTrackModal";
 import {
@@ -110,6 +111,9 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
 
   // --- Filtres avancés (style de danse + plage MPM) ---
   const [filterVisible, setFilterVisible] = useState(false);
+  // Screen-reader focus goes back to the filter button when the sheet closes.
+  const filterButtonRef = useRef<View>(null);
+  useRestoreFocusOnClose(filterVisible, filterButtonRef);
   const [styleFilter, setStyleFilter] = useState<Set<string>>(new Set());
   const [mpmMin, setMpmMin] = useState("");
   const [mpmMax, setMpmMax] = useState("");
@@ -537,9 +541,14 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
           <View style={styles.headerActions}>
             <TouchableOpacity
               accessibilityRole="button"
-              accessibilityLabel="Filtres"
+              accessibilityLabel={
+                activeFilterCount > 0
+                  ? `Filtres, ${activeFilterCount} actif${activeFilterCount > 1 ? "s" : ""}`
+                  : "Filtres"
+              }
               accessibilityHint="Filtrer par style de danse et cadence"
               testID="library-filter-button"
+              ref={filterButtonRef}
               onPress={() => setFilterVisible(true)}
               style={[
                 styles.headerActionButton,

@@ -21,6 +21,7 @@ import Animated, {
 import { AppText } from "../../../components/AppText";
 
 import { AppTheme } from "../../../context/ThemeContext";
+import { announce } from "../../../utils/announce";
 
 interface WdsfEntryModalProps {
   visible: boolean;
@@ -48,6 +49,12 @@ export const WdsfEntryModal: React.FC<WdsfEntryModalProps> = ({
   const contentTranslateX = useSharedValue(0);
   const contentTranslateY = useSharedValue(16);
   const contentScale = useSharedValue(0.98);
+
+  // The inline error is only shown visually: voice it (the focus stays on
+  // the field / button, so the reader would not notice it otherwise).
+  useEffect(() => {
+    if (visible && error) announce(error);
+  }, [visible, error]);
 
   const handleSubmit = () => {
     if (min.length > 0) onVerify(min);
@@ -132,6 +139,7 @@ export const WdsfEntryModal: React.FC<WdsfEntryModalProps> = ({
           <View pointerEvents="box-none" style={styles.modalContentWrapper}>
             <Animated.View
               testID={testID}
+              onAccessibilityEscape={onClose}
               style={[
                 styles.qrModalContent,
                 styles.wdsfModalContent,
@@ -151,6 +159,7 @@ export const WdsfEntryModal: React.FC<WdsfEntryModalProps> = ({
                 <AppText
                   variant="h2"
                   style={[styles.centerText, { color: theme.text }]}
+                  accessibilityRole="header"
                 >
                   Ajouter une licence WDSF
                 </AppText>
@@ -196,6 +205,8 @@ export const WdsfEntryModal: React.FC<WdsfEntryModalProps> = ({
               <View style={styles.modalActionRow}>
                 <TouchableOpacity
                   accessibilityRole="button"
+                  accessibilityLabel="Annuler"
+                  accessibilityHint="Ferme l'ajout de licence WDSF"
                   onPress={onClose}
                   style={[styles.modalButton, { borderColor: theme.border }]}
                   testID="wdsf-modal-cancel-button"
@@ -207,6 +218,12 @@ export const WdsfEntryModal: React.FC<WdsfEntryModalProps> = ({
 
                 <TouchableOpacity
                   accessibilityRole="button"
+                  accessibilityLabel="Vérifier"
+                  accessibilityHint="Vérifie le numéro MIN et importe la licence WDSF"
+                  accessibilityState={{
+                    disabled: loading || min.length === 0,
+                    busy: loading,
+                  }}
                   testID="wdsf-modal-verify-button"
                   onPress={handleSubmit}
                   disabled={loading || min.length === 0}
@@ -280,7 +297,8 @@ const styles = StyleSheet.create({
   },
   input: {
     width: "100%",
-    height: 50,
+    minHeight: 50,
+    paddingVertical: 10,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 15,
@@ -297,7 +315,8 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     flex: 1,
-    height: 48,
+    minHeight: 48,
+    paddingVertical: 8,
     justifyContent: "center",
     alignItems: "center",
     borderRadius: 12,
@@ -306,7 +325,8 @@ const styles = StyleSheet.create({
   },
   modalButtonPrimary: {
     flex: 1,
-    height: 48,
+    minHeight: 48,
+    paddingVertical: 8,
     justifyContent: "center",
     alignItems: "center",
     borderRadius: 12,

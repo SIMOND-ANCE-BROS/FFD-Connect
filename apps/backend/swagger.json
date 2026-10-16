@@ -3092,7 +3092,7 @@
             "name": "filters",
             "required": false,
             "in": "query",
-            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : name (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; status (enum [active, disabled] : in|notIn) ; registrationMode (enum [CLUB_AND_MEMBERS_PENDING, CLUB_ONLY, MEMBERS_AUTO_CONFIRM] : in|notIn) ; createdAt (date : lt|gt|eq|between)",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value, join }. Un champ peut porter jusqu'à 5 conditions, reliées par join (and par défaut, or : identique pour toutes les conditions du champ) ; les champs différents sont combinés par ET (10 conditions au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : name (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; status (enum [active, disabled] : in|notIn) ; registrationMode (enum [CLUB_AND_MEMBERS_PENDING, CLUB_ONLY, MEMBERS_AUTO_CONFIRM] : in|notIn) ; createdAt (date : lt|gt|eq|between)",
             "schema": {
               "type": "string"
             }
@@ -4575,7 +4575,7 @@
             "name": "filters",
             "required": false,
             "in": "query",
-            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : createdAt (date : lt|gt|eq|between) ; actor (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; action (enum [USER_UPDATE, CLUB_ACCOUNT_CREATE, INVITATION_RESEND, USER_CREATE, USER_DISABLE, USER_ENABLE, USER_DELETE, USER_IDENTIFIERS_UPDATE, CLUB_CREATE, CLUB_UPDATE, CLUB_DISABLE, CLUB_ENABLE, CLUB_DELETE, TRACK_CORRECTION_APPROVE, TRACK_CORRECTION_REJECT, TRACK_CREATE, TRACK_UPDATE, TRACK_DELETE, LICENSE_RENEWAL_VIEW, LICENSE_RENEWAL_DOCUMENT_VIEW, LICENSE_RENEWAL_APPROVE, LICENSE_RENEWAL_REJECT, COMPETITION_RESULTS_IMPORT] : in|notIn) ; targetType (enum [USER, CLUB, TRACK_CORRECTION, TRACK, LICENSE_RENEWAL, COMPETITION] : in|notIn)",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value, join }. Un champ peut porter jusqu'à 5 conditions, reliées par join (and par défaut, or : identique pour toutes les conditions du champ) ; les champs différents sont combinés par ET (10 conditions au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : createdAt (date : lt|gt|eq|between) ; actor (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; action (enum [USER_UPDATE, CLUB_ACCOUNT_CREATE, INVITATION_RESEND, USER_CREATE, USER_DISABLE, USER_ENABLE, USER_DELETE, USER_IDENTIFIERS_UPDATE, CLUB_CREATE, CLUB_UPDATE, CLUB_DISABLE, CLUB_ENABLE, CLUB_DELETE, TRACK_CORRECTION_APPROVE, TRACK_CORRECTION_REJECT, TRACK_CREATE, TRACK_UPDATE, TRACK_DELETE, LICENSE_RENEWAL_VIEW, LICENSE_RENEWAL_DOCUMENT_VIEW, LICENSE_RENEWAL_APPROVE, LICENSE_RENEWAL_REJECT, COMPETITION_RESULTS_IMPORT] : in|notIn) ; targetType (enum [USER, CLUB, TRACK_CORRECTION, TRACK, LICENSE_RENEWAL, COMPETITION] : in|notIn)",
             "schema": {
               "type": "string"
             }
@@ -4896,7 +4896,7 @@
             "name": "filters",
             "required": false,
             "in": "query",
-            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : name (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; email (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; role (enum [LICENSEE, CLUB, STAFF, ADMIN] : in|notIn) ; status (enum [active, disabled] : in|notIn) ; club (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; category (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; ageGroup (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; licenseNumber (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; createdAt (date : lt|gt|eq|between) ; lastLoginAt (date : lt|gt|eq|between|isEmpty|isNotEmpty)",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value, join }. Un champ peut porter jusqu'à 5 conditions, reliées par join (and par défaut, or : identique pour toutes les conditions du champ) ; les champs différents sont combinés par ET (10 conditions au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : name (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; email (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; role (enum [LICENSEE, CLUB, STAFF, ADMIN] : in|notIn) ; status (enum [active, disabled] : in|notIn) ; club (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; category (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; ageGroup (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; licenseNumber (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; createdAt (date : lt|gt|eq|between) ; lastLoginAt (date : lt|gt|eq|between|isEmpty|isNotEmpty)",
             "schema": {
               "type": "string"
             }
@@ -10075,7 +10075,7 @@
             "name": "filters",
             "required": false,
             "in": "query",
-            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : title (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; artist (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; style (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; bpm (number : lt|gt|eq|between) ; status (enum [PENDING, READY, ERROR] : in|notIn) ; createdAt (date : lt|gt|eq|between)",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value, join }. Un champ peut porter jusqu'à 5 conditions, reliées par join (and par défaut, or : identique pour toutes les conditions du champ) ; les champs différents sont combinés par ET (10 conditions au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : title (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; artist (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; style (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; bpm (number : lt|gt|eq|between) ; status (enum [PENDING, READY, ERROR] : in|notIn) ; createdAt (date : lt|gt|eq|between)",
             "schema": {
               "type": "string"
             }
@@ -11162,7 +11162,7 @@
             "name": "filters",
             "required": false,
             "in": "query",
-            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : track (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; reason (enum [TITLE, ARTIST, DANCE, MPM, PASO_CLASH, OTHER, DELETE] : in|notIn) ; proposer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; createdAt (date : lt|gt|eq|between) ; message (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; reviewedAt (date : lt|gt|eq|between|isEmpty|isNotEmpty) ; reviewer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty)",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value, join }. Un champ peut porter jusqu'à 5 conditions, reliées par join (and par défaut, or : identique pour toutes les conditions du champ) ; les champs différents sont combinés par ET (10 conditions au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : track (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; reason (enum [TITLE, ARTIST, DANCE, MPM, PASO_CLASH, OTHER, DELETE] : in|notIn) ; proposer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; createdAt (date : lt|gt|eq|between) ; message (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; reviewedAt (date : lt|gt|eq|between|isEmpty|isNotEmpty) ; reviewer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty)",
             "schema": {
               "type": "string"
             }
@@ -24831,7 +24831,7 @@
             "name": "filters",
             "required": false,
             "in": "query",
-            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : name (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; licenseNumber (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; validUntil (date : lt|gt|eq|between|isEmpty|isNotEmpty) ; submittedAt (date : lt|gt|eq|between|isEmpty|isNotEmpty) ; reviewedAt (date : lt|gt|eq|between|isEmpty|isNotEmpty) ; reviewer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty)",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value, join }. Un champ peut porter jusqu'à 5 conditions, reliées par join (and par défaut, or : identique pour toutes les conditions du champ) ; les champs différents sont combinés par ET (10 conditions au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : name (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; licenseNumber (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; validUntil (date : lt|gt|eq|between|isEmpty|isNotEmpty) ; submittedAt (date : lt|gt|eq|between|isEmpty|isNotEmpty) ; reviewedAt (date : lt|gt|eq|between|isEmpty|isNotEmpty) ; reviewer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty)",
             "schema": {
               "type": "string"
             }
@@ -25704,6 +25704,359 @@
         "tags": ["admin"]
       }
     },
+    "/licenses/my/entry-qr": {
+      "get": {
+        "description": "Signatures Ed25519 d'un QR d'entrée par pas de 30 s, sur les 12 prochaines heures (au plus jusqu'à la fin de validité de la licence). L'application affiche le QR du pas courant (v3) et le renouvelle quand elle a du réseau ; un scanner le vérifie hors ligne avec la clé publique (GET /licenses/entry-qr/keys).",
+        "operationId": "EntryQrController_getMyEntryQr",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryQrBatchDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Session d'impersonation (« connecté en tant que »)"
+          },
+          "404": {
+            "description": "Aucune licence en cours de validité pour ce compte, ou QR tournant désactivé (pas de clé de signature) : garder le QR statique"
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Lot de QR d'entrée tournants de ma licence",
+        "tags": ["licenses"]
+      }
+    },
+    "/licenses/entry-qr/keys": {
+      "get": {
+        "description": "Clés Ed25519 (active + retirées encore acceptées) avec lesquelles un scanner vérifie un QR v3 sans réseau. À télécharger à l'ouverture du scanner et à garder en cache.",
+        "operationId": "EntryQrController_getEntryQrKeys",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryQrKeySetDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Requête invalide - Erreur de validation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 400
+                    },
+                    "message": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "email must be an email",
+                        "password is required"
+                      ]
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Bad Request"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Non authentifié - Token manquant ou invalide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 401
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Accès interdit - Permissions insuffisantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 403
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Forbidden resource"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Forbidden"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ressource non trouvée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 404
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflit - La ressource existe déjà",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 409
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Resource already exists"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Conflict"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Trop de requêtes - Rate limit dépassé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 429
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Too many requests"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Too Many Requests"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur serveur interne",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "statusCode": {
+                      "type": "number",
+                      "example": 500
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Internal server error"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Internal Server Error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Clés publiques de vérification des QR d'entrée tournants",
+        "tags": ["licenses"]
+      }
+    },
     "/health/live": {
       "get": {
         "operationId": "HealthController_live",
@@ -26401,7 +26754,7 @@
             "name": "filters",
             "required": false,
             "in": "query",
-            "description": "Filtres de colonne, tableau JSON de { field, op, value } combinés par ET (10 au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : club (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; competition (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; competitionDate (date : lt|gt|eq|between) ; dancer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; refundOwedAt (date : lt|gt|eq|between)",
+            "description": "Filtres de colonne, tableau JSON de { field, op, value, join }. Un champ peut porter jusqu'à 5 conditions, reliées par join (and par défaut, or : identique pour toutes les conditions du champ) ; les champs différents sont combinés par ET (10 conditions au plus). Dates AAAA-MM-JJ (jours de Paris) ; between : [début, fin] inclus ; in / notIn : liste de valeurs ; isEmpty / isNotEmpty : sans value. Champs : club (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; competition (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; competitionDate (date : lt|gt|eq|between) ; dancer (text : contains|notContains|equals|startsWith|isEmpty|isNotEmpty) ; refundOwedAt (date : lt|gt|eq|between)",
             "schema": {
               "type": "string"
             }
@@ -27276,6 +27629,11 @@
           "notIn"
         ]
       },
+      "ListFilterJoin": {
+        "type": "string",
+        "enum": ["and", "or"],
+        "description": "Avec les autres conditions du même champ (and par défaut) : identique pour toutes"
+      },
       "AdminUsersFilterDto": {
         "type": "object",
         "properties": {
@@ -27323,6 +27681,14 @@
               }
             ],
             "description": "Absente pour isEmpty / isNotEmpty"
+          },
+          "join": {
+            "description": "Avec les autres conditions du même champ (and par défaut) : identique pour toutes",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterJoin"
+              }
+            ]
           }
         },
         "required": ["field", "op"]
@@ -27363,6 +27729,14 @@
               }
             ],
             "description": "Absente pour isEmpty / isNotEmpty"
+          },
+          "join": {
+            "description": "Avec les autres conditions du même champ (and par défaut) : identique pour toutes",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterJoin"
+              }
+            ]
           }
         },
         "required": ["field", "op"]
@@ -27403,6 +27777,14 @@
               }
             ],
             "description": "Absente pour isEmpty / isNotEmpty"
+          },
+          "join": {
+            "description": "Avec les autres conditions du même champ (and par défaut) : identique pour toutes",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterJoin"
+              }
+            ]
           }
         },
         "required": ["field", "op"]
@@ -29403,6 +29785,14 @@
               }
             ],
             "description": "Absente pour isEmpty / isNotEmpty"
+          },
+          "join": {
+            "description": "Avec les autres conditions du même champ (and par défaut) : identique pour toutes",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterJoin"
+              }
+            ]
           }
         },
         "required": ["field", "op"]
@@ -29609,6 +29999,14 @@
               }
             ],
             "description": "Absente pour isEmpty / isNotEmpty"
+          },
+          "join": {
+            "description": "Avec les autres conditions du même champ (and par défaut) : identique pour toutes",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterJoin"
+              }
+            ]
           }
         },
         "required": ["field", "op"]
@@ -30701,9 +31099,14 @@
         "properties": {
           "qrData": {
             "type": "string",
-            "description": "Contenu du QR de licence scanné : QR signé lié à la licence (v2, #466), QR signé v1 (#168, accepté jusqu'à son expiration), ancien JSON non signé, ou identifiant brut",
-            "example": "{\"v\":2,\"id\":\"FFD-123456\",\"lid\":\"3f0c…\",\"exp\":\"2026-08-31\",\"sig\":\"…\"}",
+            "description": "Contenu du QR de licence scanné : QR d'entrée tournant (v3, #24, signé Ed25519, valable ~90 s), QR signé lié à la licence (v2, #466 — pass Wallet), QR signé v1 (#168, accepté jusqu'à son expiration), ancien JSON non signé, ou identifiant brut",
+            "example": "{\"v\":3,\"k\":\"AbCdEfGhIjK\",\"id\":\"FFD-123456\",\"lid\":\"3f0c…\",\"nm\":\"DUPONT Jean\",\"t\":59612345,\"sig\":\"…\"}",
             "maxLength": 512
+          },
+          "scannedAt": {
+            "type": "string",
+            "description": "Instant du scan (ISO 8601) pour un check-in scanné hors ligne puis synchronisé (#24) : le QR est vérifié à cet instant. QR tournant (v3) uniquement, valide à cet instant quel que soit le mode ; ni dans le futur, ni plus vieux que 12 h, et dans les jours de la compétition (Europe/Paris). Gardé à part (`checkInClaimedScanAt`) : l'heure du check-in reste celle du serveur. Absent = maintenant.",
+            "example": "2026-10-16T09:12:30.000Z"
           }
         },
         "required": ["qrData"]
@@ -30761,9 +31164,10 @@
               "UNSIGNED",
               "INVALID_SIGNATURE",
               "EXPIRED",
+              "STALE",
               "LICENSE_MISMATCH"
             ],
-            "description": "LICENSE_MISMATCH : QR authentique émis avant un changement de numéro de licence (#466) — accepté en mode warn pour la licence d'origine, refusé en enforce"
+            "description": "STALE : QR tournant (v3, #24) authentique mais hors de sa fenêtre de validité (capture d'écran rejouée, ou horloge décalée). LICENSE_MISMATCH : QR authentique émis avant un changement de numéro de licence (#466) — accepté en mode warn pour la licence d'origine, refusé en enforce"
           },
           "warning": {
             "type": "string",
@@ -30817,6 +31221,11 @@
             "type": "string",
             "description": "Données du QR code du participant",
             "maxLength": 512
+          },
+          "scannedAt": {
+            "type": "string",
+            "description": "Instant du scan (ISO 8601) pour un check-in scanné hors ligne puis synchronisé (#24). QR tournant (v3) uniquement, valide à cet instant quel que soit le mode ; ni dans le futur, ni plus vieux que 12 h, et dans les jours de la compétition (Europe/Paris). Gardé à part (`checkInClaimedScanAt`) : l'heure du check-in reste celle du serveur. Absent = maintenant.",
+            "example": "2026-10-16T09:12:30.000Z"
           }
         },
         "required": ["token", "competitionId", "qrData"]
@@ -31103,6 +31512,14 @@
               }
             ],
             "description": "Absente pour isEmpty / isNotEmpty"
+          },
+          "join": {
+            "description": "Avec les autres conditions du même champ (and par défaut) : identique pour toutes",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterJoin"
+              }
+            ]
           }
         },
         "required": ["field", "op"]
@@ -31478,6 +31895,117 @@
         },
         "required": ["reason"]
       },
+      "EntryQrBatchDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "example": 3,
+            "description": "Version du QR (v3 = tournant)"
+          },
+          "keyId": {
+            "type": "string",
+            "example": "AbCdEfGhIjK",
+            "description": "Identifiant de la clé de signature (champ `k` du QR)"
+          },
+          "licenseId": {
+            "type": "string",
+            "example": "3f0c6d2e-…"
+          },
+          "number": {
+            "type": "string",
+            "example": "FFD-123456"
+          },
+          "holderName": {
+            "type": "string",
+            "example": "DUPONT Jean",
+            "description": "Nom affiché au scanner hors ligne (champ `nm` du QR)"
+          },
+          "stepSeconds": {
+            "type": "number",
+            "example": 30,
+            "description": "Durée d'un pas de temps (s)"
+          },
+          "toleranceSteps": {
+            "type": "number",
+            "example": 1,
+            "description": "Pas acceptés de part et d'autre de l'heure du scanner"
+          },
+          "firstStep": {
+            "type": "number",
+            "example": 59612345,
+            "description": "Pas de temps de `signatures[0]` (floor(secondes Unix / stepSeconds)) ; `signatures[i]` signe le pas `firstStep + i`"
+          },
+          "signatures": {
+            "description": "Signatures Ed25519 (base64url), une par pas de temps, sur 12 h au plus (jamais au-delà de la fin de validité de la licence)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "coversUntil": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fin du dernier pas couvert : l'application doit renouveler le lot avant"
+          }
+        },
+        "required": [
+          "version",
+          "keyId",
+          "licenseId",
+          "number",
+          "holderName",
+          "stepSeconds",
+          "toleranceSteps",
+          "firstStep",
+          "signatures",
+          "coversUntil"
+        ]
+      },
+      "EntryQrPublicKeyDto": {
+        "type": "object",
+        "properties": {
+          "kid": {
+            "type": "string",
+            "example": "AbCdEfGhIjK"
+          },
+          "publicKey": {
+            "type": "string",
+            "description": "Clé publique Ed25519 brute (32 octets), base64url",
+            "example": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Vrai pour la clé qui signe les nouveaux lots ; faux pour une clé retirée encore acceptée"
+          }
+        },
+        "required": ["kid", "publicKey", "active"]
+      },
+      "EntryQrKeySetDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "example": 3
+          },
+          "stepSeconds": {
+            "type": "number",
+            "example": 30
+          },
+          "toleranceSteps": {
+            "type": "number",
+            "example": 1
+          },
+          "keys": {
+            "description": "Vide si le QR tournant est désactivé",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EntryQrPublicKeyDto"
+            }
+          }
+        },
+        "required": ["version", "stepSeconds", "toleranceSteps", "keys"]
+      },
       "CreateCheckoutDto": {
         "type": "object",
         "properties": {
@@ -31670,6 +32198,14 @@
               }
             ],
             "description": "Absente pour isEmpty / isNotEmpty"
+          },
+          "join": {
+            "description": "Avec les autres conditions du même champ (and par défaut) : identique pour toutes",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ListFilterJoin"
+              }
+            ]
           }
         },
         "required": ["field", "op"]

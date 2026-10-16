@@ -9,6 +9,7 @@ import {
   type ListFilter,
   listFiltersError,
   listFiltersWhere,
+  MAX_FIELD_CONDITIONS,
   MAX_LIST_FILTERS,
   parseListFiltersParam,
 } from "./list-filters";
@@ -177,6 +178,105 @@ describe("list filters (#557)", () => {
         { field: "bpm", op: "gt", value: 1 },
       ]),
     ).toHaveLength(2);
+  });
+
+  describe("several conditions on one field (#673)", () => {
+    it("ANDs them by default, one condition each", () => {
+      expect(
+        listFiltersWhere(COLUMNS, [
+          { field: "name", op: "startsWith", value: "A" },
+          { field: "name", op: "notContains", value: "test" },
+        ]),
+      ).toEqual([
+        { name: { startsWith: "A", ...insensitive } },
+        { NOT: { name: { contains: "test", ...insensitive } } },
+      ]);
+    });
+
+    it("ORs them with join « or », still ANDed with the other fields", () => {
+      expect(
+        listFiltersWhere(COLUMNS, [
+          { field: "name", op: "contains", value: "gmail", join: "or" },
+          { field: "bpm", op: "gt", value: 30 },
+          { field: "name", op: "contains", value: "hotmail", join: "or" },
+        ]),
+      ).toEqual([
+        {
+          OR: [
+            { name: { contains: "gmail", ...insensitive } },
+            { name: { contains: "hotmail", ...insensitive } },
+          ],
+        },
+        { bpm: { gt: 30 } },
+      ]);
+    });
+
+    it("ORs dates and value lists too", () => {
+      const [dates] = listFiltersWhere(COLUMNS, [
+        { field: "createdAt", op: "lt", value: "2026-01-01", join: "or" },
+        { field: "createdAt", op: "gt", value: "2026-12-31", join: "or" },
+      ]);
+      expect(dates).toEqual({
+        OR: [
+          { createdAt: { lt: expect.any(Date) as Date } },
+          { createdAt: { gte: expect.any(Date) as Date } },
+        ],
+      });
+      const [roles] = listFiltersWhere(COLUMNS, [
+        { field: "role", op: "in", value: ["CLUB"], join: "or" },
+        { field: "role", op: "notIn", value: ["ADMIN"], join: "or" },
+      ]);
+      expect(roles).toEqual({
+        OR: [{ OR: [{ role: "CLUB" }] }, { NOT: { OR: [{ role: "ADMIN" }] } }],
+      });
+    });
+
+    it("keeps a single « or » condition as is", () => {
+      expect(
+        listFiltersWhere(COLUMNS, [
+          { field: "bpm", op: "eq", value: 30, join: "or" },
+        ]),
+      ).toEqual([{ bpm: { equals: 30 } }]);
+    });
+
+    const error = (raw: unknown) => listFiltersError(COLUMNS, raw);
+
+    it.each([
+      [
+        "more conditions on one field than allowed",
+        Array.from({ length: MAX_FIELD_CONDITIONS + 1 }, () => ({
+          field: "name",
+          op: "isEmpty",
+        })),
+      ],
+      [
+        "mixed joins on one field",
+        [
+          { field: "name", op: "contains", value: "a", join: "or" },
+          { field: "name", op: "contains", value: "b" },
+        ],
+      ],
+      ["an unknown join", [{ field: "name", op: "isEmpty", join: "xor" }]],
+      [
+        "a join that is not a string",
+        [{ field: "name", op: "isEmpty", join: 1 }],
+      ],
+    ])("refuses %s", (_label, raw) => {
+      expect(error(raw)).not.toBeNull();
+    });
+
+    it("accepts the cap on a field and explicit « and »", () => {
+      expect(
+        error(
+          Array.from({ length: MAX_FIELD_CONDITIONS }, (_, i) => ({
+            field: "name",
+            op: "contains",
+            value: `x${i}`,
+            join: "and",
+          })),
+        ),
+      ).toBeNull();
+    });
   });
 
   describe("validation: nothing outside the whitelist reaches Prisma", () => {

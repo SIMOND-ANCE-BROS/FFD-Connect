@@ -74,6 +74,7 @@ export const FilterSheet = ({
         />
         <View
           testID="filter-sheet-card"
+          onAccessibilityEscape={onClose}
           style={[
             styles.card,
             {
@@ -83,7 +84,12 @@ export const FilterSheet = ({
           ]}
         >
           <View style={styles.header}>
-            <AppText variant="h3" color={theme.text} style={styles.title}>
+            <AppText
+              variant="h3"
+              color={theme.text}
+              style={styles.title}
+              accessibilityRole="header"
+            >
               {title}
             </AppText>
             <TouchableOpacity
@@ -91,7 +97,7 @@ export const FilterSheet = ({
               accessibilityRole="button"
               accessibilityLabel="Fermer"
               accessibilityHint="Ferme le panneau de filtres"
-              hitSlop={8}
+              hitSlop={12}
             >
               <X size={22} color={theme.text} />
             </TouchableOpacity>
@@ -109,8 +115,13 @@ export const FilterSheet = ({
             onPress={onReset}
             disabled={activeCount === 0}
             accessibilityRole="button"
-            accessibilityLabel="Réinitialiser les filtres"
+            accessibilityLabel={
+              activeCount > 0
+                ? `Réinitialiser les filtres, ${activeCount} actif${activeCount > 1 ? "s" : ""}`
+                : "Réinitialiser les filtres"
+            }
             accessibilityHint="Efface tous les filtres actifs"
+            accessibilityState={{ disabled: activeCount === 0 }}
             testID="filter-reset"
             style={[
               styles.resetButton,

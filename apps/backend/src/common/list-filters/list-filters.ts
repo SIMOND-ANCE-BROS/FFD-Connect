@@ -5,9 +5,12 @@ import { parisStartOfDay } from "../../licenses/qr/license-qr";
  * Column filters with operators of the back-office lists (#557) — pure, no Nest
  * module. A list endpoint declares a whitelist of filterable fields (a
  * {@link FilterColumns} map); a client sends `filters`, a JSON array of
- * `{ field, op, value }` combined with AND. Every field and operator is checked
- * against the whitelist and turned into a Prisma `where` by the column's own
- * builder: no client string ever names a column or reaches raw SQL.
+ * `{ field, op, value, join }`. A field may carry several conditions (#673),
+ * combined by their `join` (« and » by default, « or »: the same for every
+ * condition of the field); different fields are combined with AND. Every
+ * field and operator is checked against the whitelist and turned into a
+ * Prisma `where` by the column's own builder: no client string ever names a
+ * column or reaches raw SQL.
  *
  * Text is matched case-insensitively (`mode: "insensitive"`, ILIKE). Accents
  * are NOT folded: the `unaccent` extension is not installed (see #557).
@@ -40,8 +43,14 @@ export type EnumFilterOp = (typeof ENUM_FILTER_OPS)[number];
 export type ListFilterOp = TextFilterOp | RangeFilterOp | EnumFilterOp;
 export type FilterKind = "text" | "date" | "number" | "enum";
 
-/** At most this many filters per request (they are ANDed). */
+/** How the conditions of one field combine (#673). */
+export const LIST_FILTER_JOINS = ["and", "or"] as const;
+export type ListFilterJoin = (typeof LIST_FILTER_JOINS)[number];
+
+/** At most this many conditions per request, every field included. */
 export const MAX_LIST_FILTERS = 10;
+/** At most this many conditions on one field (#673). */
+export const MAX_FIELD_CONDITIONS = 5;
 export const MAX_FILTER_TEXT_LENGTH = 100;
 export const MAX_FILTER_ENUM_VALUES = 50;
 
@@ -52,6 +61,8 @@ export interface ListFilter {
   field: string;
   op: ListFilterOp;
   value?: ListFilterValue;
+  /** With the other conditions of the same field; « and » when absent. */
+  join?: ListFilterJoin;
 }
 
 /** Conditions a column builder receives: subsets of Prisma's scalar filters. */
@@ -144,6 +155,7 @@ export function allowedOps(column: {
 }
 
 const NO_VALUE_OPS: readonly ListFilterOp[] = ["isEmpty", "isNotEmpty"];
+const ITEM_KEYS: readonly string[] = ["field", "op", "value", "join"];
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 function isCalendarDay(value: unknown): value is string {
@@ -188,21 +200,35 @@ export function listFiltersError<Where>(
     return "filters doit être un tableau JSON de { field, op, value }";
   }
   if (raw.length > MAX_LIST_FILTERS) {
-    return `filters : ${MAX_LIST_FILTERS} filtres au plus`;
+    return `filters : ${MAX_LIST_FILTERS} conditions au plus`;
   }
+  const perField = new Map<string, { count: number; join: ListFilterJoin }>();
   for (const [index, item] of (raw as readonly unknown[]).entries()) {
     const at = `filters[${index}]`;
     if (!item || typeof item !== "object" || Array.isArray(item)) {
       return `${at} doit être un objet`;
     }
     const keys = Object.keys(item);
-    if (keys.some((k) => k !== "field" && k !== "op" && k !== "value")) {
-      return `${at} : propriétés autorisées field, op, value`;
+    if (keys.some((k) => !ITEM_KEYS.includes(k))) {
+      return `${at} : propriétés autorisées field, op, value, join`;
     }
-    const { field, op, value } = item as Record<string, unknown>;
+    const { field, op, value, join } = item as Record<string, unknown>;
     if (typeof field !== "string" || !own(columns, field)) {
       return `${at} : champ non filtrable`;
     }
+    if (join !== undefined && !LIST_FILTER_JOINS.some((j) => j === join)) {
+      return `${at} : join vaut and ou or`;
+    }
+    const fieldJoin: ListFilterJoin = join === "or" ? "or" : "and";
+    const seen = perField.get(field);
+    if (seen && seen.join !== fieldJoin) {
+      return `${at} : les conditions de ${field} doivent avoir le même join`;
+    }
+    const count = (seen?.count ?? 0) + 1;
+    if (count > MAX_FIELD_CONDITIONS) {
+      return `${at} : ${MAX_FIELD_CONDITIONS} conditions au plus sur ${field}`;
+    }
+    perField.set(field, { count, join: fieldJoin });
     const column = columns[field];
     const ops = allowedOps({
       kind: column.kind,
@@ -387,8 +413,26 @@ function enumWhere<Where>(
     : not(oneOf);
 }
 
+function conditionWhere<Where>(
+  columns: FilterColumns<Where>,
+  filter: ListFilter,
+): Where {
+  const column = columns[filter.field];
+  switch (column.kind) {
+    case "text":
+      return textWhere(column, filter.op, String(filter.value));
+    case "date":
+      return dateWhere(column, filter.op, filter.value);
+    case "number":
+      return numberWhere(column, filter.op, filter.value);
+    case "enum":
+      return enumWhere(column, filter.op, filter.value);
+  }
+}
+
 /**
- * Prisma conditions of `filters`, to AND with the list's own where. Checks
+ * Prisma conditions of `filters`, to AND with the list's own where: one per
+ * condition of an « and » field, one `OR` per « or » field (#673). Checks
  * again what the DTO validated: a service called without the pipe (a test, a
  * future caller) still never filters on a field outside the whitelist.
  */
@@ -399,18 +443,15 @@ export function listFiltersWhere<Where>(
   if (!filters || filters.length === 0) return [];
   const error = listFiltersError(columns, filters);
   if (error) throw new BadRequestException(error);
-  return filters.map((filter) => {
-    const column = columns[filter.field];
-    switch (column.kind) {
-      case "text":
-        return textWhere(column, filter.op, String(filter.value));
-      case "date":
-        return dateWhere(column, filter.op, filter.value);
-      case "number":
-        return numberWhere(column, filter.op, filter.value);
-      case "enum":
-        return enumWhere(column, filter.op, filter.value);
-    }
+  const byField = new Map<string, ListFilter[]>();
+  for (const filter of filters) {
+    byField.set(filter.field, [...(byField.get(filter.field) ?? []), filter]);
+  }
+  return [...byField.values()].flatMap((conditions) => {
+    const wheres = conditions.map((filter) => conditionWhere(columns, filter));
+    return conditions[0].join === "or" && wheres.length > 1
+      ? [or(wheres)]
+      : wheres;
   });
 }
 
