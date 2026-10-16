@@ -48,6 +48,7 @@ const ADMIN_ROUTES: Array<
   // App usage (lot 5): ADMIN-only at class level.
   ["get", "/api/v1/admin/usage"],
   ["get", "/api/v1/admin/usage?period=7d&space=CLUB"],
+  ["get", "/api/v1/admin/usage?period=90d"],
   // Licence renewal moderation (#266): ADMIN-only at class level.
   ["get", "/api/v1/admin/license-renewals"],
   ["get", "/api/v1/admin/license-renewals?status=REJECTED&take=50"],
@@ -406,6 +407,23 @@ describe("Admin routes (e2e) — role matrix", () => {
   it("rejects an unknown usage period with 400", async () => {
     currentRole = UserRole.ADMIN;
     await request(server()).get("/api/v1/admin/usage?period=1y").expect(400);
+  });
+
+  it("serves 90-day usage to an ADMIN: aggregates only, no install ID", async () => {
+    currentRole = UserRole.ADMIN;
+    prisma.$queryRaw.mockResolvedValue([] as never);
+    const res = await request(server())
+      .get("/api/v1/admin/usage?period=90d")
+      .expect(200);
+    expect(res.body.period).toBe("90d");
+    expect(res.body.events).toHaveLength(90);
+    expect(res.body).toMatchObject({
+      activeInstallsToday: 0,
+      activeInstallsLast7Days: 0,
+      activeInstallsThisMonth: 0,
+      activeInstallsPerDayByPlatform: { ios: 0, android: 0 },
+    });
+    expect(JSON.stringify(res.body)).not.toContain("installId");
   });
 
   describe("column filters with operators (#557)", () => {

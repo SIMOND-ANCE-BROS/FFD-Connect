@@ -26,7 +26,23 @@ const KEY_EVENTS = Prisma.join([...USAGE_KEY_EVENTS]);
 const SESSION_GAP = Prisma.raw(
   `interval '${USAGE_SESSION_GAP_MINUTES} minutes'`,
 );
-const DAYS: Record<"7d" | "30d", number> = { "7d": 7, "30d": 30 };
+const DAYS: Record<Exclude<UsagePeriod, "12m">, number> = {
+  "7d": 7,
+  "30d": 30,
+  "90d": 90,
+};
+/** Fixed SQL markers (never user input): one per distinct-install window. */
+const DISTINCT_MARKERS = {
+  day: Prisma.raw("/* usage:dau */"),
+  week: Prisma.raw("/* usage:wau */"),
+  month: Prisma.raw("/* usage:month */"),
+} as const;
+type DistinctWindow = keyof typeof DISTINCT_MARKERS;
+
+interface Actives {
+  total: number;
+  byPlatform: { ios: number; android: number };
+}
 
 interface RawWindow {
   start: Date;
@@ -54,8 +70,21 @@ export class AdminUsageQueryService {
   ): Promise<AdminUsageDto> {
     const today = parisDateOf(now);
     const tomorrow = parisMidnightOf(addIsoDays(today, 1));
-    const [activeInstallsThisMonth, versions] = await Promise.all([
-      this.distinctInstalls({
+    const [
+      activeInstallsToday,
+      activeInstallsLast7Days,
+      activeInstallsThisMonth,
+      versions,
+    ] = await Promise.all([
+      this.distinctInstalls("day", {
+        start: parisMidnightOf(today),
+        end: tomorrow,
+      }),
+      this.distinctInstalls("week", {
+        start: parisMidnightOf(addIsoDays(today, -6)),
+        end: tomorrow,
+      }),
+      this.distinctInstalls("month", {
         start: parisMidnightOf(`${today.slice(0, 7)}-01`),
         end: tomorrow,
       }),
@@ -68,6 +97,8 @@ export class AdminUsageQueryService {
       generatedAt: now.toISOString(),
       period,
       to: today,
+      activeInstallsToday,
+      activeInstallsLast7Days,
       activeInstallsThisMonth,
       versions,
     };
@@ -78,7 +109,7 @@ export class AdminUsageQueryService {
       const [
         aggregatedUntil,
         heatmap,
-        activeInstallsPerDay,
+        actives,
         platforms,
         screens,
         events,
@@ -101,7 +132,8 @@ export class AdminUsageQueryService {
         from: range.from,
         bucket: "month",
         aggregatedUntil,
-        activeInstallsPerDay,
+        activeInstallsPerDay: actives.total,
+        activeInstallsPerDayByPlatform: actives.byPlatform,
         sessions: null,
         medianSessionMinutes: null,
         platforms,
@@ -118,7 +150,7 @@ export class AdminUsageQueryService {
     const dayKeys = Array.from({ length: days }, (_, i) => addIsoDays(from, i));
     const [
       heatmap,
-      activeInstallsPerDay,
+      actives,
       sessions,
       platforms,
       screens,
@@ -138,7 +170,8 @@ export class AdminUsageQueryService {
       from,
       bucket: "day",
       aggregatedUntil: null,
-      activeInstallsPerDay,
+      activeInstallsPerDay: actives.total,
+      activeInstallsPerDayByPlatform: actives.byPlatform,
       ...sessions,
       platforms,
       heatmap,
@@ -166,21 +199,29 @@ export class AdminUsageQueryService {
     return toGrid(rows);
   }
 
-  /** Average of daily distinct installs over the period (days without events count as 0). */
-  private async activesPerDay(w: RawWindow, days: number): Promise<number> {
+  /**
+   * Average of daily distinct installs over the period (days without events
+   * count as 0), in total and per platform. An install has one platform, so
+   * the platform averages add up to the total.
+   */
+  private async activesPerDay(w: RawWindow, days: number): Promise<Actives> {
     const rows = await this.prisma.$queryRaw<
-      { day: string; installs: Count }[]
+      { platform: string; installs: Count }[]
     >(Prisma.sql`
       /* usage:actives */
-      SELECT to_char(("occurredAt" ${PARIS})::date, 'YYYY-MM-DD') AS day,
-             count(DISTINCT "installId") AS installs
-      FROM "UsageEvent" WHERE ${this.inWindow(w)} GROUP BY 1`);
-    return round1(rows.reduce((s, r) => s + n(r.installs), 0) / days);
+      SELECT "platform", count(*) AS installs FROM (
+        SELECT DISTINCT ("occurredAt" ${PARIS})::date AS day, "installId", "platform"
+        FROM "UsageEvent" WHERE ${this.inWindow(w)}
+      ) d GROUP BY 1`);
+    return toActives(rows, days);
   }
 
-  private async distinctInstalls(w: RawWindow): Promise<number> {
+  private async distinctInstalls(
+    window: DistinctWindow,
+    w: RawWindow,
+  ): Promise<number> {
     const [row] = await this.prisma.$queryRaw<{ installs: Count }[]>(Prisma.sql`
-      /* usage:month */
+      ${DISTINCT_MARKERS[window]}
       SELECT count(DISTINCT "installId") AS installs FROM "UsageEvent" WHERE ${this.inWindow(w)}`);
     return n(row?.installs);
   }
@@ -302,15 +343,16 @@ export class AdminUsageQueryService {
     return toGrid(rows);
   }
 
-  private async activesAgg(r: DayRange): Promise<number> {
-    const [row] = await this.prisma.$queryRaw<
-      { avg: number | null }[]
+  /** Average over the aggregated days (same denominator for every platform). */
+  private async activesAgg(r: DayRange): Promise<Actives> {
+    const rows = await this.prisma.$queryRaw<
+      { platform: string; installs: Count; days: Count }[]
     >(Prisma.sql`
       /* usage:activesAgg */
-      SELECT avg(t)::float8 AS avg FROM (
-        SELECT sum("installs") AS t FROM "UsageDailyActive" WHERE ${this.inDays(r)} GROUP BY "day"
-      ) d`);
-    return round1(Number(row?.avg ?? 0));
+      SELECT "platform", sum("installs") AS installs,
+             (SELECT count(DISTINCT "day") FROM "UsageDailyActive" WHERE ${this.inDays(r)}) AS days
+      FROM "UsageDailyActive" WHERE ${this.inDays(r)} GROUP BY 1`);
+    return toActives(rows, n(rows[0]?.days));
   }
 
   private async platformsAgg(r: DayRange) {
@@ -356,6 +398,22 @@ function toGrid(
       grid[dow][hour] += n(r.count);
   }
   return grid;
+}
+
+function toActives(
+  rows: { platform: string; installs: Count }[],
+  days: number,
+): Actives {
+  const sums = { ios: 0, android: 0 };
+  for (const r of rows) {
+    if (r.platform === "ios" || r.platform === "android")
+      sums[r.platform] += n(r.installs);
+  }
+  const avg = (v: number) => (days > 0 ? round1(v / days) : 0);
+  return {
+    total: avg(sums.ios + sums.android),
+    byPlatform: { ios: avg(sums.ios), android: avg(sums.android) },
+  };
 }
 
 function toPlatforms(rows: { platform: string; count: Count }[]) {
