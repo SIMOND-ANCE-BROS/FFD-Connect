@@ -1,3 +1,10 @@
+#!/bin/sh
+# Versioned pre-commit hook (#623). Refuses the commit when dependencies are
+# missing (fresh worktree without `pnpm install`): see .githooks/_lib.sh.
+. "$(dirname "$0")/_lib.sh"
+require_deps node_modules/.modules.yaml node_modules/.bin/lint-staged
+set -e
+
 # Secret scan of the staged changes (#483). Reads the index only (git diff
 # --staged): the work tree and unstaged edits are never touched. Runs first so
 # a leaked key fails fast, before ESLint/Prettier. Pinned binary, see

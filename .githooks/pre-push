@@ -1,0 +1,11 @@
+#!/bin/sh
+# Versioned pre-push hook (#623). Refuses the push when dependencies are
+# missing (fresh worktree without `pnpm install`): see .githooks/_lib.sh.
+. "$(dirname "$0")/_lib.sh"
+# node-linker=hoisted (.npmrc): the apps' tsc/jest are linked at the root.
+require_deps node_modules/.modules.yaml node_modules/.bin/tsc node_modules/.bin/jest
+
+# Typecheck + unit tests impacted by the push (#254, #495). Logic and fallbacks
+# to the full suites: scripts/pre-push.sh. CI is the authority and is unchanged.
+# Never bypass with --no-verify; PRE_PUSH_FULL=1 forces the full suites.
+exec sh scripts/pre-push.sh "$@"

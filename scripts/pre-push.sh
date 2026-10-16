@@ -1,5 +1,5 @@
 #!/bin/sh
-# pre-push.sh — local safety net run by .husky/pre-push (#254, #495).
+# pre-push.sh — local safety net run by .githooks/pre-push (#254, #495).
 #
 # CI is the authority (full typecheck, lint, unit + integration + e2e on a real
 # DB). This hook catches the obvious before a push, cheaply enough that nobody
@@ -125,7 +125,7 @@ else
     case "$f" in
       # Workspace-wide inputs: install, toolchain, shared packages, this hook.
       package.json | pnpm-lock.yaml | pnpm-workspace.yaml | .npmrc | .nvmrc | \
-        tsconfig*.json | patches/* | packages/* | .husky/* | scripts/pre-push.sh)
+        tsconfig*.json | patches/* | packages/* | .githooks/* | scripts/pre-push.sh)
         set_full backend "workspace file changed: $f"
         set_full client "workspace file changed: $f"
         ;;

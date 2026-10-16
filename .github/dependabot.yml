@@ -414,7 +414,7 @@ updates:
   # tous les groupes et `ignore` par application ci-dessus (il a rouvert la
   # majeure @babel/runtime 8 que le bloc client ignore explicitement).
   # `open-pull-requests-limit: 0` coupe donc les PR de mise a jour de VERSION a
-  # la racine ; ses 11 devDeps d'outillage (husky, prettier, lint-staged...) se
+  # la racine ; ses 10 devDeps d'outillage (prettier, lint-staged...) se
   # bumpent a la main, et la porte nightly les couvre cote securite.
   #
   # CE BLOC NE PEUT PAS TAIRE UNE MISE A JOUR DE SECURITE, et il ne faut pas
