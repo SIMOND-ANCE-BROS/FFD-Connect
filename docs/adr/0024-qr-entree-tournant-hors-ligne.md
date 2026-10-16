@@ -49,6 +49,12 @@ Le cahier des charges (doc, § 3.1) évoque « signature RSA256 + régénératio
 
 6. **Rétrocompatibilité** : payload versionné. Les QR v2 et v1 restent acceptés en ligne comme avant ; le **pass Wallet garde le QR statique v2** (un pass ne se met pas à jour toutes les 30 s). Seule migration : une colonne nullable `checkInClaimedScanAt` (additive, ADR-0017).
 
+7. **QR tournant obligatoire, par compétition (décidé, #668)** : l'organisateur choisit compétition par compétition (`Competition.requireRotatingQr`, booléen, faux par défaut, migration additive). Par défaut le QR statique reste accepté, pour que le pass Wallet et les anciennes versions de l'app continuent de fonctionner pendant la transition. Option active :
+   - le check-in (staff et bénévole) refuse tout QR qui n'est pas un QR tournant v3 — v2, v1, JSON non signé, identifiant brut — avec « QR statique refusé : présentez le QR tournant de l'E-Licence », **dans tous les modes** (`off` compris), avant toute recherche en base ; et un QR v3 n'y passe que s'il est **`VALID`** (signature et fraîcheur), là aussi quel que soit le mode : la seule forme v3 ne prouve rien (sans cette règle, un QR v3 à signature bidon passait en `warn`/`off` et était résolu par son numéro de licence — relevé en revue de sécurité) ; sans clé configurée, rien ne vérifie, donc rien ne passe ;
+   - le scanner garde le réglage en cache par compétition (téléchargé à l'ouverture, `GET /competitions/:id`, public, comme les clés) et affiche hors ligne le même refus ;
+   - réglage modifiable par qui peut modifier la compétition (`CompetitionAccessService.assertCanManageCompetition` : club organisateur, staff, admin), depuis l'onglet Organisation de l'éditeur de compétition ;
+   - activation refusée (400) quand le serveur n'a pas de clé de signature du QR tournant : personne ne pourrait présenter de QR accepté.
+
 ## Alternatives Considered
 
 ### Alternative 1 : TOTP (secret partagé par licence)
@@ -87,7 +93,7 @@ Le cahier des charges (doc, § 3.1) évoque « signature RSA256 + régénératio
 
 ### Negative
 
-- Le QR statique v2 (pass Wallet, anciennes versions de l'app, snapshot) **reste accepté en ligne** : tant qu'il l'est, la protection contre la capture d'écran ne vaut que pour le QR v3. Le rendre obligatoire (par compétition ou globalement, y compris en `enforce`) est une décision ouverte, suivie dans #668.
+- Le QR statique v2 (pass Wallet, anciennes versions de l'app, snapshot) **reste accepté en ligne par défaut** : là où il l'est, la protection contre la capture d'écran ne vaut que pour le QR v3. **Décidé (#668)** : l'organisateur rend le QR tournant obligatoire compétition par compétition (point 7) ; le pass Wallet est alors refusé à l'entrée de cette compétition.
 - Le lot (~130 Ko) est stocké dans AsyncStorage, pas dans SecureStore (limite ~2 Ko par valeur) : quelqu'un qui extrait les données de l'app peut rejouer ses jetons pendant 12 h au plus — moins que le QR statique, qui y vit déjà pour toute la saison.
 - Hors ligne, le scanner ne sait pas si la personne est **inscrite** ni si ses droits sont payés : il ne le saura qu'à la synchronisation. Une liste d'inscrits par compétition téléchargée à l'avance (minimisée, expirée après l'épreuve) est une évolution possible.
 - Un licencié qui n'a jamais ouvert l'E-Licence en ligne dans les 12 h précédant l'entrée n'a pas de QR tournant : il retombe sur le QR statique.

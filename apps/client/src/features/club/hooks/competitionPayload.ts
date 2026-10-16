@@ -34,6 +34,8 @@ export interface CompetitionEditorForm {
   eventsDescription: string;
   ticketingUrl: string;
   layoutItems: LayoutItem[];
+  /** Rotating entry QR mandatory at check-in (#668). */
+  requireRotatingQr: boolean;
 }
 
 /** Editor statuses predating #417 (DRAFT/OPEN/CLOSED) don't exist in the API. */
@@ -77,6 +79,8 @@ export function buildCompetitionPayload(
     location: form.location,
     type: form.kind,
     eventsDescription: form.eventsDescription,
+    // Check-in at the entrance of a competition and of an event alike.
+    requireRotatingQr: form.requireRotatingQr,
     // An empty string fails @IsUrl: omit it instead.
     ...(ticketingUrl ? { ticketingUrl } : {}),
   };

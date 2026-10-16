@@ -147,4 +147,24 @@ describe("Competition management DTOs — club editor contract (#417)", () => {
     expect(await messagesOf(body, CreateCompetitionDto)).toEqual([]);
     expect(await messagesOf(body, UpdateCompetitionDto)).toEqual([]);
   });
+
+  it("accepts a boolean requireRotatingQr and refuses anything else (#668)", async () => {
+    expect(
+      await messagesOf({ requireRotatingQr: true }, UpdateCompetitionDto),
+    ).toEqual([]);
+    expect(
+      await messagesOf({ requireRotatingQr: "yes" }, UpdateCompetitionDto),
+    ).toEqual(["requireRotatingQr must be a boolean value"]);
+    expect(
+      await messagesOf(
+        {
+          title: "T",
+          date: "2026-06-01",
+          location: "Paris",
+          requireRotatingQr: false,
+        },
+        CreateCompetitionDto,
+      ),
+    ).toEqual([]);
+  });
 });

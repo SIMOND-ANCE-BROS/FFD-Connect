@@ -232,6 +232,16 @@ export const competitionDaysSelect = {
 } as const;
 
 /**
+ * What a check-in needs to know about the competition: its days (bounds of
+ * an offline replay's claimed scan time, #24) and whether the rotating entry
+ * QR is mandatory (#668).
+ */
+export const competitionCheckInPolicySelect = {
+  ...competitionDaysSelect,
+  requireRotatingQr: true,
+} as const;
+
+/**
  * Champs d'une licence nécessaires au lot de QR d'entrée tournants (#24) :
  * ce que le QR porte (id, numéro, nom du titulaire) et jusqu'à quand il peut
  * être émis. Rien d'autre (minimisation).

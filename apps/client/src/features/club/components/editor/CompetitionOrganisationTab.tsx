@@ -1,10 +1,11 @@
 import * as Clipboard from "expo-clipboard";
-import { Copy, Trophy, Users, X } from "lucide-react-native";
+import { Copy, QrCode, Trophy, Users, X } from "lucide-react-native";
 import React, { useRef } from "react";
 import {
   Alert,
   Modal,
   ScrollView,
+  Switch,
   TextInput,
   TouchableOpacity,
   View,
@@ -39,6 +40,9 @@ interface Props {
   handleGenerateVolunteerToken: () => Promise<void>;
   ticketingUrl: string;
   setTicketingUrl: (u: string) => void;
+  /** Rotating entry QR mandatory at check-in (#668). */
+  requireRotatingQr: boolean;
+  setRequireRotatingQr: (v: boolean) => void;
   layoutItems: LayoutItem[];
   showLayoutModal: boolean;
   setShowLayoutModal: (v: boolean) => void;
@@ -92,6 +96,8 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
   handleGenerateVolunteerToken,
   ticketingUrl,
   setTicketingUrl,
+  requireRotatingQr,
+  setRequireRotatingQr,
   layoutItems,
   showLayoutModal,
   setShowLayoutModal,
@@ -225,6 +231,52 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
             </View>
           </View>
         ) : null}
+        {/* QR d'entrée tournant obligatoire (#668, ADR-0024). */}
+        <View
+          style={[
+            styles.section,
+            { backgroundColor: theme.surface },
+            styles.mt16,
+          ]}
+        >
+          <View style={styles.infoRow}>
+            <View
+              style={[
+                styles.iconContainer,
+                { backgroundColor: `${theme.primary}20` },
+              ]}
+            >
+              <QrCode size={20} color={theme.primary} />
+            </View>
+            <View style={styles.flex1ML12}>
+              <AppText
+                variant="body"
+                weight="600"
+                style={{ color: theme.text }}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
+                QR tournant obligatoire
+              </AppText>
+            </View>
+            <Switch
+              testID="require-rotating-qr-switch"
+              value={requireRotatingQr}
+              onValueChange={setRequireRotatingQr}
+              accessibilityLabel="QR tournant obligatoire"
+              accessibilityHint="Refuse à l'entrée les QR statiques : pass Wallet et anciennes versions de l'application"
+            />
+          </View>
+          <AppText
+            variant="caption"
+            style={[styles.mt8, { color: theme.textSecondary }]}
+          >
+            À l'entrée, seul le QR tournant de l'E-Licence (il change toutes les
+            30 secondes) sera accepté. Les pass Apple Wallet et les anciennes
+            versions de l'application seront refusés : prévenez les participants
+            de mettre l'application à jour et d'ouvrir leur E-Licence.
+          </AppText>
+        </View>
 
         <View
           style={[

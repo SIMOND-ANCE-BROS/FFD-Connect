@@ -3,6 +3,7 @@ import { CheckinService } from "../../services/CheckinService";
 import {
   checkInOffline,
   purgeExpiredCheckins,
+  refreshCheckinPolicy,
   refreshEntryQrKeys,
 } from "../../services/offlineCheckin";
 import { useScannerLogic } from "../useScannerLogic";
@@ -18,6 +19,7 @@ jest.mock("expo-camera", () => ({
 jest.mock("../../services/offlineCheckin", () => ({
   checkInOffline: jest.fn(),
   refreshEntryQrKeys: jest.fn().mockResolvedValue(null),
+  refreshCheckinPolicy: jest.fn().mockResolvedValue(null),
   purgeExpiredCheckins: jest.fn().mockResolvedValue(0),
 }));
 
@@ -31,6 +33,13 @@ jest.mock("../../services/CheckinService", () => ({
 describe("useScannerLogic", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it("caches the competition's check-in policy when it opens (#668)", async () => {
+    await renderHook(() => useScannerLogic("comp-1"));
+    await waitFor(() =>
+      expect(refreshCheckinPolicy).toHaveBeenCalledWith("comp-1"),
+    );
   });
 
   it("toggles torch state", async () => {

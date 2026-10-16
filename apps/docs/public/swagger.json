@@ -19599,6 +19599,10 @@
                     "status": {
                       "type": "string"
                     },
+                    "requireRotatingQr": {
+                      "type": "boolean",
+                      "description": "QR d'entrée tournant obligatoire au check-in (#668) : les scanners le gardent en cache pour refuser aussi hors ligne un QR statique."
+                    },
                     "events": {
                       "type": "array",
                       "items": {
@@ -30980,6 +30984,12 @@
           "eventsDescription": {
             "type": "string",
             "description": "Programme (texte libre) — programme des épreuves / événement."
+          },
+          "requireRotatingQr": {
+            "type": "boolean",
+            "description": "QR d'entrée tournant obligatoire au check-in (#668, ADR-0024) : les QR statiques (v1/v2 — pass Wallet, anciennes versions de l'app) sont alors refusés, en ligne comme hors ligne. Désactivé par défaut. Refusé (400) si le QR tournant n'est pas configuré sur le serveur.",
+            "example": false,
+            "default": false
           }
         },
         "required": ["title", "date", "location"]
@@ -31046,6 +31056,12 @@
           "eventsDescription": {
             "type": "string",
             "description": "Programme (texte libre) — programme des épreuves / événement."
+          },
+          "requireRotatingQr": {
+            "type": "boolean",
+            "description": "QR d'entrée tournant obligatoire au check-in (#668, ADR-0024) : les QR statiques (v1/v2 — pass Wallet, anciennes versions de l'app) sont alors refusés, en ligne comme hors ligne. Désactivé par défaut. Refusé (400) si le QR tournant n'est pas configuré sur le serveur.",
+            "example": false,
+            "default": false
           }
         }
       },

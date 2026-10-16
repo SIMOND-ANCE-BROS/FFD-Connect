@@ -135,6 +135,7 @@ export const styles = StyleSheet.create({
   w100: { width: 100 },
   textCenter: { textAlign: "center" as const },
   mt6: { marginTop: 6 },
+  mt8: { marginTop: 8 },
   tagRowMT8: { flexDirection: "row", gap: 8, marginTop: 8 },
   mt16: { marginTop: 16 },
   flex1ML12: { flex: 1, marginLeft: 12 },

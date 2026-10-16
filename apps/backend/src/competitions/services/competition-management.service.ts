@@ -14,6 +14,7 @@ import {
   LEVELS_ALLOWED_FOR_PROXIMITE_CLASSIFICATRICE,
 } from "../../common/participation-rules";
 import { COMPETITION_LEVELS } from "../../common/age-group";
+import { EntryQrService } from "../../licenses/qr/entry-qr.service";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import {
@@ -25,6 +26,9 @@ import { CompetitionCacheService } from "./competition-cache.service";
 import { COMPETITION_BASE_SELECT } from "./competition-query.service";
 import { SyncResult } from "../sync.processor";
 
+export const ROTATING_QR_UNAVAILABLE_MESSAGE =
+  "Le QR d'entrée tournant n'est pas activé sur ce serveur : il ne peut pas être rendu obligatoire.";
+
 @Injectable()
 export class CompetitionManagementService {
   constructor(
@@ -32,6 +36,7 @@ export class CompetitionManagementService {
     private readonly cacheService: CompetitionCacheService,
     @InjectQueue("ffd-sync") private readonly syncQueue: Queue,
     private readonly redisService: RedisService,
+    private readonly entryQrService: EntryQrService,
   ) {}
 
   getRegulationConstants() {
@@ -93,6 +98,17 @@ export class CompetitionManagementService {
    * which is indistinguishable from having none — reject it rather than store
    * a value that silently does nothing.
    */
+  /**
+   * Making the rotating QR mandatory (#668) while the server cannot issue
+   * one (no Ed25519 key, ADR-0024) would lock every participant out: no app
+   * could show anything but a static QR. Disabling it is always allowed.
+   */
+  private assertRotatingQrAvailable(requireRotatingQr?: boolean) {
+    if (requireRotatingQr === true && !this.entryQrService.canIssue()) {
+      throw new BadRequestException(ROTATING_QR_UNAVAILABLE_MESSAGE);
+    }
+  }
+
   private assertDeadlineBeforeDate(deadline: Date, competitionDate: Date) {
     if (deadline.getTime() > competitionDate.getTime()) {
       throw new BadRequestException(
@@ -117,6 +133,7 @@ export class CompetitionManagementService {
         ? undefined
         : new Date(registrationDeadline);
     if (deadline) this.assertDeadlineBeforeDate(deadline, competitionDate);
+    this.assertRotatingQrAvailable(data.requireRotatingQr);
     return this.prisma.competition.create({
       data: {
         ...rest,
@@ -136,6 +153,7 @@ export class CompetitionManagementService {
 
   async update(id: string, data: UpdateCompetitionDto) {
     const { date, layout, registrationDeadline, ...rest } = data;
+    this.assertRotatingQrAvailable(data.requireRotatingQr);
     // `null` clears the deadline; `undefined` leaves it untouched.
     const deadline =
       registrationDeadline === undefined || registrationDeadline === null

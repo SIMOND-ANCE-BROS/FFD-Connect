@@ -193,6 +193,20 @@ export type OfflineEntryQrResult =
  * Vérification hors ligne d'un QR scanné : signature Ed25519 avec la clé
  * publique désignée par `k`, PUIS fraîcheur (±toleranceSteps pas).
  */
+/**
+ * Le QR se présente comme un QR tournant (v3), bien formé ou non. Faux pour
+ * un QR statique (v1/v2, pass Wallet, ancienne app) ou un contenu brut.
+ */
+export function claimsEntryQr(qrData: string): boolean {
+  try {
+    const raw: unknown = JSON.parse(qrData);
+    return isRecord(raw) && raw.v === ENTRY_QR_VERSION;
+  } catch {
+    // Contenu brut : pas un QR tournant.
+    return false;
+  }
+}
+
 export function verifyEntryQrOffline(
   qrData: string,
   keySet: EntryQrKeySet,
@@ -200,15 +214,9 @@ export function verifyEntryQrOffline(
 ): OfflineEntryQrResult {
   const payload = parseEntryQr(qrData);
   if (!payload) {
-    try {
-      const raw: unknown = JSON.parse(qrData);
-      if (isRecord(raw) && raw.v === ENTRY_QR_VERSION) {
-        return { status: "INVALID_SIGNATURE" };
-      }
-    } catch {
-      // Contenu brut : pas un QR tournant.
-    }
-    return { status: "NOT_ENTRY_QR" };
+    return claimsEntryQr(qrData)
+      ? { status: "INVALID_SIGNATURE" }
+      : { status: "NOT_ENTRY_QR" };
   }
   const key = keySet.keys.find((candidate) => candidate.kid === payload.k);
   const publicKey = key ? base64UrlToBytes(key.publicKey) : null;

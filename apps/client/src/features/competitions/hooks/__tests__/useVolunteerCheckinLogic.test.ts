@@ -5,6 +5,7 @@ import {
   checkInOffline,
   purgeExpiredCheckins,
   OFFLINE_CHECKIN_MESSAGES,
+  refreshCheckinPolicy,
   refreshEntryQrKeys,
 } from "../../../license/services/offlineCheckin";
 import { useVolunteerCheckinLogic } from "../useVolunteerCheckinLogic";
@@ -18,6 +19,7 @@ jest.mock("../../../license/services/offlineCheckin", () => {
     ...actual,
     checkInOffline: jest.fn(),
     refreshEntryQrKeys: jest.fn().mockResolvedValue(null),
+    refreshCheckinPolicy: jest.fn().mockResolvedValue(null),
     purgeExpiredCheckins: jest.fn().mockResolvedValue(0),
   };
 });
@@ -34,6 +36,8 @@ describe("useVolunteerCheckinLogic", () => {
     await renderHook(() => useVolunteerCheckinLogic("c1", "tok"));
     expect(refreshEntryQrKeys).toHaveBeenCalled();
     expect(purgeExpiredCheckins).toHaveBeenCalled();
+    // And the competition's check-in policy (#668).
+    expect(refreshCheckinPolicy).toHaveBeenCalledWith("c1");
   });
 
   it("checks in online and shows the result", async () => {
@@ -117,5 +121,47 @@ describe("useVolunteerCheckinLogic", () => {
     });
     expect(checkInOffline).not.toHaveBeenCalled();
     expect(Alert.alert).toHaveBeenCalledWith("Erreur", "QR non vérifié");
+  });
+
+  it("refuses a static QR offline when the competition requires the rotating QR (#668)", async () => {
+    checkInAsVolunteer.mockRejectedValue({ isAxiosError: true });
+    (checkInOffline as jest.Mock).mockResolvedValue({
+      status: "STATIC_QR_REFUSED",
+      queued: false,
+    });
+    const { result } = await renderHook(() =>
+      useVolunteerCheckinLogic("c1", "tok"),
+    );
+    await act(async () => {
+      await result.current.actions.handleBarCodeScanned("static");
+    });
+    expect(Alert.alert).toHaveBeenCalledWith(
+      "QR STATIQUE REFUSÉ",
+      "QR statique refusé : présentez le QR tournant de l'E-Licence",
+    );
+  });
+
+  it("shows the server refusal of a static QR online (#668)", async () => {
+    checkInAsVolunteer.mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        status: 400,
+        data: {
+          message:
+            "QR statique refusé : présentez le QR tournant de l'E-Licence",
+        },
+      },
+    });
+    const { result } = await renderHook(() =>
+      useVolunteerCheckinLogic("c1", "tok"),
+    );
+    await act(async () => {
+      await result.current.actions.handleBarCodeScanned("static");
+    });
+    expect(checkInOffline).not.toHaveBeenCalled();
+    expect(Alert.alert).toHaveBeenCalledWith(
+      "Erreur",
+      OFFLINE_CHECKIN_MESSAGES.STATIC_QR_REFUSED,
+    );
   });
 });

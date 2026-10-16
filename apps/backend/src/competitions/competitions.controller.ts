@@ -596,6 +596,11 @@ export class CompetitionsController {
         endDate: { type: "string", format: "date-time" },
         location: { type: "string" },
         status: { type: "string" },
+        requireRotatingQr: {
+          type: "boolean",
+          description:
+            "QR d'entrée tournant obligatoire au check-in (#668) : les scanners le gardent en cache pour refuser aussi hors ligne un QR statique.",
+        },
         events: {
           type: "array",
           items: {

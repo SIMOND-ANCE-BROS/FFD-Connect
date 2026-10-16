@@ -25,6 +25,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import {
   competitionPublicResultsSelect,
+  competitionCheckInPolicySelect,
   idOnlySelect,
   publicResultSelect,
   volunteerTokenAuthSelect,
@@ -36,7 +37,9 @@ import { publicResultDetails } from "../public-result";
 import {
   CompetitionResultsService,
   INVALID_SCANNED_AT_MESSAGE,
+  ROTATING_QR_NOT_VERIFIED_MESSAGE,
   SCANNED_AT_ROTATING_ONLY_MESSAGE,
+  STATIC_QR_REFUSED_MESSAGE,
 } from "./competition-results.service";
 
 const mockPrismaService = createMockPrismaService();
@@ -63,6 +66,14 @@ const mockCacheService = {
   invalidateResults: jest.fn().mockResolvedValue(null),
 };
 
+/** A competition held today that accepts static QRs (the default, #668). */
+const ordinaryCompetition = (overrides: Record<string, unknown> = {}) => ({
+  date: new Date(),
+  endDate: null,
+  requireRotatingQr: false,
+  ...overrides,
+});
+
 describe("CompetitionResultsService", () => {
   let service: CompetitionResultsService;
 
@@ -82,6 +93,10 @@ describe("CompetitionResultsService", () => {
 
     service = module.get<CompetitionResultsService>(CompetitionResultsService);
     jest.clearAllMocks();
+    // Check-in reads the competition first (#668): an ordinary one by default.
+    mockPrismaService.competition.findUnique.mockResolvedValue(
+      ordinaryCompetition(),
+    );
   });
 
   describe("getResults", () => {
@@ -931,6 +946,164 @@ describe("CompetitionResultsService", () => {
       expect(mockPrismaService.registration.updateMany).not.toHaveBeenCalled();
     });
 
+    describe("rotating QR mandatory for the competition (#668)", () => {
+      const serviceIn = (mode: "off" | "warn" | "enforce") =>
+        new CompetitionResultsService(
+          mockPrismaService as unknown as PrismaService,
+          mockRedisService as unknown as RedisService,
+          mockCacheService as unknown as CompetitionCacheService,
+          makeQrService({
+            QR_SIGNING_SECRET: QR_SECRET,
+            QR_SIGNATURE_MODE: mode,
+            ENTRY_QR_SIGNING_KEY: PEM,
+          }),
+        );
+      const v2 = () =>
+        buildSignedLicenseQr(
+          {
+            id: "lic-1",
+            number: "FFD-123456",
+            validUntil: new Date(Date.now() + 30 * 86_400_000),
+          },
+          QR_SECRET,
+        );
+      const requiring = (requireRotatingQr: boolean) =>
+        mockPrismaService.competition.findUnique.mockResolvedValue(
+          ordinaryCompetition({ requireRotatingQr }),
+        );
+
+      it.each(["off", "warn", "enforce"] as const)(
+        "refuses a genuine static v2 QR (Wallet pass) in %s mode",
+        async (mode) => {
+          requiring(true);
+          await expect(serviceIn(mode).checkIn("c1", v2())).rejects.toThrow(
+            new BadRequestException(STATIC_QR_REFUSED_MESSAGE),
+          );
+          // Refused before any lookup: nothing is read nor checked in.
+          expect(mockPrismaService.license.findUnique).not.toHaveBeenCalled();
+          expect(
+            mockPrismaService.registration.updateMany,
+          ).not.toHaveBeenCalled();
+          expect(mockPrismaService.competition.findUnique).toHaveBeenCalledWith(
+            { where: { id: "c1" }, select: competitionCheckInPolicySelect },
+          );
+        },
+      );
+
+      it.each([
+        ["a legacy unsigned JSON QR", '{"id":"FFD-123456"}'],
+        ["a raw licence number", "FFD-123456"],
+        ["a v3 QR with unusable fields", '{"v":3,"id":"FFD-123456"}'],
+      ])("refuses %s", async (_label, qrData) => {
+        requiring(true);
+        await expect(serviceIn("warn").checkIn("c1", qrData)).rejects.toThrow(
+          STATIC_QR_REFUSED_MESSAGE,
+        );
+        expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+      });
+
+      // Security review: the v3 SHAPE alone must not pass — `warn` and `off`
+      // accept a v3 QR whose signature does not verify, and would resolve it
+      // by the licence number it names.
+      const forgedV3 = () =>
+        JSON.stringify({
+          v: 3,
+          k: ENTRY_QR_GOLDEN_VECTOR.keyId,
+          id: "FFD-123456",
+          lid: "lic-1",
+          nm: "DOE John",
+          t: entryQrStep(new Date()),
+          sig: "A".repeat(86),
+        });
+
+      it.each(["off", "warn", "enforce"] as const)(
+        "refuses a forged rotating QR (junk signature) in %s mode",
+        async (mode) => {
+          requiring(true);
+          await expect(
+            serviceIn(mode).checkIn("c1", forgedV3()),
+          ).rejects.toThrow(BadRequestException);
+          expect(mockPrismaService.license.findUnique).not.toHaveBeenCalled();
+          expect(mockPrismaService.user.findUnique).not.toHaveBeenCalled();
+          expect(
+            mockPrismaService.registration.updateMany,
+          ).not.toHaveBeenCalled();
+        },
+      );
+
+      it("accepts that forged QR (with a warning) only where the rotating QR is not required", async () => {
+        requiring(false);
+        const result = await serviceIn("warn").checkIn("c1", forgedV3());
+        expect(result.qrVerification.status).toBe("INVALID_SIGNATURE");
+      });
+
+      it("refuses a stale rotating QR even in off mode", async () => {
+        requiring(true);
+        await expect(
+          serviceIn("off").checkIn(
+            "c1",
+            entryQrAt(new Date(Date.now() - 5 * 60_000)),
+          ),
+        ).rejects.toThrow(ROTATING_QR_NOT_VERIFIED_MESSAGE);
+      });
+
+      it("fails closed when the server has no entry QR key: nothing verifies", async () => {
+        requiring(true);
+        const noKey = new CompetitionResultsService(
+          mockPrismaService as unknown as PrismaService,
+          mockRedisService as unknown as RedisService,
+          mockCacheService as unknown as CompetitionCacheService,
+          makeQrService({
+            QR_SIGNING_SECRET: QR_SECRET,
+            QR_SIGNATURE_MODE: "warn",
+          }),
+        );
+        await expect(
+          noKey.checkIn("c1", entryQrAt(new Date())),
+        ).rejects.toThrow(BadRequestException);
+        await expect(noKey.checkIn("c1", v2())).rejects.toThrow(
+          STATIC_QR_REFUSED_MESSAGE,
+        );
+        expect(
+          mockPrismaService.registration.updateMany,
+        ).not.toHaveBeenCalled();
+      });
+
+      it("checks in a fresh rotating QR", async () => {
+        requiring(true);
+        const result = await serviceIn("enforce").checkIn(
+          "c1",
+          entryQrAt(new Date()),
+        );
+        expect(result.registrations[0].status).toBe("SUCCESS");
+        expect(result.qrVerification.status).toBe("VALID");
+      });
+
+      it("still refuses a stale rotating QR, with its own reason", async () => {
+        requiring(true);
+        await expect(
+          serviceIn("enforce").checkIn(
+            "c1",
+            entryQrAt(new Date(Date.now() - 5 * 60_000)),
+          ),
+        ).rejects.toThrow("QR tournant périmé");
+      });
+
+      it("accepts the static v2 QR when the competition does not require it", async () => {
+        requiring(false);
+        const result = await serviceIn("enforce").checkIn("c1", v2());
+        expect(result.registrations[0].status).toBe("SUCCESS");
+      });
+
+      it("refuses a check-in for an unknown competition", async () => {
+        mockPrismaService.competition.findUnique.mockResolvedValue(null);
+        await expect(
+          serviceIn("enforce").checkIn("c1", entryQrAt(new Date())),
+        ).rejects.toThrow(NotFoundException);
+        expect(mockPrismaService.license.findUnique).not.toHaveBeenCalled();
+      });
+    });
+
     describe("offline replay with a claimed scan time", () => {
       function withMode(mode: "off" | "warn" | "enforce") {
         return new CompetitionResultsService(
@@ -946,10 +1119,9 @@ describe("CompetitionResultsService", () => {
       }
       /** Competition held on the day of `instant`. */
       const competitionOn = (instant: Date, endDate: Date | null = null) =>
-        mockPrismaService.competition.findUnique.mockResolvedValue({
-          date: instant,
-          endDate,
-        });
+        mockPrismaService.competition.findUnique.mockResolvedValue(
+          ordinaryCompetition({ date: instant, endDate }),
+        );
 
       it("verifies the token as of the claimed scan, but dates the check-in at receipt", async () => {
         const scannedAt = new Date(Date.now() - 20 * 60_000);
@@ -972,7 +1144,7 @@ describe("CompetitionResultsService", () => {
         expect(call.data.checkInTime.getTime()).toBeGreaterThanOrEqual(before);
         expect(mockPrismaService.competition.findUnique).toHaveBeenCalledWith({
           where: { id: "c1" },
-          select: { date: true, endDate: true },
+          select: competitionCheckInPolicySelect,
         });
       });
 
@@ -981,7 +1153,6 @@ describe("CompetitionResultsService", () => {
         const call = mockPrismaService.registration.updateMany.mock
           .calls[0][0] as { data: { checkInClaimedScanAt: Date | null } };
         expect(call.data.checkInClaimedScanAt).toBeNull();
-        expect(mockPrismaService.competition.findUnique).not.toHaveBeenCalled();
       });
 
       it.each(["off", "warn", "enforce"] as const)(
@@ -1044,7 +1215,9 @@ describe("CompetitionResultsService", () => {
         await expect(
           withMode("warn").checkIn("c1", v2, new Date().toISOString()),
         ).rejects.toThrow(SCANNED_AT_ROTATING_ONLY_MESSAGE);
-        expect(mockPrismaService.competition.findUnique).not.toHaveBeenCalled();
+        expect(
+          mockPrismaService.registration.updateMany,
+        ).not.toHaveBeenCalled();
       });
 
       it("does not drop a genuine offline replay when the mode is off", async () => {

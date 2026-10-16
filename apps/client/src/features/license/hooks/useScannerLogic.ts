@@ -11,6 +11,7 @@ import { CheckinResponse, CheckinService } from "../services/CheckinService";
 import {
   checkInOffline,
   purgeExpiredCheckins,
+  refreshCheckinPolicy,
   refreshEntryQrKeys,
   type OfflineCheckinResult,
 } from "../services/offlineCheckin";
@@ -67,6 +68,12 @@ export const useScannerLogic = (initialCompetitionId?: string) => {
     // Queued scans older than 12 h (and volunteer tokens) never linger.
     purgeExpiredCheckins().catch(() => {});
   }, []);
+
+  // The competition's check-in policy (#668), cached so a static QR is
+  // refused offline too when the rotating QR is mandatory.
+  useEffect(() => {
+    if (competitionId) refreshCheckinPolicy(competitionId).catch(() => {});
+  }, [competitionId]);
 
   // Initial Permission Request — une seule fois, et seulement si iOS accepte
   // encore d'afficher le prompt (sinon requestPermission() se résout en silence

@@ -94,6 +94,10 @@ model Competition {
   // jour conditionnelle avant l'envoi, la notification ne part qu'une fois
   // même si deux imports se croisent.
   resultsNotifiedAt      DateTime?
+  // QR d'entrée tournant obligatoire (#668, ADR-0024) : au check-in, les QR
+  // statiques v1/v2 (pass Wallet, anciennes versions de l'app) sont refusés.
+  // Désactivé par défaut pour la transition. Lu par clé primaire : pas d'index.
+  requireRotatingQr      Boolean          @default(false)
   seatBookings           SeatBooking[]
 
   @@index([date])

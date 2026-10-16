@@ -52,6 +52,9 @@ export const COMPETITION_BASE_SELECT = {
   eventsSource: true,
   status: true,
   delayMinutes: true,
+  // Rotating entry QR mandatory at check-in (#668): read by the scanners,
+  // which cache it to refuse a static QR offline too.
+  requireRotatingQr: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.CompetitionSelect;
