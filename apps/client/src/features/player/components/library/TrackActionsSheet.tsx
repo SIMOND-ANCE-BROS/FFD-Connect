@@ -26,7 +26,8 @@ interface TrackActionsSheetProps {
   onAddToQueue: (track: TrackData) => void;
   onExtraAction: (track: TrackData) => void;
   /**
-   * « Blacklister le titre » (#561): given only when the active role is ADMIN.
+   * « Blacklister le titre » (#561): given only to an ADMIN account,
+   * whatever the active space (#696).
    * The server enforces the role too (403 otherwise).
    */
   onBlacklist?: (track: TrackData) => void;

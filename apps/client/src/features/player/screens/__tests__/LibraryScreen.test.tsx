@@ -548,8 +548,6 @@ describe("LibraryScreen", () => {
         ["CLUB", ["CLUB"]],
         ["STAFF", ["STAFF"]],
         ["GUEST", ["GUEST"]],
-        // Account holding ADMIN but browsing another space: not offered.
-        ["LICENSEE", ["ADMIN", "LICENSEE"]],
       ])("is not offered in the %s space (roles %j)", async (role, roles) => {
         mockAuthState.role = role;
         mockAuthState.roles = roles;
@@ -563,6 +561,27 @@ describe("LibraryScreen", () => {
         expect(getByTestId("track-action-play-next")).toBeTruthy();
         expect(queryByTestId("track-action-blacklist")).toBeNull();
       });
+
+      // #696: an ADMIN account moderates from any space, not only the ADMIN one.
+      it.each([
+        ["LICENSEE", ["ADMIN", "LICENSEE"]],
+        ["CLUB", ["ADMIN", "CLUB"]],
+        ["STAFF", ["ADMIN", "STAFF"]],
+      ])(
+        "is offered in the %s space to an ADMIN account (roles %j)",
+        async (role, roles) => {
+          mockAuthState.role = role;
+          mockAuthState.roles = roles;
+          withTrack();
+          const { getByTestId } = await render(
+            <LibraryScreen {...createTestProps()} />,
+          );
+
+          await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+
+          expect(getByTestId("track-action-blacklist")).toBeTruthy();
+        },
+      );
 
       it("is offered in the ADMIN space, with an accessible label and hint", async () => {
         mockAuthState.role = "ADMIN";
