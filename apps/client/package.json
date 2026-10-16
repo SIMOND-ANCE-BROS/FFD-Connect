@@ -72,7 +72,7 @@
     "expo-sharing": "~57.0.22",
     "expo-splash-screen": "~57.0.9",
     "expo-updates": "~57.0.25",
-    "lucide-react-native": "^1.48.0",
+    "lucide-react-native": "^1.54.0",
     "qrcode": "^1.5.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
