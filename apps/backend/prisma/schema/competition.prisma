@@ -90,6 +90,10 @@ model Competition {
   // l'éditeur club (#442). Non nul : la synchro FFD ne remplace plus ni ne
   // complète les épreuves (la saisie du club fait foi).
   programEditedAt        DateTime?
+  // Envoi de « Résultats disponibles » réservé (#652) : posé par une mise à
+  // jour conditionnelle avant l'envoi, la notification ne part qu'une fois
+  // même si deux imports se croisent.
+  resultsNotifiedAt      DateTime?
   seatBookings           SeatBooking[]
 
   @@index([date])
@@ -165,17 +169,33 @@ model Result {
   round     String
   ranking   Int
   details   Json?
-  // Import de résultats (#652) : empreinte SHA-256 du couple dans le fichier
-  // importé (dossard, sinon libellé), jamais le nom en clair. Rend l'import
-  // rejouable (une ligne par couple, épreuve et tour) ; null pour les lignes
-  // créées autrement (seeds, tests).
+  // Import de résultats (#652) : empreinte HMAC-SHA-256 (clé serveur) du
+  // couple dans le fichier importé (tour normalisé + dossard, sinon libellé),
+  // jamais le nom en clair. Rend l'import rejouable (une ligne par couple,
+  // épreuve et tour) ; null pour les lignes créées autrement (seeds, tests).
+  // Conservée à l'anonymisation : un nouvel import retrouve la ligne et ne la
+  // recrée pas avec le nom.
   importKey String?
+  // Second membre reconnu du couple (#652), sans clé étrangère comme userId :
+  // le palmarès et la notification le lisent, la suppression de son compte
+  // l'efface et expurge sa moitié du libellé (« Partenaire supprimé »).
+  partnerUserId String?
   createdAt DateTime @default(now())
   event     Event    @relation(fields: [eventId], references: [id])
 
-  @@unique([eventId, round, importKey]) // idempotence de l'import (#652)
-  @@index([userId, createdAt]) // résultats d'un user triés par date
+  @@unique([eventId, importKey]) // idempotence de l'import (#652)
+  @@index([userId, createdAt])
+  @@index([partnerUserId]) // palmarès / effacement du second membre (#652) // résultats d'un user triés par date
   @@index([eventId])           // lookup résultats par épreuve (career-query)
+}
+
+/// Licence d'un compte supprimé (#652), sous forme d'empreinte HMAC-SHA-256
+/// (clé serveur) du numéro normalisé : un import de résultats ultérieur qui
+/// porte ce numéro crée la ligne déjà anonymisée, sans jamais conserver le
+/// numéro ni le nom. Aucune clé étrangère : la ligne survit au compte.
+model ErasedResultIdentity {
+  fingerprint String   @id
+  createdAt   DateTime @default(now())
 }
 
 model ScheduleItem {

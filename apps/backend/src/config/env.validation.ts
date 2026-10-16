@@ -278,6 +278,16 @@ class EnvironmentVariables {
   @IsOptional()
   QR_SIGNING_SECRET?: string;
 
+  // Clé HMAC de pseudonymisation des résultats importés (#652) : empreinte
+  // des couples (`Result.importKey`) et des licences des comptes supprimés.
+  // Alimentée par Key Vault, ≥ 32 caractères, à NE PAS changer une fois des
+  // résultats importés (un réimport ne retrouverait plus ses lignes).
+  // Absente en production ⇒ import des résultats refusé (503). Hors
+  // production, une clé de développement fixe est utilisée.
+  @IsString()
+  @IsOptional()
+  RESULTS_PSEUDONYMISATION_KEY?: string;
+
   // Vérification au check-in : off | warn (défaut) | enforce.
   @IsIn(["off", "warn", "enforce"])
   @IsOptional()

@@ -1,3 +1,5 @@
+import { normalizeLicenseNumber } from "../../licenses/license-number.util";
+
 /**
  * Parser of a competition results file (#652).
  *
@@ -15,8 +17,9 @@
  *   - couple       couple label as published, e.g. « Martin / Durand »
  *   - dossard      bib (optional)
  *   - club         club (optional)
- *   - licences     licence numbers of the couple, separated by `|`, `/` or
- *                  spaces (optional) — used to link the result to accounts
+ *   - licences     licence numbers of the couple, separated by `|`
+ *                  (optional, LICENSE_NUMBER_PATTERN, ≤ 32 characters) —
+ *                  used to link the result to accounts, never stored
  *   - statut       e.g. QUALIFIED / ELIMINATED (optional)
  *   - participants number of couples in the round (optional)
  */
@@ -63,33 +66,35 @@ type Column =
   | "status"
   | "totalParticipants";
 
-const HEADER_ALIASES: Partial<Record<string, Column>> = {
-  epreuve: "eventId",
-  epreuveid: "eventId",
-  eventid: "eventId",
-  event: "eventId",
-  tour: "round",
-  round: "round",
-  classement: "ranking",
-  rang: "ranking",
-  place: "ranking",
-  ranking: "ranking",
-  couple: "participant",
-  participant: "participant",
-  nom: "participant",
-  dossard: "bib",
-  bib: "bib",
-  club: "club",
-  licences: "licences",
-  licence: "licences",
-  licenses: "licences",
-  license: "licences",
-  statut: "status",
-  status: "status",
-  participants: "totalParticipants",
-  total: "totalParticipants",
-  totalparticipants: "totalParticipants",
-};
+const HEADER_ALIASES = new Map<string, Column>(
+  Object.entries({
+    epreuve: "eventId",
+    epreuveid: "eventId",
+    eventid: "eventId",
+    event: "eventId",
+    tour: "round",
+    round: "round",
+    classement: "ranking",
+    rang: "ranking",
+    place: "ranking",
+    ranking: "ranking",
+    couple: "participant",
+    participant: "participant",
+    nom: "participant",
+    dossard: "bib",
+    bib: "bib",
+    club: "club",
+    licences: "licences",
+    licence: "licences",
+    licenses: "licences",
+    license: "licences",
+    statut: "status",
+    status: "status",
+    participants: "totalParticipants",
+    total: "totalParticipants",
+    totalparticipants: "totalParticipants",
+  } satisfies Record<string, Column>),
+);
 
 const REQUIRED_COLUMNS: readonly Column[] = [
   "eventId",
@@ -199,7 +204,7 @@ export function parseResultsCsv(text: string): ResultsCsvParseOutput {
   }
   const columnIndex = new Map<Column, number>();
   header.fields.forEach((name, index) => {
-    const column = HEADER_ALIASES[normalizeHeader(name)];
+    const column = HEADER_ALIASES.get(normalizeHeader(name));
     if (column && !columnIndex.has(column)) columnIndex.set(column, index);
   });
   const missing = REQUIRED_COLUMNS.filter((c) => !columnIndex.has(c));
@@ -272,17 +277,22 @@ export function parseResultsCsv(text: string): ResultsCsvParseOutput {
     if (totalRaw && totalParticipants === null) {
       lineErrors.push("nombre de participants invalide");
     }
+    // Separated by `|` only: a licence number may itself hold spaces, dots,
+    // slashes or dashes (LICENSE_NUMBER_PATTERN).
+    const rawLicences = get("licences")
+      .split("|")
+      .map((n) => n.trim())
+      .filter((n) => n !== "");
     const licenceNumbers = [
       ...new Set(
-        get("licences")
-          .split(/[|/\s]+/)
-          .map((n) => n.trim())
-          .filter((n) => n !== ""),
+        rawLicences
+          .map((n) => normalizeLicenseNumber(n))
+          .filter((n): n is string => n !== null),
       ),
     ];
     if (
-      licenceNumbers.length > MAX_LICENCES_PER_ROW ||
-      licenceNumbers.some((n) => n.length > MAX_SHORT_FIELD_LENGTH)
+      rawLicences.length > MAX_LICENCES_PER_ROW ||
+      licenceNumbers.length !== new Set(rawLicences).size
     ) {
       lineErrors.push("numéros de licence invalides");
     }

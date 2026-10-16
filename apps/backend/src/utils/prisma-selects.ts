@@ -370,8 +370,38 @@ export const resultImportExistingSelect = {
   round: true,
   importKey: true,
   userId: true,
+  partnerUserId: true,
   ranking: true,
   details: true,
+} as const;
+
+/**
+ * Import de résultats (#652) : ligne anonymisée d'une épreuve, comparée par
+ * tour normalisé + rang pour ne jamais recréer un couple effacé avec son nom.
+ */
+export const resultTombstoneSelect = {
+  eventId: true,
+  round: true,
+  ranking: true,
+} as const;
+
+/** Numéro de licence seul (licences retirées, licences d'un compte supprimé). */
+export const licenseNumberSelect = {
+  number: true,
+} as const;
+
+/** Empreinte seule d'une licence de compte supprimé (#652). */
+export const erasedResultIdentitySelect = {
+  fingerprint: true,
+} as const;
+
+/**
+ * Suppression de compte (#652) : licence du compte, avec les numéros qu'elle
+ * a portés avant un changement, pour en garder l'empreinte.
+ */
+export const licenseNumbersOfUserSelect = {
+  id: true,
+  number: true,
 } as const;
 
 /** Import de résultats (#652) : licence → compte, pour rattacher un couple. */
@@ -385,11 +415,20 @@ export const registrationBibUserSelect = {
   eventId: true,
   bibNumber: true,
   userId: true,
+  partnerUserId: true,
+} as const;
+
+/** « Résultats disponibles » (#652) : titre et réservation de l'envoi. */
+export const competitionResultsNotificationSelect = {
+  id: true,
+  title: true,
+  resultsNotifiedAt: true,
 } as const;
 
 /** Titulaire d'un résultat (destinataires de « Résultats disponibles », #652). */
 export const resultOwnerSelect = {
   userId: true,
+  partnerUserId: true,
 } as const;
 
 /** Épreuves d'une compétition avec leurs résultats publics, classés. */

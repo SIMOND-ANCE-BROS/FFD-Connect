@@ -27,6 +27,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
 import { OptionalJwtAuthGuard } from "../auth/optional-jwt-auth.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { PaginationParamsDto } from "../common/dto/pagination-params.dto";
@@ -778,14 +779,16 @@ export class CompetitionsController {
 
   @Post(":id/results/import")
   @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard, RolesGuard, ThrottlerUserGuard)
+  // Never through « connecté en tant que » (#545): the audit row names the
+  // real author of an import that publishes third parties' names.
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, RolesGuard, ThrottlerUserGuard)
   @Roles(UserRole.STAFF, UserRole.ADMIN)
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Importe les résultats publiés d'une compétition (CSV)",
     description:
-      "STAFF et ADMIN. Importe le classement publié (une ligne par couple, épreuve et tour). Rejouable : un couple déjà importé pour la même épreuve et le même tour est mis à jour, jamais dupliqué. Tout ou rien : une ligne invalide, une épreuve inconnue ou un couple en double rejette le fichier (400, lignes en erreur), rien n'est écrit. Chaque couple est rattaché au compte d'un de ses numéros de licence, sinon à l'inscription portant le même dossard. Un résultat anonymisé par une suppression de compte n'est jamais réécrit. Déclenche la notification « Résultats disponibles » (une seule fois par compétition).",
+      "STAFF et ADMIN. Importe le classement publié (une ligne par couple, épreuve et tour). Rejouable : un couple déjà importé pour la même épreuve et le même tour est mis à jour, jamais dupliqué. Tout ou rien : une ligne invalide, une épreuve inconnue ou un couple en double rejette le fichier (400, lignes en erreur), rien n'est écrit. Chaque couple est rattaché aux comptes de ses numéros de licence (jamais un numéro retiré) ; une ligne sans licence l'est à l'inscription portant le même dossard. Un résultat anonymisé par une suppression de compte n'est jamais réécrit ni recréé avec le nom ; une ligne portant la licence d'un compte supprimé est écrite anonymisée. Chaque import est tracé au journal d'audit (auteur, compteurs). Déclenche la notification « Résultats disponibles » (une seule fois par compétition).",
   })
   @ApiParam({ name: "id", description: "ID de la compétition" })
   @ApiBody({ type: ImportResultsDto })
@@ -794,12 +797,21 @@ export class CompetitionsController {
     status: 400,
     description: "Fichier invalide : liste des lignes en erreur",
   })
+  @ApiResponse({
+    status: 403,
+    description: "Rôle insuffisant ou session « connecté en tant que »",
+  })
   @ApiResponse({ status: 404, description: "Compétition non trouvée" })
+  @ApiResponse({
+    status: 503,
+    description: "Clé de pseudonymisation des résultats non configurée",
+  })
   importResults(
     @Param("id") id: string,
     @Body() body: ImportResultsDto,
+    @Request() req: RequestWithUser,
   ): Promise<ImportResultsReportDto> {
-    return this.resultsImportService.importCsv(id, body.csv);
+    return this.resultsImportService.importCsv(id, body.csv, req.user.userId);
   }
 
   @Post(":id/unregister")

@@ -47,6 +47,8 @@ export const AUDIT_ACTIONS = [
   "LICENSE_RENEWAL_DOCUMENT_VIEW",
   "LICENSE_RENEWAL_APPROVE",
   "LICENSE_RENEWAL_REJECT",
+  // Published results imported for a competition (#652): counts only.
+  "COMPETITION_RESULTS_IMPORT",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export const AUDIT_TARGET_TYPES = [
@@ -55,6 +57,7 @@ export const AUDIT_TARGET_TYPES = [
   "TRACK_CORRECTION",
   "TRACK",
   "LICENSE_RENEWAL",
+  "COMPETITION",
 ] as const;
 export type AuditTargetType = (typeof AUDIT_TARGET_TYPES)[number];
 

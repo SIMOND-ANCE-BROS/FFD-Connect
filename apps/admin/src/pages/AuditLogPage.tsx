@@ -19,13 +19,16 @@ const PAGE_SIZE = 50;
 
 const DELETIONS: AuditLogEntryDto['action'][] = ['USER_DELETE', 'CLUB_DELETE', 'TRACK_DELETE'];
 
-const TARGET_LINKS: Record<AuditLogEntryDto['targetType'], { path: string; label: string }> = {
-  USER: { path: 'users', label: 'Voir la fiche' },
-  CLUB: { path: 'clubs', label: 'Voir le club' },
-  TRACK_CORRECTION: { path: 'moderation', label: 'Voir la proposition' },
-  TRACK: { path: 'tracks', label: 'Voir la musique' },
-  LICENSE_RENEWAL: { path: 'license-renewals', label: 'Voir la demande' },
-};
+// null: the back-office has no record page for that target (competitions).
+const TARGET_LINKS: Record<AuditLogEntryDto['targetType'], { path: string; label: string } | null> =
+  {
+    USER: { path: 'users', label: 'Voir la fiche' },
+    CLUB: { path: 'clubs', label: 'Voir le club' },
+    TRACK_CORRECTION: { path: 'moderation', label: 'Voir la proposition' },
+    TRACK: { path: 'tracks', label: 'Voir la musique' },
+    LICENSE_RENEWAL: { path: 'license-renewals', label: 'Voir la demande' },
+    COMPETITION: null,
+  };
 
 /**
  * Moderation rows carry the track id for the audit trail only: shown as a raw
@@ -58,23 +61,23 @@ function visibleChange(entry: AuditLogEntryDto) {
 }
 
 /** Record page of the row's target; none once it was deleted. */
-const targetPath = (entry: AuditLogEntryDto): string | null =>
-  DELETIONS.includes(entry.action)
-    ? null
-    : `/${TARGET_LINKS[entry.targetType].path}/${entry.targetId}`;
+const targetPath = (entry: AuditLogEntryDto): string | null => {
+  const link = TARGET_LINKS[entry.targetType];
+  return DELETIONS.includes(entry.action) || !link ? null : `/${link.path}/${entry.targetId}`;
+};
 
 function Target({ entry }: { entry: AuditLogEntryDto }) {
   const path = targetPath(entry);
   if (!path) {
     return (
       <Text size="sm" c="dimmed">
-        Supprimé
+        {TARGET_LINKS[entry.targetType] ? 'Supprimé' : '—'}
       </Text>
     );
   }
   return (
     <Anchor component={Link} to={path}>
-      {TARGET_LINKS[entry.targetType].label}
+      {TARGET_LINKS[entry.targetType]?.label}
     </Anchor>
   );
 }

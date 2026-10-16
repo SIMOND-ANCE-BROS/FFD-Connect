@@ -221,7 +221,7 @@ describe("CareerQueryService", () => {
   // getResultsForUser
   // ---------------------------------------------------------------------------
   describe("getResultsForUser", () => {
-    it("queries the user's results by userId only, without the registrations (#652)", async () => {
+    it("queries the results the user holds or is the recognised partner of, without the registrations (#652)", async () => {
       prisma.result.findMany.mockResolvedValue([]);
       prisma.competition.findMany.mockResolvedValue([]);
 
@@ -229,7 +229,10 @@ describe("CareerQueryService", () => {
 
       expect(result).toEqual([]);
       expect(prisma.result.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { userId: "user-1" }, take: 1000 }),
+        expect.objectContaining({
+          where: { OR: [{ userId: "user-1" }, { partnerUserId: "user-1" }] },
+          take: 1000,
+        }),
       );
     });
 

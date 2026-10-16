@@ -3,6 +3,7 @@ import { BullModule } from "@nestjs/bullmq";
 import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
+import { AdminAuditModule } from "../admin/admin-audit.module";
 import { ClubsModule } from "../clubs/clubs.module";
 import { LicenseQrModule } from "../licenses/qr/license-qr.module";
 import { RedisModule } from "../redis/redis.module";
@@ -26,6 +27,7 @@ import { SyncProcessor } from "./sync.processor";
 
 @Module({
   imports: [
+    AdminAuditModule,
     HttpModule,
     RedisModule,
     ClubsModule,

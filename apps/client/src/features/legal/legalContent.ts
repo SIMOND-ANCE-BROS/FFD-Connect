@@ -92,7 +92,7 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
 
   privacy: {
     title: "Politique de confidentialité",
-    updatedAt: "15 octobre 2026",
+    updatedAt: "16 octobre 2026",
     sections: [
       {
         heading: "Responsable de traitement",
@@ -117,6 +117,10 @@ export const LEGAL_DOCUMENTS: Record<LegalDoc, LegalDocument> = {
       {
         heading: "Accès support",
         body: "Pour répondre à une demande d'assistance, un administrateur ou un membre du staff peut ouvrir l'application telle que vous la voyez (« se connecter en tant que »). Cet accès est encadré : un administrateur ne peut jamais être ciblé, un membre du staff ne peut cibler qu'un licencié ou un club et doit indiquer un motif (facultatif pour l'administrateur). La session dure 15 minutes, sans renouvellement, et certaines actions sensibles (export, suppression du compte, changement de mot de passe) sont bloquées pendant sa durée.\nChaque accès est journalisé : date, motif, rôle de l'intervenant et date de fin. Ces informations figurent dans votre export, sans l'identité de l'intervenant ni son adresse IP. Ces traces sont conservées comme piste d'audit, ne sont pas purgées automatiquement et subsistent après la suppression du compte ; leur durée de conservation n'est pas encore fixée.",
+      },
+      {
+        heading: "Résultats de compétition",
+        body: "Les classements affichés sont ceux que l'organisateur de la compétition publie, importés par un administrateur : épreuve, tour, rang, nom du couple, dossard, club et, lorsqu'ils figurent au classement, les numéros de licence. Ils nomment aussi des danseurs sans compte FFD Connect.\n• Les numéros de licence servent uniquement à rattacher un résultat à votre compte (palmarès, notification) et ne sont pas conservés avec le résultat.\n• Base légale : intérêt légitime à présenter des résultats déjà rendus publics par l'organisateur ; aucune autre donnée n'est collectée sur les personnes sans compte.\n• Toute personne nommée, avec ou sans compte, peut s'opposer à l'affichage de son nom : privacy@gabin-simond.fr, en précisant la compétition. Le nom, le dossard et le club sont alors retirés dans le mois ; seuls l'épreuve, le tour et le rang restent, et un import ultérieur ne les republie pas.\n• Après la suppression d'un compte, une empreinte de ses numéros de licence (calculée avec une clé secrète, qui ne permet pas de retrouver le numéro) est conservée pour qu'un classement importé plus tard ne republie pas son nom.",
       },
       {
         heading: "Durées de conservation",

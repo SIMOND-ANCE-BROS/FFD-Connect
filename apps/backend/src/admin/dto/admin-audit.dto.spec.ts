@@ -18,7 +18,7 @@ describe("ListAuditLogQueryDto", () => {
   });
 
   it("refuses an unknown target type", () => {
-    expect(errors({ targetType: "COMPETITION" })).toEqual(["targetType"]);
+    expect(errors({ targetType: "EVENT" })).toEqual(["targetType"]);
   });
 
   it("knows the moderation decisions and the track writes", () => {
@@ -33,6 +33,7 @@ describe("ListAuditLogQueryDto", () => {
         "LICENSE_RENEWAL_DOCUMENT_VIEW",
         "LICENSE_RENEWAL_APPROVE",
         "LICENSE_RENEWAL_REJECT",
+        "COMPETITION_RESULTS_IMPORT",
       ]),
     );
     expect(AUDIT_TARGET_TYPES).toEqual([
@@ -41,6 +42,7 @@ describe("ListAuditLogQueryDto", () => {
       "TRACK_CORRECTION",
       "TRACK",
       "LICENSE_RENEWAL",
+      "COMPETITION",
     ]);
   });
 });

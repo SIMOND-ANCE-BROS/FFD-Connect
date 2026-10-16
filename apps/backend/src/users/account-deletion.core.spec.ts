@@ -1,3 +1,4 @@
+import { erasedLicenceFingerprint } from "../utils/results-pseudonym";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { mockDeep, MockProxy } from "jest-mock-extended";
 import { resultAnonymizationSelect } from "../utils/prisma-selects";
@@ -5,12 +6,17 @@ import {
   affectedResultCompetitionIds,
   anonymizeOrphanedResults,
   buildAccountDeletionOperations,
+  findLicenceFingerprints,
+  MAX_LICENCE_NUMBERS_TO_FINGERPRINT,
   DELETED_USER_ID,
   findResultsToAnonymize,
   MAX_ORPHANED_RESULTS,
   MAX_RESULTS_TO_ANONYMIZE,
   prepareAccountDeletion,
 } from "./account-deletion.core";
+
+// A fake key (not a secret): only its length matters.
+const KEY = "k".repeat(40);
 
 describe("account-deletion.core", () => {
   let prisma: MockProxy<PrismaClient>;
@@ -69,6 +75,8 @@ describe("account-deletion.core", () => {
         "partner",
         // #395 scrub, before the user row (and its registrations) go.
         "partnerNameScrub",
+        // #652: imported results' second-member link, after the scrub.
+        "result",
         "correction",
         "bug",
         "audit",
@@ -83,6 +91,106 @@ describe("account-deletion.core", () => {
         data: { before: Prisma.DbNull, after: Prisma.DbNull },
       });
       expect(prisma.user.delete).toHaveBeenCalledWith({ where: { id: "u1" } });
+    });
+  });
+
+  describe("licence fingerprints (#652)", () => {
+    const basePlan = {
+      results: [],
+      partnerNameScrub: { ops: [], competitionIds: [] },
+      notificationNameScrub: [],
+    };
+
+    it("keeps the fingerprints, deduplicated by the database, before the user row goes", () => {
+      const marker = (op: string) => ({ op }) as never;
+      prisma.erasedResultIdentity.createMany.mockReturnValue(marker("erased"));
+      prisma.user.delete.mockReturnValue(marker("user"));
+
+      const ops = buildAccountDeletionOperations(prisma, "u1", {
+        ...basePlan,
+        licenceFingerprints: ["f1", "f2"],
+      }) as unknown as ({ op?: string } | undefined)[];
+
+      expect(prisma.erasedResultIdentity.createMany).toHaveBeenCalledWith({
+        data: [{ fingerprint: "f1" }, { fingerprint: "f2" }],
+        skipDuplicates: true,
+      });
+      expect(ops.map((o) => o?.op).indexOf("erased")).toBeLessThan(
+        ops.map((o) => o?.op).indexOf("user"),
+      );
+      expect(prisma.result.updateMany).toHaveBeenCalledWith({
+        where: { partnerUserId: "u1" },
+        data: { partnerUserId: null },
+      });
+    });
+
+    it("writes no fingerprint op without fingerprints (no key, scripts)", () => {
+      void buildAccountDeletionOperations(prisma, "u1", basePlan);
+      void buildAccountDeletionOperations(prisma, "u1", {
+        ...basePlan,
+        licenceFingerprints: [],
+      });
+      expect(prisma.erasedResultIdentity.createMany).not.toHaveBeenCalled();
+    });
+
+    it("fingerprints the current and the retired numbers of the user's licence, never in clear", async () => {
+      prisma.license.findUnique.mockResolvedValue({
+        id: "lic-1",
+        number: " 123456 ",
+      });
+      prisma.retiredLicenseNumber.findMany.mockResolvedValue([
+        { number: "654321" },
+        { number: "123456" },
+        { number: "bad*number" },
+      ] as never);
+
+      const fingerprints = await findLicenceFingerprints(prisma, "u1", KEY);
+
+      expect(prisma.license.findUnique).toHaveBeenCalledWith({
+        where: { userId: "u1" },
+        select: { id: true, number: true },
+      });
+      expect(prisma.retiredLicenseNumber.findMany).toHaveBeenCalledWith({
+        where: { licenseId: "lic-1" },
+        select: { number: true },
+        take: MAX_LICENCE_NUMBERS_TO_FINGERPRINT,
+      });
+      expect(fingerprints).toEqual([
+        erasedLicenceFingerprint(KEY, "123456"),
+        erasedLicenceFingerprint(KEY, "654321"),
+      ]);
+      expect(fingerprints.join()).not.toContain("123456");
+    });
+
+    it("has no fingerprint for a user without a licence", async () => {
+      prisma.license.findUnique.mockResolvedValue(null);
+      await expect(findLicenceFingerprints(prisma, "u1", KEY)).resolves.toEqual(
+        [],
+      );
+      expect(prisma.retiredLicenseNumber.findMany).not.toHaveBeenCalled();
+    });
+
+    it("prepareAccountDeletion reads the licences only with a key", async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.registration.findMany.mockResolvedValue([]);
+      prisma.partnership.findMany.mockResolvedValue([]);
+      prisma.notification.findMany.mockResolvedValue([]);
+      prisma.result.findMany.mockResolvedValue([]);
+      prisma.license.findUnique.mockResolvedValue({
+        id: "lic-1",
+        number: "123456",
+      });
+      prisma.retiredLicenseNumber.findMany.mockResolvedValue([]);
+      const logger = { warn: jest.fn() };
+
+      const withoutKey = await prepareAccountDeletion(prisma, "u1", logger);
+      expect(withoutKey.licenceFingerprints).toEqual([]);
+      expect(prisma.license.findUnique).not.toHaveBeenCalled();
+
+      const withKey = await prepareAccountDeletion(prisma, "u1", logger, KEY);
+      expect(withKey.licenceFingerprints).toEqual([
+        erasedLicenceFingerprint(KEY, "123456"),
+      ]);
     });
   });
 

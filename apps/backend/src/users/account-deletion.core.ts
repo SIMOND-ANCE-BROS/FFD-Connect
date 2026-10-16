@@ -11,7 +11,13 @@
  * caller.
  */
 import { Prisma, PrismaClient } from "@prisma/client";
-import { resultAnonymizationSelect } from "../utils/prisma-selects";
+import { normalizeLicenseNumber } from "../licenses/license-number.util";
+import {
+  licenseNumberSelect,
+  licenseNumbersOfUserSelect,
+  resultAnonymizationSelect,
+} from "../utils/prisma-selects";
+import { erasedLicenceFingerprint } from "../utils/results-pseudonym";
 import {
   buildPartnerNameScrubOps,
   PartnerNameScrub,
@@ -81,6 +87,7 @@ export type AccountDeletionPrisma = Pick<
   | "trackCorrection"
   | "bugReport"
   | "adminAuditLog"
+  | "erasedResultIdentity"
   | "user"
 >;
 
@@ -113,11 +120,47 @@ export interface AccountDeletionPlan {
   partnerNameScrub: PartnerNameScrub;
   /** Other users' notifications naming the user, rewritten (#423). */
   notificationNameScrub: Prisma.PrismaPromise<unknown>[];
+  /**
+   * Keyed fingerprints of the user's licence numbers (current and retired),
+   * kept after the deletion so a later results import never re-publishes
+   * their name (#652). Absent when no pseudonymisation key is configured.
+   */
+  licenceFingerprints?: readonly string[];
 }
 
 /** Prisma delegates read before the transaction. */
 export type AccountDeletionReadPrisma = PartnerNameScrubPrisma &
-  NotificationNameScrubPrisma;
+  NotificationNameScrubPrisma &
+  Pick<PrismaClient, "license" | "retiredLicenseNumber">;
+
+/** A licensee holds one licence, renumbered a few times at most. */
+export const MAX_LICENCE_NUMBERS_TO_FINGERPRINT = 20;
+
+/**
+ * Fingerprints (HMAC, server key) of every licence number the user's licence
+ * carries or carried: the import of a published ranking identifies couples by
+ * these numbers (#652).
+ */
+export async function findLicenceFingerprints(
+  prisma: Pick<PrismaClient, "license" | "retiredLicenseNumber">,
+  userId: string,
+  key: string,
+): Promise<string[]> {
+  const licence = await prisma.license.findUnique({
+    where: { userId },
+    select: licenseNumbersOfUserSelect,
+  });
+  if (!licence) return [];
+  const retired = await prisma.retiredLicenseNumber.findMany({
+    where: { licenseId: licence.id },
+    select: licenseNumberSelect,
+    take: MAX_LICENCE_NUMBERS_TO_FINGERPRINT,
+  });
+  const numbers = [licence.number, ...retired.map((r) => r.number)]
+    .map((n) => normalizeLicenseNumber(n))
+    .filter((n): n is string => n !== null);
+  return [...new Set(numbers.map((n) => erasedLicenceFingerprint(key, n)))];
+}
 
 /**
  * Reads needed by the transaction, done before it: the partner-name scrub
@@ -129,6 +172,7 @@ export async function prepareAccountDeletion(
   prisma: AccountDeletionReadPrisma,
   userId: string,
   logger: PartnerNameScrubLogger,
+  resultsPseudonymisationKey: string | null = null,
 ): Promise<AccountDeletionPlan> {
   const partnerNameScrub = await buildPartnerNameScrubOps(
     prisma,
@@ -143,7 +187,15 @@ export async function prepareAccountDeletion(
     logger,
   );
   const results = await findResultsToAnonymize(prisma, userId);
-  return { results, partnerNameScrub, notificationNameScrub };
+  const licenceFingerprints = resultsPseudonymisationKey
+    ? await findLicenceFingerprints(prisma, userId, resultsPseudonymisationKey)
+    : [];
+  return {
+    results,
+    partnerNameScrub,
+    notificationNameScrub,
+    licenceFingerprints,
+  };
 }
 
 /** Competitions whose results cache is stale once the transaction ran. */
@@ -206,6 +258,24 @@ export function buildAccountDeletionOperations(
     // Name copies without an identifier (#395): legacy partner
     // registrations and the partner's couple result label.
     ...plan.partnerNameScrub.ops,
+    // Couple results where the user is the recognised second member (#652):
+    // the link goes (the label half naming them was scrubbed just above).
+    prisma.result.updateMany({
+      where: { partnerUserId: userId },
+      data: { partnerUserId: null },
+    }),
+    // Their licence numbers, as keyed fingerprints only: a later results
+    // import writes their couple anonymised (#652).
+    ...((plan.licenceFingerprints?.length ?? 0) > 0
+      ? [
+          prisma.erasedResultIdentity.createMany({
+            data: (plan.licenceFingerprints ?? []).map((fingerprint) => ({
+              fingerprint,
+            })),
+            skipDuplicates: true,
+          }),
+        ]
+      : []),
     // Le SetNull de proposedById laisserait le commentaire libre, qui peut
     // identifier son auteur : il est effacé avant la suppression du compte.
     prisma.trackCorrection.updateMany({

@@ -1,6 +1,6 @@
 # Politique de confidentialité
 
-_Dernière mise à jour : 15 octobre 2026_
+_Dernière mise à jour : 16 octobre 2026_
 
 > **Projet indépendant.** FFD Connect n'est pas une application officielle de la
 > Fédération Française de Danse. La fédération n'en est ni l'éditrice, ni
@@ -108,11 +108,19 @@ Le pass est un justificatif pratique généré par FFD Connect, projet indépend
 ce n'est **pas** une carte ni un document officiel de la Fédération Française de
 Danse.
 
+## 4 ter. Résultats de compétition et personnes sans compte
+
+- **Source** : les classements affichés dans l'application (écran des résultats, palmarès) sont ceux que **l'organisateur de la compétition publie**. Un administrateur de FFD Connect les importe à partir du classement publié : épreuve, tour, rang, nom du couple tel qu'il est publié, dossard, club et, lorsque le classement les indique, les numéros de licence. Ces classements nomment aussi des danseurs **qui n'ont pas de compte** FFD Connect.
+- **Utilisation des numéros de licence** : ils servent uniquement à rattacher un résultat au compte d'un licencié, pour son palmarès et la notification « Résultats disponibles ». Ils ne sont **pas conservés** avec le résultat.
+- **Base légale** : intérêt légitime (art. 6-1-f du RGPD) à présenter aux danseurs les résultats déjà rendus publics par l'organisateur. Aucune autre donnée n'est collectée sur les personnes sans compte, et elles ne reçoivent aucune communication.
+- **Droit d'opposition et retrait** : toute personne nommée dans un classement, qu'elle ait un compte ou non, peut demander que son nom n'apparaisse plus dans l'application en écrivant à privacy@gabin-simond.fr (en précisant la compétition). Après vérification, la ligne est **pseudonymisée** dans le mois : le nom, le dossard et le club sont retirés, seuls l'épreuve, le tour et le rang restent pour ne pas fausser le classement des autres couples, et un import ultérieur du même classement ne la republie pas.
+- **Titulaires d'un compte** : la suppression du compte pseudonymise de la même façon ses résultats (§5). Pour qu'un classement importé plus tard ne republie pas son nom, une **empreinte** de ses numéros de licence (calculée avec une clé secrète, qui ne permet pas de retrouver le numéro) est conservée après la suppression ; elle cesse de s'appliquer si la personne recrée un compte avec la même licence.
+
 ## 5. Durées de conservation
 
 - **Compte & licence** : pendant la durée d'activité du compte, puis **3 ans** après la dernière connexion, à l'issue desquels le compte est supprimé.
 - **Données de santé (certificat médical)** : conservées le temps nécessaire à la vérification de l'aptitude, puis supprimées **au plus tard 12 mois après la fin de validité** du certificat. Un certificat **refusé** est supprimé **au plus tard 30 jours après la décision**, avec les informations lues sur le document et le commentaire de l'administrateur ; un motif de refus d'ordre médical (contre-indication) est alors remplacé par un motif neutre.
-- **Résultats de compétition** : après la suppression du compte, ils sont conservés **sans aucun lien** avec votre compte ni avec votre nom, afin de ne pas fausser le classement des autres couples (seuls l'épreuve, le tour et le classement subsistent). Les classements de la FFD étant publics à la source, il s'agit d'une **pseudonymisation** et non d'une anonymisation complète. Si le résultat de votre couple est rattaché au compte de votre partenaire, il reste le sien : la partie du libellé qui vous nomme est remplacée par « Partenaire supprimé », lorsque l'épreuve permet de faire le lien avec votre compte.
+- **Résultats de compétition** : après la suppression du compte, ils sont conservés **sans aucun lien** avec votre compte ni avec votre nom, afin de ne pas fausser le classement des autres couples (seuls l'épreuve, le tour et le classement subsistent). Les classements de la FFD étant publics à la source, il s'agit d'une **pseudonymisation** et non d'une anonymisation complète. Si le résultat de votre couple est rattaché au compte de votre partenaire, il reste le sien : la partie du libellé qui vous nomme est remplacée par « Partenaire supprimé », lorsque l'épreuve permet de faire le lien avec votre compte. L'empreinte de vos numéros de licence (§4 ter) est conservée tant que des résultats importés peuvent vous concerner.
 - **Données de paiement** : conservées par HelloAsso selon ses propres obligations comptables.
 - **Jetons de notification push (identifiants d'appareil)** : **90 jours** sans réutilisation de l'appareil. L'application réenregistre le jeton à chaque ouverture de session : passé ce délai sans signe de vie, l'appareil est considéré comme abandonné (application désinstallée, appareil remplacé) et la ligne est supprimée automatiquement. Le jeton est également supprimé immédiatement à la déconnexion, à la suppression du compte, et dès que Firebase le déclare invalide.
 - **Accord parental (mineurs)** : la preuve de l'accord (statut, dates, version des CGU, adresse masquée et empreinte) est conservée tant que le compte existe, et supprimée avec lui. Une demande non confirmée cesse d'être valable **7 jours** après son envoi ; elle reste dans l'historique du compte (sans l'adresse en clair). Le lien envoyé au représentant légal n'est jamais stocké en clair (seule son empreinte l'est).

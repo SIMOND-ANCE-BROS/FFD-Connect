@@ -15,7 +15,7 @@ export const MAX_RESULTS_CSV_LENGTH = 80_000;
 export class ImportResultsDto {
   @ApiProperty({
     description:
-      "Contenu CSV du classement (séparateur `;` ou `,`, ligne d'en-tête obligatoire). Colonnes : epreuve (id de l'épreuve), tour, classement, couple ; facultatives : dossard, club, licences (numéros séparés par `|`, `/` ou espaces), statut, participants.",
+      "Contenu CSV du classement (séparateur `;` ou `,`, ligne d'en-tête obligatoire). Colonnes : epreuve (id de l'épreuve), tour, classement, couple ; facultatives : dossard, club, licences (numéros séparés par `|`), statut, participants.",
     example:
       "epreuve;tour;classement;couple;dossard;club;licences\n550e8400-e29b-41d4-a716-446655440001;Finale;1;Martin / Durand;12;Club A;123456|654321",
     maxLength: MAX_RESULTS_CSV_LENGTH,
@@ -45,7 +45,14 @@ export class ImportResultsReportDto {
 
   @ApiProperty({
     description:
-      "Lignes laissées anonymisées : le compte du couple a été supprimé",
+      "Lignes déjà importées dont le rattachement à un compte a changé (sous-ensemble de « updated »)",
+    example: 0,
+  })
+  relinked!: number;
+
+  @ApiProperty({
+    description:
+      "Lignes laissées ou écrites anonymisées : un compte du couple a été supprimé",
     example: 0,
   })
   anonymisedKept!: number;

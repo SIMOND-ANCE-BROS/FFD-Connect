@@ -121,9 +121,10 @@ export class CareerQueryService {
     // filtre PLUS par details.participant (matching par nom, fragile : homonymes,
     // changement de nom, import qui ne renseigne pas le champ → résultat perdu),
     // ni par ses inscriptions dans l'app : un résultat importé (#652) est
-    // rattaché par licence, souvent sans inscription faite dans l'app.
+    // rattaché par licence, souvent sans inscription faite dans l'app, au
+    // titulaire (userId) ou au second membre reconnu du couple (partnerUserId).
     const results = await this.prisma.result.findMany({
-      where: { userId },
+      where: { OR: [{ userId }, { partnerUserId: userId }] },
       include: {
         event: {
           select: {

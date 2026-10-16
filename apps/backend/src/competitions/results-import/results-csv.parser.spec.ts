@@ -25,7 +25,7 @@ describe("parseResultsCsv (#652)", () => {
       status: null,
       totalParticipants: 6,
     });
-    // `;` and escaped quotes inside a quoted field; licences split on spaces.
+    // `;` and escaped quotes inside a quoted field; licences split on `|`.
     expect(rows[1].participant).toBe('Charlie / Delta; dit "CD"');
     expect(rows[1].licenceNumbers).toEqual(["100003", "100004"]);
     expect(rows[2].licenceNumbers).toEqual([]);
@@ -63,10 +63,42 @@ describe("parseResultsCsv (#652)", () => {
     ]);
   });
 
-  it("deduplicates licence numbers and accepts `|` and `/` separators", () => {
+  it("separates licence numbers by `|` only, trims and deduplicates them (L1)", () => {
     const csv =
-      "epreuve;tour;classement;couple;licences\nev;F;1;A / B;111/222|111\n";
-    expect(parseResultsCsv(csv).rows[0].licenceNumbers).toEqual(["111", "222"]);
+      "epreuve;tour;classement;couple;licences\nev;F;1;A / B; 111 | AB 12/3-4 |111\n";
+    expect(parseResultsCsv(csv).rows[0].licenceNumbers).toEqual([
+      "111",
+      "AB 12/3-4",
+    ]);
+  });
+
+  it("refuses a licence number that is not shaped like one or longer than 32 characters (L1)", () => {
+    const header = "epreuve;tour;classement;couple;licences";
+    for (const licences of ["*123", "-12", "1".repeat(33), "1|2|3|4|5"]) {
+      const { rows, errors } = parseResultsCsv(
+        `${header}\nev;F;1;A / B;${licences}\n`,
+      );
+      expect(rows).toEqual([]);
+      expect(errors).toEqual([
+        { line: 2, message: "numéros de licence invalides" },
+      ]);
+    }
+    expect(
+      parseResultsCsv(`${header}\nev;F;1;A / B;${"1".repeat(32)}\n`).errors,
+    ).toEqual([]);
+  });
+
+  it("ignores prototype keys used as headers (L7)", () => {
+    const { errors } = parseResultsCsv(
+      "__proto__;constructor;toString;hasOwnProperty\nx;y;z;w\n",
+    );
+    expect(errors).toEqual([
+      {
+        line: 1,
+        message:
+          "Colonnes obligatoires absentes : eventId, round, ranking, participant",
+      },
+    ]);
   });
 
   it("reports an empty file", () => {
@@ -108,7 +140,7 @@ describe("parseResultsCsv (#652)", () => {
   it("reports every invalid field of a line with its line number", () => {
     const csv = [
       "epreuve;tour;classement;couple;participants;licences;dossard;club;statut",
-      `;;0;;abc;1 2 3 4 5;${"x".repeat(81)};${"c".repeat(201)};${"s".repeat(81)}`,
+      `;;0;;abc;1|2|3|4|5;${"x".repeat(81)};${"c".repeat(201)};${"s".repeat(81)}`,
       `ev;${"r".repeat(81)};1;${"n".repeat(201)};;${"9".repeat(81)};;;`,
       "ev;Finale;1.5;A / B",
     ].join("\n");

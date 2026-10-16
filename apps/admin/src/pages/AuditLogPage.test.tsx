@@ -47,6 +47,41 @@ describe('AuditLogPage', () => {
     expect(screen.getByText('Durand')).toBeInTheDocument();
   });
 
+  it('shows a results import without a link: the back-office has no competition page (#652)', async () => {
+    vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: 'l9',
+            action: 'COMPETITION_RESULTS_IMPORT',
+            targetType: 'COMPETITION',
+            targetId: 'comp-1',
+            before: null,
+            after: { created: 4 },
+            actorId: 'a1',
+            actorName: 'Staff S',
+            createdAt: '2026-10-16T10:00:00.000Z',
+          },
+        ],
+        meta: { total: 1, skip: 0, take: 50, hasMore: false },
+      },
+      error: undefined,
+    } as never);
+    render(
+      <MantineProvider>
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <AuditLogPage />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </MantineProvider>,
+    );
+    expect(await screen.findByText('Import des résultats')).toBeInTheDocument();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Supprimé')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /voir/i })).not.toBeInTheDocument();
+  });
+
   it('links club targets to the club page and does not link deleted targets', async () => {
     vi.spyOn(sdk, 'adminControllerAuditLog').mockResolvedValue({
       data: {
