@@ -76,7 +76,7 @@ Les administrateurs de la plateforme peuvent consulter et corriger les informati
 
 Pendant la session, l'intervenant ne peut pas : exporter vos données, supprimer le compte, changer le mot de passe, obtenir un lot de QR d'entrée, demander un accord parental, ni importer ou supprimer des résultats de compétition. Il peut consulter vos demandes de renouvellement de licence ; chaque consultation est tracée (§7).
 
-**Chaque accès est journalisé** : date de début, motif, rôle de l'intervenant et, lorsqu'il met fin lui-même à la session, date de fin. Le motif est celui saisi par l'intervenant : la saisie doit éviter toute donnée personnelle de tiers. Ces informations figurent dans votre export (§9), sans l'identité de l'intervenant. L'adresse IP de l'intervenant est conservée en base dans cette piste d'audit, mais n'est pas communiquée à la personne ciblée. Ces traces sont conservées comme piste d'audit ; elles ne sont pas purgées automatiquement et subsistent après la suppression du compte. Leur durée de conservation n'est pas encore fixée dans la section 5.
+**Chaque accès est journalisé** : date de début, motif, rôle de l'intervenant et, lorsqu'il met fin lui-même à la session, date de fin. Le motif est celui saisi par l'intervenant : la saisie doit éviter toute donnée personnelle de tiers. Ces informations figurent dans votre export (§9), sans l'identité de l'intervenant. L'adresse IP de l'intervenant est conservée en base dans cette piste d'audit, mais n'est pas communiquée à la personne ciblée ; au bout de 90 jours, elle est réduite à son réseau (comme dans les logs techniques). Ces traces sont conservées **1 an** comme piste d'audit, puis supprimées automatiquement ; elles subsistent après la suppression du compte jusqu'au terme de ce délai, afin qu'un accès ne puisse pas être effacé en supprimant un compte (§5).
 
 Aucune donnée n'est vendue à des tiers.
 
@@ -155,7 +155,7 @@ comparer à la personne présente.
 - **Jetons de session** : 30 jours maximum.
 - **Logs techniques** : **12 mois**.
 - **Journal des accès aux données de santé** : **1 an**, puis suppression automatique. Il ne contient que des identifiants techniques (personne concernée, auteur de l'accès), la nature de l'accès, sa date et son point d'entrée — jamais le certificat ni les informations qui y figurent. Il subsiste après la suppression du compte jusqu'au terme de ce délai, afin qu'un accès ne puisse pas être effacé en supprimant un compte.
-- **Journal des accès support** (« se connecter en tant que ») : durée non encore fixée (§4) ; ses lignes ne sont pas purgées automatiquement.
+- **Journal des accès support** (« se connecter en tant que ») : **1 an**, puis suppression automatique ; l'adresse IP de l'intervenant est réduite à son réseau au bout de **90 jours**. Il subsiste après la suppression du compte jusqu'au terme de ce délai (§4).
 - **Données d'usage anonymes** : **90 jours** avec l'identifiant d'installation, puis statistiques agrégées sans identifiant conservées **25 mois**.
 - **Sauvegardes de la base de données** : **7 jours** glissants. Une donnée supprimée peut y subsister jusqu'à 7 jours ; les sauvegardes ne servent qu'à la restauration du service après incident. Les fichiers envoyés (certificats) ne sont pas sauvegardés.
 

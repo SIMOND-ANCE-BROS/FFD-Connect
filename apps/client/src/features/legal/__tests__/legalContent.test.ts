@@ -26,8 +26,15 @@ describe("privacy policy in the app", () => {
     );
     expect(support?.body).toContain("15 minutes");
     expect(support?.body).toContain("journalisé");
-    expect(support?.body).toContain(
-      "durée de conservation n'est pas encore fixée",
+    expect(support?.body).toContain("conservées 1 an");
+    expect(support?.body).toContain("90 jours");
+    expect(support?.body).not.toContain("pas encore fixée");
+
+    const retention = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Durées de conservation",
+    );
+    expect(retention?.body).toContain(
+      "Journal des accès support : 1 an, puis suppression automatique",
     );
 
     const rights = LEGAL_DOCUMENTS.privacy.sections.find(

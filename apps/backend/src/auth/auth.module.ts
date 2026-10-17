@@ -9,6 +9,7 @@ import { AuthPasswordService } from "./auth-password.service";
 import { AuthService } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
 import { EmailService } from "./email.service";
+import { ImpersonationLogRetentionService } from "./impersonation-log-retention.service";
 import { JwtStrategy } from "./jwt.strategy";
 import { SessionCleanupService } from "./session-cleanup.service";
 
@@ -31,6 +32,7 @@ import { SessionCleanupService } from "./session-cleanup.service";
     AuthPasswordService,
     JwtStrategy,
     SessionCleanupService,
+    ImpersonationLogRetentionService,
     EmailService,
   ],
   controllers: [AuthController],

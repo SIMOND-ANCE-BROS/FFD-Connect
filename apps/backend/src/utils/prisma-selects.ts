@@ -767,6 +767,15 @@ export const impersonationLogExportSelect = {
 } as const;
 
 /**
+ * Rétention du journal des accès support (#731) : ce que la troncature de
+ * l'adresse IP de l'intervenant relit, rien d'autre.
+ */
+export const impersonationLogIpSelect = {
+  id: true,
+  ip: true,
+} as const;
+
+/**
  * Export RGPD (#251) : sessions de connexion (refresh tokens) en
  * MÉTADONNÉES. Jamais le hash du token (`token`), secret d'authentification.
  */

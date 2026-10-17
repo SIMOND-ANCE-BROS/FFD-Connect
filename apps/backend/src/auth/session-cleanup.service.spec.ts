@@ -2,6 +2,7 @@ import { Logger } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { ImpersonationLogRetentionService } from "./impersonation-log-retention.service";
 import { SessionCleanupService } from "./session-cleanup.service";
 
 describe("SessionCleanupService", () => {
@@ -19,6 +20,9 @@ describe("SessionCleanupService", () => {
   const mockNotifications = {
     purgeExpiredDeviceTokens: jest.fn(),
   };
+  const mockImpersonationRetention = {
+    purge: jest.fn(),
+  };
 
   beforeEach(async () => {
     mockPrisma.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
@@ -26,12 +30,20 @@ describe("SessionCleanupService", () => {
     mockPrisma.$executeRaw.mockResolvedValue(0);
     mockPrisma.user.count.mockResolvedValue(0);
     mockNotifications.purgeExpiredDeviceTokens.mockResolvedValue(0);
+    mockImpersonationRetention.purge.mockResolvedValue({
+      deleted: 0,
+      ipTruncated: 0,
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SessionCleanupService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: NotificationsService, useValue: mockNotifications },
+        {
+          provide: ImpersonationLogRetentionService,
+          useValue: mockImpersonationRetention,
+        },
       ],
     }).compile();
 
@@ -95,6 +107,60 @@ describe("SessionCleanupService", () => {
       );
 
       await expect(service.cleanupExpiredSessions()).resolves.not.toThrow();
+    });
+
+    // #731: support-access journal retention, same hourly hook.
+    describe("impersonation log retention", () => {
+      it("runs the purge and logs its counts on every pass", async () => {
+        mockImpersonationRetention.purge.mockResolvedValue({
+          deleted: 3,
+          ipTruncated: 2,
+        });
+        const log = jest.spyOn(Logger.prototype, "log").mockImplementation();
+
+        await service.cleanupExpiredSessions();
+
+        expect(mockImpersonationRetention.purge).toHaveBeenCalledTimes(1);
+        expect(log).toHaveBeenCalledWith(
+          "Impersonation log retention: 3 row(s) deleted, 2 IP(s) truncated",
+        );
+        log.mockRestore();
+      });
+
+      it("runs even when the session cleanup and the device purge fail", async () => {
+        mockPrisma.refreshToken.deleteMany.mockRejectedValue(
+          new Error("DB error"),
+        );
+        mockNotifications.purgeExpiredDeviceTokens.mockRejectedValue(
+          new Error("DB error"),
+        );
+        const error = jest
+          .spyOn(Logger.prototype, "error")
+          .mockImplementation();
+
+        await service.cleanupExpiredSessions();
+
+        expect(mockImpersonationRetention.purge).toHaveBeenCalledTimes(1);
+        error.mockRestore();
+      });
+
+      it("never fails the cleanup nor masks the next steps", async () => {
+        mockImpersonationRetention.purge.mockRejectedValue(
+          new Error("DB error"),
+        );
+        const error = jest
+          .spyOn(Logger.prototype, "error")
+          .mockImplementation();
+
+        await expect(service.cleanupExpiredSessions()).resolves.toBeUndefined();
+
+        expect(error).toHaveBeenCalledWith(
+          "Error during impersonation log retention purge",
+          expect.any(Error),
+        );
+        expect(mockPrisma.$executeRaw).toHaveBeenCalled();
+        error.mockRestore();
+      });
     });
 
     // #526: lookup keys of rows written without one (rollback window)

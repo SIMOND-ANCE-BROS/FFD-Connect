@@ -1,7 +1,8 @@
 /**
  * Service de nettoyage des sessions et tokens expirés.
- * Nettoie automatiquement les refresh tokens, les password reset tokens et les
- * tokens d'appareil (FCM) hors durée de conservation.
+ * Nettoie automatiquement les refresh tokens, les password reset tokens, les
+ * tokens d'appareil (FCM) et le journal des accès support (#731) hors durée de
+ * conservation.
  */
 
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
@@ -9,6 +10,7 @@ import { Cron, CronExpression } from "@nestjs/schedule";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { fillNormalizedEmails } from "./email-identity";
+import { ImpersonationLogRetentionService } from "./impersonation-log-retention.service";
 
 @Injectable()
 export class SessionCleanupService implements OnModuleInit {
@@ -18,6 +20,7 @@ export class SessionCleanupService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    private readonly impersonationLogRetention: ImpersonationLogRetentionService,
   ) {}
 
   onModuleInit(): void {
@@ -50,6 +53,23 @@ export class SessionCleanupService implements OnModuleInit {
       this.logger.log(`Device token retention: ${purged} token(s) deleted`);
     } catch (error) {
       this.logger.error("Error during device token retention purge", error);
+    }
+
+    // Support-access journal retention (#731): same hook, same reason (no new
+    // schedule, no wake-up); own try/catch so it never masks the above.
+    // Logged on every pass: "nothing to purge" must stay distinguishable from
+    // "the purge no longer runs".
+    try {
+      const { deleted, ipTruncated } =
+        await this.impersonationLogRetention.purge();
+      this.logger.log(
+        `Impersonation log retention: ${deleted} row(s) deleted, ${ipTruncated} IP(s) truncated`,
+      );
+    } catch (error) {
+      this.logger.error(
+        "Error during impersonation log retention purge",
+        error,
+      );
     }
 
     // Lookup keys of rows written without one (#526): rows written by an

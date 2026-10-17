@@ -66,7 +66,7 @@ export const MAX_RENEWAL_DOCUMENTS_TO_PURGE = 200;
  * anonymisées (before/after mis à NULL, seuls action, auteur, date et
  * targetId — un UUID — restent), pour qu'un admin ne puisse pas effacer la
  * trace de ses actions en supprimant le compte.
- * ImpersonationLog est conservé (piste d'audit).
+ * ImpersonationLog est conservé (piste d'audit) jusqu'à sa purge à 1 an (#731).
  *
  * Fichiers des documents de renouvellement (certificat médical — donnée de
  * santé, RGPD art. 9 — et certificat de licence) : leurs références sont
