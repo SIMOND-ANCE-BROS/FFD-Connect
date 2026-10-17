@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { Prisma, RegistrationStatus, UserRole } from "@prisma/client";
 import { hasRole } from "../../auth/roles";
 import {
+  clubPendingRegistrationSelect,
   userEligibilityProfileSelect,
   userRolesClubNameSelect,
   userRolesClubSelect,
@@ -63,6 +64,14 @@ export const COMPETITION_BASE_SELECT = {
 
 /** Upper bound of a club's competition list (GET /competitions/club/mine). */
 export const CLUB_COMPETITIONS_LIMIT = 100;
+
+/**
+ * Upper bound of a club's pending registrations
+ * (GET /competitions/club/pending-registrations, #753), most recent first.
+ * Far above what a club validates at once; beyond it the oldest requests are
+ * left out until the newer ones are handled.
+ */
+export const CLUB_PENDING_REGISTRATIONS_LIMIT = 500;
 
 export const EVENT_BASE_SELECT = {
   id: true,
@@ -369,27 +378,9 @@ export class CompetitionQueryService {
 
     const pending = await this.prisma.registration.findMany({
       where: { status: RegistrationStatus.PENDING, user: scope.members },
-      include: {
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            clubName: true,
-          },
-        },
-        event: {
-          select: {
-            id: true,
-            category: true,
-            ageGroup: true,
-            eventType: true,
-            competitionId: true,
-          },
-        },
-      },
+      select: clubPendingRegistrationSelect,
       orderBy: { createdAt: "desc" },
+      take: CLUB_PENDING_REGISTRATIONS_LIMIT,
     });
 
     const competitionIds = [

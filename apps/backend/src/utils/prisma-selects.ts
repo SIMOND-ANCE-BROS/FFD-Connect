@@ -162,6 +162,38 @@ export const registrationBaseSelect = {
 } as const;
 
 /**
+ * Inscriptions en attente vues par le club (#753), GET
+ * /competitions/club/pending-registrations : le contrat
+ * `ClubPendingRegistration` du client, plus `createdAt` (date affichée).
+ */
+export const clubPendingRegistrationSelect = {
+  id: true,
+  eventId: true,
+  userId: true,
+  partnerName: true,
+  status: true,
+  createdAt: true,
+  user: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      clubName: true,
+    },
+  },
+  event: {
+    select: {
+      id: true,
+      category: true,
+      ageGroup: true,
+      eventType: true,
+      competitionId: true,
+    },
+  },
+} as const;
+
+/**
  * Sélecteur pour les notifications de base
  */
 export const notificationBaseSelect = {
