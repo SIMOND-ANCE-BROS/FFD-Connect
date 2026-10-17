@@ -14,7 +14,8 @@
  * docs/exploitation/politique-confidentialite-versions.md.
  *
  * Format: the policy's "last updated" date (YYYY-MM-DD) of the announced
- * version. 2026-10-17: export contents and support access (#387, #733).
+ * version. 2026-10-17: export contents and support access (#387, #733,
+ * #759, #760).
  */
 export const PRIVACY_POLICY_VERSION = "2026-10-17";
 

@@ -278,7 +278,7 @@ export class UsersService {
    * }
    * ```
    */
-  async findOne(id: string) {
+  async findOne(id: string, { supportAccess = false } = {}) {
     // Utiliser select au lieu de include pour optimiser la requête
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -304,13 +304,19 @@ export class UsersService {
     // The club status only feeds rolesOf; it must not leak into the payload.
     const { club, ...profile } = user;
     const wdsf = buildWdsfFromUser(profile);
-    // Signed QR content of the license (#168) — null when signing is off.
+    // Signed QR content of the license (#168) — null when signing is off,
+    // and during a support access (#759): the static QR stays valid until the
+    // licence expires, so it would let the intervening admin in instead of
+    // the holder; same for the Wallet pass that carries it.
     const license = profile.license
       ? {
           ...profile.license,
-          qrCode: this.licenseQrService.buildQrCode(profile.license),
+          qrCode: supportAccess
+            ? null
+            : this.licenseQrService.buildQrCode(profile.license),
           // The app shows "Add to Apple Wallet" only when true (#162).
-          appleWalletAvailable: this.appleWalletPassGenerator.isAvailable(),
+          appleWalletAvailable:
+            !supportAccess && this.appleWalletPassGenerator.isAvailable(),
         }
       : null;
     return {

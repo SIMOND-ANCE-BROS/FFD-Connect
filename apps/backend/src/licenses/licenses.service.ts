@@ -18,8 +18,12 @@ export class LicensesService {
    * Récupère la licence d'un utilisateur, avec le contenu de son QR signé
    * (`qrCode`, null si la signature est désactivée — #168) et la
    * disponibilité du pass Apple Wallet (`appleWalletAvailable` — #162).
+   *
+   * `supportAccess` (session « se connecter en tant que », #759) : ni QR
+   * statique (valable jusqu'à la fin de la licence, il ferait entrer
+   * l'intervenant à la place du titulaire) ni pass Wallet, qui le porte.
    */
-  async getLicense(userId: string) {
+  async getLicense(userId: string, { supportAccess = false } = {}) {
     const found = await this.prisma.license.findUnique({
       where: { userId },
       select: licenseWithHolderDisciplineSelect,
@@ -31,8 +35,9 @@ export class LicensesService {
       ...license,
       // Discipline(s) actually practised (#552) — same value as the Wallet pass.
       discipline: practisedDiscipline(user, license.category),
-      qrCode: this.licenseQrService.buildQrCode(license),
-      appleWalletAvailable: this.appleWalletPassGenerator.isAvailable(),
+      qrCode: supportAccess ? null : this.licenseQrService.buildQrCode(license),
+      appleWalletAvailable:
+        !supportAccess && this.appleWalletPassGenerator.isAvailable(),
     };
   }
 

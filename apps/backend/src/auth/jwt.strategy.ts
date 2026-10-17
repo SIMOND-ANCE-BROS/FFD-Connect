@@ -9,6 +9,7 @@ import {
   impersonationLogSessionSelect,
 } from "../utils/prisma-selects";
 import { ACCOUNT_DISABLED_MESSAGE, accountBlockReason } from "./account-status";
+import { effectiveImpersonationEnd } from "./impersonation-session";
 import { JwtPayload } from "./interfaces/jwt-payload.interface";
 import { hasRole, RoleSubject, rolesOf } from "./roles";
 
@@ -106,6 +107,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       session.actorId !== payload.impersonatedBy ||
       session.targetUserId !== payload.sub
     ) {
+      throw new UnauthorizedException();
+    }
+    // The 15-minute lifetime is enforced server-side too (#762), not only by
+    // the token's `exp`: a token signed with a longer expiry (or a clock
+    // skew) cannot stretch a session past its journalled start.
+    if (effectiveImpersonationEnd(session) !== null) {
       throw new UnauthorizedException();
     }
     return impersonator.isStoreReview === true;

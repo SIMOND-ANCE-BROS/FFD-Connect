@@ -1,4 +1,7 @@
 import { BadRequestException, StreamableFile } from "@nestjs/common";
+import { GUARDS_METADATA } from "@nestjs/common/constants";
+import { JwtAuthGuard } from "../../auth/jwt-auth.guard";
+import { NoImpersonationGuard } from "../../auth/no-impersonation.guard";
 import { Request as ExpressRequest } from "express";
 import { AppleWalletController, publicOrigin } from "./apple-wallet.controller";
 import { AppleWalletPassService } from "./apple-wallet-pass.service";
@@ -129,6 +132,16 @@ describe("AppleWalletController", () => {
     expect(methods.indexOf("checkPassLink")).toBeGreaterThanOrEqual(0);
     expect(methods.indexOf("checkPassLink")).toBeLessThan(
       methods.indexOf("downloadPass"),
+    );
+  });
+
+  it("refuses the pass link during a support access (#759)", () => {
+    const guards = Reflect.getMetadata(
+      GUARDS_METADATA,
+      AppleWalletController.prototype.createDownloadLink,
+    ) as unknown[];
+    expect(guards).toEqual(
+      expect.arrayContaining([JwtAuthGuard, NoImpersonationGuard]),
     );
   });
 });

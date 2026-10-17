@@ -1,7 +1,9 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { LicenseRenewalDocumentType } from "@prisma/client";
+import { GUARDS_METADATA } from "@nestjs/common/constants";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
 import { LicenseRenewalService } from "./license-renewal.service";
 import { HealthDataAccessLogService } from "../health-data-access/health-data-access-log.service";
 import { LicensesController } from "./licenses.controller";
@@ -74,8 +76,41 @@ describe("LicensesController", () => {
     it("delegates to licensesService.getLicense with userId", async () => {
       mockLicensesService.getLicense.mockResolvedValue({ id: "L1" });
       const result = await controller.getMyLicense(req("user-1"));
-      expect(mockLicensesService.getLicense).toHaveBeenCalledWith("user-1");
+      expect(mockLicensesService.getLicense).toHaveBeenCalledWith("user-1", {
+        supportAccess: false,
+      });
       expect(result).toEqual({ id: "L1" });
+    });
+
+    it("flags a support access so the static QR is withheld (#759)", async () => {
+      mockLicensesService.getLicense.mockResolvedValue({ id: "L1" });
+      await controller.getMyLicense({
+        user: { userId: "user-1", email: "u@test.com", impersonatedBy: "a-1" },
+      } as unknown as Parameters<LicensesController["getMyLicense"]>[0]);
+      expect(mockLicensesService.getLicense).toHaveBeenCalledWith("user-1", {
+        supportAccess: true,
+      });
+    });
+
+    it.each([
+      "startRenewal",
+      "uploadRenewalDocument",
+      "submitRenewal",
+    ] as const)("refuses %s during a support access (#760)", (method) => {
+      const guards = Reflect.getMetadata(
+        GUARDS_METADATA,
+        LicensesController.prototype[method],
+      ) as unknown[];
+      expect(guards).toContain(NoImpersonationGuard);
+    });
+
+    it("lets a support access read the renewal request (#760)", () => {
+      const guards =
+        (Reflect.getMetadata(
+          GUARDS_METADATA,
+          LicensesController.prototype.getMyRenewal,
+        ) as unknown[] | undefined) ?? [];
+      expect(guards).not.toContain(NoImpersonationGuard);
     });
 
     it("propagates NotFoundException from service", async () => {

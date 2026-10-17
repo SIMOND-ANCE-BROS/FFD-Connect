@@ -78,6 +78,21 @@ describe("privacy policy in the app", () => {
     expect(rights?.body).toContain("expiration au bout de 15 minutes");
   });
 
+  it("blocks the licence QR, the Wallet pass and the renewal writes under support access (#759, #760)", () => {
+    const support = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Accès support",
+    );
+    expect(support?.body).toContain("ni le QR de la licence");
+    expect(support?.body).toContain("ni le pass Apple Wallet qui le porte");
+    expect(support?.body).toContain(
+      "démarrer, compléter ou envoyer une demande de renouvellement de licence",
+    );
+    // Reading stays allowed, and traced.
+    expect(support?.body).toContain(
+      "Il peut consulter vos demandes de renouvellement de licence",
+    );
+  });
+
   it("lists the health-data access journal in the export (#732)", () => {
     const rights = LEGAL_DOCUMENTS.privacy.sections.find(
       (s) => s.heading === "Vos droits (RGPD)",

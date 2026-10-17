@@ -6,6 +6,7 @@ import { expectSiblingBackdrop } from "../../../../__tests__/mocks/modalA11y";
 import { STACKED_CARD_PEEK } from "../../../../components/StackedCard";
 import { BETA_NOTICES } from "../../../../constants/betaNotices";
 import { useTheme } from "../../../../context/ThemeContext";
+import { useAuthStore } from "../../../../stores/auth.store";
 import { useLicenseLogic } from "../../hooks/useLicenseLogic";
 import { LicenseScreen } from "../LicenseScreen";
 import { preloadReactNative } from "../../../../__tests__/mocks/preloadReactNative";
@@ -76,6 +77,7 @@ jest.mock("../../components/LicenseCard", () => ({
     return (
       <Text testID={props.testID} onPress={props.onShowQr}>
         {props.testID}
+        {props.onShowQr ? <Text testID={`${props.testID}-show-qr`} /> : null}
         {props.variant === "account" ? (
           <Text testID={`${props.testID}-account-variant`} />
         ) : null}
@@ -838,6 +840,36 @@ describe("LicenseScreen Integration", () => {
 
       const { queryByTestId } = await render(<LicenseScreen />);
       expect(queryByTestId("apple-wallet-slot")).toBeNull();
+    });
+
+    describe("during a support access (#759)", () => {
+      afterEach(() => {
+        useAuthStore.setState({ impersonating: false });
+      });
+
+      it("shows neither the Wallet button nor the licence QR", async () => {
+        useAuthStore.setState({ impersonating: true });
+        (useLicenseLogic as jest.Mock).mockReturnValue({
+          state: { ...mockState, listItems: [ffd] },
+          actions: mockActions,
+        });
+
+        const { queryByTestId, getByTestId } = await render(<LicenseScreen />);
+        expect(getByTestId("license-card-FFD")).toBeTruthy();
+        expect(queryByTestId("license-card-FFD-show-qr")).toBeNull();
+        expect(queryByTestId("apple-wallet-slot")).toBeNull();
+      });
+
+      it("keeps both for the licensee themself", async () => {
+        (useLicenseLogic as jest.Mock).mockReturnValue({
+          state: { ...mockState, listItems: [ffd] },
+          actions: mockActions,
+        });
+
+        const { getByTestId } = await render(<LicenseScreen />);
+        expect(getByTestId("license-card-FFD-show-qr")).toBeTruthy();
+        expect(getByTestId("apple-wallet-slot")).toBeTruthy();
+      });
     });
 
     it("is hidden while the WDSF card is the active one of the stack", async () => {

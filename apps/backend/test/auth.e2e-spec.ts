@@ -343,7 +343,12 @@ describe("AuthController (e2e)", () => {
     let journal: Partial<
       Record<
         string,
-        { actorId: string; targetUserId: string; endedAt: Date | null }
+        {
+          actorId: string;
+          targetUserId: string;
+          startedAt: Date;
+          endedAt: Date | null;
+        }
       >
     >;
 
@@ -378,6 +383,7 @@ describe("AuthController (e2e)", () => {
             journal[LOG_ID] = {
               actorId: args.data.actorId,
               targetUserId: args.data.targetUserId,
+              startedAt: new Date(),
               endedAt: null,
             };
             return Promise.resolve({ id: LOG_ID });
