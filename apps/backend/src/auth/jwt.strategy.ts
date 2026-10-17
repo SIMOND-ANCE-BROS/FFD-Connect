@@ -1,13 +1,16 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PassportStrategy } from "@nestjs/passport";
-import { UserRole } from "@prisma/client";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import { PrismaService } from "../prisma/prisma.service";
 import { accountStatusSelect } from "../utils/prisma-selects";
 import { ACCOUNT_DISABLED_MESSAGE, accountBlockReason } from "./account-status";
 import { JwtPayload } from "./interfaces/jwt-payload.interface";
-import { hasRole, rolesOf } from "./roles";
+import {
+  impersonationAuthority,
+  impersonationTargetRefusal,
+} from "./impersonation-policy";
+import { rolesOf } from "./roles";
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -41,22 +44,20 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // so the target's data cannot be changed through it either.
     let storeReview = account.isStoreReview === true;
     if (payload.impersonatedBy) {
-      // "Never impersonate an admin" holds for the whole session: promoting
-      // the target to ADMIN (main or extra role) ends it.
-      if (hasRole(account, UserRole.ADMIN)) {
-        throw new UnauthorizedException();
-      }
-      // Impersonation is ADMIN-only: the admin behind the token must still be
-      // an active ADMIN, or the session dies with their demotion/deactivation.
+      // The impersonation rule (impersonation-policy.ts) is re-applied on
+      // every request against the roles in the database: the actor must still
+      // be an active ADMIN or STAFF, and the target must still be reachable by
+      // that authority (never an ADMIN; for a STAFF actor, never a STAFF).
+      // A demotion, deactivation or promotion ends the session at once.
       const impersonator = await this.prisma.user.findUnique({
         where: { id: payload.impersonatedBy },
         select: accountStatusSelect,
       });
-      if (
-        !impersonator ||
-        accountBlockReason(impersonator) ||
-        !hasRole(impersonator, UserRole.ADMIN)
-      ) {
+      if (!impersonator || accountBlockReason(impersonator)) {
+        throw new UnauthorizedException();
+      }
+      const authority = impersonationAuthority(impersonator);
+      if (!authority || impersonationTargetRefusal(authority, account)) {
         throw new UnauthorizedException();
       }
       storeReview ||= impersonator.isStoreReview === true;

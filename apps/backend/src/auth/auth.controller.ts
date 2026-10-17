@@ -417,13 +417,16 @@ export class AuthController {
   // (a simulated body would hand the client a token-less session).
   @StoreReviewPassthrough()
   @Post("impersonate")
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.ADMIN)
+  // ADMIN or STAFF (#733), the rule of impersonation-policy.ts. Never from an
+  // impersonation session: an admin "connected as" a STAFF account must not
+  // open a second session that the journal would attribute to that STAFF.
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.STAFF)
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Se connecter en tant qu'un autre utilisateur (impersonation)",
     description:
-      "Phase 1 : réservé aux ADMIN. Retourne un access token court (15 min) dont l'identité est la cible, avec un claim d'audit. Interdit de cibler un admin. Actions destructives bloquées sous impersonation. Journalisé (RGPD).",
+      "Réservé aux ADMIN et STAFF. Retourne un access token court (15 min, non rafraîchissable) dont l'identité est la cible, avec un claim d'audit. Interdit de cibler un admin ; un STAFF ne peut cibler qu'un licencié ou un club et doit donner une raison. La règle est revérifiée à chaque requête de la session (rôles de l'acteur et de la cible relus en base). Impossible depuis une session d'impersonation. Actions destructives bloquées sous impersonation. Journalisé (RGPD).",
   })
   @ApiBody({ type: ImpersonateDto })
   @ApiResponse({ status: 201, description: "Token d'impersonation émis" })

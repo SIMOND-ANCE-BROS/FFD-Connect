@@ -34,7 +34,11 @@ import {
 } from "./email-identity";
 import { LICENSE_NUMBER_MAX_LENGTH } from "./dto/register.dto";
 import { PasswordValidator } from "./password-validator";
-import { hasRole, rolesOf } from "./roles";
+import {
+  impersonationAuthority,
+  impersonationTargetRefusal,
+} from "./impersonation-policy";
+import { rolesOf } from "./roles";
 
 const BCRYPT_ROUNDS = 12;
 
@@ -453,8 +457,8 @@ export class AuthService {
     reason: string | undefined,
     ip: string | undefined,
   ): Promise<{ access_token: string; user: Record<string, unknown> }> {
-    const actorIsAdmin = actorRoles.includes(UserRole.ADMIN);
-    if (!actorIsAdmin && !actorRoles.includes(UserRole.STAFF)) {
+    const authority = impersonationAuthority({ roles: actorRoles });
+    if (!authority) {
       throw new ForbiddenException("Impersonation réservée à l'admin/staff.");
     }
     if (!target.userId && !target.email) {
@@ -486,22 +490,22 @@ export class AuthService {
     if (actorId === targetUser.id) {
       throw new BadRequestException("Impossible de s'impersonner soi-même.");
     }
-    if (hasRole(targetUser, UserRole.ADMIN)) {
+    // Same rule as JwtStrategy re-applies on every request of the session.
+    const refusal = impersonationTargetRefusal(authority, targetUser);
+    if (refusal === "TARGET_ADMIN") {
       throw new ForbiddenException(
         "Impossible d'impersonner un administrateur.",
       );
     }
-    if (!actorIsAdmin) {
-      if (hasRole(targetUser, UserRole.STAFF)) {
-        throw new ForbiddenException(
-          "Un staff ne peut cibler qu'un licencié ou un club.",
-        );
-      }
-      if (!reason?.trim()) {
-        throw new BadRequestException(
-          "Une raison est obligatoire pour le staff.",
-        );
-      }
+    if (refusal === "TARGET_STAFF") {
+      throw new ForbiddenException(
+        "Un staff ne peut cibler qu'un licencié ou un club.",
+      );
+    }
+    if (authority === UserRole.STAFF && !reason?.trim()) {
+      throw new BadRequestException(
+        "Une raison est obligatoire pour le staff.",
+      );
     }
 
     await this.prisma.impersonationLog.create({
@@ -509,7 +513,7 @@ export class AuthService {
         actorId,
         // The role that authorised this impersonation, not the main role:
         // actorRoles come from the database (JwtStrategy), not the token claim.
-        actorRole: actorIsAdmin ? UserRole.ADMIN : UserRole.STAFF,
+        actorRole: authority,
         targetUserId: targetUser.id,
         targetRole: targetUser.role,
         reason: reason?.trim() || null,

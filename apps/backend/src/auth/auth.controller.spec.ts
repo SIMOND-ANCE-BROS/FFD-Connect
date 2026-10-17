@@ -1,7 +1,11 @@
 import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
+import { GUARDS_METADATA } from "@nestjs/common/constants";
 import { UserRole } from "@prisma/client";
 import { Test, TestingModule } from "@nestjs/testing";
 import { AuthController } from "./auth.controller";
+import { ROLES_KEY } from "./decorators/roles.decorator";
+import { JwtAuthGuard } from "./jwt-auth.guard";
+import { NoImpersonationGuard } from "./no-impersonation.guard";
 import { AuthPasswordService } from "./auth-password.service";
 import { AuthService } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
@@ -224,6 +228,37 @@ describe("AuthController", () => {
   });
   describe("impersonate", () => {
     const body = { targetEmail: "jane@x.fr" };
+    const handler = AuthController.prototype.impersonate;
+
+    it("is open to ADMIN and STAFF (#733)", () => {
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([
+        UserRole.ADMIN,
+        UserRole.STAFF,
+      ]);
+    });
+
+    it("cannot be called from an impersonation session (no chained sessions)", () => {
+      const guards: unknown[] = Reflect.getMetadata(GUARDS_METADATA, handler);
+      expect(guards.indexOf(NoImpersonationGuard)).toBeGreaterThan(
+        guards.indexOf(JwtAuthGuard),
+      );
+    });
+
+    it("passes a STAFF actor's roles and reason to the service", async () => {
+      mockAuthService.impersonate.mockResolvedValue({ access_token: "t" });
+      const req = {
+        user: { userId: "staff-1", roles: [UserRole.STAFF] },
+        ip: "2.2.2.2",
+      } as never;
+      await controller.impersonate(req, { ...body, reason: "Ticket 42" });
+      expect(mockAuthService.impersonate).toHaveBeenCalledWith(
+        "staff-1",
+        [UserRole.STAFF],
+        { userId: undefined, email: "jane@x.fr" },
+        "Ticket 42",
+        "2.2.2.2",
+      );
+    });
 
     it("refuses the store-review account (flag read from the database by JwtStrategy)", async () => {
       const req = {

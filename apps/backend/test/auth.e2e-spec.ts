@@ -57,6 +57,7 @@ describe("AuthController (e2e)", () => {
       },
       impersonationLog: {
         findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "imp-log-1" }),
       },
     };
 
@@ -328,5 +329,96 @@ describe("AuthController (e2e)", () => {
       .post("/api/v1/auth/impersonate/stop")
       .set("Authorization", `Bearer ${token}`)
       .expect(201);
+  });
+
+  describe("support access opened by a STAFF account (#733)", () => {
+    const STAFF_ID = "11111111-1111-4111-8111-111111111111";
+    const TARGET_ID = "22222222-2222-4222-8222-222222222222";
+    const active = { disabledAt: null, club: null, extraRoles: [] };
+    let accounts: Record<string, Record<string, unknown>>;
+
+    beforeEach(() => {
+      accounts = {
+        [STAFF_ID]: { id: STAFF_ID, role: "STAFF", ...active },
+        [TARGET_ID]: {
+          id: TARGET_ID,
+          email: "dancer@example.com",
+          firstName: "Dan",
+          lastName: "Cer",
+          clubId: null,
+          clubName: null,
+          role: "LICENSEE",
+          ...active,
+        },
+      };
+      (prismaService.user.findUnique as jest.Mock).mockImplementation(
+        (args: { where: { id: string } }) =>
+          Promise.resolve(accounts[args.where.id] ?? null),
+      );
+    });
+
+    const openSession = async (): Promise<string> => {
+      const staffToken = jwtService.sign({
+        sub: STAFF_ID,
+        email: "staff@example.com",
+        role: "STAFF",
+      });
+      const res = await request(
+        app.getHttpServer() as Parameters<typeof request>[0],
+      )
+        .post("/api/v1/auth/impersonate")
+        .set("Authorization", `Bearer ${staffToken}`)
+        .send({ targetUserId: TARGET_ID, reason: "Ticket support 42" })
+        .expect(201);
+      return (res.body as { access_token: string }).access_token;
+    };
+
+    const callUnder = (token: string) =>
+      request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post("/api/v1/auth/impersonate/stop")
+        .set("Authorization", `Bearer ${token}`);
+
+    it("opens the session, journals it as STAFF and serves requests under it", async () => {
+      const token = await openSession();
+      expect(prismaService.impersonationLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actorId: STAFF_ID,
+          actorRole: "STAFF",
+          targetUserId: TARGET_ID,
+          reason: "Ticket support 42",
+        }),
+      });
+      await callUnder(token).expect(201);
+    });
+
+    it("refuses to open a second session from inside the first one", async () => {
+      const token = await openSession();
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post("/api/v1/auth/impersonate")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ targetUserId: STAFF_ID, reason: "chain" })
+        .expect(403);
+    });
+
+    it("ends the session once the STAFF actor is demoted", async () => {
+      const token = await openSession();
+      accounts[STAFF_ID].role = "LICENSEE";
+      await callUnder(token).expect(401);
+    });
+
+    it("ends the session once the STAFF actor is disabled", async () => {
+      const token = await openSession();
+      accounts[STAFF_ID].disabledAt = new Date();
+      await callUnder(token).expect(401);
+    });
+
+    it.each(["STAFF", "ADMIN"])(
+      "ends the session once the target is promoted to %s",
+      async (role) => {
+        const token = await openSession();
+        accounts[TARGET_ID].extraRoles = [role];
+        await callUnder(token).expect(401);
+      },
+    );
   });
 });

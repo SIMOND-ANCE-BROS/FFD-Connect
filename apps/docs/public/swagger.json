@@ -1433,7 +1433,7 @@
     },
     "/auth/impersonate": {
       "post": {
-        "description": "Phase 1 : réservé aux ADMIN. Retourne un access token court (15 min) dont l'identité est la cible, avec un claim d'audit. Interdit de cibler un admin. Actions destructives bloquées sous impersonation. Journalisé (RGPD).",
+        "description": "Réservé aux ADMIN et STAFF. Retourne un access token court (15 min, non rafraîchissable) dont l'identité est la cible, avec un claim d'audit. Interdit de cibler un admin ; un STAFF ne peut cibler qu'un licencié ou un club et doit donner une raison. La règle est revérifiée à chaque requête de la session (rôles de l'acteur et de la cible relus en base). Impossible depuis une session d'impersonation. Actions destructives bloquées sous impersonation. Journalisé (RGPD).",
         "operationId": "AuthController_impersonate",
         "parameters": [],
         "requestBody": {

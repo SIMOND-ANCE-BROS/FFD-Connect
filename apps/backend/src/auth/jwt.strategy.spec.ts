@@ -190,6 +190,93 @@ describe("JwtStrategy", () => {
     );
   });
 
+  describe("impersonation opened by a STAFF actor (#733)", () => {
+    const imp = { ...payload, impersonatedBy: "staff-1" };
+    const active = { disabledAt: null, club: null };
+    const staffActor = { role: UserRole.STAFF, ...active };
+    const licenseeTarget = { role: UserRole.LICENSEE, ...active };
+    const mockLookups = (target: unknown, impersonator: unknown) =>
+      prisma.user.findUnique.mockImplementation((async (args: {
+        where: { id: string };
+      }) => (args.where.id === "user-1" ? target : impersonator)) as never);
+
+    it.each([
+      ["licensee", licenseeTarget],
+      ["club", { role: UserRole.CLUB, ...active, club: { disabledAt: null } }],
+    ])("accepts the session on a %s target", async (_label, target) => {
+      mockLookups(target, staffActor);
+      await expect(strategy.validate(imp)).resolves.toMatchObject({
+        userId: "user-1",
+        impersonatedBy: "staff-1",
+        storeReview: false,
+      });
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { id: "staff-1" },
+        select: accountStatusSelect,
+      });
+    });
+
+    it("accepts a STAFF role held as an extra role", async () => {
+      mockLookups(licenseeTarget, {
+        role: UserRole.LICENSEE,
+        extraRoles: [UserRole.STAFF],
+        ...active,
+      });
+      await expect(strategy.validate(imp)).resolves.toMatchObject({
+        impersonatedBy: "staff-1",
+      });
+    });
+
+    it("ends the session once the STAFF actor is demoted", async () => {
+      mockLookups(licenseeTarget, { role: UserRole.LICENSEE, ...active });
+      await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it("ends the session once the STAFF actor is disabled", async () => {
+      mockLookups(licenseeTarget, { ...staffActor, disabledAt: new Date() });
+      await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it.each([
+      ["STAFF (main role)", { role: UserRole.STAFF, extraRoles: [] }],
+      [
+        "STAFF (extra role)",
+        { role: UserRole.LICENSEE, extraRoles: [UserRole.STAFF] },
+      ],
+      ["ADMIN (main role)", { role: UserRole.ADMIN, extraRoles: [] }],
+      [
+        "ADMIN (extra role)",
+        { role: UserRole.LICENSEE, extraRoles: [UserRole.ADMIN] },
+      ],
+    ])("ends the session once the target gains %s", async (_label, roles) => {
+      mockLookups({ ...roles, ...active }, staffActor);
+      await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    it("lets an ADMIN keep a session on a STAFF target", async () => {
+      mockLookups(
+        { role: UserRole.STAFF, ...active },
+        { role: UserRole.ADMIN, ...active },
+      );
+      await expect(strategy.validate(imp)).resolves.toMatchObject({
+        roles: [UserRole.STAFF],
+      });
+    });
+
+    it("ends an ADMIN's session on a STAFF target once the admin is demoted to STAFF", async () => {
+      mockLookups({ role: UserRole.STAFF, ...active }, staffActor);
+      await expect(strategy.validate(imp)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+  });
+
   it("returns every effective role from the database", async () => {
     prisma.user.findUnique.mockResolvedValueOnce({
       role: UserRole.ADMIN,
