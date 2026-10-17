@@ -1,39 +1,32 @@
 import dayjs from 'dayjs';
-import type { ProgramEventDto } from '../api/generated/types.gen';
+import type { CompetitionListItemDto, ProgramEventDto } from '../api/generated/types.gen';
 import { formatDiscipline } from './discipline';
 
-/**
- * A competition as the back-office lists it. The OpenAPI schema of
- * `GET /competitions` (and `/competitions/:id`) is stale — it documents
- * `name`/`startDate`, the API answers `title`/`date` — so the payload is read
- * field by field instead of trusting the generated type.
- */
+/** A competition as the back-office lists it. */
 export interface CompetitionSummary {
   id: string;
   title: string;
-  date: string | null;
+  date: string;
   endDate: string | null;
   place: string | null;
-  status: string | null;
+  status: CompetitionListItemDto['status'];
 }
 
-const str = (value: unknown): string | null =>
-  typeof value === 'string' && value.trim() ? value : null;
+/** Fields of `GET /competitions` (and `/competitions/:id`) the back-office shows. */
+export type CompetitionFields = Pick<
+  CompetitionListItemDto,
+  'id' | 'title' | 'date' | 'endDate' | 'location' | 'city' | 'status'
+>;
 
-export function toCompetitionSummary(raw: unknown): CompetitionSummary | null {
-  if (typeof raw !== 'object' || raw === null) return null;
-  const r = raw as Record<string, unknown>;
-  const id = str(r.id);
-  if (!id) return null;
-  const city = str(r.city);
-  const location = str(r.location);
+export function toCompetitionSummary(c: CompetitionFields): CompetitionSummary {
+  const place = [c.location, c.city].filter((p): p is string => Boolean(p?.trim())).join(', ');
   return {
-    id,
-    title: str(r.title) ?? str(r.name) ?? 'Compétition sans titre',
-    date: str(r.date) ?? str(r.startDate),
-    endDate: str(r.endDate),
-    place: [location, city].filter((p) => p !== null).join(', ') || null,
-    status: str(r.status),
+    id: c.id,
+    title: c.title,
+    date: c.date,
+    endDate: c.endDate,
+    place: place || null,
+    status: c.status,
   };
 }
 
@@ -45,7 +38,7 @@ export const COMPETITION_STATUS_BADGES: Record<string, { label: string; color: s
 };
 
 /** « 12/10/2026 », or « 12/10/2026 → 13/10/2026 » over several days; « — » when unknown. */
-export function competitionDates(c: Pick<CompetitionSummary, 'date' | 'endDate'>): string {
+export function competitionDates(c: { date: string | null; endDate: string | null }): string {
   if (!c.date) return '—';
   const start = dayjs(c.date).format('DD/MM/YYYY');
   const end = c.endDate ? dayjs(c.endDate).format('DD/MM/YYYY') : start;

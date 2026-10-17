@@ -16539,63 +16539,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "data": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "example": "comp-123"
-                          },
-                          "name": {
-                            "type": "string",
-                            "example": "Championnat de France 2026"
-                          },
-                          "startDate": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "endDate": {
-                            "type": "string",
-                            "format": "date-time"
-                          },
-                          "location": {
-                            "type": "string",
-                            "example": "Paris, France"
-                          },
-                          "status": {
-                            "type": "string",
-                            "enum": ["UPCOMING", "ACTIVE", "COMPLETED"],
-                            "example": "UPCOMING"
-                          }
-                        }
-                      }
-                    },
-                    "meta": {
-                      "type": "object",
-                      "properties": {
-                        "total": {
-                          "type": "number",
-                          "example": 100
-                        },
-                        "skip": {
-                          "type": "number",
-                          "example": 0
-                        },
-                        "take": {
-                          "type": "number",
-                          "example": 10
-                        },
-                        "hasMore": {
-                          "type": "boolean",
-                          "example": true
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/CompetitionPageDto"
                 }
               }
             }
@@ -19557,7 +19501,7 @@
     },
     "/competitions/{id}": {
       "get": {
-        "description": "Retourne les informations détaillées d'une compétition spécifique, incluant tous ses événements et inscriptions.",
+        "description": "Retourne les informations détaillées d'une compétition spécifique, avec ses épreuves et son planning.",
         "operationId": "CompetitionsController_findOne",
         "parameters": [
           {
@@ -19577,56 +19521,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "startDate": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "endDate": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "location": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "requireRotatingQr": {
-                      "type": "boolean",
-                      "description": "QR d'entrée tournant obligatoire au check-in (#668) : les scanners le gardent en cache pour refuser aussi hors ligne un QR statique."
-                    },
-                    "events": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string"
-                          },
-                          "name": {
-                            "type": "string"
-                          },
-                          "category": {
-                            "type": "string"
-                          },
-                          "level": {
-                            "type": "string"
-                          },
-                          "registrations": {
-                            "type": "array"
-                          }
-                        }
-                      }
-                    }
-                  }
+                  "$ref": "#/components/schemas/CompetitionDetailDto"
                 }
               }
             }
@@ -30338,6 +30233,378 @@
         },
         "required": ["userId"]
       },
+      "CompetitionEventRegistrationDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "partnerName": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": ["PENDING", "CONFIRMED", "CANCELLED"]
+          },
+          "bibNumber": {
+            "type": "number",
+            "nullable": true
+          },
+          "checkedIn": {
+            "type": "boolean"
+          },
+          "checkInTime": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "feePaid": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "coupleAgeGroup": {
+            "type": "string",
+            "nullable": true
+          },
+          "coupleDisciplineLatin": {
+            "type": "boolean"
+          },
+          "coupleDisciplineStandard": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "partnerName",
+          "status",
+          "bibNumber",
+          "checkedIn",
+          "checkInTime",
+          "feePaid",
+          "createdAt",
+          "coupleAgeGroup",
+          "coupleDisciplineLatin",
+          "coupleDisciplineStandard"
+        ]
+      },
+      "CompetitionListEventDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "description": "Spécialité : Latin, Standard ou Ten Dance",
+            "example": "Latin"
+          },
+          "ageGroup": {
+            "type": "string",
+            "description": "Classe d'âge de l'épreuve",
+            "example": "Adulte"
+          },
+          "eventType": {
+            "type": "string",
+            "enum": ["SOLO", "COUPLE"]
+          },
+          "level": {
+            "type": "string",
+            "nullable": true,
+            "description": "Niveau d'une épreuve classificatrice",
+            "example": "Avancé"
+          },
+          "eventKind": {
+            "type": "string",
+            "enum": ["CLASSIFICATRICE", "OPEN", "MAJEURE", "SOLO_TEAM", "SHOW_DANSE", null],
+            "nullable": true,
+            "description": "Nature de l'épreuve (Article 9)"
+          },
+          "ageGroups": {
+            "description": "Open : classes d'âge réunies (vide hors Open)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "openLevels": {
+            "description": "Open : niveaux admis (vide = tous niveaux)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "registrations": {
+            "description": "Authentifié uniquement : inscriptions actives (PENDING, CONFIRMED) de l'utilisateur à cette épreuve.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitionEventRegistrationDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "ageGroup",
+          "eventType",
+          "level",
+          "eventKind",
+          "ageGroups",
+          "openLevels"
+        ]
+      },
+      "CompetitionListItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ffdId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Identifiant FFD (null : créée dans l'app)"
+          },
+          "title": {
+            "type": "string",
+            "example": "Championnat de France 2026"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date de début"
+          },
+          "location": {
+            "type": "string",
+            "example": "Palais des Sports"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "zipCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true,
+            "example": "Paris"
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventsDescription": {
+            "type": "string",
+            "nullable": true,
+            "description": "Programme des épreuves (texte libre FFD)"
+          },
+          "programUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "PDF du programme des épreuves"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date de fin"
+          },
+          "type": {
+            "type": "string",
+            "nullable": true,
+            "description": "Libellé libre du type (affichage)"
+          },
+          "competitionType": {
+            "type": "string",
+            "enum": ["PROXIMITE", "NATIONALE", "MAJEURE", "INTERNATIONALE", null],
+            "nullable": true,
+            "description": "Article 8"
+          },
+          "majorSubType": {
+            "type": "string",
+            "nullable": true,
+            "description": "Sous-type d'une compétition MAJEURE"
+          },
+          "organizer": {
+            "type": "string",
+            "nullable": true,
+            "description": "Libellé du club organisateur"
+          },
+          "organizerClubId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Club organisateur relié (#408)"
+          },
+          "circularUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrationUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "ticketingUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "layout": {
+            "type": "array",
+            "description": "Plan de salle : éléments libres (`id`, `type`, `label`…)",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "nullable": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrationDeadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date limite d'inscription"
+          },
+          "eventsSource": {
+            "type": "string",
+            "enum": ["GENERIC", "DESCRIPTION", "CIRCULAR", null],
+            "nullable": true,
+            "description": "Origine des épreuves synchronisées (DESCRIPTION / CIRCULAR = déduites, à vérifier)"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["UPCOMING", "LIVE", "PAST", "CANCELLED"],
+            "example": "UPCOMING"
+          },
+          "delayMinutes": {
+            "type": "number",
+            "description": "Retard annoncé, en minutes",
+            "example": 0
+          },
+          "requireRotatingQr": {
+            "type": "boolean",
+            "description": "QR d'entrée tournant obligatoire au check-in (#668) : les scanners le gardent en cache pour refuser aussi hors ligne un QR statique."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitionListEventDto"
+            }
+          },
+          "isRegistered": {
+            "type": "boolean",
+            "description": "Authentifié uniquement : l'utilisateur est inscrit à au moins une épreuve."
+          },
+          "isEligible": {
+            "type": "boolean",
+            "description": "Authentifié uniquement : au moins une épreuve est ouverte à l'utilisateur."
+          },
+          "isOrganizedByMyClub": {
+            "type": "boolean",
+            "description": "Compte CLUB uniquement : compétition organisée par son club."
+          },
+          "clubMembersRegisteredCount": {
+            "type": "number",
+            "description": "Compte CLUB uniquement : nombre de membres du club inscrits (PENDING, CONFIRMED)."
+          }
+        },
+        "required": [
+          "id",
+          "ffdId",
+          "title",
+          "date",
+          "location",
+          "address",
+          "zipCode",
+          "city",
+          "latitude",
+          "longitude",
+          "description",
+          "eventsDescription",
+          "programUrl",
+          "endDate",
+          "type",
+          "competitionType",
+          "majorSubType",
+          "organizer",
+          "organizerClubId",
+          "circularUrl",
+          "registrationUrl",
+          "ticketingUrl",
+          "layout",
+          "imageUrl",
+          "registrationDeadline",
+          "eventsSource",
+          "status",
+          "delayMinutes",
+          "requireRotatingQr",
+          "createdAt",
+          "updatedAt",
+          "events"
+        ]
+      },
+      "CompetitionPageMetaDto": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "number",
+            "example": 100
+          },
+          "skip": {
+            "type": "number",
+            "example": 0
+          },
+          "take": {
+            "type": "number",
+            "example": 10
+          },
+          "hasMore": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": ["total", "skip", "take", "hasMore"]
+      },
+      "CompetitionPageDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitionListItemDto"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/CompetitionPageMetaDto"
+          }
+        },
+        "required": ["data", "meta"]
+      },
       "RegisterMemberDto": {
         "type": "object",
         "properties": {
@@ -30623,6 +30890,288 @@
           }
         },
         "required": ["events", "schedule"]
+      },
+      "CompetitionEventDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "description": "Spécialité : Latin, Standard ou Ten Dance",
+            "example": "Latin"
+          },
+          "ageGroup": {
+            "type": "string",
+            "description": "Classe d'âge de l'épreuve",
+            "example": "Adulte"
+          },
+          "eventType": {
+            "type": "string",
+            "enum": ["SOLO", "COUPLE"]
+          },
+          "level": {
+            "type": "string",
+            "nullable": true,
+            "description": "Niveau d'une épreuve classificatrice",
+            "example": "Avancé"
+          },
+          "eventKind": {
+            "type": "string",
+            "enum": ["CLASSIFICATRICE", "OPEN", "MAJEURE", "SOLO_TEAM", "SHOW_DANSE", null],
+            "nullable": true,
+            "description": "Nature de l'épreuve (Article 9)"
+          },
+          "ageGroups": {
+            "description": "Open : classes d'âge réunies (vide hors Open)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "openLevels": {
+            "description": "Open : niveaux admis (vide = tous niveaux)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "ageGroup",
+          "eventType",
+          "level",
+          "eventKind",
+          "ageGroups",
+          "openLevels"
+        ]
+      },
+      "CompetitionScheduleItemDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "startTime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "example": "EVENT"
+          },
+          "eventId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Épreuve concernée"
+          }
+        },
+        "required": ["id", "startTime", "title", "type", "eventId"]
+      },
+      "CompetitionDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ffdId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Identifiant FFD (null : créée dans l'app)"
+          },
+          "title": {
+            "type": "string",
+            "example": "Championnat de France 2026"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date de début"
+          },
+          "location": {
+            "type": "string",
+            "example": "Palais des Sports"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "zipCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true,
+            "example": "Paris"
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventsDescription": {
+            "type": "string",
+            "nullable": true,
+            "description": "Programme des épreuves (texte libre FFD)"
+          },
+          "programUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "PDF du programme des épreuves"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date de fin"
+          },
+          "type": {
+            "type": "string",
+            "nullable": true,
+            "description": "Libellé libre du type (affichage)"
+          },
+          "competitionType": {
+            "type": "string",
+            "enum": ["PROXIMITE", "NATIONALE", "MAJEURE", "INTERNATIONALE", null],
+            "nullable": true,
+            "description": "Article 8"
+          },
+          "majorSubType": {
+            "type": "string",
+            "nullable": true,
+            "description": "Sous-type d'une compétition MAJEURE"
+          },
+          "organizer": {
+            "type": "string",
+            "nullable": true,
+            "description": "Libellé du club organisateur"
+          },
+          "organizerClubId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Club organisateur relié (#408)"
+          },
+          "circularUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrationUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "ticketingUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "layout": {
+            "type": "array",
+            "description": "Plan de salle : éléments libres (`id`, `type`, `label`…)",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "nullable": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrationDeadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date limite d'inscription"
+          },
+          "eventsSource": {
+            "type": "string",
+            "enum": ["GENERIC", "DESCRIPTION", "CIRCULAR", null],
+            "nullable": true,
+            "description": "Origine des épreuves synchronisées (DESCRIPTION / CIRCULAR = déduites, à vérifier)"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["UPCOMING", "LIVE", "PAST", "CANCELLED"],
+            "example": "UPCOMING"
+          },
+          "delayMinutes": {
+            "type": "number",
+            "description": "Retard annoncé, en minutes",
+            "example": 0
+          },
+          "requireRotatingQr": {
+            "type": "boolean",
+            "description": "QR d'entrée tournant obligatoire au check-in (#668) : les scanners le gardent en cache pour refuser aussi hors ligne un QR statique."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitionEventDto"
+            }
+          },
+          "schedule": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitionScheduleItemDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "ffdId",
+          "title",
+          "date",
+          "location",
+          "address",
+          "zipCode",
+          "city",
+          "latitude",
+          "longitude",
+          "description",
+          "eventsDescription",
+          "programUrl",
+          "endDate",
+          "type",
+          "competitionType",
+          "majorSubType",
+          "organizer",
+          "organizerClubId",
+          "circularUrl",
+          "registrationUrl",
+          "ticketingUrl",
+          "layout",
+          "imageUrl",
+          "registrationDeadline",
+          "eventsSource",
+          "status",
+          "delayMinutes",
+          "requireRotatingQr",
+          "createdAt",
+          "updatedAt",
+          "events",
+          "schedule"
+        ]
       },
       "RegisterEventDto": {
         "type": "object",

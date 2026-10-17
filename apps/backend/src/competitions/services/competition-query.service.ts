@@ -62,7 +62,7 @@ export const COMPETITION_BASE_SELECT = {
 /** Upper bound of a club's competition list (GET /competitions/club/mine). */
 export const CLUB_COMPETITIONS_LIMIT = 100;
 
-const EVENT_BASE_SELECT = {
+export const EVENT_BASE_SELECT = {
   id: true,
   category: true,
   ageGroup: true,

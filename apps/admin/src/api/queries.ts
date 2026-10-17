@@ -32,7 +32,7 @@ import type {
   HealthDataAccessLogControllerListData,
   TrackCorrectionsControllerListData,
 } from './generated/types.gen';
-import { type CompetitionSummary, toCompetitionSummary } from '../lib/competitions';
+import { toCompetitionSummary } from '../lib/competitions';
 import type { StatsPeriod } from '../lib/stats';
 import type { UsagePeriod, UsageSpace } from '../lib/usage';
 
@@ -272,9 +272,7 @@ export const competitionsQuery = (q: { skip: number; take: number }) =>
     queryKey: ['admin', 'competitions', 'list', q],
     queryFn: async () => {
       const page = await unwrap(competitionsControllerFindAll({ query: q }));
-      const rows = (page.data ?? [])
-        .map(toCompetitionSummary)
-        .filter((c): c is CompetitionSummary => c !== null);
+      const rows = (page.data ?? []).map(toCompetitionSummary);
       return { rows, total: page.meta?.total ?? rows.length };
     },
     refetchOnWindowFocus: false,
@@ -286,11 +284,7 @@ export const competitionQuery = (id: string) =>
   queryOptions({
     queryKey: ['admin', 'competitions', 'item', id],
     queryFn: async () => {
-      const competition = toCompetitionSummary(
-        await unwrap(competitionsControllerFindOne({ path: { id } })),
-      );
-      if (!competition) throw new Error('Compétition introuvable');
-      return competition;
+      return toCompetitionSummary(await unwrap(competitionsControllerFindOne({ path: { id } })));
     },
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
