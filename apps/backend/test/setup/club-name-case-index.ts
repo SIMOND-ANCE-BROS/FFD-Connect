@@ -4,7 +4,7 @@ type RawExecutor = Pick<PrismaClient, "$executeRaw">;
 
 /**
  * Case-duplicate clubs (#743). The migration
- * `20261017120000_club_name_case_insensitive_unique` creates the unique index
+ * `20261017180000_club_name_case_insensitive_unique` creates the unique index
  * on `lower(name)` only where no such duplicates exist; an environment with
  * legacy homonyms keeps running without it, and the code must still refuse
  * to pick one of them. Suites that test that refusal drop the index for
