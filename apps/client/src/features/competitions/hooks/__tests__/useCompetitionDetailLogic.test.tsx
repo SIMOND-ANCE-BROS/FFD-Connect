@@ -48,6 +48,13 @@ jest.mock("../../../../features/club/services/ClubService", () => ({
   },
 }));
 
+const mockLogEvent = jest.fn();
+jest.mock("../../../../services/analytics", () => ({
+  analytics: {
+    logEvent: (...args: unknown[]) => mockLogEvent(...args),
+  },
+}));
+
 jest.spyOn(Alert, "alert");
 
 afterAll(() => {
@@ -324,6 +331,46 @@ describe("useCompetitionDetailLogic", () => {
   });
 
   describe("handleRegister", () => {
+    it.each([
+      ["LICENSEE", "SOLO"],
+      ["LICENSEE", "COUPLE"],
+      ["CLUB", "SOLO"],
+    ])(
+      "logs registration_start once for a %s on a %s event",
+      async (role, eventType) => {
+        mockGetAuthConfig.mockResolvedValue({
+          role,
+          category: "A",
+          ageGroup: "Adulte",
+        });
+        const { result } = await renderHook(
+          () =>
+            useCompetitionDetailLogic(
+              mockCompetitionId,
+              mockNavigation as never,
+            ),
+          { wrapper: createWrapper() },
+        );
+
+        await waitFor(() => expect(result.current.state.loading).toBe(false));
+        await waitFor(() => expect(result.current.state.userRole).toBe(role));
+        expect(mockLogEvent).not.toHaveBeenCalled();
+
+        await act(async () => {
+          // eslint-disable-next-line @typescript-eslint/await-thenable
+          await result.current.actions.handleRegister(
+            createPartialEvent({ id: "evt-1", eventType } as never),
+          );
+        });
+
+        expect(mockLogEvent).toHaveBeenCalledTimes(1);
+        expect(mockLogEvent).toHaveBeenCalledWith("registration_start", {
+          competition_id: "comp-1",
+          event_id: "evt-1",
+        });
+      },
+    );
+
     it("should register for an event", async () => {
       const { result } = await renderHook(
         () =>
