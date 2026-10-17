@@ -235,16 +235,28 @@ describe("Rotating entry QR check-in (e2e)", () => {
         role: UserRole.ADMIN,
       },
     });
+    // A live session: its open journal row is named by the token (#733).
+    const session = await prisma.impersonationLog.create({
+      data: {
+        actorId: admin.id,
+        actorRole: UserRole.ADMIN,
+        targetUserId: participantId,
+        targetRole: UserRole.LICENSEE,
+      },
+      select: { id: true },
+    });
     const impersonation = jwtService.sign({
       sub: participantId,
       email: "entry-qr-participant@ffd.com",
       role: UserRole.LICENSEE,
       impersonatedBy: admin.id,
+      impersonationLogId: session.id,
     });
     await request(server())
       .get("/api/v1/licenses/my/entry-qr")
       .set("Authorization", `Bearer ${impersonation}`)
       .expect(403);
+    await prisma.impersonationLog.delete({ where: { id: session.id } });
   });
 
   it("issues a batch for the requester's licence that a scanner verifies offline", async () => {

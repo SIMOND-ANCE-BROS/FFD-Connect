@@ -10,6 +10,7 @@ import {
   RegistrationStatus,
   UserRole,
 } from "@prisma/client";
+import { effectiveImpersonationEnd } from "../auth/impersonation-session";
 import { hasRole, rolesOf, withActiveRole } from "../auth/roles";
 import { userRolesClubSelect } from "../utils/prisma-selects";
 import * as bcrypt from "bcrypt";
@@ -674,7 +675,12 @@ export class UsersService {
           totalParticipants: totalParticipantsOf(details),
         })),
         bugReports,
-        impersonationsReceived: impersonations,
+        // A session never stopped ended when its token expired (#733):
+        // endedAt = min(stop, startedAt + 15 min), null while still usable.
+        impersonationsReceived: impersonations.map((session) => ({
+          ...session,
+          endedAt: effectiveImpersonationEnd(session),
+        })),
         healthDataAccesses,
       },
     };

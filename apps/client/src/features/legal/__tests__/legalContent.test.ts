@@ -54,6 +54,30 @@ describe("privacy policy in the app", () => {
     expect(rights?.body).toContain("journal d'audit des administrateurs");
   });
 
+  it("reserves the support access to administrators and lists the blocked actions (#733)", () => {
+    const support = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Accès support",
+    );
+    expect(support?.body).toContain("un administrateur, et lui seul");
+    expect(support?.body).toContain("les membres du staff n'ont pas cet accès");
+    expect(support?.body).not.toContain("un membre du staff peut");
+    expect(support?.body).not.toContain("obligatoire pour le staff");
+    expect(support?.body).toContain("aucun second accès");
+    expect(support?.body).toContain("identifiants HelloAsso");
+    expect(support?.body).toContain("moyen de paiement en ligne d'un club");
+    expect(support?.body).toContain(
+      "enregistrer un appareil pour recevoir vos notifications",
+    );
+    expect(support?.body).toContain("préférences de notification");
+    expect(support?.body).toContain("l'expiration au bout de 15 minutes");
+
+    const rights = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Vos droits (RGPD)",
+    );
+    expect(rights?.body).not.toContain("date de fin lorsqu'elle est connue");
+    expect(rights?.body).toContain("expiration au bout de 15 minutes");
+  });
+
   it("lists the health-data access journal in the export (#732)", () => {
     const rights = LEGAL_DOCUMENTS.privacy.sections.find(
       (s) => s.heading === "Vos droits (RGPD)",

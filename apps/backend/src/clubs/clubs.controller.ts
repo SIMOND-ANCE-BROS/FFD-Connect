@@ -23,6 +23,7 @@ import { Roles } from "../auth/decorators/roles.decorator";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
 import { ApiCommonErrorResponses } from "../common/decorators/api-error-responses.decorator";
 import { ClubPaymentProviderQueryService } from "./club-payment-provider.query-service";
 import { ClubPaymentProviderService } from "./club-payment-provider.service";
@@ -123,13 +124,15 @@ export class ClubsController {
   }
 
   @Put("me/helloasso")
-  @UseGuards(RolesGuard)
+  // Durable payment credentials: never set from a support session (#733).
+  @UseGuards(NoImpersonationGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @ApiOperation({
     summary: "Connecter le compte HelloAsso du club de l'organisateur",
     description:
       "Permet à un organisateur de lier les identifiants HelloAsso de son club. " +
-      "Ensuite, tous les paiements (places, etc.) pour les compétitions organisées par ce club utiliseront ce compte.",
+      "Ensuite, tous les paiements (places, etc.) pour les compétitions organisées par ce club utiliseront ce compte. " +
+      "Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
   @ApiResponse({ status: 200, description: "HelloAsso connecté avec succès" })
   @ApiResponse({
@@ -167,7 +170,8 @@ export class ClubsController {
   }
 
   @Put("me/payment-provider")
-  @UseGuards(RolesGuard)
+  // Where club payments go: never changed from a support session (#733).
+  @UseGuards(NoImpersonationGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @ApiOperation({
     summary: "Choisir le connecteur de paiement du club de l'organisateur",
@@ -175,7 +179,8 @@ export class ClubsController {
       "Choisit le connecteur de paiement en ligne utilisé pour les places des compétitions organisées par le club (#388). " +
       "Seuls les connecteurs disponibles sont acceptés (aujourd'hui : HELLOASSO). " +
       "Les identifiants se saisissent sur la route propre au connecteur (HelloAsso : `PUT /clubs/me/helloasso`) ; " +
-      "changer de connecteur n'efface pas ceux du précédent.",
+      "changer de connecteur n'efface pas ceux du précédent. " +
+      "Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
   @ApiResponse({ status: 200, type: ClubPaymentProviderStatusDto })
   @ApiResponse({

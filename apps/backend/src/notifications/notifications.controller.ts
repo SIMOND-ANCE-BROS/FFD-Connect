@@ -23,6 +23,7 @@ import { ApiCommonErrorResponses } from "../common/decorators/api-error-response
 import type { RequestWithUser } from "../auth/interfaces/jwt-payload.interface";
 import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
+import { NoImpersonationGuard } from "../auth/no-impersonation.guard";
 import {
   RegisterDeviceTokenDto,
   UnregisterDeviceTokenDto,
@@ -152,13 +153,14 @@ export class NotificationsController {
    * (100 req/min) couvre toute l'API, pas ce seul endpoint.
    */
   @Patch("preferences")
-  @UseGuards(JwtAuthGuard, ThrottlerUserGuard)
+  // The user's own choice: never changed from a support session (#733).
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, ThrottlerUserGuard)
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Règle la réception des push d'un type de notification",
     description:
-      "Idempotent. N'affecte que les notifications push : le feed in-app (la cloche) continue d'être alimenté pour tous les types. Un type non réglable est refusé (400), un type qui ne concerne pas le rôle de l'appelant également (403).",
+      "Idempotent. N'affecte que les notifications push : le feed in-app (la cloche) continue d'être alimenté pour tous les types. Un type non réglable est refusé (400), un type qui ne concerne pas le rôle de l'appelant également (403), comme tout appel pendant un accès support (« se connecter en tant que »).",
   })
   @ApiBody({ type: UpdateNotificationPreferenceDto })
   @ApiResponse({
@@ -183,14 +185,16 @@ export class NotificationsController {
   // renouvellement du token par FCM. Sans cette limite, un compte authentifié
   // pouvait écrire ~144 000 lignes/jour sous le seul throttle global
   // (100 req/min), chacune avec un token aléatoire donc unique.
-  @UseGuards(JwtAuthGuard, ThrottlerUserGuard)
+  // Jamais depuis un accès support (#733) : l'appareil de l'admin recevrait
+  // durablement les push de la personne ciblée.
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, ThrottlerUserGuard)
   @Throttle({ default: { ttl: 60_000, limit: 5 } })
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Enregistre l'appareil courant pour les notifications push",
     description:
-      "Appelé par le client à l'ouverture de session et au renouvellement du token FCM. Idempotent : l'upsert se fait sur le token, qui est ré-attribué à l'utilisateur authentifié s'il était lié à un autre compte (appareil partagé ou revendu). Limité à 5 appels par minute et par utilisateur ; au-delà de 20 appareils, les plus anciens (lastSeenAt) sont supprimés.",
+      "Appelé par le client à l'ouverture de session et au renouvellement du token FCM. Idempotent : l'upsert se fait sur le token, qui est ré-attribué à l'utilisateur authentifié s'il était lié à un autre compte (appareil partagé ou revendu). Limité à 5 appels par minute et par utilisateur ; au-delà de 20 appareils, les plus anciens (lastSeenAt) sont supprimés. Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
   @ApiBody({ type: RegisterDeviceTokenDto })
   @ApiResponse({ status: 204, description: "Appareil enregistré" })

@@ -9,6 +9,10 @@ import { ParentalConsentService } from "../parental-consent/parental-consent.ser
 import { STORE_REVIEW_IMPERSONATION_MESSAGE } from "./store-review/store-review-protection";
 import { ThrottlerUserGuard } from "../common/guards/throttler-user.guard";
 import { IdentifierThrottlerGuard } from "../common/guards/identifier-throttler.guard";
+import { ROLES_KEY } from "./decorators/roles.decorator";
+import { RolesGuard } from "./guards/roles.guard";
+import { JwtAuthGuard } from "./jwt-auth.guard";
+import { NoImpersonationGuard } from "./no-impersonation.guard";
 
 describe("AuthController", () => {
   let controller: AuthController;
@@ -21,6 +25,7 @@ describe("AuthController", () => {
     login: jest.fn(),
     validateUser: jest.fn(),
     impersonate: jest.fn(),
+    stopImpersonation: jest.fn(),
   };
 
   const mockAuthTokenService = {
@@ -256,6 +261,51 @@ describe("AuthController", () => {
         undefined,
         "1.1.1.1",
       );
+    });
+
+    it("is ADMIN-only, refused from inside a session and throttled per admin (#733)", () => {
+      const handler = AuthController.prototype.impersonate;
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([UserRole.ADMIN]);
+      // JwtAuthGuard first (it fills req.user), then no chained session.
+      const guards = Reflect.getMetadata("__guards__", handler) as unknown[];
+      expect(guards).toEqual([
+        JwtAuthGuard,
+        NoImpersonationGuard,
+        RolesGuard,
+        ThrottlerUserGuard,
+      ]);
+      expect(Reflect.getMetadata("THROTTLER:LIMITdefault", handler)).toBe(5);
+      expect(Reflect.getMetadata("THROTTLER:TTLdefault", handler)).toBe(60000);
+    });
+  });
+
+  describe("stopImpersonation (#733)", () => {
+    it("closes the journal row named by the impersonation token", async () => {
+      const req = {
+        user: {
+          userId: "target-1",
+          roles: [UserRole.LICENSEE],
+          impersonatedBy: "admin-1",
+          impersonationLogId: "log-1",
+        },
+      } as never;
+      await expect(controller.stopImpersonation(req)).resolves.toEqual({
+        message: "Impersonation arrêtée",
+      });
+      expect(mockAuthService.stopImpersonation).toHaveBeenCalledWith(
+        "admin-1",
+        "log-1",
+      );
+    });
+
+    it("does nothing outside an impersonation session", async () => {
+      const req = {
+        user: { userId: "admin-1", roles: [UserRole.ADMIN] },
+      } as never;
+      await expect(controller.stopImpersonation(req)).resolves.toEqual({
+        message: "Impersonation arrêtée",
+      });
+      expect(mockAuthService.stopImpersonation).not.toHaveBeenCalled();
     });
   });
 });
