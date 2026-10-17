@@ -1246,11 +1246,6 @@ export const healthDataAccessLogSelect = {
   createdAt: true,
 } as const;
 
-/** Avis de mise à jour de la politique de confidentialité (#734). */
-export const privacyPolicySeenVersionSelect = {
-  privacyPolicySeenVersion: true,
-} as const;
-
 /** Back-office: club options for selects (id + name only). */
 export const adminClubOptionSelect = { id: true, name: true } as const;
 
@@ -1611,6 +1606,11 @@ export const parentalConsentSubjectSelect = {
   firstName: true,
   email: true,
   birthDate: true,
+} as const;
+
+/** Avis de mise à jour de la politique de confidentialité (#734). */
+export const privacyPolicySeenVersionSelect = {
+  privacyPolicySeenVersion: true,
 } as const;
 
 /** Parental consent (#61): birth date only, for the health-data gate. */
