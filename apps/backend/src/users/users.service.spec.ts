@@ -768,6 +768,7 @@ describe("UsersService", () => {
       prisma.result.findMany.mockResolvedValue([]);
       prisma.bugReport.findMany.mockResolvedValue([]);
       prisma.impersonationLog.findMany.mockResolvedValue([]);
+      prisma.healthDataAccessLog.findMany.mockResolvedValue([]);
     });
 
     const exportSelect = () =>
@@ -796,6 +797,7 @@ describe("UsersService", () => {
         results: [],
         bugReports: [],
         impersonationsReceived: [],
+        healthDataAccesses: [],
       });
     });
 
@@ -1344,6 +1346,55 @@ describe("UsersService", () => {
       expect(select.actorId).toBeUndefined();
       expect(select.ip).toBeUndefined();
       expect(result.data.impersonationsReceived).toEqual([session]);
+    });
+
+    it("exporte les accès à ses données de santé avec la seule qualité de l'auteur (#732)", async () => {
+      const access = {
+        actorRole: "IMPERSONATOR",
+        action: "READ",
+        resourceType: "LICENSE_RENEWAL_REQUEST",
+        route: "GET /licenses/renewal/my",
+        createdAt: new Date("2026-09-01T10:00:00Z"),
+      };
+      prisma.healthDataAccessLog.findMany.mockResolvedValue([access] as never);
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      const result = await service.exportMyData("u1");
+
+      const query = prisma.healthDataAccessLog.findMany.mock.calls[0][0];
+      expect(query?.where).toEqual({ subjectUserId: "u1" });
+      expect(query?.orderBy).toEqual({ createdAt: "desc" });
+      expect(query?.take).toBe(500);
+      const select = query?.select as Record<string, unknown>;
+      expect(select).toEqual({
+        actorRole: true,
+        action: true,
+        resourceType: true,
+        route: true,
+        createdAt: true,
+      });
+      // Identité de l'auteur : donnée d'un tiers ; UUID internes : inutiles.
+      expect(select.actorUserId).toBeUndefined();
+      expect(select.id).toBeUndefined();
+      expect(select.resourceId).toBeUndefined();
+      expect(result.data.healthDataAccesses).toEqual([access]);
+    });
+
+    it("lit le journal des accès de santé avant d'y tracer l'export en cours (#732)", async () => {
+      const order: string[] = [];
+      prisma.healthDataAccessLog.findMany.mockImplementation(() => {
+        order.push("read");
+        return Promise.resolve([]);
+      });
+      healthAccess.record.mockImplementation(() => {
+        order.push("record");
+        return Promise.resolve();
+      });
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      await service.exportMyData("u1");
+
+      expect(order).toEqual(["read", "record"]);
     });
 
     it("exporte les sessions de connexion en métadonnées, jamais le hash du token", async () => {

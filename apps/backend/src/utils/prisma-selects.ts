@@ -1246,6 +1246,21 @@ export const healthDataAccessLogSelect = {
   createdAt: true,
 } as const;
 
+/**
+ * Export RGPD (#732) : accès aux données de santé de l'utilisateur (lignes dont
+ * il est la personne concernée). Qualité de l'auteur, nature, ressource, point
+ * d'entrée et date — jamais l'identifiant de l'auteur (`actorUserId`, donnée
+ * d'un tiers, même règle que les accès support) ni les UUID internes (`id`,
+ * `resourceId`), sans valeur pour la personne.
+ */
+export const healthDataAccessLogExportSelect = {
+  actorRole: true,
+  action: true,
+  resourceType: true,
+  route: true,
+  createdAt: true,
+} as const;
+
 /** Back-office: club options for selects (id + name only). */
 export const adminClubOptionSelect = { id: true, name: true } as const;
 

@@ -44,4 +44,13 @@ describe("privacy policy in the app", () => {
     expect(rights?.body).toContain("vos sessions de connexion");
     expect(rights?.body).toContain("journal d'audit des administrateurs");
   });
+
+  it("lists the health-data access journal in the export (#732)", () => {
+    const rights = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Vos droits (RGPD)",
+    );
+    expect(rights?.body).toContain("les accès à vos données de santé");
+    expect(rights?.body).toContain("qualité de l'auteur, sans son identité");
+    expect(rights?.body).not.toContain("à ce jour le journal des accès");
+  });
 });
