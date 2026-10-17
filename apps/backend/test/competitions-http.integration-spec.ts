@@ -168,9 +168,29 @@ describe("CompetitionsController HTTP Integration", () => {
     await prisma.user.deleteMany({
       where: { email: { contains: `@comp-http-${suffix}.test` } },
     });
+    await prisma.club.deleteMany({
+      where: { name: { contains: String(suffix) } },
+    });
 
     await app.close();
   });
+
+  /**
+   * Links a CLUB account to the club named `name` (created on first use), as
+   * real club accounts are: organiser rights are decided on club ids (#625).
+   */
+  const linkToClub = async (userId: string, name: string) => {
+    const club =
+      (await prisma.club.findFirst({
+        where: { name },
+        select: { id: true },
+      })) ??
+      (await prisma.club.create({ data: { name }, select: { id: true } }));
+    await prisma.user.update({
+      where: { id: userId },
+      data: { clubId: club.id, clubName: name },
+    });
+  };
 
   // ===========================================================================
   // GET /competitions
@@ -690,10 +710,7 @@ describe("CompetitionsController HTTP Integration", () => {
 
       const makeClubUser = async (clubName: string) => {
         const { user, token } = await makeUser(UserRole.CLUB);
-        await prisma.user.update({
-          where: { id: user.id },
-          data: { clubName },
-        });
+        await linkToClub(user.id, clubName);
         return { user, token };
       };
 
@@ -930,10 +947,7 @@ describe("CompetitionsController HTTP Integration", () => {
 
     it("returns 201 when a CLUB user creates a competition", async () => {
       const { user, token } = await makeUser(UserRole.CLUB);
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { clubName: `Club ${suffix}` },
-      });
+      await linkToClub(user.id, `Club ${suffix}`);
 
       const res = await request(app.getHttpServer())
         .post("/api/v1/competitions")
@@ -984,10 +998,7 @@ describe("CompetitionsController HTTP Integration", () => {
 
       const makeClubUser = async () => {
         const club = await makeUser(UserRole.CLUB);
-        await prisma.user.update({
-          where: { id: club.user.id },
-          data: { clubName: `Editor Club ${suffix}` },
-        });
+        await linkToClub(club.user.id, `Editor Club ${suffix}`);
         return club;
       };
 
