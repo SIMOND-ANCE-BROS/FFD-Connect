@@ -43,6 +43,7 @@ import { CompetitionResultsService } from "./services/competition-results.servic
 import { CheckInDto, CheckInResponseDto } from "./dto/checkin.dto";
 import { CompetitionResultDto } from "./dto/competition-result.dto";
 import {
+  ApiActiveCompetitionResponse,
   CompetitionDetailDto,
   CompetitionPageDto,
 } from "./dto/competition-response.dto";
@@ -119,39 +120,11 @@ export class CompetitionsController {
 
   @Get("active")
   @ApiOperation({
-    summary: "Récupère la compétition active du jour",
+    summary: "Récupère la compétition du jour",
     description:
-      "Retourne la compétition qui est actuellement en cours (date du jour entre startDate et endDate).",
+      "Retourne la première compétition dont la date de début (`date`) tombe aujourd'hui (heure du serveur), avec ses épreuves, ou `null` s'il n'y en a aucune. Pas de 404.",
   })
-  @ApiResponse({
-    status: 200,
-    description: "Compétition active trouvée",
-    schema: {
-      type: "object",
-      properties: {
-        id: { type: "string" },
-        name: { type: "string" },
-        startDate: { type: "string", format: "date-time" },
-        endDate: { type: "string", format: "date-time" },
-        location: { type: "string" },
-        status: { type: "string", enum: ["ACTIVE"] },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 404,
-    description: "Aucune compétition active trouvée pour aujourd'hui",
-    schema: {
-      type: "object",
-      properties: {
-        statusCode: { type: "number", example: 404 },
-        message: {
-          type: "string",
-          example: "No active competition found",
-        },
-      },
-    },
-  })
+  @ApiActiveCompetitionResponse()
   findActive() {
     return this.queryService.findActiveCompetition();
   }
