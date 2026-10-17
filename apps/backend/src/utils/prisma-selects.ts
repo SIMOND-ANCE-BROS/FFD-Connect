@@ -6,27 +6,6 @@
 import { TrackCorrectionStatus } from "@prisma/client";
 
 /**
- * Sélecteur pour les informations utilisateur de base (sans mot de passe)
- */
-export const userBaseSelect = {
-  id: true,
-  email: true,
-  firstName: true,
-  lastName: true,
-  role: true,
-  createdAt: true,
-  updatedAt: true,
-  ageGroup: true,
-  category: true,
-  clubId: true,
-  clubName: true,
-  birthDate: true,
-  nationalRanking: true,
-  passportLevelLatin: true,
-  passportLevelStandard: true,
-} as const;
-
-/**
  * Niveaux de compétition d'un utilisateur : un par discipline + l'ancien
  * niveau unique (déprécié, lu en repli). À lire via
  * getCompetitionLevelForCategory (src/common/competition-level).
@@ -62,66 +41,6 @@ export const partnershipCandidateSelect = {
 } as const;
 
 /**
- * Sélecteur pour les informations utilisateur avec licence
- */
-export const userWithLicenseSelect = {
-  ...userBaseSelect,
-  license: {
-    select: {
-      id: true,
-      number: true,
-      validUntil: true,
-      category: true,
-      clubName: true,
-      qrCodeSignature: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  },
-} as const;
-
-/**
- * Sélecteur pour les informations utilisateur minimales (pour les listes)
- */
-export const userMinimalSelect = {
-  id: true,
-  firstName: true,
-  lastName: true,
-  email: true,
-  clubName: true,
-  nationalRanking: true,
-} as const;
-
-/**
- * Sélecteur pour les compétitions de base
- */
-export const competitionBaseSelect = {
-  id: true,
-  ffdId: true,
-  title: true,
-  date: true,
-  location: true,
-  address: true,
-  zipCode: true,
-  city: true,
-  latitude: true,
-  longitude: true,
-  description: true,
-  eventsDescription: true,
-  programUrl: true,
-  endDate: true,
-  type: true,
-  organizer: true,
-  circularUrl: true,
-  registrationUrl: true,
-  imageUrl: true,
-  status: true,
-  delayMinutes: true,
-  createdAt: true,
-  updatedAt: true,
-} as const;
-
-/**
  * Champs minimaux de la compétition pour la logique d'inscription
  * (évite de charger le JSON de layout). `registrationDeadline` sert au
  * contrôle serveur de la date limite (#821).
@@ -132,33 +51,6 @@ export const competitionForRegistrationSelect = {
   competitionType: true,
   title: true,
   registrationDeadline: true,
-} as const;
-
-/**
- * Sélecteur pour les événements de base
- */
-export const eventBaseSelect = {
-  id: true,
-  category: true,
-  ageGroup: true,
-  competitionId: true,
-} as const;
-
-/**
- * Sélecteur pour les inscriptions de base
- */
-export const registrationBaseSelect = {
-  id: true,
-  userId: true,
-  eventId: true,
-  partnerName: true,
-  status: true,
-  bibNumber: true,
-  checkedIn: true,
-  checkInTime: true,
-  feePaid: true,
-  createdAt: true,
-  updatedAt: true,
 } as const;
 
 /**
@@ -191,20 +83,6 @@ export const clubPendingRegistrationSelect = {
       competitionId: true,
     },
   },
-} as const;
-
-/**
- * Sélecteur pour les notifications de base
- */
-export const notificationBaseSelect = {
-  id: true,
-  userId: true,
-  title: true,
-  body: true,
-  type: true,
-  read: true,
-  createdAt: true,
-  updatedAt: true,
 } as const;
 
 /**
