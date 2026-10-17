@@ -158,6 +158,18 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # Deploy helper scripts (ACR purge, log summary), sparse and without
+      # credentials. Taken first so every later step, including a failure
+      # path, can use them.
+      - name: Checkout deploy scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          sparse-checkout: |
+            .github/scripts/acr-purge.sh
+            .github/scripts/log-summary.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Capture current image (for rollback)
         id: prev
         run: |
@@ -320,7 +332,12 @@ jobs:
               --tail 30 \
               --format text 2>&1 || true
           )
-          echo "$LOGS"
+          # Public repo: Actions logs are world-readable for 90 days. NO log
+          # text is printed (#774): only counts and error codes in a fixed
+          # shape. The pattern check below reads the raw text and prints a
+          # fixed warning. Full logs: `az containerapp logs show` from a
+          # logged-in workstation.
+          printf '%s\n' "$LOGS" | sh .github/scripts/log-summary.sh
           if echo "$LOGS" | grep -iE "(FATAL|unhandled|ECONNREFUSED|ExitCode|OOMKilled)" > /dev/null 2>&1; then
             echo "::warning::Suspicious patterns found in post-deploy logs"
           else
@@ -337,14 +354,6 @@ jobs:
       # index; then drops stale tags and orphaned untagged manifests. If the
       # inventory query fails it deletes nothing. ~30-40 s in steady state.
       # Requires AcrDelete + Reader (infra/terraform/ci-iam.tf).
-      - name: Checkout purge script
-        if: success()
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
-        with:
-          sparse-checkout: .github/scripts/acr-purge.sh
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-
       - name: Purge ACR (keep live images + newest 15)
         if: success()
         continue-on-error: true
@@ -428,6 +437,18 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Deploy helper scripts (ACR purge, log summary), sparse and without
+      # credentials. Taken first so every later step, including a failure
+      # path, can use them.
+      - name: Checkout deploy scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
+        with:
+          sparse-checkout: |
+            .github/scripts/acr-purge.sh
+            .github/scripts/log-summary.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - name: Capture current image (for rollback)
         id: prev
@@ -594,7 +615,12 @@ jobs:
               --tail 30 \
               --format text 2>&1 || true
           )
-          echo "$LOGS"
+          # Public repo: Actions logs are world-readable for 90 days. NO log
+          # text is printed (#774): only counts and error codes in a fixed
+          # shape. The pattern check below reads the raw text and prints a
+          # fixed warning. Full logs: `az containerapp logs show` from a
+          # logged-in workstation.
+          printf '%s\n' "$LOGS" | sh .github/scripts/log-summary.sh
           if echo "$LOGS" | grep -iE "(FATAL|unhandled|ECONNREFUSED|ExitCode|OOMKilled)" > /dev/null 2>&1; then
             echo "::warning::Suspicious patterns found in post-deploy logs"
           else
@@ -611,14 +637,6 @@ jobs:
       # index; then drops stale tags and orphaned untagged manifests. If the
       # inventory query fails it deletes nothing. ~30-40 s in steady state.
       # Requires AcrDelete + Reader (infra/terraform/ci-iam.tf).
-      - name: Checkout purge script
-        if: success()
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
-        with:
-          sparse-checkout: .github/scripts/acr-purge.sh
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
-
       - name: Purge ACR (keep live images + newest 15)
         if: success()
         continue-on-error: true
