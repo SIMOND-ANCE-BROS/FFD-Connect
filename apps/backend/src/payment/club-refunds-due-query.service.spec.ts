@@ -170,7 +170,7 @@ describe("ClubRefundsDueQueryService (#516)", () => {
     });
   });
 
-  it("matches a legacy account whose name designates no club on unlinked rows only (#625)", async () => {
+  it("gives nothing to a legacy account whose name designates no club (#625)", async () => {
     prisma.user.findUnique.mockResolvedValue({
       ...clubManager,
       clubId: null,
@@ -184,22 +184,12 @@ describe("ClubRefundsDueQueryService (#516)", () => {
       unlinked("comp-4", "Club A Bis"),
     ] as never);
 
-    await service.listForClubManager("user-1");
+    const page = await service.listForClubManager("user-1");
 
-    expect(prisma.competition.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          AND: [
-            {
-              organizerClubId: null,
-              OR: [{ organizer: { equals: "Club A", mode: "insensitive" } }],
-            },
-            { seatBookings: { some: { refundOwedAt: { not: null } } } },
-          ],
-        },
-      }),
-    );
-    expect(listedCompetitionIds()).toEqual(["comp-3"]);
+    // Without a club id it organises nothing, even an exact label.
+    expect(prisma.competition.findMany).not.toHaveBeenCalled();
+    expect(prisma.seatBooking.findMany).not.toHaveBeenCalled();
+    expect(page.data).toEqual([]);
   });
 
   it("resolves a legacy account to its club and never matches a linked row on its label (#625)", async () => {
@@ -211,6 +201,7 @@ describe("ClubRefundsDueQueryService (#516)", () => {
     } as never);
     // Name resolution: the one club named "Club A" is club-7.
     prisma.club.findMany.mockResolvedValueOnce([{ id: "club-7" }] as never);
+    prisma.club.findFirst.mockResolvedValue({ id: "club-7" } as never);
     prisma.competition.findMany.mockResolvedValue([
       { id: "comp-5", organizer: "Club A", organizerClubId: "club-other" },
       { id: "comp-6", organizer: "Autre", organizerClubId: "club-7" },

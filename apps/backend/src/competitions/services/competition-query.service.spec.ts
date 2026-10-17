@@ -752,6 +752,8 @@ describe("CompetitionQueryService", () => {
       mockPrismaService.club.findMany.mockResolvedValue([
         { id: "club-1" },
       ] as never);
+      // The club is active.
+      mockPrismaService.club.findFirst.mockResolvedValue({ id: "club-1" });
       mockPrismaService.competition.findMany.mockResolvedValue([]);
 
       await service.findOrganizedByClub("user-1");
@@ -771,7 +773,7 @@ describe("CompetitionQueryService", () => {
       );
     });
 
-    it("limits a legacy account with an unresolvable name to unlinked rows (#625)", async () => {
+    it("lists nothing for a legacy account whose name is shared by homonym clubs (#625)", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({
         role: "CLUB",
         clubId: null,
@@ -782,18 +784,9 @@ describe("CompetitionQueryService", () => {
         { id: "club-1" },
         { id: "club-2" },
       ] as never);
-      mockPrismaService.competition.findMany.mockResolvedValue([]);
 
-      await service.findOrganizedByClub("user-1");
-
-      expect(mockPrismaService.competition.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            organizerClubId: null,
-            OR: [{ organizer: { equals: "Club Homo", mode: "insensitive" } }],
-          },
-        }),
-      );
+      await expect(service.findOrganizedByClub("user-1")).resolves.toEqual([]);
+      expect(mockPrismaService.competition.findMany).not.toHaveBeenCalled();
     });
 
     it.each([

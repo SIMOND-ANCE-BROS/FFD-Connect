@@ -55,6 +55,8 @@ describe("PaymentNotificationService", () => {
   it("writes an in-app notification for the organizer club's managers only", async () => {
     prisma.seatBooking.findUnique.mockResolvedValue(booking as never);
     prisma.club.findUnique.mockResolvedValue(club as never);
+    // Its name is unique: legacy accounts named after it are addressed.
+    prisma.club.findMany.mockResolvedValue([{ id: "club-1" }] as never);
     prisma.user.findMany.mockResolvedValue([
       { id: "manager-1" },
       { id: "manager-2" },
@@ -62,11 +64,17 @@ describe("PaymentNotificationService", () => {
 
     await service.notifyPaymentReceived("booking-1");
 
-    // The club is the competition's linked organiser (#408), by id.
+    // The club is the competition's linked organiser (#408), by id; the only
+    // name lookup is the uniqueness check of the club's own name (#625).
     expect(prisma.club.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "club-1" } }),
     );
-    expect(prisma.club.findMany).not.toHaveBeenCalled();
+    expect(prisma.club.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.club.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { name: { equals: "Club Danse Lyon", mode: "insensitive" } },
+      }),
+    );
     // Only this club's active, enabled CLUB managers, bounded.
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -101,6 +109,31 @@ describe("PaymentNotificationService", () => {
     );
     // In-app feed only: no push.
     expect(notifications.sendToUsers).not.toHaveBeenCalled();
+  });
+
+  it("never addresses legacy accounts when a homonym club exists (#625)", async () => {
+    prisma.seatBooking.findUnique.mockResolvedValue(booking as never);
+    prisma.club.findUnique.mockResolvedValue(club as never);
+    // "Club Danse Lyon" and "club danse lyon": legacy accounts could be either.
+    prisma.club.findMany.mockResolvedValue([
+      { id: "club-1" },
+      { id: "club-2" },
+    ] as never);
+    prisma.user.findMany.mockResolvedValue([{ id: "manager-1" }] as never);
+
+    await service.notifyPaymentReceived("booking-1");
+
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            withActiveRole(UserRole.CLUB),
+            { disabledAt: null },
+            { clubId: "club-1" },
+          ],
+        },
+      }),
+    );
   });
 
   it("omits the seat from the copy when the booking has none", () => {
