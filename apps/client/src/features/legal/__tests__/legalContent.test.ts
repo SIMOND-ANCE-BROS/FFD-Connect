@@ -19,4 +19,22 @@ describe("privacy policy in the app", () => {
     expect(section?.body).toContain("privacy@gabin-simond.fr");
     expect(section?.body).toContain("ne sont pas conservés");
   });
+
+  it("declares the support access and lists it in the export (#387)", () => {
+    const support = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Accès support",
+    );
+    expect(support?.body).toContain("15 minutes");
+    expect(support?.body).toContain("journalisé");
+    expect(support?.body).toContain(
+      "durée de conservation n'est pas encore fixée",
+    );
+
+    const rights = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Vos droits (RGPD)",
+    );
+    expect(rights?.body).toContain("les accès support à votre compte");
+    expect(rights?.body).toContain("vos sessions de connexion");
+    expect(rights?.body).toContain("journal d'audit des administrateurs");
+  });
 });
