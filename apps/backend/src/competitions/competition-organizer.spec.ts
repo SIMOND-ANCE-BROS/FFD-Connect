@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { DeepMockProxy, mockDeep } from "jest-mock-extended";
 import {
   clubManagersOfClubWhere,
+  clubMembersScopeOf,
   findClubIdByName,
   matchClubByName,
   organizedByClubWhere,
@@ -274,5 +275,64 @@ describe("competition-organizer (#408)", () => {
         clubManagersOfClubWhere(prisma, { id: "c1", name: "Club X" }),
       ).resolves.toEqual({ clubId: "c1" });
     });
+  });
+
+  describe("clubMembersScopeOf (#749)", () => {
+    it("scopes a linked account to its club id, without any name lookup", async () => {
+      await expect(
+        clubMembersScopeOf(prisma, { clubId: "c1", clubName: "Club A" }),
+      ).resolves.toEqual({ clubId: "c1", members: { clubId: "c1" } });
+      expect(prisma.club.findMany).not.toHaveBeenCalled();
+    });
+
+    it("scopes a legacy account to the one active club its name designates", async () => {
+      prisma.club.findMany.mockResolvedValue([{ id: "c1" }] as never);
+      prisma.club.findFirst.mockResolvedValue({ id: "c1" } as never);
+      await expect(
+        clubMembersScopeOf(prisma, { clubId: null, clubName: " Club_A " }),
+      ).resolves.toEqual({
+        clubId: "c1",
+        members: {
+          OR: [
+            { clubId: "c1" },
+            {
+              clubId: null,
+              clubName: { equals: "Club\\_A", mode: "insensitive" },
+            },
+          ],
+        },
+      });
+      expect(prisma.club.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "c1", disabledAt: null } }),
+      );
+    });
+
+    it("scopes nobody when the legacy name designates homonym clubs", async () => {
+      prisma.club.findMany.mockResolvedValue([
+        { id: "c1" },
+        { id: "c2" },
+      ] as never);
+      await expect(
+        clubMembersScopeOf(prisma, { clubId: null, clubName: "Club A" }),
+      ).resolves.toBeNull();
+    });
+
+    it("scopes nobody when the legacy name designates a disabled club", async () => {
+      prisma.club.findMany.mockResolvedValue([{ id: "c1" }] as never);
+      prisma.club.findFirst.mockResolvedValue(null);
+      await expect(
+        clubMembersScopeOf(prisma, { clubId: null, clubName: "Club A" }),
+      ).resolves.toBeNull();
+    });
+
+    it.each([null, "", "  "])(
+      "scopes nobody for a legacy account without a name (%p), without lookup",
+      async (clubName) => {
+        await expect(
+          clubMembersScopeOf(prisma, { clubId: null, clubName }),
+        ).resolves.toBeNull();
+        expect(prisma.club.findMany).not.toHaveBeenCalled();
+      },
+    );
   });
 });

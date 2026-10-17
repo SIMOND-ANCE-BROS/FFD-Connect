@@ -116,6 +116,45 @@ export async function organizerActorOf(
   return { clubId: active?.id ?? null, clubNames: [user.clubName] };
 }
 
+/** The club whose members a club account lists, and the matching filter. */
+export interface ClubMembersScope {
+  clubId: string;
+  /** `User` filter selecting the members of `clubId`. */
+  members: Prisma.UserWhereInput;
+}
+
+/**
+ * The members a club account sees in its lists (#749). A linked account
+ * lists the users linked to its club. A legacy account without `clubId` is
+ * first resolved to the ONE ACTIVE club its name designates
+ * (`organizerActorOf`); it then lists that club's linked users plus the
+ * legacy users named after it — safe because the name designates this club
+ * alone. An account that resolves to no club (no name, unknown name,
+ * homonyms, disabled club) lists nobody: `null`. Never `User.clubName`
+ * compared on its own — a homonym club's members would appear.
+ */
+export async function clubMembersScopeOf(
+  db: ClubReader,
+  account: { clubId: string | null; clubName: string | null },
+): Promise<ClubMembersScope | null> {
+  if (account.clubId) {
+    return { clubId: account.clubId, members: { clubId: account.clubId } };
+  }
+  const name = account.clubName?.trim();
+  if (!name) return null;
+  const { clubId } = await organizerActorOf(db, {
+    clubId: null,
+    clubName: name,
+  });
+  if (!clubId) return null;
+  return {
+    clubId,
+    members: {
+      OR: [{ clubId }, { clubId: null, clubName: sameClubName(name) }],
+    },
+  };
+}
+
 function distinctNames(
   names: readonly (string | null | undefined)[],
 ): string[] {

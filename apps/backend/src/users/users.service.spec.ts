@@ -336,7 +336,7 @@ describe("UsersService", () => {
         id: "org1",
         role: UserRole.LICENSEE,
         extraRoles: [UserRole.CLUB],
-        clubId: null,
+        clubId: "c1",
         clubName: "DanceClub",
         club: { disabledAt: null },
       });
@@ -380,7 +380,7 @@ describe("UsersService", () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
         role: UserRole.CLUB,
-        clubId: null,
+        clubId: "c1",
         clubName: "DanceClub",
       });
 
@@ -419,26 +419,85 @@ describe("UsersService", () => {
       expect(select).toHaveProperty("role", true);
     });
 
-    it("scopes the query to the organizer's club by clubName when no clubId exists", async () => {
+    it("scopes a legacy account (no clubId) to the one active club its name designates (#749)", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "org1",
+        role: UserRole.CLUB,
+        clubId: null,
+        clubName: " DanceClub ",
+      });
+      prisma.club.findMany.mockResolvedValue([{ id: "club-7" }] as never);
+      prisma.club.findFirst.mockResolvedValue({ id: "club-7" });
+      prisma.user.count.mockResolvedValue(0);
+      prisma.user.findMany.mockResolvedValue([] as never);
+
+      await service.findClubMembers("org1");
+
+      expect(prisma.club.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "club-7", disabledAt: null },
+        }),
+      );
+      const expectedWhere = {
+        AND: [
+          {
+            OR: [
+              { clubId: "club-7" },
+              {
+                clubId: null,
+                clubName: { equals: "DanceClub", mode: "insensitive" },
+              },
+            ],
+          },
+          withActiveRole(UserRole.LICENSEE),
+        ],
+      };
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expectedWhere }),
+      );
+      expect(prisma.user.count).toHaveBeenCalledWith({ where: expectedWhere });
+    });
+
+    it("lists nobody for a legacy account whose name designates homonym clubs (#749)", async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
         role: UserRole.CLUB,
         clubId: null,
         clubName: "DanceClub",
       });
-      prisma.user.count.mockResolvedValue(0);
-      prisma.user.findMany.mockResolvedValue([] as never);
+      // « DanceClub » and « danceclub »: the name designates two clubs.
+      prisma.club.findMany.mockResolvedValue([
+        { id: "club-7" },
+        { id: "club-8" },
+      ] as never);
 
-      await service.findClubMembers("org1");
+      const result = await service.findClubMembers("org1", {
+        skip: 0,
+        take: 10,
+      });
 
-      expect(prisma.user.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: {
-            clubName: "DanceClub",
-            ...withActiveRole(UserRole.LICENSEE),
-          },
-        }),
-      );
+      expect(result).toEqual({
+        data: [],
+        meta: { total: 0, skip: 0, take: 10, hasMore: false },
+      });
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
+      expect(prisma.user.count).not.toHaveBeenCalled();
+    });
+
+    it("lists nobody for a legacy account whose club is disabled (#749)", async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: "org1",
+        role: UserRole.CLUB,
+        clubId: null,
+        clubName: "DanceClub",
+      });
+      prisma.club.findMany.mockResolvedValue([{ id: "club-7" }] as never);
+      prisma.club.findFirst.mockResolvedValue(null);
+
+      const result = await service.findClubMembers("org1");
+
+      expect(result.data).toEqual([]);
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
     });
 
     it("scopes the query to the organizer's club by clubId when available", async () => {
@@ -455,16 +514,20 @@ describe("UsersService", () => {
 
       expect(prisma.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { clubId: "club-42", ...withActiveRole(UserRole.LICENSEE) },
+          where: {
+            AND: [{ clubId: "club-42" }, withActiveRole(UserRole.LICENSEE)],
+          },
         }),
       );
+      // A linked account is its club: no name lookup at all.
+      expect(prisma.club.findMany).not.toHaveBeenCalled();
     });
 
     it("computes the most frequent partnerName from active registrations", async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
         role: UserRole.CLUB,
-        clubId: null,
+        clubId: "c1",
         clubName: "DanceClub",
       });
 
@@ -503,7 +566,7 @@ describe("UsersService", () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
         role: UserRole.CLUB,
-        clubId: null,
+        clubId: "c1",
         clubName: "DanceClub",
       });
 
@@ -526,7 +589,7 @@ describe("UsersService", () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
         role: UserRole.CLUB,
-        clubId: null,
+        clubId: "c1",
         clubName: "DanceClub",
       });
 
@@ -549,7 +612,7 @@ describe("UsersService", () => {
       prisma.user.findUnique.mockResolvedValue({
         id: "org1",
         role: UserRole.CLUB,
-        clubId: null,
+        clubId: "c1",
         clubName: "DanceClub",
       });
       prisma.user.count.mockResolvedValue(30);
