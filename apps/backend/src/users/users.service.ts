@@ -454,7 +454,9 @@ export class UsersService {
    *
    * Arbitrages #251 (à revoir par le responsable de traitement) :
    * - sessions d'impersonation ciblant l'utilisateur : date, motif et RÔLE de
-   *   l'auteur seulement, jamais son identité ni son IP (données d'un tiers) ;
+   *   l'auteur seulement, jamais son identité ni son IP (données d'un tiers),
+   *   avec les écritures faites pendant chaque session (#761 : méthode,
+   *   modèle de route, statut, date) ;
    * - sessions de connexion (refresh tokens) : métadonnées seulement (création,
    *   expiration, révocation), jamais le hash du token ;
    * - journal d'audit admin (`AdminAuditLog`, actions effectuées PAR
@@ -678,10 +680,15 @@ export class UsersService {
         bugReports,
         // A session never stopped ended when its token expired (#733):
         // endedAt = min(stop, startedAt + 15 min), null while still usable.
-        impersonationsReceived: impersonations.map((session) => ({
-          ...session,
-          endedAt: effectiveImpersonationEnd(session),
-        })),
+        // `actionsCount` (#761): every write of the session, so a list cut
+        // at its bound shows as such.
+        impersonationsReceived: impersonations.map(
+          ({ _count, ...session }) => ({
+            ...session,
+            endedAt: effectiveImpersonationEnd(session),
+            actionsCount: _count.actions,
+          }),
+        ),
         healthDataAccesses,
       },
     };

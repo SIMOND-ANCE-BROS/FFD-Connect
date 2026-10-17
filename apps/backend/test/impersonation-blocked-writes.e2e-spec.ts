@@ -5,6 +5,9 @@ import request from "supertest";
 import { AppModule } from "./../src/app.module";
 import { ClubPaymentProviderService } from "./../src/clubs/club-payment-provider.service";
 import { ClubsHelloAssoService } from "./../src/clubs/clubs-helloasso.service";
+import { PartnershipService } from "./../src/clubs/partnership.service";
+import { CompetitionRegistrationService } from "./../src/competitions/services/competition-registration.service";
+import { UsersService } from "./../src/users/users.service";
 import { IdentifierThrottlerGuard } from "./../src/common/guards/identifier-throttler.guard";
 import { LicenseRenewalService } from "./../src/licenses/license-renewal.service";
 import { AppleWalletPassService } from "./../src/licenses/wallet/apple-wallet-pass.service";
@@ -19,7 +22,9 @@ import { applyE2EOverrides, configureTestApp } from "./test-app.factory";
  * Support access (#733): durable writes that would outlive a 15-minute
  * « se connecter en tant que » session are refused under ANY impersonation
  * token (403, service never reached) and work as before otherwise — the
- * licence Wallet pass (#759) and the renewal writes (#760) included.
+ * licence Wallet pass (#759), the renewal writes (#760) and the lasting
+ * writes of #761 included. Every write under impersonation is journalled
+ * (#761).
  */
 describe("Writes blocked under impersonation (e2e, #733)", () => {
   const ADMIN_ID = "11111111-1111-4111-8111-111111111111";
@@ -33,7 +38,16 @@ describe("Writes blocked under impersonation (e2e, #733)", () => {
 
   let app: INestApplication;
   let jwtService: JwtService;
-  const helloAsso = { connectHelloAsso: jest.fn() };
+  const EVENT_ID = "55555555-5555-4555-8555-555555555555";
+  const MEMBER_ID = "66666666-6666-4666-8666-666666666666";
+  const helloAsso = {
+    connectHelloAsso: jest.fn(),
+    setRegistrationMode: jest.fn(),
+  };
+  const registrations = { unregister: jest.fn(), unregisterMember: jest.fn() };
+  const partnerships = { endPartnership: jest.fn() };
+  const users = { updateWdsf: jest.fn() };
+  const actionLog = { create: jest.fn() };
   const paymentProvider = { setMyClubPaymentProvider: jest.fn() };
   const notifications = { registerDeviceToken: jest.fn() };
   const preferences = { setPreference: jest.fn() };
@@ -64,7 +78,10 @@ describe("Writes blocked under impersonation (e2e, #733)", () => {
           startedAt: new Date(),
           endedAt: null,
         }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      // Journal of the writes made under impersonation (#761).
+      impersonationActionLog: actionLog,
     };
 
     const moduleFixture: TestingModule = await applyE2EOverrides(
@@ -97,6 +114,12 @@ describe("Writes blocked under impersonation (e2e, #733)", () => {
         .useValue(renewal)
         .overrideProvider(AppleWalletPassService)
         .useValue(walletPass)
+        .overrideProvider(CompetitionRegistrationService)
+        .useValue(registrations)
+        .overrideProvider(PartnershipService)
+        .useValue(partnerships)
+        .overrideProvider(UsersService)
+        .useValue(users)
         .overrideGuard(IdentifierThrottlerGuard)
         .useValue({ canActivate: () => true }),
     ).compile();
@@ -129,7 +152,25 @@ describe("Writes blocked under impersonation (e2e, #733)", () => {
       token: "t".repeat(43),
       expiresAt: new Date(Date.now() + 300_000),
     });
+    helloAsso.setRegistrationMode.mockResolvedValue({
+      registrationMode: "CLUB_ONLY",
+    });
+    registrations.unregister.mockResolvedValue({ id: "reg-1" });
+    registrations.unregisterMember.mockResolvedValue({ success: true });
+    partnerships.endPartnership.mockResolvedValue({ id: "p-1" });
+    users.updateWdsf.mockResolvedValue({ id: CLUB_ID });
+    actionLog.create.mockResolvedValue({ id: "action-1" });
   });
+
+  /** The journal row is written once the response is over (`close`). */
+  const journalled = async (calls: number) => {
+    for (let i = 0; i < 50 && actionLog.create.mock.calls.length < calls; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    return actionLog.create.mock.calls.map(
+      (call: [{ data: Record<string, unknown> }]) => call[0].data,
+    );
+  };
 
   const clubToken = () =>
     jwtService.sign({ sub: CLUB_ID, email: "club@example.com", role: "CLUB" });
@@ -233,6 +274,57 @@ describe("Writes blocked under impersonation (e2e, #733)", () => {
       service: () => renewal.submitRenewalRequest,
       ok: 201,
     },
+    // #761: writes that free a seat, end a couple or change a lasting setting.
+    {
+      name: "POST /competitions/:id/unregister",
+      send: (token: string) =>
+        request(app.getHttpServer() as Parameters<typeof request>[0])
+          .post(`/api/v1/competitions/${EVENT_ID}/unregister`)
+          .set("Authorization", `Bearer ${token}`)
+          .send({ eventId: EVENT_ID }),
+      service: () => registrations.unregister,
+      ok: 201,
+    },
+    {
+      name: "POST /competitions/unregister-member",
+      send: (token: string) =>
+        request(app.getHttpServer() as Parameters<typeof request>[0])
+          .post("/api/v1/competitions/unregister-member")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ eventId: EVENT_ID, userId: MEMBER_ID }),
+      service: () => registrations.unregisterMember,
+      ok: 201,
+    },
+    {
+      name: "PATCH /clubs/me/partnerships/:id/end",
+      send: (token: string) =>
+        request(app.getHttpServer() as Parameters<typeof request>[0])
+          .patch("/api/v1/clubs/me/partnerships/p-1/end")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ endDate: "2026-10-17" }),
+      service: () => partnerships.endPartnership,
+      ok: 200,
+    },
+    {
+      name: "PATCH /clubs/me/registration-mode",
+      send: (token: string) =>
+        request(app.getHttpServer() as Parameters<typeof request>[0])
+          .patch("/api/v1/clubs/me/registration-mode")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ registrationMode: "CLUB_ONLY" }),
+      service: () => helloAsso.setRegistrationMode,
+      ok: 200,
+    },
+    {
+      name: "PATCH /users/me",
+      send: (token: string) =>
+        request(app.getHttpServer() as Parameters<typeof request>[0])
+          .patch("/api/v1/users/me")
+          .set("Authorization", `Bearer ${token}`)
+          .send({ wdsf: null }),
+      service: () => users.updateWdsf,
+      ok: 200,
+    },
   ];
 
   describe.each(routes)("$name", ({ send, service, ok }) => {
@@ -244,6 +336,57 @@ describe("Writes blocked under impersonation (e2e, #733)", () => {
     it("works as before for the account itself", async () => {
       await send(clubToken()).expect(ok);
       expect(service()).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("journal of the writes made under impersonation (#761)", () => {
+    it("records a refused write with its session, route template and status", async () => {
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .post(`/api/v1/competitions/${EVENT_ID}/unregister?from=app`)
+        .set("Authorization", `Bearer ${impersonationToken()}`)
+        .send({ eventId: EVENT_ID })
+        .expect(403);
+
+      // Template only: neither the event id nor the query string.
+      expect(await journalled(1)).toEqual([
+        {
+          impersonationLogId: LOG_ID,
+          method: "POST",
+          route: "/competitions/:id/unregister",
+          statusCode: 403,
+        },
+      ]);
+    });
+
+    it("records an accepted write too (here: stopping the session)", async () => {
+      const response = await request(
+        app.getHttpServer() as Parameters<typeof request>[0],
+      )
+        .post("/api/v1/auth/impersonate/stop")
+        .set("Authorization", `Bearer ${impersonationToken()}`);
+      expect(response.status).toBeLessThan(300);
+
+      expect(await journalled(1)).toEqual([
+        {
+          impersonationLogId: LOG_ID,
+          method: "POST",
+          route: "/auth/impersonate/stop",
+          statusCode: response.status,
+        },
+      ]);
+    });
+
+    it("records neither reads nor the account's own writes", async () => {
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .get("/api/v1/clubs/me/registration-mode")
+        .set("Authorization", `Bearer ${impersonationToken()}`);
+      await request(app.getHttpServer() as Parameters<typeof request>[0])
+        .patch("/api/v1/clubs/me/registration-mode")
+        .set("Authorization", `Bearer ${clubToken()}`)
+        .send({ registrationMode: "CLUB_ONLY" })
+        .expect(200);
+
+      expect(await journalled(1)).toEqual([]);
     });
   });
 });

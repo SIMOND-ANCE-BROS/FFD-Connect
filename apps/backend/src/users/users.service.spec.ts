@@ -1407,7 +1407,9 @@ describe("UsersService", () => {
         startedAt: new Date("2026-08-01T10:00:00Z"),
         endedAt: null,
       };
-      prisma.impersonationLog.findMany.mockResolvedValue([session] as never);
+      prisma.impersonationLog.findMany.mockResolvedValue([
+        { ...session, _count: { actions: 0 } },
+      ] as never);
       prisma.user.findUnique.mockResolvedValue(makeExportedUser());
 
       const result = await service.exportMyData("u1");
@@ -1421,13 +1423,25 @@ describe("UsersService", () => {
         reason: true,
         startedAt: true,
         endedAt: true,
+        // Écritures faites pendant la session (#761), sans identité.
+        actions: {
+          select: { method: true, route: true, statusCode: true, at: true },
+          orderBy: { at: "asc" },
+          // Above the real maximum: 15 min × 100 requests/min.
+          take: 2000,
+        },
+        _count: { select: { actions: true } },
       });
       // Identité et IP de l'administrateur : données d'un tiers.
       expect(select.actorId).toBeUndefined();
       expect(select.ip).toBeUndefined();
       // Never stopped: the session ended when its 15-minute token expired.
       expect(result.data.impersonationsReceived).toEqual([
-        { ...session, endedAt: new Date("2026-08-01T10:15:00Z") },
+        {
+          ...session,
+          endedAt: new Date("2026-08-01T10:15:00Z"),
+          actionsCount: 0,
+        },
       ]);
     });
 
@@ -1438,12 +1452,47 @@ describe("UsersService", () => {
         startedAt: new Date("2026-08-01T10:00:00Z"),
         endedAt: new Date("2026-08-01T10:04:00Z"),
       };
-      prisma.impersonationLog.findMany.mockResolvedValue([stopped] as never);
+      prisma.impersonationLog.findMany.mockResolvedValue([
+        { ...stopped, _count: { actions: 0 } },
+      ] as never);
       prisma.user.findUnique.mockResolvedValue(makeExportedUser());
 
       const result = await service.exportMyData("u1");
 
-      expect(result.data.impersonationsReceived).toEqual([stopped]);
+      expect(result.data.impersonationsReceived).toEqual([
+        { ...stopped, actionsCount: 0 },
+      ]);
+    });
+
+    it("exporte les écritures faites pendant une session d'accès support (#761)", async () => {
+      const session = {
+        actorRole: UserRole.ADMIN,
+        reason: "Ticket 42",
+        startedAt: new Date("2026-08-01T10:00:00Z"),
+        endedAt: new Date("2026-08-01T10:05:00Z"),
+        actions: [
+          {
+            method: "PATCH",
+            route: "/clubs/me/registration-mode",
+            statusCode: 403,
+            at: new Date("2026-08-01T10:01:00Z"),
+          },
+        ],
+      };
+      // 2001 writes recorded, 2000 listed: the count shows the cut.
+      prisma.impersonationLog.findMany.mockResolvedValue([
+        { ...session, _count: { actions: 2001 } },
+      ] as never);
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      const result = await service.exportMyData("u1");
+
+      expect(result.data.impersonationsReceived).toEqual([
+        { ...session, actionsCount: 2001 },
+      ]);
+      expect(result.data.impersonationsReceived[0]).not.toHaveProperty(
+        "_count",
+      );
     });
 
     it("exporte les accès à ses données de santé avec la seule qualité de l'auteur (#732)", async () => {

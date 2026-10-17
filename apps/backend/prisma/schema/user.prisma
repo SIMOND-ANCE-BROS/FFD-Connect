@@ -113,6 +113,28 @@ model ImpersonationLog {
   @@index([actorId])
   @@index([targetUserId])
   @@index([startedAt])
+
+  /// Écritures faites pendant la session (#761), supprimées avec elle.
+  actions        ImpersonationActionLog[]
+}
+
+/// Journal des écritures faites pendant un accès support (#761) : une ligne
+/// par requête non-GET (méthode, route sans identifiant ni paramètre, statut
+/// HTTP). Jamais de corps, d'identifiant d'URL ni d'identité de l'intervenant
+/// (portée par la session). Supprimée avec sa session (ON DELETE CASCADE), donc
+/// à la même échéance (IMPERSONATION_LOG_RETENTION_DAYS).
+model ImpersonationActionLog {
+  id                 String           @id @default(uuid())
+  impersonationLogId String
+  session            ImpersonationLog @relation(fields: [impersonationLogId], references: [id], onDelete: Cascade)
+  /// POST, PUT, PATCH ou DELETE.
+  method             String
+  /// Modèle de route, ex. « /competitions/:id/unregister ».
+  route              String
+  statusCode         Int
+  at                 DateTime         @default(now())
+
+  @@index([impersonationLogId, at]) // export RGPD : actions d'une session, dans l'ordre
 }
 
 model RefreshToken {
