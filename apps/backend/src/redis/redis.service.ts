@@ -1,7 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import Redis from "ioredis";
-import { REDIS_PROTOCOL } from "./bullmq-connection";
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
@@ -18,9 +17,8 @@ export class RedisService implements OnModuleDestroy {
       host: redisHost,
       port: redisPort,
       password: redisPassword,
-      // RESP2 pinned while the production Redis version is unverified —
-      // see REDIS_PROTOCOL.
-      protocol: REDIS_PROTOCOL,
+      // No `protocol`: ioredis 6 negotiates RESP3, like the BullMQ
+      // connection (see buildBullConnection, #36).
       lazyConnect: true,
       retryStrategy: (times) => {
         // Stop retrying after 3 attempts

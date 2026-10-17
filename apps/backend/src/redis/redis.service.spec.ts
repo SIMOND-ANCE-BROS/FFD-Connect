@@ -48,17 +48,15 @@ describe("RedisService", () => {
     if (connectCallback) connectCallback();
   });
 
-  // Guards the RESP2 pin. ioredis 6 defaults to protocol 3; nothing here needs
-  // it, and no test connects BullMQ or this client to a real Redis (issue
-  // #771), so dropping the pin would silently change the wire format for the
-  // job queue. If this fails because the pin was removed on purpose, remove it
-  // together with the comments in redis.service.ts and app.module.ts.
-  it("pins the RESP2 protocol on the client it constructs", () => {
+  // ioredis 6 negotiates RESP3 when no protocol is set; both production
+  // Redis instances run redis:7 (#36). Guards against a pin coming back in
+  // one client only: BullMQ (buildBullConnection) and this one must agree.
+  it("leaves the wire protocol to ioredis' default (RESP3)", () => {
     expect(service).toBeDefined();
     const RedisCtor = Redis as unknown as jest.Mock;
-    expect(RedisCtor).toHaveBeenCalledWith(
-      expect.objectContaining({ protocol: 2 }),
-    );
+    const options = RedisCtor.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(options).toBeDefined();
+    expect(options).not.toHaveProperty("protocol");
   });
 
   it("should be defined", () => {
