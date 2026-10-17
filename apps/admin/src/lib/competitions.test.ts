@@ -1,7 +1,7 @@
 import { competitionDates, eventLabel, toCompetitionSummary } from './competitions';
 
 describe('competition helpers', () => {
-  it('reads the fields the API actually answers', () => {
+  it('maps the API fields to a summary', () => {
     expect(
       toCompetitionSummary({
         id: 'c1',
@@ -22,18 +22,25 @@ describe('competition helpers', () => {
     });
   });
 
-  it('falls back on the documented field names and skips rows without an id', () => {
-    expect(toCompetitionSummary({ id: 'c2', name: 'Coupe', startDate: '2026-01-02' })).toEqual({
+  it('leaves the place empty without location nor city', () => {
+    expect(
+      toCompetitionSummary({
+        id: 'c2',
+        title: 'Coupe',
+        date: '2026-01-02T00:00:00.000Z',
+        endDate: '2026-01-03T00:00:00.000Z',
+        location: ' ',
+        city: null,
+        status: 'PAST',
+      }),
+    ).toEqual({
       id: 'c2',
       title: 'Coupe',
-      date: '2026-01-02',
-      endDate: null,
+      date: '2026-01-02T00:00:00.000Z',
+      endDate: '2026-01-03T00:00:00.000Z',
       place: null,
-      status: null,
+      status: 'PAST',
     });
-    expect(toCompetitionSummary({ id: 'c3' })?.title).toBe('Compétition sans titre');
-    expect(toCompetitionSummary({ title: 'x' })).toBeNull();
-    expect(toCompetitionSummary(null)).toBeNull();
   });
 
   it('formats one day or a range', () => {

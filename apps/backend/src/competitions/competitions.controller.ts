@@ -43,6 +43,10 @@ import { CompetitionResultsService } from "./services/competition-results.servic
 import { CheckInDto, CheckInResponseDto } from "./dto/checkin.dto";
 import { CompetitionResultDto } from "./dto/competition-result.dto";
 import {
+  CompetitionDetailDto,
+  CompetitionPageDto,
+} from "./dto/competition-response.dto";
+import {
   CompetitionProgramDto,
   ReplaceCompetitionProgramDto,
 } from "./dto/competition-program.dto";
@@ -104,38 +108,7 @@ export class CompetitionsController {
   @ApiResponse({
     status: 200,
     description: "Liste paginée des compétitions récupérée avec succès",
-    schema: {
-      type: "object",
-      properties: {
-        data: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string", example: "comp-123" },
-              name: { type: "string", example: "Championnat de France 2026" },
-              startDate: { type: "string", format: "date-time" },
-              endDate: { type: "string", format: "date-time" },
-              location: { type: "string", example: "Paris, France" },
-              status: {
-                type: "string",
-                enum: ["UPCOMING", "ACTIVE", "COMPLETED"],
-                example: "UPCOMING",
-              },
-            },
-          },
-        },
-        meta: {
-          type: "object",
-          properties: {
-            total: { type: "number", example: 100 },
-            skip: { type: "number", example: 0 },
-            take: { type: "number", example: 10 },
-            hasMore: { type: "boolean", example: true },
-          },
-        },
-      },
-    },
+    type: CompetitionPageDto,
   })
   findAll(
     @Request() req: { user?: { userId: string } },
@@ -577,7 +550,7 @@ export class CompetitionsController {
   @ApiOperation({
     summary: "Récupère les détails d'une compétition",
     description:
-      "Retourne les informations détaillées d'une compétition spécifique, incluant tous ses événements et inscriptions.",
+      "Retourne les informations détaillées d'une compétition spécifique, avec ses épreuves et son planning.",
   })
   @ApiParam({
     name: "id",
@@ -587,35 +560,7 @@ export class CompetitionsController {
   @ApiResponse({
     status: 200,
     description: "Détails de la compétition récupérés avec succès",
-    schema: {
-      type: "object",
-      properties: {
-        id: { type: "string" },
-        name: { type: "string" },
-        startDate: { type: "string", format: "date-time" },
-        endDate: { type: "string", format: "date-time" },
-        location: { type: "string" },
-        status: { type: "string" },
-        requireRotatingQr: {
-          type: "boolean",
-          description:
-            "QR d'entrée tournant obligatoire au check-in (#668) : les scanners le gardent en cache pour refuser aussi hors ligne un QR statique.",
-        },
-        events: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              name: { type: "string" },
-              category: { type: "string" },
-              level: { type: "string" },
-              registrations: { type: "array" },
-            },
-          },
-        },
-      },
-    },
+    type: CompetitionDetailDto,
   })
   @ApiResponse({
     status: 404,
