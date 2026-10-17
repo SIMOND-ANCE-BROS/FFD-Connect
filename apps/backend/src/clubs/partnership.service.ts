@@ -17,7 +17,7 @@ import {
 } from "../notifications/member-name-copy";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
-import { sameClubName } from "../utils/club-name-filter";
+import { clubManagersOfClubWhere } from "../competitions/competition-organizer";
 import { partnershipCandidateSelect } from "../utils/prisma-selects";
 import { ClubsService } from "./clubs.service";
 import type { CreatePartnershipDto } from "./dto/create-partnership.dto";
@@ -364,12 +364,8 @@ export class PartnershipService {
       where: {
         AND: [
           withActiveRole(UserRole.CLUB),
-          {
-            OR: [
-              { clubId: club.id },
-              { clubName: sameClubName(club.name.trim()) },
-            ],
-          },
+          // Never a CLUB account linked to a homonym club (#743).
+          await clubManagersOfClubWhere(this.prisma, club),
         ],
       },
       select: { id: true },

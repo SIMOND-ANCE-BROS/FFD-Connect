@@ -74,15 +74,12 @@ const makePartnership = (overrides: Record<string, unknown> = {}) => ({
 describe("PartnershipService", () => {
   let service: PartnershipService;
   let prisma: MockPrisma;
-  let clubsService: jest.Mocked<
-    Pick<ClubsService, "getClubIdForOrganizer" | "findOrCreateByName">
-  >;
+  let clubsService: jest.Mocked<Pick<ClubsService, "getClubIdForOrganizer">>;
 
   beforeEach(async () => {
     prisma = mockDeep<PrismaClient>();
     clubsService = {
       getClubIdForOrganizer: jest.fn().mockResolvedValue("club-1"),
-      findOrCreateByName: jest.fn(),
     };
 
     const module = await Test.createTestingModule({
@@ -98,6 +95,64 @@ describe("PartnershipService", () => {
     jest.clearAllMocks();
     mockNotifications.createForUser.mockResolvedValue(undefined);
     clubsService.getClubIdForOrganizer.mockResolvedValue("club-1");
+    // Organiser fan-out (clubManagersOfClubWhere): the notified club's name
+    // designates it alone unless a test says otherwise.
+    prisma.club.findMany.mockImplementation(((args?: {
+      where?: { name?: { equals?: string } };
+    }) =>
+      Promise.resolve(
+        args?.where?.name?.equals === "Other Club"
+          ? [{ id: "club-2" }]
+          : [{ id: "club-1" }],
+      )) as never);
+  });
+
+  describe("organiser fan-out (#743)", () => {
+    const decide = async () => {
+      prisma.partnership.findFirst.mockResolvedValue(
+        makePartnership({
+          status: PartnershipStatus.PENDING_SECOND_CLUB,
+          secondaryClubId: "club-2",
+          secondaryClub: { id: "club-2", name: "Other Club" },
+        }) as never,
+      );
+      prisma.partnership.update.mockResolvedValue(
+        makePartnership({ status: PartnershipStatus.ACTIVE }) as never,
+      );
+      prisma.user.findMany.mockResolvedValue([{ id: "org-1" }] as never);
+      clubsService.getClubIdForOrganizer.mockResolvedValue("club-2");
+      await service.validatePartnership("organizer-2", "partnership-1", true);
+      return prisma.user.findMany.mock.calls[0][0];
+    };
+
+    it("targets the club's accounts and the legacy accounts named after it alone", async () => {
+      const args = await decide();
+      expect(args?.where).toEqual({
+        AND: [
+          expect.anything(),
+          {
+            OR: [
+              { clubId: "club-1" },
+              {
+                clubId: null,
+                clubName: { equals: "Test Club", mode: "insensitive" },
+              },
+            ],
+          },
+        ],
+      });
+    });
+
+    it("never targets a CLUB account by name when a homonym club exists", async () => {
+      prisma.club.findMany.mockResolvedValue([
+        { id: "club-1" },
+        { id: "club-homonym" },
+      ] as never);
+      const args = await decide();
+      expect(args?.where).toEqual({
+        AND: [expect.anything(), { clubId: "club-1" }],
+      });
+    });
   });
 
   // ----------------------------------------------------------------

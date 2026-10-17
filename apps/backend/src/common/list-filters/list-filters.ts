@@ -1,5 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { parisStartOfDay } from "../../licenses/qr/license-qr";
+import { escapeLikePattern } from "../../utils/club-name-filter";
 
 /**
  * Column filters with operators of the back-office lists (#557) — pure, no Nest
@@ -331,7 +332,12 @@ function textWhere<Where>(
     case "startsWith":
       return column.where({ startsWith: value, mode: "insensitive" });
     case "equals":
-      return column.where({ equals: value, mode: "insensitive" });
+      // Insensitive `equals` is an ILIKE with the value bound unescaped: a
+      // `%`/`_` would act as a wildcard (#743, see club-name-filter).
+      return column.where({
+        equals: escapeLikePattern(value),
+        mode: "insensitive",
+      });
     case "notContains": {
       // SQL NOT drops NULL rows: a missing value does not contain the text.
       const without = not(

@@ -60,6 +60,14 @@ describe("list filters (#557)", () => {
       });
     });
 
+    it("equals escapes the LIKE metacharacters: % and _ are literal (#743)", () => {
+      expect(
+        where({ field: "name", op: "equals", value: "Club_A 100%\\" }),
+      ).toEqual({
+        name: { equals: "Club\\_A 100\\%\\\\", ...insensitive },
+      });
+    });
+
     it("notContains keeps the rows without value on a nullable column", () => {
       expect(where({ field: "name", op: "notContains", value: "x" })).toEqual({
         NOT: { name: { contains: "x", ...insensitive } },

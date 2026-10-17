@@ -37,6 +37,12 @@ describe("RegistrationNotificationService", () => {
       RegistrationNotificationService,
     );
     jest.clearAllMocks();
+    // The member's club (#743): club-1 « Club A », its name unique.
+    mockPrismaService.club.findUnique.mockResolvedValue({
+      id: "club-1",
+      name: "Club A",
+    });
+    mockPrismaService.club.findMany.mockResolvedValue([{ id: "club-1" }]);
   });
 
   describe("notifyOnRegister", () => {
@@ -181,6 +187,93 @@ describe("RegistrationNotificationService", () => {
           }),
         }),
       );
+    });
+
+    const event = {
+      competitionId: "c1",
+      id: "e1",
+      competition: { title: "Comp" },
+      category: "Latin",
+      ageGroup: "Adulte",
+    };
+    const register = (member: {
+      clubId: string | null;
+      clubName: string | null;
+    }) =>
+      service.notifyOnRegister(
+        { id: "r1", userId: "u1" },
+        event,
+        { firstName: "Jean", lastName: "Dupont", ...member },
+        { byOrganizer: false, initialStatus: RegistrationStatus.PENDING },
+      );
+    const organizerWhere = () =>
+      mockPrismaService.user.findMany.mock.calls[0][0].where.AND[1];
+
+    it("targets the member's club by id, legacy accounts only with clubId null (#743)", async () => {
+      mockPrismaService.user.findMany.mockResolvedValue([{ id: "org-1" }]);
+      await register({ clubId: "club-1", clubName: "Stale" });
+      expect(mockPrismaService.club.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "club-1" } }),
+      );
+      expect(organizerWhere()).toEqual({
+        OR: [
+          { clubId: "club-1" },
+          {
+            clubId: null,
+            clubName: { equals: "Club A", mode: "insensitive" },
+          },
+        ],
+      });
+    });
+
+    it("never targets a CLUB account by name when the member's club has a homonym (#743)", async () => {
+      mockPrismaService.club.findMany.mockResolvedValue([
+        { id: "club-1" },
+        { id: "club-2" },
+      ]);
+      mockPrismaService.user.findMany.mockResolvedValue([]);
+      await register({ clubId: "club-1", clubName: null });
+      expect(organizerWhere()).toEqual({ clubId: "club-1" });
+    });
+
+    it("resolves a legacy member (no clubId) to the one club its name designates", async () => {
+      mockPrismaService.user.findMany.mockResolvedValue([{ id: "org-1" }]);
+      await register({ clubId: null, clubName: " club a " });
+      expect(mockPrismaService.club.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { name: { equals: "club a", mode: "insensitive" } },
+        }),
+      );
+      expect(mockPrismaService.club.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "club-1" } }),
+      );
+      expect(mockNotificationsService.sendToUsers).toHaveBeenCalled();
+    });
+
+    it.each([
+      ["no club carries the name", []],
+      ["several clubs carry the name", [{ id: "club-1" }, { id: "club-2" }]],
+    ])(
+      "notifies nobody for a legacy member when %s (#743)",
+      async (_case, clubs) => {
+        mockPrismaService.club.findMany.mockResolvedValue(clubs);
+        await register({ clubId: null, clubName: "Club A" });
+        expect(mockPrismaService.user.findMany).not.toHaveBeenCalled();
+        expect(mockNotificationsService.sendToUsers).not.toHaveBeenCalled();
+      },
+    );
+
+    it("notifies nobody when the member has no club at all", async () => {
+      await register({ clubId: null, clubName: null });
+      expect(mockPrismaService.club.findMany).not.toHaveBeenCalled();
+      expect(mockNotificationsService.sendToUsers).not.toHaveBeenCalled();
+    });
+
+    it("notifies nobody when the member's club no longer exists", async () => {
+      mockPrismaService.club.findUnique.mockResolvedValue(null);
+      await register({ clubId: "club-gone", clubName: null });
+      expect(mockPrismaService.user.findMany).not.toHaveBeenCalled();
+      expect(mockNotificationsService.sendToUsers).not.toHaveBeenCalled();
     });
   });
 

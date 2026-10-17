@@ -8,7 +8,11 @@ import {
 } from "../../notifications/member-name-copy";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
-import { sameClubName } from "../../utils/club-name-filter";
+import { clubIdNameSelect } from "../../utils/prisma-selects";
+import {
+  clubManagersOfClubWhere,
+  findClubIdByName,
+} from "../competition-organizer";
 
 /** « Latines Adulte » : discipline en français + classe d'âge. */
 export function eventDisplayLabel(event: {
@@ -267,16 +271,25 @@ export class RegistrationNotificationService {
     registrationId: string,
     notification: { type: string; title: string; body: string },
   ): Promise<void> {
-    if (!member?.clubId && !member?.clubName?.trim()) return;
-
-    const sameClubCondition = member.clubId
-      ? { clubId: member.clubId }
-      : { clubName: sameClubName(member.clubName!.trim()) };
+    // The member's club by id (#743): a legacy member without `clubId` counts
+    // only through the ONE club its name designates — no club or homonyms →
+    // nobody is notified (the body carries the member's name).
+    const clubId =
+      member?.clubId ?? (await findClubIdByName(this.prisma, member?.clubName));
+    if (!clubId) return;
+    const club = await this.prisma.club.findUnique({
+      where: { id: clubId },
+      select: clubIdNameSelect,
+    });
+    if (!club) return;
 
     const organizers = await this.prisma.user.findMany({
       where: {
         id: { not: memberUserId },
-        AND: [withActiveRole(UserRole.CLUB), sameClubCondition],
+        AND: [
+          withActiveRole(UserRole.CLUB),
+          await clubManagersOfClubWhere(this.prisma, club),
+        ],
       },
       select: { id: true },
       take: 50,

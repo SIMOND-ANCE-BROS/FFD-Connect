@@ -1,12 +1,6 @@
 // apps/backend/src/clubs/clubs-helloasso.service.ts
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-} from "@nestjs/common";
-import { ClubRegistrationMode, UserRole } from "@prisma/client";
-import { hasRole } from "../auth/roles";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { ClubRegistrationMode } from "@prisma/client";
 import { SecretDecryptionError } from "../common/crypto/secret-cipher";
 import { SecretCipherService } from "../common/crypto/secret-cipher.service";
 import { clubHelloAssoSecretContext } from "../common/crypto/secret-contexts";
@@ -14,12 +8,16 @@ import {
   clubHelloAssoCredentialsSelect,
   clubHelloAssoStatusSelect,
   clubIdNameSelect,
+  clubNameRegistrationModeSelect,
+  clubRegistrationModeSelect,
   competitionOrganizerSelect,
-  userRolesClubSelect,
+  userClubRefSelect,
 } from "../utils/prisma-selects";
-import { resolveOrganizerClubId } from "../competitions/competition-organizer";
+import {
+  findClubIdByName,
+  resolveOrganizerClubId,
+} from "../competitions/competition-organizer";
 import { PrismaService } from "../prisma/prisma.service";
-import { sameClubName } from "../utils/club-name-filter";
 import { ClubsService } from "./clubs.service";
 import type { ConnectHelloAssoDto } from "./dto/connect-helloasso.dto";
 
@@ -39,31 +37,15 @@ export class ClubsHelloAssoService {
     organizationSlug: string | null;
     registrationMode: ClubRegistrationMode;
   }> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: organizerUserId },
-      select: userRolesClubSelect,
+    const clubId = await this.clubsService.getClubIdForOrganizer(
+      organizerUserId,
+      "Only organizers can manage club HelloAsso",
+    );
+    const club = await this.prisma.club.findUnique({
+      where: { id: clubId },
+      select: clubHelloAssoStatusSelect,
     });
-    if (!user) {
-      throw new NotFoundException("User not found");
-    }
-    if (!hasRole(user, UserRole.CLUB)) {
-      throw new BadRequestException(
-        "Only organizers can manage club HelloAsso",
-      );
-    }
-    const club = user.clubId
-      ? await this.prisma.club.findUnique({
-          where: { id: user.clubId },
-          select: clubHelloAssoStatusSelect,
-        })
-      : user.clubName?.trim()
-        ? await this.clubsService.findOrCreateByName(user.clubName)
-        : null;
-    if (!club) {
-      throw new BadRequestException(
-        "Organizer has no club assigned. Set clubName on your profile first.",
-      );
-    }
+    if (!club) throw new NotFoundException("Club not found");
     const helloAssoConnected = !!(
       club.helloAssoClientId &&
       club.helloAssoClientSecret &&
@@ -79,7 +61,7 @@ export class ClubsHelloAssoService {
   }
 
   /**
-   * Récupère le mode d'inscription du club d'un utilisateur (par clubId ou clubName).
+   * Récupère le mode d'inscription du club d'un utilisateur (par clubId, ou le seul club que désigne son clubName).
    * Retourne MEMBERS_AUTO_CONFIRM si l'utilisateur n'a pas de club ou si le club n'existe pas encore.
    */
   async getRegistrationModeForUser(
@@ -87,22 +69,21 @@ export class ClubsHelloAssoService {
   ): Promise<ClubRegistrationMode> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { clubId: true, clubName: true },
+      select: userClubRefSelect,
     });
     if (!user) {
       return ClubRegistrationMode.MEMBERS_AUTO_CONFIRM;
     }
-    const club = user.clubId
+    // Legacy member without `clubId`: only the ONE club its name designates
+    // (homonyms → default mode, never another club's setting, #743).
+    const clubId =
+      user.clubId ?? (await findClubIdByName(this.prisma, user.clubName));
+    const club = clubId
       ? await this.prisma.club.findUnique({
-          where: { id: user.clubId },
-          select: { registrationMode: true },
+          where: { id: clubId },
+          select: clubRegistrationModeSelect,
         })
-      : user.clubName?.trim()
-        ? await this.prisma.club.findFirst({
-            where: { name: sameClubName(user.clubName.trim()) },
-            select: { registrationMode: true },
-          })
-        : null;
+      : null;
     return club?.registrationMode ?? ClubRegistrationMode.MEMBERS_AUTO_CONFIRM;
   }
 
@@ -113,31 +94,14 @@ export class ClubsHelloAssoService {
     organizerUserId: string,
     mode: ClubRegistrationMode,
   ): Promise<{ clubName: string; registrationMode: ClubRegistrationMode }> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: organizerUserId },
-      select: userRolesClubSelect,
-    });
-    if (!user) {
-      throw new NotFoundException("User not found");
-    }
-    if (!hasRole(user, UserRole.CLUB)) {
-      throw new BadRequestException(
-        "Only organizers can set club registration mode",
-      );
-    }
-    const club = user.clubId
-      ? await this.prisma.club.findUnique({ where: { id: user.clubId } })
-      : user.clubName?.trim()
-        ? await this.clubsService.findOrCreateByName(user.clubName)
-        : null;
-    if (!club) {
-      throw new BadRequestException(
-        "Organizer has no club assigned. Set clubName on your profile first.",
-      );
-    }
+    const clubId = await this.clubsService.getClubIdForOrganizer(
+      organizerUserId,
+      "Only organizers can set club registration mode",
+    );
     const updated = await this.prisma.club.update({
-      where: { id: club.id },
+      where: { id: clubId },
       data: { registrationMode: mode },
+      select: clubNameRegistrationModeSelect,
     });
     return {
       clubName: updated.name,
@@ -152,29 +116,15 @@ export class ClubsHelloAssoService {
     organizerUserId: string,
     dto: ConnectHelloAssoDto,
   ): Promise<{ clubName: string; helloAssoConnected: true }> {
-    const user = await this.prisma.user.findUnique({
-      where: { id: organizerUserId },
-      select: userRolesClubSelect,
+    const clubId = await this.clubsService.getClubIdForOrganizer(
+      organizerUserId,
+      "Only organizers can connect HelloAsso",
+    );
+    const club = await this.prisma.club.findUnique({
+      where: { id: clubId },
+      select: clubIdNameSelect,
     });
-    if (!user) {
-      throw new NotFoundException("User not found");
-    }
-    if (!hasRole(user, UserRole.CLUB)) {
-      throw new BadRequestException("Only organizers can connect HelloAsso");
-    }
-    const club = user.clubId
-      ? await this.prisma.club.findUnique({
-          where: { id: user.clubId },
-          select: clubIdNameSelect,
-        })
-      : user.clubName?.trim()
-        ? await this.clubsService.findOrCreateByName(user.clubName)
-        : null;
-    if (!club) {
-      throw new BadRequestException(
-        "Organizer has no club assigned. Set clubName on your profile first.",
-      );
-    }
+    if (!club) throw new NotFoundException("Club not found");
     await this.prisma.club.update({
       where: { id: club.id },
       data: {
