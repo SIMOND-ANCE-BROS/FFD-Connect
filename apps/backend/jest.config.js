@@ -1,5 +1,6 @@
 const path = require("path");
 const baseConfig = require("../../packages/jest-config/backend");
+const { esmOnlyTransformIgnorePattern } = require("./jest.esm-transformer");
 
 /** Directory prefix for Jest PATH thresholds (aggregates coverage under that folder). */
 const srcDir = (...parts) => path.join(__dirname, "src", ...parts) + path.sep;
@@ -10,7 +11,12 @@ module.exports = {
   rootDir: ".",
   roots: ["<rootDir>/src", "<rootDir>/scripts"],
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
+  // ESM-only test dependencies (#721): nock 15 and its interceptor stack ship
+  // `"type": "module"` only. They alone are transpiled to CommonJS
+  // (jest.esm-transformer.js) instead of moving the backend to ESM.
+  transformIgnorePatterns: [esmOnlyTransformIgnorePattern],
   transform: {
+    "/node_modules/.+\\.m?js$": "<rootDir>/jest.esm-transformer.js",
     "^.+\\.(t|j)s$": [
       "ts-jest",
       {

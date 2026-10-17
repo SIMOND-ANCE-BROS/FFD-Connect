@@ -10,6 +10,8 @@
  * mutation testing so they are omitted.
  */
 
+const { esmOnlyTransformIgnorePattern } = require("./jest.esm-transformer");
+
 module.exports = {
   // --- Inlined from packages/jest-config/backend.js ---
   moduleFileExtensions: ["js", "json", "ts"],
@@ -42,7 +44,10 @@ module.exports = {
   rootDir: ".",
   roots: ["<rootDir>/src", "<rootDir>/scripts"],
   setupFilesAfterEnv: ["<rootDir>/jest.setup.stryker.js"],
+  // ESM-only test dependencies (nock 15, #721): same as jest.config.js.
+  transformIgnorePatterns: [esmOnlyTransformIgnorePattern],
   transform: {
+    "/node_modules/.+\\.m?js$": "<rootDir>/jest.esm-transformer.js",
     "^.+\\.(t|j)s$": [
       "ts-jest",
       {
