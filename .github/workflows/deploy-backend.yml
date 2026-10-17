@@ -191,6 +191,39 @@ jobs:
           echo "image=$PREV_IMAGE" >> "$GITHUB_OUTPUT"
           echo "version=$PREV_VERSION" >> "$GITHUB_OUTPUT"
 
+      # Inactive revisions pin their image in ACR: acr-purge.sh never deletes
+      # an image a revision references (#681), and Azure keeps up to 100
+      # inactive revisions by default, so the "keep 15 tags" retention never
+      # applied and the registry grew to ~2x its included 10 GiB (#768).
+      # Capping at 5 keeps a short manual-rollback window while letting the
+      # purge free the rest. The cap is set once by hand (runbook
+      # deploiement-azure.md); this step only re-applies it on drift (an app
+      # recreated or edited in the portal). Config-only PATCH: no new revision.
+      # Never blocks a deploy.
+      - name: Cap inactive revisions (#768)
+        continue-on-error: true
+        env:
+          MAX_INACTIVE_REVISIONS: '5'
+        run: |
+          set -euo pipefail
+          CURRENT=$(
+            az containerapp show \
+              --name "$CONTAINER_APP" \
+              --resource-group "$RESOURCE_GROUP" \
+              --query "properties.configuration.maxInactiveRevisions" \
+              --output tsv
+          )
+          if [ "$CURRENT" = "$MAX_INACTIVE_REVISIONS" ]; then
+            echo "maxInactiveRevisions already $CURRENT"
+            exit 0
+          fi
+          echo "maxInactiveRevisions is '${CURRENT:-<unset, Azure default 100>}' - setting $MAX_INACTIVE_REVISIONS"
+          az containerapp update \
+            --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --max-inactive-revisions "$MAX_INACTIVE_REVISIONS" \
+            --output none
+
       - name: Deploy to Container Apps
         env:
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -428,6 +461,39 @@ jobs:
           echo "Previous image: ${PREV_IMAGE:-<none>} (version: ${PREV_VERSION:-<none>})"
           echo "image=$PREV_IMAGE" >> "$GITHUB_OUTPUT"
           echo "version=$PREV_VERSION" >> "$GITHUB_OUTPUT"
+
+      # Inactive revisions pin their image in ACR: acr-purge.sh never deletes
+      # an image a revision references (#681), and Azure keeps up to 100
+      # inactive revisions by default, so the "keep 15 tags" retention never
+      # applied and the registry grew to ~2x its included 10 GiB (#768).
+      # Capping at 5 keeps a short manual-rollback window while letting the
+      # purge free the rest. The cap is set once by hand (runbook
+      # deploiement-azure.md); this step only re-applies it on drift (an app
+      # recreated or edited in the portal). Config-only PATCH: no new revision.
+      # Never blocks a deploy.
+      - name: Cap inactive revisions (#768)
+        continue-on-error: true
+        env:
+          MAX_INACTIVE_REVISIONS: '5'
+        run: |
+          set -euo pipefail
+          CURRENT=$(
+            az containerapp show \
+              --name "$CONTAINER_APP" \
+              --resource-group "$RESOURCE_GROUP" \
+              --query "properties.configuration.maxInactiveRevisions" \
+              --output tsv
+          )
+          if [ "$CURRENT" = "$MAX_INACTIVE_REVISIONS" ]; then
+            echo "maxInactiveRevisions already $CURRENT"
+            exit 0
+          fi
+          echo "maxInactiveRevisions is '${CURRENT:-<unset, Azure default 100>}' - setting $MAX_INACTIVE_REVISIONS"
+          az containerapp update \
+            --name "$CONTAINER_APP" \
+            --resource-group "$RESOURCE_GROUP" \
+            --max-inactive-revisions "$MAX_INACTIVE_REVISIONS" \
+            --output none
 
       - name: Deploy to Container Apps
         env:
