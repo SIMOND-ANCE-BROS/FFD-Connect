@@ -4,7 +4,12 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
 import { resolveMemoryLimit } from "./container-memory.util";
-import { HealthService } from "./health.service";
+import {
+  DEFAULT_HEALTH_REDIS_TIMEOUT_MS,
+  HEALTH_REDIS_TIMEOUT_ENV,
+  HealthService,
+  resolveHealthRedisTimeoutMs,
+} from "./health.service";
 
 // Only the cgroup-reading seam is faked; the percentage arithmetic stays real.
 jest.mock("./container-memory.util", () => ({
@@ -133,6 +138,146 @@ describe("HealthService", () => {
       expect(result.status).toBe("down");
       expect(result.database.status).toBe("error");
       expect(result.redis.status).toBe("error");
+    });
+  });
+
+  /**
+   * #718: staging Redis scales to zero, and the first PING after a wake used to
+   * hold `/health` for ~20 s. Every Redis round-trip is now bounded; past the
+   * bound Redis reads as an unreachable Redis (status `error`), never a throw.
+   */
+  describe("redis timeout", () => {
+    const never = (): Promise<never> => new Promise<never>(() => undefined);
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("reports redis as error and the service as degraded when PING hangs", async () => {
+      mockRedisClient.ping.mockReturnValue(never());
+
+      const pending = service.check();
+      await jest.advanceTimersByTimeAsync(DEFAULT_HEALTH_REDIS_TIMEOUT_MS);
+      const result = await pending;
+
+      // degraded, not down: the controller keeps answering 200 and the
+      // deployment smoke test only warns on Redis.
+      expect(result.status).toBe("degraded");
+      expect(result.database.status).toBe("ok");
+      expect(result.redis.status).toBe("error");
+      expect(result.redis.error).toBe(
+        `[Timeout] Redis PING timed out after ${DEFAULT_HEALTH_REDIS_TIMEOUT_MS}ms`,
+      );
+    });
+
+    it("does not give up on a PING that answers within the bound", async () => {
+      mockRedisClient.ping.mockReturnValue(
+        new Promise((resolve) =>
+          setTimeout(
+            () => resolve("PONG"),
+            DEFAULT_HEALTH_REDIS_TIMEOUT_MS - 1,
+          ),
+        ),
+      );
+
+      const pending = service.check();
+      await jest.advanceTimersByTimeAsync(DEFAULT_HEALTH_REDIS_TIMEOUT_MS);
+      const result = await pending;
+
+      expect(result.status).toBe("ok");
+      expect(result.redis.status).toBe("ok");
+    });
+
+    it("still reports down when the database fails and redis times out", async () => {
+      mockPrisma.$queryRaw.mockRejectedValue(new Error("DB down"));
+      mockRedisClient.ping.mockReturnValue(never());
+
+      const pending = service.check();
+      await jest.advanceTimersByTimeAsync(DEFAULT_HEALTH_REDIS_TIMEOUT_MS);
+      const result = await pending;
+
+      expect(result.status).toBe("down");
+      expect(result.redis.status).toBe("error");
+    });
+
+    it("bounds the queue counts too (BullMQ reads them from Redis)", async () => {
+      mockSyncQueue.getJobCounts.mockReturnValue(never());
+
+      const pending = service.check();
+      await jest.advanceTimersByTimeAsync(DEFAULT_HEALTH_REDIS_TIMEOUT_MS);
+      const result = await pending;
+
+      expect(result.status).toBe("degraded");
+      expect(result.queues["ffd-sync"]).toEqual({
+        status: "error",
+        waiting: 0,
+        active: 0,
+        failed: 0,
+        error: `[Timeout] Queue ffd-sync job counts timed out after ${DEFAULT_HEALTH_REDIS_TIMEOUT_MS}ms`,
+      });
+    });
+
+    it("uses the configured timeout", async () => {
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          HealthService,
+          { provide: PrismaService, useValue: mockPrisma },
+          { provide: RedisService, useValue: mockRedisService },
+          {
+            provide: ConfigService,
+            useValue: {
+              get: jest.fn((key: string) =>
+                key === HEALTH_REDIS_TIMEOUT_ENV ? "500" : undefined,
+              ),
+            },
+          },
+          { provide: getQueueToken("ffd-sync"), useValue: mockSyncQueue },
+        ],
+      }).compile();
+      const configured = module.get<HealthService>(HealthService);
+      mockRedisClient.ping.mockReturnValue(never());
+
+      const pending = configured.check();
+      await jest.advanceTimersByTimeAsync(500);
+      const result = await pending;
+
+      expect(result.redis.error).toBe(
+        "[Timeout] Redis PING timed out after 500ms",
+      );
+    });
+  });
+
+  describe("resolveHealthRedisTimeoutMs", () => {
+    const configWith = (value: unknown): ConfigService =>
+      ({ get: jest.fn().mockReturnValue(value) }) as unknown as ConfigService;
+
+    it("defaults to 2 s when unset", () => {
+      expect(resolveHealthRedisTimeoutMs(configWith(undefined))).toBe(2000);
+    });
+
+    it("reads a numeric env string", () => {
+      expect(resolveHealthRedisTimeoutMs(configWith("750"))).toBe(750);
+    });
+
+    it("accepts a number", () => {
+      expect(resolveHealthRedisTimeoutMs(configWith(1500))).toBe(1500);
+    });
+
+    it.each([["abc"], [""], ["0"], [-1], [1.5], [30_001]])(
+      "falls back to the default on an invalid value (%p)",
+      (value) => {
+        expect(resolveHealthRedisTimeoutMs(configWith(value))).toBe(
+          DEFAULT_HEALTH_REDIS_TIMEOUT_MS,
+        );
+      },
+    );
+
+    it("accepts the upper bound", () => {
+      expect(resolveHealthRedisTimeoutMs(configWith(30_000))).toBe(30_000);
     });
   });
 
