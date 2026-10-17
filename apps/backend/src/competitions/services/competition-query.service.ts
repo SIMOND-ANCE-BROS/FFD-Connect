@@ -10,8 +10,10 @@ import { PaginationParamsDto } from "../../common/dto/pagination-params.dto";
 import { createPaginatedResponse } from "../../common/utils/pagination.util";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
+import { sameClubName } from "../../utils/club-name-filter";
 import {
   organizedByClubWhere,
+  organizerActorOf,
   organizerMatcher,
 } from "../competition-organizer";
 import {
@@ -303,12 +305,7 @@ export class CompetitionQueryService {
     const sameClubCondition = club.clubId
       ? { clubId: club.clubId }
       : club.clubName?.trim()
-        ? {
-            clubName: {
-              equals: club.clubName.trim(),
-              mode: "insensitive" as const,
-            },
-          }
+        ? { clubName: sameClubName(club.clubName.trim()) }
         : null;
 
     if (!sameClubCondition) {
@@ -341,10 +338,14 @@ export class CompetitionQueryService {
 
     // Same rule as the edit rights (#408): an ambiguous unlinked label is
     // nobody's.
-    const isMine = await organizerMatcher(this.prisma, competitions, {
-      clubId: club.clubId,
-      clubNames: [club.clubName],
-    });
+    const isMine = await organizerMatcher(
+      this.prisma,
+      competitions,
+      await organizerActorOf(this.prisma, {
+        clubId: club.clubId ?? null,
+        clubName: club.clubName ?? null,
+      }),
+    );
     return competitions.map((comp) => ({
       ...comp,
       isOrganizedByMyClub: isMine(comp),
@@ -362,12 +363,7 @@ export class CompetitionQueryService {
     const sameClubCondition = organizer.clubId
       ? { clubId: organizer.clubId }
       : organizer.clubName?.trim()
-        ? {
-            clubName: {
-              equals: organizer.clubName.trim(),
-              mode: "insensitive" as const,
-            },
-          }
+        ? { clubName: sameClubName(organizer.clubName.trim()) }
         : null;
     if (!sameClubCondition) return [];
 
@@ -429,10 +425,7 @@ export class CompetitionQueryService {
     });
     if (!user || !hasRole(user, UserRole.CLUB)) return [];
 
-    const actor = {
-      clubId: user.clubId,
-      clubNames: [user.club?.name, user.clubName],
-    };
+    const actor = await organizerActorOf(this.prisma, user);
     const where = organizedByClubWhere(actor);
     if (!where) return [];
 

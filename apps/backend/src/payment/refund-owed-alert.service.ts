@@ -5,6 +5,7 @@ import { withActiveRole } from "../auth/roles";
 import { resolveOrganizerClubId } from "../competitions/competition-organizer";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { sameClubName } from "../utils/club-name-filter";
 import {
   clubIdNameSelect,
   idOnlySelect,
@@ -84,7 +85,7 @@ export class RefundOwedAlertService {
                 // club's manager (#408).
                 {
                   clubId: null,
-                  clubName: { equals: club.name.trim(), mode: "insensitive" },
+                  clubName: sameClubName(club.name.trim()),
                 },
               ],
             },

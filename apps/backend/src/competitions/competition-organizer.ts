@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { sameClubName } from "../utils/club-name-filter";
 import { clubIdNameSelect, idOnlySelect } from "../utils/prisma-selects";
 
 const normalize = (name: string | null | undefined): string =>
@@ -10,9 +11,16 @@ const normalize = (name: string | null | undefined): string =>
  * notifications, organiser rights). `organizer` is the display label (FFD
  * company name), used as a fallback only while a row is not linked yet.
  *
- * FOLLOW-UP (#408): once the backfill reports no unlinked competition on every
- * environment, drop the name fallback (the `organizerClubId: null` branches
- * below and `findClubIdByName` callers outside the sync / creation).
+ * A LINKED competition is matched on ids only (#625), whatever the account:
+ * a legacy account without `clubId` is first resolved to the ONE club its
+ * name designates (`organizerActorOf`), and gets nothing on a linked row if
+ * that name designates no club or several.
+ *
+ * FOLLOW-UP (#408, #625): once the backfill reports no unlinked competition
+ * on every environment, drop the remaining name fallback (the
+ * `organizerClubId: null` branches below, the label resolution of
+ * `resolveOrganizerClubId` / `organizerMatcher`, and `findClubIdByName`
+ * callers outside the sync / creation).
  */
 export interface CompetitionOrganizerRef {
   organizerClubId?: string | null;
@@ -46,7 +54,7 @@ export async function matchClubByName(
   const trimmed = name?.trim();
   if (!trimmed) return { kind: "none" };
   const clubs = await db.club.findMany({
-    where: { name: { equals: trimmed, mode: "insensitive" } },
+    where: { name: sameClubName(trimmed) },
     select: idOnlySelect,
     orderBy: { id: "asc" },
     take: 2,
@@ -78,10 +86,35 @@ export async function resolveOrganizerClubId(
 }
 
 /**
+ * The organiser-check actor of a user (#625). A linked account is its club:
+ * its id, and the club's CURRENT name for the unlinked rows — never
+ * `User.clubName`, a copy that may be stale. A legacy account without
+ * `clubId` is resolved to the ONE club its name designates (case and
+ * surrounding spaces ignored); a name designating none or several clubs
+ * leaves it without id, so it never matches a linked competition.
+ */
+export async function organizerActorOf(
+  db: ClubReader,
+  user: {
+    clubId: string | null;
+    clubName: string | null;
+    club?: { name: string } | null;
+  },
+): Promise<OrganizerClubActor> {
+  if (user.clubId) {
+    return { clubId: user.clubId, clubNames: [user.club?.name] };
+  }
+  return {
+    clubId: await findClubIdByName(db, user.clubName),
+    clubNames: [user.clubName],
+  };
+}
+
+/**
  * Whether `actor`'s club organises `competition`.
- * - Linked competition + linked account: ids only (homonyms never confused,
- *   a club rename changes nothing).
- * - Otherwise (unlinked competition, or legacy account without `clubId`):
+ * - Linked competition: ids only (homonyms never confused, a club rename
+ *   changes nothing); an actor without a club id never matches it (#625).
+ * - Unlinked competition, actor without club id (legacy fallback, #408):
  *   the label equals one of the account's club names, case and surrounding
  *   spaces ignored; an empty organiser never matches.
  */
@@ -89,8 +122,8 @@ export function isOrganizedByClub(
   competition: CompetitionOrganizerRef,
   actor: OrganizerClubActor,
 ): boolean {
-  if (competition.organizerClubId && actor.clubId) {
-    return competition.organizerClubId === actor.clubId;
+  if (competition.organizerClubId) {
+    return !!actor.clubId && competition.organizerClubId === actor.clubId;
   }
   const org = normalize(competition.organizer);
   return org !== "" && actor.clubNames.some((name) => normalize(name) === org);
@@ -112,16 +145,17 @@ function distinctNames(
  * Prisma filter selecting the CANDIDATE competitions `actor`'s club may
  * organise — a superset for a linked account (unlinked rows by name): filter
  * the result with `organizerMatcher`. `null` when the actor has neither a
- * club id nor a club name (it organises nothing).
+ * club id nor a club name (it organises nothing). Without a club id, only
+ * unlinked rows can be its (#625).
  */
 export function organizedByClubWhere(
   actor: OrganizerClubActor,
 ): Prisma.CompetitionWhereInput | null {
   const names = distinctNames(actor.clubNames).map((name) => ({
-    organizer: { equals: name, mode: Prisma.QueryMode.insensitive },
+    organizer: sameClubName(name),
   }));
   if (!actor.clubId) {
-    return names.length > 0 ? { OR: names } : null;
+    return names.length > 0 ? { organizerClubId: null, OR: names } : null;
   }
   return {
     OR: [
@@ -151,7 +185,7 @@ export async function resolveClubIdsByLabels(
   const clubs = await db.club.findMany({
     where: {
       OR: distinct.map((label) => ({
-        name: { equals: label, mode: Prisma.QueryMode.insensitive },
+        name: sameClubName(label),
       })),
     },
     select: clubIdNameSelect,
@@ -177,7 +211,9 @@ export async function resolveClubIdsByLabels(
  * - linked competition, linked account: ids only;
  * - unlinked competition, linked account: the label must designate exactly
  *   the account's club (an ambiguous homonym label grants nobody);
- * - legacy account without `clubId`: label equals one of its names.
+ * - actor without club id (legacy account whose name designates no single
+ *   club, see `organizerActorOf`): nothing linked; on an unlinked row, the
+ *   label equals one of its names.
  */
 export async function organizerMatcher(
   db: ClubReader,

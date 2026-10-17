@@ -13,6 +13,7 @@ import {
 import {
   CompetitionOrganizerRef,
   findClubIdByName,
+  organizerActorOf,
   organizerMatcher,
 } from "../competition-organizer";
 
@@ -114,8 +115,10 @@ export class CompetitionAccessService {
    * Organiser check (#408). An unlinked competition seen by a linked account
    * is resolved to the ONE club its label names: a label shared by homonym
    * clubs (same name up to case) grants nobody — never a case-insensitive
-   * name match that would let both homonyms in. Shares `organizerMatcher`
-   * with the club list and the `isOrganizedByMyClub` flag, so they agree.
+   * name match that would let both homonyms in. A linked competition is
+   * matched on ids only, a legacy account being resolved to its club first
+   * (`organizerActorOf`, #625). Shares `organizerMatcher` with the club list
+   * and the `isOrganizedByMyClub` flag, so they agree.
    */
   private async isOrganizer(
     competition: CompetitionOrganizerRef,
@@ -125,10 +128,11 @@ export class CompetitionAccessService {
       club: { name: string } | null;
     },
   ): Promise<boolean> {
-    const isMine = await organizerMatcher(this.prisma, [competition], {
-      clubId: user.clubId,
-      clubNames: [user.clubName, user.club?.name],
-    });
+    const isMine = await organizerMatcher(
+      this.prisma,
+      [competition],
+      await organizerActorOf(this.prisma, user),
+    );
     return isMine(competition);
   }
 

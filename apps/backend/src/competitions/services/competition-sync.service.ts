@@ -21,6 +21,11 @@ import {
   MAX_FFD_DOCUMENT_BYTES,
 } from "./competition-events-deduction.service";
 
+/** FFD free text, trimmed; tolerates a missing value whatever the typing says. */
+function trimmedLabel(value: string | null | undefined): string | undefined {
+  return value?.trim();
+}
+
 @Injectable()
 export class CompetitionSyncService {
   private readonly logger = new Logger(CompetitionSyncService.name);
@@ -461,7 +466,9 @@ export class CompetitionSyncService {
       eventsDescription: details.danceEventDescription,
       programUrl: details.fileEvents?.path ?? null,
       type: details.type?.title,
-      organizer: details.company?.name,
+      // Trimmed (#625): a club rename relabels unlinked rows by an exact
+      // (case-insensitive) match, which surrounding spaces would defeat.
+      organizer: trimmedLabel(details.company?.name),
       // Free text typed by the organiser: often lacks the scheme (#583).
       registrationUrl: normalizeExternalWebUrl(details.communicationLink),
       imageUrl:

@@ -6,6 +6,7 @@ import {
   userRolesClubSelect,
 } from "../utils/prisma-selects";
 import { PrismaService } from "../prisma/prisma.service";
+import { sameClubName } from "../utils/club-name-filter";
 import { ClubsService } from "./clubs.service";
 
 @Injectable()
@@ -71,12 +72,7 @@ export class PartnershipQueryService {
     const primaryCondition: Prisma.UserWhereInput = organizer.clubId
       ? { clubId: primaryClubId }
       : organizer.clubName?.trim()
-        ? {
-            clubName: {
-              equals: organizer.clubName.trim(),
-              mode: "insensitive",
-            },
-          }
+        ? { clubName: sameClubName(organizer.clubName.trim()) }
         : { clubId: primaryClubId };
 
     const orConditions: Prisma.UserWhereInput[] = [primaryCondition];

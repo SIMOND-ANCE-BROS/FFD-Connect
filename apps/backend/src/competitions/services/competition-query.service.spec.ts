@@ -716,9 +716,10 @@ describe("CompetitionQueryService", () => {
       );
     });
 
-    it("matches both the club relation and the legacy club name", async () => {
+    it("ignores a stale User.clubName for a linked account (#625)", async () => {
       mockPrismaService.user.findUnique.mockResolvedValue({
         role: "CLUB",
+        clubId: "club-1",
         clubName: "Ancien Nom",
         club: { disabledAt: null, name: "Club Test" },
       });
@@ -730,9 +731,66 @@ describe("CompetitionQueryService", () => {
         expect.objectContaining({
           where: {
             OR: [
-              { organizer: { equals: "Club Test", mode: "insensitive" } },
-              { organizer: { equals: "Ancien Nom", mode: "insensitive" } },
+              { organizerClubId: "club-1" },
+              {
+                organizerClubId: null,
+                organizer: { equals: "Club Test", mode: "insensitive" },
+              },
             ],
+          },
+        }),
+      );
+    });
+
+    it("resolves a legacy account (no clubId) to the one club its name designates (#625)", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: null,
+        clubName: "Club Test",
+        club: null,
+      });
+      mockPrismaService.club.findMany.mockResolvedValue([
+        { id: "club-1" },
+      ] as never);
+      mockPrismaService.competition.findMany.mockResolvedValue([]);
+
+      await service.findOrganizedByClub("user-1");
+
+      expect(mockPrismaService.competition.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [
+              { organizerClubId: "club-1" },
+              {
+                organizerClubId: null,
+                organizer: { equals: "Club Test", mode: "insensitive" },
+              },
+            ],
+          },
+        }),
+      );
+    });
+
+    it("limits a legacy account with an unresolvable name to unlinked rows (#625)", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: null,
+        clubName: "Club Homo",
+        club: null,
+      });
+      mockPrismaService.club.findMany.mockResolvedValue([
+        { id: "club-1" },
+        { id: "club-2" },
+      ] as never);
+      mockPrismaService.competition.findMany.mockResolvedValue([]);
+
+      await service.findOrganizedByClub("user-1");
+
+      expect(mockPrismaService.competition.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            organizerClubId: null,
+            OR: [{ organizer: { equals: "Club Homo", mode: "insensitive" } }],
           },
         }),
       );

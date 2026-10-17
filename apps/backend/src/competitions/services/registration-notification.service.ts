@@ -8,6 +8,7 @@ import {
 } from "../../notifications/member-name-copy";
 import { NotificationsService } from "../../notifications/notifications.service";
 import { PrismaService } from "../../prisma/prisma.service";
+import { sameClubName } from "../../utils/club-name-filter";
 
 /** « Latines Adulte » : discipline en français + classe d'âge. */
 export function eventDisplayLabel(event: {
@@ -270,12 +271,7 @@ export class RegistrationNotificationService {
 
     const sameClubCondition = member.clubId
       ? { clubId: member.clubId }
-      : {
-          clubName: {
-            equals: member.clubName!.trim(),
-            mode: "insensitive" as const,
-          },
-        };
+      : { clubName: sameClubName(member.clubName!.trim()) };
 
     const organizers = await this.prisma.user.findMany({
       where: {

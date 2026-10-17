@@ -326,6 +326,139 @@ describe("Competition organising club by id (#408, integration, real DB)", () =>
     ).toEqual({ organizer: `Club Homonyme Renommé ${suffix}` });
   });
 
+  describe("linked competitions are matched on ids only (#625)", () => {
+    it("refuses a legacy account (no clubId) whose name is the label of another club's competition", async () => {
+      const owner = await f.club({ name: `Club Alpha ${suffix}` });
+      const other = await f.club({ name: `Club Beta ${suffix}` });
+      // Stale label: it names Beta, but the row is linked to Alpha.
+      const competition = await f.competition({
+        title: `Compétition Alpha ${suffix}`,
+        organizer: other.name,
+        organizerClubId: owner.id,
+      });
+      const { user: legacyBeta } = await f.user(UserRole.CLUB, {
+        clubName: ` ${other.name.toUpperCase()} `,
+      });
+      const { user: legacyGhost } = await f.user(UserRole.CLUB, {
+        clubName: `Club Fantôme ${suffix}`,
+      });
+      const ghostLabelled = await f.competition({
+        title: `Compétition fantôme ${suffix}`,
+        organizer: `Club Fantôme ${suffix}`,
+        organizerClubId: owner.id,
+      });
+
+      for (const [user, comp] of [
+        [legacyBeta, competition],
+        [legacyGhost, ghostLabelled],
+      ] as const) {
+        await expect(
+          access.assertCanManageCompetition(comp.id, clubActor(user.id)),
+        ).rejects.toThrow(ForbiddenException);
+        await expect(
+          access.assertCanManageCheckIn(comp.id, clubActor(user.id)),
+        ).rejects.toThrow(ForbiddenException);
+        expect(
+          (await query.findOrganizedByClub(user.id)).map((c) => c.id),
+        ).not.toContain(comp.id);
+      }
+    });
+
+    it("grants a legacy account resolved to the one club its name designates", async () => {
+      const club = await f.club({ name: `Club Gamma ${suffix}` });
+      const competition = await f.competition({
+        title: `Compétition Gamma ${suffix}`,
+        organizer: "Ancien libellé",
+        organizerClubId: club.id,
+      });
+      const { user: legacy } = await f.user(UserRole.CLUB, {
+        clubName: `club gamma ${suffix}`,
+      });
+
+      await expect(
+        access.assertCanManageCompetition(competition.id, clubActor(legacy.id)),
+      ).resolves.toBeUndefined();
+      expect(
+        (await query.findOrganizedByClub(legacy.id)).map((c) => c.id),
+      ).toContain(competition.id);
+    });
+
+    it("ignores a stale User.clubName of a linked account", async () => {
+      const mine = await f.club({ name: `Club Delta ${suffix}` });
+      const theirs = await f.club({ name: `Club Epsilon ${suffix}` });
+      const { user: manager } = await f.user(UserRole.CLUB, {
+        clubId: mine.id,
+        // Copy left over from another club.
+        clubName: theirs.name,
+      });
+      const ofTheirs = await f.competition({
+        title: `Compétition Epsilon non reliée ${suffix}`,
+        organizer: theirs.name,
+      });
+
+      await expect(
+        access.assertCanManageCompetition(ofTheirs.id, clubActor(manager.id)),
+      ).rejects.toThrow(ForbiddenException);
+      expect(
+        (await query.findOrganizedByClub(manager.id)).map((c) => c.id),
+      ).not.toContain(ofTheirs.id);
+    });
+  });
+
+  describe("club names are compared exactly, never as LIKE patterns (#625)", () => {
+    it("does not let `_` or `%` in a name match another club", async () => {
+      const target = await f.club({
+        name: `ClubXWild ${suffix}`,
+        ...credentials("wild"),
+      });
+      const competition = await f.competition({
+        title: `Compétition Wild ${suffix}`,
+        organizer: target.name,
+        organizerClubId: target.id,
+      });
+      // Prisma renders `equals` + insensitive as ILIKE: unescaped, these
+      // names would designate `target`.
+      for (const pattern of [`Club_Wild ${suffix}`, `Club%Wild ${suffix}`]) {
+        const { user } = await f.user(UserRole.CLUB, { clubName: pattern });
+        await expect(
+          access.assertCanManageCompetition(competition.id, clubActor(user.id)),
+        ).rejects.toThrow(ForbiddenException);
+        await expect(
+          access.organizerForNewCompetition(clubActor(user.id)),
+        ).resolves.toEqual({ organizer: pattern, organizerClubId: null });
+      }
+
+      const unlinked = await f.competition({
+        title: `Compétition joker ${suffix}`,
+        organizer: `Club%${suffix}`,
+      });
+      await expect(
+        helloAsso.getHelloAssoCredentialsForCompetition(unlinked.id),
+      ).resolves.toBeNull();
+    });
+
+    it("still matches a club whose own name contains `_` or `%`", async () => {
+      const club = await f.club({
+        name: `Club_Réel 100% ${suffix}`,
+        ...credentials("reel"),
+      });
+      const unlinked = await f.competition({
+        title: `Compétition réelle ${suffix}`,
+        organizer: `club_réel 100% ${suffix}`,
+      });
+      const { user: legacy } = await f.user(UserRole.CLUB, {
+        clubName: club.name,
+      });
+
+      await expect(
+        helloAsso.getHelloAssoCredentialsForCompetition(unlinked.id),
+      ).resolves.toMatchObject({ organizationSlug: "reel" });
+      await expect(
+        access.assertCanManageCompetition(unlinked.id, clubActor(legacy.id)),
+      ).resolves.toBeUndefined();
+    });
+  });
+
   it("backfills unlinked competitions, listing unmatched and ambiguous ones", async () => {
     const solo = await f.club({ name: `Club Seul ${suffix}` });
     await f.club({ name: `Club Double ${suffix}` });
