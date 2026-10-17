@@ -1,4 +1,4 @@
-import { ed25519 } from "@noble/curves/ed25519";
+import { ed25519 } from "@noble/curves/ed25519.js";
 
 /**
  * QR d'entrée tournant (v3, #24 — ADR-0024), côté application.
