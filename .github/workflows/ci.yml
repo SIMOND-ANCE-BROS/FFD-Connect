@@ -622,6 +622,12 @@ jobs:
             fi
           done
 
+      # Log summary used by deploy-backend.yml instead of printing backend
+      # logs in the public Actions logs (#774): output must stay limited to
+      # counts and codes. A second, no job of its own.
+      - name: Test log summary (no log text in public logs)
+        run: sh .github/scripts/log-summary.test.sh
+
       - name: Run code quality audit
         run: pnpm audit:quality
 
