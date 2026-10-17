@@ -102,7 +102,9 @@ export const SpaceSheet = ({
                     styles.radio,
                     {
                       borderColor: selected ? theme.primary : theme.border,
-                      backgroundColor: selected ? theme.primary : "transparent",
+                      backgroundColor: selected
+                        ? theme.primaryFill
+                        : "transparent",
                     },
                   ]}
                 >

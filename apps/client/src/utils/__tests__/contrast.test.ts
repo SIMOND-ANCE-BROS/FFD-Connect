@@ -140,8 +140,20 @@ describe("theme contrast (WCAG AA)", () => {
     );
   });
 
-  it("keeps the brand cyan for dark surfaces, where it already passes", () => {
+  // Solid fills of buttons, chips, badges and FABs (primaryFill) carry
+  // onPrimary text. Dark mode: 3.88 (white on #0088CE) → 4.87 (#0077B6).
+  it.each([
+    ["light", light.onPrimary, light.primaryFill],
+    ["dark", dark.onPrimary, dark.primaryFill],
+  ])("%s: onPrimary on primaryFill meets AA (#22)", (_name, fg, bg) => {
+    expect(meetsWcagAA(fg, bg)).toBe(true);
+  });
+
+  it("keeps the bright brand cyan for text and icons on dark surfaces", () => {
     expect(dark.primary).toBe(colors.ffdCyan);
-    expect(contrastRatio(colors.ffdCyan, colors.white)).toBeLessThan(4.5);
+    expect(dark.primaryFill).not.toBe(dark.primary);
+    expect(contrastRatio(dark.onPrimary, dark.primaryFill)).toBeGreaterThan(
+      contrastRatio(colors.white, colors.ffdCyan),
+    );
   });
 });

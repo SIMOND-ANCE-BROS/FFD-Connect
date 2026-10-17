@@ -450,7 +450,7 @@ export const TrackCorrectionModal = ({
                   styles.button,
                   {
                     backgroundColor: canSubmit
-                      ? currentTheme.primary
+                      ? currentTheme.primaryFill
                       : currentTheme.border,
                   },
                 ]}
@@ -460,10 +460,7 @@ export const TrackCorrectionModal = ({
                 testID="correction-submit-button"
               >
                 <Text
-                  style={[
-                    styles.buttonText,
-                    isDark ? styles.textDarkButton : styles.textLightButton,
-                  ]}
+                  style={[styles.buttonText, { color: currentTheme.onPrimary }]}
                 >
                   Envoyer la proposition
                 </Text>
@@ -570,6 +567,4 @@ const styles = StyleSheet.create({
   },
   bgDarkInput: { backgroundColor: "#222" },
   bgLightInput: { backgroundColor: "#F5F5F5" },
-  textDarkButton: { color: "#000" },
-  textLightButton: { color: "#FFF" },
 });

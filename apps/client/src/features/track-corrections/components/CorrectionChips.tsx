@@ -38,8 +38,8 @@ export const ChoiceChip = ({
         isDark ? styles.bgDarkChip : styles.bgLightChip,
         { borderColor: theme.border },
         selected && {
-          backgroundColor: theme.primary,
-          borderColor: theme.primary,
+          backgroundColor: theme.primaryFill,
+          borderColor: theme.primaryFill,
         },
       ]}
     >
@@ -47,7 +47,7 @@ export const ChoiceChip = ({
         style={[
           styles.chipText,
           { color: theme.textSecondary },
-          selected && (isDark ? styles.textDarkActive : styles.textLightActive),
+          selected && [styles.textActive, { color: theme.onPrimary }],
         ]}
       >
         {label}
@@ -147,8 +147,7 @@ const styles = StyleSheet.create({
   },
   bgDarkChip: { backgroundColor: "#333" },
   bgLightChip: { backgroundColor: "#E0E0E0" },
-  textDarkActive: { color: "#000", fontWeight: "bold" },
-  textLightActive: { color: "#FFF", fontWeight: "bold" },
+  textActive: { fontWeight: "bold" },
   badge: {
     paddingHorizontal: 10,
     paddingVertical: 3,

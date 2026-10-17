@@ -259,7 +259,7 @@ export const ClubCompetitionsScreen = ({ navigation }: Props) => {
         testID="club-competitions-create-button"
         style={[
           styles.fab,
-          { backgroundColor: theme.primary, bottom: insets.bottom + 20 },
+          { backgroundColor: theme.primaryFill, bottom: insets.bottom + 20 },
         ]}
         onPress={() => navigation.navigate("ClubCompetitionEditor")}
       >

@@ -60,6 +60,10 @@ export const theme = {
     // Input placeholder (inputs sit on slate100 in light mode).
     placeholder: palette.slate550,
     primary: palette.ffdBlue,
+    // Fill of buttons, chips, badges and FABs that carry white text
+    // (onPrimary): primary itself, white on ffdBlue is 9.8:1.
+    primaryFill: palette.ffdBlue,
+    onPrimary: palette.white,
     secondary: palette.ffdCyanDeep,
     accent: palette.ffdRed,
     border: palette.slate200,
@@ -84,6 +88,11 @@ export const theme = {
     // 3.07:1 there, slate400 reaches 5.71:1.
     placeholder: palette.slate400,
     primary: palette.ffdCyan, // Lighter blue pops better on dark
+    // Fill under white text (onPrimary): #0088CE only reaches 3.88:1 under
+    // white, the deep cyan reaches 4.87:1 (WCAG AA, issue #22). primary stays
+    // the bright cyan for text, icons and borders on the dark surfaces.
+    primaryFill: palette.ffdCyanDeep,
+    onPrimary: palette.white,
     secondary: palette.ffdBlue,
     accent: palette.ffdRed,
     border: palette.slate800,

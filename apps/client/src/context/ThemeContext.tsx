@@ -18,7 +18,16 @@ export interface AppTheme {
   textSecondary: string;
   /** Placeholder text colour for inputs (AA on the input fill). */
   placeholder: string;
+  /** Brand colour for text, icons and borders on surface/background. */
   primary: string;
+  /**
+   * Solid fill of buttons, chips, badges, FABs and selected states that carry
+   * `onPrimary` text (WCAG AA in both themes). Tints (`${primary}1A`) and
+   * borders keep `primary`.
+   */
+  primaryFill: string;
+  /** Text and icon colour on a `primaryFill` background. */
+  onPrimary: string;
   secondary: string;
   accent: string;
   border: string;

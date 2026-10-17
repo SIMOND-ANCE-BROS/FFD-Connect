@@ -40,7 +40,7 @@ export const CoupleCard = React.memo(function CoupleCard({
 
   return (
     <View style={[styles.card, { backgroundColor: theme.surface }]}>
-      <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
+      <View style={[styles.avatar, { backgroundColor: theme.primaryFill }]}>
         <Users size={22} color="#fff" />
       </View>
       {/* One sentence instead of "&", "•" and the separate status line. */}

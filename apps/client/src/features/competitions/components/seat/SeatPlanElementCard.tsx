@@ -47,7 +47,11 @@ export function seatColors(
   theme: AppTheme,
 ): SeatColors {
   if (selected) {
-    return { background: theme.primary, border: theme.primary, text: "white" };
+    return {
+      background: theme.primaryFill,
+      border: theme.primaryFill,
+      text: theme.onPrimary,
+    };
   }
   switch (status) {
     case "free":
@@ -280,7 +284,7 @@ export const SeatPlanElementCard = ({
             styles.freeButton,
             {
               borderColor: freeBookable ? theme.primary : theme.border,
-              backgroundColor: freeSelected ? theme.primary : theme.surface,
+              backgroundColor: freeSelected ? theme.primaryFill : theme.surface,
             },
           ]}
         >

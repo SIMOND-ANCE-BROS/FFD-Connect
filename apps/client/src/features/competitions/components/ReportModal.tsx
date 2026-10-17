@@ -357,7 +357,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
                       borderColor: currentTheme.border,
                     },
                     module === m && {
-                      backgroundColor: currentTheme.primary,
+                      backgroundColor: currentTheme.primaryFill,
                       borderColor: currentTheme.primary,
                     },
                   ]}
@@ -540,7 +540,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({
             accessibilityRole="button"
             style={[
               styles.submitButton,
-              { backgroundColor: currentTheme.primary },
+              { backgroundColor: currentTheme.primaryFill },
               isSubmitting && styles.disabledButton,
             ]}
             onPress={() => {

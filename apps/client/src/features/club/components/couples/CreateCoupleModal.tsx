@@ -137,7 +137,7 @@ export const CreateCoupleModal = React.memo(function CreateCoupleModal({
                       const dropdownBg = {
                         borderBottomColor: theme.border,
                         backgroundColor: isSelected
-                          ? theme.primary
+                          ? theme.primaryFill
                           : "transparent",
                       };
                       const dropdownTextColor = {
@@ -243,7 +243,9 @@ export const CreateCoupleModal = React.memo(function CreateCoupleModal({
                       style={[
                         styles.checkbox,
                         { borderColor: theme.border },
-                        isChecked ? { backgroundColor: theme.primary } : null,
+                        isChecked
+                          ? { backgroundColor: theme.primaryFill }
+                          : null,
                       ]}
                     >
                       {isChecked && (

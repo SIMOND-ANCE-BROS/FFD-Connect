@@ -79,7 +79,7 @@ export const ClubMembersScreen = () => {
                     <View
                       style={[
                         styles.avatar,
-                        { backgroundColor: theme.primary },
+                        { backgroundColor: theme.primaryFill },
                       ]}
                     >
                       <AppText variant="h3" style={styles.textWhite}>
@@ -186,7 +186,7 @@ export const ClubMembersScreen = () => {
         accessibilityHint="Ouvre le formulaire d'un nouveau membre"
         style={[
           styles.fab,
-          { backgroundColor: theme.primary, bottom: insets.bottom + 20 },
+          { backgroundColor: theme.primaryFill, bottom: insets.bottom + 20 },
         ]}
         onPress={() => navigation.navigate("ClubMemberEditor")}
       >

@@ -382,8 +382,8 @@ export const AddTrackModal = ({
                           isDark ? styles.bgDarkChip : styles.bgLightChip,
                           { borderColor: currentTheme.border },
                           selectedStyle === s && {
-                            backgroundColor: currentTheme.primary,
-                            borderColor: currentTheme.primary,
+                            backgroundColor: currentTheme.primaryFill,
+                            borderColor: currentTheme.primaryFill,
                           },
                         ]}
                         onPress={() => {
@@ -396,10 +396,10 @@ export const AddTrackModal = ({
                           style={[
                             styles.styleChipText,
                             { color: currentTheme.textSecondary },
-                            selectedStyle === s &&
-                              (isDark
-                                ? styles.textDarkChipActive
-                                : styles.textLightChipActive),
+                            selectedStyle === s && [
+                              styles.textChipActive,
+                              { color: currentTheme.onPrimary },
+                            ],
                           ]}
                         >
                           {s}
@@ -416,7 +416,7 @@ export const AddTrackModal = ({
                 accessibilityHint="Enregistre le titre, l'artiste, la danse et le MPM"
                 style={[
                   styles.button,
-                  { backgroundColor: currentTheme.primary },
+                  { backgroundColor: currentTheme.primaryFill },
                 ]}
                 onPress={() => {
                   handleSave().catch(() => {});
@@ -424,10 +424,7 @@ export const AddTrackModal = ({
                 testID="add-track-save-button"
               >
                 <Text
-                  style={[
-                    styles.buttonText,
-                    isDark ? styles.textDarkButton : styles.textLightButton,
-                  ]}
+                  style={[styles.buttonText, { color: currentTheme.onPrimary }]}
                 >
                   Enregistrer les modifications
                 </Text>
@@ -552,8 +549,5 @@ const styles = StyleSheet.create({
   bgLightInput: { backgroundColor: "#F5F5F5" },
   bgDarkChip: { backgroundColor: "#333" },
   bgLightChip: { backgroundColor: "#E0E0E0" },
-  textDarkButton: { color: "#000" },
-  textLightButton: { color: "#FFF" },
-  textDarkChipActive: { color: "#000", fontWeight: "bold" },
-  textLightChipActive: { color: "#FFF", fontWeight: "bold" },
+  textChipActive: { fontWeight: "bold" },
 });
