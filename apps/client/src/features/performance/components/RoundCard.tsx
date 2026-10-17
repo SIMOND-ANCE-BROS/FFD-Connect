@@ -151,8 +151,8 @@ export const RoundCard: React.FC<RoundCardProps> = ({
                     styles.categoryChip,
                     active
                       ? {
-                          borderColor: theme.primary,
-                          backgroundColor: theme.primary,
+                          borderColor: theme.primaryFill,
+                          backgroundColor: theme.primaryFill,
                         }
                       : { borderColor: theme.border },
                   ]}
@@ -226,8 +226,8 @@ export const RoundCard: React.FC<RoundCardProps> = ({
                     styles.danceChip,
                     isActive
                       ? {
-                          borderColor: theme.primary,
-                          backgroundColor: theme.primary,
+                          borderColor: theme.primaryFill,
+                          backgroundColor: theme.primaryFill,
                         }
                       : { borderColor: theme.border },
                   ]}

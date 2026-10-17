@@ -129,7 +129,9 @@ export const ClubSoloTeamsScreen = () => {
                 })
               }
             >
-              <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
+              <View
+                style={[styles.avatar, { backgroundColor: theme.primaryFill }]}
+              >
                 <TeamIcon size={26} color="#fff" />
               </View>
               <View style={styles.cardBody}>
@@ -183,7 +185,7 @@ export const ClubSoloTeamsScreen = () => {
         ref={createButtonRef}
         style={[
           styles.fab,
-          { backgroundColor: theme.primary, bottom: insets.bottom + 20 },
+          { backgroundColor: theme.primaryFill, bottom: insets.bottom + 20 },
         ]}
         onPress={() => setCreateModalVisible(true)}
         accessibilityRole="button"
@@ -253,7 +255,9 @@ export const ClubSoloTeamsScreen = () => {
             >
               {LEVELS.map((l) => {
                 const isSelected = newLevel === l;
-                const chipBg = isSelected ? theme.primary : theme.background;
+                const chipBg = isSelected
+                  ? theme.primaryFill
+                  : theme.background;
                 const chipTextColor = isSelected ? "#fff" : theme.text;
                 return (
                   <TouchableOpacity

@@ -170,9 +170,11 @@ export function DraggableLayoutItem({
                 const idx = vertical ? col * cols + row : row * cols + col;
                 const locked = lockedSet.has(idx);
                 const seatStyle = {
-                  backgroundColor: locked ? theme.textSecondary : theme.primary,
+                  backgroundColor: locked
+                    ? theme.textSecondary
+                    : theme.primaryFill,
                   opacity: locked ? 0.6 : 0.9,
-                  borderColor: locked ? theme.border : theme.primary,
+                  borderColor: locked ? theme.border : theme.primaryFill,
                 };
                 return (
                   <View key={idx} style={[styles.seatFlex, seatStyle]}>
@@ -192,9 +194,9 @@ export function DraggableLayoutItem({
           {Array.from({ length: item.capacity }).map((_, idx) => {
             const locked = lockedSet.has(idx);
             const tableSeatStyle = {
-              backgroundColor: locked ? theme.textSecondary : theme.primary,
+              backgroundColor: locked ? theme.textSecondary : theme.primaryFill,
               opacity: locked ? 0.6 : 0.9,
-              borderColor: locked ? theme.border : theme.primary,
+              borderColor: locked ? theme.border : theme.primaryFill,
             };
             return (
               <View key={idx} style={[styles.seat, tableSeatStyle]}>

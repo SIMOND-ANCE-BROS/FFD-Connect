@@ -28,7 +28,7 @@ export const LibraryGridItem = React.memo(
       <View
         style={[
           styles.gridItemBackground,
-          { backgroundColor: currentTheme.primary },
+          { backgroundColor: currentTheme.primaryFill },
         ]}
       >
         <Text style={styles.gridIcon}>{item.title.charAt(0)}</Text>

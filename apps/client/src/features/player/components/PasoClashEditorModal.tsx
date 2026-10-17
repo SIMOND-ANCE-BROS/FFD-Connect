@@ -224,7 +224,7 @@ export const PasoClashEditorModal = ({
               accessibilityRole="button"
               accessibilityLabel={isPlaying ? "Pause" : "Lecture"}
               accessibilityHint="Bascule lecture / pause du morceau"
-              style={[styles.playBtn, { backgroundColor: theme.primary }]}
+              style={[styles.playBtn, { backgroundColor: theme.primaryFill }]}
             >
               {isPlaying ? (
                 <Pause size={20} color="#fff" />

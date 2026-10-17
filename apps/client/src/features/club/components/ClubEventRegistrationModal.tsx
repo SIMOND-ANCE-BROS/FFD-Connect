@@ -153,7 +153,9 @@ export const ClubEventRegistrationModal: React.FC<Props> = ({
                 };
                 const checkboxStyle = {
                   borderColor: isSelected ? theme.primary : theme.textSecondary,
-                  backgroundColor: isSelected ? theme.primary : "transparent",
+                  backgroundColor: isSelected
+                    ? theme.primaryFill
+                    : "transparent",
                 };
                 return (
                   <TouchableOpacity

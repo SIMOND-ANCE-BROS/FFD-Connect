@@ -55,7 +55,7 @@ export const SettingsProfileSection: React.FC<SettingsProfileSectionProps> = ({
               style={[
                 styles.editBadge,
                 {
-                  backgroundColor: theme.primary,
+                  backgroundColor: theme.primaryFill,
                   borderColor: theme.background,
                 },
               ]}
@@ -109,7 +109,7 @@ export const SettingsProfileSection: React.FC<SettingsProfileSectionProps> = ({
               style={[
                 styles.editBadge,
                 {
-                  backgroundColor: theme.primary,
+                  backgroundColor: theme.primaryFill,
                   borderColor: theme.background,
                 },
               ]}

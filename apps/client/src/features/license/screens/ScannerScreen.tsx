@@ -48,7 +48,7 @@ const CheckinResultOverlay = ({
   // Determine overall status
   const outcome = checkinOutcome(result, error);
   const title = CHECKIN_TITLES[outcome];
-  let color = currentTheme.primary;
+  let color = currentTheme.primaryFill;
   let content = null;
 
   if (error) {

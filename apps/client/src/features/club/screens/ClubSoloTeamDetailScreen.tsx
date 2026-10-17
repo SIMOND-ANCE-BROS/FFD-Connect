@@ -119,7 +119,9 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
         <>
           <View style={{ height: headerH }} />
           <View style={[styles.infoCard, { backgroundColor: theme.surface }]}>
-            <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
+            <View
+              style={[styles.avatar, { backgroundColor: theme.primaryFill }]}
+            >
               <TeamIcon size={28} color="#fff" />
             </View>
             <View style={styles.infoBody}>
@@ -150,7 +152,7 @@ export const ClubSoloTeamDetailScreen = ({ navigation, route }: Props) => {
               accessibilityLabel="Ajouter un membre"
               accessibilityHint="Choisissez un danseur du club"
               onPress={() => setAddModalVisible(true)}
-              style={[styles.addButton, { backgroundColor: theme.primary }]}
+              style={[styles.addButton, { backgroundColor: theme.primaryFill }]}
             >
               <Plus size={18} color="#fff" />
               <AppText variant="button" style={styles.textWhite}>

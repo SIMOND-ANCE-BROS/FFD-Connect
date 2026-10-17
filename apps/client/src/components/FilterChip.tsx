@@ -30,9 +30,9 @@ export const FilterChip = ({
       style={[
         styles.chip,
         {
-          borderColor: selected ? theme.primary : theme.border,
+          borderColor: selected ? theme.primaryFill : theme.border,
           backgroundColor: selected
-            ? theme.primary
+            ? theme.primaryFill
             : isDark
               ? "rgba(255,255,255,0.05)"
               : "#F5F5F5",

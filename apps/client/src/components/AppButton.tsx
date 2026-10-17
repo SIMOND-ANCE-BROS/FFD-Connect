@@ -138,8 +138,8 @@ const AppButtonComponent = React.forwardRef<View, AppButtonProps>(
           txtColor = palette.white;
           break;
         default:
-          bgColor = currentTheme.primary;
-          txtColor = palette.white;
+          bgColor = currentTheme.primaryFill;
+          txtColor = currentTheme.onPrimary;
       }
 
       return {

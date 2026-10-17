@@ -7,6 +7,8 @@ export const mockTheme = {
   textSecondary: "#666666",
   placeholder: "#666666",
   primary: "#3b82f6",
+  primaryFill: "#1d4ed8",
+  onPrimary: "#ffffff",
   secondary: "#22c55e",
   border: "#e5e7eb",
   success: "#10b981",

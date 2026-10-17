@@ -400,7 +400,7 @@ export const CompetitionOrganisationTab: React.FC<Props> = ({
                         styles.layoutTypeChip,
                         {
                           backgroundColor: isSelected
-                            ? theme.primary
+                            ? theme.primaryFill
                             : `${theme.primary}10`,
                           borderColor: theme.primary,
                         },

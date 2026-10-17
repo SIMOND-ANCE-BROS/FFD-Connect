@@ -152,7 +152,7 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
                     <View
                       style={[
                         styles.radioDot,
-                        { backgroundColor: theme.primary },
+                        { backgroundColor: theme.primaryFill },
                       ]}
                     />
                   )}
@@ -225,7 +225,7 @@ export const SettingsClubSection: React.FC<SettingsClubSectionProps> = ({
                           <View
                             style={[
                               styles.radioDot,
-                              { backgroundColor: theme.primary },
+                              { backgroundColor: theme.primaryFill },
                             ]}
                           />
                         )}
