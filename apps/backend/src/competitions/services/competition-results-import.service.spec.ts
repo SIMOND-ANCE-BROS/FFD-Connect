@@ -16,7 +16,6 @@ import { DELETED_USER_ID } from "../../users/account-deletion.core";
 import { erasedLicenceFingerprint } from "../../utils/results-pseudonym";
 import { parseResultsCsv } from "../results-import/results-csv.parser";
 import { CompetitionCacheService } from "./competition-cache.service";
-import { CompetitionEventNotificationService } from "./competition-event-notification.service";
 import {
   CompetitionResultsImportService,
   UNLINKED_RESULT_USER_ID,
@@ -34,6 +33,7 @@ const KEY = "k".repeat(40);
 const HEADER = "epreuve;tour;classement;couple;dossard;licences";
 const STAFF = { userId: "staff-1", role: "STAFF", roles: [UserRole.STAFF] };
 const CLUB = { userId: "club-1", role: "CLUB", roles: [UserRole.CLUB] };
+const ADMIN = { userId: "admin-1", role: "ADMIN", roles: [UserRole.ADMIN] };
 
 function rowOf(csv: string, index = 0) {
   return parseResultsCsv(csv).rows[index];
@@ -44,7 +44,6 @@ describe("CompetitionResultsImportService (#652)", () => {
   let prisma: DeepMockProxy<PrismaClient>;
   let config: Record<string, string | undefined>;
   let cache: { invalidateResults: jest.Mock };
-  let notifications: { notifyResultsPublished: jest.Mock };
   let audit: { recordOp: jest.Mock };
 
   beforeEach(async () => {
@@ -63,9 +62,6 @@ describe("CompetitionResultsImportService (#652)", () => {
     prisma.$transaction.mockResolvedValue([] as never);
     config = { RESULTS_PSEUDONYMISATION_KEY: KEY, NODE_ENV: "production" };
     cache = { invalidateResults: jest.fn().mockResolvedValue(undefined) };
-    notifications = {
-      notifyResultsPublished: jest.fn().mockResolvedValue(undefined),
-    };
     audit = { recordOp: jest.fn().mockReturnValue("audit-op") };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -78,10 +74,6 @@ describe("CompetitionResultsImportService (#652)", () => {
         },
         { provide: AdminAuditService, useValue: audit },
         { provide: CompetitionCacheService, useValue: cache },
-        {
-          provide: CompetitionEventNotificationService,
-          useValue: notifications,
-        },
       ],
     }).compile();
     service = module.get(CompetitionResultsImportService);
@@ -261,7 +253,6 @@ describe("CompetitionResultsImportService (#652)", () => {
     );
     expect(prisma.$transaction).toHaveBeenCalledWith(["create-op", "audit-op"]);
     expect(cache.invalidateResults).toHaveBeenCalledWith("comp-1");
-    expect(notifications.notifyResultsPublished).toHaveBeenCalledWith("comp-1");
   });
 
   it("writes an audit row with the author and the counts only (L5)", async () => {
@@ -356,7 +347,6 @@ describe("CompetitionResultsImportService (#652)", () => {
     expect(report).toMatchObject({ created: 0, updated: 0, unchanged: 1 });
     expect(prisma.$transaction).toHaveBeenCalledWith(["audit-op"]);
     expect(cache.invalidateResults).not.toHaveBeenCalled();
-    expect(notifications.notifyResultsPublished).toHaveBeenCalledWith("comp-1");
   });
 
   it("updates a corrected line in place, guarded on its owner, and counts the new link as relinked (L3)", async () => {
@@ -604,7 +594,6 @@ describe("CompetitionResultsImportService (#652)", () => {
         .catch((e: unknown) => e);
       expect(error).toBeInstanceOf(BadRequestException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
-      expect(notifications.notifyResultsPublished).not.toHaveBeenCalled();
       return (error as BadRequestException).getResponse() as {
         message: string;
         errors: { line: number; message: string }[];
@@ -679,7 +668,6 @@ describe("CompetitionResultsImportService (#652)", () => {
       expect(prisma.result.createMany).not.toHaveBeenCalled();
       expect(audit.recordOp).not.toHaveBeenCalled();
       expect(cache.invalidateResults).not.toHaveBeenCalled();
-      expect(notifications.notifyResultsPublished).not.toHaveBeenCalled();
     });
 
     it("dry run still rejects an invalid file with its lines", async () => {
@@ -803,9 +791,6 @@ describe("CompetitionResultsImportService (#652)", () => {
         userId: UNLINKED_RESULT_USER_ID,
         partnerUserId: null,
       });
-      expect(notifications.notifyResultsPublished).toHaveBeenCalledWith(
-        "comp-1",
-      );
     });
 
     it("a club's file still honours an erased licence held by nobody, and a living outsider still lifts it", async () => {
@@ -971,7 +956,8 @@ describe("CompetitionResultsImportService (#652)", () => {
         CLUB,
       );
 
-      expect(report).toEqual({ deleted: 2, anonymisedKept: 2 });
+      // The club is not told how many erased rows stay (#713)…
+      expect(report).toEqual({ deleted: 2, anonymisedKept: null });
       expect(prisma.result.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { eventId: "ev-latin", importKey: { not: null } },
@@ -1002,6 +988,36 @@ describe("CompetitionResultsImportService (#652)", () => {
       ]);
       expect(cache.invalidateResults).toHaveBeenCalledWith("comp-1");
       expect(JSON.stringify(audit.recordOp.mock.calls)).not.toContain("A / B");
+    });
+
+    it.each([
+      ["STAFF", STAFF],
+      ["ADMIN", ADMIN],
+    ])("tells %s how many erased rows are kept (#713)", async (role, actor) => {
+      prisma.result.findMany.mockResolvedValue([
+        { id: "r1", userId: "user-a", details: { participant: "A / B" } },
+        { id: "r3", userId: DELETED_USER_ID, details: {} },
+      ] as never);
+      prisma.$transaction.mockResolvedValue([
+        { count: 1 },
+        { id: "a" },
+      ] as never);
+
+      const report = await service.deleteEventResults(
+        "comp-1",
+        "ev-latin",
+        actor,
+      );
+
+      expect(report).toEqual({ deleted: 1, anonymisedKept: 1 });
+      expect(audit.recordOp).toHaveBeenCalledWith(
+        expect.objectContaining({
+          after: expect.objectContaining({
+            anonymisedKept: 1,
+            actorRole: role,
+          }),
+        }),
+      );
     });
 
     it("does not invalidate the cache when nothing was removed", async () => {

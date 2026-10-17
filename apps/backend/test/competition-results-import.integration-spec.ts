@@ -5,7 +5,11 @@ import { ConfigService } from "@nestjs/config";
 import { TestingModule } from "@nestjs/testing";
 import { NotificationType, UserRole } from "@prisma/client";
 import { CareerService } from "../src/career/career.service";
-import { RESULTS_KIND } from "../src/competitions/services/competition-event-notification.service";
+import {
+  CompetitionEventNotificationService,
+  RESULTS_KIND,
+  RESULTS_NOTIFICATION_GRACE_MS,
+} from "../src/competitions/services/competition-event-notification.service";
 import {
   CompetitionResultsImportService,
   UNLINKED_RESULT_USER_ID,
@@ -22,7 +26,8 @@ import {
 import { buildServiceModule } from "./integration-app.builder";
 
 /**
- * #652: results import → palmarès → « Résultats disponibles », then the
+ * #652: results import → palmarès → « Résultats disponibles » (after the
+ * grace period, #713), then the
  * right to erasure, on a real database (unique index of the idempotence,
  * JSON details, reservation of the notification, real account deletion).
  * Outside production the import and the deletion share the development
@@ -35,6 +40,10 @@ describe("Competition results import (integration, real DB)", () => {
   let careerService: CareerService;
   let accountDeletion: AccountDeletionService;
   let accessService: CompetitionAccessService;
+  let notificationService: CompetitionEventNotificationService;
+  /** An instant once the rows written now have passed the grace (#713). */
+  const afterGrace = () =>
+    new Date(Date.now() + RESULTS_NOTIFICATION_GRACE_MS + 60_000);
 
   const suffix = randomUUID().slice(0, 8);
   const lastName = `Imp${suffix}`;
@@ -127,6 +136,7 @@ describe("Competition results import (integration, real DB)", () => {
     careerService = moduleRef.get(CareerService);
     accountDeletion = moduleRef.get(AccountDeletionService);
     accessService = moduleRef.get(CompetitionAccessService);
+    notificationService = moduleRef.get(CompetitionEventNotificationService);
 
     const [staff, alpha, bravo, echo] = await Promise.all(
       (["Staff", "Alpha", "Bravo", "Echo"] as const).map((firstName) =>
@@ -278,7 +288,64 @@ describe("Competition results import (integration, real DB)", () => {
     }
   });
 
-  it("imports, links both members of a couple, fills the palmarès of a licensee who never registered in the app, notifies once and audits", async () => {
+  it("an import deleted within the grace period notifies nobody (#713)", async () => {
+    const other = await prisma.competition.create({
+      data: {
+        title: `Import annulé ${suffix}`,
+        date: new Date("2026-09-22"),
+        location: "Lyon",
+        status: "PAST",
+      },
+    });
+    const otherEvent = await prisma.event.create({
+      data: {
+        competitionId: other.id,
+        category: "Latin",
+        ageGroup: "Adulte",
+        eventType: "COUPLE",
+      },
+    });
+    try {
+      // Echo is registered: there would be someone to notify.
+      await prisma.registration.create({
+        data: { eventId: otherEvent.id, userId: echoId, status: "CONFIRMED" },
+      });
+      const imported = await importService.importCsv(
+        other.id,
+        csv().split(eventId).join(otherEvent.id),
+        staff(),
+      );
+      expect(imported.created).toBe(4);
+      const undone = await importService.deleteEventResults(
+        other.id,
+        otherEvent.id,
+        staff(),
+      );
+      // STAFF is told the erased-row count (null for a club, #713).
+      expect(undone).toEqual({ deleted: 4, anonymisedKept: 0 });
+
+      await notificationService.notifyResultsPublished(other.id, afterGrace());
+
+      expect(sendToUsers).not.toHaveBeenCalled();
+      const after = await prisma.competition.findUnique({
+        where: { id: other.id },
+        select: { resultsNotifiedAt: true },
+      });
+      expect(after?.resultsNotifiedAt).toBeNull();
+    } finally {
+      await prisma.adminAuditLog.deleteMany({
+        where: { targetType: "COMPETITION", targetId: other.id },
+      });
+      await prisma.result.deleteMany({ where: { eventId: otherEvent.id } });
+      await prisma.registration.deleteMany({
+        where: { eventId: otherEvent.id },
+      });
+      await prisma.event.delete({ where: { id: otherEvent.id } });
+      await prisma.competition.delete({ where: { id: other.id } });
+    }
+  });
+
+  it("imports, links both members of a couple, fills the palmarès of a licensee who never registered in the app, notifies once after the grace period and audits", async () => {
     const report = await importService.importCsv(competitionId, csv(), staff());
     expect(report).toEqual({
       dryRun: false,
@@ -313,6 +380,14 @@ describe("Competition results import (integration, real DB)", () => {
       competition: { id: competitionId },
     });
 
+    // Not at import time (#713): once the rows survived the grace period.
+    expect(sendToUsers).not.toHaveBeenCalled();
+    await notificationService.notifyResultsPublished(competitionId);
+    expect(sendToUsers).not.toHaveBeenCalled();
+    await notificationService.notifyResultsPublished(
+      competitionId,
+      afterGrace(),
+    );
     expect(sendToUsers).toHaveBeenCalledTimes(1);
     expect([...sendToUsers.mock.calls[0][0]].sort()).toEqual(
       [alphaId, bravoId, echoId].sort(),
@@ -433,9 +508,10 @@ describe("Competition results import (integration, real DB)", () => {
       eventId,
       clubActor(),
     );
+    // The club is not told how many erased rows stay (#713)…
     expect(report).toEqual({
       deleted: before.length - erased.length,
-      anonymisedKept: erased.length,
+      anonymisedKept: null,
     });
     const kept = await resultsOf();
     expect(kept).toHaveLength(erased.length);
@@ -454,6 +530,7 @@ describe("Competition results import (integration, real DB)", () => {
       },
       select: { actorId: true, after: true },
     });
+    // …the audit trail keeps the count.
     expect(audit).toEqual({
       actorId: clubAccountId,
       after: {
@@ -477,6 +554,10 @@ describe("Competition results import (integration, real DB)", () => {
     expect(JSON.stringify(after)).not.toContain(`Bravo ${lastName}`);
     expect(JSON.stringify(after)).not.toContain("Echo /");
     // Notified once per competition, re-import included.
+    await notificationService.notifyResultsPublished(
+      competitionId,
+      afterGrace(),
+    );
     expect(sendToUsers).toHaveBeenCalledTimes(1);
   });
 });

@@ -270,7 +270,8 @@ describe("Results import HTTP access (integration, real DB)", () => {
     expect(await prisma.result.count({ where: { eventId } })).toBe(1);
 
     const undo = await deleteAs(token).expect(200);
-    expect(undo.body).toEqual({ deleted: 1, anonymisedKept: 0 });
+    // The erased-row count is withheld from the club (#713).
+    expect(undo.body).toEqual({ deleted: 1, anonymisedKept: null });
     expect(await prisma.result.count({ where: { eventId } })).toBe(0);
   });
 

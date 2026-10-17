@@ -21,6 +21,19 @@ import {
 export const NEW_COMPETITION_KIND = "NEW_COMPETITION";
 export const RESULTS_KIND = "RESULTS";
 
+/**
+ * « Résultats disponibles » waits until a result row has existed this long
+ * (#713): an import undone within the grace period (wrong file, deleted
+ * right away) notifies nobody.
+ */
+export const RESULTS_NOTIFICATION_GRACE_MS = 15 * 60_000;
+
+/** Results created longer ago than this are no longer looked at (#713). */
+export const PENDING_RESULTS_WINDOW_MS = 30 * 24 * 60 * 60_000;
+
+/** Upper bound of the competitions handled by one pending-results pass. */
+export const MAX_PENDING_RESULTS_COMPETITIONS = 100;
+
 /** Épreuve d'une compétition, réduite aux champs d'éligibilité. */
 export interface EligibilityEvent {
   category: string | null;
@@ -163,8 +176,16 @@ export class CompetitionEventNotificationService {
    * `Competition.resultsNotifiedAt` (deux imports simultanés ne peuvent pas
    * l'obtenir tous les deux), libérée si l'envoi échoue. Sans destinataire,
    * rien n'est réservé : un import suivant qui rattache des comptes notifie.
+   *
+   * Délai de grâce (#713) : rien ne part tant qu'aucun résultat de la
+   * compétition n'existe depuis RESULTS_NOTIFICATION_GRACE_MS. Un import
+   * supprimé avant ne notifie donc personne ; un import qui reste est notifié
+   * par le passage suivant de `notifySettledResults`.
    */
-  async notifyResultsPublished(competitionId: string): Promise<void> {
+  async notifyResultsPublished(
+    competitionId: string,
+    now: Date = new Date(),
+  ): Promise<void> {
     try {
       // Competitions notified before the reservation column existed.
       if (await this.alreadyNotified(competitionId, RESULTS_KIND)) {
@@ -176,6 +197,15 @@ export class CompetitionEventNotificationService {
         select: competitionResultsNotificationSelect,
       });
       if (!competition || competition.resultsNotifiedAt) return;
+
+      const settled = await this.prisma.result.findFirst({
+        where: {
+          event: { competitionId },
+          createdAt: { lte: settledBefore(now) },
+        },
+        select: idOnlySelect,
+      });
+      if (!settled) return;
 
       const participantIds = await this.resultsRecipients(competitionId);
       if (participantIds.length === 0) return;
@@ -220,6 +250,40 @@ export class CompetitionEventNotificationService {
         getErrorStack(error),
       );
     }
+  }
+
+  /**
+   * Passage périodique (#713) : notifie les compétitions dont un résultat a
+   * passé le délai de grâce et qui n'ont pas encore été notifiées. Seuls les
+   * résultats créés dans la fenêtre PENDING_RESULTS_WINDOW_MS sont regardés
+   * (une compétition sans destinataire n'est pas réservée : elle cesse d'être
+   * regardée au bout de la fenêtre). Retourne le nombre de compétitions vues.
+   */
+  async notifySettledResults(now: Date = new Date()): Promise<number> {
+    const pending = await this.prisma.competition.findMany({
+      where: {
+        resultsNotifiedAt: null,
+        events: {
+          some: {
+            results: {
+              some: {
+                createdAt: {
+                  gte: new Date(now.getTime() - PENDING_RESULTS_WINDOW_MS),
+                  lte: settledBefore(now),
+                },
+              },
+            },
+          },
+        },
+      },
+      select: idOnlySelect,
+      orderBy: { date: "desc" },
+      take: MAX_PENDING_RESULTS_COMPETITIONS,
+    });
+    for (const { id } of pending) {
+      await this.notifyResultsPublished(id, now);
+    }
+    return pending.length;
   }
 
   /**
@@ -288,4 +352,9 @@ export class CompetitionEventNotificationService {
     });
     return existing !== null;
   }
+}
+
+/** Results created at or before this instant have passed the grace period. */
+function settledBefore(now: Date): Date {
+  return new Date(now.getTime() - RESULTS_NOTIFICATION_GRACE_MS);
 }
