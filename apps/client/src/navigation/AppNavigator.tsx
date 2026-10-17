@@ -54,6 +54,7 @@ import { PerformanceSetupScreen } from "../features/performance/screens/Performa
 import { ViewCareerScreen } from "../features/career/screens/ViewCareerScreen";
 import { TopBannersLayout } from "../components/TopBannersLayout";
 import { CguAcceptanceModal } from "../features/legal/CguAcceptanceModal";
+import { PrivacyPolicyNotice } from "../features/legal/PrivacyPolicyNotice";
 import { LegalScreen } from "../features/legal/LegalScreen";
 
 // --- Profile screen ---
@@ -79,6 +80,7 @@ export const AppNavigator = () => {
     refreshAuth,
     pendingDeepLink,
     setPendingDeepLink,
+    impersonating,
   } = useAuthStore();
   const authReturnTarget = useAuthReturnStore((s) => s.target);
   const clearAuthReturn = useAuthReturnStore((s) => s.clear);
@@ -358,6 +360,14 @@ export const AppNavigator = () => {
         {/* Acceptation CGU au premier lancement (#424) — autonome, ne rend
           rien si la version courante est déjà acceptée. */}
         <CguAcceptanceModal />
+        {/* Avis de mise à jour de la politique de confidentialité (#734) —
+          information non bloquante, comptes connectés seulement. */}
+        <PrivacyPolicyNotice
+          eligible={isLoggedIn && !isGuest && !impersonating}
+          onOpenPolicy={() =>
+            navigationRef.current?.navigate("Legal", { doc: "privacy" })
+          }
+        />
       </NavigationContainer>
     </TopBannersLayout>
   );

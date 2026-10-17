@@ -20,6 +20,15 @@ describe("privacy policy in the app", () => {
     expect(section?.body).toContain("ne sont pas conservés");
   });
 
+  it("explains how substantial changes are notified (#734)", () => {
+    const section = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Modifications de cette politique",
+    );
+    expect(section?.body).toContain("une seule fois par version");
+    expect(section?.body).toContain("pas une nouvelle acceptation");
+    expect(section?.body).toContain("J'ai compris");
+  });
+
   it("declares the support access and lists it in the export (#387)", () => {
     const support = LEGAL_DOCUMENTS.privacy.sections.find(
       (s) => s.heading === "Accès support",

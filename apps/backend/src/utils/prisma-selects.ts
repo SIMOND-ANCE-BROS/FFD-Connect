@@ -1246,6 +1246,11 @@ export const healthDataAccessLogSelect = {
   createdAt: true,
 } as const;
 
+/** Avis de mise à jour de la politique de confidentialité (#734). */
+export const privacyPolicySeenVersionSelect = {
+  privacyPolicySeenVersion: true,
+} as const;
+
 /** Back-office: club options for selects (id + name only). */
 export const adminClubOptionSelect = { id: true, name: true } as const;
 

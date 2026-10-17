@@ -54,3 +54,5 @@ export {
   hasExtendedTrackData,
 } from "./player.store";
 export type { TrackData } from "./player.store";
+
+export { usePrivacyPolicyNoticeStore } from "./privacyPolicyNotice.store";

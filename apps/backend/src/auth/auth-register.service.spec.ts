@@ -12,6 +12,7 @@ import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { BETA_LICENSE_PLACEHOLDER_CATEGORY } from "../licenses/beta-license-placeholder";
 import { PrismaService } from "../prisma/prisma.service";
+import { PRIVACY_POLICY_VERSION } from "../privacy-policy/privacy-policy-version";
 import { AuthService } from "./auth.service";
 import { AuthTokenService } from "./auth-token.service";
 
@@ -487,6 +488,14 @@ describe("AuthService.register", () => {
 
     const birthDateOf = (createMock: jest.Mock): unknown =>
       createMock.mock.calls[0][0].data.birthDate;
+
+    it("records the current privacy policy as seen: no update notice right after sign-up (#734)", async () => {
+      const createMock = await registerWithLicenseNumber("20051203-dup-ga42");
+
+      expect(createMock.mock.calls[0][0].data.privacyPolicySeenVersion).toBe(
+        PRIVACY_POLICY_VERSION,
+      );
+    });
 
     it("stores the date encoded in a conforming number", async () => {
       const createMock = await registerWithLicenseNumber("20051203-dup-ga42");
