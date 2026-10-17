@@ -26,6 +26,7 @@ import {
   deviceTokenExportSelect,
   exportEventContextSelect,
   impersonationLogExportSelect,
+  healthDataAccessLogExportSelect,
   parentalConsentExportSelect,
   licenseBaseSelect,
   licenseRenewalRequestExportSelect,
@@ -458,7 +459,10 @@ export class UsersService {
    *   l'utilisateur en tant qu'admin) : EXCLU. C'est un journal de traçabilité
    *   de l'activité d'administration, dont les lignes (`before`/`after`)
    *   contiennent les données des comptes administrés, donc de tiers ; il reste
-   *   communicable sur demande écrite (art. 15), après occultation des tiers.
+   *   communicable sur demande écrite (art. 15), après occultation des tiers ;
+   * - journal des accès aux données de santé (#732) : lignes dont
+   *   l'utilisateur est la personne concernée, avec la QUALITÉ de l'auteur
+   *   (ADMIN, OWNER, IMPERSONATOR, SYSTEM), jamais son identité.
    */
   async exportMyData(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -572,29 +576,39 @@ export class UsersService {
       throw new NotFoundException("Utilisateur introuvable");
     }
     // Tables sans relation Prisma vers User : requêtes dédiées, bornées.
-    const [results, bugReports, impersonations] = await Promise.all([
-      this.prisma.result.findMany({
-        // Held, or as the couple's recognised second member (#652).
-        where: { OR: [{ userId }, { partnerUserId: userId }] },
-        select: resultExportSelect,
-        orderBy: { createdAt: "desc" },
-        take: 1000,
-      }),
-      this.prisma.bugReport.findMany({
-        where: { userId },
-        select: bugReportExportSelect,
-        orderBy: { createdAt: "desc" },
-        take: 200,
-      }),
-      // Impersonations ciblant l'utilisateur : rôle de l'auteur, jamais son
-      // identité (cf. arbitrages ci-dessus).
-      this.prisma.impersonationLog.findMany({
-        where: { targetUserId: userId },
-        select: impersonationLogExportSelect,
-        orderBy: { startedAt: "desc" },
-        take: 200,
-      }),
-    ]);
+    const [results, bugReports, impersonations, healthDataAccesses] =
+      await Promise.all([
+        this.prisma.result.findMany({
+          // Held, or as the couple's recognised second member (#652).
+          where: { OR: [{ userId }, { partnerUserId: userId }] },
+          select: resultExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 1000,
+        }),
+        this.prisma.bugReport.findMany({
+          where: { userId },
+          select: bugReportExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 200,
+        }),
+        // Impersonations ciblant l'utilisateur : rôle de l'auteur, jamais son
+        // identité (cf. arbitrages ci-dessus).
+        this.prisma.impersonationLog.findMany({
+          where: { targetUserId: userId },
+          select: impersonationLogExportSelect,
+          orderBy: { startedAt: "desc" },
+          take: 200,
+        }),
+        // Accès à ses données de santé (#732, art. 15) : qualité de l'auteur,
+        // jamais son identité. Lu AVANT la trace de cet export, qui figurera
+        // donc dans l'export suivant. Rétention 1 an : 500 lignes suffisent.
+        this.prisma.healthDataAccessLog.findMany({
+          where: { subjectUserId: userId },
+          select: healthDataAccessLogExportSelect,
+          orderBy: { createdAt: "desc" },
+          take: 500,
+        }),
+      ]);
     // Nom des pistes visées par les propositions : filtré comme partout côté
     // non-admin. L'export ne doit pas démasquer une piste modérée (titre
     // masqué ou piste blacklistée) que l'utilisateur a pu cibler.
@@ -659,6 +673,7 @@ export class UsersService {
         })),
         bugReports,
         impersonationsReceived: impersonations,
+        healthDataAccesses,
       },
     };
   }
