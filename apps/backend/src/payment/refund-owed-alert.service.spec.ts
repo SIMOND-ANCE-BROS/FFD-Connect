@@ -141,7 +141,14 @@ describe("RefundOwedAlertService (#428)", () => {
 
     await service.alertClub("booking-1", 1);
 
-    expect(prisma.club.findMany).not.toHaveBeenCalled();
+    // No label resolution: the only name lookup is the uniqueness check of
+    // the linked club's own name, for legacy recipients (#625).
+    expect(prisma.club.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.club.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { name: { equals: "Club A", mode: "insensitive" } },
+      }),
+    );
     expect(prisma.club.findUnique).toHaveBeenCalledWith({
       where: { id: "club-a" },
       select: { id: true, name: true },

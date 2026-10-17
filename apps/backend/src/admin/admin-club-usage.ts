@@ -1,13 +1,8 @@
 import { Prisma, UserRole } from "@prisma/client";
 import { withRole } from "../auth/roles";
+import { sameClubName } from "../utils/club-name-filter";
 
-/**
- * Club names are copied as free text (User.clubName, License.clubName,
- * Competition.organizer) and compared case-insensitively across the codebase.
- */
-export function sameClubName(name: string): Prisma.StringFilter {
-  return { equals: name, mode: "insensitive" };
-}
+export { sameClubName };
 
 /**
  * Competitions organised by `club` (#408): linked to it by id, or — while a

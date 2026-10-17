@@ -1,7 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { NotificationType, UserRole } from "@prisma/client";
 import { withActiveRole } from "../auth/roles";
-import { resolveOrganizerClubId } from "../competitions/competition-organizer";
+import {
+  clubManagersOfClubWhere,
+  resolveOrganizerClubId,
+} from "../competitions/competition-organizer";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { getErrorMessage } from "../utils/error.utils";
@@ -79,17 +82,9 @@ export class PaymentNotificationService {
           AND: [
             withActiveRole(UserRole.CLUB),
             { disabledAt: null },
-            {
-              OR: [
-                { clubId: club.id },
-                // Legacy accounts without clubId only: a manager of a homonym
-                // club (same name up to case) is never addressed (#408).
-                {
-                  clubId: null,
-                  clubName: { equals: club.name.trim(), mode: "insensitive" },
-                },
-              ],
-            },
+            // Linked managers; legacy accounts only while the club's name
+            // is unique — never a homonym club's manager (#408, #625).
+            await clubManagersOfClubWhere(this.prisma, club),
           ],
         },
         select: idOnlySelect,

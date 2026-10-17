@@ -6,6 +6,7 @@ import {
 } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { hasRole } from "../auth/roles";
+import { sameClubName } from "../utils/club-name-filter";
 import { userRolesClubSelect } from "../utils/prisma-selects";
 import { PrismaService } from "./../prisma/prisma.service";
 
@@ -47,7 +48,7 @@ export class ClubsService {
       throw new BadRequestException("Club name is required");
     }
     let club = await this.prisma.club.findFirst({
-      where: { name: { equals: normalized, mode: "insensitive" } },
+      where: { name: sameClubName(normalized) },
     });
     club ??= await this.prisma.club.create({
       data: { name: normalized },

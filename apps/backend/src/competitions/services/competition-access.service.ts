@@ -12,7 +12,7 @@ import {
 } from "../../utils/prisma-selects";
 import {
   CompetitionOrganizerRef,
-  findClubIdByName,
+  organizerActorOf,
   organizerMatcher,
 } from "../competition-organizer";
 
@@ -27,8 +27,8 @@ export interface CompetitionActor {
 export interface NewCompetitionOrganizer {
   /** Display label (the club's name). */
   organizer: string;
-  /** Link to the club (#408); null only for an unresolvable legacy account. */
-  organizerClubId: string | null;
+  /** Link to the club (#408), always set (#625). */
+  organizerClubId: string;
 }
 
 /** Access rules on competitions (reads only, never writes). */
@@ -83,7 +83,8 @@ export class CompetitionAccessService {
    * account — its name as label and its id as link (#408) — so it can edit
    * its competition afterwards and cannot create one on behalf of another
    * club. A CLUB account without a club is refused. A legacy account without
-   * `clubId` is linked to the club its name unambiguously designates, if any.
+   * `clubId` is linked to the one active club its name designates, and
+   * refused when there is none (#625).
    */
   async organizerForNewCompetition(
     actor: CompetitionActor,
@@ -100,8 +101,17 @@ export class CompetitionAccessService {
         "Seul un compte club rattaché à un club peut créer une compétition",
       );
     }
-    const organizerClubId =
-      user.clubId ?? (await findClubIdByName(this.prisma, clubName));
+    // Same actor as the organiser checks (#625): a legacy account whose name
+    // designates no single active club could not manage what it creates.
+    const { clubId: organizerClubId } = await organizerActorOf(
+      this.prisma,
+      user,
+    );
+    if (!organizerClubId) {
+      throw new ForbiddenException(
+        "Seul un compte club rattaché à un club peut créer une compétition",
+      );
+    }
     return { organizer: clubName, organizerClubId };
   }
 
@@ -114,8 +124,10 @@ export class CompetitionAccessService {
    * Organiser check (#408). An unlinked competition seen by a linked account
    * is resolved to the ONE club its label names: a label shared by homonym
    * clubs (same name up to case) grants nobody — never a case-insensitive
-   * name match that would let both homonyms in. Shares `organizerMatcher`
-   * with the club list and the `isOrganizedByMyClub` flag, so they agree.
+   * name match that would let both homonyms in. A linked competition is
+   * matched on ids only, a legacy account being resolved to its club first
+   * (`organizerActorOf`, #625). Shares `organizerMatcher` with the club list
+   * and the `isOrganizedByMyClub` flag, so they agree.
    */
   private async isOrganizer(
     competition: CompetitionOrganizerRef,
@@ -125,10 +137,11 @@ export class CompetitionAccessService {
       club: { name: string } | null;
     },
   ): Promise<boolean> {
-    const isMine = await organizerMatcher(this.prisma, [competition], {
-      clubId: user.clubId,
-      clubNames: [user.clubName, user.club?.name],
-    });
+    const isMine = await organizerMatcher(
+      this.prisma,
+      [competition],
+      await organizerActorOf(this.prisma, user),
+    );
     return isMine(competition);
   }
 

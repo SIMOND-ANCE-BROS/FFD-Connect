@@ -19,6 +19,7 @@ import {
 } from "../utils/prisma-selects";
 import { resolveOrganizerClubId } from "../competitions/competition-organizer";
 import { PrismaService } from "../prisma/prisma.service";
+import { sameClubName } from "../utils/club-name-filter";
 import { ClubsService } from "./clubs.service";
 import type { ConnectHelloAssoDto } from "./dto/connect-helloasso.dto";
 
@@ -98,9 +99,7 @@ export class ClubsHelloAssoService {
         })
       : user.clubName?.trim()
         ? await this.prisma.club.findFirst({
-            where: {
-              name: { equals: user.clubName.trim(), mode: "insensitive" },
-            },
+            where: { name: sameClubName(user.clubName.trim()) },
             select: { registrationMode: true },
           })
         : null;

@@ -2,7 +2,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import { NotificationType, UserRole } from "@prisma/client";
 import * as Sentry from "@sentry/nestjs";
 import { withActiveRole } from "../auth/roles";
-import { resolveOrganizerClubId } from "../competitions/competition-organizer";
+import {
+  clubManagersOfClubWhere,
+  resolveOrganizerClubId,
+} from "../competitions/competition-organizer";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -77,17 +80,9 @@ export class RefundOwedAlertService {
         where: {
           AND: [
             withActiveRole(UserRole.CLUB),
-            {
-              OR: [
-                { clubId: club.id },
-                // Legacy accounts without clubId only: never a homonym
-                // club's manager (#408).
-                {
-                  clubId: null,
-                  clubName: { equals: club.name.trim(), mode: "insensitive" },
-                },
-              ],
-            },
+            // Linked managers; legacy accounts only while the club's name
+            // is unique — never a homonym club's manager (#408, #625).
+            await clubManagersOfClubWhere(this.prisma, club),
           ],
         },
         select: idOnlySelect,

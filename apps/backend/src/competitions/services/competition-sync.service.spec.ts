@@ -380,8 +380,9 @@ describe("CompetitionSyncService", () => {
             take: 2,
           }),
         );
+        // Label stored trimmed (#625), so a rename can relabel it.
         expect(arg.update).toMatchObject({
-          organizer: " Club Danse Lyon ",
+          organizer: "Club Danse Lyon",
           organizerClubId: "club-1",
         });
         expect(arg.create).toMatchObject({ organizerClubId: "club-1" });

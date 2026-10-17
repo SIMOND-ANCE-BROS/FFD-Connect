@@ -68,6 +68,17 @@ describe("Volunteer Check-in (e2e)", () => {
     await prisma.license.deleteMany();
     await prisma.user.deleteMany();
 
+    // Clubs, linked by id as real CLUB accounts are (organiser rights are
+    // decided on club ids, #625). Reused across runs: names stay unique.
+    const clubNamed = async (name: string) =>
+      (await prisma.club.findFirst({
+        where: { name },
+        select: { id: true },
+      })) ??
+      (await prisma.club.create({ data: { name }, select: { id: true } }));
+    const organizerClub = await clubNamed("Club Organisateur");
+    const otherClubRow = await clubNamed("Autre Club");
+
     // Create Organizer
     const organizer = await prisma.user.create({
       data: {
@@ -77,6 +88,7 @@ describe("Volunteer Check-in (e2e)", () => {
         lastName: "Anizer",
         role: UserRole.CLUB,
         clubName: "Club Organisateur",
+        clubId: organizerClub.id,
       },
     });
     organizerToken = jwtService.sign({
@@ -94,6 +106,7 @@ describe("Volunteer Check-in (e2e)", () => {
         lastName: "Club",
         role: UserRole.CLUB,
         clubName: "Autre Club",
+        clubId: otherClubRow.id,
       },
     });
     otherClubToken = jwtService.sign({
@@ -153,6 +166,7 @@ describe("Volunteer Check-in (e2e)", () => {
         location: "Paris",
         status: CompetitionStatus.UPCOMING,
         organizer: "Club Organisateur",
+        organizerClubId: organizerClub.id,
       },
     });
     competitionId = comp.id;
