@@ -69,11 +69,13 @@ export class DeleteEventResultsReportDto {
   deleted!: number;
 
   @ApiProperty({
+    type: Number,
+    nullable: true,
     description:
-      "Lignes gardées parce qu'elles portent un effacement RGPD (compte supprimé, partenaire supprimé)",
+      "Lignes gardées parce qu'elles portent un effacement RGPD (compte supprimé, partenaire supprimé). null pour le club organisateur (#713), comme dans le rapport d'import : le nombre reste au journal d'audit.",
     example: 0,
   })
-  anonymisedKept!: number;
+  anonymisedKept!: number | null;
 }
 
 /** Outcome of a results import. Counts only: never a name. */

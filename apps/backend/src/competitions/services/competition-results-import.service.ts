@@ -45,7 +45,6 @@ import {
 import { buildEventNameMatcher } from "../results-import/results-event-matcher";
 import type { CompetitionActor } from "./competition-access.service";
 import { CompetitionCacheService } from "./competition-cache.service";
-import { CompetitionEventNotificationService } from "./competition-event-notification.service";
 
 /**
  * `Result.userId` of an imported couple no account could be linked to.
@@ -236,7 +235,8 @@ interface ImportContext {
 /**
  * Import of a competition's published results (#652): writes `Result` rows,
  * one per couple, event and round, then lets the existing readers (palmarès,
- * results screen) and the « Résultats disponibles » notification work.
+ * results screen) and the « Résultats disponibles » notification work
+ * (sent once an imported row has survived the grace period, #713).
  *
  * - Idempotent: a row is found again by `(eventId, importKey)`; re-running
  *   the same file changes nothing, a corrected file updates.
@@ -266,7 +266,6 @@ export class CompetitionResultsImportService {
     private readonly config: ConfigService,
     private readonly audit: AdminAuditService,
     private readonly cacheService: CompetitionCacheService,
-    private readonly eventNotificationService: CompetitionEventNotificationService,
   ) {}
 
   async importCsv(
@@ -475,8 +474,10 @@ export class CompetitionResultsImportService {
       await this.cacheService.invalidateResults(competitionId);
     }
 
-    // Fires once per competition (atomic claim in the service, never throws).
-    await this.eventNotificationService.notifyResultsPublished(competitionId);
+    // No notification here (#713): « Résultats disponibles » leaves once an
+    // imported row has survived the grace period
+    // (ResultsNotificationScheduler), so an import undone right away by
+    // `deleteEventResults` notifies nobody.
 
     this.logger.log(
       `Results import for competition ${competitionId}: ${JSON.stringify(report)}`,
@@ -491,7 +492,9 @@ export class CompetitionResultsImportService {
    * an account deletion (`userId` sentinel) and a label scrubbed for a deleted
    * partner (#395). Rows not created by the import (no `importKey`) are never
    * touched. Audited (author, role, counts), cache invalidated. The
-   * « Résultats disponibles » notification is not sent again by a re-import.
+   * « Résultats disponibles » notification is not sent again by a re-import;
+   * removed within the grace period, an import is never notified (#713).
+   * `anonymisedKept` is null for the organising club (#713).
    */
   async deleteEventResults(
     competitionId: string,
@@ -514,10 +517,8 @@ export class CompetitionResultsImportService {
     const deletable = rows.filter(
       (row) => row.userId !== DELETED_USER_ID && !hasScrubbedLabel(row.details),
     );
-    const report: DeleteEventResultsReportDto = {
-      deleted: 0,
-      anonymisedKept: rows.length - deletable.length,
-    };
+    const anonymisedKept = rows.length - deletable.length;
+    const role = resultsActorRole(actor);
 
     const [deleted] = await this.prisma.$transaction([
       // Guarded again on the sentinel: a row anonymised meanwhile stays.
@@ -535,12 +536,17 @@ export class CompetitionResultsImportService {
         after: {
           eventId,
           candidates: deletable.length,
-          anonymisedKept: report.anonymisedKept,
-          actorRole: resultsActorRole(actor),
+          anonymisedKept,
+          actorRole: role,
         },
       }),
     ]);
-    report.deleted = deleted.count;
+    // The organising club is not told how many rows are erased (#713), as in
+    // the import report (disclosedReport): the audit trail keeps the count.
+    const report: DeleteEventResultsReportDto = {
+      deleted: deleted.count,
+      anonymisedKept: role === "CLUB" ? null : anonymisedKept,
+    };
     if (report.deleted > 0) {
       await this.cacheService.invalidateResults(competitionId);
     }

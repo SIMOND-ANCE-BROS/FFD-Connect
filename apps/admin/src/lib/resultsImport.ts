@@ -88,13 +88,18 @@ export function reportRows(
 const plural = (n: number, word: string) => `${n} ${word}${n > 1 ? 's' : ''}`;
 
 /** One sentence for the outcome of « Supprimer les résultats importés ». */
-export function deletionSummary(report: { deleted: number; anonymisedKept: number }): string {
+export function deletionSummary(report: {
+  deleted: number;
+  /** null when withheld (organising club, #713). */
+  anonymisedKept: number | null;
+}): string {
   const deleted =
     report.deleted === 0
       ? 'Aucun résultat importé à supprimer'
       : `${plural(report.deleted, 'résultat')} supprimé${report.deleted > 1 ? 's' : ''}`;
-  if (report.anonymisedKept === 0) return `${deleted}.`;
-  return `${deleted} ; ${plural(report.anonymisedKept, 'ligne')} anonymisée${
-    report.anonymisedKept > 1 ? 's' : ''
-  } conservée${report.anonymisedKept > 1 ? 's' : ''} (effacement RGPD).`;
+  const kept = report.anonymisedKept;
+  if (!kept) return `${deleted}.`;
+  return `${deleted} ; ${plural(kept, 'ligne')} anonymisée${
+    kept > 1 ? 's' : ''
+  } conservée${kept > 1 ? 's' : ''} (effacement RGPD).`;
 }

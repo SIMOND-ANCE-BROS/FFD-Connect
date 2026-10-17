@@ -31320,7 +31320,8 @@
           },
           "anonymisedKept": {
             "type": "number",
-            "description": "Lignes gardées parce qu'elles portent un effacement RGPD (compte supprimé, partenaire supprimé)",
+            "nullable": true,
+            "description": "Lignes gardées parce qu'elles portent un effacement RGPD (compte supprimé, partenaire supprimé). null pour le club organisateur (#713), comme dans le rapport d'import : le nombre reste au journal d'audit.",
             "example": 0
           }
         },

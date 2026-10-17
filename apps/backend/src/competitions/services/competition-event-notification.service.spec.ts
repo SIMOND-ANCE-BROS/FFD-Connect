@@ -7,8 +7,11 @@ import { PrismaService } from "../../prisma/prisma.service";
 import {
   CompetitionEventNotificationService,
   CompetitionWithEvents,
+  MAX_PENDING_RESULTS_COMPETITIONS,
   NEW_COMPETITION_KIND,
+  PENDING_RESULTS_WINDOW_MS,
   RESULTS_KIND,
+  RESULTS_NOTIFICATION_GRACE_MS,
 } from "./competition-event-notification.service";
 
 describe("CompetitionEventNotificationService", () => {
@@ -306,6 +309,31 @@ describe("CompetitionEventNotificationService", () => {
     beforeEach(() => {
       // The reservation is free unless a test says otherwise.
       prisma.competition.updateMany.mockResolvedValue({ count: 1 });
+      // A result has survived the grace period unless a test says otherwise.
+      prisma.result.findFirst.mockResolvedValue({ id: "r-old" } as never);
+    });
+
+    it("waits until a result has survived the grace period (#713)", async () => {
+      openCompetition();
+      prisma.registration.findMany.mockResolvedValue([
+        { userId: "u1" },
+      ] as never);
+      prisma.result.findFirst.mockResolvedValue(null);
+      const now = new Date("2026-10-17T12:00:00Z");
+
+      await service.notifyResultsPublished("comp-1", now);
+
+      expect(prisma.result.findFirst).toHaveBeenCalledWith({
+        where: {
+          event: { competitionId: "comp-1" },
+          createdAt: {
+            lte: new Date(now.getTime() - RESULTS_NOTIFICATION_GRACE_MS),
+          },
+        },
+        select: { id: true },
+      });
+      expect(prisma.competition.updateMany).not.toHaveBeenCalled();
+      expect(notifications.sendToUsers).not.toHaveBeenCalled();
     });
 
     it("notifies distinct participants once", async () => {
@@ -508,6 +536,56 @@ describe("CompetitionEventNotificationService", () => {
       await expect(
         service.notifyResultsPublished("comp-1"),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  describe("notifySettledResults (#713)", () => {
+    const now = new Date("2026-10-17T12:00:00Z");
+
+    it("looks for unnotified competitions with a result past the grace period, bounded", async () => {
+      prisma.competition.findMany.mockResolvedValue([]);
+
+      await expect(service.notifySettledResults(now)).resolves.toBe(0);
+
+      expect(prisma.competition.findMany).toHaveBeenCalledWith({
+        where: {
+          resultsNotifiedAt: null,
+          events: {
+            some: {
+              results: {
+                some: {
+                  createdAt: {
+                    gte: new Date(now.getTime() - PENDING_RESULTS_WINDOW_MS),
+                    lte: new Date(
+                      now.getTime() - RESULTS_NOTIFICATION_GRACE_MS,
+                    ),
+                  },
+                },
+              },
+            },
+          },
+        },
+        select: { id: true },
+        orderBy: { date: "desc" },
+        take: MAX_PENDING_RESULTS_COMPETITIONS,
+      });
+    });
+
+    it("notifies each pending competition at the same instant", async () => {
+      prisma.competition.findMany.mockResolvedValue([
+        { id: "c1" },
+        { id: "c2" },
+      ] as never);
+      const notify = jest
+        .spyOn(service, "notifyResultsPublished")
+        .mockResolvedValue(undefined);
+
+      await expect(service.notifySettledResults(now)).resolves.toBe(2);
+
+      expect(notify.mock.calls).toEqual([
+        ["c1", now],
+        ["c2", now],
+      ]);
     });
   });
 });
