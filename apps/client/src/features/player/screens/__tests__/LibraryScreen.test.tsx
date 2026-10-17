@@ -548,8 +548,8 @@ describe("LibraryScreen", () => {
         ["CLUB", ["CLUB"]],
         ["STAFF", ["STAFF"]],
         ["GUEST", ["GUEST"]],
-        // Account holding ADMIN but browsing another space: not offered.
-        ["LICENSEE", ["ADMIN", "LICENSEE"]],
+        // Several roles but no ADMIN: still not offered.
+        ["CLUB", ["LICENSEE", "CLUB"]],
       ])("is not offered in the %s space (roles %j)", async (role, roles) => {
         mockAuthState.role = role;
         mockAuthState.roles = roles;
@@ -564,22 +564,31 @@ describe("LibraryScreen", () => {
         expect(queryByTestId("track-action-blacklist")).toBeNull();
       });
 
-      it("is offered in the ADMIN space, with an accessible label and hint", async () => {
-        mockAuthState.role = "ADMIN";
-        mockAuthState.roles = ["ADMIN", "LICENSEE"];
-        withTrack();
-        const { getByTestId, getByLabelText } = await render(
-          <LibraryScreen {...createTestProps()} />,
-        );
+      // #696: the active space picks the layout, not the permissions.
+      it.each([
+        ["ADMIN", ["ADMIN", "LICENSEE"]],
+        ["LICENSEE", ["ADMIN", "LICENSEE"]],
+        ["CLUB", ["ADMIN", "CLUB"]],
+        ["STAFF", ["ADMIN", "STAFF"]],
+      ])(
+        "is offered to an ADMIN account in the %s space (roles %j), with an accessible label and hint",
+        async (role, roles) => {
+          mockAuthState.role = role;
+          mockAuthState.roles = roles;
+          withTrack();
+          const { getByTestId, getByLabelText } = await render(
+            <LibraryScreen {...createTestProps()} />,
+          );
 
-        await fireEvent(getByTestId("library-track-t1"), "onLongPress");
+          await fireEvent(getByTestId("library-track-t1"), "onLongPress");
 
-        const row = getByLabelText("Blacklister le titre");
-        expect(row.props.accessibilityRole).toBe("button");
-        expect(row.props.accessibilityHint).toContain(
-          "Retire ce titre de la bibliothèque",
-        );
-      });
+          const row = getByLabelText("Blacklister le titre");
+          expect(row.props.accessibilityRole).toBe("button");
+          expect(row.props.accessibilityHint).toContain(
+            "Retire ce titre de la bibliothèque",
+          );
+        },
+      );
 
       it("asks for a confirmation, then blacklists and confirms it", async () => {
         mockAuthState.role = "ADMIN";

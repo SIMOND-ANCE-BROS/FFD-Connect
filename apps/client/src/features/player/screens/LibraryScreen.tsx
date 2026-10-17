@@ -69,11 +69,10 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
   // caler le paddingTop de la liste. Estimation initiale avant onLayout.
   const [headerH, setHeaderH] = useState(insets.top + 170);
   const { role, isGuest } = useAuthStore();
-  // Actions follow every role of the account, whatever the active space.
+  // Actions follow every role of the account, whatever the active space —
+  // « Blacklister le titre » (#561) included (#696): the server checks every
+  // role of the account (RolesGuard), not the active one.
   const isAdmin = useAuthStore((s) => s.hasRole("ADMIN"));
-  // « Blacklister le titre » (#561) is a moderation action: offered only in the
-  // ADMIN space (active role). The server enforces the role regardless.
-  const canBlacklist = useAuthStore((s) => s.role === "ADMIN");
   const blacklist = useBlacklistTrack();
   const [editTrack, setEditTrack] = useState<EditableTrack | null>(null);
   // Proposition de correction (non-admins) : piste ciblée + visibilité.
@@ -654,7 +653,7 @@ export const LibraryScreen = ({ navigation }: LibraryScreenProps) => {
         onExtraAction={(track) =>
           runAfterSheet(() => void openTrackExtraAction(track))
         }
-        onBlacklist={canBlacklist ? confirmBlacklist : undefined}
+        onBlacklist={isAdmin ? confirmBlacklist : undefined}
         onClose={closeSheet}
         onDismiss={handleSheetDismiss}
       />
