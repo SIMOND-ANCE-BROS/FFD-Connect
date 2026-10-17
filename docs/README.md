@@ -31,6 +31,7 @@ voir le [README racine](../README.md).
 - [Changelog beta automatique](exploitation/changelog-beta.md)
 - [Isolation des secrets DB](exploitation/isolation-secrets-db.md) — users par env, Key Vault
 - [Migrations Prisma, mesures de la phase 0 (ADR-0025)](exploitation/migrations-adr-0025-phase-0.md) — taille d'image, décomposition d'un réveil, test P3009
+- [Migrations Prisma par job Container Apps (ADR-0025, phase 1)](exploitation/migrations-job-adr-0025.md) — job de migration avant la bascule, reprise après P3009, mise en service
 - [Chiffrement des secrets HelloAsso des clubs](exploitation/chiffrement-secrets-clubs.md) — clé AES-256-GCM, Key Vault, migration, rotation
 - [Clés de distribution](exploitation/rotation-cles-distribution.md) — inventaire, Key Vault, rotation (ASC, APNs, Play, EXPO_TOKEN)
 - [Données personnelles dans les logs](exploitation/donnees-personnelles-logs.md) — IP tronquées, identifiants plutôt que noms (RGPD)
