@@ -16899,39 +16899,21 @@
     },
     "/competitions/active": {
       "get": {
-        "description": "Retourne la compétition qui est actuellement en cours (date du jour entre startDate et endDate).",
+        "description": "Retourne la première compétition dont la date de début (`date`) tombe aujourd'hui (heure du serveur), avec ses épreuves, ou `null` s'il n'y en a aucune. Pas de 404.",
         "operationId": "CompetitionsController_findActive",
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Compétition active trouvée",
+            "description": "Compétition qui commence aujourd'hui (heure du serveur), avec ses épreuves. `null` (corps vide) s'il n'y en a aucune.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "startDate": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "endDate": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "location": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": ["ACTIVE"]
+                  "nullable": true,
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/CompetitionActiveDto"
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -17012,7 +16994,7 @@
             }
           },
           "404": {
-            "description": "Aucune compétition active trouvée pour aujourd'hui",
+            "description": "Ressource non trouvée",
             "content": {
               "application/json": {
                 "schema": {
@@ -17024,7 +17006,11 @@
                     },
                     "message": {
                       "type": "string",
-                      "example": "No active competition found"
+                      "example": "Resource not found"
+                    },
+                    "error": {
+                      "type": "string",
+                      "example": "Not Found"
                     }
                   }
                 }
@@ -17104,7 +17090,7 @@
             }
           }
         },
-        "summary": "Récupère la compétition active du jour",
+        "summary": "Récupère la compétition du jour",
         "tags": ["competitions"]
       }
     },
@@ -30605,6 +30591,256 @@
         },
         "required": ["data", "meta"]
       },
+      "CompetitionEventDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "description": "Spécialité : Latin, Standard ou Ten Dance",
+            "example": "Latin"
+          },
+          "ageGroup": {
+            "type": "string",
+            "description": "Classe d'âge de l'épreuve",
+            "example": "Adulte"
+          },
+          "eventType": {
+            "type": "string",
+            "enum": ["SOLO", "COUPLE"]
+          },
+          "level": {
+            "type": "string",
+            "nullable": true,
+            "description": "Niveau d'une épreuve classificatrice",
+            "example": "Avancé"
+          },
+          "eventKind": {
+            "type": "string",
+            "enum": ["CLASSIFICATRICE", "OPEN", "MAJEURE", "SOLO_TEAM", "SHOW_DANSE", null],
+            "nullable": true,
+            "description": "Nature de l'épreuve (Article 9)"
+          },
+          "ageGroups": {
+            "description": "Open : classes d'âge réunies (vide hors Open)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "openLevels": {
+            "description": "Open : niveaux admis (vide = tous niveaux)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "category",
+          "ageGroup",
+          "eventType",
+          "level",
+          "eventKind",
+          "ageGroups",
+          "openLevels"
+        ]
+      },
+      "CompetitionActiveDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ffdId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Identifiant FFD (null : créée dans l'app)"
+          },
+          "title": {
+            "type": "string",
+            "example": "Championnat de France 2026"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Date de début"
+          },
+          "location": {
+            "type": "string",
+            "example": "Palais des Sports"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "zipCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true,
+            "example": "Paris"
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "eventsDescription": {
+            "type": "string",
+            "nullable": true,
+            "description": "Programme des épreuves (texte libre FFD)"
+          },
+          "programUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "PDF du programme des épreuves"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date de fin"
+          },
+          "type": {
+            "type": "string",
+            "nullable": true,
+            "description": "Libellé libre du type (affichage)"
+          },
+          "competitionType": {
+            "type": "string",
+            "enum": ["PROXIMITE", "NATIONALE", "MAJEURE", "INTERNATIONALE", null],
+            "nullable": true,
+            "description": "Article 8"
+          },
+          "majorSubType": {
+            "type": "string",
+            "nullable": true,
+            "description": "Sous-type d'une compétition MAJEURE"
+          },
+          "organizer": {
+            "type": "string",
+            "nullable": true,
+            "description": "Libellé du club organisateur"
+          },
+          "organizerClubId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Club organisateur relié (#408)"
+          },
+          "circularUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrationUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "ticketingUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "layout": {
+            "type": "array",
+            "description": "Plan de salle : éléments libres (`id`, `type`, `label`…)",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "nullable": true
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrationDeadline": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Date limite d'inscription"
+          },
+          "eventsSource": {
+            "type": "string",
+            "enum": ["GENERIC", "DESCRIPTION", "CIRCULAR", null],
+            "nullable": true,
+            "description": "Origine des épreuves synchronisées (DESCRIPTION / CIRCULAR = déduites, à vérifier)"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["UPCOMING", "LIVE", "PAST", "CANCELLED"],
+            "example": "UPCOMING"
+          },
+          "delayMinutes": {
+            "type": "number",
+            "description": "Retard annoncé, en minutes",
+            "example": 0
+          },
+          "requireRotatingQr": {
+            "type": "boolean",
+            "description": "QR d'entrée tournant obligatoire au check-in (#668) : les scanners le gardent en cache pour refuser aussi hors ligne un QR statique."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CompetitionEventDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "ffdId",
+          "title",
+          "date",
+          "location",
+          "address",
+          "zipCode",
+          "city",
+          "latitude",
+          "longitude",
+          "description",
+          "eventsDescription",
+          "programUrl",
+          "endDate",
+          "type",
+          "competitionType",
+          "majorSubType",
+          "organizer",
+          "organizerClubId",
+          "circularUrl",
+          "registrationUrl",
+          "ticketingUrl",
+          "layout",
+          "imageUrl",
+          "registrationDeadline",
+          "eventsSource",
+          "status",
+          "delayMinutes",
+          "requireRotatingQr",
+          "createdAt",
+          "updatedAt",
+          "events"
+        ]
+      },
       "RegisterMemberDto": {
         "type": "object",
         "properties": {
@@ -30890,64 +31126,6 @@
           }
         },
         "required": ["events", "schedule"]
-      },
-      "CompetitionEventDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "category": {
-            "type": "string",
-            "description": "Spécialité : Latin, Standard ou Ten Dance",
-            "example": "Latin"
-          },
-          "ageGroup": {
-            "type": "string",
-            "description": "Classe d'âge de l'épreuve",
-            "example": "Adulte"
-          },
-          "eventType": {
-            "type": "string",
-            "enum": ["SOLO", "COUPLE"]
-          },
-          "level": {
-            "type": "string",
-            "nullable": true,
-            "description": "Niveau d'une épreuve classificatrice",
-            "example": "Avancé"
-          },
-          "eventKind": {
-            "type": "string",
-            "enum": ["CLASSIFICATRICE", "OPEN", "MAJEURE", "SOLO_TEAM", "SHOW_DANSE", null],
-            "nullable": true,
-            "description": "Nature de l'épreuve (Article 9)"
-          },
-          "ageGroups": {
-            "description": "Open : classes d'âge réunies (vide hors Open)",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "openLevels": {
-            "description": "Open : niveaux admis (vide = tous niveaux)",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "id",
-          "category",
-          "ageGroup",
-          "eventType",
-          "level",
-          "eventKind",
-          "ageGroups",
-          "openLevels"
-        ]
       },
       "CompetitionScheduleItemDto": {
         "type": "object",

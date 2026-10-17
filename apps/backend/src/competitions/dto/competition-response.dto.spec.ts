@@ -3,16 +3,20 @@ import {
   ApiResponse,
   DocumentBuilder,
   SwaggerModule,
+  type OpenAPIObject,
   type ReferenceObject,
+  type ResponseObject,
   type SchemaObject,
 } from "@nestjs/swagger";
 import { Test } from "@nestjs/testing";
 import { CompetitionStatus } from "@prisma/client";
 import {
+  ACTIVE_COMPETITION_SELECT,
   COMPETITION_BASE_SELECT,
   EVENT_BASE_SELECT,
 } from "../services/competition-query.service";
 import {
+  ApiActiveCompetitionResponse,
   CompetitionDetailDto,
   CompetitionPageDto,
 } from "./competition-response.dto";
@@ -26,6 +30,10 @@ class ProbeController {
   @Get("detail")
   @ApiResponse({ status: 200, type: CompetitionDetailDto })
   detail(): void {}
+
+  @Get("active")
+  @ApiActiveCompetitionResponse()
+  active(): void {}
 }
 
 /**
@@ -33,8 +41,9 @@ class ProbeController {
  * exactly what CompetitionQueryService selects, so the generated client
  * types stay true.
  */
-describe("competition response DTOs (#712)", () => {
+describe("competition response DTOs (#712, #729)", () => {
   let app: INestApplication;
+  let document: OpenAPIObject;
   let schemas: Record<string, SchemaObject | ReferenceObject>;
 
   beforeAll(async () => {
@@ -43,10 +52,7 @@ describe("competition response DTOs (#712)", () => {
     }).compile();
     app = moduleRef.createNestApplication();
     await app.init();
-    const document = SwaggerModule.createDocument(
-      app,
-      new DocumentBuilder().build(),
-    );
+    document = SwaggerModule.createDocument(app, new DocumentBuilder().build());
     schemas = document.components?.schemas ?? {};
   });
 
@@ -99,6 +105,33 @@ describe("competition response DTOs (#712)", () => {
       | SchemaObject
       | undefined;
     expect(status?.enum).toEqual(Object.values(CompetitionStatus));
+  });
+
+  describe("GET /competitions/active (#729)", () => {
+    it("documents exactly what findActiveCompetition selects", () => {
+      expect(keys("CompetitionActiveDto")).toEqual(
+        Object.keys(ACTIVE_COMPETITION_SELECT).sort(),
+      );
+      expect(
+        Object.keys(ACTIVE_COMPETITION_SELECT.events.select).sort(),
+      ).toEqual(keys("CompetitionEventDto"));
+      const events = schema("CompetitionActiveDto").properties?.events as
+        | SchemaObject
+        | undefined;
+      expect(events?.items).toEqual({
+        $ref: "#/components/schemas/CompetitionEventDto",
+      });
+    });
+
+    it("documents a nullable 200 and no 404", () => {
+      const responses = document.paths["/probe/active"].get?.responses ?? {};
+      expect(Object.keys(responses)).toEqual(["200"]);
+      const ok = responses["200"] as ResponseObject;
+      expect(ok.content?.["application/json"]?.schema).toEqual({
+        nullable: true,
+        allOf: [{ $ref: "#/components/schemas/CompetitionActiveDto" }],
+      });
+    });
   });
 
   it("wraps the list in data + meta", () => {

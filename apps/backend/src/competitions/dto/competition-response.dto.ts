@@ -1,4 +1,11 @@
-import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { applyDecorators } from "@nestjs/common";
+import {
+  ApiExtraModels,
+  ApiOkResponse,
+  ApiProperty,
+  ApiPropertyOptional,
+  getSchemaPath,
+} from "@nestjs/swagger";
 import {
   CompetitionStatus,
   CompetitionType,
@@ -9,9 +16,10 @@ import {
 } from "@prisma/client";
 
 /**
- * Response shapes of `GET /competitions` and `GET /competitions/:id` (#712).
- * Documentation only: they mirror COMPETITION_BASE_SELECT / EVENT_BASE_SELECT
- * of CompetitionQueryService — keep both in sync when a selected field moves.
+ * Response shapes of `GET /competitions`, `GET /competitions/:id` (#712) and
+ * `GET /competitions/active` (#729). Documentation only: they mirror
+ * COMPETITION_BASE_SELECT / EVENT_BASE_SELECT of CompetitionQueryService —
+ * keep both in sync when a selected field moves.
  */
 
 const nullableString = (description?: string, example?: string) => ({
@@ -308,6 +316,30 @@ export class CompetitionPageDto {
   @ApiProperty({ type: CompetitionPageMetaDto })
   meta!: CompetitionPageMetaDto;
 }
+
+/** `GET /competitions/active` (ACTIVE_COMPETITION_SELECT, #729). */
+export class CompetitionActiveDto extends CompetitionBaseDto {
+  @ApiProperty({ type: [CompetitionEventDto] })
+  events!: CompetitionEventDto[];
+}
+
+/**
+ * 200 response of `GET /competitions/active`: the competition starting today,
+ * or nothing. The service returns `null` and Nest then sends an empty body —
+ * there is no 404.
+ */
+export const ApiActiveCompetitionResponse = () =>
+  applyDecorators(
+    ApiExtraModels(CompetitionActiveDto),
+    ApiOkResponse({
+      description:
+        "Compétition qui commence aujourd'hui (heure du serveur), avec ses épreuves. `null` (corps vide) s'il n'y en a aucune.",
+      schema: {
+        nullable: true,
+        allOf: [{ $ref: getSchemaPath(CompetitionActiveDto) }],
+      },
+    }),
+  );
 
 /** `GET /competitions/:id`. */
 export class CompetitionDetailDto extends CompetitionBaseDto {

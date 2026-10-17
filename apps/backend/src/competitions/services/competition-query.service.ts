@@ -74,6 +74,12 @@ export const EVENT_BASE_SELECT = {
   openLevels: true,
 } as const;
 
+/** `GET /competitions/active` — documented by CompetitionActiveDto (#729). */
+export const ACTIVE_COMPETITION_SELECT = {
+  ...COMPETITION_BASE_SELECT,
+  events: { select: EVENT_BASE_SELECT },
+} satisfies Prisma.CompetitionSelect;
+
 const CACHE_TTL = 300; // 5 minutes
 const CACHE_PREFIX = "competitions:";
 
@@ -281,10 +287,7 @@ export class CompetitionQueryService {
 
     return this.prisma.competition.findFirst({
       where: { date: { gte: today, lt: tomorrow } },
-      select: {
-        ...COMPETITION_BASE_SELECT,
-        events: { select: EVENT_BASE_SELECT },
-      },
+      select: ACTIVE_COMPETITION_SELECT,
     });
   }
 
