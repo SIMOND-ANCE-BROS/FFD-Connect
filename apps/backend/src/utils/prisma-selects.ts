@@ -1426,6 +1426,23 @@ export const clubHelloAssoStatusSelect = {
   helloAssoOrgSlug: true,
 } as const;
 
+/** A club's registration mode (registration policy of its members). */
+export const clubRegistrationModeSelect = {
+  registrationMode: true,
+} as const;
+
+/** A club's name and registration mode (club settings). */
+export const clubNameRegistrationModeSelect = {
+  name: true,
+  registrationMode: true,
+} as const;
+
+/** A user's club reference: linked id, or the legacy free-text name. */
+export const userClubRefSelect = {
+  clubId: true,
+  clubName: true,
+} as const;
+
 /** Back-office club page: one member row. */
 export const adminClubMemberSelect = {
   id: true,

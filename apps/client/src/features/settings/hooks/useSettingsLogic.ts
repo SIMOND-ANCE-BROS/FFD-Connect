@@ -15,7 +15,10 @@ import { createLogger } from "../../../utils/logger";
 import { useAuthRepository } from "../../auth/context/AuthContext";
 import { UserRole } from "../../auth/services/AuthService";
 import { computeLicenseExpiry } from "../../license/utils/licenseExpiry";
-import type { HelloAssoStatus } from "../../club/services/ClubService";
+import type {
+  ClubRegistrationMode,
+  HelloAssoStatus,
+} from "../../club/services/ClubService";
 import { ClubService } from "../../club/services/ClubService";
 import { usage } from "../../../services/analytics/usage";
 import {
@@ -26,6 +29,16 @@ import {
 } from "../../../services/api/payment-provider-api";
 
 const logger = createLogger("useSettingsLogic");
+
+/** Club registration mode (backend) → local registration policy. */
+const REGISTRATION_POLICY_BY_MODE: Record<
+  ClubRegistrationMode,
+  "CLUB_ONLY" | "MEMBER_VALIDATION" | "MEMBER_AUTO"
+> = {
+  CLUB_AND_MEMBERS_PENDING: "MEMBER_VALIDATION",
+  CLUB_ONLY: "CLUB_ONLY",
+  MEMBERS_AUTO_CONFIRM: "MEMBER_AUTO",
+};
 
 interface UseSettingsLogicProps {
   navigation: NativeStackNavigationProp<RootStackParamList, "Settings">;
@@ -107,23 +120,22 @@ export const useSettingsLogic = ({
       }
       if (config.role === "CLUB" || config.role === "ADMIN") {
         try {
-          const status = await ClubService.getHelloAssoStatus();
-          setHelloAssoStatus(status);
-          if (status.registrationMode) {
-            const map: Record<
-              string,
-              "CLUB_ONLY" | "MEMBER_VALIDATION" | "MEMBER_AUTO"
-            > = {
-              CLUB_AND_MEMBERS_PENDING: "MEMBER_VALIDATION",
-              CLUB_ONLY: "CLUB_ONLY",
-              MEMBERS_AUTO_CONFIRM: "MEMBER_AUTO",
-            };
-            setRegistrationPolicy(
-              map[status.registrationMode] ?? "MEMBER_VALIDATION",
-            );
-          }
+          setHelloAssoStatus(await ClubService.getHelloAssoStatus());
         } catch {
           setHelloAssoStatus(null);
+        }
+        // The club setting has its own route (#665), whatever the payment
+        // connector. No club (null) or a failure keeps the local policy.
+        try {
+          const { registrationMode } =
+            await ClubService.getMyClubRegistrationMode();
+          if (registrationMode) {
+            setRegistrationPolicy(
+              REGISTRATION_POLICY_BY_MODE[registrationMode],
+            );
+          }
+        } catch (error) {
+          logger.warn("[Settings] Club registration mode load failed", error);
         }
         setPaymentProviderStatus(await PaymentProviderApi.getStatus());
       } else {
@@ -346,12 +358,6 @@ export const useSettingsLogic = ({
     }[policy];
     try {
       await ClubService.setRegistrationMode(backendMode);
-      if (helloAssoStatus) {
-        setHelloAssoStatus({
-          ...helloAssoStatus,
-          registrationMode: backendMode,
-        });
-      }
     } catch (e) {
       logger.error("[Settings] setRegistrationMode failed", e);
       Alert.alert("Erreur", "Impossible de modifier le mode d’inscription.");

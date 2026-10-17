@@ -14,6 +14,7 @@ import { Alert } from "react-native";
 import { ERROR_MESSAGES } from "../../../../constants/errorMessages";
 import { useAuthRepository } from "../../../../features/auth/context/AuthContext";
 import { useClubRepository } from "../../../../features/club/context/ClubContext";
+import { ClubService } from "../../../../features/club/services/ClubService";
 import { createPartialEvent } from "../../../../hooks/__mocks__/types";
 import { useCompetitionRepository } from "../../context/CompetitionContext";
 import { useCompetitionDetailLogic } from "../useCompetitionDetailLogic";
@@ -748,6 +749,21 @@ describe("useCompetitionDetailLogic", () => {
 
       expect(mockGetMembers).toHaveBeenCalled();
       expect(result.current.state.clubMembers).toHaveLength(1);
+    });
+
+    it("reads the club's mode from its own route, not the HelloAsso status (#665)", async () => {
+      mockGetAuthConfig.mockResolvedValue({ role: "CLUB" });
+
+      const { result } = await renderHook(
+        () =>
+          useCompetitionDetailLogic(mockCompetitionId, mockNavigation as never),
+        { wrapper: createWrapper() },
+      );
+
+      await waitFor(() => expect(result.current.state.loading).toBe(false));
+
+      expect(ClubService.getMyClubRegistrationMode).toHaveBeenCalled();
+      expect(ClubService.getHelloAssoStatus).not.toHaveBeenCalled();
     });
 
     it("should set selected event for registration for CLUB", async () => {

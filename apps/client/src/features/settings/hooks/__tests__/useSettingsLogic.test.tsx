@@ -10,6 +10,7 @@ import {
 import rnBiometrics from "../../../../utils/biometrics-adapter";
 import { createMockNavigation } from "../../../../utils/testUtils";
 import { useAuthRepository } from "../../../auth/context/AuthContext";
+import { ClubService } from "../../../club/services/ClubService";
 import { useSettingsLogic } from "../useSettingsLogic";
 
 // Mock dependencies
@@ -132,6 +133,98 @@ describe("useSettingsLogic", () => {
       biometricsEnabled: false,
       licensePhotoUri: null,
       role: "LICENSEE",
+    });
+  });
+
+  // #665: the club setting is read from its own route, never from the
+  // HelloAsso status (whose field is deprecated).
+  describe("club registration mode", () => {
+    // clearAllMocks keeps implementations: restore the module defaults.
+    afterEach(() => {
+      (ClubService.getHelloAssoStatus as jest.Mock).mockResolvedValue({
+        registrationMode: null,
+      });
+      (ClubService.getMyClubRegistrationMode as jest.Mock).mockResolvedValue({
+        registrationMode: "MEMBERS_AUTO_CONFIRM",
+      });
+    });
+
+    const render = async () => {
+      const hook = await renderHook(() =>
+        useSettingsLogic({ navigation: mockNavigation }),
+      );
+      await act(async () => {});
+      return hook;
+    };
+
+    it.each([
+      ["CLUB_AND_MEMBERS_PENDING", "MEMBER_VALIDATION"],
+      ["CLUB_ONLY", "CLUB_ONLY"],
+      ["MEMBERS_AUTO_CONFIRM", "MEMBER_AUTO"],
+    ])(
+      "maps the club's %s from GET /clubs/me/registration-mode",
+      async (mode, policy) => {
+        mockAuth.getAuthConfig.mockResolvedValue({ role: "CLUB" });
+        (ClubService.getMyClubRegistrationMode as jest.Mock).mockResolvedValue({
+          registrationMode: mode,
+        });
+        const { result } = await render();
+        expect(ClubService.getMyClubRegistrationMode).toHaveBeenCalled();
+        expect(result.current.state.registrationPolicy).toBe(policy);
+      },
+    );
+
+    it("ignores the deprecated field of the HelloAsso status", async () => {
+      mockAuth.getAuthConfig.mockResolvedValue({ role: "CLUB" });
+      (ClubService.getHelloAssoStatus as jest.Mock).mockResolvedValue({
+        clubName: "Club Test",
+        helloAssoConnected: false,
+        organizationSlug: null,
+        registrationMode: "CLUB_ONLY",
+      });
+      (ClubService.getMyClubRegistrationMode as jest.Mock).mockResolvedValue({
+        registrationMode: "MEMBERS_AUTO_CONFIRM",
+      });
+      const { result } = await render();
+      expect(result.current.state.registrationPolicy).toBe("MEMBER_AUTO");
+    });
+
+    it("keeps the local policy when the account has no club", async () => {
+      mockAuth.getAuthConfig.mockResolvedValue({
+        role: "ADMIN",
+        registrationPolicy: "CLUB_ONLY",
+      });
+      (ClubService.getMyClubRegistrationMode as jest.Mock).mockResolvedValue({
+        registrationMode: null,
+      });
+      const { result } = await render();
+      expect(result.current.state.registrationPolicy).toBe("CLUB_ONLY");
+    });
+
+    it("keeps the local policy and the HelloAsso status when the mode fails to load", async () => {
+      const helloAsso = {
+        clubName: "Club Test",
+        helloAssoConnected: true,
+        organizationSlug: "club-test",
+      };
+      mockAuth.getAuthConfig.mockResolvedValue({
+        role: "CLUB",
+        registrationPolicy: "MEMBER_AUTO",
+      });
+      (ClubService.getHelloAssoStatus as jest.Mock).mockResolvedValue(
+        helloAsso,
+      );
+      (ClubService.getMyClubRegistrationMode as jest.Mock).mockRejectedValue(
+        new Error("offline"),
+      );
+      const { result } = await render();
+      expect(result.current.state.registrationPolicy).toBe("MEMBER_AUTO");
+      expect(result.current.state.helloAssoStatus).toEqual(helloAsso);
+    });
+
+    it("does not load the club setting for a licensee", async () => {
+      await render();
+      expect(ClubService.getMyClubRegistrationMode).not.toHaveBeenCalled();
     });
   });
 

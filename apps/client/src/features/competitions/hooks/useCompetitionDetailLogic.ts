@@ -133,8 +133,9 @@ export const useCompetitionDetailLogic = (
   const { data: clubRegistrationMode, isLoading: isClubModeLoading } = useQuery(
     {
       queryKey: ["clubRegistrationMode"],
+      // Own route since #665 (no longer read from the HelloAsso status).
       queryFn: () =>
-        ClubService.getHelloAssoStatus().then(
+        ClubService.getMyClubRegistrationMode().then(
           (r) => r.registrationMode ?? "MEMBERS_AUTO_CONFIRM",
         ),
       enabled: userRole === "CLUB",

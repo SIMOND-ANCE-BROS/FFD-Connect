@@ -12,11 +12,14 @@ export type ClubRegistrationMode =
   | "CLUB_ONLY"
   | "MEMBERS_AUTO_CONFIRM";
 
+/**
+ * `GET /clubs/me/helloasso`. Its `registrationMode` is deprecated (#665) and
+ * deliberately not read: use `getMyClubRegistrationMode`.
+ */
 export interface HelloAssoStatus {
   clubName: string;
   helloAssoConnected: boolean;
   organizationSlug: string | null;
-  registrationMode?: ClubRegistrationMode;
 }
 
 export interface ConnectHelloAssoParams {
