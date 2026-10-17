@@ -3,8 +3,10 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RedisService } from "../../redis/redis.service";
 import { createMockPrismaService } from "../__mocks__/types";
+import { clubPendingRegistrationSelect } from "../../utils/prisma-selects";
 import {
   CLUB_COMPETITIONS_LIMIT,
+  CLUB_PENDING_REGISTRATIONS_LIMIT,
   CompetitionQueryService,
 } from "./competition-query.service";
 
@@ -735,6 +737,29 @@ describe("CompetitionQueryService", () => {
       expect(result[0].competition).toEqual(
         expect.objectContaining({ id: "comp-1", title: "Championnat 2026" }),
       );
+    });
+
+    it("reads the most recent pending registrations through the shared select, bounded (#753)", async () => {
+      mockPrismaService.user.findUnique.mockResolvedValue({
+        role: "CLUB",
+        clubId: "club-1",
+        clubName: null,
+      });
+      mockPrismaService.registration.findMany.mockResolvedValue([]);
+
+      await service.getPendingRegistrationsForClub("organizer-1");
+
+      const query = mockPrismaService.registration.findMany.mock.calls[0][0];
+      expect(query).toEqual({
+        where: expect.objectContaining({ status: "PENDING" }),
+        select: clubPendingRegistrationSelect,
+        orderBy: { createdAt: "desc" },
+        take: CLUB_PENDING_REGISTRATIONS_LIMIT,
+      });
+      expect(query).not.toHaveProperty("include");
+      expect(CLUB_PENDING_REGISTRATIONS_LIMIT).toBe(500);
+      // No competition lookup without a registration.
+      expect(mockPrismaService.competition.findMany).not.toHaveBeenCalled();
     });
 
     it("scopes a legacy account (no clubId) to the one active club its name designates (#749)", async () => {
