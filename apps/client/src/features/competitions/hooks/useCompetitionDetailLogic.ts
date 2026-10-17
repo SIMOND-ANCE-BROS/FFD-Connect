@@ -8,6 +8,7 @@ import {
 } from "../../../constants/errorMessages";
 import { useSignInAndReturn } from "../../../navigation/authReturn";
 import { RootStackParamList } from "../../../navigation/types";
+import { analytics } from "../../../services/analytics";
 import { createLogger } from "../../../utils/logger";
 import {
   cancelDeadlineNotificationForCompetition,
@@ -440,6 +441,12 @@ export const useCompetitionDetailLogic = (
   });
 
   const handleRegister = (event: Event) => {
+    // Funnel start (#484): « S'inscrire » tapped on an event, before the
+    // partner / members step. The usage recorder honours the opt-out.
+    analytics.logEvent("registration_start", {
+      competition_id: competitionId,
+      event_id: event.id,
+    });
     if (userRole === "CLUB") {
       setSelectedEventForRegistration(event);
       return;
