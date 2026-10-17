@@ -199,7 +199,8 @@ export class ClubsController {
   }
 
   @Patch("me/registration-mode")
-  @UseGuards(RolesGuard)
+  // Club-wide setting that outlives the session: never from support (#761).
+  @UseGuards(NoImpersonationGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @ApiOperation({
     summary: "Mode d'inscription du club",
@@ -207,7 +208,8 @@ export class ClubsController {
       "Définit qui peut inscrire les licenciés et comment : " +
       "CLUB_AND_MEMBERS_PENDING (licenciés en attente de validation), " +
       "CLUB_ONLY (seul le club inscrit), " +
-      "MEMBERS_AUTO_CONFIRM (validation automatique).",
+      "MEMBERS_AUTO_CONFIRM (validation automatique). " +
+      "Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
   @ApiResponse({
     status: 200,
@@ -262,9 +264,14 @@ export class ClubsController {
   }
 
   @Patch("me/partnerships/:id/end")
-  @UseGuards(RolesGuard)
+  // Ends a couple for good: never from a support session (#761).
+  @UseGuards(NoImpersonationGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
-  @ApiOperation({ summary: "Mettre fin à un partenariat" })
+  @ApiOperation({
+    summary: "Mettre fin à un partenariat",
+    description:
+      "Refusé (403) pendant un accès support (« se connecter en tant que »).",
+  })
   async endPartnership(
     @Request() req: RequestWithUser,
     @Param("id") id: string,

@@ -1421,6 +1421,12 @@ describe("UsersService", () => {
         reason: true,
         startedAt: true,
         endedAt: true,
+        // Écritures faites pendant la session (#761), sans identité.
+        actions: {
+          select: { method: true, route: true, statusCode: true, at: true },
+          orderBy: { at: "asc" },
+          take: 500,
+        },
       });
       // Identité et IP de l'administrateur : données d'un tiers.
       expect(select.actorId).toBeUndefined();
@@ -1444,6 +1450,29 @@ describe("UsersService", () => {
       const result = await service.exportMyData("u1");
 
       expect(result.data.impersonationsReceived).toEqual([stopped]);
+    });
+
+    it("exporte les écritures faites pendant une session d'accès support (#761)", async () => {
+      const session = {
+        actorRole: UserRole.ADMIN,
+        reason: "Ticket 42",
+        startedAt: new Date("2026-08-01T10:00:00Z"),
+        endedAt: new Date("2026-08-01T10:05:00Z"),
+        actions: [
+          {
+            method: "PATCH",
+            route: "/clubs/me/registration-mode",
+            statusCode: 403,
+            at: new Date("2026-08-01T10:01:00Z"),
+          },
+        ],
+      };
+      prisma.impersonationLog.findMany.mockResolvedValue([session] as never);
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      const result = await service.exportMyData("u1");
+
+      expect(result.data.impersonationsReceived).toEqual([session]);
     });
 
     it("exporte les accès à ses données de santé avec la seule qualité de l'auteur (#732)", async () => {

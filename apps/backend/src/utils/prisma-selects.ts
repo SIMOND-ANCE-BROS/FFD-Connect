@@ -796,6 +796,18 @@ export const impersonationLogExportSelect = {
   reason: true,
   startedAt: true,
   endedAt: true,
+  // Writes made during the session (#761), in order. Bounded: a session lasts
+  // 15 minutes and its writes are throttled.
+  actions: {
+    select: {
+      method: true,
+      route: true,
+      statusCode: true,
+      at: true,
+    },
+    orderBy: { at: "asc" },
+    take: 500,
+  },
 } as const;
 
 /**

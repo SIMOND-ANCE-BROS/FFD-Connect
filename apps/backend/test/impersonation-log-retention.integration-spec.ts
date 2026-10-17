@@ -84,6 +84,33 @@ describe("Impersonation log retention (integration, real DB)", () => {
     expect(left.map((r) => r.id)).not.toContain(old.id);
   });
 
+  it("purges the writes journalled during a session with it (#761)", async () => {
+    const old = await row(daysAgo(400), null);
+    const fresh = await row(daysAgo(1), null);
+    const action = (impersonationLogId: string) =>
+      prisma.impersonationActionLog.create({
+        data: {
+          impersonationLogId,
+          method: "PATCH",
+          route: "/clubs/me/registration-mode",
+          statusCode: 403,
+        },
+        select: idOnlySelect,
+      });
+    const oldAction = await action(old.id);
+    const freshAction = await action(fresh.id);
+
+    await retention.purge(NOW);
+
+    // Same pass, same deadline: ON DELETE CASCADE from the session row.
+    const left = await prisma.impersonationActionLog.findMany({
+      where: { id: { in: [oldAction.id, freshAction.id] } },
+      select: idOnlySelect,
+      take: 10,
+    });
+    expect(left).toEqual([{ id: freshAction.id }]);
+  });
+
   it("reduces the full IP of rows older than 90 days to its network, once", async () => {
     const v4 = await row(daysAgo(100), "203.0.113.42");
     const v6 = await row(daysAgo(200), "2001:db8:abcd:12::1");

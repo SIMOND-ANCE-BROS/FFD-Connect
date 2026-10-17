@@ -277,12 +277,13 @@ export class UsersController {
   }
 
   @Patch("me")
-  @UseGuards(JwtAuthGuard)
+  // Links or unlinks the WDSF licence for good: never from support (#761).
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard)
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Met à jour le profil (ex. licence WDSF)",
     description:
-      "Permet de lier ou dissocier la licence WDSF (données envoyées après vérification GET /wdsf/athlete/:min). Envoyer wdsf: null pour supprimer le lien.",
+      "Permet de lier ou dissocier la licence WDSF (données envoyées après vérification GET /wdsf/athlete/:min). Envoyer wdsf: null pour supprimer le lien. Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
   @ApiBody({ type: UpdateWdsfDto })
   @ApiResponse({

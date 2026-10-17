@@ -93,6 +93,26 @@ describe("privacy policy in the app", () => {
     );
   });
 
+  it("journals the writes of a support session and blocks the lasting ones (#761)", () => {
+    const support = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Accès support",
+    );
+    expect(support?.body).toContain("Chaque écriture faite pendant la session");
+    expect(support?.body).toContain("y compris celles qui ont été refusées");
+    expect(support?.body).toContain("jamais le contenu envoyé");
+    expect(support?.body).toContain("vous désinscrire d'une compétition");
+    expect(support?.body).toContain("mettre fin à un partenariat");
+    expect(support?.body).toContain("mode d'inscription du club");
+    expect(support?.body).toContain("licence WDSF");
+
+    const rights = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Vos droits (RGPD)",
+    );
+    expect(rights?.body).toContain(
+      "avec les écritures faites pendant chaque session",
+    );
+  });
+
   it("lists the health-data access journal in the export (#732)", () => {
     const rights = LEGAL_DOCUMENTS.privacy.sections.find(
       (s) => s.heading === "Vos droits (RGPD)",

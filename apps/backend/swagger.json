@@ -7418,7 +7418,7 @@
         "tags": ["users"]
       },
       "patch": {
-        "description": "Permet de lier ou dissocier la licence WDSF (données envoyées après vérification GET /wdsf/athlete/:min). Envoyer wdsf: null pour supprimer le lien.",
+        "description": "Permet de lier ou dissocier la licence WDSF (données envoyées après vérification GET /wdsf/athlete/:min). Envoyer wdsf: null pour supprimer le lien. Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "UsersController_updateProfile",
         "parameters": [],
         "requestBody": {
@@ -13621,7 +13621,7 @@
         "tags": ["clubs"]
       },
       "patch": {
-        "description": "Définit qui peut inscrire les licenciés et comment : CLUB_AND_MEMBERS_PENDING (licenciés en attente de validation), CLUB_ONLY (seul le club inscrit), MEMBERS_AUTO_CONFIRM (validation automatique).",
+        "description": "Définit qui peut inscrire les licenciés et comment : CLUB_AND_MEMBERS_PENDING (licenciés en attente de validation), CLUB_ONLY (seul le club inscrit), MEMBERS_AUTO_CONFIRM (validation automatique). Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "ClubsController_setRegistrationMode",
         "parameters": [],
         "requestBody": {
@@ -14907,6 +14907,7 @@
     },
     "/clubs/me/partnerships/{id}/end": {
       "patch": {
+        "description": "Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "ClubsController_endPartnership",
         "parameters": [
           {
@@ -18119,7 +18120,7 @@
     },
     "/competitions/unregister-member": {
       "post": {
-        "description": "Désinscrit un licencié du club. Le membre reçoit une notification.",
+        "description": "Désinscrit un licencié du club. Le membre reçoit une notification. Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "CompetitionsController_unregisterMember",
         "parameters": [],
         "requestBody": {
@@ -20904,7 +20905,7 @@
     },
     "/competitions/{id}/unregister": {
       "post": {
-        "description": "Permet à un utilisateur de se désinscrire d'un événement auquel il était inscrit.",
+        "description": "Permet à un utilisateur de se désinscrire d'un événement auquel il était inscrit. Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "CompetitionsController_unregister",
         "parameters": [
           {

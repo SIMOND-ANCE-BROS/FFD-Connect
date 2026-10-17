@@ -236,13 +236,16 @@ export class CompetitionsController {
   }
 
   @Post("unregister-member")
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  // Frees a (possibly paid) seat and notifies the member: never from a
+  // support session (#761).
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, RolesGuard)
   @Roles(UserRole.CLUB, UserRole.STAFF, UserRole.ADMIN)
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Désinscrire un membre du club (organisateur)",
     description:
-      "Désinscrit un licencié du club. Le membre reçoit une notification.",
+      "Désinscrit un licencié du club. Le membre reçoit une notification. " +
+      "Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
   @ApiBody({ type: UnregisterMemberDto })
   @ApiResponse({ status: 200, description: "Désinscription effectuée" })
@@ -783,13 +786,15 @@ export class CompetitionsController {
   }
 
   @Post(":id/unregister")
-  @UseGuards(JwtAuthGuard, ThrottlerUserGuard)
+  // Frees a (possibly paid) seat: never from a support session (#761).
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, ThrottlerUserGuard)
   @Throttle({ default: { ttl: 60_000, limit: 5 } }) // 5 désinscriptions/min per user
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Désinscrit un utilisateur d'un événement de compétition",
     description:
-      "Permet à un utilisateur de se désinscrire d'un événement auquel il était inscrit.",
+      "Permet à un utilisateur de se désinscrire d'un événement auquel il était inscrit. " +
+      "Refusé (403) pendant un accès support (« se connecter en tant que »).",
   })
   @ApiParam({ name: "id", description: "ID de la compétition" })
   @ApiBody({ type: UnregisterEventDto })
