@@ -33,8 +33,11 @@ import {
   share,
   USAGE_PERIOD_OPTIONS,
   USAGE_SPACE_OPTIONS,
+  weekSpansMonthStart,
 } from '../lib/usage';
 
+const WEEK_OVERLAP_NOTE =
+  'Identifiant renouvelé le 1er du mois : sur 7 jours à cheval sur deux mois, une installation peut compter deux fois.';
 const FOOTER =
   "Données anonymes : un identifiant d'installation renouvelé chaque mois, sans lien avec les comptes. Les utilisateurs qui ont désactivé la mesure d'audience n'apparaissent pas.";
 const HEAT = [
@@ -143,18 +146,34 @@ function UsageContent({ u }: { u: AdminUsageDto }) {
     ...e,
     label: bucketLabel(e.start, u.bucket === 'month' ? 'month' : 'week'),
   }));
+  const perPlatform = u.activeInstallsPerDayByPlatform;
   return (
     <Stack gap="xl">
+      <Stack gap={4}>
+        <SimpleGrid cols={{ base: 1, xs: 3 }}>
+          <Figure label="Installations actives aujourd'hui" value={u.activeInstallsToday} />
+          <Figure label="Installations actives sur 7 jours" value={u.activeInstallsLast7Days} />
+          <Figure label="Installations actives ce mois" value={u.activeInstallsThisMonth} />
+        </SimpleGrid>
+        {weekSpansMonthStart(u.to) ? (
+          <Text size="xs" c="dimmed">
+            {WEEK_OVERLAP_NOTE}
+          </Text>
+        ) : null}
+      </Stack>
       <SimpleGrid cols={{ base: 2, sm: 5 }}>
         <Figure
           label="Installations actives / jour"
           value={decimal.format(u.activeInstallsPerDay)}
         />
-        <Figure label="Installations actives ce mois" value={u.activeInstallsThisMonth} />
+        <Figure
+          label="Par jour : iOS / Android"
+          value={`${decimal.format(perPlatform.ios)} / ${decimal.format(perPlatform.android)}`}
+        />
         <Figure label="Sessions" value={u.sessions ?? '—'} />
         <Figure label="Durée médiane d'une session" value={formatMinutes(u.medianSessionMinutes)} />
         <Figure
-          label="iOS / Android"
+          label="Événements iOS / Android"
           value={
             platformTotal
               ? `${share(u.platforms.ios, platformTotal)} / ${share(u.platforms.android, platformTotal)}`

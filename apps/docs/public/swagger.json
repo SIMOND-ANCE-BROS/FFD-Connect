@@ -8564,7 +8564,7 @@
             "schema": {
               "default": "30d",
               "type": "string",
-              "enum": ["7d", "30d", "12m"]
+              "enum": ["7d", "30d", "90d", "12m"]
             }
           },
           {
@@ -29261,7 +29261,7 @@
           },
           "period": {
             "type": "string",
-            "enum": ["7d", "30d", "12m"]
+            "enum": ["7d", "30d", "90d", "12m"]
           },
           "from": {
             "type": "string",
@@ -29280,10 +29280,28 @@
             "nullable": true
           },
           "activeInstallsPerDay": {
-            "type": "number"
+            "type": "number",
+            "description": "Average of daily distinct installs over the period"
+          },
+          "activeInstallsPerDayByPlatform": {
+            "description": "activeInstallsPerDay split by platform",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UsagePlatformsDto"
+              }
+            ]
+          },
+          "activeInstallsToday": {
+            "type": "number",
+            "description": "DAU: distinct installs today (Paris)"
+          },
+          "activeInstallsLast7Days": {
+            "type": "number",
+            "description": "WAU: distinct installs over the last 7 Paris days, today included (the monthly ID renewal can count an install twice when the window spans the 1st)"
           },
           "activeInstallsThisMonth": {
-            "type": "number"
+            "type": "number",
+            "description": "MAU: distinct installs since the 1st of the month (Paris)"
           },
           "sessions": {
             "type": "number",
@@ -29294,7 +29312,12 @@
             "nullable": true
           },
           "platforms": {
-            "$ref": "#/components/schemas/UsagePlatformsDto"
+            "description": "Event counts",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UsagePlatformsDto"
+              }
+            ]
           },
           "heatmap": {
             "type": "array",
@@ -29339,6 +29362,9 @@
           "bucket",
           "aggregatedUntil",
           "activeInstallsPerDay",
+          "activeInstallsPerDayByPlatform",
+          "activeInstallsToday",
+          "activeInstallsLast7Days",
           "activeInstallsThisMonth",
           "sessions",
           "medianSessionMinutes",

@@ -20,6 +20,9 @@ const usage = (o: Record<string, unknown> = {}) => {
     bucket: 'day',
     aggregatedUntil: null,
     activeInstallsPerDay: 4.5,
+    activeInstallsPerDayByPlatform: { ios: 3, android: 1.5 },
+    activeInstallsToday: 6,
+    activeInstallsLast7Days: 13,
     activeInstallsThisMonth: 21,
     sessions: 37,
     medianSessionMinutes: 7.5,
@@ -87,6 +90,14 @@ describe('UsagePage', () => {
     expect(screen.getByText('4,5')).toBeInTheDocument();
     const month = screen.getByText('Installations actives ce mois').parentElement as HTMLElement;
     expect(within(month).getByText('21')).toBeInTheDocument();
+    const today = screen.getByText("Installations actives aujourd'hui")
+      .parentElement as HTMLElement;
+    expect(within(today).getByText('6')).toBeInTheDocument();
+    const week = screen.getByText('Installations actives sur 7 jours').parentElement as HTMLElement;
+    expect(within(week).getByText('13')).toBeInTheDocument();
+    expect(screen.getByText('3 / 1,5')).toBeInTheDocument();
+    // 2026-10-10: the 7-day window stays within October, no overlap note.
+    expect(screen.queryByText(/peut compter deux fois/)).not.toBeInTheDocument();
     expect(screen.getByText('7,5 min')).toBeInTheDocument();
     expect(screen.getByText('75 % / 25 %')).toBeInTheDocument();
     expect(screen.getByTitle('lun. 9 h : 8')).toHaveAttribute('data-level', '4');
@@ -119,6 +130,22 @@ describe('UsagePage', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/usage?period=7d&space=CLUB');
   });
 
+  it('90 jours goes to the request; a week spanning the 1st shows the overlap note', async () => {
+    const get = vi
+      .spyOn(sdk, 'adminUsageControllerGet')
+      .mockResolvedValue(ok(usage({ period: '90d', from: '2026-07-04', to: '2026-10-02' })));
+    renderPage();
+    await screen.findByText('Installations actives / jour');
+    await user.click(screen.getByRole('radio', { name: '90 jours' }));
+    await waitFor(() => expect(get).toHaveBeenLastCalledWith({ query: { period: '90d' } }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/usage?period=90d');
+    expect(
+      screen.getByText(
+        'Identifiant renouvelé le 1er du mois : sur 7 jours à cheval sur deux mois, une installation peut compter deux fois.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('12m shows the aggregation date, « — » for sessions and the 90-day note', async () => {
     vi.spyOn(sdk, 'adminUsageControllerGet').mockResolvedValue(
       ok(
@@ -148,6 +175,9 @@ describe('UsagePage', () => {
           sessions: 0,
           medianSessionMinutes: null,
           activeInstallsPerDay: 0,
+          activeInstallsPerDayByPlatform: { ios: 0, android: 0 },
+          activeInstallsToday: 0,
+          activeInstallsLast7Days: 0,
           activeInstallsThisMonth: 0,
           platforms: { ios: 0, android: 0 },
         }),

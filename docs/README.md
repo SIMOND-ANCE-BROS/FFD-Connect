@@ -30,9 +30,11 @@ voir le [README racine](../README.md).
 - [Déploiement Azure Container Apps](exploitation/deploiement-azure.md) — flux, smoke test, rollback
 - [Changelog beta automatique](exploitation/changelog-beta.md)
 - [Isolation des secrets DB](exploitation/isolation-secrets-db.md) — users par env, Key Vault
+- [Migrations Prisma, mesures de la phase 0 (ADR-0025)](exploitation/migrations-adr-0025-phase-0.md) — taille d'image, décomposition d'un réveil, test P3009
 - [Chiffrement des secrets HelloAsso des clubs](exploitation/chiffrement-secrets-clubs.md) — clé AES-256-GCM, Key Vault, migration, rotation
 - [Clés de distribution](exploitation/rotation-cles-distribution.md) — inventaire, Key Vault, rotation (ASC, APNs, Play, EXPO_TOKEN)
 - [Données personnelles dans les logs](exploitation/donnees-personnelles-logs.md) — IP tronquées, identifiants plutôt que noms (RGPD)
+- [Mesure d'usage de l'app](exploitation/mesure-usage.md) — ce qui est mesuré, tableau de bord du back-office, position RGPD
 - [Tests de charge k6](exploitation/tests-de-charge.md) — scénarios, données dédiées, limiteur de débit, lancement local / staging, coût
 
 ## 🧪 Tests

@@ -4,6 +4,7 @@ import { ConfigService } from "@nestjs/config";
 import { Queue } from "bullmq";
 import { PrismaService } from "../prisma/prisma.service";
 import { RedisService } from "../redis/redis.service";
+import { withTimeout } from "../utils/timeout.utils";
 import {
   type MemoryLimit,
   resolveMemoryLimit,
@@ -24,6 +25,36 @@ import type {
 // exposés dans le payload pour visibilité.
 const QUEUE_WAITING_THRESHOLD = 100; // > 100 jobs en attente = backlog anormal
 
+/**
+ * Upper bound on every Redis round-trip `/health` makes (PING + queue counts).
+ *
+ * Staging Redis scales to zero: right after a wake the first PING waited ~20 s
+ * for the Redis container to start, holding `/health` hostage (#718). Past this
+ * bound Redis is reported as `error` — the same outcome as an unreachable Redis,
+ * so the overall status is `degraded` (HTTP 200) unless the database is down
+ * too. Health checks must never wait on, retry or wake a dependency.
+ */
+export const DEFAULT_HEALTH_REDIS_TIMEOUT_MS = 2000;
+export const HEALTH_REDIS_TIMEOUT_ENV = "HEALTH_REDIS_TIMEOUT_MS";
+const MAX_HEALTH_REDIS_TIMEOUT_MS = 30_000;
+
+/** Configured Redis health timeout in ms; an invalid value falls back to the default. */
+export function resolveHealthRedisTimeoutMs(
+  configService: ConfigService,
+): number {
+  const configured: unknown = configService.get(HEALTH_REDIS_TIMEOUT_ENV);
+  const ms =
+    typeof configured === "string" && configured.trim() !== ""
+      ? Number(configured)
+      : configured;
+  const valid =
+    typeof ms === "number" &&
+    Number.isInteger(ms) &&
+    ms > 0 &&
+    ms <= MAX_HEALTH_REDIS_TIMEOUT_MS;
+  return valid ? ms : DEFAULT_HEALTH_REDIS_TIMEOUT_MS;
+}
+
 @Injectable()
 export class HealthService {
   private readonly logger = new Logger(HealthService.name);
@@ -35,13 +66,16 @@ export class HealthService {
    * `/health` must not do a filesystem read per probe.
    */
   private memoryLimit?: MemoryLimit;
+  private readonly redisTimeoutMs: number;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly configService: ConfigService,
     @InjectQueue("ffd-sync") private readonly syncQueue: Queue,
-  ) {}
+  ) {
+    this.redisTimeoutMs = resolveHealthRedisTimeoutMs(configService);
+  }
 
   async check(): Promise<HealthStatus> {
     const timestamp = new Date().toISOString();
@@ -129,7 +163,7 @@ export class HealthService {
       if (!client) {
         return { status: "error", error: "Redis client not initialized" };
       }
-      await client.ping();
+      await withTimeout(client.ping(), this.redisTimeoutMs, "Redis PING");
       return { status: "ok", responseTime: Date.now() - startTime };
     } catch (error: unknown) {
       const errorMessage =
@@ -147,12 +181,18 @@ export class HealthService {
     const entries = await Promise.all(
       Object.entries(queues).map(async ([name, queue]) => {
         try {
-          const counts = await queue.getJobCounts(
-            "waiting",
-            "active",
-            "failed",
-            "delayed",
-            "completed",
+          // BullMQ reads the counts from Redis: same bound as the PING, or a
+          // sleeping Redis would still hold `/health` through this branch.
+          const counts = await withTimeout(
+            queue.getJobCounts(
+              "waiting",
+              "active",
+              "failed",
+              "delayed",
+              "completed",
+            ),
+            this.redisTimeoutMs,
+            `Queue ${name} job counts`,
           );
           const { waiting, active, failed } = counts;
 
