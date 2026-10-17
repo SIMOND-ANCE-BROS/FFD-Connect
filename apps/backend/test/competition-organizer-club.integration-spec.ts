@@ -20,6 +20,10 @@ import { PaymentNotificationService } from "../src/payment/payment-notification.
 import { PrismaService } from "../src/prisma/prisma.service";
 import { createFactories } from "./factories";
 import { buildServiceModule } from "./integration-app.builder";
+import {
+  dropClubNameCaseIndex,
+  restoreClubNameCaseIndex,
+} from "./setup/club-name-case-index";
 
 describe("Competition organising club by id (#408, integration, real DB)", () => {
   const suffix = `org-club-${Date.now()}`;
@@ -72,6 +76,8 @@ describe("Competition organising club by id (#408, integration, real DB)", () =>
     management = module.get(CompetitionManagementService);
     query = module.get(CompetitionQueryService);
     adminClubs = module.get(AdminClubsService);
+    // Homonym clubs below stand for legacy data (#743).
+    await dropClubNameCaseIndex(prisma);
   });
 
   beforeEach(() => {
@@ -83,6 +89,7 @@ describe("Competition organising club by id (#408, integration, real DB)", () =>
       where: { competition: { title: { contains: suffix } } },
     });
     await f.cleanup();
+    await restoreClubNameCaseIndex(prisma);
     await module.close();
   });
 

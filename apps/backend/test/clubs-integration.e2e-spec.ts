@@ -186,25 +186,79 @@ describe("ClubsService (integration with real DB)", () => {
   }, 15000);
 
   // ─────────────────────────────────────────────
-  // findOrCreateByName
+  // Legacy CLUB accounts without clubId (#743)
   // ─────────────────────────────────────────────
-  describe("findOrCreateByName", () => {
-    it("crée un nouveau club", async () => {
-      const name = `New Club ${suffix}-fnc`;
-      const club = await clubsService.findOrCreateByName(name);
-      expect(club.name).toBe(name);
-      await prisma.club.delete({ where: { id: club.id } }).catch(() => {});
-    });
+  describe("legacy CLUB account without clubId (#743)", () => {
+    const legacyAccount = (tag: string, clubName: string) =>
+      prisma.user.create({
+        data: {
+          email: `legacy-${tag}-${suffix}@test.com`,
+          password: "hashed",
+          firstName: "Legacy",
+          lastName: tag,
+          role: UserRole.CLUB,
+          clubId: null,
+          clubName,
+        },
+      });
 
-    it("retourne un club existant (insensible à la casse)", async () => {
-      const club = await clubsService.findOrCreateByName(
-        testClubAName.toUpperCase(),
+    it("resolves to the one club its name designates, case ignored", async () => {
+      const user = await legacyAccount(
+        "match",
+        ` ${testClubAName.toUpperCase()} `,
       );
-      expect(club.id).toBe(clubAId);
+      await expect(clubsService.getClubIdForOrganizer(user.id)).resolves.toBe(
+        clubAId,
+      );
     });
 
-    it("rejette un nom vide", async () => {
-      await expect(clubsService.findOrCreateByName("   ")).rejects.toThrow();
+    it("refuses an unknown name and never creates a club", async () => {
+      const name = `Ghost Club ${suffix}`;
+      const user = await legacyAccount("ghost", name);
+      await expect(
+        helloAssoService.connectHelloAsso(user.id, {
+          clientId: "id",
+          clientSecret: "secret",
+          organizationSlug: "slug",
+        }),
+      ).rejects.toThrow("Aucun club ne correspond");
+      await expect(
+        prisma.club.count({
+          where: { name: { equals: name, mode: "insensitive" } },
+        }),
+      ).resolves.toBe(0);
+    });
+
+    it("refuses a disabled club and leaves its credentials untouched", async () => {
+      const disabled = await prisma.club.create({
+        data: { name: `Club Disabled ${suffix}`, disabledAt: new Date() },
+      });
+      try {
+        const user = await legacyAccount("disabled", disabled.name);
+        await expect(
+          helloAssoService.connectHelloAsso(user.id, {
+            clientId: "id",
+            clientSecret: "secret",
+            organizationSlug: "slug",
+          }),
+        ).rejects.toThrow("désactivé");
+        const after = await prisma.club.findUniqueOrThrow({
+          where: { id: disabled.id },
+          select: { helloAssoClientId: true },
+        });
+        expect(after.helloAssoClientId).toBeNull();
+      } finally {
+        await prisma.user.deleteMany({
+          where: { email: `legacy-disabled-${suffix}@test.com` },
+        });
+        await prisma.club.delete({ where: { id: disabled.id } });
+      }
+    });
+
+    it("the database refuses a second club whose name only differs by case", async () => {
+      await expect(
+        prisma.club.create({ data: { name: testClubAName.toLowerCase() } }),
+      ).rejects.toMatchObject({ code: "P2002" });
     });
   });
 

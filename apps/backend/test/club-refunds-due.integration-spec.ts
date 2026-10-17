@@ -10,6 +10,10 @@ import request from "supertest";
 import { PrismaService } from "../src/prisma/prisma.service";
 import { createFactories } from "./factories";
 import { buildHttpApp } from "./integration-app.builder";
+import {
+  dropClubNameCaseIndex,
+  restoreClubNameCaseIndex,
+} from "./setup/club-name-case-index";
 
 describe("Club refunds due (#516, integration, real DB)", () => {
   const suffix = `refunds-due-${Date.now()}`;
@@ -44,9 +48,12 @@ describe("Club refunds due (#516, integration, real DB)", () => {
     app = built.app;
     prisma = built.prisma;
     f = createFactories(prisma, suffix, built.jwt);
+    // The homonym below stands for legacy data (#743).
+    await dropClubNameCaseIndex(prisma);
 
     const clubA = await f.club({ name: `Club A ${suffix}` });
-    // Homonym: same name but for the case (Club.name is unique).
+    // Homonym: same name but for the case (legacy data: new ones are
+    // refused by the lower(name) unique index, #743).
     const homonym = await f.club({ name: `CLUB A ${suffix}` });
     const clubB = await f.club({ name: `Club B ${suffix}` });
     const manager = async (club: { id: string; name: string }) =>
@@ -133,6 +140,7 @@ describe("Club refunds due (#516, integration, real DB)", () => {
   afterAll(async () => {
     await prisma.seatBooking.deleteMany({ where: { userId: dancerId } });
     await f.cleanup();
+    await restoreClubNameCaseIndex(prisma);
     await app.close();
   });
 

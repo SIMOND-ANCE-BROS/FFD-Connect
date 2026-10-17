@@ -86,12 +86,34 @@ export async function resolveOrganizerClubId(
   return findClubIdByName(db, competition.organizer);
 }
 
+/** Outcome of resolving a legacy club account (no `clubId`) by its name. */
+export type LegacyClubResolution = ClubNameMatch | { kind: "disabled" };
+
+/**
+ * The ONE ACTIVE club a legacy club account's name designates (case and
+ * surrounding spaces ignored, #625 / #743). Never guessed: no club, several
+ * clubs (homonyms) or a disabled club are reported as such, and the caller
+ * refuses or grants nothing. Never creates a club.
+ */
+export async function resolveActiveClubByName(
+  db: ClubReader,
+  name: string | null | undefined,
+): Promise<LegacyClubResolution> {
+  const match = await matchClubByName(db, name);
+  if (match.kind !== "match") return match;
+  const active = await db.club.findFirst({
+    where: { id: match.clubId, disabledAt: null },
+    select: idOnlySelect,
+  });
+  return active ? { kind: "match", clubId: active.id } : { kind: "disabled" };
+}
+
 /**
  * The organiser-check actor of a user (#625). A linked account is its club:
  * its id, and the club's CURRENT name for the unlinked rows — never
  * `User.clubName`, a copy that may be stale. A legacy account without
- * `clubId` is resolved to the ONE ACTIVE club its name designates (case and
- * surrounding spaces ignored); a name designating no club, several clubs
+ * `clubId` is resolved to the ONE ACTIVE club its name designates
+ * (`resolveActiveClubByName`); a name designating no club, several clubs
  * (homonyms) or a disabled club leaves it without id — and an actor without
  * a club id organises nothing.
  */
@@ -106,14 +128,11 @@ export async function organizerActorOf(
   if (user.clubId) {
     return { clubId: user.clubId, clubNames: [user.club?.name] };
   }
-  const resolvedId = await findClubIdByName(db, user.clubName);
-  const active = resolvedId
-    ? await db.club.findFirst({
-        where: { id: resolvedId, disabledAt: null },
-        select: idOnlySelect,
-      })
-    : null;
-  return { clubId: active?.id ?? null, clubNames: [user.clubName] };
+  const resolved = await resolveActiveClubByName(db, user.clubName);
+  return {
+    clubId: resolved.kind === "match" ? resolved.clubId : null,
+    clubNames: [user.clubName],
+  };
 }
 
 function distinctNames(

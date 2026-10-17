@@ -51,15 +51,12 @@ const makePartnership = (overrides: Record<string, unknown> = {}) => ({
 describe("PartnershipQueryService", () => {
   let service: PartnershipQueryService;
   let prisma: MockPrisma;
-  let clubsService: jest.Mocked<
-    Pick<ClubsService, "getClubIdForOrganizer" | "findOrCreateByName">
-  >;
+  let clubsService: jest.Mocked<Pick<ClubsService, "getClubIdForOrganizer">>;
 
   beforeEach(async () => {
     prisma = mockDeep<PrismaClient>();
     clubsService = {
       getClubIdForOrganizer: jest.fn().mockResolvedValue("club-1"),
-      findOrCreateByName: jest.fn(),
     };
 
     const module = await Test.createTestingModule({
