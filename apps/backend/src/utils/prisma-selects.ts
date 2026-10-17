@@ -796,8 +796,8 @@ export const impersonationLogExportSelect = {
   reason: true,
   startedAt: true,
   endedAt: true,
-  // Writes made during the session (#761), in order. Bounded: a session lasts
-  // 15 minutes and its writes are throttled.
+  // Writes made during the session (#761), in order. Bounded above the real
+  // maximum (15 minutes × 100 requests/min under the global throttler).
   actions: {
     select: {
       method: true,
@@ -806,8 +806,10 @@ export const impersonationLogExportSelect = {
       at: true,
     },
     orderBy: { at: "asc" },
-    take: 500,
+    take: 2000,
   },
+  // Total count, so a truncated list shows in the export.
+  _count: { select: { actions: true } },
 } as const;
 
 /**

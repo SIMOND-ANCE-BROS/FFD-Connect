@@ -98,7 +98,9 @@ describe("privacy policy in the app", () => {
       (s) => s.heading === "Accès support",
     );
     expect(support?.body).toContain("Chaque écriture faite pendant la session");
-    expect(support?.body).toContain("y compris celles qui ont été refusées");
+    expect(support?.body).toContain(
+      "y compris celles refusées par un contrôle d'autorisation",
+    );
     expect(support?.body).toContain("jamais le contenu envoyé");
     expect(support?.body).toContain("vous désinscrire d'une compétition");
     expect(support?.body).toContain("mettre fin à un partenariat");

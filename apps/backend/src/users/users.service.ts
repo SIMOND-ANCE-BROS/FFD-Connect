@@ -680,10 +680,15 @@ export class UsersService {
         bugReports,
         // A session never stopped ended when its token expired (#733):
         // endedAt = min(stop, startedAt + 15 min), null while still usable.
-        impersonationsReceived: impersonations.map((session) => ({
-          ...session,
-          endedAt: effectiveImpersonationEnd(session),
-        })),
+        // `actionsCount` (#761): every write of the session, so a list cut
+        // at its bound shows as such.
+        impersonationsReceived: impersonations.map(
+          ({ _count, ...session }) => ({
+            ...session,
+            endedAt: effectiveImpersonationEnd(session),
+            actionsCount: _count.actions,
+          }),
+        ),
         healthDataAccesses,
       },
     };
