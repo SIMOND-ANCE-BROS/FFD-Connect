@@ -1,5 +1,6 @@
 import { Logger } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
+import { AdminAuditLogRetentionService } from "../admin/admin-audit-log-retention.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { ImpersonationLogRetentionService } from "./impersonation-log-retention.service";
@@ -23,6 +24,9 @@ describe("SessionCleanupService", () => {
   const mockImpersonationRetention = {
     purge: jest.fn(),
   };
+  const mockAdminAuditRetention = {
+    purge: jest.fn(),
+  };
 
   beforeEach(async () => {
     mockPrisma.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
@@ -34,6 +38,7 @@ describe("SessionCleanupService", () => {
       deleted: 0,
       ipTruncated: 0,
     });
+    mockAdminAuditRetention.purge.mockResolvedValue(0);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -43,6 +48,10 @@ describe("SessionCleanupService", () => {
         {
           provide: ImpersonationLogRetentionService,
           useValue: mockImpersonationRetention,
+        },
+        {
+          provide: AdminAuditLogRetentionService,
+          useValue: mockAdminAuditRetention,
         },
       ],
     }).compile();
@@ -107,6 +116,58 @@ describe("SessionCleanupService", () => {
       );
 
       await expect(service.cleanupExpiredSessions()).resolves.not.toThrow();
+    });
+
+    // #741: back-office audit trail retention, same hourly hook.
+    describe("admin audit log retention", () => {
+      it("runs the purge and logs its count on every pass", async () => {
+        mockAdminAuditRetention.purge.mockResolvedValue(4);
+        const log = jest.spyOn(Logger.prototype, "log").mockImplementation();
+
+        await service.cleanupExpiredSessions();
+
+        expect(mockAdminAuditRetention.purge).toHaveBeenCalledTimes(1);
+        expect(log).toHaveBeenCalledWith(
+          "Admin audit log retention: 4 row(s) deleted",
+        );
+        log.mockRestore();
+      });
+
+      it("runs even when every earlier step fails", async () => {
+        mockPrisma.refreshToken.deleteMany.mockRejectedValue(
+          new Error("DB error"),
+        );
+        mockNotifications.purgeExpiredDeviceTokens.mockRejectedValue(
+          new Error("DB error"),
+        );
+        mockImpersonationRetention.purge.mockRejectedValue(
+          new Error("DB error"),
+        );
+        const error = jest
+          .spyOn(Logger.prototype, "error")
+          .mockImplementation();
+
+        await service.cleanupExpiredSessions();
+
+        expect(mockAdminAuditRetention.purge).toHaveBeenCalledTimes(1);
+        error.mockRestore();
+      });
+
+      it("never fails the cleanup nor masks the next steps", async () => {
+        mockAdminAuditRetention.purge.mockRejectedValue(new Error("DB error"));
+        const error = jest
+          .spyOn(Logger.prototype, "error")
+          .mockImplementation();
+
+        await expect(service.cleanupExpiredSessions()).resolves.toBeUndefined();
+
+        expect(error).toHaveBeenCalledWith(
+          "Error during admin audit log retention purge",
+          expect.any(Error),
+        );
+        expect(mockPrisma.$executeRaw).toHaveBeenCalled();
+        error.mockRestore();
+      });
     });
 
     // #731: support-access journal retention, same hourly hook.
