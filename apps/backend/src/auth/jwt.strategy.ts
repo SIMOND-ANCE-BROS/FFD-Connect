@@ -4,10 +4,13 @@ import { PassportStrategy } from "@nestjs/passport";
 import { UserRole } from "@prisma/client";
 import { ExtractJwt, Strategy } from "passport-jwt";
 import { PrismaService } from "../prisma/prisma.service";
-import { accountStatusSelect } from "../utils/prisma-selects";
+import {
+  accountStatusSelect,
+  impersonationLogSessionSelect,
+} from "../utils/prisma-selects";
 import { ACCOUNT_DISABLED_MESSAGE, accountBlockReason } from "./account-status";
 import { JwtPayload } from "./interfaces/jwt-payload.interface";
-import { hasRole, rolesOf } from "./roles";
+import { hasRole, RoleSubject, rolesOf } from "./roles";
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -41,25 +44,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // so the target's data cannot be changed through it either.
     let storeReview = account.isStoreReview === true;
     if (payload.impersonatedBy) {
-      // "Never impersonate an admin" holds for the whole session: promoting
-      // the target to ADMIN (main or extra role) ends it.
-      if (hasRole(account, UserRole.ADMIN)) {
-        throw new UnauthorizedException();
-      }
-      // Impersonation is ADMIN-only: the admin behind the token must still be
-      // an active ADMIN, or the session dies with their demotion/deactivation.
-      const impersonator = await this.prisma.user.findUnique({
-        where: { id: payload.impersonatedBy },
-        select: accountStatusSelect,
-      });
-      if (
-        !impersonator ||
-        accountBlockReason(impersonator) ||
-        !hasRole(impersonator, UserRole.ADMIN)
-      ) {
-        throw new UnauthorizedException();
-      }
-      storeReview ||= impersonator.isStoreReview === true;
+      storeReview ||= await this.assertImpersonationStillValid(
+        payload,
+        account,
+      );
     }
     return {
       userId: payload.sub,
@@ -68,7 +56,58 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       role: account.role,
       roles: rolesOf(account),
       impersonatedBy: payload.impersonatedBy,
+      impersonationLogId: payload.impersonationLogId,
       storeReview,
     };
+  }
+
+  /**
+   * Support access (#733) is ADMIN-only, re-checked on every request against
+   * the database, never the token claims. Returns the impersonator's
+   * store-review flag; throws 401 as soon as one rule no longer holds.
+   */
+  private async assertImpersonationStillValid(
+    payload: JwtPayload,
+    target: RoleSubject,
+  ): Promise<boolean> {
+    // "Never impersonate an admin" holds for the whole session: promoting
+    // the target to ADMIN (main or extra role) ends it.
+    if (hasRole(target, UserRole.ADMIN)) {
+      throw new UnauthorizedException();
+    }
+    // Every impersonation token names its journal row: a token without one
+    // (forged shape, or issued before #733) is refused.
+    const logId = payload.impersonationLogId;
+    if (!logId) throw new UnauthorizedException();
+    const [impersonator, session] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: payload.impersonatedBy },
+        select: accountStatusSelect,
+      }),
+      this.prisma.impersonationLog.findUnique({
+        where: { id: logId },
+        select: impersonationLogSessionSelect,
+      }),
+    ]);
+    // The admin behind the token must still be an active ADMIN, or the
+    // session dies with their demotion/deactivation.
+    if (
+      !impersonator ||
+      accountBlockReason(impersonator) ||
+      !hasRole(impersonator, UserRole.ADMIN)
+    ) {
+      throw new UnauthorizedException();
+    }
+    // The journal row must be this very session, still open: stopping the
+    // session (or purging its row) kills the token before it expires.
+    if (!session) throw new UnauthorizedException();
+    if (
+      session.endedAt !== null ||
+      session.actorId !== payload.impersonatedBy ||
+      session.targetUserId !== payload.sub
+    ) {
+      throw new UnauthorizedException();
+    }
+    return impersonator.isStoreReview === true;
   }
 }

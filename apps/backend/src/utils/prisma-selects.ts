@@ -767,6 +767,16 @@ export const impersonationLogExportSelect = {
 } as const;
 
 /**
+ * Accès support (#733) : ce que `JwtStrategy` relit de la ligne du journal
+ * désignée par le jeton d'impersonation, à chaque requête de la session.
+ */
+export const impersonationLogSessionSelect = {
+  actorId: true,
+  targetUserId: true,
+  endedAt: true,
+} as const;
+
+/**
  * Rétention du journal des accès support (#731) : ce que la troncature de
  * l'adresse IP de l'intervenant relit, rien d'autre.
  */

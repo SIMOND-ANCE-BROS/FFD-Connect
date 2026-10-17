@@ -1408,7 +1408,25 @@ describe("UsersService", () => {
       // Identité et IP de l'administrateur : données d'un tiers.
       expect(select.actorId).toBeUndefined();
       expect(select.ip).toBeUndefined();
-      expect(result.data.impersonationsReceived).toEqual([session]);
+      // Never stopped: the session ended when its 15-minute token expired.
+      expect(result.data.impersonationsReceived).toEqual([
+        { ...session, endedAt: new Date("2026-08-01T10:15:00Z") },
+      ]);
+    });
+
+    it("exporte la vraie fin d'une session d'accès support arrêtée (#733)", async () => {
+      const stopped = {
+        actorRole: UserRole.ADMIN,
+        reason: null,
+        startedAt: new Date("2026-08-01T10:00:00Z"),
+        endedAt: new Date("2026-08-01T10:04:00Z"),
+      };
+      prisma.impersonationLog.findMany.mockResolvedValue([stopped] as never);
+      prisma.user.findUnique.mockResolvedValue(makeExportedUser());
+
+      const result = await service.exportMyData("u1");
+
+      expect(result.data.impersonationsReceived).toEqual([stopped]);
     });
 
     it("exporte les accès à ses données de santé avec la seule qualité de l'auteur (#732)", async () => {

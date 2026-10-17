@@ -417,13 +417,16 @@ export class AuthController {
   // (a simulated body would hand the client a token-less session).
   @StoreReviewPassthrough()
   @Post("impersonate")
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  // NoImpersonationGuard: no chained session opened from inside another one
+  // (the journal would name the wrong author). 5 sessions/min per admin.
+  @UseGuards(JwtAuthGuard, NoImpersonationGuard, RolesGuard, ThrottlerUserGuard)
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth("JWT-auth")
   @ApiOperation({
     summary: "Se connecter en tant qu'un autre utilisateur (impersonation)",
     description:
-      "Phase 1 : réservé aux ADMIN. Retourne un access token court (15 min) dont l'identité est la cible, avec un claim d'audit. Interdit de cibler un admin. Actions destructives bloquées sous impersonation. Journalisé (RGPD).",
+      "Réservé aux ADMIN (#733). Retourne un access token court (15 min) dont l'identité est la cible, avec un claim d'audit et l'identifiant de la ligne du journal de la session. Interdit de cibler un admin ; un licencié, un club ou un staff peut être ciblé. Refusé depuis une session d'impersonation (pas de session en chaîne). Limité à 5 appels par minute et par admin. Actions destructives ou durables (suppression, export, mot de passe, identifiants de paiement du club, appareil et préférences push…) bloquées sous impersonation. Journalisé (RGPD).",
   })
   @ApiBody({ type: ImpersonateDto })
   @ApiResponse({ status: 201, description: "Token d'impersonation émis" })
@@ -454,13 +457,17 @@ export class AuthController {
   @ApiOperation({
     summary: "Arrêter l'impersonation en cours",
     description:
-      "Clôt la session d'impersonation ouverte (audit). Le client restaure ensuite sa session d'origine.",
+      "Clôt la session d'impersonation portée par le token (audit) : sa ligne du journal, et elle seule. Le token d'impersonation cesse alors d'être accepté. Sans token d'impersonation, ne fait rien. Le client restaure ensuite sa session d'origine.",
   })
   @ApiResponse({ status: 201, description: "Impersonation clôturée" })
   async stopImpersonation(@Request() req: RequestWithUser) {
-    // Sous un token d'impersonation, impersonatedBy = l'acteur ; sinon userId.
-    const actorId = req.user.impersonatedBy ?? req.user.userId;
-    await this.authService.stopImpersonation(actorId);
+    const { impersonatedBy, impersonationLogId } = req.user;
+    if (impersonatedBy) {
+      await this.authService.stopImpersonation(
+        impersonatedBy,
+        impersonationLogId,
+      );
+    }
     return { message: "Impersonation arrêtée" };
   }
 }

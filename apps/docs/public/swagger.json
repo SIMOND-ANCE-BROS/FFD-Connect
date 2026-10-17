@@ -1433,7 +1433,7 @@
     },
     "/auth/impersonate": {
       "post": {
-        "description": "Phase 1 : réservé aux ADMIN. Retourne un access token court (15 min) dont l'identité est la cible, avec un claim d'audit. Interdit de cibler un admin. Actions destructives bloquées sous impersonation. Journalisé (RGPD).",
+        "description": "Réservé aux ADMIN (#733). Retourne un access token court (15 min) dont l'identité est la cible, avec un claim d'audit et l'identifiant de la ligne du journal de la session. Interdit de cibler un admin ; un licencié, un club ou un staff peut être ciblé. Refusé depuis une session d'impersonation (pas de session en chaîne). Limité à 5 appels par minute et par admin. Actions destructives ou durables (suppression, export, mot de passe, identifiants de paiement du club, appareil et préférences push…) bloquées sous impersonation. Journalisé (RGPD).",
         "operationId": "AuthController_impersonate",
         "parameters": [],
         "requestBody": {
@@ -1591,7 +1591,7 @@
     },
     "/auth/impersonate/stop": {
       "post": {
-        "description": "Clôt la session d'impersonation ouverte (audit). Le client restaure ensuite sa session d'origine.",
+        "description": "Clôt la session d'impersonation portée par le token (audit) : sa ligne du journal, et elle seule. Le token d'impersonation cesse alors d'être accepté. Sans token d'impersonation, ne fait rien. Le client restaure ensuite sa session d'origine.",
         "operationId": "AuthController_stopImpersonation",
         "parameters": [],
         "responses": {
@@ -13785,7 +13785,7 @@
         "tags": ["clubs"]
       },
       "put": {
-        "description": "Permet à un organisateur de lier les identifiants HelloAsso de son club. Ensuite, tous les paiements (places, etc.) pour les compétitions organisées par ce club utiliseront ce compte.",
+        "description": "Permet à un organisateur de lier les identifiants HelloAsso de son club. Ensuite, tous les paiements (places, etc.) pour les compétitions organisées par ce club utiliseront ce compte. Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "ClubsController_connectHelloAsso",
         "parameters": [],
         "requestBody": {
@@ -14132,7 +14132,7 @@
         "tags": ["clubs"]
       },
       "put": {
-        "description": "Choisit le connecteur de paiement en ligne utilisé pour les places des compétitions organisées par le club (#388). Seuls les connecteurs disponibles sont acceptés (aujourd'hui : HELLOASSO). Les identifiants se saisissent sur la route propre au connecteur (HelloAsso : `PUT /clubs/me/helloasso`) ; changer de connecteur n'efface pas ceux du précédent.",
+        "description": "Choisit le connecteur de paiement en ligne utilisé pour les places des compétitions organisées par le club (#388). Seuls les connecteurs disponibles sont acceptés (aujourd'hui : HELLOASSO). Les identifiants se saisissent sur la route propre au connecteur (HelloAsso : `PUT /clubs/me/helloasso`) ; changer de connecteur n'efface pas ceux du précédent. Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "ClubsController_setPaymentProvider",
         "parameters": [],
         "requestBody": {
@@ -22832,7 +22832,7 @@
         "tags": ["Notifications"]
       },
       "patch": {
-        "description": "Idempotent. N'affecte que les notifications push : le feed in-app (la cloche) continue d'être alimenté pour tous les types. Un type non réglable est refusé (400), un type qui ne concerne pas le rôle de l'appelant également (403).",
+        "description": "Idempotent. N'affecte que les notifications push : le feed in-app (la cloche) continue d'être alimenté pour tous les types. Un type non réglable est refusé (400), un type qui ne concerne pas le rôle de l'appelant également (403), comme tout appel pendant un accès support (« se connecter en tant que »).",
         "operationId": "NotificationsController_updateMyPreference",
         "parameters": [],
         "requestBody": {
@@ -23039,7 +23039,7 @@
     },
     "/notifications/device-token": {
       "post": {
-        "description": "Appelé par le client à l'ouverture de session et au renouvellement du token FCM. Idempotent : l'upsert se fait sur le token, qui est ré-attribué à l'utilisateur authentifié s'il était lié à un autre compte (appareil partagé ou revendu). Limité à 5 appels par minute et par utilisateur ; au-delà de 20 appareils, les plus anciens (lastSeenAt) sont supprimés.",
+        "description": "Appelé par le client à l'ouverture de session et au renouvellement du token FCM. Idempotent : l'upsert se fait sur le token, qui est ré-attribué à l'utilisateur authentifié s'il était lié à un autre compte (appareil partagé ou revendu). Limité à 5 appels par minute et par utilisateur ; au-delà de 20 appareils, les plus anciens (lastSeenAt) sont supprimés. Refusé (403) pendant un accès support (« se connecter en tant que »).",
         "operationId": "NotificationsController_registerDeviceToken",
         "parameters": [],
         "requestBody": {
@@ -27570,7 +27570,7 @@
           },
           "reason": {
             "type": "string",
-            "description": "Raison de l'impersonation (obligatoire pour le staff, journalisée). Elle est restituée à l'utilisateur ciblé dans son export RGPD (GET /users/me/export) : n'y écrire aucune donnée personnelle d'un tiers."
+            "description": "Raison de l'impersonation (facultative, journalisée). Elle est restituée à l'utilisateur ciblé dans son export RGPD (GET /users/me/export) : n'y écrire aucune donnée personnelle d'un tiers."
           }
         }
       },
