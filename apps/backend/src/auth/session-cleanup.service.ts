@@ -1,12 +1,13 @@
 /**
  * Service de nettoyage des sessions et tokens expirés.
  * Nettoie automatiquement les refresh tokens, les password reset tokens, les
- * tokens d'appareil (FCM) et le journal des accès support (#731) hors durée de
- * conservation.
+ * tokens d'appareil (FCM), le journal des accès support (#731) et le journal
+ * d'audit du back-office (#741) hors durée de conservation.
  */
 
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
+import { AdminAuditLogRetentionService } from "../admin/admin-audit-log-retention.service";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { fillNormalizedEmails } from "./email-identity";
@@ -21,6 +22,7 @@ export class SessionCleanupService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
     private readonly impersonationLogRetention: ImpersonationLogRetentionService,
+    private readonly adminAuditLogRetention: AdminAuditLogRetentionService,
   ) {}
 
   onModuleInit(): void {
@@ -70,6 +72,15 @@ export class SessionCleanupService implements OnModuleInit {
         "Error during impersonation log retention purge",
         error,
       );
+    }
+
+    // Back-office audit trail retention (#741): same hook, same reasons
+    // (no wake-up, own try/catch, logged on every pass).
+    try {
+      const deleted = await this.adminAuditLogRetention.purge();
+      this.logger.log(`Admin audit log retention: ${deleted} row(s) deleted`);
+    } catch (error) {
+      this.logger.error("Error during admin audit log retention purge", error);
     }
 
     // Lookup keys of rows written without one (#526): rows written by an

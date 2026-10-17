@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
+import { AdminAuditModule } from "../admin/admin-audit.module";
 import { ParentalConsentModule } from "../parental-consent/parental-consent.module";
 import { PrismaModule } from "../prisma/prisma.module";
 import { AuthController } from "./auth.controller";
@@ -18,6 +19,8 @@ import { SessionCleanupService } from "./session-cleanup.service";
     PassportModule,
     PrismaModule,
     ParentalConsentModule,
+    // Audit-trail retention purge (#741), run by SessionCleanupService.
+    AdminAuditModule,
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService) => ({
         secret: configService.getOrThrow<string>("JWT_SECRET"),

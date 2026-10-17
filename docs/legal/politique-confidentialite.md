@@ -156,6 +156,7 @@ comparer à la personne présente.
 - **Logs techniques** : **12 mois**.
 - **Journal des accès aux données de santé** : **1 an**, puis suppression automatique. Il ne contient que des identifiants techniques (personne concernée, auteur de l'accès), la nature de l'accès, sa date et son point d'entrée — jamais le certificat ni les informations qui y figurent. Il subsiste après la suppression du compte jusqu'au terme de ce délai, afin qu'un accès ne puisse pas être effacé en supprimant un compte.
 - **Journal des accès support** (« se connecter en tant que ») : **1 an**, puis suppression automatique ; l'adresse IP de l'intervenant est réduite à son réseau au bout de **90 jours**. Il subsiste après la suppression du compte jusqu'au terme de ce délai (§4).
+- **Journal des modifications faites par l'administration** (back-office : qui a modifié quoi sur un compte, un club ou une licence, avec les valeurs avant et après) : **1 an**, puis suppression automatique. Si votre compte est supprimé, les valeurs avant et après des modifications qui le concernent sont effacées immédiatement.
 - **Données d'usage anonymes** : **90 jours** avec l'identifiant d'installation, puis statistiques agrégées sans identifiant conservées **25 mois**.
 - **Sauvegardes de la base de données** : **7 jours** glissants. Une donnée supprimée peut y subsister jusqu'à 7 jours ; les sauvegardes ne servent qu'à la restauration du service après incident. Les fichiers envoyés (certificats) ne sont pas sauvegardés.
 

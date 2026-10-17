@@ -62,4 +62,13 @@ describe("privacy policy in the app", () => {
     expect(rights?.body).toContain("qualité de l'auteur, sans son identité");
     expect(rights?.body).not.toContain("à ce jour le journal des accès");
   });
+
+  it("declares the retention of the back-office audit trail (#741)", () => {
+    const retention = LEGAL_DOCUMENTS.privacy.sections.find(
+      (s) => s.heading === "Durées de conservation",
+    );
+    expect(retention?.body).toContain(
+      "Journal des modifications faites par l'administration : 1 an, puis suppression automatique",
+    );
+  });
 });

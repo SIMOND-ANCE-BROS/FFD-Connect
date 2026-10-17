@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
 import { anonymizeIp, UNKNOWN_IP } from "../common/logger/anonymize-ip";
+import { configuredDays, DAY_MS } from "../common/retention/configured-days";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   idOnlySelect,
@@ -43,26 +44,6 @@ export const IMPERSONATION_LOG_PURGE_BATCH = 1000;
 /** Rows whose IP is truncated per batch (one UPDATE each). */
 export const IMPERSONATION_LOG_IP_BATCH = 200;
 export const IMPERSONATION_LOG_MAX_BATCHES_PER_PASS = 10;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Integer number of days in [min, max] read from the config, or `fallback`. */
-function configuredDays(
-  configService: ConfigService,
-  key: string,
-  min: number,
-  max: number,
-  fallback: number,
-): number {
-  const raw: unknown = configService.get(key);
-  const days = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : raw;
-  return typeof days === "number" &&
-    Number.isInteger(days) &&
-    days >= min &&
-    days <= max
-    ? days
-    : fallback;
-}
 
 export interface ImpersonationLogRetention {
   /** Days a journal row is kept. */

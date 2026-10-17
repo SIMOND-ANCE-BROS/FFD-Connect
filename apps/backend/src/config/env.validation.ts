@@ -362,6 +362,14 @@ class EnvironmentVariables {
   @IsOptional()
   IMPERSONATION_LOG_IP_RETENTION_DAYS?: number;
 
+  // Back-office audit trail retention (#741), in days. Unset: 365. Bounds
+  // mirrored in admin-audit-log-retention.service.
+  @IsInt()
+  @Min(30)
+  @Max(3650)
+  @IsOptional()
+  ADMIN_AUDIT_LOG_RETENTION_DAYS?: number;
+
   // Fonctionnalités optionnelles
   @IsString()
   @IsOptional()
